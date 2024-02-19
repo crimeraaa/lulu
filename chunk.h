@@ -51,6 +51,20 @@ void write_chunk(LuaChunk *self, uint8_t byte, int line);
 int add_constant(LuaChunk *self, LuaValue value);
 
 /**
+ * Challenge III:14.1
+ * 
+ * As much as we can, we want to use the byte-sized OP_CONSTANT function when
+ * loading constant values since we assume most of our instructions are 1 byte.
+ * 
+ * However, 1 byte instructions mean that when we load an index, we can only use
+ * up to 255 as that's the simple maximum number of constants in the pool.
+ *
+ * If one wishes to have more constants, you'll need to use OP_CONSTANT_LONG.
+ * The instruction itself takes 1 byte, but it takes a 3 byte (or 24-bit) operand.
+ */
+void write_constant(LuaChunk *self, LuaValue value, int line);
+
+/**
  * Mainly for debug purposes only.
  */
 void disassemble_chunk(LuaChunk *self, const char *name);

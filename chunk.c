@@ -78,6 +78,19 @@ int add_constant(LuaChunk *self, LuaValue value) {
     return self->constants.count - 1;
 }
 
+void write_constant(LuaChunk *self, LuaValue value, int line) {
+    int index = add_constant(self, value);
+    if (self->constants.count <= UINT8_MAX) {
+        write_chunk(self, OP_CONSTANT, line);
+        write_chunk(self, index, line);
+    } else {
+        write_chunk(self, OP_CONSTANT_LONG, line);
+        write_chunk(self, (index >> 16) & 0xFF, line); // mask upper 8 bits
+        write_chunk(self, (index >> 8) & 0xFF, line);  // mask center 8 bits
+        write_chunk(self, (index & 0xFF), line);       // mask lower 8 bits
+    }
+}
+
 void disassemble_chunk(LuaChunk *self, const char *name) {
     // Reset so we start from index 0 into self->lines.runs.
     // Kinda hacky but this will serve as our iterator of sorts.
@@ -104,6 +117,29 @@ static int constant_instruction(const char *name, LuaChunk *chunk, int offset) {
     return offset + 2;
 }
 
+/**
+ * Challenge III:14.1: Extended Width Instructions
+ * 
+ * When loading the 256th-(2^24)th constant, we need to use a 3 byte operand.
+ *
+ * 1. code[offset + 1]: Upper 8 bits of the operand.
+ * 2. code[offset + 2]: Middle 8 bits of the operand.
+ * 3. code[offset + 3]: Lower 8 bits of the operand.
+ * 
+ * We have to use some clever bit twiddling to construct a 32-bit integer.
+ * 
+ * In total, this entire operation takes up 4 bytes.
+ */
+static int constant_long_instruction(const char *name, LuaChunk *chunk, int offset) {
+    int index = chunk->code[offset + 1] << 16; // Unmask upper 8 bits
+    index |= chunk->code[offset + 2] << 8;     // Unmask center 8 bits
+    index |= chunk->code[offset + 3];          // Unmask lower 8 bits
+    printf("%-16s %4i '", name, index);        // We now have a 24-bit integer!
+    print_value(chunk->constants.values[index]);
+    printf("'\n");
+    return offset + 4;
+}
+
 /* Simple instruction only take 1 byte for themselves. */
 static int simple_instruction(const char *name, int offset) {
     printf("%s\n", name);
@@ -111,21 +147,21 @@ static int simple_instruction(const char *name, int offset) {
 }
 
 int disassemble_instruction(LuaChunk *self, int offset) {
-    const LuaLineRLE *lines = &self->lines;
     printf("%04i ", offset); // Print number left-padded with 0's
 
     // Don't print pipe for very first line
     // If lineRLE is still in inclusive range, print pipe
-    if (offset > 0 && offset <= lines->runs[self->prevline].end) {
+    if (offset > 0 && offset <= self->lines.runs[self->prevline].end) {
         printf("   | ");
     } else {
         self->prevline++;
-        printf("%4i ", lines->runs[self->prevline].where);
+        printf("%4i ", self->lines.runs[self->prevline].where);
     }
 
     uint8_t instruction = self->code[offset];
     switch(instruction) {
     case OP_CONSTANT: return constant_instruction("OP_CONSTANT", self, offset);
+    case OP_CONSTANT_LONG: return constant_long_instruction("OP_CONSTANT_LONG", self, offset);
     case OP_RETURN:   return simple_instruction("OP_RETURN", offset);
     default: break;
     }
