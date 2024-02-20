@@ -31,10 +31,9 @@ void init_vm(LuaVM *self);
 void deinit_vm(LuaVM *self);
 
 /**
- * Give the VM a new Lua Chunk (that is, compiled bytecode instructions) to
- * interpret and execute.
+ * Given a monolithic string of source code...
  */
-LuaInterpretResult interpret_vm(LuaVM *self, LuaChunk *chunk);
+LuaInterpretResult interpret_vm(LuaVM *self, const char *source);
 
 /**
  * Assigns the top of stack to `value` then increments the VM's stack pointer

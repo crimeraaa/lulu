@@ -1,58 +1,84 @@
+#include <stdio.h>  /* FILE*, stdin, printf(family), fgets, fopen, fclose */
+#include <stdlib.h> /* malloc, free */
+#include <string.h> /* strcspn */
 #include "common.h"
 #include "chunk.h"
 #include "vm.h"
 
-/* Challenge 15.1: Write bytecode for 1 + 2 * 3 - 4 / -5 */
-static void test_chunk1A(LuaVM *vm) {
-    int line = 11;
-    LuaChunk *chunk = &(LuaChunk){0};
-    init_chunk(chunk);
-    
-    write_constant(chunk, make_luanumber(1), line);
-    write_constant(chunk, make_luanumber(2), line);
-    write_constant(chunk, make_luanumber(3), line);
-    write_chunk(chunk, OP_MUL, line);
-    write_constant(chunk, make_luanumber(4), line);
-    write_constant(chunk, make_luanumber(5), line);
-    write_chunk(chunk, OP_UNM, line);
-    write_chunk(chunk, OP_DIV, line);
-    write_chunk(chunk, OP_SUB, line);
-    write_chunk(chunk, OP_ADD, line);
-    
-    line++;
-    write_chunk(chunk, OP_RET, line);
-    
-    disassemble_chunk(chunk, __func__);
-    interpret_vm(vm, chunk);
-    deinit_chunk(chunk);
+#if defined(unix) || defined(__unix__) || defined(__unix)
+#include <sysexits.h>
+#else /* unix not defined. */
+#define EX_USAGE    64 /* Command line usage error. */
+#define EX_DATAERR  65 /* Data format error. */
+#define EX_NOINPUT  66 /* Cannot open input. */
+#define EX_SOFTWARE 70 /* Internal software error. */
+#define EX_IOERR    74 /* Input/output error. */
+#endif /* unix */
+
+static void run_repl(LuaVM *vm) {
+    char line[256];
+    for (;;) {
+        printf("> ");
+        // Appends newline and nul char
+        if (!fgets(line, sizeof(line), stdin)) {
+            break;
+        }
+        // line[strcspn(line, "\r\n")] = '\0';
+        interpret_vm(vm, line);
+    } 
 }
 
-/* Testing out my modulo and exponentiation operators. */
-static void test_chunk1B(LuaVM *vm) {
-    int line = 42;
-    LuaChunk *chunk = &(LuaChunk){0};
-    init_chunk(chunk);
+char *read_file(const char *file_path) {
+    FILE *handle = fopen(file_path, "rb"); // read only in binary mode
+    if (handle == NULL) {
+        logprintf("Could not open file '%s'.\n", file_path);
+        exit(EX_IOERR);
+    }
+    fseek(handle, 0L, SEEK_END);
+    size_t file_size = ftell(handle);
+    rewind(handle); // Brings internal file pointer back to beginning
     
-    write_constant(chunk, make_luanumber(5.0), line);
-    write_constant(chunk, make_luanumber(4.0), line);
-    write_chunk(chunk, OP_POW, line);
-    write_constant(chunk, make_luanumber(32.0), line);
-    write_chunk(chunk, OP_MOD, line);
+    char *buffer = malloc(file_size + 1);
+    if (buffer == NULL) {
+        logprintf("Not enough memory to read file '%s'.\n", file_path);
+        exit(EX_IOERR);
+    }
+    size_t bytes_read = fread(buffer, sizeof(char), file_size, handle);
+    if (bytes_read < file_size) {
+        logprintf("Could not read file '%s'.\n", file_path);
+    }
+    buffer[bytes_read] = '\0';
+    fclose(handle);
+    return buffer;
+}
 
-    line++;
-    write_chunk(chunk, OP_RET, line);
-
-    disassemble_chunk(chunk, __func__);
-    interpret_vm(vm, chunk);
-    deinit_chunk(chunk);
+static void run_file(LuaVM *vm, const char *file_path) {
+    char *source = read_file(file_path);
+    LuaInterpretResult result = interpret_vm(vm, source);
+    free(source);
+    
+    switch (result) {
+    case INTERPRET_OK: break;
+    case INTERPRET_COMPILE_ERROR: exit(EX_DATAERR);
+    case INTERPRET_RUNTIME_ERROR: exit(EX_SOFTWARE);
+    default: // This should not happen, but just in case
+        logprintf("Unknown result code %i.\n", (int)result); 
+        break;
+    }
 }
 
 int main(int argc, char *argv[]) {
-    (void)argc; (void)argv;
     LuaVM *vm = &(LuaVM){0}; // C99 compound literals are really handy sometimes
     init_vm(vm);
-    test_chunk1A(vm);
-    test_chunk1B(vm);
+    
+    if (argc == 1) {
+        run_repl(vm);
+    } else if (argc == 2) {
+        run_file(vm, argv[1]);
+    } else {
+        fprintf(stderr, "Usage: %s [script]\n", argv[0]);
+        exit(EX_USAGE);
+    }
     deinit_vm(vm);
     return 0;
 }

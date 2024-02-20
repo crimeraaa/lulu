@@ -13,10 +13,11 @@ typedef enum {
     TOKEN_LBRACKET, // '['  Table indexing begin.
     TOKEN_RBRACKET, // ']'  Table indexing end.
     TOKEN_COMMA,    // ','  Function argument separator, multi-variable assignment.
-    TOKEN_PERIOD,   // '.'  Table field resolution operator, or string concatenation.
+    TOKEN_PERIOD,   // '.'  Table field resolution, string concatentation, varargs.
     TOKEN_COLON,    // ':'  Function method resolution (passes implicit `self`).
     TOKEN_POUND,    // '#'  Get length of a table's array portion.
     TOKEN_SEMICOL,  // ';'  Optional C-style statement separator.
+    TOKEN_EQUAL,    // '='  Variable assignment.
 
     // Arithmetic Operators
     TOKEN_PLUS,     // '+'  Addition.
@@ -27,12 +28,12 @@ typedef enum {
     TOKEN_PERCENT,  // '%'  Modulus, a.k.a. get the remainder.
                 
     // Relational Operators
-    TOKEN_EQ,       // '==' Compare for equality.
-    TOKEN_NEQ,      // '~=' Compare for inequality.
-    TOKEN_GT,       // '>'  Greater than.
-    TOKEN_GE,       // '>=' Greater than or equal to.
-    TOKEN_LT,       // '<'  Less than.
-    TOKEN_LE,       // '<=' Less than or equal to.
+    TOKEN_REL_EQ,   // '==' Compare for equality.
+    TOKEN_REL_NEQ,  // '~=' Compare for inequality.
+    TOKEN_REL_GT,   // '>'  Greater than.
+    TOKEN_REL_GE,   // '>=' Greater than or equal to.
+    TOKEN_REL_LT,   // '<'  Less than.
+    TOKEN_REL_LE,   // '<=' Less than or equal to.
 
     // Literals
     TOKEN_FALSE,    // 'false'
@@ -54,14 +55,17 @@ typedef enum {
     TOKEN_FUNCTION,
     TOKEN_IF,       // 'if' Simple conditional. Must be followed by 'then'.
     TOKEN_IN,       // 'in' used by ipairs, pairs, and other stateless iterators.
+    TOKEN_LOCAL,    // 'local' declares a locally scoped variable.
     TOKEN_NOT,
     TOKEN_OR,
     TOKEN_RETURN,   // 'return' Ends control flow and may push a value.
+    TOKEN_SELF,     // 'self' only a keyword for table methods using ':'.
     TOKEN_THEN,     // 'then' Block delimiter for `if`.
     TOKEN_WHILE,
     
-    TOKEN_EOF,
-    TOKEN_COUNT,
+    TOKEN_ERROR,    // Distinct enumeration to allow us to detect actual errors.
+    TOKEN_EOF,      // EOF by itself is not an error.
+    TOKEN_COUNT,    // Determine size of the internal lookup table.
 } LuaTokenType;
 
 typedef struct {

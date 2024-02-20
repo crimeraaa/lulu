@@ -1,15 +1,16 @@
 #include <math.h>
+#include "compiler.h"
 #include "vm.h"
 
 /* Make the VM's stack pointer point to the base of the stack array. */
-static inline void reset_stackpointer(LuaVM *self) {
+static inline void reset_vmsp(LuaVM *self) {
     self->sp = self->stack;
 }
 
 void init_vm(LuaVM *self) {
     self->chunk = NULL;
     self->ip    = NULL;
-    reset_stackpointer(self);
+    reset_vmsp(self);
 }
 
 void deinit_vm(LuaVM *self) {}
@@ -149,12 +150,18 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
     }
 }
 
-LuaInterpretResult interpret_vm(LuaVM *self, LuaChunk *chunk) {
-    self->chunk = chunk;
-    self->ip    = chunk->code;
-    // Need in case we call disassemble_instruction() w/o disassemble_chunk()
-    self->chunk->prevline = -1; 
-    return run_bytecode(self);
+LuaInterpretResult interpret_vm(LuaVM *self, const char *source) {
+    LuaCompiler *compiler = &(LuaCompiler){0};
+    init_compiler(compiler);
+    compile_bytecode(compiler, source);
+    return INTERPRET_OK;
+    // LuaChunk *chunk = &(LuaChunk){0};
+    // init_chunk(chunk);
+    // self->chunk = chunk;
+    // self->ip    = chunk->code;
+    // // Need in case we call disassemble_instruction() w/o disassemble_chunk()
+    // self->chunk->prevline = -1; 
+    // return run_bytecode(self);
 }
 
 #undef extract_int24
