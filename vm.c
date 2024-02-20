@@ -8,7 +8,7 @@ static inline void reset_stackpointer(LuaVM *self) {
 
 void init_vm(LuaVM *self) {
     self->chunk = NULL;
-    self->ip = NULL;
+    self->ip    = NULL;
     reset_stackpointer(self);
 }
 
@@ -43,7 +43,7 @@ LuaValue pop_vmstack(LuaVM *self) {
  * We do the appropriate bit shiftings and bitwise operations to create a single
  * combined 24-bit/32-bit integer.
  */
-#define extract_int24(x, y, z)     ((x) >> 16) | ((y) >> 8) | (z)
+#define extract_int24(x, y, z)  ((x) >> 16) | ((y) >> 8) | (z)
 
 /**
  * If you have an index greater than 8-bits, calculate that first however you
@@ -71,13 +71,25 @@ LuaValue pop_vmstack(LuaVM *self) {
  * Because C preprocessor macro metaprogramming sucks, I'm sorry in advance that
  * you have to see this mess!
  */
-#define make_binary_op(vm, op) \
+#define make_simple_binaryop(vm, op) \
     do { \
-        LuaValue rhs = pop_vmstack(vm); \
-        LuaValue lhs = pop_vmstack(vm); \
+        LuaValue rhs = pop_vmstack(vm); LuaValue lhs = pop_vmstack(vm); \
         assert_number_op(lhs, rhs); \
         push_vmstack(vm, make_luanumber(lhs.as.number op rhs.as.number)); \
     } while(false)
+
+/**
+ * In order to support modulo and exponents, we need to use the C math library.
+ * So instead of passing a simple operation, you pass in a function that takes
+ * 2 `double` and returns 1 `double`, e.g. `fmod()`, `pow()`.
+ */
+#define make_fncall_binaryop(vm, fn) \
+    do { \
+        LuaValue rhs = pop_vmstack(vm); LuaValue lhs = pop_vmstack(vm); \
+        assert_number_op(lhs, rhs); \
+        push_vmstack(vm, make_luanumber(fn(lhs.as.number, rhs.as.number))); \
+    } while(false)
+
 
 static LuaInterpretResult run_bytecode(LuaVM *self) {
     for (;;) {
@@ -109,18 +121,12 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
             break;
         }
         // -*- III:15.3.1   Binary Operators ---------------------------------*-
-        case OP_ADD: make_binary_op(self, +); break;
-        case OP_SUB: make_binary_op(self, -); break;
-        case OP_MUL: make_binary_op(self, *); break;
-        case OP_DIV: make_binary_op(self, /); break;
-        case OP_POW: {
-            LuaValue rhs = pop_vmstack(self);
-            LuaValue lhs = pop_vmstack(self);
-            assert_number_op(lhs, rhs);
-            double value = pow(lhs.as.number, rhs.as.number);
-            push_vmstack(self, make_luanumber(value));
-            break;
-        }
+        case OP_ADD: make_simple_binaryop(self, +); break;
+        case OP_SUB: make_simple_binaryop(self, -); break;
+        case OP_MUL: make_simple_binaryop(self, *); break;
+        case OP_DIV: make_simple_binaryop(self, /); break;
+        case OP_POW: make_fncall_binaryop(self, pow); break;
+        case OP_MOD: make_fncall_binaryop(self, fmod); break;
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
@@ -131,7 +137,7 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
                 break;
             } else {
                 print_value(*value);
-                printf(" is not a Lua number!\n");
+                printf(" is not a Lua number and cannot be negated!\n");
                 return INTERPRET_RUNTIME_ERROR;
             }
         }

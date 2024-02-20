@@ -21,15 +21,16 @@ typedef enum {
     OP_SUB,
     OP_MUL,
     OP_DIV, 
-    OP_POW, // My addition for exponents using the caret ('^') character.
+    OP_MOD, // My addition for modulo using the caret ('%') character.
+    OP_POW, // My addition for exponentiation using the caret ('^') character.
 
     OP_RET,
 } LuaOpCode;
 
 typedef struct {
     int where; // Line number for run-length-encoding.
-    uint8_t start; // First instruction in the `code` array that is on this line.
-    uint8_t end; // Last instruction in the `code` array that is on this line.
+    int start; // First instruction's byte offset from the `code` array.
+    int end; // Last instruction's byte offset from the `code` array.
 } LuaLineRun;
 
 /** 
@@ -48,9 +49,9 @@ typedef struct {
     LuaValueArray constants;
     LuaLineRLE lines;
     uint8_t *code; // 1D array of 8-bit instructions.
-    int count;       // Current number of instructions written to `code`.
-    int capacity;    // Total number of instructions we can hold currently.
-    int prevline;    // Track the previous line number as we may skip some.
+    int count;     // Current number of instructions written to `code`.
+    int capacity;  // Total number of instructions we can hold currently.
+    int prevline;  // Track the previous line number as we may skip some.
 } LuaChunk;
 
 void init_chunk(LuaChunk *self);
