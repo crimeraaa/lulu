@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${default}"
+            ],
+            "compilerPath": "/usr/bin/clang",
+            "intelliSenseMode": "linux-clang-x64",
+            "cStandard": "c11",
+            "defines": ["DEBUG_PRINT_CODE", "DEBUG_TRACE_EXECUTION"]
+        }
+    ],
+    "version": 4
+}

@@ -2,10 +2,11 @@
 #include "memory.h"
 #include "value.h"
 
-void init_linerun(LuaLineRun *self, uint8_t byte, int line);
-void init_lineRLE(LuaLineRLE *self);
-void deinit_lineRLE(LuaLineRLE *self);
-void write_lineRLE(LuaLineRLE *self, uint8_t byte, int line);
+static inline void init_lineRLE(LuaLineRLE *self) {
+    self->count = 0;
+    self->capacity = 0;
+    self->runs = NULL;
+}
 
 void init_chunk(LuaChunk *self) {
     self->code = NULL;
@@ -16,6 +17,10 @@ void init_chunk(LuaChunk *self) {
     init_lineRLE(&self->lines);
 }
 
+static inline void deinit_lineRLE(LuaLineRLE *self) {
+    deallocate_array(LuaLineRun, self->runs, self->capacity);
+}
+
 void deinit_chunk(LuaChunk *self) {
     deallocate_array(uint8_t, self->code, self->capacity);
     deinit_valuearray(&self->constants);
@@ -24,14 +29,21 @@ void deinit_chunk(LuaChunk *self) {
     init_lineRLE(&self->lines);
 }
 
-void init_lineRLE(LuaLineRLE *self) {
-    self->count = 0;
-    self->capacity = 0;
-    self->runs = NULL;
+static inline void init_linerun(LuaLineRun *self, uint8_t byte, int line) {
+    self->start = byte;
+    self->end   = byte;
+    self->where = line;
 }
 
-void deinit_lineRLE(LuaLineRLE *self) {
-    deallocate_array(LuaLineRun, self->runs, self->capacity);
+static void write_lineRLE(LuaLineRLE *self, uint8_t byte, int line) {
+    // We should resize this array less often than the bytes one.
+    if (self->count + 1 > self->capacity) {
+        int oldcapacity = self->capacity;
+        self->capacity = grow_capacity(oldcapacity);
+        self->runs = grow_array(LuaLineRun, self->runs, oldcapacity, self->capacity);
+    }
+    init_linerun(&self->runs[self->count], byte, line);
+    self->count++;
 }
 
 /* Increment the end instruction pointer of the topmost run. */
@@ -56,28 +68,6 @@ void write_chunk(LuaChunk *self, uint8_t byte, int line) {
     }
 }
 
-void write_lineRLE(LuaLineRLE *self, uint8_t byte, int line) {
-    // We should resize this array less often than the bytes one.
-    if (self->count + 1 > self->capacity) {
-        int oldcapacity = self->capacity;
-        self->capacity = grow_capacity(oldcapacity);
-        self->runs = grow_array(LuaLineRun, self->runs, oldcapacity, self->capacity);
-    }
-    init_linerun(&self->runs[self->count], byte, line);
-    self->count++;
-}
-
-void init_linerun(LuaLineRun *self, uint8_t byte, int line) {
-    self->start = byte;
-    self->end   = byte;
-    self->where = line;
-}
-
-int add_constant(LuaChunk *self, LuaValue value) {
-    write_valuearray(&self->constants, value);
-    return self->constants.count - 1;
-}
-
 void write_constant(LuaChunk *self, LuaValue value, int line) {
     int index = add_constant(self, value);
     if (self->constants.count <= UINT8_MAX) {
@@ -91,6 +81,11 @@ void write_constant(LuaChunk *self, LuaValue value, int line) {
     }
 }
 
+int add_constant(LuaChunk *self, LuaValue value) {
+    write_valuearray(&self->constants, value);
+    return self->constants.count - 1;
+}
+
 void disassemble_chunk(LuaChunk *self, const char *name) {
     // Reset so we start from index 0 into self->lines.runs.
     // Kinda hacky but this will serve as our iterator of sorts.
@@ -102,6 +97,12 @@ void disassemble_chunk(LuaChunk *self, const char *name) {
         offset = disassemble_instruction(self, offset);
     }
 }
+
+/** 
+ * Only compile these explicitly want debug printout capabilities. 
+ * Otherwise, don't as they'll take up space in the resulting object file.
+ */
+#ifdef DEBUG_PRINT_CODE
 
 /**
  * Constant instructions take 1 byte for themselves and 1 byte for the operand. 
@@ -146,25 +147,38 @@ static int simple_instruction(const char *name, int offset) {
     return offset + 1;
 }
 
-int disassemble_instruction(LuaChunk *self, int offset) {
+int disassemble_instruction(LuaChunk *chunk, int offset) {
     printf("%04i ", offset); // Print number left-padded with 0's
 
     // Don't print pipe for very first line
     // If lineRLE is still in inclusive range, print pipe
-    if (offset > 0 && offset <= self->lines.runs[self->prevline].end) {
+    if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline].end) {
         printf("   | ");
     } else {
-        self->prevline++;
-        printf("%4i ", self->lines.runs[self->prevline].where);
+        chunk->prevline++;
+        printf("%4i ", chunk->lines.runs[chunk->prevline].where);
     }
 
-    uint8_t instruction = self->code[offset];
+    uint8_t instruction = chunk->code[offset];
     switch(instruction) {
-    case OP_CONSTANT: return constant_instruction("OP_CONSTANT", self, offset);
-    case OP_CONSTANT_LONG: return constant_long_instruction("OP_CONSTANT_LONG", self, offset);
-    case OP_RETURN:   return simple_instruction("OP_RETURN", offset);
+    case OP_CONSTANT: 
+        return constant_instruction("OP_CONSTANT", chunk, offset);
+    case OP_CONSTANT_LONG: 
+        return constant_long_instruction("OP_CONSTANT_LONG", chunk, offset);
+    // -*- III:15.3.1   Binary operators -------------------------------------*-
+    case OP_ADD: return simple_instruction("OP_ADD", offset);
+    case OP_SUB: return simple_instruction("OP_SUB", offset);
+    case OP_MUL: return simple_instruction("OP_MUL", offset);
+    case OP_DIV: return simple_instruction("OP_DIV", offset);
+    case OP_POW: return simple_instruction("OP_POW", offset);
+
+    // -*- III:15.3     An Arithmetic Calculator -----------------------------*-
+    case OP_UNM: return simple_instruction("OP_UNM", offset);
+    case OP_RET: return simple_instruction("OP_RET", offset);
     default: break;
     }
     printf("Unknown opcode %i.\n", instruction);
     return offset + 1;
 }
+
+#endif /* DEBUG_PRINT_CODE */

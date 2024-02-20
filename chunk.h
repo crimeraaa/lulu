@@ -6,8 +6,24 @@
 
 typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
-    OP_CONSTANT_LONG, // Challenge III:14.2: Use a 24-bit operand.
-    OP_RETURN,
+
+    // -*- III:14.2(CHALLENGE): Use a 24-bit operand. ------------------------*-
+
+    OP_CONSTANT_LONG, // Load a constant value into memory using a 24-bit operand.
+
+    // -*- III:15.3:    An Arithmetic calculator -----------------------------*-
+
+    OP_UNM, // Unary negation, a.k.a. "Unary minus" (hence "UNM").
+    
+    // -*- III:15.3.1:  Binary Operators -------------------------------------*-
+
+    OP_ADD,
+    OP_SUB,
+    OP_MUL,
+    OP_DIV, 
+    OP_POW, // My addition for exponents using the caret ('^') character.
+
+    OP_RET,
 } LuaOpCode;
 
 typedef struct {
@@ -31,7 +47,7 @@ typedef struct {
 typedef struct {
     LuaValueArray constants;
     LuaLineRLE lines;
-    LuaOpCode *code; // 1D array of 8-bit instructions.
+    uint8_t *code; // 1D array of 8-bit instructions.
     int count;       // Current number of instructions written to `code`.
     int capacity;    // Total number of instructions we can hold currently.
     int prevline;    // Track the previous line number as we may skip some.
@@ -64,10 +80,11 @@ int add_constant(LuaChunk *self, LuaValue value);
  */
 void write_constant(LuaChunk *self, LuaValue value, int line);
 
-/**
- * Mainly for debug purposes only.
- */
+#ifdef DEBUG_PRINT_CODE
+
 void disassemble_chunk(LuaChunk *self, const char *name);
-int disassemble_instruction(LuaChunk *self, int offset);
+int disassemble_instruction(LuaChunk *chunk, int offset);
+
+#endif /* DEBUG_PRINT_CODE */
 
 #endif /* LUA_CHUNK_H */
