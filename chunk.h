@@ -16,15 +16,17 @@ typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
 
     // -*- III:14.2(CHALLENGE): Use a 24-bit operand. ------------------------*-
-
     OP_CONSTANT_LONG, // Load a constant value into memory using a 24-bit operand.
 
     // -*- III:15.3:    An Arithmetic calculator -----------------------------*-
-
     OP_UNM, // Unary negation, a.k.a. "Unary minus" (hence "UNM").
+
+    // -*- III:18.4:    Two New Types ----------------------------------------*-
+    OP_NIL,
+    OP_TRUE,
+    OP_FALSE,
     
     // -*- III:15.3.1:  Binary Operators -------------------------------------*-
-
     OP_ADD,
     OP_SUB,
     OP_MUL,
@@ -74,6 +76,17 @@ void write_chunk(LuaChunk *self, uint8_t byte, int line);
  *              should be emitted as the operand to `OP_CONSTANT`.
  */
 int add_constant(LuaChunk *self, LuaValue value);
+
+/**
+ * Challenge III:14.1
+ * 
+ * In addition to using run-length encoding, we have to be able to somehow query
+ * into it using an instruction offset.
+ * 
+ * Do note that this increments `chunk->prevline` if the previous line does not
+ * match the current line at the given bytecode offset.
+ */
+int get_instruction_line(LuaChunk *chunk, int offset);
 
 /**
  * Challenge III:14.1

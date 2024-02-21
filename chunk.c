@@ -69,6 +69,13 @@ int add_constant(LuaChunk *self, LuaValue value) {
     return self->constants.count - 1;
 }
 
+int get_instruction_line(LuaChunk *chunk, int offset) {
+    if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline].end) {
+        return -1;
+    } 
+    return chunk->lines.runs[chunk->prevline++].where;
+}
+
 /** 
  * Only compile these explicitly want debug printout capabilities. 
  * Otherwise, don't as they'll take up space in the resulting object file.
@@ -78,7 +85,7 @@ int add_constant(LuaChunk *self, LuaValue value) {
 void disassemble_chunk(LuaChunk *self, const char *name) {
     // Reset so we start from index 0 into self->lines.runs.
     // Kinda hacky but this will serve as our iterator of sorts.
-    self->prevline = -1;
+    self->prevline = 0;
 
     printf("== %s ==\n", name);
     // We rely on `disassemble_instruction()` for iteration.
@@ -135,11 +142,11 @@ int disassemble_instruction(LuaChunk *chunk, int offset) {
 
     // Don't print pipe for very first line
     // If lineRLE is still in inclusive range, print pipe
-    if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline].end) {
+    int line = get_instruction_line(chunk, offset);
+    if (line == -1) {
         printf("   | ");
     } else {
-        chunk->prevline++;
-        printf("%4i ", chunk->lines.runs[chunk->prevline].where);
+        printf("%4i ", line);
     }
 
     uint8_t instruction = chunk->code[offset];
@@ -148,6 +155,11 @@ int disassemble_instruction(LuaChunk *chunk, int offset) {
         return constant_instruction("OP_CONSTANT", chunk, offset);
     case OP_CONSTANT_LONG: 
         return constant_long_instruction("OP_CONSTANT_LONG", chunk, offset);
+    // -*- III:18.4     Two New Types ----------------------------------------*-
+    case OP_NIL:   return simple_instruction("OP_NIL", offset);
+    case OP_TRUE:  return simple_instruction("OP_TRUE", offset);
+    case OP_FALSE: return simple_instruction("OP_FALSE", offset);
+
     // -*- III:15.3.1   Binary operators -------------------------------------*-
     case OP_ADD: return simple_instruction("OP_ADD", offset);
     case OP_SUB: return simple_instruction("OP_SUB", offset);

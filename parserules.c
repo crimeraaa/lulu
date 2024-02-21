@@ -4,6 +4,7 @@ extern void grouping(LuaCompiler *self);
 extern void binary(LuaCompiler *self);
 extern void unary(LuaCompiler *self);
 extern void number(LuaCompiler *self);
+extern void literal(LuaCompiler *self);
 
 /**
  * III:17.6     A Pratt Parser
@@ -50,13 +51,13 @@ static const LuaParseRule rules[TOKEN_COUNT] = {
     [TOKEN_REL_LE]          = {NULL,        NULL,       PREC_NONE},
 
     // Literals
-    [TOKEN_FALSE]           = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_FALSE]           = {literal,     NULL,       PREC_NONE},
     [TOKEN_IDENT]           = {NULL,        NULL,       PREC_NONE},
-    [TOKEN_NIL]             = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_NIL]             = {literal,     NULL,       PREC_NONE},
     [TOKEN_NUMBER]          = {number,      NULL,       PREC_NONE},
     [TOKEN_STRING]          = {NULL,        NULL,       PREC_NONE},
     [TOKEN_TABLE]           = {NULL,        NULL,       PREC_NONE},
-    [TOKEN_TRUE]            = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_TRUE]            = {literal,     NULL,       PREC_NONE},
 
     // Keywords
     [TOKEN_AND]             = {NULL,        NULL,       PREC_NONE},

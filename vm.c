@@ -7,6 +7,21 @@ static inline void reset_vmsp(LuaVM *self) {
     self->sp = self->stack;
 }
 
+/**
+ * III:18.3.1   Unary negation and runtime errors
+ * 
+ * This function simply prints whatever formatted error message you want.
+ */
+static void runtime_error(LuaVM *self, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputs("\n", stderr);
+    fprintf(stderr, "[line %i] in script\n", self->chunk->prevline);
+    reset_vmsp(self);
+}
+
 void init_vm(LuaVM *self) {
     self->chunk = NULL;
     self->ip    = NULL;
@@ -25,6 +40,21 @@ LuaValue pop_vmstack(LuaVM *self) {
     // which is a valid element we can dereference!
     self->sp--;
     return *self->sp;
+}
+
+/**
+ * III:18.3.1   Unary negation and runtime errors
+ * 
+ * Returns a value from the stack without popping it. Remember that since the
+ * stack pointer points to 1 past the last element, we need to subtract 1.
+ * And since the most recent element is at the top of the stack, in order to
+ * access other elements we subtract the given distance.
+ * 
+ * For example, to peek the top of the stack, use `peek_vmstack(self, 0)`.
+ * To peek the value right before that, use `peek_vmstack(self, 1)`. And so on.
+ */
+static inline LuaValue peek_vmstack(LuaVM *self, int distance) {
+    return *(self->sp - 1 - distance);
 }
 
 /** 
@@ -58,13 +88,6 @@ LuaValue pop_vmstack(LuaVM *self) {
  */
 #define read_constant(vm)       (read_constant_at(vm, read_byte(vm)))
 
-#define assert_number_op(lhs, rhs) \
-    if (!is_luanumber(lhs) || !is_luanumber(rhs)) { \
-        const char *type = typeof_value(!is_luanumber(lhs) ? lhs : rhs); \
-        fprintf(stderr, "attempt to perform arithmetic on a %s value\n", typeof_value(lhs)); \
-        return INTERPRET_RUNTIME_ERROR; \
-    }
-
 /**
  * III:15.3.1   Binary Operators
  * 
@@ -74,7 +97,11 @@ LuaValue pop_vmstack(LuaVM *self) {
 #define make_simple_binaryop(vm, op) \
     do { \
         LuaValue rhs = pop_vmstack(vm); LuaValue lhs = pop_vmstack(vm); \
-        assert_number_op(lhs, rhs); \
+        if (!is_luanumber(lhs)) { \
+            return runtime_matherror(vm, typeof_value(lhs)); \
+        } else if (!is_luanumber(rhs)) { \
+            return runtime_matherror(vm, typeof_value(rhs)); \
+        } \
         push_vmstack(vm, make_luanumber(lhs.as.number op rhs.as.number)); \
     } while(false)
 
@@ -86,13 +113,24 @@ LuaValue pop_vmstack(LuaVM *self) {
 #define make_fncall_binaryop(vm, fn) \
     do { \
         LuaValue rhs = pop_vmstack(vm); LuaValue lhs = pop_vmstack(vm); \
-        assert_number_op(lhs, rhs); \
+        if (!is_luanumber(lhs)) { \
+            return runtime_matherror(vm, typeof_value(lhs)); \
+        } else if (!is_luanumber(rhs)) { \
+            return runtime_matherror(vm, typeof_value(rhs)); \
+        } \
         push_vmstack(vm, make_luanumber(fn(lhs.as.number, rhs.as.number))); \
     } while(false)
 
 
+static inline LuaInterpretResult 
+runtime_matherror(LuaVM *self, const char *type) {
+    runtime_error(self, "Attempt to perform arithmetic on a %s value", type);
+    return INTERPRET_RUNTIME_ERROR;
+}
+
 static LuaInterpretResult run_bytecode(LuaVM *self) {
     for (;;) {
+        int offset = (int)(self->ip - self->chunk->code);
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
         for (LuaValue *slot = self->stack; slot < self->sp; slot++) {
@@ -102,7 +140,11 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
         }
         printf("\n");
         // We need an integer byte offset from beginning of bytecode.
-        disassemble_instruction(self->chunk, (int)(self->ip - self->chunk->code));
+        disassemble_instruction(self->chunk, offset);
+#else
+        // If not doing debug traces, we still need to increment prevline so that
+        // we can report what line an error occured in.
+        get_instruction_line(self->chunk, offset);
 #endif
         uint8_t instruction;
         switch (instruction = read_byte(self)) {
@@ -120,6 +162,11 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
             push_vmstack(self, value);
             break;
         }
+        // -*- III:18.4     Two New Types ------------------------------------*-
+        case OP_NIL:   push_vmstack(self, make_luanil); break;
+        case OP_TRUE:  push_vmstack(self, make_luaboolean(true)); break;
+        case OP_FALSE: push_vmstack(self, make_luaboolean(false)); break;
+
         // -*- III:15.3.1   Binary Operators ---------------------------------*-
         case OP_ADD: make_simple_binaryop(self, +); break;
         case OP_SUB: make_simple_binaryop(self, -); break;
@@ -131,14 +178,12 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
             // Challenge 15.4: Negate in place
-            LuaValue *value = self->sp - 1;
-            if (is_luanumber(*value)) {
-                value->as.number = -(value->as.number);
+            LuaValue value = peek_vmstack(self, 0);
+            if (is_luanumber(value)) {
+                (self->sp - 1)->as.number = -value.as.number;
                 break;
             } else {
-                print_value(*value);
-                printf(" is not a Lua number and cannot be negated!\n");
-                return INTERPRET_RUNTIME_ERROR;
+                return runtime_matherror(self, typeof_value(value));
             }
         }
         case OP_RET: 
@@ -160,19 +205,12 @@ LuaInterpretResult interpret_vm(LuaVM *self, const char *source) {
     }
     self->chunk = &compiler->chunk;
     self->ip    = compiler->chunk.code;
-    // Reset so we can disassembly properly.
-    self->chunk->prevline = -1;
+    // Reset so we can disassemble properly.
+    self->chunk->prevline = 0;
     LuaInterpretResult result = run_bytecode(self);
     deinit_chunk(&compiler->chunk);
 
     return result;
-    // LuaChunk *chunk = &(LuaChunk){0};
-    // init_chunk(chunk);
-    // self->chunk = chunk;
-    // self->ip    = chunk->code;
-    // // Need in case we call disassemble_instruction() w/o disassemble_chunk()
-    // self->chunk->prevline = -1; 
-    // return run_bytecode(self);
 }
 
 #undef extract_int24

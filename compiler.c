@@ -210,6 +210,20 @@ void binary(LuaCompiler *self) {
 }
 
 /**
+ * III:18.4     Two New Types
+ * 
+ * Emits the literals `false`, `true` and `nil`.
+ */
+void literal(LuaCompiler *self) {
+    switch (self->parser.previous.type) {
+    case TOKEN_FALSE: emit_byte(self, OP_FALSE); break;
+    case TOKEN_NIL:   emit_byte(self, OP_NIL);   break;
+    case TOKEN_TRUE:  emit_byte(self, OP_TRUE);  break;
+    default: return; // Unreachable
+    }
+}
+
+/**
  * III:17.4.2   Parentheses for grouping
  * 
  * Parse the expression insides of parentheses '(' and ')'. Remember that the
