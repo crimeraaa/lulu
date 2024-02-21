@@ -88,37 +88,47 @@ static inline LuaValue peek_vmstack(LuaVM *self, int distance) {
  */
 #define read_constant(vm)       (read_constant_at(vm, read_byte(vm)))
 
+#define assert_math_op(vm, lhs, rhs) \
+    if (!is_luanumber(lhs)) { \
+        return runtime_matherror(vm, typeof_value(lhs)); \
+    } else if (!is_luanumber(rhs)) { \
+        return runtime_matherror(vm, typeof_value(rhs)); \
+    }
+
+#define make_math_binaryop(vm, ident1, ident2) \
+    LuaValue ident2 = pop_vmstack(vm); \
+    LuaValue ident1 = pop_vmstack(vm); \
+    assert_math_op(vm, ident1, ident2); \
+
 /**
  * III:15.3.1   Binary Operators
  * 
  * Because C preprocessor macro metaprogramming sucks, I'm sorry in advance that
  * you have to see this mess!
+ * 
+ * @param vm    `LuaVM*`.
+ * @param mk    One of the `make_lua*` macros.
+ * @param op    + - * / ^ %
  */
-#define make_simple_binaryop(vm, op) \
+#define make_simple_binaryop(vm, mk, op) \
     do { \
-        LuaValue rhs = pop_vmstack(vm); LuaValue lhs = pop_vmstack(vm); \
-        if (!is_luanumber(lhs)) { \
-            return runtime_matherror(vm, typeof_value(lhs)); \
-        } else if (!is_luanumber(rhs)) { \
-            return runtime_matherror(vm, typeof_value(rhs)); \
-        } \
-        push_vmstack(vm, make_luanumber(lhs.as.number op rhs.as.number)); \
+        make_math_binaryop(vm, lhs, rhs); \
+        push_vmstack(vm, mk(lhs.as.number op rhs.as.number)); \
     } while(false)
 
 /**
  * In order to support modulo and exponents, we need to use the C math library.
  * So instead of passing a simple operation, you pass in a function that takes
  * 2 `double` and returns 1 `double`, e.g. `fmod()`, `pow()`.
+ *
+ * @param vm    `LuaVM*`.
+ * @param mk    One of the `make_lua*` macros.
+ * @param op    + - * / ^ %
  */
-#define make_fncall_binaryop(vm, fn) \
+#define make_fncall_binaryop(vm, mk, fn) \
     do { \
-        LuaValue rhs = pop_vmstack(vm); LuaValue lhs = pop_vmstack(vm); \
-        if (!is_luanumber(lhs)) { \
-            return runtime_matherror(vm, typeof_value(lhs)); \
-        } else if (!is_luanumber(rhs)) { \
-            return runtime_matherror(vm, typeof_value(rhs)); \
-        } \
-        push_vmstack(vm, make_luanumber(fn(lhs.as.number, rhs.as.number))); \
+        make_math_binaryop(vm, lhs, rhs); \
+        push_vmstack(vm, mk(fn(lhs.as.number, rhs.as.number))); \
     } while(false)
 
 
@@ -168,12 +178,12 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
         case OP_FALSE: push_vmstack(self, make_luaboolean(false)); break;
 
         // -*- III:15.3.1   Binary Operators ---------------------------------*-
-        case OP_ADD: make_simple_binaryop(self, +); break;
-        case OP_SUB: make_simple_binaryop(self, -); break;
-        case OP_MUL: make_simple_binaryop(self, *); break;
-        case OP_DIV: make_simple_binaryop(self, /); break;
-        case OP_POW: make_fncall_binaryop(self, pow); break;
-        case OP_MOD: make_fncall_binaryop(self, fmod); break;
+        case OP_ADD: make_simple_binaryop(self, make_luanumber, +); break;
+        case OP_SUB: make_simple_binaryop(self, make_luanumber, -); break;
+        case OP_MUL: make_simple_binaryop(self, make_luanumber, *); break;
+        case OP_DIV: make_simple_binaryop(self, make_luanumber, /); break;
+        case OP_POW: make_fncall_binaryop(self, make_luanumber, pow); break;
+        case OP_MOD: make_fncall_binaryop(self, make_luanumber, fmod); break;
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
@@ -217,3 +227,7 @@ LuaInterpretResult interpret_vm(LuaVM *self, const char *source) {
 #undef read_byte
 #undef read_constant
 #undef read_constant_at
+#undef assert_math_op
+#undef make_math_binaryop
+#undef make_simple_binaryop
+#undef make_fncall_binaryop
