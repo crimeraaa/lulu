@@ -24,9 +24,20 @@ void write_valuearray(LuaValueArray *self, LuaValue value) {
 
 void print_value(LuaValue value) {
     switch (value.type) {
-    case LUA_BOOLEAN: printf(value.as.boolean ? "true" : "false"); break;
-    case LUA_NIL:     printf("nil"); break;
-    case LUA_NUMBER:  printf("%g", value.as.number); break;
-    default:          printf("Unknown type %i", (int)value.type);
+    case LUA_TBOOLEAN: printf(value.as.boolean ? "true" : "false"); break;
+    case LUA_TNIL:     printf("nil"); break;
+    case LUA_TNUMBER:  printf("%g", value.as.number); break;
+    default:           printf("Unsupported type %s", typeof_value(value));
+    }
+}
+
+const char *typeof_value(LuaValue value) {
+    switch (value.type) {
+    case LUA_TBOOLEAN:   return "boolean";
+    case LUA_TFUNCTION:  return "function";
+    case LUA_TNIL:       return "nil";
+    case LUA_TNUMBER:    return "number";
+    case LUA_TSTRING:    return "string";
+    case LUA_TTABLE:     return "table";
     }
 }

@@ -5,12 +5,12 @@
 
 /* Tag for Lua datatypes. */
 typedef enum {
-    LUA_BOOLEAN,
-    LUA_FUNCTION,
-    LUA_NIL,
-    LUA_NUMBER,
-    LUA_STRING,
-    LUA_TABLE,
+    LUA_TBOOLEAN,
+    LUA_TFUNCTION,
+    LUA_TNIL,
+    LUA_TNUMBER,
+    LUA_TSTRING,
+    LUA_TTABLE,
 } LuaValueType;
 
 /* Tagged union for Lua's fundamental datatypes. */
@@ -34,16 +34,27 @@ void write_valuearray(LuaValueArray *self, LuaValue value);
 void deinit_valuearray(LuaValueArray *self);
 void print_value(LuaValue value);
 
-/* In memory, `nil` is just a distinct 0. */
-#define make_luanil         ((LuaValue){LUA_NIL, {.number = 0.0}})
-#define is_luanil(V)        ((V).type == LUA_NIL)
+/**
+ * III:17.7     Dumping Chunks (my addition)
+ * 
+ * Since Lua has only a few possible datatypes and user-defined ones are always
+ * going to be `table`, we can easily hardcode these.
+ * 
+ * In Lua the `type()` function returns a string literal showing what datatype a
+ * particular value is.
+ */
+const char *typeof_value(LuaValue value);
 
-#define make_luanumber(N)   ((LuaValue){LUA_NUMBER, {.number = (N)}})
-#define is_luanumber(V)     ((V).type == LUA_NUMBER)
+/* In memory, `nil` is just a distinct 0. */
+#define make_luanil         ((LuaValue){LUA_TNIL, {.number = 0.0}})
+#define is_luanil(V)        ((V).type == LUA_TNIL)
+
+#define make_luanumber(N)   ((LuaValue){LUA_TNUMBER, {.number = (N)}})
+#define is_luanumber(V)     ((V).type == LUA_TNUMBER)
 #define as_luanumber(V)     ((V).as.number)
 
-#define make_luaboolean(B)  ((LuaValue){LUA_BOOLEAN, {.boolean = (B)}})
-#define is_luaboolean(V)    ((V).type == LUA_BOOLEAN)
+#define make_luaboolean(B)  ((LuaValue){LUA_TBOOLEAN, {.boolean = (B)}})
+#define is_luaboolean(V)    ((V).type == LUA_TBOOLEAN)
 #define as_luaboolean(V)    ((V).as.boolean)
 
 #endif /* LUA_VALUE_H */

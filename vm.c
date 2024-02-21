@@ -59,12 +59,11 @@ LuaValue pop_vmstack(LuaVM *self) {
 #define read_constant(vm)       (read_constant_at(vm, read_byte(vm)))
 
 #define assert_number_op(lhs, rhs) \
-    do { \
-        if (!is_luanumber(lhs) || !is_luanumber(rhs)) { \
-            printf("Both operands must be numbers.\n"); \
-            return INTERPRET_RUNTIME_ERROR; \
-        } \
-    } while(false) \
+    if (!is_luanumber(lhs) || !is_luanumber(rhs)) { \
+        const char *type = typeof_value(!is_luanumber(lhs) ? lhs : rhs); \
+        fprintf(stderr, "attempt to perform arithmetic on a %s value\n", typeof_value(lhs)); \
+        return INTERPRET_RUNTIME_ERROR; \
+    }
 
 /**
  * III:15.3.1   Binary Operators
