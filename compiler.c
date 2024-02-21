@@ -1,5 +1,5 @@
 #include "compiler.h"
-#include "precedence.h"
+#include "parserules.h"
 
 static inline void init_parser(LuaParser *self) {
     self->haderror  = false;
@@ -156,6 +156,11 @@ static inline void emit_constant(LuaCompiler *self, LuaValue value) {
  */
 static inline void end_compiler(LuaCompiler *self) {
     emit_return(self);
+#ifdef DEBUG_PRINT_CODE
+    if (!self->parser.haderror) {
+        disassemble_chunk(current_chunk(self), "code");
+    }
+#endif
 }
 
 /**

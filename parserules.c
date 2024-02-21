@@ -1,4 +1,4 @@
-#include "precedence.h"
+#include "parserules.h"
 
 extern void grouping(LuaCompiler *self);
 extern void binary(LuaCompiler *self);

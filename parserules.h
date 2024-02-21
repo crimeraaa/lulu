@@ -1,8 +1,5 @@
-/**
- * Do NOT include this file in `compiler.h`. It may result in circular dependencies. 
- */
-#ifndef LUA_PRECEDENCE_H
-#define LUA_PRECEDENCE_H
+#ifndef LUA_PARSERULES_H
+#define LUA_PARSERULES_H
 
 #include "common.h"
 #include "compiler.h"
@@ -43,4 +40,6 @@ typedef struct {
 
 const LuaParseRule *get_rule(LuaTokenType type);
 
-#endif /* LUA_PRECEDENCE_H */
+#else /* LUA_PARSERULES_H defined. */
+#error "parserules.h can only be used inside of compiler.c."
+#endif /* LUA_PARSERULES_H */
