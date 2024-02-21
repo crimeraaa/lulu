@@ -8,17 +8,17 @@
 /**
  * III:17.2     Parsing Tokens
  * 
- * This struct works in tandem with `LuaLexer`. The Lexer emits raw tokens, and
+ * This struct works in tandem with `Lexer`. The Lexer emits raw tokens, and
  * the Parser keeps track of which token we have right now and which token we just
  * had. This kind of lookahead (or lookbehind) is just enough to parse complex
  * expressions.
  */
 typedef struct {
-    LuaToken current;  // Token we're pointing at and want to consume.
-    LuaToken previous; // Token we just consumed.
+    Token current;  // Token we're pointing at and want to consume.
+    Token previous; // Token we just consumed.
     bool haderror;     // Track error state so we can report.
     bool panicking;    // Track panic state so we don't vomit error cascades.
-} LuaParser;
+} Parser;
 
 /**
  * The compiler manages state between the lexer and the parser, while emitting
@@ -31,10 +31,10 @@ typedef struct {
  * code.
  */
 typedef struct {
-    LuaChunk chunk; // This is where our raw bytecode resides.
-    LuaLexer lexer; // Before generating bytecode, we need to poke at tokens.
-    LuaParser parser; // Keep track of tokens emitted by `lexer`.
-} LuaCompiler;
+    Chunk chunk; // This is where our raw bytecode resides.
+    Lexer lexer; // Before generating bytecode, we need to poke at tokens.
+    Parser parser; // Keep track of tokens emitted by `lexer`.
+} Compiler;
 
 /**
  * III:17.2     Parsing Tokens
@@ -43,7 +43,7 @@ typedef struct {
  * false. Since we have a new compiler instance everytime we call `interpret_vm()`,
  * we (for now) assume to only set these at the start.
  */
-void init_compiler(LuaCompiler *self);
+void init_compiler(Compiler *self);
 
 /**
  * III:16.1.1   Opening the compilation pipeline
@@ -54,10 +54,10 @@ void init_compiler(LuaCompiler *self);
  * 
  * III:17       Compiling Expressions
  * 
- * In addition to the source code, we pass in a LuaChunk to emit the bytecode to.
- * So each LuaCompiler instance is initailized with its own `LuaChunk` struct
+ * In addition to the source code, we pass in a Chunk to emit the bytecode to.
+ * So each Compiler instance is initailized with its own `Chunk` struct
  * when we call `interpret_vm()`.
  */
-bool compile_bytecode(LuaCompiler *self, const char *source);
+bool compile_bytecode(Compiler *self, const char *source);
 
 #endif /* LUA_COMPILER_H */

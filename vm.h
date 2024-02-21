@@ -15,17 +15,17 @@
 #define LUA_STACK_MAX   (UINT8_MAX + 1)
 
 typedef struct {
-    LuaChunk *chunk;
+    Chunk *chunk;
     uint8_t *ip; // Byte instruction pointer into `chunk`.
-    LuaValue stack[LUA_STACK_MAX]; // Hardcoded limit for simplicity.
-    LuaValue *sp; // Stack pointer to 1 past the last element.
+    TValue stack[LUA_STACK_MAX]; // Hardcoded limit for simplicity.
+    TValue *sp; // Stack pointer to 1 past the last element.
 } LuaVM;
 
 typedef enum {
     INTERPRET_OK,
     INTERPRET_COMPILE_ERROR,
     INTERPRET_RUNTIME_ERROR,
-} LuaInterpretResult;
+} InterpretResult;
 
 void init_vm(LuaVM *self);
 void deinit_vm(LuaVM *self);
@@ -33,13 +33,13 @@ void deinit_vm(LuaVM *self);
 /**
  * Given a monolithic string of source code...
  */
-LuaInterpretResult interpret_vm(LuaVM *self, const char *source);
+InterpretResult interpret_vm(LuaVM *self, const char *source);
 
 /**
  * Assigns the top of stack to `value` then increments the VM's stack pointer
  * so that it points to the next available slot in the stack.
  */
-void push_vmstack(LuaVM *self, LuaValue value);
+void push_vmstack(LuaVM *self, TValue value);
 
 /**
  * Decrements the VM's stack pointer so that it points to the previous slot in
@@ -48,6 +48,6 @@ void push_vmstack(LuaVM *self, LuaValue value);
  * Since we only use a stack-allocated array, we don't need to do much cleanup.
  * Moving the stack pointer downwards already indicates the slot is free.
  */
-LuaValue pop_vmstack(LuaVM *self);
+TValue pop_vmstack(LuaVM *self);
 
 #endif /* LUA_VIRTUAL_MACHINE_H */

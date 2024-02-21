@@ -1,12 +1,12 @@
 CC	    := clang
-CCFLAGS := -std=c11 -Wall -Wextra -Werror -pedantic \
-	-Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
+CCFLAGS := -std=c11 -Wall -Wextra -Werror -pedantic
 
 EXE 	:= lulu
 CC_SRC	:= $(wildcard *.c)
 CC_OBJ	:= $(patsubst %.c, obj/%.o, $(CC_SRC))
 DEBUGFLAGS := -fdiagnostics-color=always -g -O0 \
-	-DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION
+	-DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION \
+	-Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
 
 # -*- BEGIN RECIPES ----------------------------------------------------------*-
 
@@ -15,8 +15,8 @@ all: debug
 debug: CCFLAGS += $(DEBUGFLAGS)
 debug: build
 
-release: CCFLAGS += -O2 -s
-debug: build
+release: CCFLAGS += -Os
+release: build
 
 build: bin/$(EXE)
 

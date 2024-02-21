@@ -1,15 +1,15 @@
 #include "parserules.h"
 
-extern void grouping(LuaCompiler *self);
-extern void binary(LuaCompiler *self);
-extern void unary(LuaCompiler *self);
-extern void number(LuaCompiler *self);
-extern void literal(LuaCompiler *self);
+extern void grouping(Compiler *self);
+extern void binary(Compiler *self);
+extern void unary(Compiler *self);
+extern void number(Compiler *self);
+extern void literal(Compiler *self);
 
 /**
  * III:17.6     A Pratt Parser
  * 
- * This thing is huge! It mirrors the `LuaTokenType` enum.
+ * This thing is huge! It mirrors the `TokenType` enum.
  * 
  * NOTE:
  * 
@@ -19,7 +19,7 @@ extern void literal(LuaCompiler *self);
  * This is so we can link to them properly. If they were static, the linker would
  * not be able to resolve the symbols here.
  */
-static const LuaParseRule rules[TOKEN_COUNT] = {
+static const ParseRule rules[TOKEN_COUNT] = {
     // Single character tokens
     [TOKEN_LPAREN]          = {grouping,    NULL,       PREC_NONE},
     [TOKEN_RPAREN]          = {NULL,        NULL,       PREC_NONE},
@@ -32,7 +32,7 @@ static const LuaParseRule rules[TOKEN_COUNT] = {
     [TOKEN_COLON]           = {NULL,        NULL,       PREC_NONE},
     [TOKEN_POUND]           = {NULL,        NULL,       PREC_NONE},
     [TOKEN_SEMICOL]         = {NULL,        NULL,       PREC_NONE},
-    [TOKEN_EQUAL]           = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_ASSIGN]          = {NULL,        NULL,       PREC_NONE},
     
     // Arithmetic Operators
     [TOKEN_PLUS]            = {NULL,        binary,     PREC_TERMINAL},
@@ -43,12 +43,12 @@ static const LuaParseRule rules[TOKEN_COUNT] = {
     [TOKEN_PERCENT]         = {NULL,        binary,     PREC_FACTOR},
     
     // Relational Operators
-    [TOKEN_REL_EQ]          = {NULL,        binary,     PREC_EQUALITY},
-    [TOKEN_REL_NEQ]         = {NULL,        binary,     PREC_EQUALITY},
-    [TOKEN_REL_GT]          = {NULL,        binary,     PREC_COMPARISON},
-    [TOKEN_REL_GE]          = {NULL,        binary,     PREC_COMPARISON},
-    [TOKEN_REL_LT]          = {NULL,        binary,     PREC_COMPARISON},
-    [TOKEN_REL_LE]          = {NULL,        binary,     PREC_COMPARISON},
+    [TOKEN_EQ]              = {NULL,        binary,     PREC_EQUALITY},
+    [TOKEN_NEQ]             = {NULL,        binary,     PREC_EQUALITY},
+    [TOKEN_GT]              = {NULL,        binary,     PREC_COMPARISON},
+    [TOKEN_GE]              = {NULL,        binary,     PREC_COMPARISON},
+    [TOKEN_LT]              = {NULL,        binary,     PREC_COMPARISON},
+    [TOKEN_LE]              = {NULL,        binary,     PREC_COMPARISON},
 
     // Literals
     [TOKEN_FALSE]           = {literal,     NULL,       PREC_NONE},
@@ -85,6 +85,6 @@ static const LuaParseRule rules[TOKEN_COUNT] = {
     [TOKEN_EOF]             = {NULL,        NULL,       PREC_NONE},
 };
 
-const LuaParseRule *get_rule(LuaTokenType type) {
+const ParseRule *get_rule(TokenType type) {
     return &rules[type];
 }

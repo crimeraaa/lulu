@@ -2,8 +2,9 @@
 #define LUA_VALUE_H
 
 #include "common.h"
+#include "conf.h"
 
-/* Tag for Lua datatypes. */
+/* The tag part of the tagged union `TValue`. */
 typedef enum {
     LUA_TBOOLEAN,
     LUA_TFUNCTION,
@@ -11,28 +12,33 @@ typedef enum {
     LUA_TNUMBER,
     LUA_TSTRING,
     LUA_TTABLE,
-} LuaValueType;
+} ValueType;
+
+typedef LUA_NUMBER lua_Number;
+
+/* The union part of the tagged union `TValue`. Do NOT use this as is! */
+typedef union {
+    bool boolean;
+    lua_Number number;
+} Value;
 
 /* Tagged union for Lua's fundamental datatypes. */
 typedef struct {
-    LuaValueType type; // Tag for the union to ensure some type safety.
-    union {
-        bool boolean;
-        double number;
-    } as; // Actual value contained within this struct. Be very careful!
-} LuaValue;
+    ValueType type; // Tag for the union to ensure some type safety.
+    Value as; // Actual value contained within this struct. Be very careful!
+} TValue;
 
-/* LuaValue array. */
+/* TValue array. */
 typedef struct {
-    LuaValue *values; // 1D array of Lua values.
+    TValue *values; // 1D array of Lua values.
     int count;
     int capacity;
-} LuaValueArray;
+} ValueArray;
 
-void init_valuearray(LuaValueArray *self);
-void write_valuearray(LuaValueArray *self, LuaValue value);
-void deinit_valuearray(LuaValueArray *self);
-void print_value(LuaValue value);
+void init_valuearray(ValueArray *self);
+void write_valuearray(ValueArray *self, TValue value);
+void deinit_valuearray(ValueArray *self);
+void print_value(TValue value);
 
 /**
  * III:18.4.2   Equality and comparison operators
@@ -48,7 +54,7 @@ void print_value(LuaValue value);
  * unused. If we do raw memory comparisons we'll also compare these garbage bits
  * which will not give us the results we want.
  */
-bool values_equal(LuaValue lhs, LuaValue rhs);
+bool values_equal(TValue lhs, TValue rhs);
 
 /**
  * III:17.7     Dumping Chunks (my addition)
@@ -59,18 +65,18 @@ bool values_equal(LuaValue lhs, LuaValue rhs);
  * In Lua the `type()` function returns a string literal showing what datatype a
  * particular value is.
  */
-const char *typeof_value(LuaValue value);
+const char *typeof_value(TValue value);
 
 /* In memory, `nil` is just a distinct 0. */
-#define make_luanil         ((LuaValue){LUA_TNIL, {.number = 0.0}})
-#define is_luanil(V)        ((V).type == LUA_TNIL)
+#define makenil         ((TValue){LUA_TNIL, {.number = 0.0}})
+#define isnil(V)        ((V).type == LUA_TNIL)
 
-#define make_luanumber(N)   ((LuaValue){LUA_TNUMBER, {.number = (N)}})
-#define is_luanumber(V)     ((V).type == LUA_TNUMBER)
-#define as_luanumber(V)     ((V).as.number)
+#define makenumber(N)   ((TValue){LUA_TNUMBER, {.number = (N)}})
+#define isnumber(V)     ((V).type == LUA_TNUMBER)
+#define asnumber(V)     ((V).as.number)
 
-#define make_luaboolean(B)  ((LuaValue){LUA_TBOOLEAN, {.boolean = (B)}})
-#define is_luaboolean(V)    ((V).type == LUA_TBOOLEAN)
-#define as_luaboolean(V)    ((V).as.boolean)
+#define makeboolean(B)  ((TValue){LUA_TBOOLEAN, {.boolean = (B)}})
+#define isboolean(V)    ((V).type == LUA_TBOOLEAN)
+#define asboolean(V)    ((V).as.boolean)
 
 #endif /* LUA_VALUE_H */

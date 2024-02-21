@@ -17,7 +17,7 @@ typedef enum {
     TOKEN_COLON,    // ':'  Function method resolution (passes implicit `self`).
     TOKEN_POUND,    // '#'  Get length of a table's array portion.
     TOKEN_SEMICOL,  // ';'  Optional C-style statement separator.
-    TOKEN_EQUAL,    // '='  Variable assignment.
+    TOKEN_ASSIGN,    // '='  Variable assignment.
 
     // Arithmetic Operators
     TOKEN_PLUS,     // '+'  Addition.
@@ -28,12 +28,12 @@ typedef enum {
     TOKEN_PERCENT,  // '%'  Modulus, a.k.a. get the remainder.
                 
     // Relational Operators
-    TOKEN_REL_EQ,   // '==' Compare for equality.
-    TOKEN_REL_NEQ,  // '~=' Compare for inequality.
-    TOKEN_REL_GT,   // '>'  Greater than.
-    TOKEN_REL_GE,   // '>=' Greater than or equal to.
-    TOKEN_REL_LT,   // '<'  Less than.
-    TOKEN_REL_LE,   // '<=' Less than or equal to.
+    TOKEN_EQ,   // '==' Compare for equality.
+    TOKEN_NEQ,  // '~=' Compare for inequality.
+    TOKEN_GT,   // '>'  Greater than.
+    TOKEN_GE,   // '>=' Greater than or equal to.
+    TOKEN_LT,   // '<'  Less than.
+    TOKEN_LE,   // '<=' Less than or equal to.
 
     // Literals
     TOKEN_FALSE,    // 'false'
@@ -69,28 +69,29 @@ typedef enum {
     TOKEN_ERROR,    // Distinct enumeration to allow us to detect actual errors.
     TOKEN_EOF,      // EOF by itself is not an error.
     TOKEN_COUNT,    // Determine size of the internal lookup table.
-} LuaTokenType;
+} TokenType;
 
 typedef struct {
-    LuaTokenType type;
+    TokenType type;
     const char *start; // Pointer to start of token in source code.
     int length; // How many characters to dereference from `start`.
     int line;   // What line of the source code? Used for error reporting.
-} LuaToken;
+} Token;
 
 /**
  * III:16.1.2   The scanner scans
  * 
- * The scanner, but I'll use the fancier term "lexer", goes through your monolithic
- * source code string. It carries state per lexeme.
+ * The scanner, but I'll use the fancier term "lexer". 
+ * This goes through your monolithic source code string. 
+ * It carries state per lexeme.
  */
 typedef struct {
     const char *start;   // Beginning of current lexeme in the source code.
     const char *current; // Current character in the source code.
     int line;            // Line number, for error reporting.
-} LuaLexer;
+} Lexer;
 
-void init_lexer(LuaLexer *self, const char *source);
+void init_lexer(Lexer *self, const char *source);
 
 /**
  * III:16.2.1   Scanning tokens
@@ -102,6 +103,6 @@ void init_lexer(LuaLexer *self, const char *source);
  * Remember that a token at this point does not have much syntactic purpose,
  * e.g. '(' could either be a function call or a grouping. We don't know yet.
  */
-LuaToken tokenize(LuaLexer *self);
+Token tokenize(Lexer *self);
 
 #endif /* LUA_LEXER_H */

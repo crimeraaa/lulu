@@ -46,13 +46,13 @@ typedef enum {
     OP_UNM, // Unary negation, a.k.a. "Unary minus" (hence "UNM").
 
     OP_RET,
-} LuaOpCode;
+} OpCode;
 
 typedef struct {
     int where; // Line number for run-length-encoding.
     int start; // First instruction's byte offset from the `code` array.
     int end; // Last instruction's byte offset from the `code` array.
-} LuaLineRun;
+} Linerun;
 
 /** 
  * Challenge III:14.2: Run Length Encoding
@@ -63,21 +63,21 @@ typedef struct {
 typedef struct {
     int count;        // Non-empty linecount. May not line up with line numbers.
     int capacity;     // Number of elements allocated for.
-    LuaLineRun *runs; // 1D array of information about consecutive line sequences.
-} LuaLineRLE;
+    Linerun *runs; // 1D array of information about consecutive line sequences.
+} LineRLE;
 
 typedef struct {
-    LuaValueArray constants;
-    LuaLineRLE lines;
+    ValueArray constants;
+    LineRLE lines;
     uint8_t *code; // 1D array of 8-bit instructions.
     int count;     // Current number of instructions written to `code`.
     int capacity;  // Total number of instructions we can hold currently.
     int prevline;  // Track the previous line number as we may skip some.
-} LuaChunk;
+} Chunk;
 
-void init_chunk(LuaChunk *self);
-void deinit_chunk(LuaChunk *self);
-void write_chunk(LuaChunk *self, uint8_t byte, int line);
+void init_chunk(Chunk *self);
+void deinit_chunk(Chunk *self);
+void write_chunk(Chunk *self, uint8_t byte, int line);
 
 /**
  * @brief       Append `value` to the given chunk's constants pool.
@@ -86,7 +86,7 @@ void write_chunk(LuaChunk *self, uint8_t byte, int line);
  * @return      Index of this value into the constants pool. This return value 
  *              should be emitted as the operand to `OP_CONSTANT`.
  */
-int add_constant(LuaChunk *self, LuaValue value);
+int add_constant(Chunk *self, TValue value);
 
 /**
  * Challenge III:14.1
@@ -97,7 +97,7 @@ int add_constant(LuaChunk *self, LuaValue value);
  * Do note that this increments `chunk->prevline` if the previous line does not
  * match the current line at the given bytecode offset.
  */
-int get_instruction_line(LuaChunk *chunk, int offset);
+int get_instruction_line(Chunk *chunk, int offset);
 
 /**
  * Challenge III:14.1
@@ -115,12 +115,12 @@ int get_instruction_line(LuaChunk *chunk, int offset);
  * 
  * This function has now been replaced by `compiler.c:emit_constant()`.
  */
-// void write_constant(LuaChunk *self, LuaValue value, int line);
+// void write_constant(Chunk *self, TValue value, int line);
 
 #ifdef DEBUG_PRINT_CODE
 
-void disassemble_chunk(LuaChunk *self, const char *name);
-int disassemble_instruction(LuaChunk *chunk, int offset);
+void disassemble_chunk(Chunk *self, const char *name);
+int disassemble_instruction(Chunk *chunk, int offset);
 
 #endif /* DEBUG_PRINT_CODE */
 

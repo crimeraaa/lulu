@@ -28,18 +28,23 @@ typedef enum {
     PREC_EXPONENT,      // ^ is right associative.
     PREC_CALL,          // . : ()
     PREC_PRIMARY,
-} LuaPrecedence;
+} Precedence;
 
-typedef void (*LuaParseFn)(LuaCompiler *self);
+typedef void (*ParseFn)(Compiler *self);
 
 typedef struct {
-    LuaParseFn prefix;
-    LuaParseFn infix;
-    LuaPrecedence precedence;
-} LuaParseRule;
+    ParseFn prefix;
+    ParseFn infix;
+    Precedence precedence;
+} ParseRule;
 
-const LuaParseRule *get_rule(LuaTokenType type);
+/**
+ * This function is just a wrapper around the internal `rules` lookup table.
+ * It's such a beast that Bob, understandably, prefers to hide its implementation
+ * via this function.
+ */
+const ParseRule *get_rule(TokenType type);
 
 #else /* LUA_PARSERULES_H defined. */
-#error "parserules.h can only be used inside of compiler.c."
+#error "`parserules.h` can only be used inside of `compiler.c`."
 #endif /* LUA_PARSERULES_H */

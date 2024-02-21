@@ -2,13 +2,13 @@
 #include "memory.h"
 #include "value.h"
 
-static inline void init_lineRLE(LuaLineRLE *self) {
+static inline void init_lineRLE(LineRLE *self) {
     self->count    = 0;
     self->capacity = 0;
     self->runs     = NULL;
 }
 
-void init_chunk(LuaChunk *self) {
+void init_chunk(Chunk *self) {
     self->code     = NULL;
     self->count    = 0;
     self->capacity = 0;
@@ -17,11 +17,11 @@ void init_chunk(LuaChunk *self) {
     init_lineRLE(&self->lines);
 }
 
-static inline void deinit_lineRLE(LuaLineRLE *self) {
-    deallocate_array(LuaLineRun, self->runs, self->capacity);
+static inline void deinit_lineRLE(LineRLE *self) {
+    deallocate_array(Linerun, self->runs, self->capacity);
 }
 
-void deinit_chunk(LuaChunk *self) {
+void deinit_chunk(Chunk *self) {
     deallocate_array(uint8_t, self->code, self->capacity);
     deinit_valuearray(&self->constants);
     deinit_lineRLE(&self->lines);
@@ -29,12 +29,12 @@ void deinit_chunk(LuaChunk *self) {
     init_lineRLE(&self->lines);
 }
 
-static void write_lineRLE(LuaLineRLE *self, uint8_t offset, int line) {
+static void write_lineRLE(LineRLE *self, uint8_t offset, int line) {
     // We should resize this array less often than the bytes one.
     if (self->count + 1 > self->capacity) {
         int oldcapacity = self->capacity;
         self->capacity  = grow_capacity(oldcapacity);
-        self->runs      = grow_array(LuaLineRun, self->runs, oldcapacity, self->capacity);
+        self->runs      = grow_array(Linerun, self->runs, oldcapacity, self->capacity);
     }
     self->runs[self->count].start = offset;
     self->runs[self->count].end   = offset;
@@ -43,15 +43,15 @@ static void write_lineRLE(LuaLineRLE *self, uint8_t offset, int line) {
 }
 
 /* Increment the end instruction pointer of the topmost run. */
-static inline void increment_lineRLE(LuaLineRLE *self) {
+static inline void increment_lineRLE(LineRLE *self) {
     self->runs[self->count - 1].end++;
 }
 
-void write_chunk(LuaChunk *self, uint8_t byte, int line) {
+void write_chunk(Chunk *self, uint8_t byte, int line) {
     if (self->count + 1 > self->capacity) {
         int oldcapacity = self->capacity;
         self->capacity  = grow_capacity(oldcapacity);
-        self->code      = grow_array(LuaChunk, self->code, oldcapacity, self->capacity);
+        self->code      = grow_array(Chunk, self->code, oldcapacity, self->capacity);
     }
     self->code[self->count] = byte;
     self->count++;
@@ -64,12 +64,12 @@ void write_chunk(LuaChunk *self, uint8_t byte, int line) {
     }
 }
 
-int add_constant(LuaChunk *self, LuaValue value) {
+int add_constant(Chunk *self, TValue value) {
     write_valuearray(&self->constants, value);
     return self->constants.count - 1;
 }
 
-int get_instruction_line(LuaChunk *chunk, int offset) {
+int get_instruction_line(Chunk *chunk, int offset) {
     if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline].end) {
         return -1;
     } 
@@ -82,7 +82,7 @@ int get_instruction_line(LuaChunk *chunk, int offset) {
  */
 #ifdef DEBUG_PRINT_CODE
 
-void disassemble_chunk(LuaChunk *self, const char *name) {
+void disassemble_chunk(Chunk *self, const char *name) {
     // Reset so we start from index 0 into self->lines.runs.
     // Kinda hacky but this will serve as our iterator of sorts.
     self->prevline = 0;
@@ -98,7 +98,7 @@ void disassemble_chunk(LuaChunk *self, const char *name) {
  * Constant instructions take 1 byte for themselves and 1 byte for the operand. 
  * The operand is an index into the chunk's constants pool.
  */
-static int constant_instruction(const char *name, LuaChunk *chunk, int offset) {
+static int constant_instruction(const char *name, Chunk *chunk, int offset) {
     // code[offset] is the operation byte itself, code[offset + 1] is the index
     // into the chunk's constants pool.
     uint8_t index = chunk->code[offset + 1];
@@ -121,7 +121,7 @@ static int constant_instruction(const char *name, LuaChunk *chunk, int offset) {
  * 
  * In total, this entire operation takes up 4 bytes.
  */
-static int constant_long_instruction(const char *name, LuaChunk *chunk, int offset) {
+static int constant_long_instruction(const char *name, Chunk *chunk, int offset) {
     int index = chunk->code[offset + 1] << 16; // Unmask upper 8 bits
     index |= chunk->code[offset + 2] << 8;     // Unmask center 8 bits
     index |= chunk->code[offset + 3];          // Unmask lower 8 bits
@@ -137,7 +137,7 @@ static int simple_instruction(const char *name, int offset) {
     return offset + 1;
 }
 
-int disassemble_instruction(LuaChunk *chunk, int offset) {
+int disassemble_instruction(Chunk *chunk, int offset) {
     printf("%04i ", offset); // Print number left-padded with 0's
 
     // Don't print pipe for very first line

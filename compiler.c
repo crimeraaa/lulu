@@ -1,12 +1,12 @@
 #include "compiler.h"
 #include "parserules.h"
 
-static inline void init_parser(LuaParser *self) {
+static inline void init_parser(Parser *self) {
     self->haderror  = false;
     self->panicking = false;
 }
 
-void init_compiler(LuaCompiler *self) {
+void init_compiler(Compiler *self) {
     init_parser(&self->parser);
 }
 
@@ -16,7 +16,7 @@ void init_compiler(LuaCompiler *self) {
  * For now, the current chunk is the one that got assigned to the compiler instance
  * when it was created in `interpret_vm()`. Later on this will get more complicated.
  */
-static inline LuaChunk *current_chunk(LuaCompiler *self) {
+static inline Chunk *current_chunk(Compiler *self) {
     return &self->chunk;
 }
 
@@ -26,7 +26,7 @@ static inline LuaChunk *current_chunk(LuaCompiler *self) {
  * This is generic function to report errors based on some token and a message.
  * Whatever the case, we set the parser's error state to true.
  */
-static void error_at(LuaCompiler *self, const LuaToken *token, const char *message) {
+static void error_at(Compiler *self, const Token *token, const char *message) {
     if (self->parser.panicking) {
         return; // Avoid cascading errors for user's sanity
     }
@@ -49,7 +49,7 @@ static void error_at(LuaCompiler *self, const LuaToken *token, const char *messa
  * More often than not, we want to report an error at the location of the token
  * we just consumed (that is, it's now the parser's previous token).
  */
-static inline void error(LuaCompiler *self, const char *message) {
+static inline void error(Compiler *self, const char *message) {
     error_at(self, &self->parser.previous, message);
 }
 
@@ -60,7 +60,7 @@ static inline void error(LuaCompiler *self, const char *message) {
  * This is a wrapper around the more generic `error_at()` which can take in any
  * arbitrary error message.
  */
-static inline void error_at_current(LuaCompiler *self, const char *message) {
+static inline void error_at_current(Compiler *self, const char *message) {
     error_at(self, &self->parser.current, message);
 }
 
@@ -70,7 +70,7 @@ static inline void error_at_current(LuaCompiler *self, const char *message) {
  * Assume the compiler should move to the next token. So the parser is set to
  * start a new token. This adjusts state of the compiler's parser and lexer.
  */
-static void advance_compiler(LuaCompiler *self) {
+static void advance_compiler(Compiler *self) {
     self->parser.previous = self->parser.current;
     
     for (;;) {
@@ -89,7 +89,7 @@ static void advance_compiler(LuaCompiler *self) {
  * We only advance the compiler if the current token matches the expected one.
  * Otherwise, we set the compiler into an error state and report the error.
  */
-static void consume_token(LuaCompiler *self, LuaTokenType expected, const char *message) {
+static void consume_token(Compiler *self, TokenType expected, const char *message) {
     if (self->parser.current.type == expected) {
         advance_compiler(self);
         return;
@@ -103,19 +103,19 @@ static void consume_token(LuaCompiler *self, LuaTokenType expected, const char *
  * This function simply writes to the compiler's current chunk the given byte,
  * and we log line information based on the consumed token (parser's previous).
  */
-static inline void emit_byte(LuaCompiler *self, uint8_t byte) {
+static inline void emit_byte(Compiler *self, uint8_t byte) {
     write_chunk(current_chunk(self), byte, self->parser.previous.line);
 }
 
 /* Helper because we'll be using this a lot. */
-static inline void emit_bytes(LuaCompiler *self, uint8_t i, uint8_t ii) {
+static inline void emit_bytes(Compiler *self, uint8_t i, uint8_t ii) {
     emit_byte(self, i);
     emit_byte(self, ii);
 }
 
 /* Helper to emit a 1-byte instruction with a 24-bit operand. */
 static inline void
-emit_long(LuaCompiler *self, uint8_t i, uint8_t ii, uint8_t iii, uint8_t iv) {
+emit_long(Compiler *self, uint8_t i, uint8_t ii, uint8_t iii, uint8_t iv) {
     emit_byte(self, i);
     emit_byte(self, ii);
     emit_byte(self, iii);
@@ -123,7 +123,7 @@ emit_long(LuaCompiler *self, uint8_t i, uint8_t ii, uint8_t iii, uint8_t iv) {
 }
 
 /* Helper because it's automatically called by `end_compiler()`. */
-static inline void emit_return(LuaCompiler *self) {
+static inline void emit_return(Compiler *self) {
     emit_byte(self, OP_RET);
 }
 
@@ -134,15 +134,15 @@ static inline void emit_return(LuaCompiler *self) {
  * OR the `OP_CONSTANT_LONG`, depending on how many constants are in the current
  * chunk's constants pool.
  */
-static inline void emit_constant(LuaCompiler *self, LuaValue value) {
+static inline void emit_constant(Compiler *self, TValue value) {
     int index = add_constant(current_chunk(self), value);
     if (index <= MAX_CONSTANTS_SHORT) {
         emit_bytes(self, OP_CONSTANT, (uint8_t)index);
     } else if (index <= MAX_CONSTANTS_LONG) {
-        uint8_t hi = (index >> 16) & 0xFF; // mask bits 17-24
-        uint8_t mi = (index >> 8)  & 0xFF; // mask bits 9-16
-        uint8_t lo = (index)       & 0xFF; // mask bits 1-8
-        emit_long(self, OP_CONSTANT_LONG, hi, mi, lo);
+        uint8_t hi  = (index >> 16) & 0xFF; // mask bits 17-24
+        uint8_t mid = (index >> 8)  & 0xFF; // mask bits 9-16
+        uint8_t lo  = index & 0xFF;         // mask bits 1-8
+        emit_long(self, OP_CONSTANT_LONG, hi, mid, lo);
     } else {
         error(self, "Too many constants in the current chunk");
     }
@@ -154,7 +154,7 @@ static inline void emit_constant(LuaCompiler *self, LuaValue value) {
  * For now we always emit a return for the compiler's current chunk.
  * This makes it so we don't have to remember to do it as ALL chunks need it.
  */
-static inline void end_compiler(LuaCompiler *self) {
+static inline void end_compiler(Compiler *self) {
     emit_return(self);
 #ifdef DEBUG_PRINT_CODE
     if (!self->parser.haderror) {
@@ -167,8 +167,8 @@ static inline void end_compiler(LuaCompiler *self) {
  * BEGIN:       Forward Declarations
  */
 
-static void compile_expression(LuaCompiler *self);
-static void parse_precedence(LuaCompiler *self, LuaPrecedence precedence);
+static void compile_expression(Compiler *self);
+static void parse_precedence(Compiler *self, Precedence precedence);
 
 /**
  * END:         Forward Declarations
@@ -191,12 +191,12 @@ static void parse_precedence(LuaCompiler *self, LuaPrecedence precedence);
  * e.g. '-' is `TOKEN_DASH` which is associated with the prefix parser function 
  * `unary()` and the infix parser function `binary()`.
  */
-void binary(LuaCompiler *self) {
-    LuaTokenType optype = self->parser.previous.type;
-    const LuaParseRule *rule = get_rule(optype);
+void binary(Compiler *self) {
+    TokenType optype = self->parser.previous.type;
+    const ParseRule *rule = get_rule(optype);
     // Compile right hand side, and evaluate it if it has higher precedence operations.
     // We use 1 higher precedence to ensure left-to-right associativity.
-    parse_precedence(self, (LuaPrecedence)(rule->precedence + 1));
+    parse_precedence(self, (Precedence)(rule->precedence + 1));
 
     switch (optype) {
     // -*- Equality and comparison operators ---------------------------------*-
@@ -204,12 +204,12 @@ void binary(LuaCompiler *self) {
     // 1. a != b <=> !(a == b)
     // 2. a >= b <=> !(a < b)
     // 3. a <= b <=> !(a > b)
-    case TOKEN_REL_EQ: emit_byte(self, OP_REL_EQ); break;
-    case TOKEN_REL_NEQ: emit_bytes(self, OP_REL_EQ, OP_NOT); break;
-    case TOKEN_REL_GT: emit_byte(self, OP_REL_GT); break;
-    case TOKEN_REL_GE: emit_bytes(self, OP_REL_LT, OP_NOT);
-    case TOKEN_REL_LT: emit_byte(self, OP_REL_LT); break;
-    case TOKEN_REL_LE: emit_bytes(self, OP_REL_GT, OP_NOT); break;
+    case TOKEN_EQ: emit_byte(self, OP_REL_EQ); break;
+    case TOKEN_NEQ: emit_bytes(self, OP_REL_EQ, OP_NOT); break;
+    case TOKEN_GT: emit_byte(self, OP_REL_GT); break;
+    case TOKEN_GE: emit_bytes(self, OP_REL_LT, OP_NOT);
+    case TOKEN_LT: emit_byte(self, OP_REL_LT); break;
+    case TOKEN_LE: emit_bytes(self, OP_REL_GT, OP_NOT); break;
 
     case TOKEN_PLUS: emit_byte(self, OP_ADD); break;
     case TOKEN_DASH: emit_byte(self, OP_SUB); break;
@@ -226,7 +226,7 @@ void binary(LuaCompiler *self) {
  * 
  * Emits the literals `false`, `true` and `nil`.
  */
-void literal(LuaCompiler *self) {
+void literal(Compiler *self) {
     switch (self->parser.previous.type) {
     case TOKEN_FALSE: emit_byte(self, OP_FALSE); break;
     case TOKEN_NIL:   emit_byte(self, OP_NIL);   break;
@@ -248,15 +248,15 @@ void literal(LuaCompiler *self) {
  * order in which we evaluate the expressions contained inside the parentheses
  * that's important.
  */
-void grouping(LuaCompiler *self) {
+void grouping(Compiler *self) {
     compile_expression(self);
     consume_token(self, TOKEN_RPAREN, "Expected ')' after grouping expression.");
 }
 
 /* Parse a number literal and emit it as a constant. */
-void number(LuaCompiler *self) {
+void number(Compiler *self) {
     double value = strtod(self->parser.previous.start, NULL);
-    emit_constant(self, make_luanumber(value));
+    emit_constant(self, makenumber(value));
 }
 
 /**
@@ -265,11 +265,11 @@ void number(LuaCompiler *self) {
  * Assumes the leading '-' token has been consumed and is the parser's previous
  * token.
  */
-void unary(LuaCompiler *self) {
+void unary(Compiler *self) {
     // Keep in this stackframe's memory so that if we recurse, we evaluate the
     // topmost stack frame (innermosts, higher precedences) first and work our 
     // way down until we reach this particular function call.
-    LuaTokenType optype = self->parser.previous.type;
+    TokenType optype = self->parser.previous.type;
     
     // Compile the unary expression's operand, which may be a number literal,
     // another unary operator, a grouping, etc.
@@ -291,9 +291,9 @@ void unary(LuaCompiler *self) {
  * By definition, all first tokens (literals, parentheses, variable names) are
  * considered "prefix" expressions. This helps kick off the compiler + parser.
  */
-static void parse_precedence(LuaCompiler *self, LuaPrecedence precedence) {
+static void parse_precedence(Compiler *self, Precedence precedence) {
     advance_compiler(self);
-    const LuaParseFn prefixfn = get_rule(self->parser.previous.type)->prefix;
+    const ParseFn prefixfn = get_rule(self->parser.previous.type)->prefix;
     if (prefixfn == NULL) {
         error(self, "Expected an expression.");
         return; // Might end up with NULL infixfn as well
@@ -302,7 +302,7 @@ static void parse_precedence(LuaCompiler *self, LuaPrecedence precedence) {
     
     while (precedence <= get_rule(self->parser.current.type)->precedence) {
         advance_compiler(self);
-        const LuaParseFn infixfn = get_rule(self->parser.previous.type)->infix;
+        const ParseFn infixfn = get_rule(self->parser.previous.type)->infix;
         infixfn(self);
     }
 }
@@ -327,11 +327,11 @@ static void parse_precedence(LuaCompiler *self, LuaPrecedence precedence) {
  * that's stronger than or equal to an assignment. We use `PREC_NONE`, which is
  * lower in the enumerations, to break out of this recursion.
  */
-static void compile_expression(LuaCompiler *self) {
+static void compile_expression(Compiler *self) {
     parse_precedence(self, PREC_ASSIGNMENT); 
 }
 
-bool compile_bytecode(LuaCompiler *self, const char *source) {
+bool compile_bytecode(Compiler *self, const char *source) {
     init_lexer(&self->lexer, source); 
     advance_compiler(self);
     compile_expression(self);

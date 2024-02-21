@@ -1,30 +1,45 @@
 #include <ctype.h>
 #include "lexer.h"
 
-/* Variables cannot start with digits. Think: `[a-zA-Z_]` */
-#define isidentstarter(ch)  (isalpha((ch)) || (ch) == '_')
-
-/* Past first character, variable names can be in the regex: `[a-zA-Z0-9_]` */
-#define isident(ch)         (isalnum((ch)) || (ch) == '_')
-
-void init_lexer(LuaLexer *self, const char *source) {
+void init_lexer(Lexer *self, const char *source) {
     self->start   = source;
     self->current = source;
     self->line    = 1;
+}
+
+/** 
+ * Variables cannot start with digits. Think: `[a-zA-Z_]` 
+ * 
+ * We use a function so that macros passed to this aren't expanded twice, which
+ * can have potentially unwanted side-effects.
+ */
+static inline bool isidentstarter(char ch) {
+    return isalpha((ch)) || (ch) == '_';
+}
+
+/** 
+ * Past the first character, variable names can be in the regex: 
+ * `[a-zA-Z0-9_]` 
+ * 
+ * We use a function so that macros passed as arguments aren't expanded twice.
+ * Those can have potentially unwanted side-effects.
+ */
+static inline bool isident(char ch) {
+    return isalnum(ch) || ch == '_';
 }
 
 /**
  * Check if the current character pointer points to a nul char. If it does,
  * chances are we've reached the end of the monolithic string.
  */
-static inline bool is_at_end(const LuaLexer *self) {
+static inline bool is_at_end(const Lexer *self) {
     return *self->current == '\0'; // precedence: member access > dereferencing
 }
 
 /**
  * Return the current character and then increments the `self->current` pointer.
  */
-static inline char advance_lexer(LuaLexer *self) {
+static inline char advance_lexer(Lexer *self) {
     return *(self->current++); // Paranoid about precedence here
 }
 
@@ -32,7 +47,7 @@ static inline char advance_lexer(LuaLexer *self) {
  * Return the lexer's current pointed-at character without adjusting any internal
  * state.
  */
-static inline char peek_current(const LuaLexer *self) {
+static inline char peek_current(const Lexer *self) {
     return *self->current;
 }
 
@@ -40,7 +55,7 @@ static inline char peek_current(const LuaLexer *self) {
  * Return the character right after the lexer's current character without adjusting
  * any internal state.
  */
-static inline char peek_next(const LuaLexer *self) {
+static inline char peek_next(const Lexer *self) {
     return is_at_end(self) ? '\0' : *(self->current + 1);
 }
 
@@ -50,7 +65,7 @@ static inline char peek_next(const LuaLexer *self) {
  * 
  * Otherwise, we return false without incrementing anything.
  */
-static inline bool match_lexer(LuaLexer *self, char expected) {
+static inline bool match_lexer(Lexer *self, char expected) {
     if (is_at_end(self) || *self->current != expected) {
         return false;
     }
@@ -59,10 +74,10 @@ static inline bool match_lexer(LuaLexer *self, char expected) {
 }
 
 /**
- * Create a new LuaToken based on the lexer's current state.
+ * Create a new Token based on the lexer's current state.
  */
-static LuaToken make_token(const LuaLexer *self, LuaTokenType type) {
-    LuaToken token;
+static Token make_token(const Lexer *self, TokenType type) {
+    Token token;
     token.type   = type;
     token.start  = self->start;
     token.length = (int)(self->current - self->start);
@@ -75,8 +90,8 @@ static LuaToken make_token(const LuaLexer *self, LuaTokenType type) {
  * 
  * To be absolutely safe, please only pass read-only string literals to `message`.
  */
-static LuaToken error_token(const LuaLexer *self, const char *message) {
-    LuaToken token;
+static Token error_token(const Lexer *self, const char *message) {
+    Token token;
     token.type   = TOKEN_ERROR;
     token.start  = message;
     token.length = (int)strlen(message);
@@ -87,7 +102,7 @@ static LuaToken error_token(const LuaLexer *self, const char *message) {
 /**
  * Ignore whitespace characters.
  */
-static void skip_whitespace(LuaLexer *self) {
+static void skip_whitespace(Lexer *self) {
     for (;;) {
         char ch = peek_current(self);
         switch (ch) {
@@ -115,12 +130,12 @@ static void skip_whitespace(LuaLexer *self) {
     }
 }
 
-static LuaTokenType 
-check_keyword(const LuaLexer *self, 
+static TokenType 
+check_keyword(const Lexer *self, 
     int offset,
     int length,
     const char *keyword,
-    LuaTokenType type) 
+    TokenType type) 
 {
     // self->current points to the last character, so we have the exact length.
     int lexlen = (int)(self->current - self->start);
@@ -147,7 +162,7 @@ check_keyword(const LuaLexer *self,
 #define check_keyword(Lexer, Index, Word, Type) \
     check_keyword(Lexer, Index, sizeof(Word) - 1, Word, Type)
 
-static LuaTokenType ident_type(LuaLexer *self) {
+static TokenType ident_type(Lexer *self) {
     int lexlen = (int)(self->current - self->start);
     const char *lexeme = self->start;
     switch (lexeme[0]) {
@@ -186,6 +201,7 @@ static LuaTokenType ident_type(LuaLexer *self) {
                 case 'n': return check_keyword(self, 2, "in", TOKEN_IN);
                 }
             }
+            break;
         }
         case 'l': return check_keyword(self, 1, "local", TOKEN_LOCAL);
         case 'n': {
@@ -195,6 +211,7 @@ static LuaTokenType ident_type(LuaLexer *self) {
                 case 'o': return check_keyword(self, 2, "not", TOKEN_NOT);
                 }
             }
+            break;
         }
         case 'o': return check_keyword(self, 1, "or", TOKEN_OR);
         case 'r': return check_keyword(self, 1, "return", TOKEN_RETURN);
@@ -206,6 +223,7 @@ static LuaTokenType ident_type(LuaLexer *self) {
                 case 'r': return check_keyword(self, 2, "true", TOKEN_TRUE);
                 }
             }
+            break;
         }
         case 'w': return check_keyword(self, 1, "while", TOKEN_WHILE);
     }
@@ -218,7 +236,7 @@ static LuaTokenType ident_type(LuaLexer *self) {
  * Past the first character, any keyword/identifier can contain alphabeticals,
  * numbers or underscores.
  */
-static LuaToken ident_token(LuaLexer *self) {
+static Token ident_token(Lexer *self) {
     while (isident(peek_current(self))) {
         advance_lexer(self);
     }
@@ -231,7 +249,7 @@ static LuaToken ident_token(LuaLexer *self) {
  * 
  * Conversion will be handled by the parser.
  */
-static LuaToken number_token(LuaLexer *self) {
+static Token number_token(Lexer *self) {
     while (isdigit(peek_current(self))) {
         advance_lexer(self);
     }
@@ -254,7 +272,7 @@ static LuaToken number_token(LuaLexer *self) {
  * Multi-line string literals are a different beast.
  * Currently we don't support escape sequences and single quotes.
  */
-static LuaToken string_token(LuaLexer *self) {
+static Token string_token(Lexer *self) {
     while (peek_current(self) != '"' && !is_at_end(self)) {
         if (peek_current(self) == '\n') {
             return error_token(self, "String literals can only be on 1 line.");
@@ -270,7 +288,7 @@ static LuaToken string_token(LuaLexer *self) {
     return make_token(self, TOKEN_STRING);
 }
 
-LuaToken tokenize(LuaLexer *self) {
+Token tokenize(Lexer *self) {
     // Don't assign pointers yet, don't want to point at whitespace!
     skip_whitespace(self); 
     self->start = self->current;
@@ -317,20 +335,13 @@ LuaToken tokenize(LuaLexer *self) {
     case '"': return string_token(self);
     // Relational
     case '~': return match_lexer(self, '=') 
-        ? make_token(self, TOKEN_REL_NEQ) 
-        : error_token(self, "Expected '=' after '~'.");
+        ? make_token(self, TOKEN_NEQ) : error_token(self, "Expected '=' after '~'.");
     case '=': return make_token(self, 
-        match_lexer(self, '=') 
-        ? TOKEN_REL_EQ
-        : TOKEN_EQUAL);
+        match_lexer(self, '=') ? TOKEN_EQ : TOKEN_ASSIGN);
     case '<': return make_token(self, 
-        match_lexer(self, '=') 
-        ? TOKEN_REL_LE
-        : TOKEN_REL_LT);
+        match_lexer(self, '=') ? TOKEN_LE : TOKEN_LT);
     case '>': return make_token(self, 
-        match_lexer(self, '=') 
-        ? TOKEN_REL_GE
-        : TOKEN_REL_GT);
+        match_lexer(self, '=') ? TOKEN_GE : TOKEN_GT);
     default:
         break;
     }

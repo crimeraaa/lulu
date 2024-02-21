@@ -2,6 +2,7 @@
 #include <stdlib.h> /* malloc, free */
 #include <string.h> /* strcspn */
 #include "common.h"
+#include "conf.h"
 #include "chunk.h"
 #include "vm.h"
 
@@ -16,7 +17,7 @@
 #endif /* unix */
 
 static void run_repl(LuaVM *vm) {
-    char line[256];
+    char line[LUA_REPL_BUFSIZE];
     for (;;) {
         printf("> ");
         // Appends newline and nul char
@@ -28,7 +29,7 @@ static void run_repl(LuaVM *vm) {
     } 
 }
 
-char *read_file(const char *file_path) {
+static char *read_file(const char *file_path) {
     FILE *handle = fopen(file_path, "rb"); // read only in binary mode
     if (handle == NULL) {
         logprintf("Could not open file '%s'.\n", file_path);
@@ -54,7 +55,7 @@ char *read_file(const char *file_path) {
 
 static void run_file(LuaVM *vm, const char *file_path) {
     char *source = read_file(file_path);
-    LuaInterpretResult result = interpret_vm(vm, source);
+    InterpretResult result = interpret_vm(vm, source);
     free(source);
     
     switch (result) {
