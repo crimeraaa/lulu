@@ -159,6 +159,11 @@ int disassemble_instruction(LuaChunk *chunk, int offset) {
     case OP_NIL:   return simple_instruction("OP_NIL", offset);
     case OP_TRUE:  return simple_instruction("OP_TRUE", offset);
     case OP_FALSE: return simple_instruction("OP_FALSE", offset);
+                   
+    // -*- III:18.4.2   Equality and comparison operators --------------------*-
+    case OP_REL_EQ: return simple_instruction("OP_REL_EQ", offset);
+    case OP_REL_GT: return simple_instruction("OP_REL_GT", offset);
+    case OP_REL_LT: return simple_instruction("OP_REL_LT", offset);
 
     // -*- III:15.3.1   Binary operators -------------------------------------*-
     case OP_ADD: return simple_instruction("OP_ADD", offset);

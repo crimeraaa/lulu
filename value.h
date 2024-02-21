@@ -35,6 +35,22 @@ void deinit_valuearray(LuaValueArray *self);
 void print_value(LuaValue value);
 
 /**
+ * III:18.4.2   Equality and comparison operators
+ * 
+ * Given 2 dynamically typed values, how do we compare them? Well, if they're of
+ * different types, you can automatically assume they're not the same.
+ * 
+ * Otherwise, we'll need to do a comparison on a type-by-type basis.
+ * 
+ * NOTE:
+ * 
+ * We CANNOT use memcmp as it's likely the compiler added padding, which goes
+ * unused. If we do raw memory comparisons we'll also compare these garbage bits
+ * which will not give us the results we want.
+ */
+bool values_equal(LuaValue lhs, LuaValue rhs);
+
+/**
  * III:17.7     Dumping Chunks (my addition)
  * 
  * Since Lua has only a few possible datatypes and user-defined ones are always

@@ -188,6 +188,16 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
         case OP_NIL:   push_vmstack(self, make_luanil); break;
         case OP_TRUE:  push_vmstack(self, make_luaboolean(true)); break;
         case OP_FALSE: push_vmstack(self, make_luaboolean(false)); break;
+                       
+        // -*- III:18.4.2   Equality and comparison operators ----------------*-
+        case OP_REL_EQ: {
+            LuaValue rhs = pop_vmstack(self);
+            LuaValue lhs = pop_vmstack(self);
+            push_vmstack(self, make_luaboolean(values_equal(lhs, rhs)));
+            break;
+        }
+        case OP_REL_GT: make_simple_binaryop(self, make_luaboolean, >); break;
+        case OP_REL_LT: make_simple_binaryop(self, make_luaboolean, <); break;
 
         // -*- III:15.3.1   Binary Operators ---------------------------------*-
         case OP_ADD: make_simple_binaryop(self, make_luanumber, +); break;

@@ -23,6 +23,14 @@ typedef enum {
     OP_TRUE,
     OP_FALSE,
     
+    // -*- III:18.4.2   Equality and comparison operators --------------------*-
+    OP_REL_EQ,
+    // OP_REL_NEQ,
+    OP_REL_GT,
+    // OP_REL_GE,
+    OP_REL_LT,
+    // OP_REL_LE,
+    
     // -*- III:15.3.1:  Binary Operators -------------------------------------*-
     OP_ADD,
     OP_SUB,

@@ -43,12 +43,12 @@ static const LuaParseRule rules[TOKEN_COUNT] = {
     [TOKEN_PERCENT]         = {NULL,        binary,     PREC_FACTOR},
     
     // Relational Operators
-    [TOKEN_REL_EQ]          = {NULL,        NULL,       PREC_NONE},
-    [TOKEN_REL_NEQ]         = {NULL,        NULL,       PREC_NONE},
-    [TOKEN_REL_GT]          = {NULL,        NULL,       PREC_NONE},
-    [TOKEN_REL_GE]          = {NULL,        NULL,       PREC_NONE},
-    [TOKEN_REL_LT]          = {NULL,        NULL,       PREC_NONE},
-    [TOKEN_REL_LE]          = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_REL_EQ]          = {NULL,        binary,     PREC_EQUALITY},
+    [TOKEN_REL_NEQ]         = {NULL,        binary,     PREC_EQUALITY},
+    [TOKEN_REL_GT]          = {NULL,        binary,     PREC_COMPARISON},
+    [TOKEN_REL_GE]          = {NULL,        binary,     PREC_COMPARISON},
+    [TOKEN_REL_LT]          = {NULL,        binary,     PREC_COMPARISON},
+    [TOKEN_REL_LE]          = {NULL,        binary,     PREC_COMPARISON},
 
     // Literals
     [TOKEN_FALSE]           = {literal,     NULL,       PREC_NONE},

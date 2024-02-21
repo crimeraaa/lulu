@@ -199,6 +199,18 @@ void binary(LuaCompiler *self) {
     parse_precedence(self, (LuaPrecedence)(rule->precedence + 1));
 
     switch (optype) {
+    // -*- Equality and comparison operators ---------------------------------*-
+    // For fun, let's try to use less cases. We do know the following: 
+    // 1. a != b <=> !(a == b)
+    // 2. a >= b <=> !(a < b)
+    // 3. a <= b <=> !(a > b)
+    case TOKEN_REL_EQ: emit_byte(self, OP_REL_EQ); break;
+    case TOKEN_REL_NEQ: emit_bytes(self, OP_REL_EQ, OP_NOT); break;
+    case TOKEN_REL_GT: emit_byte(self, OP_REL_GT); break;
+    case TOKEN_REL_GE: emit_bytes(self, OP_REL_LT, OP_NOT);
+    case TOKEN_REL_LT: emit_byte(self, OP_REL_LT); break;
+    case TOKEN_REL_LE: emit_bytes(self, OP_REL_GT, OP_NOT); break;
+
     case TOKEN_PLUS: emit_byte(self, OP_ADD); break;
     case TOKEN_DASH: emit_byte(self, OP_SUB); break;
     case TOKEN_STAR: emit_byte(self, OP_MUL); break;

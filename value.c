@@ -41,3 +41,18 @@ const char *typeof_value(LuaValue value) {
     case LUA_TTABLE:     return "table";
     }
 }
+
+bool values_equal(LuaValue lhs, LuaValue rhs) {
+    if (lhs.type != rhs.type) {
+        return false;
+    }
+    // If above test passed, we can assume they ARE the same type
+    switch (lhs.type) {
+    case LUA_TBOOLEAN:  return lhs.as.boolean == rhs.as.boolean;
+    case LUA_TNIL:      return true; // nil is always == nil.
+    case LUA_TNUMBER:   return lhs.as.number == rhs.as.number;
+    default:            break;
+    }
+    fprintf(stderr, "Unsupported type %s.\n", typeof_value(lhs));
+    return false;
+}
