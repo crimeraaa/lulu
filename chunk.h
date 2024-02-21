@@ -4,6 +4,14 @@
 #include "common.h"
 #include "value.h"
 
+/* Until this limit is reached, we use `OP_CONSTANT` which takes a 1-byte operand. */
+#define MAX_CONSTANTS_SHORT     (UINT8_MAX)
+/** 
+ * If MAX_CONSTANTS_SHORT has been surpassed, we use `OP_CONSTANT_LONG` and
+ * supply it with a 3-byte (24-bit) operand.
+ */
+#define MAX_CONSTANTS_LONG      (1 << 24)
+
 typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
 
@@ -78,8 +86,12 @@ int add_constant(LuaChunk *self, LuaValue value);
  *
  * If one wishes to have more constants, you'll need to use OP_CONSTANT_LONG.
  * The instruction itself takes 1 byte, but it takes a 3 byte (or 24-bit) operand.
+ * 
+ * III:17.4.1   Parsers for Tokens
+ * 
+ * This function has now been replaced by `compiler.c:emit_constant()`.
  */
-void write_constant(LuaChunk *self, LuaValue value, int line);
+// void write_constant(LuaChunk *self, LuaValue value, int line);
 
 #ifdef DEBUG_PRINT_CODE
 

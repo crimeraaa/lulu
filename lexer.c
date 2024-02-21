@@ -212,6 +212,12 @@ static LuaTokenType ident_type(LuaLexer *self) {
     return TOKEN_IDENT;
 }
 
+/**
+ * Assumes we consumed an alphabetical/underscore character already.
+ * 
+ * Past the first character, any keyword/identifier can contain alphabeticals,
+ * numbers or underscores.
+ */
 static LuaToken ident_token(LuaLexer *self) {
     while (isident(peek_current(self))) {
         advance_lexer(self);
@@ -220,8 +226,8 @@ static LuaToken ident_token(LuaLexer *self) {
 }
 
 /**
- * Assuming we already consumed a digit that we believe to be the start of a
- * number literal, try to consume the rest of it.
+ * Assumes we already consumed a digit that we believe to be the start of a
+ * number literal. We try to consume the rest of it.
  * 
  * Conversion will be handled by the parser.
  */
@@ -255,6 +261,7 @@ static LuaToken string_token(LuaLexer *self) {
         }
         advance_lexer(self);
     }
+    // You can type the nul character with: CTRL+@ (@ = SHIFT+2)
     if (is_at_end(self)) {
         return error_token(self, "Unterminated string literal.");
     }
@@ -292,7 +299,12 @@ LuaToken tokenize(LuaLexer *self) {
     // Punctuation marks
     case ';': return make_token(self, TOKEN_SEMICOL);
     case ':': return make_token(self, TOKEN_COLON);
-    case '.': return make_token(self, TOKEN_PERIOD); 
+    case '.': return make_token(self, 
+        match_lexer(self, '.')   // True: have at least '..' (string concat)
+        ? match_lexer(self, '.') // True: definitely have '...' (function varargs)
+            ? TOKEN_VARARGS 
+            : TOKEN_CONCAT
+        : TOKEN_PERIOD); 
     case ',': return make_token(self, TOKEN_COMMA);
     // Common Arithmetic
     case '+': return make_token(self, TOKEN_PLUS);
@@ -304,12 +316,21 @@ LuaToken tokenize(LuaLexer *self) {
     // Quotation marks
     case '"': return string_token(self);
     // Relational
-    case '~': return (match_lexer(self, '=')) 
-            ? make_token(self, TOKEN_REL_NEQ)
-            : error_token(self, "Expected '=' after '~'.");
-    case '=': return make_token(self, match_lexer(self, '=') ? TOKEN_REL_EQ : TOKEN_EQUAL);
-    case '<': return make_token(self, match_lexer(self, '=') ? TOKEN_REL_LE : TOKEN_REL_LT);
-    case '>': return make_token(self, match_lexer(self, '=') ? TOKEN_REL_GE : TOKEN_REL_GT);
+    case '~': return match_lexer(self, '=') 
+        ? make_token(self, TOKEN_REL_NEQ) 
+        : error_token(self, "Expected '=' after '~'.");
+    case '=': return make_token(self, 
+        match_lexer(self, '=') 
+        ? TOKEN_REL_EQ
+        : TOKEN_EQUAL);
+    case '<': return make_token(self, 
+        match_lexer(self, '=') 
+        ? TOKEN_REL_LE
+        : TOKEN_REL_LT);
+    case '>': return make_token(self, 
+        match_lexer(self, '=') 
+        ? TOKEN_REL_GE
+        : TOKEN_REL_GT);
     default:
         break;
     }

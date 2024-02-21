@@ -152,9 +152,21 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
 
 LuaInterpretResult interpret_vm(LuaVM *self, const char *source) {
     LuaCompiler *compiler = &(LuaCompiler){0};
+    init_chunk(&compiler->chunk);
     init_compiler(compiler);
-    compile_bytecode(compiler, source);
-    return INTERPRET_OK;
+    
+    if (!compile_bytecode(compiler, source)) {
+        deinit_chunk(&compiler->chunk);
+        return INTERPRET_COMPILE_ERROR;
+    }
+    self->chunk = &compiler->chunk;
+    self->ip    = compiler->chunk.code;
+    // Reset so we can disassembly properly.
+    self->chunk->prevline = -1;
+    LuaInterpretResult result = run_bytecode(self);
+    deinit_chunk(&compiler->chunk);
+
+    return result;
     // LuaChunk *chunk = &(LuaChunk){0};
     // init_chunk(chunk);
     // self->chunk = chunk;

@@ -64,19 +64,6 @@ void write_chunk(LuaChunk *self, uint8_t byte, int line) {
     }
 }
 
-void write_constant(LuaChunk *self, LuaValue value, int line) {
-    int index = add_constant(self, value);
-    if (self->constants.count <= UINT8_MAX) {
-        write_chunk(self, OP_CONSTANT, line);
-        write_chunk(self, index, line);
-    } else {
-        write_chunk(self, OP_CONSTANT_LONG, line);
-        write_chunk(self, (index >> 16) & 0xFF, line); // mask upper 8 bits
-        write_chunk(self, (index >> 8) & 0xFF, line);  // mask center 8 bits
-        write_chunk(self, (index & 0xFF), line);       // mask lower 8 bits
-    }
-}
-
 int add_constant(LuaChunk *self, LuaValue value) {
     write_valuearray(&self->constants, value);
     return self->constants.count - 1;
