@@ -267,6 +267,7 @@ void unary(LuaCompiler *self) {
     // Remember that opcodes look at the top of the stack for their operands, so
     // this is why we emit the opcode AFTER the compiled expression.
     switch (optype) {
+    case TOKEN_NOT:   emit_byte(self, OP_NOT); break;
     case TOKEN_DASH:  emit_byte(self, OP_UNM); break;
     default: return; // Should be unreachable.
     }

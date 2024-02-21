@@ -57,6 +57,18 @@ static inline LuaValue peek_vmstack(LuaVM *self, int distance) {
     return *(self->sp - 1 - distance);
 }
 
+/**
+ * III:18.4.1   Logical not and falsiness
+ * 
+ * In Lua, the only "falsy" types are `nil` and the boolean value `false`.
+ * Everything else is `truthy` meaning it is treated as a true condition.
+ * Do note that this doesn't mean that `1 == true`, it just means that `if 1`
+ * and `if true` do the same thing conceptually.
+ */
+static inline bool isfalsy(LuaValue value) {
+    return is_luanil(value) || (is_luaboolean(value) && !value.as.boolean);
+}
+
 /** 
  * Remember that postfix increment returns the original value of the expression. 
  * So we effectively increment the pointer but we dereference the original one.
@@ -184,7 +196,13 @@ static LuaInterpretResult run_bytecode(LuaVM *self) {
         case OP_DIV: make_simple_binaryop(self, make_luanumber, /); break;
         case OP_POW: make_fncall_binaryop(self, make_luanumber, pow); break;
         case OP_MOD: make_fncall_binaryop(self, make_luanumber, fmod); break;
-
+                     
+        // -*- III:18.4.1   Logical not and falsiness ------------------------*-
+        case OP_NOT: {
+            bool value = isfalsy(pop_vmstack(self));
+            push_vmstack(self, make_luaboolean(value));
+            break;
+        }
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
             // Challenge 15.4: Negate in place

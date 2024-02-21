@@ -168,6 +168,9 @@ int disassemble_instruction(LuaChunk *chunk, int offset) {
     case OP_POW: return simple_instruction("OP_POW", offset);
     case OP_MOD: return simple_instruction("OP_MOD", offset);
 
+    // -*- III:18.4.1   Logical not and falsiness ----------------------------*- 
+    case OP_NOT: return simple_instruction("OP_NOT", offset);
+
     // -*- III:15.3     An Arithmetic Calculator -----------------------------*-
     case OP_UNM: return simple_instruction("OP_UNM", offset);
     case OP_RET: return simple_instruction("OP_RET", offset);

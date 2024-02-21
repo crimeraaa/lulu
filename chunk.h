@@ -18,9 +18,6 @@ typedef enum {
     // -*- III:14.2(CHALLENGE): Use a 24-bit operand. ------------------------*-
     OP_CONSTANT_LONG, // Load a constant value into memory using a 24-bit operand.
 
-    // -*- III:15.3:    An Arithmetic calculator -----------------------------*-
-    OP_UNM, // Unary negation, a.k.a. "Unary minus" (hence "UNM").
-
     // -*- III:18.4:    Two New Types ----------------------------------------*-
     OP_NIL,
     OP_TRUE,
@@ -33,6 +30,12 @@ typedef enum {
     OP_DIV, 
     OP_MOD, // My addition for modulo using the caret ('%') character.
     OP_POW, // My addition for exponentiation using the caret ('^') character.
+    
+    // -*- III:18.4.1   Logical not and falseiness ---------------------------*-
+    OP_NOT,
+
+    // -*- III:15.3:    An Arithmetic calculator -----------------------------*-
+    OP_UNM, // Unary negation, a.k.a. "Unary minus" (hence "UNM").
 
     OP_RET,
 } LuaOpCode;
