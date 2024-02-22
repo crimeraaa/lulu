@@ -23,8 +23,30 @@ struct lua_Object {
 struct lua_String {
     lua_Object object; // Header for meta-information.
     int length;        // Number of non-nul characters.
-    char *data;        // Heap-allocated buffer.
+    char data[];        // Heap-allocated buffer.
 };
+
+/**
+ * III:19.2     Strings
+ * 
+ * Create a new lua_String on the heap and "take ownership" of the given buffer.
+ * 
+ * III:19.5     Freeing Objects
+ * 
+ * Because I *don't* want to use global state, we have to pass in a VM pointer!
+ * But because this function can be called during the compile phase, the compiler
+ * structure must also have a pointer to a VM...
+ * 
+ * III:19.1:   Flexible Array Members (CHALLENGE)
+ * 
+ * To reduce 2 heap allocations to 1 for each `lua_String*`, we can use a C99
+ * concept known as "flexible array members". It's a bit tricky to work with,
+ * and we can't make arrays of the structures themselves (but we can for pointers).
+ * 
+ * So instead of using a function like `take_string()`, you'll need to explicitly
+ * allocate this the moment you see a char buffer you want to take ownership of.
+ */
+lua_String *allocate_string(LuaVM *lvm, int length);
 
 /**
  * III:19.4.1   Concatenation
@@ -38,7 +60,7 @@ struct lua_String {
  * We need to have a pointer to the VM in question so its objects linked list
  * can be updated accordingly.
  */
-lua_String *take_string(LuaVM *lvm, char *buffer, int length);
+// lua_String *take_string(LuaVM *lvm, char *buffer, int length);
 
 /**
  * III:19.3     Strings
@@ -54,6 +76,16 @@ lua_String *take_string(LuaVM *lvm, char *buffer, int length);
  * compiler ever is.
  */
 lua_String *copy_string(LuaVM *lvm, const char *literal, int length);
+
+
+/**
+ * III:19.1     Flexible Array Members (CHALLENGE)
+ * 
+ * To make things easier, I've created a dedicated function to concatenate
+ * 2 Lua strings. We allocate memory for a new string and copy the left into the
+ * new string, then the right (starting from an offset into the new string).
+ */
+lua_String *concat_strings(LuaVM *lvm, const lua_String *lhs, const lua_String *rhs);
 
 /**
  * III:19.4     Operations on Strings

@@ -288,8 +288,8 @@ void number(Compiler *self) {
 void string(Compiler *self) {
     const char *start = self->parser.previous.start + 1; // Past opening quote
     int length = self->parser.previous.length - 2; // Before closing quote
-    lua_String *strobj = copy_string(self->vm, start, length);
-    emit_constant(self, makeobject(strobj));
+    lua_String *object = copy_string(self->vm, start, length);
+    emit_constant(self, makeobject(object));
 }
 
 /**

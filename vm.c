@@ -109,18 +109,17 @@ static inline bool isfalsy(TValue value) {
  * String concatenation is quite tricky due to all the allocations we need to
  * make! Not only that, but multiple concatenations may end up "orphaning"
  * middle strings and thus leaking memory.
+ * 
+ * III:19.1     Flexible Array Members (CHALLENGE)
+ * 
+ * I've effectively "shunted" responsibility of actually concatenating over to
+ * `object.c:concat_strings()` just because it feels right for me.
+ * Functionally this should not affect anything.
  */
 static void concatenate(LuaVM *self) {
-    lua_String *rhs = asstring(pop_vmstack(self));
-    lua_String *lhs = asstring(pop_vmstack(self));
-    int length = lhs->length + rhs->length;
-    char *chars = allocate(char, length + 1);
-
-    memcpy(chars, lhs->data, lhs->length);
-    memcpy(chars + lhs->length, rhs->data, rhs->length); // Copy from offset
-    chars[length] = '\0';
-
-    lua_String *result = take_string(self, chars, length);
+    lua_String *rhs    = asstring(pop_vmstack(self));
+    lua_String *lhs    = asstring(pop_vmstack(self));
+    lua_String *result = concat_strings(self, lhs, rhs);
     push_vmstack(self, makeobject(result));
 }
 

@@ -15,7 +15,7 @@
 typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
 
-    // -*- III:14.2(CHALLENGE): Use a 24-bit operand. ------------------------*-
+    // -*- III:14.2:    Use a 24-bit operand (CHALLENGE) ---------------------*-
     OP_CONSTANT_LONG, // Load a constant value into memory using a 24-bit operand.
 
     // -*- III:18.4:    Two New Types ----------------------------------------*-
