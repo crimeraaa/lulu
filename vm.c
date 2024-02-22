@@ -279,7 +279,7 @@ static InterpretResult run_bytecode(LuaVM *self) {
         // like adding another macro parameter JUST to check a value type...
         case OP_CONCAT: {
             TValue rhs = peek_vmstack(self, 0);
-            TValue lhs = peek_vmstack(self, 0);
+            TValue lhs = peek_vmstack(self, 1);
             if (!isstring(lhs)) return runtime_concatenation_error(self, lhs);
             if (!isstring(rhs)) return runtime_concatenation_error(self, rhs);
             concatenate(self);
