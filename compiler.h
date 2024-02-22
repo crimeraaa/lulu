@@ -3,7 +3,9 @@
 
 #include "common.h"
 #include "chunk.h"
+#include "compiler.h"
 #include "lexer.h"
+#include "object.h"
 
 /**
  * III:17.2     Parsing Tokens

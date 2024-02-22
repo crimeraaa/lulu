@@ -5,6 +5,7 @@ extern void binary(Compiler *self);
 extern void unary(Compiler *self);
 extern void number(Compiler *self);
 extern void literal(Compiler *self);
+extern void string(Compiler *self);
 
 /**
  * III:17.6     A Pratt Parser
@@ -55,7 +56,7 @@ static const ParseRule rules[TOKEN_COUNT] = {
     [TOKEN_IDENT]           = {NULL,        NULL,       PREC_NONE},
     [TOKEN_NIL]             = {literal,     NULL,       PREC_NONE},
     [TOKEN_NUMBER]          = {number,      NULL,       PREC_NONE},
-    [TOKEN_STRING]          = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_STRING]          = {string,      NULL,       PREC_NONE},
     [TOKEN_TABLE]           = {NULL,        NULL,       PREC_NONE},
     [TOKEN_TRUE]            = {literal,     NULL,       PREC_NONE},
 

@@ -34,11 +34,8 @@ void print_value(TValue value) {
 const char *lua_typename(ValueType type) {
     switch (type) {
     case LUA_TBOOLEAN:   return "boolean";
-    case LUA_TFUNCTION:  return "function";
     case LUA_TNIL:       return "nil";
     case LUA_TNUMBER:    return "number";
-    case LUA_TSTRING:    return "string";
-    case LUA_TTABLE:     return "table";
     }
 }
 

@@ -1,4 +1,6 @@
 #include "compiler.h"
+#include "value.h"
+#include "object.h"
 #include "parserules.h"
 
 static inline void init_parser(Parser *self) {
@@ -257,6 +259,18 @@ void grouping(Compiler *self) {
 void number(Compiler *self) {
     double value = strtod(self->parser.previous.start, NULL);
     emit_constant(self, makenumber(value));
+}
+
+/**
+ * III:19.3     Strings
+ * 
+ * Here we go, strings! One of the big bads of C.
+ */
+void string(Compiler *self) {
+    int start = self->parser.previous.start + 1;   // Past opening quote
+    int length = self->parser.previous.length - 2; // Before closing quote
+    lua_String *strobj = copy_string(start, length);
+    emit_constant(self, makeobject(strobj));
 }
 
 /**
