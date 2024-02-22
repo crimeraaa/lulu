@@ -27,28 +27,6 @@ struct lua_String {
 };
 
 /**
- * III:19.2     Strings
- * 
- * Create a new lua_String on the heap and "take ownership" of the given buffer.
- * 
- * III:19.5     Freeing Objects
- * 
- * Because I *don't* want to use global state, we have to pass in a VM pointer!
- * But because this function can be called during the compile phase, the compiler
- * structure must also have a pointer to a VM...
- * 
- * III:19.1:   Flexible Array Members (CHALLENGE)
- * 
- * To reduce 2 heap allocations to 1 for each `lua_String*`, we can use a C99
- * concept known as "flexible array members". It's a bit tricky to work with,
- * and we can't make arrays of the structures themselves (but we can for pointers).
- * 
- * So instead of using a function like `take_string()`, you'll need to explicitly
- * allocate this the moment you see a char buffer you want to take ownership of.
- */
-lua_String *allocate_string(LuaVM *lvm, int length);
-
-/**
  * III:19.4.1   Concatenation
  * 
  * Given a heap-allocated pointer `buffer`, we "take ownership" by immediately
