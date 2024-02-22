@@ -21,21 +21,30 @@ struct lua_Object {
 struct lua_String {
     lua_Object object; // Header for meta-information.
     int length;        // Number of non-nul characters.
-    char *chars;       // Heap-allocated buffer.
+    char *data;        // Heap-allocated buffer.
 };
+
+/**
+ * III:19.4.1   Concatenation
+ * 
+ * Given a heap-allocated pointer `buffer`, we "take ownership" by immediately
+ * assigning it to a `lua_String*` instance instead of taking the time to allocate
+ * a new pointer and copy contents.
+ */
+lua_String *take_string(char *buffer, int length);
 
 /**
  * III:19.3     Strings
  * 
- * Allocate enough memory to copy the string `chars` byte for byte.
+ * Allocate enough memory to copy the string `literal` byte for byte.
  * Currently, we don't have our hashtable implementation so we leak memory.
  */
-lua_String *copy_string(const char *chars, int length);
+lua_String *copy_string(const char *literal, int length);
 
 /**
  * III:19.4     Operations on Strings
  * 
- * We use a generic `TValue` so that we can call the `lua_Object*` header.
+ * We use a good 'ol `TValue` so that we can call the `lua_Object*` header.
  */
 void print_object(TValue value);
 
@@ -53,6 +62,6 @@ static inline bool isobjtype(TValue value, ObjType type) {
 
 #define isstring(value)     isobjtype(value, LUA_TSTRING)
 #define asstring(value)     ((lua_String*)asobject(value))
-#define ascstring(value)    (asstring(value)->chars)
+#define ascstring(value)    (asstring(value)->data)
 
 #endif /* LUA_OBJECT_H */

@@ -217,9 +217,27 @@ void binary(Compiler *self) {
     case TOKEN_DASH: emit_byte(self, OP_SUB); break;
     case TOKEN_STAR: emit_byte(self, OP_MUL); break;
     case TOKEN_SLASH: emit_byte(self, OP_DIV); break;
-    case TOKEN_CARET: emit_byte(self, OP_POW); break; // TODO: right assoc.
     case TOKEN_PERCENT: emit_byte(self, OP_MOD); break;
     default: return; // Should be unreachable.
+    }
+}
+
+/**
+ * Right-associative binary operators, mainly for exponentiation and concatenation.
+ */
+void rbinary(Compiler *self) {
+    TokenType optype = self->parser.previous.type;
+    const ParseRule *rule = get_rule(optype);
+    // We use the same precedence so we can evaluate from right to left.
+    parse_precedence(self, rule->precedence);
+    
+    switch (optype) {
+    // -*- 19.4.1   Concatentation -------------------------------------------*-
+    // Unlike Lox, Lua uses '..' for string concatenation rather than '+'.
+    // I prefer a distinct operator anyway as '+' can be confusing.
+    case TOKEN_CONCAT: emit_byte(self, OP_CONCAT); break;
+    case TOKEN_CARET: emit_byte(self, OP_POW); break;
+    default: return; // Should be unreachable, but clang insists on this.
     }
 }
 
@@ -267,7 +285,7 @@ void number(Compiler *self) {
  * Here we go, strings! One of the big bads of C.
  */
 void string(Compiler *self) {
-    int start = self->parser.previous.start + 1;   // Past opening quote
+    const char *start = self->parser.previous.start + 1; // Past opening quote
     int length = self->parser.previous.length - 2; // Before closing quote
     lua_String *strobj = copy_string(start, length);
     emit_constant(self, makeobject(strobj));

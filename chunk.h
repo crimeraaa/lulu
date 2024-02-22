@@ -41,6 +41,9 @@ typedef enum {
     
     // -*- III:18.4.1   Logical not and falseiness ---------------------------*-
     OP_NOT,
+    
+    // -*- III:19.4.1   Concatentation ---------------------------------------*-
+    OP_CONCAT, // My addition for a distinct string concatenation operator.
 
     // -*- III:15.3:    An Arithmetic calculator -----------------------------*-
     OP_UNM, // Unary negation, a.k.a. "Unary minus" (hence "UNM").

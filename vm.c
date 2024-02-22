@@ -1,5 +1,7 @@
 #include <math.h>
 #include "compiler.h"
+#include "memory.h"
+#include "object.h"
 #include "vm.h"
 
 /* Make the VM's stack pointer point to the base of the stack array. */
@@ -23,16 +25,23 @@ static void runtime_error(LuaVM *self, const char *format, ...) {
 }
 
 static inline InterpretResult 
-runtime_arithmetic_error(LuaVM *self, ValueType lhs) {
+runtime_arithmetic_error(LuaVM *self, TValue operand) {
     runtime_error(self, 
-        "Attempt to perform arithmetic on a %s value", lua_typename(lhs));
+        "Attempt to perform arithmetic on a %s value", lua_typename(operand));
     return INTERPRET_RUNTIME_ERROR;
 }
 
 static inline InterpretResult
-runtime_comparison_error(LuaVM *self, ValueType lhs, ValueType rhs) {
+runtime_comparison_error(LuaVM *self, TValue lhs, TValue rhs) {
     runtime_error(self, 
         "Attempt to compare %s with %s", lua_typename(lhs), lua_typename(rhs));
+    return INTERPRET_RUNTIME_ERROR;
+}
+
+static inline InterpretResult
+runtime_concatenation_error(LuaVM *self, TValue operand) {
+    runtime_error(self,
+        "Attempt to concatenate a %s value", lua_typename(operand));
     return INTERPRET_RUNTIME_ERROR;
 }
 
@@ -74,6 +83,14 @@ static inline TValue peek_vmstack(LuaVM *self, int distance) {
 }
 
 /**
+ * Similar to `peek_vmstack()` except you get a pointer to the slot in question.
+ * This lets you manipulate the stack in place.
+ */
+static inline TValue *poke_vmstack(LuaVM *self, int distance) {
+    return self->sp - 1 - distance;
+}
+
+/**
  * III:18.4.1   Logical not and falsiness
  * 
  * In Lua, the only "falsy" types are `nil` and the boolean value `false`.
@@ -83,6 +100,27 @@ static inline TValue peek_vmstack(LuaVM *self, int distance) {
  */
 static inline bool isfalsy(TValue value) {
     return isnil(value) || (isboolean(value) && !value.as.boolean);
+}
+
+/**
+ * III:19.4.1   Concatenation
+ * 
+ * String concatenation is quite tricky due to all the allocations we need to
+ * make! Not only that, but multiple concatenations may end up "orphaning"
+ * middle strings and thus leaking memory.
+ */
+static void concatenate(LuaVM *self) {
+    lua_String *rhs = asstring(pop_vmstack(self));
+    lua_String *lhs = asstring(pop_vmstack(self));
+    int length = lhs->length + rhs->length;
+    char *chars = allocate(char, length + 1);
+
+    memcpy(chars, lhs->data, lhs->length);
+    memcpy(chars + lhs->length, rhs->data, rhs->length); // Copy from offset
+    chars[length] = '\0';
+
+    lua_String *result = take_string(chars, length);
+    push_vmstack(self, makeobject(result));
 }
 
 /** 
@@ -137,8 +175,8 @@ static inline bool isfalsy(TValue value) {
  * caused the error.
  */
 #define assert_arithmetic(vm, lhs, rhs) \
-    if (!isnumber(lhs)) return runtime_arithmetic_error(vm, lhs.type); \
-    if (!isnumber(rhs)) return runtime_arithmetic_error(vm, rhs.type); \
+    if (!isnumber(lhs)) return runtime_arithmetic_error(vm, lhs); \
+    if (!isnumber(rhs)) return runtime_arithmetic_error(vm, rhs); \
 
 /**
  * We check both lhs and rhs as you cannot compare non-numbers in terms of
@@ -149,7 +187,7 @@ static inline bool isfalsy(TValue value) {
  */
 #define assert_comparison(vm, lhs, rhs) \
     if (!isnumber(lhs) || !isnumber(rhs)) { \
-        return runtime_comparison_error(vm, lhs.type, rhs.type); \
+        return runtime_comparison_error(vm, lhs, rhs); \
     }
 
 /**
@@ -235,28 +273,40 @@ static InterpretResult run_bytecode(LuaVM *self) {
         case OP_POW: binop_math(self, makenumber, lua_numpow); break;
         case OP_MOD: binop_math(self, makenumber, lua_nummod); break;
                      
+        // -*- III:19.4.1   Concatenation ------------------------------------*-
+        // This is repeating the code of `binop_math` but I really do not feel
+        // like adding another macro parameter JUST to check a value type...
+        case OP_CONCAT: {
+            TValue rhs = peek_vmstack(self, 0);
+            TValue lhs = peek_vmstack(self, 0);
+            if (!isstring(lhs)) return runtime_concatenation_error(self, lhs);
+            if (!isstring(rhs)) return runtime_concatenation_error(self, rhs);
+            concatenate(self);
+            break;
+        }
+                     
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
             // Doing this in-place to save some bytecode instructions
-            TValue value = peek_vmstack(self, 0);
-            *(self->sp - 1) = makeboolean(isfalsy(value));
+            TValue *value = poke_vmstack(self, 0);
+            *value = makeboolean(isfalsy(*value));
             break;
         }
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
             // Challenge 15.4: Negate in place
-            TValue value = peek_vmstack(self, 0);
-            if (isnumber(value)) {
-                (self->sp - 1)->as.number = -value.as.number;
+            TValue *value = poke_vmstack(self, 0);
+            if (isnumber(*value)) {
+                value->as.number = -value->as.number;
                 break;
             } 
-            return runtime_arithmetic_error(self, value.type);
+            return runtime_arithmetic_error(self, *value);
         }
         case OP_RET: 
             print_value(pop_vmstack(self));
             printf("\n");
-            return INTERPRET_OK;            
+            return INTERPRET_OK;
         }
     }
 }

@@ -175,6 +175,9 @@ int disassemble_instruction(Chunk *chunk, int offset) {
 
     // -*- III:18.4.1   Logical not and falsiness ----------------------------*- 
     case OP_NOT: return simple_instruction("OP_NOT", offset);
+                 
+    // -*- III:19.4.1   Concatenation ----------------------------------------*-
+    case OP_CONCAT: return simple_instruction("OP_CONCAT", offset);
 
     // -*- III:15.3     An Arithmetic Calculator -----------------------------*-
     case OP_UNM: return simple_instruction("OP_UNM", offset);

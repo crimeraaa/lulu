@@ -98,7 +98,7 @@ bool values_equal(TValue lhs, TValue rhs);
  * 
  * See: https://www.lua.org/source/5.1/lapi.c.html#lua_type
  */
-const char *lua_typename(ValueType type);
+const char *lua_typename(TValue value);
 
 /* In memory, `nil` is just a distinct 0. */
 #define makenil         ((TValue){LUA_TNIL, {.number = 0.0}})

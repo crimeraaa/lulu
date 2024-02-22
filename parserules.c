@@ -2,6 +2,7 @@
 
 extern void grouping(Compiler *self);
 extern void binary(Compiler *self);
+extern void rbinary(Compiler *self);
 extern void unary(Compiler *self);
 extern void number(Compiler *self);
 extern void literal(Compiler *self);
@@ -40,7 +41,7 @@ static const ParseRule rules[TOKEN_COUNT] = {
     [TOKEN_DASH]            = {unary,       binary,     PREC_TERMINAL},
     [TOKEN_STAR]            = {NULL,        binary,     PREC_FACTOR},
     [TOKEN_SLASH]           = {NULL,        binary,     PREC_FACTOR},
-    [TOKEN_CARET]           = {NULL,        binary,     PREC_EXPONENT},
+    [TOKEN_CARET]           = {NULL,        rbinary,    PREC_EXPONENT},
     [TOKEN_PERCENT]         = {NULL,        binary,     PREC_FACTOR},
     
     // Relational Operators
@@ -80,7 +81,7 @@ static const ParseRule rules[TOKEN_COUNT] = {
     [TOKEN_WHILE]           = {NULL,        NULL,       PREC_NONE},
 
     // Misc.
-    [TOKEN_CONCAT]          = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_CONCAT]          = {NULL,        rbinary,    PREC_CONCAT},
     [TOKEN_VARARGS]         = {NULL,        NULL,       PREC_NONE},
     [TOKEN_ERROR]           = {NULL,        NULL,       PREC_NONE},
     [TOKEN_EOF]             = {NULL,        NULL,       PREC_NONE},
