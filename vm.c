@@ -22,6 +22,20 @@ static void runtime_error(LuaVM *self, const char *format, ...) {
     reset_vmsp(self);
 }
 
+static inline InterpretResult 
+runtime_arithmetic_error(LuaVM *self, ValueType lhs) {
+    runtime_error(self, 
+        "Attempt to perform arithmetic on a %s value", lua_typename(lhs));
+    return INTERPRET_RUNTIME_ERROR;
+}
+
+static inline InterpretResult
+runtime_comparison_error(LuaVM *self, ValueType lhs, ValueType rhs) {
+    runtime_error(self, 
+        "Attempt to compare %s with %s", lua_typename(lhs), lua_typename(rhs));
+    return INTERPRET_RUNTIME_ERROR;
+}
+
 void init_vm(LuaVM *self) {
     self->chunk = NULL;
     self->ip    = NULL;
@@ -103,33 +117,67 @@ static inline bool isfalsy(TValue value) {
 #define read_constant(vm)       (read_constant_at(vm, read_byte(vm)))
 
 /**
+ * Horrible C preprocessor abuse...
+ * 
+ * @param vm        `LuaVM*`
+ * @param assertfn  One of the `assert_*` macros.
+ * @param makefn    One of the `make*` macros.
+ * @param operation One of the `lua_num*` macros or an actual function.
+ */
+#define binop_template(vm, assertfn, makefn, operation) \
+    do { \
+        TValue rhs = pop_vmstack(vm); \
+        TValue lhs = pop_vmstack(vm); \
+        assertfn(vm, lhs, rhs); \
+        push_vmstack(vm, makefn(operation(lhs.as.number, rhs.as.number))); \
+    } while (false)
+
+/**
+ * We check lhs and rhs separately so we can report which one is likely to have
+ * caused the error.
+ */
+#define assert_arithmetic(vm, lhs, rhs) \
+    if (!isnumber(lhs)) return runtime_arithmetic_error(vm, lhs.type); \
+    if (!isnumber(rhs)) return runtime_arithmetic_error(vm, rhs.type); \
+
+/**
+ * We check both lhs and rhs as you cannot compare non-numbers in terms of
+ * greater-then and less-than.
+ * 
+ * This doesn't affect (and should not be used for) equality operators.
+ * Meaning comparing equals-to and not-equals-to are valid calls.
+ */
+#define assert_comparison(vm, lhs, rhs) \
+    if (!isnumber(lhs) || !isnumber(rhs)) { \
+        return runtime_comparison_error(vm, lhs.type, rhs.type); \
+    }
+
+/**
  * III:15.3.1   Binary Operators
  * 
  * Because C preprocessor macro metaprogramming sucks, I'm sorry in advance that
  * you have to see this mess!
  * 
- * @param vm        `LuaVM*`.
- * @param makefn    One of the `make*` macros.
- * @param operation One of the `lua_num*` macros or an actual function.
+ * See the definition for `binop_template`.
  */
-#define binaryop(vm, makefn, operation) \
-    do { \
-        TValue rhs = pop_vmstack(vm); \
-        TValue lhs = pop_vmstack(vm); \
-        if (!isnumber(lhs)) return runtime_matherror(vm, typeof_value(lhs)); \
-        if (!isnumber(rhs)) return runtime_matherror(vm, typeof_value(rhs)); \
-        push_vmstack(vm, makefn(operation(lhs.as.number, rhs.as.number))); \
-    } while(false)
+#define binop_math(vm, makefn, operation) \
+    binop_template(vm, assert_arithmetic, makefn, operation)
 
+/**
+ * Similar to `binop_math`, only that it asserts both operands must be
+ * numbers. This is because something like `1 > false` is invalid.
+ * 
+ * Note that this doesn't affect equality operators. `1 == false` is a valid call.
+ */
+#define binop_cmp(vm, makefn, operation) \
+    binop_template(vm, assert_comparison, makefn, operation)
 
-static inline InterpretResult 
-runtime_matherror(LuaVM *self, const char *type) {
-    runtime_error(self, "Attempt to perform arithmetic on a %s value", type);
-    return INTERPRET_RUNTIME_ERROR;
-}
 
 static InterpretResult run_bytecode(LuaVM *self) {
-    self->chunk->prevline = 0; // Reset so we can disassemble properly.
+    // Hack, but we reset so we can disassemble properly.
+    // We need that start with index 0 into the lines.runs array.
+    // So effectively this becames our iterator.
+    self->chunk->prevline = 0; 
     for (;;) {
         int offset = (int)(self->ip - self->chunk->code);
 #ifdef DEBUG_TRACE_EXECUTION
@@ -155,10 +203,9 @@ static InterpretResult run_bytecode(LuaVM *self) {
             break;
         }
         case OP_CONSTANT_LONG: {
-            uint8_t hi  = read_byte(self);
-            uint8_t mid = read_byte(self);
-            uint8_t lo  = read_byte(self);
-            // Construct a 24-bit integer out of 3 8-bit ones
+            uint8_t hi  = read_byte(self); // bits 16..23 represents (0x10..0x17)
+            uint8_t mid = read_byte(self); // bits 8..15 represents (0x8..0xf)
+            uint8_t lo  = read_byte(self); // bits 0..7 represents (0x0..0x7)
             int32_t index  = (hi >> 16) | (mid >> 8) | (lo);
             TValue value = read_constant_at(self, index);
             push_vmstack(self, value);
@@ -171,22 +218,22 @@ static InterpretResult run_bytecode(LuaVM *self) {
         case OP_FALSE: push_vmstack(self, makeboolean(false)); break;
                        
         // -*- III:18.4.2   Equality and comparison operators ----------------*-
-        case OP_REL_EQ: {
+        case OP_EQ: {
             TValue rhs = pop_vmstack(self);
             TValue lhs = pop_vmstack(self);
             push_vmstack(self, makeboolean(values_equal(lhs, rhs)));
             break;
         }
-        case OP_REL_GT: binaryop(self, makeboolean, lua_numgt); break;
-        case OP_REL_LT: binaryop(self, makeboolean, lua_numlt); break;
+        case OP_GT: binop_cmp(self, makeboolean, lua_numgt); break;
+        case OP_LT: binop_cmp(self, makeboolean, lua_numlt); break;
 
         // -*- III:15.3.1   Binary Operators ---------------------------------*-
-        case OP_ADD: binaryop(self, makenumber, lua_numadd); break;
-        case OP_SUB: binaryop(self, makenumber, lua_numsub); break;
-        case OP_MUL: binaryop(self, makenumber, lua_nummul); break;
-        case OP_DIV: binaryop(self, makenumber, lua_numdiv); break;
-        case OP_POW: binaryop(self, makenumber, lua_numpow); break;
-        case OP_MOD: binaryop(self, makenumber, lua_nummod); break;
+        case OP_ADD: binop_math(self, makenumber, lua_numadd); break;
+        case OP_SUB: binop_math(self, makenumber, lua_numsub); break;
+        case OP_MUL: binop_math(self, makenumber, lua_nummul); break;
+        case OP_DIV: binop_math(self, makenumber, lua_numdiv); break;
+        case OP_POW: binop_math(self, makenumber, lua_numpow); break;
+        case OP_MOD: binop_math(self, makenumber, lua_nummod); break;
                      
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
@@ -204,7 +251,7 @@ static InterpretResult run_bytecode(LuaVM *self) {
                 (self->sp - 1)->as.number = -value.as.number;
                 break;
             } 
-            return runtime_matherror(self, typeof_value(value));
+            return runtime_arithmetic_error(self, value.type);
         }
         case OP_RET: 
             print_value(pop_vmstack(self));
@@ -234,7 +281,8 @@ InterpretResult interpret_vm(LuaVM *self, const char *source) {
 #undef read_byte
 #undef read_constant
 #undef read_constant_at
-#undef assert_math_op
-#undef make_math_binaryop
-#undef make_simple_binaryop
-#undef binaryop
+#undef assert_arithmetic
+#undef assert_comparison
+#undef binop_template
+#undef binop_math
+#undef binop_cmp

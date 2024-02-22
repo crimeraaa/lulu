@@ -204,12 +204,12 @@ void binary(Compiler *self) {
     // 1. a != b <=> !(a == b)
     // 2. a >= b <=> !(a < b)
     // 3. a <= b <=> !(a > b)
-    case TOKEN_EQ: emit_byte(self, OP_REL_EQ); break;
-    case TOKEN_NEQ: emit_bytes(self, OP_REL_EQ, OP_NOT); break;
-    case TOKEN_GT: emit_byte(self, OP_REL_GT); break;
-    case TOKEN_GE: emit_bytes(self, OP_REL_LT, OP_NOT);
-    case TOKEN_LT: emit_byte(self, OP_REL_LT); break;
-    case TOKEN_LE: emit_bytes(self, OP_REL_GT, OP_NOT); break;
+    case TOKEN_EQ: emit_byte(self, OP_EQ); break;
+    case TOKEN_NEQ: emit_bytes(self, OP_EQ, OP_NOT); break;
+    case TOKEN_GT: emit_byte(self, OP_GT); break;
+    case TOKEN_GE: emit_bytes(self, OP_LT, OP_NOT);
+    case TOKEN_LT: emit_byte(self, OP_LT); break;
+    case TOKEN_LE: emit_bytes(self, OP_GT, OP_NOT); break;
 
     case TOKEN_PLUS: emit_byte(self, OP_ADD); break;
     case TOKEN_DASH: emit_byte(self, OP_SUB); break;

@@ -24,12 +24,12 @@ typedef enum {
     OP_FALSE,
     
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
-    OP_REL_EQ,
-    // OP_REL_NEQ,
-    OP_REL_GT,
-    // OP_REL_GE,
-    OP_REL_LT,
-    // OP_REL_LE,
+    OP_EQ,
+    // OP_NEQ,
+    OP_GT,
+    // OP_GE,
+    OP_LT,
+    // OP_LE,
     
     // -*- III:15.3.1:  Binary Operators -------------------------------------*-
     OP_ADD,

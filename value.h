@@ -64,8 +64,17 @@ bool values_equal(TValue lhs, TValue rhs);
  * 
  * In Lua the `type()` function returns a string literal showing what datatype a
  * particular value is.
+ * 
+ * NOTE:
+ * 
+ * In the Lua C API, `lua_type()` returns an `int` which contains bit information
+ * about the type. `lua_typename()` returns the string representation of it.
+ * 
+ * In our implementation, we follow Bob's method of using a dedicated tag type.
+ * 
+ * See: https://www.lua.org/source/5.1/lapi.c.html#lua_type
  */
-const char *typeof_value(TValue value);
+const char *lua_typename(ValueType type);
 
 /* In memory, `nil` is just a distinct 0. */
 #define makenil         ((TValue){LUA_TNIL, {.number = 0.0}})
