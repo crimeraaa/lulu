@@ -18,8 +18,8 @@
 typedef struct {
     Token current;  // Token we're pointing at and want to consume.
     Token previous; // Token we just consumed.
-    bool haderror;     // Track error state so we can report.
-    bool panicking;    // Track panic state so we don't vomit error cascades.
+    bool haderror;  // Track error state so we can report.
+    bool panicking; // Track panic state so we don't vomit error cascades.
 } Parser;
 
 /**
@@ -36,6 +36,7 @@ typedef struct {
     Chunk chunk; // This is where our raw bytecode resides.
     Lexer lexer; // Before generating bytecode, we need to poke at tokens.
     Parser parser; // Keep track of tokens emitted by `lexer`.
+    LuaVM *vm; // Stupid but we need to pass this to `copy_string()` + friends.
 } Compiler;
 
 /**
@@ -44,8 +45,13 @@ typedef struct {
  * This function simply set's the compiler's parser's error and panic states to
  * false. Since we have a new compiler instance everytime we call `interpret_vm()`,
  * we (for now) assume to only set these at the start.
+ * 
+ * III:19.5     Freeing Objects
+ * 
+ * For our purposes a Lua virtual machine MUST be attached to the compiler.
+ * For generating bytecode alone, this will be terrible...
  */
-void init_compiler(Compiler *self);
+void init_compiler(Compiler *self, LuaVM *lvm);
 
 /**
  * III:16.1.1   Opening the compilation pipeline

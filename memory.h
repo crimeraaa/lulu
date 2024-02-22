@@ -9,6 +9,14 @@
 #define allocate(T, count)               reallocate(NULL, 0, sizeof(T[count]))
 
 /**
+ * III:19.5     Freeing Objects
+ * 
+ * Helper wrapper to make deallocating single instances of particular types
+ * easier.
+ */
+#define deallocate(T, pointer)          reallocate(pointer, sizeof(T), 0)
+
+/**
  * Helper macro to make growingdynamic arrays quicker.
  * We start arrays with 8 elements and grow by factors of 2.
  */
@@ -17,6 +25,9 @@
 #define grow_array(T, ptr, oldcap, newcap) \
     reallocate(ptr, sizeof(T[oldcap]), sizeof(T[newcap]))
 
+/**
+ * Helper macro to make deallocating memory of array types easier.
+ */
 #define deallocate_array(T, ptr, cap)    reallocate(ptr, sizeof(T[cap]), 0)
 
 /**
@@ -35,5 +46,13 @@
  *          implementation does that kind of bookkeeping for us already.
  */
 void *reallocate(void *pointer, size_t oldsize, size_t newsize);
+
+/**
+ * III:19.5     Freeing Objects
+ * 
+ * Pass in a VM pointer with which we'll walk to instrusive linked list of.
+ * We'll deallocate the memory alloted for each object, assuming all is well.
+ */
+void free_objects(LuaVM *lvm);
 
 #endif /* LUA_MEMORY_H */

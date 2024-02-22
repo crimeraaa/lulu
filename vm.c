@@ -49,10 +49,11 @@ void init_vm(LuaVM *self) {
     self->chunk = NULL;
     self->ip    = NULL;
     reset_vmsp(self);
+    self->objects = NULL;
 }
 
 void deinit_vm(LuaVM *self) {
-    (void)self;
+    free_objects(self);
 }
 
 void push_vmstack(LuaVM *self, TValue value) {
@@ -119,7 +120,7 @@ static void concatenate(LuaVM *self) {
     memcpy(chars + lhs->length, rhs->data, rhs->length); // Copy from offset
     chars[length] = '\0';
 
-    lua_String *result = take_string(chars, length);
+    lua_String *result = take_string(self, chars, length);
     push_vmstack(self, makeobject(result));
 }
 
@@ -314,7 +315,7 @@ static InterpretResult run_bytecode(LuaVM *self) {
 InterpretResult interpret_vm(LuaVM *self, const char *source) {
     Compiler *compiler = &(Compiler){0};
     init_chunk(&compiler->chunk);
-    init_compiler(compiler);
+    init_compiler(compiler, self);
     
     if (!compile_bytecode(compiler, source)) {
         deinit_chunk(&compiler->chunk);

@@ -8,8 +8,9 @@ static inline void init_parser(Parser *self) {
     self->panicking = false;
 }
 
-void init_compiler(Compiler *self) {
+void init_compiler(Compiler *self, LuaVM *lvm) {
     init_parser(&self->parser);
+    self->vm = lvm;
 }
 
 /**
@@ -287,7 +288,7 @@ void number(Compiler *self) {
 void string(Compiler *self) {
     const char *start = self->parser.previous.start + 1; // Past opening quote
     int length = self->parser.previous.length - 2; // Before closing quote
-    lua_String *strobj = copy_string(start, length);
+    lua_String *strobj = copy_string(self->vm, start, length);
     emit_constant(self, makeobject(strobj));
 }
 

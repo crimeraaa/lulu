@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "value.h"
+#include "vm.h"
 
 /**
  * III:19.2     Struct Inheritance
@@ -16,6 +17,7 @@ typedef enum {
 
 struct lua_Object {
     ObjType type;      // Tag type for all objects.
+    struct lua_Object *next; // Part of an instrusive linked list for GC.
 };
 
 struct lua_String {
@@ -30,16 +32,28 @@ struct lua_String {
  * Given a heap-allocated pointer `buffer`, we "take ownership" by immediately
  * assigning it to a `lua_String*` instance instead of taking the time to allocate
  * a new pointer and copy contents.
+ * 
+ * III:19.5     Freeing Objects
+ * 
+ * We need to have a pointer to the VM in question so its objects linked list
+ * can be updated accordingly.
  */
-lua_String *take_string(char *buffer, int length);
+lua_String *take_string(LuaVM *lvm, char *buffer, int length);
 
 /**
  * III:19.3     Strings
  * 
  * Allocate enough memory to copy the string `literal` byte for byte.
  * Currently, we don't have our hashtable implementation so we leak memory.
+ * 
+ * III:19.5     Freeing Objects
+ * 
+ * We take a pointer to the VM so we can update the objects linked list right.
+ * It's a bit silly that we also needed to add a VM pointer member to the
+ * Compiler struct, but it'll do since the VM is always initialized before the
+ * compiler ever is.
  */
-lua_String *copy_string(const char *literal, int length);
+lua_String *copy_string(LuaVM *lvm, const char *literal, int length);
 
 /**
  * III:19.4     Operations on Strings

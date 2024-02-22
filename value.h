@@ -4,30 +4,6 @@
 #include "common.h"
 #include "conf.h"
 
-/**
- * III:19.2     Struct Inheritance
- * 
- * Forward declared in `value.h` so that we can avoid circular dependencies
- * between it and `object.h` as they both require each other's typedefs.
- * 
- * This represents a generic heap-allocated Lua datatype: strings, tables, etc.
- */
-typedef struct lua_Object lua_Object;
-
-/**
- * III:19.2     Struct Inheritance
- * 
- * The `lua_String` datatype contains an array of characters and a count. But most
- * importantly, its first structure member is an `lua_Object`.
- * 
- * This allows standards-compliant type-punning, e.g given `lua_String*`, we can
- * safely cast it to `lua_Object*` and access the lua_Object fields just fine. 
- * 
- * Likewise, if we are ABSOLUTELY certain a particular `lua_Object*` points to a 
- * `lua_String*`, then the inverse works was well.
- */
-typedef struct lua_String lua_String;
-
 /* The tag part of the tagged union `TValue`. */
 typedef enum {
     LUA_TBOOLEAN,
