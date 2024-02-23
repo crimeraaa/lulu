@@ -7,6 +7,10 @@
 #include "value.h"
 #include "vm.h"
 
+/* https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function#FNV_hash_parameters */
+#define FNV32_OFFSET    0x811c9dc5
+#define FNV32_PRIME     0x01000193
+
 static lua_Object *allocate_object(LuaVM *lvm, size_t size, ObjType type) {
     lua_Object *object = reallocate(NULL, 0, size);
     object->type = type;
@@ -61,7 +65,28 @@ static lua_Object *allocate_object(LuaVM *lvm, size_t size, ObjType type) {
 static inline lua_String *allocate_string(LuaVM *lvm, int length) {
     lua_String *res = allocate_famstring(lvm, length + 1);
     res->length = length;
+    // We don't care about the value for the interned strings, just the key.
+    table_set(&lvm->strings, res, makenil);
     return res;
+}
+
+/**
+ * III:20.4.1   Hashing strings
+ * 
+ * This is the FNV-1A hash function which is pretty neat. It's not the most
+ * cryptographically secure or whatnot, but it's something we can work with.
+ * 
+ * Unfortunately due to how we allocate the lua_String pointers, we have to
+ * determine the hash AFTER writing the data pointer as we don't have access to
+ * the full string in functions like `concat_strings()`.
+ */
+static uint32_t hash_string(const char *key, int length) {
+    uint32_t hash = FNV32_OFFSET;
+    for (int i = 0; i < length; i++) {
+        hash ^= (uint8_t)key[i];
+        hash *= FNV32_PRIME;
+    }
+    return hash;
 }
 
 // lua_String *take_string(LuaVM *lvm, char *buffer, int length) {
@@ -69,9 +94,11 @@ static inline lua_String *allocate_string(LuaVM *lvm, int length) {
 // }
 
 lua_String *copy_string(LuaVM *lvm, const char *literal, int length) {
+    // TODO: III:20.5 String Interning
     lua_String *result = allocate_string(lvm, length);
     memcpy(result->data, literal, result->length);
     result->data[result->length] = '\0';
+    result->hash = hash_string(result->data, result->length);
     return result;
 }
 
@@ -81,6 +108,7 @@ lua_String *concat_strings(LuaVM *lvm, const lua_String *lhs, const lua_String *
     // Concatenation starts at 1 past the position of lhs in res
     memcpy(result->data + lhs->length, rhs->data, rhs->length);
     result->data[result->length] = '\0';
+    result->hash = hash_string(result->data, result->length);
     return result;
 }
 

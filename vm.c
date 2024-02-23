@@ -49,10 +49,12 @@ void init_vm(LuaVM *self) {
     self->chunk = NULL;
     self->ip    = NULL;
     reset_vmsp(self);
+    init_table(&self->strings);
     self->objects = NULL;
 }
 
 void deinit_vm(LuaVM *self) {
+    deinit_table(&self->strings);
     free_objects(self);
 }
 

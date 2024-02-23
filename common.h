@@ -36,6 +36,15 @@ typedef struct lua_Object lua_Object;
  * 
  * Likewise, if we are ABSOLUTELY certain a particular `lua_Object*` points to a 
  * `lua_String*`, then the inverse works was well.
+ * 
+ * III:19.1     Flexible Array Members (CHALLENGE)
+ * 
+ * Instead of using a separate pointer for `lua_String*` itself and another one
+ * for the `char*` buffer thereof, we can use C99 flexible array members so that
+ * we allocate enough memory for the entire structure along with its buffer and
+ * cram everything into one pointer. This requires us to NOT free the buffer
+ * itself and to only free the pointer as even FAMs decay to pointers, which is
+ * dangerous when passing to the malloc family.
  */
 typedef struct lua_String lua_String;
 

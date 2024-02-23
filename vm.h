@@ -4,6 +4,7 @@
 #include "common.h"
 #include "chunk.h"
 #include "object.h"
+#include "table.h"
 #include "value.h"
 
 /** 
@@ -20,6 +21,7 @@ struct LuaVM {
     uint8_t *ip; // Byte instruction pointer into `chunk`.
     TValue stack[LUA_STACK_MAX]; // Hardcoded limit for simplicity.
     TValue *sp; // Stack pointer to 1 past the last element.
+    Table strings; // Interned string literals/user-created ones.
     lua_Object *objects; // Head of linked list of allocated objects.
 };
 

@@ -16,14 +16,15 @@ typedef enum {
 } ObjType;
 
 struct lua_Object {
-    ObjType type;      // Tag type for all objects.
-    struct lua_Object *next; // Part of an instrusive linked list for GC.
+    ObjType type;     // Tag type for all objects.
+    lua_Object *next; // Part of an instrusive linked list for GC.
 };
 
 struct lua_String {
     lua_Object object; // Header for meta-information.
+    uint32_t hash;     // Result of throwing `data` into a hash function.
     int length;        // Number of non-nul characters.
-    char data[];        // Heap-allocated buffer.
+    char data[];       // Heap-allocated buffer.
 };
 
 /**
