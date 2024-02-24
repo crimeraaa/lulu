@@ -53,17 +53,17 @@ static inline lua_String *allocate_string(lua_VM *lvm, char *data, int length, u
  * determine the hash AFTER writing the data pointer as we don't have access to
  * the full string in functions like `concat_strings()`.
  */
-static uint32_t hash_string(const char *key, int length) {
-    uint32_t hash = FNV32_OFFSET;
+static DWord hash_string(const char *key, int length) {
+    DWord hash = FNV32_OFFSET;
     for (int i = 0; i < length; i++) {
-        hash ^= (uint8_t)key[i];
+        hash ^= (Byte)key[i];
         hash *= FNV32_PRIME;
     }
     return hash;
 }
 
 lua_String *take_string(lua_VM *lvm, char *data, int length) {
-    uint32_t hash = hash_string(data, length);
+    DWord hash = hash_string(data, length);
     lua_String *interned = table_findstring(&lvm->strings, data, length, hash);
     if (interned != NULL) {
         free(data);
@@ -73,7 +73,7 @@ lua_String *take_string(lua_VM *lvm, char *data, int length) {
 }
 
 lua_String *copy_string(lua_VM *lvm, const char *literal, int length) {
-    uint32_t hash = hash_string(literal, length);
+    DWord hash = hash_string(literal, length);
     lua_String *interned = table_findstring(&lvm->strings, literal, length, hash);
     if (interned != NULL) {
         return interned;

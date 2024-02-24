@@ -22,7 +22,7 @@ struct lua_Object {
 
 struct lua_String {
     lua_Object object; // Header for meta-information.
-    uint32_t hash;     // Result of throwing `data` into a hash function.
+    DWord hash;        // Result of throwing `data` into a hash function.
     int length;        // Number of non-nul characters.
     char *data;        // Heap-allocated buffer.
 };

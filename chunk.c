@@ -22,14 +22,14 @@ static inline void free_lineRLE(LineRLE *self) {
 }
 
 void free_chunk(Chunk *self) {
-    deallocate_array(uint8_t, self->code, self->capacity);
+    deallocate_array(Byte, self->code, self->capacity);
     free_valuearray(&self->constants);
     free_lineRLE(&self->lines);
     init_chunk(self);
     init_lineRLE(&self->lines);
 }
 
-static void write_lineRLE(LineRLE *self, uint8_t offset, int line) {
+static void write_lineRLE(LineRLE *self, Byte offset, int line) {
     // We should resize this array less often than the bytes one.
     if (self->count + 1 > self->capacity) {
         int oldcapacity = self->capacity;
@@ -47,7 +47,7 @@ static inline void increment_lineRLE(LineRLE *self) {
     self->runs[self->count - 1].end++;
 }
 
-void write_chunk(Chunk *self, uint8_t byte, int line) {
+void write_chunk(Chunk *self, Byte byte, int line) {
     if (self->count + 1 > self->capacity) {
         int oldcapacity = self->capacity;
         self->capacity  = grow_capacity(oldcapacity);
@@ -101,7 +101,7 @@ void disassemble_chunk(Chunk *self, const char *name) {
 static int constant_instruction(const char *name, Chunk *chunk, int offset) {
     // code[offset] is the operation byte itself, code[offset + 1] is the index
     // into the chunk's constants pool.
-    uint8_t index = chunk->code[offset + 1];
+    Byte index = chunk->code[offset + 1];
     printf("%-16s %4i '", name, index);
     print_value(chunk->constants.values[index]);
     printf("'\n");
@@ -121,7 +121,7 @@ static int constant_instruction(const char *name, Chunk *chunk, int offset) {
  * 
  * In total, this entire operation takes up 4 bytes.
  */
-static int constant_long_instruction(const char *name, Chunk *chunk, int offset) {
+static int constant_instruction_long(const char *name, Chunk *chunk, int offset) {
     int index = chunk->code[offset + 1] << 16; // Unmask upper 8 bits
     index |= chunk->code[offset + 2] << 8;     // Unmask center 8 bits
     index |= chunk->code[offset + 3];          // Unmask lower 8 bits
@@ -149,12 +149,12 @@ int disassemble_instruction(Chunk *chunk, int offset) {
         printf("%4i ", line);
     }
 
-    uint8_t instruction = chunk->code[offset];
+    Byte instruction = chunk->code[offset];
     switch(instruction) {
     case OP_CONSTANT: 
         return constant_instruction("OP_CONSTANT", chunk, offset);
     case OP_CONSTANT_LONG: 
-        return constant_long_instruction("OP_CONSTANT_LONG", chunk, offset);
+        return constant_instruction_long("OP_CONSTANT_LONG", chunk, offset);
     // -*- III:18.4     Two New Types ----------------------------------------*-
     case OP_NIL:   return simple_instruction("OP_NIL", offset);
     case OP_TRUE:  return simple_instruction("OP_TRUE", offset);
@@ -162,6 +162,14 @@ int disassemble_instruction(Chunk *chunk, int offset) {
                    
     // -*- III:21.1.2   Expression statements --------------------------------*-
     case OP_POP: return simple_instruction("OP_POP", offset);
+
+    // -*- III:21.2     Variable Declarations
+    case OP_GET_GLOBAL: 
+        return constant_instruction("OP_GET_GLOBAL", chunk, offset);
+    case OP_DEFINE_GLOBAL:
+        return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset);
+    case OP_DEFINE_GLOBAL_LONG:
+        return constant_instruction_long("OP_DEFINE_GLOBAL_LONG", chunk, offset);
 
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     case OP_EQ: return simple_instruction("OP_EQ", offset);

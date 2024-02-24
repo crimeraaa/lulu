@@ -2,24 +2,17 @@
 #define LUA_VIRTUAL_MACHINE_H
 
 #include "common.h"
+#include "conf.h"
 #include "chunk.h"
 #include "table.h"
 #include "value.h"
 
-/** 
- * III:15.2.1: The VM's Stack
- * 
- * For now this is a reasonable default to make, as we don't do heap allocations. 
- * However, in the real world, it's fair to assume that there are projects that
- * end up with stack sizes *greater* than 256. So make your call!
- */
-#define LUA_STACK_MAX   (UINT8_MAX + 1)
-
 struct lua_VM {
     Chunk *chunk;
-    uint8_t *ip; // Byte instruction pointer into `chunk`.
-    TValue stack[LUA_STACK_MAX]; // Hardcoded limit for simplicity.
+    Byte *ip; // Byte instruction pointer into `chunk`.
+    TValue stack[LUA_VM_STACKSIZE]; // Hardcoded limit for simplicity.
     TValue *sp; // Stack pointer to 1 past the last element.
+    Table globals; // Interned global variable identifiers, as strings.
     Table strings; // Interned string literals/user-created ones.
     lua_Object *objects; // Head of linked list of allocated objects.
 };

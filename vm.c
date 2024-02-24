@@ -49,11 +49,13 @@ void init_vm(lua_VM *self) {
     self->chunk = NULL;
     self->ip    = NULL;
     reset_vmsp(self);
+    init_table(&self->globals);
     init_table(&self->strings);
     self->objects = NULL;
 }
 
 void free_vm(lua_VM *self) {
+    free_table(&self->globals);
     free_table(&self->strings);
     free_objects(self);
 }
@@ -156,6 +158,15 @@ static void concatenate(lua_VM *self) {
 #define read_constant(vm)       (read_constant_at(vm, read_byte(vm)))
 
 /**
+ * III:21.2     Variable Declarations
+ * 
+ * Helper macro to read the current top of the stack and increment the VM's
+ * instruction pointer and then cast the result to a `lua_String*`.
+ */
+#define read_string(vm)         asstring(read_constant(vm))
+#define read_string_at(vm, i)   asstring(read_constant_at(vm, i))
+
+/**
  * Horrible C preprocessor abuse...
  * 
  * @param vm        `lua_VM*`
@@ -211,6 +222,16 @@ static void concatenate(lua_VM *self) {
 #define binop_cmp(vm, operation) \
     binop_template(vm, assert_comparison, makeboolean, operation)
 
+/**
+ * Note that the compiler emitted them in this order: hi, mid, lo.
+ */
+static inline DWord read_dword(lua_VM *self) {
+    Byte hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
+    Byte mid = read_byte(self); // bits 8..15  : (0x000100..0x00FFFF)
+    Byte lo  = read_byte(self); // bits 0..7   : (0x000000..0x0000FF)
+    return (hi >> 16) | (mid >> 8) | (lo);
+}
+
 
 static InterpretResult run_bytecode(lua_VM *self) {
     // Hack, but we reset so we can disassemble properly.
@@ -234,7 +255,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
         // we can report what line an error occured in.
         get_instruction_line(self->chunk, offset);
 #endif
-        uint8_t instruction;
+        Byte instruction;
         switch (instruction = read_byte(self)) {
         case OP_CONSTANT: {
             TValue value = read_constant(self);
@@ -242,10 +263,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
             break;
         }
         case OP_CONSTANT_LONG: {
-            uint8_t hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
-            uint8_t mid = read_byte(self); // bits 8..15  : (0x000100..0x00FFFF)
-            uint8_t lo  = read_byte(self); // bits 0..7   : (0x000000..0x0000FF)
-            int32_t index  = (hi >> 16) | (mid >> 8) | (lo);
+            DWord index = read_dword(self);
             TValue value = read_constant_at(self, index);
             push_vmstack(self, value);
             break;
@@ -258,6 +276,34 @@ static InterpretResult run_bytecode(lua_VM *self) {
                        
         // -*- III:21.1.2   Expression statements ----------------------------*-
         case OP_POP: pop_vmstack(self); break;
+                     
+        // -*- III:21.2     Variable Declarations ----------------------------*-
+        case OP_GET_GLOBAL: {
+            lua_String *name = read_string(self);
+            TValue value;
+            // If not present in the hash table, the variable never existed.
+            if (!table_get(&self->globals, name, &value)) {
+                runtime_error(self, "Undefined variable '%s'.", name->data);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            push_vmstack(self, value);
+            break;
+        }
+        case OP_DEFINE_GLOBAL: {
+            // Safe to assume this is a string given this instruction.
+            lua_String *name = read_string(self);
+            // Assign to the variable whatever's on top of the stack
+            table_set(&self->globals, name, peek_vmstack(self, 0));
+            pop_vmstack(self); // Don't pop until done in case we need to GC
+            break;
+        }
+        case OP_DEFINE_GLOBAL_LONG: {
+            DWord index = read_dword(self);
+            lua_String *name = read_string_at(self, index);
+            table_set(&self->globals, name, peek_vmstack(self, 0));
+            pop_vmstack(self);
+            break;
+        }
 
         // -*- III:18.4.2   Equality and comparison operators ----------------*-
         case OP_EQ: {
@@ -340,6 +386,7 @@ InterpretResult interpret_vm(lua_VM *self, const char *source) {
 #undef read_byte
 #undef read_constant
 #undef read_constant_at
+#undef read_string
 #undef assert_arithmetic
 #undef assert_comparison
 #undef binop_template

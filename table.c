@@ -30,7 +30,7 @@ void free_table(Table *self) {
  * function `table_set()` we do check that condition before calling this.
  */
 static Entry *find_entry(Entry *entries, int capacity, lua_String *key) {
-    uint32_t index = (key->hash % capacity);
+    DWord index = (key->hash % capacity);
     Entry *tombstone = NULL;
     for (;;) {
         Entry *entry = &entries[index];
@@ -145,11 +145,11 @@ void copy_table(Table *dst, Table *src) {
     }
 }
 
-lua_String *table_findstring(Table *self, const char *data, int length, uint32_t hash) {
+lua_String *table_findstring(Table *self, const char *data, int length, DWord hash) {
     if (self->count == 0) {
         return NULL;
     }
-    uint32_t index = hash % self->capacity;
+    DWord index = hash % self->capacity;
     for (;;) {
         Entry *entry = &self->entries[index];
         if (entry->key == NULL) {

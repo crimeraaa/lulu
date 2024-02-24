@@ -26,6 +26,12 @@ typedef enum {
     // -*- III:21.1.2   Expression statements --------------------------------*-
     OP_POP,
     
+    // -*- III:21.2     Variable Declarations --------------------------------*-
+    OP_GET_GLOBAL,
+    OP_GET_GLOBAL_LONG,
+    OP_DEFINE_GLOBAL,
+    OP_DEFINE_GLOBAL_LONG,
+     
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     OP_EQ,
     // OP_NEQ,
@@ -78,7 +84,7 @@ typedef struct {
 typedef struct {
     ValueArray constants;
     LineRLE lines;
-    uint8_t *code; // 1D array of 8-bit instructions.
+    Byte *code; // 1D array of 8-bit instructions.
     int count;     // Current number of instructions written to `code`.
     int capacity;  // Total number of instructions we can hold currently.
     int prevline;  // Track the previous line number as we may skip some.
@@ -86,7 +92,7 @@ typedef struct {
 
 void init_chunk(Chunk *self);
 void free_chunk(Chunk *self);
-void write_chunk(Chunk *self, uint8_t byte, int line);
+void write_chunk(Chunk *self, Byte byte, int line);
 
 /**
  * @brief       Append `value` to the given chunk's constants pool.

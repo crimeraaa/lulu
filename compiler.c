@@ -73,16 +73,16 @@ static inline void error_at_current(Parser *self, const char *message) {
  * Assume the compiler should move to the next token. So the parser is set to
  * start a new token. This adjusts state of the compiler's parser and lexer.
  */
-static void advance_compiler(Compiler *self) {
-    self->parser.previous = self->parser.current;
+static void advance_parser(Parser *parser, Lexer *lexer) {
+    parser->previous = parser->current;
     
     for (;;) {
-        self->parser.current = tokenize(&self->lexer);
-        if (self->parser.current.type != TOKEN_ERROR) {
+        parser->current = tokenize(lexer);
+        if (parser->current.type != TOKEN_ERROR) {
             break;
         }
         // Error tokens already point to an error message thanks to the lexer.
-        error_at_current(&self->parser, self->parser.current.start);
+        error_at_current(parser, parser->current.start);
     }
 }
 
@@ -94,7 +94,7 @@ static void advance_compiler(Compiler *self) {
  */
 static void consume_token(Compiler *self, TokenType expected, const char *message) {
     if (self->parser.current.type == expected) {
-        advance_compiler(self);
+        advance_parser(&self->parser, &self->lexer);
         return;
     }
     error_at_current(&self->parser, message);
@@ -119,7 +119,7 @@ static bool match_token(Compiler *self, TokenType expected) {
     if (!check_token(&self->parser, expected)) {
         return false;
     }
-    advance_compiler(self);
+    advance_parser(&self->parser, &self->lexer);
     return true;
 }
 
@@ -129,28 +129,67 @@ static bool match_token(Compiler *self, TokenType expected) {
  * This function simply writes to the compiler's current chunk the given byte,
  * and we log line information based on the consumed token (parser's previous).
  */
-static inline void emit_byte(Compiler *self, uint8_t byte) {
+static inline void emit_byte(Compiler *self, Byte byte) {
     write_chunk(current_chunk(self), byte, self->parser.previous.line);
 }
 
-/* Helper because we'll be using this a lot. */
-static inline void emit_bytes(Compiler *self, uint8_t i, uint8_t ii) {
+/** 
+ * Helper because we'll be using this a lot. Used mainly for an 8-bit instruction
+ * that has an 8-bit operand, like `OP_CONSTANT`.
+ */
+static inline void emit_bytes(Compiler *self, Byte i, Byte ii) {
     emit_byte(self, i);
     emit_byte(self, ii);
 }
 
-/* Helper to emit a 1-byte instruction with a 24-bit operand. */
-static inline void
-emit_long(Compiler *self, uint8_t i, uint8_t ii, uint8_t iii, uint8_t iv) {
-    emit_byte(self, i);
-    emit_byte(self, ii);
-    emit_byte(self, iii);
-    emit_byte(self, iv);
+/** 
+ * Helper to emit a 1-byte instruction with a 24-bit operand, such as the
+ * `OP_CONSTANT_LONG` and `OP_DEFINE_GLOBAL_LONG` instructions.
+ * 
+ * NOTE:
+ * 
+ * We actually just split the 24-bit operand into 3 8-bit ones so that each of 
+ * them fits into the chunk's bytecode array. We'll need to decode them later in 
+ * the VM using similar bitwise operations.
+ */
+static inline void emit_long(Compiler *self, Byte byte, DWord dword) {
+    Byte hi  = (dword >> 16) & 0xFF; // mask bits 17-24 : 0x010000..0xFFFFFF
+    Byte mid = (dword >> 8)  & 0xFF; // mask bits 9-16  : 0x000100..0x00FFFF
+    Byte lo  = dword & 0xFF;         // mask bits 1-8   : 0x000000..0x0000FF
+    emit_byte(self, byte);
+    emit_byte(self, hi);
+    emit_byte(self, mid);
+    emit_byte(self, lo);
 }
 
 /* Helper because it's automatically called by `end_compiler()`. */
 static inline void emit_return(Compiler *self) {
     emit_byte(self, OP_RET);
+}
+
+/**
+ * III:21.2     Variable Declarations
+ * 
+ * Returns an index into the current chunk's constants array where `value` has
+ * been appended to.
+ * 
+ * This function does NOT handle emitting the appropriate bytecode instructions
+ * needed to load this constant at the determined index at runtime. For that,
+ * please refer to `emit_constant()`.
+ * 
+ * NOTE:
+ * 
+ * If more than `MAX_CONSTANTS_LONG` (a.k.a. 2 ^ 24 - 1) constants have been
+ * created, we return 0. Chunks reserve index 0 in their constants pool as a
+ * sort of "black hole" where garbage/error values are thrown into.
+ */
+static inline DWord make_constant(Compiler *self, TValue value) {
+    int constant = add_constant(current_chunk(self), value);
+    if (constant > MAX_CONSTANTS_LONG) {
+        error(&self->parser, "Too many constants in the current chunk");       
+        return 0;
+    }
+    return constant;
 }
 
 /**
@@ -161,17 +200,12 @@ static inline void emit_return(Compiler *self) {
  * chunk's constants pool.
  */
 static inline void emit_constant(Compiler *self, TValue value) {
-    int index = add_constant(current_chunk(self), value);
+    DWord index = make_constant(self, value);
     if (index <= MAX_CONSTANTS_SHORT) {
-        emit_bytes(self, OP_CONSTANT, (uint8_t)index);
+        emit_bytes(self, OP_CONSTANT, (Byte)index);
     } else if (index <= MAX_CONSTANTS_LONG) {
-        uint8_t hi  = (index >> 16) & 0xFF; // mask bits 17-24
-        uint8_t mid = (index >> 8)  & 0xFF; // mask bits 9-16
-        uint8_t lo  = index & 0xFF;         // mask bits 1-8
-        emit_long(self, OP_CONSTANT_LONG, hi, mid, lo);
-    } else {
-        error(&self->parser, "Too many constants in the current chunk");
-    }
+        emit_long(self, OP_CONSTANT_LONG, index);
+    } 
 }
 
 /**
@@ -197,6 +231,18 @@ static void compile_declaration(Compiler *self);
 static void parse_precedence(Compiler *self, Precedence precedence);
 
 /* }}} */
+
+/**
+ * III:21.2     Variable Declaration
+ * 
+ * This function handles interning a variable name (as if it were a string) and
+ * appending it to our chunk's constants array where we'll index into in order
+ * to retrieve the variable name again at runtime.
+ */
+static DWord identifier_constant(Compiler *self, const Token *name) {
+    lua_String *result = copy_string(self->vm, name->start, name->length);
+    return make_constant(self, makeobject(result));
+}
 
 /**
  * III:17.5     Parsing Infix Expressions
@@ -314,6 +360,33 @@ void string(Compiler *self) {
 }
 
 /**
+ * III:21.3     Reading Variables
+ * 
+ * Emit the bytes needed to access a variable from the chunk's constants pool.
+ */
+static inline void named_variable(Compiler *self, const Token *name) {
+    DWord arg = identifier_constant(self, name);
+    if (arg <= MAX_CONSTANTS_SHORT) {
+        emit_bytes(self, OP_GET_GLOBAL, arg);
+    } else if (arg <= MAX_CONSTANTS_LONG) {
+        emit_long(self, OP_GET_GLOBAL_LONG, arg);
+    } else {
+        error_at(&self->parser, name, "Unable to retrieve global variable.");
+    }
+}
+
+/**
+ * III:21.3     Reading Variables
+ * 
+ * We access a variable using its name.
+ * 
+ * Assumes the identifier token is the parser's previous one as we consumed it.
+ */
+void variable(Compiler *self) {
+    named_variable(self, &self->parser.previous);
+}
+
+/**
  * III:17.4.3   Unary negation
  * 
  * Assumes the leading '-' token has been consumed and is the parser's previous
@@ -346,7 +419,7 @@ void unary(Compiler *self) {
  * considered "prefix" expressions. This helps kick off the compiler + parser.
  */
 static void parse_precedence(Compiler *self, Precedence precedence) {
-    advance_compiler(self);
+    advance_parser(&self->parser, &self->lexer);
     const ParseFn prefixfn = get_rule(self->parser.previous.type)->prefix;
     if (prefixfn == NULL) {
         error(&self->parser, "Expected an expression.");
@@ -355,9 +428,42 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
     prefixfn(self);
     
     while (precedence <= get_rule(self->parser.current.type)->precedence) {
-        advance_compiler(self);
+        advance_parser(&self->parser, &self->lexer);
         const ParseFn infixfn = get_rule(self->parser.previous.type)->infix;
         infixfn(self);
+    }
+}
+
+/**
+ * III:21.2     Variable Declarations
+ * 
+ * Because I'm implementing Lua we don't have a `var` keyword, so we have to be
+ * more careful when it comes to determining if an identifier supposed to be a
+ * global variable declaration/definition/assignment.
+ * 
+ * Assumes that we already consumed a TOKEN_IDENT and that it's now the parser's
+ * previous token.
+ */
+static Byte parse_variable(Compiler *self, const char *message) {
+    // consume_token(self, TOKEN_IDENT, message); // Do NOT use this for Lua!
+    return identifier_constant(self, &self->parser.previous);
+}
+
+/**
+ * III:21.2     Variable Declarations
+ * 
+ * Global variables are looked up by name at runtime. So the VM needs access to
+ * the name obviously. A string can't fit in our bytecode stream so we instead
+ * store the string in the constants table then index into it. That's why we
+ * take a `Byte`.
+ */
+static void define_variable(Compiler *self, DWord index) {
+    if (index <= MAX_CONSTANTS_SHORT) {
+        emit_bytes(self, OP_DEFINE_GLOBAL, index);
+    } else if (index <= MAX_CONSTANTS_LONG) {
+        emit_long(self, OP_DEFINE_GLOBAL_LONG, index);
+    } else {
+        error(&self->parser, "Too many global variable identifiers.");
     }
 }
 
@@ -386,6 +492,35 @@ static void compile_expression(Compiler *self) {
 }
 
 /**
+ * III:21.2     Variable Declarations
+ * 
+ * Unlike Lox, which has a dedicated `var` keyword, Lua has implicit variable
+ * declarations. That is, no matter the scope, simply typing `a = ...` already
+ * declares a variable of the name "a" if it doesn't already exist.
+ * 
+ * NOTE:
+ * 
+ * Because I'm implementing Lua, my version DOESN'T use the "var" keyword. So we
+ * already consumed the `TOKEN_IDENT` before getting here. How do we deal with
+ * non-assignments of globals and global assignments?
+ * 
+ * For non-assignment of a global declaration, Lua considers that an error.
+ * For assignment IN a global declaration, we'll have to be smart.
+ */
+static void compile_vardecl(Compiler *self) {
+    // Index of variable name (previous token) as appended into constants pool
+    DWord index = parse_variable(self, "Expected a variable name.");
+    if (match_token(self, TOKEN_ASSIGN)) {
+        compile_expression(self); // Push result of expression
+    } else {
+        // emit_byte(self, OP_NIL); // Push nil as default variable value
+        error(&self->parser, "Expected '=' after variable declaration.");
+    }
+    match_token(self, TOKEN_SEMICOL);
+    define_variable(self, index);
+}
+
+/**
  * III:21.1.2   Expression statements
  * 
  * In Lox, expression statements (exprstmt for short) are just expressions followed
@@ -396,14 +531,50 @@ static void compile_expression(Compiler *self) {
  */
 static void compile_exprstmt(Compiler *self) {
     compile_expression(self);
-    emit_byte(self, OP_POP);
     match_token(self, TOKEN_SEMICOL);
+    emit_byte(self, OP_POP);
 }
 
 static void compile_printstmt(Compiler *self) {
     compile_expression(self);
-    emit_byte(self, OP_PRINT);
     match_token(self, TOKEN_SEMICOL);
+    emit_byte(self, OP_PRINT);
+}
+
+/**
+ * III:21.1.3   Error synchronization
+ * 
+ * If we hit a compile error while parsing a previous statement we panic.
+ * When we panic, we attempt to synchronize by moving the parser to the next
+ * statement boundary. A statement boundary is a preceding token that can end
+ * a statement, like a semicolon. Or a subsequent token that begins a statement,
+ * like a control flow or declaration statement.
+ */
+static void synchronize_parser(Parser *parser, Lexer *lexer) {
+    parser->panicking = false;
+    
+    while (parser->current.type != TOKEN_EOF) {
+        if (parser->previous.type == TOKEN_SEMICOL) {
+            // If more than 1 semicol, don't report the error once since we
+            // reset the parser panic state.
+            if (parser->current.type != TOKEN_SEMICOL) {
+                return;
+            }
+        }
+        switch (parser->current.type) {
+        case TOKEN_FUNCTION:
+        case TOKEN_LOCAL:
+        case TOKEN_FOR:
+        case TOKEN_IF:
+        case TOKEN_WHILE:
+        case TOKEN_PRINT:
+        case TOKEN_RETURN: return;
+        default:
+            ; // Do nothing
+        }
+        // Consume token without doing anything with it
+        advance_parser(parser, lexer);
+    }
 }
 
 /**
@@ -415,13 +586,25 @@ static void compile_printstmt(Compiler *self) {
  * to `compile_statement()` and whatever that delegates to.
  */
 static void compile_declaration(Compiler *self) {
-    compile_statement(self);
+    if (match_token(self, TOKEN_IDENT)) {
+        compile_vardecl(self);
+    } else {
+        compile_statement(self);
+    }
+    if (self->parser.panicking) {
+        synchronize_parser(&self->parser, &self->lexer);
+    }
 }
 
 /**
  * III:21.1     Statements
  * 
  * For now let's focus on getting the `print` statement (not function!) to work.
+ * 
+ * III:21.1.2   Expression statements
+ * 
+ * Now, if we don't see a `print` "keyword", we assume we must be looking at an
+ * expression statement.
  */
 static void compile_statement(Compiler *self) {
     if (match_token(self, TOKEN_PRINT)) {
@@ -431,13 +614,13 @@ static void compile_statement(Compiler *self) {
     }
     // Disallow lone/trailing semicolons that weren't consumed by statements.
     if (match_token(self, TOKEN_SEMICOL)) {
-        error_at(&self->parser, &self->parser.previous, "Unexpected symbol.");
+        error(&self->parser, "Unexpected symbol.");
     }
 }
 
 bool compile_bytecode(Compiler *self, const char *source) {
     init_lexer(&self->lexer, source); 
-    advance_compiler(self);
+    advance_parser(&self->parser, &self->lexer);
     while (!match_token(self, TOKEN_EOF)) {
         compile_declaration(self);
     }
