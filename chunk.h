@@ -48,13 +48,16 @@ typedef enum {
     // -*- III:15.3:    An Arithmetic calculator -----------------------------*-
     OP_UNM, // Unary negation, a.k.a. "Unary minus" (hence "UNM").
 
+    // -*- III:21.1.1   Print statements -------------------------------------*-
+    OP_PRINT,
+
     OP_RET,
 } OpCode;
 
 typedef struct {
     int where; // Line number for run-length-encoding.
     int start; // First instruction's byte offset from the `code` array.
-    int end; // Last instruction's byte offset from the `code` array.
+    int end;   // Last instruction's byte offset from the `code` array.
 } Linerun;
 
 /** 
@@ -64,8 +67,8 @@ typedef struct {
  * smarter and instead record "runs" of consective line occurences.
  */
 typedef struct {
-    int count;        // Non-empty linecount. May not line up with line numbers.
-    int capacity;     // Number of elements allocated for.
+    int count;     // Non-empty linecount. May not line up with line numbers.
+    int capacity;  // Number of elements allocated for.
     Linerun *runs; // 1D array of information about consecutive line sequences.
 } LineRLE;
 

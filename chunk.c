@@ -181,6 +181,10 @@ int disassemble_instruction(Chunk *chunk, int offset) {
 
     // -*- III:15.3     An Arithmetic Calculator -----------------------------*-
     case OP_UNM: return simple_instruction("OP_UNM", offset);
+
+    // -*- III:21.1.1   Print statements
+    case OP_PRINT: return simple_instruction("OP_PRINT", offset);
+    
     case OP_RET: return simple_instruction("OP_RET", offset);
     default: break;
     }

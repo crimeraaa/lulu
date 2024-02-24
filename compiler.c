@@ -101,6 +101,29 @@ static void consume_token(Compiler *self, TokenType expected, const char *messag
 }
 
 /**
+ * III:21.1.1   Print Statements
+ * 
+ * Check if the parser's CURRENT (not PREVIOUS) token matches `expected`.
+ */
+static inline bool check_token(Parser *self, TokenType expected) {
+    return self->current.type == expected;
+}
+
+/**
+ * III:21.1.1   Print Statements
+ * 
+ * If token matches, consume it and return true. Otherwise return false. Nothing
+ * more, nothing less. We don't throw the parser into a panic state.
+ */
+static bool match_token(Compiler *self, TokenType expected) {
+    if (!check_token(&self->parser, expected)) {
+        return false;
+    }
+    advance_compiler(self);
+    return true;
+}
+
+/**
  * III:17.3     Emitting Bytecode
  * 
  * This function simply writes to the compiler's current chunk the given byte,
@@ -166,16 +189,14 @@ static inline void end_compiler(Compiler *self) {
 #endif
 }
 
-/**
- * BEGIN:       Forward Declarations
- */
+/* FORWARD DECLARATIONS ------------------------------------------------- {{{ */
 
 static void compile_expression(Compiler *self);
+static void compile_statement(Compiler *self);
+static void compile_declaration(Compiler *self);
 static void parse_precedence(Compiler *self, Precedence precedence);
 
-/**
- * END:         Forward Declarations
- */
+/* }}} */
 
 /**
  * III:17.5     Parsing Infix Expressions
@@ -364,11 +385,43 @@ static void compile_expression(Compiler *self) {
     parse_precedence(self, PREC_ASSIGNMENT); 
 }
 
+static void print_statement(Compiler *self) {
+    compile_expression(self);
+    consume_token(self, TOKEN_SEMICOL, "Expected ';' after value");
+    emit_byte(self, OP_PRINT);
+}
+
+/**
+ * III:21.1     Statements
+ * 
+ * "Declarations" are statements that bind names to values. Remember that in our
+ * grammar, assignment is one of (if not the) lowest precedences. So we parse
+ * it first above all else, normal non-name-binding statements will shunt over
+ * to `compile_statement()` and whatever that delegates to.
+ */
+static void compile_declaration(Compiler *self) {
+    compile_statement(self);
+}
+
+/**
+ * III:21.1     Statements
+ * 
+ * For now let's focus on getting the `print` statement (not function!) to work.
+ */
+static void compile_statement(Compiler *self) {
+    if (match_token(self, TOKEN_PRINT)) {
+        print_statement(self);
+    }
+}
+
 bool compile_bytecode(Compiler *self, const char *source) {
     init_lexer(&self->lexer, source); 
     advance_compiler(self);
-    compile_expression(self);
-    consume_token(self, TOKEN_EOF, "Expected end of expression.");
+    while (!match_token(self, TOKEN_EOF)) {
+        compile_declaration(self);
+    }
+    // compile_expression(self);
+    // consume_token(self, TOKEN_EOF, "Expected end of expression.");
     end_compiler(self);
     return !self->parser.haderror;
 }

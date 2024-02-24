@@ -64,6 +64,7 @@ typedef enum {
     TOKEN_WHILE,
     
     // Misc.
+    TOKEN_PRINT,    // Hack for now until we get builtin functions working.
     TOKEN_CONCAT,   // '..' String concatenation.
     TOKEN_VARARGS,  // '...' Function varargs.
     TOKEN_ERROR,    // Distinct enumeration to allow us to detect actual errors.

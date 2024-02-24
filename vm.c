@@ -304,9 +304,14 @@ static InterpretResult run_bytecode(lua_VM *self) {
             } 
             return runtime_arithmetic_error(self, *value);
         }
-        case OP_RET: 
+        // -*- III:21.1.1   Print statements ---------------------------------*-
+        case OP_PRINT: {
             print_value(pop_vmstack(self));
             printf("\n");
+            break;
+        }
+        case OP_RET: 
+            // Exit interpreter for now until we get functions going.
             return INTERPRET_OK;
         }
     }

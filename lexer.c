@@ -214,6 +214,8 @@ static TokenType ident_type(Lexer *self) {
             break;
         }
         case 'o': return check_keyword(self, 1, "or", TOKEN_OR);
+        // TODO: Hack, remove this when we have a builtin print function
+        case 'p': return check_keyword(self, 1, "print", TOKEN_PRINT);
         case 'r': return check_keyword(self, 1, "return", TOKEN_RETURN);
         case 's': return check_keyword(self, 1, "self", TOKEN_SELF);
         case 't': {
