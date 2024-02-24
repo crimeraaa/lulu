@@ -32,7 +32,7 @@ typedef struct {
 } Table;
 
 void init_table(Table *self);
-void deinit_table(Table *self);
+void free_table(Table *self);
 
 /**
  * III:20.4.4   Retrieving Values
@@ -63,11 +63,20 @@ bool table_delete(Table *self, lua_String *key);
  * III:20.4.3   Allocating and resizing
  * 
  * This is a helper function to copy all the entries from one table to another.
- * Do note that Rob's signature is `copy_table(Table *from, Table *to)` whereas
+ * Do note that Rob's signature is `tableAddAll(Table *from, Table *to)` whereas
  * I prefer a `dst-src` signature.
  * 
  * We walk the array of `src` and only copy over non-empty elements.
  */
 void copy_table(Table *dst, Table *src);
+
+/**
+ * III:20.5     String Interning
+ *
+ * This function checks if a given string has been interned in the given hash
+ * table. Note that you pash a `const char*`, NOT a `lua_String*`! 
+ * The point is to use this so we don't allocate a new `lua_String*`.
+ */
+lua_String *table_findstring(Table *self, const char *what, int length, uint32_t hash);
 
 #endif /* LUA_TABLE_H */

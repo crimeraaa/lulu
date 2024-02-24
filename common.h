@@ -58,6 +58,6 @@ typedef struct lua_String lua_String;
  * 
  * However, for `.c` files, it's perfectly fine to include `vm.h`.
  */
-typedef struct LuaVM LuaVM;
+typedef struct lua_VM lua_VM;
 
 #endif /* LUA_COMMON_H */

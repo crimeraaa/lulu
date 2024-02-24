@@ -3,7 +3,6 @@
 
 #include "common.h"
 #include "chunk.h"
-#include "object.h"
 #include "table.h"
 #include "value.h"
 
@@ -16,7 +15,7 @@
  */
 #define LUA_STACK_MAX   (UINT8_MAX + 1)
 
-struct LuaVM {
+struct lua_VM {
     Chunk *chunk;
     uint8_t *ip; // Byte instruction pointer into `chunk`.
     TValue stack[LUA_STACK_MAX]; // Hardcoded limit for simplicity.
@@ -31,19 +30,19 @@ typedef enum {
     INTERPRET_RUNTIME_ERROR,
 } InterpretResult;
 
-void init_vm(LuaVM *self);
-void deinit_vm(LuaVM *self);
+void init_vm(lua_VM *self);
+void free_vm(lua_VM *self);
 
 /**
  * Given a monolithic string of source code...
  */
-InterpretResult interpret_vm(LuaVM *self, const char *source);
+InterpretResult interpret_vm(lua_VM *self, const char *source);
 
 /**
  * Assigns the top of stack to `value` then increments the VM's stack pointer
  * so that it points to the next available slot in the stack.
  */
-void push_vmstack(LuaVM *self, TValue value);
+void push_vmstack(lua_VM *self, TValue value);
 
 /**
  * Decrements the VM's stack pointer so that it points to the previous slot in
@@ -52,6 +51,6 @@ void push_vmstack(LuaVM *self, TValue value);
  * Since we only use a stack-allocated array, we don't need to do much cleanup.
  * Moving the stack pointer downwards already indicates the slot is free.
  */
-TValue pop_vmstack(LuaVM *self);
+TValue pop_vmstack(lua_VM *self);
 
 #endif /* LUA_VIRTUAL_MACHINE_H */

@@ -8,7 +8,7 @@ void init_valuearray(ValueArray *self) {
     self->capacity = 0;
 }
 
-void deinit_valuearray(ValueArray *self) {
+void free_valuearray(ValueArray *self) {
     deallocate_array(TValue, self->values, self->capacity);
     init_valuearray(self);
 }
@@ -46,10 +46,6 @@ const char *lua_typename(TValue value) {
     return "unknown";
 }
 
-static inline bool compare_strings(const lua_String *a, const lua_String *b) {
-    return a->length == b->length && memcmp(a->data, b->data, a->length) == 0;
-}
-
 bool values_equal(TValue lhs, TValue rhs) {
     if (lhs.type != rhs.type) {
         return false;
@@ -59,11 +55,8 @@ bool values_equal(TValue lhs, TValue rhs) {
     case LUA_TBOOLEAN:  return lhs.as.boolean == rhs.as.boolean;
     case LUA_TNIL:      return true; // nil is always == nil.
     case LUA_TNUMBER:   return lhs.as.number == rhs.as.number;
-    case LUA_TOBJECT: {
-        lua_String *s1 = asstring(lhs);
-        lua_String *s2 = asstring(rhs);
-        return compare_strings(s1, s2);
-    } 
+    // Strings are interned so pointer comparisons are ok.
+    case LUA_TOBJECT:   return lhs.as.object == rhs.as.object;
     default: break;
     }
     fprintf(stderr, "Unsupported type %s.\n", lua_typename(lhs));

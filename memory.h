@@ -53,6 +53,6 @@ void *reallocate(void *pointer, size_t oldsize, size_t newsize);
  * Pass in a VM pointer with which we'll walk to instrusive linked list of.
  * We'll deallocate the memory alloted for each object, assuming all is well.
  */
-void free_objects(LuaVM *lvm);
+void free_objects(lua_VM *lvm);
 
 #endif /* LUA_MEMORY_H */

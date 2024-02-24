@@ -5,7 +5,7 @@
 #include "vm.h"
 
 /* Make the VM's stack pointer point to the base of the stack array. */
-static inline void reset_vmsp(LuaVM *self) {
+static inline void reset_vmsp(lua_VM *self) {
     self->sp = self->stack;
 }
 
@@ -14,7 +14,7 @@ static inline void reset_vmsp(LuaVM *self) {
  * 
  * This function simply prints whatever formatted error message you want.
  */
-static void runtime_error(LuaVM *self, const char *format, ...) {
+static void runtime_error(lua_VM *self, const char *format, ...) {
     va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
@@ -25,27 +25,27 @@ static void runtime_error(LuaVM *self, const char *format, ...) {
 }
 
 static inline InterpretResult 
-runtime_arithmetic_error(LuaVM *self, TValue operand) {
+runtime_arithmetic_error(lua_VM *self, TValue operand) {
     runtime_error(self, 
         "Attempt to perform arithmetic on a %s value", lua_typename(operand));
     return INTERPRET_RUNTIME_ERROR;
 }
 
 static inline InterpretResult
-runtime_comparison_error(LuaVM *self, TValue lhs, TValue rhs) {
+runtime_comparison_error(lua_VM *self, TValue lhs, TValue rhs) {
     runtime_error(self, 
         "Attempt to compare %s with %s", lua_typename(lhs), lua_typename(rhs));
     return INTERPRET_RUNTIME_ERROR;
 }
 
 static inline InterpretResult
-runtime_concatenation_error(LuaVM *self, TValue operand) {
+runtime_concatenation_error(lua_VM *self, TValue operand) {
     runtime_error(self,
         "Attempt to concatenate a %s value", lua_typename(operand));
     return INTERPRET_RUNTIME_ERROR;
 }
 
-void init_vm(LuaVM *self) {
+void init_vm(lua_VM *self) {
     self->chunk = NULL;
     self->ip    = NULL;
     reset_vmsp(self);
@@ -53,17 +53,17 @@ void init_vm(LuaVM *self) {
     self->objects = NULL;
 }
 
-void deinit_vm(LuaVM *self) {
-    deinit_table(&self->strings);
+void free_vm(lua_VM *self) {
+    free_table(&self->strings);
     free_objects(self);
 }
 
-void push_vmstack(LuaVM *self, TValue value) {
+void push_vmstack(lua_VM *self, TValue value) {
     *self->sp = value;
     self->sp++;
 }
 
-TValue pop_vmstack(LuaVM *self) {
+TValue pop_vmstack(lua_VM *self) {
     // 1 past top of stack was invalid, so now we actually point to top of stack
     // which is a valid element we can dereference!
     self->sp--;
@@ -81,7 +81,7 @@ TValue pop_vmstack(LuaVM *self) {
  * For example, to peek the top of the stack, use `peek_vmstack(self, 0)`.
  * To peek the value right before that, use `peek_vmstack(self, 1)`. And so on.
  */
-static inline TValue peek_vmstack(LuaVM *self, int distance) {
+static inline TValue peek_vmstack(lua_VM *self, int distance) {
     return *(self->sp - 1 - distance);
 }
 
@@ -89,7 +89,7 @@ static inline TValue peek_vmstack(LuaVM *self, int distance) {
  * Similar to `peek_vmstack()` except you get a pointer to the slot in question.
  * This lets you manipulate the stack in place.
  */
-static inline TValue *poke_vmstack(LuaVM *self, int distance) {
+static inline TValue *poke_vmstack(lua_VM *self, int distance) {
     return self->sp - 1 - distance;
 }
 
@@ -111,18 +111,17 @@ static inline bool isfalsy(TValue value) {
  * String concatenation is quite tricky due to all the allocations we need to
  * make! Not only that, but multiple concatenations may end up "orphaning"
  * middle strings and thus leaking memory.
- * 
- * III:19.1     Flexible Array Members (CHALLENGE)
- * 
- * I've effectively "shunted" responsibility of actually concatenating over to
- * `object.c:concat_strings()` just because it feels right for me.
- * Functionally this should not affect anything.
  */
-static void concatenate(LuaVM *self) {
-    lua_String *rhs    = asstring(pop_vmstack(self));
-    lua_String *lhs    = asstring(pop_vmstack(self));
-    lua_String *result = concat_strings(self, lhs, rhs);
-    push_vmstack(self, makeobject(result));
+static void concatenate(lua_VM *self) {
+    lua_String *rhs = asstring(pop_vmstack(self));
+    lua_String *lhs = asstring(pop_vmstack(self));
+    int length      = lhs->length + rhs->length;
+    char *data      = allocate(char, length + 1);
+    memcpy(&data[0], lhs->data, lhs->length);
+    memcpy(&data[lhs->length], rhs->data, rhs->length);
+    data[length] = '\0';
+    lua_String *result = take_string(self, data, length);
+    push_vmstack(self, makeobject(result)); 
 }
 
 /** 
@@ -159,7 +158,7 @@ static void concatenate(LuaVM *self) {
 /**
  * Horrible C preprocessor abuse...
  * 
- * @param vm        `LuaVM*`
+ * @param vm        `lua_VM*`
  * @param assertfn  One of the `assert_*` macros.
  * @param makefn    One of the `make*` macros.
  * @param operation One of the `lua_num*` macros or an actual function.
@@ -213,7 +212,7 @@ static void concatenate(LuaVM *self) {
     binop_template(vm, assert_comparison, makefn, operation)
 
 
-static InterpretResult run_bytecode(LuaVM *self) {
+static InterpretResult run_bytecode(lua_VM *self) {
     // Hack, but we reset so we can disassemble properly.
     // We need that start with index 0 into the lines.runs array.
     // So effectively this becames our iterator.
@@ -313,19 +312,19 @@ static InterpretResult run_bytecode(LuaVM *self) {
     }
 }
 
-InterpretResult interpret_vm(LuaVM *self, const char *source) {
+InterpretResult interpret_vm(lua_VM *self, const char *source) {
     Compiler *compiler = &(Compiler){0};
     init_chunk(&compiler->chunk);
     init_compiler(compiler, self);
     
     if (!compile_bytecode(compiler, source)) {
-        deinit_chunk(&compiler->chunk);
+        free_chunk(&compiler->chunk);
         return INTERPRET_COMPILE_ERROR;
     }
     self->chunk = &compiler->chunk;
     self->ip    = compiler->chunk.code;
     InterpretResult result = run_bytecode(self);
-    deinit_chunk(&compiler->chunk);
+    free_chunk(&compiler->chunk);
 
     return result;
 }

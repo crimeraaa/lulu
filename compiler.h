@@ -36,7 +36,7 @@ typedef struct {
     Chunk chunk; // This is where our raw bytecode resides.
     Lexer lexer; // Before generating bytecode, we need to poke at tokens.
     Parser parser; // Keep track of tokens emitted by `lexer`.
-    LuaVM *vm; // Stupid but we need to pass this to `copy_string()` + friends.
+    lua_VM *vm; // Stupid but we need to pass this to `copy_string()` + friends.
 } Compiler;
 
 /**
@@ -51,7 +51,7 @@ typedef struct {
  * For our purposes a Lua virtual machine MUST be attached to the compiler.
  * For generating bytecode alone, this will be terrible...
  */
-void init_compiler(Compiler *self, LuaVM *lvm);
+void init_compiler(Compiler *self, lua_VM *lvm);
 
 /**
  * III:16.1.1   Opening the compilation pipeline

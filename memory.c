@@ -17,23 +17,20 @@ void *reallocate(void *pointer, size_t oldsize, size_t newsize) {
     return result;
 }
 
-/**
- * III:19.1:    Flexible Array Members (CHALLENGE)
- * 
- * Instead of separately allocating the object pointer and its char array,
- * we can use C99 flexible array members are just allocate the object pointer.
- * This requires us to be vigilant to NOT accidentally free the array itself,
- * because it's not a pointer!
- */
-static void free_object(lua_Object *object) {
-    switch (object->type) {
+static inline void free_string(lua_String *self) {
+    deallocate_array(char, self->data, self->length);
+    deallocate(lua_String, self);
+}
+
+static inline void free_object(lua_Object *self) {
+    switch (self->type) {
     case LUA_TSTRING:
-        deallocate(lua_String, object);
+        free_string((lua_String*)self);
         break;
     }
 }
 
-void free_objects(LuaVM *lvm) {
+void free_objects(lua_VM *lvm) {
     lua_Object *object = lvm->objects;
     while (object != NULL) {
         lua_Object *next = object->next;

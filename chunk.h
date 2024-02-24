@@ -79,7 +79,7 @@ typedef struct {
 } Chunk;
 
 void init_chunk(Chunk *self);
-void deinit_chunk(Chunk *self);
+void free_chunk(Chunk *self);
 void write_chunk(Chunk *self, uint8_t byte, int line);
 
 /**

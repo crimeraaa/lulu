@@ -18,7 +18,7 @@ void init_table(Table *self) {
     self->capacity = 0;
 }
 
-void deinit_table(Table *self) {
+void free_table(Table *self) {
     deallocate_array(Entry, self->entries, self->capacity);
     init_table(self);
 }
@@ -49,7 +49,6 @@ static Entry *find_entry(Entry *entries, int capacity, lua_String *key) {
         } else if (entry->key == key) {
             return entry;
         }
-        index = (index + 1) % capacity; // May wrap around back to start
         index = (index + 1) % capacity; // May wrap around back to start
     }
 }
@@ -143,5 +142,26 @@ void copy_table(Table *dst, Table *src) {
         if (entry->key != NULL) {
             table_set(dst, entry->key, entry->value);
         }
+    }
+}
+
+lua_String *table_findstring(Table *self, const char *data, int length, uint32_t hash) {
+    if (self->count == 0) {
+        return NULL;
+    }
+    uint32_t index = hash % self->capacity;
+    for (;;) {
+        Entry *entry = &self->entries[index];
+        if (entry->key == NULL) {
+            // Stop if we find a non-tombstone entry.
+            if (isnil(entry->value)) {
+                return NULL;
+            }
+        } else if (entry->key->length == length && entry->key->hash == hash) {
+            if (memcmp(entry->key->data, data, length) == 0) {
+                return entry->key; // We found it!
+            }
+        }
+        index = (index + 1) % self->capacity;
     }
 }

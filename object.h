@@ -24,7 +24,7 @@ struct lua_String {
     lua_Object object; // Header for meta-information.
     uint32_t hash;     // Result of throwing `data` into a hash function.
     int length;        // Number of non-nul characters.
-    char data[];       // Heap-allocated buffer.
+    char *data;        // Heap-allocated buffer.
 };
 
 /**
@@ -39,7 +39,7 @@ struct lua_String {
  * We need to have a pointer to the VM in question so its objects linked list
  * can be updated accordingly.
  */
-// lua_String *take_string(LuaVM *lvm, char *buffer, int length);
+lua_String *take_string(lua_VM *lvm, char *buffer, int length);
 
 /**
  * III:19.3     Strings
@@ -54,17 +54,7 @@ struct lua_String {
  * Compiler struct, but it'll do since the VM is always initialized before the
  * compiler ever is.
  */
-lua_String *copy_string(LuaVM *lvm, const char *literal, int length);
-
-
-/**
- * III:19.1     Flexible Array Members (CHALLENGE)
- * 
- * To make things easier, I've created a dedicated function to concatenate
- * 2 Lua strings. We allocate memory for a new string and copy the left into the
- * new string, then the right (starting from an offset into the new string).
- */
-lua_String *concat_strings(LuaVM *lvm, const lua_String *lhs, const lua_String *rhs);
+lua_String *copy_string(lua_VM *lvm, const char *literal, int length);
 
 /**
  * III:19.4     Operations on Strings

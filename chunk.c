@@ -17,14 +17,14 @@ void init_chunk(Chunk *self) {
     init_lineRLE(&self->lines);
 }
 
-static inline void deinit_lineRLE(LineRLE *self) {
+static inline void free_lineRLE(LineRLE *self) {
     deallocate_array(Linerun, self->runs, self->capacity);
 }
 
-void deinit_chunk(Chunk *self) {
+void free_chunk(Chunk *self) {
     deallocate_array(uint8_t, self->code, self->capacity);
-    deinit_valuearray(&self->constants);
-    deinit_lineRLE(&self->lines);
+    free_valuearray(&self->constants);
+    free_lineRLE(&self->lines);
     init_chunk(self);
     init_lineRLE(&self->lines);
 }

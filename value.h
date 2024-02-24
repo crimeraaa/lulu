@@ -37,7 +37,7 @@ typedef struct {
 
 void init_valuearray(ValueArray *self);
 void write_valuearray(ValueArray *self, TValue value);
-void deinit_valuearray(ValueArray *self);
+void free_valuearray(ValueArray *self);
 void print_value(TValue value);
 
 /**

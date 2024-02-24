@@ -8,7 +8,7 @@ static inline void init_parser(Parser *self) {
     self->panicking = false;
 }
 
-void init_compiler(Compiler *self, LuaVM *lvm) {
+void init_compiler(Compiler *self, lua_VM *lvm) {
     init_parser(&self->parser);
     self->vm = lvm;
 }
