@@ -199,8 +199,8 @@ static void concatenate(lua_VM *self) {
  * 
  * See the definition for `binop_template`.
  */
-#define binop_math(vm, makefn, operation) \
-    binop_template(vm, assert_arithmetic, makefn, operation)
+#define binop_math(vm, operation) \
+    binop_template(vm, assert_arithmetic, makenumber, operation)
 
 /**
  * Similar to `binop_math`, only that it asserts both operands must be
@@ -208,8 +208,8 @@ static void concatenate(lua_VM *self) {
  * 
  * Note that this doesn't affect equality operators. `1 == false` is a valid call.
  */
-#define binop_cmp(vm, makefn, operation) \
-    binop_template(vm, assert_comparison, makefn, operation)
+#define binop_cmp(vm, operation) \
+    binop_template(vm, assert_comparison, makeboolean, operation)
 
 
 static InterpretResult run_bytecode(lua_VM *self) {
@@ -256,6 +256,9 @@ static InterpretResult run_bytecode(lua_VM *self) {
         case OP_TRUE:  push_vmstack(self, makeboolean(true)); break;
         case OP_FALSE: push_vmstack(self, makeboolean(false)); break;
                        
+        // -*- III:21.1.2   Expression statements ----------------------------*-
+        case OP_POP: pop_vmstack(self); break;
+
         // -*- III:18.4.2   Equality and comparison operators ----------------*-
         case OP_EQ: {
             TValue rhs = pop_vmstack(self);
@@ -263,16 +266,16 @@ static InterpretResult run_bytecode(lua_VM *self) {
             push_vmstack(self, makeboolean(values_equal(lhs, rhs)));
             break;
         }
-        case OP_GT: binop_cmp(self, makeboolean, lua_numgt); break;
-        case OP_LT: binop_cmp(self, makeboolean, lua_numlt); break;
+        case OP_GT: binop_cmp(self, lua_numgt); break;
+        case OP_LT: binop_cmp(self, lua_numlt); break;
 
         // -*- III:15.3.1   Binary Operators ---------------------------------*-
-        case OP_ADD: binop_math(self, makenumber, lua_numadd); break;
-        case OP_SUB: binop_math(self, makenumber, lua_numsub); break;
-        case OP_MUL: binop_math(self, makenumber, lua_nummul); break;
-        case OP_DIV: binop_math(self, makenumber, lua_numdiv); break;
-        case OP_POW: binop_math(self, makenumber, lua_numpow); break;
-        case OP_MOD: binop_math(self, makenumber, lua_nummod); break;
+        case OP_ADD: binop_math(self, lua_numadd); break;
+        case OP_SUB: binop_math(self, lua_numsub); break;
+        case OP_MUL: binop_math(self, lua_nummul); break;
+        case OP_DIV: binop_math(self, lua_numdiv); break;
+        case OP_POW: binop_math(self, lua_numpow); break;
+        case OP_MOD: binop_math(self, lua_nummod); break;
                      
         // -*- III:19.4.1   Concatenation ------------------------------------*-
         // This is repeating the code of `binop_math` but I really do not feel

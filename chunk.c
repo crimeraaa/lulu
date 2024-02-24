@@ -160,6 +160,9 @@ int disassemble_instruction(Chunk *chunk, int offset) {
     case OP_TRUE:  return simple_instruction("OP_TRUE", offset);
     case OP_FALSE: return simple_instruction("OP_FALSE", offset);
                    
+    // -*- III:21.1.2   Expression statements --------------------------------*-
+    case OP_POP: return simple_instruction("OP_POP", offset);
+
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     case OP_EQ: return simple_instruction("OP_EQ", offset);
     case OP_GT: return simple_instruction("OP_GT", offset);

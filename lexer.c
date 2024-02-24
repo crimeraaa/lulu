@@ -273,11 +273,16 @@ static Token number_token(Lexer *self) {
  * This function only supports string literals on the same line. 
  * Multi-line string literals are a different beast.
  * Currently we don't support escape sequences and single quotes.
+ * 
+ * III:21.1.2   Expression statements
+ * 
+ * I've now opted to add support for single quote strings, but any given string
+ * MUST be surrounded by the same type of quotes.
  */
-static Token string_token(Lexer *self) {
-    while (peek_current(self) != '"' && !is_at_end(self)) {
+static Token string_token(Lexer *self, char quote) {
+    while (peek_current(self) != quote && !is_at_end(self)) {
         if (peek_current(self) == '\n') {
-            return error_token(self, "String literals can only be on 1 line.");
+            return error_token(self, "Unterminated string literal.");
         }
         advance_lexer(self);
     }
@@ -334,7 +339,8 @@ Token tokenize(Lexer *self) {
     case '^': return make_token(self, TOKEN_CARET);
     case '%': return make_token(self, TOKEN_PERCENT);
     // Quotation marks
-    case '"': return string_token(self);
+    case '"': return string_token(self, '"');
+    case '\'': return string_token(self, '\'');
     // Relational
     case '~': return match_lexer(self, '=') 
         ? make_token(self, TOKEN_NEQ) : error_token(self, "Expected '=' after '~'.");

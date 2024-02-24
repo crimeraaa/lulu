@@ -23,6 +23,9 @@ typedef enum {
     OP_TRUE,
     OP_FALSE,
     
+    // -*- III:21.1.2   Expression statements --------------------------------*-
+    OP_POP,
+    
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     OP_EQ,
     // OP_NEQ,

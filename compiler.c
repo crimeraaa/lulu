@@ -39,7 +39,7 @@ static void error_at(Parser *self, const Token *token, const char *message) {
     if (token->type == TOKEN_EOF) {
         fprintf(stderr, " at end");
     } else if (token->type == TOKEN_ERROR) {
-        // Nothing
+        // Nothing as the error token already has a message.
     } else {
         fprintf(stderr, " at '%.*s'", token->length, token->start);
     }
@@ -385,10 +385,25 @@ static void compile_expression(Compiler *self) {
     parse_precedence(self, PREC_ASSIGNMENT); 
 }
 
-static void print_statement(Compiler *self) {
+/**
+ * III:21.1.2   Expression statements
+ * 
+ * In Lox, expression statements (exprstmt for short) are just expressions followed
+ * by a ';'. In Lua, we allow up to 1 ';' only. Any more are considered errors.
+ * 
+ * Since it produces a side effect by pushing something onto the stack, such as
+ * via the prefixfns, we have to "undo" that by emitting a pop instruction.
+ */
+static void compile_exprstmt(Compiler *self) {
     compile_expression(self);
-    consume_token(self, TOKEN_SEMICOL, "Expected ';' after value");
+    emit_byte(self, OP_POP);
+    match_token(self, TOKEN_SEMICOL);
+}
+
+static void compile_printstmt(Compiler *self) {
+    compile_expression(self);
     emit_byte(self, OP_PRINT);
+    match_token(self, TOKEN_SEMICOL);
 }
 
 /**
@@ -410,7 +425,13 @@ static void compile_declaration(Compiler *self) {
  */
 static void compile_statement(Compiler *self) {
     if (match_token(self, TOKEN_PRINT)) {
-        print_statement(self);
+        compile_printstmt(self);
+    } else {
+        compile_exprstmt(self);
+    }
+    // Disallow lone/trailing semicolons that weren't consumed by statements.
+    if (match_token(self, TOKEN_SEMICOL)) {
+        error_at(&self->parser, &self->parser.previous, "Unexpected symbol.");
     }
 }
 
@@ -420,8 +441,6 @@ bool compile_bytecode(Compiler *self, const char *source) {
     while (!match_token(self, TOKEN_EOF)) {
         compile_declaration(self);
     }
-    // compile_expression(self);
-    // consume_token(self, TOKEN_EOF, "Expected end of expression.");
     end_compiler(self);
     return !self->parser.haderror;
 }
