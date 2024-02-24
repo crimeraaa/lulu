@@ -9,11 +9,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define xtostring(Macro)        #Macro
-#define stringify(Macro)        xtostring(Macro)
-#define logstring(Message)      __FILE__ ":" stringify(__LINE__) ": " Message
-#define logprintln(Message)     fputs(logstring(Message) "\n", stderr)
-#define logprintf(Format, ...)  fprintf(stderr, logstring(Format), __VA_ARGS__)
+#define xtostring(macro)        #macro
+#define stringify(macro)        xtostring(macro)
+#define logstring(info)         __FILE__ ":" stringify(__LINE__) ": " info
+#define logprintln(info)        fputs(logstring(info) "\n", stderr)
+#define logprintf(fmts, ...)    fprintf(stderr, logstring(fmts), __VA_ARGS__)
 
 /**
  * III:19.2     Struct Inheritance
@@ -28,7 +28,7 @@ typedef struct lua_Object lua_Object;
 /**
  * III:19.2     Struct Inheritance
  * 
- * The `lua_String` datatype contains an array of characters and a count. But most
+ * The `lua_String` datatype contains an array of characters and a count. Most
  * importantly, its first structure member is an `lua_Object`.
  * 
  * This allows standards-compliant type-punning, e.g given `lua_String*`, we can
@@ -36,15 +36,6 @@ typedef struct lua_Object lua_Object;
  * 
  * Likewise, if we are ABSOLUTELY certain a particular `lua_Object*` points to a 
  * `lua_String*`, then the inverse works was well.
- * 
- * III:19.1     Flexible Array Members (CHALLENGE)
- * 
- * Instead of using a separate pointer for `lua_String*` itself and another one
- * for the `char*` buffer thereof, we can use C99 flexible array members so that
- * we allocate enough memory for the entire structure along with its buffer and
- * cram everything into one pointer. This requires us to NOT free the buffer
- * itself and to only free the pointer as even FAMs decay to pointers, which is
- * dangerous when passing to the malloc family.
  */
 typedef struct lua_String lua_String;
 

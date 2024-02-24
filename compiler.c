@@ -29,12 +29,12 @@ static inline Chunk *current_chunk(Compiler *self) {
  * This is generic function to report errors based on some token and a message.
  * Whatever the case, we set the parser's error state to true.
  */
-static void error_at(Compiler *self, const Token *token, const char *message) {
-    if (self->parser.panicking) {
+static void error_at(Parser *self, const Token *token, const char *message) {
+    if (self->panicking) {
         return; // Avoid cascading errors for user's sanity
     }
-    self->parser.haderror = true;
-    self->parser.panicking = true;
+    self->haderror = true;
+    self->panicking = true;
     fprintf(stderr, "[line %i] Error", token->line);
     if (token->type == TOKEN_EOF) {
         fprintf(stderr, " at end");
@@ -52,8 +52,8 @@ static void error_at(Compiler *self, const Token *token, const char *message) {
  * More often than not, we want to report an error at the location of the token
  * we just consumed (that is, it's now the parser's previous token).
  */
-static inline void error(Compiler *self, const char *message) {
-    error_at(self, &self->parser.previous, message);
+static inline void error(Parser *self, const char *message) {
+    error_at(self, &self->previous, message);
 }
 
 /**
@@ -63,8 +63,8 @@ static inline void error(Compiler *self, const char *message) {
  * This is a wrapper around the more generic `error_at()` which can take in any
  * arbitrary error message.
  */
-static inline void error_at_current(Compiler *self, const char *message) {
-    error_at(self, &self->parser.current, message);
+static inline void error_at_current(Parser *self, const char *message) {
+    error_at(self, &self->current, message);
 }
 
 /**
@@ -82,7 +82,7 @@ static void advance_compiler(Compiler *self) {
             break;
         }
         // Error tokens already point to an error message thanks to the lexer.
-        error_at_current(self, self->parser.current.start);
+        error_at_current(&self->parser, self->parser.current.start);
     }
 }
 
@@ -97,7 +97,7 @@ static void consume_token(Compiler *self, TokenType expected, const char *messag
         advance_compiler(self);
         return;
     }
-    error_at_current(self, message);
+    error_at_current(&self->parser, message);
 }
 
 /**
@@ -147,7 +147,7 @@ static inline void emit_constant(Compiler *self, TValue value) {
         uint8_t lo  = index & 0xFF;         // mask bits 1-8
         emit_long(self, OP_CONSTANT_LONG, hi, mid, lo);
     } else {
-        error(self, "Too many constants in the current chunk");
+        error(&self->parser, "Too many constants in the current chunk");
     }
 }
 
@@ -287,7 +287,7 @@ void number(Compiler *self) {
  */
 void string(Compiler *self) {
     const char *start = self->parser.previous.start + 1; // Past opening quote
-    int length = self->parser.previous.length - 2; // Before closing quote
+    int length = self->parser.previous.length - 2; // Length w/o quotes
     lua_String *object = copy_string(self->vm, start, length);
     emit_constant(self, makeobject(object));
 }
@@ -328,7 +328,7 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
     advance_compiler(self);
     const ParseFn prefixfn = get_rule(self->parser.previous.type)->prefix;
     if (prefixfn == NULL) {
-        error(self, "Expected an expression.");
+        error(&self->parser, "Expected an expression.");
         return; // Might end up with NULL infixfn as well
     }
     prefixfn(self);
