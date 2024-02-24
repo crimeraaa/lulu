@@ -242,9 +242,9 @@ static InterpretResult run_bytecode(lua_VM *self) {
             break;
         }
         case OP_CONSTANT_LONG: {
-            uint8_t hi  = read_byte(self); // bits 16..23 represents (0x10..0x17)
-            uint8_t mid = read_byte(self); // bits 8..15 represents (0x8..0xf)
-            uint8_t lo  = read_byte(self); // bits 0..7 represents (0x0..0x7)
+            uint8_t hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
+            uint8_t mid = read_byte(self); // bits 8..15  : (0x000100..0x00FFFF)
+            uint8_t lo  = read_byte(self); // bits 0..7   : (0x000000..0x0000FF)
             int32_t index  = (hi >> 16) | (mid >> 8) | (lo);
             TValue value = read_constant_at(self, index);
             push_vmstack(self, value);
