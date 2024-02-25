@@ -152,15 +152,16 @@ check_keyword(const Lexer *self,
 /**
  * Wrapper around the above function so the me-facing call doesn't look so crazy.
  * 
- * @param Index The offset index into `Word` where we begin the comparison.
- * @param Word  String literal of the keyword in question.
- * @param Type  Token type to be returned if lexer's substring matches `Word`.
+ * @param lexer     Pointer to a lexer instance.
+ * @param index     The offset index into `Word` where we begin the comparison.
+ * @param keyword   String literal of the keyword in question.
+ * @param token     Token type to be returned if lexer's substring matches `Word`.
  * 
  * @note        We get the `sizeof(Word) - 1` because string literals are always
  *              going to be nul terminated, and we want only the non-nul length.
  */
-#define check_keyword(Lexer, Index, Word, Type) \
-    check_keyword(Lexer, Index, sizeof(Word) - 1, Word, Type)
+#define check_keyword(lexer, index, keyword, token) \
+    check_keyword(lexer, index, sizeof(keyword) - 1, keyword, token)
 
 static TokenType ident_type(Lexer *self) {
     int lexlen = (int)(self->current - self->start);

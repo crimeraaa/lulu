@@ -293,7 +293,8 @@ static InterpretResult run_bytecode(lua_VM *self) {
         case OP_POP: pop_vmstack(self); break;
                      
         // -*- III:21.2     Variable Declarations ----------------------------*-
-        case OP_GET_GLOBAL: {
+        // NOTE: As of III:21.4 I've removed the `OP_DEFINE*` opcodes and cases.
+        case OP_GETGLOBAL: {
             lua_String *name = read_string(self);
             TValue value;
             // If not present in the hash table, the variable never existed.
@@ -304,15 +305,31 @@ static InterpretResult run_bytecode(lua_VM *self) {
             push_vmstack(self, value);
             break;
         }
-        case OP_DEFINE_GLOBAL: {
-            // Safe to assume this is a string given this instruction.
-            lua_String *name = read_string(self);
-            // Assign to the variable whatever's on top of the stack
-            table_set(&self->globals, name, peek_vmstack(self, 0));
-            pop_vmstack(self); // Don't pop until done in case we need to GC
+        case OP_GETGLOBAL_LONG: {
+            lua_String *name = read_string_at(self, read_dword(self));
+            TValue value;
+            if (!table_get(&self->globals, name, &value)) {
+                runtime_error(self, "Undefined variable '%s'.", name->data);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            push_vmstack(self, value);
             break;
         }
-        case OP_DEFINE_GLOBAL_LONG: {
+                                    
+        // -*- III:21.4     Assignment ---------------------------------------*-
+        // Unlike in Lox, Lua allows implicit declaration of globals.
+        // Also unlike Lox you simply can't type the equivalent of `var ident;`
+        // in Lua as all global variables must be assigned at declaration.
+        case OP_SETGLOBAL: {
+            // Variable name is in the constants pool.
+            lua_String *name = read_string(self);
+            // Assign to this name whatever is on the top of the stack.
+            table_set(&self->globals, name, peek_vmstack(self, 0));
+            // Pop expression of assigned value off the stack
+            pop_vmstack(self);
+            break;
+        }
+        case OP_SETGLOBAL_LONG: {
             DWord index = read_dword(self);
             lua_String *name = read_string_at(self, index);
             table_set(&self->globals, name, peek_vmstack(self, 0));

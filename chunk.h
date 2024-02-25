@@ -34,10 +34,14 @@ typedef enum {
     OP_POP,
     
     // -*- III:21.2     Variable Declarations --------------------------------*-
-    OP_GET_GLOBAL,
-    OP_GET_GLOBAL_LONG,
-    OP_DEFINE_GLOBAL,
-    OP_DEFINE_GLOBAL_LONG,
+    OP_GETGLOBAL,
+    OP_GETGLOBAL_LONG,
+    // OP_DEFINE_GLOBAL,
+    // OP_DEFINE_GLOBAL_LONG,
+    
+    // -*- III:21.4     Assignment -------------------------------------------*-
+    OP_SETGLOBAL,
+    OP_SETGLOBAL_LONG,
      
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     OP_EQ,

@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceRoot}/bin/lulu",
-            "args": [],
+            "args": ["${workspaceRoot}/tests/globals.lua"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [],

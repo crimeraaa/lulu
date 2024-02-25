@@ -363,13 +363,30 @@ void string(Compiler *self) {
  * III:21.3     Reading Variables
  * 
  * Emit the bytes needed to access a variable from the chunk's constants pool.
+ * 
+ * III:21.4     Assignment
+ * 
+ * If we have a set expression (e.g. some token before a '=') we emit the bytes
+ * needed to set the variable. This will be helpful later on when we add classes
+ * and methods, e.g. `menu.brunch(sunday).beverage = "mimosa"` where `.beverage`
+ * should NOT retrieve a value, but rather set one.
+ * 
+ * For now though we only worry about variables.
+ * 
+ * NOTE:
+ * 
+ * Because of how we handle global variable assignments and treat them the same
+ * as global variable declarations, we can affort to omit the `if` branches for
+ * compiling and emitting `OP_SET` or `OP_GET` instructions.
+ * 
+ * We assume (for now) that this function is only used for variable retrieval.
  */
 static inline void named_variable(Compiler *self, const Token *name) {
     DWord arg = identifier_constant(self, name);
     if (arg <= MAX_CONSTANTS_SHORT) {
-        emit_bytes(self, OP_GET_GLOBAL, arg);
+        emit_bytes(self, OP_GETGLOBAL, arg);
     } else if (arg <= MAX_CONSTANTS_LONG) {
-        emit_long(self, OP_GET_GLOBAL_LONG, arg);
+        emit_long(self, OP_GETGLOBAL_LONG, arg);
     } else {
         error_at(&self->parser, name, "Unable to retrieve global variable.");
     }
@@ -456,12 +473,21 @@ static Byte parse_variable(Compiler *self, const char *message) {
  * the name obviously. A string can't fit in our bytecode stream so we instead
  * store the string in the constants table then index into it. That's why we
  * take an index. If said index is more than 8-bits, we emit a long instruction.
+ * 
+ * III:21.4     Assignment
+ * 
+ * Since Lua allows implicit declaration of global variables, we can afford to
+ * drop the `OP_DEFINE_*` opcodes because for our purposes they function the
+ * exact same as the `OP_SET*` opcodes.
+ * 
+ * For globals, this assumes that the result of the assignment expression has
+ * already been pushed onto the top of the stack.
  */
 static void define_variable(Compiler *self, DWord index) {
     if (index <= MAX_CONSTANTS_SHORT) {
-        emit_bytes(self, OP_DEFINE_GLOBAL, index);
+        emit_bytes(self, OP_SETGLOBAL, index);
     } else if (index <= MAX_CONSTANTS_LONG) {
-        emit_long(self, OP_DEFINE_GLOBAL_LONG, index);
+        emit_long(self, OP_SETGLOBAL_LONG, index);
     } else {
         error(&self->parser, "Too many global variable identifiers.");
     }
@@ -496,7 +522,7 @@ static void compile_expression(Compiler *self) {
  * 
  * Unlike Lox, which has a dedicated `var` keyword, Lua has implicit variable
  * declarations. That is, no matter the scope, simply typing `a = ...` already
- * declares a variable of the name "a" if it doesn't already exist.
+ * declares a global variable of the name "a" if it doesn't already exist.
  * 
  * NOTE:
  * 

@@ -70,7 +70,8 @@ int add_constant(Chunk *self, TValue value) {
 }
 
 int get_instruction_line(Chunk *chunk, int offset) {
-    if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline].end) {
+    // When iterating, `chunk->prevline` points to the next index.
+    if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline - 1].end) {
         return -1;
     } 
     return chunk->lines.runs[chunk->prevline++].where;
@@ -164,12 +165,21 @@ int disassemble_instruction(Chunk *chunk, int offset) {
     case OP_POP: return simple_instruction("OP_POP", offset);
 
     // -*- III:21.2     Variable Declarations
-    case OP_GET_GLOBAL: 
-        return constant_instruction("OP_GET_GLOBAL", chunk, offset);
-    case OP_DEFINE_GLOBAL:
-        return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset);
-    case OP_DEFINE_GLOBAL_LONG:
-        return constant_instruction_long("OP_DEFINE_GLOBAL_LONG", chunk, offset);
+    case OP_GETGLOBAL: 
+        return constant_instruction("OP_GETGLOBAL", chunk, offset);
+    case OP_GETGLOBAL_LONG: 
+        return constant_instruction_long("OP_GETGLOBAL_LONG", chunk, offset);
+
+    // case OP_DEFINE_GLOBAL:
+    //     return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset);
+    // case OP_DEFINE_GLOBAL_LONG:
+    //     return constant_instruction_long("OP_DEFINE_GLOBAL_LONG", chunk, offset);
+
+    // -*- III:21.4     Assignment -------------------------------------------*-
+    case OP_SETGLOBAL:
+        return constant_instruction("OP_SETGLOBAL", chunk, offset);
+    case OP_SETGLOBAL_LONG:
+        return constant_instruction_long("OP_SETGLOBAL_LONG", chunk, offset);
 
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     case OP_EQ: return simple_instruction("OP_EQ", offset);
