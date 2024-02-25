@@ -6,7 +6,7 @@
 /**
  * Helper wrapper to make allocating new blocks of memory easier.
  */
-#define allocate(T, count)               reallocate(NULL, 0, sizeof(T[count]))
+#define allocate(T, count)      reallocate(NULL, 0, sizeof(T[count]))
 
 /**
  * III:19.5     Freeing Objects
@@ -14,13 +14,13 @@
  * Helper wrapper to make deallocating single instances of particular types
  * easier.
  */
-#define deallocate(T, pointer)          reallocate(pointer, sizeof(T), 0)
+#define deallocate(T, pointer)  reallocate(pointer, sizeof(T), 0)
 
 /**
  * Helper macro to make growingdynamic arrays quicker.
  * We start arrays with 8 elements and grow by factors of 2.
  */
-#define grow_capacity(N)                 ((N) < 8 ? 8 : (N) * 2)
+#define grow_capacity(N)        ((N) < 8 ? 8 : (N) * 2)
 
 #define grow_array(T, ptr, oldcap, newcap) \
     reallocate(ptr, sizeof(T[oldcap]), sizeof(T[newcap]))

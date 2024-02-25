@@ -29,7 +29,7 @@ void free_table(Table *self) {
  * Assumes that there is at least 1 free slot in the `entries` array. In the
  * function `table_set()` we do check that condition before calling this.
  */
-static Entry *find_entry(Entry *entries, int capacity, lua_String *key) {
+static Entry *find_entry(Entry *entries, int capacity, const lua_String *key) {
     DWord index = (key->hash % capacity);
     Entry *tombstone = NULL;
     for (;;) {
@@ -53,7 +53,7 @@ static Entry *find_entry(Entry *entries, int capacity, lua_String *key) {
     }
 }
 
-bool table_get(Table *self, lua_String *key, TValue *out) {
+bool table_get(Table *self, const lua_String *key, TValue *out) {
     // Empty tables cannot be (safely) indexed into.
     if (self->count == 0) {
         return false;

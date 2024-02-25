@@ -9,6 +9,11 @@
 
 #include <math.h>
 
+typedef uint8_t  Byte;  // Smallest addressable size.
+typedef uint16_t Word;  // Main addressable size (in relation to the Intel 8086)
+typedef uint32_t DWord; // "Double word" a.k.a. 2 `Word`s long, usually 32-bits.
+typedef uint64_t QWord; // "Quad word" a.k.a 4 `Word`s long, usually 64-bits.
+
 /**
  * This is the default stack-allocated size of the REPL's char buffer.
  * We prefer stack-allocated over heap-allocated because it's easier to manage.

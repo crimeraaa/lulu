@@ -455,7 +455,7 @@ static Byte parse_variable(Compiler *self, const char *message) {
  * Global variables are looked up by name at runtime. So the VM needs access to
  * the name obviously. A string can't fit in our bytecode stream so we instead
  * store the string in the constants table then index into it. That's why we
- * take a `Byte`.
+ * take an index. If said index is more than 8-bits, we emit a long instruction.
  */
 static void define_variable(Compiler *self, DWord index) {
     if (index <= MAX_CONSTANTS_SHORT) {

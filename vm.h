@@ -8,13 +8,14 @@
 #include "value.h"
 
 struct lua_VM {
-    Chunk *chunk;
-    Byte *ip; // Byte instruction pointer into `chunk`.
     TValue stack[LUA_VM_STACKSIZE]; // Hardcoded limit for simplicity.
-    TValue *sp; // Stack pointer to 1 past the last element.
+    Chunk *chunk; // Chunk of bytecode and constant values.
+    Byte *ip; // Byte instruction pointer (next instruction) in `chunk`.
+    TValue *bp; // Base pointer to bottom of current stack frame/function.
+    TValue *sp; // Stack pointer to 1 past the lastest written element.
     Table globals; // Interned global variable identifiers, as strings.
     Table strings; // Interned string literals/user-created ones.
-    lua_Object *objects; // Head of linked list of allocated objects.
+    lua_Object *objects; // Head of intrusive linked list of allocated objects.
 };
 
 typedef enum {

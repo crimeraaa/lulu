@@ -33,7 +33,7 @@ static lua_Object *allocate_object(lua_VM *lvm, size_t size, ValueType type) {
  * But because this function can be called during the compile phase, the compiler
  * structure must also have a pointer to a VM...
  */
-static inline lua_String *allocate_string(lua_VM *lvm, char *data, int length, uint32_t hash) {
+static inline lua_String *allocate_string(lua_VM *lvm, char *data, int length, DWord hash) {
     lua_String *result = allocate_object(lvm, lua_String, LUA_TSTRING);
     result->hash   = hash;
     result->length = length;

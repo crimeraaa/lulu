@@ -11,7 +11,7 @@ void *reallocate(void *pointer, size_t oldsize, size_t newsize) {
     void *result = realloc(pointer, newsize);
     // Not much we can do if this happens, so may as well let OS reclaim memory.
     if (result == NULL) {
-        fprintf(stderr, "Failed to (re)allocate memory.\n");
+        logprintln("Failed to (re)allocate memory.");
         exit(EXIT_FAILURE);
     }
     return result;

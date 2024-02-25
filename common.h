@@ -9,17 +9,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "conf.h"
 
 #define xtostring(macro)        #macro
 #define stringify(macro)        xtostring(macro)
 #define logstring(info)         __FILE__ ":" stringify(__LINE__) ": " info
 #define logprintln(info)        fputs(logstring(info) "\n", stderr)
 #define logprintf(fmts, ...)    fprintf(stderr, logstring(fmts), __VA_ARGS__)
-
-typedef uint8_t  Byte;  // Smallest addressable size for the Intel 8086.
-typedef uint16_t Word;  // Primary addressable size for the Intel 8086.
-typedef uint32_t DWord; // "Double word" a.k.a. 2 `Word`s long, usually 32-bits.
-typedef uint64_t QWord; // "Quad word" a.k.a 4 `Word`s long, usually 64-bits.
 
 /**
  * III:19.2     Struct Inheritance

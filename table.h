@@ -40,7 +40,7 @@ void free_table(Table *self);
  * Unlike my initial intuition we use an out parameter. I'm not sure how much I
  * like it but I'll follow along for now.
  */
-bool table_get(Table *self, lua_String *key, TValue *out);
+bool table_get(Table *self, const lua_String *key, TValue *out);
 
 /**
  * III:20.4.2   Inserting entries
@@ -77,6 +77,6 @@ void copy_table(Table *dst, Table *src);
  * table. Note that you pash a `const char*`, NOT a `lua_String*`! 
  * The point is to use this so we don't allocate a new `lua_String*`.
  */
-lua_String *table_findstring(Table *self, const char *what, int length, uint32_t hash);
+lua_String *table_findstring(Table *self, const char *what, int length, DWord hash);
 
 #endif /* LUA_TABLE_H */

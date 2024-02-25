@@ -4,8 +4,15 @@
 #include "common.h"
 #include "value.h"
 
-/* Until this limit is reached, we use `OP_CONSTANT` which takes a 1-byte operand. */
-#define MAX_CONSTANTS_SHORT     (UINT8_MAX)
+/** 
+ * Until this limit is reached, we use `OP_CONSTANT` which takes a 1-byte operand. 
+ * 
+ * NOTE:
+ * 
+ * We require `Byte` to be an unsigned integer type so underflow is defined.
+ */
+#define MAX_CONSTANTS_SHORT     ((Byte)-1)
+
 /** 
  * If MAX_CONSTANTS_SHORT has been surpassed, we use `OP_CONSTANT_LONG` and
  * supply it with a 3-byte (24-bit) operand.

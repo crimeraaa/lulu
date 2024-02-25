@@ -4,8 +4,12 @@
 #include "object.h"
 #include "vm.h"
 
-/* Make the VM's stack pointer point to the base of the stack array. */
-static inline void reset_vmsp(lua_VM *self) {
+/** 
+ * Make the VM's stack pointer point to the base of the stack array. 
+ * The same is done for the base pointer.
+ */
+static inline void reset_vmptrs(lua_VM *self) {
+    self->bp = self->stack;
     self->sp = self->stack;
 }
 
@@ -21,7 +25,7 @@ static void runtime_error(lua_VM *self, const char *format, ...) {
     va_end(args);
     fputs("\n", stderr);
     fprintf(stderr, "[line %i] in script\n", self->chunk->prevline);
-    reset_vmsp(self);
+    reset_vmptrs(self);
 }
 
 static inline InterpretResult 
@@ -48,7 +52,7 @@ runtime_concatenation_error(lua_VM *self, TValue operand) {
 void init_vm(lua_VM *self) {
     self->chunk = NULL;
     self->ip    = NULL;
-    reset_vmsp(self);
+    reset_vmptrs(self);
     init_table(&self->globals);
     init_table(&self->strings);
     self->objects = NULL;
@@ -73,26 +77,32 @@ TValue pop_vmstack(lua_VM *self) {
 }
 
 /**
+ * Similar to `peek_vmstack()` except you get a pointer to the slot in question.
+ * This lets you manipulate the stack in place.
+ * 
+ * NOTE:
+ * 
+ * This is a negative offset in relation to the stack pointer. So an offset of 0
+ * for example refers to the top of the stack, an offset of 1 is the slot right
+ * below the top of the stack, etc. etc.
+ */
+static inline TValue *poke_vmstack(lua_VM *self, int offset) {
+    return self->sp - 1 - offset;
+}
+
+/**
  * III:18.3.1   Unary negation and runtime errors
  * 
  * Returns a value from the stack without popping it. Remember that since the
  * stack pointer points to 1 past the last element, we need to subtract 1.
  * And since the most recent element is at the top of the stack, in order to
- * access other elements we subtract the given distance.
+ * access other elements we subtract the given offset.
  * 
  * For example, to peek the top of the stack, use `peek_vmstack(self, 0)`.
  * To peek the value right before that, use `peek_vmstack(self, 1)`. And so on.
  */
-static inline TValue peek_vmstack(lua_VM *self, int distance) {
-    return *(self->sp - 1 - distance);
-}
-
-/**
- * Similar to `peek_vmstack()` except you get a pointer to the slot in question.
- * This lets you manipulate the stack in place.
- */
-static inline TValue *poke_vmstack(lua_VM *self, int distance) {
-    return self->sp - 1 - distance;
+static inline TValue peek_vmstack(lua_VM *self, int offset) {
+    return *poke_vmstack(self, offset);
 }
 
 /**
@@ -223,7 +233,12 @@ static void concatenate(lua_VM *self) {
     binop_template(vm, assert_comparison, makeboolean, operation)
 
 /**
- * Note that the compiler emitted them in this order: hi, mid, lo.
+ * Read the next 3 instructions and combine those 3 bytes into 1 24-bit operand.
+ * 
+ * NOTE:
+ *
+ * Compiler emitted them in this order: hi, mid, lo. Since ip currently points
+ * at hi, we can safely walk in this order.
  */
 static inline DWord read_dword(lua_VM *self) {
     Byte hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
@@ -242,7 +257,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
         int offset = (int)(self->ip - self->chunk->code);
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
-        for (TValue *slot = self->stack; slot < self->sp; slot++) {
+        for (TValue *slot = self->bp; slot < self->sp; slot++) {
             printf("[ ");
             print_value(*slot);
             printf(" ]");
