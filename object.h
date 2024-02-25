@@ -5,18 +5,8 @@
 #include "value.h"
 #include "vm.h"
 
-/**
- * III:19.2     Struct Inheritance
- * 
- * For now, our only subtype for objects is strings. This is the specific object
- * tag for `TValue` with a primary type of `LUA_TOBJECT`.
- */
-typedef enum {
-    LUA_TSTRING,
-} ObjType;
-
 struct lua_Object {
-    ObjType type;     // Tag type for all objects.
+    ValueType   type; // Unlike Lox, we use the same tag for objects.
     lua_Object *next; // Part of an instrusive linked list for GC.
 };
 
@@ -67,14 +57,18 @@ void print_object(TValue value);
  * III:19.2     Struct Inheritance
  * 
  * We don't use a macro in case the argument to `value` has side effects.
+ * 
+ * NOTE:
+ * 
+ * Please pass a specific object type, we do not check if you do something crazy
+ * like passing in `LUA_TNUMBER` because that MIGHT pass.
  */
-static inline bool isobjtype(TValue value, ObjType type) {
-    return isobject(value) && asobject(value)->type == type;
+static inline bool isobjtype(TValue value, ValueType objtype) {
+    return isobject(objtype, value) && asobject(value)->type == objtype;
 }
 
 /* Given an `TValue*`, treat it as an `lua_Object*` and get the type. */
 #define objtype(value)      (asobject(value)->type)
-
 #define isstring(value)     isobjtype(value, LUA_TSTRING)
 #define asstring(value)     ((lua_String*)asobject(value))
 #define ascstring(value)    (asstring(value)->data)

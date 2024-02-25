@@ -28,22 +28,21 @@ void print_value(TValue value) {
     case LUA_TBOOLEAN: printf(value.as.boolean ? "true" : "false"); break;
     case LUA_TNIL:     printf("nil"); break;
     case LUA_TNUMBER:  printf(LUA_NUMBER_FMT, value.as.number); break;
-    case LUA_TOBJECT:  print_object(value); break;
-    default:           printf("Unsupported type %s", lua_typename(value));
+    case LUA_TSTRING:  printf("%s", ascstring(value)); break;
+    default:           printf("Unsupported type %s", value_typename(value)); break;
     }
 }
 
-const char *lua_typename(TValue value) {
+const char *value_typename(TValue value) {
     switch (value.type) {
     case LUA_TBOOLEAN:      return "boolean";
+    case LUA_TFUNCTION:     return "function";
     case LUA_TNIL:          return "nil";
     case LUA_TNUMBER:       return "number";
-    case LUA_TOBJECT:
-        switch (value.as.object->type) {
-        case LUA_TSTRING:   return "string";
-        }
-    }
-    return "unknown";
+    case LUA_TSTRING:       return "string";
+    case LUA_TTABLE:        return "table";
+    default:                return "unknown"; // Fallback
+    } 
 }
 
 bool values_equal(TValue lhs, TValue rhs) {
@@ -55,10 +54,12 @@ bool values_equal(TValue lhs, TValue rhs) {
     case LUA_TBOOLEAN:  return lhs.as.boolean == rhs.as.boolean;
     case LUA_TNIL:      return true; // nil is always == nil.
     case LUA_TNUMBER:   return lhs.as.number == rhs.as.number;
-    // Strings are interned so pointer comparisons are ok.
-    case LUA_TOBJECT:   return lhs.as.object == rhs.as.object;
-    default: break;
+    // Strings are interned so this should be ok. Not sure about other types.
+    case LUA_TSTRING:
+    case LUA_TFUNCTION:
+    case LUA_TTABLE:    return lhs.as.object == rhs.as.object;
+    default:            break;
     }
-    fprintf(stderr, "Unsupported type %s.\n", lua_typename(lhs));
+    fprintf(stderr, "Unsupported type %s.\n", value_typename(lhs));
     return false;
 }

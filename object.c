@@ -12,7 +12,7 @@
 #define FNV32_OFFSET    0x811c9dc5
 #define FNV32_PRIME     0x01000193
 
-static lua_Object *allocate_object(lua_VM *lvm, size_t size, ObjType type) {
+static lua_Object *allocate_object(lua_VM *lvm, size_t size, ValueType type) {
     lua_Object *object = reallocate(NULL, 0, size);
     object->type = type;
     object->next = lvm->objects; // Update the VM's allocation linked list
@@ -87,6 +87,7 @@ lua_String *copy_string(lua_VM *lvm, const char *literal, int length) {
 void print_object(TValue value) {
     switch (value.as.object->type) {
     case LUA_TSTRING: printf("%s", ascstring(value)); break;
+    default: return;
     }
 }
 

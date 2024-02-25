@@ -241,7 +241,7 @@ static void parse_precedence(Compiler *self, Precedence precedence);
  */
 static DWord identifier_constant(Compiler *self, const Token *name) {
     lua_String *result = copy_string(self->vm, name->start, name->length);
-    return make_constant(self, makeobject(result));
+    return make_constant(self, makeobject(LUA_TSTRING, result));
 }
 
 /**
@@ -356,7 +356,7 @@ void string(Compiler *self) {
     const char *start = self->parser.previous.start + 1; // Past opening quote
     int length = self->parser.previous.length - 2; // Length w/o quotes
     lua_String *object = copy_string(self->vm, start, length);
-    emit_constant(self, makeobject(object));
+    emit_constant(self, makeobject(LUA_TSTRING, object));
 }
 
 /**

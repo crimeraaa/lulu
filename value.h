@@ -4,13 +4,19 @@
 #include "common.h"
 #include "conf.h"
 
-/* The tag part of the tagged union `TValue`. */
+/** 
+ * The tag part of the tagged union `TValue`. 
+ *
+ * See: https://www.lua.org/source/5.1/ltm.c.html#luaT_typenames
+ */
 typedef enum {
+    LUA_TNONE, // Used to signal errors
     LUA_TBOOLEAN,
+    LUA_TFUNCTION,
     LUA_TNIL,
     LUA_TNUMBER,
-    // -*- III:19.1     Values and Objects -----------------------------------*-
-    LUA_TOBJECT,
+    LUA_TSTRING,
+    LUA_TTABLE,
 } ValueType;
 
 typedef LUA_NUMBER lua_Number;
@@ -70,11 +76,14 @@ bool values_equal(TValue lhs, TValue rhs);
  * In the Lua C API, `lua_type()` returns an `int` which contains bit information
  * about the type. `lua_typename()` returns the string representation of it.
  * 
- * In our implementation, we follow Bob's method of using a dedicated tag type.
+ * In our implementation, we follow Bob's method of using a dedicated tag type
+ * and we explicitly pass a `TValue`. This may not be terribly efficient but we
+ * can improve this later by passing a `lua_VM*` with indexes into its internal
+ * stack.
  * 
  * See: https://www.lua.org/source/5.1/lapi.c.html#lua_type
  */
-const char *lua_typename(TValue value);
+const char *value_typename(TValue value);
 
 /* In memory, `nil` is just a distinct 0. */
 #define makenil         ((TValue){LUA_TNIL, {.number = 0.0}})
@@ -88,9 +97,17 @@ const char *lua_typename(TValue value);
 #define isboolean(V)    ((V).type == LUA_TBOOLEAN)
 #define asboolean(V)    ((V).as.boolean)
 
-/* Wrap a bare object pointer or a struct that "inherits" from it. */
-#define makeobject(O)   ((TValue){LUA_TOBJECT, {.object = (lua_Object*)(O)}})
-#define isobject(V)     ((V).type == LUA_TOBJECT)
+/** 
+ * Wrap a bare object pointer or a specific object type pointer into a somewhat
+ * generalized struct, but we DO need the specific tag.
+ * 
+ * NOTE:
+ * 
+ * This one of my derivations from Lox as Lua doesn't have dedicated object type
+ * in their C API. Everything is packaged into the same enum.
+ */
+#define makeobject(T,O) ((TValue){T, {.object = (lua_Object*)(O)}})
+#define isobject(T,V)   ((V).type == T)
 #define asobject(V)     ((V).as.object)
 
 #endif /* LUA_VALUE_H */

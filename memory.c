@@ -24,9 +24,8 @@ static inline void free_string(lua_String *self) {
 
 static inline void free_object(lua_Object *self) {
     switch (self->type) {
-    case LUA_TSTRING:
-        free_string((lua_String*)self);
-        break;
+    case LUA_TSTRING:   free_string((lua_String*)self); break;
+    default:            return;
     }
 }
 
