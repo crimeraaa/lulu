@@ -137,29 +137,22 @@ static void concatenate(lua_VM *self) {
 }
 
 /** 
+ * Read the current instruction and move the instruction pointer.
+ * 
  * Remember that postfix increment returns the original value of the expression. 
  * So we effectively increment the pointer but we dereference the original one.
  */
-#define read_byte(vm)       (*(vm->ip++))
-
-/**
- * Given 3 8-bit values representing one 24-bit integer, e.g:
- * `0b11010001_01110110_00111101`
- * 
- * 1. `x` is a bitmask of the leftmost 8-bit grouping, "upper"
- * 2. `y` is a bitmask of the middle 8-bit grouping, "middle"
- * 3. `z` is a bitmask of the rightmost 8-bit grouping, "lower"
- * 
- * We do the appropriate bit shiftings and bitwise operations to create a single
- * combined 24-bit/32-bit integer.
- */
-// #define extract_int24(x, y, z)  ((x) >> 16) | ((y) >> 8) | (z)
+static inline Byte read_byte(lua_VM *self) {
+    return *(self->ip++);
+}
 
 /**
  * If you have an index greater than 8-bits, calculate that first however you
  * need to then use this macro so you have full control over all side effects.
  */
-#define read_constant_at(vm, i) (vm->chunk->constants.values[i])
+static inline TValue read_constant_at(lua_VM *self, DWord index) {
+    return self->chunk->constants.values[index];
+}
 
 /**
  * Read the next byte from the bytecode treating the received value as an index
@@ -247,7 +240,6 @@ static inline DWord read_dword(lua_VM *self) {
     return (hi >> 16) | (mid >> 8) | (lo);
 }
 
-
 static InterpretResult run_bytecode(lua_VM *self) {
     // Hack, but we reset so we can disassemble properly.
     // We need that start with index 0 into the lines.runs array.
@@ -278,8 +270,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
             break;
         }
         case OP_CONSTANT_LONG: {
-            DWord index = read_dword(self);
-            TValue value = read_constant_at(self, index);
+            TValue value = read_constant_at(self, read_dword(self));
             push_vmstack(self, value);
             break;
         }
@@ -330,8 +321,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
             break;
         }
         case OP_SETGLOBAL_LONG: {
-            DWord index = read_dword(self);
-            lua_String *name = read_string_at(self, index);
+            lua_String *name = read_string_at(self, read_dword(self));
             table_set(&self->globals, name, peek_vmstack(self, 0));
             pop_vmstack(self);
             break;
@@ -415,10 +405,9 @@ InterpretResult interpret_vm(lua_VM *self, const char *source) {
     return result;
 }
 
-#undef read_byte
 #undef read_constant
-#undef read_constant_at
 #undef read_string
+#undef read_string_at
 #undef assert_arithmetic
 #undef assert_comparison
 #undef binop_template

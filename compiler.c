@@ -260,8 +260,14 @@ static DWord identifier_constant(Compiler *self, const Token *name) {
  *
  * e.g. '-' is `TOKEN_DASH` which is associated with the prefix parser function 
  * `unary()` and the infix parser function `binary()`.
+ * 
+ * III:21.4     Assignment
+ * 
+ * In order to meet the signature of `ParseFn`, we need to add a `bool` param.
+ * It sucks but it's better to keep all the function pointers uniform!
  */
-void binary(Compiler *self) {
+void binary(Compiler *self, bool assignable) {
+    (void)assignable;
     TokenType optype = self->parser.previous.type;
     const ParseRule *rule = get_rule(optype);
     // Compile right hand side, and evaluate it if it has higher precedence operations.
@@ -293,7 +299,9 @@ void binary(Compiler *self) {
 /**
  * Right-associative binary operators, mainly for exponentiation and concatenation.
  */
-void rbinary(Compiler *self) {
+void rbinary(Compiler *self, bool assignable) {
+    (void)assignable;
+
     TokenType optype = self->parser.previous.type;
     const ParseRule *rule = get_rule(optype);
     // We use the same precedence so we can evaluate from right to left.
@@ -313,8 +321,14 @@ void rbinary(Compiler *self) {
  * III:18.4     Two New Types
  * 
  * Emits the literals `false`, `true` and `nil`.
+ * 
+ * III:21.4     Assignment
+ * 
+ * Adding a `bool` parameter for uniformity with all the other function pointers
+ * in the `parserules.c` lookup table.
  */
-void literal(Compiler *self) {
+void literal(Compiler *self, bool assignable) {
+    (void)assignable;
     switch (self->parser.previous.type) {
     case TOKEN_FALSE: emit_byte(self, OP_FALSE); break;
     case TOKEN_NIL:   emit_byte(self, OP_NIL);   break;
@@ -336,13 +350,15 @@ void literal(Compiler *self) {
  * order in which we evaluate the expressions contained inside the parentheses
  * that's important.
  */
-void grouping(Compiler *self) {
+void grouping(Compiler *self, bool assignable) {
+    (void)assignable;
     compile_expression(self);
     consume_token(self, TOKEN_RPAREN, "Expected ')' after grouping expression.");
 }
 
 /* Parse a number literal and emit it as a constant. */
-void number(Compiler *self) {
+void number(Compiler *self, bool assignable) {
+    (void)assignable;
     double value = strtod(self->parser.previous.start, NULL);
     emit_constant(self, makenumber(value));
 }
@@ -352,7 +368,8 @@ void number(Compiler *self) {
  * 
  * Here we go, strings! One of the big bads of C.
  */
-void string(Compiler *self) {
+void string(Compiler *self, bool assignable) {
+    (void)assignable;
     const char *start = self->parser.previous.start + 1; // Past opening quote
     int length = self->parser.previous.length - 2; // Length w/o quotes
     lua_String *object = copy_string(self->vm, start, length);
@@ -381,14 +398,16 @@ void string(Compiler *self) {
  * 
  * We assume (for now) that this function is only used for variable retrieval.
  */
-static inline void named_variable(Compiler *self, const Token *name) {
+static inline void named_variable(Compiler *self, const Token *name, bool assignable) {
     DWord arg = identifier_constant(self, name);
-    if (arg <= MAX_CONSTANTS_SHORT) {
-        emit_bytes(self, OP_GETGLOBAL, arg);
-    } else if (arg <= MAX_CONSTANTS_LONG) {
-        emit_long(self, OP_GETGLOBAL_LONG, arg);
-    } else {
-        error_at(&self->parser, name, "Unable to retrieve global variable.");
+    if (assignable) {
+        if (arg <= MAX_CONSTANTS_SHORT) {
+            emit_bytes(self, OP_GETGLOBAL, arg);
+        } else if (arg <= MAX_CONSTANTS_LONG) {
+            emit_long(self, OP_GETGLOBAL_LONG, arg);
+        } else {
+            error_at(&self->parser, name, "Unable to retrieve global variable.");
+        }
     }
 }
 
@@ -399,8 +418,8 @@ static inline void named_variable(Compiler *self, const Token *name) {
  * 
  * Assumes the identifier token is the parser's previous one as we consumed it.
  */
-void variable(Compiler *self) {
-    named_variable(self, &self->parser.previous);
+void variable(Compiler *self, bool assignable) {
+    named_variable(self, &self->parser.previous, assignable);
 }
 
 /**
@@ -409,7 +428,8 @@ void variable(Compiler *self) {
  * Assumes the leading '-' token has been consumed and is the parser's previous
  * token.
  */
-void unary(Compiler *self) {
+void unary(Compiler *self, bool assignable) {
+    (void)assignable;
     // Keep in this stackframe's memory so that if we recurse, we evaluate the
     // topmost stack frame (innermosts, higher precedences) first and work our 
     // way down until we reach this particular function call.
@@ -434,6 +454,18 @@ void unary(Compiler *self) {
  * 
  * By definition, all first tokens (literals, parentheses, variable names) are
  * considered "prefix" expressions. This helps kick off the compiler + parser.
+ * 
+ * III:21.4     Assignment
+ * 
+ * One subtlety that arises from our current implementation is that:
+ * `a * b = c + d` considers `a * b` as a valid assignment target! For most,
+ * that won't make sense so we want to disallow it. 
+ * 
+ * But the only way to disallow such expressions from letting assignments 
+ * through is to explicitly check if the current parsed precedence is greater 
+ * than `PREC_ASSIGNMENT`.
+ * 
+ * In other words we need to append a `bool` argument to all parser functions!
  */
 static void parse_precedence(Compiler *self, Precedence precedence) {
     advance_parser(&self->parser, &self->lexer);
@@ -442,12 +474,18 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
         error(&self->parser, "Expected an expression.");
         return; // Might end up with NULL infixfn as well
     }
-    prefixfn(self);
+    bool assignable = (precedence <= PREC_ASSIGNMENT);
+    prefixfn(self, assignable);
     
     while (precedence <= get_rule(self->parser.current.type)->precedence) {
         advance_parser(&self->parser, &self->lexer);
         const ParseFn infixfn = get_rule(self->parser.previous.type)->infix;
-        infixfn(self);
+        infixfn(self, assignable);
+    }
+    
+    // No function consumed the '=' token so we didn't properly assign.
+    if (assignable && match_token(self, TOKEN_ASSIGN)) {
+        error(&self->parser, "Invalid assignment target.");
     }
 }
 
