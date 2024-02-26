@@ -400,14 +400,12 @@ void string(Compiler *self, bool assignable) {
  */
 static inline void named_variable(Compiler *self, const Token *name, bool assignable) {
     DWord arg = identifier_constant(self, name);
-    if (assignable) {
-        if (arg <= MAX_CONSTANTS_SHORT) {
-            emit_bytes(self, OP_GETGLOBAL, arg);
-        } else if (arg <= MAX_CONSTANTS_LONG) {
-            emit_long(self, OP_GETGLOBAL_LONG, arg);
-        } else {
-            error_at(&self->parser, name, "Unable to retrieve global variable.");
-        }
+    if (arg <= MAX_CONSTANTS_SHORT) {
+        emit_bytes(self, OP_GETGLOBAL, arg);
+    } else if (arg <= MAX_CONSTANTS_LONG) {
+        emit_long(self, OP_GETGLOBAL_LONG, arg);
+    } else {
+        error_at(&self->parser, name, "Unable to retrieve global variable.");
     }
 }
 
