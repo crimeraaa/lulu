@@ -8,8 +8,14 @@ static inline void init_parser(Parser *self) {
     self->panicking = false;
 }
 
+static inline void init_locals(Locals *self) {
+    self->count = 0;
+    self->depth = 0;
+}
+
 void init_compiler(Compiler *self, lua_VM *lvm) {
     init_parser(&self->parser);
+    init_locals(&self->locals);
     self->vm = lvm;
 }
 
@@ -180,8 +186,8 @@ static inline void emit_return(Compiler *self) {
  * NOTE:
  * 
  * If more than `MAX_CONSTANTS_LONG` (a.k.a. 2 ^ 24 - 1) constants have been
- * created, we return 0. Chunks reserve index 0 in their constants pool as a
- * sort of "black hole" where garbage/error values are thrown into.
+ * created, we return 0. By itself this doesn't indicate an error, but because
+ * we call the `error` function that sets the compiler's parser's error state.
  */
 static inline DWord make_constant(Compiler *self, TValue value) {
     int constant = add_constant(current_chunk(self), value);
@@ -223,11 +229,46 @@ static inline void end_compiler(Compiler *self) {
 #endif
 }
 
+/**
+ * III:22.1     Block Statements
+ * 
+ * New scopes are denoted by simply incrementing `self->locals.depth`.
+ * Remember that 0 indicates global scope, 1 indicates 1st top-level block scope.
+ */
+static void begin_scope(Compiler *self) {
+    self->locals.depth++;
+}
+
+/**
+ * III:22.1     Block Statements
+ * 
+ * The counterpart to `begin_scope`. In order to ensure correct compilation,
+ * this must ALWAYS be called eventually after a call to `begin_scope()`.
+ * 
+ * Ending of current scope is done by simply decrementing `self->locals.depth`.
+ * 
+ * III:22.3     Declaring Local Variables
+ * 
+ * When a block ends we need to "free" the stack memory by decrementing the
+ * number of locals we're counting so that the next push will overwrite the old
+ * memory we used beforehand.
+ */
+static void end_scope(Compiler *self) {
+    Locals *locals = &self->locals;
+    locals->depth--;
+    // Walk backward through the array looking for variables declared at the
+    // scope depth we just left. Remember "freeing" is just decrementing here.
+    while (locals->count > 0 && locals->stack[locals->count - 1].depth > locals->depth) {
+        emit_byte(self, OP_POP);
+        locals->count--;
+    }
+}
+
 /* FORWARD DECLARATIONS ------------------------------------------------- {{{ */
 
-static void compile_expression(Compiler *self);
-static void compile_statement(Compiler *self);
-static void compile_declaration(Compiler *self);
+static void expression(Compiler *self);
+static void statement(Compiler *self);
+static void declaration(Compiler *self);
 static void parse_precedence(Compiler *self, Precedence precedence);
 
 /* }}} */
@@ -242,6 +283,78 @@ static void parse_precedence(Compiler *self, Precedence precedence);
 static DWord identifier_constant(Compiler *self, const Token *name) {
     lua_String *result = copy_string(self->vm, name->start, name->length);
     return make_constant(self, makeobject(LUA_TSTRING, result));
+}
+
+/**
+ * III:22.3     Declaring Local Variables
+ * 
+ * Compare 2 Tokens on a length basis then a byte-by-byte basis.
+ * 
+ * NOTE:
+ * 
+ * Because Tokens aren't full lua_Strings, we have to do it the long way instead
+ * of checking their hashes (which they have none).
+ */
+static bool identifiers_equal(const Token *lhs, const Token *rhs) {
+    if (lhs->length != rhs->length) {
+        return false;
+    }
+    return memcmp(lhs->start, rhs->start, lhs->length) == 0;
+}
+
+/**
+ * III:22.3     Declaring Local Variables
+ * 
+ * Initialize the next available slot in the Locals stack with the given token
+ * and the Locals struct's current depth.
+ * 
+ * Lifetimes for things like strings are still ok because the entire source code 
+ * string should be valid for the entirety of the compilation process.
+ */
+static void add_local(Compiler *self, Token name) {
+    Locals *locals = &self->locals;
+    Parser *parser = &self->parser;
+    if (locals->count >= LUA_MAXLOCALS) {
+        error(parser, "Too many local variables in function.");
+        return;
+    }
+    Local *local = &locals->stack[locals->count++];
+    local->name = name;
+    local->depth = locals->depth;
+}
+
+/**
+ * III:22.3     Declaring Local Variables
+ * 
+ * Record the existing of a local variable (and local variables ONLY!).
+ * Note that because global variables are late-bound, the compiler DOESN'T need
+ * to keep track of which global declarations it's seen.
+ * 
+ * For locals however, we do need to keep track hence we add it to the list of
+ * the compiler's local variables.
+ */
+static void declare_variable(Compiler *self) {
+    Locals *locals = &self->locals;
+    Parser *parser = &self->parser;
+    // Bail out if this is called while compiling at global scope.
+    if (locals->depth == 0) {
+        return;
+    }
+    const Token *name = &parser->previous;
+    // Ensure identifiers are never shadowed/redeclared in the same scope.
+    // Note that the current scope is at the END of the array.
+    for (int i = locals->count - 1; i >= 0; i--) {
+        // Not to be confused with `locals`, with an 's'.
+        Local *local = &locals->stack[i];
+        // If we hit an outer scope, stop looking for shadowed identifiers.
+        if (local->depth != -1 && local->depth < locals->depth) {
+            break;
+        }
+        if (identifiers_equal(name, &local->name)) {
+            error(parser, "Already a variable with this name in this scope.");
+        }
+    }
+    add_local(self, *name);
 }
 
 /**
@@ -352,7 +465,7 @@ void literal(Compiler *self, bool assignable) {
  */
 void grouping(Compiler *self, bool assignable) {
     (void)assignable;
-    compile_expression(self);
+    expression(self);
     consume_token(self, TOKEN_RPAREN, "Expected ')' after grouping expression.");
 }
 
@@ -399,6 +512,7 @@ void string(Compiler *self, bool assignable) {
  * We assume (for now) that this function is only used for variable retrieval.
  */
 static inline void named_variable(Compiler *self, const Token *name, bool assignable) {
+    (void)assignable;
     DWord arg = identifier_constant(self, name);
     if (arg <= MAX_CONSTANTS_SHORT) {
         emit_bytes(self, OP_GETGLOBAL, arg);
@@ -499,6 +613,11 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
  */
 static Byte parse_variable(Compiler *self, const char *message) {
     // consume_token(self, TOKEN_IDENT, message); // Do NOT use this for Lua!
+    declare_variable(self);
+    // Locals aren't looked up by name at runtime so return a dummy index.
+    if (self->locals.depth > 0) {
+        return 0;
+    }
     return identifier_constant(self, &self->parser.previous);
 }
 
@@ -520,6 +639,11 @@ static Byte parse_variable(Compiler *self, const char *message) {
  * already been pushed onto the top of the stack.
  */
 static void define_variable(Compiler *self, DWord index) {
+    // There is no code needed to create a local variable at runtime, since
+    // all our locals live exclusively on the stack and not in a hashtable.
+    if (self->locals.depth > 0) {
+        return;
+    }
     if (index <= MAX_CONSTANTS_SHORT) {
         emit_bytes(self, OP_SETGLOBAL, index);
     } else if (index <= MAX_CONSTANTS_LONG) {
@@ -549,8 +673,23 @@ static void define_variable(Compiler *self, DWord index) {
  * that's stronger than or equal to an assignment. We use `PREC_NONE`, which is
  * lower in the enumerations, to break out of this recursion.
  */
-static void compile_expression(Compiler *self) {
+static void expression(Compiler *self) {
     parse_precedence(self, PREC_ASSIGNMENT); 
+}
+
+/**
+ * III:22.2     Block Statements
+ * 
+ * Assumes we already consumed the `do` token. Until we hit an `end` token, try
+ * to compile everything in between. It could start with a variable declaration
+ * hence we start with that, even if it's not a variable declaration the calls
+ * to something like `print_statement()` will eventually be reached.
+ */
+static void block(Compiler *self) {
+    while (!check_token(self, TOKEN_END) && !check_token(self, TOKEN_EOF)) {
+        declaration(self);
+    }
+    consume_token(self, TOKEN_END, "Expected 'end' after block.");
 }
 
 /**
@@ -569,11 +708,11 @@ static void compile_expression(Compiler *self) {
  * For non-assignment of a global declaration, Lua considers that an error.
  * For assignment IN a global declaration, we'll have to be smart.
  */
-static void compile_vardecl(Compiler *self) {
+static void variable_declaration(Compiler *self) {
     // Index of variable name (previous token) as appended into constants pool
     DWord index = parse_variable(self, "Expected a variable name.");
     if (match_token(self, TOKEN_ASSIGN)) {
-        compile_expression(self); // Push result of expression
+        expression(self); // Push result of expression
     } else {
         // emit_byte(self, OP_NIL); // Push nil as default variable value
         error(&self->parser, "Expected '=' after variable declaration.");
@@ -591,14 +730,14 @@ static void compile_vardecl(Compiler *self) {
  * Since it produces a side effect by pushing something onto the stack, such as
  * via the prefixfns, we have to "undo" that by emitting a pop instruction.
  */
-static void compile_exprstmt(Compiler *self) {
-    compile_expression(self);
+static void expression_statement(Compiler *self) {
+    expression(self);
     match_token(self, TOKEN_SEMICOL);
     emit_byte(self, OP_POP);
 }
 
-static void compile_printstmt(Compiler *self) {
-    compile_expression(self);
+static void print_statement(Compiler *self) {
+    expression(self);
     match_token(self, TOKEN_SEMICOL);
     emit_byte(self, OP_PRINT);
 }
@@ -645,13 +784,13 @@ static void synchronize_parser(Parser *parser, Lexer *lexer) {
  * "Declarations" are statements that bind names to values. Remember that in our
  * grammar, assignment is one of (if not the) lowest precedences. So we parse
  * it first above all else, normal non-name-binding statements will shunt over
- * to `compile_statement()` and whatever that delegates to.
+ * to `statement()` and whatever that delegates to.
  */
-static void compile_declaration(Compiler *self) {
+static void declaration(Compiler *self) {
     if (match_token(self, TOKEN_IDENT)) {
-        compile_vardecl(self);
+        variable_declaration(self);
     } else {
-        compile_statement(self);
+        statement(self);
     }
     if (self->parser.panicking) {
         synchronize_parser(&self->parser, &self->lexer);
@@ -667,12 +806,22 @@ static void compile_declaration(Compiler *self) {
  * 
  * Now, if we don't see a `print` "keyword", we assume we must be looking at an
  * expression statement.
+ * 
+ * III:22.2     Block Statements
+ * 
+ * In Lox (like in C), new blocks are denoted by balanced '{}'.
+ * In Lua there are denoted by the `do` and `end` keywords.
+ * Unlike in Lox and C, Lua REQUIRES these keywords in `for` and `while` loops.
  */
-static void compile_statement(Compiler *self) {
+static void statement(Compiler *self) {
     if (match_token(self, TOKEN_PRINT)) {
-        compile_printstmt(self);
+        print_statement(self);
+    } else if (match_token(self, TOKEN_DO)) {
+        begin_scope(self);
+        block(self);
+        end_scope(self);
     } else {
-        compile_exprstmt(self);
+        expression_statement(self);
     }
     // Disallow lone/trailing semicolons that weren't consumed by statements.
     if (match_token(self, TOKEN_SEMICOL)) {
@@ -684,7 +833,7 @@ bool compile_bytecode(Compiler *self, const char *source) {
     init_lexer(&self->lexer, source); 
     advance_parser(&self->parser, &self->lexer);
     while (!match_token(self, TOKEN_EOF)) {
-        compile_declaration(self);
+        declaration(self);
     }
     end_compiler(self);
     return !self->parser.haderror;

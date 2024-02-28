@@ -31,6 +31,8 @@ typedef uint64_t QWord; // "Quad word" a.k.a 4 `Word`s long, usually 64-bits.
  */
 #define LUA_VM_STACKSIZE    (256)
 
+#define LUA_MAXLOCALS       (256)
+
 /**
  * Most user-facing operations in Lua using double-precision floating point values.
  * Although they take up 64 bits but have slightly less integer range than 64-bit

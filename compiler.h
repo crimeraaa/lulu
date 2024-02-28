@@ -23,6 +23,37 @@ typedef struct {
 } Parser;
 
 /**
+ * III:22.1     Representing Local Variables
+ * 
+ * Since we can store local variables on the VM's stack, we just need the right
+ * instructions and information to verify that a particular element in the stack
+ * indeed matches a particular local variable we're after.
+ * 
+ * So we just store the name and scope depth at the time the variable was
+ * declared.
+ */
+typedef struct {
+    Token name; // Name of the identifier, used for variable resolution.
+    int depth;  // Scope depth at time of declaration.
+} Local;
+
+/**
+ * III:22.2     Representing Local Variables
+ * 
+ * This struct actually takes care of keeping track of how many locals, how far
+ * down in scope we are and a pseudo-stack for their actual values.
+ * 
+ * To "allocate" memory we simply push to the stack. 
+ * Likewise, to "deallocate" memory, we simply pop the stack.
+ */
+typedef struct {
+    Local stack[LUA_MAXLOCALS]; // Stack/List of locals in scope at this point.
+    int count; // How many locals are currently in scope?
+    int depth; // Scope depth: how many blocks surround us?
+               // 0 means global scope, 1 means 1st top-level block scope, etc.
+} Locals;
+
+/**
  * The compiler manages state between the lexer and the parser, while emitting
  * bytecode. This is a lot to manage!
  * 
@@ -36,6 +67,7 @@ typedef struct {
     Chunk chunk; // This is where our raw bytecode resides.
     Lexer lexer; // Before generating bytecode, we need to poke at tokens.
     Parser parser; // Keep track of tokens emitted by `lexer`.
+    Locals locals; // Keep track of information about local variables in scope.
     lua_VM *vm; // Stupid but we need to pass this to `copy_string()` + friends.
 } Compiler;
 
@@ -50,6 +82,12 @@ typedef struct {
  * 
  * For our purposes a Lua virtual machine MUST be attached to the compiler.
  * For generating bytecode alone, this will be terrible...
+ * 
+ * III:22.1     Representing Local Variables
+ * 
+ * Now with the addition of new members we also 0-initialize them so that the
+ * compiler starts out with no local variables in scope and no surrounding scope
+ * blocks.
  */
 void init_compiler(Compiler *self, lua_VM *lvm);
 
