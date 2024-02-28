@@ -3,18 +3,12 @@
 #include "object.h"
 #include "parserules.h"
 
-static inline void init_parser(Parser *self) {
-    self->haderror  = false;
-    self->panicking = false;
-}
-
 static inline void init_locals(Locals *self) {
     self->count = 0;
     self->depth = 0;
 }
 
 void init_compiler(Compiler *self, lua_VM *lvm) {
-    init_parser(&self->parser);
     init_locals(&self->locals);
     self->vm = lvm;
 }
@@ -29,105 +23,7 @@ static inline Chunk *current_chunk(Compiler *self) {
     return &self->chunk;
 }
 
-/**
- * III:17.2.1   Handling syntax errors
- * 
- * This is generic function to report errors based on some token and a message.
- * Whatever the case, we set the parser's error state to true.
- */
-static void error_at(Parser *self, const Token *token, const char *message) {
-    if (self->panicking) {
-        return; // Avoid cascading errors for user's sanity
-    }
-    self->haderror = true;
-    self->panicking = true;
-    fprintf(stderr, "[line %i] Error", token->line);
-    if (token->type == TOKEN_EOF) {
-        fprintf(stderr, " at end");
-    } else if (token->type == TOKEN_ERROR) {
-        // Nothing as the error token already has a message.
-    } else {
-        fprintf(stderr, " at '%.*s'", token->length, token->start);
-    }
-    fprintf(stderr, ": %s\n", message);
-}
-
-/**
- * III:17.2.1   Handling syntax errors
- * 
- * More often than not, we want to report an error at the location of the token
- * we just consumed (that is, it's now the parser's previous token).
- */
-static inline void error(Parser *self, const char *message) {
-    error_at(self, &self->previous, message);
-}
-
-/**
- * III:17.2.1   Handling syntax errors
- * 
- * If the lexer hands us an error token, we simply report its error message.
- * This is a wrapper around the more generic `error_at()` which can take in any
- * arbitrary error message.
- */
-static inline void error_at_current(Parser *self, const char *message) {
-    error_at(self, &self->current, message);
-}
-
-/**
- * III:17.2     Parsing Tokens
- * 
- * Assume the compiler should move to the next token. So the parser is set to
- * start a new token. This adjusts state of the compiler's parser and lexer.
- */
-static void advance_parser(Parser *parser, Lexer *lexer) {
-    parser->previous = parser->current;
-    
-    for (;;) {
-        parser->current = tokenize(lexer);
-        if (parser->current.type != TOKEN_ERROR) {
-            break;
-        }
-        // Error tokens already point to an error message thanks to the lexer.
-        error_at_current(parser, parser->current.start);
-    }
-}
-
-/**
- * III:17.2     Parsing Tokens
- * 
- * We only advance the compiler if the current token matches the expected one.
- * Otherwise, we set the compiler into an error state and report the error.
- */
-static void consume_token(Compiler *self, TokenType expected, const char *message) {
-    if (self->parser.current.type == expected) {
-        advance_parser(&self->parser, &self->lexer);
-        return;
-    }
-    error_at_current(&self->parser, message);
-}
-
-/**
- * III:21.1.1   Print Statements
- * 
- * Check if the parser's CURRENT (not PREVIOUS) token matches `expected`.
- */
-static inline bool check_token(const Parser *self, TokenType expected) {
-    return self->current.type == expected;
-}
-
-/**
- * III:21.1.1   Print Statements
- * 
- * If token matches, consume it and return true. Otherwise return false. Nothing
- * more, nothing less. We don't throw the parser into a panic state.
- */
-static bool match_token(Compiler *self, TokenType expected) {
-    if (!check_token(&self->parser, expected)) {
-        return false;
-    }
-    advance_parser(&self->parser, &self->lexer);
-    return true;
-}
+/* EMIT BYTECODE FUNCTIONS ---------------------------------------------- {{{ */
 
 /**
  * III:17.3     Emitting Bytecode
@@ -192,7 +88,7 @@ static inline void emit_return(Compiler *self) {
 static inline DWord make_constant(Compiler *self, TValue value) {
     int constant = add_constant(current_chunk(self), value);
     if (constant > MAX_CONSTANTS_LONG) {
-        error(&self->parser, "Too many constants in the current chunk");       
+        parser_error(&self->parser, "Too many constants in the current chunk");       
         return 0;
     }
     return constant;
@@ -213,6 +109,8 @@ static inline void emit_constant(Compiler *self, TValue value) {
         emit_long(self, OP_CONSTANT_LONG, index);
     } 
 }
+
+/* }}} */
 
 /**
  * III:17.3     Emitting Bytecode
@@ -254,15 +152,21 @@ static void begin_scope(Compiler *self) {
  * memory we used beforehand.
  */
 static void end_scope(Compiler *self) {
+    int poppable = 0;
     Locals *locals = &self->locals;
     locals->depth--;
     // Walk backward through the array looking for variables declared at the
     // scope depth we just left. Remember "freeing" is just decrementing here.
     while (locals->count > 0 && locals->stack[locals->count - 1].depth > locals->depth) {
-        emit_byte(self, OP_POP);
         locals->count--;
+        poppable++;
     }
-    match_token(self, TOKEN_SEMICOL); // Like most of Lua this is optional.
+    // Don't waste cycles on popping nothing.
+    if (poppable > 0) {
+        emit_bytes(self, OP_POPN, poppable);
+    }
+    // Like most of Lua this is optional.
+    match_token(&self->parser, TOKEN_SEMICOL);
 }
 
 /* FORWARD DECLARATIONS ------------------------------------------------- {{{ */
@@ -313,18 +217,28 @@ static bool identifiers_equal(const Token *lhs, const Token *rhs) {
  * 
  * We return the index of the found variable into the Locals stack array, else
  * we return -1 to indicate it's a global variable or undefined.
+ * 
+ * NOTE:
+ * 
+ * I've changed it so now we try to find the nearest variable in the nearest
+ * outer scope that matches our identifier.
+ * 
+ * If it doesn't find a local variable in any surrounding scope of the same name,
+ * it'll resort to looking up a global variable then. If that doesn't work you'll
+ * likely get a runtime error.
  */
 static int resolve_local(Compiler *self, const Token *name) {
     const Locals *locals = &self->locals;
     for (int i = locals->count - 1; i >= 0; i--) {
         const Local *var = &locals->stack[i];
         if (identifiers_equal(name, &var->name)) {
-            if (var->depth == -1) {
-                error(&self->parser, "Can't read local variable in its own initializer.");
-            }
-            return i;
+            // Implicitly continue if shadowing itself.
+            if (var->depth != -1) {
+                return i;
+            } 
         }
     }
+    // Indicate to caller they should try to lookup in the globals table.
     return -1;
 }
 
@@ -352,7 +266,7 @@ static void add_local(Compiler *self, Token name) {
     Locals *locals = &self->locals;
     Parser *parser = &self->parser;
     if (locals->count >= LUA_MAXLOCALS) {
-        error(parser, "Too many local variables in function.");
+        parser_error(parser, "Too many local variables in function.");
         return;
     }
     Local *var = &locals->stack[locals->count++];
@@ -387,7 +301,7 @@ static void declare_variable(Compiler *self, bool islocal) {
             break;
         }
         if (identifiers_equal(name, &var->name)) {
-            error(parser, "Already a variable with this name in this scope.");
+            parser_error(parser, "Already a variable with this name in this scope.");
             return;
         }
     }
@@ -503,7 +417,7 @@ void literal(Compiler *self, bool assignable) {
 void grouping(Compiler *self, bool assignable) {
     (void)assignable;
     expression(self);
-    consume_token(self, TOKEN_RPAREN, "Expected ')' after grouping expression.");
+    consume_token(&self->parser, TOKEN_RPAREN, "Expected ')' after grouping expression.");
 }
 
 /* Parse a number literal and emit it as a constant. */
@@ -520,8 +434,9 @@ void number(Compiler *self, bool assignable) {
  */
 void string(Compiler *self, bool assignable) {
     (void)assignable;
-    const char *start = self->parser.previous.start + 1; // Past opening quote
-    int length = self->parser.previous.length - 2; // Length w/o quotes
+    Parser *parser = &self->parser;
+    const char *start = parser->previous.start + 1; // Past opening quote
+    int length        = parser->previous.length - 2; // Length w/o quotes
     lua_String *object = copy_string(self->vm, start, length);
     emit_constant(self, makeobject(LUA_TSTRING, object));
 }
@@ -567,7 +482,7 @@ static inline void named_variable(Compiler *self, const Token *name, bool assign
         getop = OP_GETGLOBAL;
         setop = OP_SETGLOBAL;
     }
-    if (assignable && match_token(self, TOKEN_ASSIGN)) {
+    if (assignable && match_token(&self->parser, TOKEN_ASSIGN)) {
         expression(self);
         emit_bytes(self, setop, (Byte)arg);
     } else {
@@ -632,24 +547,25 @@ void unary(Compiler *self, bool assignable) {
  * In other words we need to append a `bool` argument to all parser functions!
  */
 static void parse_precedence(Compiler *self, Precedence precedence) {
-    advance_parser(&self->parser, &self->lexer);
-    const ParseFn prefixfn = get_rule(self->parser.previous.type)->prefix;
+    Parser *parser = &self->parser;
+    advance_parser(parser);
+    const ParseFn prefixfn = get_rule(parser->previous.type)->prefix;
     if (prefixfn == NULL) {
-        error(&self->parser, "Expected an expression.");
+        parser_error(parser, "Expected an expression.");
         return; // Might end up with NULL infixfn as well
     }
     bool assignable = (precedence <= PREC_ASSIGNMENT);
     prefixfn(self, assignable);
     
-    while (precedence <= get_rule(self->parser.current.type)->precedence) {
-        advance_parser(&self->parser, &self->lexer);
-        const ParseFn infixfn = get_rule(self->parser.previous.type)->infix;
+    while (precedence <= get_rule(parser->current.type)->precedence) {
+        advance_parser(parser);
+        const ParseFn infixfn = get_rule(parser->previous.type)->infix;
         infixfn(self, assignable);
     }
     
     // No function consumed the '=' token so we didn't properly assign.
-    if (assignable && match_token(self, TOKEN_ASSIGN)) {
-        error(&self->parser, "Invalid assignment target.");
+    if (assignable && match_token(parser, TOKEN_ASSIGN)) {
+        parser_error(parser, "Invalid assignment target.");
     }
 }
 
@@ -718,7 +634,7 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
     } else if (index <= MAX_CONSTANTS_LONG) {
         emit_long(self, OP_SETGLOBAL_LONG, index);
     } else {
-        error(&self->parser, "Too many global variable identifiers.");
+        parser_error(&self->parser, "Too many global variable identifiers.");
     }
 }
 
@@ -755,10 +671,11 @@ static void expression(Compiler *self) {
  * to something like `print_statement()` will eventually be reached.
  */
 static void block(Compiler *self) {
-    while (!check_token(&self->parser, TOKEN_END) && !check_token(&self->parser, TOKEN_EOF)) {
+    Parser *parser = &self->parser;
+    while (!check_token(parser, TOKEN_END) && !check_token(parser, TOKEN_EOF)) {
         declaration(self);
     }
-    consume_token(self, TOKEN_END, "Expected 'end' after block.");
+    consume_token(parser, TOKEN_END, "Expected 'end' after block.");
 }
 
 /**
@@ -794,15 +711,16 @@ static void block(Compiler *self) {
  * `variable()` parse rule.
  */
 static void variable_declaration(Compiler *self) {
-    consume_token(self, TOKEN_IDENT, "Expected identifier after 'local'.");
+    Parser *parser = &self->parser;
+    consume_token(parser, TOKEN_IDENT, "Expected identifier after 'local'.");
     // Index of variable name (previous token) as appended into constants pool
     DWord index = parse_variable(self, true);
-    if (match_token(self, TOKEN_ASSIGN)) {
+    if (match_token(parser, TOKEN_ASSIGN)) {
         expression(self);
     } else {
         emit_byte(self, OP_NIL); // Push nil to stack as a default value
     }
-    match_token(self, TOKEN_SEMICOL);
+    match_token(parser, TOKEN_SEMICOL);
     define_variable(self, index, true);
 }
 
@@ -817,50 +735,14 @@ static void variable_declaration(Compiler *self) {
  */
 static void expression_statement(Compiler *self) {
     expression(self);
-    match_token(self, TOKEN_SEMICOL);
+    match_token(&self->parser, TOKEN_SEMICOL);
     emit_byte(self, OP_POP);
 }
 
 static void print_statement(Compiler *self) {
     expression(self);
-    match_token(self, TOKEN_SEMICOL);
+    match_token(&self->parser, TOKEN_SEMICOL);
     emit_byte(self, OP_PRINT);
-}
-
-/**
- * III:21.1.3   Error synchronization
- * 
- * If we hit a compile error while parsing a previous statement we panic.
- * When we panic, we attempt to synchronize by moving the parser to the next
- * statement boundary. A statement boundary is a preceding token that can end
- * a statement, like a semicolon. Or a subsequent token that begins a statement,
- * like a control flow or declaration statement.
- */
-static void synchronize_parser(Parser *parser, Lexer *lexer) {
-    parser->panicking = false;
-    
-    while (parser->current.type != TOKEN_EOF) {
-        if (parser->previous.type == TOKEN_SEMICOL) {
-            // If more than 1 semicol, don't report the error once since we
-            // reset the parser panic state.
-            if (parser->current.type != TOKEN_SEMICOL) {
-                return;
-            }
-        }
-        switch (parser->current.type) {
-        case TOKEN_FUNCTION:
-        case TOKEN_LOCAL:
-        case TOKEN_FOR:
-        case TOKEN_IF:
-        case TOKEN_WHILE:
-        case TOKEN_PRINT:
-        case TOKEN_RETURN: return;
-        default:
-            ; // Do nothing
-        }
-        // Consume token without doing anything with it
-        advance_parser(parser, lexer);
-    }
 }
 
 /**
@@ -870,16 +752,23 @@ static void synchronize_parser(Parser *parser, Lexer *lexer) {
  * grammar, assignment is one of (if not the) lowest precedences. So we parse
  * it first above all else, normal non-name-binding statements will shunt over
  * to `statement()` and whatever that delegates to.
+ * 
+ * III:22.4     Using Locals
+ * 
+ * I've revamped the system a little bit so that the only "variable declaration"
+ * statements are the ones starting with "local". By default, global variables
+ * are created as needed and assigned which is taken care of by the call to
+ * `expression_statement()` which eventually calls `variable()`.
  */
 static void declaration(Compiler *self) {
-    // Match separately from ident so we can report an error message.
-    if (match_token(self, TOKEN_LOCAL)) {
+    Parser *parser = &self->parser;
+    if (match_token(parser, TOKEN_LOCAL)) {
         variable_declaration(self);
     } else {
         statement(self);
     }
-    if (self->parser.panicking) {
-        synchronize_parser(&self->parser, &self->lexer);
+    if (parser->panicking) {
+        synchronize_parser(parser);
     }
 }
 
@@ -908,9 +797,10 @@ static void declaration(Compiler *self) {
  * with Lua's official design.
  */
 static void statement(Compiler *self) {
-    if (match_token(self, TOKEN_PRINT)) {
+    Parser *parser = &self->parser;
+    if (match_token(parser, TOKEN_PRINT)) {
         print_statement(self);
-    } else if (match_token(self, TOKEN_DO)) {
+    } else if (match_token(parser, TOKEN_DO)) {
         begin_scope(self);
         block(self);
         end_scope(self);
@@ -918,15 +808,15 @@ static void statement(Compiler *self) {
         expression_statement(self);
     }
     // Disallow lone/trailing semicolons that weren't consumed by statements.
-    if (match_token(self, TOKEN_SEMICOL)) {
-        error(&self->parser, "Unexpected symbol.");
+    if (match_token(parser, TOKEN_SEMICOL)) {
+        parser_error(parser, "Unexpected symbol.");
     }
 }
 
 bool compile_bytecode(Compiler *self, const char *source) {
-    init_lexer(&self->lexer, source); 
-    advance_parser(&self->parser, &self->lexer);
-    while (!match_token(self, TOKEN_EOF)) {
+    init_parser(&self->parser, source);
+    advance_parser(&self->parser);
+    while (!match_token(&self->parser, TOKEN_EOF)) {
         declaration(self);
     }
     end_compiler(self);

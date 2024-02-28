@@ -32,6 +32,7 @@ typedef enum {
     
     // -*- III:21.1.2   Expression statements --------------------------------*-
     OP_POP,
+    OP_POPN, // Allow us to quickly decrement the stack pointer.
     
     // -*- III:22.4.1   Interpreting local variables -------------------------*-
     OP_SETLOCAL,

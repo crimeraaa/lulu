@@ -3,24 +3,9 @@
 
 #include "common.h"
 #include "chunk.h"
-#include "compiler.h"
 #include "lexer.h"
 #include "object.h"
-
-/**
- * III:17.2     Parsing Tokens
- * 
- * This struct works in tandem with `Lexer`. The Lexer emits raw tokens, and
- * the Parser keeps track of which token we have right now and which token we just
- * had. This kind of lookahead (or lookbehind) is just enough to parse complex
- * expressions.
- */
-typedef struct {
-    Token current;  // Token we're pointing at and want to consume.
-    Token previous; // Token we just consumed.
-    bool haderror;  // Track error state so we can report.
-    bool panicking; // Track panic state so we don't vomit error cascades.
-} Parser;
+#include "parser.h"
 
 /**
  * III:22.1     Representing Local Variables
@@ -62,14 +47,18 @@ typedef struct {
  * It has 2 jobs: Parse the user's source code to understand what it means, and
  * emit low-level instruction (bytecode) based on how it understands the source
  * code.
+ * 
+ * III:22.4     Using Locals
+ * 
+ * I've separated the `Parser` struct into its own separate module so that the
+ * `compiler.c` file is less crowded.
  */
-typedef struct {
+struct Compiler {
     Chunk chunk; // This is where our raw bytecode resides.
-    Lexer lexer; // Before generating bytecode, we need to poke at tokens.
     Parser parser; // Keep track of tokens emitted by `lexer`.
     Locals locals; // Keep track of information about local variables in scope.
     lua_VM *vm; // Stupid but we need to pass this to `copy_string()` + friends.
-} Compiler;
+};
 
 /**
  * III:17.2     Parsing Tokens

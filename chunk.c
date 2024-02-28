@@ -99,7 +99,7 @@ void disassemble_chunk(Chunk *self, const char *name) {
  * Constant instructions take 1 byte for themselves and 1 byte for the operand. 
  * The operand is an index into the chunk's constants pool.
  */
-static int constant_instruction(const char *name, Chunk *chunk, int offset) {
+static int constant_instruction(const char *name, const Chunk *chunk, int offset) {
     // code[offset] is the operation byte itself, code[offset + 1] is the index
     // into the chunk's constants pool.
     Byte index = chunk->code[offset + 1];
@@ -122,7 +122,7 @@ static int constant_instruction(const char *name, Chunk *chunk, int offset) {
  * 
  * In total, this entire operation takes up 4 bytes.
  */
-static int constant_instruction_long(const char *name, Chunk *chunk, int offset) {
+static int constant_instruction_long(const char *name, const Chunk *chunk, int offset) {
     int index = chunk->code[offset + 1] << 16; // Unmask upper 8 bits
     index |= chunk->code[offset + 2] << 8;     // Unmask center 8 bits
     index |= chunk->code[offset + 3];          // Unmask lower 8 bits
@@ -143,7 +143,7 @@ static int simple_instruction(const char *name, int offset) {
  * 
  * `code[offset]` is the opcode, `code[offset + 1]` is the operand.
  */
-static int byte_instruction(const char *name, Chunk *chunk, int offset) {
+static int byte_instruction(const char *name, const Chunk *chunk, int offset) {
     Byte slot = chunk->code[offset + 1];
     printf("%-16s %4i\n", name, slot);
     return offset + 2;
@@ -174,6 +174,7 @@ int disassemble_instruction(Chunk *chunk, int offset) {
                    
     // -*- III:21.1.2   Expression statements --------------------------------*-
     case OP_POP: return simple_instruction("OP_POP", offset);
+    case OP_POPN: return byte_instruction("OP_POPN", chunk, offset);
                  
     // -*- III:22.4.1   Interpreting local variables -------------------------*-
     case OP_GETLOCAL: return byte_instruction("OP_GETLOCAL", chunk, offset);

@@ -282,6 +282,12 @@ static InterpretResult run_bytecode(lua_VM *self) {
                        
         // -*- III:21.1.2   Expression statements ----------------------------*-
         case OP_POP: pop_vmstack(self); break;
+        case OP_POPN: {
+            // How much to decrement the stack pointer by.
+            Byte count = read_byte(self);
+            self->sp -= count;
+            break;
+        }
                      
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
         case OP_GETLOCAL: {
