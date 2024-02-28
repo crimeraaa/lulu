@@ -53,6 +53,4 @@ typedef struct lua_String lua_String;
  */
 typedef struct lua_VM lua_VM;
 
-typedef struct Compiler Compiler;
-
 #endif /* LUA_COMMON_H */

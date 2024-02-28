@@ -53,12 +53,12 @@ typedef struct {
  * I've separated the `Parser` struct into its own separate module so that the
  * `compiler.c` file is less crowded.
  */
-struct Compiler {
+typedef struct {
     Chunk chunk; // This is where our raw bytecode resides.
     Parser parser; // Keep track of tokens emitted by `lexer`.
     Locals locals; // Keep track of information about local variables in scope.
     lua_VM *vm; // Stupid but we need to pass this to `copy_string()` + friends.
-};
+} Compiler;
 
 /**
  * III:17.2     Parsing Tokens
