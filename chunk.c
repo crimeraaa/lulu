@@ -138,6 +138,17 @@ static int simple_instruction(const char *name, int offset) {
     return offset + 1;
 }
 
+/**
+ * III:22.4.1   Interpreting local variables
+ * 
+ * `code[offset]` is the opcode, `code[offset + 1]` is the operand.
+ */
+static int byte_instruction(const char *name, Chunk *chunk, int offset) {
+    Byte slot = chunk->code[offset + 1];
+    printf("%-16s %4i\n", name, slot);
+    return offset + 2;
+}
+
 int disassemble_instruction(Chunk *chunk, int offset) {
     printf("%04i ", offset); // Print number left-padded with 0's
 
@@ -163,6 +174,10 @@ int disassemble_instruction(Chunk *chunk, int offset) {
                    
     // -*- III:21.1.2   Expression statements --------------------------------*-
     case OP_POP: return simple_instruction("OP_POP", offset);
+                 
+    // -*- III:22.4.1   Interpreting local variables -------------------------*-
+    case OP_GETLOCAL: return byte_instruction("OP_GETLOCAL", chunk, offset);
+    case OP_SETLOCAL: return byte_instruction("OP_SETLOCAL", chunk, offset);
 
     // -*- III:21.2     Variable Declarations
     case OP_GETGLOBAL: 

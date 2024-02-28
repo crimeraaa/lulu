@@ -17,7 +17,7 @@
  * If MAX_CONSTANTS_SHORT has been surpassed, we use `OP_CONSTANT_LONG` and
  * supply it with a 3-byte (24-bit) operand.
  */
-#define MAX_CONSTANTS_LONG      (1 << 24)
+#define MAX_CONSTANTS_LONG      ((1 << 24) - 1)
 
 typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
@@ -33,7 +33,11 @@ typedef enum {
     // -*- III:21.1.2   Expression statements --------------------------------*-
     OP_POP,
     
+    // -*- III:22.4.1   Interpreting local variables -------------------------*-
+    OP_SETLOCAL,
+    
     // -*- III:21.2     Variable Declarations --------------------------------*-
+    OP_GETLOCAL,
     OP_GETGLOBAL,
     OP_GETGLOBAL_LONG,
     // OP_DEFINE_GLOBAL,

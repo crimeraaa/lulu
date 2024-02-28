@@ -283,6 +283,18 @@ static InterpretResult run_bytecode(lua_VM *self) {
         // -*- III:21.1.2   Expression statements ----------------------------*-
         case OP_POP: pop_vmstack(self); break;
                      
+        // -*- III:22.4.1   Interpreting local variables ---------------------*-
+        case OP_GETLOCAL: {
+            Byte slot = read_byte(self);
+            push_vmstack(self, self->stack[slot]);
+            break;
+        }
+        case OP_SETLOCAL: {
+            Byte slot = read_byte(self);
+            self->stack[slot] = peek_vmstack(self, 0);
+            // pop_vmstack(self); // Expression left stuff on top of the stack.
+            break;
+        }
         // -*- III:21.2     Variable Declarations ----------------------------*-
         // NOTE: As of III:21.4 I've removed the `OP_DEFINE*` opcodes and cases.
         case OP_GETGLOBAL: {
@@ -316,14 +328,15 @@ static InterpretResult run_bytecode(lua_VM *self) {
             lua_String *name = read_string(self);
             // Assign to this name whatever is on the top of the stack.
             table_set(&self->globals, name, peek_vmstack(self, 0));
-            // Pop expression of assigned value off the stack
-            pop_vmstack(self);
+            // We already emitted an `OP_POP` instruction in order to ensure
+            // the stack is clean for the next instruction.
+            // This unforunately allows us to nest assignments as the semantics
+            // cause us to not break out until the end of the statement.
             break;
         }
         case OP_SETGLOBAL_LONG: {
             lua_String *name = read_string_at(self, read_dword(self));
             table_set(&self->globals, name, peek_vmstack(self, 0));
-            pop_vmstack(self);
             break;
         }
 

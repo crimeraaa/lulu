@@ -111,7 +111,7 @@ static void consume_token(Compiler *self, TokenType expected, const char *messag
  * 
  * Check if the parser's CURRENT (not PREVIOUS) token matches `expected`.
  */
-static inline bool check_token(Parser *self, TokenType expected) {
+static inline bool check_token(const Parser *self, TokenType expected) {
     return self->current.type == expected;
 }
 
@@ -143,9 +143,9 @@ static inline void emit_byte(Compiler *self, Byte byte) {
  * Helper because we'll be using this a lot. Used mainly for an 8-bit instruction
  * that has an 8-bit operand, like `OP_CONSTANT`.
  */
-static inline void emit_bytes(Compiler *self, Byte i, Byte ii) {
-    emit_byte(self, i);
-    emit_byte(self, ii);
+static inline void emit_bytes(Compiler *self, Byte opcode, Byte operand) {
+    emit_byte(self, opcode);
+    emit_byte(self, operand);
 }
 
 /** 
@@ -158,11 +158,11 @@ static inline void emit_bytes(Compiler *self, Byte i, Byte ii) {
  * them fits into the chunk's bytecode array. We'll need to decode them later in 
  * the VM using similar bitwise operations.
  */
-static inline void emit_long(Compiler *self, Byte byte, DWord dword) {
-    Byte hi  = (dword >> 16) & 0xFF; // mask bits 17-24 : 0x010000..0xFFFFFF
-    Byte mid = (dword >> 8)  & 0xFF; // mask bits 9-16  : 0x000100..0x00FFFF
-    Byte lo  = dword & 0xFF;         // mask bits 1-8   : 0x000000..0x0000FF
-    emit_byte(self, byte);
+static inline void emit_long(Compiler *self, Byte opcode, DWord operand) {
+    Byte hi  = (operand >> 16) & 0xFF; // mask bits 17-24 : 0x010000..0xFFFFFF
+    Byte mid = (operand >> 8)  & 0xFF; // mask bits 9-16  : 0x000100..0x00FFFF
+    Byte lo  = operand & 0xFF;         // mask bits 1-8   : 0x000000..0x0000FF
+    emit_byte(self, opcode);
     emit_byte(self, hi);
     emit_byte(self, mid);
     emit_byte(self, lo);
@@ -262,6 +262,7 @@ static void end_scope(Compiler *self) {
         emit_byte(self, OP_POP);
         locals->count--;
     }
+    match_token(self, TOKEN_SEMICOL); // Like most of Lua this is optional.
 }
 
 /* FORWARD DECLARATIONS ------------------------------------------------- {{{ */
@@ -303,6 +304,31 @@ static bool identifiers_equal(const Token *lhs, const Token *rhs) {
 }
 
 /**
+ * III:22.4     Using Locals
+ * 
+ * Walk the list of locals currently in scope (backwards) looking for a token
+ * that has the same identifier as the given name. We start with the last
+ * declared variable so that inner local variables correctly shadow locals with
+ * the same names in surrounding scopes.
+ * 
+ * We return the index of the found variable into the Locals stack array, else
+ * we return -1 to indicate it's a global variable or undefined.
+ */
+static int resolve_local(Compiler *self, const Token *name) {
+    const Locals *locals = &self->locals;
+    for (int i = locals->count - 1; i >= 0; i--) {
+        const Local *var = &locals->stack[i];
+        if (identifiers_equal(name, &var->name)) {
+            if (var->depth == -1) {
+                error(&self->parser, "Can't read local variable in its own initializer.");
+            }
+            return i;
+        }
+    }
+    return -1;
+}
+
+/**
  * III:22.3     Declaring Local Variables
  * 
  * Initialize the next available slot in the Locals stack with the given token
@@ -310,6 +336,17 @@ static bool identifiers_equal(const Token *lhs, const Token *rhs) {
  * 
  * Lifetimes for things like strings are still ok because the entire source code 
  * string should be valid for the entirety of the compilation process.
+ * 
+ * III:22.4.2   Another scope edge case
+ * 
+ * What happens when we have this? `a=1; do local a=a; end;`
+ * Or how about this? `do local a=1; do local a=a; end; end;`
+ * 
+ * This is where the concept of marking a local variable "uninitialized" and
+ * "initialized" comes into play.
+ * 
+ * When marked uninitialized, the variable's depth is -1. This allows us to split
+ * the declaration into 2 phases.
  */
 static void add_local(Compiler *self, Token name) {
     Locals *locals = &self->locals;
@@ -318,9 +355,9 @@ static void add_local(Compiler *self, Token name) {
         error(parser, "Too many local variables in function.");
         return;
     }
-    Local *local = &locals->stack[locals->count++];
-    local->name = name;
-    local->depth = locals->depth;
+    Local *var = &locals->stack[locals->count++];
+    var->name = name;
+    var->depth = -1;
 }
 
 /**
@@ -333,25 +370,25 @@ static void add_local(Compiler *self, Token name) {
  * For locals however, we do need to keep track hence we add it to the list of
  * the compiler's local variables.
  */
-static void declare_variable(Compiler *self) {
+static void declare_variable(Compiler *self, bool islocal) {
     Locals *locals = &self->locals;
     Parser *parser = &self->parser;
-    // Bail out if this is called while compiling at global scope.
-    if (locals->depth == 0) {
+    // Bail out if this is called for global variable declarations.
+    if (!islocal /* locals->depth == 0 */) {
         return;
     }
     const Token *name = &parser->previous;
     // Ensure identifiers are never shadowed/redeclared in the same scope.
     // Note that the current scope is at the END of the array.
     for (int i = locals->count - 1; i >= 0; i--) {
-        // Not to be confused with `locals`, with an 's'.
-        Local *local = &locals->stack[i];
+        const Local *var = &locals->stack[i];
         // If we hit an outer scope, stop looking for shadowed identifiers.
-        if (local->depth != -1 && local->depth < locals->depth) {
+        if (var->depth != -1 && var->depth < locals->depth) {
             break;
         }
-        if (identifiers_equal(name, &local->name)) {
+        if (identifiers_equal(name, &var->name)) {
             error(parser, "Already a variable with this name in this scope.");
+            return;
         }
     }
     add_local(self, *name);
@@ -510,16 +547,31 @@ void string(Compiler *self, bool assignable) {
  * compiling and emitting `OP_SET` or `OP_GET` instructions.
  * 
  * We assume (for now) that this function is only used for variable retrieval.
+ * 
+ * III:22.4     Using Locals
+ * 
+ * NOTE:
+ * 
+ * One major difference is that because Lua doesn't allow nested declarations,
+ * this function is only really used for variable retrieval, never assignment.
  */
 static inline void named_variable(Compiler *self, const Token *name, bool assignable) {
-    (void)assignable;
-    DWord arg = identifier_constant(self, name);
-    if (arg <= MAX_CONSTANTS_SHORT) {
-        emit_bytes(self, OP_GETGLOBAL, arg);
-    } else if (arg <= MAX_CONSTANTS_LONG) {
-        emit_long(self, OP_GETGLOBAL_LONG, arg);
+    Byte getop, setop;
+    // Try to find local variable with given name. -1 indicates none found.
+    int arg = resolve_local(self, name);
+    if (arg != -1) {
+        getop = OP_GETLOCAL;
+        setop = OP_SETLOCAL; 
     } else {
-        error_at(&self->parser, name, "Unable to retrieve global variable.");
+        arg = identifier_constant(self, name);
+        getop = OP_GETGLOBAL;
+        setop = OP_SETGLOBAL;
+    }
+    if (assignable && match_token(self, TOKEN_ASSIGN)) {
+        expression(self);
+        emit_bytes(self, setop, (Byte)arg);
+    } else {
+        emit_bytes(self, getop, (Byte)arg);
     }
 }
 
@@ -606,19 +658,28 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
  * 
  * Because I'm implementing Lua we don't have a `var` keyword, so we have to be
  * more careful when it comes to determining if an identifier supposed to be a
- * global variable declaration/definition/assignment.
+ * global variable declaration/definition/assignment, or a local.
  * 
  * Assumes that we already consumed a TOKEN_IDENT and that it's now the parser's
  * previous token.
  */
-static Byte parse_variable(Compiler *self, const char *message) {
-    // consume_token(self, TOKEN_IDENT, message); // Do NOT use this for Lua!
-    declare_variable(self);
+static Byte parse_variable(Compiler *self, bool islocal) {
+    declare_variable(self, islocal);
     // Locals aren't looked up by name at runtime so return a dummy index.
-    if (self->locals.depth > 0) {
+    if (islocal /* self->locals.depth > 0 */) {
         return 0;
     }
     return identifier_constant(self, &self->parser.previous);
+}
+
+/**
+ * III:22.4.2   Another scope edge case
+ * 
+ * Once a local variable's initializer has been compiled, we mark it as such.
+ */
+static void mark_initialized(Compiler *self) {
+    Locals *locals = &self->locals;
+    locals->stack[locals->count - 1].depth = locals->depth;
 }
 
 /**
@@ -637,11 +698,19 @@ static Byte parse_variable(Compiler *self, const char *message) {
  * 
  * For globals, this assumes that the result of the assignment expression has
  * already been pushed onto the top of the stack.
+ * 
+ * III:22.4     Using Locals
+ * 
+ * Unlike Lox and C, which allow nested declarations/definitions/assignments,
+ * Lua doesn't because there are no differences between global variable
+ * declaration and assignment. So in Lua we don't allow these to nest, e.g.
+ * `a = 1; a = a = 2;` is an invalid statment.
  */
-static void define_variable(Compiler *self, DWord index) {
+static void define_variable(Compiler *self, DWord index, bool islocal) {
     // There is no code needed to create a local variable at runtime, since
     // all our locals live exclusively on the stack and not in a hashtable.
-    if (self->locals.depth > 0) {
+    if (islocal /* self->locals.depth > 0 */) {
+        mark_initialized(self);
         return;
     }
     if (index <= MAX_CONSTANTS_SHORT) {
@@ -686,7 +755,7 @@ static void expression(Compiler *self) {
  * to something like `print_statement()` will eventually be reached.
  */
 static void block(Compiler *self) {
-    while (!check_token(self, TOKEN_END) && !check_token(self, TOKEN_EOF)) {
+    while (!check_token(&self->parser, TOKEN_END) && !check_token(&self->parser, TOKEN_EOF)) {
         declaration(self);
     }
     consume_token(self, TOKEN_END, "Expected 'end' after block.");
@@ -707,18 +776,34 @@ static void block(Compiler *self) {
  * 
  * For non-assignment of a global declaration, Lua considers that an error.
  * For assignment IN a global declaration, we'll have to be smart.
+ * 
+ * III:22.3     Declaring Local Variables
+ * 
+ * Local variables in Lua are denoted purely by the use of the `local` keyword.
+ * Otherwise, without it you're just declaring global variables everywhere!
+ * This is a common criticism of Lua (that I fully understand) but for consistency's
+ * sake I choose to follow their design.
+ * 
+ * So, unlike Lox and C, we don't determine locality of a variable by how deep
+ * down in the scope it is, but the use of the `local` keyword and said depth.
+ * 
+ * NOTE:
+ * 
+ * I've now changed it so that only local variables can be considered for
+ * declaration statements. For globals, we implicitly shunt down to the 
+ * `variable()` parse rule.
  */
 static void variable_declaration(Compiler *self) {
+    consume_token(self, TOKEN_IDENT, "Expected identifier after 'local'.");
     // Index of variable name (previous token) as appended into constants pool
-    DWord index = parse_variable(self, "Expected a variable name.");
+    DWord index = parse_variable(self, true);
     if (match_token(self, TOKEN_ASSIGN)) {
-        expression(self); // Push result of expression
+        expression(self);
     } else {
-        // emit_byte(self, OP_NIL); // Push nil as default variable value
-        error(&self->parser, "Expected '=' after variable declaration.");
+        emit_byte(self, OP_NIL); // Push nil to stack as a default value
     }
     match_token(self, TOKEN_SEMICOL);
-    define_variable(self, index);
+    define_variable(self, index, true);
 }
 
 /**
@@ -787,7 +872,8 @@ static void synchronize_parser(Parser *parser, Lexer *lexer) {
  * to `statement()` and whatever that delegates to.
  */
 static void declaration(Compiler *self) {
-    if (match_token(self, TOKEN_IDENT)) {
+    // Match separately from ident so we can report an error message.
+    if (match_token(self, TOKEN_LOCAL)) {
         variable_declaration(self);
     } else {
         statement(self);
@@ -812,6 +898,14 @@ static void declaration(Compiler *self) {
  * In Lox (like in C), new blocks are denoted by balanced '{}'.
  * In Lua there are denoted by the `do` and `end` keywords.
  * Unlike in Lox and C, Lua REQUIRES these keywords in `for` and `while` loops.
+ * 
+ * III:22.4     Using Locals
+ * 
+ * This is now where global, local variable declarations will be sifted off to
+ * and in turn defer responsibility down to `expression_statement()`.
+ * 
+ * Unfortunately this allows us to nest assignments which is not consistent
+ * with Lua's official design.
  */
 static void statement(Compiler *self) {
     if (match_token(self, TOKEN_PRINT)) {
