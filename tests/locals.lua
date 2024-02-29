@@ -10,6 +10,7 @@ end
 do
     local a = 11
     local b = 22
-    local c = a = b
+    local c = a + b
+    -- local c = a = b -- Semantics updated so that this is disallowed!
     print(c)
 end

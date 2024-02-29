@@ -5,10 +5,9 @@ EXE 	:= lulu
 CC_SRC	:= $(wildcard *.c)
 CC_OBJ	:= $(patsubst %.c, obj/%.o, $(CC_SRC))
 DEBUGFLAGS := -fdiagnostics-color=always -g -O0 \
-	-DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION \
-	-Wno-unused-variable -Wno-unused-parameter -Wno-unused-function
+	-DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION
 
-# -*- BEGIN RECIPES ----------------------------------------------------------*-
+# -*- BEGIN RECIPES ------------------------------------------------------*- {{{
 
 all: debug
 
@@ -33,6 +32,6 @@ clean:
 uninstall: clean
 	$(RM) bin/$(EXE)
 
-# -*- END RECIPES ------------------------------------------------------------*-
+# }}} -*- END RECIPES --------------------------------------------------------*-
 
 .PHONY: all build debug release clean uninstall

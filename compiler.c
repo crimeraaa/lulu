@@ -165,8 +165,6 @@ static void end_scope(Compiler *self) {
     if (poppable > 0) {
         emit_bytes(self, OP_POPN, poppable);
     }
-    // Like most of Lua this is optional.
-    match_token(&self->parser, TOKEN_SEMICOL);
 }
 
 /* FORWARD DECLARATIONS ------------------------------------------------- {{{ */
@@ -330,8 +328,8 @@ static void declare_variable(Compiler *self, bool islocal) {
  * In order to meet the signature of `ParseFn`, we need to add a `bool` param.
  * It sucks but it's better to keep all the function pointers uniform!
  */
-void binary(Compiler *self, bool assignable) {
-    (void)assignable;
+void binary(Compiler *self) {
+    
     TokenType optype = self->parser.previous.type;
     const ParseRule *rule = get_rule(optype);
     // Compile right hand side, and evaluate it if it has higher precedence operations.
@@ -363,8 +361,8 @@ void binary(Compiler *self, bool assignable) {
 /**
  * Right-associative binary operators, mainly for exponentiation and concatenation.
  */
-void rbinary(Compiler *self, bool assignable) {
-    (void)assignable;
+void rbinary(Compiler *self) {
+    
 
     TokenType optype = self->parser.previous.type;
     const ParseRule *rule = get_rule(optype);
@@ -391,8 +389,8 @@ void rbinary(Compiler *self, bool assignable) {
  * Adding a `bool` parameter for uniformity with all the other function pointers
  * in the `parserules.c` lookup table.
  */
-void literal(Compiler *self, bool assignable) {
-    (void)assignable;
+void literal(Compiler *self) {
+    
     switch (self->parser.previous.type) {
     case TOKEN_FALSE: emit_byte(self, OP_FALSE); break;
     case TOKEN_NIL:   emit_byte(self, OP_NIL);   break;
@@ -414,15 +412,15 @@ void literal(Compiler *self, bool assignable) {
  * order in which we evaluate the expressions contained inside the parentheses
  * that's important.
  */
-void grouping(Compiler *self, bool assignable) {
-    (void)assignable;
+void grouping(Compiler *self) {
+    
     expression(self);
     consume_token(&self->parser, TOKEN_RPAREN, "Expected ')' after grouping expression.");
 }
 
 /* Parse a number literal and emit it as a constant. */
-void number(Compiler *self, bool assignable) {
-    (void)assignable;
+void number(Compiler *self) {
+    
     double value = strtod(self->parser.previous.start, NULL);
     emit_constant(self, makenumber(value));
 }
@@ -432,8 +430,8 @@ void number(Compiler *self, bool assignable) {
  * 
  * Here we go, strings! One of the big bads of C.
  */
-void string(Compiler *self, bool assignable) {
-    (void)assignable;
+void string(Compiler *self) {
+    
     Parser *parser = &self->parser;
     const char *start = parser->previous.start + 1; // Past opening quote
     int length        = parser->previous.length - 2; // Length w/o quotes
@@ -469,8 +467,14 @@ void string(Compiler *self, bool assignable) {
  * 
  * One major difference is that because Lua doesn't allow nested declarations,
  * this function is only really used for variable retrieval, never assignment.
+ * 
+ * So in order to facilitate this, any call of `variable()` WITHIN an expression
+ * will always set `assignable` to false.
+ * 
+ * Otherwise, when parsing a simple declaration (e.g. `TOKEN_IDENT` is the first
+ * token in the statement) we assume it to be assignable.
  */
-static inline void named_variable(Compiler *self, const Token *name, bool assignable) {
+static void named_variable(Compiler *self, const Token *name, bool assignable) {
     Byte getop, setop;
     // Try to find local variable with given name. -1 indicates none found.
     int arg = resolve_local(self, name);
@@ -491,14 +495,44 @@ static inline void named_variable(Compiler *self, const Token *name, bool assign
 }
 
 /**
+ * III:22.4     Using Locals
+ * 
+ * I've changed more of the semantics. Now, we can ONLY assign a variable
+ * inside of simple assignment statements (e.g. `local x=1;` or `x=y;`).
+ *
+ * As in Lua we explicitly disallow nested assignments:
+ * 
+ * `local a=1; local b=2; local c=b=a`
+ * 
+ * And we also disallow assignment inside of other statements:
+ * 
+ * `local x=1; print(x = 2);`
+ * 
+ * NOTE:
+ * 
+ * This function is only ever called by `declaration()`, so that any other
+ * usage of `named_variable()` is called by `variable()` (the prefixfn).
+ * This allows us to specify when assignments are allowed.
+ */
+static inline void variable_assignment(Compiler *self) {
+    named_variable(self, &self->parser.previous, true);
+}
+
+/**
  * III:21.3     Reading Variables
  * 
  * We access a variable using its name.
  * 
  * Assumes the identifier token is the parser's previous one as we consumed it.
+ * 
+ * III:22.4     Using Locals
+ * 
+ * I've changed the semantics so that this function, which is only ever called
+ * by `expression()`, will never allow us to assign a variable.
+ * This is because simple variable assignment is detected by `declaration()`.
  */
-void variable(Compiler *self, bool assignable) {
-    named_variable(self, &self->parser.previous, assignable);
+void variable(Compiler *self) {
+    named_variable(self, &self->parser.previous, false);
 }
 
 /**
@@ -507,8 +541,7 @@ void variable(Compiler *self, bool assignable) {
  * Assumes the leading '-' token has been consumed and is the parser's previous
  * token.
  */
-void unary(Compiler *self, bool assignable) {
-    (void)assignable;
+void unary(Compiler *self) {
     // Keep in this stackframe's memory so that if we recurse, we evaluate the
     // topmost stack frame (innermosts, higher precedences) first and work our 
     // way down until we reach this particular function call.
@@ -555,12 +588,12 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
         return; // Might end up with NULL infixfn as well
     }
     bool assignable = (precedence <= PREC_ASSIGNMENT);
-    prefixfn(self, assignable);
+    prefixfn(self);
     
     while (precedence <= get_rule(parser->current.type)->precedence) {
         advance_parser(parser);
         const ParseFn infixfn = get_rule(parser->previous.type)->infix;
-        infixfn(self, assignable);
+        infixfn(self);
     }
     
     // No function consumed the '=' token so we didn't properly assign.
@@ -676,6 +709,7 @@ static void block(Compiler *self) {
         declaration(self);
     }
     consume_token(parser, TOKEN_END, "Expected 'end' after block.");
+    match_token(parser, TOKEN_SEMICOL); // Like most of Lua this is optional.
 }
 
 /**
@@ -764,6 +798,8 @@ static void declaration(Compiler *self) {
     Parser *parser = &self->parser;
     if (match_token(parser, TOKEN_LOCAL)) {
         variable_declaration(self);
+    } else if (match_token(parser, TOKEN_IDENT)) {
+        variable_assignment(self);
     } else {
         statement(self);
     }
@@ -815,10 +851,12 @@ static void statement(Compiler *self) {
 
 bool compile_bytecode(Compiler *self, const char *source) {
     init_parser(&self->parser, source);
+    begin_scope(self); // File-scope/REPL line scope is its own block scope.
     advance_parser(&self->parser);
     while (!match_token(&self->parser, TOKEN_EOF)) {
         declaration(self);
     }
+    end_scope(self);
     end_compiler(self);
     return !self->parser.haderror;
 }
