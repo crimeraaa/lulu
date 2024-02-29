@@ -6,12 +6,8 @@
 
 /** 
  * Until this limit is reached, we use `OP_CONSTANT` which takes a 1-byte operand. 
- * 
- * NOTE:
- * 
- * We require `Byte` to be an unsigned integer type so underflow is defined.
  */
-#define MAX_CONSTANTS_SHORT     ((Byte)-1)
+#define MAX_CONSTANTS_SHORT     (MAX_BYTE)
 
 /** 
  * If MAX_CONSTANTS_SHORT has been surpassed, we use `OP_CONSTANT_LONG` and

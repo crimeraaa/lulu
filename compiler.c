@@ -38,8 +38,13 @@ static inline void emit_byte(Compiler *self, Byte byte) {
 /** 
  * Helper because we'll be using this a lot. Used mainly for an 8-bit instruction
  * that has an 8-bit operand, like `OP_CONSTANT`.
+ * 
+ * NOTE:
+ * 
+ * I've changed it to use a `DWord` so that we can cast between function pointers
+ * for `emit_long`.
  */
-static inline void emit_bytes(Compiler *self, Byte opcode, Byte operand) {
+static inline void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
     emit_byte(self, opcode);
     emit_byte(self, operand);
 }
@@ -107,7 +112,9 @@ static inline void emit_constant(Compiler *self, TValue value) {
         emit_bytes(self, OP_CONSTANT, (Byte)index);
     } else if (index <= MAX_CONSTANTS_LONG) {
         emit_long(self, OP_CONSTANT_LONG, index);
-    } 
+    } else {
+        parser_error(&self->parser, "Too many constants in current chunk.");
+    }
 }
 
 /* }}} */
@@ -225,7 +232,7 @@ static bool identifiers_equal(const Token *lhs, const Token *rhs) {
  * it'll resort to looking up a global variable then. If that doesn't work you'll
  * likely get a runtime error.
  */
-static int resolve_local(Compiler *self, const Token *name) {
+static DWord resolve_local(Compiler *self, const Token *name) {
     const Locals *locals = &self->locals;
     for (int i = locals->count - 1; i >= 0; i--) {
         const Local *var = &locals->stack[i];
@@ -237,7 +244,7 @@ static int resolve_local(Compiler *self, const Token *name) {
         }
     }
     // Indicate to caller they should try to lookup in the globals table.
-    return -1;
+    return MAX_DWORD;
 }
 
 /**
@@ -374,8 +381,8 @@ void rbinary(Compiler *self) {
     // Unlike Lox, Lua uses '..' for string concatenation rather than '+'.
     // I prefer a distinct operator anyway as '+' can be confusing.
     case TOKEN_CONCAT: emit_byte(self, OP_CONCAT); break;
-    case TOKEN_CARET: emit_byte(self, OP_POW); break;
-    default: return; // Should be unreachable, but clang insists on this.
+    case TOKEN_CARET:  emit_byte(self, OP_POW); break;
+    default: return;   // Should be unreachable, but clang insists on this.
     }
 }
 
@@ -413,14 +420,12 @@ void literal(Compiler *self) {
  * that's important.
  */
 void grouping(Compiler *self) {
-    
     expression(self);
     consume_token(&self->parser, TOKEN_RPAREN, "Expected ')' after grouping expression.");
 }
 
 /* Parse a number literal and emit it as a constant. */
 void number(Compiler *self) {
-    
     double value = strtod(self->parser.previous.start, NULL);
     emit_constant(self, makenumber(value));
 }
@@ -476,21 +481,28 @@ void string(Compiler *self) {
  */
 static void named_variable(Compiler *self, const Token *name, bool assignable) {
     Byte getop, setop;
+    // This is absolutely horrendous but we need it in order to be able to
+    // use one of `emit_bytes` or `emit_long`.
+    void (*emitfn)(Compiler *self, Byte opcode, DWord operand) = emit_bytes;
+
     // Try to find local variable with given name. -1 indicates none found.
-    int arg = resolve_local(self, name);
-    if (arg != -1) {
+    DWord arg = resolve_local(self, name);
+    if (arg != MAX_DWORD) {
         getop = OP_GETLOCAL;
         setop = OP_SETLOCAL; 
     } else {
+        // Out of range error is handle by `make_constant()`.
         arg = identifier_constant(self, name);
-        getop = OP_GETGLOBAL;
-        setop = OP_SETGLOBAL;
+        bool islong = (arg > MAX_CONSTANTS_SHORT && arg <= MAX_CONSTANTS_LONG);
+        getop  = (islong) ? OP_GETGLOBAL_LONG : OP_GETGLOBAL;
+        setop  = (islong) ? OP_SETGLOBAL_LONG : OP_SETGLOBAL;
+        emitfn = (islong) ? emit_long : emit_bytes;
     }
     if (assignable && match_token(&self->parser, TOKEN_ASSIGN)) {
         expression(self);
-        emit_bytes(self, setop, (Byte)arg);
+        emitfn(self, setop, arg);
     } else {
-        emit_bytes(self, getop, (Byte)arg);
+        emitfn(self, getop, arg);
     }
 }
 
@@ -515,7 +527,13 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
  * This allows us to specify when assignments are allowed.
  */
 static inline void variable_assignment(Compiler *self) {
-    named_variable(self, &self->parser.previous, true);
+    // Don't consume the '=' just yet.
+    if (!check_token(&self->parser, TOKEN_ASSIGN)) {
+        parser_error(&self->parser, "Expected '=' after variable assignment.");       
+        return;
+    } 
+    named_variable(self, &self->parser.previous, true);    
+    match_token(&self->parser, TOKEN_SEMICOL);
 }
 
 /**

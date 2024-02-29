@@ -298,7 +298,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
         case OP_SETLOCAL: {
             Byte slot = read_byte(self);
             self->stack[slot] = peek_vmstack(self, 0);
-            // pop_vmstack(self); // Expression left stuff on top of the stack.
+            pop_vmstack(self); // Expression left stuff on top of the stack.
             break;
         }
         // -*- III:21.2     Variable Declarations ----------------------------*-
@@ -330,19 +330,16 @@ static InterpretResult run_bytecode(lua_VM *self) {
         // Also unlike Lox you simply can't type the equivalent of `var ident;`
         // in Lua as all global variables must be assigned at declaration.
         case OP_SETGLOBAL: {
-            // Variable name is in the constants pool.
-            lua_String *name = read_string(self);
+            lua_String *name = read_string(self); // varname in constants pool.
             // Assign to this name whatever is on the top of the stack.
             table_set(&self->globals, name, peek_vmstack(self, 0));
-            // We already emitted an `OP_POP` instruction in order to ensure
-            // the stack is clean for the next instruction.
-            // This unforunately allows us to nest assignments as the semantics
-            // cause us to not break out until the end of the statement.
+            pop_vmstack(self); // Clean up stack for next call.
             break;
         }
         case OP_SETGLOBAL_LONG: {
             lua_String *name = read_string_at(self, read_dword(self));
             table_set(&self->globals, name, peek_vmstack(self, 0));
+            pop_vmstack(self);
             break;
         }
 
