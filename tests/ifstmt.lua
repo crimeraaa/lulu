@@ -1,12 +1,18 @@
-condition=true
-if condition then 
-    print("yay")
+local condition = true
+local msg -- test assignment from inner blocks
+if not condition then
+    msg = 'yay'
+    print(msg)
 else
-    print("nay")
+    msg = 'nay'
+    print(msg)
 end
 
-if not condition then
-    print("yay")
+if condition then
+    local msg = 'yep' -- Test shadowing
+    print(msg)
 else
-    print("nay")
+    local msg = 'nope'
+    print(msg)
 end
+
