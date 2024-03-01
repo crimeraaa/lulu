@@ -49,6 +49,22 @@ static inline void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
     emit_byte(self, operand);
 }
 
+/**
+ * III:23.1     If Statements
+ * 
+ * We emit a jump instruction along with 2 dummy bytes for its operand.
+ *
+ * Return the index of the jump opcode into the chunk's code array.
+ * We'll use it later to backpatch the jump instruction with the actual
+ * amount of bytes to jump forward or backward.
+ */
+static int emit_jump(Compiler *self, Byte instruction) {
+    emit_byte(self, instruction);
+    emit_byte(self, 0xFF);
+    emit_byte(self, 0xFF);
+    return current_chunk(self)->count - 2; // Sub 2 operands for the jump itself
+}
+
 /** 
  * Helper to emit a 1-byte instruction with a 24-bit operand, such as the
  * `OP_CONSTANT_LONG` and `OP_DEFINE_GLOBAL_LONG` instructions.
@@ -115,6 +131,25 @@ static inline void emit_constant(Compiler *self, TValue value) {
     } else {
         parser_error(&self->parser, "Too many constants in current chunk.");
     }
+}
+
+/**
+ * III:23.1     If Statements
+ * 
+ * Go back to the bytecode, looking for the jump opcode itself, and backpatch
+ * its 2 operands correctly.
+ */
+static void patch_jump(Compiler *self, int offset) {
+    // -2 to adjust for the bytecode of the jump offset itself.
+    int jump = current_chunk(self)->count - offset - 2;
+    if (jump >= MAX_WORD) {
+        parser_error(&self->parser, "Too much code to jump over.");
+        return;
+    }
+    Byte hi = (jump >> 8) & 0xFF;
+    Byte lo = (jump)      & 0xFF;
+    current_chunk(self)->code[offset]     = hi;
+    current_chunk(self)->code[offset + 1] = lo;
 }
 
 /* }}} */
@@ -720,13 +755,20 @@ static void expression(Compiler *self) {
  * to compile everything in between. It could start with a variable declaration
  * hence we start with that, even if it's not a variable declaration the calls
  * to something like `print_statement()` will eventually be reached.
+ * 
+ * III:22.3     If Statements
+ * 
+ * I've changed the name to reflect that although the semantics of blocks in
+ * 'do-end' and 'if-then-[else]-end' statements are similar, the exact keywords
+ * we look for are somewhat different. This function will NOT work correctly
+ * in an if-statement so we need a dedicated function for that.
  */
-static void block(Compiler *self) {
+static void doblock(Compiler *self) {
     Parser *parser = &self->parser;
     while (!check_token(parser, TOKEN_END) && !check_token(parser, TOKEN_EOF)) {
         declaration(self);
     }
-    consume_token(parser, TOKEN_END, "Expected 'end' after block.");
+    consume_token(parser, TOKEN_END, "Expected 'end' after 'do' block.");
     match_token(parser, TOKEN_SEMICOL); // Like most of Lua this is optional.
 }
 
@@ -789,6 +831,52 @@ static void expression_statement(Compiler *self) {
     expression(self);
     match_token(&self->parser, TOKEN_SEMICOL);
     emit_byte(self, OP_POP);
+}
+
+/**
+ * III:23.2     If Statements
+ * 
+ * Assumes we already consumed the 'if' token and it's now the parser's previous.
+ * 
+ * In order to do control flow with lone 'if' statements (no 'else') we need to
+ * make use of a technique called 'backpatching'. 
+ * 
+ * Basically we emit a jump but
+ * we fill it with dummy values for how far to jump at the moment. We keep the
+ * address of the jump instruction in memory for later.
+ * 
+ * We then compile the statement/s inside the 'then' branch, once we're done with
+ * that the current chunk's count indicates how far relative to the jump opcode
+ * we need to, you know, jump.
+ */
+static void if_statement(Compiler *self) {
+    Parser *parser = &self->parser;
+    // If condition
+    expression(self);
+    consume_token(parser, TOKEN_THEN, "Expected 'then' after condition.");
+
+    // Instruction "address" of the jump (after 'then') so we can patch it later.
+    // We need to determine how big the then branch is first.
+    int thenjump = emit_jump(self, OP_JUMP_IF_FALSE);
+    emit_byte(self, OP_POP); // When condition is truthy pop the condition.
+    statement(self);
+
+    // After the then branch, we need to jump over the else branch in order to
+    // avoid falling through into it.
+    int elsejump = emit_jump(self, OP_JUMP);
+    
+    // Chunk's current count - thenjump = how far to jump if false.
+    // Also considers the elsejump in its count so we patch AFTER emitting that.
+    patch_jump(self, thenjump);
+    emit_byte(self, OP_POP); // When condition is falsy pop the condition still.
+
+    if (match_token(parser, TOKEN_ELSE)) {
+        statement(self);
+    }
+    patch_jump(self, elsejump);
+
+    consume_token(parser, TOKEN_END, "Expected 'end' after 'if' statement.");
+    match_token(parser, TOKEN_SEMICOL);
 }
 
 static void print_statement(Compiler *self) {
@@ -854,9 +942,11 @@ static void statement(Compiler *self) {
     Parser *parser = &self->parser;
     if (match_token(parser, TOKEN_PRINT)) {
         print_statement(self);
+    } else if (match_token(parser, TOKEN_IF)) {
+        if_statement(self);
     } else if (match_token(parser, TOKEN_DO)) {
         begin_scope(self);
-        block(self);
+        doblock(self);
         end_scope(self);
     } else {
         expression_statement(self);

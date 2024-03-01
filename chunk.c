@@ -149,6 +149,19 @@ static int byte_instruction(const char *name, const Chunk *chunk, int offset) {
     return offset + 2;
 }
 
+/**
+ * III:23.1     If Statements
+ * 
+ * Disassembly support for OP_JUMP* opcodes. Note that we have a `sign` parameter
+ * because later on we'll also allow for jumping backwards.
+ */
+static int jump_instruction(const char *name, int sign, const Chunk *chunk, int offset) {
+    Word jump = (chunk->code[offset + 1] << 8) | (chunk->code[offset + 2]);
+    int target = offset + 3 + sign * jump;
+    printf("%-16s %4i -> %i\n", name, offset, target);
+    return offset + 3;
+}
+
 int disassemble_instruction(Chunk *chunk, int offset) {
     printf("%04i ", offset); // Print number left-padded with 0's
 
@@ -221,7 +234,12 @@ int disassemble_instruction(Chunk *chunk, int offset) {
 
     // -*- III:21.1.1   Print statements
     case OP_PRINT: return simple_instruction("OP_PRINT", offset);
-    
+
+    // -*- III:23.1     If Statements ----------------------------------------*-    
+    case OP_JUMP:
+        return jump_instruction("OP_JUMP", 1, chunk, offset);
+    case OP_JUMP_IF_FALSE:
+        return jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
     case OP_RET: return simple_instruction("OP_RET", offset);
     default: break;
     }

@@ -226,6 +226,20 @@ static inline TValue read_constant_at(lua_VM *self, DWord index) {
     binop_template(vm, assert_comparison, makeboolean, operation)
 
 /**
+ * III:23.1     If Statements
+ * 
+ * Read the next 2 instructions and combine them into a 16-bit operand.
+ * 
+ * The compiler emitted the 2 byte operands for a jump instruction in order of
+ * hi, lo. So our instruction pointer points at hi currently.
+ */
+static inline Word read_word(lua_VM *self) {
+    Byte hi = read_byte(self);
+    Byte lo = read_byte(self);
+    return (hi << 8) | lo;
+}
+
+/**
  * Read the next 3 instructions and combine those 3 bytes into 1 24-bit operand.
  * 
  * NOTE:
@@ -237,7 +251,7 @@ static inline DWord read_dword(lua_VM *self) {
     Byte hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
     Byte mid = read_byte(self); // bits 8..15  : (0x000100..0x00FFFF)
     Byte lo  = read_byte(self); // bits 0..7   : (0x000000..0x0000FF)
-    return (hi >> 16) | (mid >> 8) | (lo);
+    return (hi << 16) | (mid << 8) | (lo);
 }
 
 static InterpretResult run_bytecode(lua_VM *self) {
@@ -395,6 +409,21 @@ static InterpretResult run_bytecode(lua_VM *self) {
         case OP_PRINT: {
             print_value(pop_vmstack(self));
             printf("\n");
+            break;
+        }
+
+        // -*- III:23.1     If Statements ------------------------------------*-
+        // This is an unconditional jump.
+        case OP_JUMP: {
+            Word offset = read_word(self);
+            self->ip += offset;
+            break;
+        }
+        case OP_JUMP_IF_FALSE: {
+            Word offset = read_word(self);
+            if (isfalsy(peek_vmstack(self, 0))) {
+                self->ip += offset;
+            }
             break;
         }
         case OP_RET: 

@@ -71,6 +71,10 @@ typedef enum {
 
     // -*- III:21.1.1   Print statements -------------------------------------*-
     OP_PRINT,
+    
+    // -*- III:23.1     If Statements ----------------------------------------*-
+    OP_JUMP,
+    OP_JUMP_IF_FALSE,
 
     OP_RET,
 } OpCode;
