@@ -124,9 +124,9 @@ static inline DWord make_constant(Compiler *self, TValue value) {
  */
 static inline void emit_constant(Compiler *self, TValue value) {
     DWord index = make_constant(self, value);
-    if (index <= MAX_CONSTANTS_SHORT) {
-        emit_bytes(self, OP_CONSTANT, (Byte)index);
-    } else if (index <= MAX_CONSTANTS_LONG) {
+    if (index < MAX_CONSTANTS_SHORT) {
+        emit_bytes(self, OP_CONSTANT, index);
+    } else if (index < MAX_CONSTANTS_LONG) {
         emit_long(self, OP_CONSTANT_LONG, index);
     } else {
         parser_error(&self->parser, "Too many constants in current chunk.");
@@ -663,7 +663,7 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
 static Byte parse_variable(Compiler *self, bool islocal) {
     declare_variable(self, islocal);
     // Locals aren't looked up by name at runtime so return a dummy index.
-    if (islocal /* self->locals.depth > 0 */) {
+    if (islocal) {
         return 0;
     }
     return identifier_constant(self, &self->parser.previous);
@@ -706,7 +706,7 @@ static void mark_initialized(Compiler *self) {
 static void define_variable(Compiler *self, DWord index, bool islocal) {
     // There is no code needed to create a local variable at runtime, since
     // all our locals live exclusively on the stack and not in a hashtable.
-    if (islocal /* self->locals.depth > 0 */) {
+    if (islocal) {
         mark_initialized(self);
         return;
     }
@@ -760,7 +760,7 @@ static void expression(Compiler *self) {
  */
 static void doblock(Compiler *self) {
     Parser *parser = &self->parser;
-    while (!check_token(parser, TOKEN_END) && !check_token(parser, TOKEN_EOF)) {
+    while (!check_token(parser, TOKEN_END, TOKEN_EOF)) {
         declaration(self);
     }
     consume_token(parser, TOKEN_END, "Expected 'end' after 'do' block.");
@@ -834,10 +834,13 @@ static void expression_statement(Compiler *self) {
  * Assumes that the 'then' token was just consumed. Starts a new block and then
  * compiles all declarations/statements inside of it until we hit 'else', 'end'
  * or EOF. Once any of those delimiters is reached we end the scope.
- *
+ * 
  * NOTE:
  *
- * This should only ever be called by `if_statement()`!
+ * This should ONLY ever be called by `if_statement()`!
+ *
+ * By itself, though, it won't consume any of its delimiters. Such behavior is
+ * the responsibility of the caller `if_statement()`.
  */
 static void thenblock(Compiler *self) {
     begin_scope(self);
@@ -886,7 +889,7 @@ static void if_statement(Compiler *self, bool iselif) {
     // Instruction "address" of the jump (after 'then') so we can patch it later.
     // We need to determine how big the then branch is first.
     int thenjump = emit_jump(self, OP_JUMP_IF_FALSE);
-    emit_byte(self, OP_POP); // When condition is truthy pop the condition.
+    emit_byte(self, OP_POP); // Pop result of expression for condition (truthy)
     thenblock(self);
 
     // After the then branch, we need to jump over the else branch in order to
@@ -896,21 +899,24 @@ static void if_statement(Compiler *self, bool iselif) {
     // Chunk's current count - thenjump = how far to jump if false.
     // Also considers the elsejump in its count so we patch AFTER emitting that.
     patch_jump(self, thenjump);
-    emit_byte(self, OP_POP); // When condition is falsy pop the condition still.
+    emit_byte(self, OP_POP); // Pop result of expression for condition (falsy)
     
     // Recursively compile 1 or more 'elseif' statments so that we emit jumps
     // to the evaluation of their conditions.
+    // This is vulnerable to a stack overflow...
     if (match_token(parser, TOKEN_ELSEIF)) {
         if_statement(self, true);
     }
-    // Finally, if elseif recurse ends, we can check for this? maybe?
+
+    // Finally, if elseif recurse ends, we can check for this. 
+    // Remember that 'else' is optional.
     if (match_token(parser, TOKEN_ELSE)) {
         elseblock(self);
     }
     patch_jump(self, elsejump);
     // We don't want to check for these in recursive calls when compiling and
-    // patching an 'elseif' because they'll unwind eventually to end the main
-    // statement.
+    // patching an 'elseif' because they'll unwind eventually to end the primary
+    // caller stack frame.
     if (!iselif) {
         consume_token(parser, TOKEN_END, "Expected 'end' after 'if' statement.");
         match_token(parser, TOKEN_SEMICOL);
@@ -975,6 +981,10 @@ static void declaration(Compiler *self) {
  *
  * Unfortunately this allows us to nest assignments which is not consistent
  * with Lua's official design.
+ * 
+ * NOTE:
+ * 
+ * I've since updated the semantics so that assignments CANNOT be nested.
  */
 static void statement(Compiler *self) {
     Parser *parser = &self->parser;
@@ -982,8 +992,8 @@ static void statement(Compiler *self) {
         print_statement(self);
     } else if (match_token(parser, TOKEN_IF)) {
         if_statement(self, false);
-    } else if (match_token(parser, TOKEN_ELSE)) {
-
+    } else if (match_token(parser, TOKEN_ELSEIF, TOKEN_ELSE)) {
+        parser_error(parser, "Not used in an 'if' statement.");
     } else if (match_token(parser, TOKEN_DO)) {
         begin_scope(self);
         doblock(self);
@@ -993,18 +1003,19 @@ static void statement(Compiler *self) {
     }
     // Disallow lone/trailing semicolons that weren't consumed by statements.
     if (match_token(parser, TOKEN_SEMICOL)) {
-        parser_error(parser, "Unexpected symbol.");
+        parser_error(parser, "Unnecessary ';'.");
     }
 }
 
 bool compile_bytecode(Compiler *self, const char *source) {
-    init_parser(&self->parser, source);
+    Parser *parser = &self->parser;
+    init_parser(parser, source);
     begin_scope(self); // File-scope/REPL line scope is its own block scope.
-    advance_parser(&self->parser);
-    while (!match_token(&self->parser, TOKEN_EOF)) {
+    advance_parser(parser);
+    while (!match_token(parser, TOKEN_EOF)) {
         declaration(self);
     }
     end_scope(self);
     end_compiler(self);
-    return !self->parser.haderror;
+    return !parser->haderror;
 }

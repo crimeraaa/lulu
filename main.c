@@ -24,7 +24,6 @@ static void run_repl(lua_VM *vm) {
         if (!fgets(line, sizeof(line), stdin)) {
             break;
         }
-        // line[strcspn(line, "\r\n")] = '\0';
         interpret_vm(vm, line);
     } 
 }
@@ -53,33 +52,34 @@ static char *read_file(const char *file_path) {
     return buffer;
 }
 
-static void run_file(lua_VM *vm, const char *file_path) {
+static int run_file(lua_VM *vm, const char *file_path) {
     char *source = read_file(file_path);
     InterpretResult result = interpret_vm(vm, source);
     free(source);
-    
+
     switch (result) {
     case INTERPRET_OK: break;
-    case INTERPRET_COMPILE_ERROR: exit(EX_DATAERR);
-    case INTERPRET_RUNTIME_ERROR: exit(EX_SOFTWARE);
+    case INTERPRET_COMPILE_ERROR: return EX_DATAERR;
+    case INTERPRET_RUNTIME_ERROR: return EX_SOFTWARE;
     default: // This should not happen, but just in case
         logprintf("Unknown result code %i.\n", (int)result); 
         break;
     }
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
     lua_VM *vm = &(lua_VM){0}; // C99 compound literals are really handy sometimes
     init_vm(vm);
-    
+    int retval = 0; 
     if (argc == 1) {
         run_repl(vm);
     } else if (argc == 2) {
-        run_file(vm, argv[1]);
+        retval = run_file(vm, argv[1]);
     } else {
         fprintf(stderr, "Usage: %s [script]\n", argv[0]);
-        exit(EX_USAGE);
+        retval = EX_USAGE;
     }
     free_vm(vm);
-    return 0;
+    return retval;
 }

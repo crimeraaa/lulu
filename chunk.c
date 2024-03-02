@@ -29,7 +29,14 @@ void free_chunk(Chunk *self) {
     init_lineRLE(&self->lines);
 }
 
-static void write_lineRLE(LineRLE *self, Byte offset, int line) {
+/**
+ * BUG:
+ * 
+ * I was using `Byte` for offset when I should've been using a bigger type.
+ * This caused us to overflow whenever a linecount was greater than 256 and thus
+ * we didn't write to the proper indexes.
+ */
+static void write_lineRLE(LineRLE *self, int offset, int line) {
     // We should resize this array less often than the bytes one.
     if (self->count + 1 > self->capacity) {
         int oldcapacity = self->capacity;
@@ -54,14 +61,14 @@ void write_chunk(Chunk *self, Byte byte, int line) {
         self->code      = grow_array(Chunk, self->code, oldcapacity, self->capacity);
     }
     self->code[self->count] = byte;
-    self->count++;
     // Start a new run for this line number, using byte offset to start the range.
     if (line != self->prevline) {
-        write_lineRLE(&self->lines, self->count - 1, line);
+        write_lineRLE(&self->lines, self->count, line);
         self->prevline = line;
     } else {
         increment_lineRLE(&self->lines);
     }
+    self->count++;
 }
 
 int add_constant(Chunk *self, TValue value) {
@@ -82,6 +89,13 @@ int get_instruction_line(Chunk *chunk, int offset) {
  * Otherwise, don't as they'll take up space in the resulting object file.
  */
 #ifdef DEBUG_PRINT_CODE
+
+// static void dump_lineruns(const LineRLE *self) {
+//     for (int i = 0; i < self->count; i++) {
+//         const Linerun *run = &self->runs[i];
+//         printf("line %i: instructions %i-%i\n", run->where, run->start, run->end);
+//     }
+// }
 
 void disassemble_chunk(Chunk *self, const char *name) {
     // Reset so we start from index 0 into self->lines.runs.
@@ -158,12 +172,12 @@ static int byte_instruction(const char *name, const Chunk *chunk, int offset) {
 static int jump_instruction(const char *name, int sign, const Chunk *chunk, int offset) {
     Word jump = (chunk->code[offset + 1] << 8) | (chunk->code[offset + 2]);
     int target = offset + 3 + sign * jump;
-    printf("%-16s %4i -> %i\n", name, offset, target);
+    printf("%-16s   %04x -> %04x\n", name, offset, target);
     return offset + 3;
 }
 
 int disassemble_instruction(Chunk *chunk, int offset) {
-    printf("%04i ", offset); // Print number left-padded with 0's
+    printf("%04x ", offset); // Print number left-padded with 0's
 
     // Don't print pipe for very first line
     // If lineRLE is still in inclusive range, print pipe
@@ -198,11 +212,6 @@ int disassemble_instruction(Chunk *chunk, int offset) {
         return constant_instruction("OP_GETGLOBAL", chunk, offset);
     case OP_GETGLOBAL_LONG:
         return constant_instruction_long("OP_GETGLOBAL_LONG", chunk, offset);
-
-    // case OP_DEFINE_GLOBAL:
-    //     return constant_instruction("OP_DEFINE_GLOBAL", chunk, offset);
-    // case OP_DEFINE_GLOBAL_LONG:
-    //     return constant_instruction_long("OP_DEFINE_GLOBAL_LONG", chunk, offset);
 
     // -*- III:21.4     Assignment -------------------------------------------*-
     case OP_SETGLOBAL:

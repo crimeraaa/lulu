@@ -91,6 +91,7 @@ void synchronize_parser(Parser *self) {
         switch (self->current.type) {
         case TOKEN_FUNCTION:
         case TOKEN_LOCAL:
+        case TOKEN_END:
         case TOKEN_FOR:
         case TOKEN_IF:
         case TOKEN_WHILE:

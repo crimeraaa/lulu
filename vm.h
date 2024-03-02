@@ -9,10 +9,10 @@
 
 struct lua_VM {
     TValue stack[LUA_VM_STACKSIZE]; // Hardcoded limit for simplicity.
-    Chunk *chunk; // Chunk of bytecode and constant values.
-    Byte *ip; // Byte instruction pointer (next instruction) in `chunk`.
-    TValue *bp; // Base pointer to bottom of current stack frame/function.
-    TValue *sp; // Stack pointer to 1 past the lastest written element.
+    Chunk *chunk;  // Chunk of bytecode and constant values.
+    Byte *ip;      // Byte instruction pointer (next instruction) in `chunk`.
+    TValue *bp;    // Base pointer to bottom of current stack frame/function.
+    TValue *sp;    // Stack pointer to 1 past the lastest written element.
     Table globals; // Interned global variable identifiers, as strings.
     Table strings; // Interned string literals/user-created ones.
     lua_Object *objects; // Head of intrusive linked list of allocated objects.
