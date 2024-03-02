@@ -24,7 +24,8 @@ static void runtime_error(lua_VM *self, const char *format, ...) {
     vfprintf(stderr, format, args);
     va_end(args);
     fputs("\n", stderr);
-    fprintf(stderr, "[line %i] in script\n", self->chunk->prevline);
+    int line = self->chunk->lines.runs[self->chunk->prevline - 1].where;
+    fprintf(stderr, "[line %i] in script\n", line);
     reset_vmptrs(self);
 }
 
@@ -260,7 +261,6 @@ static InterpretResult run_bytecode(lua_VM *self) {
     // So effectively this becames our iterator.
     self->chunk->prevline = 0;
     for (;;) {
-        int offset = (int)(self->ip - self->chunk->code);
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
         for (TValue *slot = self->bp; slot < self->sp; slot++) {
@@ -270,11 +270,11 @@ static InterpretResult run_bytecode(lua_VM *self) {
         }
         printf("\n");
         // We need an integer byte offset from beginning of bytecode.
+        int offset = (int)(self->ip - self->chunk->code);
         disassemble_instruction(self->chunk, offset);
 #else
-        // If not doing debug traces, we still need to increment prevline so that
-        // we can report what line an error occured in.
-        get_instruction_line(self->chunk, offset);
+        // Even if not disassembling we still need this to report errors.
+        self->chunk->prevline++;
 #endif
         Byte instruction;
         switch (instruction = read_byte(self)) {

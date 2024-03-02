@@ -128,7 +128,7 @@ int add_constant(Chunk *self, TValue value);
  * Do note that this increments `chunk->prevline` if the previous line does not
  * match the current line at the given bytecode offset.
  */
-int get_instruction_line(Chunk *chunk, int offset);
+int next_instruction_line(Chunk *chunk, int offset);
 
 /**
  * Challenge III:14.1

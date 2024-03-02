@@ -76,7 +76,7 @@ int add_constant(Chunk *self, TValue value) {
     return self->constants.count - 1;
 }
 
-int get_instruction_line(Chunk *chunk, int offset) {
+int next_instruction_line(Chunk *chunk, int offset) {
     // When iterating, `chunk->prevline` points to the next index.
     if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline - 1].end) {
         return -1;
@@ -178,16 +178,12 @@ static int jump_instruction(const char *name, int sign, const Chunk *chunk, int 
 
 int disassemble_instruction(Chunk *chunk, int offset) {
     printf("%04x ", offset); // Print number left-padded with 0's
-
-    // Don't print pipe for very first line
-    // If lineRLE is still in inclusive range, print pipe
-    int line = get_instruction_line(chunk, offset);
+    int line = next_instruction_line(chunk, offset);
     if (line == -1) {
         printf("   | ");
     } else {
         printf("%4i ", line);
     }
-
     Byte instruction = chunk->code[offset];
     switch(instruction) {
     case OP_CONSTANT:
@@ -200,8 +196,8 @@ int disassemble_instruction(Chunk *chunk, int offset) {
     case OP_FALSE: return simple_instruction("OP_FALSE", offset);
 
     // -*- III:21.1.2   Expression statements --------------------------------*-
-    case OP_POP: return simple_instruction("OP_POP", offset);
-    case OP_POPN: return byte_instruction("OP_POPN", chunk, offset);
+    case OP_POP:   return simple_instruction("OP_POP", offset);
+    case OP_POPN:  return byte_instruction("OP_POPN", chunk, offset);
 
     // -*- III:22.4.1   Interpreting local variables -------------------------*-
     case OP_GETLOCAL: return byte_instruction("OP_GETLOCAL", chunk, offset);
