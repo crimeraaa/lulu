@@ -283,7 +283,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
             push_vmstack(self, value);
             break;
         }
-        case OP_CONSTANT_LONG: {
+        case OP_LCONSTANT: {
             TValue value = read_constant_at(self, read_dword(self));
             push_vmstack(self, value);
             break;
@@ -328,7 +328,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
             push_vmstack(self, value);
             break;
         }
-        case OP_GETGLOBAL_LONG: {
+        case OP_LGETGLOBAL: {
             lua_String *name = read_string_at(self, read_dword(self));
             TValue value;
             if (!table_get(&self->globals, name, &value)) {
@@ -350,7 +350,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
             pop_vmstack(self); // Clean up stack for next call.
             break;
         }
-        case OP_SETGLOBAL_LONG: {
+        case OP_LSETGLOBAL: {
             lua_String *name = read_string_at(self, read_dword(self));
             table_set(&self->globals, name, peek_vmstack(self, 0));
             pop_vmstack(self);

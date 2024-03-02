@@ -75,8 +75,8 @@ typedef enum {
 typedef struct {
     TokenType type;
     const char *start; // Pointer to start of token in source code.
-    int len;           // How many characters to dereference from `start`.
-    int line;          // What line of the source code? Used for error reporting.
+    Size len;          // How many characters to dereference from `start`.
+    IntS line;         // What line of the source code? Used for error reporting.
 } Token;
 
 /**
@@ -89,7 +89,7 @@ typedef struct {
 typedef struct {
     const char *start;   // Beginning of current lexeme in the source code.
     const char *current; // Current character in the source code.
-    int line;            // Line number, for error reporting.
+    IntS line;           // Line number, for error reporting.
 } Lexer;
 
 void init_lexer(Lexer *self, const char *source);

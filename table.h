@@ -27,8 +27,8 @@ typedef struct {
  */
 typedef struct {
     Entry *entries; // List of hashed key-value pairs.
-    int count;      // Current number of entries occupying the table.
-    int cap;   // How many entries the table can hold.
+    Size count;     // Current number of entries occupying the table.
+    Size cap;       // How many entries the table can hold.
 } Table;
 
 void init_table(Table *self);
@@ -77,6 +77,6 @@ void copy_table(Table *dst, Table *src);
  * table. Note that you pash a `const char*`, NOT a `lua_String*`! 
  * The point is to use this so we don't allocate a new `lua_String*`.
  */
-lua_String *table_findstring(Table *self, const char *what, int len, DWord hash);
+lua_String *table_findstring(Table *self, const char *what, Size len, DWord hash);
 
 #endif /* LUA_TABLE_H */

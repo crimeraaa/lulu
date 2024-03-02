@@ -8,13 +8,24 @@
 #endif
 
 #include <math.h>       /* floor, fmod, pow */
-#include <stddef.h>
+#include <stddef.h>     /* size_t, ptrdiff_t, NULL */
 #include <stdint.h>     /* uint*_t family */
 
-typedef uint8_t  Byte;  // Smallest addressable size.
-typedef uint16_t Word;  // Main addressable size (in relation to the Intel 8086)
-typedef uint32_t DWord; // "Double word" a.k.a. 2 `Word`s long, usually 32-bits.
-typedef uint64_t QWord; // "Quad word" a.k.a 4 `Word`s long, usually 64-bits.
+/* --- INTERNAL IMPLEMENTATION -------------------------------------------- {{{ 
+ This are internal implementation details. Users/scripts must not rely on this.
+ We specify things like integer width and format specifications. */
+
+typedef uint8_t   Byte;  // Smallest addressable size.
+typedef uint16_t  Word;  // Intel 8086 main addressable size, usually 16-bits.
+typedef uint32_t  DWord; // "Double word" a.k.a. 2 `Word`s long, usually 32-bits.
+typedef uint64_t  QWord; // "Quad word" a.k.a 4 `Word`s long, usually 64-bits.
+typedef ptrdiff_t IntS;  // Catch-all signed integer for pointer arithmetic.
+typedef size_t    Size;  // This implementation's unsigned size type.
+
+#define LUAI_FMTINTS        "ti"
+#define LUAI_FMTHEX         "tx"
+#define LUAI_FMTSIZE        "zu"
+/* }}} ---------------------------------------------------------------------- */
 
 /**
  * This is the default stack-allocated size of the REPL's char buffer.
@@ -49,12 +60,12 @@ typedef uint64_t QWord; // "Quad word" a.k.a 4 `Word`s long, usually 64-bits.
 #define LUA_NUMBER_SCAN     "%lf"
 #define LUA_NUMBER_FMT      "%.14g"
 
-/**
- * This is a series of function-like macros so that we can treat primitive
- * operations as if they were function calls.
- * 
- * This also helps unify the implementation of `vm.c:run_bytecode()`.
- */
+/* --- MATH CONFIGURATIONS ------------------------------------------------- {{{
+ This is a series of function-like macros so that we can treat primitive 
+ operations as if they were function calls.
+ This also helps unify the implementation of `vm.c:run_bytecode()`.
+ This is because we can pass function-like macros as macro arguments as well. */
+
 #define lua_numadd(lhs, rhs)        ((lhs) + (rhs))
 #define lua_numsub(lhs, rhs)        ((lhs) - (rhs))
 #define lua_nummul(lhs, rhs)        ((lhs) * (rhs))
@@ -65,5 +76,7 @@ typedef uint64_t QWord; // "Quad word" a.k.a 4 `Word`s long, usually 64-bits.
 #define lua_numeq(lhs, rhs)         ((lhs) == (rhs))
 #define lua_numgt(lhs, rhs)         ((lhs) > (rhs))
 #define lua_numlt(lhs, rhs)         ((lhs) < (rhs))
+
+/* }}} ---------------------------------------------------------------------- */
 
 #endif /* LUA_CONFIGURATION_H */

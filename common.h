@@ -11,10 +11,10 @@
 #include <string.h>
 #include "conf.h"
 
-#define MAX_BYTE        ((Byte)-1)
-#define MAX_WORD        ((Word)-1)
-#define MAX_DWORD       ((DWord)-1)
-#define MAX_QWORD       ((QWord)-1)
+#define LUA_MAXBYTE        ((Byte)-1)
+#define LUA_MAXWORD        ((Word)-1)
+#define LUA_MAXDWORD       ((DWord)-1)
+#define LUA_MAXQWORD       ((QWord)-1)
 
 #define xtostring(macro)        #macro
 #define stringify(macro)        xtostring(macro)

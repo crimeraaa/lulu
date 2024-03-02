@@ -7,19 +7,19 @@
 /** 
  * Until this limit is reached, we use `OP_CONSTANT` which takes a 1-byte operand. 
  */
-#define MAX_CONSTANTS_SHORT     (MAX_BYTE)
+#define LUA_MAXCONSTANTS_SHORT     (LUA_MAXBYTE)
 
 /** 
- * If MAX_CONSTANTS_SHORT has been surpassed, we use `OP_CONSTANT_LONG` and
+ * If LUA_MAXCONSTANTS_SHORT has been surpassed, we use `OP_LCONSTANT` and
  * supply it with a 3-byte (24-bit) operand.
  */
-#define MAX_CONSTANTS_LONG      ((1 << 24) - 1)
+#define LUA_MAXCONSTANTS_LONG      ((1 << 24) - 1)
 
 typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
 
     // -*- III:14.2:    Use a 24-bit operand (CHALLENGE) ---------------------*-
-    OP_CONSTANT_LONG, // Load a constant value into memory using a 24-bit operand.
+    OP_LCONSTANT, // Load a constant value into memory using a 24-bit operand.
 
     // -*- III:18.4:    Two New Types ----------------------------------------*-
     OP_NIL,
@@ -36,13 +36,11 @@ typedef enum {
     // -*- III:21.2     Variable Declarations --------------------------------*-
     OP_GETLOCAL,
     OP_GETGLOBAL,
-    OP_GETGLOBAL_LONG,
-    // OP_DEFINE_GLOBAL,
-    // OP_DEFINE_GLOBAL_LONG,
+    OP_LGETGLOBAL,
     
     // -*- III:21.4     Assignment -------------------------------------------*-
     OP_SETGLOBAL,
-    OP_SETGLOBAL_LONG,
+    OP_LSETGLOBAL,
      
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     OP_EQ,
@@ -80,9 +78,9 @@ typedef enum {
 } OpCode;
 
 typedef struct {
-    int where; // Line number for run-length-encoding.
-    int start; // First instruction's byte offset from the `code` array.
-    int end;   // Last instruction's byte offset from the `code` array.
+    IntS where; // Line number for run-length-encoding.
+    IntS start; // First instruction's byte offset from the `code` array.
+    IntS end;   // Last instruction's byte offset from the `code` array.
 } Linerun;
 
 /** 
@@ -92,23 +90,23 @@ typedef struct {
  * smarter and instead record "runs" of consective line occurences.
  */
 typedef struct {
-    int count;     // Non-empty linecount. May not line up with line numbers.
-    int cap;       // Number of elements allocated for.
+    Size count;    // Non-empty linecount. May not line up with line numbers.
+    Size cap;      // Number of elements allocated for.
     Linerun *runs; // 1D array of information about consecutive line sequences.
 } LineRLE;
 
 typedef struct {
     ValueArray constants;
     LineRLE lines;
-    Byte *code;   // 1D array of 8-bit instructions.
-    int count;    // Current number of instructions written to `code`.
-    int cap;      // Total number of instructions we can hold currently.
-    int prevline; // Track the previous line number as we may skip some.
+    Byte *code;    // 1D array of 8-bit instructions.
+    Size count;    // Current number of instructions written to `code`.
+    Size cap;      // Total number of instructions we can hold currently.
+    IntS prevline; // Track the previous line number as we may skip some.
 } Chunk;
 
 void init_chunk(Chunk *self);
 void free_chunk(Chunk *self);
-void write_chunk(Chunk *self, Byte byte, int line);
+void write_chunk(Chunk *self, Byte byte, IntS line);
 
 /**
  * @brief       Append `value` to the given chunk's constants pool.
@@ -117,7 +115,7 @@ void write_chunk(Chunk *self, Byte byte, int line);
  * @return      Index of this value into the constants pool. This return value 
  *              should be emitted as the operand to `OP_CONSTANT`.
  */
-int add_constant(Chunk *self, TValue value);
+Size add_constant(Chunk *self, TValue value);
 
 /**
  * Challenge III:14.1
@@ -128,7 +126,7 @@ int add_constant(Chunk *self, TValue value);
  * Do note that this increments `chunk->prevline` if the previous line does not
  * match the current line at the given bytecode offset.
  */
-int next_instruction_line(Chunk *chunk, int offset);
+IntS get_instruction_line(Chunk *chunk, IntS offset);
 
 /**
  * Challenge III:14.1
@@ -139,7 +137,7 @@ int next_instruction_line(Chunk *chunk, int offset);
  * However, 1 byte instructions mean that when we load an index, we can only use
  * up to 255 as that's the simple maximum number of constants in the pool.
  *
- * If one wishes to have more constants, you'll need to use OP_CONSTANT_LONG.
+ * If one wishes to have more constants, you'll need to use OP_LCONSTANT.
  * The instruction itself takes 1 byte, but it takes a 3 byte (or 24-bit) operand.
  * 
  * III:17.4.1   Parsers for Tokens
@@ -151,7 +149,7 @@ int next_instruction_line(Chunk *chunk, int offset);
 #ifdef DEBUG_PRINT_CODE
 
 void disassemble_chunk(Chunk *self, const char *name);
-int disassemble_instruction(Chunk *chunk, int offset);
+IntS disassemble_instruction(Chunk *chunk, IntS offset);
 
 #endif /* DEBUG_PRINT_CODE */
 

@@ -15,9 +15,9 @@ void free_valuearray(ValueArray *self) {
 
 void write_valuearray(ValueArray *self, TValue value) {
     if (self->count + 1 > self->cap) {
-        int oldcap = self->cap;
-        self->cap  = grow_cap(oldcap);
-        self->values    = grow_array(TValue, self->values, oldcap, self->cap);
+        Size oldcap  = self->cap;
+        self->cap    = grow_cap(oldcap);
+        self->values = grow_array(TValue, self->values, oldcap, self->cap);
     }
     self->values[self->count] = value;
     self->count++;

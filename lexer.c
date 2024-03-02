@@ -7,20 +7,20 @@ void init_lexer(Lexer *self, const char *source) {
     self->line    = 1;
 }
 
-/** 
- * Variables cannot start with digits. Think: `[a-zA-Z_]` 
- * 
+/**
+ * Variables cannot start with digits. Think: `[a-zA-Z_]`
+ *
  * We use a function so that macros passed to this aren't expanded twice, which
  * can have potentially unwanted side-effects.
  */
 static inline bool isidentstarter(char ch) {
-    return isalpha((ch)) || (ch) == '_';
+    return isalpha(ch) || ch == '_';
 }
 
-/** 
- * Past the first character, variable names can be in the regex: 
- * `[a-zA-Z0-9_]` 
- * 
+/**
+ * Past the first character, variable names can be in the regex:
+ * `[a-zA-Z0-9_]`
+ *
  * We use a function so that macros passed as arguments aren't expanded twice.
  * Those can have potentially unwanted side-effects.
  */
@@ -62,7 +62,7 @@ static inline char peek_next(const Lexer *self) {
 /**
  * A bit of a strange name. If the lexer's current character matches `expected`,
  * the lexer's current character pointer is incremented and we return `true`.
- * 
+ *
  * Otherwise, we return false without incrementing anything.
  */
 static inline bool match_lexer(Lexer *self, char expected) {
@@ -80,21 +80,21 @@ static Token make_token(const Lexer *self, TokenType type) {
     Token token;
     token.type   = type;
     token.start  = self->start;
-    token.len = (int)(self->current - self->start);
+    token.len    = self->current - self->start;
     token.line   = self->line;
     return token;
 }
 
 /**
  * Quickly create an error token that points to the given message.
- * 
+ *
  * To be absolutely safe, please only pass read-only string literals to `message`.
  */
 static Token error_token(const Lexer *self, const char *message) {
     Token token;
     token.type   = TOKEN_ERROR;
     token.start  = message;
-    token.len = (int)strlen(message);
+    token.len    = strlen(message);
     token.line   = self->line;
     return token;
 }
@@ -108,12 +108,12 @@ static void skip_whitespace(Lexer *self) {
         switch (ch) {
         case ' ': // fall through
         case '\r':
-        case '\t': 
-            advance_lexer(self); 
+        case '\t':
+            advance_lexer(self);
             break;
-        case '\n': 
-            self->line++; 
-            advance_lexer(self); 
+        case '\n':
+            self->line++;
+            advance_lexer(self);
             break;
         case '-':
             // Singlular '-' indicate we don't have a Lua-style comment.
@@ -123,26 +123,24 @@ static void skip_whitespace(Lexer *self) {
             // Comments aren't whitespace but we may as well ignore them here.
             while (peek_current(self) != '\n' && !is_at_end(self)) {
                 advance_lexer(self);
-            } 
+            }
             break;
         default: return;
         }
     }
 }
 
-static TokenType 
-check_keyword(const Lexer *self, 
-    int offset,
-    int len,
-    const char *keyword,
-    TokenType type) 
+static TokenType check_keyword(const Lexer *self,
+    Size idx,
+    Size len,
+    const char *kw,
+    TokenType type)
 {
-    // self->current points to the last character, so we have the exact length.
-    int lexlen = (int)(self->current - self->start);
-    if (lexlen == len) {
+    // self->current points to the last character, we can get the lexeme's length.
+    // Assumes that the current pointer is always a higher address than start.
+    if ((Size)(self->current - self->start) == len) {
         // We only want to compare past the offset, save some cycles maybe.
-        size_t sublen = len - offset; 
-        if (memcmp(self->start + offset, &keyword[offset], sublen) == 0) {
+        if (memcmp(self->start + idx, &kw[idx], (len - idx)) == 0) {
             return type;
         }
     }
@@ -151,24 +149,25 @@ check_keyword(const Lexer *self,
 
 /**
  * Wrapper around the above function so the me-facing call doesn't look so crazy.
- * 
+ *
  * @param lexer     Pointer to a lexer instance.
- * @param index     The offset index into `Word` where we begin the comparison.
- * @param keyword   String literal of the keyword in question.
+ * @param idx     The offset index into `Word` where we begin the comparison.
+ * @param kw   String literal of the kw in question.
  * @param token     Token type to be returned if lexer's substring matches `Word`.
- * 
+ *
  * @note        We get the `sizeof(Word) - 1` because string literals are always
  *              going to be nul terminated, and we want only the non-nul length.
  */
-#define check_keyword(lexer, index, keyword, token) \
-    check_keyword(lexer, index, sizeof(keyword) - 1, keyword, token)
+#define check_keyword(lexer, idx, kw, token) \
+    check_keyword(lexer, idx, sizeof(kw) - 1, kw, token)
 
 static TokenType ident_type(Lexer *self) {
-    int lexlen = (int)(self->current - self->start);
+    // I'm assuming that current will always be a higher address than start.
+    Size lexlen = self->current - self->start;
     const char *lexeme = self->start;
     switch (lexeme[0]) {
         case 'a': return check_keyword(self, 1, "and", TOKEN_AND);
-        case 'b': return check_keyword(self, 1, "break", TOKEN_BREAK);
+        case 'y': return check_keyword(self, 1, "break", TOKEN_BREAK);
         case 'd': return check_keyword(self, 1, "do", TOKEN_DO);
         case 'e': {
             if (lexlen > 1) {
@@ -235,7 +234,7 @@ static TokenType ident_type(Lexer *self) {
 
 /**
  * Assumes we consumed an alphabetical/underscore character already.
- * 
+ *
  * Past the first character, any keyword/identifier can contain alphabeticals,
  * numbers or underscores.
  */
@@ -249,7 +248,7 @@ static Token ident_token(Lexer *self) {
 /**
  * Assumes we already consumed a digit that we believe to be the start of a
  * number literal. We try to consume the rest of it.
- * 
+ *
  * Conversion will be handled by the parser.
  */
 static Token number_token(Lexer *self) {
@@ -269,14 +268,14 @@ static Token number_token(Lexer *self) {
 
 /**
  * Assuming we already consumed a double quote, try to consume everything up to
- * the closing quote of the same type. 
- * 
- * This function only supports string literals on the same line. 
+ * the closing quote of the same type.
+ *
+ * This function only supports string literals on the same line.
  * Multi-line string literals are a different beast.
  * Currently we don't support escape sequences and single quotes.
- * 
+ *
  * III:21.1.2   Expression statements
- * 
+ *
  * I've now opted to add support for single quote strings, but any given string
  * MUST be surrounded by the same type of quotes.
  */
@@ -296,20 +295,26 @@ static Token string_token(Lexer *self, char quote) {
     return make_token(self, TOKEN_STRING);
 }
 
+#define _match(lex, ch, y, n)       match_lexer(lex, ch) ? (y) : (n)
+#define _match2(lex, ch, n, y1, y2) _match(lex, ch, _match(lex, ch, y2, y1), n)
+#define _make_token(lex, ch, y, n)  make_token(lex, _match(lex, ch, y, n))
+#define make_eq(lex, y, n)          _make_token(lex, '=', y, n)
+#define make_dot(lex, n, y1, y2)    make_token(lex, _match2(lex, '.', n, y1, y2))
+
 Token tokenize(Lexer *self) {
     // Don't assign pointers yet, don't want to point at whitespace!
-    skip_whitespace(self); 
+    skip_whitespace(self);
     self->start = self->current;
     if (is_at_end(self)) {
         return make_token(self, TOKEN_EOF);
     }
-    
+
     char ch = advance_lexer(self);
     if (isidentstarter(ch)) {
         return ident_token(self);
     }
     if (isdigit(ch)) {
-        return number_token(self);    
+        return number_token(self);
     }
     /**
      * III:16.3     A Lexical Grammar for Lox (but adapted for Lua)
@@ -325,13 +330,7 @@ Token tokenize(Lexer *self) {
     // Punctuation marks
     case ';': return make_token(self, TOKEN_SEMICOL);
     case ':': return make_token(self, TOKEN_COLON);
-    case '.': return make_token(self, 
-        match_lexer(self, '.')   // True: have at least '..' (string concat)
-        ? match_lexer(self, '.') // True: definitely have '...' (function varargs)
-            ? TOKEN_VARARGS 
-            : TOKEN_CONCAT
-        : TOKEN_PERIOD); 
-    case ',': return make_token(self, TOKEN_COMMA);
+    case '.': return make_dot(self, TOKEN_PERIOD, TOKEN_CONCAT, TOKEN_VARARGS);
     // Common Arithmetic
     case '+': return make_token(self, TOKEN_PLUS);
     case '-': return make_token(self, TOKEN_DASH);
@@ -339,20 +338,18 @@ Token tokenize(Lexer *self) {
     case '/': return make_token(self, TOKEN_SLASH);
     case '^': return make_token(self, TOKEN_CARET);
     case '%': return make_token(self, TOKEN_PERCENT);
+
     // Quotation marks
     case '"': return string_token(self, '"');
     case '\'': return string_token(self, '\'');
+
     // Relational
-    case '~': return match_lexer(self, '=') 
+    case '~': return match_lexer(self, '=')
         ? make_token(self, TOKEN_NEQ) : error_token(self, "Expected '=' after '~'.");
-    case '=': return make_token(self, 
-        match_lexer(self, '=') ? TOKEN_EQ : TOKEN_ASSIGN);
-    case '<': return make_token(self, 
-        match_lexer(self, '=') ? TOKEN_LE : TOKEN_LT);
-    case '>': return make_token(self, 
-        match_lexer(self, '=') ? TOKEN_GE : TOKEN_GT);
-    default:
-        break;
+    case '=': return make_eq(self, TOKEN_EQ, TOKEN_ASSIGN);
+    case '<': return make_eq(self, TOKEN_LE, TOKEN_LT);
+    case '>': return make_eq(self, TOKEN_GE, TOKEN_GT);
+    default:  break;
     }
     return error_token(self, "Unexpected character.");
 }

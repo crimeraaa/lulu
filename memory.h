@@ -34,18 +34,18 @@
  * @brief   Crafting Interpreters Part III, Chapter 14.3.1
  *          Handles all our dynamic memory management.
  *          
- * @param pointer   If NULL, we allocate a new memory block of `newsize`.
- * @param oldsize   Previous byte allocation count of `pointer`.
- *                  For now this is unused because C standard `malloc` already
- *                  keeps track of how many bytes a particular pointer is using.
- * @param newsize   Requested byte allocation count for `pointer`.
- *                  If 0, we free `pointer`. Otherwise we call `realloc`.
+ * @param pointer If NULL, we allocate a new memory block of `newsz`.
+ * @param oldsz   Previous byte allocation count of `pointer`.
+ *                For now this is unused because C standard `malloc` already
+ *                keeps track of how many bytes a particular pointer is using.
+ * @param newsz   Requested byte allocation count for `pointer`.
+ *                If 0, we free `pointer`. Otherwise we call `realloc`.
  *                  
  * @note    Due to the nature of `realloc` and the implementation of `malloc`
- *          family, we don't actually need `oldsize` for anything since the 
+ *          family, we don't actually need `oldsz` for anything since the 
  *          implementation does that kind of bookkeeping for us already.
  */
-void *reallocate(void *pointer, size_t oldsize, size_t newsize);
+void *reallocate(void *pointer, Size oldsz, Size newsz);
 
 /**
  * III:19.5     Freeing Objects

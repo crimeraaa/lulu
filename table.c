@@ -29,7 +29,7 @@ void free_table(Table *self) {
  * Assumes that there is at least 1 free slot in the `entries` array. In the
  * function `table_set()` we do check that condition before calling this.
  */
-static Entry *find_entry(Entry *entries, int cap, const lua_String *key) {
+static Entry *find_entry(Entry *entries, Size cap, const lua_String *key) {
     DWord index = (key->hash % cap);
     Entry *tombstone = NULL;
     for (;;) {
@@ -74,18 +74,18 @@ bool table_get(Table *self, const lua_String *key, TValue *out) {
  * element and then determine which of the original table's elements must be
  * copied over to the new one.
  */
-static void adjust_cap(Table *self, int cap) {
+static void adjust_cap(Table *self, Size cap) {
     // New array of new size.
     Entry *entries = allocate(Entry, cap);
     // 0-initialize each element
-    for (int i = 0; i < cap; i++) {
+    for (Size i = 0; i < cap; i++) {
         entries[i].key = NULL;
         entries[i].value = makenil;
     }
     // Adjust entry placements as its always in relation to table size.
     // We reset the table count so we can omit tombstones.
     self->count = 0;
-    for (int i = 0; i < self->cap; i++) {
+    for (Size i = 0; i < self->cap; i++) {
         Entry *src = &self->entries[i];
         // If empty or a tombstone, skip it.
         if (src->key == NULL) {
@@ -103,7 +103,7 @@ static void adjust_cap(Table *self, int cap) {
 
 bool table_set(Table *self, lua_String *key, TValue value) {
     if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
-        int cap = grow_cap(self->cap);
+        Size cap = grow_cap(self->cap);
         adjust_cap(self, cap);
     }
     Entry *entry = find_entry(self->entries, self->cap, key);
@@ -135,7 +135,7 @@ bool table_delete(Table *self, lua_String *key) {
 }
 
 void copy_table(Table *dst, Table *src) {
-    for (int i = 0; i < src->cap; i++) {
+    for (Size i = 0; i < src->cap; i++) {
         Entry *entry = &src->entries[i];
         if (entry->key != NULL) {
             table_set(dst, entry->key, entry->value);
@@ -143,7 +143,7 @@ void copy_table(Table *dst, Table *src) {
     }
 }
 
-lua_String *table_findstring(Table *self, const char *data, int len, DWord hash) {
+lua_String *table_findstring(Table *self, const char *data, Size len, DWord hash) {
     if (self->count == 0) {
         return NULL;
     }

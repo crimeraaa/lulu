@@ -101,7 +101,7 @@ void consume_token(Parser *self, TokenType expected, const char *message);
  * 
  * @note            This does not consume the token.
  */
-bool check_token_any(const Parser *parser, const TokenType *expected, size_t count);
+bool check_token_any(const Parser *parser, const TokenType *expected, Size count);
 
 /**
  * III:23.2     If Statements
@@ -109,7 +109,7 @@ bool check_token_any(const Parser *parser, const TokenType *expected, size_t cou
  * Similar to `check_token_any` but we advance the parser if `true` as well.
  * Otherwise we return `false` without modifying any state.
  */
-bool match_token_any(Parser *self, const TokenType *expected, size_t count);
+bool match_token_any(Parser *self, const TokenType *expected, Size count);
 
 /**
  * III:21.1.3   Error synchronization

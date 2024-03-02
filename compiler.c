@@ -3,13 +3,9 @@
 #include "object.h"
 #include "parserules.h"
 
-static inline void init_locals(Locals *self) {
-    self->count = 0;
-    self->depth = 0;
-}
-
 void init_compiler(Compiler *self, lua_VM *lvm) {
-    init_locals(&self->locals);
+    self->locals.count = 0;
+    self->locals.depth = 0;
     self->vm = lvm;
 }
 
@@ -46,7 +42,7 @@ static inline void emit_byte(Compiler *self, Byte byte) {
  */
 static inline void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
     emit_byte(self, opcode);
-    emit_byte(self, operand);
+    emit_byte(self, (Byte)operand);
 }
 
 /**
@@ -58,7 +54,7 @@ static inline void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
  * We'll use it later to backpatch the jump instruction with the actual
  * amount of bytes to jump forward or backward.
  */
-static int emit_jump(Compiler *self, Byte instruction) {
+static Size emit_jump(Compiler *self, Byte instruction) {
     emit_byte(self, instruction);
     emit_byte(self, 0xFF);
     emit_byte(self, 0xFF);
@@ -67,7 +63,7 @@ static int emit_jump(Compiler *self, Byte instruction) {
 
 /**
  * Helper to emit a 1-byte instruction with a 24-bit operand, such as the
- * `OP_CONSTANT_LONG` and `OP_DEFINE_GLOBAL_LONG` instructions.
+ * `OP_LCONSTANT` and `OP_DEFINE_GLOBAL_LONG` instructions.
  *
  * NOTE:
  *
@@ -102,32 +98,32 @@ static inline void emit_return(Compiler *self) {
  *
  * NOTE:
  *
- * If more than `MAX_CONSTANTS_LONG` (a.k.a. 2 ^ 24 - 1) constants have been
+ * If more than `LUA_MAXCONSTANTS_LONG` (a.k.a. 2 ^ 24 - 1) constants have been
  * created, we return 0. By itself this doesn't indicate an error, but because
  * we call the `error` function that sets the compiler's parser's error state.
  */
 static inline DWord make_constant(Compiler *self, TValue value) {
-    int constant = add_constant(current_chunk(self), value);
-    if (constant > MAX_CONSTANTS_LONG) {
+    Size index = add_constant(current_chunk(self), value);
+    if (index > LUA_MAXCONSTANTS_LONG) {
         parser_error(&self->parser, "Too many constants in the current chunk");
         return 0;
     }
-    return constant;
+    return (DWord)index;
 }
 
 /**
  * III:17.4.1   Parsers for tokens
  *
  * Writing constants is hard work, because we can either use the `OP_CONSTANT`
- * OR the `OP_CONSTANT_LONG`, depending on how many constants are in the current
+ * OR the `OP_LCONSTANT`, depending on how many constants are in the current
  * chunk's constants pool.
  */
 static inline void emit_constant(Compiler *self, TValue value) {
     DWord index = make_constant(self, value);
-    if (index < MAX_CONSTANTS_SHORT) {
+    if (index < LUA_MAXCONSTANTS_SHORT) {
         emit_bytes(self, OP_CONSTANT, index);
-    } else if (index < MAX_CONSTANTS_LONG) {
-        emit_long(self, OP_CONSTANT_LONG, index);
+    } else if (index < LUA_MAXCONSTANTS_LONG) {
+        emit_long(self, OP_LCONSTANT, index);
     } else {
         parser_error(&self->parser, "Too many constants in current chunk.");
     }
@@ -139,10 +135,10 @@ static inline void emit_constant(Compiler *self, TValue value) {
  * Go back to the bytecode, looking for the jump opcode itself, and backpatch
  * its 2 operands correctly.
  */
-static void patch_jump(Compiler *self, int offset) {
+static void patch_jump(Compiler *self, Size offset) {
     // -2 to adjust for the bytecode of the jump offset itself.
-    int jump = current_chunk(self)->count - offset - 2;
-    if (jump >= MAX_WORD) {
+    QWord jump = current_chunk(self)->count - offset - 2;
+    if (jump >= LUA_MAXWORD) {
         parser_error(&self->parser, "Too much code to jump over.");
         return;
     }
@@ -279,7 +275,7 @@ static DWord resolve_local(Compiler *self, const Token *name) {
         }
     }
     // Indicate to caller they should try to lookup in the globals table.
-    return MAX_DWORD;
+    return LUA_MAXDWORD;
 }
 
 /**
@@ -483,8 +479,8 @@ void number(Compiler *self) {
  * +----------> continue...
  */
 void or_(Compiler *self) {
-    int elsejump = emit_jump(self, OP_JUMP_IF_FALSE);
-    int endjump = emit_jump(self, OP_JUMP);
+    Size elsejump = emit_jump(self, OP_JUMP_IF_FALSE);
+    Size endjump  = emit_jump(self, OP_JUMP);
     patch_jump(self, elsejump);
     // Pop expression left over from condition to clean up stack.
     emit_byte(self, OP_POP);
@@ -498,10 +494,9 @@ void or_(Compiler *self) {
  * Here we go, strings! One of the big bads of C.
  */
 void string(Compiler *self) {
-    Parser *parser = &self->parser;
-    const char *start = parser->previous.start + 1; // Past opening quote
-    int len = parser->previous.len - 2; // Length w/o quotes
-    lua_String *object = copy_string(self->vm, start, len);
+    const Token *token = &self->parser.previous;
+    // Point past first quote, use length w/o both quotes.
+    lua_String *object = copy_string(self->vm, token->start + 1, token->len - 2);
     emit_constant(self, makeobject(LUA_TSTRING, object));
 }
 
@@ -548,15 +543,15 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
 
     // Try to find local variable with given name. -1 indicates none found.
     DWord arg = resolve_local(self, name);
-    if (arg != MAX_DWORD) {
+    if (arg != LUA_MAXDWORD) {
         getop = OP_GETLOCAL;
         setop = OP_SETLOCAL;
     } else {
         // Out of range error is handle by `make_constant()`.
         arg = identifier_constant(self, name);
-        bool islong = (arg > MAX_CONSTANTS_SHORT && arg <= MAX_CONSTANTS_LONG);
-        getop  = (islong) ? OP_GETGLOBAL_LONG : OP_GETGLOBAL;
-        setop  = (islong) ? OP_SETGLOBAL_LONG : OP_SETGLOBAL;
+        bool islong = (arg > LUA_MAXCONSTANTS_SHORT && arg <= LUA_MAXCONSTANTS_LONG);
+        getop  = (islong) ? OP_LGETGLOBAL : OP_GETGLOBAL;
+        setop  = (islong) ? OP_LSETGLOBAL : OP_SETGLOBAL;
         emitfn = (islong) ? emit_long : emit_bytes;
     }
     if (assignable && match_token(&self->parser, TOKEN_ASSIGN)) {
@@ -741,10 +736,10 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
         mark_initialized(self);
         return;
     }
-    if (index <= MAX_CONSTANTS_SHORT) {
+    if (index <= LUA_MAXCONSTANTS_SHORT) {
         emit_bytes(self, OP_SETGLOBAL, index);
-    } else if (index <= MAX_CONSTANTS_LONG) {
-        emit_long(self, OP_SETGLOBAL_LONG, index);
+    } else if (index <= LUA_MAXCONSTANTS_LONG) {
+        emit_long(self, OP_LSETGLOBAL, index);
     } else {
         parser_error(&self->parser, "Too many global variable identifiers.");
     }
@@ -774,7 +769,7 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
  * +----------> continue...
  */
 void and_(Compiler *self) {
-    int endjump = emit_jump(self, OP_JUMP_IF_FALSE);
+    Size endjump = emit_jump(self, OP_JUMP_IF_FALSE);
     emit_byte(self, OP_POP);
     parse_precedence(self, PREC_AND);
     patch_jump(self, endjump);
@@ -948,13 +943,13 @@ static void if_statement(Compiler *self, bool iselif) {
 
     // Instruction "address" of the jump (after 'then') so we can patch it later.
     // We need to determine how big the then branch is first.
-    int thenjump = emit_jump(self, OP_JUMP_IF_FALSE);
+    Size thenjump = emit_jump(self, OP_JUMP_IF_FALSE);
     emit_byte(self, OP_POP); // Pop result of expression for condition (truthy)
     thenblock(self);
 
     // After the then branch, we need to jump over the else branch in order to
     // avoid falling through into it.
-    int elsejump = emit_jump(self, OP_JUMP);
+    Size elsejump = emit_jump(self, OP_JUMP);
 
     // Chunk's current count - thenjump = how far to jump if false.
     // Also considers the elsejump in its count so we patch AFTER emitting that.

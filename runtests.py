@@ -34,7 +34,7 @@ def invalidtest(i: int, limit: int, usage: str):
 # '*args' are basically positional variadic argument automatically packed into
 # a tuple for you.
 # - https://stackoverflow.com/a/64680708
-def capture(*args):
+def capture(*args: str):
     # To redirect both stdout and stderr to the same file stream, use the
     # respective named arguments and supply 'subprocess.PIPE'.
     # - https://docs.python.org/3/library/subprocess.html#subprocess.run
