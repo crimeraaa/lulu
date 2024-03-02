@@ -13,7 +13,7 @@ struct lua_Object {
 struct lua_String {
     lua_Object object; // Header for meta-information.
     DWord hash;        // Result of throwing `data` into a hash function.
-    int length;        // Number of non-nul characters.
+    int len;        // Number of non-nul characters.
     char *data;        // Heap-allocated buffer.
 };
 
@@ -29,7 +29,7 @@ struct lua_String {
  * We need to have a pointer to the VM in question so its objects linked list
  * can be updated accordingly.
  */
-lua_String *take_string(lua_VM *lvm, char *buffer, int length);
+lua_String *take_string(lua_VM *lvm, char *buffer, int len);
 
 /**
  * III:19.3     Strings
@@ -44,7 +44,7 @@ lua_String *take_string(lua_VM *lvm, char *buffer, int length);
  * Compiler struct, but it'll do since the VM is always initialized before the
  * compiler ever is.
  */
-lua_String *copy_string(lua_VM *lvm, const char *literal, int length);
+lua_String *copy_string(lua_VM *lvm, const char *literal, int len);
 
 /**
  * III:19.4     Operations on Strings

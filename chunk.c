@@ -4,25 +4,25 @@
 
 static inline void init_lineRLE(LineRLE *self) {
     self->count    = 0;
-    self->capacity = 0;
+    self->cap = 0;
     self->runs     = NULL;
 }
 
 void init_chunk(Chunk *self) {
     self->code     = NULL;
     self->count    = 0;
-    self->capacity = 0;
+    self->cap = 0;
     self->prevline = -1; // Set to an always invalid line number to start with.
     init_valuearray(&self->constants);
     init_lineRLE(&self->lines);
 }
 
 static inline void free_lineRLE(LineRLE *self) {
-    deallocate_array(Linerun, self->runs, self->capacity);
+    deallocate_array(Linerun, self->runs, self->cap);
 }
 
 void free_chunk(Chunk *self) {
-    deallocate_array(Byte, self->code, self->capacity);
+    deallocate_array(Byte, self->code, self->cap);
     free_valuearray(&self->constants);
     free_lineRLE(&self->lines);
     init_chunk(self);
@@ -38,10 +38,10 @@ void free_chunk(Chunk *self) {
  */
 static void write_lineRLE(LineRLE *self, int offset, int line) {
     // We should resize this array less often than the bytes one.
-    if (self->count + 1 > self->capacity) {
-        int oldcapacity = self->capacity;
-        self->capacity  = grow_capacity(oldcapacity);
-        self->runs      = grow_array(Linerun, self->runs, oldcapacity, self->capacity);
+    if (self->count + 1 > self->cap) {
+        int oldcap = self->cap;
+        self->cap  = grow_cap(oldcap);
+        self->runs      = grow_array(Linerun, self->runs, oldcap, self->cap);
     }
     self->runs[self->count].start = offset;
     self->runs[self->count].end   = offset;
@@ -55,10 +55,10 @@ static inline void increment_lineRLE(LineRLE *self) {
 }
 
 void write_chunk(Chunk *self, Byte byte, int line) {
-    if (self->count + 1 > self->capacity) {
-        int oldcapacity = self->capacity;
-        self->capacity  = grow_capacity(oldcapacity);
-        self->code      = grow_array(Chunk, self->code, oldcapacity, self->capacity);
+    if (self->count + 1 > self->cap) {
+        int oldcap = self->cap;
+        self->cap  = grow_cap(oldcap);
+        self->code      = grow_array(Chunk, self->code, oldcap, self->cap);
     }
     self->code[self->count] = byte;
     // Start a new run for this line number, using byte offset to start the range.

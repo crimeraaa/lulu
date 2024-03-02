@@ -226,14 +226,14 @@ static void parse_precedence(Compiler *self, Precedence precedence);
  * to retrieve the variable name again at runtime.
  */
 static DWord identifier_constant(Compiler *self, const Token *name) {
-    lua_String *result = copy_string(self->vm, name->start, name->length);
+    lua_String *result = copy_string(self->vm, name->start, name->len);
     return make_constant(self, makeobject(LUA_TSTRING, result));
 }
 
 /**
  * III:22.3     Declaring Local Variables
  *
- * Compare 2 Tokens on a length basis then a byte-by-byte basis.
+ * Compare 2 Tokens on a len basis then a byte-by-byte basis.
  *
  * NOTE:
  *
@@ -241,10 +241,10 @@ static DWord identifier_constant(Compiler *self, const Token *name) {
  * of checking their hashes (which they have none).
  */
 static bool identifiers_equal(const Token *lhs, const Token *rhs) {
-    if (lhs->length != rhs->length) {
+    if (lhs->len != rhs->len) {
         return false;
     }
-    return memcmp(lhs->start, rhs->start, lhs->length) == 0;
+    return memcmp(lhs->start, rhs->start, lhs->len) == 0;
 }
 
 /**
@@ -462,6 +462,37 @@ void number(Compiler *self) {
 }
 
 /**
+ * III:23.2.1   Logical or operator
+ * 
+ * This one's a bit tricky because there's a bit more going on. Logical or, in a
+ * sense, does what it can to resolve to truthy value.
+ * 
+ * If the left side is truthy we skip over the right operand and leave the truthy
+ * value on top of the stack for the caller to use.
+ * 
+ * Otherwise, we pop the value, evaluate the right side and leave that resulting
+ * value on top of the stack.
+ * 
+ * VISUALIZATION:
+ * 
+ *              left operand expression
+ *        +---- OP_JUMP_IF_FALSE
+ * +------|---- OP_JUMP
+ * |      +---> OP_POP
+ * |            right operand expression
+ * +----------> continue...
+ */
+void or_(Compiler *self) {
+    int elsejump = emit_jump(self, OP_JUMP_IF_FALSE);
+    int endjump = emit_jump(self, OP_JUMP);
+    patch_jump(self, elsejump);
+    // Pop expression left over from condition to clean up stack.
+    emit_byte(self, OP_POP);
+    parse_precedence(self, PREC_OR);
+    patch_jump(self, endjump);
+}
+
+/**
  * III:19.3     Strings
  *
  * Here we go, strings! One of the big bads of C.
@@ -469,8 +500,8 @@ void number(Compiler *self) {
 void string(Compiler *self) {
     Parser *parser = &self->parser;
     const char *start = parser->previous.start + 1; // Past opening quote
-    int length        = parser->previous.length - 2; // Length w/o quotes
-    lua_String *object = copy_string(self->vm, start, length);
+    int len = parser->previous.len - 2; // Length w/o quotes
+    lua_String *object = copy_string(self->vm, start, len);
     emit_constant(self, makeobject(LUA_TSTRING, object));
 }
 
@@ -720,6 +751,36 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
 }
 
 /**
+ * III:23.2     Logical Operators
+ * 
+ * Logical and does what it can to resolve to a falsy value.
+ *
+ * Assumes the left hand expression has already been compiled and that its value
+ * is currently at the top of the stack.
+ * 
+ * If the value is falsy we immediately break out of the expression and leave the
+ * result of the left hand expression on top of the stack for caller's use.
+ * 
+ * Otherwise, we try to evaluate the right hand expression. We pop off the left
+ * hand expression as it won't be used anymore. Whatever the right hand's result
+ * is, it'll be the top of the stack that the caller ends up using.
+ * 
+ * VISUALIZATION:
+ * 
+ *              left operand expression
+ * +----------- OP_JUMP_IF_FALSE
+ * |            OP_POP
+ * |            right operand expression
+ * +----------> continue...
+ */
+void and_(Compiler *self) {
+    int endjump = emit_jump(self, OP_JUMP_IF_FALSE);
+    emit_byte(self, OP_POP);
+    parse_precedence(self, PREC_AND);
+    patch_jump(self, endjump);
+}
+
+/**
  * III:17.4     Parsing Prefix Expressions
  *
  * For now, this is all that's left to finish implementing `compile_bytecode()`.
@@ -872,9 +933,8 @@ static void elseblock(Compiler *self) {
  * In order to do control flow with lone 'if' statements (no 'else') we need to
  * make use of a technique called 'backpatching'.
  *
- * Basically we emit a jump but
- * we fill it with dummy values for how far to jump at the moment. We keep the
- * address of the jump instruction in memory for later.
+ * Basically we emit a jump but we fill it with dummy values for how far to jump 
+ * at the moment. We keep the address of the jump instruction in memory for later.
  *
  * We then compile the statement/s inside the 'then' branch, once we're done with
  * that the current chunk's count indicates how far relative to the jump opcode

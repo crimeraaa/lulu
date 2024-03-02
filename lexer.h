@@ -75,8 +75,8 @@ typedef enum {
 typedef struct {
     TokenType type;
     const char *start; // Pointer to start of token in source code.
-    int length; // How many characters to dereference from `start`.
-    int line;   // What line of the source code? Used for error reporting.
+    int len;           // How many characters to dereference from `start`.
+    int line;          // What line of the source code? Used for error reporting.
 } Token;
 
 /**

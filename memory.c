@@ -18,7 +18,7 @@ void *reallocate(void *pointer, size_t oldsize, size_t newsize) {
 }
 
 static inline void free_string(lua_String *self) {
-    deallocate_array(char, self->data, self->length);
+    deallocate_array(char, self->data, self->len);
     deallocate(lua_String, self);
 }
 

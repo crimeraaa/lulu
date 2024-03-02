@@ -8,6 +8,8 @@ extern void number(Compiler *self);
 extern void literal(Compiler *self);
 extern void string(Compiler *self);
 extern void variable(Compiler *self);
+extern void and_(Compiler *self);
+extern void or_(Compiler *self);
 
 /**
  * III:17.6     A Pratt Parser
@@ -63,7 +65,7 @@ static const ParseRule rules[TOKEN_COUNT] = {
     [TOKEN_TRUE]            = {literal,     NULL,       PREC_NONE},
 
     // Keywords
-    [TOKEN_AND]             = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_AND]             = {NULL,        and_,       PREC_AND},
     [TOKEN_BREAK]           = {NULL,        NULL,       PREC_NONE},
     [TOKEN_DO]              = {NULL,        NULL,       PREC_NONE},
     [TOKEN_ELSE]            = {NULL,        NULL,       PREC_NONE},
@@ -75,7 +77,7 @@ static const ParseRule rules[TOKEN_COUNT] = {
     [TOKEN_IN]              = {NULL,        NULL,       PREC_NONE},
     [TOKEN_LOCAL]           = {NULL,        NULL,       PREC_NONE},
     [TOKEN_NOT]             = {unary,       NULL,       PREC_NONE},
-    [TOKEN_OR]              = {NULL,        NULL,       PREC_NONE},
+    [TOKEN_OR]              = {NULL,        or_,        PREC_OR},
     [TOKEN_RETURN]          = {NULL,        NULL,       PREC_NONE},
     [TOKEN_SELF]            = {NULL,        NULL,       PREC_NONE},
     [TOKEN_THEN]            = {NULL,        NULL,       PREC_NONE},

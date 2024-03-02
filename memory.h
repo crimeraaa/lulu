@@ -20,7 +20,7 @@
  * Helper macro to make growingdynamic arrays quicker.
  * We start arrays with 8 elements and grow by factors of 2.
  */
-#define grow_capacity(N)        ((N) < 8 ? 8 : (N) * 2)
+#define grow_cap(N)        ((N) < 8 ? 8 : (N) * 2)
 
 #define grow_array(T, ptr, oldcap, newcap) \
     reallocate(ptr, sizeof(T[oldcap]), sizeof(T[newcap]))

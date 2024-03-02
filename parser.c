@@ -20,7 +20,7 @@ void parser_error_at(Parser *self, const Token *token, const char *message) {
     } else if (token->type == TOKEN_ERROR) {
         // Nothing as the error token already has a message.
     } else {
-        fprintf(stderr, " at '%.*s'", token->length, token->start);
+        fprintf(stderr, " at '%.*s'", token->len, token->start);
     }
     fprintf(stderr, ": %s\n", message);
 }
@@ -42,7 +42,6 @@ static inline void parser_error_at_current(Parser *self, const char *message) {
 
 void advance_parser(Parser *self) {
     self->previous = self->current;
-    
     for (;;) {
         self->current = tokenize(&self->lexer);
         if (self->current.type != TOKEN_ERROR) {

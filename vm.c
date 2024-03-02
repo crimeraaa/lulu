@@ -127,12 +127,12 @@ static inline bool isfalsy(TValue value) {
 static void concatenate(lua_VM *self) {
     lua_String *rhs = asstring(pop_vmstack(self));
     lua_String *lhs = asstring(pop_vmstack(self));
-    int length      = lhs->length + rhs->length;
-    char *data      = allocate(char, length + 1);
-    memcpy(&data[0], lhs->data, lhs->length);
-    memcpy(&data[lhs->length], rhs->data, rhs->length);
-    data[length] = '\0';
-    lua_String *result = take_string(self, data, length);
+    int len    = lhs->len + rhs->len;
+    char *data = allocate(char, len + 1);
+    memcpy(&data[0], lhs->data, lhs->len);
+    memcpy(&data[lhs->len], rhs->data, rhs->len);
+    data[len] = '\0';
+    lua_String *result = take_string(self, data, len);
     push_vmstack(self, makeobject(LUA_TSTRING, result));
 }
 

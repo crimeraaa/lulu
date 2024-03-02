@@ -33,10 +33,10 @@ static lua_Object *allocate_object(lua_VM *lvm, size_t size, ValueType type) {
  * But because this function can be called during the compile phase, the compiler
  * structure must also have a pointer to a VM...
  */
-static inline lua_String *allocate_string(lua_VM *lvm, char *data, int length, DWord hash) {
+static inline lua_String *allocate_string(lua_VM *lvm, char *data, int len, DWord hash) {
     lua_String *result = allocate_object(lvm, lua_String, LUA_TSTRING);
     result->hash   = hash;
-    result->length = length;
+    result->len = len;
     result->data   = data;
     // We don't care about the value for the interned strings, just the key.
     table_set(&lvm->strings, result, makenil);
@@ -53,35 +53,35 @@ static inline lua_String *allocate_string(lua_VM *lvm, char *data, int length, D
  * determine the hash AFTER writing the data pointer as we don't have access to
  * the full string in functions like `concat_strings()`.
  */
-static DWord hash_string(const char *key, int length) {
+static DWord hash_string(const char *key, int len) {
     DWord hash = FNV32_OFFSET;
-    for (int i = 0; i < length; i++) {
+    for (int i = 0; i < len; i++) {
         hash ^= (Byte)key[i];
         hash *= FNV32_PRIME;
     }
     return hash;
 }
 
-lua_String *take_string(lua_VM *lvm, char *data, int length) {
-    DWord hash = hash_string(data, length);
-    lua_String *interned = table_findstring(&lvm->strings, data, length, hash);
+lua_String *take_string(lua_VM *lvm, char *data, int len) {
+    DWord hash = hash_string(data, len);
+    lua_String *interned = table_findstring(&lvm->strings, data, len, hash);
     if (interned != NULL) {
         free(data);
         return interned;
     }
-    return allocate_string(lvm, data, length, hash);
+    return allocate_string(lvm, data, len, hash);
 }
 
-lua_String *copy_string(lua_VM *lvm, const char *literal, int length) {
-    DWord hash = hash_string(literal, length);
-    lua_String *interned = table_findstring(&lvm->strings, literal, length, hash);
+lua_String *copy_string(lua_VM *lvm, const char *literal, int len) {
+    DWord hash = hash_string(literal, len);
+    lua_String *interned = table_findstring(&lvm->strings, literal, len, hash);
     if (interned != NULL) {
         return interned;
     }
-    char *data = allocate(char, length + 1);
-    memcpy(data, literal, length);
-    data[length] = '\0';
-    return allocate_string(lvm, data, length, hash);
+    char *data = allocate(char, len + 1);
+    memcpy(data, literal, len);
+    data[len] = '\0';
+    return allocate_string(lvm, data, len, hash);
 }
 
 void print_object(TValue value) {

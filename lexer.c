@@ -80,7 +80,7 @@ static Token make_token(const Lexer *self, TokenType type) {
     Token token;
     token.type   = type;
     token.start  = self->start;
-    token.length = (int)(self->current - self->start);
+    token.len = (int)(self->current - self->start);
     token.line   = self->line;
     return token;
 }
@@ -94,7 +94,7 @@ static Token error_token(const Lexer *self, const char *message) {
     Token token;
     token.type   = TOKEN_ERROR;
     token.start  = message;
-    token.length = (int)strlen(message);
+    token.len = (int)strlen(message);
     token.line   = self->line;
     return token;
 }
@@ -133,15 +133,15 @@ static void skip_whitespace(Lexer *self) {
 static TokenType 
 check_keyword(const Lexer *self, 
     int offset,
-    int length,
+    int len,
     const char *keyword,
     TokenType type) 
 {
     // self->current points to the last character, so we have the exact length.
     int lexlen = (int)(self->current - self->start);
-    if (lexlen == length) {
+    if (lexlen == len) {
         // We only want to compare past the offset, save some cycles maybe.
-        size_t sublen = length - offset; 
+        size_t sublen = len - offset; 
         if (memcmp(self->start + offset, &keyword[offset], sublen) == 0) {
             return type;
         }

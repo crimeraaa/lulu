@@ -5,19 +5,19 @@
 void init_valuearray(ValueArray *self) {
     self->values   = NULL;
     self->count    = 0;
-    self->capacity = 0;
+    self->cap = 0;
 }
 
 void free_valuearray(ValueArray *self) {
-    deallocate_array(TValue, self->values, self->capacity);
+    deallocate_array(TValue, self->values, self->cap);
     init_valuearray(self);
 }
 
 void write_valuearray(ValueArray *self, TValue value) {
-    if (self->count + 1 > self->capacity) {
-        int oldcapacity = self->capacity;
-        self->capacity  = grow_capacity(oldcapacity);
-        self->values    = grow_array(TValue, self->values, oldcapacity, self->capacity);
+    if (self->count + 1 > self->cap) {
+        int oldcap = self->cap;
+        self->cap  = grow_cap(oldcap);
+        self->values    = grow_array(TValue, self->values, oldcap, self->cap);
     }
     self->values[self->count] = value;
     self->count++;

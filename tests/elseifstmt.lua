@@ -1,10 +1,14 @@
 local ch = 'a'
 if ch == 'y' then
-    print("yep")
+    local msg = "yep"
+    print(msg)
 elseif ch == 'n' then
-    print("nope")
+    local msg = "nope"
+    print(msg)
 elseif ch == 'c' then
-    print("char")
+    local msg = "char"
+    print(msg)
 else
-    print("whar")
+    local msg = "whar"
+    print(msg)
 end
