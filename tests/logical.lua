@@ -7,4 +7,4 @@ print(42 or y and y >= 1) -- again truthy lhs is given priority
 -- grouping tests
 print((x and x >= 1) or 13) -- fallback to 13 since lhs is falsy
 print(x and (x >= 1 or 13)) -- falsy lhs of 'and' prioritized over eval of 'or'
-print(x or x >= 1)
+print(x >= 1)

@@ -93,17 +93,17 @@ typedef struct {
  */
 typedef struct {
     int count;     // Non-empty linecount. May not line up with line numbers.
-    int cap;  // Number of elements allocated for.
+    int cap;       // Number of elements allocated for.
     Linerun *runs; // 1D array of information about consecutive line sequences.
 } LineRLE;
 
 typedef struct {
     ValueArray constants;
     LineRLE lines;
-    Byte *code; // 1D array of 8-bit instructions.
-    int count;     // Current number of instructions written to `code`.
-    int cap;  // Total number of instructions we can hold currently.
-    int prevline;  // Track the previous line number as we may skip some.
+    Byte *code;   // 1D array of 8-bit instructions.
+    int count;    // Current number of instructions written to `code`.
+    int cap;      // Total number of instructions we can hold currently.
+    int prevline; // Track the previous line number as we may skip some.
 } Chunk;
 
 void init_chunk(Chunk *self);
