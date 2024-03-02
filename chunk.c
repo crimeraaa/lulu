@@ -73,12 +73,12 @@ int get_instruction_line(Chunk *chunk, int offset) {
     // When iterating, `chunk->prevline` points to the next index.
     if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline - 1].end) {
         return -1;
-    } 
+    }
     return chunk->lines.runs[chunk->prevline++].where;
 }
 
-/** 
- * Only compile these explicitly want debug printout capabilities. 
+/**
+ * Only compile these explicitly want debug printout capabilities.
  * Otherwise, don't as they'll take up space in the resulting object file.
  */
 #ifdef DEBUG_PRINT_CODE
@@ -96,7 +96,7 @@ void disassemble_chunk(Chunk *self, const char *name) {
 }
 
 /**
- * Constant instructions take 1 byte for themselves and 1 byte for the operand. 
+ * Constant instructions take 1 byte for themselves and 1 byte for the operand.
  * The operand is an index into the chunk's constants pool.
  */
 static int constant_instruction(const char *name, const Chunk *chunk, int offset) {
@@ -111,15 +111,15 @@ static int constant_instruction(const char *name, const Chunk *chunk, int offset
 
 /**
  * Challenge III:14.1: Extended Width Instructions
- * 
+ *
  * When loading the 256th-(2^24)th constant, we need to use a 3 byte operand.
  *
  * 1. code[offset + 1]: Upper 8 bits of the operand.
  * 2. code[offset + 2]: Middle 8 bits of the operand.
  * 3. code[offset + 3]: Lower 8 bits of the operand.
- * 
+ *
  * We have to use some clever bit twiddling to construct a 32-bit integer.
- * 
+ *
  * In total, this entire operation takes up 4 bytes.
  */
 static int constant_instruction_long(const char *name, const Chunk *chunk, int offset) {
@@ -140,7 +140,7 @@ static int simple_instruction(const char *name, int offset) {
 
 /**
  * III:22.4.1   Interpreting local variables
- * 
+ *
  * `code[offset]` is the opcode, `code[offset + 1]` is the operand.
  */
 static int byte_instruction(const char *name, const Chunk *chunk, int offset) {
@@ -151,7 +151,7 @@ static int byte_instruction(const char *name, const Chunk *chunk, int offset) {
 
 /**
  * III:23.1     If Statements
- * 
+ *
  * Disassembly support for OP_JUMP* opcodes. Note that we have a `sign` parameter
  * because later on we'll also allow for jumping backwards.
  */
@@ -176,27 +176,27 @@ int disassemble_instruction(Chunk *chunk, int offset) {
 
     Byte instruction = chunk->code[offset];
     switch(instruction) {
-    case OP_CONSTANT: 
+    case OP_CONSTANT:
         return constant_instruction("OP_CONSTANT", chunk, offset);
-    case OP_CONSTANT_LONG: 
+    case OP_CONSTANT_LONG:
         return constant_instruction_long("OP_CONSTANT_LONG", chunk, offset);
     // -*- III:18.4     Two New Types ----------------------------------------*-
     case OP_NIL:   return simple_instruction("OP_NIL", offset);
     case OP_TRUE:  return simple_instruction("OP_TRUE", offset);
     case OP_FALSE: return simple_instruction("OP_FALSE", offset);
-                   
+
     // -*- III:21.1.2   Expression statements --------------------------------*-
     case OP_POP: return simple_instruction("OP_POP", offset);
     case OP_POPN: return byte_instruction("OP_POPN", chunk, offset);
-                 
+
     // -*- III:22.4.1   Interpreting local variables -------------------------*-
     case OP_GETLOCAL: return byte_instruction("OP_GETLOCAL", chunk, offset);
     case OP_SETLOCAL: return byte_instruction("OP_SETLOCAL", chunk, offset);
 
     // -*- III:21.2     Variable Declarations
-    case OP_GETGLOBAL: 
+    case OP_GETGLOBAL:
         return constant_instruction("OP_GETGLOBAL", chunk, offset);
-    case OP_GETGLOBAL_LONG: 
+    case OP_GETGLOBAL_LONG:
         return constant_instruction_long("OP_GETGLOBAL_LONG", chunk, offset);
 
     // case OP_DEFINE_GLOBAL:
@@ -223,9 +223,9 @@ int disassemble_instruction(Chunk *chunk, int offset) {
     case OP_POW: return simple_instruction("OP_POW", offset);
     case OP_MOD: return simple_instruction("OP_MOD", offset);
 
-    // -*- III:18.4.1   Logical not and falsiness ----------------------------*- 
+    // -*- III:18.4.1   Logical not and falsiness ----------------------------*-
     case OP_NOT: return simple_instruction("OP_NOT", offset);
-                 
+
     // -*- III:19.4.1   Concatenation ----------------------------------------*-
     case OP_CONCAT: return simple_instruction("OP_CONCAT", offset);
 
@@ -235,7 +235,7 @@ int disassemble_instruction(Chunk *chunk, int offset) {
     // -*- III:21.1.1   Print statements
     case OP_PRINT: return simple_instruction("OP_PRINT", offset);
 
-    // -*- III:23.1     If Statements ----------------------------------------*-    
+    // -*- III:23.1     If Statements ----------------------------------------*-
     case OP_JUMP:
         return jump_instruction("OP_JUMP", 1, chunk, offset);
     case OP_JUMP_IF_FALSE:

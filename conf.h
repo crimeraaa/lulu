@@ -7,7 +7,9 @@
 #define LUA_DIRSEP "/"
 #endif
 
-#include <math.h>
+#include <math.h>       /* floor, fmod, pow */
+#include <stddef.h>
+#include <stdint.h>     /* uint*_t family */
 
 typedef uint8_t  Byte;  // Smallest addressable size.
 typedef uint16_t Word;  // Main addressable size (in relation to the Intel 8086)

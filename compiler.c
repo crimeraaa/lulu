@@ -371,7 +371,6 @@ static void declare_variable(Compiler *self, bool islocal) {
  * It sucks but it's better to keep all the function pointers uniform!
  */
 void binary(Compiler *self) {
-
     TokenType optype = self->parser.previous.type;
     const ParseRule *rule = get_rule(optype);
     // Compile right hand side, and evaluate it if it has higher precedence operations.
@@ -384,17 +383,17 @@ void binary(Compiler *self) {
     // 1. a != b <=> !(a == b)
     // 2. a >= b <=> !(a < b)
     // 3. a <= b <=> !(a > b)
-    case TOKEN_EQ: emit_byte(self, OP_EQ); break;
-    case TOKEN_NEQ: emit_bytes(self, OP_EQ, OP_NOT); break;
-    case TOKEN_GT: emit_byte(self, OP_GT); break;
-    case TOKEN_GE: emit_bytes(self, OP_LT, OP_NOT);
-    case TOKEN_LT: emit_byte(self, OP_LT); break;
-    case TOKEN_LE: emit_bytes(self, OP_GT, OP_NOT); break;
+    case TOKEN_EQ:      emit_byte(self,  OP_EQ);         break;
+    case TOKEN_NEQ:     emit_bytes(self, OP_EQ, OP_NOT); break;
+    case TOKEN_GT:      emit_byte(self,  OP_GT);         break;
+    case TOKEN_GE:      emit_bytes(self, OP_LT, OP_NOT); break;
+    case TOKEN_LT:      emit_byte(self,  OP_LT);         break;
+    case TOKEN_LE:      emit_bytes(self, OP_GT, OP_NOT); break;
 
-    case TOKEN_PLUS: emit_byte(self, OP_ADD); break;
-    case TOKEN_DASH: emit_byte(self, OP_SUB); break;
-    case TOKEN_STAR: emit_byte(self, OP_MUL); break;
-    case TOKEN_SLASH: emit_byte(self, OP_DIV); break;
+    case TOKEN_PLUS:    emit_byte(self, OP_ADD); break;
+    case TOKEN_DASH:    emit_byte(self, OP_SUB); break;
+    case TOKEN_STAR:    emit_byte(self, OP_MUL); break;
+    case TOKEN_SLASH:   emit_byte(self, OP_DIV); break;
     case TOKEN_PERCENT: emit_byte(self, OP_MOD); break;
     default: return; // Should be unreachable.
     }
@@ -404,8 +403,6 @@ void binary(Compiler *self) {
  * Right-associative binary operators, mainly for exponentiation and concatenation.
  */
 void rbinary(Compiler *self) {
-
-
     TokenType optype = self->parser.previous.type;
     const ParseRule *rule = get_rule(optype);
     // We use the same precedence so we can evaluate from right to left.
@@ -432,7 +429,6 @@ void rbinary(Compiler *self) {
  * in the `parserules.c` lookup table.
  */
 void literal(Compiler *self) {
-
     switch (self->parser.previous.type) {
     case TOKEN_FALSE: emit_byte(self, OP_FALSE); break;
     case TOKEN_NIL:   emit_byte(self, OP_NIL);   break;
@@ -471,7 +467,6 @@ void number(Compiler *self) {
  * Here we go, strings! One of the big bads of C.
  */
 void string(Compiler *self) {
-
     Parser *parser = &self->parser;
     const char *start = parser->previous.start + 1; // Past opening quote
     int length        = parser->previous.length - 2; // Length w/o quotes
@@ -833,17 +828,6 @@ static void expression_statement(Compiler *self) {
     emit_byte(self, OP_POP);
 }
 
-static bool check_token_any(const Parser *parser, const TokenType *expected, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-        if (check_token(parser, expected[i])) {
-            return true;
-        }
-    }
-    return false;
-}
-
-#define arraylen(array)                 (sizeof(array) / sizeof(array[0]))
-
 /**
  * III:23.2     If Statements
  *
@@ -857,8 +841,7 @@ static bool check_token_any(const Parser *parser, const TokenType *expected, siz
  */
 static void thenblock(Compiler *self) {
     begin_scope(self);
-    static const TokenType delimiters[] = {TOKEN_ELSE, TOKEN_END, TOKEN_EOF};
-    while (!check_token_any(&self->parser, delimiters, arraylen(delimiters))) {
+    while (!check_token(&self->parser, TOKEN_ELSEIF, TOKEN_ELSE, TOKEN_END, TOKEN_EOF)) {
         declaration(self);
     }
     end_scope(self);
@@ -872,8 +855,7 @@ static void thenblock(Compiler *self) {
  */
 static void elseblock(Compiler *self) {
     begin_scope(self);
-    static const TokenType delimiters[] = {TOKEN_END, TOKEN_EOF};
-    while (!check_token_any(&self->parser, delimiters, arraylen(delimiters))) {
+    while (!check_token(&self->parser, TOKEN_END, TOKEN_EOF)) {
         declaration(self);
     }
     end_scope(self);
@@ -895,9 +877,9 @@ static void elseblock(Compiler *self) {
  * that the current chunk's count indicates how far relative to the jump opcode
  * we need to, you know, jump.
  */
-static void if_statement(Compiler *self) {
+static void if_statement(Compiler *self, bool iselif) {
     Parser *parser = &self->parser;
-    // If condition
+    // Compile the 'if'/'elseif' condition code.
     expression(self);
     consume_token(parser, TOKEN_THEN, "Expected 'then' after condition.");
 
@@ -915,12 +897,24 @@ static void if_statement(Compiler *self) {
     // Also considers the elsejump in its count so we patch AFTER emitting that.
     patch_jump(self, thenjump);
     emit_byte(self, OP_POP); // When condition is falsy pop the condition still.
+    
+    // Recursively compile 1 or more 'elseif' statments so that we emit jumps
+    // to the evaluation of their conditions.
+    if (match_token(parser, TOKEN_ELSEIF)) {
+        if_statement(self, true);
+    }
+    // Finally, if elseif recurse ends, we can check for this? maybe?
     if (match_token(parser, TOKEN_ELSE)) {
         elseblock(self);
     }
     patch_jump(self, elsejump);
-    consume_token(parser, TOKEN_END, "Expected 'end' after 'if' statement.");
-    match_token(parser, TOKEN_SEMICOL);
+    // We don't want to check for these in recursive calls when compiling and
+    // patching an 'elseif' because they'll unwind eventually to end the main
+    // statement.
+    if (!iselif) {
+        consume_token(parser, TOKEN_END, "Expected 'end' after 'if' statement.");
+        match_token(parser, TOKEN_SEMICOL);
+    }
 }
 
 static void print_statement(Compiler *self) {
@@ -987,7 +981,9 @@ static void statement(Compiler *self) {
     if (match_token(parser, TOKEN_PRINT)) {
         print_statement(self);
     } else if (match_token(parser, TOKEN_IF)) {
-        if_statement(self);
+        if_statement(self, false);
+    } else if (match_token(parser, TOKEN_ELSE)) {
+
     } else if (match_token(parser, TOKEN_DO)) {
         begin_scope(self);
         doblock(self);

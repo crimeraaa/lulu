@@ -1,0 +1,66 @@
+local ch = 'y'
+if ch == 'y' then
+    print("yes")
+else
+    print("naur")
+end
+
+constants = {'y', 'y', "matches", "none"}
+
+0000    OP_CONSTANT     0   'y' # 'ch' is a local so store on stack.
+0002    OP_GETLOCAL     0       # push value of local ch
+0004    OP_CONSTANT     1   'y' # String literal 'y'
+0006    OP_EQ                   # Compare top 2 elements on stack
+0007    OP_JMP_IF_FALSE 7->0x0  # Jump to start of 'else' block
+0010    OP_POP                  # Pop expression of if-condition
+0011    OP_CONSTANT     2       # String literal 'matches'
+0013    OP_PRINT                # Pop top of stack and print it
+0014    OP_JMP          14->0x0 # Jump to after 'else'/'end'
+                                # ip is at 0017 since a jump was emitted.
+                                # We patch the jump at 0007 with this.
+0017    OP_POP                  # Pop expression of if-condition
+0018    OP_CONSTANT     3       # Start of 'else' block
+0020    OP_PRINT                # Pop top of stack and print it
+0021    OP_POPN         1       # Pop this scope's locals off the stack
+                                # ip is at 0021. We can patch the 'else' jump
+                                # at 0014 with our current instruction offset.
+0023    OP_RET
+
+--- ELSEIF {{{
+
+local ch = 'y'
+if ch == 'y' then
+    print("yes")
+else
+    if ch == 'n' then
+        print("naur")
+    else
+        print("whar")
+    end
+end
+
+constants = {'y', 'y', "yes", 'n', "naur", "whar"}
+locals    = {{ch = 'y'}}
+
+0001    OP_CONSTANT         0       # push  constants[0] = 'y'
+0002    OP_GETLOCAL         0       # push  locals[0]    = {ch = 'y'}
+0004    OP_CONSTANT         1       # push  constants[1] = 'y'
+0006    OP_EQ                       # pop   stack[-1]
+                                    # pop   stack[-2]
+                                    # push  equality comparison
+0007    OP_JUMP_IF_FALSE    07->??  # jump  start of else block, if any
+0010    OP_POP                      # pop   stack[-1] (if-condition when true)
+0011    OP_CONSTANT         2       # push  constants[2] = "yes"
+0013    OP_PRINT                    # pop   stack[-1] and print
+0014    OP_JUMP             14->??  # jump  end of if-else (always emitted)
+                                    #       after emitting, ip == 0017.
+                                    #       patch jump @ 0007 with this.
+0017    OP_POP                      # pop   stack[-1] (if-condition when false)
+0017    OP_GETLOCAL         0       # push  locals[0] = {ch = 'y'}
+0020    OP_CONSTANT         3       # push  constants[3] = 'n'
+0022    OP_EQ                       # pop   stack[-1]
+                                    # pop   stack[-2]
+                                    # push  equality comparison
+0023    OP_JUMP_IF_FALSE    23->??  # something...
+
+--- }}}

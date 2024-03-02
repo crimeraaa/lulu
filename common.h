@@ -23,6 +23,27 @@
 #define logprintf(fmts, ...)    fprintf(stderr, logstring(fmts), __VA_ARGS__)
 
 /**
+ * III:23.2     If Statements
+ * 
+ * Custom addition to quickly create compound literals for array-types, mainly
+ * for use inside of other macros.
+ */
+#define toarraylit(T, ...)      ((T[]){__VA_ARGS__})
+
+/**
+ * III:23.2     If Statements
+ * 
+ * Custom addition to make working with array literals easier.
+ * 
+ * NOTE:
+ * 
+ * This will ONLY work with array literals, e.g. `T[]` not `T*`.
+ * Some compilers will warn you of that, but it's not a guarantee.
+ * So be careful of array-pointer decay!
+ */
+#define arraylen(arraylit)      (sizeof(arraylit) / sizeof(arraylit[0]))
+
+/**
  * III:19.2     Struct Inheritance
  * 
  * Forward declared in `value.h` so that we can avoid circular dependencies

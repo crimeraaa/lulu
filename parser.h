@@ -4,6 +4,37 @@
 #include "common.h"
 #include "lexer.h"
 
+#define _tokenarray(...)            (toarraylit(TokenType, __VA_ARGS__))
+#define _check_token(parser, types) check_token_any(parser, types, arraylen(types))
+#define _match_token(parser, types) match_token_any(parser, types, arraylen(types))
+
+/**
+ * III:21.1.1   Print Statements
+ * 
+ * Check if the parser's CURRENT (not PREVIOUS) token matches `expected`.
+ * 
+ * III:23.2     If Statements
+ * 
+ * Now a wrapper macro in a similar style to `match_token()`.
+ */
+#define check_token(parser, ...) _check_token(parser, _tokenarray(__VA_ARGS__))
+
+/**
+ * III:21.1.1   Print Statements
+ * 
+ * If token matches, consume it and return true. Otherwise return false. Nothing
+ * more, nothing less. We don't throw the parser into a panic state.
+ * 
+ * 
+ * III:23.2     If Statements
+ * 
+ * I've changed this to be a wrapper macro around the `_match_token()` macro
+ * which is, in itself, a wrapper macro around `match_token_any()`.
+ * 
+ * This allows us to use the same "function" for 1 or more token types.
+ */
+#define match_token(parser, ...) _match_token(parser, _tokenarray(__VA_ARGS__))
+
 /**
  * III:17.2     Parsing Tokens
  * 
@@ -58,19 +89,27 @@ void advance_parser(Parser *self);
 void consume_token(Parser *self, TokenType expected, const char *message);
 
 /**
- * III:21.1.1   Print Statements
+ * III:23.2     If Statements
  * 
- * Check if the parser's CURRENT (not PREVIOUS) token matches `expected`.
+ * Custom helper to determine if parser's current token matches any of the given.
+ * 
+ * @param parser    Parser instance.
+ * @param expected  1D array literal of TokenTypes to check against.
+ * @param count     Number of elements in `expected`, use the `arraylen` macro.
+ * 
+ * @return          `true` on the first match, else `false` if no match.
+ * 
+ * @note            This does not consume the token.
  */
-bool check_token(const Parser *self, TokenType expected);
+bool check_token_any(const Parser *parser, const TokenType *expected, size_t count);
 
 /**
- * III:21.1.1   Print Statements
+ * III:23.2     If Statements
  * 
- * If token matches, consume it and return true. Otherwise return false. Nothing
- * more, nothing less. We don't throw the parser into a panic state.
+ * Similar to `check_token_any` but we advance the parser if `true` as well.
+ * Otherwise we return `false` without modifying any state.
  */
-bool match_token(Parser *self, TokenType expected);
+bool match_token_any(Parser *self, const TokenType *expected, size_t count);
 
 /**
  * III:21.1.3   Error synchronization

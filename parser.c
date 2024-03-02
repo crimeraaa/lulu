@@ -54,28 +54,32 @@ void advance_parser(Parser *self) {
 }
 
 void consume_token(Parser *self, TokenType expected, const char *message) {
-    if (self->current.type == expected) {
+    if (check_token(self, expected)) {
         advance_parser(self);
         return;
     }
     parser_error_at_current(self, message);
 }
 
-bool match_token(Parser *self, TokenType expected) {
-    if (!check_token(self, expected)) {
+bool match_token_any(Parser *self, const TokenType *expected, size_t count) {
+    if (!check_token_any(self, expected, count)) {
         return false;
     }
     advance_parser(self);
     return true;
 }
 
-bool check_token(const Parser *self, TokenType expected) {
-    return self->current.type == expected;
+bool check_token_any(const Parser *parser, const TokenType *expected, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        if (parser->current.type == expected[i]) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void synchronize_parser(Parser *self) {
     self->panicking = false;
-    
     while (self->current.type != TOKEN_EOF) {
         if (self->previous.type == TOKEN_SEMICOL) {
             // If more than 1 semicol, don't report the error once since we
