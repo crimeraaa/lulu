@@ -167,7 +167,7 @@ static TokenType ident_type(Lexer *self) {
     const char *lexeme = self->start;
     switch (lexeme[0]) {
         case 'a': return check_keyword(self, 1, "and", TK_AND);
-        case 'y': return check_keyword(self, 1, "break", TK_BREAK);
+        case 'b': return check_keyword(self, 1, "break", TK_BREAK);
         case 'd': return check_keyword(self, 1, "do", TK_DO);
         case 'e': {
             if (lexlen > 1) {

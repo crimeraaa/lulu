@@ -850,6 +850,10 @@ static void doblock(Compiler *self) {
     Parser *parser = &self->parser;
     begin_scope(self);
     while (!check_token(parser, TK_END, TK_EOF)) {
+        // This function is used for lone do-end blocks.
+        if (match_token(parser, TK_BREAK)) {
+            compiler_error(self, "No loop to break out of.");
+        }
         declaration(self);
     }
     end_scope(self);
@@ -1019,6 +1023,17 @@ static void print_statement(Compiler *self) {
     emit_byte(self, OP_PRINT);
 }
 
+static void whileblock(Compiler *self) {
+    Parser *parser = &self->parser;
+    begin_scope(self);
+    while (!check_token(parser, TK_END, TK_EOF)) {
+        declaration(self);
+    }
+    end_scope(self);
+    consume_token(parser, TK_END, "Expected 'end' after 'do' block.");
+    match_token(parser, TK_SEMICOL); // Like most of Lua this is optional.
+}
+
 /**
  * III:23.3     While Statements
  * 
@@ -1035,16 +1050,15 @@ static void print_statement(Compiler *self) {
  *      continue...
  */
 static void while_statement(Compiler *self) {
+    Parser *parser = &self->parser;
     // Save address of the beginning of the loop, right before the condition.
     size_t loopstart = current_chunk(self)->count;
     expression(self);
-    consume_token(&self->parser, TK_DO, "Expected 'do' after 'while' condition.");
-    
+    consume_token(parser, TK_DO, "Expected 'do' after 'while' condition.");
+    // Save the address of the jump to exit out of the loop.
     size_t exitjump = emit_jump(self, OP_FJMP);
-    emit_byte(self, OP_POP);
-    doblock(self);
+    whileblock(self);
     emit_loop(self, loopstart);
-    
     patch_jump(self, exitjump);
     emit_byte(self, OP_POP);
 }
@@ -1146,5 +1160,6 @@ bool compile_bytecode(Compiler *self, const char *source) {
         end_scope(self);
     }
     end_compiler(self);
+    // *(volatile char *)NULL; // Intentional segfault
     return !self->parser.haderror;
 }
