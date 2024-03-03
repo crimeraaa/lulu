@@ -2,7 +2,7 @@
 #include "object.h"
 #include "vm.h"
 
-void *reallocate(void *pointer, Size oldsize, Size newsize) {
+void *reallocate(void *pointer, size_t oldsize, size_t newsize) {
     (void)oldsize;
     if (newsize == 0) {
         free(pointer);

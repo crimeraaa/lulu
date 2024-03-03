@@ -2,10 +2,7 @@
 #include "memory.h"
 #include "value.h"
 
-#define DEBUG_FMTHEX    "0x%04" LUAI_FMTHEX
-#define DEBUG_FMTLINE    "%4"  LUAI_FMTINTS
-
-static inline void init_lineRLE(LineRLE *self) {
+static inline void init_lineRLE(LineRuns *self) {
     self->count    = 0;
     self->cap = 0;
     self->runs     = NULL;
@@ -20,8 +17,8 @@ void init_chunk(Chunk *self) {
     init_lineRLE(&self->lines);
 }
 
-static inline void free_lineRLE(LineRLE *self) {
-    deallocate_array(Linerun, self->runs, self->cap);
+static inline void free_lineRLE(LineRuns *self) {
+    deallocate_array(LineRun, self->runs, self->cap);
 }
 
 void free_chunk(Chunk *self) {
@@ -39,12 +36,12 @@ void free_chunk(Chunk *self) {
  * This caused us to overflow whenever a linecount was greater than 256 and thus
  * we didn't write to the proper indexes.
  */
-static void write_lineRLE(LineRLE *self, IntS offset, IntS line) {
+static void write_lineRLE(LineRuns *self, ptrdiff_t offset, int line) {
     // We should resize this array less often than the bytes one.
     if (self->count + 1 > self->cap) {
-        Size oldcap = self->cap;
+        size_t oldcap = self->cap;
         self->cap   = grow_cap(oldcap);
-        self->runs  = grow_array(Linerun, self->runs, oldcap, self->cap);
+        self->runs  = grow_array(LineRun, self->runs, oldcap, self->cap);
     }
     self->runs[self->count].start = offset;
     self->runs[self->count].end   = offset;
@@ -53,13 +50,13 @@ static void write_lineRLE(LineRLE *self, IntS offset, IntS line) {
 }
 
 /* Increment the end instruction pointer of the topmost run. */
-static inline void increment_lineRLE(LineRLE *self) {
+static inline void increment_lineRLE(LineRuns *self) {
     self->runs[self->count - 1].end++;
 }
 
-void write_chunk(Chunk *self, Byte byte, IntS line) {
+void write_chunk(Chunk *self, Byte byte, int line) {
     if (self->count + 1 > self->cap) {
-        Size oldcap = self->cap;
+        size_t oldcap = self->cap;
         self->cap   = grow_cap(oldcap);
         self->code  = grow_array(Chunk, self->code, oldcap, self->cap);
     }
@@ -74,17 +71,17 @@ void write_chunk(Chunk *self, Byte byte, IntS line) {
     self->count++;
 }
 
-Size add_constant(Chunk *self, TValue value) {
+size_t add_constant(Chunk *self, TValue value) {
     write_valuearray(&self->constants, value);
     return self->constants.count - 1;
 }
 
-IntS get_instruction_line(Chunk *chunk, IntS offset) {
-    // When iterating, `chunk->prevline` points to the next index.
-    if (offset > 0 && offset <= chunk->lines.runs[chunk->prevline - 1].end) {
+int get_instruction_line(Chunk *self, ptrdiff_t offset) {
+    // When iterating, `self->prevline` points to the next index.
+    if (offset > 0 && offset <= self->lines.runs[self->prevline - 1].end) {
         return -1;
     }
-    return chunk->lines.runs[chunk->prevline++].where;
+    return self->lines.runs[self->prevline++].where;
 }
 
 /**
@@ -93,9 +90,9 @@ IntS get_instruction_line(Chunk *chunk, IntS offset) {
  */
 #ifdef DEBUG_PRINT_CODE
 
-// static void dump_lineruns(const LineRLE *self) {
+// static void dump_lineruns(const LineRuns *self) {
 //     for (int i = 0; i < self->count; i++) {
-//         const Linerun *run = &self->runs[i];
+//         const LineRun *run = &self->runs[i];
 //         printf("line %i: instructions %i-%i\n", run->where, run->start, run->end);
 //     }
 // }
@@ -106,26 +103,26 @@ void disassemble_chunk(Chunk *self, const char *name) {
     self->prevline = 0;
     printf("== %s ==\n", name);
     // We rely on `disassemble_instruction()` for iteration.
-    for (IntS offset = 0; offset < (IntS)self->count;) {
+    for (ptrdiff_t offset = 0; offset < (ptrdiff_t)self->count;) {
         offset = disassemble_instruction(self, offset);
     }
 }
 
 /**
  * Constant instructions take 1 byte for themselves and 1 byte for the operand.
- * The operand is an index into the chunk's constants pool.
+ * The operand is an index into the self's constants pool.
  */
-static IntS constop(const char *name, const Chunk *chunk, IntS offset) {
+static int constop(const char *name, const Chunk *self, ptrdiff_t offset) {
     // code[offset] is the operation byte itself, code[offset + 1] is the index
-    // into the chunk's constants pool.
-    Byte index = chunk->code[offset + 1];
+    // into the self's constants pool.
+    Byte index = self->code[offset + 1];
     printf("%-16s %4i '", name, index);
-    print_value(chunk->constants.values[index]);
+    print_value(self->constants.values[index]);
     printf("'\n");
     return offset + 2;
 }
 
-static inline DWord read_long(const Chunk *self, IntS offset) {
+static inline DWord read_long(const Chunk *self, ptrdiff_t offset) {
     Byte hi  = self->code[offset + 1] << 16; // Unmask upper 8 bits.
     Byte mid = self->code[offset + 2] << 8;  // Unmask center 8 bits.
     Byte lo  = self->code[offset + 3];       // Unmask lower 8 bits.
@@ -145,16 +142,16 @@ static inline DWord read_long(const Chunk *self, IntS offset) {
  *
  * In total, this entire operation takes up 4 bytes.
  */
-static IntS constop_L(const char *name, const Chunk *chunk, IntS offset) {
-    DWord index = read_long(chunk, offset);
+static int constop_L(const char *name, const Chunk *self, ptrdiff_t offset) {
+    DWord index = read_long(self, offset);
     printf("%-16s %4u '", name, index);
-    print_value(chunk->constants.values[index]);
+    print_value(self->constants.values[index]);
     printf("'\n");
     return offset + 4;
 }
 
 /* Simple instruction only take 1 byte for themselves. */
-static IntS simpleop(const char *name, IntS offset) {
+static int simpleop(const char *name, ptrdiff_t offset) {
     printf("%s\n", name);
     return offset + 1;
 }
@@ -164,13 +161,13 @@ static IntS simpleop(const char *name, IntS offset) {
  *
  * `code[offset]` is the opcode, `code[offset + 1]` is the operand.
  */
-static IntS byteop(const char *name, const Chunk *chunk, IntS offset) {
-    Byte slot = chunk->code[offset + 1];
+static int byteop(const char *name, const Chunk *self, ptrdiff_t offset) {
+    Byte slot = self->code[offset + 1];
     printf("%-16s %4i\n", name, slot);
     return offset + 2;
 }
 
-static inline Word read_short(const Chunk *self, IntS offset) {
+static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
     Byte hi = self->code[offset + 1] << 8;
     Byte lo = self->code[offset + 2];
     return (Word)(hi | lo);
@@ -182,25 +179,25 @@ static inline Word read_short(const Chunk *self, IntS offset) {
  * Disassembly support for OP_JUMP* opcodes. Note that we have a `sign` parameter
  * because later on we'll also allow for jumping backwards.
  */
-static IntS jumpop(const char *name, int sign, const Chunk *chunk, IntS offset) {
-    Word jump = read_short(chunk, offset);
-    IntS target = offset + 3 + sign * jump;
-    printf("%-16s    " DEBUG_FMTHEX "->" DEBUG_FMTHEX "\n", name, offset, target);
+static int jumpop(const char *name, int sign, const Chunk *self, ptrdiff_t offset) {
+    Word jump = read_short(self, offset);
+    ptrdiff_t target = offset + 3 + sign * jump;
+    printf("%-16s    0x%04tx->0x%04tx\n", name, offset, target);
     return offset + 3;
 }
 
-IntS disassemble_instruction(Chunk *chunk, IntS offset) {
-    printf(DEBUG_FMTHEX " ", offset); // Print number left-padded with 0's
-    IntS line = get_instruction_line(chunk, offset);
+int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
+    printf("0x%04tx ", offset); // Print number left-padded with 0's
+    int line = get_instruction_line(self, offset);
     if (line == -1) {
         printf("   | ");
     } else {
-        printf(DEBUG_FMTLINE " ", line);
+        printf("%4i ", line);
     }
-    Byte instruction = chunk->code[offset];
+    Byte instruction = self->code[offset];
     switch(instruction) {
-    case OP_CONSTANT:  return constop("OP_CONSTANT", chunk, offset);
-    case OP_LCONSTANT: return constop_L("OP_LCONSTANT", chunk, offset);
+    case OP_CONSTANT:  return constop("OP_CONSTANT", self, offset);
+    case OP_LCONSTANT: return constop_L("OP_LCONSTANT", self, offset);
 
     // -*- III:18.4     Two New Types ----------------------------------------*-
     case OP_NIL:   return simpleop("OP_NIL", offset);
@@ -209,19 +206,19 @@ IntS disassemble_instruction(Chunk *chunk, IntS offset) {
 
     // -*- III:21.1.2   Expression statements --------------------------------*-
     case OP_POP:   return simpleop("OP_POP", offset);
-    case OP_POPN:  return byteop("OP_POPN", chunk, offset);
+    case OP_POPN:  return byteop("OP_POPN", self, offset);
 
     // -*- III:22.4.1   Interpreting local variables -------------------------*-
-    case OP_GETLOCAL: return byteop("OP_GETLOCAL", chunk, offset);
-    case OP_SETLOCAL: return byteop("OP_SETLOCAL", chunk, offset);
+    case OP_GETLOCAL: return byteop("OP_GETLOCAL", self, offset);
+    case OP_SETLOCAL: return byteop("OP_SETLOCAL", self, offset);
 
     // -*- III:21.2     Variable Declarations
-    case OP_GETGLOBAL:  return constop("OP_GETGLOBAL", chunk, offset);
-    case OP_LGETGLOBAL: return constop_L("OP_LGETGLOBAL", chunk, offset);
+    case OP_GETGLOBAL:  return constop("OP_GETGLOBAL", self, offset);
+    case OP_LGETGLOBAL: return constop_L("OP_LGETGLOBAL", self, offset);
 
     // -*- III:21.4     Assignment -------------------------------------------*-
-    case OP_SETGLOBAL:  return constop("OP_SETGLOBAL", chunk, offset);
-    case OP_LSETGLOBAL: return constop_L("OP_LSETGLOBAL", chunk, offset);
+    case OP_SETGLOBAL:  return constop("OP_SETGLOBAL", self, offset);
+    case OP_LSETGLOBAL: return constop_L("OP_LSETGLOBAL", self, offset);
 
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     case OP_EQ: return simpleop("OP_EQ", offset);
@@ -249,8 +246,8 @@ IntS disassemble_instruction(Chunk *chunk, IntS offset) {
     case OP_PRINT:  return simpleop("OP_PRINT", offset);
 
     // -*- III:23.1     If Statements ----------------------------------------*-
-    case OP_JUMP:          return jumpop("OP_JUMP", 1, chunk, offset);
-    case OP_JUMP_IF_FALSE: return jumpop("OP_JUMP_IF_FALSE", 1, chunk, offset);
+    case OP_JUMP:          return jumpop("OP_JUMP", 1, self, offset);
+    case OP_JUMP_IF_FALSE: return jumpop("OP_JUMP_IF_FALSE", 1, self, offset);
     case OP_RET:           return simpleop("OP_RET", offset);
     default: break;
     }

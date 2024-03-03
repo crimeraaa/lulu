@@ -8,7 +8,7 @@
 #include "value.h"
 
 struct lua_VM {
-    TValue stack[LUA_VM_STACKSIZE]; // Hardcoded limit for simplicity.
+    TValue stack[LUA_MAXSTACK]; // Hardcoded limit for simplicity.
     Chunk *chunk;  // Chunk of bytecode and constant values.
     Byte *ip;      // Byte instruction pointer (next instruction) in `chunk`.
     TValue *bp;    // Base pointer to bottom of current stack frame/function.

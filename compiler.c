@@ -54,10 +54,10 @@ static inline void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
  * We'll use it later to backpatch the jump instruction with the actual
  * amount of bytes to jump forward or backward.
  */
-static Size emit_jump(Compiler *self, Byte instruction) {
+static size_t emit_jump(Compiler *self, Byte instruction) {
     emit_byte(self, instruction);
-    emit_byte(self, 0xFF);
-    emit_byte(self, 0xFF);
+    emit_byte(self, LUA_MAXBYTE);
+    emit_byte(self, LUA_MAXBYTE);
     return current_chunk(self)->count - 2; // Sub 2 operands for the jump itself
 }
 
@@ -98,13 +98,13 @@ static inline void emit_return(Compiler *self) {
  *
  * NOTE:
  *
- * If more than `LUA_MAXCONSTANTS_LONG` (a.k.a. 2 ^ 24 - 1) constants have been
+ * If more than `LUA_MAXCONSTANTS_L` (a.k.a. 2 ^ 24 - 1) constants have been
  * created, we return 0. By itself this doesn't indicate an error, but because
  * we call the `error` function that sets the compiler's parser's error state.
  */
 static inline DWord make_constant(Compiler *self, TValue value) {
-    Size index = add_constant(current_chunk(self), value);
-    if (index > LUA_MAXCONSTANTS_LONG) {
+    size_t index = add_constant(current_chunk(self), value);
+    if (index > LUA_MAXCONSTANTS_L) {
         parser_error(&self->parser, "Too many constants in the current chunk");
         return 0;
     }
@@ -120,9 +120,9 @@ static inline DWord make_constant(Compiler *self, TValue value) {
  */
 static inline void emit_constant(Compiler *self, TValue value) {
     DWord index = make_constant(self, value);
-    if (index < LUA_MAXCONSTANTS_SHORT) {
+    if (index < LUA_MAXCONSTANTS) {
         emit_bytes(self, OP_CONSTANT, index);
-    } else if (index < LUA_MAXCONSTANTS_LONG) {
+    } else if (index < LUA_MAXCONSTANTS_L) {
         emit_long(self, OP_LCONSTANT, index);
     } else {
         parser_error(&self->parser, "Too many constants in current chunk.");
@@ -135,7 +135,7 @@ static inline void emit_constant(Compiler *self, TValue value) {
  * Go back to the bytecode, looking for the jump opcode itself, and backpatch
  * its 2 operands correctly.
  */
-static void patch_jump(Compiler *self, Size offset) {
+static void patch_jump(Compiler *self, size_t offset) {
     // -2 to adjust for the bytecode of the jump offset itself.
     QWord jump = current_chunk(self)->count - offset - 2;
     if (jump >= LUA_MAXWORD) {
@@ -479,8 +479,8 @@ void number(Compiler *self) {
  * +----------> continue...
  */
 void or_(Compiler *self) {
-    Size elsejump = emit_jump(self, OP_JUMP_IF_FALSE);
-    Size endjump  = emit_jump(self, OP_JUMP);
+    size_t elsejump = emit_jump(self, OP_JUMP_IF_FALSE);
+    size_t endjump  = emit_jump(self, OP_JUMP);
     patch_jump(self, elsejump);
     // Pop expression left over from condition to clean up stack.
     emit_byte(self, OP_POP);
@@ -549,7 +549,7 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
     } else {
         // Out of range error is handle by `make_constant()`.
         arg = identifier_constant(self, name);
-        bool islong = (arg > LUA_MAXCONSTANTS_SHORT && arg <= LUA_MAXCONSTANTS_LONG);
+        bool islong = (arg > LUA_MAXCONSTANTS && arg <= LUA_MAXCONSTANTS_L);
         getop  = (islong) ? OP_LGETGLOBAL : OP_GETGLOBAL;
         setop  = (islong) ? OP_LSETGLOBAL : OP_SETGLOBAL;
         emitfn = (islong) ? emit_long : emit_bytes;
@@ -736,9 +736,9 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
         mark_initialized(self);
         return;
     }
-    if (index <= LUA_MAXCONSTANTS_SHORT) {
+    if (index <= LUA_MAXCONSTANTS) {
         emit_bytes(self, OP_SETGLOBAL, index);
-    } else if (index <= LUA_MAXCONSTANTS_LONG) {
+    } else if (index <= LUA_MAXCONSTANTS_L) {
         emit_long(self, OP_LSETGLOBAL, index);
     } else {
         parser_error(&self->parser, "Too many global variable identifiers.");
@@ -769,7 +769,7 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
  * +----------> continue...
  */
 void and_(Compiler *self) {
-    Size endjump = emit_jump(self, OP_JUMP_IF_FALSE);
+    size_t endjump = emit_jump(self, OP_JUMP_IF_FALSE);
     emit_byte(self, OP_POP);
     parse_precedence(self, PREC_AND);
     patch_jump(self, endjump);
@@ -943,13 +943,13 @@ static void if_statement(Compiler *self, bool iselif) {
 
     // Instruction "address" of the jump (after 'then') so we can patch it later.
     // We need to determine how big the then branch is first.
-    Size thenjump = emit_jump(self, OP_JUMP_IF_FALSE);
+    size_t thenjump = emit_jump(self, OP_JUMP_IF_FALSE);
     emit_byte(self, OP_POP); // Pop result of expression for condition (truthy)
     thenblock(self);
 
     // After the then branch, we need to jump over the else branch in order to
     // avoid falling through into it.
-    Size elsejump = emit_jump(self, OP_JUMP);
+    size_t elsejump = emit_jump(self, OP_JUMP);
 
     // Chunk's current count - thenjump = how far to jump if false.
     // Also considers the elsejump in its count so we patch AFTER emitting that.

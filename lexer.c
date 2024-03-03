@@ -131,14 +131,14 @@ static void skip_whitespace(Lexer *self) {
 }
 
 static TokenType check_keyword(const Lexer *self,
-    Size idx,
-    Size len,
+    size_t idx,
+    size_t len,
     const char *kw,
     TokenType type)
 {
     // self->current points to the last character, we can get the lexeme's length.
     // Assumes that the current pointer is always a higher address than start.
-    if ((Size)(self->current - self->start) == len) {
+    if ((size_t)(self->current - self->start) == len) {
         // We only want to compare past the offset, save some cycles maybe.
         if (memcmp(self->start + idx, &kw[idx], (len - idx)) == 0) {
             return type;
@@ -163,7 +163,7 @@ static TokenType check_keyword(const Lexer *self,
 
 static TokenType ident_type(Lexer *self) {
     // I'm assuming that current will always be a higher address than start.
-    Size lexlen = self->current - self->start;
+    size_t lexlen = self->current - self->start;
     const char *lexeme = self->start;
     switch (lexeme[0]) {
         case 'a': return check_keyword(self, 1, "and", TOKEN_AND);

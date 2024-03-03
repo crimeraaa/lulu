@@ -37,8 +37,8 @@ typedef struct {
 /* TValue array. */
 typedef struct {
     TValue *values; // 1D array of Lua values.
-    Size count;
-    Size cap;
+    size_t count;
+    size_t cap;
 } ValueArray;
 
 void init_valuearray(ValueArray *self);

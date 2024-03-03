@@ -60,12 +60,15 @@ def capture(*args: str):
 #
 # We explicitly need to 'buffer' our output manually so that when piped into
 # another process like 'less' the output will be consistent.
-def runtest(luascript: str):
-    print(f"Contents of '{luascript}':")
-    print(capture("cat", "--number", "--", luascript))
-    print(f"Output of '{luascript}':")
-    print(capture(LULUEXE, luascript))
-
+def runtest(script: str, testno: int):
+    print(f"TEST-{testno:02}: {script:16}")
+    script = os.path.join(TESTDIR, script)
+    print(f"Contents of '{script}':")
+    print(capture("cat", "--number", "--", script))
+    print(f"Output of '{script}':")
+    print(capture(LULUEXE, script))
+    print()
+    
 
 def main(argc: int, argv: list[str]):
     scripts = gettests(TESTDIR)
@@ -76,6 +79,10 @@ def main(argc: int, argv: list[str]):
         for i in range(len(scripts)):
             print(f"{i:-2}: {scripts[i]}")
         sys.exit(2)
+    elif argc == 2 and argv[1] == "all":
+        for i in range(0, len(scripts)):
+            runtest(scripts[i], i)
+        sys.exit(0)
     
     start = int(argv[1])
     stop  = (int(argv[2]) if argc == 3 else start)
@@ -85,12 +92,8 @@ def main(argc: int, argv: list[str]):
         sys.exit(1)
     else:
         # Add 1 so this acts more like an inclusive end
-        stop += 1
-        for i in range(start, stop):
-            script = scripts[i]
-            print(f"TEST #{i:02}: {script:16}")
-            runtest(os.path.join(TESTDIR, script))
-            print()
+        for i in range(start, stop + 1):
+            runtest(scripts[i], i)
     sys.exit(0)
 
 

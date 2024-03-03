@@ -12,19 +12,26 @@
 #include <stdint.h>     /* uint*_t family */
 
 /* --- INTERNAL IMPLEMENTATION -------------------------------------------- {{{ 
- This are internal implementation details. Users/scripts must not rely on this.
- We specify things like integer width and format specifications. */
+ These are internal implementation details. Users/scripts must not rely on this.
+ We specify things like integer width and format specifications. Set these to 
+ the exact types appropriate for your system.
 
-typedef uint8_t   Byte;  // Smallest addressable size.
-typedef uint16_t  Word;  // Intel 8086 main addressable size, usually 16-bits.
-typedef uint32_t  DWord; // "Double word" a.k.a. 2 `Word`s long, usually 32-bits.
-typedef uint64_t  QWord; // "Quad word" a.k.a 4 `Word`s long, usually 64-bits.
-typedef ptrdiff_t IntS;  // Catch-all signed integer for pointer arithmetic.
-typedef size_t    Size;  // This implementation's unsigned size type.
+ The sizes MUST be in the following order, from smallest to largest:
+ 
+ Byte         < Word         < DWord         < QWord
+ sizeof(Byte) < sizeof(Word) < sizeof(DWord) < sizeof(QWord)
+ 
+ And the following must be true:
 
-#define LUAI_FMTINTS        "ti"
-#define LUAI_FMTHEX         "tx"
-#define LUAI_FMTSIZE        "zu"
+ sizeof(Word)  == (sizeof(Byte)  * 2)
+ sizeof(DWord) == (sizeof(Word)  * 2)
+ sizeof(QWord) == (sizeof(DWord) * 2)
+ */
+
+typedef uint8_t   Byte;  // Smallest addressable size. Usually 8-bits.
+typedef uint16_t  Word;  // 2 `Byte`s wide type. Usually 16-bits.
+typedef uint32_t  DWord; // 2 `Word`s long. Usually 32-bits.
+typedef uint64_t  QWord; // 4 `Word`s long. Usually 64-bits.
 /* }}} ---------------------------------------------------------------------- */
 
 /**
@@ -42,29 +49,27 @@ typedef size_t    Size;  // This implementation's unsigned size type.
  * However, in the real world, it's fair to assume that there are projects that
  * end up with stack sizes *greater* than 256. So make your call!
  */
-#define LUA_VM_STACKSIZE    (256)
-
+#define LUA_MAXSTACK        (256)
 #define LUA_MAXLOCALS       (256)
 
 /**
  * Most user-facing operations in Lua using double-precision floating point values.
  * Although they take up 64 bits but have slightly less integer range than 64-bit
  * integers, they are still more than adequate for most people's uses.
- * 
- * NOTE:
- * 
- * In `vm.c:interpret_vm()`, we use `pow()` and `fmod()`, which are for doubles
- * specifically. You'll need to explicitly link with `libm` or `libmath`.
  */
 #define LUA_NUMBER          double
 #define LUA_NUMBER_SCAN     "%lf"
 #define LUA_NUMBER_FMT      "%.14g"
 
 /* --- MATH CONFIGURATIONS ------------------------------------------------- {{{
- This is a series of function-like macros so that we can treat primitive 
- operations as if they were function calls.
- This also helps unify the implementation of `vm.c:run_bytecode()`.
- This is because we can pass function-like macros as macro arguments as well. */
+ Series of function-like macros so that we can treat primitive operations as if 
+ they were function calls. This also helps unify the implementation of the file
+ `vm.c:run_bytecode()`. This is because we can pass function-like macros as 
+ macro arguments as well. 
+ 
+ NOTE:
+
+ By default, you must explicitly link to the math library (e.g. `libm.so`). */
 
 #define lua_numadd(lhs, rhs)        ((lhs) + (rhs))
 #define lua_numsub(lhs, rhs)        ((lhs) - (rhs))

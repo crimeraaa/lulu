@@ -7,13 +7,13 @@
 /** 
  * Until this limit is reached, we use `OP_CONSTANT` which takes a 1-byte operand. 
  */
-#define LUA_MAXCONSTANTS_SHORT     (LUA_MAXBYTE)
+#define LUA_MAXCONSTANTS     (LUA_MAXBYTE)
 
 /** 
- * If LUA_MAXCONSTANTS_SHORT has been surpassed, we use `OP_LCONSTANT` and
+ * If LUA_MAXCONSTANTS has been surpassed, we use `OP_LCONSTANT` and
  * supply it with a 3-byte (24-bit) operand.
  */
-#define LUA_MAXCONSTANTS_LONG      ((1 << 24) - 1)
+#define LUA_MAXCONSTANTS_L  ((1 << (bitsize(Word) + bitsize(Byte))) - 1)
 
 typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
@@ -78,10 +78,10 @@ typedef enum {
 } OpCode;
 
 typedef struct {
-    IntS where; // Line number for run-length-encoding.
-    IntS start; // First instruction's byte offset from the `code` array.
-    IntS end;   // Last instruction's byte offset from the `code` array.
-} Linerun;
+    int where; // Line number for run-length-encoding.
+    int start; // First instruction's byte offset from the `code` array.
+    int end;   // Last instruction's byte offset from the `code` array.
+} LineRun;
 
 /** 
  * Challenge III:14.2: Run Length Encoding
@@ -90,23 +90,23 @@ typedef struct {
  * smarter and instead record "runs" of consective line occurences.
  */
 typedef struct {
-    Size count;    // Non-empty linecount. May not line up with line numbers.
-    Size cap;      // Number of elements allocated for.
-    Linerun *runs; // 1D array of information about consecutive line sequences.
-} LineRLE;
+    LineRun *runs; // 1D array of information about consecutive line sequences.
+    size_t count;  // Non-empty linecount. May not line up with line numbers.
+    size_t cap;    // Number of elements allocated for.
+} LineRuns;
 
 typedef struct {
     ValueArray constants;
-    LineRLE lines;
-    Byte *code;    // 1D array of 8-bit instructions.
-    Size count;    // Current number of instructions written to `code`.
-    Size cap;      // Total number of instructions we can hold currently.
-    IntS prevline; // Track the previous line number as we may skip some.
+    LineRuns lines;
+    Byte *code;   // Heap-allocated 1D array of `Byte` instructions.
+    size_t count; // Current number of instructions written to `code`.
+    size_t cap;   // Total number of instructions we can hold currently.
+    int prevline; // Track the previous line number as we may skip some.
 } Chunk;
 
 void init_chunk(Chunk *self);
 void free_chunk(Chunk *self);
-void write_chunk(Chunk *self, Byte byte, IntS line);
+void write_chunk(Chunk *self, Byte byte, int line);
 
 /**
  * @brief       Append `value` to the given chunk's constants pool.
@@ -115,7 +115,7 @@ void write_chunk(Chunk *self, Byte byte, IntS line);
  * @return      Index of this value into the constants pool. This return value 
  *              should be emitted as the operand to `OP_CONSTANT`.
  */
-Size add_constant(Chunk *self, TValue value);
+size_t add_constant(Chunk *self, TValue value);
 
 /**
  * Challenge III:14.1
@@ -126,7 +126,7 @@ Size add_constant(Chunk *self, TValue value);
  * Do note that this increments `chunk->prevline` if the previous line does not
  * match the current line at the given bytecode offset.
  */
-IntS get_instruction_line(Chunk *chunk, IntS offset);
+int get_instruction_line(Chunk *chunk, ptrdiff_t offset);
 
 /**
  * Challenge III:14.1
@@ -149,7 +149,7 @@ IntS get_instruction_line(Chunk *chunk, IntS offset);
 #ifdef DEBUG_PRINT_CODE
 
 void disassemble_chunk(Chunk *self, const char *name);
-IntS disassemble_instruction(Chunk *chunk, IntS offset);
+int disassemble_instruction(Chunk *self, ptrdiff_t offset);
 
 #endif /* DEBUG_PRINT_CODE */
 

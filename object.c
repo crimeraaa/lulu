@@ -12,7 +12,7 @@
 #define FNV32_OFFSET    0x811c9dc5
 #define FNV32_PRIME     0x01000193
 
-static lua_Object *allocate_object(lua_VM *lvm, Size size, ValueType type) {
+static lua_Object *allocate_object(lua_VM *lvm, size_t size, ValueType type) {
     lua_Object *object = reallocate(NULL, 0, size);
     object->type = type;
     object->next = lvm->objects; // Update the VM's allocation linked list
@@ -33,7 +33,7 @@ static lua_Object *allocate_object(lua_VM *lvm, Size size, ValueType type) {
  * But because this function can be called during the compile phase, the compiler
  * structure must also have a pointer to a VM...
  */
-static inline lua_String *allocate_string(lua_VM *lvm, char *data, Size len, DWord hash) {
+static inline lua_String *allocate_string(lua_VM *lvm, char *data, size_t len, DWord hash) {
     lua_String *result = allocate_object(lvm, lua_String, LUA_TSTRING);
     result->hash = hash;
     result->len  = len;
@@ -53,16 +53,16 @@ static inline lua_String *allocate_string(lua_VM *lvm, char *data, Size len, DWo
  * determine the hash AFTER writing the data pointer as we don't have access to
  * the full string in functions like `concat_strings()`.
  */
-static DWord hash_string(const char *key, Size len) {
+static DWord hash_string(const char *key, size_t len) {
     DWord hash = FNV32_OFFSET;
-    for (Size i = 0; i < len; i++) {
+    for (size_t i = 0; i < len; i++) {
         hash ^= (Byte)key[i];
         hash *= FNV32_PRIME;
     }
     return hash;
 }
 
-lua_String *take_string(lua_VM *lvm, char *data, Size len) {
+lua_String *take_string(lua_VM *lvm, char *data, size_t len) {
     DWord hash = hash_string(data, len);
     lua_String *interned = table_findstring(&lvm->strings, data, len, hash);
     if (interned != NULL) {
@@ -72,7 +72,7 @@ lua_String *take_string(lua_VM *lvm, char *data, Size len) {
     return allocate_string(lvm, data, len, hash);
 }
 
-lua_String *copy_string(lua_VM *lvm, const char *literal, Size len) {
+lua_String *copy_string(lua_VM *lvm, const char *literal, size_t len) {
     DWord hash = hash_string(literal, len);
     lua_String *interned = table_findstring(&lvm->strings, literal, len, hash);
     if (interned != NULL) {

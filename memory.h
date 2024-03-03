@@ -45,7 +45,7 @@
  *          family, we don't actually need `oldsz` for anything since the 
  *          implementation does that kind of bookkeeping for us already.
  */
-void *reallocate(void *pointer, Size oldsz, Size newsz);
+void *reallocate(void *pointer, size_t oldsz, size_t newsz);
 
 /**
  * III:19.5     Freeing Objects

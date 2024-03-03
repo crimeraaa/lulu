@@ -11,12 +11,12 @@
  * 
  */
 typedef struct {
-    Size len;
-    Size cap;
+    size_t len;
+    size_t cap;
     char data[];
 } cri_String;
 
-void *reallocate(void *ptr, Size oldsize, Size newsize) {
+void *reallocate(void *ptr, size_t oldsize, size_t newsize) {
     // Unused as C standard malloc does bookkeeping, but maybe for custom
     // allocators this parameter will be very helpful.
     (void)oldsize; 
@@ -35,7 +35,7 @@ void *reallocate(void *ptr, Size oldsize, Size newsize) {
 #define allocate(size)          reallocate(NULL, 0, size)
 #define deallocate(ptr, size)   reallocate(ptr, size, 0)
 
-cri_String *make_string(const char *src, Size len) {
+cri_String *make_string(const char *src, size_t len) {
     cri_String *inst = allocate(sizeof(cri_String) + sizeof(char[len + 1]));
     inst->len = len;
     inst->cap = len + 1;

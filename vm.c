@@ -87,7 +87,7 @@ TValue pop_vmstack(lua_VM *self) {
  * for example refers to the top of the stack, an offset of 1 is the slot right
  * below the top of the stack, etc. etc.
  */
-static inline TValue *poke_vmstack(lua_VM *self, int offset) {
+static inline TValue *poke_vmstack(lua_VM *self, ptrdiff_t offset) {
     return self->sp - 1 - offset;
 }
 
@@ -102,7 +102,7 @@ static inline TValue *poke_vmstack(lua_VM *self, int offset) {
  * For example, to peek the top of the stack, use `peek_vmstack(self, 0)`.
  * To peek the value right before that, use `peek_vmstack(self, 1)`. And so on.
  */
-static inline TValue peek_vmstack(lua_VM *self, int offset) {
+static inline TValue peek_vmstack(lua_VM *self, ptrdiff_t offset) {
     return *poke_vmstack(self, offset);
 }
 
@@ -128,9 +128,9 @@ static inline bool isfalsy(TValue value) {
 static void concatenate(lua_VM *self) {
     lua_String *rhs = asstring(pop_vmstack(self));
     lua_String *lhs = asstring(pop_vmstack(self));
-    int len    = lhs->len + rhs->len;
+    size_t len = lhs->len + rhs->len;
     char *data = allocate(char, len + 1);
-    memcpy(&data[0], lhs->data, lhs->len);
+    memcpy(&data[0],        lhs->data, lhs->len);
     memcpy(&data[lhs->len], rhs->data, rhs->len);
     data[len] = '\0';
     lua_String *result = take_string(self, data, len);
@@ -151,7 +151,7 @@ static inline Byte read_byte(lua_VM *self) {
  * If you have an index greater than 8-bits, calculate that first however you
  * need to then use this macro so you have full control over all side effects.
  */
-static inline TValue read_constant_at(lua_VM *self, DWord index) {
+static inline TValue read_constant_at(lua_VM *self, QWord index) {
     return self->chunk->constants.values[index];
 }
 
@@ -234,10 +234,10 @@ static inline TValue read_constant_at(lua_VM *self, DWord index) {
  * The compiler emitted the 2 byte operands for a jump instruction in order of
  * hi, lo. So our instruction pointer points at hi currently.
  */
-static inline Word read_word(lua_VM *self) {
+static inline Word read_short(lua_VM *self) {
     Byte hi = read_byte(self);
     Byte lo = read_byte(self);
-    return (hi << 8) | lo;
+    return (hi << bitsize(Byte)) | lo;
 }
 
 /**
@@ -248,11 +248,11 @@ static inline Word read_word(lua_VM *self) {
  * Compiler emitted them in this order: hi, mid, lo. Since ip currently points
  * at hi, we can safely walk in this order.
  */
-static inline DWord read_dword(lua_VM *self) {
+static inline DWord read_long(lua_VM *self) {
     Byte hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
     Byte mid = read_byte(self); // bits 8..15  : (0x000100..0x00FFFF)
     Byte lo  = read_byte(self); // bits 0..7   : (0x000000..0x0000FF)
-    return (hi << 16) | (mid << 8) | (lo);
+    return (hi << bitsize(Word)) | (mid << bitsize(Byte)) | (lo);
 }
 
 static InterpretResult run_bytecode(lua_VM *self) {
@@ -261,20 +261,20 @@ static InterpretResult run_bytecode(lua_VM *self) {
     // So effectively this becames our iterator.
     self->chunk->prevline = 0;
     for (;;) {
+        // We need an integer byte offset from beginning of bytecode.
+        ptrdiff_t offset = self->ip - self->chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
-        for (TValue *slot = self->bp; slot < self->sp; slot++) {
+        for (const TValue *slot = self->bp; slot < self->sp; slot++) {
             printf("[ ");
             print_value(*slot);
             printf(" ]");
         }
         printf("\n");
-        // We need an integer byte offset from beginning of bytecode.
-        int offset = (int)(self->ip - self->chunk->code);
         disassemble_instruction(self->chunk, offset);
 #else
         // Even if not disassembling we still need this to report errors.
-        self->chunk->prevline++;
+        get_instruction_line(self->chunk, offset);
 #endif
         Byte instruction;
         switch (instruction = read_byte(self)) {
@@ -284,7 +284,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
             break;
         }
         case OP_LCONSTANT: {
-            TValue value = read_constant_at(self, read_dword(self));
+            TValue value = read_constant_at(self, read_long(self));
             push_vmstack(self, value);
             break;
         }
@@ -329,7 +329,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
             break;
         }
         case OP_LGETGLOBAL: {
-            lua_String *name = read_string_at(self, read_dword(self));
+            lua_String *name = read_string_at(self, read_long(self));
             TValue value;
             if (!table_get(&self->globals, name, &value)) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
@@ -344,14 +344,13 @@ static InterpretResult run_bytecode(lua_VM *self) {
         // Also unlike Lox you simply can't type the equivalent of `var ident;`
         // in Lua as all global variables must be assigned at declaration.
         case OP_SETGLOBAL: {
-            lua_String *name = read_string(self); // varname in constants pool.
-            // Assign to this name whatever is on the top of the stack.
+            lua_String *name = read_string(self);
             table_set(&self->globals, name, peek_vmstack(self, 0));
-            pop_vmstack(self); // Clean up stack for next call.
+            pop_vmstack(self);
             break;
         }
         case OP_LSETGLOBAL: {
-            lua_String *name = read_string_at(self, read_dword(self));
+            lua_String *name = read_string_at(self, read_long(self));
             table_set(&self->globals, name, peek_vmstack(self, 0));
             pop_vmstack(self);
             break;
@@ -415,12 +414,12 @@ static InterpretResult run_bytecode(lua_VM *self) {
         // -*- III:23.1     If Statements ------------------------------------*-
         // This is an unconditional jump.
         case OP_JUMP: {
-            Word offset = read_word(self);
+            Word offset = read_short(self);
             self->ip += offset;
             break;
         }
         case OP_JUMP_IF_FALSE: {
-            Word offset = read_word(self);
+            Word offset = read_short(self);
             if (isfalsy(peek_vmstack(self, 0))) {
                 self->ip += offset;
             }

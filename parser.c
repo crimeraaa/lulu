@@ -14,7 +14,7 @@ void parser_error_at(Parser *self, const Token *token, const char *message) {
     }
     self->haderror = true;
     self->panicking = true;
-    fprintf(stderr, "[line %" LUAI_FMTINTS "] Error", token->line);
+    fprintf(stderr, "[line %i] Error", token->line);
     if (token->type == TOKEN_EOF) {
         fprintf(stderr, " at end");
     } else if (token->type == TOKEN_ERROR) {
@@ -61,7 +61,7 @@ void consume_token(Parser *self, TokenType expected, const char *message) {
     parser_error_at_current(self, message);
 }
 
-bool match_token_any(Parser *self, const TokenType *expected, Size count) {
+bool match_token_any(Parser *self, const TokenType *expected, size_t count) {
     if (!check_token_any(self, expected, count)) {
         return false;
     }
@@ -69,8 +69,8 @@ bool match_token_any(Parser *self, const TokenType *expected, Size count) {
     return true;
 }
 
-bool check_token_any(const Parser *parser, const TokenType *expected, Size count) {
-    for (Size i = 0; i < count; i++) {
+bool check_token_any(const Parser *parser, const TokenType *expected, size_t count) {
+    for (size_t i = 0; i < count; i++) {
         if (parser->current.type == expected[i]) {
             return true;
         }

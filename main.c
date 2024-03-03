@@ -35,7 +35,7 @@ static char *read_file(const char *file_path) {
         exit(EX_IOERR);
     }
     fseek(handle, 0L, SEEK_END);
-    Size file_size = ftell(handle);
+    size_t file_size = ftell(handle);
     rewind(handle); // Brings internal file pointer back to beginning
     
     char *buffer = malloc(file_size + 1);
@@ -43,7 +43,7 @@ static char *read_file(const char *file_path) {
         logprintf("Not enough memory to read file '%s'.\n", file_path);
         exit(EX_IOERR);
     }
-    Size bytes_read = fread(buffer, sizeof(char), file_size, handle);
+    size_t bytes_read = fread(buffer, sizeof(char), file_size, handle);
     if (bytes_read < file_size) {
         logprintf("Could not read file '%s'.\n", file_path);
         exit(EX_IOERR);
