@@ -176,12 +176,12 @@ static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
 /**
  * III:23.1     If Statements
  *
- * Disassembly support for OP_JUMP* opcodes. Note that we have a `sign` parameter
+ * Disassembly support for OP_JMP* opcodes. Note that we have a `sign` parameter
  * because later on we'll also allow for jumping backwards.
  */
 static int jumpop(const char *name, int sign, const Chunk *self, ptrdiff_t offset) {
     Word jump = read_short(self, offset);
-    ptrdiff_t target = offset + 3 + sign * jump;
+    ptrdiff_t target = offset + 3 + (sign * jump);
     printf("%-16s    0x%04tx->0x%04tx\n", name, offset, target);
     return offset + 3;
 }
@@ -196,60 +196,63 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     }
     Byte instruction = self->code[offset];
     switch(instruction) {
-    case OP_CONSTANT:  return constop("OP_CONSTANT", self, offset);
-    case OP_LCONSTANT: return constop_L("OP_LCONSTANT", self, offset);
+    case OP_CONSTANT:   return constop("OP_CONSTANT",    self, offset);
+    case OP_LCONSTANT:  return constop_L("OP_LCONSTANT", self, offset);
 
     // -*- III:18.4     Two New Types ----------------------------------------*-
-    case OP_NIL:   return simpleop("OP_NIL", offset);
-    case OP_TRUE:  return simpleop("OP_TRUE", offset);
-    case OP_FALSE: return simpleop("OP_FALSE", offset);
+    case OP_NIL:        return simpleop("OP_NIL",   offset);
+    case OP_TRUE:       return simpleop("OP_TRUE",  offset);
+    case OP_FALSE:      return simpleop("OP_FALSE", offset);
 
     // -*- III:21.1.2   Expression statements --------------------------------*-
-    case OP_POP:   return simpleop("OP_POP", offset);
-    case OP_POPN:  return byteop("OP_POPN", self, offset);
+    case OP_POP:        return simpleop("OP_POP", offset);
+    case OP_POPN:       return byteop("OP_POPN", self, offset);
 
     // -*- III:22.4.1   Interpreting local variables -------------------------*-
-    case OP_GETLOCAL: return byteop("OP_GETLOCAL", self, offset);
-    case OP_SETLOCAL: return byteop("OP_SETLOCAL", self, offset);
+    case OP_GETLOCAL:   return byteop("OP_GETLOCAL", self, offset);
+    case OP_SETLOCAL:   return byteop("OP_SETLOCAL", self, offset);
 
     // -*- III:21.2     Variable Declarations
-    case OP_GETGLOBAL:  return constop("OP_GETGLOBAL", self, offset);
+    case OP_GETGLOBAL:  return constop("OP_GETGLOBAL",    self, offset);
     case OP_LGETGLOBAL: return constop_L("OP_LGETGLOBAL", self, offset);
 
     // -*- III:21.4     Assignment -------------------------------------------*-
-    case OP_SETGLOBAL:  return constop("OP_SETGLOBAL", self, offset);
+    case OP_SETGLOBAL:  return constop("OP_SETGLOBAL",    self, offset);
     case OP_LSETGLOBAL: return constop_L("OP_LSETGLOBAL", self, offset);
 
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
-    case OP_EQ: return simpleop("OP_EQ", offset);
-    case OP_GT: return simpleop("OP_GT", offset);
-    case OP_LT: return simpleop("OP_LT", offset);
+    case OP_EQ:         return simpleop("OP_EQ", offset);
+    case OP_GT:         return simpleop("OP_GT", offset);
+    case OP_LT:         return simpleop("OP_LT", offset);
 
     // -*- III:15.3.1   Binary operators -------------------------------------*-
-    case OP_ADD: return simpleop("OP_ADD", offset);
-    case OP_SUB: return simpleop("OP_SUB", offset);
-    case OP_MUL: return simpleop("OP_MUL", offset);
-    case OP_DIV: return simpleop("OP_DIV", offset);
-    case OP_POW: return simpleop("OP_POW", offset);
-    case OP_MOD: return simpleop("OP_MOD", offset);
+    case OP_ADD:        return simpleop("OP_ADD", offset);
+    case OP_SUB:        return simpleop("OP_SUB", offset);
+    case OP_MUL:        return simpleop("OP_MUL", offset);
+    case OP_DIV:        return simpleop("OP_DIV", offset);
+    case OP_POW:        return simpleop("OP_POW", offset);
+    case OP_MOD:        return simpleop("OP_MOD", offset);
 
     // -*- III:18.4.1   Logical not and falsiness ----------------------------*-
-    case OP_NOT:    return simpleop("OP_NOT", offset);
+    case OP_NOT:        return simpleop("OP_NOT", offset);
 
     // -*- III:19.4.1   Concatenation ----------------------------------------*-
-    case OP_CONCAT: return simpleop("OP_CONCAT", offset);
+    case OP_CONCAT:     return simpleop("OP_CONCAT", offset);
 
     // -*- III:15.3     An Arithmetic Calculator -----------------------------*-
-    case OP_UNM:    return simpleop("OP_UNM", offset);
+    case OP_UNM:        return simpleop("OP_UNM", offset);
 
     // -*- III:21.1.1   Print statements
-    case OP_PRINT:  return simpleop("OP_PRINT", offset);
+    case OP_PRINT:      return simpleop("OP_PRINT", offset);
 
     // -*- III:23.1     If Statements ----------------------------------------*-
-    case OP_JUMP:          return jumpop("OP_JUMP", 1, self, offset);
-    case OP_JUMP_IF_FALSE: return jumpop("OP_JUMP_IF_FALSE", 1, self, offset);
-    case OP_RET:           return simpleop("OP_RET", offset);
-    default: break;
+    case OP_JMP:        return jumpop("OP_JMP",  1, self, offset);
+    case OP_FJMP:       return jumpop("OP_FJMP", 1, self, offset);
+
+    // -*- III:23.3     While Statements -------------------------------------*-
+    case OP_LOOP:       return jumpop("OP_LOOP", -1, self, offset);
+    case OP_RET:        return simpleop("OP_RET", offset);
+    default:            break;
     }
     printf("Unknown opcode %i.\n", instruction);
     return offset + 1;

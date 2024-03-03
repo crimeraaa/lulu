@@ -12,6 +12,10 @@
 /** 
  * If LUA_MAXCONSTANTS has been surpassed, we use `OP_LCONSTANT` and
  * supply it with a 3-byte (24-bit) operand.
+ * 
+ * NOTE:
+ * 
+ * This MUST fit in a `DWord`.
  */
 #define LUA_MAXCONSTANTS_L  ((1 << (bitsize(Word) + bitsize(Byte))) - 1)
 
@@ -44,11 +48,8 @@ typedef enum {
      
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
     OP_EQ,
-    // OP_NEQ,
     OP_GT,
-    // OP_GE,
     OP_LT,
-    // OP_LE,
     
     // -*- III:15.3.1:  Binary Operators -------------------------------------*-
     OP_ADD,
@@ -71,8 +72,11 @@ typedef enum {
     OP_PRINT,
     
     // -*- III:23.1     If Statements ----------------------------------------*-
-    OP_JUMP,
-    OP_JUMP_IF_FALSE,
+    OP_JMP,  // Unconditional jump. Adds its 2-byte operand to sp.
+    OP_FJMP, // Jump only when a falsy value is on top of the stack.
+    
+    // -*- III:23.3     While Statements -------------------------------------*-
+    OP_LOOP, // Unconditional, like `OP_JMP`. Subtracts its operand from sp.
 
     OP_RET,
 } OpCode;

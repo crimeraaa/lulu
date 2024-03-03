@@ -245,6 +245,8 @@ static inline Word read_short(lua_VM *self) {
  *
  * NOTE:
  *
+ * This MUST be able to fit in a `DWord`.
+ *
  * Compiler emitted them in this order: hi, mid, lo. Since ip currently points
  * at hi, we can safely walk in this order.
  */
@@ -413,16 +415,23 @@ static InterpretResult run_bytecode(lua_VM *self) {
 
         // -*- III:23.1     If Statements ------------------------------------*-
         // This is an unconditional jump.
-        case OP_JUMP: {
+        case OP_JMP: {
             Word offset = read_short(self);
             self->ip += offset;
             break;
         }
-        case OP_JUMP_IF_FALSE: {
+        case OP_FJMP: {
             Word offset = read_short(self);
             if (isfalsy(peek_vmstack(self, 0))) {
                 self->ip += offset;
             }
+            break;
+        }
+                      
+        // -*- III:23.3     While Statements ---------------------------------*-
+        case OP_LOOP: {
+            Word offset = read_short(self);
+            self->ip -= offset;
             break;
         }
         case OP_RET:

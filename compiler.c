@@ -46,6 +46,29 @@ static inline void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
 }
 
 /**
+ * III:23.3     While Statements
+ * 
+ * Because we need to jump backward, the main caller `while_statement()` should
+ * have saved the instruction address of the loop's beginning.
+ * 
+ * We use that to patch the jump such that we can jump backwards rather than
+ *forwards.
+ */
+static void emit_loop(Compiler *self, size_t loopstart) {
+    emit_byte(self, OP_LOOP);
+    // +2 due to 2-byte jump operand.
+    size_t offset = current_chunk(self)->count - loopstart + 2;
+    if (offset >= LUA_MAXWORD) {
+        parser_error(&self->parser, "Loop body too large.");
+        return;
+    }
+    Byte hi = (offset >> bitsize(Byte)) & LUA_MAXBYTE;
+    Byte lo = (offset) & LUA_MAXBYTE;
+    emit_byte(self, hi);
+    emit_byte(self, lo);
+}
+
+/**
  * III:23.1     If Statements
  *
  * We emit a jump instruction along with 2 dummy bytes for its operand.
@@ -120,9 +143,9 @@ static inline DWord make_constant(Compiler *self, TValue value) {
  */
 static inline void emit_constant(Compiler *self, TValue value) {
     DWord index = make_constant(self, value);
-    if (index < LUA_MAXCONSTANTS) {
+    if (index <= LUA_MAXCONSTANTS) {
         emit_bytes(self, OP_CONSTANT, index);
-    } else if (index < LUA_MAXCONSTANTS_L) {
+    } else if (index <= LUA_MAXCONSTANTS_L) {
         emit_long(self, OP_LCONSTANT, index);
     } else {
         parser_error(&self->parser, "Too many constants in current chunk.");
@@ -403,7 +426,6 @@ void rbinary(Compiler *self) {
     const ParseRule *rule = get_rule(optype);
     // We use the same precedence so we can evaluate from right to left.
     parse_precedence(self, rule->precedence);
-
     switch (optype) {
     // -*- 19.4.1   Concatentation -------------------------------------------*-
     // Unlike Lox, Lua uses '..' for string concatenation rather than '+'.
@@ -471,16 +493,16 @@ void number(Compiler *self) {
  * 
  * VISUALIZATION:
  * 
- *              left operand expression
- *        +---- OP_JUMP_IF_FALSE
- * +------|---- OP_JUMP
- * |      +---> OP_POP
- * |            right operand expression
- * +----------> continue...
+ *          left operand expression
+ *     +--- OP_FJMP
+ * +---|--- OP_JMP
+ * |   +--> OP_POP
+ * |        right operand expression
+ * +------> continue...
  */
 void or_(Compiler *self) {
-    size_t elsejump = emit_jump(self, OP_JUMP_IF_FALSE);
-    size_t endjump  = emit_jump(self, OP_JUMP);
+    size_t elsejump = emit_jump(self, OP_FJMP);
+    size_t endjump  = emit_jump(self, OP_JMP);
     patch_jump(self, elsejump);
     // Pop expression left over from condition to clean up stack.
     emit_byte(self, OP_POP);
@@ -762,14 +784,14 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
  * 
  * VISUALIZATION:
  * 
- *              left operand expression
- * +----------- OP_JUMP_IF_FALSE
- * |            OP_POP
- * |            right operand expression
- * +----------> continue...
+ *      left operand expression
+ * +--- OP_FJMP
+ * |    OP_POP
+ * |    right operand expression
+ * +--> continue...
  */
 void and_(Compiler *self) {
-    size_t endjump = emit_jump(self, OP_JUMP_IF_FALSE);
+    size_t endjump = emit_jump(self, OP_FJMP);
     emit_byte(self, OP_POP);
     parse_precedence(self, PREC_AND);
     patch_jump(self, endjump);
@@ -813,12 +835,18 @@ static void expression(Compiler *self) {
  * 'do-end' and 'if-then-[else]-end' statements are similar, the exact keywords
  * we look for are somewhat different. This function will NOT work correctly
  * in an if-statement so we need a dedicated function for that.
+ * 
+ * III:23.3     While Statements
+ * 
+ * I've updated this so that it automatically creates a new block for itself.
  */
 static void doblock(Compiler *self) {
     Parser *parser = &self->parser;
+    begin_scope(self);
     while (!check_token(parser, TOKEN_END, TOKEN_EOF)) {
         declaration(self);
     }
+    end_scope(self);
     consume_token(parser, TOKEN_END, "Expected 'end' after 'do' block.");
     match_token(parser, TOKEN_SEMICOL); // Like most of Lua this is optional.
 }
@@ -943,13 +971,13 @@ static void if_statement(Compiler *self, bool iselif) {
 
     // Instruction "address" of the jump (after 'then') so we can patch it later.
     // We need to determine how big the then branch is first.
-    size_t thenjump = emit_jump(self, OP_JUMP_IF_FALSE);
+    size_t thenjump = emit_jump(self, OP_FJMP);
     emit_byte(self, OP_POP); // Pop result of expression for condition (truthy)
     thenblock(self);
 
     // After the then branch, we need to jump over the else branch in order to
     // avoid falling through into it.
-    size_t elsejump = emit_jump(self, OP_JUMP);
+    size_t elsejump = emit_jump(self, OP_JMP);
 
     // Chunk's current count - thenjump = how far to jump if false.
     // Also considers the elsejump in its count so we patch AFTER emitting that.
@@ -982,6 +1010,36 @@ static void print_statement(Compiler *self) {
     expression(self);
     match_token(&self->parser, TOKEN_SEMICOL);
     emit_byte(self, OP_PRINT);
+}
+
+/**
+ * III:23.3     While Statements
+ * 
+ * While statements are a bit of work because we need to jump backward.
+ * 
+ * VISUALIZATION:
+ * 
+ *      condition expression <--+
+ * +--- OP_FJMP                 |
+ * |    OP_POP                  |
+ * |    body statement          |
+ * |    OP_LOOP              ---+
+ * +--> OP_POP
+ *      continue...
+ */
+static void while_statement(Compiler *self) {
+    // Save address of the beginning of the loop, right before the condition.
+    size_t loopstart = current_chunk(self)->count;
+    expression(self);
+    consume_token(&self->parser, TOKEN_DO, "Expected 'do' after 'while' condition.");
+    
+    size_t exitjump = emit_jump(self, OP_FJMP);
+    emit_byte(self, OP_POP);
+    doblock(self);
+    emit_loop(self, loopstart);
+    
+    patch_jump(self, exitjump);
+    emit_byte(self, OP_POP);
 }
 
 /**
@@ -1049,10 +1107,10 @@ static void statement(Compiler *self) {
         if_statement(self, false);
     } else if (match_token(parser, TOKEN_ELSEIF, TOKEN_ELSE)) {
         parser_error(parser, "Not used in an 'if' statement.");
+    } else if (match_token(parser, TOKEN_WHILE)) {
+        while_statement(self);
     } else if (match_token(parser, TOKEN_DO)) {
-        begin_scope(self);
         doblock(self);
-        end_scope(self);
     } else {
         expression_statement(self);
     }

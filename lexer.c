@@ -281,7 +281,8 @@ static Token number_token(Lexer *self) {
  */
 static Token string_token(Lexer *self, char quote) {
     while (peek_current(self) != quote && !is_at_end(self)) {
-        if (peek_current(self) == '\n') {
+        char ch = peek_current(self);
+        if (ch == '\n') {
             return error_token(self, "Unterminated string literal.");
         }
         advance_lexer(self);
