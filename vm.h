@@ -36,7 +36,7 @@ InterpretResult interpret_vm(lua_VM *self, const char *source);
  * Assigns the top of stack to `value` then increments the VM's stack pointer
  * so that it points to the next available slot in the stack.
  */
-void push_vmstack(lua_VM *self, TValue value);
+void pushstack(lua_VM *self, TValue value);
 
 /**
  * Decrements the VM's stack pointer so that it points to the previous slot in
@@ -45,6 +45,6 @@ void push_vmstack(lua_VM *self, TValue value);
  * Since we only use a stack-allocated array, we don't need to do much cleanup.
  * Moving the stack pointer downwards already indicates the slot is free.
  */
-TValue pop_vmstack(lua_VM *self);
+TValue popstack(lua_VM *self);
 
 #endif /* LUA_VIRTUAL_MACHINE_H */

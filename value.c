@@ -23,18 +23,18 @@ void write_valuearray(ValueArray *self, TValue value) {
     self->count++;
 }
 
-void print_value(TValue value) {
-    switch (value.type) {
-    case LUA_TBOOLEAN: printf(value.as.boolean ? "true" : "false"); break;
+void print_value(const TValue *value) {
+    switch (value->type) {
+    case LUA_TBOOLEAN: printf(value->as.boolean ? "true" : "false"); break;
     case LUA_TNIL:     printf("nil"); break;
-    case LUA_TNUMBER:  printf(LUA_NUMBER_FMT, value.as.number); break;
-    case LUA_TSTRING:  printf("%s", ascstring(value)); break;
+    case LUA_TNUMBER:  printf(LUA_NUMBER_FMT, value->as.number); break;
+    case LUA_TSTRING:  printf("%s", ascstring(*value)); break;
     default:           printf("Unsupported type %s", value_typename(value)); break;
     }
 }
 
-const char *value_typename(TValue value) {
-    switch (value.type) {
+const char *value_typename(const TValue *value) {
+    switch (value->type) {
     case LUA_TBOOLEAN:      return "boolean";
     case LUA_TFUNCTION:     return "function";
     case LUA_TNIL:          return "nil";
@@ -45,19 +45,19 @@ const char *value_typename(TValue value) {
     } 
 }
 
-bool values_equal(TValue lhs, TValue rhs) {
-    if (lhs.type != rhs.type) {
+bool values_equal(const TValue *lhs, const TValue *rhs) {
+    if (lhs->type != rhs->type) {
         return false;
     }
     // If above test passed, we can assume they ARE the same type
-    switch (lhs.type) {
-    case LUA_TBOOLEAN:  return lhs.as.boolean == rhs.as.boolean;
+    switch (lhs->type) {
+    case LUA_TBOOLEAN:  return lhs->as.boolean == rhs->as.boolean;
     case LUA_TNIL:      return true; // nil is always == nil.
-    case LUA_TNUMBER:   return lhs.as.number == rhs.as.number;
+    case LUA_TNUMBER:   return lhs->as.number == rhs->as.number;
     // Strings are interned so this should be ok. Not sure about other types.
     case LUA_TSTRING:
     case LUA_TFUNCTION:
-    case LUA_TTABLE:    return lhs.as.object == rhs.as.object;
+    case LUA_TTABLE:    return lhs->as.object == rhs->as.object;
     default:            break;
     }
     fprintf(stderr, "Unsupported type %s.\n", value_typename(lhs));

@@ -1,6 +1,7 @@
 #ifndef LUA_PARSER_H
 #define LUA_PARSER_H
 
+#include <setjmp.h>
 #include "common.h"
 #include "lexer.h"
 
@@ -44,6 +45,7 @@
  * expressions.
  */
 typedef struct {
+    jmp_buf errjmp; // Where to unconditionally jump after reporting errors.
     Lexer lexer;    // Tokenizer and lookahead.
     Token current;  // Token we're pointing at and want to consume.
     Token previous; // Token we just consumed.
@@ -61,6 +63,12 @@ void init_parser(Parser *self, const char *source);
  * 
  * This is generic function to report errors based on some token and a message.
  * Whatever the case, we set the parser's error state to true.
+ * 
+ * III:23.3     While Statements
+ * 
+ * Assuming the `self->errjmp` was set up correctly, report an error and then
+ * do a `longjmp()`. Ensure that this is never called in functions that require
+ * cleanup like variable-length-arrays or heap-allocations.
  */
 void parser_error_at(Parser *self, const Token *token, const char *message);
 

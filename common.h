@@ -17,7 +17,6 @@
 #define LUA_MAXQWORD       ((QWord)-1)
 
 #define bitsize(T)              (sizeof(T) * CHAR_BIT)
-
 #define xtostring(macro)        #macro
 #define stringify(macro)        xtostring(macro)
 #define logstring(info)         __FILE__ ":" stringify(__LINE__) ": " info

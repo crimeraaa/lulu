@@ -44,7 +44,7 @@ typedef struct {
 void init_valuearray(ValueArray *self);
 void write_valuearray(ValueArray *self, TValue value);
 void free_valuearray(ValueArray *self);
-void print_value(TValue value);
+void print_value(const TValue *value);
 
 /**
  * III:18.4.2   Equality and comparison operators
@@ -60,7 +60,7 @@ void print_value(TValue value);
  * unused. If we do raw memory comparisons we'll also compare these garbage bits
  * which will not give us the results we want.
  */
-bool values_equal(TValue lhs, TValue rhs);
+bool values_equal(const TValue *lhs, const TValue *rhs);
 
 /**
  * III:17.7     Dumping Chunks (my addition)
@@ -83,19 +83,19 @@ bool values_equal(TValue lhs, TValue rhs);
  * 
  * See: https://www.lua.org/source/5.1/lapi.c.html#lua_type
  */
-const char *value_typename(TValue value);
+const char *value_typename(const TValue *value);
 
 /* In memory, `nil` is just a distinct 0. */
-#define makenil         ((TValue){LUA_TNIL, {.number = 0.0}})
-#define isnil(V)        ((V).type == LUA_TNIL)
+#define makenil             ((TValue){LUA_TNIL, {.number = 0.0}})
+#define isnil(value)        ((value).type == LUA_TNIL)
 
-#define makenumber(N)   ((TValue){LUA_TNUMBER, {.number = (N)}})
-#define isnumber(V)     ((V).type == LUA_TNUMBER)
-#define asnumber(V)     ((V).as.number)
+#define makenumber(N)       ((TValue){LUA_TNUMBER, {.number = (N)}})
+#define isnumber(value)     ((value).type == LUA_TNUMBER)
+#define asnumber(value)     ((value).as.number)
 
-#define makeboolean(B)  ((TValue){LUA_TBOOLEAN, {.boolean = (B)}})
-#define isboolean(V)    ((V).type == LUA_TBOOLEAN)
-#define asboolean(V)    ((V).as.boolean)
+#define makeboolean(B)      ((TValue){LUA_TBOOLEAN, {.boolean = (B)}})
+#define isboolean(value)    ((value).type == LUA_TBOOLEAN)
+#define asboolean(value)    ((value).as.boolean)
 
 /** 
  * Wrap a bare object pointer or a specific object type pointer into a somewhat

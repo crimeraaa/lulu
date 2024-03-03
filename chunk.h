@@ -17,7 +17,7 @@
  * 
  * This MUST fit in a `DWord`.
  */
-#define LUA_MAXCONSTANTS_L  ((1 << (bitsize(Word) + bitsize(Byte))) - 1)
+#define LUA_MAXLCONSTANTS  ((1 << (bitsize(Word) + bitsize(Byte))) - 1)
 
 typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
@@ -32,7 +32,7 @@ typedef enum {
     
     // -*- III:21.1.2   Expression statements --------------------------------*-
     OP_POP,
-    OP_POPN, // Allow us to quickly decrement the stack pointer.
+    OP_NPOP, // Allow us to quickly decrement the stack pointer.
     
     // -*- III:22.4.1   Interpreting local variables -------------------------*-
     OP_SETLOCAL,

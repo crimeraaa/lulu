@@ -36,7 +36,7 @@ void free_chunk(Chunk *self) {
  * This caused us to overflow whenever a linecount was greater than 256 and thus
  * we didn't write to the proper indexes.
  */
-static void write_lineRLE(LineRuns *self, ptrdiff_t offset, int line) {
+static void write_lineRLE(LineRuns *self, int offset, int line) {
     // We should resize this array less often than the bytes one.
     if (self->count + 1 > self->cap) {
         size_t oldcap = self->cap;
@@ -63,6 +63,7 @@ void write_chunk(Chunk *self, Byte byte, int line) {
     self->code[self->count] = byte;
     // Start a new run for this line number, using byte offset to start the range.
     if (line != self->prevline) {
+        // size_t being downcast to int, might cause signed overflow
         write_lineRLE(&self->lines, self->count, line);
         self->prevline = line;
     } else {
@@ -72,6 +73,12 @@ void write_chunk(Chunk *self, Byte byte, int line) {
 }
 
 size_t add_constant(Chunk *self, TValue value) {
+    // Linear search is inefficient but I really do not care
+    for (size_t i = 0; i < self->constants.count; i++) {
+        if (values_equal(&self->constants.values[i], &value)) {
+            return i;
+        }
+    }
     write_valuearray(&self->constants, value);
     return self->constants.count - 1;
 }
@@ -112,21 +119,21 @@ void disassemble_chunk(Chunk *self, const char *name) {
  * Constant instructions take 1 byte for themselves and 1 byte for the operand.
  * The operand is an index into the self's constants pool.
  */
-static int constop(const char *name, const Chunk *self, ptrdiff_t offset) {
+static int opconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     // code[offset] is the operation byte itself, code[offset + 1] is the index
     // into the self's constants pool.
     Byte index = self->code[offset + 1];
     printf("%-16s %4i '", name, index);
-    print_value(self->constants.values[index]);
+    print_value(&self->constants.values[index]);
     printf("'\n");
     return offset + 2;
 }
 
 static inline DWord read_long(const Chunk *self, ptrdiff_t offset) {
-    Byte hi  = self->code[offset + 1] << 16; // Unmask upper 8 bits.
-    Byte mid = self->code[offset + 2] << 8;  // Unmask center 8 bits.
-    Byte lo  = self->code[offset + 3];       // Unmask lower 8 bits.
-    return (DWord)(hi | mid | lo);
+    Byte hi  = self->code[offset + 1] << bitsize(Word); // Unmask upper 8 bits.
+    Byte mid = self->code[offset + 2] << bitsize(Byte); // Unmask middle 8 bits.
+    Byte lo  = self->code[offset + 3];                  // Unmask lower 8 bits.
+    return (DWord)(hi) | mid | lo;
 }
 
 /**
@@ -142,16 +149,16 @@ static inline DWord read_long(const Chunk *self, ptrdiff_t offset) {
  *
  * In total, this entire operation takes up 4 bytes.
  */
-static int constop_L(const char *name, const Chunk *self, ptrdiff_t offset) {
+static int oplconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     DWord index = read_long(self, offset);
     printf("%-16s %4u '", name, index);
-    print_value(self->constants.values[index]);
+    print_value(&self->constants.values[index]);
     printf("'\n");
     return offset + 4;
 }
 
 /* Simple instruction only take 1 byte for themselves. */
-static int simpleop(const char *name, ptrdiff_t offset) {
+static int opsimple(const char *name, ptrdiff_t offset) {
     printf("%s\n", name);
     return offset + 1;
 }
@@ -161,16 +168,16 @@ static int simpleop(const char *name, ptrdiff_t offset) {
  *
  * `code[offset]` is the opcode, `code[offset + 1]` is the operand.
  */
-static int byteop(const char *name, const Chunk *self, ptrdiff_t offset) {
+static int opbyte(const char *name, const Chunk *self, ptrdiff_t offset) {
     Byte slot = self->code[offset + 1];
     printf("%-16s %4i\n", name, slot);
     return offset + 2;
 }
 
-static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
-    Byte hi = self->code[offset + 1] << 8;
+static inline Word readshort(const Chunk *self, ptrdiff_t offset) {
+    Byte hi = self->code[offset + 1] << bitsize(Byte);
     Byte lo = self->code[offset + 2];
-    return (Word)(hi | lo);
+    return (Word)(hi) | lo;
 }
 
 /**
@@ -179,8 +186,8 @@ static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
  * Disassembly support for OP_JMP* opcodes. Note that we have a `sign` parameter
  * because later on we'll also allow for jumping backwards.
  */
-static int jumpop(const char *name, int sign, const Chunk *self, ptrdiff_t offset) {
-    Word jump = read_short(self, offset);
+static int opjump(const char *name, int sign, const Chunk *self, ptrdiff_t offset) {
+    Word jump = readshort(self, offset);
     ptrdiff_t target = offset + 3 + (sign * jump);
     printf("%-16s    0x%04tx->0x%04tx\n", name, offset, target);
     return offset + 3;
@@ -196,62 +203,62 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     }
     Byte instruction = self->code[offset];
     switch(instruction) {
-    case OP_CONSTANT:   return constop("OP_CONSTANT",    self, offset);
-    case OP_LCONSTANT:  return constop_L("OP_LCONSTANT", self, offset);
+    case OP_CONSTANT:   return opconst("OP_CONSTANT",    self, offset);
+    case OP_LCONSTANT:  return oplconst("OP_LCONSTANT", self, offset);
 
     // -*- III:18.4     Two New Types ----------------------------------------*-
-    case OP_NIL:        return simpleop("OP_NIL",   offset);
-    case OP_TRUE:       return simpleop("OP_TRUE",  offset);
-    case OP_FALSE:      return simpleop("OP_FALSE", offset);
+    case OP_NIL:        return opsimple("OP_NIL",   offset);
+    case OP_TRUE:       return opsimple("OP_TRUE",  offset);
+    case OP_FALSE:      return opsimple("OP_FALSE", offset);
 
     // -*- III:21.1.2   Expression statements --------------------------------*-
-    case OP_POP:        return simpleop("OP_POP", offset);
-    case OP_POPN:       return byteop("OP_POPN", self, offset);
+    case OP_POP:        return opsimple("OP_POP", offset);
+    case OP_NPOP:       return opbyte("OP_NPOP", self, offset);
 
     // -*- III:22.4.1   Interpreting local variables -------------------------*-
-    case OP_GETLOCAL:   return byteop("OP_GETLOCAL", self, offset);
-    case OP_SETLOCAL:   return byteop("OP_SETLOCAL", self, offset);
+    case OP_GETLOCAL:   return opbyte("OP_GETLOCAL", self, offset);
+    case OP_SETLOCAL:   return opbyte("OP_SETLOCAL", self, offset);
 
     // -*- III:21.2     Variable Declarations
-    case OP_GETGLOBAL:  return constop("OP_GETGLOBAL",    self, offset);
-    case OP_LGETGLOBAL: return constop_L("OP_LGETGLOBAL", self, offset);
+    case OP_GETGLOBAL:  return opconst("OP_GETGLOBAL",    self, offset);
+    case OP_LGETGLOBAL: return oplconst("OP_LGETGLOBAL", self, offset);
 
     // -*- III:21.4     Assignment -------------------------------------------*-
-    case OP_SETGLOBAL:  return constop("OP_SETGLOBAL",    self, offset);
-    case OP_LSETGLOBAL: return constop_L("OP_LSETGLOBAL", self, offset);
+    case OP_SETGLOBAL:  return opconst("OP_SETGLOBAL",    self, offset);
+    case OP_LSETGLOBAL: return oplconst("OP_LSETGLOBAL", self, offset);
 
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
-    case OP_EQ:         return simpleop("OP_EQ", offset);
-    case OP_GT:         return simpleop("OP_GT", offset);
-    case OP_LT:         return simpleop("OP_LT", offset);
+    case OP_EQ:         return opsimple("OP_EQ", offset);
+    case OP_GT:         return opsimple("OP_GT", offset);
+    case OP_LT:         return opsimple("OP_LT", offset);
 
     // -*- III:15.3.1   Binary operators -------------------------------------*-
-    case OP_ADD:        return simpleop("OP_ADD", offset);
-    case OP_SUB:        return simpleop("OP_SUB", offset);
-    case OP_MUL:        return simpleop("OP_MUL", offset);
-    case OP_DIV:        return simpleop("OP_DIV", offset);
-    case OP_POW:        return simpleop("OP_POW", offset);
-    case OP_MOD:        return simpleop("OP_MOD", offset);
+    case OP_ADD:        return opsimple("OP_ADD", offset);
+    case OP_SUB:        return opsimple("OP_SUB", offset);
+    case OP_MUL:        return opsimple("OP_MUL", offset);
+    case OP_DIV:        return opsimple("OP_DIV", offset);
+    case OP_POW:        return opsimple("OP_POW", offset);
+    case OP_MOD:        return opsimple("OP_MOD", offset);
 
     // -*- III:18.4.1   Logical not and falsiness ----------------------------*-
-    case OP_NOT:        return simpleop("OP_NOT", offset);
+    case OP_NOT:        return opsimple("OP_NOT", offset);
 
     // -*- III:19.4.1   Concatenation ----------------------------------------*-
-    case OP_CONCAT:     return simpleop("OP_CONCAT", offset);
+    case OP_CONCAT:     return opsimple("OP_CONCAT", offset);
 
     // -*- III:15.3     An Arithmetic Calculator -----------------------------*-
-    case OP_UNM:        return simpleop("OP_UNM", offset);
+    case OP_UNM:        return opsimple("OP_UNM", offset);
 
     // -*- III:21.1.1   Print statements
-    case OP_PRINT:      return simpleop("OP_PRINT", offset);
+    case OP_PRINT:      return opsimple("OP_PRINT", offset);
 
     // -*- III:23.1     If Statements ----------------------------------------*-
-    case OP_JMP:        return jumpop("OP_JMP",  1, self, offset);
-    case OP_FJMP:       return jumpop("OP_FJMP", 1, self, offset);
+    case OP_JMP:        return opjump("OP_JMP",  1, self, offset);
+    case OP_FJMP:       return opjump("OP_FJMP", 1, self, offset);
 
     // -*- III:23.3     While Statements -------------------------------------*-
-    case OP_LOOP:       return jumpop("OP_LOOP", -1, self, offset);
-    case OP_RET:        return simpleop("OP_RET", offset);
+    case OP_LOOP:       return opjump("OP_LOOP", -1, self, offset);
+    case OP_RET:        return opsimple("OP_RET", offset);
     default:            break;
     }
     printf("Unknown opcode %i.\n", instruction);

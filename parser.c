@@ -15,15 +15,16 @@ void parser_error_at(Parser *self, const Token *token, const char *message) {
     self->haderror = true;
     self->panicking = true;
     fprintf(stderr, "[line %i] Error", token->line);
-    if (token->type == TOKEN_EOF) {
+    if (token->type == TK_EOF) {
         fprintf(stderr, " at end");
-    } else if (token->type == TOKEN_ERROR) {
+    } else if (token->type == TK_ERROR) {
         // Nothing as the error token already has a message.
     } else {
         // Field precision must be of type int, nothing more, nothing less.
         fprintf(stderr, " at '%.*s'", (int)token->len, token->start);
     }
     fprintf(stderr, ": %s\n", message);
+    longjmp(self->errjmp, 1);
 }
 
 void parser_error(Parser *self, const char *message) {
@@ -45,7 +46,7 @@ void advance_parser(Parser *self) {
     self->previous = self->current;
     for (;;) {
         self->current = tokenize(&self->lexer);
-        if (self->current.type != TOKEN_ERROR) {
+        if (self->current.type != TK_ERROR) {
             break;
         }
         // Error tokens already point to an error message thanks to the lexer.
@@ -80,23 +81,23 @@ bool check_token_any(const Parser *parser, const TokenType *expected, size_t cou
 
 void synchronize_parser(Parser *self) {
     self->panicking = false;
-    while (self->current.type != TOKEN_EOF) {
-        if (self->previous.type == TOKEN_SEMICOL) {
+    while (self->current.type != TK_EOF) {
+        if (self->previous.type == TK_SEMICOL) {
             // If more than 1 semicol, don't report the error once since we
             // reset the parser panic state.
-            if (self->current.type != TOKEN_SEMICOL) {
+            if (self->current.type != TK_SEMICOL) {
                 return;
             }
         }
         switch (self->current.type) {
-        case TOKEN_FUNCTION:
-        case TOKEN_LOCAL:
-        case TOKEN_END:
-        case TOKEN_FOR:
-        case TOKEN_IF:
-        case TOKEN_WHILE:
-        case TOKEN_PRINT:
-        case TOKEN_RETURN: return;
+        case TK_FUNCTION:
+        case TK_LOCAL:
+        case TK_END:
+        case TK_FOR:
+        case TK_IF:
+        case TK_WHILE:
+        case TK_PRINT:
+        case TK_RETURN: return;
         default:
             ; // Do nothing
         }

@@ -92,7 +92,7 @@ static Token make_token(const Lexer *self, TokenType type) {
  */
 static Token error_token(const Lexer *self, const char *message) {
     Token token;
-    token.type   = TOKEN_ERROR;
+    token.type   = TK_ERROR;
     token.start  = message;
     token.len    = strlen(message);
     token.line   = self->line;
@@ -144,7 +144,7 @@ static TokenType check_keyword(const Lexer *self,
             return type;
         }
     }
-    return TOKEN_IDENT;
+    return TK_IDENT;
 }
 
 /**
@@ -166,20 +166,20 @@ static TokenType ident_type(Lexer *self) {
     size_t lexlen = self->current - self->start;
     const char *lexeme = self->start;
     switch (lexeme[0]) {
-        case 'a': return check_keyword(self, 1, "and", TOKEN_AND);
-        case 'y': return check_keyword(self, 1, "break", TOKEN_BREAK);
-        case 'd': return check_keyword(self, 1, "do", TOKEN_DO);
+        case 'a': return check_keyword(self, 1, "and", TK_AND);
+        case 'y': return check_keyword(self, 1, "break", TK_BREAK);
+        case 'd': return check_keyword(self, 1, "do", TK_DO);
         case 'e': {
             if (lexlen > 1) {
                 switch(lexeme[1]) {
                 case 'l':
                     // This is horrible
                     switch (lexlen) {
-                    case 4: return check_keyword(self, 2, "else", TOKEN_ELSE);
-                    case 6: return check_keyword(self, 2, "elseif", TOKEN_ELSEIF);
+                    case 4: return check_keyword(self, 2, "else", TK_ELSE);
+                    case 6: return check_keyword(self, 2, "elseif", TK_ELSEIF);
                     }
                     break;
-                case 'n': return check_keyword(self, 2, "end", TOKEN_END);
+                case 'n': return check_keyword(self, 2, "end", TK_END);
                 }
             }
             break;
@@ -187,9 +187,9 @@ static TokenType ident_type(Lexer *self) {
         case 'f': {
             if (lexlen > 1) {
                 switch(lexeme[1]) {
-                case 'a': return check_keyword(self, 2, "false", TOKEN_FALSE);
-                case 'o': return check_keyword(self, 2, "for", TOKEN_FOR);
-                case 'u': return check_keyword(self, 2, "function", TOKEN_FUNCTION);
+                case 'a': return check_keyword(self, 2, "false", TK_FALSE);
+                case 'o': return check_keyword(self, 2, "for", TK_FOR);
+                case 'u': return check_keyword(self, 2, "function", TK_FUNCTION);
                 }
             }
             break;
@@ -197,39 +197,39 @@ static TokenType ident_type(Lexer *self) {
         case 'i': {
             if (lexlen > 1) {
                 switch (lexeme[1]) {
-                case 'f': return check_keyword(self, 2, "if", TOKEN_IF);
-                case 'n': return check_keyword(self, 2, "in", TOKEN_IN);
+                case 'f': return check_keyword(self, 2, "if", TK_IF);
+                case 'n': return check_keyword(self, 2, "in", TK_IN);
                 }
             }
             break;
         }
-        case 'l': return check_keyword(self, 1, "local", TOKEN_LOCAL);
+        case 'l': return check_keyword(self, 1, "local", TK_LOCAL);
         case 'n': {
             if (lexlen > 1) {
                 switch (lexeme[1]) {
-                case 'i': return check_keyword(self, 2, "nil", TOKEN_NIL);
-                case 'o': return check_keyword(self, 2, "not", TOKEN_NOT);
+                case 'i': return check_keyword(self, 2, "nil", TK_NIL);
+                case 'o': return check_keyword(self, 2, "not", TK_NOT);
                 }
             }
             break;
         }
-        case 'o': return check_keyword(self, 1, "or", TOKEN_OR);
+        case 'o': return check_keyword(self, 1, "or", TK_OR);
         // TODO: Hack, remove this when we have a builtin print function
-        case 'p': return check_keyword(self, 1, "print", TOKEN_PRINT);
-        case 'r': return check_keyword(self, 1, "return", TOKEN_RETURN);
-        case 's': return check_keyword(self, 1, "self", TOKEN_SELF);
+        case 'p': return check_keyword(self, 1, "print", TK_PRINT);
+        case 'r': return check_keyword(self, 1, "return", TK_RETURN);
+        case 's': return check_keyword(self, 1, "self", TK_SELF);
         case 't': {
             if (lexlen > 1) {
                 switch (lexeme[1]) {
-                case 'h': return check_keyword(self, 2, "then", TOKEN_THEN);
-                case 'r': return check_keyword(self, 2, "true", TOKEN_TRUE);
+                case 'h': return check_keyword(self, 2, "then", TK_THEN);
+                case 'r': return check_keyword(self, 2, "true", TK_TRUE);
                 }
             }
             break;
         }
-        case 'w': return check_keyword(self, 1, "while", TOKEN_WHILE);
+        case 'w': return check_keyword(self, 1, "while", TK_WHILE);
     }
-    return TOKEN_IDENT;
+    return TK_IDENT;
 }
 
 /**
@@ -263,7 +263,7 @@ static Token number_token(Lexer *self) {
             advance_lexer(self);
         }
     }
-    return make_token(self, TOKEN_NUMBER);
+    return make_token(self, TK_NUMBER);
 }
 
 /**
@@ -293,7 +293,7 @@ static Token string_token(Lexer *self, char quote) {
     }
     // Consume closing quote.
     advance_lexer(self);
-    return make_token(self, TOKEN_STRING);
+    return make_token(self, TK_STRING);
 }
 
 #define _match(lex, ch, y, n)       match_lexer(lex, ch) ? (y) : (n)
@@ -307,7 +307,7 @@ Token tokenize(Lexer *self) {
     skip_whitespace(self);
     self->start = self->current;
     if (is_at_end(self)) {
-        return make_token(self, TOKEN_EOF);
+        return make_token(self, TK_EOF);
     }
 
     char ch = advance_lexer(self);
@@ -322,23 +322,23 @@ Token tokenize(Lexer *self) {
      */
     switch (ch) {
     // Balanced pairs
-    case '(': return make_token(self, TOKEN_LPAREN);
-    case ')': return make_token(self, TOKEN_RPAREN);
-    case '{': return make_token(self, TOKEN_LBRACE);
-    case '}': return make_token(self, TOKEN_RBRACE);
-    case '[': return make_token(self, TOKEN_LBRACKET);
-    case ']': return make_token(self, TOKEN_RBRACKET);
+    case '(': return make_token(self, TK_LPAREN);
+    case ')': return make_token(self, TK_RPAREN);
+    case '{': return make_token(self, TK_LBRACE);
+    case '}': return make_token(self, TK_RBRACE);
+    case '[': return make_token(self, TK_LBRACKET);
+    case ']': return make_token(self, TK_RBRACKET);
     // Punctuation marks
-    case ';': return make_token(self, TOKEN_SEMICOL);
-    case ':': return make_token(self, TOKEN_COLON);
-    case '.': return make_dot(self, TOKEN_PERIOD, TOKEN_CONCAT, TOKEN_VARARGS);
+    case ';': return make_token(self, TK_SEMICOL);
+    case ':': return make_token(self, TK_COLON);
+    case '.': return make_dot(self, TK_PERIOD, TK_CONCAT, TK_VARARGS);
     // Common Arithmetic
-    case '+': return make_token(self, TOKEN_PLUS);
-    case '-': return make_token(self, TOKEN_DASH);
-    case '*': return make_token(self, TOKEN_STAR);
-    case '/': return make_token(self, TOKEN_SLASH);
-    case '^': return make_token(self, TOKEN_CARET);
-    case '%': return make_token(self, TOKEN_PERCENT);
+    case '+': return make_token(self, TK_PLUS);
+    case '-': return make_token(self, TK_DASH);
+    case '*': return make_token(self, TK_STAR);
+    case '/': return make_token(self, TK_SLASH);
+    case '^': return make_token(self, TK_CARET);
+    case '%': return make_token(self, TK_PERCENT);
 
     // Quotation marks
     case '"': return string_token(self, '"');
@@ -346,10 +346,10 @@ Token tokenize(Lexer *self) {
 
     // Relational
     case '~': return match_lexer(self, '=')
-        ? make_token(self, TOKEN_NEQ) : error_token(self, "Expected '=' after '~'.");
-    case '=': return make_eq(self, TOKEN_EQ, TOKEN_ASSIGN);
-    case '<': return make_eq(self, TOKEN_LE, TOKEN_LT);
-    case '>': return make_eq(self, TOKEN_GE, TOKEN_GT);
+        ? make_token(self, TK_NEQ) : error_token(self, "Expected '=' after '~'.");
+    case '=': return make_eq(self, TK_EQ, TK_ASSIGN);
+    case '<': return make_eq(self, TK_LE, TK_LT);
+    case '>': return make_eq(self, TK_GE, TK_GT);
     default:  break;
     }
     return error_token(self, "Unexpected character.");

@@ -54,10 +54,10 @@ typedef struct {
  * `compiler.c` file is less crowded.
  */
 typedef struct {
-    Chunk chunk;   // This is where our raw bytecode resides.
-    Parser parser; // Keep track of tokens emitted by its own `Lexer`.
-    Locals locals; // Keep track of information about local variables in scope.
-    lua_VM *vm;    // Stupid but we need to pass this to `copy_string()`.
+    Chunk chunk;    // This is where our raw bytecode resides.
+    Parser parser;  // Keep track of tokens emitted by its own `Lexer`.
+    Locals locals;  // Keep track of information about local variables in scope.
+    lua_VM *vm;     // Stupid but we need to pass this to `copy_string()`.
 } Compiler;
 
 /**
