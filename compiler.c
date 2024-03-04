@@ -356,7 +356,7 @@ static void declare_variable(Compiler *self, bool islocal) {
     Locals *locals = &self->locals;
     Parser *parser = &self->parser;
     // Bail out if this is called for global variable declarations.
-    if (!islocal /* locals->depth == 0 */) {
+    if (!islocal) {
         return;
     }
     const Token *name = &parser->previous;
@@ -850,10 +850,6 @@ static void doblock(Compiler *self) {
     Parser *parser = &self->parser;
     begin_scope(self);
     while (!check_token(parser, TK_END, TK_EOF)) {
-        // This function is used for lone do-end blocks.
-        if (match_token(parser, TK_BREAK)) {
-            compiler_error(self, "No loop to break out of.");
-        }
         declaration(self);
     }
     end_scope(self);
@@ -895,7 +891,7 @@ static void doblock(Compiler *self) {
  */
 static void variable_declaration(Compiler *self) {
     Parser *parser = &self->parser;
-    consume_token(parser, TK_IDENT, "Expected identifier after 'local'.");
+    consume_token(parser, TK_IDENT, "Expected identifier.");
     // Index of variable name (previous token) as appended into constants pool
     DWord index = parse_variable(self, true);
     if (match_token(parser, TK_ASSIGN)) {
@@ -920,6 +916,91 @@ static void expression_statement(Compiler *self) {
     expression(self);
     match_token(&self->parser, TK_SEMICOL);
     emit_byte(self, OP_POP);
+}
+
+static Token for_initializer(Compiler *self) {
+    Parser *parser = &self->parser;
+    // Iterator variable is always a local declaration.
+    consume_token(parser, TK_IDENT, "Expected identifier.");
+
+    // Copy by value as parser will be mutated.
+    const Token name = parser->previous;
+
+    // Index of variable name (previous token) as appended into constants pool
+    DWord index = parse_variable(self, true);
+    consume_token(parser, TK_ASSIGN, "Expected '=' after identifier.");
+    expression(self);
+    consume_token(parser, TK_COMMA, "Expected ',' after 'for' initializer.");
+
+    define_variable(self, index, true);
+    return name;
+}
+
+static void for_condition(Compiler *self, DWord index) {
+    // 'for' condition can only be a number literal, a variable that resolves
+    // to a number, or a function call thereof (functions are variables).
+    if (!check_token(&self->parser, TK_NUMBER, TK_IDENT)) {
+        compiler_error(self, "Expected number or identifier after 'for' initializer.");
+    }
+    // For safety and sanity we use inclusive less-than-or-equal-to.
+    emit_bytes(self, OP_GETLOCAL, index);
+    expression(self);
+    emit_bytes(self, OP_GT, OP_NOT);
+}
+
+/**
+ * III:23.4     For Statements
+ * 
+ * For now we only support numeric loops with Lua's semantics.
+ */
+static void for_statement(Compiler *self) {
+    begin_scope(self);
+    Parser *parser = &self->parser;
+
+    // Copy by value as the parser's state is already mutated.
+    const Token name = for_initializer(self);
+
+    // Index into the locals array. Should never be more than 256.
+    DWord index      = resolve_local(self, &name);
+    size_t loopstart = current_chunk(self)->count;
+
+    for_condition(self, index);
+    size_t exitjump = emit_jump(self, OP_FJMP);
+    emit_byte(self, OP_POP); // Cleanup condition expression.
+
+    // Hacky but we need this in order to keep our compiler single-pass.
+    // For the first iteration we immediately jump OVER increment expression.
+    size_t bodyjump = emit_jump(self, OP_JMP);
+    size_t incrstart = current_chunk(self)->count;
+
+    // 'for' increment is a bit convoluted.
+    if (match_token(parser, TK_COMMA)) {
+        // Ensure we actually have something.
+        if (!check_token(parser, TK_IDENT, TK_NUMBER)) {
+            compiler_error(self, "'for' increment must be variable/number.");
+        }
+        expression(self);
+    } else {
+        // Positive increment of 1 is our default.
+        emit_constant(self, makenumber(1));
+    }
+    // Whatever the increment value is, we have to update the iterator with it.
+    emit_bytes(self, OP_GETLOCAL, index);
+    emit_byte(self, OP_ADD);
+    emit_bytes(self, OP_SETLOCAL, index);
+
+    // Strange but this is what we have to do to evaluate the increment AFTER.
+    emit_loop(self, loopstart);
+    loopstart = incrstart;
+    patch_jump(self, bodyjump);
+
+    consume_token(parser, TK_DO, "Expected 'do' after 'for' clause.");
+    // This creates a new scope but given our resolution rules it's probably ok.
+    doblock(self);
+    emit_loop(self, loopstart);
+    patch_jump(self, exitjump);
+    emit_byte(self, OP_POP);
+    end_scope(self);
 }
 
 /**
@@ -981,12 +1062,14 @@ static void if_statement(Compiler *self, bool iselif) {
 
     // Instruction "address" of the jump (after 'then') so we can patch it later.
     // We need to determine how big the 'then' branch is first.
+    // This will jump OVER the 'then' block if falsy.
     size_t thenjump = emit_jump(self, OP_FJMP);
     emit_byte(self, OP_POP); // Pop result of expression for condition (truthy)
     thenblock(self);
 
     // After the then branch, we need to jump over the else branch in order to
     // avoid falling through into it.
+    // This will jump OVER any succeeding 'elseif' and 'else' blocks.
     size_t elsejump = emit_jump(self, OP_JMP);
 
     // Chunk's current count - thenjump = how far to jump if false.
@@ -1023,17 +1106,6 @@ static void print_statement(Compiler *self) {
     emit_byte(self, OP_PRINT);
 }
 
-static void whileblock(Compiler *self) {
-    Parser *parser = &self->parser;
-    begin_scope(self);
-    while (!check_token(parser, TK_END, TK_EOF)) {
-        declaration(self);
-    }
-    end_scope(self);
-    consume_token(parser, TK_END, "Expected 'end' after 'do' block.");
-    match_token(parser, TK_SEMICOL); // Like most of Lua this is optional.
-}
-
 /**
  * III:23.3     While Statements
  * 
@@ -1055,12 +1127,15 @@ static void while_statement(Compiler *self) {
     size_t loopstart = current_chunk(self)->count;
     expression(self);
     consume_token(parser, TK_DO, "Expected 'do' after 'while' condition.");
-    // Save the address of the jump to exit out of the loop.
+
+    // Save the address of the jump opcode which will exit out of the loop.
     size_t exitjump = emit_jump(self, OP_FJMP);
-    whileblock(self);
-    emit_loop(self, loopstart);
-    patch_jump(self, exitjump);
-    emit_byte(self, OP_POP);
+
+    emit_byte(self, OP_POP);    // Condition expression cleanup (truthy)
+    doblock(self);
+    emit_loop(self, loopstart); // Emit loop instruction going to loopstart.
+    patch_jump(self, exitjump); // Patch exit jump to break loop correctly.
+    emit_byte(self, OP_POP);    // Condition expression cleanup (falsy)
 }
 
 /**
@@ -1124,8 +1199,15 @@ static void statement(Compiler *self) {
     Parser *parser = &self->parser;
     if (match_token(parser, TK_PRINT)) {
         print_statement(self);
+    } else if (match_token(parser, TK_BREAK)) {
+        // TODO: This is so confusing...
+        int line = self->parser.lexer.line;        
+        logprintf("'break' unimplemented (@line:%i of script)\n", line);
     } else if (match_token(parser, TK_IF)) {
         if_statement(self, false);
+    } else if (match_token(parser, TK_FOR)) {
+        // TODO: This is VERY different from Lox's.
+        for_statement(self);
     } else if (match_token(parser, TK_ELSEIF, TK_ELSE)) {
         compiler_error(self, "Not used in an 'if' statement.");
     } else if (match_token(parser, TK_WHILE)) {

@@ -6,6 +6,12 @@
 #include "object.h"
 
 /**
+ * Unlike other macros and functions `i` must always be positive or zero because
+ * we don't have a pointer to the top of the constants array.
+ */
+#define lua_getconstant(vm, i)  ((vm)->chunk->constants.values[i])
+
+/**
  * III:23.3     While Statements
  * 
  * Custom addition to mimick the Lua C API. Get the 0-based index of the current
@@ -29,10 +35,15 @@
  * If negative, we use a negative offset relative to the stack top pointer.
  * If positive, we use a positive offset relative to the stack base pointer.
  */
-#define lua_ptroffset(vm, n)    ((n) < 0 ? (vm)->sp + (n) : (vm)->bp + (n))
+#define lua_poke(vm, n)    ((n) < 0 ? (vm)->sp + (n) : (vm)->bp + (n))
 
 /* Pop `n` elements from the stack by decrementing the stack top pointer. */
-#define lua_pop(vm, n)          lua_settop(vm, -(n)-1)
+#define lua_popn(vm, n)          lua_settop(vm, -(n)-1)
+
+#define lua_pushvalue(vm, v)    (*(vm)->sp++ = v)
+
+/* TYPE HELPER MACROS --------------------------------------------------- {{{ */
+
 #define lua_isnil(vm, i)        lua_istype(vm, i, LUA_TNIL)
 #define lua_isboolean(vm, i)    lua_istype(vm, i, LUA_TBOOLEAN)
 #define lua_isnumber(vm, i)     lua_istype(vm, i, LUA_TNUMBER)
@@ -47,11 +58,13 @@
  * See:
  * - https://stackoverflow.com/a/52092333
  */
-#define lua_astype(vm, i, tag)  ((vm)->stack[i].as.tag)
+#define lua_astype(vm, i, tag)  ((vm)->stack[lua_absindex(vm, i)].as.tag)
 #define lua_asboolean(vm, i)    lua_astype(vm, i, boolean)
 #define lua_asnumber(vm, i)     lua_astype(vm, i, number)
 #define lua_asobject(vm, i)     lua_astype(vm, i, object)
 #define lua_asstring(vm, i)     (lua_String*)lua_asobject(vm, i)
+
+/* }}} ---------------------------------------------------------------------- */
 
 /* FUNCTION PROTOTYPES -------------------------------------------------- {{{ */
 
@@ -62,7 +75,7 @@
  * If the new top is much greater than the original, we fill the gaps with nil
  * values to compensate.
  */
-void lua_settop(lua_VM *self, ptrdiff_t offset);
+void lua_settop(lua_VM *self, int offset);
 
 /**
  * III:23.3     While Statements
@@ -70,8 +83,63 @@ void lua_settop(lua_VM *self, ptrdiff_t offset);
  * Query the value at the given positive or negative offset into the VM stack
  * if it matches the particular given type.
  */
-bool lua_istype(const lua_VM *self, ptrdiff_t offset, ValueType type);
+bool lua_istype(lua_VM *self, int offset, ValueType tagtype);
+const char *lua_typename(lua_VM *self, int offset);
+bool lua_equal(lua_VM *self, int offset1, int offset2);
 
-/* }}} */
+/**
+ * III:18.4.1   Logical not and falsiness
+ *
+ * In Lua, the only "falsy" types are `nil` and the boolean value `false`.
+ * Everything else is `truthy` meaning it is treated as a true condition.
+ * Do note that this doesn't mean that `1 == true`, it just means that `if 1`
+ * and `if true` do the same thing conceptually.
+ * 
+ * III:23.3     While Statements
+ * 
+ * I'm updating the API to be more like the Lua C API. So we take a VM instance
+ * pointer and an offset into it, we determine the falsiness of the value at the
+ * given index/offset.
+ */
+bool lua_isfalsy(lua_VM *self, int offset);
+
+/**
+ * Given an index `i` into the VM's constants table, push a copy of that value
+ * to the top of the stack and then increment the stack pointer.
+ */
+void lua_pushconstant(lua_VM *self, size_t i);
+void lua_pushboolean(lua_VM *self, bool b);
+void lua_pushnil(lua_VM *self);
+void lua_pushnumber(lua_VM *self, lua_Number n);
+
+/**
+ * Assumes that `data` is either NULL or a heap-allocated and nul-terminated
+ * string buffer with which we'll attempt to take ownership of.
+ */
+void lua_pushstring(lua_VM *self, char *data);
+
+/**
+ * Assumes that `data` is a heap-allocated buffer which we'll attempt to take
+ * ownership of via a call to `take_string()`.
+ */
+void lua_pushlstring(lua_VM *self, char *data, size_t len);
+void lua_pushliteral(lua_VM *self, const char *data, size_t len);
+
+/**
+ * Assumes `data` is a read-only nul-terminated C string literal with which we
+ * try to create a `lua_String*` of. Do NOT use this with malloc'd strings.
+ */
+#define lua_pushliteral(vm, s)  lua_pushliteral(self, s, arraylen(s) - 1)
+
+/**
+ * III:19.4.1   Concatenation
+ *
+ * String concatenation is quite tricky due to all the allocations we need to
+ * make! Not only that, but multiple concatenations may end up "orphaning"
+ * middle strings and thus leaking memory.
+ */
+void lua_concat(lua_VM *self);
+
+/* }}} ---------------------------------------------------------------------- */
 
 #endif /* LUA_API_H */

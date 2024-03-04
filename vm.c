@@ -31,23 +31,24 @@ static void runtime_error(lua_VM *self, const char *format, ...) {
 }
 
 static inline InterpretResult
-runtime_arith_error(lua_VM *self, const TValue *operand) {
-    runtime_error(self,
-        "Attempt to perform arithmetic on a %s value", value_typename(operand));
+runtime_arith_error(lua_VM *self, int offset) {
+    const char *typename = lua_typename(self, offset);
+    runtime_error(self, "Attempt to perform arithmetic on a %s value", typename);
     return INTERPRET_RUNTIME_ERROR;
 }
 
 static inline InterpretResult
-runtime_compare_error(lua_VM *self, const TValue *lhs, const TValue *rhs) {
-    runtime_error(self,
-        "Attempt to compare %s with %s", value_typename(lhs), value_typename(rhs));
+runtime_compare_error(lua_VM *self, int loffset, int roffset) {
+    const char *ltypename = lua_typename(self, loffset);
+    const char *rtypename = lua_typename(self, roffset);
+    runtime_error(self, "Attempt to compare %s with %s", ltypename, rtypename);
     return INTERPRET_RUNTIME_ERROR;
 }
 
 static inline InterpretResult
-runtime_concat_error(lua_VM *self, const TValue *operand) {
-    runtime_error(self,
-        "Attempt to concatenate a %s value", value_typename(operand));
+runtime_concat_error(lua_VM *self, int offset) {
+    const char *typename = lua_typename(self, offset);
+    runtime_error(self, "Attempt to concatenate a %s value", typename);
     return INTERPRET_RUNTIME_ERROR;
 }
 
@@ -79,31 +80,6 @@ TValue popstack(lua_VM *self) {
 }
 
 /**
- * Similar to `peek_vmstack()` except you get a pointer to the slot in question.
- * This lets you manipulate the stack in place.
- *
- * NOTE:
- *
- * This is a negative offset in relation to the stack pointer. So an offset of 0
- * for example refers to the top of the stack, an offset of 1 is the slot right
- * below the top of the stack, etc. etc.
- * 
- * III:23.3     While Statements
- * 
- * I'm updating the semantics so that it looks more like the Lua C API.
- * `offset` can now be a negative offset in relation to the stack pointer,
- * but it can also be a positive offset in relation to the base pointer.
- * e.g. `-1` means top of stack, `0` means very bottom, `1` means 1 past bottom.
- */
-static inline TValue *pokestack(lua_VM *self, int offset) {
-    if (offset < 0) {
-        return self->sp + offset; // Is negative so we can add to go downwards.
-    } else {
-        return self->bp + offset;
-    }
-}
-
-/**
  * III:18.3.1   Unary negation and runtime errors
  *
  * Returns a value from the stack without popping it. Remember that since the
@@ -111,58 +87,17 @@ static inline TValue *pokestack(lua_VM *self, int offset) {
  * And since the most recent element is at the top of the stack, in order to
  * access other elements we subtract the given offset.
  *
- * For example, to peek the top of the stack, use `peek_vmstack(self, 0)`.
- * To peek the value right before that, use `peek_vmstack(self, 1)`. And so on.
+ * For example, to peek the top of the stack, use `peekstack(self, 0)`.
+ * To peek the value right before that, use `peekstack(self, 1)`. And so on.
  * 
  * III:23.3     While Statements
  * 
  * See notes for `pokestack()` on what was changed.
- * Basically: `peek_vmstack(self, -1)` now gives you the top of the stack.
- * `peek_vmstack(self, 0)` gives you the very bottom.
+ * Basically: `peekstack(self, -1)` now gives you the top of the stack.
+ * `peekstack(self, 0)` gives you the very bottom.
  */
-static inline TValue peek_vmstack(lua_VM *self, int offset) {
-    return *pokestack(self, offset);
-}
-
-/**
- * III:18.4.1   Logical not and falsiness
- *
- * In Lua, the only "falsy" types are `nil` and the boolean value `false`.
- * Everything else is `truthy` meaning it is treated as a true condition.
- * Do note that this doesn't mean that `1 == true`, it just means that `if 1`
- * and `if true` do the same thing conceptually.
- * 
- * III:23.3     While Statements
- * 
- * I'm updating the API to be more like the Lua C API. So we take a VM instance
- * pointer and an offset into it, we determine the falsiness of the value at the
- * given index/offset.
- */
-static inline bool isfalsy(const lua_VM *self, int offset) {
-    size_t i = lua_absindex(self, offset);
-    if (lua_isnil(self, i)) {
-        return true;
-    }
-    return lua_isboolean(self, i) && !lua_asboolean(self, i);
-}
-
-/**
- * III:19.4.1   Concatenation
- *
- * String concatenation is quite tricky due to all the allocations we need to
- * make! Not only that, but multiple concatenations may end up "orphaning"
- * middle strings and thus leaking memory.
- */
-static void concatenate(lua_VM *self) {
-    lua_String *rhs = asstring(popstack(self));
-    lua_String *lhs = asstring(popstack(self));
-    size_t len = lhs->len + rhs->len;
-    char *data = allocate(char, len + 1);
-    memcpy(&data[0],        lhs->data, lhs->len);
-    memcpy(&data[lhs->len], rhs->data, rhs->len);
-    data[len] = '\0';
-    lua_String *result = take_string(self, data, len);
-    pushstack(self, makeobject(LUA_TSTRING, result));
+static inline TValue peekstack(lua_VM *self, int offset) {
+    return *lua_poke(self, offset);
 }
 
 /**
@@ -198,29 +133,31 @@ static inline TValue read_constant_at(lua_VM *self, QWord index) {
 #define read_string(vm)         asstring(read_constant(vm))
 #define read_string_at(vm, i)   asstring(read_constant_at(vm, i))
 
+#define pushvalue(vm, v)        (*(vm->sp++) = v)
+
 /**
  * Horrible C preprocessor abuse...
  *
  * @param vm        `lua_VM*`
  * @param assertfn  One of the `assert_*` macros.
  * @param makefn    One of the `make*` macros.
- * @param operation One of the `lua_num*` macros or an actual function.
+ * @param exprfn    One of the `lua_num*` macros or an actual function.
  */
-#define binop_template(vm, assertfn, makefn, operation) \
-    do { \
-        TValue rhs = popstack(vm); \
-        TValue lhs = popstack(vm); \
-        assertfn(vm, lhs, rhs); \
-        pushstack(vm, makefn(operation(lhs.as.number, rhs.as.number))); \
+#define binop_template(vm, assertfn, makefn, exprfn)                           \
+    do {                                                                       \
+        assertfn(vm);                                                          \
+        TValue r = makefn(exprfn(lua_asnumber(vm, -2), lua_asnumber(vm, -1))); \
+        lua_popn(vm, 2);                                                       \
+        lua_pushvalue(vm, r); \
     } while (false)
 
 /**
  * We check lhs and rhs separately so we can report which one is likely to have
  * caused the error.
  */
-#define assert_arithmetic(vm, lhs, rhs) \
-    if (!isnumber(lhs)) return runtime_arith_error(vm, &lhs); \
-    if (!isnumber(rhs)) return runtime_arith_error(vm, &rhs); \
+#define assert_arithmetic(vm) \
+    if (!lua_isnumber(vm, -2)) return runtime_arith_error(vm, -2); \
+    if (!lua_isnumber(vm, -1)) return runtime_arith_error(vm, -1); \
 
 /**
  * We check both lhs and rhs as you cannot compare non-numbers in terms of
@@ -229,9 +166,9 @@ static inline TValue read_constant_at(lua_VM *self, QWord index) {
  * This doesn't affect (and should not be used for) equality operators.
  * Meaning comparing equals-to and not-equals-to are valid calls.
  */
-#define assert_comparison(vm, lhs, rhs) \
-    if (!isnumber(lhs) || !isnumber(rhs)) { \
-        return runtime_compare_error(vm, &lhs, &rhs); \
+#define assert_comparison(vm) \
+    if (!lua_isnumber(vm, -2) || !lua_isnumber(vm, -1)) { \
+        return runtime_compare_error(vm, -2, -1); \
     }
 
 /**
@@ -262,7 +199,7 @@ static inline TValue read_constant_at(lua_VM *self, QWord index) {
  * The compiler emitted the 2 byte operands for a jump instruction in order of
  * hi, lo. So our instruction pointer points at hi currently.
  */
-static inline Word readshort(lua_VM *self) {
+static inline Word read_short(lua_VM *self) {
     Byte hi = read_byte(self);
     Byte lo = read_byte(self);
     return (hi << bitsize(Byte)) | lo;
@@ -308,26 +245,24 @@ static InterpretResult run_bytecode(lua_VM *self) {
         Byte instruction;
         switch (instruction = read_byte(self)) {
         case OP_CONSTANT: {
-            TValue value = read_constant(self);
-            pushstack(self, value);
+            lua_pushconstant(self, read_byte(self));
             break;
         }
         case OP_LCONSTANT: {
-            TValue value = read_constant_at(self, read_long(self));
-            pushstack(self, value);
+            lua_pushconstant(self, read_long(self));
             break;
         }
 
         // -*- III:18.4     Two New Types ------------------------------------*-
-        case OP_NIL:   pushstack(self, makenil); break;
-        case OP_TRUE:  pushstack(self, makeboolean(true)); break;
-        case OP_FALSE: pushstack(self, makeboolean(false)); break;
+        case OP_NIL:   lua_pushnil(self);            break;
+        case OP_TRUE:  lua_pushboolean(self, true);  break;
+        case OP_FALSE: lua_pushboolean(self, false); break;
 
         // -*- III:21.1.2   Expression statements ----------------------------*-
-        case OP_POP:   lua_pop(self, 1); break;
+        case OP_POP:   lua_popn(self, 1); break;
         case OP_NPOP: {
             // 1-byte operand is how much to decrement the stack pointer by.
-            lua_pop(self, read_byte(self));
+            lua_popn(self, read_byte(self));
             break;
         }
 
@@ -339,8 +274,8 @@ static InterpretResult run_bytecode(lua_VM *self) {
         }
         case OP_SETLOCAL: {
             Byte slot = read_byte(self);
-            self->stack[slot] = peek_vmstack(self, -1);
-            popstack(self); // Expression left stuff on top of the stack.
+            self->stack[slot] = *lua_poke(self, -1);
+            lua_popn(self, 1); // Expression left stuff on top of the stack.
             break;
         }
         // -*- III:21.2     Variable Declarations ----------------------------*-
@@ -373,22 +308,24 @@ static InterpretResult run_bytecode(lua_VM *self) {
         // in Lua as all global variables must be assigned at declaration.
         case OP_SETGLOBAL: {
             lua_String *name = read_string(self);
-            table_set(&self->globals, name, peek_vmstack(self, -1));
+            table_set(&self->globals, name, peekstack(self, -1));
             popstack(self);
             break;
         }
         case OP_LSETGLOBAL: {
             lua_String *name = read_string_at(self, read_long(self));
-            table_set(&self->globals, name, peek_vmstack(self, -1));
+            table_set(&self->globals, name, peekstack(self, -1));
             popstack(self);
             break;
         }
 
         // -*- III:18.4.2   Equality and comparison operators ----------------*-
         case OP_EQ: {
-            TValue rhs = popstack(self);
-            TValue lhs = popstack(self);
-            pushstack(self, makeboolean(values_equal(&lhs, &rhs)));
+            // Save result before popping so we can push properly.
+            // -2 is lhs, -1 is rhs due to the order they were pushed in.
+            bool res = lua_equal(self, -2, -1);
+            lua_popn(self, 2);
+            lua_pushboolean(self, res);
             break;
         }
         case OP_GT: binop_cmp(self, lua_numgt); break;
@@ -406,31 +343,27 @@ static InterpretResult run_bytecode(lua_VM *self) {
         // This is repeating the code of `binop_math` but I really do not feel
         // like adding another macro parameter JUST to check a value type...
         case OP_CONCAT: {
-            if (!lua_isstring(self, -2)) {
-                return runtime_concat_error(self, pokestack(self, -2));
-            }
-            if (!lua_isstring(self, -1)) {
-                return runtime_concat_error(self, pokestack(self, -1));
-            }
-            concatenate(self);
+            if (!lua_isstring(self, -2)) return runtime_concat_error(self, -2);
+            if (!lua_isstring(self, -1)) return runtime_concat_error(self, -1);
+            lua_concat(self);
             break;
         }
 
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
-            *pokestack(self, -1) = makeboolean(isfalsy(self, -1));
+            *lua_poke(self, -1) = makeboolean(lua_isfalsy(self, -1));
             break;
         }
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
             // Challenge 15.4: Negate in place
-            TValue *value = pokestack(self, -1);
             if (lua_isnumber(self, -1)) {
+                TValue *value    = lua_poke(self, -1);
                 value->as.number = lua_numunm(value->as.number);
                 break;
             }
-            return runtime_arith_error(self, value);
+            return runtime_arith_error(self, -1);
         }
         // -*- III:21.1.1   Print statements ---------------------------------*-
         case OP_PRINT: {
@@ -441,15 +374,14 @@ static InterpretResult run_bytecode(lua_VM *self) {
         }
 
         // -*- III:23.1     If Statements ------------------------------------*-
-        // This is an unconditional jump.
         case OP_JMP: {
-            Word offset = readshort(self);
+            Word offset = read_short(self);
             self->ip += offset;
             break;
         }
         case OP_FJMP: {
-            Word offset = readshort(self);
-            if (isfalsy(self, -1)) {
+            Word offset = read_short(self);
+            if (lua_isfalsy(self, -1)) {
                 self->ip += offset;
             }
             break;
@@ -457,7 +389,7 @@ static InterpretResult run_bytecode(lua_VM *self) {
                       
         // -*- III:23.3     While Statements ---------------------------------*-
         case OP_LOOP: {
-            Word offset = readshort(self);
+            Word offset = read_short(self);
             self->ip -= offset;
             break;
         }

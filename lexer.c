@@ -332,6 +332,7 @@ Token tokenize(Lexer *self) {
     case ';': return make_token(self, TK_SEMICOL);
     case ':': return make_token(self, TK_COLON);
     case '.': return make_dot(self, TK_PERIOD, TK_CONCAT, TK_VARARGS);
+    case ',': return make_token(self, TK_COMMA);
     // Common Arithmetic
     case '+': return make_token(self, TK_PLUS);
     case '-': return make_token(self, TK_DASH);

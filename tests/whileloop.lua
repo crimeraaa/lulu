@@ -4,6 +4,7 @@ do
     while (i < 4) do
         print(i)
         i = i + 1
+        break
     end
     print("")
 end

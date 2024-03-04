@@ -174,7 +174,7 @@ static int opbyte(const char *name, const Chunk *self, ptrdiff_t offset) {
     return offset + 2;
 }
 
-static inline Word readshort(const Chunk *self, ptrdiff_t offset) {
+static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
     Byte hi = self->code[offset + 1] << bitsize(Byte);
     Byte lo = self->code[offset + 2];
     return (Word)(hi) | lo;
@@ -187,7 +187,7 @@ static inline Word readshort(const Chunk *self, ptrdiff_t offset) {
  * because later on we'll also allow for jumping backwards.
  */
 static int opjump(const char *name, int sign, const Chunk *self, ptrdiff_t offset) {
-    Word jump = readshort(self, offset);
+    Word jump = read_short(self, offset);
     ptrdiff_t target = offset + 3 + (sign * jump);
     printf("%-16s    0x%04tx->0x%04tx\n", name, offset, target);
     return offset + 3;
