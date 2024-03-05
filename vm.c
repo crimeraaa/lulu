@@ -403,7 +403,8 @@ static InterpretResult run_bytecode(LVM *self) {
 
 InterpretResult interpret_vm(LVM *self, const char *source) {
     Compiler compiler;
-    init_compiler(&compiler, self, FNTYPE_SCRIPT);
+    // NULL enclosing compiler indicates this is top-level scope.
+    init_compiler(&compiler, NULL, self, FNTYPE_SCRIPT);
     Function *function = compile_bytecode(&compiler, source);
     if (function == NULL) {
         return INTERPRET_COMPILE_ERROR;

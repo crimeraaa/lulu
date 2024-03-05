@@ -77,6 +77,9 @@ typedef enum {
     
     // -*- III:23.3     While Statements -------------------------------------*-
     OP_LOOP, // Unconditional, like `OP_JMP`. Subtracts its operand from sp.
+    
+    // -*- III:24.5     Function Calls ---------------------------------------*-
+    OP_CALL,
 
     OP_RET,
 } OpCode;

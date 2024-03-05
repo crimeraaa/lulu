@@ -76,7 +76,8 @@ typedef enum {
  * a function body, even at top-level scope. Think of it as the entire Lua script
  * being wrapped in an implicit `main` function.
  */
-typedef struct {
+typedef struct Compiler {
+    struct Compiler *enclosing; // Nested function calls as a stack/linked list.
     Function *function; // Contains the chunk we're currently compiling.
     FnType type;
     Parser parser;  // Keep track of tokens emitted by its own `Lexer`.
@@ -105,8 +106,14 @@ typedef struct {
  * III:24.2     Compiling to Function Objects
  * 
  * We now have to specify what kind of "function" we're compiling at the start.
+ * 
+ * III:24.4.1   A stack of compilers
+ * 
+ * In order to allow deeply and also recursive functions calls, we treat them
+ * like a stack using recursion and the C stack as our "linked list" of functions
+ * to push and pop.
  */
-void init_compiler(Compiler *self, LVM *vm, FnType type);
+void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type);
 
 /**
  * III:17.3     Emitting Bytecode

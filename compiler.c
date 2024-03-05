@@ -3,10 +3,14 @@
 #include "object.h"
 #include "parserules.h"
 
-void init_compiler(Compiler *self, LVM *vm, FnType type) {
+void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
+    self->enclosing = current;
     // Set NULL so head of objects linked list is not garbage?
     self->function = NULL; 
     self->type = type;
+    if (current != NULL) {
+        self->parser = current->parser;
+    }
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = vm;
@@ -392,6 +396,128 @@ static void declare_variable(Compiler *self, bool islocal) {
 }
 
 /**
+ * III:21.2     Variable Declarations
+ *
+ * Because I'm implementing Lua we don't have a `var` keyword, so we have to be
+ * more careful when it comes to determining if an identifier supposed to be a
+ * global variable declaration/definition/assignment, or a local.
+ *
+ * Assumes that we already consumed a TK_IDENT and that it's now the parser's
+ * previous token.
+ */
+static Byte parse_variable(Compiler *self, const char *message, bool islocal) {
+    Parser *parser = &self->parser;
+    consume_token(parser, TK_IDENT, message);
+    declare_variable(self, islocal);
+    // Locals aren't looked up by name at runtime so return a dummy index.
+    if (islocal) {
+        return 0;
+    }
+    return identifier_constant(self, &parser->previous);
+}
+
+/**
+ * III:22.4.2   Another scope edge case
+ *
+ * Once a local variable's initializer has been compiled, we mark it as such.
+ */
+static void mark_initialized(Compiler *self) {
+    Locals *locals = &self->locals;
+    locals->stack[locals->count - 1].depth = locals->depth;
+}
+
+/**
+ * III:21.2     Variable Declarations
+ *
+ * Global variables are looked up by name at runtime. So the VM needs access to
+ * the name obviously. A string can't fit in our bytecode stream so we instead
+ * store the string in the constants table then index into it. That's why we
+ * take an index. If said index is more than 8-bits, we emit a long instruction.
+ *
+ * III:21.4     Assignment
+ *
+ * Since Lua allows implicit declaration of global variables, we can afford to
+ * drop the `OP_DEFINE_*` opcodes because for our purposes they function the
+ * exact same as the `OP_SET*` opcodes.
+ *
+ * For globals, this assumes that the result of the assignment expression has
+ * already been pushed onto the top of the stack.
+ *
+ * III:22.4     Using Locals
+ *
+ * Unlike Lox and C, which allow nested declarations/definitions/assignments,
+ * Lua doesn't because there are no differences between global variable
+ * declaration and assignment. So in Lua we don't allow these to nest, e.g.
+ * `a = 1; a = a = 2;` is an invalid statment.
+ */
+static void define_variable(Compiler *self, DWord index, bool islocal) {
+    // There is no code needed to create a local variable at runtime, since
+    // all our locals live exclusively on the stack and not in a hashtable.
+    if (islocal) {
+        mark_initialized(self);
+        return;
+    }
+    if (index <= LUA_MAXCONSTANTS) {
+        emit_bytes(self, OP_SETGLOBAL, index);
+    } else if (index <= LUA_MAXLCONSTANTS) {
+        emit_long(self, OP_LSETGLOBAL, index);
+    } else {
+        compiler_error(self, "Too many global variable identifiers.");
+    }
+}
+
+/**
+ * III:24.5     Function Calls
+ * 
+ * Count the number of arguments in the given argument list that we compiled.
+ */
+static Byte arglist(Compiler *self) {
+    Byte argc = 0;
+    Parser *parser = &self->parser;
+    if (!check_token(parser, TK_RPAREN)) {
+        do {
+            expression(self);
+            if (argc == LUA_MAXBYTE) {
+                compiler_error(self, "Cannot have more than 255 arguments.");
+            }
+            argc++;
+        } while (match_token(parser, TK_COMMA));
+    }
+    consume_token(parser, TK_RPAREN, "Expected ')' after argument list.");
+    return argc;
+}
+
+/**
+ * III:23.2     Logical Operators
+ * 
+ * Logical and does what it can to resolve to a falsy value.
+ *
+ * Assumes the left hand expression has already been compiled and that its value
+ * is currently at the top of the stack.
+ * 
+ * If the value is falsy we immediately break out of the expression and leave the
+ * result of the left hand expression on top of the stack for caller's use.
+ * 
+ * Otherwise, we try to evaluate the right hand expression. We pop off the left
+ * hand expression as it won't be used anymore. Whatever the right hand's result
+ * is, it'll be the top of the stack that the caller ends up using.
+ * 
+ * VISUALIZATION:
+ * 
+ *      left operand expression
+ * +--- OP_FJMP
+ * |    OP_POP
+ * |    right operand expression
+ * +--> continue...
+ */
+void and_(Compiler *self) {
+    size_t endjump = emit_jump(self, OP_FJMP);
+    emit_byte(self, OP_POP);
+    parse_precedence(self, PREC_AND);
+    patch_jump(self, endjump);
+}
+
+/**
  * III:17.5     Parsing Infix Expressions
  *
  * Binary operations are a bit of work since we don't know we have one until we
@@ -441,6 +567,18 @@ void binary(Compiler *self) {
     default: return; // Should be unreachable.
     }
 }
+
+/**
+ * III:24.5     Function Calls
+ * 
+ * Assumes we consumed the '(' token, emits `OP_CALL` along with a 1-byte operand
+ * representing how many arguments are needed.
+ */
+static void call(Compiler *self) {
+    Byte argc = arglist(self);
+    emit_bytes(self, OP_CALL, argc);
+}
+
 
 /**
  * Right-associative binary operators, mainly for exponentiation and concatenation.
@@ -721,107 +859,6 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
 }
 
 /**
- * III:21.2     Variable Declarations
- *
- * Because I'm implementing Lua we don't have a `var` keyword, so we have to be
- * more careful when it comes to determining if an identifier supposed to be a
- * global variable declaration/definition/assignment, or a local.
- *
- * Assumes that we already consumed a TK_IDENT and that it's now the parser's
- * previous token.
- */
-static Byte parse_variable(Compiler *self, const char *message, bool islocal) {
-    Parser *parser = &self->parser;
-    consume_token(parser, TK_IDENT, message);
-    declare_variable(self, islocal);
-    // Locals aren't looked up by name at runtime so return a dummy index.
-    if (islocal) {
-        return 0;
-    }
-    return identifier_constant(self, &parser->previous);
-}
-
-/**
- * III:22.4.2   Another scope edge case
- *
- * Once a local variable's initializer has been compiled, we mark it as such.
- */
-static void mark_initialized(Compiler *self) {
-    Locals *locals = &self->locals;
-    locals->stack[locals->count - 1].depth = locals->depth;
-}
-
-/**
- * III:21.2     Variable Declarations
- *
- * Global variables are looked up by name at runtime. So the VM needs access to
- * the name obviously. A string can't fit in our bytecode stream so we instead
- * store the string in the constants table then index into it. That's why we
- * take an index. If said index is more than 8-bits, we emit a long instruction.
- *
- * III:21.4     Assignment
- *
- * Since Lua allows implicit declaration of global variables, we can afford to
- * drop the `OP_DEFINE_*` opcodes because for our purposes they function the
- * exact same as the `OP_SET*` opcodes.
- *
- * For globals, this assumes that the result of the assignment expression has
- * already been pushed onto the top of the stack.
- *
- * III:22.4     Using Locals
- *
- * Unlike Lox and C, which allow nested declarations/definitions/assignments,
- * Lua doesn't because there are no differences between global variable
- * declaration and assignment. So in Lua we don't allow these to nest, e.g.
- * `a = 1; a = a = 2;` is an invalid statment.
- */
-static void define_variable(Compiler *self, DWord index, bool islocal) {
-    // There is no code needed to create a local variable at runtime, since
-    // all our locals live exclusively on the stack and not in a hashtable.
-    if (islocal) {
-        mark_initialized(self);
-        return;
-    }
-    if (index <= LUA_MAXCONSTANTS) {
-        emit_bytes(self, OP_SETGLOBAL, index);
-    } else if (index <= LUA_MAXLCONSTANTS) {
-        emit_long(self, OP_LSETGLOBAL, index);
-    } else {
-        compiler_error(self, "Too many global variable identifiers.");
-    }
-}
-
-/**
- * III:23.2     Logical Operators
- * 
- * Logical and does what it can to resolve to a falsy value.
- *
- * Assumes the left hand expression has already been compiled and that its value
- * is currently at the top of the stack.
- * 
- * If the value is falsy we immediately break out of the expression and leave the
- * result of the left hand expression on top of the stack for caller's use.
- * 
- * Otherwise, we try to evaluate the right hand expression. We pop off the left
- * hand expression as it won't be used anymore. Whatever the right hand's result
- * is, it'll be the top of the stack that the caller ends up using.
- * 
- * VISUALIZATION:
- * 
- *      left operand expression
- * +--- OP_FJMP
- * |    OP_POP
- * |    right operand expression
- * +--> continue...
- */
-void and_(Compiler *self) {
-    size_t endjump = emit_jump(self, OP_FJMP);
-    emit_byte(self, OP_POP);
-    parse_precedence(self, PREC_AND);
-    patch_jump(self, endjump);
-}
-
-/**
  * III:17.4     Parsing Prefix Expressions
  *
  * For now, this is all that's left to finish implementing `compile_bytecode()`.
@@ -880,11 +917,7 @@ static void function(Compiler *self, FnType type) {
     // local compiler instances per stack frame of `function()` (C, not Lua!)
     Compiler compiler;
     Parser *parser = &self->parser;
-
-    // Ensure correct parser state by copying it, because in Lox we had a global
-    // variable/singleton. Here this helps us point at the correct ident token.
-    compiler.parser = *parser;
-    init_compiler(&compiler, self->vm, type);
+    init_compiler(&compiler, self, self->vm, type);
 
     // Local scope to capture our arguments. Note that we don't have a paired
     // call to `end()` because we effectively throw out the local compiler
