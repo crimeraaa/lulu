@@ -11,11 +11,33 @@
 #include <string.h>
 #include "conf.h"
 
-#define LUA_MAXBYTE        ((Byte)-1)
-#define LUA_MAXWORD        ((Word)-1)
-#define LUA_MAXDWORD       ((DWord)-1)
-#define LUA_MAXQWORD       ((QWord)-1)
+#define LUA_MAXBYTE             ((Byte)-1)
+#define LUA_MAXWORD             ((Word)-1)
+#define LUA_MAXDWORD            ((DWord)-1)
+#define LUA_MAXQWORD            ((QWord)-1)
 
+/* --- LUA OPCODE SIZES ---------------------------------------------------- {{{
+ Lua opcode operands can come in multiple sizes.
+ 
+ LUA_OPSIZE_NONE:   No operand so we don't add or subtract anything.
+ LUA_OPSIZE_BYTE:   1-byte operand, e.g. operand to `OP_GETLOCAL`.
+ LUA_OPSIZE_SHORT:  2-byte operand, e.g. operand to `OP_JMP`.
+ LUA_OPSIZE_LONG:   3-byte operand, e.g. operand to `OP_LCONSTANT`. */
+
+#define LUA_OPSIZE_NONE         (0)
+#define LUA_OPSIZE_BYTE         (1)
+#define LUA_OPSIZE_SHORT        (2)
+#define LUA_OPSIZE_LONG         (3)
+
+/* }}} ---------------------------------------------------------------------- */
+
+/**
+ * @param value     Some unsigned integer value to be bit masked.
+ * @param offset    How many byte-groups away from the least-significant byte
+ *                  the desired byte mask is. e.g. in `0b11010011_01101101`
+ *                  group 0 is `01101101`, and group 1 is `11010011`.
+ */
+#define bytemask(value, offset)  (((value) >> ((offset) * CHAR_BIT)) & LUA_MAXBYTE)
 #define bitsize(T)              (sizeof(T) * CHAR_BIT)
 #define xtostring(macro)        #macro
 #define stringify(macro)        xtostring(macro)

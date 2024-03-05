@@ -76,10 +76,8 @@ static void emit_loop(Compiler *self, size_t loopstart) {
     if (offset >= LUA_MAXWORD) {
         compiler_error(self, "Loop body too large.");
     }
-    Byte hi = (offset >> bitsize(Byte)) & LUA_MAXBYTE;
-    Byte lo = (offset) & LUA_MAXBYTE;
-    emit_byte(self, hi);
-    emit_byte(self, lo);
+    emit_byte(self, bytemask(offset, 1)); // bits 9-16
+    emit_byte(self, bytemask(offset, 0)); // bits 1-8
 }
 
 /**
@@ -93,9 +91,9 @@ static void emit_loop(Compiler *self, size_t loopstart) {
  */
 static size_t emit_jump(Compiler *self, Byte instruction) {
     emit_byte(self, instruction);
-    emit_byte(self, LUA_MAXBYTE);
-    emit_byte(self, LUA_MAXBYTE);
-    return current_chunk(self)->count - 2; // Sub 2 operands for the jump itself
+    emit_byte(self, 0xFF);
+    emit_byte(self, 0xFF);
+    return current_chunk(self)->count - LUA_OPSIZE_SHORT;
 }
 
 /**
@@ -109,13 +107,10 @@ static size_t emit_jump(Compiler *self, Byte instruction) {
  * the VM using similar bitwise operations.
  */
 static inline void emit_long(Compiler *self, Byte opcode, DWord operand) {
-    Byte hi  = (operand >> 16) & 0xFF; // mask bits 17-24 : 0x010000..0xFFFFFF
-    Byte mid = (operand >> 8)  & 0xFF; // mask bits 9-16  : 0x000100..0x00FFFF
-    Byte lo  = operand & 0xFF;         // mask bits 1-8   : 0x000000..0x0000FF
     emit_byte(self, opcode);
-    emit_byte(self, hi);
-    emit_byte(self, mid);
-    emit_byte(self, lo);
+    emit_byte(self, bytemask(operand, 2));
+    emit_byte(self, bytemask(operand, 1));
+    emit_byte(self, bytemask(operand, 0));
 }
 
 /* Helper because it's automatically called by `end_compiler()`. */
@@ -172,15 +167,13 @@ static inline void emit_constant(Compiler *self, TValue value) {
  * its 2 operands correctly.
  */
 static void patch_jump(Compiler *self, size_t opindex) {
-    // -2 to adjust for the bytecode of the jump offset itself.
-    QWord offset = current_chunk(self)->count - opindex - 2;
+    // Adjust for the bytecode of the jump offset itself and its operands.
+    QWord offset = current_chunk(self)->count - opindex - LUA_OPSIZE_SHORT;
     if (offset >= LUA_MAXWORD) {
         compiler_error(self, "Too much code to jump over.");
     }
-    Byte hi = (offset >> bitsize(Byte)) & LUA_MAXBYTE;
-    Byte lo = offset & LUA_MAXBYTE;
-    current_chunk(self)->code[opindex]     = hi;
-    current_chunk(self)->code[opindex + 1] = lo;
+    current_chunk(self)->code[opindex]     = bytemask(offset, 1);
+    current_chunk(self)->code[opindex + 1] = bytemask(offset, 0);
 }
 
 /**
@@ -195,14 +188,13 @@ static void patch_jump(Compiler *self, size_t opindex) {
 static void patch_break(Compiler *self, size_t opindex, int opextra) {
     // -(2 + opextra) to adjust for bytecode of jump operand and any extra
     // instructions we should be aware off when getting the correct offset.
-    QWord offset = current_chunk(self)->count - opindex - (2 + opextra);
-    if (offset >= LUA_MAXWORD) {
+    int adjust = LUA_OPSIZE_SHORT + opextra;
+    QWord jump = current_chunk(self)->count - opindex - adjust;
+    if (jump >= LUA_MAXWORD) {
         compiler_error(self, "Too much code to jump over.");
     }
-    Byte hi = (offset >> bitsize(Byte)) & LUA_MAXBYTE;
-    Byte lo = offset & LUA_MAXBYTE;
-    current_chunk(self)->code[opindex]     = hi;
-    current_chunk(self)->code[opindex + 1] = lo;
+    current_chunk(self)->code[opindex]     = bytemask(jump, 1);
+    current_chunk(self)->code[opindex + 1] = bytemask(jump, 0);
 }
 
 /* }}} */
@@ -555,8 +547,8 @@ void or_(Compiler *self) {
 void string(Compiler *self) {
     const Token *token = &self->parser.previous;
     // Point past first quote, use length w/o both quotes.
-    lua_String *object = copy_string(self->vm, token->start + 1, token->len - 2);
-    emit_constant(self, makeobject(LUA_TSTRING, object));
+    lua_String *s = copy_string(self->vm, token->start + 1, token->len - 2);
+    emit_constant(self, makeobject(LUA_TSTRING, s));
 }
 
 /**
@@ -947,61 +939,108 @@ static void expression_statement(Compiler *self) {
     emit_byte(self, OP_POP);
 }
 
+/**
+ * III:23.4:    For Statements
+ * 
+ * Assumes we just consumed a 'for' token and we're sitting on the initializer.
+ * e.g. in 'for i = 0, ...' we're concerned with the 'i = 0,' part.
+ * 
+ * We return a `Token` of the variable identifier. Since it's a local variable
+ * we need not worry about its index into the constants array. However we do NOT
+ * yet define and mark it as initialized, in the condition segment we need to be
+ * able to resolve outer instances of the identifier in the expression. e.g:
+ * 
+ * `local i=2; for i=0, i+1 do ... end` we want the 'i' in the condition to
+ * resolve to the outer local 'i=2', not the loop iterator 'i=0'.
+ */
 static Token for_initializer(Compiler *self) {
     Parser *parser = &self->parser;
+    const Token name = parser->current; 
     // Iterator variable is always a local declaration.
     consume_token(parser, TK_IDENT, "Expected identifier.");
-
-    // Copy by value as parser will be mutated.
-    const Token name = parser->previous;
-
-    // Index of variable name (previous token) as appended into constants pool
-    DWord index = parse_variable(self, true);
+    add_local(self, name);
     consume_token(parser, TK_ASSIGN, "Expected '=' after identifier.");
     expression(self);
     consume_token(parser, TK_COMMA, "Expected ',' after 'for' initializer.");
-
-    define_variable(self, index, true);
     return name;
-}
-
-static void for_condition(Compiler *self, DWord index) {
-    // 'for' condition can only be a number literal, a variable that resolves
-    // to a number, or a function call thereof (functions are variables).
-    if (!check_token(&self->parser, TK_NUMBER, TK_IDENT)) {
-        compiler_error(self, "Expected number or identifier after 'for' initializer.");
-    }
-    // For safety and sanity we use inclusive less-than-or-equal-to.
-    emit_bytes(self, OP_GETLOCAL, index);
-    expression(self);
-    emit_bytes(self, OP_GT, OP_NOT);
 }
 
 /**
  * III:23.4     For Statements
  * 
- * For now we only support numeric loops with Lua's semantics.
+ * Given `token`, push a local variable identifier to the locals array without
+ * much double checking. This identifier is not intended to be used from the
+ * programmer's point of view, it's just here to ensure our loop state locals
+ * are valid.
  */
-static void for_statement(Compiler *self) {
-    begin_scope(self);
+static void push_unnamed_local(Compiler *self) {
+    static const Token unnamed = {
+        .type  = TK_IDENT,
+        .start = NULL,
+        .len   = 0,
+        .line  = -1,
+    };
+    add_local(self, unnamed);
+    mark_initialized(self);
+}
+
+/**
+ * III:23.4     For Statements
+ * 
+ * In `for i=0, 4 do ... end' we're now concerned with the '4' part which is the
+ * inclusive. That is, equivalent C code would be `for (int i=0; i<=4; i++)`.
+ * 
+ * So we're concerned with implementing the `i<=4` part in Lua. However, Lua's
+ * numeric for condition is a bit unique in that the local iterator variable is
+ * implicit. 
+ * 
+ * Thus, in `for i=0, 4`, the '4' part implicitly compiles to 'i<=4'.
+ * 
+ * EDGECASE:
+ * 
+ * `for i=0, i do ... end` should throw a runtime error since 'i' in the condition
+ * is not an external local or a global. This is why we delay defining and 
+ * marking the iterator as initialized because we want to attempt to resolve
+ * token instances of the same identifier in the condition expression.
+ * 
+ * Only after compiling the condition expression do we actually define and mark
+ * the iterator as initialized. We get the correct index into the locals array
+ * using `resolve_local()` which is why we need the Token `name`.
+ * 
+ * TODO:
+ * 
+ * Currently, our implementation constantly evaluates the condition expression.
+ * That is, `local x=2; for i=0,x+1 do ... end` constantly computes `x+1`.
+ * In Lua it's actually only evaluated once, any mutations to `x` won't affect
+ * the condition.
+ */
+static DWord for_condition(Compiler *self, const Token *name) {
+    // 'for' condition can only be a number literal, a variable that resolves
+    // to a number, or a function call thereof (functions are variables).
+    if (!check_token(&self->parser, TK_NUMBER, TK_IDENT)) {
+        compiler_error(self, "Expected number or identifier after 'for' initializer.");
+    }
+    // Emit the expression first so we can attempt to resolve outer instances of 
+    // our iterator variable, THEN we define and resolve the iterator.
+    // (iter <= cond) <=> (cond > iter)
+    expression(self);
+    
+    // We haven't declared any other locals so we can safely assume the topmost
+    // one is the iterator which we now need to mark as initialized.
+    mark_initialized(self);
+    
+    // Now that it's been initialized we can get the correct index into the
+    // locals array.
+    DWord index = resolve_local(self, name);
+    
+    // We emit an unnamed local variable for the condition so that it's evaluated
+    // exactly once, then we can just access it from the stack as needed.
+    push_unnamed_local(self);
+    return index;
+}
+
+static void for_increment(Compiler *self) {
     Parser *parser = &self->parser;
-
-    // Copy by value as the parser's state is already mutated.
-    const Token name = for_initializer(self);
-
-    // Index into the locals array. Should never be more than 256.
-    DWord index      = resolve_local(self, &name);
-    size_t loopstart = current_chunk(self)->count;
-
-    for_condition(self, index);
-    size_t exitjump = emit_jump(self, OP_FJMP);
-    emit_byte(self, OP_POP); // Cleanup condition expression.
-
-    // Hacky but we need this in order to keep our compiler single-pass.
-    // For the first iteration we immediately jump OVER increment expression.
-    size_t bodyjump = emit_jump(self, OP_JMP);
-    size_t incrstart = current_chunk(self)->count;
-
     // 'for' increment is a bit convoluted.
     if (match_token(parser, TK_COMMA)) {
         // Ensure we actually have something.
@@ -1013,17 +1052,84 @@ static void for_statement(Compiler *self) {
         // Positive increment of 1 is our default.
         emit_constant(self, makenumber(1));
     }
-    // Whatever the increment value is, we have to update the iterator with it.
-    emit_bytes(self, OP_GETLOCAL, index);
+    push_unnamed_local(self);
+}
+
+static size_t emit_for_condition(Compiler *self, DWord index) {
+    emit_bytes(self, OP_GETLOCAL, index);     // index + 0 is the iterator.
+    emit_bytes(self, OP_GETLOCAL, index + 1); // index + 1 is the condition.
+    emit_bytes(self, OP_GT, OP_NOT);          // iterator <= condition
+    return emit_jump(self, OP_FJMP);
+}
+
+static size_t emit_for_increment(Compiler *self, DWord index, size_t loopstart) {
+    // Hacky but we need this in order to keep our compiler single-pass.
+    // For the first iteration we immediately jump OVER increment expression.
+    size_t bodyjump = emit_jump(self, OP_JMP);
+    size_t incrstart = current_chunk(self)->count;
+    emit_bytes(self, OP_GETLOCAL, index);     // index + 0 is the iterator.
+    emit_bytes(self, OP_GETLOCAL, index + 2); // index + 2 is the increment.
     emit_byte(self, OP_ADD);
     emit_bytes(self, OP_SETLOCAL, index);
-
     // Strange but this is what we have to do to evaluate the increment AFTER.
     emit_loop(self, loopstart);
-    loopstart = incrstart;
     patch_jump(self, bodyjump);
+    return incrstart;
+}
 
+/**
+ * III:23.4     For Statements
+ * 
+ * For now we only support numeric loops with Lua's semantics.
+ * 
+ * VISUALIZATION:
+ * 
+ * - compile and evaluate initializer clause, push to local[0]
+ * - compile and evaluate condition expression, push to local[1]
+ * - compile and evaluate increment expression, push to local[2]
+ *
+ *        FOR_CONDITION:
+ *            OP_GETLOCAL 0 <--+        # local[1], "iterator"
+ *            OP_GETLOCAL 1    |        # local[0], "condition"
+ *            OP_LT            | 
+ *            OP_NOT           |        # local[1] >= local[0] ?
+ * +--------- OP_FJMP          |        # goto FOR_END
+ * |          OP_POP           |        # expression of for loop condition
+ * |  +-----  OP_JMP           |        # goto FOR_BODY
+ * |  |                        |
+ * |  |  FOR_INCREMENT:        |
+ * |  |       OP_GETLOCAL 0 <--|--+     # local[2], "iterator"
+ * |  |       OP_GETLOCAL 2    |  |     # local[0], "increment"
+ * |  |       OP_ADD           |  |     # stack[-1] = local[2] + local[0]
+ * |  |       OP_SETLOCAL 0    |  |     # local[0] = stack[-1], implicit pop
+ * |  |       OP_LOOP ---------+  |     # goto FOR_CONDITION
+ * |  |                           |
+ * |  +--> FOR_BODY:              |
+ * |          ...                 |
+ * |          OP_LOOP ------------+     # goto FOR_INCREMENT
+ * |       
+ * |       FOR_END:
+ * +--------> OP_POP                    # expression of for loop condition
+ *            OP_NPOP     3             # pop local[0], local[1], local[2]
+ *            OP_RET
+ */
+static void for_statement(Compiler *self) {
+    begin_scope(self);
+    Parser *parser = &self->parser;
+
+    // Push iterator, condition expression, and increment as local variables.
+    const Token iter = for_initializer(self);
+    DWord index      = for_condition(self, &iter); // Index into locals array.
+    for_increment(self);
+
+    size_t loopstart = current_chunk(self)->count;
+    size_t exitjump  = emit_for_condition(self, index);
+    emit_byte(self, OP_POP); // Cleanup condition expression.
+
+    // Since we need to do the increment expression last, we have to jump over.
+    loopstart = emit_for_increment(self, index, loopstart);
     consume_token(parser, TK_DO, "Expected 'do' after 'for' clause.");
+
     // This creates a new scope but given our resolution rules it's probably ok.
     doblock(self);
     emit_loop(self, loopstart);

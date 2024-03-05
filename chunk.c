@@ -2,10 +2,10 @@
 #include "memory.h"
 #include "value.h"
 
-static inline void init_lineRLE(LineRuns *self) {
-    self->count    = 0;
-    self->cap = 0;
-    self->runs     = NULL;
+static inline void init_lineruns(LineRuns *self) {
+    self->count = 0;
+    self->cap   = 0;
+    self->runs  = NULL;
 }
 
 void init_chunk(Chunk *self) {
@@ -14,19 +14,19 @@ void init_chunk(Chunk *self) {
     self->cap   = 0;
     self->prevline = -1; // Set to an always invalid line number to start with.
     init_valuearray(&self->constants);
-    init_lineRLE(&self->lines);
+    init_lineruns(&self->lines);
 }
 
-static inline void free_lineRLE(LineRuns *self) {
+static inline void free_lineruns(LineRuns *self) {
     deallocate_array(LineRun, self->runs, self->cap);
 }
 
 void free_chunk(Chunk *self) {
     deallocate_array(Byte, self->code, self->cap);
     free_valuearray(&self->constants);
-    free_lineRLE(&self->lines);
+    free_lineruns(&self->lines);
     init_chunk(self);
-    init_lineRLE(&self->lines);
+    init_lineruns(&self->lines);
 }
 
 /**
@@ -36,7 +36,7 @@ void free_chunk(Chunk *self) {
  * This caused us to overflow whenever a linecount was greater than 256 and thus
  * we didn't write to the proper indexes.
  */
-static void write_lineRLE(LineRuns *self, int offset, int line) {
+static void write_lineruns(LineRuns *self, int offset, int line) {
     // We should resize this array less often than the bytes one.
     if (self->count + 1 > self->cap) {
         size_t oldcap = self->cap;
@@ -50,7 +50,7 @@ static void write_lineRLE(LineRuns *self, int offset, int line) {
 }
 
 /* Increment the end instruction pointer of the topmost run. */
-static inline void increment_lineRLE(LineRuns *self) {
+static inline void increment_lineruns(LineRuns *self) {
     self->runs[self->count - 1].end++;
 }
 
@@ -64,10 +64,10 @@ void write_chunk(Chunk *self, Byte byte, int line) {
     // Start a new run for this line number, using byte offset to start the range.
     if (line != self->prevline) {
         // size_t being downcast to int, might cause signed overflow
-        write_lineRLE(&self->lines, self->count, line);
+        write_lineruns(&self->lines, self->count, line);
         self->prevline = line;
     } else {
-        increment_lineRLE(&self->lines);
+        increment_lineruns(&self->lines);
     }
     self->count++;
 }
@@ -96,6 +96,7 @@ int get_instruction_line(Chunk *self, ptrdiff_t offset) {
  * Otherwise, don't as they'll take up space in the resulting object file.
  */
 #ifdef DEBUG_PRINT_CODE
+#define next_instruction(offset, opsize)    ((offset) + 1 + (opsize))
 
 // static void dump_lineruns(const LineRuns *self) {
 //     for (int i = 0; i < self->count; i++) {
@@ -132,7 +133,7 @@ static int opconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     printf("%-16s %4i '", name, index);
     print_value(&self->constants.values[index]);
     printf("'\n");
-    return offset + 2;
+    return next_instruction(offset, LUA_OPSIZE_BYTE);
 }
 
 static inline DWord read_long(const Chunk *self, ptrdiff_t offset) {
@@ -160,13 +161,13 @@ static int oplconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     printf("%-16s %4u '", name, index);
     print_value(&self->constants.values[index]);
     printf("'\n");
-    return offset + 4;
+    return next_instruction(offset, LUA_OPSIZE_LONG);
 }
 
 /* Simple instruction only take 1 byte for themselves. */
 static int opsimple(const char *name, ptrdiff_t offset) {
     printf("%s\n", name);
-    return offset + 1;
+    return next_instruction(offset, LUA_OPSIZE_NONE);
 }
 
 /**
@@ -177,7 +178,7 @@ static int opsimple(const char *name, ptrdiff_t offset) {
 static int opbyte(const char *name, const Chunk *self, ptrdiff_t offset) {
     Byte slot = self->code[offset + 1];
     printf("%-16s %4i\n", name, slot);
-    return offset + 2;
+    return next_instruction(offset, LUA_OPSIZE_BYTE);
 }
 
 static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
@@ -194,9 +195,10 @@ static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
  */
 static int opjump(const char *name, int sign, const Chunk *self, ptrdiff_t offset) {
     Word jump = read_short(self, offset);
-    ptrdiff_t target = offset + 3 + (sign * jump);
+    int next = next_instruction(offset, LUA_OPSIZE_SHORT);
+    ptrdiff_t target = next + (sign * jump);
     printf("%-16s    0x%04tx->0x%04tx\n", name, offset, target);
-    return offset + 3;
+    return next;
 }
 
 int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
@@ -209,7 +211,7 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     }
     Byte instruction = self->code[offset];
     switch(instruction) {
-    case OP_CONSTANT:   return opconst("OP_CONSTANT",    self, offset);
+    case OP_CONSTANT:   return opconst("OP_CONSTANT",   self, offset);
     case OP_LCONSTANT:  return oplconst("OP_LCONSTANT", self, offset);
 
     // -*- III:18.4     Two New Types ----------------------------------------*-
@@ -226,11 +228,11 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     case OP_SETLOCAL:   return opbyte("OP_SETLOCAL", self, offset);
 
     // -*- III:21.2     Variable Declarations
-    case OP_GETGLOBAL:  return opconst("OP_GETGLOBAL",    self, offset);
+    case OP_GETGLOBAL:  return opconst("OP_GETGLOBAL",   self, offset);
     case OP_LGETGLOBAL: return oplconst("OP_LGETGLOBAL", self, offset);
 
     // -*- III:21.4     Assignment -------------------------------------------*-
-    case OP_SETGLOBAL:  return opconst("OP_SETGLOBAL",    self, offset);
+    case OP_SETGLOBAL:  return opconst("OP_SETGLOBAL",   self, offset);
     case OP_LSETGLOBAL: return oplconst("OP_LSETGLOBAL", self, offset);
 
     // -*- III:18.4.2   Equality and comparison operators --------------------*-
@@ -267,8 +269,8 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     case OP_RET:        return opsimple("OP_RET", offset);
     default:            break;
     }
-    printf("Unknown opcode %i.\n", instruction);
-    return offset + 1;
+    printf("Unknown opcode '%i'.\n", instruction);
+    return next_instruction(offset, LUA_OPSIZE_NONE);
 }
 
 #endif /* DEBUG_PRINT_CODE */
