@@ -17,7 +17,7 @@ typedef enum {
     TK_COLON,    // ':'  Function method resolution (passes implicit `self`).
     TK_POUND,    // '#'  Get length of a table's array portion.
     TK_SEMICOL,  // ';'  Optional C-style statement separator.
-    TK_ASSIGN,    // '='  Variable assignment.
+    TK_ASSIGN,   // '='  Variable assignment.
 
     // Arithmetic Operators
     TK_PLUS,     // '+'  Addition.
@@ -28,12 +28,12 @@ typedef enum {
     TK_PERCENT,  // '%'  Modulus, a.k.a. get the remainder.
                 
     // Relational Operators
-    TK_EQ,   // '==' Compare for equality.
-    TK_NEQ,  // '~=' Compare for inequality.
-    TK_GT,   // '>'  Greater than.
-    TK_GE,   // '>=' Greater than or equal to.
-    TK_LT,   // '<'  Less than.
-    TK_LE,   // '<=' Less than or equal to.
+    TK_EQ,       // '==' Compare for equality.
+    TK_NEQ,      // '~=' Compare for inequality.
+    TK_GT,       // '>'  Greater than.
+    TK_GE,       // '>=' Greater than or equal to.
+    TK_LT,       // '<'  Less than.
+    TK_LE,       // '<=' Less than or equal to.
 
     // Literals
     TK_FALSE,    // 'false'
@@ -75,7 +75,7 @@ typedef enum {
 typedef struct {
     TokenType type;
     const char *start; // Pointer to start of token in source code.
-    size_t len;          // How many characters to dereference from `start`.
+    size_t len;        // How many characters to dereference from `start`.
     int line;          // What line of the source code? Used for error reporting.
 } Token;
 

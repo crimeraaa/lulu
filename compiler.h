@@ -7,11 +7,6 @@
 #include "object.h"
 #include "parser.h"
 
-typedef struct JumpList {
-    struct JumpList *next; // Help us to chain.
-    size_t jump;     // Index into code array of the jump instruction.
-} JumpList;
-
 /**
  * III:22.1     Representing Local Variables
  * 
@@ -44,6 +39,17 @@ typedef struct {
 } Locals;
 
 /**
+ * III:24.2     Compiling to Function Objects
+ * 
+ * Help the compiler differentiate between top-level code (i.e. a script) versus 
+ * a function. Remember that even jlox needed this!
+ */
+typedef enum {
+    FNTYPE_FUNCTION,
+    FNTYPE_SCRIPT,
+} FnType;
+
+/**
  * The compiler manages state between the lexer and the parser, while emitting
  * bytecode. This is a lot to manage!
  * 
@@ -57,13 +63,25 @@ typedef struct {
  * 
  * I've separated the `Parser` struct into its own separate module so that the
  * `compiler.c` file is less crowded.
+ * 
+ * III:24.2     Compiling to Function Objects
+ * 
+ * Before our compiler assumes that it was only ever compiling one chunk. With
+ * functions and their own separate chunks that system falls apart. So when we,
+ * the compiler, reach a function declaration, we emit code into that function's
+ * chunk when compiling the body. Then at the end of the function body we have
+ * to return to the PREVIOUS chunk we were working with.
+ * 
+ * But in order for THAT to work we need to make the compiler always work within
+ * a function body, even at top-level scope. Think of it as the entire Lua script
+ * being wrapped in an implicit `main` function.
  */
 typedef struct {
-    Chunk chunk;    // This is where our raw bytecode resides.
+    Function *function; // Contains the chunk we're currently compiling.
+    FnType type;
     Parser parser;  // Keep track of tokens emitted by its own `Lexer`.
     Locals locals;  // Keep track of information about local variables in scope.
-    lua_VM *vm;     // Stupid but we need to pass this to `copy_string()`.
-    JumpList *breaks;
+    LVM *vm;        // Stupid but we need to pass this to `copy_string()`.
 } Compiler;
 
 /**
@@ -83,8 +101,26 @@ typedef struct {
  * Now with the addition of new members we also 0-initialize them so that the
  * compiler starts out with no local variables in scope and no surrounding scope
  * blocks.
+ * 
+ * III:24.2     Compiling to Function Objects
+ * 
+ * We now have to specify what kind of "function" we're compiling at the start.
  */
-void init_compiler(Compiler *self, lua_VM *lvm);
+void init_compiler(Compiler *self, LVM *vm, FnType type);
+
+/**
+ * III:17.3     Emitting Bytecode
+ *
+ * For now, the current chunk is the one that got assigned to the compiler instance
+ * when it was created in `interpret_vm()`. Later on this will get more complicated.
+ * 
+ * III:24.2     Compiling to Function Objects
+ * 
+ * From `&self->chunk` we changed it to `&self->function->chunk` so that we get
+ * the current chunk being compiled no matter what. Neat that Bob managed to get
+ * this down beforehand!
+ */
+Chunk *current_chunk(Compiler *self);
 
 /**
  * III:16.1.1   Opening the compilation pipeline
@@ -98,7 +134,11 @@ void init_compiler(Compiler *self, lua_VM *lvm);
  * In addition to the source code, we pass in a Chunk to emit the bytecode to.
  * So each Compiler instance is initailized with its own `Chunk` struct
  * when we call `interpret_vm()`.
+ * 
+ * III:24.2     Compiling to Function Objects
+ * 
+ * We now return a function object pointer, using `NULL` to signal errors.
  */
-bool compile_bytecode(Compiler *self, const char *source);
+Function *compile_bytecode(Compiler *self, const char *source);
 
 #endif /* LUA_COMPILER_H */

@@ -42,6 +42,15 @@ typedef uint64_t  QWord; // 4 `Word`s long. Usually 64-bits.
  */
 #define LUA_REPL_BUFSIZE    (256)
 
+/**
+ * III:24.3.3   The call stack
+ * 
+ * We can use stack semantics to avoid needing to heap-allocate memory for each
+ * and every function invocation. This is the maximum number of ongoing function
+ * calls we can handle for now.
+ */
+#define LUA_MAXFRAMES       (64)
+
 /** 
  * III:15.2.1: The VM's Stack
  * 
@@ -49,8 +58,8 @@ typedef uint64_t  QWord; // 4 `Word`s long. Usually 64-bits.
  * However, in the real world, it's fair to assume that there are projects that
  * end up with stack sizes *greater* than 256. So make your call!
  */
-#define LUA_MAXSTACK        (256)
-#define LUA_MAXLOCALS       (256)
+#define LUA_MAXSTACK        ((UINT8_MAX + 1) * LUA_MAXFRAMES)
+#define LUA_MAXLOCALS       (UINT8_MAX + 1)
 
 /**
  * Most user-facing operations in Lua using double-precision floating point values.

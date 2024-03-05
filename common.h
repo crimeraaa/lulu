@@ -37,7 +37,9 @@
  *                  the desired byte mask is. e.g. in `0b11010011_01101101`
  *                  group 0 is `01101101`, and group 1 is `11010011`.
  */
-#define bytemask(value, offset)  (((value) >> ((offset) * CHAR_BIT)) & LUA_MAXBYTE)
+#define bytemask(n, offset)     (((n) >> bytetobits(offset)) & LUA_MAXBYTE)
+#define byteunmask(n, offset)   ((n) << bytetobits(offset))
+#define bytetobits(n)           ((n) * CHAR_BIT)
 #define bitsize(T)              (sizeof(T) * CHAR_BIT)
 #define xtostring(macro)        #macro
 #define stringify(macro)        xtostring(macro)
@@ -74,21 +76,34 @@
  * 
  * This represents a generic heap-allocated Lua datatype: strings, tables, etc.
  */
-typedef struct lua_Object lua_Object;
+typedef struct Object Object;
 
 /**
  * III:19.2     Struct Inheritance
  * 
- * The `lua_String` datatype contains an array of characters and a count. Most
- * importantly, its first structure member is an `lua_Object`.
+ * The `TString` datatype contains an array of characters and a count. Most
+ * importantly, its first structure member is an `Object`.
  * 
- * This allows standards-compliant type-punning, e.g given `lua_String*`, we can
- * safely cast it to `lua_Object*` and access the lua_Object fields just fine. 
+ * This allows standards-compliant type-punning, e.g given `TString*`, we can
+ * safely cast it to `Object*` and access the Object fields just fine. 
  * 
- * Likewise, if we are ABSOLUTELY certain a particular `lua_Object*` points to a 
- * `lua_String*`, then the inverse works was well.
+ * Likewise, if we are ABSOLUTELY certain a particular `Object*` points to a 
+ * `TString*`, then the inverse works was well.
  */
-typedef struct lua_String lua_String;
+typedef struct TString TString;
+
+/**
+ * III:24.1     Function Objects
+ * 
+ * Both Lox and Lua support functions as "first class objects". What this means
+ * is that functions can be assigned to variables and created at runtime. This
+ * also means that they can be garbage collected, hence just like `TString` the
+ * very first member MUST be an `Object`.
+ * 
+ * For our sake we consider each and every function as having its own `Chunk` so
+ * that we don't have to manage one monolothic chunk in the Compiler/VM.
+ */
+typedef struct Function Function;
 
 /**
  * III:19.5     Freeing Objects
@@ -100,6 +115,6 @@ typedef struct lua_String lua_String;
  * 
  * However, for `.c` files, it's perfectly fine to include `vm.h`.
  */
-typedef struct lua_VM lua_VM;
+typedef struct LVM LVM;
 
 #endif /* LUA_COMMON_H */

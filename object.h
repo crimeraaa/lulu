@@ -2,26 +2,43 @@
 #define LUA_OBJECT_H
 
 #include "common.h"
+#include "chunk.h"
 #include "value.h"
 #include "vm.h"
 
-struct lua_Object {
-    ValueType   type; // Unlike Lox, we use the same tag for objects.
-    lua_Object *next; // Part of an instrusive linked list for GC.
+struct Object {
+    ValueType type; // Unlike Lox, we use the same tag for objects.
+    Object *next;   // Part of an instrusive linked list for GC.
 };
 
-struct lua_String {
-    lua_Object object; // Header for meta-information.
-    DWord hash;        // Result of throwing `data` into a hash function.
-    size_t len;          // Number of non-nul characters.
-    char *data;        // Heap-allocated buffer.
+struct Function {
+    Object object;
+    int arity;
+    Chunk chunk;
+    TString *name;
 };
+
+struct TString {
+    Object object; // Header for meta-information.
+    DWord hash;    // Result of throwing `data` into a hash function.
+    size_t len;    // Number of non-nul characters.
+    char *data;    // Heap-allocated buffer.
+};
+
+/**
+ * III:24.1     Function Objects
+ * 
+ * Set up a blank function: 0 arity, no name and no code. All we do is allocate
+ * memory for an object of type tag `LUA_TFUNCTION` and append it to the VM's
+ * objects linked list.
+ */
+Function *new_function(LVM *vm);
 
 /**
  * III:19.4.1   Concatenation
  * 
  * Given a heap-allocated pointer `buffer`, we "take ownership" by immediately
- * assigning it to a `lua_String*` instance instead of taking the time to allocate
+ * assigning it to a `TString*` instance instead of taking the time to allocate
  * a new pointer and copy contents.
  * 
  * III:19.5     Freeing Objects
@@ -29,7 +46,7 @@ struct lua_String {
  * We need to have a pointer to the VM in question so its objects linked list
  * can be updated accordingly.
  */
-lua_String *take_string(lua_VM *lvm, char *buffer, size_t len);
+TString *take_string(LVM *vm, char *buffer, size_t len);
 
 /**
  * III:19.3     Strings
@@ -44,33 +61,22 @@ lua_String *take_string(lua_VM *lvm, char *buffer, size_t len);
  * Compiler struct, but it'll do since the VM is always initialized before the
  * compiler ever is.
  */
-lua_String *copy_string(lua_VM *lvm, const char *literal, size_t len);
+TString *copy_string(LVM *vm, const char *literal, size_t len);
 
 /**
  * III:19.4     Operations on Strings
  * 
- * We use a good 'ol `TValue` so that we can call the `lua_Object*` header.
+ * We use a good 'ol `TValue` so that we can call the `Object*` header.
  */
 void print_object(TValue value);
 
-/**
- * III:19.2     Struct Inheritance
- * 
- * We don't use a macro in case the argument to `value` has side effects.
- * 
- * NOTE:
- * 
- * Please pass a specific object type, we do not check if you do something crazy
- * like passing in `LUA_TNUMBER` because that MIGHT pass.
- */
-static inline bool isobjtype(TValue value, ValueType objtype) {
-    return isobject(objtype, value) && asobject(value)->type == objtype;
-}
-
-/* Given an `TValue*`, treat it as an `lua_Object*` and get the type. */
+/* Given an `TValue*`, treat it as an `Object*` and get the type. */
 #define objtype(value)      (asobject(value)->type)
-#define isstring(value)     isobjtype(value, LUA_TSTRING)
-#define asstring(value)     ((lua_String*)asobject(value))
+#define isstring(value)     isobject(value, LUA_TSTRING)
+#define asstring(value)     ((TString*)asobject(value))
 #define ascstring(value)    (asstring(value)->data)
+
+#define isfunction(value)   isobject(value, LUA_TFUNCTION)
+#define asfunction(value)   ((Function*)asobject(value))
 
 #endif /* LUA_OBJECT_H */

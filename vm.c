@@ -9,9 +9,9 @@
  * Make the VM's stack pointer point to the base of the stack array.
  * The same is done for the base pointer.
  */
-static inline void reset_vmptrs(lua_VM *self) {
-    self->bp = self->stack;
+static inline void reset_stack(LVM *self) {
     self->sp = self->stack;
+    self->fc = 0;
 }
 
 /**
@@ -19,26 +19,29 @@ static inline void reset_vmptrs(lua_VM *self) {
  *
  * This function simply prints whatever formatted error message you want.
  */
-static void runtime_error(lua_VM *self, const char *format, ...) {
+static void runtime_error(LVM *self, const char *format, ...) {
     va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
     va_end(args);
     fputs("\n", stderr);
-    int line = self->chunk->lines.runs[self->chunk->prevline - 1].where;
+    
+    const CallFrame *frame = &self->frames[self->fc - 1];
+    const Chunk *chunk = &frame->function->chunk;
+    int line = chunk->lines.runs[chunk->prevline - 1].where;
     fprintf(stderr, "[line %i] in script\n", line);
-    reset_vmptrs(self);
+    reset_stack(self);
 }
 
 static inline InterpretResult
-runtime_arith_error(lua_VM *self, int offset) {
+runtime_arith_error(LVM *self, int offset) {
     const char *typename = lua_typename(self, offset);
     runtime_error(self, "Attempt to perform arithmetic on a %s value", typename);
     return INTERPRET_RUNTIME_ERROR;
 }
 
 static inline InterpretResult
-runtime_compare_error(lua_VM *self, int loffset, int roffset) {
+runtime_compare_error(LVM *self, int loffset, int roffset) {
     const char *ltypename = lua_typename(self, loffset);
     const char *rtypename = lua_typename(self, roffset);
     runtime_error(self, "Attempt to compare %s with %s", ltypename, rtypename);
@@ -46,33 +49,26 @@ runtime_compare_error(lua_VM *self, int loffset, int roffset) {
 }
 
 static inline InterpretResult
-runtime_concat_error(lua_VM *self, int offset) {
+runtime_concat_error(LVM *self, int offset) {
     const char *typename = lua_typename(self, offset);
     runtime_error(self, "Attempt to concatenate a %s value", typename);
     return INTERPRET_RUNTIME_ERROR;
 }
 
-void init_vm(lua_VM *self) {
-    self->chunk = NULL;
-    self->ip    = NULL;
-    reset_vmptrs(self);
+void init_vm(LVM *self) {
+    reset_stack(self);
     init_table(&self->globals);
     init_table(&self->strings);
     self->objects = NULL;
 }
 
-void free_vm(lua_VM *self) {
+void free_vm(LVM *self) {
     free_table(&self->globals);
     free_table(&self->strings);
     free_objects(self);
 }
 
-void pushstack(lua_VM *self, TValue value) {
-    *self->sp = value;
-    self->sp++;
-}
-
-TValue popstack(lua_VM *self) {
+TValue popstack(LVM *self) {
     // 1 past top of stack was invalid, so now we actually point to top of stack
     // which is a valid element we can dereference!
     self->sp--;
@@ -96,7 +92,7 @@ TValue popstack(lua_VM *self) {
  * Basically: `peekstack(self, -1)` now gives you the top of the stack.
  * `peekstack(self, 0)` gives you the very bottom.
  */
-static inline TValue peekstack(lua_VM *self, int offset) {
+static inline TValue peekstack(LVM *self, int offset) {
     return *lua_poke(self, offset);
 }
 
@@ -106,7 +102,7 @@ static inline TValue peekstack(lua_VM *self, int offset) {
  * Remember that postfix increment returns the original value of the expression.
  * So we effectively increment the pointer but we dereference the original one.
  */
-static inline Byte read_byte(lua_VM *self) {
+static inline Byte read_byte(CallFrame *self) {
     return *(self->ip++);
 }
 
@@ -114,24 +110,24 @@ static inline Byte read_byte(lua_VM *self) {
  * If you have an index greater than 8-bits, calculate that first however you
  * need to then use this macro so you have full control over all side effects.
  */
-static inline TValue read_constant_at(lua_VM *self, QWord index) {
-    return self->chunk->constants.values[index];
+static inline TValue read_constant_at(CallFrame *self, size_t index) {
+    return self->function->chunk.constants.values[index];
 }
 
 /**
  * Read the next byte from the bytecode treating the received value as an index
  * into the VM's current chunk's constants pool.
  */
-#define read_constant(vm)       (read_constant_at(vm, read_byte(vm)))
+#define read_constant(frame)        (read_constant_at(frame, read_byte(frame)))
 
 /**
  * III:21.2     Variable Declarations
  *
  * Helper macro to read the current top of the stack and increment the VM's
- * instruction pointer and then cast the result to a `lua_String*`.
+ * instruction pointer and then cast the result to a `TString*`.
  */
-#define read_string(vm)         asstring(read_constant(vm))
-#define read_string_at(vm, i)   asstring(read_constant_at(vm, i))
+#define read_string(frame)          asstring(read_constant(frame))
+#define read_string_at(frame, i)    asstring(read_constant_at(frame, i))
 
 #define pushvalue(vm, v)        (*(vm->sp++) = v)
 
@@ -199,10 +195,10 @@ static inline TValue read_constant_at(lua_VM *self, QWord index) {
  * The compiler emitted the 2 byte operands for a jump instruction in order of
  * hi, lo. So our instruction pointer points at hi currently.
  */
-static inline Word read_short(lua_VM *self) {
+static inline Word read_short(CallFrame *self) {
     Byte hi = read_byte(self);
     Byte lo = read_byte(self);
-    return (hi << bitsize(Byte)) | lo;
+    return byteunmask(hi, 1) | lo;
 }
 
 /**
@@ -215,41 +211,44 @@ static inline Word read_short(lua_VM *self) {
  * Compiler emitted them in this order: hi, mid, lo. Since ip currently points
  * at hi, we can safely walk in this order.
  */
-static inline DWord read_long(lua_VM *self) {
+static inline DWord read_long(CallFrame *self) {
     Byte hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
     Byte mid = read_byte(self); // bits 8..15  : (0x000100..0x00FFFF)
     Byte lo  = read_byte(self); // bits 0..7   : (0x000000..0x0000FF)
-    return (hi << bitsize(Word)) | (mid << bitsize(Byte)) | (lo);
+    return byteunmask(hi, 2) | byteunmask(mid, 1) | lo;
 }
 
-static InterpretResult run_bytecode(lua_VM *self) {
+static InterpretResult run_bytecode(LVM *self) {
+    // Topmost call frame. 
+    CallFrame *frame = &self->frames[self->fc - 1];
+
     // Hack, but we reset so we can disassemble properly.
     // We need that start with index 0 into the lines.runs array.
     // So effectively this becames our iterator.
-    self->chunk->prevline = 0;
+    frame->function->chunk.prevline = 0;
     for (;;) {
-        ptrdiff_t instruction_offset = self->ip - self->chunk->code;
+        ptrdiff_t instruction_offset = frame->ip - frame->function->chunk.code;
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
-        for (const TValue *slot = self->bp; slot < self->sp; slot++) {
+        for (const TValue *slot = self->stack; slot < self->sp; slot++) {
             printf("[ ");
             print_value(slot);
             printf(" ]");
         }
         printf("\n");
-        disassemble_instruction(self->chunk, instruction_offset);
+        disassemble_instruction(&frame->function->chunk, instruction_offset);
 #else
         // Even if not disassembling we still need this to report errors.
         get_instruction_line(self->chunk, offset);
 #endif
         Byte instruction;
-        switch (instruction = read_byte(self)) {
+        switch (instruction = read_byte(frame)) {
         case OP_CONSTANT: {
-            lua_pushconstant(self, read_byte(self));
+            pushvalue(self, read_constant(frame));
             break;
         }
         case OP_LCONSTANT: {
-            lua_pushconstant(self, read_long(self));
+            pushvalue(self, read_constant_at(frame, read_long(frame)));
             break;
         }
 
@@ -262,43 +261,43 @@ static InterpretResult run_bytecode(lua_VM *self) {
         case OP_POP:   lua_popn(self, 1); break;
         case OP_NPOP: {
             // 1-byte operand is how much to decrement the stack pointer by.
-            lua_popn(self, read_byte(self));
+            lua_popn(self, read_byte(frame));
             break;
         }
 
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
         case OP_GETLOCAL: {
-            Byte slot = read_byte(self);
-            pushstack(self, self->stack[slot]);
+            Byte slot = read_byte(frame);
+            pushvalue(self, frame->slots[slot]);
             break;
         }
         case OP_SETLOCAL: {
-            Byte slot = read_byte(self);
-            self->stack[slot] = *lua_poke(self, -1);
+            Byte slot = read_byte(frame);
+            frame->slots[slot] = *lua_poke(self, -1);
             lua_popn(self, 1); // Expression left stuff on top of the stack.
             break;
         }
         // -*- III:21.2     Variable Declarations ----------------------------*-
         // NOTE: As of III:21.4 I've removed the `OP_DEFINE*` opcodes and cases.
         case OP_GETGLOBAL: {
-            lua_String *name = read_string(self);
+            TString *name = read_string(frame);
             TValue value;
             // If not present in the hash table, the variable never existed.
             if (!table_get(&self->globals, name, &value)) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
                 return INTERPRET_RUNTIME_ERROR;
             }
-            pushstack(self, value);
+            pushvalue(self, value);
             break;
         }
         case OP_LGETGLOBAL: {
-            lua_String *name = read_string_at(self, read_long(self));
+            TString *name = read_string_at(frame, read_long(frame));
             TValue value;
             if (!table_get(&self->globals, name, &value)) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
                 return INTERPRET_RUNTIME_ERROR;
             }
-            pushstack(self, value);
+            pushvalue(self, value);
             break;
         }
 
@@ -307,13 +306,13 @@ static InterpretResult run_bytecode(lua_VM *self) {
         // Also unlike Lox you simply can't type the equivalent of `var ident;`
         // in Lua as all global variables must be assigned at declaration.
         case OP_SETGLOBAL: {
-            lua_String *name = read_string(self);
+            TString *name = read_string(frame);
             table_set(&self->globals, name, peekstack(self, -1));
             popstack(self);
             break;
         }
         case OP_LSETGLOBAL: {
-            lua_String *name = read_string_at(self, read_long(self));
+            TString *name = read_string_at(frame, read_long(frame));
             table_set(&self->globals, name, peekstack(self, -1));
             popstack(self);
             break;
@@ -367,52 +366,54 @@ static InterpretResult run_bytecode(lua_VM *self) {
         }
         // -*- III:21.1.1   Print statements ---------------------------------*-
         case OP_PRINT: {
-            TValue value = popstack(self);
-            print_value(&value);
+            const TValue *value = lua_poke(self, -1);
+            print_value(value);
+            lua_popn(self, 1);
             printf("\n");
             break;
         }
 
         // -*- III:23.1     If Statements ------------------------------------*-
         case OP_JMP: {
-            Word offset = read_short(self);
-            self->ip += offset;
+            Word offset = read_short(frame);
+            frame->ip += offset;
             break;
         }
         case OP_FJMP: {
-            Word offset = read_short(self);
+            Word offset = read_short(frame);
             if (lua_isfalsy(self, -1)) {
-                self->ip += offset;
+                frame->ip += offset;
             }
             break;
         }
                       
         // -*- III:23.3     While Statements ---------------------------------*-
         case OP_LOOP: {
-            Word offset = read_short(self);
-            self->ip -= offset;
+            Word offset = read_short(frame);
+            frame->ip -= offset;
             break;
         }
         case OP_RET:
             // Exit interpreter for now until we get functions going.
+            lua_popn(self, 1); // Pop the script itself off the VM's stack
             return INTERPRET_OK;
         }
     }
 }
 
-InterpretResult interpret_vm(lua_VM *self, const char *source) {
-    Compiler *compiler = &(Compiler){0};
-    init_chunk(&compiler->chunk);
-    init_compiler(compiler, self);
-    if (!compile_bytecode(compiler, source)) {
-        free_chunk(&compiler->chunk);
+InterpretResult interpret_vm(LVM *self, const char *source) {
+    Compiler compiler;
+    init_compiler(&compiler, self, FNTYPE_SCRIPT);
+    Function *function = compile_bytecode(&compiler, source);
+    if (function == NULL) {
         return INTERPRET_COMPILE_ERROR;
     }
-    self->chunk = &compiler->chunk;
-    self->ip    = compiler->chunk.code;
-    InterpretResult result = run_bytecode(self);
-    free_chunk(&compiler->chunk);
-    return result;
+    pushvalue(self, makeobject(LUA_TFUNCTION, function));
+    CallFrame *frame = &self->frames[self->fc++];
+    frame->function = function;
+    frame->ip       = function->chunk.code; // very beginning of bytecode.
+    frame->slots    = self->stack;          // very bottom of VM's stack.
+    return run_bytecode(self);
 }
 
 #undef read_constant

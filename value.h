@@ -25,7 +25,7 @@ typedef LUA_NUMBER lua_Number;
 typedef union {
     bool boolean;
     lua_Number number;
-    lua_Object *object;
+    Object *object;
 } Value;
 
 /* Tagged union for Lua's fundamental datatypes. */
@@ -78,7 +78,7 @@ bool values_equal(const TValue *lhs, const TValue *rhs);
  * 
  * In our implementation, we follow Bob's method of using a dedicated tag type
  * and we explicitly pass a `TValue`. This may not be terribly efficient but we
- * can improve this later by passing a `lua_VM*` with indexes into its internal
+ * can improve this later by passing a `LVM*` with indexes into its internal
  * stack.
  * 
  * See: https://www.lua.org/source/5.1/lapi.c.html#lua_type
@@ -106,7 +106,7 @@ const char *value_typename(const TValue *value);
  * This one of my derivations from Lox as Lua doesn't have dedicated object type
  * in their C API. Everything is packaged into the same enum.
  */
-#define makeobject(T,O) ((TValue){T, {.object = (lua_Object*)(O)}})
+#define makeobject(T,O) ((TValue){T, {.object = (Object*)(O)}})
 #define isobject(T,V)   ((V).type == T)
 #define asobject(V)     ((V).as.object)
 

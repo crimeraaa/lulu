@@ -16,7 +16,7 @@
 #define EX_IOERR    74 /* Input/output error. */
 #endif /* unix */
 
-static void run_repl(lua_VM *vm) {
+static void run_repl(LVM *vm) {
     char line[LUA_REPL_BUFSIZE];
     for (;;) {
         printf("> ");
@@ -53,7 +53,7 @@ static char *read_file(const char *file_path) {
     return buffer;
 }
 
-static int run_file(lua_VM *vm, const char *file_path) {
+static int run_file(LVM *vm, const char *file_path) {
     char *source = read_file(file_path);
     InterpretResult result = interpret_vm(vm, source);
     free(source);
@@ -70,7 +70,7 @@ static int run_file(lua_VM *vm, const char *file_path) {
 }
 
 int main(int argc, char *argv[]) {
-    lua_VM *vm = &(lua_VM){0}; // C99 compound literals are really handy sometimes
+    LVM *vm = &(LVM){0}; // C99 compound literals are really handy sometimes
     init_vm(vm);
     int retval = 0; 
     if (argc == 1) {

@@ -21,7 +21,7 @@
 #define setboolean(ptr, b)      setvalue(ptr,  b, LUA_TBOOLEAN, boolean)
 #define setnil(ptr)             setvalue(ptr,  0, LUA_TNIL,     number)
 #define setnumber(ptr, n)       setvalue(ptr,  n, LUA_TNUMBER,  number)
-#define setobject(ptr, o, tt)   setvalue(ptr,  (lua_Object*)o, tt,object)
+#define setobject(ptr, o, tt)   setvalue(ptr,  (Object*)o, tt,object)
 #define setstring(ptr, s)       setobject(ptr, s, LUA_TSTRING)
 
 // Placeholder value for invalid stack accesses. Do NOT modify it!
@@ -35,10 +35,10 @@ static TValue nilobject = makenil;
  * See:
  * - https://www.lua.org/source/5.1/lapi.c.html#index2adr
  */
-static TValue *offset_to_address(lua_VM *self, int offset) {
+static TValue *offset_to_address(LVM *self, int offset) {
     if (offset >= 0) {
         // Positive or zero offset in relation to base pointer.
-        TValue *value = self->bp + offset;
+        TValue *value = self->stack + offset;
         return (value >= self->sp) ? &nilobject : value;
     } else {
         // Negative offset in relation to stack pointer.
@@ -46,7 +46,7 @@ static TValue *offset_to_address(lua_VM *self, int offset) {
     }
 }
 
-bool lua_isfalsy(lua_VM *self, int offset) {
+bool lua_isfalsy(LVM *self, int offset) {
     size_t i = lua_absindex(self, offset);
     if (lua_isnil(self, i)) {
         return true;
@@ -54,26 +54,26 @@ bool lua_isfalsy(lua_VM *self, int offset) {
     return lua_isboolean(self, i) && !lua_asboolean(self, i);
 }
 
-void lua_settop(lua_VM *self, int offset) {
+void lua_settop(LVM *self, int offset) {
     if (offset >= 0) {
         // Get positive offset in relation to base pointer.
         // Fill gaps with nils.
-        while (self->sp < self->bp + offset) {
+        while (self->sp < self->stack + offset) {
             *self->sp = makenil;
             self->sp++;
         }
-        self->sp = self->bp + offset;
+        self->sp = self->stack + offset;
     } else {
         // Is negative offset in relation to stack top pointer.
         self->sp += offset + 1; 
     }
 }
 
-bool lua_istype(lua_VM *self, int offset, ValueType type) {
+bool lua_istype(LVM *self, int offset, ValueType type) {
     return offset_to_address(self, offset)->type == type;
 }
 
-const char *lua_typename(lua_VM *self, int offset) {
+const char *lua_typename(LVM *self, int offset) {
     switch (offset_to_address(self, offset)->type) {
     case LUA_TNONE:     return "none";    // Should never be reached normally.
     case LUA_TBOOLEAN:  return "boolean";
@@ -86,7 +86,7 @@ const char *lua_typename(lua_VM *self, int offset) {
     }
 }
 
-bool lua_equal(lua_VM *self, int offset1, int offset2) {
+bool lua_equal(LVM *self, int offset1, int offset2) {
     const TValue *lhs = offset_to_address(self, offset1);
     const TValue *rhs = offset_to_address(self, offset2);
     if (lhs->type != rhs->type) {
@@ -118,30 +118,30 @@ static void copy_values(TValue *dst, const TValue *src) {
     }
 }
 
-void lua_pushconstant(lua_VM *self, size_t i) {
-    TValue *dst = self->sp++;
-    const TValue *src = &lua_getconstant(self, i);
-    copy_values(dst, src);
-}
+// void lua_pushconstant(LVM *self, size_t i) {
+//     TValue *dst = self->sp++;
+//     const TValue *src = &lua_getconstant(self, i);
+//     copy_values(dst, src);
+// }
 
-void lua_pushboolean(lua_VM *self, bool b) {
+void lua_pushboolean(LVM *self, bool b) {
     setboolean(self->sp++, b);
 }
 
-void lua_pushnil(lua_VM *self) {
+void lua_pushnil(LVM *self) {
     setnil(self->sp++);
 }
 
-void lua_pushnumber(lua_VM *self, lua_Number n) {
+void lua_pushnumber(LVM *self, lua_Number n) {
     setnumber(self->sp++, n);
 }
 
-void lua_pushlstring(lua_VM *self, char *data, size_t len) {
-    lua_String *s = take_string(self, data, len);
+void lua_pushlstring(LVM *self, char *data, size_t len) {
+    TString *s = take_string(self, data, len);
     setstring(self->sp++, s);
 }
 
-void lua_pushstring(lua_VM *self, char *data) {
+void lua_pushstring(LVM *self, char *data) {
     if (data == NULL) {
         lua_pushnil(self);
     } else {
@@ -149,14 +149,14 @@ void lua_pushstring(lua_VM *self, char *data) {
     }
 }
 
-void lua_pushliteral(lua_VM *self, const char *data, size_t len) {
-    lua_String *s = copy_string(self, data, len);
+void lua_pushliteral(LVM *self, const char *data, size_t len) {
+    TString *s = copy_string(self, data, len);
     setstring(self->sp++, s);
 }
 
-void lua_concat(lua_VM *self) {
-    lua_String *rhs = lua_asstring(self, -1);
-    lua_String *lhs = lua_asstring(self, -2);
+void lua_concat(LVM *self) {
+    TString *rhs = lua_asstring(self, -1);
+    TString *lhs = lua_asstring(self, -2);
     lua_popn(self, 2); // Clean up operands
 
     size_t len = lhs->len + rhs->len;

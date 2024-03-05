@@ -29,7 +29,7 @@ void free_table(Table *self) {
  * Assumes that there is at least 1 free slot in the `entries` array. In the
  * function `table_set()` we do check that condition before calling this.
  */
-static Entry *find_entry(Entry *entries, size_t cap, const lua_String *key) {
+static Entry *find_entry(Entry *entries, size_t cap, const TString *key) {
     DWord index = (key->hash % cap);
     Entry *tombstone = NULL;
     for (;;) {
@@ -51,7 +51,7 @@ static Entry *find_entry(Entry *entries, size_t cap, const lua_String *key) {
     }
 }
 
-bool table_get(Table *self, const lua_String *key, TValue *out) {
+bool table_get(Table *self, const TString *key, TValue *out) {
     // Empty tables cannot be (safely) indexed into.
     if (self->count == 0) {
         return false;
@@ -101,7 +101,7 @@ static void adjust_cap(Table *self, size_t cap) {
     self->cap = cap;
 }
 
-bool table_set(Table *self, lua_String *key, TValue value) {
+bool table_set(Table *self, TString *key, TValue value) {
     if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
         size_t cap = grow_cap(self->cap);
         adjust_cap(self, cap);
@@ -118,7 +118,7 @@ bool table_set(Table *self, lua_String *key, TValue value) {
     return isnewkey;
 }
 
-bool table_delete(Table *self, lua_String *key) {
+bool table_delete(Table *self, TString *key) {
     if (self->cap == 0) {
         return false;
     }
@@ -143,7 +143,7 @@ void copy_table(Table *dst, Table *src) {
     }
 }
 
-lua_String *table_findstring(Table *self, const char *data, size_t len, DWord hash) {
+TString *table_findstring(Table *self, const char *data, size_t len, DWord hash) {
     if (self->count == 0) {
         return NULL;
     }

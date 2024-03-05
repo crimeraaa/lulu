@@ -3,11 +3,29 @@
 #include "object.h"
 #include "parserules.h"
 
-void init_compiler(Compiler *self, lua_VM *lvm) {
+void init_compiler(Compiler *self, LVM *vm, FnType type) {
+    // Set NULL so head of objects linked list is not garbage?
+    self->function = NULL; 
+    self->type = type;
     self->locals.count = 0;
     self->locals.depth = 0;
-    self->vm = lvm;
-    self->breaks = NULL;
+    self->vm = vm;
+    self->function = new_function(self->vm);
+
+    // We can grab the name of the function from the previous token because we
+    // already consumed the 'function' token, allocated an object and then
+    // consumed the identifier.
+    if (type != FNTYPE_SCRIPT) {
+        const Token *name = &self->parser.previous;
+        printf("function->name=%.*s\n", (int)name->len, name->start);
+        self->function->name = copy_string(self->vm, name->start, name->len);
+    }
+
+    // Compiler implicitly claims stack slot 0 for VM's internal use.
+    Local *lmain = &self->locals.stack[self->locals.count++];
+    lmain->depth = 0;
+    lmain->name.start = "";
+    lmain->name.len = 0;
 }
 
 /**
@@ -24,14 +42,8 @@ static inline void compiler_error(Compiler *self, const char *message) {
     parser_error(&self->parser, message);
 }
 
-/**
- * III:17.3     Emitting Bytecode
- *
- * For now, the current chunk is the one that got assigned to the compiler instance
- * when it was created in `interpret_vm()`. Later on this will get more complicated.
- */
-static inline Chunk *current_chunk(Compiler *self) {
-    return &self->chunk;
+Chunk *current_chunk(Compiler *self) {
+    return &self->function->chunk;
 }
 
 /* EMIT BYTECODE FUNCTIONS ---------------------------------------------- {{{ */
@@ -176,27 +188,6 @@ static void patch_jump(Compiler *self, size_t opindex) {
     current_chunk(self)->code[opindex + 1] = bytemask(offset, 0);
 }
 
-/**
- * III:23.4     For Statements
- * 
- * Basically the same as `patch_jump()` except that you can specify a number of
- * extra bytes (`opextra`) to further refine the offset by.
- * 
- * Mainly used because in `while_statement()`, we emit an `OP_POP` before we
- * patch the breaks so we have 1 extra instruction to jump over.
- */
-static void patch_break(Compiler *self, size_t opindex, int opextra) {
-    // -(2 + opextra) to adjust for bytecode of jump operand and any extra
-    // instructions we should be aware off when getting the correct offset.
-    int adjust = LUA_OPSIZE_SHORT + opextra;
-    QWord jump = current_chunk(self)->count - opindex - adjust;
-    if (jump >= LUA_MAXWORD) {
-        compiler_error(self, "Too much code to jump over.");
-    }
-    current_chunk(self)->code[opindex]     = bytemask(jump, 1);
-    current_chunk(self)->code[opindex + 1] = bytemask(jump, 0);
-}
-
 /* }}} */
 
 /**
@@ -205,13 +196,17 @@ static void patch_break(Compiler *self, size_t opindex, int opextra) {
  * For now we always emit a return for the compiler's current chunk.
  * This makes it so we don't have to remember to do it as ALL chunks need it.
  */
-static inline void end_compiler(Compiler *self) {
+static Function *end_compiler(Compiler *self) {
     emit_return(self);
+    Function *function = self->function;
 #ifdef DEBUG_PRINT_CODE
     if (!self->parser.haderror) {
-        disassemble_chunk(current_chunk(self), "code");
+        // Implicit main function does not have a name.
+        const char *name = (function->name) ? function->name->data : "<script>";
+        disassemble_chunk(current_chunk(self), name);
     }
 #endif
+    return function;
 }
 
 /**
@@ -277,7 +272,7 @@ static void parse_precedence(Compiler *self, Precedence precedence);
  * to retrieve the variable name again at runtime.
  */
 static DWord identifier_constant(Compiler *self, const Token *name) {
-    lua_String *result = copy_string(self->vm, name->start, name->len);
+    TString *result = copy_string(self->vm, name->start, name->len);
     return make_constant(self, makeobject(LUA_TSTRING, result));
 }
 
@@ -547,7 +542,7 @@ void or_(Compiler *self) {
 void string(Compiler *self) {
     const Token *token = &self->parser.previous;
     // Point past first quote, use length w/o both quotes.
-    lua_String *s = copy_string(self->vm, token->start + 1, token->len - 2);
+    TString *s = copy_string(self->vm, token->start + 1, token->len - 2);
     emit_constant(self, makeobject(LUA_TSTRING, s));
 }
 
@@ -735,13 +730,15 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
  * Assumes that we already consumed a TK_IDENT and that it's now the parser's
  * previous token.
  */
-static Byte parse_variable(Compiler *self, bool islocal) {
+static Byte parse_variable(Compiler *self, const char *message, bool islocal) {
+    Parser *parser = &self->parser;
+    consume_token(parser, TK_IDENT, message);
     declare_variable(self, islocal);
     // Locals aren't looked up by name at runtime so return a dummy index.
     if (islocal) {
         return 0;
     }
-    return identifier_constant(self, &self->parser.previous);
+    return identifier_constant(self, &parser->previous);
 }
 
 /**
@@ -878,6 +875,63 @@ static void doblock(Compiler *self) {
     match_token(parser, TK_SEMICOL); // Like most of Lua this is optional.
 }
 
+static void function(Compiler *self, FnType type) {
+    // To handle compiling multiple functions nested within each other, we use
+    // local compiler instances per stack frame of `function()` (C, not Lua!)
+    Compiler compiler;
+    Parser *parser = &self->parser;
+
+    // Ensure correct parser state by copying it, because in Lox we had a global
+    // variable/singleton. Here this helps us point at the correct ident token.
+    compiler.parser = *parser;
+    init_compiler(&compiler, self->vm, type);
+
+    // Local scope to capture our arguments. Note that we don't have a paired
+    // call to `end()` because we effectively throw out the local compiler
+    // instance anyway near the end.
+    begin_scope(&compiler); 
+    consume_token(parser, TK_LPAREN, "Expected '(' after function name.");
+    if (!check_token(parser, TK_RPAREN)) {
+        do {
+            compiler.function->arity++;
+            if (compiler.function->arity > LUA_MAXBYTE) {
+                compiler_error(self, "Cannot have more than 255 parameters.");
+            }
+            // Semantically parameters are just local variables declared in the
+            // outermost lexical scope of the function body.
+            Byte constant = parse_variable(self, "Expected parameter name.", true);
+            define_variable(self, constant, true);
+        } while (match_token(parser, TK_COMMA));
+    }
+    consume_token(parser, TK_RPAREN, "Expected ')' after parameters.");
+    
+    // Sync again right before commiting to compiling the block.
+    compiler.parser = *parser;
+    doblock(&compiler);
+    
+    Function *function = end_compiler(&compiler);
+    TValue constant    = makeobject(LUA_TFUNCTION, function);
+    emit_bytes(self, OP_CONSTANT, make_constant(self, constant));
+    
+    // Resync state to mimic the global behavior of clox.
+    self->parser = compiler.parser;
+}
+
+/**
+ * III:24.4     Function Declarations
+ * 
+ * For now we'll only work with global functions, local functions are too much
+ * to think about.
+ */
+static void function_declaration(Compiler *self, bool islocal) {
+    DWord index = parse_variable(self, "Expected identifier after 'function'.", islocal);
+    if (islocal) {
+        mark_initialized(self);
+    }
+    function(self, FNTYPE_FUNCTION);
+    define_variable(self, index, islocal);
+}
+
 /**
  * III:21.2     Variable Declarations
  *
@@ -912,9 +966,8 @@ static void doblock(Compiler *self) {
  */
 static void variable_declaration(Compiler *self) {
     Parser *parser = &self->parser;
-    consume_token(parser, TK_IDENT, "Expected identifier.");
     // Index of variable name (previous token) as appended into constants pool
-    DWord index = parse_variable(self, true);
+    DWord index = parse_variable(self, "Expected identifier after 'local'.", true);
     if (match_token(parser, TK_ASSIGN)) {
         expression(self);
     } else {
@@ -1292,7 +1345,12 @@ static void while_statement(Compiler *self) {
 static void declaration(Compiler *self) {
     Parser *parser = &self->parser;
     if (match_token(parser, TK_LOCAL)) {
+        if (match_token(parser, TK_FUNCTION)) {
+            compiler_error(self, "local functions are not yet implemented.");
+        }
         variable_declaration(self);
+    } else if (match_token(parser, TK_FUNCTION)) {
+        function_declaration(self, false);
     } else if (match_token(parser, TK_IDENT)) {
         variable_assignment(self);
     } else {
@@ -1336,11 +1394,7 @@ static void statement(Compiler *self) {
     if (match_token(parser, TK_PRINT)) {
         print_statement(self);
     } else if (match_token(parser, TK_BREAK)) {
-        if (!self->breaks) {
-            compiler_error(self, "No loop to jump out of.");
-        } else {
-            compiler_error(self, "Breaks are not yet implemented.");
-        }
+        compiler_error(self, "Breaks are not yet implemented.");
     } else if (match_token(parser, TK_IF)) {
         if_statement(self, false);
     } else if (match_token(parser, TK_FOR)) {
@@ -1360,25 +1414,25 @@ static void statement(Compiler *self) {
     }
 }
 
-bool compile_bytecode(Compiler *self, const char *source) {
+Function *compile_bytecode(Compiler *self, const char *source) {
     // I'm worried about using a local variable here since `longjmp()` might 
     // restore registers to the "snapshot" when `setjmp()` was called.
     // The `volatile` keyword would be needed, but then that might have a
     // performance impact: https://stackoverflow.com/a/54568820
-    init_parser(&self->parser, source);
+    Parser *parser = &self->parser;
+    init_parser(parser, source);
 
     // setjmp returns 0 on init, else a nonzero when called by longjmp.
     // Be VERY careful not to longjmp from functions with heap allocations since
     // we won't do most forms of cleanup.
-    if (setjmp(self->parser.errjmp) == 0) {
+    if (setjmp(parser->errjmp) == 0) {
         begin_scope(self); // File-scope/REPL line scope is its own block scope.
-        advance_parser(&self->parser);
-        while (!match_token(&self->parser, TK_EOF)) {
+        advance_parser(parser);
+        while (!match_token(parser, TK_EOF)) {
             declaration(self);
         }
         end_scope(self);
     }
-    end_compiler(self);
-    // *(volatile char *)NULL; // Intentional segfault
-    return !self->parser.haderror;
+    Function *function = end_compiler(self);
+    return (parser->haderror) ? NULL : function;
 }

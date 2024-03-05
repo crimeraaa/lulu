@@ -28,8 +28,7 @@ void print_value(const TValue *value) {
     case LUA_TBOOLEAN: printf(value->as.boolean ? "true" : "false"); break;
     case LUA_TNIL:     printf("nil"); break;
     case LUA_TNUMBER:  printf(LUA_NUMBER_FMT, value->as.number); break;
-    case LUA_TSTRING:  printf("%s", ascstring(*value)); break;
-    default:           printf("Unsupported type %s", value_typename(value)); break;
+    default:           print_object(*value);
     }
 }
 

@@ -17,22 +17,28 @@ void *reallocate(void *pointer, size_t oldsize, size_t newsize) {
     return result;
 }
 
-static inline void free_string(lua_String *self) {
+static void free_string(TString *self) {
     deallocate_array(char, self->data, self->len);
-    deallocate(lua_String, self);
+    deallocate(TString, self);
 }
 
-static inline void free_object(lua_Object *self) {
+static void free_function(Function *self) {
+    free_chunk(&self->chunk);
+    deallocate(Function, self);
+}
+
+static void free_object(Object *self) {
     switch (self->type) {
-    case LUA_TSTRING:   free_string((lua_String*)self); break;
+    case LUA_TFUNCTION: free_function((Function*)self); break;
+    case LUA_TSTRING:   free_string((TString*)self); break;
     default:            return;
     }
 }
 
-void free_objects(lua_VM *lvm) {
-    lua_Object *object = lvm->objects;
+void free_objects(LVM *vm) {
+    Object *object = vm->objects;
     while (object != NULL) {
-        lua_Object *next = object->next;
+        Object *next = object->next;
         free_object(object);
         object = next;
     }    

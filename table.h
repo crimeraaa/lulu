@@ -12,8 +12,8 @@
  * actual numerical index in the table.
  */
 typedef struct {
-    lua_String *key; // Key to be hashed.
-    TValue value;    // Actual value to be retrieved.
+    TString *key; // Key to be hashed.
+    TValue value; // Actual value to be retrieved.
 } Entry;
 
 /**
@@ -27,8 +27,8 @@ typedef struct {
  */
 typedef struct {
     Entry *entries; // List of hashed key-value pairs.
-    size_t count;     // Current number of entries occupying the table.
-    size_t cap;       // How many entries the table can hold.
+    size_t count;   // Current number of entries occupying the table.
+    size_t cap;     // How many entries the table can hold.
 } Table;
 
 void init_table(Table *self);
@@ -40,7 +40,7 @@ void free_table(Table *self);
  * Unlike my initial intuition we use an out parameter. I'm not sure how much I
  * like it but I'll follow along for now.
  */
-bool table_get(Table *self, const lua_String *key, TValue *out);
+bool table_get(Table *self, const TString *key, TValue *out);
 
 /**
  * III:20.4.2   Inserting entries
@@ -48,7 +48,7 @@ bool table_get(Table *self, const lua_String *key, TValue *out);
  * All our string objects know their hash code so we can already put them into
  * the hash table.
  */
-bool table_set(Table *self, lua_String *key, TValue value);
+bool table_set(Table *self, TString *key, TValue value);
 
 /**
  * III:20.4.5   Deleting entries
@@ -57,7 +57,7 @@ bool table_set(Table *self, lua_String *key, TValue value);
  * because if the deleted element is in between collisions, how do you resolve
  * the retrieval of the ones that come after this one?
  */
-bool table_delete(Table *self, lua_String *key);
+bool table_delete(Table *self, TString *key);
 
 /**
  * III:20.4.3   Allocating and resizing
@@ -74,9 +74,9 @@ void copy_table(Table *dst, Table *src);
  * III:20.5     String Interning
  *
  * This function checks if a given string has been interned in the given hash
- * table. Note that you pash a `const char*`, NOT a `lua_String*`! 
- * The point is to use this so we don't allocate a new `lua_String*`.
+ * table. Note that you pash a `const char*`, NOT a `TString*`! 
+ * The point is to use this so we don't allocate a new `TString*`.
  */
-lua_String *table_findstring(Table *self, const char *what, size_t len, DWord hash);
+TString *table_findstring(Table *self, const char *what, size_t len, DWord hash);
 
 #endif /* LUA_TABLE_H */

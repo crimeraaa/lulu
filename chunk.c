@@ -40,8 +40,8 @@ static void write_lineruns(LineRuns *self, int offset, int line) {
     // We should resize this array less often than the bytes one.
     if (self->count + 1 > self->cap) {
         size_t oldcap = self->cap;
-        self->cap   = grow_cap(oldcap);
-        self->runs  = grow_array(LineRun, self->runs, oldcap, self->cap);
+        self->cap     = grow_cap(oldcap);
+        self->runs    = grow_array(LineRun, self->runs, oldcap, self->cap);
     }
     self->runs[self->count].start = offset;
     self->runs[self->count].end   = offset;
@@ -98,13 +98,6 @@ int get_instruction_line(Chunk *self, ptrdiff_t offset) {
 #ifdef DEBUG_PRINT_CODE
 #define next_instruction(offset, opsize)    ((offset) + 1 + (opsize))
 
-// static void dump_lineruns(const LineRuns *self) {
-//     for (int i = 0; i < self->count; i++) {
-//         const LineRun *run = &self->runs[i];
-//         printf("line %i: instructions %i-%i\n", run->where, run->start, run->end);
-//     }
-// }
-
 void disassemble_chunk(Chunk *self, const char *name) {
     // Reset so we start from index 0 into self->lines.runs.
     // Kinda hacky but this will serve as our iterator of sorts.
@@ -137,10 +130,10 @@ static int opconst(const char *name, const Chunk *self, ptrdiff_t offset) {
 }
 
 static inline DWord read_long(const Chunk *self, ptrdiff_t offset) {
-    Byte hi  = self->code[offset + 1] << bitsize(Word); // Unmask upper 8 bits.
-    Byte mid = self->code[offset + 2] << bitsize(Byte); // Unmask middle 8 bits.
-    Byte lo  = self->code[offset + 3];                  // Unmask lower 8 bits.
-    return (DWord)(hi) | mid | lo;
+    Byte hi  = byteunmask(self->code[offset + 1], 2); // Unmask upper 8 bits.
+    Byte mid = byteunmask(self->code[offset + 2], 1); // Unmask middle 8 bits.
+    Byte lo  = byteunmask(self->code[offset + 3], 0); // Unmask lower 8 bits.
+    return hi | mid | lo;
 }
 
 /**
@@ -182,9 +175,9 @@ static int opbyte(const char *name, const Chunk *self, ptrdiff_t offset) {
 }
 
 static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
-    Byte hi = self->code[offset + 1] << bitsize(Byte);
-    Byte lo = self->code[offset + 2];
-    return (Word)(hi) | lo;
+    Byte hi = byteunmask(self->code[offset + 1], 1);
+    Byte lo = byteunmask(self->code[offset + 2], 0);
+    return hi | lo;
 }
 
 /**
