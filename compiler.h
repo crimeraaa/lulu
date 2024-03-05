@@ -7,6 +7,11 @@
 #include "object.h"
 #include "parser.h"
 
+typedef struct JumpList {
+    struct JumpList *next; // Help us to chain.
+    size_t jump;     // Index into code array of the jump instruction.
+} JumpList;
+
 /**
  * III:22.1     Representing Local Variables
  * 
@@ -58,6 +63,7 @@ typedef struct {
     Parser parser;  // Keep track of tokens emitted by its own `Lexer`.
     Locals locals;  // Keep track of information about local variables in scope.
     lua_VM *vm;     // Stupid but we need to pass this to `copy_string()`.
+    JumpList *breaks;
 } Compiler;
 
 /**

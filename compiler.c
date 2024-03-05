@@ -7,6 +7,7 @@ void init_compiler(Compiler *self, lua_VM *lvm) {
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = lvm;
+    self->breaks = NULL;
 }
 
 /**
@@ -170,16 +171,38 @@ static inline void emit_constant(Compiler *self, TValue value) {
  * Go back to the bytecode, looking for the jump opcode itself, and backpatch
  * its 2 operands correctly.
  */
-static void patch_jump(Compiler *self, size_t offset) {
+static void patch_jump(Compiler *self, size_t opindex) {
     // -2 to adjust for the bytecode of the jump offset itself.
-    QWord jump = current_chunk(self)->count - offset - 2;
-    if (jump >= LUA_MAXWORD) {
+    QWord offset = current_chunk(self)->count - opindex - 2;
+    if (offset >= LUA_MAXWORD) {
         compiler_error(self, "Too much code to jump over.");
     }
-    Byte hi = (jump >> 8) & 0xFF;
-    Byte lo = (jump)      & 0xFF;
-    current_chunk(self)->code[offset]     = hi;
-    current_chunk(self)->code[offset + 1] = lo;
+    Byte hi = (offset >> bitsize(Byte)) & LUA_MAXBYTE;
+    Byte lo = offset & LUA_MAXBYTE;
+    current_chunk(self)->code[opindex]     = hi;
+    current_chunk(self)->code[opindex + 1] = lo;
+}
+
+/**
+ * III:23.4     For Statements
+ * 
+ * Basically the same as `patch_jump()` except that you can specify a number of
+ * extra bytes (`opextra`) to further refine the offset by.
+ * 
+ * Mainly used because in `while_statement()`, we emit an `OP_POP` before we
+ * patch the breaks so we have 1 extra instruction to jump over.
+ */
+static void patch_break(Compiler *self, size_t opindex, int opextra) {
+    // -(2 + opextra) to adjust for bytecode of jump operand and any extra
+    // instructions we should be aware off when getting the correct offset.
+    QWord offset = current_chunk(self)->count - opindex - (2 + opextra);
+    if (offset >= LUA_MAXWORD) {
+        compiler_error(self, "Too much code to jump over.");
+    }
+    Byte hi = (offset >> bitsize(Byte)) & LUA_MAXBYTE;
+    Byte lo = offset & LUA_MAXBYTE;
+    current_chunk(self)->code[opindex]     = hi;
+    current_chunk(self)->code[opindex + 1] = lo;
 }
 
 /* }}} */
@@ -209,6 +232,23 @@ static void begin_scope(Compiler *self) {
     self->locals.depth++;
 }
 
+static int pop_scope(Compiler *self) {
+    const Locals *locals = &self->locals;
+    int poppable = 0;
+    int count = locals->count;
+    // Walk backward through the array looking for variables declared at the
+    // scope depth we just left. Remember "freeing" is just decrementing here.
+    while (count > 0 && locals->stack[count - 1].depth > locals->depth) {
+        count--;
+        poppable++;
+    }
+    // Don't waste cycles on popping nothing.
+    if (poppable > 0) {
+        emit_bytes(self, OP_NPOP, poppable);
+    }
+    return poppable;
+}
+
 /**
  * III:22.1     Block Statements
  *
@@ -224,19 +264,8 @@ static void begin_scope(Compiler *self) {
  * memory we used beforehand.
  */
 static void end_scope(Compiler *self) {
-    int poppable = 0;
-    Locals *locals = &self->locals;
-    locals->depth--;
-    // Walk backward through the array looking for variables declared at the
-    // scope depth we just left. Remember "freeing" is just decrementing here.
-    while (locals->count > 0 && locals->stack[locals->count - 1].depth > locals->depth) {
-        locals->count--;
-        poppable++;
-    }
-    // Don't waste cycles on popping nothing.
-    if (poppable > 0) {
-        emit_bytes(self, OP_NPOP, poppable);
-    }
+    self->locals.depth--;
+    self->locals.count -= pop_scope(self);
 }
 
 /* FORWARD DECLARATIONS ------------------------------------------------- {{{ */
@@ -1123,6 +1152,7 @@ static void print_statement(Compiler *self) {
  */
 static void while_statement(Compiler *self) {
     Parser *parser = &self->parser;
+
     // Save address of the beginning of the loop, right before the condition.
     size_t loopstart = current_chunk(self)->count;
     expression(self);
@@ -1131,11 +1161,11 @@ static void while_statement(Compiler *self) {
     // Save the address of the jump opcode which will exit out of the loop.
     size_t exitjump = emit_jump(self, OP_FJMP);
 
-    emit_byte(self, OP_POP);    // Condition expression cleanup (truthy)
+    emit_byte(self, OP_POP); // Condition expression cleanup (truthy)
     doblock(self);
-    emit_loop(self, loopstart); // Emit loop instruction going to loopstart.
-    patch_jump(self, exitjump); // Patch exit jump to break loop correctly.
-    emit_byte(self, OP_POP);    // Condition expression cleanup (falsy)
+    emit_loop(self, loopstart);
+    patch_jump(self, exitjump);
+    emit_byte(self, OP_POP); // Condition expression cleanup (falsy)
 }
 
 /**
@@ -1200,13 +1230,14 @@ static void statement(Compiler *self) {
     if (match_token(parser, TK_PRINT)) {
         print_statement(self);
     } else if (match_token(parser, TK_BREAK)) {
-        // TODO: This is so confusing...
-        int line = self->parser.lexer.line;        
-        logprintf("'break' unimplemented (@line:%i of script)\n", line);
+        if (!self->breaks) {
+            compiler_error(self, "No loop to jump out of.");
+        } else {
+            compiler_error(self, "Breaks are not yet implemented.");
+        }
     } else if (match_token(parser, TK_IF)) {
         if_statement(self, false);
     } else if (match_token(parser, TK_FOR)) {
-        // TODO: This is VERY different from Lox's.
         for_statement(self);
     } else if (match_token(parser, TK_ELSEIF, TK_ELSE)) {
         compiler_error(self, "Not used in an 'if' statement.");

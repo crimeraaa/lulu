@@ -5,7 +5,8 @@ EXE 	:= lulu
 CC_SRC	:= $(wildcard *.c)
 CC_OBJ	:= $(patsubst %.c, obj/%.o, $(CC_SRC))
 DEBUGFLAGS := -fdiagnostics-color=always -g -O0 \
-	-DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION
+	-DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION \
+	-Wno-unused-function
 
 # -*- BEGIN RECIPES ------------------------------------------------------*- {{{
 

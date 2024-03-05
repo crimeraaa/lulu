@@ -108,7 +108,13 @@ void disassemble_chunk(Chunk *self, const char *name) {
     // Reset so we start from index 0 into self->lines.runs.
     // Kinda hacky but this will serve as our iterator of sorts.
     self->prevline = 0;
-    printf("== %s ==\n", name);
+    printf("== constants ==\n");
+    for (size_t i = 0; i < self->constants.count; i++) {
+        printf("constants[%zu]: '", i);
+        print_value(&self->constants.values[i]);
+        printf("'\n");
+    }
+    printf("\n== %s ==\n", name);
     // We rely on `disassemble_instruction()` for iteration.
     for (ptrdiff_t offset = 0; offset < (ptrdiff_t)self->count;) {
         offset = disassemble_instruction(self, offset);
