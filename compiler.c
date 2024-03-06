@@ -5,8 +5,7 @@
 
 void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     self->enclosing = current;
-    // Set NULL so head of objects linked list is not garbage?
-    self->function = NULL; 
+    self->function = new_function(vm); // self->vm not assigned yet!
     self->type = type;
     if (current != NULL) {
         self->parser = current->parser;
@@ -14,30 +13,29 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = vm;
-    self->function = new_function(self->vm);
+    self->assigns = 0;
 
     // We can grab the name of the function from the previous token because we
     // already consumed the 'function' token, allocated an object and then
     // consumed the identifier.
     if (type != FNTYPE_SCRIPT) {
         const Token *name = &self->parser.previous;
-        printf("function->name=%.*s\n", (int)name->len, name->start);
         self->function->name = copy_string(self->vm, name->start, name->len);
     }
 
     // Compiler implicitly claims stack slot 0 for VM's internal use.
-    Local *lmain = &self->locals.stack[self->locals.count++];
-    lmain->depth = 0;
-    lmain->name.start = "";
-    lmain->name.len = 0;
+    Local *local = &self->locals.stack[self->locals.count++];
+    local->depth = 0;
+    local->name.start = "";
+    local->name.len = 0;
 }
 
 /**
- * Assumes that `self->parser.errjmp` (of type `jmp_buf`) was properly set in 
+ * Assumes that `self->parser.errjmp` (of type `jmp_buf`) was properly set in
  * `compile_bytecode()`. Parser will report a message then do a longjmp.
- * 
+ *
  * WARNING:
- * 
+ *
  * Be VERY careful with using this as it'll do an unconditional jump, meaning
  * that heap allocations within functions may not be cleaned up properly and
  * things like that.
@@ -78,10 +76,10 @@ static inline void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
 
 /**
  * III:23.3     While Statements
- * 
+ *
  * Because we need to jump backward, the main caller `while_statement()` should
  * have saved the instruction address of the loop's beginning.
- * 
+ *
  * We use that to patch the jump such that we can jump backwards rather than
  *forwards.
  */
@@ -129,9 +127,17 @@ static inline void emit_long(Compiler *self, Byte opcode, DWord operand) {
     emit_byte(self, bytemask(operand, 0));
 }
 
-/* Helper because it's automatically called by `end_compiler()`. */
+/** 
+ * Helper because it's automatically called by `end_compiler()`. 
+ * 
+ * III:24.5.4   Returning from functions
+ * 
+ * Currently we simply return an implicit nil value so that the stack has at
+ * least *something* to pop off.
+ */
 static inline void emit_return(Compiler *self) {
-    emit_byte(self, OP_RET);
+    emit_byte(self, OP_NIL);
+    emit_byte(self, OP_RETURN);
 }
 
 /**
@@ -468,7 +474,7 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
 
 /**
  * III:24.5     Function Calls
- * 
+ *
  * Count the number of arguments in the given argument list that we compiled.
  */
 static Byte arglist(Compiler *self) {
@@ -476,6 +482,7 @@ static Byte arglist(Compiler *self) {
     Parser *parser = &self->parser;
     if (!check_token(parser, TK_RPAREN)) {
         do {
+            // Push expression needed to resolve argument.
             expression(self);
             if (argc == LUA_MAXBYTE) {
                 compiler_error(self, "Cannot have more than 255 arguments.");
@@ -489,28 +496,29 @@ static Byte arglist(Compiler *self) {
 
 /**
  * III:23.2     Logical Operators
- * 
+ *
  * Logical and does what it can to resolve to a falsy value.
  *
  * Assumes the left hand expression has already been compiled and that its value
  * is currently at the top of the stack.
- * 
+ *
  * If the value is falsy we immediately break out of the expression and leave the
  * result of the left hand expression on top of the stack for caller's use.
- * 
+ *
  * Otherwise, we try to evaluate the right hand expression. We pop off the left
  * hand expression as it won't be used anymore. Whatever the right hand's result
  * is, it'll be the top of the stack that the caller ends up using.
- * 
+ *
  * VISUALIZATION:
- * 
+ *
  *      left operand expression
  * +--- OP_FJMP
  * |    OP_POP
  * |    right operand expression
  * +--> continue...
  */
-void and_(Compiler *self) {
+void and_(Compiler *self, bool assignable) {
+    (void)assignable;
     size_t endjump = emit_jump(self, OP_FJMP);
     emit_byte(self, OP_POP);
     parse_precedence(self, PREC_AND);
@@ -539,7 +547,8 @@ void and_(Compiler *self) {
  * In order to meet the signature of `ParseFn`, we need to add a `bool` param.
  * It sucks but it's better to keep all the function pointers uniform!
  */
-void binary(Compiler *self) {
+void binary(Compiler *self, bool assignable) {
+    (void)assignable;
     TokenType optype = self->parser.previous.type;
     const ParseRule *rule = get_rule(optype);
     // Compile right hand side, and evaluate it if it has higher precedence operations.
@@ -570,20 +579,21 @@ void binary(Compiler *self) {
 
 /**
  * III:24.5     Function Calls
- * 
- * Assumes we consumed the '(' token, emits `OP_CALL` along with a 1-byte operand
+ *
+ * Assumes we consumed the '(' token, emits `OP_CALL` along with 1-byte operand
  * representing how many arguments are needed.
  */
-static void call(Compiler *self) {
+void call(Compiler *self, bool assignable) {
+    (void)assignable;
     Byte argc = arglist(self);
     emit_bytes(self, OP_CALL, argc);
 }
 
-
 /**
  * Right-associative binary operators, mainly for exponentiation and concatenation.
  */
-void rbinary(Compiler *self) {
+void rbinary(Compiler *self, bool assignable) {
+    (void)assignable;
     TokenType optype = self->parser.previous.type;
     const ParseRule *rule = get_rule(optype);
     // We use the same precedence so we can evaluate from right to left.
@@ -608,7 +618,8 @@ void rbinary(Compiler *self) {
  * Adding a `bool` parameter for uniformity with all the other function pointers
  * in the `parserules.c` lookup table.
  */
-void literal(Compiler *self) {
+void literal(Compiler *self, bool assignable) {
+    (void)assignable;
     switch (self->parser.previous.type) {
     case TK_FALSE: emit_byte(self, OP_FALSE); break;
     case TK_NIL:   emit_byte(self, OP_NIL);   break;
@@ -630,31 +641,33 @@ void literal(Compiler *self) {
  * order in which we evaluate the expressions contained inside the parentheses
  * that's important.
  */
-void grouping(Compiler *self) {
+void grouping(Compiler *self, bool assignable) {
+    (void)assignable;
     expression(self);
     consume_token(&self->parser, TK_RPAREN, "Expected ')' after grouping expression.");
 }
 
 /* Parse a number literal and emit it as a constant. */
-void number(Compiler *self) {
+void number(Compiler *self, bool assignable) {
+    (void)assignable;
     double value = strtod(self->parser.previous.start, NULL);
     emit_constant(self, makenumber(value));
 }
 
 /**
  * III:23.2.1   Logical or operator
- * 
+ *
  * This one's a bit tricky because there's a bit more going on. Logical or, in a
  * sense, does what it can to resolve to truthy value.
- * 
+ *
  * If the left side is truthy we skip over the right operand and leave the truthy
  * value on top of the stack for the caller to use.
- * 
+ *
  * Otherwise, we pop the value, evaluate the right side and leave that resulting
  * value on top of the stack.
- * 
+ *
  * VISUALIZATION:
- * 
+ *
  *          left operand expression
  *     +--- OP_FJMP
  * +---|--- OP_JMP
@@ -662,7 +675,8 @@ void number(Compiler *self) {
  * |        right operand expression
  * +------> continue...
  */
-void or_(Compiler *self) {
+void or_(Compiler *self, bool assignable) {
+    (void)assignable;
     size_t elsejump = emit_jump(self, OP_FJMP);
     size_t endjump  = emit_jump(self, OP_JMP);
     patch_jump(self, elsejump);
@@ -677,7 +691,8 @@ void or_(Compiler *self) {
  *
  * Here we go, strings! One of the big bads of C.
  */
-void string(Compiler *self) {
+void string(Compiler *self, bool assignable) {
+    (void)assignable;
     const Token *token = &self->parser.previous;
     // Point past first quote, use length w/o both quotes.
     TString *s = copy_string(self->vm, token->start + 1, token->len - 2);
@@ -788,8 +803,8 @@ static inline void variable_assignment(Compiler *self) {
  * by `expression()`, will never allow us to assign a variable.
  * This is because simple variable assignment is detected by `declaration()`.
  */
-void variable(Compiler *self) {
-    named_variable(self, &self->parser.previous, false);
+void variable(Compiler *self, bool assignable) {
+    named_variable(self, &self->parser.previous, assignable);
 }
 
 /**
@@ -798,7 +813,8 @@ void variable(Compiler *self) {
  * Assumes the leading '-' token has been consumed and is the parser's previous
  * token.
  */
-void unary(Compiler *self) {
+void unary(Compiler *self, bool assignable) {
+    (void)assignable;
     // Keep in this stackframe's memory so that if we recurse, we evaluate the
     // topmost stack frame (innermosts, higher precedences) first and work our
     // way down until we reach this particular function call.
@@ -844,12 +860,12 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
         compiler_error(self, "Expected an expression.");
     }
     bool assignable = (precedence <= PREC_ASSIGNMENT);
-    prefixfn(self);
+    prefixfn(self, assignable);
 
     while (precedence <= get_rule(parser->current.type)->precedence) {
         advance_parser(parser);
         const ParseFn infixfn = get_rule(parser->previous.type)->infix;
-        infixfn(self);
+        infixfn(self, assignable);
     }
 
     // No function consumed the '=' token so we didn't properly assign.
@@ -896,9 +912,9 @@ static void expression(Compiler *self) {
  * 'do-end' and 'if-then-[else]-end' statements are similar, the exact keywords
  * we look for are somewhat different. This function will NOT work correctly
  * in an if-statement so we need a dedicated function for that.
- * 
+ *
  * III:23.3     While Statements
- * 
+ *
  * I've updated this so that it automatically creates a new block for itself.
  */
 static void doblock(Compiler *self) {
@@ -913,46 +929,50 @@ static void doblock(Compiler *self) {
 }
 
 static void function(Compiler *self, FnType type) {
+    Compiler _next = {0};
     // To handle compiling multiple functions nested within each other, we use
     // local compiler instances per stack frame of `function()` (C, not Lua!)
-    Compiler compiler;
-    Parser *parser = &self->parser;
-    init_compiler(&compiler, self, self->vm, type);
+    Compiler *next = &_next;
+    Parser *parser = &next->parser;
+    init_compiler(next, self, self->vm, type);
 
     // Local scope to capture our arguments. Note that we don't have a paired
     // call to `end()` because we effectively throw out the local compiler
     // instance anyway near the end.
-    begin_scope(&compiler); 
+    begin_scope(next);
     consume_token(parser, TK_LPAREN, "Expected '(' after function name.");
     if (!check_token(parser, TK_RPAREN)) {
+        // Since compiler instances have their own locals stack, we have to
+        // take care to pass the CORRECT pointer!
         do {
-            compiler.function->arity++;
-            if (compiler.function->arity > LUA_MAXBYTE) {
+            next->function->arity++;
+            // VERY dangerous because we do a longjmp, but the jmp_buf for this
+            // compiler's parser instance may not have been set! So we have to
+            // manually sync so that we have the exact same parser error state.
+            if (next->function->arity > LUA_MAXBYTE) {
+                self->parser = next->parser;
                 compiler_error(self, "Cannot have more than 255 parameters.");
             }
             // Semantically parameters are just local variables declared in the
             // outermost lexical scope of the function body.
-            Byte constant = parse_variable(self, "Expected parameter name.", true);
-            define_variable(self, constant, true);
+            Byte constant = parse_variable(next, "Expected parameter name.", true);
+            define_variable(next, constant, true);
         } while (match_token(parser, TK_COMMA));
     }
     consume_token(parser, TK_RPAREN, "Expected ')' after parameters.");
-    
-    // Sync again right before commiting to compiling the block.
-    compiler.parser = *parser;
-    doblock(&compiler);
-    
-    Function *function = end_compiler(&compiler);
+    doblock(next);
+
+    Function *function = end_compiler(next);
     TValue constant    = makeobject(LUA_TFUNCTION, function);
     emit_bytes(self, OP_CONSTANT, make_constant(self, constant));
-    
-    // Resync state to mimic the global behavior of clox.
-    self->parser = compiler.parser;
+
+    // Resync parser states to mimic the global behavior of clox.
+    self->parser = next->parser;
 }
 
 /**
  * III:24.4     Function Declarations
- * 
+ *
  * For now we'll only work with global functions, local functions are too much
  * to think about.
  */
@@ -1027,21 +1047,21 @@ static void expression_statement(Compiler *self) {
 
 /**
  * III:23.4:    For Statements
- * 
+ *
  * Assumes we just consumed a 'for' token and we're sitting on the initializer.
  * e.g. in 'for i = 0, ...' we're concerned with the 'i = 0,' part.
- * 
+ *
  * We return a `Token` of the variable identifier. Since it's a local variable
  * we need not worry about its index into the constants array. However we do NOT
  * yet define and mark it as initialized, in the condition segment we need to be
  * able to resolve outer instances of the identifier in the expression. e.g:
- * 
+ *
  * `local i=2; for i=0, i+1 do ... end` we want the 'i' in the condition to
  * resolve to the outer local 'i=2', not the loop iterator 'i=0'.
  */
 static Token for_initializer(Compiler *self) {
     Parser *parser = &self->parser;
-    const Token name = parser->current; 
+    const Token name = parser->current;
     // Iterator variable is always a local declaration.
     consume_token(parser, TK_IDENT, "Expected identifier.");
     add_local(self, name);
@@ -1053,7 +1073,7 @@ static Token for_initializer(Compiler *self) {
 
 /**
  * III:23.4     For Statements
- * 
+ *
  * Given `token`, push a local variable identifier to the locals array without
  * much double checking. This identifier is not intended to be used from the
  * programmer's point of view, it's just here to ensure our loop state locals
@@ -1072,29 +1092,29 @@ static void push_unnamed_local(Compiler *self) {
 
 /**
  * III:23.4     For Statements
- * 
+ *
  * In `for i=0, 4 do ... end' we're now concerned with the '4' part which is the
  * inclusive. That is, equivalent C code would be `for (int i=0; i<=4; i++)`.
- * 
+ *
  * So we're concerned with implementing the `i<=4` part in Lua. However, Lua's
  * numeric for condition is a bit unique in that the local iterator variable is
- * implicit. 
- * 
+ * implicit.
+ *
  * Thus, in `for i=0, 4`, the '4' part implicitly compiles to 'i<=4'.
- * 
+ *
  * EDGECASE:
- * 
+ *
  * `for i=0, i do ... end` should throw a runtime error since 'i' in the condition
- * is not an external local or a global. This is why we delay defining and 
+ * is not an external local or a global. This is why we delay defining and
  * marking the iterator as initialized because we want to attempt to resolve
  * token instances of the same identifier in the condition expression.
- * 
+ *
  * Only after compiling the condition expression do we actually define and mark
  * the iterator as initialized. We get the correct index into the locals array
  * using `resolve_local()` which is why we need the Token `name`.
- * 
+ *
  * TODO:
- * 
+ *
  * Currently, our implementation constantly evaluates the condition expression.
  * That is, `local x=2; for i=0,x+1 do ... end` constantly computes `x+1`.
  * In Lua it's actually only evaluated once, any mutations to `x` won't affect
@@ -1106,19 +1126,19 @@ static DWord for_condition(Compiler *self, const Token *name) {
     if (!check_token(&self->parser, TK_NUMBER, TK_IDENT)) {
         compiler_error(self, "Expected number or identifier after 'for' initializer.");
     }
-    // Emit the expression first so we can attempt to resolve outer instances of 
+    // Emit the expression first so we can attempt to resolve outer instances of
     // our iterator variable, THEN we define and resolve the iterator.
     // (iter <= cond) <=> (cond > iter)
     expression(self);
-    
+
     // We haven't declared any other locals so we can safely assume the topmost
     // one is the iterator which we now need to mark as initialized.
     mark_initialized(self);
-    
+
     // Now that it's been initialized we can get the correct index into the
     // locals array.
     DWord index = resolve_local(self, name);
-    
+
     // We emit an unnamed local variable for the condition so that it's evaluated
     // exactly once, then we can just access it from the stack as needed.
     push_unnamed_local(self);
@@ -1165,11 +1185,11 @@ static size_t emit_for_increment(Compiler *self, DWord index, size_t loopstart) 
 
 /**
  * III:23.4     For Statements
- * 
+ *
  * For now we only support numeric loops with Lua's semantics.
- * 
+ *
  * VISUALIZATION:
- * 
+ *
  * - compile and evaluate initializer clause, push to local[0]
  * - compile and evaluate condition expression, push to local[1]
  * - compile and evaluate increment expression, push to local[2]
@@ -1177,7 +1197,7 @@ static size_t emit_for_increment(Compiler *self, DWord index, size_t loopstart) 
  *        FOR_CONDITION:
  *            OP_GETLOCAL 0 <--+        # local[1], "iterator"
  *            OP_GETLOCAL 1    |        # local[0], "condition"
- *            OP_LT            | 
+ *            OP_LT            |
  *            OP_NOT           |        # local[1] >= local[0] ?
  * +--------- OP_FJMP          |        # goto FOR_END
  * |          OP_POP           |        # expression of for loop condition
@@ -1193,11 +1213,11 @@ static size_t emit_for_increment(Compiler *self, DWord index, size_t loopstart) 
  * |  +--> FOR_BODY:              |
  * |          ...                 |
  * |          OP_LOOP ------------+     # goto FOR_INCREMENT
- * |       
+ * |
  * |       FOR_END:
  * +--------> OP_POP                    # expression of for loop condition
  *            OP_NPOP     3             # pop local[0], local[1], local[2]
- *            OP_RET
+ *            OP_RETURN
  */
 static void for_statement(Compiler *self) {
     begin_scope(self);
@@ -1230,7 +1250,7 @@ static void for_statement(Compiler *self) {
  * Assumes that the 'then' token was just consumed. Starts a new block and then
  * compiles all declarations/statements inside of it until we hit 'else', 'end'
  * or EOF. Once any of those delimiters is reached we end the scope.
- * 
+ *
  * NOTE:
  *
  * This should ONLY ever be called by `if_statement()`!
@@ -1268,7 +1288,7 @@ static void elseblock(Compiler *self) {
  * In order to do control flow with lone 'if' statements (no 'else') we need to
  * make use of a technique called 'backpatching'.
  *
- * Basically we emit a jump but we fill it with dummy values for how far to jump 
+ * Basically we emit a jump but we fill it with dummy values for how far to jump
  * at the moment. We keep the address of the jump instruction in memory for later.
  *
  * We then compile the statement/s inside the 'then' branch, once we're done with
@@ -1297,7 +1317,7 @@ static void if_statement(Compiler *self, bool iselif) {
     // Also considers the elsejump in its count so we patch AFTER emitting that.
     patch_jump(self, thenjump);
     emit_byte(self, OP_POP); // Pop result of expression for condition (falsy)
-    
+
     // Recursively compile 1 or more 'elseif' statments so that we emit jumps
     // to the evaluation of their conditions.
     // This is vulnerable to a stack overflow...
@@ -1305,7 +1325,7 @@ static void if_statement(Compiler *self, bool iselif) {
         if_statement(self, true);
     }
 
-    // Finally, if elseif recurse ends, we can check for this. 
+    // Finally, if elseif recurse ends, we can check for this.
     // Remember that 'else' is optional.
     if (match_token(parser, TK_ELSE)) {
         elseblock(self);
@@ -1329,11 +1349,11 @@ static void print_statement(Compiler *self) {
 
 /**
  * III:23.3     While Statements
- * 
+ *
  * While statements are a bit of work because we need to jump backward.
- * 
+ *
  * VISUALIZATION:
- * 
+ *
  *      condition expression <--+
  * +--- OP_FJMP                 |
  * |    OP_POP                  |
@@ -1384,8 +1404,6 @@ static void declaration(Compiler *self) {
         variable_declaration(self);
     } else if (match_token(parser, TK_FUNCTION)) {
         function_declaration(self, false);
-    } else if (match_token(parser, TK_IDENT)) {
-        variable_assignment(self);
     } else {
         statement(self);
     }
@@ -1417,9 +1435,9 @@ static void declaration(Compiler *self) {
  *
  * Unfortunately this allows us to nest assignments which is not consistent
  * with Lua's official design.
- * 
+ *
  * NOTE:
- * 
+ *
  * I've since updated the semantics so that assignments CANNOT be nested.
  */
 static void statement(Compiler *self) {
@@ -1438,9 +1456,16 @@ static void statement(Compiler *self) {
         while_statement(self);
     } else if (match_token(parser, TK_DO)) {
         doblock(self);
+    // } else if (match_token(parser, TK_IDENT)) {
+    //     if (match_token(parser, TK_LPAREN)) {
+    //         call(self);
+    //     } else {
+    //         variable_assignment(self);
+    //     }
     } else {
         expression_statement(self);
     }
+
     // Disallow lone/trailing semicolons that weren't consumed by statements.
     if (match_token(parser, TK_SEMICOL)) {
         compiler_error(self, "Unnecessary or unused ';'.");
@@ -1448,7 +1473,7 @@ static void statement(Compiler *self) {
 }
 
 Function *compile_bytecode(Compiler *self, const char *source) {
-    // I'm worried about using a local variable here since `longjmp()` might 
+    // I'm worried about using a local variable here since `longjmp()` might
     // restore registers to the "snapshot" when `setjmp()` was called.
     // The `volatile` keyword would be needed, but then that might have a
     // performance impact: https://stackoverflow.com/a/54568820

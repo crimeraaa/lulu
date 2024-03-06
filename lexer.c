@@ -151,11 +151,11 @@ static TokenType check_keyword(const Lexer *self,
  * Wrapper around the above function so the me-facing call doesn't look so crazy.
  *
  * @param lexer     Pointer to a lexer instance.
- * @param idx     The offset index into `Word` where we begin the comparison.
- * @param kw   String literal of the kw in question.
+ * @param idx       The offset index into `Word` where we begin the comparison.
+ * @param kw        String literal of the kw in question.
  * @param token     Token type to be returned if lexer's substring matches `Word`.
  *
- * @note        We get the `sizeof(Word) - 1` because string literals are always
+ * @note        We get the `sizeof(kw) - 1` because string literals are always
  *              going to be nul terminated, and we want only the non-nul length.
  */
 #define check_keyword(lexer, idx, kw, token) \

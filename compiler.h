@@ -83,6 +83,7 @@ typedef struct Compiler {
     Parser parser;  // Keep track of tokens emitted by its own `Lexer`.
     Locals locals;  // Keep track of information about local variables in scope.
     LVM *vm;        // Stupid but we need to pass this to `copy_string()`.
+    int assigns;    // Track number of '=' tokens encountered to enforce semantics.
 } Compiler;
 
 /**

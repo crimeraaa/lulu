@@ -18,6 +18,11 @@ static inline void reset_stack(LVM *self) {
  * III:18.3.1   Unary negation and runtime errors
  *
  * This function simply prints whatever formatted error message you want.
+ * 
+ * III:24.5.3   Printing stack traces
+ * 
+ * We've now added stack traces to help users identify where their program may
+ * have gone wrong. It includes a dump of the call stack up until that point.
  */
 static void runtime_error(LVM *self, const char *format, ...) {
     va_list args;
@@ -25,41 +30,46 @@ static void runtime_error(LVM *self, const char *format, ...) {
     vfprintf(stderr, format, args);
     va_end(args);
     fputs("\n", stderr);
-    
-    const CallFrame *frame = &self->frames[self->fc - 1];
-    const Chunk *chunk = &frame->function->chunk;
-    int line = chunk->lines.runs[chunk->prevline - 1].where;
-    fprintf(stderr, "[line %i] in script\n", line);
+
+    for (int i = self->fc - 1; i >= 0; i--) {
+        const Function *function = self->frames[i].function;
+        const Chunk *chunk       = &function->chunk;
+        int line = chunk->lines.runs[chunk->prevline - 1].where;
+        fprintf(stderr, "%s:%i: in ", self->fname, line);
+        if (function->name == NULL) {
+            fprintf(stderr, "main chunk\n");
+        } else {
+            fprintf(stderr, "function '%s'\n", function->name->data);
+        }
+    }
     reset_stack(self);
 }
 
-static inline InterpretResult
-runtime_arith_error(LVM *self, int offset) {
+static InterpretResult runtime_arith_error(LVM *self, int offset) {
     const char *typename = lua_typename(self, offset);
     runtime_error(self, "Attempt to perform arithmetic on a %s value", typename);
     return INTERPRET_RUNTIME_ERROR;
 }
 
-static inline InterpretResult
-runtime_compare_error(LVM *self, int loffset, int roffset) {
+static InterpretResult runtime_compare_error(LVM *self, int loffset, int roffset) {
     const char *ltypename = lua_typename(self, loffset);
     const char *rtypename = lua_typename(self, roffset);
     runtime_error(self, "Attempt to compare %s with %s", ltypename, rtypename);
     return INTERPRET_RUNTIME_ERROR;
 }
 
-static inline InterpretResult
-runtime_concat_error(LVM *self, int offset) {
+static InterpretResult runtime_concat_error(LVM *self, int offset) {
     const char *typename = lua_typename(self, offset);
     runtime_error(self, "Attempt to concatenate a %s value", typename);
     return INTERPRET_RUNTIME_ERROR;
 }
 
-void init_vm(LVM *self) {
+void init_vm(LVM *self, const char *fname) {
     reset_stack(self);
     init_table(&self->globals);
     init_table(&self->strings);
     self->objects = NULL;
+    self->fname = fname;
 }
 
 void free_vm(LVM *self) {
@@ -94,6 +104,40 @@ TValue popstack(LVM *self) {
  */
 static inline TValue peekstack(LVM *self, int offset) {
     return *lua_poke(self, offset);
+}
+
+/**
+ * III:24.5     Function Calls
+ * 
+ * Increments the VM's frame counter then initializes the topmost CallFrame
+ * in the `frames` array using the `Function*` that was passed onto the stack
+ * previously.
+ */
+static bool call(LVM *self, Function *function, int argc) {
+    if (argc != function->arity) {
+        runtime_error(self, "Expected %i arguments but got %i.", function->arity, argc);
+        return false;
+    }
+    if (self->fc >= LUA_MAXFRAMES) {
+        runtime_error(self, "Stack overflow.");
+        return false;
+    }
+    CallFrame *frame = &self->frames[self->fc++];
+    frame->function = function;
+    // Point to the start of this functions's instructions.
+    frame->ip = function->chunk.code;
+     // Bottom of call frame, this should point to the Function* itself.
+    frame->bp = self->sp - argc - 1;  
+    return true;
+}
+
+static bool call_value(LVM *self, TValue *callee, int argc) {
+    switch (callee->type) {
+    case LUA_TFUNCTION: return call(self, (Function*)callee->as.object, argc);
+    default:            break; // Non-callable object type.
+    }
+    runtime_error(self, "Attempt to call %s as function", value_typename(callee));
+    return false;
 }
 
 /**
@@ -144,16 +188,16 @@ static inline TValue read_constant_at(CallFrame *self, size_t index) {
         assertfn(vm);                                                          \
         TValue r = makefn(exprfn(lua_asnumber(vm, -2), lua_asnumber(vm, -1))); \
         lua_popn(vm, 2);                                                       \
-        lua_pushvalue(vm, r); \
+        lua_pushvalue(vm, r);                                                  \
     } while (false)
 
 /**
  * We check lhs and rhs separately so we can report which one is likely to have
  * caused the error.
  */
-#define assert_arithmetic(vm) \
-    if (!lua_isnumber(vm, -2)) return runtime_arith_error(vm, -2); \
-    if (!lua_isnumber(vm, -1)) return runtime_arith_error(vm, -1); \
+#define assert_arithmetic(vm)                                                  \
+    if (!lua_isnumber(vm, -2)) return runtime_arith_error(vm, -2);             \
+    if (!lua_isnumber(vm, -1)) return runtime_arith_error(vm, -1);             \
 
 /**
  * We check both lhs and rhs as you cannot compare non-numbers in terms of
@@ -162,9 +206,9 @@ static inline TValue read_constant_at(CallFrame *self, size_t index) {
  * This doesn't affect (and should not be used for) equality operators.
  * Meaning comparing equals-to and not-equals-to are valid calls.
  */
-#define assert_comparison(vm) \
-    if (!lua_isnumber(vm, -2) || !lua_isnumber(vm, -1)) { \
-        return runtime_compare_error(vm, -2, -1); \
+#define assert_comparison(vm)                                                  \
+    if (!lua_isnumber(vm, -2) || !lua_isnumber(vm, -1)) {                      \
+        return runtime_compare_error(vm, -2, -1);                              \
     }
 
 /**
@@ -224,7 +268,7 @@ static InterpretResult run_bytecode(LVM *self) {
 
     // Hack, but we reset so we can disassemble properly.
     // We need that start with index 0 into the lines.runs array.
-    // So effectively this becames our iterator.
+    // So effectively this becames our iterator for each function frame.
     frame->function->chunk.prevline = 0;
     for (;;) {
         ptrdiff_t instruction_offset = frame->ip - frame->function->chunk.code;
@@ -268,12 +312,12 @@ static InterpretResult run_bytecode(LVM *self) {
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
         case OP_GETLOCAL: {
             Byte slot = read_byte(frame);
-            pushvalue(self, frame->slots[slot]);
+            pushvalue(self, frame->bp[slot]);
             break;
         }
         case OP_SETLOCAL: {
             Byte slot = read_byte(frame);
-            frame->slots[slot] = *lua_poke(self, -1);
+            frame->bp[slot] = *lua_poke(self, -1);
             lua_popn(self, 1); // Expression left stuff on top of the stack.
             break;
         }
@@ -364,6 +408,7 @@ static InterpretResult run_bytecode(LVM *self) {
             }
             return runtime_arith_error(self, -1);
         }
+
         // -*- III:21.1.1   Print statements ---------------------------------*-
         case OP_PRINT: {
             const TValue *value = lua_poke(self, -1);
@@ -393,10 +438,54 @@ static InterpretResult run_bytecode(LVM *self) {
             frame->ip -= offset;
             break;
         }
-        case OP_RET:
-            // Exit interpreter for now until we get functions going.
-            lua_popn(self, 1); // Pop the script itself off the VM's stack
-            return INTERPRET_OK;
+                      
+        // -*- III:24.5.1   Binging arguments to parameters ------------------*-
+        case OP_CALL: {
+            // In practice this should only actually be only 0-255.
+            int argc = read_byte(frame);
+
+            // -1 to poke at top of stack, this is the function object itself.
+            // In other words this is the base pointer of the current CallFrame.
+            TValue *bp = self->sp - 1 - argc;
+
+            // If successful there will be a new frame on the CallFrame stack for
+            // the called function.
+            if (!call_value(self, bp, argc)) {
+                return INTERPRET_RUNTIME_ERROR;
+            }
+
+            // When we execute the next instruction we want to execute the ones
+            // in this CallFrame. We also need to reset the prevline so we can
+            // 'iterate' properly over the lineruns.
+            frame = &self->frames[self->fc - 1];
+            frame->function->chunk.prevline = 0;
+            break;
+        }
+
+        case OP_RETURN: {
+            // When a function returns a value, its result will be on the top of
+            // the stack. We're about to discard the function's entire stack
+            // window so we hold onto the return value.
+            TValue res = popstack(self);
+            
+            // Conceptually discard the call frame. If this was the very last
+            // callframe that probably indicates we've finished the top-level.
+            self->fc--;
+            if (self->fc == 0) {
+                lua_popn(self, 1); // Pop the script itself off the VM's stack.
+                return INTERPRET_OK;
+            }
+            // Discard all the slots the callframe was using for its parameters
+            // and local variables, which are the same slots the caller (us)
+            // used to push the arguments in the first place.
+            self->sp = frame->bp;
+            pushvalue(self, res);
+            
+            // Return control of the stack back to the caller now that this
+            // particular function call is done.
+            frame = &self->frames[self->fc - 1];
+            break;
+        }
         }
     }
 }
@@ -410,10 +499,8 @@ InterpretResult interpret_vm(LVM *self, const char *source) {
         return INTERPRET_COMPILE_ERROR;
     }
     pushvalue(self, makeobject(LUA_TFUNCTION, function));
-    CallFrame *frame = &self->frames[self->fc++];
-    frame->function = function;
-    frame->ip       = function->chunk.code; // very beginning of bytecode.
-    frame->slots    = self->stack;          // very bottom of VM's stack.
+    // Call our implicit `main`, with no arguments.
+    call(self, function, 0);
     return run_bytecode(self);
 }
 

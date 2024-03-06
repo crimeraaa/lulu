@@ -98,7 +98,7 @@ static void print_function(const Function *self) {
         printf("<script>");
         return;
     }
-    printf("function: %s (%p)", self->name->data, (void*)self);
+    printf("function: %s", self->name->data);
 }
 
 static void print_string(const TString *self) {

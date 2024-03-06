@@ -21,7 +21,7 @@
 typedef struct {
     Function *function; // Contains our chunk, constants and other stuff.
     Byte *ip;       // Instruction pointer (next instruction) in function's chunk.
-    TValue *slots;  // Point into first slot of VM's values stack we can use.
+    TValue *bp;  // Point into first slot of VM's values stack we can use.
 } CallFrame;
 
 struct LVM {
@@ -32,6 +32,7 @@ struct LVM {
     Table globals; // Interned global variable identifiers, as strings.
     Table strings; // Interned string literals/user-created ones.
     Object *objects; // Head of intrusive linked list of allocated objects.
+    const char *fname; // Filename or `stdin`.
 };
 
 typedef enum {
@@ -40,7 +41,7 @@ typedef enum {
     INTERPRET_RUNTIME_ERROR,
 } InterpretResult;
 
-void init_vm(LVM *self);
+void init_vm(LVM *self, const char *fname);
 void free_vm(LVM *self);
 
 /**

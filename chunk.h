@@ -81,7 +81,7 @@ typedef enum {
     // -*- III:24.5     Function Calls ---------------------------------------*-
     OP_CALL,
 
-    OP_RET,
+    OP_RETURN,
 } OpCode;
 
 typedef struct {

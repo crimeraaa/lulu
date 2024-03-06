@@ -1,9 +1,10 @@
-function argsnone()
-    print("Look 'ma, no hands!")
+function sayhi()
+    print("Hi")
 end
 
-function foxtrot(i, ii, iii)
-    print(i + ii + iii)
+function greet(name)
+    print("Hi" .. ' ' .. name .. '!')
 end
 
-print(foxtrot)
+sayhi()
+greet("Bobby")

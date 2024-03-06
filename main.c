@@ -71,7 +71,7 @@ static int run_file(LVM *vm, const char *file_path) {
 
 int main(int argc, char *argv[]) {
     LVM *vm = &(LVM){0}; // C99 compound literals are really handy sometimes
-    init_vm(vm);
+    init_vm(vm, (argc == 1) ? "stdin" : argv[1]);
     int retval = 0; 
     if (argc == 1) {
         run_repl(vm);
