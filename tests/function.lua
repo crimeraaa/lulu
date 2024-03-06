@@ -8,3 +8,5 @@ end
 
 sayhi()
 greet("Bobby")
+
+print("Hi")

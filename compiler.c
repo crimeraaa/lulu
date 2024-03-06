@@ -8,8 +8,11 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     self->function = new_function(vm); // self->vm not assigned yet!
     self->type = type;
     if (current != NULL) {
-        self->parser = current->parser;
-    }
+        // Potentially dangerous as I'm not certain if the jmp_buf is being
+        // copied correctly.
+        self->lex = current->lex;
+    } 
+    // Hacky but for now I assign lex OUTSIDE of this function.
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = vm;
@@ -19,7 +22,7 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     // already consumed the 'function' token, allocated an object and then
     // consumed the identifier.
     if (type != FNTYPE_SCRIPT) {
-        const Token *name = &self->parser.previous;
+        const Token *name = &self->lex->consumed;
         self->function->name = copy_string(self->vm, name->start, name->len);
     }
 
@@ -31,7 +34,9 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
 }
 
 /**
- * Assumes that `self->parser.errjmp` (of type `jmp_buf`) was properly set in
+ * Report an error at the token that was just consumed.
+ * 
+ * Assumes that `self->lex.errjmp` (of type `jmp_buf`) was properly set in
  * `compile_bytecode()`. Parser will report a message then do a longjmp.
  *
  * WARNING:
@@ -40,8 +45,8 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
  * that heap allocations within functions may not be cleaned up properly and
  * things like that.
  */
-static inline void compiler_error(Compiler *self, const char *message) {
-    parser_error(&self->parser, message);
+static void compiler_error(Compiler *self, const char *message) {
+    throw_lexerror(self->lex, message);
 }
 
 Chunk *current_chunk(Compiler *self) {
@@ -54,10 +59,10 @@ Chunk *current_chunk(Compiler *self) {
  * III:17.3     Emitting Bytecode
  *
  * This function simply writes to the compiler's current chunk the given byte,
- * and we log line information based on the consumed token (parser's previous).
+ * and we log line information based on the consumed token (lex's previous).
  */
 static inline void emit_byte(Compiler *self, Byte byte) {
-    write_chunk(current_chunk(self), byte, self->parser.previous.line);
+    write_chunk(current_chunk(self), byte, self->lex->consumed.line);
 }
 
 /**
@@ -154,7 +159,7 @@ static inline void emit_return(Compiler *self) {
  *
  * If more than `LUA_MAXLCONSTANTS` (a.k.a. 2 ^ 24 - 1) constants have been
  * created, we return 0. By itself this doesn't indicate an error, but because
- * we call the `error` function that sets the compiler's parser's error state.
+ * we call the `error` function that sets the compiler's lex's error state.
  */
 static inline DWord make_constant(Compiler *self, TValue value) {
     size_t index = add_constant(current_chunk(self), value);
@@ -210,7 +215,7 @@ static Function *end_compiler(Compiler *self) {
     emit_return(self);
     Function *function = self->function;
 #ifdef DEBUG_PRINT_CODE
-    if (!self->parser.haderror) {
+    if (!self->lex->haderror) {
         // Implicit main function does not have a name.
         const char *name = (function->name) ? function->name->data : "<script>";
         disassemble_chunk(current_chunk(self), name);
@@ -379,13 +384,12 @@ static void add_local(Compiler *self, Token name) {
  * the compiler's local variables.
  */
 static void declare_variable(Compiler *self, bool islocal) {
-    Locals *locals = &self->locals;
-    Parser *parser = &self->parser;
     // Bail out if this is called for global variable declarations.
     if (!islocal) {
         return;
     }
-    const Token *name = &parser->previous;
+    Locals *locals = &self->locals;
+    const Token *name = &self->lex->consumed;
     // Ensure identifiers are never shadowed/redeclared in the same scope.
     // Note that the current scope is at the END of the array.
     for (int i = locals->count - 1; i >= 0; i--) {
@@ -408,18 +412,18 @@ static void declare_variable(Compiler *self, bool islocal) {
  * more careful when it comes to determining if an identifier supposed to be a
  * global variable declaration/definition/assignment, or a local.
  *
- * Assumes that we already consumed a TK_IDENT and that it's now the parser's
+ * Assumes that we already consumed a TK_IDENT and that it's now the lex's
  * previous token.
  */
 static Byte parse_variable(Compiler *self, const char *message, bool islocal) {
-    Parser *parser = &self->parser;
-    consume_token(parser, TK_IDENT, message);
+    LexState *lex = self->lex;
+    consume_token(lex, TK_IDENT, message);
     declare_variable(self, islocal);
     // Locals aren't looked up by name at runtime so return a dummy index.
     if (islocal) {
         return 0;
     }
-    return identifier_constant(self, &parser->previous);
+    return identifier_constant(self, &lex->consumed);
 }
 
 /**
@@ -470,6 +474,8 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
     } else {
         compiler_error(self, "Too many global variable identifiers.");
     }
+    // Mimicking the otherwise implied behavior of OP_DEFINE_GLOBAL.
+    emit_byte(self, OP_POP);
 }
 
 /**
@@ -479,8 +485,8 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
  */
 static Byte arglist(Compiler *self) {
     Byte argc = 0;
-    Parser *parser = &self->parser;
-    if (!check_token(parser, TK_RPAREN)) {
+    LexState *lex = self->lex;
+    if (!check_token(lex, TK_RPAREN)) {
         do {
             // Push expression needed to resolve argument.
             expression(self);
@@ -488,9 +494,9 @@ static Byte arglist(Compiler *self) {
                 compiler_error(self, "Cannot have more than 255 arguments.");
             }
             argc++;
-        } while (match_token(parser, TK_COMMA));
+        } while (match_token(lex, TK_COMMA));
     }
-    consume_token(parser, TK_RPAREN, "Expected ')' after argument list.");
+    consume_token(lex, TK_RPAREN, "Expected ')' after argument list.");
     return argc;
 }
 
@@ -537,10 +543,10 @@ void and_(Compiler *self, bool assignable) {
  * it as our leading number regardless.
  *
  * Using our (for now hypothetical) lookup table of function pointers, we can
- * associate various parser functions with each token type.
+ * associate various lex functions with each token type.
  *
- * e.g. '-' is `TK_DASH` which is associated with the prefix parser function
- * `unary()` and the infix parser function `binary()`.
+ * e.g. '-' is `TK_DASH` which is associated with the prefix lex function
+ * `unary()` and the infix lex function `binary()`.
  *
  * III:21.4     Assignment
  *
@@ -549,7 +555,7 @@ void and_(Compiler *self, bool assignable) {
  */
 void binary(Compiler *self, bool assignable) {
     (void)assignable;
-    TokenType optype = self->parser.previous.type;
+    TokenType optype = self->lex->consumed.type;
     const ParseRule *rule = get_rule(optype);
     // Compile right hand side, and evaluate it if it has higher precedence operations.
     // We use 1 higher precedence to ensure left-to-right associativity.
@@ -594,7 +600,7 @@ void call(Compiler *self, bool assignable) {
  */
 void rbinary(Compiler *self, bool assignable) {
     (void)assignable;
-    TokenType optype = self->parser.previous.type;
+    TokenType optype = self->lex->consumed.type;
     const ParseRule *rule = get_rule(optype);
     // We use the same precedence so we can evaluate from right to left.
     parse_precedence(self, rule->precedence);
@@ -620,7 +626,7 @@ void rbinary(Compiler *self, bool assignable) {
  */
 void literal(Compiler *self, bool assignable) {
     (void)assignable;
-    switch (self->parser.previous.type) {
+    switch (self->lex->consumed.type) {
     case TK_FALSE: emit_byte(self, OP_FALSE); break;
     case TK_NIL:   emit_byte(self, OP_NIL);   break;
     case TK_TRUE:  emit_byte(self, OP_TRUE);  break;
@@ -644,13 +650,13 @@ void literal(Compiler *self, bool assignable) {
 void grouping(Compiler *self, bool assignable) {
     (void)assignable;
     expression(self);
-    consume_token(&self->parser, TK_RPAREN, "Expected ')' after grouping expression.");
+    consume_token(self->lex, TK_RPAREN, "Expected ')' after grouping expression.");
 }
 
 /* Parse a number literal and emit it as a constant. */
 void number(Compiler *self, bool assignable) {
     (void)assignable;
-    double value = strtod(self->parser.previous.start, NULL);
+    double value = strtod(self->lex->consumed.start, NULL);
     emit_constant(self, makenumber(value));
 }
 
@@ -693,7 +699,7 @@ void or_(Compiler *self, bool assignable) {
  */
 void string(Compiler *self, bool assignable) {
     (void)assignable;
-    const Token *token = &self->parser.previous;
+    const Token *token = &self->lex->consumed;
     // Point past first quote, use length w/o both quotes.
     TString *s = copy_string(self->vm, token->start + 1, token->len - 2);
     emit_constant(self, makeobject(LUA_TSTRING, s));
@@ -753,7 +759,7 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
         setop  = (islong) ? OP_LSETGLOBAL : OP_SETGLOBAL;
         emitfn = (islong) ? emit_long : emit_bytes;
     }
-    if (assignable && match_token(&self->parser, TK_ASSIGN)) {
+    if (assignable && match_token(self->lex, TK_ASSIGN)) {
         expression(self);
         emitfn(self, setop, arg);
     } else {
@@ -783,11 +789,11 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
  */
 static inline void variable_assignment(Compiler *self) {
     // Don't consume the '=' just yet.
-    if (!check_token(&self->parser, TK_ASSIGN)) {
+    if (!check_token(self->lex, TK_ASSIGN)) {
         compiler_error(self, "Expected '=' after variable assignment.");
     }
-    named_variable(self, &self->parser.previous, true);
-    match_token(&self->parser, TK_SEMICOL);
+    named_variable(self, &self->lex->consumed, true);
+    match_token(self->lex, TK_SEMICOL);
 }
 
 /**
@@ -795,7 +801,7 @@ static inline void variable_assignment(Compiler *self) {
  *
  * We access a variable using its name.
  *
- * Assumes the identifier token is the parser's previous one as we consumed it.
+ * Assumes the identifier token is the lex's previous one as we consumed it.
  *
  * III:22.4     Using Locals
  *
@@ -804,13 +810,13 @@ static inline void variable_assignment(Compiler *self) {
  * This is because simple variable assignment is detected by `declaration()`.
  */
 void variable(Compiler *self, bool assignable) {
-    named_variable(self, &self->parser.previous, assignable);
+    named_variable(self, &self->lex->consumed, assignable);
 }
 
 /**
  * III:17.4.3   Unary negation
  *
- * Assumes the leading '-' token has been consumed and is the parser's previous
+ * Assumes the leading '-' token has been consumed and is the lex's previous
  * token.
  */
 void unary(Compiler *self, bool assignable) {
@@ -818,7 +824,7 @@ void unary(Compiler *self, bool assignable) {
     // Keep in this stackframe's memory so that if we recurse, we evaluate the
     // topmost stack frame (innermosts, higher precedences) first and work our
     // way down until we reach this particular function call.
-    TokenType optype = self->parser.previous.type;
+    TokenType optype = self->lex->consumed.type;
 
     // Compile the unary expression's operand, which may be a number literal,
     // another unary operator, a grouping, etc.
@@ -838,7 +844,7 @@ void unary(Compiler *self, bool assignable) {
  * III:17.6.1   Parsing with precedence
  *
  * By definition, all first tokens (literals, parentheses, variable names) are
- * considered "prefix" expressions. This helps kick off the compiler + parser.
+ * considered "prefix" expressions. This helps kick off the compiler + lex.
  *
  * III:21.4     Assignment
  *
@@ -850,26 +856,26 @@ void unary(Compiler *self, bool assignable) {
  * through is to explicitly check if the current parsed precedence is greater
  * than `PREC_ASSIGNMENT`.
  *
- * In other words we need to append a `bool` argument to all parser functions!
+ * In other words we need to append a `bool` argument to all lex functions!
  */
 static void parse_precedence(Compiler *self, Precedence precedence) {
-    Parser *parser = &self->parser;
-    advance_parser(parser);
-    const ParseFn prefixfn = get_rule(parser->previous.type)->prefix;
+    LexState *lex = self->lex;
+    next_token(lex);
+    const ParseFn prefixfn = get_rule(lex->consumed.type)->prefix;
     if (prefixfn == NULL) {
         compiler_error(self, "Expected an expression.");
     }
     bool assignable = (precedence <= PREC_ASSIGNMENT);
     prefixfn(self, assignable);
 
-    while (precedence <= get_rule(parser->current.type)->precedence) {
-        advance_parser(parser);
-        const ParseFn infixfn = get_rule(parser->previous.type)->infix;
+    while (precedence <= get_rule(lex->token.type)->precedence) {
+        next_token(lex);
+        const ParseFn infixfn = get_rule(lex->consumed.type)->infix;
         infixfn(self, assignable);
     }
 
     // No function consumed the '=' token so we didn't properly assign.
-    if (assignable && match_token(parser, TK_ASSIGN)) {
+    if (assignable && match_token(lex, TK_ASSIGN)) {
         compiler_error(self, "Invalid assignment target.");
     }
 }
@@ -918,56 +924,56 @@ static void expression(Compiler *self) {
  * I've updated this so that it automatically creates a new block for itself.
  */
 static void doblock(Compiler *self) {
-    Parser *parser = &self->parser;
+    LexState *lex = self->lex;
     begin_scope(self);
-    while (!check_token(parser, TK_END, TK_EOF)) {
+    while (!check_token(lex, TK_END, TK_EOF)) {
         declaration(self);
     }
     end_scope(self);
-    consume_token(parser, TK_END, "Expected 'end' after 'do' block.");
-    match_token(parser, TK_SEMICOL); // Like most of Lua this is optional.
+    consume_token(lex, TK_END, "Expected 'end' after 'do' block.");
+    match_token(lex, TK_SEMICOL); // Like most of Lua this is optional.
 }
 
 static void function(Compiler *self, FnType type) {
     Compiler _next = {0};
+    init_compiler(&_next, self, self->vm, type);
+
     // To handle compiling multiple functions nested within each other, we use
     // local compiler instances per stack frame of `function()` (C, not Lua!)
     Compiler *next = &_next;
-    Parser *parser = &next->parser;
-    init_compiler(next, self, self->vm, type);
+    
+    // Set this AFTER initializing to ensure we're pointing at the one that was
+    // copied over from `self`.
+    LexState *lex = next->lex;
 
     // Local scope to capture our arguments. Note that we don't have a paired
     // call to `end()` because we effectively throw out the local compiler
     // instance anyway near the end.
     begin_scope(next);
-    consume_token(parser, TK_LPAREN, "Expected '(' after function name.");
-    if (!check_token(parser, TK_RPAREN)) {
+    consume_token(lex, TK_LPAREN, "Expected '(' after function name.");
+    if (!check_token(lex, TK_RPAREN)) {
         // Since compiler instances have their own locals stack, we have to
         // take care to pass the CORRECT pointer!
         do {
             next->function->arity++;
             // VERY dangerous because we do a longjmp, but the jmp_buf for this
-            // compiler's parser instance may not have been set! So we have to
-            // manually sync so that we have the exact same parser error state.
+            // compiler's lex instance may not have been set! So we have to
+            // manually sync so that we have the exact same lex error state.
             if (next->function->arity > LUA_MAXBYTE) {
-                self->parser = next->parser;
                 compiler_error(self, "Cannot have more than 255 parameters.");
             }
             // Semantically parameters are just local variables declared in the
             // outermost lexical scope of the function body.
             Byte constant = parse_variable(next, "Expected parameter name.", true);
             define_variable(next, constant, true);
-        } while (match_token(parser, TK_COMMA));
+        } while (match_token(lex, TK_COMMA));
     }
-    consume_token(parser, TK_RPAREN, "Expected ')' after parameters.");
+    consume_token(lex, TK_RPAREN, "Expected ')' after parameters.");
     doblock(next);
 
     Function *function = end_compiler(next);
     TValue constant    = makeobject(LUA_TFUNCTION, function);
     emit_bytes(self, OP_CONSTANT, make_constant(self, constant));
-
-    // Resync parser states to mimic the global behavior of clox.
-    self->parser = next->parser;
 }
 
 /**
@@ -1018,15 +1024,15 @@ static void function_declaration(Compiler *self, bool islocal) {
  * `variable()` parse rule.
  */
 static void variable_declaration(Compiler *self) {
-    Parser *parser = &self->parser;
+    LexState *lex = self->lex;
     // Index of variable name (previous token) as appended into constants pool
     DWord index = parse_variable(self, "Expected identifier after 'local'.", true);
-    if (match_token(parser, TK_ASSIGN)) {
+    if (match_token(lex, TK_ASSIGN)) {
         expression(self);
     } else {
         emit_byte(self, OP_NIL); // Push nil to stack as a default value
     }
-    match_token(parser, TK_SEMICOL);
+    match_token(lex, TK_SEMICOL);
     define_variable(self, index, true);
 }
 
@@ -1041,7 +1047,7 @@ static void variable_declaration(Compiler *self) {
  */
 static void expression_statement(Compiler *self) {
     expression(self);
-    match_token(&self->parser, TK_SEMICOL);
+    match_token(self->lex, TK_SEMICOL);
     emit_byte(self, OP_POP);
 }
 
@@ -1060,14 +1066,14 @@ static void expression_statement(Compiler *self) {
  * resolve to the outer local 'i=2', not the loop iterator 'i=0'.
  */
 static Token for_initializer(Compiler *self) {
-    Parser *parser = &self->parser;
-    const Token name = parser->current;
+    LexState *lex = self->lex;
+    const Token name = lex->token;
     // Iterator variable is always a local declaration.
-    consume_token(parser, TK_IDENT, "Expected identifier.");
+    consume_token(lex, TK_IDENT, "Expected identifier.");
     add_local(self, name);
-    consume_token(parser, TK_ASSIGN, "Expected '=' after identifier.");
+    consume_token(lex, TK_ASSIGN, "Expected '=' after identifier.");
     expression(self);
-    consume_token(parser, TK_COMMA, "Expected ',' after 'for' initializer.");
+    consume_token(lex, TK_COMMA, "Expected ',' after 'for' initializer.");
     return name;
 }
 
@@ -1123,7 +1129,7 @@ static void push_unnamed_local(Compiler *self) {
 static DWord for_condition(Compiler *self, const Token *name) {
     // 'for' condition can only be a number literal, a variable that resolves
     // to a number, or a function call thereof (functions are variables).
-    if (!check_token(&self->parser, TK_NUMBER, TK_IDENT)) {
+    if (!check_token(self->lex, TK_NUMBER, TK_IDENT)) {
         compiler_error(self, "Expected number or identifier after 'for' initializer.");
     }
     // Emit the expression first so we can attempt to resolve outer instances of
@@ -1146,11 +1152,10 @@ static DWord for_condition(Compiler *self, const Token *name) {
 }
 
 static void for_increment(Compiler *self) {
-    Parser *parser = &self->parser;
     // 'for' increment is a bit convoluted.
-    if (match_token(parser, TK_COMMA)) {
+    if (match_token(self->lex, TK_COMMA)) {
         // Ensure we actually have something.
-        if (!check_token(parser, TK_IDENT, TK_NUMBER)) {
+        if (!check_token(self->lex, TK_IDENT, TK_NUMBER)) {
             compiler_error(self, "'for' increment must be variable/number.");
         }
         expression(self);
@@ -1221,7 +1226,6 @@ static size_t emit_for_increment(Compiler *self, DWord index, size_t loopstart) 
  */
 static void for_statement(Compiler *self) {
     begin_scope(self);
-    Parser *parser = &self->parser;
 
     // Push iterator, condition expression, and increment as local variables.
     const Token iter = for_initializer(self);
@@ -1234,7 +1238,7 @@ static void for_statement(Compiler *self) {
 
     // Since we need to do the increment expression last, we have to jump over.
     loopstart = emit_for_increment(self, index, loopstart);
-    consume_token(parser, TK_DO, "Expected 'do' after 'for' clause.");
+    consume_token(self->lex, TK_DO, "Expected 'do' after 'for' clause.");
 
     // This creates a new scope but given our resolution rules it's probably ok.
     doblock(self);
@@ -1260,7 +1264,7 @@ static void for_statement(Compiler *self) {
  */
 static void thenblock(Compiler *self) {
     begin_scope(self);
-    while (!check_token(&self->parser, TK_ELSEIF, TK_ELSE, TK_END, TK_EOF)) {
+    while (!check_token(self->lex, TK_ELSEIF, TK_ELSE, TK_END, TK_EOF)) {
         declaration(self);
     }
     end_scope(self);
@@ -1274,7 +1278,7 @@ static void thenblock(Compiler *self) {
  */
 static void elseblock(Compiler *self) {
     begin_scope(self);
-    while (!check_token(&self->parser, TK_END, TK_EOF)) {
+    while (!check_token(self->lex, TK_END, TK_EOF)) {
         declaration(self);
     }
     end_scope(self);
@@ -1283,7 +1287,7 @@ static void elseblock(Compiler *self) {
 /**
  * III:23.2     If Statements
  *
- * Assumes we already consumed the 'if' token and it's now the parser's previous.
+ * Assumes we already consumed the 'if' token and it's now the lex's previous.
  *
  * In order to do control flow with lone 'if' statements (no 'else') we need to
  * make use of a technique called 'backpatching'.
@@ -1296,10 +1300,10 @@ static void elseblock(Compiler *self) {
  * we need to, you know, jump.
  */
 static void if_statement(Compiler *self, bool iselif) {
-    Parser *parser = &self->parser;
+    LexState *lex = self->lex;
     // Compile the 'if'/'elseif' condition code.
     expression(self);
-    consume_token(parser, TK_THEN, "Expected 'then' after condition.");
+    consume_token(lex, TK_THEN, "Expected 'then' after condition.");
 
     // Instruction "address" of the jump (after 'then') so we can patch it later.
     // We need to determine how big the 'then' branch is first.
@@ -1321,13 +1325,13 @@ static void if_statement(Compiler *self, bool iselif) {
     // Recursively compile 1 or more 'elseif' statments so that we emit jumps
     // to the evaluation of their conditions.
     // This is vulnerable to a stack overflow...
-    if (match_token(parser, TK_ELSEIF)) {
+    if (match_token(lex, TK_ELSEIF)) {
         if_statement(self, true);
     }
 
     // Finally, if elseif recurse ends, we can check for this.
     // Remember that 'else' is optional.
-    if (match_token(parser, TK_ELSE)) {
+    if (match_token(lex, TK_ELSE)) {
         elseblock(self);
     }
     patch_jump(self, elsejump);
@@ -1336,14 +1340,14 @@ static void if_statement(Compiler *self, bool iselif) {
     // patching an 'elseif' because they'll unwind eventually to end the primary
     // caller stack frame.
     if (!iselif) {
-        consume_token(parser, TK_END, "Expected 'end' after 'if' statement.");
-        match_token(parser, TK_SEMICOL);
+        consume_token(lex, TK_END, "Expected 'end' after 'if' statement.");
+        match_token(lex, TK_SEMICOL);
     }
 }
 
 static void print_statement(Compiler *self) {
     expression(self);
-    match_token(&self->parser, TK_SEMICOL);
+    match_token(self->lex, TK_SEMICOL);
     emit_byte(self, OP_PRINT);
 }
 
@@ -1363,12 +1367,10 @@ static void print_statement(Compiler *self) {
  *      continue...
  */
 static void while_statement(Compiler *self) {
-    Parser *parser = &self->parser;
-
     // Save address of the beginning of the loop, right before the condition.
     size_t loopstart = current_chunk(self)->count;
     expression(self);
-    consume_token(parser, TK_DO, "Expected 'do' after 'while' condition.");
+    consume_token(self->lex, TK_DO, "Expected 'do' after 'while' condition.");
 
     // Save the address of the jump opcode which will exit out of the loop.
     size_t exitjump = emit_jump(self, OP_FJMP);
@@ -1396,19 +1398,15 @@ static void while_statement(Compiler *self) {
  * `expression_statement()` which eventually calls `variable()`.
  */
 static void declaration(Compiler *self) {
-    Parser *parser = &self->parser;
-    if (match_token(parser, TK_LOCAL)) {
-        if (match_token(parser, TK_FUNCTION)) {
+    if (match_token(self->lex, TK_LOCAL)) {
+        if (match_token(self->lex, TK_FUNCTION)) {
             compiler_error(self, "local functions are not yet implemented.");
         }
         variable_declaration(self);
-    } else if (match_token(parser, TK_FUNCTION)) {
+    } else if (match_token(self->lex, TK_FUNCTION)) {
         function_declaration(self, false);
     } else {
         statement(self);
-    }
-    if (parser->panicking) {
-        synchronize_parser(parser);
     }
 }
 
@@ -1441,23 +1439,23 @@ static void declaration(Compiler *self) {
  * I've since updated the semantics so that assignments CANNOT be nested.
  */
 static void statement(Compiler *self) {
-    Parser *parser = &self->parser;
-    if (match_token(parser, TK_PRINT)) {
+    LexState *lex = self->lex;
+    if (match_token(lex, TK_PRINT)) {
         print_statement(self);
-    } else if (match_token(parser, TK_BREAK)) {
+    } else if (match_token(lex, TK_BREAK)) {
         compiler_error(self, "Breaks are not yet implemented.");
-    } else if (match_token(parser, TK_IF)) {
+    } else if (match_token(lex, TK_IF)) {
         if_statement(self, false);
-    } else if (match_token(parser, TK_FOR)) {
+    } else if (match_token(lex, TK_FOR)) {
         for_statement(self);
-    } else if (match_token(parser, TK_ELSEIF, TK_ELSE)) {
+    } else if (match_token(lex, TK_ELSEIF, TK_ELSE)) {
         compiler_error(self, "Not used in an 'if' statement.");
-    } else if (match_token(parser, TK_WHILE)) {
+    } else if (match_token(lex, TK_WHILE)) {
         while_statement(self);
-    } else if (match_token(parser, TK_DO)) {
+    } else if (match_token(lex, TK_DO)) {
         doblock(self);
-    // } else if (match_token(parser, TK_IDENT)) {
-    //     if (match_token(parser, TK_LPAREN)) {
+    // } else if (match_token(lex, TK_IDENT)) {
+    //     if (match_token(lex, TK_LPAREN)) {
     //         call(self);
     //     } else {
     //         variable_assignment(self);
@@ -1467,30 +1465,29 @@ static void statement(Compiler *self) {
     }
 
     // Disallow lone/trailing semicolons that weren't consumed by statements.
-    if (match_token(parser, TK_SEMICOL)) {
+    if (match_token(lex, TK_SEMICOL)) {
         compiler_error(self, "Unnecessary or unused ';'.");
     }
 }
 
-Function *compile_bytecode(Compiler *self, const char *source) {
+Function *compile_bytecode(Compiler *self) {
     // I'm worried about using a local variable here since `longjmp()` might
     // restore registers to the "snapshot" when `setjmp()` was called.
     // The `volatile` keyword would be needed, but then that might have a
     // performance impact: https://stackoverflow.com/a/54568820
-    Parser *parser = &self->parser;
-    init_parser(parser, source);
+    LexState *lex = self->lex;
 
     // setjmp returns 0 on init, else a nonzero when called by longjmp.
     // Be VERY careful not to longjmp from functions with heap allocations since
     // we won't do most forms of cleanup.
-    if (setjmp(parser->errjmp) == 0) {
+    if (setjmp(self->lex->errjmp) == 0) {
         begin_scope(self); // File-scope/REPL line scope is its own block scope.
-        advance_parser(parser);
-        while (!match_token(parser, TK_EOF)) {
+        next_token(self->lex);
+        while (!match_token(lex, TK_EOF)) {
             declaration(self);
         }
         end_scope(self);
     }
     Function *function = end_compiler(self);
-    return (parser->haderror) ? NULL : function;
+    return (lex->haderror) ? NULL : function;
 }

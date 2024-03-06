@@ -3,9 +3,8 @@
 
 #include "common.h"
 #include "chunk.h"
-#include "lexer.h"
+#include "lexstate.h"
 #include "object.h"
-#include "parser.h"
 
 /**
  * III:22.1     Representing Local Variables
@@ -80,7 +79,7 @@ typedef struct Compiler {
     struct Compiler *enclosing; // Nested function calls as a stack/linked list.
     Function *function; // Contains the chunk we're currently compiling.
     FnType type;
-    Parser parser;  // Keep track of tokens emitted by its own `Lexer`.
+    LexState *lex;  // Maintain pointers to the source code and emit tokens.
     Locals locals;  // Keep track of information about local variables in scope.
     LVM *vm;        // Stupid but we need to pass this to `copy_string()`.
     int assigns;    // Track number of '=' tokens encountered to enforce semantics.
@@ -146,7 +145,13 @@ Chunk *current_chunk(Compiler *self);
  * III:24.2     Compiling to Function Objects
  * 
  * We now return a function object pointer, using `NULL` to signal errors.
+ * 
+ * III:24.5.4   Returning from functions
+ * 
+ * Since we now have a sort of "shared" state across scripts and their chunks,
+ * we don't need the `source` parameter anymore as the `LexState*` is shared
+ * and it points to the correct stuff.
  */
-Function *compile_bytecode(Compiler *self, const char *source);
+Function *compile_bytecode(Compiler *self);
 
 #endif /* LUA_COMPILER_H */

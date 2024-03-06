@@ -318,7 +318,6 @@ static InterpretResult run_bytecode(LVM *self) {
         case OP_SETLOCAL: {
             Byte slot = read_byte(frame);
             frame->bp[slot] = *lua_poke(self, -1);
-            lua_popn(self, 1); // Expression left stuff on top of the stack.
             break;
         }
         // -*- III:21.2     Variable Declarations ----------------------------*-
@@ -352,13 +351,11 @@ static InterpretResult run_bytecode(LVM *self) {
         case OP_SETGLOBAL: {
             TString *name = read_string(frame);
             table_set(&self->globals, name, peekstack(self, -1));
-            popstack(self);
             break;
         }
         case OP_LSETGLOBAL: {
             TString *name = read_string_at(frame, read_long(frame));
             table_set(&self->globals, name, peekstack(self, -1));
-            popstack(self);
             break;
         }
 
@@ -490,11 +487,15 @@ static InterpretResult run_bytecode(LVM *self) {
     }
 }
 
-InterpretResult interpret_vm(LVM *self, const char *source) {
+InterpretResult interpret_vm(LVM *self, const char *input) {
+    LexState lex; // To be shared across chunks for this source code.
     Compiler compiler;
-    // NULL enclosing compiler indicates this is top-level scope.
-    init_compiler(&compiler, NULL, self, FNTYPE_SCRIPT);
-    Function *function = compile_bytecode(&compiler, source);
+    // Hacky but I cannot think of a better way to do this without just adding
+    // another parameter to `init_lexstate`.
+    compiler.lex = &lex;
+    init_lexstate(&lex, self->fname, input);
+    init_compiler(&compiler, NULL, self, FNTYPE_SCRIPT); // NULL = top-level.
+    Function *function = compile_bytecode(&compiler);
     if (function == NULL) {
         return INTERPRET_COMPILE_ERROR;
     }
