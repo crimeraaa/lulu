@@ -1126,11 +1126,11 @@ static void push_unnamed_local(Compiler *self) {
  * In Lua it's actually only evaluated once, any mutations to `x` won't affect
  * the condition.
  */
-static DWord for_condition(Compiler *self, const Token *name) {
+static DWord for_limit(Compiler *self, const Token *name) {
     // 'for' condition can only be a number literal, a variable that resolves
     // to a number, or a function call thereof (functions are variables).
-    if (!check_token(self->lex, TK_NUMBER, TK_IDENT)) {
-        compiler_error(self, "Expected number or identifier after 'for' initializer.");
+    if (!check_token(self->lex, TK_DASH, TK_NUMBER, TK_IDENT)) {
+        compiler_error(self, "'for' limit must be a number.");
     }
     // Emit the expression first so we can attempt to resolve outer instances of
     // our iterator variable, THEN we define and resolve the iterator.
@@ -1155,7 +1155,7 @@ static void for_increment(Compiler *self) {
     // 'for' increment is a bit convoluted.
     if (match_token(self->lex, TK_COMMA)) {
         // Ensure we actually have something.
-        if (!check_token(self->lex, TK_IDENT, TK_NUMBER)) {
+        if (!check_token(self->lex, TK_DASH, TK_IDENT, TK_NUMBER)) {
             compiler_error(self, "'for' increment must be variable/number.");
         }
         expression(self);
@@ -1182,6 +1182,7 @@ static size_t emit_for_increment(Compiler *self, DWord index, size_t loopstart) 
     emit_bytes(self, OP_GETLOCAL, index + 2); // index + 2 is the increment.
     emit_byte(self, OP_ADD);
     emit_bytes(self, OP_SETLOCAL, index);
+    emit_byte(self, OP_POP); // Need to do this manually now.
     // Strange but this is what we have to do to evaluate the increment AFTER.
     emit_loop(self, loopstart);
     patch_jump(self, bodyjump);
@@ -1229,7 +1230,7 @@ static void for_statement(Compiler *self) {
 
     // Push iterator, condition expression, and increment as local variables.
     const Token iter = for_initializer(self);
-    DWord index      = for_condition(self, &iter); // Index into locals array.
+    DWord index      = for_limit(self, &iter); // Index into locals array.
     for_increment(self);
 
     size_t loopstart = current_chunk(self)->count;
