@@ -11,7 +11,7 @@ struct Object {
     Object *next;   // Part of an instrusive linked list for GC.
 };
 
-struct Function {
+struct LFunction {
     Object object;
     int arity;
     Chunk chunk;
@@ -32,7 +32,7 @@ struct TString {
  * memory for an object of type tag `LUA_TFUNCTION` and append it to the VM's
  * objects linked list.
  */
-Function *new_function(LVM *vm);
+LFunction *new_function(LVM *vm);
 
 /**
  * III:19.4.1   Concatenation
@@ -77,6 +77,6 @@ void print_object(TValue value);
 #define ascstring(value)    (asstring(value)->data)
 
 #define isfunction(value)   isobject(value, LUA_TFUNCTION)
-#define asfunction(value)   ((Function*)asobject(value))
+#define asfunction(value)   ((LFunction*)asobject(value))
 
 #endif /* LUA_OBJECT_H */

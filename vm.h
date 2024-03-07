@@ -19,7 +19,7 @@
  * `CallFrame` and resume from there.
  */
 typedef struct {
-    Function *function; // Contains our chunk, constants and other stuff.
+    LFunction *function; // Contains our chunk, constants and other stuff.
     Byte *ip;       // Instruction pointer (next instruction) in function's chunk.
     TValue *bp;  // Point into first slot of VM's values stack we can use.
 } CallFrame;

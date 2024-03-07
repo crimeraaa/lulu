@@ -22,14 +22,14 @@ static void free_string(TString *self) {
     deallocate(TString, self);
 }
 
-static void free_function(Function *self) {
+static void free_function(LFunction *self) {
     free_chunk(&self->chunk);
-    deallocate(Function, self);
+    deallocate(LFunction, self);
 }
 
 static void free_object(Object *self) {
     switch (self->type) {
-    case LUA_TFUNCTION: free_function((Function*)self); break;
+    case LUA_TFUNCTION: free_function((LFunction*)self); break;
     case LUA_TSTRING:   free_string((TString*)self); break;
     default:            return;
     }

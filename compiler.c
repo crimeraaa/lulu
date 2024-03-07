@@ -211,9 +211,9 @@ static void patch_jump(Compiler *self, size_t opindex) {
  * For now we always emit a return for the compiler's current chunk.
  * This makes it so we don't have to remember to do it as ALL chunks need it.
  */
-static Function *end_compiler(Compiler *self) {
+static LFunction *end_compiler(Compiler *self) {
     emit_return(self);
-    Function *function = self->function;
+    LFunction *function = self->function;
 #ifdef DEBUG_PRINT_CODE
     if (!self->lex->haderror) {
         // Implicit main function does not have a name.
@@ -951,7 +951,7 @@ static void function(Compiler *self, FnType type) {
     consume_token(lex, TK_RPAREN, "Expected ')' after parameters.");
     doblock(next);
 
-    Function *function = end_compiler(next);
+    LFunction *function = end_compiler(next);
     TValue constant    = makeobject(LUA_TFUNCTION, function);
     emit_bytes(self, OP_CONSTANT, make_constant(self, constant));
 }
@@ -1332,6 +1332,33 @@ static void print_statement(Compiler *self) {
 }
 
 /**
+ * III:24.6     Return Statements
+ * 
+ * Assumes we just consumed the 'return' token.
+ * 
+ * NOTE:
+ * 
+ * Although we check for an 'end' token immediately following the 'return', we
+ * do not consume it. That is the responsibility of `function()`.
+ */
+static void return_statement(Compiler *self) {
+    LexState *lex = self->lex;
+    // Lua allows this actually! Especially for modules loaded via 'require'.
+    if (self->type == FNTYPE_SCRIPT) {
+        compiler_error(self, "Cannot return from top-level code.");
+    }
+    // Not immediately followed by 'end' so might have an expression to resolve.
+    if (!check_token(lex, TK_END)) {
+        // Write the instructions needed to resolve the return value.
+        expression(self);
+        emit_byte(self, OP_RETURN);
+    } else {
+        // Emit OP_POP and OP_RETURN if no return value is specified.
+        emit_return(self);
+    }
+}
+
+/**
  * III:23.3     While Statements
  *
  * While statements are a bit of work because we need to jump backward.
@@ -1430,6 +1457,8 @@ static void statement(Compiler *self) {
         for_statement(self);
     } else if (match_token(lex, TK_ELSEIF, TK_ELSE)) {
         compiler_error(self, "Not used in an 'if' statement.");
+    } else if (match_token(lex, TK_RETURN)) { 
+        return_statement(self);
     } else if (match_token(lex, TK_WHILE)) {
         while_statement(self);
     } else if (match_token(lex, TK_DO)) {
@@ -1444,7 +1473,7 @@ static void statement(Compiler *self) {
     }
 }
 
-Function *compile_bytecode(Compiler *self) {
+LFunction *compile_bytecode(Compiler *self) {
     // I'm worried about using a local variable here since `longjmp()` might
     // restore registers to the "snapshot" when `setjmp()` was called.
     // The `volatile` keyword would be needed, but then that might have a
@@ -1462,6 +1491,6 @@ Function *compile_bytecode(Compiler *self) {
         }
         end_scope(self);
     }
-    Function *function = end_compiler(self);
+    LFunction *function = end_compiler(self);
     return (lex->haderror) ? NULL : function;
 }

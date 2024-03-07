@@ -32,7 +32,7 @@ static void runtime_error(LVM *self, const char *format, ...) {
     fputs("\n", stderr);
 
     for (int i = self->fc - 1; i >= 0; i--) {
-        const Function *function = self->frames[i].function;
+        const LFunction *function = self->frames[i].function;
         const Chunk *chunk       = &function->chunk;
         int line = chunk->lines.runs[chunk->prevline - 1].where;
         fprintf(stderr, "%s:%i: in ", self->fname, line);
@@ -113,7 +113,7 @@ static inline TValue peekstack(LVM *self, int offset) {
  * in the `frames` array using the `Function*` that was passed onto the stack
  * previously.
  */
-static bool call(LVM *self, Function *function, int argc) {
+static bool call(LVM *self, LFunction *function, int argc) {
     if (argc != function->arity) {
         runtime_error(self, "Expected %i arguments but got %i.", function->arity, argc);
         return false;
@@ -133,7 +133,7 @@ static bool call(LVM *self, Function *function, int argc) {
 
 static bool call_value(LVM *self, TValue *callee, int argc) {
     switch (callee->type) {
-    case LUA_TFUNCTION: return call(self, (Function*)callee->as.object, argc);
+    case LUA_TFUNCTION: return call(self, (LFunction*)callee->as.object, argc);
     default:            break; // Non-callable object type.
     }
     runtime_error(self, "Attempt to call %s as function", value_typename(callee));
@@ -495,7 +495,7 @@ InterpretResult interpret_vm(LVM *self, const char *input) {
     compiler.lex = &lex;
     init_lexstate(&lex, self->fname, input);
     init_compiler(&compiler, NULL, self, FNTYPE_SCRIPT); // NULL = top-level.
-    Function *function = compile_bytecode(&compiler);
+    LFunction *function = compile_bytecode(&compiler);
     if (function == NULL) {
         return INTERPRET_COMPILE_ERROR;
     }

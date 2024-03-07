@@ -102,8 +102,13 @@ typedef struct TString TString;
  * 
  * For our sake we consider each and every function as having its own `Chunk` so
  * that we don't have to manage one monolothic chunk in the Compiler/VM.
+ * 
+ * III:24.7     Native Functions
+ * 
+ * We now need to differentiate between functions created directly from Lua
+ * and functions created directly from C, hence the 'L' prefix.
  */
-typedef struct Function Function;
+typedef struct LFunction LFunction;
 
 /**
  * III:19.5     Freeing Objects

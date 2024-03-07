@@ -77,7 +77,7 @@ typedef enum {
  */
 typedef struct Compiler {
     struct Compiler *enclosing; // Nested function calls as a stack/linked list.
-    Function *function; // Contains the chunk we're currently compiling.
+    LFunction *function; // Contains the chunk we're currently compiling.
     FnType type;
     LexState *lex;  // Maintain pointers to the source code and emit tokens.
     Locals locals;  // Keep track of information about local variables in scope.
@@ -152,6 +152,6 @@ Chunk *current_chunk(Compiler *self);
  * we don't need the `source` parameter anymore as the `LexState*` is shared
  * and it points to the correct stuff.
  */
-Function *compile_bytecode(Compiler *self);
+LFunction *compile_bytecode(Compiler *self);
 
 #endif /* LUA_COMPILER_H */

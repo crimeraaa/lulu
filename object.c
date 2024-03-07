@@ -23,8 +23,8 @@ static Object *allocate_object(LVM *vm, size_t size, ValueType type) {
 
 #define allocate_object(vm, T, tag)     (T*)allocate_object(vm, sizeof(T), tag)
 
-Function *new_function(LVM *vm) {
-    Function *function = allocate_object(vm, Function, LUA_TFUNCTION);
+LFunction *new_function(LVM *vm) {
+    LFunction *function = allocate_object(vm, LFunction, LUA_TFUNCTION);
     function->arity = 0;
     function->name  = NULL;
     init_chunk(&function->chunk);
@@ -93,7 +93,7 @@ TString *copy_string(LVM *vm, const char *literal, size_t len) {
     return allocate_string(vm, data, len, hash);
 }
 
-static void print_function(const Function *self) {
+static void print_function(const LFunction *self) {
     if (!self->name) {
         printf("<script>");
         return;
