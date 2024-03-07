@@ -1,9 +1,28 @@
-#include <math.h>
+#include <time.h>
 #include "api.h"
 #include "compiler.h"
 #include "memory.h"
 #include "object.h"
 #include "vm.h"
+
+/* NATIVE FUNCTIONS ----------------------------------------------------- {{{ */
+
+static TValue clock_native(int argc, TValue *bp) {
+    (void)argc;
+    (void)bp;
+    return makenumber((double)clock() / CLOCKS_PER_SEC);
+}
+
+static TValue print_native(int argc, TValue *bp) {
+    for (int i = 0; i < argc; i++) {
+        print_value(bp + i);
+        fputc(' ', stdout);
+    }
+    fputc('\n', stdout);
+    return makenil;
+}
+
+/* }}} */
 
 /**
  * Make the VM's stack pointer point to the base of the stack array.
@@ -33,7 +52,7 @@ static void runtime_error(LVM *self, const char *format, ...) {
 
     for (int i = self->fc - 1; i >= 0; i--) {
         const LFunction *function = self->frames[i].function;
-        const Chunk *chunk       = &function->chunk;
+        const Chunk *chunk        = &function->chunk;
         int line = chunk->lines.runs[chunk->prevline - 1].where;
         fprintf(stderr, "%s:%i: in ", self->name, line);
         if (function->name == NULL) {
@@ -43,6 +62,24 @@ static void runtime_error(LVM *self, const char *format, ...) {
         }
     }
     reset_stack(self);
+}
+
+/**
+ * III:24.7     Native Functions
+ * 
+ * When garbage collection gets involved, it will be important to consider if
+ * during the call to `copy_string()` and `new_cfunction` if garbage collection
+ * was triggered. If that happens we must tell the GC that we are not actually
+ * done with this memory, so storing them on the stack (will) accomplish that
+ * when we get to that point.
+ */
+static void define_nativefn(LVM *self, const char *name, NativeFn func) {
+    TString *_name = copy_string(self, name, strlen(name));
+    CFunction *_func = new_cfunction(self, func);
+    lua_push(self, makeobject(LUA_TSTRING, _name));
+    lua_push(self, makeobject(LUA_TNATIVE, _func));
+    table_set(&self->globals, asstring(self->stack[0]), self->stack[1]);
+    lua_popn(self, 2);
 }
 
 static InterpretResult runtime_arith_error(LVM *self, int offset) {
@@ -70,6 +107,9 @@ void init_vm(LVM *self, const char *name) {
     reset_stack(self);
     self->objects = NULL;
     self->name    = name;
+    
+    define_nativefn(self, "clock", clock_native);
+    define_nativefn(self, "print", print_native);
 }
 
 void free_vm(LVM *self) {
@@ -134,6 +174,14 @@ static bool call(LVM *self, LFunction *function, int argc) {
 static bool call_value(LVM *self, TValue *callee, int argc) {
     switch (callee->type) {
     case LUA_TFUNCTION: return call(self, (LFunction*)callee->as.object, argc);
+    case LUA_TNATIVE: {
+        CFunction *cf = (CFunction*)callee->as.object;
+        NativeFn fn   = cf->function;
+        TValue res    = fn(argc, self->sp - argc);
+        self->sp -= argc + 1;
+        lua_push(self, res);
+        return true;
+    }
     default:            break; // Non-callable object type.
     }
     runtime_error(self, "Attempt to call %s as function", value_typename(callee));
@@ -173,8 +221,6 @@ static inline TValue read_constant_at(CallFrame *self, size_t index) {
 #define read_string(frame)          asstring(read_constant(frame))
 #define read_string_at(frame, i)    asstring(read_constant_at(frame, i))
 
-#define pushvalue(vm, v)        (*(vm->sp++) = v)
-
 /**
  * Horrible C preprocessor abuse...
  *
@@ -188,7 +234,7 @@ static inline TValue read_constant_at(CallFrame *self, size_t index) {
         assertfn(vm);                                                          \
         TValue r = makefn(exprfn(lua_asnumber(vm, -2), lua_asnumber(vm, -1))); \
         lua_popn(vm, 2);                                                       \
-        lua_pushvalue(vm, r);                                                  \
+        lua_push(vm, r);                                                       \
     } while (false)
 
 /**
@@ -239,10 +285,14 @@ static inline TValue read_constant_at(CallFrame *self, size_t index) {
  * The compiler emitted the 2 byte operands for a jump instruction in order of
  * hi, lo. So our instruction pointer points at hi currently.
  */
-static inline Word read_short(CallFrame *self) {
+static Word read_short(CallFrame *self) {
     Byte hi = read_byte(self);
     Byte lo = read_byte(self);
     return byteunmask(hi, 1) | lo;
+}
+
+static CallFrame *current_frame(LVM *self) {
+    return &self->frames[self->fc - 1];
 }
 
 /**
@@ -264,7 +314,7 @@ static inline DWord read_long(CallFrame *self) {
 
 static InterpretResult run_bytecode(LVM *self) {
     // Topmost call frame. 
-    CallFrame *frame = &self->frames[self->fc - 1];
+    CallFrame *frame = current_frame(self);
 
     // Hack, but we reset so we can disassemble properly.
     // We need that start with index 0 into the lines.runs array.
@@ -288,10 +338,10 @@ static InterpretResult run_bytecode(LVM *self) {
         Byte instruction;
         switch (instruction = read_byte(frame)) {
         case OP_CONSTANT: {
-            pushvalue(self, read_constant(frame));
+            lua_push(self, read_constant(frame));
         } break;
         case OP_LCONSTANT: {
-            pushvalue(self, read_constant_at(frame, read_long(frame)));
+            lua_push(self, read_constant_at(frame, read_long(frame)));
         } break;
 
         // -*- III:18.4     Two New Types ------------------------------------*-
@@ -309,7 +359,7 @@ static InterpretResult run_bytecode(LVM *self) {
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
         case OP_GETLOCAL: {
             Byte slot = read_byte(frame);
-            pushvalue(self, frame->bp[slot]);
+            lua_push(self, frame->bp[slot]);
         } break;
 
         case OP_SETLOCAL: {
@@ -327,7 +377,7 @@ static InterpretResult run_bytecode(LVM *self) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
                 return INTERPRET_RUNTIME_ERROR;
             }
-            pushvalue(self, value);
+            lua_push(self, value);
         } break;
 
         case OP_LGETGLOBAL: {
@@ -337,7 +387,7 @@ static InterpretResult run_bytecode(LVM *self) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
                 return INTERPRET_RUNTIME_ERROR;
             }
-            pushvalue(self, value);
+            lua_push(self, value);
         } break;
 
         // -*- III:21.4     Assignment ---------------------------------------*-
@@ -398,14 +448,6 @@ static InterpretResult run_bytecode(LVM *self) {
             return runtime_arith_error(self, -1);
         }
 
-        // -*- III:21.1.1   Print statements ---------------------------------*-
-        case OP_PRINT: {
-            const TValue *value = lua_poke(self, -1);
-            print_value(value);
-            lua_popn(self, 1);
-            printf("\n");
-        } break;
-
         // -*- III:23.1     If Statements ------------------------------------*-
         case OP_JMP: {
             Word offset = read_short(frame);
@@ -443,8 +485,9 @@ static InterpretResult run_bytecode(LVM *self) {
             // When we execute the next instruction we want to execute the ones
             // in this CallFrame. We also need to reset the prevline so we can
             // 'iterate' properly over the lineruns.
-            frame = &self->frames[self->fc - 1];
-            frame->function->chunk.prevline = 0;
+            // I'm not sure why but we need to start at 1 here, not 0.
+            frame = current_frame(self);
+            frame->function->chunk.prevline = 1;
         } break;
 
         case OP_RETURN: {
@@ -464,7 +507,7 @@ static InterpretResult run_bytecode(LVM *self) {
             // and local variables, which are the same slots the caller (us)
             // used to push the arguments in the first place.
             self->sp = frame->bp;
-            pushvalue(self, res);
+            lua_push(self, res);
             
             // Return control of the stack back to the caller now that this
             // particular function call is done.
@@ -487,7 +530,7 @@ InterpretResult interpret_vm(LVM *self, const char *input) {
     if (function == NULL) {
         return INTERPRET_COMPILE_ERROR;
     }
-    pushvalue(self, makeobject(LUA_TFUNCTION, function));
+    lua_push(self, makeobject(LUA_TFUNCTION, function));
     call(self, function, 0); // Call our implicit `main`, with no arguments.
     return run_bytecode(self);
 }

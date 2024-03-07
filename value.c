@@ -28,7 +28,7 @@ void print_value(const TValue *value) {
     case LUA_TBOOLEAN: printf(value->as.boolean ? "true" : "false"); break;
     case LUA_TNIL:     printf("nil"); break;
     case LUA_TNUMBER:  printf(LUA_NUMBER_FMT, value->as.number); break;
-    default:           print_object(*value);
+    default:           print_object(value);
     }
 }
 
@@ -36,6 +36,7 @@ const char *value_typename(const TValue *value) {
     switch (value->type) {
     case LUA_TBOOLEAN:      return "boolean";
     case LUA_TFUNCTION:     return "function";
+    case LUA_TNATIVE:       return "native function";
     case LUA_TNIL:          return "nil";
     case LUA_TNUMBER:       return "number";
     case LUA_TSTRING:       return "string";

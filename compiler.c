@@ -1327,12 +1327,6 @@ static void if_statement(Compiler *self, bool iselif) {
     }
 }
 
-static void print_statement(Compiler *self) {
-    expression(self);
-    match_token(self->lex, TK_SEMICOL);
-    emit_byte(self, OP_PRINT);
-}
-
 /**
  * III:24.6     Return Statements
  * 
@@ -1449,9 +1443,7 @@ static void declaration(Compiler *self) {
  */
 static void statement(Compiler *self) {
     LexState *lex = self->lex;
-    if (match_token(lex, TK_PRINT)) {
-        print_statement(self);
-    } else if (match_token(lex, TK_BREAK)) {
+    if (match_token(lex, TK_BREAK)) {
         compiler_error(self, "Breaks are not yet implemented.");
     } else if (match_token(lex, TK_IF)) {
         if_statement(self, false);

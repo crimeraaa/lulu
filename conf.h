@@ -32,6 +32,7 @@ typedef uint8_t   Byte;  // Smallest addressable size. Usually 8-bits.
 typedef uint16_t  Word;  // 2 `Byte`s wide type. Usually 16-bits.
 typedef uint32_t  DWord; // 2 `Word`s long. Usually 32-bits.
 typedef uint64_t  QWord; // 4 `Word`s long. Usually 64-bits.
+
 /* }}} ---------------------------------------------------------------------- */
 
 /**

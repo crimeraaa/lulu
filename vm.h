@@ -51,12 +51,6 @@ void free_vm(LVM *self);
 InterpretResult interpret_vm(LVM *self, const char *source);
 
 /**
- * Assigns the top of stack to `value` then increments the VM's stack pointer
- * so that it points to the next available slot in the stack.
- */
-void pushstack(LVM *self, TValue value);
-
-/**
  * Decrements the VM's stack pointer so that it points to the previous slot in
  * the stack and returns the value that was previously there.
  * 

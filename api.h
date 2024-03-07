@@ -39,7 +39,7 @@
 
 /* Pop `n` elements from the stack by decrementing the stack top pointer. */
 #define lua_popn(vm, n)         lua_settop(vm, -(n)-1)
-#define lua_pushvalue(vm, v)    (*(vm)->sp++ = v)
+#define lua_push(vm, v)         (*(vm)->sp++ = v)
 
 /* TYPE HELPER MACROS --------------------------------------------------- {{{ */
 

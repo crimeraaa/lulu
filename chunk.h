@@ -67,9 +67,6 @@ typedef enum {
 
     // -*- III:15.3:    An Arithmetic calculator -----------------------------*-
     OP_UNM, // Unary negation, a.k.a. "Unary minus" (hence "UNM").
-
-    // -*- III:21.1.1   Print statements -------------------------------------*-
-    OP_PRINT,
     
     // -*- III:23.1     If Statements ----------------------------------------*-
     OP_JMP,  // Unconditional jump. Adds its 2-byte operand to sp.

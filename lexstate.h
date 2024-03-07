@@ -96,7 +96,6 @@ typedef enum {
     TK_WHILE,
     
     // Misc.
-    TK_PRINT,    // Hack for now until we get builtin functions working.
     TK_CONCAT,   // '..' String concatenation.
     TK_VARARGS,  // '...' Function varargs.
     TK_ERROR,    // Distinct enumeration to allow us to detect actual errors.

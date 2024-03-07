@@ -251,9 +251,6 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     // -*- III:15.3     An Arithmetic Calculator -----------------------------*-
     case OP_UNM:        return opsimple("OP_UNM", offset);
 
-    // -*- III:21.1.1   Print statements
-    case OP_PRINT:      return opsimple("OP_PRINT", offset);
-
     // -*- III:23.1     If Statements ----------------------------------------*-
     case OP_JMP:        return opjump("OP_JMP",  1, self, offset);
     case OP_FJMP:       return opjump("OP_FJMP", 1, self, offset);

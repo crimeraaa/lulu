@@ -74,16 +74,7 @@ bool lua_istype(LVM *self, int offset, ValueType type) {
 }
 
 const char *lua_typename(LVM *self, int offset) {
-    switch (offset_to_address(self, offset)->type) {
-    case LUA_TNONE:     return "none";    // Should never be reached normally.
-    case LUA_TBOOLEAN:  return "boolean";
-    case LUA_TFUNCTION: return "function";
-    case LUA_TNIL:      return "nil";
-    case LUA_TNUMBER:   return "number";
-    case LUA_TSTRING:   return "string";
-    case LUA_TTABLE:    return "table";
-    default:            return "unknown"; // Should never be reached normally.
-    }
+    return value_typename(offset_to_address(self, offset));
 }
 
 bool lua_equal(LVM *self, int offset1, int offset2) {

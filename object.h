@@ -18,6 +18,27 @@ struct LFunction {
     TString *name;
 };
 
+/**
+ * III:24.7     Native Functions
+ * 
+ * This is a function pointer type similar to the Lua C API `Proto`. In essence
+ * all Lua-facing C functions MUST have an argument count and a pointer to the
+ * first argument (i.e. pushed first) in the VM stack.
+ */
+typedef TValue (*NativeFn)(int argc, TValue *bp);
+
+/**
+ * III:24.7     Native Functions
+ * 
+ * Native or builtin functions are created directly within C itself, meaning
+ * that the way we use them is a bit different. They don't create their own
+ * CallFrame, we directly use C's.
+ */
+typedef struct {
+    Object object;     // Metadata/GC info.
+    NativeFn function; // C function pointer.
+} CFunction;
+
 struct TString {
     Object object; // Header for meta-information.
     DWord hash;    // Result of throwing `data` into a hash function.
@@ -33,6 +54,8 @@ struct TString {
  * objects linked list.
  */
 LFunction *new_function(LVM *vm);
+
+CFunction *new_cfunction(LVM *vm, NativeFn function);
 
 /**
  * III:19.4.1   Concatenation
@@ -68,15 +91,18 @@ TString *copy_string(LVM *vm, const char *literal, size_t len);
  * 
  * We use a good 'ol `TValue` so that we can call the `Object*` header.
  */
-void print_object(TValue value);
+void print_object(const TValue *value);
 
 /* Given an `TValue*`, treat it as an `Object*` and get the type. */
-#define objtype(value)      (asobject(value)->type)
-#define isstring(value)     isobject(value, LUA_TSTRING)
-#define asstring(value)     ((TString*)asobject(value))
-#define ascstring(value)    (asstring(value)->data)
+#define objtype(v)      (asobject(v)->type)
+#define isstring(v)     isobject(v, LUA_TSTRING)
+#define asstring(v)     ((TString*)asobject(v))
+#define ascstring(v)    (asstring(v)->data)
 
-#define isfunction(value)   isobject(value, LUA_TFUNCTION)
-#define asfunction(value)   ((LFunction*)asobject(value))
+#define isfunction(v)   isobject(v, LUA_TFUNCTION)
+#define asfunction(v)   ((LFunction*)asobject(v))
+
+#define isnative(v)     isobject(v, LUA_TNATIVE)
+#define asnative(v)     (((CFunction*)asobject(v))->function)
 
 #endif /* LUA_OBJECT_H */

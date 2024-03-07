@@ -30,6 +30,7 @@ static void free_function(LFunction *self) {
 static void free_object(Object *self) {
     switch (self->type) {
     case LUA_TFUNCTION: free_function((LFunction*)self); break;
+    case LUA_TNATIVE:   deallocate(CFunction, self); break;
     case LUA_TSTRING:   free_string((TString*)self); break;
     default:            return;
     }

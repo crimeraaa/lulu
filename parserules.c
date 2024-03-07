@@ -85,7 +85,6 @@ static const ParseRule rules[TK_COUNT] = {
     [TK_WHILE]           = {NULL,        NULL,       PREC_NONE},
 
     // Misc.
-    [TK_PRINT]           = {NULL,        NULL,       PREC_NONE},
     [TK_CONCAT]          = {NULL,        rbinary,    PREC_CONCAT},
     [TK_VARARGS]         = {NULL,        NULL,       PREC_NONE},
     [TK_ERROR]           = {NULL,        NULL,       PREC_NONE},

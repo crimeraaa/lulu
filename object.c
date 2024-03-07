@@ -31,6 +31,12 @@ LFunction *new_function(LVM *vm) {
     return function;
 }
 
+CFunction *new_cfunction(LVM *vm, NativeFn function) {
+    CFunction *native = allocate_object(vm, CFunction, LUA_TNATIVE);
+    native->function = function;
+    return native;
+}
+
 /**
  * III:19.2     Strings
  * 
@@ -105,10 +111,11 @@ static void print_string(const TString *self) {
     printf("%s", self->data);
 }
 
-void print_object(TValue value) {
-    switch (value.as.object->type) {
-    case LUA_TFUNCTION: print_function(asfunction(value)); break;
-    case LUA_TSTRING:   print_string(asstring(value)); break;
+void print_object(const TValue *value) {
+    switch (value->type) {
+    case LUA_TFUNCTION: print_function(asfunction(*value)); break;
+    case LUA_TNATIVE:   printf("<native fn>"); break;
+    case LUA_TSTRING:   print_string(asstring(*value)); break;
     default: return;
     }
 }
