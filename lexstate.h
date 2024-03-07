@@ -108,18 +108,17 @@ typedef struct {
     TokenType type;
     const char *start; // Pointer to start of this token in source code.
     size_t len;        // How many characters to dereference from `start`?
-    int line;          // What line of the source code? Used for error reporting.
 } Token;
 
 typedef struct {
-    Token token; // Token we're pointing at and want to consume.
+    Token token;    // Token we're currently pointing at and want to consume.
     Token consumed; // Token we just consumed.
     jmp_buf errjmp; // Where to unconditionally jump after reporting errors.
     const char *lexeme; // Pointer to start of current token in the code.
-    const char *current;  // Pointer to current character being looked at.
+    const char *current; // Pointer to current character being looked at.
     const char *name; // Filename or `stdin`.
     int linenumber; // Input line counter.
-    int lastline;   // Line of the last token `consumed`.
+    int lastline;   // Line of the last token consumed.
     bool haderror;  // Track error state so we can report.
 } LexState;
 
@@ -192,6 +191,11 @@ bool match_token_any(LexState *self, TokenType *expected, size_t count);
  * 
  * This function now replaaces `parser_error_at`, which itself replaced the
  * clox `errorAt()`.
+ * 
+ * NOTE:
+ * 
+ * We implicitly use `self->lastline` for reporting. If you need to report a
+ * different line, you'll have to set that member before calling this.
  */
 void throw_lexerror_at(LexState *self, const Token *token, const char *info);
 

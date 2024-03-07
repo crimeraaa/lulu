@@ -16,7 +16,7 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = vm;
-    self->assigns = 0;
+    self->assigning = false;
 
     // We can grab the name of the function from the previous token because we
     // already consumed the 'function' token, allocated an object and then
@@ -59,10 +59,10 @@ Chunk *current_chunk(Compiler *self) {
  * III:17.3     Emitting Bytecode
  *
  * This function simply writes to the compiler's current chunk the given byte,
- * and we log line information based on the consumed token (lex's previous).
+ * and we log line information based on the LexState's consumed token.
  */
-static inline void emit_byte(Compiler *self, Byte byte) {
-    write_chunk(current_chunk(self), byte, self->lex->consumed.line);
+static void emit_byte(Compiler *self, Byte byte) {
+    write_chunk(current_chunk(self), byte, self->lex->lastline);
 }
 
 /**
@@ -74,7 +74,7 @@ static inline void emit_byte(Compiler *self, Byte byte) {
  * I've changed it to use a `DWord` so that we can cast between function pointers
  * for `emit_long`.
  */
-static inline void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
+static void emit_bytes(Compiler *self, Byte opcode, DWord operand) {
     emit_byte(self, opcode);
     emit_byte(self, (Byte)operand);
 }
@@ -125,7 +125,7 @@ static size_t emit_jump(Compiler *self, Byte instruction) {
  * them fits into the chunk's bytecode array. We'll need to decode them later in
  * the VM using similar bitwise operations.
  */
-static inline void emit_long(Compiler *self, Byte opcode, DWord operand) {
+static void emit_long(Compiler *self, Byte opcode, DWord operand) {
     emit_byte(self, opcode);
     emit_byte(self, bytemask(operand, 2));
     emit_byte(self, bytemask(operand, 1));
@@ -140,7 +140,7 @@ static inline void emit_long(Compiler *self, Byte opcode, DWord operand) {
  * Currently we simply return an implicit nil value so that the stack has at
  * least *something* to pop off.
  */
-static inline void emit_return(Compiler *self) {
+static void emit_return(Compiler *self) {
     emit_byte(self, OP_NIL);
     emit_byte(self, OP_RETURN);
 }
@@ -161,7 +161,7 @@ static inline void emit_return(Compiler *self) {
  * created, we return 0. By itself this doesn't indicate an error, but because
  * we call the `error` function that sets the compiler's lex's error state.
  */
-static inline DWord make_constant(Compiler *self, TValue value) {
+static DWord make_constant(Compiler *self, TValue value) {
     size_t index = add_constant(current_chunk(self), value);
     if (index > LUA_MAXLCONSTANTS) {
         compiler_error(self, "Too many constants in the current chunk.");
@@ -176,7 +176,7 @@ static inline DWord make_constant(Compiler *self, TValue value) {
  * OR the `OP_LCONSTANT`, depending on how many constants are in the current
  * chunk's constants pool.
  */
-static inline void emit_constant(Compiler *self, TValue value) {
+static void emit_constant(Compiler *self, TValue value) {
     DWord index = make_constant(self, value);
     if (index <= LUA_MAXCONSTANTS) {
         emit_bytes(self, OP_CONSTANT, index);
@@ -757,43 +757,23 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
         bool islong = (arg > LUA_MAXCONSTANTS && arg <= LUA_MAXLCONSTANTS);
         getop  = (islong) ? OP_LGETGLOBAL : OP_GETGLOBAL;
         setop  = (islong) ? OP_LSETGLOBAL : OP_SETGLOBAL;
-        emitfn = (islong) ? emit_long : emit_bytes;
+        emitfn = (islong) ? emit_long     : emit_bytes;
     }
     if (assignable && match_token(self->lex, TK_ASSIGN)) {
-        expression(self);
-        emitfn(self, setop, arg);
+        // If we're recursively call `named_variable()` it's likely that this
+        // is compiling multiple, nested assignments in one statement.
+        if (!self->assigning) {
+            self->assigning = true;
+            expression(self);
+            emitfn(self, setop, arg);
+        } else {
+            compiler_error(self, "Nested assignments are not allowed.");
+        }
+        // Reset state so we can continue compiling other separate statements.
+        self->assigning = false;
     } else {
         emitfn(self, getop, arg);
     }
-}
-
-/**
- * III:22.4     Using Locals
- *
- * I've changed more of the semantics. Now, we can ONLY assign a variable
- * inside of simple assignment statements (e.g. `local x=1;` or `x=y;`).
- *
- * As in Lua we explicitly disallow nested assignments:
- *
- * `local a=1; local b=2; local c=b=a`
- *
- * And we also disallow assignment inside of other statements:
- *
- * `local x=1; print(x = 2);`
- *
- * NOTE:
- *
- * This function is only ever called by `declaration()`, so that any other
- * usage of `named_variable()` is called by `variable()` (the prefixfn).
- * This allows us to specify when assignments are allowed.
- */
-static inline void variable_assignment(Compiler *self) {
-    // Don't consume the '=' just yet.
-    if (!check_token(self->lex, TK_ASSIGN)) {
-        compiler_error(self, "Expected '=' after variable assignment.");
-    }
-    named_variable(self, &self->lex->consumed, true);
-    match_token(self->lex, TK_SEMICOL);
 }
 
 /**
@@ -1090,7 +1070,6 @@ static void push_unnamed_local(Compiler *self) {
         .type  = TK_IDENT,
         .start = NULL,
         .len   = 0,
-        .line  = -1,
     };
     add_local(self, unnamed);
     mark_initialized(self);
@@ -1455,12 +1434,6 @@ static void statement(Compiler *self) {
         while_statement(self);
     } else if (match_token(lex, TK_DO)) {
         doblock(self);
-    // } else if (match_token(lex, TK_IDENT)) {
-    //     if (match_token(lex, TK_LPAREN)) {
-    //         call(self);
-    //     } else {
-    //         variable_assignment(self);
-    //     }
     } else {
         expression_statement(self);
     }

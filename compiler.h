@@ -82,7 +82,7 @@ typedef struct Compiler {
     LexState *lex;  // Maintain pointers to the source code and emit tokens.
     Locals locals;  // Keep track of information about local variables in scope.
     LVM *vm;        // Stupid but we need to pass this to `copy_string()`.
-    int assigns;    // Track number of '=' tokens encountered to enforce semantics.
+    bool assigning; // Keep state to disallow nested assignments.
 } Compiler;
 
 /**

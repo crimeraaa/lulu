@@ -6,10 +6,9 @@ import subprocess
 
 # - https://stackoverflow.com/a/3430395
 SCRIPTDIR = pathlib.Path(__file__).parent.resolve()
+TESTDIR   = os.path.join(SCRIPTDIR, "tests/")
+LULUEXE   = os.path.join(SCRIPTDIR, "bin/lulu")
 
-# Possibly dangerous since we prepend '/' (root dir) before 'tests'...
-TESTDIR = os.path.join(SCRIPTDIR, "tests/")
-LULUEXE = os.path.join(SCRIPTDIR, "bin/lulu")
 
 # Determine if is file, not dir, and is a lua script
 def isluascript(fpath: str, fname: str):
@@ -70,18 +69,31 @@ def runtest(script: str, testno: int):
     print()
     
 
+def printscripts(scripts: list[str]):
+    for i  in range(len(scripts)):
+        print(f"{i:-2}: {scripts[i]}")
+    
+
 def main(argc: int, argv: list[str]):
-    scripts = gettests(TESTDIR)
+    # https://stackoverflow.com/a/14032557
+    scripts = sorted(gettests(TESTDIR), reverse=False)
     limit   = len(scripts) - 1
     if argc != 2 and argc != 3:
         print(f"Usage: {argv[0]} <start> [stop]")
         print("Options:")
-        for i in range(len(scripts)):
-            print(f"{i:-2}: {scripts[i]}")
+        printscripts(scripts)
         sys.exit(2)
-    elif argc == 2 and argv[1] == "all":
-        for i in range(0, len(scripts)):
-            runtest(scripts[i], i)
+    elif argc == 2 and isinstance(argv[1], str):
+        # Run all or scripts or a particular script
+        if argv[1] == "all":
+            for i in range(0, len(scripts)):
+                runtest(scripts[i], i)
+        elif argv[1] == "help":
+            printscripts(scripts);
+        else:
+            if argv[1].find(".lua") == -1:
+                argv[1] += ".lua"
+            runtest(argv[1], 0)
         sys.exit(0)
     
     start = int(argv[1])
