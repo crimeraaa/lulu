@@ -102,7 +102,10 @@ void print_object(const TValue *value);
 #define isfunction(v)   isobject(v, LUA_TFUNCTION)
 #define asfunction(v)   ((LFunction*)asobject(v))
 
+#define iscfunction(v)  isobject(v, LUA_TNATIVE)
+#define ascfunction(v)  ((CFunction*)asobject(v))
+
 #define isnative(v)     isobject(v, LUA_TNATIVE)
-#define asnative(v)     (((CFunction*)asobject(v))->function)
+#define asnative(v)     (ascfunction(v)->function)
 
 #endif /* LUA_OBJECT_H */

@@ -5,6 +5,43 @@
 #include "object.h"
 #include "vm.h"
 
+/* HELPERS -------------------------------------------------------------- {{{ */
+
+/**
+ * Read the current instruction and move the instruction pointer.
+ *
+ * Remember that postfix increment returns the original value of the expression.
+ * So we effectively increment the pointer but we dereference the original one.
+ */
+static Byte read_byte(CallFrame *self) {
+    return *(self->ip++);
+}
+
+/**
+ * If you have an index greater than 8-bits, calculate that first however you
+ * need to then use this macro so you have full control over all side effects.
+ */
+static TValue read_constant_at(const CallFrame *self, size_t index) {
+    return self->function->chunk.constants.values[index];
+}
+
+/**
+ * Read the next byte from the bytecode treating the received value as an index
+ * into the VM's current chunk's constants pool.
+ */
+#define read_constant(frame)        (read_constant_at(frame, read_byte(frame)))
+
+/**
+ * III:21.2     Variable Declarations
+ *
+ * Helper macro to read the current top of the stack and increment the VM's
+ * instruction pointer and then cast the result to a `TString*`.
+ */
+#define read_string(frame)          asstring(read_constant(frame))
+#define read_string_at(frame, i)    asstring(read_constant_at(frame, i))
+
+/* }}} */
+
 /* NATIVE FUNCTIONS ----------------------------------------------------- {{{ */
 
 static TValue clock_native(int argc, TValue *bp) {
@@ -31,6 +68,10 @@ static TValue print_native(int argc, TValue *bp) {
 static inline void reset_stack(LVM *self) {
     self->sp = self->stack;
     self->fc = 0;
+}
+
+static CallFrame *current_frame(LVM *self) {
+    return &self->frames[self->fc - 1];
 }
 
 /**
@@ -74,7 +115,7 @@ static void runtime_error(LVM *self, const char *format, ...) {
  * when we get to that point.
  */
 static void define_nativefn(LVM *self, const char *name, NativeFn func) {
-    TString *_name = copy_string(self, name, strlen(name));
+    TString *_name   = copy_string(self, name, strlen(name));
     CFunction *_func = new_cfunction(self, func);
     lua_push(self, makeobject(LUA_TSTRING, _name));
     lua_push(self, makeobject(LUA_TNATIVE, _func));
@@ -153,9 +194,10 @@ static inline TValue peekstack(LVM *self, int offset) {
  * in the `frames` array using the `Function*` that was passed onto the stack
  * previously.
  */
-static bool call(LVM *self, LFunction *function, int argc) {
+static bool call_function(LVM *self, LFunction *function, int argc) {
     if (argc != function->arity) {
-        runtime_error(self, "Expected %i arguments but got %i.", function->arity, argc);
+        runtime_error(self, 
+            "Expected %i arguments but got %i.", function->arity, argc);
         return false;
     }
     if (self->fc >= LUA_MAXFRAMES) {
@@ -164,62 +206,36 @@ static bool call(LVM *self, LFunction *function, int argc) {
     }
     CallFrame *frame = &self->frames[self->fc++];
     frame->function = function;
-    // Point to the start of this functions's instructions.
-    frame->ip = function->chunk.code;
-     // Bottom of call frame, this should point to the Function* itself.
-    frame->bp = self->sp - argc - 1;  
+    frame->ip = function->chunk.code; // Beginning of function's bytecode.
+    frame->bp = self->sp - argc - 1;  // Base pointer to function object itself.
     return true;
 }
 
-static bool call_value(LVM *self, TValue *callee, int argc) {
+static bool call_cfunction(LVM *self, const CFunction *cf, int argc) {
+    TValue res = cf->function(argc, self->sp - argc);
+    self->sp -= argc + 1; // Point to slot right below the function object.
+    lua_push(self, res);
+    return true;
+}
+
+static bool call_value(LVM *self, CallFrame *frame) {
+    // We always know that the argument count is pushed to the top of the stack.
+    // In practice this should only actually be only 0-255.
+    int argc = read_byte(frame);
+
+    // -1 to poke at top of stack, this is the function object itself.
+    // In other words this is the base pointer of the current CallFrame.
+    TValue *callee = self->sp - 1 - argc;
+
     switch (callee->type) {
-    case LUA_TFUNCTION: return call(self, (LFunction*)callee->as.object, argc);
-    case LUA_TNATIVE: {
-        CFunction *cf = (CFunction*)callee->as.object;
-        NativeFn fn   = cf->function;
-        TValue res    = fn(argc, self->sp - argc);
-        self->sp -= argc + 1;
-        lua_push(self, res);
-        return true;
-    }
+    case LUA_TFUNCTION: return call_function(self, asfunction(*callee), argc);
+    case LUA_TNATIVE:   return call_cfunction(self, ascfunction(*callee), argc);
     default:            break; // Non-callable object type.
     }
-    runtime_error(self, "Attempt to call %s as function", value_typename(callee));
+    const char *ts = value_typename(callee);
+    runtime_error(self, "Attempt to call %s as function", ts);
     return false;
 }
-
-/**
- * Read the current instruction and move the instruction pointer.
- *
- * Remember that postfix increment returns the original value of the expression.
- * So we effectively increment the pointer but we dereference the original one.
- */
-static inline Byte read_byte(CallFrame *self) {
-    return *(self->ip++);
-}
-
-/**
- * If you have an index greater than 8-bits, calculate that first however you
- * need to then use this macro so you have full control over all side effects.
- */
-static inline TValue read_constant_at(CallFrame *self, size_t index) {
-    return self->function->chunk.constants.values[index];
-}
-
-/**
- * Read the next byte from the bytecode treating the received value as an index
- * into the VM's current chunk's constants pool.
- */
-#define read_constant(frame)        (read_constant_at(frame, read_byte(frame)))
-
-/**
- * III:21.2     Variable Declarations
- *
- * Helper macro to read the current top of the stack and increment the VM's
- * instruction pointer and then cast the result to a `TString*`.
- */
-#define read_string(frame)          asstring(read_constant(frame))
-#define read_string_at(frame, i)    asstring(read_constant_at(frame, i))
 
 /**
  * Horrible C preprocessor abuse...
@@ -289,10 +305,6 @@ static Word read_short(CallFrame *self) {
     Byte hi = read_byte(self);
     Byte lo = read_byte(self);
     return byteunmask(hi, 1) | lo;
-}
-
-static CallFrame *current_frame(LVM *self) {
-    return &self->frames[self->fc - 1];
 }
 
 /**
@@ -469,16 +481,9 @@ static InterpretResult run_bytecode(LVM *self) {
                       
         // -*- III:24.5.1   Binging arguments to parameters ------------------*-
         case OP_CALL: {
-            // In practice this should only actually be only 0-255.
-            int argc = read_byte(frame);
-
-            // -1 to poke at top of stack, this is the function object itself.
-            // In other words this is the base pointer of the current CallFrame.
-            TValue *bp = self->sp - 1 - argc;
-
             // If successful there will be a new frame on the CallFrame stack for
             // the called function.
-            if (!call_value(self, bp, argc)) {
+            if (!call_value(self, frame)) {
                 return INTERPRET_RUNTIME_ERROR;
             }
 
@@ -531,7 +536,7 @@ InterpretResult interpret_vm(LVM *self, const char *input) {
         return INTERPRET_COMPILE_ERROR;
     }
     lua_push(self, makeobject(LUA_TFUNCTION, function));
-    call(self, function, 0); // Call our implicit `main`, with no arguments.
+    call_function(self, function, 0); // Call our implicit `main`, with no arguments.
     return run_bytecode(self);
 }
 
