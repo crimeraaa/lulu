@@ -27,12 +27,13 @@ typedef struct {
 struct LVM {
     TValue stack[LUA_MAXSTACK]; // Hardcoded limit for simplicity.
     CallFrame frames[LUA_MAXFRAMES];
-    int fc;        // Frame counter.
-    TValue *sp;    // Stack pointer to 1 past the lastest written element.
     Table globals; // Interned global variable identifiers, as strings.
     Table strings; // Interned string literals/user-created ones.
+    TValue *sp;    // Stack pointer to 1 past the lastest written element.
     Object *objects; // Head of intrusive linked list of allocated objects.
-    const char *fname; // Filename or `stdin`.
+    const char *name; // Filename or `stdin`.
+    const char *input; // Read-only pointer to malloc'd script contents.
+    int fc; // Frame counter.
 };
 
 typedef enum {
@@ -41,7 +42,7 @@ typedef enum {
     INTERPRET_RUNTIME_ERROR,
 } InterpretResult;
 
-void init_vm(LVM *self, const char *fname);
+void init_vm(LVM *self, const char *name);
 void free_vm(LVM *self);
 
 /**

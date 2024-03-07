@@ -146,11 +146,12 @@ static TokenType ident_type(const LexState *self) {
                     case 6: return check_keyword(self, 2, "elseif", TK_ELSEIF);
                     }
                     break;
-                case 'n': return check_keyword(self, 2, "end", TK_END);
+                case 'n': 
+                    return check_keyword(self, 2, "end", TK_END);
                 }
             }
-            break;
-        }
+        } break;
+
         case 'f': {
             if (lexlen > 1) {
                 switch(self->lexeme[1]) {
@@ -159,8 +160,8 @@ static TokenType ident_type(const LexState *self) {
                 case 'u': return check_keyword(self, 2, "function", TK_FUNCTION);
                 }
             }
-            break;
-        }
+        } break;
+
         case 'i': {
             if (lexlen > 1) {
                 switch (self->lexeme[1]) {
@@ -168,8 +169,8 @@ static TokenType ident_type(const LexState *self) {
                 case 'n': return check_keyword(self, 2, "in", TK_IN);
                 }
             }
-            break;
-        }
+        } break;
+
         case 'l': return check_keyword(self, 1, "local", TK_LOCAL);
         case 'n': {
             if (lexlen > 1) {
@@ -178,8 +179,8 @@ static TokenType ident_type(const LexState *self) {
                 case 'o': return check_keyword(self, 2, "not", TK_NOT);
                 }
             }
-            break;
-        }
+        } break;
+
         case 'o': return check_keyword(self, 1, "or", TK_OR);
         // TODO: Hack, remove this when we have a builtin print function
         case 'p': return check_keyword(self, 1, "print", TK_PRINT);
@@ -192,8 +193,8 @@ static TokenType ident_type(const LexState *self) {
                 case 'r': return check_keyword(self, 2, "true", TK_TRUE);
                 }
             }
-            break;
-        }
+        } break;
+
         case 'w': return check_keyword(self, 1, "while", TK_WHILE);
     }
     return TK_IDENT;

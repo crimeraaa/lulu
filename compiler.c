@@ -11,8 +11,10 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
         // Potentially dangerous as I'm not certain if the jmp_buf is being
         // copied correctly.
         self->lex = current->lex;
-    } 
-    // Hacky but for now I assign lex OUTSIDE of this function.
+    }  else {
+        // Hacky but I assign lex OUTSIDE of this function.
+        init_lexstate(self->lex, vm->name, vm->input);
+    }
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = vm;
@@ -610,7 +612,7 @@ void rbinary(Compiler *self, bool assignable) {
     // I prefer a distinct operator anyway as '+' can be confusing.
     case TK_CONCAT: emit_byte(self, OP_CONCAT); break;
     case TK_CARET:  emit_byte(self, OP_POW); break;
-    default: return;   // Should be unreachable, but clang insists on this.
+    default: return; // Should be unreachable, but clang insists on this.
     }
 }
 

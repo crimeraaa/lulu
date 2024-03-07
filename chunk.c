@@ -263,7 +263,7 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
 
     // -*- III:24.5     Function Calls ---------------------------------------*-
     case OP_CALL:       return opbyte("OP_CALL", self, offset);
-    case OP_RETURN:        return opsimple("OP_RETURN", offset);
+    case OP_RETURN:     return opsimple("OP_RETURN", offset);
     default:            break;
     }
     printf("Unknown opcode '%i'.\n", instruction);

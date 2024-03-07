@@ -35,7 +35,7 @@ static void runtime_error(LVM *self, const char *format, ...) {
         const LFunction *function = self->frames[i].function;
         const Chunk *chunk       = &function->chunk;
         int line = chunk->lines.runs[chunk->prevline - 1].where;
-        fprintf(stderr, "%s:%i: in ", self->fname, line);
+        fprintf(stderr, "%s:%i: in ", self->name, line);
         if (function->name == NULL) {
             fprintf(stderr, "main chunk\n");
         } else {
@@ -64,12 +64,12 @@ static InterpretResult runtime_concat_error(LVM *self, int offset) {
     return INTERPRET_RUNTIME_ERROR;
 }
 
-void init_vm(LVM *self, const char *fname) {
-    reset_stack(self);
+void init_vm(LVM *self, const char *name) {
     init_table(&self->globals);
     init_table(&self->strings);
+    reset_stack(self);
     self->objects = NULL;
-    self->fname = fname;
+    self->name    = name;
 }
 
 void free_vm(LVM *self) {
@@ -289,12 +289,10 @@ static InterpretResult run_bytecode(LVM *self) {
         switch (instruction = read_byte(frame)) {
         case OP_CONSTANT: {
             pushvalue(self, read_constant(frame));
-            break;
-        }
+        } break;
         case OP_LCONSTANT: {
             pushvalue(self, read_constant_at(frame, read_long(frame)));
-            break;
-        }
+        } break;
 
         // -*- III:18.4     Two New Types ------------------------------------*-
         case OP_NIL:   lua_pushnil(self);            break;
@@ -306,20 +304,19 @@ static InterpretResult run_bytecode(LVM *self) {
         case OP_NPOP: {
             // 1-byte operand is how much to decrement the stack pointer by.
             lua_popn(self, read_byte(frame));
-            break;
-        }
+        } break;
 
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
         case OP_GETLOCAL: {
             Byte slot = read_byte(frame);
             pushvalue(self, frame->bp[slot]);
-            break;
-        }
+        } break;
+
         case OP_SETLOCAL: {
             Byte slot = read_byte(frame);
             frame->bp[slot] = *lua_poke(self, -1);
-            break;
-        }
+        } break;
+
         // -*- III:21.2     Variable Declarations ----------------------------*-
         // NOTE: As of III:21.4 I've removed the `OP_DEFINE*` opcodes and cases.
         case OP_GETGLOBAL: {
@@ -331,8 +328,8 @@ static InterpretResult run_bytecode(LVM *self) {
                 return INTERPRET_RUNTIME_ERROR;
             }
             pushvalue(self, value);
-            break;
-        }
+        } break;
+
         case OP_LGETGLOBAL: {
             TString *name = read_string_at(frame, read_long(frame));
             TValue value;
@@ -341,8 +338,7 @@ static InterpretResult run_bytecode(LVM *self) {
                 return INTERPRET_RUNTIME_ERROR;
             }
             pushvalue(self, value);
-            break;
-        }
+        } break;
 
         // -*- III:21.4     Assignment ---------------------------------------*-
         // Unlike in Lox, Lua allows implicit declaration of globals.
@@ -351,13 +347,12 @@ static InterpretResult run_bytecode(LVM *self) {
         case OP_SETGLOBAL: {
             TString *name = read_string(frame);
             table_set(&self->globals, name, peekstack(self, -1));
-            break;
-        }
+        } break;
+
         case OP_LSETGLOBAL: {
             TString *name = read_string_at(frame, read_long(frame));
             table_set(&self->globals, name, peekstack(self, -1));
-            break;
-        }
+        } break;
 
         // -*- III:18.4.2   Equality and comparison operators ----------------*-
         case OP_EQ: {
@@ -366,8 +361,7 @@ static InterpretResult run_bytecode(LVM *self) {
             bool res = lua_equal(self, -2, -1);
             lua_popn(self, 2);
             lua_pushboolean(self, res);
-            break;
-        }
+        } break;
         case OP_GT: binop_cmp(self, lua_numgt); break;
         case OP_LT: binop_cmp(self, lua_numlt); break;
 
@@ -386,14 +380,12 @@ static InterpretResult run_bytecode(LVM *self) {
             if (!lua_isstring(self, -2)) return runtime_concat_error(self, -2);
             if (!lua_isstring(self, -1)) return runtime_concat_error(self, -1);
             lua_concat(self);
-            break;
-        }
+        } break;
 
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
             *lua_poke(self, -1) = makeboolean(lua_isfalsy(self, -1));
-            break;
-        }
+        } break;
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
@@ -412,29 +404,26 @@ static InterpretResult run_bytecode(LVM *self) {
             print_value(value);
             lua_popn(self, 1);
             printf("\n");
-            break;
-        }
+        } break;
 
         // -*- III:23.1     If Statements ------------------------------------*-
         case OP_JMP: {
             Word offset = read_short(frame);
             frame->ip += offset;
-            break;
-        }
+        } break;
+
         case OP_FJMP: {
             Word offset = read_short(frame);
             if (lua_isfalsy(self, -1)) {
                 frame->ip += offset;
             }
-            break;
-        }
+        } break;
                       
         // -*- III:23.3     While Statements ---------------------------------*-
         case OP_LOOP: {
             Word offset = read_short(frame);
             frame->ip -= offset;
-            break;
-        }
+        } break;
                       
         // -*- III:24.5.1   Binging arguments to parameters ------------------*-
         case OP_CALL: {
@@ -456,8 +445,7 @@ static InterpretResult run_bytecode(LVM *self) {
             // 'iterate' properly over the lineruns.
             frame = &self->frames[self->fc - 1];
             frame->function->chunk.prevline = 0;
-            break;
-        }
+        } break;
 
         case OP_RETURN: {
             // When a function returns a value, its result will be on the top of
@@ -481,27 +469,26 @@ static InterpretResult run_bytecode(LVM *self) {
             // Return control of the stack back to the caller now that this
             // particular function call is done.
             frame = &self->frames[self->fc - 1];
-            break;
-        }
+        } break;
+        // I hate how case statements don't introduce their own block scope...
         }
     }
 }
 
 InterpretResult interpret_vm(LVM *self, const char *input) {
-    LexState lex; // To be shared across chunks for this source code.
+    // Stack-allocated so we don't have to worry about memory. I need a pointer
+    // to this so that its state can be shared across multiple compiler objects.
+    LexState lex;
     Compiler compiler;
-    // Hacky but I cannot think of a better way to do this without just adding
-    // another parameter to `init_lexstate`.
     compiler.lex = &lex;
-    init_lexstate(&lex, self->fname, input);
+    self->input  = input;
     init_compiler(&compiler, NULL, self, FNTYPE_SCRIPT); // NULL = top-level.
     LFunction *function = compile_bytecode(&compiler);
     if (function == NULL) {
         return INTERPRET_COMPILE_ERROR;
     }
     pushvalue(self, makeobject(LUA_TFUNCTION, function));
-    // Call our implicit `main`, with no arguments.
-    call(self, function, 0);
+    call(self, function, 0); // Call our implicit `main`, with no arguments.
     return run_bytecode(self);
 }
 
