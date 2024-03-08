@@ -192,27 +192,46 @@ static inline TValue peekstack(LVM *self, int offset) {
  * 
  * Increments the VM's frame counter then initializes the topmost CallFrame
  * in the `frames` array using the `Function*` that was passed onto the stack
- * previously.
+ * previously. So we set the instruction pointer to point to the first byte
+ * in this particular function's bytecode, and then proceed normally as if it
+ * were any other chunk. That is we go through each instruction one by one just
+ * like any other in `run_bytecode()`.
+ * 
+ * NOTE:
+ * 
+ * Lua doesn't strictly enforce arity. So if we have too few arguments, the rest
+ * are populated with `nil`. If we have too many arguments, the rest are simply
+ * ignored in the function call but the stack pointer is still set properly.
  */
-static bool call_function(LVM *self, LFunction *function, int argc) {
-    if (argc != function->arity) {
-        runtime_error(self, 
-            "Expected %i arguments but got %i.", function->arity, argc);
-        return false;
-    }
+static bool call_function(LVM *self, LFunction *luafn, int argc) {
     if (self->fc >= LUA_MAXFRAMES) {
         runtime_error(self, "Stack overflow.");
         return false;
     }
+    if (argc != luafn->arity) {
+        runtime_error(self, 
+            "Expected %i arguments but got %i.", luafn->arity, argc);
+        return false;
+    }
     CallFrame *frame = &self->frames[self->fc++];
-    frame->function = function;
-    frame->ip = function->chunk.code; // Beginning of function's bytecode.
+    frame->function = luafn;
+    frame->ip = luafn->chunk.code;    // Beginning of function's bytecode.
     frame->bp = self->sp - argc - 1;  // Base pointer to function object itself.
+
+    // We want to iterate properly over something that has its own chunk, and as
+    // a result its own lineruns. We do not do this for C functions as they do
+    // not have any chunk, therefore no lineruns info, to begin with.
+    frame->function->chunk.prevline = 0;
     return true;
 }
 
-static bool call_cfunction(LVM *self, const CFunction *cf, int argc) {
-    TValue res = cf->function(argc, self->sp - argc);
+/**
+ * Calling a C function doesn't involve a lot because we don't create a stack
+ * frame or anything, we simply take the arguments, run the function, and push
+ * the result. Control is immediately passed back to the caller.
+ */
+static bool call_cfunction(LVM *self, const CFunction *cfn, int argc) {
+    TValue res = cfn->function(argc, self->sp - argc);
     self->sp -= argc + 1; // Point to slot right below the function object.
     lua_push(self, res);
     return true;
@@ -226,7 +245,6 @@ static bool call_value(LVM *self, CallFrame *frame) {
     // -1 to poke at top of stack, this is the function object itself.
     // In other words this is the base pointer of the current CallFrame.
     TValue *callee = self->sp - 1 - argc;
-
     switch (callee->type) {
     case LUA_TFUNCTION: return call_function(self, asfunction(*callee), argc);
     case LUA_TNATIVE:   return call_cfunction(self, ascfunction(*callee), argc);
@@ -482,17 +500,17 @@ static InterpretResult run_bytecode(LVM *self) {
         // -*- III:24.5.1   Binging arguments to parameters ------------------*-
         case OP_CALL: {
             // If successful there will be a new frame on the CallFrame stack for
-            // the called function.
+            // the called function. This may also set the prevline counter if we
+            // have a Lua function with its own chunk and linerun info. If we
+            // have a C function we just call it and leave the prevline as is
+            // since we do not change the current frame anyway.
             if (!call_value(self, frame)) {
                 return INTERPRET_RUNTIME_ERROR;
             }
 
             // When we execute the next instruction we want to execute the ones
-            // in this CallFrame. We also need to reset the prevline so we can
-            // 'iterate' properly over the lineruns.
-            // I'm not sure why but we need to start at 1 here, not 0.
+            // in this CallFrame.
             frame = current_frame(self);
-            frame->function->chunk.prevline = 1;
         } break;
 
         case OP_RETURN: {

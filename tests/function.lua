@@ -2,11 +2,6 @@ function sayhi()
     print("Hi")
 end
 
-function greet(name)
-    print("Hi" .. ' ' .. name .. '!')
-end
-
+print(clock())
 sayhi()
-greet("Bobby")
-
-print("Hi")
+sayhi()

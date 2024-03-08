@@ -2,21 +2,30 @@ function abs(n)
     return (n >= 0 and n) or (n * -1)
 end
 
-function pow(base, exponent)
-    if exponent == 0 then
-        return 1
-    end
+function _powpos(base, exp)
     local x = 1
-    if exponent < 0 then
-        for i = 1, abs(exponent) do
-            x = x / base
-        end
-    else
-        for i = 1, exponent do
-            x = x * base
-        end
+    for i = 1, exp do
+        x = x * base
     end
     return x
+end
+
+function _powneg(base, exp)
+    local x = 1
+    for i = 1, abs(exp) do
+        x = x / base
+    end
+    return x
+end
+
+function pow(base, exp)
+    if exp < 0 then
+        return _powneg(base, exp)
+    elseif exp > 0 then
+        return _powpos(base, exp)
+    else
+        return 1
+    end
 end
 
 function fact(n)

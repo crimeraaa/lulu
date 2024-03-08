@@ -8,5 +8,5 @@ function fib(n)
 end
 
 local start = clock() -- Builtin analog to C standard 'clock()'
-print(fib(5)) -- 'print' is now a builtin function that takes varargs!
+print(fib(2)) -- 'print' is now a builtin function that takes varargs!
 print(clock() - start)

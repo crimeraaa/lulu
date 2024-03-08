@@ -35,7 +35,7 @@
  * If negative, we use a negative offset relative to the stack top pointer.
  * If positive, we use a positive offset relative to the stack base pointer.
  */
-#define lua_poke(vm, n)    ((n) < 0 ? (vm)->sp + (n) : (vm)->stack + (n))
+#define lua_poke(vm, n)         ((n) < 0 ? (vm)->sp + (n) : (vm)->stack + (n))
 
 /* Pop `n` elements from the stack by decrementing the stack top pointer. */
 #define lua_popn(vm, n)         lua_settop(vm, -(n)-1)
