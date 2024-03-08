@@ -8,6 +8,23 @@
 /* HELPERS -------------------------------------------------------------- {{{ */
 
 /**
+ * Make the VM's stack pointer point to the base of the stack array.
+ * The same is done for the base pointer.
+ */
+static inline void reset_stack(LVM *self) {
+    self->sp = self->stack;
+    self->fc = 0;
+}
+
+static CallFrame *current_frame(LVM *self) {
+    return &self->frames[self->fc - 1];
+}
+
+static Chunk *current_chunk(CallFrame *self) {
+    return &self->function->chunk;
+}
+
+/**
  * Read the current instruction and move the instruction pointer.
  *
  * Remember that postfix increment returns the original value of the expression.
@@ -62,25 +79,12 @@ static TValue print_native(int argc, TValue *bp) {
 /* }}} */
 
 /**
- * Make the VM's stack pointer point to the base of the stack array.
- * The same is done for the base pointer.
- */
-static inline void reset_stack(LVM *self) {
-    self->sp = self->stack;
-    self->fc = 0;
-}
-
-static CallFrame *current_frame(LVM *self) {
-    return &self->frames[self->fc - 1];
-}
-
-/**
  * III:18.3.1   Unary negation and runtime errors
  *
  * This function simply prints whatever formatted error message you want.
- * 
+ *
  * III:24.5.3   Printing stack traces
- * 
+ *
  * We've now added stack traces to help users identify where their program may
  * have gone wrong. It includes a dump of the call stack up until that point.
  */
@@ -106,7 +110,7 @@ static void runtime_error(LVM *self, const char *format, ...) {
 
 /**
  * III:24.7     Native Functions
- * 
+ *
  * When garbage collection gets involved, it will be important to consider if
  * during the call to `copy_string()` and `new_cfunction` if garbage collection
  * was triggered. If that happens we must tell the GC that we are not actually
@@ -114,12 +118,11 @@ static void runtime_error(LVM *self, const char *format, ...) {
  * when we get to that point.
  */
 static void define_nativefn(LVM *self, const char *name, NativeFn func) {
-    TString *_name   = copy_string(self, name, strlen(name));
-    CFunction *_func = new_cfunction(self, func);
-    lua_push(self, makeobject(LUA_TSTRING, _name));
-    lua_push(self, makeobject(LUA_TNATIVE, _func));
+    lua_pushliteral(self, name, strlen(name));          // stack index 0
+    lua_pushcfunction(self, new_cfunction(self, func)); // stack index 1
+    // Associate a global identifier with the provided function.
     table_set(&self->globals, asstring(self->stack[0]), self->stack[1]);
-    lua_popn(self, 2);
+    lua_popn(self, 2); // Remove from stack so callers don't see these
 }
 
 static InterpretResult runtime_arith_error(LVM *self, int offset) {
@@ -147,7 +150,7 @@ void init_vm(LVM *self, const char *name) {
     reset_stack(self);
     self->objects = NULL;
     self->name    = name;
-    
+
     define_nativefn(self, "clock", clock_native);
     define_nativefn(self, "print", print_native);
 }
@@ -175,9 +178,9 @@ TValue popstack(LVM *self) {
  *
  * For example, to peek the top of the stack, use `peekstack(self, 0)`.
  * To peek the value right before that, use `peekstack(self, 1)`. And so on.
- * 
+ *
  * III:23.3     While Statements
- * 
+ *
  * See notes for `pokestack()` on what was changed.
  * Basically: `peekstack(self, -1)` now gives you the top of the stack.
  * `peekstack(self, 0)` gives you the very bottom.
@@ -188,16 +191,16 @@ static inline TValue peekstack(LVM *self, int offset) {
 
 /**
  * III:24.5     Function Calls
- * 
+ *
  * Increments the VM's frame counter then initializes the topmost CallFrame
  * in the `frames` array using the `Function*` that was passed onto the stack
  * previously. So we set the instruction pointer to point to the first byte
  * in this particular function's bytecode, and then proceed normally as if it
  * were any other chunk. That is we go through each instruction one by one just
  * like any other in `run_bytecode()`.
- * 
+ *
  * NOTE:
- * 
+ *
  * Lua doesn't strictly enforce arity. So if we have too few arguments, the rest
  * are populated with `nil`. If we have too many arguments, the rest are simply
  * ignored in the function call but the stack pointer is still set properly.
@@ -208,19 +211,19 @@ static bool call_function(LVM *self, LFunction *luafn, int argc) {
         return false;
     }
     if (argc != luafn->arity) {
-        runtime_error(self, 
+        runtime_error(self,
             "Expected %i arguments but got %i.", luafn->arity, argc);
         return false;
     }
+    // We want to iterate properly over something that has its own chunk, and as
+    // a result its own lineruns. We do not do this for C functions as they do
+    // not have any chunk, therefore no lineruns info, to begin with.
+    luafn->chunk.prevline = 0;
+
     CallFrame *frame = &self->frames[self->fc++];
     frame->function = luafn;
     frame->ip = luafn->chunk.code;    // Beginning of function's bytecode.
     frame->bp = self->sp - argc - 1;  // Base pointer to function object itself.
-
-    // We want to iterate properly over something that has its own chunk, and as
-    // a result its own lineruns. We do not do this for C functions as they do
-    // not have any chunk, therefore no lineruns info, to begin with.
-    frame->function->chunk.prevline = 0;
     return true;
 }
 
@@ -342,15 +345,16 @@ static inline DWord read_long(CallFrame *self) {
 }
 
 static InterpretResult run_bytecode(LVM *self) {
-    // Topmost call frame. 
+    // Topmost call frame.
     CallFrame *frame = current_frame(self);
+    Chunk *chunk     = current_chunk(frame);
 
     // Hack, but we reset so we can disassemble properly.
     // We need that start with index 0 into the lines.runs array.
     // So effectively this becames our iterator for each function frame.
-    frame->function->chunk.prevline = 0;
+    chunk->prevline = 0;
     for (;;) {
-        ptrdiff_t instruction_offset = frame->ip - frame->function->chunk.code;
+        ptrdiff_t instruction_offset = frame->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
         for (const TValue *slot = self->stack; slot < self->sp; slot++) {
@@ -359,10 +363,10 @@ static InterpretResult run_bytecode(LVM *self) {
             printf(" ]");
         }
         printf("\n");
-        disassemble_instruction(&frame->function->chunk, instruction_offset);
+        disassemble_instruction(chunk, instruction_offset);
 #else
         // Even if not disassembling we still need this to report errors.
-        next_line(self->chunk, offset);
+        next_line(chunk, instruction_offset);
 #endif
         Byte instruction;
         switch (instruction = read_byte(frame)) {
@@ -388,7 +392,7 @@ static InterpretResult run_bytecode(LVM *self) {
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
         case OP_GETLOCAL: {
             Byte slot = read_byte(frame);
-            lua_push(self, frame->bp[slot]);
+            lua_pushobject(self, &frame->bp[slot]);
         } break;
 
         case OP_SETLOCAL: {
@@ -406,7 +410,7 @@ static InterpretResult run_bytecode(LVM *self) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
                 return INTERPRET_RUNTIME_ERROR;
             }
-            lua_push(self, value);
+            lua_pushobject(self, &value);
         } break;
 
         case OP_LGETGLOBAL: {
@@ -416,7 +420,7 @@ static InterpretResult run_bytecode(LVM *self) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
                 return INTERPRET_RUNTIME_ERROR;
             }
-            lua_push(self, value);
+            lua_pushobject(self, &value);
         } break;
 
         // -*- III:21.4     Assignment ---------------------------------------*-
@@ -489,13 +493,13 @@ static InterpretResult run_bytecode(LVM *self) {
                 frame->ip += offset;
             }
         } break;
-                      
+
         // -*- III:23.3     While Statements ---------------------------------*-
         case OP_LOOP: {
             Word offset = read_short(frame);
             frame->ip -= offset;
         } break;
-                      
+
         // -*- III:24.5.1   Binging arguments to parameters ------------------*-
         case OP_CALL: {
             // If successful there will be a new frame on the CallFrame stack for
@@ -510,14 +514,15 @@ static InterpretResult run_bytecode(LVM *self) {
             // When we execute the next instruction we want to execute the ones
             // in this CallFrame.
             frame = current_frame(self);
+            chunk = current_chunk(frame);
         } break;
 
         case OP_RETURN: {
             // When a function returns a value, its result will be on the top of
             // the stack. We're about to discard the function's entire stack
             // window so we hold onto the return value.
-            TValue res = popstack(self);
-            
+            const TValue res = popstack(self);
+
             // Conceptually discard the call frame. If this was the very last
             // callframe that probably indicates we've finished the top-level.
             self->fc--;
@@ -529,11 +534,12 @@ static InterpretResult run_bytecode(LVM *self) {
             // and local variables, which are the same slots the caller (us)
             // used to push the arguments in the first place.
             self->sp = frame->bp;
-            lua_push(self, res);
-            
+            lua_pushobject(self, &res);
+
             // Return control of the stack back to the caller now that this
             // particular function call is done.
-            frame = &self->frames[self->fc - 1];
+            frame = current_frame(self);
+            chunk = current_chunk(frame);
         } break;
         // I hate how case statements don't introduce their own block scope...
         }
@@ -548,12 +554,12 @@ InterpretResult interpret_vm(LVM *self, const char *input) {
     compiler.lex = &lex;
     self->input  = input;
     init_compiler(&compiler, NULL, self, FNTYPE_SCRIPT); // NULL = top-level.
-    LFunction *function = compile_bytecode(&compiler);
-    if (function == NULL) {
+    LFunction *lmain = compile_bytecode(&compiler);
+    if (lmain == NULL) {
         return INTERPRET_COMPILE_ERROR;
     }
-    lua_push(self, makeobject(LUA_TFUNCTION, function));
-    call_function(self, function, 0); // Call our implicit `main`, with no arguments.
+    lua_pushfunction(self, lmain);
+    call_function(self, lmain, 0); // Call our implicit `main`, with no arguments.
     return run_bytecode(self);
 }
 

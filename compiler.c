@@ -37,7 +37,7 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
 
 /**
  * Report an error at the token that was just consumed.
- * 
+ *
  * Assumes that `self->lex.errjmp` (of type `jmp_buf`) was properly set in
  * `compile_bytecode()`. Parser will report a message then do a longjmp.
  *
@@ -51,7 +51,19 @@ static void compiler_error(Compiler *self, const char *message) {
     throw_lexerror(self->lex, message);
 }
 
-Chunk *current_chunk(Compiler *self) {
+/**
+ * III:17.3     Emitting Bytecode
+ *
+ * For now, the current chunk is the one that got assigned to the compiler instance
+ * when it was created in `interpret_vm()`. Later on this will get more complicated.
+ *
+ * III:24.2     Compiling to Function Objects
+ *
+ * From `&self->chunk` we changed it to `&self->function->chunk` so that we get
+ * the current chunk being compiled no matter what. Neat that Bob managed to get
+ * this down beforehand!
+ */
+static Chunk *current_chunk(Compiler *self) {
     return &self->function->chunk;
 }
 
@@ -134,11 +146,11 @@ static void emit_long(Compiler *self, Byte opcode, DWord operand) {
     emit_byte(self, bytemask(operand, 0));
 }
 
-/** 
- * Helper because it's automatically called by `end_compiler()`. 
- * 
+/**
+ * Helper because it's automatically called by `end_compiler()`.
+ *
  * III:24.5.4   Returning from functions
- * 
+ *
  * Currently we simply return an implicit nil value so that the stack has at
  * least *something* to pop off.
  */
@@ -923,7 +935,7 @@ static void function(Compiler *self, FnType type) {
     // To handle compiling multiple functions nested within each other, we use
     // local compiler instances per stack frame of `function()` (C, not Lua!)
     Compiler *next = &_next;
-    
+
     // Set this AFTER initializing to ensure we're pointing at the one that was
     // copied over from `self`.
     LexState *lex = next->lex;
@@ -1329,11 +1341,11 @@ static void if_statement(Compiler *self, bool iselif) {
 
 /**
  * III:24.6     Return Statements
- * 
+ *
  * Assumes we just consumed the 'return' token.
- * 
+ *
  * NOTE:
- * 
+ *
  * Although we check for an 'end' token immediately following the 'return', we
  * do not consume it. That is the responsibility of `function()`.
  */
@@ -1452,7 +1464,7 @@ static void statement(Compiler *self) {
         for_statement(self);
     } else if (match_token(lex, TK_ELSEIF, TK_ELSE)) {
         compiler_error(self, "Not used in an 'if' statement.");
-    } else if (match_token(lex, TK_RETURN)) { 
+    } else if (match_token(lex, TK_RETURN)) {
         return_statement(self);
     } else if (match_token(lex, TK_WHILE)) {
         while_statement(self);

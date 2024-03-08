@@ -116,20 +116,6 @@ typedef struct Compiler {
 void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type);
 
 /**
- * III:17.3     Emitting Bytecode
- *
- * For now, the current chunk is the one that got assigned to the compiler instance
- * when it was created in `interpret_vm()`. Later on this will get more complicated.
- * 
- * III:24.2     Compiling to Function Objects
- * 
- * From `&self->chunk` we changed it to `&self->function->chunk` so that we get
- * the current chunk being compiled no matter what. Neat that Bob managed to get
- * this down beforehand!
- */
-Chunk *current_chunk(Compiler *self);
-
-/**
  * III:16.1.1   Opening the compilation pipeline
  * 
  * Instead of using a global Scanner instance like Robert does, I use pointers.

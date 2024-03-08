@@ -13,16 +13,20 @@
 
 /**
  * III:23.3     While Statements
- * 
+ *
  * Custom addition to mimick the Lua C API. Get the 0-based index of the current
  * top of the given VM instance's stack. You can also think of this as returning
  * the number of contiguous elements currently written to the stack.
+ *
+ * NOTE:
+ *
+ * Assumes that sp is ALWAYS greater than stack base.
  */
-#define lua_gettop(vm)          ((vm)->sp - (vm)->stack)
+size_t lua_gettop(const LVM *self);
 
 /**
  * III:23.3     While Statements
- * 
+ *
  * Given a particular offset `n`, if it's negative we get the absolute index in
  * relation to the top of the stack. Overwise we return it as is.
  */
@@ -30,7 +34,7 @@
 
 /**
  * III:23.3     While Statements
- * 
+ *
  * Given a particular offset `n`, get a pointer to the value in the stack.
  * If negative, we use a negative offset relative to the stack top pointer.
  * If positive, we use a positive offset relative to the stack base pointer.
@@ -48,12 +52,12 @@
 #define lua_isnumber(vm, i)     lua_istype(vm, i, LUA_TNUMBER)
 #define lua_isstring(vm, i)     lua_istype(vm, i, LUA_TSTRING)
 
-/** 
+/**
  * Due to the '.' character we can't use '##'. This is because `as.##tag` would
  * result in one token for `.##tag` which is not a valid construct. But due to
  * preprocessor pasting rules, macros are substituted even before any member
  * accesses.
- * 
+ *
  * See:
  * - https://stackoverflow.com/a/52092333
  */
@@ -69,7 +73,7 @@
 
 /**
  * III:23.3     While Statements
- * 
+ *
  * Set the stack top pointer in relation to a particular `offset`.
  * If the new top is much greater than the original, we fill the gaps with nil
  * values to compensate.
@@ -78,7 +82,7 @@ void lua_settop(LVM *self, int offset);
 
 /**
  * III:23.3     While Statements
- * 
+ *
  * Query the value at the given positive or negative offset into the VM stack
  * if it matches the particular given type.
  */
@@ -93,9 +97,9 @@ bool lua_equal(LVM *self, int offset1, int offset2);
  * Everything else is `truthy` meaning it is treated as a true condition.
  * Do note that this doesn't mean that `1 == true`, it just means that `if 1`
  * and `if true` do the same thing conceptually.
- * 
+ *
  * III:23.3     While Statements
- * 
+ *
  * I'm updating the API to be more like the Lua C API. So we take a VM instance
  * pointer and an offset into it, we determine the falsiness of the value at the
  * given index/offset.
@@ -103,10 +107,11 @@ bool lua_equal(LVM *self, int offset1, int offset2);
 bool lua_isfalsy(LVM *self, int offset);
 
 /**
- * Given an index `i` into the VM's constants table, push a copy of that value
- * to the top of the stack and then increment the stack pointer.
+ * Simply copies `object` by value to the current top of the stack as pointed
+ * to by `self->sp`. Afterwards, `self->sp` is incremented to point to the
+ * next free slot in the stack.
  */
-// void lua_pushconstant(LVM *self, size_t i);
+void lua_pushobject(LVM *self, const TValue *object);
 void lua_pushboolean(LVM *self, bool b);
 void lua_pushnil(LVM *self);
 void lua_pushnumber(LVM *self, lua_Number n);
@@ -122,13 +127,14 @@ void lua_pushstring(LVM *self, char *data);
  * ownership of via a call to `take_string()`.
  */
 void lua_pushlstring(LVM *self, char *data, size_t len);
-void lua_pushliteral(LVM *self, const char *data, size_t len);
 
 /**
  * Assumes `data` is a read-only nul-terminated C string literal with which we
  * try to create a `TString*` of. Do NOT use this with malloc'd strings.
  */
-#define lua_pushliteral(vm, s)  lua_pushliteral(self, s, arraylen(s) - 1)
+void lua_pushliteral(LVM *self, const char *data, size_t len);
+void lua_pushfunction(LVM *self, LFunction *luafn);
+void lua_pushcfunction(LVM *self, CFunction *cfn);
 
 /**
  * III:19.4.1   Concatenation
