@@ -16,6 +16,37 @@ static inline void reset_stack(LVM *self) {
     self->fc = 0;
 }
 
+/**
+ * III:18.3.1   Unary negation and runtime errors
+ *
+ * This function simply prints whatever formatted error message you want.
+ *
+ * III:24.5.3   Printing stack traces
+ *
+ * We've now added stack traces to help users identify where their program may
+ * have gone wrong. It includes a dump of the call stack up until that point.
+ */
+static void runtime_error(LVM *self, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputs("\n", stderr);
+
+    for (int i = self->fc - 1; i >= 0; i--) {
+        const LFunction *function = self->frames[i].function;
+        const Chunk *chunk        = &function->chunk;
+        fprintf(stderr, "%s:%i: in ", self->name, current_line(chunk));
+        if (function->name == NULL) {
+            fprintf(stderr, "main chunk\n");
+        } else {
+            fprintf(stderr, "function '%s'\n", function->name->data);
+        }
+    }
+    reset_stack(self);
+    longjmp(self->errjmp, 1);
+}
+
 static CallFrame *current_frame(LVM *self) {
     return &self->frames[self->fc - 1];
 }
@@ -61,52 +92,34 @@ static TValue read_constant_at(const CallFrame *self, size_t index) {
 
 /* NATIVE FUNCTIONS ----------------------------------------------------- {{{ */
 
-static TValue clock_native(int argc, TValue *bp) {
+static TValue clock_native(LVM *vm, int argc, TValue *argv) {
+    (void)vm;
     (void)argc;
-    (void)bp;
-    return makenumber((double)clock() / CLOCKS_PER_SEC);
+    (void)argv;
+    return makenumber((lua_Number)clock() / CLOCKS_PER_SEC);
 }
 
-static TValue print_native(int argc, TValue *bp) {
+static TValue print_native(LVM *vm, int argc, TValue *argv) {
+    (void)vm;
     for (int i = 0; i < argc; i++) {
-        print_value(bp + i);
+        print_value(&argv[i]);
         fputc(' ', stdout);
     }
     fputc('\n', stdout);
     return makenil;
 }
 
-/* }}} */
-
-/**
- * III:18.3.1   Unary negation and runtime errors
- *
- * This function simply prints whatever formatted error message you want.
- *
- * III:24.5.3   Printing stack traces
- *
- * We've now added stack traces to help users identify where their program may
- * have gone wrong. It includes a dump of the call stack up until that point.
- */
-static void runtime_error(LVM *self, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
-    fputs("\n", stderr);
-
-    for (int i = self->fc - 1; i >= 0; i--) {
-        const LFunction *function = self->frames[i].function;
-        const Chunk *chunk        = &function->chunk;
-        fprintf(stderr, "%s:%i: in ", self->name, current_line(chunk));
-        if (function->name == NULL) {
-            fprintf(stderr, "main chunk\n");
-        } else {
-            fprintf(stderr, "function '%s'\n", function->name->data);
-        }
+static TValue type_native(LVM *vm, int argc, TValue *argv) {
+    if (argc == 1) {
+        const char *ts = value_typename(&argv[0]);
+        // Take ownership of a copy of the string literal.
+        return makestring(copy_string(vm, ts, strlen(ts)));
     }
-    reset_stack(self);
+    runtime_error(vm, "'type' requires exactly 1 argument.");
+    return makenil;
 }
+
+/* }}} */
 
 /**
  * III:24.7     Native Functions
@@ -118,7 +131,7 @@ static void runtime_error(LVM *self, const char *format, ...) {
  * when we get to that point.
  */
 static void define_nativefn(LVM *self, const char *name, NativeFn func) {
-    lua_pushliteral(self, name, strlen(name));          // stack index 0
+    lua_pushliteral(self, name);                        // stack index 0
     lua_pushcfunction(self, new_cfunction(self, func)); // stack index 1
     // Associate a global identifier with the provided function.
     table_set(&self->globals, asstring(self->stack[0]), self->stack[1]);
@@ -153,40 +166,13 @@ void init_vm(LVM *self, const char *name) {
 
     define_nativefn(self, "clock", clock_native);
     define_nativefn(self, "print", print_native);
+    define_nativefn(self, "type", type_native);
 }
 
 void free_vm(LVM *self) {
     free_table(&self->globals);
     free_table(&self->strings);
     free_objects(self);
-}
-
-TValue popstack(LVM *self) {
-    // 1 past top of stack was invalid, so now we actually point to top of stack
-    // which is a valid element we can dereference!
-    self->sp--;
-    return *self->sp;
-}
-
-/**
- * III:18.3.1   Unary negation and runtime errors
- *
- * Returns a value from the stack without popping it. Remember that since the
- * stack pointer points to 1 past the last element, we need to subtract 1.
- * And since the most recent element is at the top of the stack, in order to
- * access other elements we subtract the given offset.
- *
- * For example, to peek the top of the stack, use `peekstack(self, 0)`.
- * To peek the value right before that, use `peekstack(self, 1)`. And so on.
- *
- * III:23.3     While Statements
- *
- * See notes for `pokestack()` on what was changed.
- * Basically: `peekstack(self, -1)` now gives you the top of the stack.
- * `peekstack(self, 0)` gives you the very bottom.
- */
-static inline TValue peekstack(LVM *self, int offset) {
-    return *lua_poke(self, offset);
 }
 
 /**
@@ -233,9 +219,9 @@ static bool call_function(LVM *self, LFunction *luafn, int argc) {
  * the result. Control is immediately passed back to the caller.
  */
 static bool call_cfunction(LVM *self, const CFunction *cfn, int argc) {
-    TValue res = cfn->function(argc, self->sp - argc);
+    TValue res = cfn->function(self, argc, self->sp - argc);
     self->sp -= argc + 1; // Point to slot right below the function object.
-    lua_push(self, res);
+    lua_pushobject(self, &res);
     return true;
 }
 
@@ -270,7 +256,7 @@ static bool call_value(LVM *self, CallFrame *frame) {
         assertfn(vm);                                                          \
         TValue r = makefn(exprfn(lua_asnumber(vm, -2), lua_asnumber(vm, -1))); \
         lua_popn(vm, 2);                                                       \
-        lua_push(vm, r);                                                       \
+        lua_pushobject(vm, &r);                                                \
     } while (false)
 
 /**
@@ -337,7 +323,7 @@ static Word read_short(CallFrame *self) {
  * Compiler emitted them in this order: hi, mid, lo. Since ip currently points
  * at hi, we can safely walk in this order.
  */
-static inline DWord read_long(CallFrame *self) {
+static DWord read_long(CallFrame *self) {
     Byte hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
     Byte mid = read_byte(self); // bits 8..15  : (0x000100..0x00FFFF)
     Byte lo  = read_byte(self); // bits 0..7   : (0x000000..0x0000FF)
@@ -348,6 +334,14 @@ static InterpretResult run_bytecode(LVM *self) {
     // Topmost call frame.
     CallFrame *frame = current_frame(self);
     Chunk *chunk     = current_chunk(frame);
+
+    // longjmp here to handle errors.
+    // Ensure that all functions that need manual cleanup
+    // have been taken care of, but for the most part our VM's objects linked
+    // list tracks ALL allocations no matter what.
+    if (setjmp(self->errjmp) != 0) {
+        return INTERPRET_RUNTIME_ERROR;
+    }
 
     // Hack, but we reset so we can disassemble properly.
     // We need that start with index 0 into the lines.runs array.
@@ -371,10 +365,12 @@ static InterpretResult run_bytecode(LVM *self) {
         Byte instruction;
         switch (instruction = read_byte(frame)) {
         case OP_CONSTANT: {
-            lua_push(self, read_constant(frame));
+            const TValue v = read_constant(frame);
+            lua_pushobject(self, &v);
         } break;
         case OP_LCONSTANT: {
-            lua_push(self, read_constant_at(frame, read_long(frame)));
+            const TValue v = read_constant_at(frame, read_long(frame));
+            lua_pushobject(self, &v);
         } break;
 
         // -*- III:18.4     Two New Types ------------------------------------*-
@@ -397,7 +393,7 @@ static InterpretResult run_bytecode(LVM *self) {
 
         case OP_SETLOCAL: {
             Byte slot = read_byte(frame);
-            frame->bp[slot] = *lua_poke(self, -1);
+            frame->bp[slot] = lua_peek(self, -1);
         } break;
 
         // -*- III:21.2     Variable Declarations ----------------------------*-
@@ -408,7 +404,6 @@ static InterpretResult run_bytecode(LVM *self) {
             // If not present in the hash table, the variable never existed.
             if (!table_get(&self->globals, name, &value)) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
-                return INTERPRET_RUNTIME_ERROR;
             }
             lua_pushobject(self, &value);
         } break;
@@ -418,7 +413,6 @@ static InterpretResult run_bytecode(LVM *self) {
             TValue value;
             if (!table_get(&self->globals, name, &value)) {
                 runtime_error(self, "Undefined variable '%s'.", name->data);
-                return INTERPRET_RUNTIME_ERROR;
             }
             lua_pushobject(self, &value);
         } break;
@@ -429,12 +423,12 @@ static InterpretResult run_bytecode(LVM *self) {
         // in Lua as all global variables must be assigned at declaration.
         case OP_SETGLOBAL: {
             TString *name = read_string(frame);
-            table_set(&self->globals, name, peekstack(self, -1));
+            table_set(&self->globals, name, lua_peek(self, -1));
         } break;
 
         case OP_LSETGLOBAL: {
             TString *name = read_string_at(frame, read_long(frame));
-            table_set(&self->globals, name, peekstack(self, -1));
+            table_set(&self->globals, name, lua_peek(self, -1));
         } break;
 
         // -*- III:18.4.2   Equality and comparison operators ----------------*-
@@ -500,7 +494,7 @@ static InterpretResult run_bytecode(LVM *self) {
             frame->ip -= offset;
         } break;
 
-        // -*- III:24.5.1   Binging arguments to parameters ------------------*-
+        // -*- III:24.5.1   Binding arguments to parameters ------------------*-
         case OP_CALL: {
             // If successful there will be a new frame on the CallFrame stack for
             // the called function. This may also set the prevline counter if we
@@ -521,7 +515,8 @@ static InterpretResult run_bytecode(LVM *self) {
             // When a function returns a value, its result will be on the top of
             // the stack. We're about to discard the function's entire stack
             // window so we hold onto the return value.
-            const TValue res = popstack(self);
+            const TValue res = lua_peek(self, -1);
+            lua_popn(self, 1);
 
             // Conceptually discard the call frame. If this was the very last
             // callframe that probably indicates we've finished the top-level.

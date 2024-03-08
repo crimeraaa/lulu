@@ -112,8 +112,8 @@ void lua_pushstring(LVM *self, char *data) {
     }
 }
 
-void lua_pushliteral(LVM *self, const char *data, size_t len) {
-    TValue v = makestring(copy_string(self, data, len));
+void lua_pushliteral(LVM *self, const char *data) {
+    TValue v = makestring(copy_string(self, data, strlen(data)));
     lua_pushobject(self, &v);
 }
 

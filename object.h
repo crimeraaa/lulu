@@ -24,8 +24,17 @@ struct LFunction {
  * This is a function pointer type similar to the Lua C API `Proto`. In essence
  * all Lua-facing C functions MUST have an argument count and a pointer to the
  * first argument (i.e. pushed first) in the VM stack.
+ *
+ * NOTE:
+ *
+ * I've made it so that similar to the Lua C API, all C functions are able to
+ * poke at their parent VM (the `lua_State*`). This is helpful to check if a
+ * string has been interned, to intern new strings, etc.
+ *
+ * And instead of directly returning a value to `call_function()`, we push to
+ * the VM's stack directly from within.
  */
-typedef TValue (*NativeFn)(int argc, TValue *bp);
+typedef TValue (*NativeFn)(LVM *vm, int argc, TValue *argv);
 
 /**
  * III:24.7     Native Functions

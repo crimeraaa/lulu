@@ -1,7 +1,6 @@
 #ifndef LUA_LEXSTATE_H
 #define LUA_LEXSTATE_H
 
-#include <setjmp.h>
 #include "common.h"
 
 #define _tokenarray(...)            (toarraylit(TokenType, __VA_ARGS__))
@@ -10,27 +9,27 @@
 
 /**
  * III:21.1.1   Print Statements
- * 
+ *
  * Check if the parser's CURRENT (not PREVIOUS) token matches `expected`.
- * 
+ *
  * III:23.2     If Statements
- * 
+ *
  * Now a wrapper macro in a similar style to `match_token()`.
  */
 #define check_token(lex, ...)   _check_token(lex, _tokenarray(__VA_ARGS__))
 
 /**
  * III:21.1.1   Print Statements
- * 
+ *
  * If token matches, consume it and return true. Otherwise return false. Nothing
  * more, nothing less. We don't throw the parser into a panic state.
- * 
- * 
+ *
+ *
  * III:23.2     If Statements
- * 
+ *
  * I've changed this to be a wrapper macro around the `_match_token()` macro
  * which is, in itself, a wrapper macro around `match_token_any()`.
- * 
+ *
  * This allows us to use the same "function" for 1 or more token types.
  */
 #define match_token(lex, ...)   _match_token(lex, _tokenarray(__VA_ARGS__))
@@ -58,7 +57,7 @@ typedef enum {
     TK_SLASH,    // '/'  Division.
     TK_CARET,    // '^'  Exponentiation.
     TK_PERCENT,  // '%'  Modulus, a.k.a. get the remainder.
-                
+
     // Relational Operators
     TK_EQ,       // '==' Compare for equality.
     TK_NEQ,      // '~=' Compare for inequality.
@@ -79,7 +78,7 @@ typedef enum {
     // Keywords
     TK_AND,
     TK_BREAK,
-    TK_DO,       // 'do' Block delim in 'for', 'while'. Must be followed by 'end'. 
+    TK_DO,       // 'do' Block delim in 'for', 'while'. Must be followed by 'end'.
     TK_ELSE,
     TK_ELSEIF,
     TK_END,      // 'end' Block delimiter for functions and control flow statements.
@@ -94,7 +93,7 @@ typedef enum {
     TK_SELF,     // 'self' only a keyword for table methods using ':'.
     TK_THEN,     // 'then' Block delimiter for `if`.
     TK_WHILE,
-    
+
     // Misc.
     TK_CONCAT,   // '..' String concatenation.
     TK_VARARGS,  // '...' Function varargs.
@@ -130,12 +129,12 @@ void init_lexstate(LexState *self, const char *name, const char *input);
 
 /**
  * III:17.2     Parsing Tokens
- * 
- * Assume the compiler should move to the next token. So the LexState's parser 
+ *
+ * Assume the compiler should move to the next token. So the LexState's parser
  * half is set to start a new token.
- * 
+ *
  * III:24.5.4   Returning from functions
- * 
+ *
  * I'm doing a massive refactor to mimic the Lua C API's `LexState`. This
  * function replaces the old `advance_parser()` function.
  */
@@ -143,8 +142,8 @@ void next_token(LexState *self);
 
 /**
  * III:17.2     Parsing Tokens
- * 
- * We only advance the LexState's parser if the current token matches the 
+ *
+ * We only advance the LexState's parser if the current token matches the
  * expected one. Otherwise, we set it into an error state and throw the error
  * using `longjmp`. Hope you used `setjmp` correctly!
  */
@@ -152,23 +151,23 @@ void consume_token(LexState *self, TokenType expected, const char *info);
 
 /**
  * III:23.2     If Statements
- * 
- * Custom helper to determine if LexState's parser's current token matches any 
+ *
+ * Custom helper to determine if LexState's parser's current token matches any
  * of the given ones.
- * 
+ *
  * @param parser    Parser instance.
  * @param expected  1D array literal of TokenTypes to check against.
  * @param count     Number of elements in `expected`, use the `arraylen` macro.
- * 
+ *
  * @return  `true` on the first match, else `false` if no match.
- * 
+ *
  * @note    This does not consume the token.
  */
 bool check_token_any(LexState *self, TokenType *expected, size_t count);
 
 /**
  * III:23.2     If Statements
- * 
+ *
  * Similar to `check_token_any` but we advance the parser if `true` as well.
  * Otherwise we return `false` without modifying any state.
  */
@@ -176,23 +175,23 @@ bool match_token_any(LexState *self, TokenType *expected, size_t count);
 
 /**
  * III:17.2.1   Handling syntax errors
- * 
+ *
  * This is generic function to report errors based on some token and a message.
  * Whatever the case, we set the parser's error state to true.
- * 
+ *
  * III:23.3     While Statements
- * 
+ *
  * Assuming the `self->errjmp` was set up correctly, report an error and then
  * do a `longjmp()`. Ensure that this is never called in functions that require
  * cleanup like variable-length-arrays or heap-allocations.
- * 
+ *
  * III:24.5.4   Returning from functions
- * 
+ *
  * This function now replaaces `parser_error_at`, which itself replaced the
  * clox `errorAt()`.
- * 
+ *
  * NOTE:
- * 
+ *
  * We implicitly use `self->lastline` for reporting. If you need to report a
  * different line, you'll have to set that member before calling this.
  */
@@ -200,12 +199,12 @@ void throw_lexerror_at(LexState *self, const Token *token, const char *info);
 
 /**
  * III:17.2.1   Handling syntax errors
- * 
+ *
  * More often than not, we want to report an error at the location of the token
  * we just consumed (that is, it's now the parser's previous token).
- * 
+ *
  * III:24.5.4   Returning from functions
- * 
+ *
  * This function now replaces `parser_error`, which itself originally replaced
  * the clox `error()` to throw errors at the current token.
  */

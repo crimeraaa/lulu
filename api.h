@@ -41,9 +41,14 @@ size_t lua_gettop(const LVM *self);
  */
 #define lua_poke(vm, n)         ((n) < 0 ? (vm)->sp + (n) : (vm)->stack + (n))
 
+/**
+ * Exactly the same as `lua_poke()` except that we immediately dereference the
+ * retrieved pointer.
+ */
+#define lua_peek(vm, n)         (*lua_poke(vm, n))
+
 /* Pop `n` elements from the stack by decrementing the stack top pointer. */
 #define lua_popn(vm, n)         lua_settop(vm, -(n)-1)
-#define lua_push(vm, v)         (*(vm)->sp++ = v)
 
 /* TYPE HELPER MACROS --------------------------------------------------- {{{ */
 
@@ -132,7 +137,7 @@ void lua_pushlstring(LVM *self, char *data, size_t len);
  * Assumes `data` is a read-only nul-terminated C string literal with which we
  * try to create a `TString*` of. Do NOT use this with malloc'd strings.
  */
-void lua_pushliteral(LVM *self, const char *data, size_t len);
+void lua_pushliteral(LVM *self, const char *data);
 void lua_pushfunction(LVM *self, LFunction *luafn);
 void lua_pushcfunction(LVM *self, CFunction *cfn);
 
