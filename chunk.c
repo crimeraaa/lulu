@@ -83,12 +83,17 @@ size_t add_constant(Chunk *self, TValue value) {
     return self->constants.count - 1;
 }
 
-int get_instruction_line(Chunk *self, ptrdiff_t offset) {
+int current_line(const Chunk *self) {
+    return self->lines.runs[self->prevline - 1].where;
+}
+
+int next_line(Chunk *self, ptrdiff_t offset) {
     // When iterating, `self->prevline` points to the next index.
     if (offset > 0 && offset <= self->lines.runs[self->prevline - 1].end) {
         return -1;
     }
-    return self->lines.runs[self->prevline++].where;
+    self->prevline++;
+    return current_line(self);
 }
 
 /**
@@ -197,7 +202,7 @@ static int opjump(const char *name, int sign, const Chunk *self, ptrdiff_t offse
 
 int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     printf("0x%04tx ", offset); // Print number left-padded with 0's
-    int line = get_instruction_line(self, offset);
+    int line = next_line(self, offset);
     if (line == -1) {
         printf("   | ");
     } else {

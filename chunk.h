@@ -122,6 +122,19 @@ void write_chunk(Chunk *self, Byte byte, int line);
 size_t add_constant(Chunk *self, TValue value);
 
 /**
+ * Get the current line based the state of the Chunk's `prevline` membe.
+ * 
+ * NOTE:
+ * 
+ * Ensure that it resolves to a valid index, such as by resetting it before
+ * calling `disassemble_chunk()` or `disassemble_instruction()`. Also only do so
+ * if the current function actually has a chunk, because C functions do not have
+ * any such information. For that case simply use whatever the current value of
+ * prevline is because we do not need to "step into" C function.
+ */
+int current_line(const Chunk *self);
+
+/**
  * Challenge III:14.1
  * 
  * In addition to using run-length encoding, we have to be able to somehow query
@@ -130,7 +143,7 @@ size_t add_constant(Chunk *self, TValue value);
  * Do note that this increments `chunk->prevline` if the previous line does not
  * match the current line at the given bytecode offset.
  */
-int get_instruction_line(Chunk *chunk, ptrdiff_t offset);
+int next_line(Chunk *chunk, ptrdiff_t offset);
 
 /**
  * Challenge III:14.1

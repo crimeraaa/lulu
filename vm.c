@@ -94,8 +94,7 @@ static void runtime_error(LVM *self, const char *format, ...) {
     for (int i = self->fc - 1; i >= 0; i--) {
         const LFunction *function = self->frames[i].function;
         const Chunk *chunk        = &function->chunk;
-        int line = chunk->lines.runs[chunk->prevline - 1].where;
-        fprintf(stderr, "%s:%i: in ", self->name, line);
+        fprintf(stderr, "%s:%i: in ", self->name, current_line(chunk));
         if (function->name == NULL) {
             fprintf(stderr, "main chunk\n");
         } else {
@@ -363,7 +362,7 @@ static InterpretResult run_bytecode(LVM *self) {
         disassemble_instruction(&frame->function->chunk, instruction_offset);
 #else
         // Even if not disassembling we still need this to report errors.
-        get_instruction_line(self->chunk, offset);
+        next_line(self->chunk, offset);
 #endif
         Byte instruction;
         switch (instruction = read_byte(frame)) {

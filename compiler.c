@@ -1352,6 +1352,7 @@ static void return_statement(Compiler *self) {
         // Emit OP_POP and OP_RETURN if no return value is specified.
         emit_return(self);
     }
+    match_token(lex, TK_SEMICOL);
 }
 
 /**
