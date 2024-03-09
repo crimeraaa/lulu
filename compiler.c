@@ -18,7 +18,6 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = vm;
-    self->assigning = false;
 
     // We can grab the name of the function from the previous token because we
     // already consumed the 'function' token, allocated an object and then
@@ -301,7 +300,7 @@ static void parse_precedence(Compiler *self, Precedence precedence);
  * `parse_precedence()` with `PREC_ASSIGNMENT`, nested assignments are compiled
  * without a problem.
  */
-static void parse_noassignments(Compiler *self) {
+static void expr_noassign(Compiler *self) {
     parse_precedence(self, (Precedence)(PREC_ASSIGNMENT + 1));
 }
 
@@ -516,7 +515,7 @@ static Byte arglist(Compiler *self) {
         do {
             // Push expression needed to resolve argument. We specifically need
             // to call it like this to ensure assignments don't occur within.
-            parse_noassignments(self);
+            expr_noassign(self);
             if (argc >= LUA_MAXBYTE) {
                 compiler_error(self, "Cannot have more than 255 arguments.");
             }
@@ -804,18 +803,12 @@ static VarInfo resolve_variable(Compiler *self, const Token *name) {
 static void named_variable(Compiler *self, bool assignable) {
     LexState *lex = self->lex;
     const VarInfo vi = resolve_variable(self, &lex->consumed);
+    // Check if our precedence is assignable and we can consume a '=' token.
     if (assignable && match_token(lex, TK_ASSIGN)) {
         // If we're recursively call `named_variable()` it's likely that this
         // is compiling multiple, nested assignments in one statement.
-        if (!self->assigning) {
-            self->assigning = true;
-            expression(self);
-            vi.emitfn(self, vi.setop, vi.index);
-        } else {
-            compiler_error(self, "Nested assignments are not allowed.");
-        }
-        // Reset state when compiling a new, separate statement.
-        self->assigning = false;
+        expr_noassign(self);
+        vi.emitfn(self, vi.setop, vi.index);
     } else {
         vi.emitfn(self, vi.getop, vi.index);
     }
@@ -1026,6 +1019,19 @@ static void define_locals(Compiler *self, int count) {
     }
 }
 
+static void define_locals(Compiler *self, int count) {
+    Locals *locals = &self->locals;
+    Local *stack = locals->stack;
+    const int limit = locals->count;
+    const int depth = locals->depth;
+    // Can't use `define_variable` as it only uses count - 1, so we have to
+    // manually mark this as initialized.
+    // We iterate backwards as the first local is farther down the stack.
+    for (int i = count - 1; i >= 0; i--) {
+        stack[limit - i - 1].depth = depth;
+    }
+}
+
 /**
  * Returns the negative offset of the first local variable pushed to the stack.
  * That is, the absolute index is `locals[count - 1 - offset]`.
@@ -1038,19 +1044,20 @@ static int declare_locals(Compiler *self) {
         parse_variable(self, "Expected identifier after 'local'.", true);
         count++;
         // Move here so current token is properly reported.
-        if (count > 4) {
+        if (count > LUA_MAXMULTIVAL) {
             compiler_error(self, "Too many declarations in comma-separated list.");
         }
     } while (match_token(lex, TK_COMMA));
-    return count - 1; // For our sanity in indexing, make it 0-based. 
+    return count - 1; // For our sanity in indexing, make it 0-based.
 }
 
 static void assign_locals(Compiler *self, int count) {
     int exprs = 0; // 0-based but assumes we have at least 1 right hand expr.
     do {
-        parse_noassignments(self);
+        expr_noassign(self);
         exprs++;
     } while (match_token(self->lex, TK_COMMA));
+
     if (exprs == count) {
         return;
     }
@@ -1058,7 +1065,7 @@ static void assign_locals(Compiler *self, int count) {
     if (exprs > count) {
         emit_bytes(self, OP_NPOP, exprs - count);
         return;
-    } 
+    }
     // Too few expressions for given number of declarations.
     for (int i = 0, j = count - exprs; i < j; i++) {
         emit_byte(self, OP_NIL);
