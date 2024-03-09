@@ -719,6 +719,40 @@ void string(Compiler *self, bool assignable) {
     emit_constant(self, makeobject(LUA_TSTRING, s));
 }
 
+typedef void (*EmitFn)(Compiler *self, Byte opcode, DWord operand);
+
+typedef struct {
+    EmitFn emitfn;
+    DWord index;
+    Byte getop;    // One of `OP_GET` opcodes.
+    Byte setop;    // One of the `OP_SET` opcodes.
+} VarInfo;
+
+/**
+ * Helper function to look up the given Token `name` by checking if it's already
+ * in the locals array. If it's not, then we assume it's a global variable and
+ * store the instructions in a struct called `VarInfo`.
+ */
+static VarInfo resolve_variable(Compiler *self, const Token *name) {
+    VarInfo expr;
+    DWord arg = resolve_local(self, name);
+    if (arg != LUA_MAXDWORD) {
+        expr.index = arg;
+        expr.getop = OP_GETLOCAL;
+        expr.setop = OP_SETLOCAL;
+        expr.emitfn = emit_bytes;
+    } else {
+        // Out of range error is handle by `make_constant()`.
+        arg = identifier_constant(self, name);
+        bool islong = (arg > LUA_MAXCONSTANTS && arg <= LUA_MAXLCONSTANTS);
+        expr.index  = arg;
+        expr.getop  = (islong) ? OP_LGETGLOBAL : OP_GETGLOBAL;
+        expr.setop  = (islong) ? OP_LSETGLOBAL : OP_SETGLOBAL;
+        expr.emitfn = (islong) ? emit_long     : emit_bytes;
+    }
+    return expr;
+}
+
 /**
  * III:21.3     Reading Variables
  *
@@ -754,39 +788,21 @@ void string(Compiler *self, bool assignable) {
  * Otherwise, when parsing a simple declaration (e.g. `TK_IDENT` is the first
  * token in the statement) we assume it to be assignable.
  */
-static void named_variable(Compiler *self, const Token *name, bool assignable) {
-    Byte getop, setop;
-    // This is absolutely horrendous but we need it in order to be able to
-    // use one of `emit_bytes` or `emit_long`.
-    void (*emitfn)(Compiler *self, Byte opcode, DWord operand) = emit_bytes;
-
-    // Try to find local variable with given name. -1 indicates none found.
-    DWord arg = resolve_local(self, name);
-    if (arg != LUA_MAXDWORD) {
-        getop = OP_GETLOCAL;
-        setop = OP_SETLOCAL;
-    } else {
-        // Out of range error is handle by `make_constant()`.
-        arg = identifier_constant(self, name);
-        bool islong = (arg > LUA_MAXCONSTANTS && arg <= LUA_MAXLCONSTANTS);
-        getop  = (islong) ? OP_LGETGLOBAL : OP_GETGLOBAL;
-        setop  = (islong) ? OP_LSETGLOBAL : OP_SETGLOBAL;
-        emitfn = (islong) ? emit_long     : emit_bytes;
-    }
-    if (assignable && match_token(self->lex, TK_ASSIGN)) {
+static void named_variable(Compiler *self, bool assignable) {
+    LexState *lex = self->lex;
+    const VarInfo vi = resolve_variable(self, &lex->consumed);
+    if (assignable && match_token(lex, TK_ASSIGN)) {
         // If we're recursively call `named_variable()` it's likely that this
         // is compiling multiple, nested assignments in one statement.
-        if (!self->assigning) {
-            self->assigning = true;
-            expression(self);
-            emitfn(self, setop, arg);
-        } else {
+        if (self->assigning) {
             compiler_error(self, "Nested assignments are not allowed.");
         }
-        // Reset state so we can continue compiling other separate statements.
+        self->assigning = true;
+        expression(self);
+        vi.emitfn(self, vi.setop, vi.index);
         self->assigning = false;
     } else {
-        emitfn(self, getop, arg);
+        vi.emitfn(self, vi.getop, vi.index);
     }
 }
 
@@ -804,7 +820,7 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
  * This is because simple variable assignment is detected by `declaration()`.
  */
 void variable(Compiler *self, bool assignable) {
-    named_variable(self, &self->lex->consumed, assignable);
+    named_variable(self, assignable);
 }
 
 /**

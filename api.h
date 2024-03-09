@@ -91,7 +91,14 @@ void lua_settop(LVM *self, int offset);
  * Query the value at the given positive or negative offset into the VM stack
  * if it matches the particular given type.
  */
-bool lua_istype(LVM *self, int offset, ValueType tagtype);
+bool lua_istype(LVM *self, int offset, VType tagtype);
+
+/**
+ * Poke at the value at the given positive or negative offset into the VM stack.
+ * We return whatever its current type is. As is, we do not do much error checks
+ * so this is quite fragile if you provide an invalid index or offset.
+ */
+VType lua_type(LVM *self, int offset);
 const char *lua_typename(LVM *self, int offset);
 bool lua_equal(LVM *self, int offset1, int offset2);
 

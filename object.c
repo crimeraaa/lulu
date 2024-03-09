@@ -13,7 +13,7 @@
 #define FNV32_OFFSET    0x811c9dc5
 #define FNV32_PRIME     0x01000193
 
-static Object *allocate_object(LVM *vm, size_t size, ValueType type) {
+static Object *allocate_object(LVM *vm, size_t size, VType type) {
     Object *object = reallocate(NULL, 0, size);
     object->type = type;
     object->next = vm->objects; // Update the VM's allocation linked list

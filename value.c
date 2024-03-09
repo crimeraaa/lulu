@@ -32,11 +32,11 @@ void print_value(const TValue *value) {
     }
 }
 
-const char *value_typename(const TValue *value) {
-    switch (value->type) {
+const char *value_typename(VType tagtype) {
+    switch (tagtype) {
     case LUA_TBOOLEAN:      return "boolean";
     case LUA_TFUNCTION:     return "function";
-    case LUA_TNATIVE:       return "native function";
+    case LUA_TNATIVE:       return "C function";
     case LUA_TNIL:          return "nil";
     case LUA_TNUMBER:       return "number";
     case LUA_TSTRING:       return "string";
@@ -54,12 +54,13 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     case LUA_TBOOLEAN:  return lhs->as.boolean == rhs->as.boolean;
     case LUA_TNIL:      return true; // nil is always == nil.
     case LUA_TNUMBER:   return lhs->as.number == rhs->as.number;
-    // Strings are interned so this should be ok. Not sure about other types.
+    // All objects are interned so pointer comparisons are ok.
     case LUA_TSTRING:
     case LUA_TFUNCTION:
+    case LUA_TNATIVE:
     case LUA_TTABLE:    return lhs->as.object == rhs->as.object;
     default:            break;
     }
-    fprintf(stderr, "Unsupported type %s.\n", value_typename(lhs));
+    fprintf(stderr, "Unsupported type %s.\n", value_typename(lhs->type));
     return false;
 }

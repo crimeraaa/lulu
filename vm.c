@@ -111,7 +111,7 @@ static TValue print_native(LVM *vm, int argc, TValue *argv) {
 
 static TValue type_native(LVM *vm, int argc, TValue *argv) {
     if (argc == 1) {
-        const char *ts = value_typename(&argv[0]);
+        const char *ts = value_typename(argv[0].type);
         // Take ownership of a copy of the string literal.
         return makestring(copy_string(vm, ts, strlen(ts)));
     }
@@ -238,7 +238,7 @@ static bool call_value(LVM *self, CallFrame *frame) {
     case LUA_TNATIVE:   return call_cfunction(self, ascfunction(*callee), argc);
     default:            break; // Non-callable object type.
     }
-    const char *ts = value_typename(callee);
+    const char *ts = value_typename(callee->type);
     runtime_error(self, "Attempt to call %s as function", ts);
     return false;
 }

@@ -51,12 +51,16 @@ void lua_settop(LVM *self, int offset) {
     }
 }
 
-bool lua_istype(LVM *self, int offset, ValueType type) {
+bool lua_istype(LVM *self, int offset, VType type) {
     return offset_to_address(self, offset)->type == type;
 }
 
+VType lua_type(LVM *self, int offset) {
+    return offset_to_address(self, offset)->type;
+}
+
 const char *lua_typename(LVM *self, int offset) {
-    return value_typename(offset_to_address(self, offset));
+    return value_typename(lua_type(self, offset));
 }
 
 bool lua_equal(LVM *self, int offset1, int offset2) {

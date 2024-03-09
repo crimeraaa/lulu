@@ -18,7 +18,7 @@ typedef enum {
     LUA_TNUMBER,
     LUA_TSTRING,
     LUA_TTABLE,
-} ValueType;
+} VType;
 
 typedef LUA_NUMBER lua_Number;
 
@@ -31,7 +31,7 @@ typedef union {
 
 /* Tagged union for Lua's fundamental datatypes. */
 typedef struct {
-    ValueType type; // Tag for the union to ensure some type safety.
+    VType type; // Tag for the union to ensure some type safety.
     Value as; // Actual value contained within this struct. Be very careful!
 } TValue;
 
@@ -84,7 +84,7 @@ bool values_equal(const TValue *lhs, const TValue *rhs);
  * 
  * See: https://www.lua.org/source/5.1/lapi.c.html#lua_type
  */
-const char *value_typename(const TValue *value);
+const char *value_typename(VType tagtype);
 
 /* In memory, `nil` is just a distinct 0. */
 #define makenil             ((TValue){LUA_TNIL, {.number = 0.0}})

@@ -7,7 +7,7 @@
 #include "vm.h"
 
 struct Object {
-    ValueType type; // Unlike Lox, we use the same tag for objects.
+    VType type; // Unlike Lox, we use the same tag for objects.
     Object *next;   // Part of an instrusive linked list for GC.
 };
 
