@@ -1,16 +1,16 @@
 #include "parserules.h"
 
-extern void grouping(Compiler *self, bool assignable);
-extern void binary(Compiler *self, bool assignable);
-extern void call(Compiler *self, bool assignable);
-extern void rbinary(Compiler *self, bool assignable);
-extern void unary(Compiler *self, bool assignable);
-extern void number(Compiler *self, bool assignable);
-extern void literal(Compiler *self, bool assignable);
-extern void string(Compiler *self, bool assignable);
-extern void variable(Compiler *self, bool assignable);
-extern void and_(Compiler *self, bool assignable);
-extern void or_(Compiler *self, bool assignable);
+extern void grouping(Compiler *self);
+extern void binary(Compiler *self);
+extern void call(Compiler *self);
+extern void rbinary(Compiler *self);
+extern void unary(Compiler *self);
+extern void number(Compiler *self);
+extern void literal(Compiler *self);
+extern void string(Compiler *self);
+extern void variable(Compiler *self);
+extern void and_(Compiler *self);
+extern void or_(Compiler *self);
 
 /**
  * III:17.6     A Pratt Parser

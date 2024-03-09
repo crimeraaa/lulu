@@ -337,16 +337,15 @@ static Token tokenize(LexState *self) {
 
 void throw_lexerror_at(LexState *self, const Token *token, const char *info) {
     self->haderror = true;
-    fprintf(stderr, "%s:%i: Error ", self->name, self->lastline);
+    fprintf(stderr, "%s:%i: %s, ", self->name, self->lastline, info);
     if (token->type == TK_EOF) {
-        fprintf(stderr, "at end");
+        fprintf(stderr, "at end\n");
     } else if (token->type == TK_ERROR) {
         // Do nothing as the error token already has a info.
     } else {
         // Field precision MUST be of type int.
-        fprintf(stderr, "at '%.*s'", (int)token->len, token->start);
+        fprintf(stderr, "near '%.*s'\n", (int)token->len, token->start);
     }
-    fprintf(stderr, ": %s\n", info);
     longjmp(self->errjmp, 1);
 }
 
@@ -354,7 +353,7 @@ void throw_lexerror(LexState *self, const char *info) {
     throw_lexerror_at(self, &self->consumed, info);
 }
 
-static void throw_lexerror_current(LexState *self, const char *info) {
+void throw_lexerror_current(LexState *self, const char *info) {
     // Adjust error reporting line to the current one.
     self->lastline = self->linenumber;
     throw_lexerror_at(self, &self->token, info);

@@ -51,6 +51,14 @@ static void compiler_error(Compiler *self, const char *message) {
 }
 
 /**
+ * Report and throw an error at the current token held by our LexState. This is
+ * mainly helpful when we consume a token and check the next one.
+ */
+static void compiler_error_current(Compiler *self, const char *message) {
+    throw_lexerror_current(self->lex, message);    
+}
+
+/**
  * III:17.3     Emitting Bytecode
  *
  * For now, the current chunk is the one that got assigned to the compiler instance
@@ -106,7 +114,7 @@ static void emit_loop(Compiler *self, size_t loopstart) {
     // +2 due to 2-byte jump operand.
     size_t offset = current_chunk(self)->count - loopstart + 2;
     if (offset >= LUA_MAXWORD) {
-        compiler_error(self, "Loop body too large.");
+        compiler_error(self, "Loop body too large");
     }
     emit_byte(self, bytemask(offset, 1)); // bits 9-16
     emit_byte(self, bytemask(offset, 0)); // bits 1-8
@@ -196,7 +204,7 @@ static void emit_constant(Compiler *self, TValue value) {
     } else if (index <= LUA_MAXLCONSTANTS) {
         emit_long(self, OP_LCONSTANT, index);
     } else {
-        compiler_error(self, "Too many constants in current chunk.");
+        compiler_error(self, "Too many constants in current chunk");
     }
 }
 
@@ -210,7 +218,7 @@ static void patch_jump(Compiler *self, size_t opindex) {
     // Adjust for the bytecode of the jump offset itself and its operands.
     QWord offset = current_chunk(self)->count - opindex - LUA_OPSIZE_SHORT;
     if (offset >= LUA_MAXWORD) {
-        compiler_error(self, "Too much code to jump over.");
+        compiler_error(self, "Too much bytecode to jump over");
     }
     current_chunk(self)->code[opindex]     = bytemask(offset, 1);
     current_chunk(self)->code[opindex + 1] = bytemask(offset, 0);
@@ -291,18 +299,6 @@ static void declaration(Compiler *self);
 static void parse_precedence(Compiler *self, Precedence precedence);
 
 /* }}} */
-
-/**
- * Helper for when you want to parse expressions that do not accept assignments.
- * This is mainly to enforce Lua's semantics for nested assignments.
- *
- * Because otherwise, if we just used `expression()`, which just calls
- * `parse_precedence()` with `PREC_ASSIGNMENT`, nested assignments are compiled
- * without a problem.
- */
-static void expr_noassign(Compiler *self) {
-    parse_precedence(self, (Precedence)(PREC_ASSIGNMENT + 1));
-}
 
 /**
  * III:21.2     Variable Declaration
@@ -391,7 +387,7 @@ static DWord resolve_local(Compiler *self, const Token *name) {
 static void add_local(Compiler *self, Token name) {
     Locals *locals = &self->locals;
     if (locals->count >= LUA_MAXLOCALS) {
-        compiler_error(self, "Too many local variables in function.");
+        compiler_error(self, "Too many local variables in function body");
     }
     Local *var = &locals->stack[locals->count++];
     var->name = name;
@@ -424,7 +420,7 @@ static void declare_variable(Compiler *self, bool islocal) {
             break;
         }
         if (identifiers_equal(name, &var->name)) {
-            compiler_error(self, "Already a variable with this name in this scope.");
+            compiler_error(self, "Redeclaration of local variable in same scope");
         }
     }
     add_local(self, *name);
@@ -515,14 +511,14 @@ static Byte arglist(Compiler *self) {
         do {
             // Push expression needed to resolve argument. We specifically need
             // to call it like this to ensure assignments don't occur within.
-            expr_noassign(self);
+            expression(self);
             if (argc >= LUA_MAXBYTE) {
-                compiler_error(self, "Cannot have more than 255 arguments.");
+                compiler_error(self, "Cannot have more than 255 arguments");
             }
             argc++;
         } while (match_token(lex, TK_COMMA));
     }
-    consume_token(lex, TK_RPAREN, "Expected ')' after argument list.");
+    consume_token(lex, TK_RPAREN, "Expected ')' after argument list");
     return (Byte)argc;
 }
 
@@ -549,8 +545,7 @@ static Byte arglist(Compiler *self) {
  * |    right operand expression
  * +--> continue...
  */
-void and_(Compiler *self, bool assignable) {
-    (void)assignable;
+void and_(Compiler *self) {
     size_t endjump = emit_jump(self, OP_FJMP);
     emit_byte(self, OP_POP);
     parse_precedence(self, PREC_AND);
@@ -579,8 +574,7 @@ void and_(Compiler *self, bool assignable) {
  * In order to meet the signature of `ParseFn`, we need to add a `bool` param.
  * It sucks but it's better to keep all the function pointers uniform!
  */
-void binary(Compiler *self, bool assignable) {
-    (void)assignable;
+void binary(Compiler *self) {
     TokenType optype = self->lex->consumed.type;
     const ParseRule *rule = get_rule(optype);
     // Compile right hand side, and evaluate it if it has higher precedence operations.
@@ -615,8 +609,7 @@ void binary(Compiler *self, bool assignable) {
  * Assumes we consumed the '(' token, emits `OP_CALL` along with 1-byte operand
  * representing how many arguments are needed.
  */
-void call(Compiler *self, bool assignable) {
-    (void)assignable;
+void call(Compiler *self) {
     Byte argc = arglist(self);
     emit_bytes(self, OP_CALL, argc);
 }
@@ -624,8 +617,7 @@ void call(Compiler *self, bool assignable) {
 /**
  * Right-associative binary operators, mainly for exponentiation and concatenation.
  */
-void rbinary(Compiler *self, bool assignable) {
-    (void)assignable;
+void rbinary(Compiler *self) {
     TokenType optype = self->lex->consumed.type;
     const ParseRule *rule = get_rule(optype);
     // We use the same precedence so we can evaluate from right to left.
@@ -650,8 +642,7 @@ void rbinary(Compiler *self, bool assignable) {
  * Adding a `bool` parameter for uniformity with all the other function pointers
  * in the `parserules.c` lookup table.
  */
-void literal(Compiler *self, bool assignable) {
-    (void)assignable;
+void literal(Compiler *self) {
     switch (self->lex->consumed.type) {
     case TK_FALSE: emit_byte(self, OP_FALSE); break;
     case TK_NIL:   emit_byte(self, OP_NIL);   break;
@@ -673,15 +664,13 @@ void literal(Compiler *self, bool assignable) {
  * order in which we evaluate the expressions contained inside the parentheses
  * that's important.
  */
-void grouping(Compiler *self, bool assignable) {
-    (void)assignable;
+void grouping(Compiler *self) {
     expression(self);
-    consume_token(self->lex, TK_RPAREN, "Expected ')' after grouping expression.");
+    consume_token(self->lex, TK_RPAREN, "Expected ')' after grouping expression");
 }
 
 /* Parse a number literal and emit it as a constant. */
-void number(Compiler *self, bool assignable) {
-    (void)assignable;
+void number(Compiler *self) {
     double value = strtod(self->lex->consumed.start, NULL);
     emit_constant(self, makenumber(value));
 }
@@ -707,8 +696,7 @@ void number(Compiler *self, bool assignable) {
  * |        right operand expression
  * +------> continue...
  */
-void or_(Compiler *self, bool assignable) {
-    (void)assignable;
+void or_(Compiler *self) {
     size_t elsejump = emit_jump(self, OP_FJMP);
     size_t endjump  = emit_jump(self, OP_JMP);
     patch_jump(self, elsejump);
@@ -723,8 +711,7 @@ void or_(Compiler *self, bool assignable) {
  *
  * Here we go, strings! One of the big bads of C.
  */
-void string(Compiler *self, bool assignable) {
-    (void)assignable;
+void string(Compiler *self) {
     const Token *token = &self->lex->consumed;
     // Point past first quote, use length w/o both quotes.
     TString *s = copy_string(self->vm, token->start + 1, token->len - 2);
@@ -797,20 +784,28 @@ static VarInfo resolve_variable(Compiler *self, const Token *name) {
  * So in order to facilitate this, any call of `variable()` WITHIN an expression
  * will always set `assignable` to false.
  *
- * Otherwise, when parsing a simple declaration (e.g. `TK_IDENT` is the first
- * token in the statement) we assume it to be assignable.
+ * Otherwise, when parsing the first token in the statement we assume it to be 
+ * assignable.
  */
 static void named_variable(Compiler *self, bool assignable) {
     LexState *lex = self->lex;
     const VarInfo vi = resolve_variable(self, &lex->consumed);
+
     // Check if our precedence is assignable and we can consume a '=' token.
+    // We only pass 'true' when called from `statement()`.
     if (assignable && match_token(lex, TK_ASSIGN)) {
-        // If we're recursively call `named_variable()` it's likely that this
-        // is compiling multiple, nested assignments in one statement.
-        expr_noassign(self);
+        expression(self);
         vi.emitfn(self, vi.setop, vi.index);
-    } else {
-        vi.emitfn(self, vi.getop, vi.index);
+        return;
+    } 
+    
+    // Otherwise we simply emit instructions to get the value of the variable.
+    vi.emitfn(self, vi.getop, vi.index);
+    
+    // Since functions are first-class values, we can detect function calls
+    // if, after emitting a value, we have a '(' token.
+    if (match_token(lex, TK_LPAREN)) {
+        call(self);
     }
 }
 
@@ -824,11 +819,12 @@ static void named_variable(Compiler *self, bool assignable) {
  * III:22.4     Using Locals
  *
  * I've changed the semantics so that this function, which is only ever called
- * by `expression()`, will never allow us to assign a variable.
- * This is because simple variable assignment is detected by `declaration()`.
+ * by `expression()` and `parse_precedence()`, will never allow us to assign a 
+ * variable. Simple variable assignment is detected by `statement()` which also
+ * takes care of resolving function calls and the like.
  */
-void variable(Compiler *self, bool assignable) {
-    named_variable(self, assignable);
+void variable(Compiler *self) {
+    named_variable(self, false);
 }
 
 /**
@@ -837,8 +833,7 @@ void variable(Compiler *self, bool assignable) {
  * Assumes the leading '-' token has been consumed and is the lex's previous
  * token.
  */
-void unary(Compiler *self, bool assignable) {
-    (void)assignable;
+void unary(Compiler *self) {
     // Keep in this stackframe's memory so that if we recurse, we evaluate the
     // topmost stack frame (innermosts, higher precedences) first and work our
     // way down until we reach this particular function call.
@@ -881,20 +876,19 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
     next_token(lex);
     const ParseFn prefixfn = get_rule(lex->consumed.type)->prefix;
     if (prefixfn == NULL) {
-        compiler_error(self, "Expected an expression.");
+        compiler_error(self, "Expected an expression");
     }
-    bool assignable = (precedence <= PREC_ASSIGNMENT);
-    prefixfn(self, assignable);
+    prefixfn(self);
 
     while (precedence <= get_rule(lex->token.type)->precedence) {
         next_token(lex);
         const ParseFn infixfn = get_rule(lex->consumed.type)->infix;
-        infixfn(self, assignable);
+        infixfn(self);
     }
 
     // No function consumed the '=' token so we didn't properly assign.
-    if (assignable && match_token(lex, TK_ASSIGN)) {
-        compiler_error(self, "Invalid assignment target.");
+    if (match_token(lex, TK_ASSIGN)) {
+        compiler_error_current(self, "Invalid assignment target");
     }
 }
 
@@ -917,9 +911,14 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
  * We call `parse_precedence()` using `PREC_ASSIGNMENT` so we evaluate everything
  * that's stronger than or equal to an assignment. We use `PREC_NONE`, which is
  * lower in the enumerations, to break out of this recursion.
+ * 
+ * NOTE:
+ * 
+ * I've now made it so assignment is NOT an expression. This allows us to make
+ * the assumption that occurences of '=' outside of statements are errors.
  */
 static void expression(Compiler *self) {
-    parse_precedence(self, PREC_ASSIGNMENT);
+    parse_precedence(self, (Precedence)(PREC_ASSIGNMENT+1));
 }
 
 /**
@@ -948,11 +947,20 @@ static void doblock(Compiler *self) {
         declaration(self);
     }
     end_scope(self);
-    consume_token(lex, TK_END, "Expected 'end' after 'do' block.");
+    consume_token(lex, TK_END, "Expected 'end' after 'do' block");
     match_token(lex, TK_SEMICOL); // Like most of Lua this is optional.
 }
 
-static void function(Compiler *self, FnType type) {
+/**
+ * III:24.4:    Function Declarations
+ * 
+ * Create a new compiler instance to house a new function's bytecode, and then
+ * emit that function into the caller compiler's constants chunk.
+ * 
+ * This is different from the other `emit_*` functions due to how complicated it
+ * is and how much it relies on other static functions.
+ */
+static void emit_function(Compiler *self, FnType type) {
     Compiler _next = {0};
     init_compiler(&_next, self, self->vm, type);
 
@@ -968,54 +976,63 @@ static void function(Compiler *self, FnType type) {
     // call to `end()` because we effectively throw out the local compiler
     // instance anyway near the end.
     begin_scope(next);
-    consume_token(lex, TK_LPAREN, "Expected '(' after function name.");
+    consume_token(lex, TK_LPAREN, "Expected '(' after function declaration");
     if (!check_token(lex, TK_RPAREN)) {
         // Since compiler instances have their own locals stack, we have to
         // take care to pass the CORRECT pointer!
         do {
             next->function->arity++;
-            // VERY dangerous because we do a longjmp, but the jmp_buf for this
-            // compiler's lex instance may not have been set! So we have to
-            // manually sync so that we have the exact same lex error state.
+            // Possibly risky as I'm not sure if the 'errjmp' member was copied
+            // correctly.
             if (next->function->arity > LUA_MAXBYTE) {
-                compiler_error(self, "Cannot have more than 255 parameters.");
+                compiler_error(self, "More than 255 parameters");
             }
             // Semantically parameters are just local variables declared in the
             // outermost lexical scope of the function body.
-            Byte constant = parse_variable(next, "Expected parameter name.", true);
-            define_variable(next, constant, true);
+            Byte index = parse_variable(next, "Expected parameter name", true);
+            define_variable(next, index, true);
         } while (match_token(lex, TK_COMMA));
     }
-    consume_token(lex, TK_RPAREN, "Expected ')' after parameters.");
+    consume_token(lex, TK_RPAREN, "Expected ')' after parameters");
     doblock(next);
 
     LFunction *function = end_compiler(next);
-    TValue constant    = makeobject(LUA_TFUNCTION, function);
+    TValue constant     = makeobject(LUA_TFUNCTION, function);
     emit_bytes(self, OP_CONSTANT, make_constant(self, constant));
 }
 
 /**
  * III:24.4     Function Declarations
  *
- * For now we'll only work with global functions, local functions are too much to think about. */ static void function_declaration(Compiler *self, bool islocal) { 
-    DWord index = parse_variable(self, "Expected identifier after 'function'.", islocal);
+ * For now we'll only work with global functions, local functions are too much 
+ * to think about. This function assumes we consumed the 'function' keyword, and
+ * that an identifier is sitting waiting to be consumed.
+ * 
+ * NOTE:
+ * 
+ * I've now added support for local functions. It wasn't that difficult it turns
+ * out! Since functions are first-class values, all we needed to do was to emit
+ * them to the constans chunk, then push them to the stack and pop as needed.
+ */ 
+static void function_declaration(Compiler *self, bool islocal) { 
+    DWord index = parse_variable(self, "Expected identifier after 'function'", islocal);
+
+    // Emit this already because function params will append stuff to the locals
+    // array, so calling mark_initalized() then won't work how we want it to.
     if (islocal) {
         mark_initialized(self);
     }
-    function(self, FNTYPE_FUNCTION);
+    emit_function(self, FNTYPE_FUNCTION);
     define_variable(self, index, islocal);
 }
 
 static void define_locals(Compiler *self, int count) {
     Locals *locals = &self->locals;
-    Local *stack = locals->stack;
-    const int limit = locals->count;
-    const int depth = locals->depth;
     // Can't use `define_variable` as it only uses count - 1, so we have to
     // manually mark this as initialized.
     // We iterate backwards as the first local is farther down the stack.
     for (int i = count - 1; i >= 0; i--) {
-        stack[limit - i - 1].depth = depth;
+        locals->stack[locals->count - i - 1].depth = locals->depth;
     }
 }
 
@@ -1028,11 +1045,11 @@ static int declare_locals(Compiler *self) {
     int count = 1; // Always assume we have at least 1 identifier.
     // Resolve local variable identifiers
     do {
-        parse_variable(self, "Expected identifier after 'local'.", true);
+        parse_variable(self, "Expected identifier", true);
         count++;
         // Move here so current token is properly reported.
         if (count > LUA_MAXMULTIVAL) {
-            compiler_error(self, "Too many declarations in comma-separated list.");
+            compiler_error(self, "Too many declarations in comma-separated list");
         }
     } while (match_token(lex, TK_COMMA));
     return count - 1; // For our sanity in indexing, make it 0-based.
@@ -1041,7 +1058,7 @@ static int declare_locals(Compiler *self) {
 static void assign_locals(Compiler *self, int count) {
     int exprs = 0; // 0-based but assumes we have at least 1 right hand expr.
     do {
-        expr_noassign(self);
+        expression(self);
         exprs++;
     } while (match_token(self->lex, TK_COMMA));
 
@@ -1092,9 +1109,6 @@ static void assign_locals(Compiler *self, int count) {
 static void variable_declaration(Compiler *self) {
     LexState *lex = self->lex;
     int offset = declare_locals(self);
-
-    // Resolve comma-separated list of expressions. For now this assumes that
-    // there are equal numbers of identifiers and values.
     if (match_token(lex, TK_ASSIGN)) {
         assign_locals(self, offset);
     } else {
@@ -1122,6 +1136,17 @@ static void expression_statement(Compiler *self) {
 }
 
 /**
+ * Assumes we consumed some identifier token and now need to do something with
+ * it. Depending on the succeeding token/s, this can be a single assignment,
+ * a function call, or a get expression.
+ */
+static void variable_statement(Compiler *self) {
+    named_variable(self, true);
+    match_token(self->lex, TK_SEMICOL);
+    emit_byte(self, OP_POP);
+}
+
+/**
  * III:23.4:    For Statements
  *
  * Assumes we just consumed a 'for' token and we're sitting on the initializer.
@@ -1139,11 +1164,11 @@ static Token for_initializer(Compiler *self) {
     LexState *lex = self->lex;
     const Token name = lex->token;
     // Iterator variable is always a local declaration.
-    consume_token(lex, TK_IDENT, "Expected identifier.");
+    consume_token(lex, TK_IDENT, "Expected identifier");
     add_local(self, name);
-    consume_token(lex, TK_ASSIGN, "Expected '=' after identifier.");
+    consume_token(lex, TK_ASSIGN, "Expected '=' after identifier");
     expression(self);
-    consume_token(lex, TK_COMMA, "Expected ',' after 'for' initializer.");
+    consume_token(lex, TK_COMMA, "Expected ',' after 'for' initializer");
     return name;
 }
 
@@ -1199,7 +1224,7 @@ static DWord for_limit(Compiler *self, const Token *name) {
     // 'for' condition can only be a number literal, a variable that resolves
     // to a number, or a function call thereof (functions are variables).
     if (!check_token(self->lex, TK_DASH, TK_NUMBER, TK_IDENT)) {
-        compiler_error(self, "'for' limit must be a number.");
+        compiler_error(self, "'for' limit must be a variable/number");
     }
     // Emit the expression first so we can attempt to resolve outer instances of
     // our iterator variable, THEN we define and resolve the iterator.
@@ -1225,7 +1250,7 @@ static void for_increment(Compiler *self) {
     if (match_token(self->lex, TK_COMMA)) {
         // Ensure we actually have something.
         if (!check_token(self->lex, TK_DASH, TK_IDENT, TK_NUMBER)) {
-            compiler_error(self, "'for' increment must be variable/number.");
+            compiler_error(self, "'for' increment must be variable/number");
         }
         expression(self);
     } else {
@@ -1308,7 +1333,7 @@ static void for_statement(Compiler *self) {
 
     // Since we need to do the increment expression last, we have to jump over.
     loopstart = emit_for_increment(self, index, loopstart);
-    consume_token(self->lex, TK_DO, "Expected 'do' after 'for' clause.");
+    consume_token(self->lex, TK_DO, "Expected 'do' after 'for' clause");
 
     // This creates a new scope but given our resolution rules it's probably ok.
     doblock(self);
@@ -1373,7 +1398,7 @@ static void if_statement(Compiler *self, bool iselif) {
     LexState *lex = self->lex;
     // Compile the 'if'/'elseif' condition code.
     expression(self);
-    consume_token(lex, TK_THEN, "Expected 'then' after condition.");
+    consume_token(lex, TK_THEN, "Expected 'then' after 'if'/'elseif' condition");
 
     // Instruction "address" of the jump (after 'then') so we can patch it later.
     // We need to determine how big the 'then' branch is first.
@@ -1410,7 +1435,7 @@ static void if_statement(Compiler *self, bool iselif) {
     // patching an 'elseif' because they'll unwind eventually to end the primary
     // caller stack frame.
     if (!iselif) {
-        consume_token(lex, TK_END, "Expected 'end' after 'if' statement.");
+        consume_token(lex, TK_END, "Expected 'end' after 'if' statement");
         match_token(lex, TK_SEMICOL);
     }
 }
@@ -1429,7 +1454,7 @@ static void return_statement(Compiler *self) {
     LexState *lex = self->lex;
     // Lua allows this actually! Especially for modules loaded via 'require'.
     if (self->type == FNTYPE_SCRIPT) {
-        compiler_error(self, "Cannot return from top-level code.");
+        compiler_error(self, "Cannot return from top-level code");
     }
     // Not immediately followed by 'end' so might have an expression to resolve.
     if (!check_token(lex, TK_END)) {
@@ -1462,7 +1487,7 @@ static void while_statement(Compiler *self) {
     // Save address of the beginning of the loop, right before the condition.
     size_t loopstart = current_chunk(self)->count;
     expression(self);
-    consume_token(self->lex, TK_DO, "Expected 'do' after 'while' condition.");
+    consume_token(self->lex, TK_DO, "Expected 'do' after 'while' condition");
 
     // Save the address of the jump opcode which will exit out of the loop.
     size_t exitjump = emit_jump(self, OP_FJMP);
@@ -1492,9 +1517,10 @@ static void while_statement(Compiler *self) {
 static void declaration(Compiler *self) {
     if (match_token(self->lex, TK_LOCAL)) {
         if (match_token(self->lex, TK_FUNCTION)) {
-            compiler_error(self, "local functions are not yet implemented.");
+            function_declaration(self, true);
+        } else {
+            variable_declaration(self);
         }
-        variable_declaration(self);
     } else if (match_token(self->lex, TK_FUNCTION)) {
         function_declaration(self, false);
     } else {
@@ -1533,13 +1559,15 @@ static void declaration(Compiler *self) {
 static void statement(Compiler *self) {
     LexState *lex = self->lex;
     if (match_token(lex, TK_BREAK)) {
-        compiler_error(self, "Breaks are not yet implemented.");
+        compiler_error(self, "Breaks not yet implemented");
     } else if (match_token(lex, TK_IF)) {
         if_statement(self, false);
     } else if (match_token(lex, TK_FOR)) {
         for_statement(self);
     } else if (match_token(lex, TK_ELSEIF, TK_ELSE)) {
-        compiler_error(self, "Not used in an 'if' statement.");
+        compiler_error(self, "No parent 'if' statement");
+    } else if (match_token(lex, TK_IDENT)) {
+        variable_statement(self);
     } else if (match_token(lex, TK_RETURN)) {
         return_statement(self);
     } else if (match_token(lex, TK_WHILE)) {
@@ -1552,7 +1580,7 @@ static void statement(Compiler *self) {
 
     // Disallow lone/trailing semicolons that weren't consumed by statements.
     if (match_token(lex, TK_SEMICOL)) {
-        compiler_error(self, "Unnecessary or unused ';'.");
+        compiler_error(self, "Unexpected symbol");
     }
 }
 

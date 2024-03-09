@@ -201,7 +201,7 @@ void throw_lexerror_at(LexState *self, const Token *token, const char *info);
  * III:17.2.1   Handling syntax errors
  *
  * More often than not, we want to report an error at the location of the token
- * we just consumed (that is, it's now the parser's previous token).
+ * we just consumed.
  *
  * III:24.5.4   Returning from functions
  *
@@ -209,5 +209,11 @@ void throw_lexerror_at(LexState *self, const Token *token, const char *info);
  * the clox `error()` to throw errors at the current token.
  */
 void throw_lexerror(LexState *self, const char *info);
+
+/**
+ * Sometimes you just need to report and throw an error at the location of the
+ * current token.
+ */
+void throw_lexerror_current(LexState *self, const char *info);
 
 #endif /* LUA_LEXSTATE_H */
