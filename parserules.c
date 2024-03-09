@@ -11,6 +11,7 @@ extern void string(Compiler *self);
 extern void variable(Compiler *self);
 extern void and_(Compiler *self);
 extern void or_(Compiler *self);
+extern void function(Compiler *self);
 
 /**
  * III:17.6     A Pratt Parser
@@ -73,7 +74,7 @@ static const ParseRule rules[TK_COUNT] = {
     [TK_ELSEIF]          = {NULL,        NULL,       PREC_NONE},
     [TK_END]             = {NULL,        NULL,       PREC_NONE},
     [TK_FOR]             = {NULL,        NULL,       PREC_NONE},
-    [TK_FUNCTION]        = {NULL,        NULL,       PREC_NONE},
+    [TK_FUNCTION]        = {function,    NULL,       PREC_NONE},
     [TK_IF]              = {NULL,        NULL,       PREC_NONE},
     [TK_IN]              = {NULL,        NULL,       PREC_NONE},
     [TK_LOCAL]           = {NULL,        NULL,       PREC_NONE},

@@ -1002,6 +1002,21 @@ static void emit_function(Compiler *self, FnType type) {
 }
 
 /**
+ * III:24.7     Native Functions
+ * 
+ * Assumes we consumed the 'function' keyword, and that we only have a '(' next.
+ * 
+ * This isn't the same as the one in the book, this is my revamp of the API so
+ * we can assign anonymous functions to variables e.g. `i = function() ... end.`.
+ */
+void function(Compiler *self) {
+    if (match_token(self->lex, TK_IDENT)) {
+        compiler_error(self, "Cannot bind name to anonymous function here");
+    }
+    emit_function(self, FNTYPE_FUNCTION);
+}
+
+/**
  * III:24.4     Function Declarations
  *
  * For now we'll only work with global functions, local functions are too much 
