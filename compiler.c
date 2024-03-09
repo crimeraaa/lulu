@@ -1019,19 +1019,6 @@ static void define_locals(Compiler *self, int count) {
     }
 }
 
-static void define_locals(Compiler *self, int count) {
-    Locals *locals = &self->locals;
-    Local *stack = locals->stack;
-    const int limit = locals->count;
-    const int depth = locals->depth;
-    // Can't use `define_variable` as it only uses count - 1, so we have to
-    // manually mark this as initialized.
-    // We iterate backwards as the first local is farther down the stack.
-    for (int i = count - 1; i >= 0; i--) {
-        stack[limit - i - 1].depth = depth;
-    }
-}
-
 /**
  * Returns the negative offset of the first local variable pushed to the stack.
  * That is, the absolute index is `locals[count - 1 - offset]`.
