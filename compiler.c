@@ -18,7 +18,6 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = vm;
-    self->assigning = false;
 
     // We can grab the name of the function from the previous token because we
     // already consumed the 'function' token, allocated an object and then
@@ -294,6 +293,18 @@ static void parse_precedence(Compiler *self, Precedence precedence);
 /* }}} */
 
 /**
+ * Helper for when you want to parse expressions that do not accept assignments.
+ * This is mainly to enforce Lua's semantics for nested assignments.
+ *
+ * Because otherwise, if we just used `expression()`, which just calls
+ * `parse_precedence()` with `PREC_ASSIGNMENT`, nested assignments are compiled
+ * without a problem.
+ */
+static void expr_noassign(Compiler *self) {
+    parse_precedence(self, (Precedence)(PREC_ASSIGNMENT + 1));
+}
+
+/**
  * III:21.2     Variable Declaration
  *
  * This function handles interning a variable name (as if it were a string) and
@@ -498,20 +509,21 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
  * Count the number of arguments in the given argument list that we compiled.
  */
 static Byte arglist(Compiler *self) {
-    Byte argc = 0;
+    int argc = 0;
     LexState *lex = self->lex;
     if (!check_token(lex, TK_RPAREN)) {
         do {
-            // Push expression needed to resolve argument.
-            expression(self);
-            if (argc == LUA_MAXBYTE) {
+            // Push expression needed to resolve argument. We specifically need
+            // to call it like this to ensure assignments don't occur within.
+            expr_noassign(self);
+            if (argc >= LUA_MAXBYTE) {
                 compiler_error(self, "Cannot have more than 255 arguments.");
             }
             argc++;
         } while (match_token(lex, TK_COMMA));
     }
     consume_token(lex, TK_RPAREN, "Expected ')' after argument list.");
-    return argc;
+    return (Byte)argc;
 }
 
 /**
@@ -791,16 +803,12 @@ static VarInfo resolve_variable(Compiler *self, const Token *name) {
 static void named_variable(Compiler *self, bool assignable) {
     LexState *lex = self->lex;
     const VarInfo vi = resolve_variable(self, &lex->consumed);
+    // Check if our precedence is assignable and we can consume a '=' token.
     if (assignable && match_token(lex, TK_ASSIGN)) {
         // If we're recursively call `named_variable()` it's likely that this
         // is compiling multiple, nested assignments in one statement.
-        if (self->assigning) {
-            compiler_error(self, "Nested assignments are not allowed.");
-        }
-        self->assigning = true;
-        expression(self);
+        expr_noassign(self);
         vi.emitfn(self, vi.setop, vi.index);
-        self->assigning = false;
     } else {
         vi.emitfn(self, vi.getop, vi.index);
     }
@@ -989,10 +997,7 @@ static void function(Compiler *self, FnType type) {
 /**
  * III:24.4     Function Declarations
  *
- * For now we'll only work with global functions, local functions are too much
- * to think about.
- */
-static void function_declaration(Compiler *self, bool islocal) {
+ * For now we'll only work with global functions, local functions are too much to think about. */ static void function_declaration(Compiler *self, bool islocal) { 
     DWord index = parse_variable(self, "Expected identifier after 'function'.", islocal);
     if (islocal) {
         mark_initialized(self);
@@ -1001,9 +1006,73 @@ static void function_declaration(Compiler *self, bool islocal) {
     define_variable(self, index, islocal);
 }
 
+static void define_locals(Compiler *self, int count) {
+    Locals *locals = &self->locals;
+    Local *stack = locals->stack;
+    const int limit = locals->count;
+    const int depth = locals->depth;
+    // Can't use `define_variable` as it only uses count - 1, so we have to
+    // manually mark this as initialized.
+    // We iterate backwards as the first local is farther down the stack.
+    for (int i = count - 1; i >= 0; i--) {
+        stack[limit - i - 1].depth = depth;
+    }
+}
+
+static void define_locals(Compiler *self, int count) {
+    Locals *locals = &self->locals;
+    Local *stack = locals->stack;
+    const int limit = locals->count;
+    const int depth = locals->depth;
+    // Can't use `define_variable` as it only uses count - 1, so we have to
+    // manually mark this as initialized.
+    // We iterate backwards as the first local is farther down the stack.
+    for (int i = count - 1; i >= 0; i--) {
+        stack[limit - i - 1].depth = depth;
+    }
+}
+
 /**
- * III:21.2     Variable Declarations
- *
+ * Returns the negative offset of the first local variable pushed to the stack.
+ * That is, the absolute index is `locals[count - 1 - offset]`.
+ */
+static int declare_locals(Compiler *self) {
+    LexState *lex = self->lex;
+    int count = 1; // Always assume we have at least 1 identifier.
+    // Resolve local variable identifiers
+    do {
+        parse_variable(self, "Expected identifier after 'local'.", true);
+        count++;
+        // Move here so current token is properly reported.
+        if (count > LUA_MAXMULTIVAL) {
+            compiler_error(self, "Too many declarations in comma-separated list.");
+        }
+    } while (match_token(lex, TK_COMMA));
+    return count - 1; // For our sanity in indexing, make it 0-based.
+}
+
+static void assign_locals(Compiler *self, int count) {
+    int exprs = 0; // 0-based but assumes we have at least 1 right hand expr.
+    do {
+        expr_noassign(self);
+        exprs++;
+    } while (match_token(self->lex, TK_COMMA));
+
+    if (exprs == count) {
+        return;
+    }
+    // Too many expressions, not enough declarations.
+    if (exprs > count) {
+        emit_bytes(self, OP_NPOP, exprs - count);
+        return;
+    }
+    // Too few expressions for given number of declarations.
+    for (int i = 0, j = count - exprs; i < j; i++) {
+        emit_byte(self, OP_NIL);
+    }
+}
+
+/** III:21.2     Variable Declarations
  * Unlike Lox, which has a dedicated `var` keyword, Lua has implicit variable
  * declarations. That is, no matter the scope, simply typing `a = ...` already
  * declares a global variable of the name "a" if it doesn't already exist.
@@ -1035,15 +1104,19 @@ static void function_declaration(Compiler *self, bool islocal) {
  */
 static void variable_declaration(Compiler *self) {
     LexState *lex = self->lex;
-    // Index of variable name (previous token) as appended into constants pool
-    DWord index = parse_variable(self, "Expected identifier after 'local'.", true);
+    int offset = declare_locals(self);
+
+    // Resolve comma-separated list of expressions. For now this assumes that
+    // there are equal numbers of identifiers and values.
     if (match_token(lex, TK_ASSIGN)) {
-        expression(self);
+        assign_locals(self, offset);
     } else {
-        emit_byte(self, OP_NIL); // Push nil to stack as a default value
+        for (int i = 0; i < offset; i++) {
+            emit_byte(self, OP_NIL);
+        }
     }
     match_token(lex, TK_SEMICOL);
-    define_variable(self, index, true);
+    define_locals(self, offset);
 }
 
 /**

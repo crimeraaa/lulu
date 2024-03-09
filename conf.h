@@ -63,6 +63,11 @@ typedef uint64_t  QWord; // 4 `Word`s long. Usually 64-bits.
 #define LUA_MAXLOCALS       (UINT8_MAX + 1)
 
 /**
+ * Maximum number of items a comma-separated list of expression can contain.
+ */
+#define LUA_MAXMULTIVAL     (4)
+
+/**
  * Most user-facing operations in Lua using double-precision floating point values.
  * Although they take up 64 bits but have slightly less integer range than 64-bit
  * integers, they are still more than adequate for most people's uses.
