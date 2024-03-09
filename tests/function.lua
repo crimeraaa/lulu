@@ -37,11 +37,9 @@ do
     print("Expect 'called local': ", caller(callee))
 end
 
-caller(function()
+print("Expect 'called annoymous':", caller(function()
     return "anonymous"
-end)
-
-print("Expect 'called anonymous': ", caller(callee))
+end))
 
 -- Yes this is valid Lua
-print("Expect 'expression': ", (function() return "expression" end)())
+print("Expect 'argument': ", (function() return "argument" end)())
