@@ -22,15 +22,17 @@ static void free_string(TString *self) {
     deallocate(TString, self);
 }
 
-static void free_function(LFunction *self) {
-    free_chunk(&self->chunk);
-    deallocate(LFunction, self);
+static void free_function(TFunction *self) {
+    // C Functions don't have chunks, so don't free that part of the union.
+    if (!self->is_c) {
+        free_chunk(&self->fn.lua.chunk);
+    }
+    deallocate(TFunction, self);
 }
 
 static void free_object(Object *self) {
     switch (self->type) {
-    case LUA_TFUNCTION: free_function((LFunction*)self); break;
-    case LUA_TNATIVE:   deallocate(CFunction, self); break;
+    case LUA_TFUNCTION: free_function((TFunction*)self); break;
     case LUA_TSTRING:   free_string((TString*)self); break;
     default:            return;
     }

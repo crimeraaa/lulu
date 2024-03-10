@@ -227,13 +227,13 @@ static Token number_token(LexState *self) {
 static Token string_token(LexState *self, char quote) {
     while (peek_current(self) != quote && !islexEOF(self)) {
         if (peek_current(self) == '\n') {
-            return error_token(self, "Unterminated string literal.");
+            return error_token(self, "Unterminated string literal");
         }
         next_char(self);
     }
     // You can type the nul character with: CTRL+@ (@=SHIFT+2)
     if (islexEOF(self)) {
-        return error_token(self, "Unterminated string literal.");
+        return error_token(self, "Unterminated string literal");
     }
     // Consume closing quote.
     next_char(self);
@@ -321,14 +321,13 @@ static Token tokenize(LexState *self) {
         if (match_char(self, '=')) {
             return make_token(self, TK_NEQ);
         }
-        error_token(self, "Expected '=' after '~'.");
-        break;
+        return error_token(self, "Expected '=' after '~'");
     case '=': return make_eq(self, TK_EQ, TK_ASSIGN);
     case '<': return make_eq(self, TK_LE, TK_LT);
     case '>': return make_eq(self, TK_GE, TK_GT);
     default:  break;
     }
-    return error_token(self, "Unexpected character.");
+    return error_token(self, "Unexpected character");
 }
 
 /* }}} ---------------------------------------------------------------------- */
@@ -337,14 +336,17 @@ static Token tokenize(LexState *self) {
 
 void throw_lexerror_at(LexState *self, const Token *token, const char *info) {
     self->haderror = true;
-    fprintf(stderr, "%s:%i: %s, ", self->name, self->lastline, info);
+    fprintf(stderr, "%s:%i: %s", self->name, self->lastline, info);
     if (token->type == TK_EOF) {
-        fprintf(stderr, "at end\n");
-    } else if (token->type == TK_ERROR) {
-        // Do nothing as the error token already has a info.
+        fprintf(stderr, ", at end\n");
     } else {
+        // We already printed the error token message so try to help the user a 
+        // little more by showing them where the error could be near by.
+        if (token->type == TK_ERROR) {
+            token = &self->consumed;
+        }
         // Field precision MUST be of type int.
-        fprintf(stderr, "near '%.*s'\n", (int)token->len, token->start);
+        fprintf(stderr, ", near '%.*s'\n", (int)token->len, token->start);
     }
     longjmp(self->errjmp, 1);
 }

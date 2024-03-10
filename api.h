@@ -145,8 +145,7 @@ void lua_pushlstring(LVM *self, char *data, size_t len);
  * try to create a `TString*` of. Do NOT use this with malloc'd strings.
  */
 void lua_pushliteral(LVM *self, const char *data);
-void lua_pushfunction(LVM *self, LFunction *luafn);
-void lua_pushcfunction(LVM *self, CFunction *cfn);
+void lua_pushfunction(LVM *self, TFunction *luafn);
 
 /**
  * III:19.4.1   Concatenation

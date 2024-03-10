@@ -76,7 +76,6 @@ bool lua_equal(LVM *self, int offset1, int offset2) {
     case LUA_TNUMBER:   return lhs->as.number == rhs->as.number;
     case LUA_TTABLE:    // All objects are interned so pointer comparisons work.
     case LUA_TFUNCTION:
-    case LUA_TNATIVE:
     case LUA_TSTRING:   return lhs->as.object == rhs->as.object;
     default:            break;
     }
@@ -121,13 +120,8 @@ void lua_pushliteral(LVM *self, const char *data) {
     lua_pushobject(self, &v);
 }
 
-void lua_pushfunction(LVM *self, LFunction *luafn) {
-    TValue v = makefunction(luafn);
-    lua_pushobject(self, &v);
-}
-
-void lua_pushcfunction(LVM *self, CFunction *cfn) {
-    TValue v = makecfunction(cfn);
+void lua_pushfunction(LVM *self, TFunction *tagfn) {
+    TValue v = makefunction(tagfn);
     lua_pushobject(self, &v);
 }
 

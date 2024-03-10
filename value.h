@@ -13,7 +13,6 @@ typedef enum {
     LUA_TNONE, // Used to signal errors
     LUA_TBOOLEAN,
     LUA_TFUNCTION,
-    LUA_TNATIVE, // Not part of Lua but I need to follow the book for my sanity.
     LUA_TNIL,
     LUA_TNUMBER,
     LUA_TSTRING,
@@ -108,7 +107,7 @@ const char *value_typename(VType tagtype);
  * in their C API. Everything is packaged into the same enum.
  */
 #define makeobject(T,O) ((TValue){T, {.object = (Object*)(O)}})
-#define isobject(T,V)   ((V).type == T)
-#define asobject(V)     ((V).as.object)
+#define isobject(T,V)   ((V)->type == T)
+#define asobject(V)     ((V)->as.object)
 
 #endif /* LUA_VALUE_H */

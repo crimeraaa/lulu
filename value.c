@@ -25,10 +25,12 @@ void write_valuearray(ValueArray *self, TValue value) {
 
 void print_value(const TValue *value) {
     switch (value->type) {
-    case LUA_TBOOLEAN: printf(value->as.boolean ? "true" : "false"); break;
-    case LUA_TNIL:     printf("nil"); break;
-    case LUA_TNUMBER:  printf(LUA_NUMBER_FMT, value->as.number); break;
-    default:           print_object(value);
+    case LUA_TBOOLEAN:  printf(value->as.boolean ? "true" : "false"); break;
+    case LUA_TNIL:      printf("nil"); break;
+    case LUA_TNUMBER:   printf(LUA_NUMBER_FMT, value->as.number); break;
+    case LUA_TSTRING:   print_string(asstring(value)); break;
+    case LUA_TFUNCTION: print_function(asfunction(value)); break;
+    default:            printf("Unknown: %p", (void*)value); break;
     }
 }
 
@@ -36,7 +38,6 @@ const char *value_typename(VType tagtype) {
     switch (tagtype) {
     case LUA_TBOOLEAN:      return "boolean";
     case LUA_TFUNCTION:     return "function";
-    case LUA_TNATIVE:       return "C function";
     case LUA_TNIL:          return "nil";
     case LUA_TNUMBER:       return "number";
     case LUA_TSTRING:       return "string";
@@ -57,7 +58,6 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     // All objects are interned so pointer comparisons are ok.
     case LUA_TSTRING:
     case LUA_TFUNCTION:
-    case LUA_TNATIVE:
     case LUA_TTABLE:    return lhs->as.object == rhs->as.object;
     default:            break;
     }

@@ -37,7 +37,7 @@ do
     print("Expect 'called local': ", caller(callee))
 end
 
-print("Expect 'called annoymous':", caller(function()
+print("Expect 'called anonymous':", caller(function()
     return "anonymous"
 end))
 

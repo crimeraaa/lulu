@@ -5,7 +5,7 @@
 
 void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     self->enclosing = current;
-    self->function = new_function(vm); // self->vm not assigned yet!
+    self->function  = new_function(vm); // self->vm not assigned yet!
     self->type = type;
     if (current != NULL) {
         // Potentially dangerous as I'm not certain if the jmp_buf is being
@@ -24,7 +24,8 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     // consumed the identifier.
     if (type != FNTYPE_SCRIPT) {
         const Token *name = &self->lex->consumed;
-        self->function->name = copy_string(self->vm, name->start, name->len);
+        LFunction *luafn = &self->function->fn.lua;
+        luafn->name = copy_string(self->vm, name->start, name->len);
     }
 
     // Compiler implicitly claims stack slot 0 for VM's internal use.
@@ -71,7 +72,7 @@ static void compiler_error_current(Compiler *self, const char *message) {
  * this down beforehand!
  */
 static Chunk *current_chunk(Compiler *self) {
-    return &self->function->chunk;
+    return &self->function->fn.lua.chunk;
 }
 
 /* EMIT BYTECODE FUNCTIONS ---------------------------------------------- {{{ */
@@ -133,7 +134,7 @@ static size_t emit_jump(Compiler *self, Byte instruction) {
     emit_byte(self, instruction);
     emit_byte(self, 0xFF);
     emit_byte(self, 0xFF);
-    return current_chunk(self)->count - LUA_OPSIZE_SHORT;
+    return current_chunk(self)->count - LUA_OPSIZE_BYTE2;
 }
 
 /**
@@ -216,7 +217,7 @@ static void emit_constant(Compiler *self, TValue value) {
  */
 static void patch_jump(Compiler *self, size_t opindex) {
     // Adjust for the bytecode of the jump offset itself and its operands.
-    QWord offset = current_chunk(self)->count - opindex - LUA_OPSIZE_SHORT;
+    QWord offset = current_chunk(self)->count - opindex - LUA_OPSIZE_BYTE2;
     if (offset >= LUA_MAXWORD) {
         compiler_error(self, "Too much bytecode to jump over");
     }
@@ -231,18 +232,23 @@ static void patch_jump(Compiler *self, size_t opindex) {
  *
  * For now we always emit a return for the compiler's current chunk.
  * This makes it so we don't have to remember to do it as ALL chunks need it.
+ * 
+ * We now also return the function of this particular compiler instance, so that
+ * nested function definitions can be emitted properly into the main compiler
+ * instance.
  */
-static LFunction *end_compiler(Compiler *self) {
+static TFunction *end_compiler(Compiler *self) {
     emit_return(self);
-    LFunction *function = self->function;
+    TFunction *tagfn = self->function;
+    LFunction *luafn = &tagfn->fn.lua;
 #ifdef DEBUG_PRINT_CODE
     if (!self->lex->haderror) {
         // Implicit main function does not have a name.
-        const char *name = (function->name) ? function->name->data : "<script>";
+        const char *name = (luafn->name) ? luafn->name->data : "<script>";
         disassemble_chunk(current_chunk(self), name);
     }
 #endif
-    return function;
+    return tagfn;
 }
 
 /**
@@ -436,7 +442,7 @@ static void declare_variable(Compiler *self, bool islocal) {
  * Assumes that we already consumed a TK_IDENT and that it's now the lex's
  * previous token.
  */
-static Byte parse_variable(Compiler *self, const char *message, bool islocal) {
+static DWord parse_variable(Compiler *self, const char *message, bool islocal) {
     LexState *lex = self->lex;
     consume_token(lex, TK_IDENT, message);
     declare_variable(self, islocal);
@@ -971,6 +977,10 @@ static void emit_function(Compiler *self, FnType type) {
     // Set this AFTER initializing to ensure we're pointing at the one that was
     // copied over from `self`.
     LexState *lex = next->lex;
+    
+    // Poke at the address of the Lua function part so we can populate its
+    // members, mostly the arity.
+    LFunction *luafn = &next->function->fn.lua;
 
     // Local scope to capture our arguments. Note that we don't have a paired
     // call to `end()` because we effectively throw out the local compiler
@@ -981,10 +991,10 @@ static void emit_function(Compiler *self, FnType type) {
         // Since compiler instances have their own locals stack, we have to
         // take care to pass the CORRECT pointer!
         do {
-            next->function->arity++;
+            luafn->arity++;
             // Possibly risky as I'm not sure if the 'errjmp' member was copied
             // correctly.
-            if (next->function->arity > LUA_MAXBYTE) {
+            if (luafn->arity > LUA_MAXBYTE) {
                 compiler_error(self, "More than 255 parameters");
             }
             // Semantically parameters are just local variables declared in the
@@ -996,8 +1006,8 @@ static void emit_function(Compiler *self, FnType type) {
     consume_token(lex, TK_RPAREN, "Expected ')' after parameters");
     doblock(next);
 
-    LFunction *function = end_compiler(next);
-    TValue constant     = makeobject(LUA_TFUNCTION, function);
+    TFunction *tagfn = end_compiler(next);
+    TValue constant  = makeobject(LUA_TFUNCTION, tagfn);
     emit_bytes(self, OP_CONSTANT, make_constant(self, constant));
 }
 
@@ -1007,7 +1017,7 @@ static void emit_function(Compiler *self, FnType type) {
  * Assumes we consumed the 'function' keyword, and that we only have a '(' next.
  * 
  * This isn't the same as the one in the book, this is my revamp of the API so
- * we can assign anonymous functions to variables e.g. `i = function() ... end.`.
+ * we can assign anonymous functions to variables e.g. `i = function() ... end`.
  */
 void function(Compiler *self) {
     if (match_token(self->lex, TK_IDENT)) {
@@ -1532,11 +1542,14 @@ static void while_statement(Compiler *self) {
 static void declaration(Compiler *self) {
     if (match_token(self->lex, TK_LOCAL)) {
         if (match_token(self->lex, TK_FUNCTION)) {
+            // 'local function' identifier block 'end'
             function_declaration(self, true);
         } else {
+            // 'local' identifier ['=' expression]
             variable_declaration(self);
         }
     } else if (match_token(self->lex, TK_FUNCTION)) {
+        // 'function' identifier block 'end'
         function_declaration(self, false);
     } else {
         statement(self);
@@ -1599,7 +1612,7 @@ static void statement(Compiler *self) {
     }
 }
 
-LFunction *compile_bytecode(Compiler *self) {
+TFunction *compile_bytecode(Compiler *self) {
     // I'm worried about using a local variable here since `longjmp()` might
     // restore registers to the "snapshot" when `setjmp()` was called.
     // The `volatile` keyword would be needed, but then that might have a
@@ -1617,6 +1630,6 @@ LFunction *compile_bytecode(Compiler *self) {
         }
         end_scope(self);
     }
-    LFunction *function = end_compiler(self);
+    TFunction *function = end_compiler(self);
     return (lex->haderror) ? NULL : function;
 }

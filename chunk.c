@@ -135,11 +135,11 @@ static int opconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     return next_instruction(offset, LUA_OPSIZE_BYTE);
 }
 
-static inline DWord read_long(const Chunk *self, ptrdiff_t offset) {
-    Byte hi  = byteunmask(self->code[offset + 1], 2); // Unmask upper 8 bits.
-    Byte mid = byteunmask(self->code[offset + 2], 1); // Unmask middle 8 bits.
-    Byte lo  = byteunmask(self->code[offset + 3], 0); // Unmask lower 8 bits.
-    return hi | mid | lo;
+static inline DWord read_byte3(const Chunk *self, ptrdiff_t offset) {
+    DWord msb = byteunmask(self->code[offset + 1], 2); // Unmask upper 8 bits.
+    DWord mid = byteunmask(self->code[offset + 2], 1); // Unmask middle 8 bits.
+    DWord lsb = byteunmask(self->code[offset + 3], 0); // Unmask lower 8 bits.
+    return msb | mid | lsb;
 }
 
 /**
@@ -156,11 +156,11 @@ static inline DWord read_long(const Chunk *self, ptrdiff_t offset) {
  * In total, this entire operation takes up 4 bytes.
  */
 static int oplconst(const char *name, const Chunk *self, ptrdiff_t offset) {
-    DWord index = read_long(self, offset);
+    DWord index = read_byte3(self, offset);
     printf("%-16s %4u '", name, index);
     print_value(&self->constants.values[index]);
     printf("'\n");
-    return next_instruction(offset, LUA_OPSIZE_LONG);
+    return next_instruction(offset, LUA_OPSIZE_BYTE3);
 }
 
 /* Simple instruction only take 1 byte for themselves. */
@@ -180,10 +180,10 @@ static int opbyte(const char *name, const Chunk *self, ptrdiff_t offset) {
     return next_instruction(offset, LUA_OPSIZE_BYTE);
 }
 
-static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
-    Byte hi = byteunmask(self->code[offset + 1], 1);
-    Byte lo = byteunmask(self->code[offset + 2], 0);
-    return hi | lo;
+static Word read_byte2(const Chunk *self, ptrdiff_t offset) {
+    Word msb = byteunmask(self->code[offset + 1], 1);
+    Word lsb = byteunmask(self->code[offset + 2], 0);
+    return msb | lsb;
 }
 
 /**
@@ -193,8 +193,8 @@ static inline Word read_short(const Chunk *self, ptrdiff_t offset) {
  * because later on we'll also allow for jumping backwards.
  */
 static int opjump(const char *name, int sign, const Chunk *self, ptrdiff_t offset) {
-    Word jump = read_short(self, offset);
-    int next = next_instruction(offset, LUA_OPSIZE_SHORT);
+    Word jump = read_byte2(self, offset);
+    int next = next_instruction(offset, LUA_OPSIZE_BYTE2);
     ptrdiff_t target = next + (sign * jump);
     printf("%-16s    0x%04tx->0x%04tx\n", name, offset, target);
     return next;

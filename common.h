@@ -22,13 +22,13 @@
 
  LUA_OPSIZE_NONE:   No operand so we don't add or subtract anything.
  LUA_OPSIZE_BYTE:   1-byte operand, e.g. operand to `OP_GETLOCAL`.
- LUA_OPSIZE_SHORT:  2-byte operand, e.g. operand to `OP_JMP`.
- LUA_OPSIZE_LONG:   3-byte operand, e.g. operand to `OP_LCONSTANT`. */
+ LUA_OPSIZE_BYTE2:  2-byte operand, e.g. operand to `OP_JMP`.
+ LUA_OPSIZE_BYTE3:   3-byte operand, e.g. operand to `OP_LCONSTANT`. */
 
 #define LUA_OPSIZE_NONE         (0)
 #define LUA_OPSIZE_BYTE         (1)
-#define LUA_OPSIZE_SHORT        (2)
-#define LUA_OPSIZE_LONG         (3)
+#define LUA_OPSIZE_BYTE2        (2)
+#define LUA_OPSIZE_BYTE3        (3)
 
 /* }}} ---------------------------------------------------------------------- */
 
@@ -92,6 +92,14 @@ typedef struct Object Object;
  * `TString*`, then the inverse works was well.
  */
 typedef struct TString TString;
+
+/**
+ * III:24.7     Native Functions
+ * 
+ * I've now made it so that functions that originate from Lua and functions that
+ * originate from C use the same struct as a "tagged union" similar to `TValue`.
+ */
+typedef struct TFunction TFunction;
 
 /**
  * III:24.1     Function Objects

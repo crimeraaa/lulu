@@ -11,17 +11,10 @@ struct Object {
     Object *next;   // Part of an instrusive linked list for GC.
 };
 
-struct LFunction {
-    Object object;
-    int arity;
-    Chunk chunk;
-    TString *name;
-};
-
 /**
  * III:24.7     Native Functions
  *
- * This is a function pointer type similar to the Lua C API `Proto`. In essence
+ * This is a function pointer type similar to the Lua C API protocol. In essence
  * all Lua-facing C functions MUST have an argument count and a pointer to the
  * first argument (i.e. pushed first) in the VM stack.
  *
@@ -30,23 +23,25 @@ struct LFunction {
  * I've made it so that similar to the Lua C API, all C functions are able to
  * poke at their parent VM (the `lua_State*`). This is helpful to check if a
  * string has been interned, to intern new strings, etc.
- *
- * And instead of directly returning a value to `call_function()`, we push to
- * the VM's stack directly from within.
  */
-typedef TValue (*NativeFn)(LVM *vm, int argc, TValue *argv);
+typedef TValue (*lua_CFunction)(LVM *vm, int argc, TValue *argv);
 
-/**
- * III:24.7     Native Functions
- *
- * Native or builtin functions are created directly within C itself, meaning
- * that the way we use them is a bit different. They don't create their own
- * CallFrame, we directly use C's.
- */
-typedef struct {
-    Object object;     // Metadata/GC info.
-    NativeFn function; // C function pointer.
-} CFunction;
+struct LFunction {
+    int arity;     // How many arguments are expected.
+    Chunk chunk;   // Bytecode, constants and such.
+    TString *name; // Interned identifier from source code.
+};
+
+typedef union {
+    LFunction lua;   // Note how we use a struct value itself, not the pointer.
+    lua_CFunction c; // C function pointer, nothing more and nothing less.
+} Function;
+
+struct TFunction {
+    Object object; // Metadata/GC info.
+    Function fn;   // We can be either a Lua function or a C function.
+    bool is_c;     // Determine which member of the union to use.
+};
 
 struct TString {
     Object object; // Header for meta-information.
@@ -61,10 +56,22 @@ struct TString {
  * Set up a blank function: 0 arity, no name and no code. All we do is allocate
  * memory for an object of type tag `LUA_TFUNCTION` and append it to the VM's
  * objects linked list.
+ * 
+ * III:24.7     Native Functions
+ * 
+ * This now creates a tagged union struct `TFunction` with `is_c` set to false
+ * and the appropriate values for a Lua function type `LFunction` defaulted.
+ * It is to responsibility of the compiler to populate these values as needed.
  */
-LFunction *new_function(LVM *vm);
+TFunction *new_function(LVM *vm);
 
-CFunction *new_cfunction(LVM *vm, NativeFn function);
+/**
+ * III:24.7     Native Functions
+ * 
+ * This allocates a new `TFunction` object, where the union tag `is_c` is set to
+ * true and the `fn.c` union member is set to argument `function`.
+ */
+TFunction *new_cfunction(LVM *vm, lua_CFunction function);
 
 /**
  * III:19.4.1   Concatenation
@@ -95,12 +102,8 @@ TString *take_string(LVM *vm, char *buffer, size_t len);
  */
 TString *copy_string(LVM *vm, const char *literal, size_t len);
 
-/**
- * III:19.4     Operations on Strings
- *
- * We use a good 'ol `TValue` so that we can call the `Object*` header.
- */
-void print_object(const TValue *value);
+void print_function(const TFunction *self);
+void print_string(const TString *self);
 
 /* Given an `TValue*`, treat it as an `Object*` and get the type. */
 #define objtype(v)          (asobject(v)->type)
@@ -110,11 +113,12 @@ void print_object(const TValue *value);
 #define makestring(o)       makeobject(LUA_TSTRING, o)
 
 #define isfunction(v)       isobject(v, LUA_TFUNCTION)
-#define asfunction(v)       ((LFunction*)asobject(v))
+#define asfunction(v)       ((TFunction*)asobject(v))
 #define makefunction(o)     makeobject(LUA_TFUNCTION, o)
 
-#define iscfunction(v)      isobject(v, LUA_TNATIVE)
-#define ascfunction(v)      ((CFunction*)asobject(v))
-#define makecfunction(o)    makeobject(LUA_TNATIVE, o)
+#define isluafunction(v)    (!asfunction(v)->is_c)
+#define asluafunction(v)    (asfunction(v)->fn.lua)
+#define iscfunction(v)      (asfunction(v)->is_c)
+#define ascfunction(v)      (asfunction(v)->fn.c)
 
 #endif /* LUA_OBJECT_H */

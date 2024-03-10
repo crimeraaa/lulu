@@ -23,18 +23,21 @@ static Object *allocate_object(LVM *vm, size_t size, VType type) {
 
 #define allocate_object(vm, T, tag)     (T*)allocate_object(vm, sizeof(T), tag)
 
-LFunction *new_function(LVM *vm) {
-    LFunction *function = allocate_object(vm, LFunction, LUA_TFUNCTION);
-    function->arity = 0;
-    function->name  = NULL;
-    init_chunk(&function->chunk);
-    return function;
+TFunction *new_function(LVM *vm) {
+    TFunction *tf     = allocate_object(vm, TFunction, LUA_TFUNCTION);
+    LFunction *luafn  = &tf->fn.lua;
+    tf->is_c     = false;
+    luafn->arity = 0;
+    luafn->name  = NULL;
+    init_chunk(&luafn->chunk);
+    return tf;
 }
 
-CFunction *new_cfunction(LVM *vm, NativeFn function) {
-    CFunction *native = allocate_object(vm, CFunction, LUA_TNATIVE);
-    native->function = function;
-    return native;
+TFunction *new_cfunction(LVM *vm, lua_CFunction function) {
+    TFunction *tf = allocate_object(vm, TFunction, LUA_TFUNCTION);
+    tf->is_c = true;
+    tf->fn.c = function;
+    return tf;
 }
 
 /**
@@ -99,25 +102,21 @@ TString *copy_string(LVM *vm, const char *literal, size_t len) {
     return allocate_string(vm, data, len, hash);
 }
 
-static void print_function(const LFunction *self) {
-    if (!self->name) {
-        printf("<script>");
+void print_function(const TFunction *self) {
+    if (self->is_c) {
+        printf("C function");
         return;
     }
-    printf("function: %s", self->name->data);
-}
-
-static void print_string(const TString *self) {
-    printf("%s", self->data);
-}
-
-void print_object(const TValue *value) {
-    switch (value->type) {
-    case LUA_TFUNCTION: print_function(asfunction(*value)); break;
-    case LUA_TNATIVE:   printf("<native fn>"); break;
-    case LUA_TSTRING:   print_string(asstring(*value)); break;
-    default: return;
+    const LFunction *luafn = &self->fn.lua;
+    if (luafn->name == NULL) {
+        printf("<script>");
+    } else {
+        printf("function: %s", luafn->name->data);
     }
+}
+
+void print_string(const TString *self) {
+    printf("%s", self->data);
 }
 
 #undef allocate_famobject
