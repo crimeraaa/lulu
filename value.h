@@ -10,14 +10,31 @@
  * See: https://www.lua.org/source/5.1/ltm.c.html#luaT_typenames
  */
 typedef enum {
-    LUA_TNONE, // Used to signal errors
     LUA_TBOOLEAN,
     LUA_TFUNCTION,
     LUA_TNIL,
     LUA_TNUMBER,
     LUA_TSTRING,
     LUA_TTABLE,
+    LUA_TNONE,      // Dummy type, distinct from nil, used for no args errors.
+    LUA_TCOUNT,     // Not an actual type, used for the typenames array only.
 } VType;
+
+/**
+ * Despite starting with 'T', it stands for 'Type' and not 'Tag'. This is just
+ * a string literal and its nul-terminated length for each possible Lua type.
+ */
+typedef struct {
+    const char *what;
+    size_t len;
+} TNameInfo;
+
+/**
+ * Given a `tag`, retrieve a pointer into the `typenames` array.
+ * You can use this to extract information about typenames, which is really just
+ * their literal representation and their string length.
+ */
+const TNameInfo *get_tnameinfo(VType tag);
 
 typedef LUA_NUMBER lua_Number;
 
@@ -64,15 +81,16 @@ bool values_equal(const TValue *lhs, const TValue *rhs);
 
 /* In memory, `nil` is just a distinct 0. */
 #define makenil             ((TValue){LUA_TNIL, {.number = 0.0}})
-#define isnil(value)        ((value).type == LUA_TNIL)
+#define isnil(v)            ((v)->type == LUA_TNIL)
 
 #define makenumber(N)       ((TValue){LUA_TNUMBER, {.number = (N)}})
-#define isnumber(value)     ((value).type == LUA_TNUMBER)
-#define asnumber(value)     ((value).as.number)
+#define isnumber(v)         ((v)->type == LUA_TNUMBER)
+#define asnumber(v)         ((v)->as.number)
 
 #define makeboolean(B)      ((TValue){LUA_TBOOLEAN, {.boolean = (B)}})
-#define isboolean(value)    ((value).type == LUA_TBOOLEAN)
-#define asboolean(value)    ((value).as.boolean)
+#define isboolean(v)        ((v)->type == LUA_TBOOLEAN)
+#define asboolean(v)        ((v)->as.boolean)
+#define isfalsy(v)          ((isnil(v)) || (isboolean(v) && !asboolean(v)))
 
 /** 
  * Wrap a bare object pointer or a specific object type pointer into a somewhat
@@ -83,8 +101,8 @@ bool values_equal(const TValue *lhs, const TValue *rhs);
  * This one of my derivations from Lox as Lua doesn't have dedicated object type
  * in their C API. Everything is packaged into the same enum.
  */
-#define makeobject(T,O) ((TValue){T, {.object = (Object*)(O)}})
-#define isobject(T,V)   ((V)->type == T)
-#define asobject(V)     ((V)->as.object)
+#define makeobject(T, o)    ((TValue){T, {.object = (Object*)(o)}})
+#define isobject(T, v)      ((v)->type == T)
+#define asobject(v)         ((v)->as.object)
 
 #endif /* LUA_VALUE_H */

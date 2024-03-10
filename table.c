@@ -35,7 +35,7 @@ static Entry *find_entry(Entry *entries, size_t cap, const TString *key) {
     for (;;) {
         Entry *entry = &entries[index];
         if (entry->key == NULL) {
-            if (isnil(entry->value)) {
+            if (isnil(&entry->value)) {
                 // We prioritize returning tombstones.
                 return tombstone != NULL ? tombstone : entry;
             } else {
@@ -110,7 +110,7 @@ bool table_set(Table *self, TString *key, TValue value) {
     bool isnewkey = (entry->key == NULL);
     // If we're replacing a tombstone with a new entry, the count's already been
     // accounted for so we don't need to update it.
-    if (isnewkey && isnil(entry->value)) {
+    if (isnewkey && isnil(&entry->value)) {
         self->count++;
     }
     entry->key = key;
@@ -152,7 +152,7 @@ TString *table_findstring(Table *self, const char *data, size_t len, DWord hash)
         Entry *entry = &self->entries[index];
         if (entry->key == NULL) {
             // Stop if we find a non-tombstone entry.
-            if (isnil(entry->value)) {
+            if (isnil(&entry->value)) {
                 return NULL;
             }
         } else if (entry->key->len == len && entry->key->hash == hash) {

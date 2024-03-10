@@ -27,6 +27,28 @@ extern void function(Compiler *self);
  * not be able to resolve the symbols here.
  */
 static const ParseRule rules[TK_COUNT] = {
+    // Keywords
+    [TK_AND]             = {NULL,        and_,       PREC_AND},
+    [TK_BREAK]           = {NULL,        NULL,       PREC_NONE},
+    [TK_DO]              = {NULL,        NULL,       PREC_NONE},
+    [TK_ELSE]            = {NULL,        NULL,       PREC_NONE},
+    [TK_ELSEIF]          = {NULL,        NULL,       PREC_NONE},
+    [TK_END]             = {NULL,        NULL,       PREC_NONE},
+    [TK_FALSE]           = {literal,     NULL,       PREC_NONE},
+    [TK_FOR]             = {NULL,        NULL,       PREC_NONE},
+    [TK_FUNCTION]        = {function,    NULL,       PREC_NONE},
+    [TK_IF]              = {NULL,        NULL,       PREC_NONE},
+    [TK_IN]              = {NULL,        NULL,       PREC_NONE},
+    [TK_LOCAL]           = {NULL,        NULL,       PREC_NONE},
+    [TK_NIL]             = {literal,     NULL,       PREC_NONE},
+    [TK_NOT]             = {unary,       NULL,       PREC_NONE},
+    [TK_OR]              = {NULL,        or_,        PREC_OR},
+    [TK_RETURN]          = {NULL,        NULL,       PREC_NONE},
+    [TK_SELF]            = {NULL,        NULL,       PREC_NONE},
+    [TK_THEN]            = {NULL,        NULL,       PREC_NONE},
+    [TK_TRUE]            = {literal,     NULL,       PREC_NONE},
+    [TK_WHILE]           = {NULL,        NULL,       PREC_NONE},
+
     // Single character tokens
     [TK_LPAREN]          = {grouping,    call,       PREC_CALL},
     [TK_RPAREN]          = {NULL,        NULL,       PREC_NONE},
@@ -58,32 +80,10 @@ static const ParseRule rules[TK_COUNT] = {
     [TK_LE]              = {NULL,        binary,     PREC_COMPARISON},
 
     // Literals
-    [TK_FALSE]           = {literal,     NULL,       PREC_NONE},
     [TK_IDENT]           = {variable,    NULL,       PREC_NONE},
-    [TK_NIL]             = {literal,     NULL,       PREC_NONE},
     [TK_NUMBER]          = {number,      NULL,       PREC_NONE},
     [TK_STRING]          = {string,      NULL,       PREC_NONE},
     [TK_TABLE]           = {NULL,        NULL,       PREC_NONE},
-    [TK_TRUE]            = {literal,     NULL,       PREC_NONE},
-
-    // Keywords
-    [TK_AND]             = {NULL,        and_,       PREC_AND},
-    [TK_BREAK]           = {NULL,        NULL,       PREC_NONE},
-    [TK_DO]              = {NULL,        NULL,       PREC_NONE},
-    [TK_ELSE]            = {NULL,        NULL,       PREC_NONE},
-    [TK_ELSEIF]          = {NULL,        NULL,       PREC_NONE},
-    [TK_END]             = {NULL,        NULL,       PREC_NONE},
-    [TK_FOR]             = {NULL,        NULL,       PREC_NONE},
-    [TK_FUNCTION]        = {function,    NULL,       PREC_NONE},
-    [TK_IF]              = {NULL,        NULL,       PREC_NONE},
-    [TK_IN]              = {NULL,        NULL,       PREC_NONE},
-    [TK_LOCAL]           = {NULL,        NULL,       PREC_NONE},
-    [TK_NOT]             = {unary,       NULL,       PREC_NONE},
-    [TK_OR]              = {NULL,        or_,        PREC_OR},
-    [TK_RETURN]          = {NULL,        NULL,       PREC_NONE},
-    [TK_SELF]            = {NULL,        NULL,       PREC_NONE},
-    [TK_THEN]            = {NULL,        NULL,       PREC_NONE},
-    [TK_WHILE]           = {NULL,        NULL,       PREC_NONE},
 
     // Misc.
     [TK_CONCAT]          = {NULL,        rbinary,    PREC_CONCAT},

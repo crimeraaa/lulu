@@ -1,5 +1,5 @@
-#include <time.h>
 #include "api.h"
+#include "baselib.h"
 #include "compiler.h"
 #include "memory.h"
 #include "object.h"
@@ -11,40 +11,10 @@
  * Make the VM's stack pointer point to the base of the stack array.
  * The same is done for the base pointer.
  */
-static inline void reset_stack(LVM *self) {
+static void reset_stack(LVM *self) {
+    self->bp = self->stack;
     self->sp = self->stack;
     self->fc = 0;
-}
-
-/**
- * III:18.3.1   Unary negation and runtime errors
- *
- * This function simply prints whatever formatted error message you want.
- *
- * III:24.5.3   Printing stack traces
- *
- * We've now added stack traces to help users identify where their program may
- * have gone wrong. It includes a dump of the call stack up until that point.
- */
-static void throw_rterror(LVM *self, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
-    fputs("\n", stderr);
-
-    for (int i = self->fc - 1; i >= 0; i--) {
-        const LFunction *function = self->frames[i].function;
-        const Chunk *chunk        = &function->chunk;
-        fprintf(stderr, "%s:%i: in ", self->name, current_line(chunk));
-        if (function->name == NULL) {
-            fprintf(stderr, "main chunk\n");
-        } else {
-            fprintf(stderr, "function '%s'\n", function->name->data);
-        }
-    }
-    reset_stack(self);
-    longjmp(self->errjmp, 1);
 }
 
 static CallFrame *current_frame(LVM *self) {
@@ -90,73 +60,21 @@ static TValue *read_constant_at(CallFrame *self, size_t index) {
 
 /* }}} */
 
-/* NATIVE FUNCTIONS ----------------------------------------------------- {{{ */
 
-static TValue clock_native(LVM *vm, int argc, TValue *argv) {
-    (void)vm; (void)argc; (void)argv;
-    return makenumber((lua_Number)clock() / CLOCKS_PER_SEC);
+static void rterror_arith(LVM *self, VType type) {
+    const char *tname = lua_typename(self, type);
+    lua_error(self, "Attempt to perform arithmetic on a %s value", tname);
 }
 
-static TValue print_native(LVM *vm, int argc, TValue *argv) {
-    (void)vm;
-    for (int i = 0; i < argc; i++) {
-        print_value(&argv[i]);
-        fputc(' ', stdout);
-    }
-    fputc('\n', stdout);
-    return makenil;
-}
-
-static TValue type_native(LVM *vm, int argc, TValue *argv) {
-    if (argc == 1) {
-        const char *ts = lua_typename(vm, argv[0].type);
-        // Take ownership of a copy of the string literal.
-        return makestring(copy_string(vm, ts, strlen(ts)));
-    }
-    throw_rterror(vm, "'type' requires exactly 1 argument.");
-    return makenil;
-}
-
-/* }}} */
-
-/**
- * III:24.7     Native Functions
- *
- * When garbage collection gets involved, it will be important to consider if
- * during the call to `copy_string()` and `new_function` if garbage collection
- * was triggered. If that happens we must tell the GC that we are not actually
- * done with this memory, so storing them on the stack (will) accomplish that
- * when we get to that point.
- * 
- * NOTE:
- * 
- * Since this is called during VM initialization, we can safely assume that the
- * stack is currently empty.
- */
-static void define_nativefn(LVM *self, const char *name, lua_CFunction func) {
-    lua_pushliteral(self, name);                       // stack index 0
-    lua_pushfunction(self, new_cfunction(self, func)); // stack index 1
-    table_set(&self->globals, asstring(&self->stack[0]), self->stack[1]);
-    lua_popn(self, 2); // Remove from stack so callers don't see these
-}
-
-static InterpretResult rterror_arith(LVM *self, VType type) {
-    const char *ts = lua_typename(self, type);
-    throw_rterror(self, "Attempt to perform arithmetic on a %s value", ts);
-    return INTERPRET_RUNTIME_ERROR;
-}
-
-static InterpretResult rterror_compare(LVM *self, VType ltype, VType rtype) {
+static void rterror_compare(LVM *self, VType ltype, VType rtype) {
     const char *ts1 = lua_typename(self, ltype);
     const char *ts2 = lua_typename(self, rtype);
-    throw_rterror(self, "Attempt to compare %s with %s", ts1, ts2);
-    return INTERPRET_RUNTIME_ERROR;
+    lua_error(self, "Attempt to compare %s with %s", ts1, ts2);
 }
 
-static InterpretResult rterror_concat(LVM *self, VType type) {
-    const char *ts = lua_typename(self, type);
-    throw_rterror(self, "Attempt to concatenate a %s value", ts);
-    return INTERPRET_RUNTIME_ERROR;
+static void rterror_concat(LVM *self, VType type) {
+    const char *tname = lua_typename(self, type);
+    lua_error(self, "Attempt to concatenate a %s value", tname);
 }
 
 void init_vm(LVM *self, const char *name) {
@@ -166,9 +84,13 @@ void init_vm(LVM *self, const char *name) {
     self->objects = NULL;
     self->name    = name;
 
-    define_nativefn(self, "clock", clock_native);
-    define_nativefn(self, "print", print_native);
-    define_nativefn(self, "type", type_native);
+    // Intern all the typename strings already.
+    for (VType tt = (VType)0; tt < LUA_TCOUNT; tt++) {
+        const TNameInfo *tname = get_tnameinfo(tt);
+        TString *s = copy_string(self, tname->what, tname->len);
+        table_set(&self->strings, s, makenil);
+    }
+    lua_loadbaselib(self);
 }
 
 void free_vm(LVM *self) {
@@ -195,8 +117,7 @@ void free_vm(LVM *self) {
  */
 static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
     if (argc != luafn->arity) {
-        throw_rterror(self,
-            "Expected %i arguments but got %i.", luafn->arity, argc);
+        lua_error(self, "Expected %i arguments but got %i.", luafn->arity, argc);
         return false;
     }
     // We want to iterate properly over something that has its own chunk, and as
@@ -208,6 +129,7 @@ static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
     frame->function = luafn;
     frame->ip = luafn->chunk.code;   // Beginning of function's bytecode.
     frame->bp = self->sp - argc - 1; // Base pointer to function object itself.
+    self->bp  = frame->bp;           // We can now use positive offsets from VM.
     return true;
 }
 
@@ -225,7 +147,7 @@ static bool call_cfunction(LVM *self, const lua_CFunction cfn, int argc) {
 
 static bool call_value(LVM *self, CallFrame *frame) {
     if (self->fc >= LUA_MAXFRAMES) {
-        throw_rterror(self, "Stack overflow.");
+        lua_error(self, "Stack overflow.");
         return false;
     }
     // We always know that the argument count is written to the constants array.
@@ -239,8 +161,8 @@ static bool call_value(LVM *self, CallFrame *frame) {
     // argument count.
     TValue *callee = self->sp - 1 - argc;
     if (callee->type != LUA_TFUNCTION) {
-        const char *ts = lua_typename(self, callee->type);
-        throw_rterror(self, "Attempt to call %s as function", ts);
+        const char *tname = lua_typename(self, callee->type);
+        lua_error(self, "Attempt to call %s as function", tname);
         return false;
     }
 
@@ -273,8 +195,8 @@ static bool call_value(LVM *self, CallFrame *frame) {
  * caused the error.
  */
 #define assert_arithmetic(vm)                                                  \
-    if (!lua_isnumber(vm, -2)) return rterror_arith(vm, lua_type(vm, -2));     \
-    if (!lua_isnumber(vm, -1)) return rterror_arith(vm, lua_type(vm, -1));     \
+    if (!lua_isnumber(vm, -2)) rterror_arith(vm, lua_type(vm, -2));            \
+    if (!lua_isnumber(vm, -1)) rterror_arith(vm, lua_type(vm, -1));            \
 
 /**
  * We check both lhs and rhs as you cannot compare non-numbers in terms of
@@ -285,7 +207,7 @@ static bool call_value(LVM *self, CallFrame *frame) {
  */
 #define assert_comparison(vm)                                                  \
     if (!lua_isnumber(vm, -2) || !lua_isnumber(vm, -1)) {                      \
-        return rterror_compare(vm, lua_type(vm, -2), lua_type(vm, -1));        \
+        rterror_compare(vm, lua_type(vm, -2), lua_type(vm, -1));               \
     }
 
 /**
@@ -349,6 +271,7 @@ static InterpretResult run_bytecode(LVM *self) {
     // have been taken care of, but for the most part our VM's objects linked
     // list tracks ALL allocations no matter what.
     if (setjmp(self->errjmp) != 0) {
+        reset_stack(self);
         return INTERPRET_RUNTIME_ERROR;
     }
 
@@ -360,8 +283,8 @@ static InterpretResult run_bytecode(LVM *self) {
     for (;;) {
         ptrdiff_t byteoffset = frame->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
-        printf("        Stack %ti: ", frame->bp - self->stack);
-        for (const TValue *slot = frame->bp; slot < self->sp; slot++) {
+        printf("        ");
+        for (const TValue *slot = self->stack; slot < self->sp; slot++) {
             printf("[ ");
             print_value(slot);
             printf(" ]");
@@ -413,7 +336,7 @@ static InterpretResult run_bytecode(LVM *self) {
             TValue value;
             // If not present in the hash table, the variable never existed.
             if (!table_get(&self->globals, name, &value)) {
-                throw_rterror(self, "Undefined variable '%s'.", name->data);
+                lua_error(self, "Undefined variable '%s'.", name->data);
             }
             lua_pushobject(self, &value);
         } break;
@@ -422,7 +345,7 @@ static InterpretResult run_bytecode(LVM *self) {
             TString *name = read_string_at(frame, read_byte3(frame));
             TValue value;
             if (!table_get(&self->globals, name, &value)) {
-                throw_rterror(self, "Undefined variable '%s'.", name->data);
+                lua_error(self, "Undefined variable '%s'.", name->data);
             }
             lua_pushobject(self, &value);
         } break;
@@ -465,18 +388,14 @@ static InterpretResult run_bytecode(LVM *self) {
         // This is repeating the code of `binop_math` but I really do not feel
         // like adding another macro parameter JUST to check a value type...
         case OP_CONCAT: {
-            if (!lua_isstring(self, -2)) {
-                return rterror_concat(self, lua_type(self, -2));
-            }
-            if (!lua_isstring(self, -1)) {
-                return rterror_concat(self, lua_type(self, -1));
-            }
+            if (!lua_isstring(self, -2)) rterror_concat(self, lua_type(self, -2));
+            if (!lua_isstring(self, -1)) rterror_concat(self, lua_type(self, -1));
             lua_concat(self);
         } break;
 
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
-            *lua_poke(self, -1) = makeboolean(lua_isfalsy(self, -1));
+            *lua_poke(self, -1) = makeboolean(!lua_asboolean(self, -1));
         } break;
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
@@ -487,7 +406,7 @@ static InterpretResult run_bytecode(LVM *self) {
                 value->as.number = lua_numunm(value->as.number);
                 break;
             }
-            return rterror_arith(self, lua_type(self, -1));
+            rterror_arith(self, lua_type(self, -1));
         }
 
         // -*- III:23.1     If Statements ------------------------------------*-
@@ -498,7 +417,7 @@ static InterpretResult run_bytecode(LVM *self) {
 
         case OP_FJMP: {
             Word offset = read_byte2(frame);
-            if (lua_isfalsy(self, -1)) {
+            if (!lua_asboolean(self, -1)) {
                 frame->ip += offset;
             }
         } break;
@@ -551,6 +470,10 @@ static InterpretResult run_bytecode(LVM *self) {
             // particular function call is done.
             frame = current_frame(self);
             chunk = current_chunk(frame);
+            
+            // Set our base pointer as well so we can access local variables
+            // using 0 and positive offsets.
+            self->bp = frame->bp;
         } break;
         // I hate how case statements don't introduce their own block scope...
         }

@@ -108,46 +108,69 @@ static void skip_whitespace(LexState *self) {
     }
 }
 
-static TkType check_keyword(const LexState *self, size_t idx, size_t len, const char *kw, TkType tt) {
-    if ((size_t)(self->current - self->lexeme) == len) {
-        if (memcmp(self->lexeme + idx, &kw[idx], len - idx) == 0) {
+#define makekeyword(literal)   ((Keyword){literal, arraylen(literal) - 1})
+
+const Keyword keywords[LUA_KEYWORD_COUNT] = {
+    [TK_AND]        = makekeyword("and"),
+    [TK_BREAK]      = makekeyword("break"),
+    [TK_DO]         = makekeyword("do"),
+    [TK_ELSE]       = makekeyword("else"),
+    [TK_ELSEIF]     = makekeyword("elseif"),
+    [TK_END]        = makekeyword("end"),
+    [TK_FALSE]      = makekeyword("false"),
+    [TK_FOR]        = makekeyword("for"),
+    [TK_FUNCTION]   = makekeyword("function"),
+    [TK_IF]         = makekeyword("if"),
+    [TK_IN]         = makekeyword("in"),
+    [TK_LOCAL]      = makekeyword("local"),
+    [TK_NIL]        = makekeyword("nil"),
+    [TK_NOT]        = makekeyword("not"),
+    [TK_OR]         = makekeyword("or"),
+    [TK_RETURN]     = makekeyword("return"),
+    [TK_SELF]       = makekeyword("self"),
+    [TK_THEN]       = makekeyword("then"),
+    [TK_TRUE]       = makekeyword("true"),
+    [TK_WHILE]      = makekeyword("while"),
+};
+
+static TkType check_keyword(const LexState *self, TkType tt, int n) {
+    // Avoid indexing out of bounds.
+    if (tt >= (TkType)LUA_KEYWORD_COUNT) {
+        return TK_IDENT;
+    }
+    const Keyword *kw = &keywords[tt];
+    
+    // I am assuming that since current always points somewhere farther down the
+    // string, it should be greater than or equal to the lexeme pointer hence it
+    // should always be positive.
+    if ((size_t)(self->current - self->lexeme) == kw->len) {
+        // We use offset to avoid unnecessary comparisons as the switch in the
+        // call to `ident_type()` already checked the first character at least.
+        if (memcmp(self->lexeme + n, kw->word + n, kw->len - n) == 0) {
             return tt;
         }
     }
     return TK_IDENT;
 }
 
-/**
- * Wrapper around the above function so the me-facing call doesn't look so crazy.
- *
- * @param lex   Pointer to a LexState instance.
- * @param idx   The offset index into `keyword` where we begin the comparison.
- * @param kw    String literal of the keyword in question.
- * @param tt    Token tag type to be returned if lexer's substring matches `kw`.
- *
- * @note        We get the `sizeof(kw) - 1` because string literals are always
- *              going to be nul terminated, and we want only the non-nul length.
- */
-#define check_keyword(lex, idx, kw, tt) check_keyword(lex, idx, sizeof(kw)-1, kw, tt)
-
 static TkType ident_type(const LexState *self) {
     size_t lexlen = self->current - self->lexeme;
     switch (self->lexeme[0]) {
-        case 'a': return check_keyword(self, 1, "and", TK_AND);
-        case 'b': return check_keyword(self, 1, "break", TK_BREAK);
-        case 'd': return check_keyword(self, 1, "do", TK_DO);
+        case 'a': return check_keyword(self, TK_AND, 1);
+        case 'b': return check_keyword(self, TK_BREAK, 1);
+        case 'd': return check_keyword(self, TK_DO, 1);
         case 'e': {
             if (lexlen > 1) {
                 switch(self->lexeme[1]) {
                 case 'l':
                     // This is horrible but I cannot be bothered
                     switch (lexlen) {
-                    case 4: return check_keyword(self, 2, "else", TK_ELSE);
-                    case 6: return check_keyword(self, 2, "elseif", TK_ELSEIF);
+                    case 4: return check_keyword(self, TK_ELSE, 2);
+                    case 6: return check_keyword(self, TK_ELSEIF, 2);
                     }
                     break;
                 case 'n': 
-                    return check_keyword(self, 2, "end", TK_END);
+                    return check_keyword(self, TK_END, 2);
                 }
             }
         } break;
@@ -155,9 +178,9 @@ static TkType ident_type(const LexState *self) {
         case 'f': {
             if (lexlen > 1) {
                 switch(self->lexeme[1]) {
-                case 'a': return check_keyword(self, 2, "false", TK_FALSE);
-                case 'o': return check_keyword(self, 2, "for", TK_FOR);
-                case 'u': return check_keyword(self, 2, "function", TK_FUNCTION);
+                case 'a': return check_keyword(self, TK_FALSE, 2);
+                case 'o': return check_keyword(self, TK_FOR, 2);
+                case 'u': return check_keyword(self, TK_FUNCTION, 2);
                 }
             }
         } break;
@@ -165,35 +188,35 @@ static TkType ident_type(const LexState *self) {
         case 'i': {
             if (lexlen > 1) {
                 switch (self->lexeme[1]) {
-                case 'f': return check_keyword(self, 2, "if", TK_IF);
-                case 'n': return check_keyword(self, 2, "in", TK_IN);
+                case 'f': return check_keyword(self, TK_IF, 2);
+                case 'n': return check_keyword(self, TK_IN, 2);
                 }
             }
         } break;
 
-        case 'l': return check_keyword(self, 1, "local", TK_LOCAL);
+        case 'l': return check_keyword(self, TK_LOCAL, 1);
         case 'n': {
             if (lexlen > 1) {
                 switch (self->lexeme[1]) {
-                case 'i': return check_keyword(self, 2, "nil", TK_NIL);
-                case 'o': return check_keyword(self, 2, "not", TK_NOT);
+                case 'i': return check_keyword(self, TK_NIL, 2);
+                case 'o': return check_keyword(self, TK_NOT, 2);
                 }
             }
         } break;
 
-        case 'o': return check_keyword(self, 1, "or", TK_OR);
-        case 'r': return check_keyword(self, 1, "return", TK_RETURN);
-        case 's': return check_keyword(self, 1, "self", TK_SELF);
+        case 'o': return check_keyword(self, TK_OR, 1);
+        case 'r': return check_keyword(self, TK_RETURN, 1);
+        case 's': return check_keyword(self, TK_SELF, 1);
         case 't': {
             if (lexlen > 1) {
                 switch (self->lexeme[1]) {
-                case 'h': return check_keyword(self, 2, "then", TK_THEN);
-                case 'r': return check_keyword(self, 2, "true", TK_TRUE);
+                case 'h': return check_keyword(self, TK_THEN, 2);
+                case 'r': return check_keyword(self, TK_TRUE, 2);
                 }
             }
         } break;
 
-        case 'w': return check_keyword(self, 1, "while", TK_WHILE);
+        case 'w': return check_keyword(self, TK_WHILE, 1);
     }
     return TK_IDENT;
 }

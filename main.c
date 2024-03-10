@@ -32,7 +32,7 @@ static char *read_file(const char *file_path) {
     FILE *handle = fopen(file_path, "rb"); // read only in binary mode
     if (handle == NULL) {
         logprintf("Could not open file '%s'.\n", file_path);
-        exit(EX_IOERR);
+        return NULL;
     }
     fseek(handle, 0L, SEEK_END);
     size_t file_size = ftell(handle);
@@ -41,12 +41,12 @@ static char *read_file(const char *file_path) {
     char *buffer = malloc(file_size + 1);
     if (buffer == NULL) {
         logprintf("Not enough memory to read file '%s'.\n", file_path);
-        exit(EX_IOERR);
+        return NULL;
     }
     size_t bytes_read = fread(buffer, sizeof(char), file_size, handle);
     if (bytes_read < file_size) {
         logprintf("Could not read file '%s'.\n", file_path);
-        exit(EX_IOERR);
+        return NULL;
     }
     buffer[bytes_read] = '\0';
     fclose(handle);
@@ -55,6 +55,9 @@ static char *read_file(const char *file_path) {
 
 static int run_file(LVM *vm, const char *file_path) {
     char *source = read_file(file_path);
+    if (source == NULL) {
+        return EX_IOERR;
+    }
     InterpretResult result = interpret_vm(vm, source);
     free(source);
 

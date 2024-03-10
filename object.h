@@ -107,12 +107,12 @@ void print_string(const TString *self);
 
 /* Given an `TValue*`, treat it as an `Object*` and get the type. */
 #define objtype(v)          (asobject(v)->type)
-#define isstring(v)         isobject(v, LUA_TSTRING)
+#define isstring(v)         isobject(LUA_TSTRING, v)
 #define asstring(v)         ((TString*)asobject(v))
 #define ascstring(v)        (asstring(v)->data)
 #define makestring(o)       makeobject(LUA_TSTRING, o)
 
-#define isfunction(v)       isobject(v, LUA_TFUNCTION)
+#define isfunction(v)       isobject(LUA_TFUNCTION, v)
 #define asfunction(v)       ((TFunction*)asobject(v))
 #define makefunction(o)     makeobject(LUA_TFUNCTION, o)
 

@@ -2,6 +2,22 @@
 #include "object.h"
 #include "value.h"
 
+#define maketypename(s) ((TNameInfo){s, arraylen(s) - 1})
+
+static const TNameInfo typenames[LUA_TCOUNT] = {
+    [LUA_TBOOLEAN]  = maketypename("boolean"),
+    [LUA_TFUNCTION] = maketypename("function"),
+    [LUA_TNIL]      = maketypename("nil"),
+    [LUA_TNUMBER]   = maketypename("number"),
+    [LUA_TSTRING]   = maketypename("string"),
+    [LUA_TTABLE]    = maketypename("table"),
+    [LUA_TNONE]     = maketypename("no value"),
+};
+
+const TNameInfo *get_tnameinfo(VType tag) {
+    return &typenames[(tag >= LUA_TCOUNT) ? LUA_TNONE : tag];
+}
+
 void init_valuearray(ValueArray *self) {
     self->values   = NULL;
     self->count    = 0;
@@ -43,8 +59,7 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     case LUA_TBOOLEAN:  return lhs->as.boolean == rhs->as.boolean;
     case LUA_TNIL:      return true; // nil is always == nil.
     case LUA_TNUMBER:   return lhs->as.number == rhs->as.number;
-    // All objects are interned so pointer comparisons are ok.
-    case LUA_TSTRING:
+    case LUA_TSTRING:   // All heap allocated objects are interned.
     case LUA_TFUNCTION:
     case LUA_TTABLE:    return lhs->as.object == rhs->as.object;
     default:            break;

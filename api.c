@@ -3,36 +3,22 @@
 #include "vm.h"
 
 // Placeholder value for invalid stack accesses. Do NOT modify it!
-static TValue nilobject = makenil;
+static TValue noneobject = {.type = LUA_TNONE, .as = {.number = 0}};
+static TValue nilobject  = makenil;
 
-/**
- * Convert a positive or negative offset into a pointer to a particular value in
- * the VM's stack. If invalid we return the address of `nilobject` rather than
- * return `NULL` as that'll be terrible.
- *
- * See:
- * - https://www.lua.org/source/5.1/lapi.c.html#index2adr
- */
-static TValue *offset_to_address(LVM *self, int offset) {
+TValue *lua_poke(LVM *self, int offset) {
     if (offset >= 0) {
-        // Positive or zero offset in relation to base pointer.
-        TValue *value = self->stack + offset;
-        return (value >= self->sp) ? &nilobject : value;
+        // Positive or zero offset in relation to base pointer, which may not
+        // necessarily point to the bottom of the stack.
+        TValue *value = self->bp + offset;
+        return (value >= self->sp) ? &noneobject : value;
     } else {
         // Negative offset in relation to stack pointer.
         return self->sp + offset;
     }
 }
 
-bool lua_isfalsy(LVM *self, int offset) {
-    size_t i = lua_absindex(self, offset);
-    if (lua_isnil(self, i)) {
-        return true;
-    }
-    return lua_isboolean(self, i) && !lua_asboolean(self, i);
-}
-
-size_t lua_gettop(const LVM *self) {
+size_t lua_gettop(LVM *self) {
     return self->sp - self->stack;
 }
 
@@ -40,57 +26,77 @@ void lua_settop(LVM *self, int offset) {
     if (offset >= 0) {
         // Get positive offset in relation to base pointer.
         // Fill gaps with nils.
-        while (self->sp < self->stack + offset) {
+        while (self->sp < self->bp + offset) {
             *self->sp = makenil;
             self->sp++;
         }
-        self->sp = self->stack + offset;
+        self->sp = self->bp + offset;
     } else {
         // Is negative offset in relation to stack top pointer.
         self->sp += offset + 1;
     }
 }
 
-bool lua_istype(LVM *self, int offset, VType type) {
-    return offset_to_address(self, offset)->type == type;
-}
-
 VType lua_type(LVM *self, int offset) {
-    return offset_to_address(self, offset)->type;
+    return lua_poke(self, offset)->type;
 }
 
 const char *lua_typename(LVM *self, VType type) {
     (void)self;
-    switch (type) {
-    case LUA_TNONE:         return "none";
-    case LUA_TBOOLEAN:      return "boolean";
-    case LUA_TFUNCTION:     return "function";
-    case LUA_TNIL:          return "nil";
-    case LUA_TNUMBER:       return "number";
-    case LUA_TSTRING:       return "string";
-    case LUA_TTABLE:        return "table";
-    default:                return "unknown"; // Fallback
-    }
+    return get_tnameinfo(type)->what;
 }
 
+/* 'IS' FUNCTIONS ------------------------------------------------------- {{{ */
+
+bool lua_iscfunction(LVM *self, int offset) {
+    const TValue *v = lua_poke(self, offset);
+    return isfunction(v) && iscfunction(v);
+}
+
+/* }}} */
+
 bool lua_equal(LVM *self, int offset1, int offset2) {
-    const TValue *lhs = offset_to_address(self, offset1);
-    const TValue *rhs = offset_to_address(self, offset2);
+    const TValue *lhs = lua_poke(self, offset1);
+    const TValue *rhs = lua_poke(self, offset2);
     if (lhs->type != rhs->type) {
         return false;
     }
     switch (lhs->type) {
-    case LUA_TNONE:     return false; // Should never happen...
     case LUA_TBOOLEAN:  return lhs->as.boolean == rhs->as.boolean;
-    case LUA_TNIL:      return true; // Both nil are always equal.
+    case LUA_TNIL:      return true; // nil == nil, always.
     case LUA_TNUMBER:   return lhs->as.number == rhs->as.number;
     case LUA_TTABLE:    // All objects are interned so pointer comparisons work.
     case LUA_TFUNCTION:
     case LUA_TSTRING:   return lhs->as.object == rhs->as.object;
-    default:            break;
+    default:            return false; // LUA_TNONE and LUA_TCOUNT
     }
-    return false;
 }
+
+/* 'AS' FUNCTIONS ------------------------------------------------------- {{{ */
+
+bool lua_asboolean(LVM *self, int offset) {
+    const TValue *v = lua_poke(self, offset);
+    return !isfalsy(v);
+}
+
+lua_Number lua_asnumber(LVM *self, int offset) {
+    const TValue *v = lua_poke(self, offset); 
+    return isnumber(v) ? asnumber(v) : (lua_Number)0;
+}
+
+TString *lua_aststring(LVM *self, int offset) {
+    TValue *v = lua_poke(self, offset);
+    return (isstring(v)) ? asstring(v) : NULL;
+}
+
+TFunction *lua_asfunction(LVM *self, int offset) {
+    TValue *v = lua_poke(self, offset);
+    return (isfunction(v)) ? asfunction(v) : NULL;
+}
+
+/* }}} */
+
+/* PUSH FUNCTIONS ------------------------------------------------------- {{{ */
 
 void lua_pushobject(LVM *self, const TValue *object) {
     *self->sp = *object;
@@ -103,8 +109,7 @@ void lua_pushboolean(LVM *self, bool b) {
 }
 
 void lua_pushnil(LVM *self) {
-    static const TValue v = makenil; // Create only once
-    lua_pushobject(self, &v);
+    lua_pushobject(self, &nilobject);
 }
 
 void lua_pushnumber(LVM *self, lua_Number n) {
@@ -130,14 +135,21 @@ void lua_pushliteral(LVM *self, const char *data) {
     lua_pushobject(self, &v);
 }
 
-void lua_pushfunction(LVM *self, TFunction *tagfn) {
-    TValue v = makefunction(tagfn);
+void lua_pushfunction(LVM *self, TFunction *tfunc) {
+    TValue v = makefunction(tfunc);
     lua_pushobject(self, &v);
 }
 
+void lua_pushcfunction(LVM *self, lua_CFunction function) {
+    TFunction *tfunc = new_cfunction(self, function);
+    lua_pushfunction(self, tfunc);
+}
+
+/* }}} */
+
 void lua_concat(LVM *self) {
-    TString *rhs = lua_asstring(self, -1);
-    TString *lhs = lua_asstring(self, -2);
+    TString *rhs = lua_aststring(self, -1);
+    TString *lhs = lua_aststring(self, -2);
     lua_popn(self, 2); // Clean up operands
 
     size_t len = lhs->len + rhs->len;
@@ -147,4 +159,23 @@ void lua_concat(LVM *self) {
     memcpy(&data[lhs->len], rhs->data, rhs->len);
     data[len] = '\0';
     lua_pushlstring(self, data, len);
+}
+
+void lua_error(LVM *self, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputs("\n", stderr);
+    for (int i = self->fc - 1; i >= 0; i--) {
+        const LFunction *function = self->frames[i].function;
+        const Chunk *chunk        = &function->chunk;
+        fprintf(stderr, "%s:%i: in ", self->name, current_line(chunk));
+        if (function->name == NULL) {
+            fprintf(stderr, "main chunk\n");
+        } else {
+            fprintf(stderr, "function '%s'\n", function->name->data);
+        }
+    }
+    longjmp(self->errjmp, 1);
 }

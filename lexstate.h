@@ -34,6 +34,28 @@
 
 /* Adapted from: https://www.lua.org/manual/5.1/manual.html */
 typedef enum {
+    // Keywords
+    TK_AND,
+    TK_BREAK,
+    TK_DO,       // 'do' Block delim in 'for', 'while'. Must be followed by 'end'.
+    TK_ELSE,
+    TK_ELSEIF,
+    TK_END,      // 'end' Block delimiter for functions and control flow statements.
+    TK_FALSE,    // 'false'
+    TK_FOR,
+    TK_FUNCTION, // 'function' only ever used to define functions.
+    TK_IF,       // 'if' Simple conditional. Must be followed by 'then'.
+    TK_IN,       // 'in' used by ipairs, pairs, and other stateless iterators.
+    TK_LOCAL,    // 'local' declares a locally scoped variable.
+    TK_NIL,      // 'nil'
+    TK_NOT,
+    TK_OR,
+    TK_RETURN,   // 'return' Ends control flow and may push a value.
+    TK_SELF,     // 'self' only a keyword for table methods using ':'.
+    TK_THEN,     // 'then' Block delimiter for `if`.
+    TK_TRUE,     // 'true'
+    TK_WHILE,
+
     // Single character tokens
     TK_LPAREN,   // '('  Grouping/function call/parameters begin.
     TK_RPAREN,   // ')'  Grouping/function call/parameters end.
@@ -65,32 +87,10 @@ typedef enum {
     TK_LE,       // '<=' Less than or equal to.
 
     // Literals
-    TK_FALSE,    // 'false'
     TK_IDENT,    // Variable name/identifier in source code, not a literal.
-    TK_NIL,      // 'nil'
     TK_NUMBER,   // Number literal in integral/fractional/exponential form.
     TK_STRING,   // String literal, surrounded by balanced double/single quotes.
     TK_TABLE,    // Table literal, surrounded by balanced braces: '{' '}'.
-    TK_TRUE,     // 'true'
-
-    // Keywords
-    TK_AND,
-    TK_BREAK,
-    TK_DO,       // 'do' Block delim in 'for', 'while'. Must be followed by 'end'.
-    TK_ELSE,
-    TK_ELSEIF,
-    TK_END,      // 'end' Block delimiter for functions and control flow statements.
-    TK_FOR,
-    TK_FUNCTION, // 'function' only ever used to define functions.
-    TK_IF,       // 'if' Simple conditional. Must be followed by 'then'.
-    TK_IN,       // 'in' used by ipairs, pairs, and other stateless iterators.
-    TK_LOCAL,    // 'local' declares a locally scoped variable.
-    TK_NOT,
-    TK_OR,
-    TK_RETURN,   // 'return' Ends control flow and may push a value.
-    TK_SELF,     // 'self' only a keyword for table methods using ':'.
-    TK_THEN,     // 'then' Block delimiter for `if`.
-    TK_WHILE,
 
     // Misc.
     TK_CONCAT,   // '..' String concatenation.
@@ -99,6 +99,15 @@ typedef enum {
     TK_EOF,      // EOF by itself is not an error.
     TK_COUNT,    // Determine size of the internal lookup table.
 } TkType;
+
+#define LUA_KEYWORD_COUNT   (TK_WHILE + 1)
+
+typedef struct {
+    const char *word;
+    size_t len;
+} Keyword;
+
+extern const Keyword keywords[LUA_KEYWORD_COUNT];
 
 typedef struct {
     TkType type;
