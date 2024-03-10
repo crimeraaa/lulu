@@ -16,7 +16,7 @@ extern void function(Compiler *self);
 /**
  * III:17.6     A Pratt Parser
  * 
- * This thing is huge! It mirrors the `TokenType` enum.
+ * This thing is huge! It mirrors the `TkType` enum.
  * 
  * NOTE:
  * 
@@ -92,6 +92,6 @@ static const ParseRule rules[TK_COUNT] = {
     [TK_EOF]             = {NULL,        NULL,       PREC_NONE},
 };
 
-const ParseRule *get_rule(TokenType type) {
+const ParseRule *get_rule(TkType type) {
     return &rules[type];
 }

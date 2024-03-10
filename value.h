@@ -62,29 +62,6 @@ void print_value(const TValue *value);
  */
 bool values_equal(const TValue *lhs, const TValue *rhs);
 
-/**
- * III:17.7     Dumping Chunks (my addition)
- * 
- * Since Lua has only a few possible datatypes and user-defined ones are always
- * going to be `table`, we can easily hardcode these.
- * 
- * In Lua the `type()` function returns a string literal showing what datatype a
- * particular value is.
- * 
- * NOTE:
- * 
- * In the Lua C API, `lua_type()` returns an `int` which contains bit information
- * about the type. `lua_typename()` returns the string representation of it.
- * 
- * In our implementation, we follow Bob's method of using a dedicated tag type
- * and we explicitly pass a `TValue`. This may not be terribly efficient but we
- * can improve this later by passing a `LVM*` with indexes into its internal
- * stack.
- * 
- * See: https://www.lua.org/source/5.1/lapi.c.html#lua_type
- */
-const char *value_typename(VType tagtype);
-
 /* In memory, `nil` is just a distinct 0. */
 #define makenil             ((TValue){LUA_TNIL, {.number = 0.0}})
 #define isnil(value)        ((value).type == LUA_TNIL)

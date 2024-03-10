@@ -6,7 +6,7 @@ CC_SRC	:= $(wildcard *.c)
 CC_OBJ	:= $(patsubst %.c, obj/%.o, $(CC_SRC))
 DEBUGFLAGS := -fdiagnostics-color=always -g -O0 \
 	-DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION \
-	-Wno-unused-function
+	-Wno-error=unused-function -Wno-error=unused-parameter
 
 # -*- BEGIN RECIPES ------------------------------------------------------*- {{{
 
@@ -17,6 +17,10 @@ debug: build
 
 release: CCFLAGS += -Os
 release: build
+	
+# Whichever one is the caller target $@ will cause 'mkdir --parents' to be run.
+bin obj:
+	$(MKDIR) $@
 
 build: bin/$(EXE)
 

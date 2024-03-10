@@ -59,8 +59,18 @@ VType lua_type(LVM *self, int offset) {
     return offset_to_address(self, offset)->type;
 }
 
-const char *lua_typename(LVM *self, int offset) {
-    return value_typename(lua_type(self, offset));
+const char *lua_typename(LVM *self, VType type) {
+    (void)self;
+    switch (type) {
+    case LUA_TNONE:         return "none";
+    case LUA_TBOOLEAN:      return "boolean";
+    case LUA_TFUNCTION:     return "function";
+    case LUA_TNIL:          return "nil";
+    case LUA_TNUMBER:       return "number";
+    case LUA_TSTRING:       return "string";
+    case LUA_TTABLE:        return "table";
+    default:                return "unknown"; // Fallback
+    }
 }
 
 bool lua_equal(LVM *self, int offset1, int offset2) {

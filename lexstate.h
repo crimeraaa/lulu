@@ -3,9 +3,7 @@
 
 #include "common.h"
 
-#define _tokenarray(...)            (toarraylit(TokenType, __VA_ARGS__))
-#define _check_token(lex, types)    check_token_any(lex, types, arraylen(types))
-#define _match_token(lex, types)    match_token_any(lex, types, arraylen(types))
+#define tokenarray(...)         toarraylit(TkType, __VA_ARGS__, TK_EOF)
 
 /**
  * III:21.1.1   Print Statements
@@ -16,7 +14,7 @@
  *
  * Now a wrapper macro in a similar style to `match_token()`.
  */
-#define check_token(lex, ...)   _check_token(lex, _tokenarray(__VA_ARGS__))
+#define check_token(lex, ...)   check_token_any(lex, tokenarray(__VA_ARGS__))
 
 /**
  * III:21.1.1   Print Statements
@@ -32,7 +30,7 @@
  *
  * This allows us to use the same "function" for 1 or more token types.
  */
-#define match_token(lex, ...)   _match_token(lex, _tokenarray(__VA_ARGS__))
+#define match_token(lex, ...)   match_token_any(lex, tokenarray(__VA_ARGS__))
 
 /* Adapted from: https://www.lua.org/manual/5.1/manual.html */
 typedef enum {
@@ -100,10 +98,10 @@ typedef enum {
     TK_ERROR,    // Distinct enumeration to allow us to detect actual errors.
     TK_EOF,      // EOF by itself is not an error.
     TK_COUNT,    // Determine size of the internal lookup table.
-} TokenType;
+} TkType;
 
 typedef struct {
-    TokenType type;
+    TkType type;
     const char *start; // Pointer to start of this token in source code.
     size_t len;        // How many characters to dereference from `start`?
 } Token;
@@ -147,7 +145,7 @@ void next_token(LexState *self);
  * expected one. Otherwise, we set it into an error state and throw the error
  * using `longjmp`. Hope you used `setjmp` correctly!
  */
-void consume_token(LexState *self, TokenType expected, const char *info);
+void consume_token(LexState *self, TkType expected, const char *info);
 
 /**
  * III:23.2     If Statements
@@ -156,14 +154,15 @@ void consume_token(LexState *self, TokenType expected, const char *info);
  * of the given ones.
  *
  * @param parser    Parser instance.
- * @param expected  1D array literal of TokenTypes to check against.
- * @param count     Number of elements in `expected`, use the `arraylen` macro.
+ * @param expected  1D array literal of TokenTypes to check against as created
+ *                  by the `tokenarray` macro. It should have a sentinel value
+ *                  at the end: `TK_EOF`.
  *
  * @return  `true` on the first match, else `false` if no match.
  *
  * @note    This does not consume the token.
  */
-bool check_token_any(LexState *self, TokenType *expected, size_t count);
+bool check_token_any(LexState *self, const TkType *expected);
 
 /**
  * III:23.2     If Statements
@@ -171,7 +170,7 @@ bool check_token_any(LexState *self, TokenType *expected, size_t count);
  * Similar to `check_token_any` but we advance the parser if `true` as well.
  * Otherwise we return `false` without modifying any state.
  */
-bool match_token_any(LexState *self, TokenType *expected, size_t count);
+bool match_token_any(LexState *self, const TkType *expected);
 
 /**
  * III:17.2.1   Handling syntax errors

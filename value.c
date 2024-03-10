@@ -30,20 +30,8 @@ void print_value(const TValue *value) {
     case LUA_TNUMBER:   printf(LUA_NUMBER_FMT, value->as.number); break;
     case LUA_TSTRING:   print_string(asstring(value)); break;
     case LUA_TFUNCTION: print_function(asfunction(value)); break;
-    default:            printf("Unknown: %p", (void*)value); break;
+    default:            printf("Unknown type: %i", (int)value->type); break;
     }
-}
-
-const char *value_typename(VType tagtype) {
-    switch (tagtype) {
-    case LUA_TBOOLEAN:      return "boolean";
-    case LUA_TFUNCTION:     return "function";
-    case LUA_TNIL:          return "nil";
-    case LUA_TNUMBER:       return "number";
-    case LUA_TSTRING:       return "string";
-    case LUA_TTABLE:        return "table";
-    default:                return "unknown"; // Fallback
-    } 
 }
 
 bool values_equal(const TValue *lhs, const TValue *rhs) {
@@ -61,6 +49,6 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     case LUA_TTABLE:    return lhs->as.object == rhs->as.object;
     default:            break;
     }
-    fprintf(stderr, "Unsupported type %s.\n", value_typename(lhs->type));
+    fprintf(stderr, "Unknown type: %i", (int)lhs->type);
     return false;
 }

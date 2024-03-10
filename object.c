@@ -51,7 +51,7 @@ TFunction *new_cfunction(LVM *vm, lua_CFunction function) {
  * But because this function can be called during the compile phase, the compiler
  * structure must also have a pointer to a VM...
  */
-static inline TString *allocate_string(LVM *vm, char *data, size_t len, DWord hash) {
+static TString *allocate_string(LVM *vm, char *data, size_t len, DWord hash) {
     TString *result = allocate_object(vm, TString, LUA_TSTRING);
     result->hash = hash;
     result->len  = len;
@@ -118,6 +118,3 @@ void print_function(const TFunction *self) {
 void print_string(const TString *self) {
     printf("%s", self->data);
 }
-
-#undef allocate_famobject
-#undef allocate_famstring

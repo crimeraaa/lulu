@@ -99,7 +99,7 @@ bool lua_istype(LVM *self, int offset, VType tagtype);
  * so this is quite fragile if you provide an invalid index or offset.
  */
 VType lua_type(LVM *self, int offset);
-const char *lua_typename(LVM *self, int offset);
+const char *lua_typename(LVM *self, VType type);
 bool lua_equal(LVM *self, int offset1, int offset2);
 
 /**

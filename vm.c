@@ -93,9 +93,7 @@ static TValue *read_constant_at(CallFrame *self, size_t index) {
 /* NATIVE FUNCTIONS ----------------------------------------------------- {{{ */
 
 static TValue clock_native(LVM *vm, int argc, TValue *argv) {
-    (void)vm;
-    (void)argc;
-    (void)argv;
+    (void)vm; (void)argc; (void)argv;
     return makenumber((lua_Number)clock() / CLOCKS_PER_SEC);
 }
 
@@ -111,7 +109,7 @@ static TValue print_native(LVM *vm, int argc, TValue *argv) {
 
 static TValue type_native(LVM *vm, int argc, TValue *argv) {
     if (argc == 1) {
-        const char *ts = value_typename(argv[0].type);
+        const char *ts = lua_typename(vm, argv[0].type);
         // Take ownership of a copy of the string literal.
         return makestring(copy_string(vm, ts, strlen(ts)));
     }
@@ -142,22 +140,22 @@ static void define_nativefn(LVM *self, const char *name, lua_CFunction func) {
     lua_popn(self, 2); // Remove from stack so callers don't see these
 }
 
-static InterpretResult rterror_arithmetic(LVM *self, int offset) {
-    const char *typename = lua_typename(self, offset);
-    throw_rterror(self, "Attempt to perform arithmetic on a %s value", typename);
+static InterpretResult rterror_arith(LVM *self, VType type) {
+    const char *ts = lua_typename(self, type);
+    throw_rterror(self, "Attempt to perform arithmetic on a %s value", ts);
     return INTERPRET_RUNTIME_ERROR;
 }
 
-static InterpretResult rterror_compare(LVM *self, int loffset, int roffset) {
-    const char *ltypename = lua_typename(self, loffset);
-    const char *rtypename = lua_typename(self, roffset);
-    throw_rterror(self, "Attempt to compare %s with %s", ltypename, rtypename);
+static InterpretResult rterror_compare(LVM *self, VType ltype, VType rtype) {
+    const char *ts1 = lua_typename(self, ltype);
+    const char *ts2 = lua_typename(self, rtype);
+    throw_rterror(self, "Attempt to compare %s with %s", ts1, ts2);
     return INTERPRET_RUNTIME_ERROR;
 }
 
-static InterpretResult rterror_concat(LVM *self, int offset) {
-    const char *typename = lua_typename(self, offset);
-    throw_rterror(self, "Attempt to concatenate a %s value", typename);
+static InterpretResult rterror_concat(LVM *self, VType type) {
+    const char *ts = lua_typename(self, type);
+    throw_rterror(self, "Attempt to concatenate a %s value", ts);
     return INTERPRET_RUNTIME_ERROR;
 }
 
@@ -208,8 +206,8 @@ static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
 
     CallFrame *frame = &self->frames[self->fc++];
     frame->function = luafn;
-    frame->ip = luafn->chunk.code;    // Beginning of function's bytecode.
-    frame->bp = self->sp - argc - 1;  // Base pointer to function object itself.
+    frame->ip = luafn->chunk.code;   // Beginning of function's bytecode.
+    frame->bp = self->sp - argc - 1; // Base pointer to function object itself.
     return true;
 }
 
@@ -230,16 +228,18 @@ static bool call_value(LVM *self, CallFrame *frame) {
         throw_rterror(self, "Stack overflow.");
         return false;
     }
-    // We always know that the argument count is pushed to the top of the stack.
+    // We always know that the argument count is written to the constants array.
     // In practice this should only actually be only 0-255.
     int argc = read_byte(frame);
 
     // -1 to poke at top of stack, this is the function object itself.
-    // In other words this is the base pointer of the current CallFrame.
+    // In other words this is the base pointer of the next CallFrame.
+    //
+    // The function to be called was pushed first, then its arguments, then its
+    // argument count.
     TValue *callee = self->sp - 1 - argc;
-
     if (callee->type != LUA_TFUNCTION) {
-        const char *ts = value_typename(callee->type);
+        const char *ts = lua_typename(self, callee->type);
         throw_rterror(self, "Attempt to call %s as function", ts);
         return false;
     }
@@ -273,8 +273,8 @@ static bool call_value(LVM *self, CallFrame *frame) {
  * caused the error.
  */
 #define assert_arithmetic(vm)                                                  \
-    if (!lua_isnumber(vm, -2)) return rterror_arithmetic(vm, -2);             \
-    if (!lua_isnumber(vm, -1)) return rterror_arithmetic(vm, -1);             \
+    if (!lua_isnumber(vm, -2)) return rterror_arith(vm, lua_type(vm, -2));     \
+    if (!lua_isnumber(vm, -1)) return rterror_arith(vm, lua_type(vm, -1));     \
 
 /**
  * We check both lhs and rhs as you cannot compare non-numbers in terms of
@@ -285,7 +285,7 @@ static bool call_value(LVM *self, CallFrame *frame) {
  */
 #define assert_comparison(vm)                                                  \
     if (!lua_isnumber(vm, -2) || !lua_isnumber(vm, -1)) {                      \
-        return rterror_compare(vm, -2, -1);                              \
+        return rterror_compare(vm, lua_type(vm, -2), lua_type(vm, -1));        \
     }
 
 /**
@@ -356,11 +356,12 @@ static InterpretResult run_bytecode(LVM *self) {
     // We need that start with index 0 into the lines.runs array.
     // So effectively this becames our iterator for each function frame.
     chunk->prevline = 0;
+
     for (;;) {
         ptrdiff_t byteoffset = frame->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
-        printf("        ");
-        for (const TValue *slot = self->stack; slot < self->sp; slot++) {
+        printf("        Stack %ti: ", frame->bp - self->stack);
+        for (const TValue *slot = frame->bp; slot < self->sp; slot++) {
             printf("[ ");
             print_value(slot);
             printf(" ]");
@@ -464,8 +465,12 @@ static InterpretResult run_bytecode(LVM *self) {
         // This is repeating the code of `binop_math` but I really do not feel
         // like adding another macro parameter JUST to check a value type...
         case OP_CONCAT: {
-            if (!lua_isstring(self, -2)) return rterror_concat(self, -2);
-            if (!lua_isstring(self, -1)) return rterror_concat(self, -1);
+            if (!lua_isstring(self, -2)) {
+                return rterror_concat(self, lua_type(self, -2));
+            }
+            if (!lua_isstring(self, -1)) {
+                return rterror_concat(self, lua_type(self, -1));
+            }
             lua_concat(self);
         } break;
 
@@ -482,7 +487,7 @@ static InterpretResult run_bytecode(LVM *self) {
                 value->as.number = lua_numunm(value->as.number);
                 break;
             }
-            return rterror_arithmetic(self, -1);
+            return rterror_arith(self, lua_type(self, -1));
         }
 
         // -*- III:23.1     If Statements ------------------------------------*-

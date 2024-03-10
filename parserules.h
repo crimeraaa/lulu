@@ -43,7 +43,7 @@ typedef struct {
  * It's such a beast that Bob, understandably, prefers to hide its implementation
  * via this function.
  */
-const ParseRule *get_rule(TokenType type);
+const ParseRule *get_rule(TkType type);
 
 #else /* LUA_PARSERULES_H defined. */
 #error "`parserules.h` can only be used inside of `compiler.c`."

@@ -62,7 +62,7 @@ static bool match_char(LexState *self, char expected) {
     return true;
 }
 
-static Token make_token(const LexState *self, TokenType type) {
+static Token make_token(const LexState *self, TkType type) {
     Token token;
     token.type  = type;
     token.start = self->lexeme;
@@ -108,7 +108,7 @@ static void skip_whitespace(LexState *self) {
     }
 }
 
-static TokenType check_keyword(const LexState *self, size_t idx, size_t len, const char *kw, TokenType tt) {
+static TkType check_keyword(const LexState *self, size_t idx, size_t len, const char *kw, TkType tt) {
     if ((size_t)(self->current - self->lexeme) == len) {
         if (memcmp(self->lexeme + idx, &kw[idx], len - idx) == 0) {
             return tt;
@@ -130,7 +130,7 @@ static TokenType check_keyword(const LexState *self, size_t idx, size_t len, con
  */
 #define check_keyword(lex, idx, kw, tt) check_keyword(lex, idx, sizeof(kw)-1, kw, tt)
 
-static TokenType ident_type(const LexState *self) {
+static TkType ident_type(const LexState *self) {
     size_t lexlen = self->current - self->lexeme;
     switch (self->lexeme[0]) {
         case 'a': return check_keyword(self, 1, "and", TK_AND);
@@ -371,7 +371,7 @@ void next_token(LexState *self) {
     }
 }
 
-void consume_token(LexState *self, TokenType expected, const char *info) {
+void consume_token(LexState *self, TkType expected, const char *info) {
     if (check_token(self, expected)) {
         next_token(self);
         return;
@@ -379,20 +379,22 @@ void consume_token(LexState *self, TokenType expected, const char *info) {
     throw_lexerror(self, info);
 }
 
-bool match_token_any(LexState *self, TokenType *expected, size_t count) {
-    if (!check_token_any(self, expected, count)) {
+bool match_token_any(LexState *self, const TkType *expected) {
+    if (!check_token_any(self, expected)) {
         return false;
     }
     next_token(self);
     return true;
 }
 
-bool check_token_any(LexState *self, TokenType *expected, size_t count) {
-    for (size_t i = 0; i < count; i++) {
+bool check_token_any(LexState *self, const TkType *expected) {
+    size_t i = 0;
+    do {
         if (self->token.type == expected[i]) {
             return true;
         }
-    }
+        i++;
+    } while (expected[i] != TK_EOF); // Sentinel value.
     return false;
 }
 

@@ -581,7 +581,7 @@ void and_(Compiler *self) {
  * It sucks but it's better to keep all the function pointers uniform!
  */
 void binary(Compiler *self) {
-    TokenType optype = self->lex->consumed.type;
+    TkType optype = self->lex->consumed.type;
     const ParseRule *rule = get_rule(optype);
     // Compile right hand side, and evaluate it if it has higher precedence operations.
     // We use 1 higher precedence to ensure left-to-right associativity.
@@ -624,7 +624,7 @@ void call(Compiler *self) {
  * Right-associative binary operators, mainly for exponentiation and concatenation.
  */
 void rbinary(Compiler *self) {
-    TokenType optype = self->lex->consumed.type;
+    TkType optype = self->lex->consumed.type;
     const ParseRule *rule = get_rule(optype);
     // We use the same precedence so we can evaluate from right to left.
     parse_precedence(self, rule->precedence);
@@ -843,7 +843,7 @@ void unary(Compiler *self) {
     // Keep in this stackframe's memory so that if we recurse, we evaluate the
     // topmost stack frame (innermosts, higher precedences) first and work our
     // way down until we reach this particular function call.
-    TokenType optype = self->lex->consumed.type;
+    TkType optype = self->lex->consumed.type;
 
     // Compile the unary expression's operand, which may be a number literal,
     // another unary operator, a grouping, etc.
