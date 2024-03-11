@@ -55,10 +55,10 @@ static char next_char(LexState *self) {
  * This replaces the `match_token()` function.
  */
 static bool match_char(LexState *self, char expected) {
-    if (islexEOF(self) || *self->current != expected) {
+    if (islexEOF(self) || peek_current(self) != expected) {
         return false;
     }
-    self->current++;
+    next_char(self);
     return true;
 }
 
@@ -71,7 +71,7 @@ static Token make_token(const LexState *self, TkType type) {
 }
 
 static Token error_token(const LexState *self, const char *info) {
-    (void)self;
+    unused(self);
     Token token;
     token.type  = TK_ERROR;
     token.start = info;
@@ -108,9 +108,14 @@ static void skip_whitespace(LexState *self) {
     }
 }
 
+typedef struct {
+    const char *word;
+    size_t len;
+} Keyword;
+
 #define makekeyword(literal)   ((Keyword){literal, arraylen(literal) - 1})
 
-const Keyword keywords[LUA_KEYWORD_COUNT] = {
+static const Keyword keywords[LUA_KEYWORD_COUNT] = {
     [TK_AND]        = makekeyword("and"),
     [TK_BREAK]      = makekeyword("break"),
     [TK_DO]         = makekeyword("do"),

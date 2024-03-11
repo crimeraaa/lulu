@@ -5,8 +5,16 @@
 #include "value.h"
 #include "object.h"
 
+typedef enum {
+    LUA_ERROR_ARITH,
+    LUA_ERROR_COMPARE,
+    LUA_ERROR_CONCAT,
+} ErrType;
+
 /**
- * To 'register' a C function into Lua, use an array of this type.
+ * To 'register' a C function into Lua, use an array of this type. This array
+ * MUST have a sentinel value at the very end containing `NULL` for both
+ * members to indicate the end of the array, as we don't determine the count.
  * 
  * See:
  * - https://www.lua.org/source/5.1/lauxlib.h.html#luaL_Reg
@@ -14,9 +22,35 @@
 typedef struct {
     const char *name;
     lua_CFunction func;
-} RegFunc;
+} RegFn;
+
+typedef RegFn lua_Library[];
+
+/**
+ * III:24.7     Native Functions
+ *
+ * When garbage collection gets involved, it will be important to consider if
+ * during the call to `copy_string()` and `new_function` if garbage collection
+ * was triggered. If that happens we must tell the GC that we are not actually
+ * done with this memory, so storing them on the stack (will) accomplish that
+ * when we get to that point.
+ * 
+ * NOTE:
+ * 
+ * Since this is called during VM initialization, we can safely assume that the
+ * stack is currently empty.
+ */
+void lua_registerlib(LVM *self, const lua_Library library);
 
 /* BASIC STACK MANIPULATION --------------------------------------------- {{{ */
+
+/**
+ * Read the current instruction and move the instruction pointer.
+ *
+ * Remember that postfix increment returns the original value of the expression.
+ * So we effectively increment the pointer but we dereference the original one.
+ */
+#define lua_nextbyte(vm)        (*(vm)->cf->ip++)
 
 /**
  * III:23.3     While Statements
@@ -39,6 +73,72 @@ size_t lua_gettop(LVM *self);
  * values to compensate.
  */
 void lua_settop(LVM *self, int offset);
+
+/**
+ * Assumes that the current function's instruction pointer points to a 2-byte
+ * operand for an `OP_JMP` instruction of some kind.
+ * 
+ * NOTE:
+ * 
+ * `OP_LOOP` jumps backwards, so do subtract from the instruction pointer pass
+ * in `-1` for `sign`.
+ */
+void lua_dojmp(LVM *self);
+void lua_dofjmp(LVM *self);
+void lua_doloop(LVM *self);
+
+/**
+ * Assumes that the instruction pointer currently points to a 1-byte operand
+ * representing the number of comma-separated arguments that the compiler was
+ * able to resolve between the parentheses. This function can call either a Lua
+ * or a C function, the object of which should be located below the stack pointer
+ * at the offset `sp - 1 - argc` since it was pushed first.
+ */
+bool lua_call(LVM *self, int argc);
+
+/**
+ * III:24.5     Function Calls
+ *
+ * Increments the VM's frame counter then initializes the topmost CallFrame
+ * in the `frames` array using the `Function*` that was passed onto the stack
+ * previously. So we set the instruction pointer to point to the first byte
+ * in this particular function's bytecode, and then proceed normally as if it
+ * were any other chunk. That is we go through each instruction one by one just
+ * like any other in `run_bytecode()`.
+ *
+ * NOTE:
+ *
+ * Lua doesn't strictly enforce arity. So if we have too few arguments, the rest
+ * are populated with `nil`. If we have too many arguments, the rest are simply
+ * ignored in the function call but the stack pointer is still set properly.
+ */
+bool lua_call_luafn(LVM *self, LFunction *luafn, int argc);
+
+/**
+ * Calling a C function doesn't involve a lot because we don't create a stack
+ * frame or anything, we simply take the arguments, run the function, and push
+ * the result. Control is immediately passed back to the caller.
+ */
+bool lua_call_cfn(LVM *self, lua_CFunction cfn, int argc);
+
+
+/* 'GET' AND 'SET' FUNCTIONS ----------------------------------------------- {{{ 
+ The following functions assume that the current function's instruction
+ pointer points to a 1 or 3 byte operand to a particular instruction. This byte
+ or bytes will represent an absolute index into the current functions' constant
+ values array. This array was populated by the compiler and contains, in order,
+ the identifiers and literals we need. What we do with this constant is up to
+ the particular instruction. */
+
+void lua_getglobal(LVM *self);
+void lua_getlglobal(LVM *self);
+void lua_getlocal(LVM *self);
+
+void lua_setglobal(LVM *self);
+void lua_setlglobal(LVM *self);
+void lua_setlocal(LVM *self);
+
+/* }}} ---------------------------------------------------------------------- */
 
 /**
  * III:23.3     While Statements
@@ -68,7 +168,7 @@ TValue *lua_poke(LVM *self, int offset);
 #define lua_peek(vm, n)         (*lua_poke(vm, n))
 
 /* Pop `n` elements from the stack by decrementing the stack top pointer. */
-#define lua_popn(vm, n)         lua_settop(vm, -(n)-1)
+#define lua_pop(vm, n)         lua_settop(vm, -(n)-1)
 
 /* }}} ---------------------------------------------------------------------- */
 
@@ -95,10 +195,6 @@ TFunction *lua_asfunction(LVM *self, int offset);
 
 /* }}} ---------------------------------------------------------------------- */
 
-/* 'TO' FUNCTIONS ------------------------------------------------------- {{{ */
-
-/* }}} ---------------------------------------------------------------------- */
-
 /* 'PUSH' FUNCTIONS ----------------------------------------------------- {{{ */
 
 /**
@@ -107,6 +203,20 @@ TFunction *lua_asfunction(LVM *self, int offset);
  * next free slot in the stack.
  */
 void lua_pushobject(LVM *self, const TValue *object);
+
+/**
+ * Assumes that the current CallFrame's instruction pointer is currently at the
+ * 1-byte operand for an `OP_CONSTANT` instruction which we will use to index
+ * into the CallFrame's functions' chunk's constants array.
+ */
+void lua_pushconstant(LVM *self);
+
+/**
+ * Similar to `lua_pushconstant` except that we instead assume a 3-byte operand.
+ * See the comments for that function for more information.
+ */
+void lua_pushlconstant(LVM *self);
+
 void lua_pushboolean(LVM *self, bool b);
 void lua_pushnil(LVM *self);
 void lua_pushnumber(LVM *self, lua_Number n);
@@ -164,5 +274,7 @@ void lua_concat(LVM *self);
  * have gone wrong. It includes a dump of the call stack up until that point.
  */
 void lua_error(LVM *self, const char *format, ...);
+void lua_unoperror(LVM *self, int n, ErrType err);
+void lua_binoperror(LVM *self, int n1, int n2, ErrType err);
 
 #endif /* LUA_API_H */

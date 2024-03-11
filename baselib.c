@@ -5,29 +5,24 @@
 #include "object.h"
 #include "value.h"
 
-static const RegFunc baselib[] = {
+static const lua_Library baselib = {
     {"clock",   base_clock},
     {"print",   base_print},
     {"type",    base_type},
+    {NULL,      NULL},
 };
 
-void lua_loadbaselib(LVM *vm) {
-    for (size_t i = 0; i < arraylen(baselib); i++) {
-        const RegFunc *rfunc = &baselib[i];
-        lua_pushliteral(vm, rfunc->name);   // Stack index 0
-        lua_pushcfunction(vm, rfunc->func); // Stack index 1
-        table_set(&vm->globals, asstring(&vm->stack[0]), vm->stack[1]);
-        lua_popn(vm, 2);
-    }
+void lua_loadbase(LVM *vm) {
+    lua_registerlib(vm, baselib);
 }
 
 TValue base_clock(LVM *vm, int argc, TValue *argv) {
-    (void)vm; (void)argc; (void)argv;
+    unused3(vm, argc, argv);
     return makenumber((lua_Number)clock() / CLOCKS_PER_SEC);
 }
 
 TValue base_print(LVM *vm, int argc, TValue *argv) {
-    (void)vm;
+    unused(vm);
     for (int i = 0; i < argc; i++) {
         print_value(&argv[i]);
         printf(" ");

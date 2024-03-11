@@ -103,13 +103,6 @@ typedef enum {
 #define LUA_KEYWORD_COUNT   (TK_WHILE + 1)
 
 typedef struct {
-    const char *word;
-    size_t len;
-} Keyword;
-
-extern const Keyword keywords[LUA_KEYWORD_COUNT];
-
-typedef struct {
     TkType type;
     const char *start; // Pointer to start of this token in source code.
     size_t len;        // How many characters to dereference from `start`?

@@ -30,6 +30,7 @@ struct LVM {
     Table globals; // Interned global variable identifiers, as strings.
     Table strings; // Interned string literals/user-created ones.
     jmp_buf errjmp; // Unconditional jump when errors are triggered.
+    CallFrame *cf; // Current calling stack frame as indexed into `frames`.
     TValue *bp;    // Pointer to base of current calling stack frame.
     TValue *sp;    // Stack pointer to 1 past the lastest written element.
     Object *objects; // Head of intrusive linked list of allocated objects.

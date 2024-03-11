@@ -32,6 +32,8 @@
 
 /* }}} ---------------------------------------------------------------------- */
 
+/* CONVENIENCE MACROS --------------------------------------------------- {{{ */
+
 /**
  * @param value     Some unsigned integer value to be bit masked.
  * @param offset    How many byte-groups away from the least-significant byte
@@ -68,6 +70,19 @@
  * So be careful of array-pointer decay!
  */
 #define arraylen(arraylit)      (sizeof(arraylit) / sizeof(arraylit[0]))
+
+/* Inclusive range. */
+#define incrange(n, start, end) ((n) >= start && (n) <= end)
+
+/* Exclusive range. */
+#define excrange(n, start, end) ((n) >= start && (n) < end)
+
+/* Help avoid warnings with unused variables/parameters. */
+#define unused(x)               (void)(x)
+#define unused2(x, y)           unused(x);     unused(y)
+#define unused3(x, y, z)        unused2(x, y); unused(z)
+
+/* }}} ---------------------------------------------------------------------- */
 
 /**
  * III:19.2     Struct Inheritance

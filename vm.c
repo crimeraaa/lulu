@@ -21,60 +21,12 @@ static CallFrame *current_frame(LVM *self) {
     return &self->frames[self->fc - 1];
 }
 
-static Chunk *current_chunk(CallFrame *self) {
-    return &self->function->chunk;
-}
-
-/**
- * Read the current instruction and move the instruction pointer.
- *
- * Remember that postfix increment returns the original value of the expression.
- * So we effectively increment the pointer but we dereference the original one.
- */
-static Byte read_byte(CallFrame *self) {
-    return *(self->ip++);
-}
-
-/**
- * If you have an index greater than 8-bits, calculate that first however you
- * need to then use this macro so you have full control over all side effects.
- */
-static TValue *read_constant_at(CallFrame *self, size_t index) {
-    return &self->function->chunk.constants.values[index];
-}
-
-/**
- * Read the next byte from the bytecode treating the received value as an index
- * into the VM's current chunk's constants pool.
- */
-#define read_constant(frame)        (read_constant_at(frame, read_byte(frame)))
-
-/**
- * III:21.2     Variable Declarations
- *
- * Helper macro to read the current top of the stack and increment the VM's
- * instruction pointer and then cast the result to a `TString*`.
- */
-#define read_string(frame)          asstring(read_constant(frame))
-#define read_string_at(frame, i)    asstring(read_constant_at(frame, i))
-
-/* }}} */
-
-
-static void rterror_arith(LVM *self, VType type) {
-    const char *tname = lua_typename(self, type);
-    lua_error(self, "Attempt to perform arithmetic on a %s value", tname);
-}
-
-static void rterror_compare(LVM *self, VType ltype, VType rtype) {
-    const char *ts1 = lua_typename(self, ltype);
-    const char *ts2 = lua_typename(self, rtype);
-    lua_error(self, "Attempt to compare %s with %s", ts1, ts2);
-}
-
-static void rterror_concat(LVM *self, VType type) {
-    const char *tname = lua_typename(self, type);
-    lua_error(self, "Attempt to concatenate a %s value", tname);
+static void intern_identifiers(LVM *self) {
+    for (VType tt = (VType)0; tt < LUA_TCOUNT; tt++) {
+        const TNameInfo *tname = get_tnameinfo(tt);
+        TString *s = copy_string(self, tname->what, tname->len);
+        table_set(&self->strings, s, makenil);
+    }
 }
 
 void init_vm(LVM *self, const char *name) {
@@ -83,95 +35,14 @@ void init_vm(LVM *self, const char *name) {
     reset_stack(self);
     self->objects = NULL;
     self->name    = name;
-
-    // Intern all the typename strings already.
-    for (VType tt = (VType)0; tt < LUA_TCOUNT; tt++) {
-        const TNameInfo *tname = get_tnameinfo(tt);
-        TString *s = copy_string(self, tname->what, tname->len);
-        table_set(&self->strings, s, makenil);
-    }
-    lua_loadbaselib(self);
+    intern_identifiers(self);
+    lua_loadbase(self);
 }
 
 void free_vm(LVM *self) {
     free_table(&self->globals);
     free_table(&self->strings);
     free_objects(self);
-}
-
-/**
- * III:24.5     Function Calls
- *
- * Increments the VM's frame counter then initializes the topmost CallFrame
- * in the `frames` array using the `Function*` that was passed onto the stack
- * previously. So we set the instruction pointer to point to the first byte
- * in this particular function's bytecode, and then proceed normally as if it
- * were any other chunk. That is we go through each instruction one by one just
- * like any other in `run_bytecode()`.
- *
- * NOTE:
- *
- * Lua doesn't strictly enforce arity. So if we have too few arguments, the rest
- * are populated with `nil`. If we have too many arguments, the rest are simply
- * ignored in the function call but the stack pointer is still set properly.
- */
-static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
-    if (argc != luafn->arity) {
-        lua_error(self, "Expected %i arguments but got %i.", luafn->arity, argc);
-        return false;
-    }
-    // We want to iterate properly over something that has its own chunk, and as
-    // a result its own lineruns. We do not do this for C functions as they do
-    // not have any chunk, therefore no lineruns info, to begin with.
-    luafn->chunk.prevline = 0;
-
-    CallFrame *frame = &self->frames[self->fc++];
-    frame->function = luafn;
-    frame->ip = luafn->chunk.code;   // Beginning of function's bytecode.
-    frame->bp = self->sp - argc - 1; // Base pointer to function object itself.
-    self->bp  = frame->bp;           // We can now use positive offsets from VM.
-    return true;
-}
-
-/**
- * Calling a C function doesn't involve a lot because we don't create a stack
- * frame or anything, we simply take the arguments, run the function, and push
- * the result. Control is immediately passed back to the caller.
- */
-static bool call_cfunction(LVM *self, const lua_CFunction cfn, int argc) {
-    const TValue res = cfn(self, argc, self->sp - argc);
-    self->sp -= argc + 1; // Point to slot right below the function object.
-    lua_pushobject(self, &res);
-    return true;
-}
-
-static bool call_value(LVM *self, CallFrame *frame) {
-    if (self->fc >= LUA_MAXFRAMES) {
-        lua_error(self, "Stack overflow.");
-        return false;
-    }
-    // We always know that the argument count is written to the constants array.
-    // In practice this should only actually be only 0-255.
-    int argc = read_byte(frame);
-
-    // -1 to poke at top of stack, this is the function object itself.
-    // In other words this is the base pointer of the next CallFrame.
-    //
-    // The function to be called was pushed first, then its arguments, then its
-    // argument count.
-    TValue *callee = self->sp - 1 - argc;
-    if (callee->type != LUA_TFUNCTION) {
-        const char *tname = lua_typename(self, callee->type);
-        lua_error(self, "Attempt to call %s as function", tname);
-        return false;
-    }
-
-    // Call the correct function in the union based on the boolean.
-    if (asfunction(callee)->is_c) {
-        return call_cfunction(self, ascfunction(callee), argc);
-    } else {
-        return call_luafunction(self, &asluafunction(callee), argc);
-    }
 }
 
 /**
@@ -186,7 +57,7 @@ static bool call_value(LVM *self, CallFrame *frame) {
     do {                                                                       \
         assertfn(vm);                                                          \
         TValue r = makefn(exprfn(lua_asnumber(vm, -2), lua_asnumber(vm, -1))); \
-        lua_popn(vm, 2);                                                       \
+        lua_pop(vm, 2);                                                        \
         lua_pushobject(vm, &r);                                                \
     } while (false)
 
@@ -195,8 +66,8 @@ static bool call_value(LVM *self, CallFrame *frame) {
  * caused the error.
  */
 #define assert_arithmetic(vm)                                                  \
-    if (!lua_isnumber(vm, -2)) rterror_arith(vm, lua_type(vm, -2));            \
-    if (!lua_isnumber(vm, -1)) rterror_arith(vm, lua_type(vm, -1));            \
+    if (!lua_isnumber(vm, -2)) lua_unoperror(vm, -2, LUA_ERROR_ARITH);         \
+    if (!lua_isnumber(vm, -1)) lua_unoperror(vm, -1, LUA_ERROR_ARITH);         \
 
 /**
  * We check both lhs and rhs as you cannot compare non-numbers in terms of
@@ -207,7 +78,7 @@ static bool call_value(LVM *self, CallFrame *frame) {
  */
 #define assert_comparison(vm)                                                  \
     if (!lua_isnumber(vm, -2) || !lua_isnumber(vm, -1)) {                      \
-        rterror_compare(vm, lua_type(vm, -2), lua_type(vm, -1));               \
+        lua_binoperror(vm, -2, -1, LUA_ERROR_COMPARE);                         \
     }
 
 /**
@@ -230,46 +101,12 @@ static bool call_value(LVM *self, CallFrame *frame) {
 #define binop_cmp(vm, operation) \
     binop_template(vm, assert_comparison, makeboolean, operation)
 
-/**
- * III:23.1     If Statements
- *
- * Read the next 2 instructions and combine them into a 16-bit operand.
- *
- * The compiler emitted the 2 byte operands for a jump instruction in order of
- * hi, lo. So our instruction pointer points at hi currently.
- */
-static Word read_byte2(CallFrame *self) {
-    Byte hi = read_byte(self);
-    Byte lo = read_byte(self);
-    return byteunmask(hi, 1) | lo;
-}
-
-/**
- * Read the next 3 instructions and combine those 3 bytes into 1 24-bit operand.
- *
- * NOTE:
- *
- * This MUST be able to fit in a `DWord`.
- *
- * Compiler emitted them in this order: hi, mid, lo. Since ip currently points
- * at hi, we can safely walk in this order.
- */
-static DWord read_byte3(CallFrame *self) {
-    Byte hi  = read_byte(self); // bits 16..23 : (0x010000..0xFFFFFF)
-    Byte mid = read_byte(self); // bits 8..15  : (0x000100..0x00FFFF)
-    Byte lo  = read_byte(self); // bits 0..7   : (0x000000..0x0000FF)
-    return byteunmask(hi, 2) | byteunmask(mid, 1) | lo;
-}
-
 static InterpretResult run_bytecode(LVM *self) {
-    // Topmost call frame.
-    CallFrame *frame = current_frame(self);
-    Chunk *chunk     = current_chunk(frame);
-
+    Chunk *chunk = &self->cf->function->chunk;
     // longjmp here to handle errors.
-    // Ensure that all functions that need manual cleanup
-    // have been taken care of, but for the most part our VM's objects linked
-    // list tracks ALL allocations no matter what.
+    // Ensure that all functions that need manual cleanup have been taken care 
+    // of, but for the most part our VM's objects linked list tracks ALL 
+    // allocations no matter what.
     if (setjmp(self->errjmp) != 0) {
         reset_stack(self);
         return INTERPRET_RUNTIME_ERROR;
@@ -278,10 +115,8 @@ static InterpretResult run_bytecode(LVM *self) {
     // Hack, but we reset so we can disassemble properly.
     // We need that start with index 0 into the lines.runs array.
     // So effectively this becames our iterator for each function frame.
-    chunk->prevline = 0;
-
     for (;;) {
-        ptrdiff_t byteoffset = frame->ip - chunk->code;
+        ptrdiff_t byteoffset = self->cf->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
         for (const TValue *slot = self->stack; slot < self->sp; slot++) {
@@ -296,80 +131,41 @@ static InterpretResult run_bytecode(LVM *self) {
         next_line(chunk, byteoffset);
 #endif
         Byte instruction;
-        switch (instruction = read_byte(frame)) {
-        case OP_CONSTANT: {
-            const TValue *v = read_constant(frame);
-            lua_pushobject(self, v);
-        } break;
-        case OP_LCONSTANT: {
-            const TValue *v = read_constant_at(frame, read_byte3(frame));
-            lua_pushobject(self, v);
-        } break;
+        switch (instruction = lua_nextbyte(self)) {
+        case OP_CONSTANT:   lua_pushconstant(self);     break;
+        case OP_LCONSTANT:  lua_pushlconstant(self);    break;
 
         // -*- III:18.4     Two New Types ------------------------------------*-
-        case OP_NIL:   lua_pushnil(self);            break;
-        case OP_TRUE:  lua_pushboolean(self, true);  break;
-        case OP_FALSE: lua_pushboolean(self, false); break;
+        case OP_NIL:        lua_pushnil(self);              break;
+        case OP_TRUE:       lua_pushboolean(self, true);    break;
+        case OP_FALSE:      lua_pushboolean(self, false);   break;
 
         // -*- III:21.1.2   Expression statements ----------------------------*-
-        case OP_POP:   lua_popn(self, 1); break;
-        case OP_NPOP: {
-            // 1-byte operand is how much to decrement the stack pointer by.
-            lua_popn(self, read_byte(frame));
-        } break;
+        case OP_POP:        lua_pop(self, 1);                   break;
+        case OP_NPOP:       lua_pop(self, lua_nextbyte(self));  break;
 
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
-        case OP_GETLOCAL: {
-            Byte slot = read_byte(frame);
-            lua_pushobject(self, &frame->bp[slot]);
-        } break;
-
-        case OP_SETLOCAL: {
-            Byte slot = read_byte(frame);
-            frame->bp[slot] = lua_peek(self, -1);
-        } break;
+        case OP_GETLOCAL:   lua_getlocal(self);     break;
+        case OP_SETLOCAL:   lua_setlocal(self);     break;
 
         // -*- III:21.2     Variable Declarations ----------------------------*-
         // NOTE: As of III:21.4 I've removed the `OP_DEFINE*` opcodes and cases.
-        case OP_GETGLOBAL: {
-            TString *name = read_string(frame);
-            TValue value;
-            // If not present in the hash table, the variable never existed.
-            if (!table_get(&self->globals, name, &value)) {
-                lua_error(self, "Undefined variable '%s'.", name->data);
-            }
-            lua_pushobject(self, &value);
-        } break;
-
-        case OP_LGETGLOBAL: {
-            TString *name = read_string_at(frame, read_byte3(frame));
-            TValue value;
-            if (!table_get(&self->globals, name, &value)) {
-                lua_error(self, "Undefined variable '%s'.", name->data);
-            }
-            lua_pushobject(self, &value);
-        } break;
+        case OP_GETGLOBAL:  lua_getglobal(self);    break;
+        case OP_LGETGLOBAL: lua_getlglobal(self);   break;
 
         // -*- III:21.4     Assignment ---------------------------------------*-
         // Unlike in Lox, Lua allows implicit declaration of globals.
         // Also unlike Lox you simply can't type the equivalent of `var ident;`
         // in Lua as all global variables must be assigned at declaration.
-        case OP_SETGLOBAL: {
-            TString *name = read_string(frame);
-            table_set(&self->globals, name, lua_peek(self, -1));
-        } break;
-
-        case OP_LSETGLOBAL: {
-            TString *name = read_string_at(frame, read_byte3(frame));
-            table_set(&self->globals, name, lua_peek(self, -1));
-        } break;
+        case OP_SETGLOBAL:  lua_setglobal(self);    break;
+        case OP_LSETGLOBAL: lua_setlglobal(self);   break;
 
         // -*- III:18.4.2   Equality and comparison operators ----------------*-
         case OP_EQ: {
             // Save result before popping so we can push properly.
             // -2 is lhs, -1 is rhs due to the order they were pushed in.
             bool res = lua_equal(self, -2, -1);
-            lua_popn(self, 2);
+            lua_pop(self, 2);
             lua_pushboolean(self, res);
         } break;
 
@@ -388,14 +184,13 @@ static InterpretResult run_bytecode(LVM *self) {
         // This is repeating the code of `binop_math` but I really do not feel
         // like adding another macro parameter JUST to check a value type...
         case OP_CONCAT: {
-            if (!lua_isstring(self, -2)) rterror_concat(self, lua_type(self, -2));
-            if (!lua_isstring(self, -1)) rterror_concat(self, lua_type(self, -1));
             lua_concat(self);
         } break;
 
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
-            *lua_poke(self, -1) = makeboolean(!lua_asboolean(self, -1));
+            bool res = lua_asboolean(self, -1);
+            *lua_poke(self, -1) = makeboolean(!res);
         } break;
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
@@ -406,43 +201,37 @@ static InterpretResult run_bytecode(LVM *self) {
                 value->as.number = lua_numunm(value->as.number);
                 break;
             }
-            rterror_arith(self, lua_type(self, -1));
+            lua_unoperror(self, -1, LUA_ERROR_ARITH);
+            break;
         }
 
         // -*- III:23.1     If Statements ------------------------------------*-
-        case OP_JMP: {
-            Word offset = read_byte2(frame);
-            frame->ip += offset;
-        } break;
-
-        case OP_FJMP: {
-            Word offset = read_byte2(frame);
-            if (!lua_asboolean(self, -1)) {
-                frame->ip += offset;
-            }
-        } break;
+        case OP_JMP:    lua_dojmp(self);  break;
+        case OP_FJMP:   lua_dofjmp(self); break;
 
         // -*- III:23.3     While Statements ---------------------------------*-
-        case OP_LOOP: {
-            Word offset = read_byte2(frame);
-            frame->ip -= offset;
-        } break;
+        case OP_LOOP:   lua_doloop(self); break;
 
         // -*- III:24.5.1   Binding arguments to parameters ------------------*-
         case OP_CALL: {
+            // We always know that the argument count is written to the constants 
+            // array. In practice this should only actually be only 0-255.
+            int argc = lua_nextbyte(self);
+
             // If successful there will be a new frame on the CallFrame stack for
             // the called function. This may also set the prevline counter if we
             // have a Lua function with its own chunk and linerun info. If we
             // have a C function we just call it and leave the prevline as is
             // since we do not change the current frame anyway.
-            if (!call_value(self, frame)) {
+            if (!lua_call(self, argc)) {
                 return INTERPRET_RUNTIME_ERROR;
             }
 
             // When we execute the next instruction we want to execute the ones
             // in this CallFrame.
-            frame = current_frame(self);
-            chunk = current_chunk(frame);
+            self->cf = current_frame(self);
+            self->bp = self->cf->bp;
+            chunk    = &self->cf->function->chunk;
         } break;
 
         case OP_RETURN: {
@@ -450,30 +239,34 @@ static InterpretResult run_bytecode(LVM *self) {
             // the stack. We're about to discard the function's entire stack
             // window so we hold onto the return value.
             const TValue res = lua_peek(self, -1);
-            lua_popn(self, 1);
+            lua_pop(self, 1);
 
             // Conceptually discard the call frame. If this was the very last
             // callframe that probably indicates we've finished the top-level.
             self->fc--;
             if (self->fc == 0) {
-                lua_popn(self, 1); // Pop the script itself off the VM's stack.
+                lua_pop(self, 1); // Pop the script itself off the VM's stack.
                 return INTERPRET_OK;
             }
 
             // Discard all the slots the callframe was using for its parameters
             // and local variables, which are the same slots the caller (us)
             // used to push the arguments in the first place.
-            self->sp = frame->bp;
+            self->sp = self->cf->bp;
             lua_pushobject(self, &res);
 
             // Return control of the stack back to the caller now that this
             // particular function call is done.
-            frame = current_frame(self);
-            chunk = current_chunk(frame);
-            
+            self->cf = current_frame(self);
+
             // Set our base pointer as well so we can access local variables
-            // using 0 and positive offsets.
-            self->bp = frame->bp;
+            // using 0 and positive offsets, and ensure our VM's calling frame
+            // pointer is correct.
+            self->bp = self->cf->bp;
+
+            // Also set the chunk pointer so we know where to look for constants
+            // quickly without doing like 4 dereference operations all the time. 
+            chunk    = &self->cf->function->chunk;
         } break;
         // I hate how case statements don't introduce their own block scope...
         }
@@ -493,13 +286,10 @@ InterpretResult interpret_vm(LVM *self, const char *input) {
         return INTERPRET_COMPILE_ERROR;
     }
     lua_pushfunction(self, script);
-    call_luafunction(self, &script->fn.lua, 0);
+    lua_call(self, 0); // Call the implicit main function with no arguments.
     return run_bytecode(self);
 }
 
-#undef read_constant
-#undef read_string
-#undef read_string_at
 #undef assert_arithmetic
 #undef assert_comparison
 #undef binop_template

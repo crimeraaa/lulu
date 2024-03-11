@@ -3,7 +3,7 @@
 #include "vm.h"
 
 void *reallocate(void *pointer, size_t oldsize, size_t newsize) {
-    (void)oldsize;
+    unused(oldsize);
     if (newsize == 0) {
         free(pointer);
         return NULL;
