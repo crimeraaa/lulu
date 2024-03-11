@@ -802,16 +802,11 @@ static void named_variable(Compiler *self, bool assignable) {
     if (assignable && match_token(lex, TK_ASSIGN)) {
         expression(self);
         vi.emitfn(self, vi.setop, vi.index);
-        return;
-    } 
-    
-    // Otherwise we simply emit instructions to get the value of the variable.
-    vi.emitfn(self, vi.getop, vi.index);
-    
-    // Since functions are first-class values, we can detect function calls
-    // if, after emitting a value, we have a '(' token.
-    if (match_token(lex, TK_LPAREN)) {
-        call(self);
+    } else {
+        // Otherwise we simply emit instructions to get variable's value. If it
+        // is is a function, one of `variable_statement()`/`parse_precedence()`
+        // will detect the '(' token.
+        vi.emitfn(self, vi.getop, vi.index);
     }
 }
 
@@ -1151,8 +1146,15 @@ static void variable_declaration(Compiler *self) {
  * a function call, or a get expression.
  */
 static void variable_statement(Compiler *self) {
-    named_variable(self, true);
-    match_token(self->lex, TK_SEMICOL);
+    LexState *lex = self->lex;
+    named_variable(self, true); 
+
+    // Since functions are first-class values, we can detect function calls if
+    // after emitting a value we have a '(' token.
+    if (match_token(lex, TK_LPAREN)) {
+        call(self);
+    }
+    match_token(lex, TK_SEMICOL);
     emit_byte(self, OP_POP);
 }
 
