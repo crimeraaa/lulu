@@ -96,32 +96,6 @@ void lua_doloop(LVM *self);
  */
 bool lua_call(LVM *self, int argc);
 
-/**
- * III:24.5     Function Calls
- *
- * Increments the VM's frame counter then initializes the topmost CallFrame
- * in the `frames` array using the `Function*` that was passed onto the stack
- * previously. So we set the instruction pointer to point to the first byte
- * in this particular function's bytecode, and then proceed normally as if it
- * were any other chunk. That is we go through each instruction one by one just
- * like any other in `run_bytecode()`.
- *
- * NOTE:
- *
- * Lua doesn't strictly enforce arity. So if we have too few arguments, the rest
- * are populated with `nil`. If we have too many arguments, the rest are simply
- * ignored in the function call but the stack pointer is still set properly.
- */
-bool lua_call_luafn(LVM *self, LFunction *luafn, int argc);
-
-/**
- * Calling a C function doesn't involve a lot because we don't create a stack
- * frame or anything, we simply take the arguments, run the function, and push
- * the result. Control is immediately passed back to the caller.
- */
-bool lua_call_cfn(LVM *self, lua_CFunction cfn, int argc);
-
-
 /* 'GET' AND 'SET' FUNCTIONS ----------------------------------------------- {{{ 
  The following functions assume that the current function's instruction
  pointer points to a 1 or 3 byte operand to a particular instruction. This byte
@@ -169,6 +143,15 @@ TValue *lua_poke(LVM *self, int offset);
 
 /* Pop `n` elements from the stack by decrementing the stack top pointer. */
 #define lua_pop(vm, n)         lua_settop(vm, -(n)-1)
+
+/** 
+ * Given negative number `n`, add it to the stack pointer to get a negative
+ * offset in relation to the top of the stack. Remember that the stack pointer
+ * always points to the next free slot, so 1 slot below it is the most recently
+ * written element.
+ */
+#define lua_poketop(vm, n)      ((vm)->sp + n)
+#define lua_peektop(vm, n)      (*lua_poketop(vm, n))
 
 /* }}} ---------------------------------------------------------------------- */
 
@@ -238,7 +221,12 @@ void lua_pushlstring(LVM *self, char *data, size_t len);
  * try to create a `TString*` of. Do NOT use this with malloc'd strings.
  */
 void lua_pushliteral(LVM *self, const char *data);
-void lua_pushfunction(LVM *self, TFunction *luafn);
+
+/**
+ * Push the given tagged union function object `tfunc` to the top of the stack.
+ * This is mainly used so it can be immediately followed by an `OP_CALL` opcode.
+ */
+void lua_pushfunction(LVM *self, TFunction *tfunc);
 void lua_pushcfunction(LVM *self, lua_CFunction func);
 
 /* }}} ---------------------------------------------------------------------- */

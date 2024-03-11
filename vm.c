@@ -49,16 +49,17 @@ void free_vm(LVM *self) {
  * Horrible C preprocessor abuse...
  *
  * @param vm        `lua_VM*`
+ * @param T         Expected type of result.
  * @param assertfn  One of the `assert_*` macros.
- * @param makefn    One of the `make*` macros.
  * @param exprfn    One of the `lua_num*` macros or an actual function.
+ * @param pushfn    One of `lua_pushnumber` or `lua_pushboolean`.
  */
-#define binop_template(vm, assertfn, makefn, exprfn)                           \
+#define binop_template(vm, T, assertfn, exprfn, pushfn)                        \
     do {                                                                       \
         assertfn(vm);                                                          \
-        TValue r = makefn(exprfn(lua_asnumber(vm, -2), lua_asnumber(vm, -1))); \
+        T res = exprfn(lua_asnumber(vm, -2), lua_asnumber(vm, -1));            \
         lua_pop(vm, 2);                                                        \
-        lua_pushobject(vm, &r);                                                \
+        pushfn(vm, res);                                                       \
     } while (false)
 
 /**
@@ -90,7 +91,7 @@ void free_vm(LVM *self) {
  * See the definition for `binop_template`.
  */
 #define binop_math(vm, operation) \
-    binop_template(vm, assert_arithmetic, makenumber, operation)
+    binop_template(vm, lua_Number, assert_arithmetic, operation, lua_pushnumber)
 
 /**
  * Similar to `binop_math`, only that it asserts both operands must be
@@ -99,7 +100,7 @@ void free_vm(LVM *self) {
  * Note that this doesn't affect equality operators. `1 == false` is a valid call.
  */
 #define binop_cmp(vm, operation) \
-    binop_template(vm, assert_comparison, makeboolean, operation)
+    binop_template(vm, bool, assert_comparison, operation, lua_pushboolean)
 
 static InterpretResult run_bytecode(LVM *self) {
     Chunk *chunk = &self->cf->function->chunk;
@@ -190,14 +191,14 @@ static InterpretResult run_bytecode(LVM *self) {
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
             bool res = lua_asboolean(self, -1);
-            *lua_poke(self, -1) = makeboolean(!res);
+            *lua_poketop(self, -1) = makeboolean(!res);
         } break;
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
             // Challenge 15.4: Negate in place
             if (lua_isnumber(self, -1)) {
-                TValue *value    = lua_poke(self, -1);
+                TValue *value    = lua_poketop(self, -1);
                 value->as.number = lua_numunm(value->as.number);
                 break;
             }

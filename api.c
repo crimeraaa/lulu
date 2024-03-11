@@ -177,7 +177,23 @@ void lua_doloop(LVM *self) {
     self->cf->ip -= readbyte2(self);
 }
 
-bool lua_call_luafn(LVM *self, LFunction *luafn, int argc) {
+/**
+ * III:24.5     Function Calls
+ *
+ * Increments the VM's frame counter then initializes the topmost CallFrame
+ * in the `frames` array using the `Function*` that was passed onto the stack
+ * previously. So we set the instruction pointer to point to the first byte
+ * in this particular function's bytecode, and then proceed normally as if it
+ * were any other chunk. That is we go through each instruction one by one just
+ * like any other in `run_bytecode()`.
+ *
+ * NOTE:
+ *
+ * Lua doesn't strictly enforce arity. So if we have too few arguments, the rest
+ * are populated with `nil`. If we have too many arguments, the rest are simply
+ * ignored in the function call but the stack pointer is still set properly.
+ */
+static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
     if (argc != luafn->arity) {
         lua_error(self, "Expected %i arguments but got %i.", luafn->arity, argc);
         return false;
@@ -185,7 +201,7 @@ bool lua_call_luafn(LVM *self, LFunction *luafn, int argc) {
     // We want to iterate properly over something that has its own chunk, and as
     // a result its own lineruns. We do not do this for C functions as they do
     // not have any chunk, therefore no lineruns info, to begin with.
-    luafn->chunk.prevline = 0;
+    luafn->chunk.prevline = 1;
 
     CallFrame *frame = &self->frames[self->fc++];
     frame->function = luafn;
@@ -196,7 +212,12 @@ bool lua_call_luafn(LVM *self, LFunction *luafn, int argc) {
     return true;
 }
 
-bool lua_call_cfn(LVM *self, lua_CFunction cfn, int argc) {
+/**
+ * Calling a C function doesn't involve a lot because we don't create a stack
+ * frame or anything, we simply take the arguments, run the function, and push
+ * the result. Control is immediately passed back to the caller.
+ */
+static bool call_cfunction(LVM *self, lua_CFunction cfn, int argc) {
     TValue *argv = self->sp - argc;
     const TValue res = cfn(self, argc, argv);
     self->sp -= argc + 1; // Point to slot right below the function object.
@@ -223,9 +244,9 @@ bool lua_call(LVM *self, int argc) {
 
     // Call the correct function in the union based on the boolean.
     if (asfunction(callee)->is_c) {
-        return lua_call_cfn(self, ascfunction(callee), argc);
+        return call_cfunction(self, ascfunction(callee), argc);
     } else {
-        return lua_call_luafn(self, &asluafunction(callee), argc);
+        return call_luafunction(self, &asluafunction(callee), argc);
     }
 }
 
@@ -233,8 +254,8 @@ bool lua_call(LVM *self, int argc) {
 
 /* 'GET' and 'SET' FUNCTIONS -------------------------------------------- {{{ */
 
-static void getglobal_at(LVM *self, size_t index) {
-    TString *name = readstring_at(self, index);
+static void getglobal_at(LVM *self, bool islong) {
+    TString *name = (islong) ? readlstring(self) : readstring(self);
     TValue value;
     // If not present in the hash table, the variable never existed.
     if (!table_get(&self->globals, name, &value)) {
@@ -244,24 +265,24 @@ static void getglobal_at(LVM *self, size_t index) {
 }
 
 void lua_getglobal(LVM *self) {
-    getglobal_at(self, lua_nextbyte(self));
+    getglobal_at(self, false);
 }
 
 void lua_getlglobal(LVM *self) {
-    getglobal_at(self, readbyte3(self));
+    getglobal_at(self, true);
 }
 
-static void setglobal_at(LVM *self, size_t index) {
-    TString *name = readstring_at(self, index);
+static void setglobal_at(LVM *self, bool islong) {
+    TString *name = (islong) ? readlstring(self) : readstring(self);
     table_set(&self->globals, name, lua_peek(self, -1));
 }
 
 void lua_setglobal(LVM *self) {
-    setglobal_at(self, lua_nextbyte(self));
+    setglobal_at(self, false);
 }
 
 void lua_setlglobal(LVM *self) {
-    setglobal_at(self, readbyte3(self));
+    setglobal_at(self, true);
 }
 
 void lua_getlocal(LVM *self) {
