@@ -1146,21 +1146,6 @@ static void variable_declaration(Compiler *self) {
 }
 
 /**
- * III:21.1.2   Expression statements
- *
- * In Lox, expression statements (exprstmt for short) are just expressions followed
- * by a ';'. In Lua, we allow up to 1 ';' only. Any more are considered errors.
- *
- * Since it produces a side effect by pushing something onto the stack, such as
- * via the prefixfns, we have to "undo" that by emitting a pop instruction.
- */
-static void expression_statement(Compiler *self) {
-    expression(self);
-    match_token(self->lex, TK_SEMICOL);
-    emit_byte(self, OP_POP);
-}
-
-/**
  * Assumes we consumed some identifier token and now need to do something with
  * it. Depending on the succeeding token/s, this can be a single assignment,
  * a function call, or a get expression.
@@ -1537,7 +1522,7 @@ static void while_statement(Compiler *self) {
  * I've revamped the system a little bit so that the only "variable declaration"
  * statements are the ones starting with "local". By default, global variables
  * are created as needed and assigned which is taken care of by the call to
- * `expression_statement()` which eventually calls `variable()`.
+ * `staement()` which eventually calls `variable()`.
  */
 static void declaration(Compiler *self) {
     if (match_token(self->lex, TK_LOCAL)) {
@@ -1575,7 +1560,7 @@ static void declaration(Compiler *self) {
  * III:22.4     Using Locals
  *
  * This is now where global, local variable declarations will be sifted off to
- * and in turn defer responsibility down to `expression_statement()`.
+ * and in turn defer responsibility down to `variable_statement()`.
  *
  * Unfortunately this allows us to nest assignments which is not consistent
  * with Lua's official design.
@@ -1603,7 +1588,7 @@ static void statement(Compiler *self) {
     } else if (match_token(lex, TK_DO)) {
         doblock(self);
     } else {
-        expression_statement(self);
+        compiler_error_current(self, "No statement found");
     }
 
     // Disallow lone/trailing semicolons that weren't consumed by statements.

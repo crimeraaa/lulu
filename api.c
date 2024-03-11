@@ -201,14 +201,14 @@ static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
     // We want to iterate properly over something that has its own chunk, and as
     // a result its own lineruns. We do not do this for C functions as they do
     // not have any chunk, therefore no lineruns info, to begin with.
-    luafn->chunk.prevline = 1;
+    luafn->chunk.prevline = 0;
 
     CallFrame *frame = &self->frames[self->fc++];
     frame->function = luafn;
     frame->ip   = luafn->chunk.code;   // Beginning of function's bytecode.
     frame->bp   = self->sp - argc - 1; // Base pointer to function object itself.
     self->bp    = frame->bp;           // Allow us to use positive stack offsets.
-    self->cf    = frame;
+    self->cf    = frame;               // Now point to the calling stack frame.
     return true;
 }
 
@@ -248,6 +248,38 @@ bool lua_call(LVM *self, int argc) {
     } else {
         return call_luafunction(self, &asluafunction(callee), argc);
     }
+}
+
+bool lua_return(LVM *self) {
+    // When a function returns a value, its result will be on the top of
+    // the stack. We're about to discard the function's entire stack
+    // window so we hold onto the return value.
+    const TValue res = lua_peek(self, -1);
+    lua_pop(self, 1);
+
+    // Conceptually discard the call frame. If this was the very last
+    // callframe that probably indicates we've finished the top-level.
+    self->fc--;
+    if (self->fc == 0) {
+        lua_pop(self, 1); // Pop the script itself off the VM's stack.
+        return true;
+    }
+
+    // Discard all the slots the callframe was using for its parameters
+    // and local variables, which are the same slots the caller (us)
+    // used to push the arguments in the first place.
+    self->sp = self->cf->bp;
+    lua_pushobject(self, &res);
+
+    // Return control of the stack back to the caller now that this
+    // particular function call is done.
+    self->cf = &self->frames[self->fc - 1];
+
+    // Set our base pointer as well so we can access local variables
+    // using 0 and positive offsets, and ensure our VM's calling frame
+    // pointer is correct.
+    self->bp = self->cf->bp;
+    return false;
 }
 
 /* }}} ---------------------------------------------------------------------- */

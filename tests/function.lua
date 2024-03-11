@@ -37,6 +37,8 @@ do
     print("Expect 'called local': ", caller(callee))
 end
 
+print("Expect 'called global': ", caller(callee))
+
 print("Expect 'called anonymous':", caller(function() return "anonymous" end))
 
 -- Yes this is valid Lua

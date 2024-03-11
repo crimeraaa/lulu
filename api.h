@@ -96,6 +96,11 @@ void lua_doloop(LVM *self);
  */
 bool lua_call(LVM *self, int argc);
 
+/**
+ * If we finished the top-level chunk, returns `true`.
+ */
+bool lua_return(LVM *self);
+
 /* 'GET' AND 'SET' FUNCTIONS ----------------------------------------------- {{{ 
  The following functions assume that the current function's instruction
  pointer points to a 1 or 3 byte operand to a particular instruction. This byte
@@ -143,15 +148,6 @@ TValue *lua_poke(LVM *self, int offset);
 
 /* Pop `n` elements from the stack by decrementing the stack top pointer. */
 #define lua_pop(vm, n)         lua_settop(vm, -(n)-1)
-
-/** 
- * Given negative number `n`, add it to the stack pointer to get a negative
- * offset in relation to the top of the stack. Remember that the stack pointer
- * always points to the next free slot, so 1 slot below it is the most recently
- * written element.
- */
-#define lua_poketop(vm, n)      ((vm)->sp + n)
-#define lua_peektop(vm, n)      (*lua_poketop(vm, n))
 
 /* }}} ---------------------------------------------------------------------- */
 

@@ -17,10 +17,6 @@ static void reset_stack(LVM *self) {
     self->fc = 0;
 }
 
-static CallFrame *current_frame(LVM *self) {
-    return &self->frames[self->fc - 1];
-}
-
 static void intern_identifiers(LVM *self) {
     for (VType tt = (VType)0; tt < LUA_TCOUNT; tt++) {
         const TNameInfo *tname = get_tnameinfo(tt);
@@ -191,14 +187,14 @@ static InterpretResult run_bytecode(LVM *self) {
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
             bool res = lua_asboolean(self, -1);
-            *lua_poketop(self, -1) = makeboolean(!res);
+            *lua_poke(self, -1) = makeboolean(!res);
         } break;
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
             // Challenge 15.4: Negate in place
             if (lua_isnumber(self, -1)) {
-                TValue *value    = lua_poketop(self, -1);
+                TValue *value    = lua_poke(self, -1);
                 value->as.number = lua_numunm(value->as.number);
                 break;
             }
@@ -228,46 +224,16 @@ static InterpretResult run_bytecode(LVM *self) {
                 return INTERPRET_RUNTIME_ERROR;
             }
 
-            // When we execute the next instruction we want to execute the ones
-            // in this CallFrame.
-            self->cf = current_frame(self);
-            self->bp = self->cf->bp;
-            chunk    = &self->cf->function->chunk;
+            chunk = &self->cf->function->chunk;
         } break;
 
         case OP_RETURN: {
-            // When a function returns a value, its result will be on the top of
-            // the stack. We're about to discard the function's entire stack
-            // window so we hold onto the return value.
-            const TValue res = lua_peek(self, -1);
-            lua_pop(self, 1);
-
-            // Conceptually discard the call frame. If this was the very last
-            // callframe that probably indicates we've finished the top-level.
-            self->fc--;
-            if (self->fc == 0) {
-                lua_pop(self, 1); // Pop the script itself off the VM's stack.
+            if (lua_return(self)) {
                 return INTERPRET_OK;
             }
-
-            // Discard all the slots the callframe was using for its parameters
-            // and local variables, which are the same slots the caller (us)
-            // used to push the arguments in the first place.
-            self->sp = self->cf->bp;
-            lua_pushobject(self, &res);
-
-            // Return control of the stack back to the caller now that this
-            // particular function call is done.
-            self->cf = current_frame(self);
-
-            // Set our base pointer as well so we can access local variables
-            // using 0 and positive offsets, and ensure our VM's calling frame
-            // pointer is correct.
-            self->bp = self->cf->bp;
-
             // Also set the chunk pointer so we know where to look for constants
             // quickly without doing like 4 dereference operations all the time. 
-            chunk    = &self->cf->function->chunk;
+            chunk = &self->cf->function->chunk;
         } break;
         // I hate how case statements don't introduce their own block scope...
         }
