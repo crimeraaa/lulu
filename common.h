@@ -94,6 +94,9 @@
  */
 typedef struct Object Object;
 
+/* Tagged union for Lua's fundamental datatypes. */
+typedef struct TValue TValue;
+
 /**
  * III:19.2     Struct Inheritance
  *
@@ -107,6 +110,12 @@ typedef struct Object Object;
  * `TString*`, then the inverse works was well.
  */
 typedef struct TString TString;
+
+/**
+ * For now, our Lua table is just a pure hashtable with no array portion. This
+ * is inefficient but it does make the implementation a little bit simpler.
+ */
+typedef struct Table Table;
 
 /**
  * III:24.7     Native Functions

@@ -2,34 +2,8 @@
 #define LUA_TABLE_H
 
 #include "common.h"
+#include "object.h"
 #include "value.h"
-
-/**
- * III:20.4     Building a Hash Table
- * 
- * This is a key-value pair element to be thrown into the hash table. It contains
- * a "key" which is a currently a string that gets hashed, which determines the
- * actual numerical index in the table.
- */
-typedef struct {
-    TString *key; // Key to be hashed.
-    TValue value; // Actual value to be retrieved.
-} Entry;
-
-/**
- * III:20.4     Building a Hash Table
- * 
- * A hash table is a dynamic array with the unique property of contaning
- * "key-value" pair elements, of which the index is determined by a so-called
- * "hash function". It's useful for storing strings, but Lua extends them to
- * also store numbers, booleans, functions, tables, userdata and threads.
- * For now we'll only focus on hashing strings.
- */
-typedef struct {
-    Entry *entries; // List of hashed key-value pairs.
-    size_t count;   // Current number of entries occupying the table.
-    size_t cap;     // How many entries the table can hold.
-} Table;
 
 void init_table(Table *self);
 void free_table(Table *self);
@@ -40,7 +14,7 @@ void free_table(Table *self);
  * Unlike my initial intuition we use an out parameter. I'm not sure how much I
  * like it but I'll follow along for now.
  */
-bool table_get(Table *self, const TString *key, TValue *out);
+bool table_get(Table *self, const TValue *key, TValue *out);
 
 /**
  * III:20.4.2   Inserting entries
@@ -48,7 +22,7 @@ bool table_get(Table *self, const TString *key, TValue *out);
  * All our string objects know their hash code so we can already put them into
  * the hash table.
  */
-bool table_set(Table *self, TString *key, TValue value);
+bool table_set(Table *self, const TValue *key, const TValue *value);
 
 /**
  * III:20.4.5   Deleting entries
@@ -57,7 +31,7 @@ bool table_set(Table *self, TString *key, TValue value);
  * because if the deleted element is in between collisions, how do you resolve
  * the retrieval of the ones that come after this one?
  */
-bool table_delete(Table *self, TString *key);
+bool table_delete(Table *self, TValue *key);
 
 /**
  * III:20.4.3   Allocating and resizing
@@ -78,5 +52,7 @@ void copy_table(Table *dst, Table *src);
  * The point is to use this so we don't allocate a new `TString*`.
  */
 TString *table_findstring(Table *self, const char *what, size_t len, DWord hash);
+
+void print_table(const Table *self, bool dodump);
 
 #endif /* LUA_TABLE_H */

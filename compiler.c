@@ -2,6 +2,8 @@
 #include "value.h"
 #include "object.h"
 #include "parserules.h"
+#include "table.h"
+#include "vm.h"
 
 void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     self->enclosing = current;
@@ -183,7 +185,7 @@ static void emit_return(Compiler *self) {
  * created, we return 0. By itself this doesn't indicate an error, but because
  * we call the `error` function that sets the compiler's lex's error state.
  */
-static DWord make_constant(Compiler *self, TValue value) {
+static DWord make_constant(Compiler *self, const TValue *value) {
     size_t index = add_constant(current_chunk(self), value);
     if (index > LUA_MAXLCONSTANTS) {
         compiler_error(self, "Too many constants in the current chunk.");
@@ -198,7 +200,7 @@ static DWord make_constant(Compiler *self, TValue value) {
  * OR the `OP_LCONSTANT`, depending on how many constants are in the current
  * chunk's constants pool.
  */
-static void emit_constant(Compiler *self, TValue value) {
+static void emit_constant(Compiler *self, const TValue *value) {
     DWord index = make_constant(self, value);
     if (index <= LUA_MAXCONSTANTS) {
         emit_bytes(self, OP_CONSTANT, index);
@@ -314,8 +316,9 @@ static void parse_precedence(Compiler *self, Precedence precedence);
  * to retrieve the variable name again at runtime.
  */
 static DWord identifier_constant(Compiler *self, const Token *name) {
-    TString *result = copy_string(self->vm, name->start, name->len);
-    return make_constant(self, makeobject(LUA_TSTRING, result));
+    TString *s = copy_string(self->vm, name->start, name->len);
+    TValue o   = makestring(s);
+    return make_constant(self, &o);
 }
 
 /**
@@ -678,7 +681,7 @@ void grouping(Compiler *self) {
 /* Parse a number literal and emit it as a constant. */
 void number(Compiler *self) {
     double value = strtod(self->lex->consumed.start, NULL);
-    emit_constant(self, makenumber(value));
+    emit_constant(self, &makenumber(value));
 }
 
 /**
@@ -721,7 +724,22 @@ void string(Compiler *self) {
     const Token *token = &self->lex->consumed;
     // Point past first quote, use length w/o both quotes.
     TString *s = copy_string(self->vm, token->start + 1, token->len - 2);
-    emit_constant(self, makeobject(LUA_TSTRING, s));
+    TValue o   = makestring(s);
+    emit_constant(self, &o);
+}
+
+/**
+ * Assumes we consumed the '{' token.
+ */
+void table(Compiler *self) {
+    LexState *lex = self->lex;
+    Table *t = new_table(self->vm);
+    TValue o = maketable(t);
+    if (!check_token(lex, TK_RCURLY)) {
+        compiler_error_current(self, "Table fields not yet supported");
+    }
+    emit_constant(self, &o);
+    consume_token(lex, TK_RCURLY, "Expected '}' after table declaration");
 }
 
 typedef void (*EmitFn)(Compiler *self, Byte opcode, DWord operand);
@@ -1001,9 +1019,9 @@ static void emit_function(Compiler *self, FnType type) {
     consume_token(lex, TK_RPAREN, "Expected ')' after parameters");
     doblock(next);
 
-    TFunction *tagfn = end_compiler(next);
-    TValue constant  = makeobject(LUA_TFUNCTION, tagfn);
-    emit_bytes(self, OP_CONSTANT, make_constant(self, constant));
+    TFunction *f = end_compiler(next);
+    TValue o     = makefunction(f);
+    emit_bytes(self, OP_CONSTANT, make_constant(self, &o));
 }
 
 /**
@@ -1267,7 +1285,8 @@ static void for_increment(Compiler *self) {
         expression(self);
     } else {
         // Positive increment of 1 is our default.
-        emit_constant(self, makenumber(1));
+        static const TValue incr = makenumber(1);
+        emit_constant(self, &incr);
     }
     push_unnamed_local(self);
 }

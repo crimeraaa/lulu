@@ -1,5 +1,6 @@
 #include "memory.h"
 #include "object.h"
+#include "table.h"
 #include "vm.h"
 
 void *reallocate(void *pointer, size_t oldsize, size_t newsize) {
@@ -30,15 +31,23 @@ static void free_function(TFunction *self) {
     deallocate(TFunction, self);
 }
 
+// Don't reinit and also need to free the pointer itself.
+static void free_table2(Table *self) {
+    deallocate_array(Entry, self->entries, self->cap);
+    deallocate(Table, self);
+}
+
 static void free_object(Object *self) {
     switch (self->type) {
     case LUA_TFUNCTION: free_function((TFunction*)self); break;
-    case LUA_TSTRING:   free_string((TString*)self); break;
+    case LUA_TSTRING:   free_string((TString*)self);     break;
+    case LUA_TTABLE:    free_table2((Table*)self);       break;
     default:            return;
     }
 }
 
 void free_objects(LVM *vm) {
+    printf("\n");
     Object *object = vm->objects;
     while (object != NULL) {
         Object *next = object->next;

@@ -1,5 +1,4 @@
 #include "api.h"
-#include "baselib.h"
 #include "compiler.h"
 #include "memory.h"
 #include "object.h"
@@ -20,8 +19,9 @@ static void reset_stack(LVM *self) {
 static void intern_identifiers(LVM *self) {
     for (VType tt = (VType)0; tt < LUA_TCOUNT; tt++) {
         const TNameInfo *tname = get_tnameinfo(tt);
-        TString *s = copy_string(self, tname->what, tname->len);
-        table_set(&self->strings, s, makenil);
+        // Don't need to call `table_set()` since this implicitly already does
+        // that for us.
+        copy_string(self, tname->what, tname->len);
     }
 }
 
@@ -32,7 +32,6 @@ void init_vm(LVM *self, const char *name) {
     self->objects = NULL;
     self->name    = name;
     intern_identifiers(self);
-    lua_loadbase(self);
 }
 
 void free_vm(LVM *self) {

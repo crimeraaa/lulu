@@ -100,7 +100,7 @@ typedef struct {
 } LineRuns;
 
 typedef struct {
-    ValueArray constants;
+    TArray constants;
     LineRuns lines;
     Byte *code;   // Heap-allocated 1D array of `Byte` instructions.
     size_t count; // Current number of instructions written to `code`.
@@ -119,7 +119,7 @@ void write_chunk(Chunk *self, Byte byte, int line);
  * @return      Index of this value into the constants pool. This return value 
  *              should be emitted as the operand to `OP_CONSTANT`.
  */
-size_t add_constant(Chunk *self, TValue value);
+size_t add_constant(Chunk *self, const TValue *value);
 
 /**
  * Get the current line based the state of the Chunk's `prevline` membe.

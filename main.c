@@ -1,9 +1,7 @@
 #include <stdio.h>  /* FILE*, stdin, printf(family), fgets, fopen, fclose */
 #include <stdlib.h> /* malloc, free */
 #include <string.h> /* strcspn */
-#include "common.h"
-#include "conf.h"
-#include "chunk.h"
+#include "baselib.h"
 #include "vm.h"
 
 #if defined(unix) || defined(__unix__) || defined(__unix)
@@ -75,6 +73,7 @@ static int run_file(LVM *vm, const char *file_path) {
 int main(int argc, char *argv[]) {
     LVM *vm = &(LVM){0}; // C99 compound literals are really handy sometimes
     init_vm(vm, (argc == 1) ? "stdin" : argv[1]);
+    lua_loadbase(vm);
     int retval = 0; 
     if (argc == 1) {
         run_repl(vm);

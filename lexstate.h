@@ -59,8 +59,8 @@ typedef enum {
     // Single character tokens
     TK_LPAREN,   // '('  Grouping/function call/parameters begin.
     TK_RPAREN,   // ')'  Grouping/function call/parameters end.
-    TK_LBRACE,   // '{'  Table literal begin.
-    TK_RBRACE,   // '}'  Table literal end.
+    TK_LCURLY,   // '{'  Table literal begin.
+    TK_RCURLY,   // '}'  Table literal end.
     TK_LBRACKET, // '['  Table indexing begin.
     TK_RBRACKET, // ']'  Table indexing end.
     TK_COMMA,    // ','  Function argument separator, multi-variable assignment.

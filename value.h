@@ -45,22 +45,20 @@ typedef union {
     Object *object;
 } Value;
 
-/* Tagged union for Lua's fundamental datatypes. */
-typedef struct {
+struct TValue {
     VType type; // Tag for the union to ensure some type safety.
     Value as; // Actual value contained within this struct. Be very careful!
-} TValue;
+};
 
-/* TValue array. */
 typedef struct {
     TValue *values; // 1D array of Lua values.
     size_t count;
     size_t cap;
-} ValueArray;
+} TArray;
 
-void init_valuearray(ValueArray *self);
-void write_valuearray(ValueArray *self, TValue value);
-void free_valuearray(ValueArray *self);
+void init_valuearray(TArray *self);
+void write_valuearray(TArray *self, const TValue *value);
+void free_valuearray(TArray *self);
 void print_value(const TValue *value);
 
 /**
@@ -79,18 +77,10 @@ void print_value(const TValue *value);
  */
 bool values_equal(const TValue *lhs, const TValue *rhs);
 
-/* In memory, `nil` is just a distinct 0. */
-#define makenil             ((TValue){LUA_TNIL, {.number = 0.0}})
-#define isnil(v)            ((v)->type == LUA_TNIL)
-
-#define makenumber(N)       ((TValue){LUA_TNUMBER, {.number = (N)}})
-#define isnumber(v)         ((v)->type == LUA_TNUMBER)
-#define asnumber(v)         ((v)->as.number)
-
 #define makeboolean(B)      ((TValue){LUA_TBOOLEAN, {.boolean = (B)}})
-#define isboolean(v)        ((v)->type == LUA_TBOOLEAN)
-#define asboolean(v)        ((v)->as.boolean)
-#define isfalsy(v)          ((isnil(v)) || (isboolean(v) && !asboolean(v)))
+#define makenil             ((TValue){LUA_TNIL,     {.number = 0.0}})
+#define makenone            ((TValue){LUA_TNONE,    {.number = 0.0}})
+#define makenumber(N)       ((TValue){LUA_TNUMBER,  {.number = (N)}})
 
 /** 
  * Wrap a bare object pointer or a specific object type pointer into a somewhat
@@ -102,7 +92,20 @@ bool values_equal(const TValue *lhs, const TValue *rhs);
  * in their C API. Everything is packaged into the same enum.
  */
 #define makeobject(T, o)    ((TValue){T, {.object = (Object*)(o)}})
-#define isobject(T, v)      ((v)->type == T)
+
+#define asboolean(v)        ((v)->as.boolean)
+#define asnumber(v)         ((v)->as.number)
 #define asobject(v)         ((v)->as.object)
+
+#define isboolean(v)        ((v)->type == LUA_TBOOLEAN)
+#define isexactlytrue(v)    (isboolean(v) && !asboolean(v))
+#define isexactlyfalse(v)   (isboolean(v) && asboolean(v))
+
+#define isfalsy(v)          ((isnil(v)) || (isboolean(v) && !asboolean(v)))
+#define isnil(v)            ((v)->type == LUA_TNIL)
+#define isnone(v)           ((v)->type == LUA_TNONE)
+#define isnilornone(v)      (isnil(v) || isnone(v))
+#define isnumber(v)         ((v)->type == LUA_TNUMBER)
+#define isobject(T, v)      ((v)->type == T)
 
 #endif /* LUA_VALUE_H */

@@ -76,7 +76,7 @@ void lua_registerlib(LVM *self, const lua_Library library) {
     for (size_t i = 0; library[i].name != NULL; i++) {
         lua_pushliteral(self, library[i].name);   // Stack index 0.
         lua_pushcfunction(self, library[i].func); // Stack index 1.
-        table_set(&self->globals, asstring(&self->stack[0]), self->stack[1]);
+        table_set(&self->globals, &self->stack[0], &self->stack[1]);
         lua_pop(self, 2);
     }
 }
@@ -287,11 +287,13 @@ bool lua_return(LVM *self) {
 /* 'GET' and 'SET' FUNCTIONS -------------------------------------------- {{{ */
 
 static void getglobal_at(LVM *self, bool islong) {
-    TString *name = (islong) ? readlstring(self) : readstring(self);
+    const TValue *key = (islong) ? readlconstant(self) : readconstant(self);
     TValue value;
     // If not present in the hash table, the variable never existed.
-    if (!table_get(&self->globals, name, &value)) {
-        lua_error(self, "Undefined variable '%s'.", name->data);
+    if (!table_get(&self->globals, key, &value)) {
+        if (isstring(key)) {
+            lua_error(self, "Undefined variable '%s'.", asstring(key)->data);
+        } 
     }
     lua_pushobject(self, &value);
 }
@@ -305,8 +307,9 @@ void lua_getlglobal(LVM *self) {
 }
 
 static void setglobal_at(LVM *self, bool islong) {
-    TString *name = (islong) ? readlstring(self) : readstring(self);
-    table_set(&self->globals, name, lua_peek(self, -1));
+    // TString *name = (islong) ? readlstring(self) : readstring(self);
+    const TValue *key = (islong) ? readlconstant(self) : readconstant(self);
+    table_set(&self->globals, key, lua_poke(self, -1));
 }
 
 void lua_setglobal(LVM *self) {
@@ -430,7 +433,8 @@ void lua_pushstring(LVM *self, char *data) {
 }
 
 void lua_pushliteral(LVM *self, const char *data) {
-    TValue v = makestring(copy_string(self, data, strlen(data)));
+    size_t len = strlen(data);
+    TValue v = makestring(copy_string(self, data, len));
     lua_pushobject(self, &v);
 }
 

@@ -8,6 +8,7 @@ extern void unary(Compiler *self);
 extern void number(Compiler *self);
 extern void literal(Compiler *self);
 extern void string(Compiler *self);
+extern void table(Compiler *self);
 extern void variable(Compiler *self);
 extern void and_(Compiler *self);
 extern void or_(Compiler *self);
@@ -52,8 +53,8 @@ static const ParseRule rules[TK_COUNT] = {
     // Single character tokens
     [TK_LPAREN]          = {grouping,    call,       PREC_CALL},
     [TK_RPAREN]          = {NULL,        NULL,       PREC_NONE},
-    [TK_LBRACE]          = {NULL,        NULL,       PREC_NONE},
-    [TK_RBRACE]          = {NULL,        NULL,       PREC_NONE},
+    [TK_LCURLY]          = {table,       NULL,       PREC_NONE},
+    [TK_RCURLY]          = {NULL,        NULL,       PREC_NONE},
     [TK_LBRACKET]        = {NULL,        NULL,       PREC_NONE},
     [TK_RBRACKET]        = {NULL,        NULL,       PREC_NONE},
     [TK_COMMA]           = {NULL,        NULL,       PREC_NONE},

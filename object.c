@@ -17,11 +17,17 @@ static Object *allocate_object(LVM *vm, size_t size, VType type) {
     Object *object = reallocate(NULL, 0, size);
     object->type = type;
     object->next = vm->objects; // Update the VM's allocation linked list
-    vm->objects = object;
+    vm->objects  = object;
     return object;
 }
 
 #define allocate_object(vm, T, tag)     (T*)allocate_object(vm, sizeof(T), tag)
+
+Table *new_table(LVM *vm) {
+    Table *tbl = allocate_object(vm, Table, LUA_TTABLE);
+    init_table(tbl);
+    return tbl;
+}
 
 TFunction *new_function(LVM *vm) {
     TFunction *tf     = allocate_object(vm, TFunction, LUA_TFUNCTION);
@@ -52,13 +58,13 @@ TFunction *new_cfunction(LVM *vm, lua_CFunction function) {
  * structure must also have a pointer to a VM...
  */
 static TString *allocate_string(LVM *vm, char *data, size_t len, DWord hash) {
-    TString *result = allocate_object(vm, TString, LUA_TSTRING);
-    result->hash = hash;
-    result->len  = len;
-    result->data = data;
+    TString *s = allocate_object(vm, TString, LUA_TSTRING);
+    s->hash = hash;
+    s->len  = len;
+    s->data = data;
     // We don't care about the value for the interned strings, just the key.
-    table_set(&vm->strings, result, makenil);
-    return result;
+    table_set(&vm->strings, &makestring(s), &makeboolean(true));
+    return s;
 }
 
 /**
@@ -104,14 +110,13 @@ TString *copy_string(LVM *vm, const char *literal, size_t len) {
 
 void print_function(const TFunction *self) {
     if (self->is_c) {
-        printf("C function");
+        printf("C function: %p", (void*)self);
         return;
     }
-    const LFunction *luafn = &self->fn.lua;
-    if (luafn->name == NULL) {
+    if (self->fn.lua.name == NULL) {
         printf("<script>");
     } else {
-        printf("function: %s", luafn->name->data);
+        printf("function: %p", (void*)self);
     }
 }
 

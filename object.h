@@ -4,7 +4,6 @@
 #include "common.h"
 #include "chunk.h"
 #include "value.h"
-#include "vm.h"
 
 struct Object {
     VType type; // Unlike Lox, we use the same tag for objects.
@@ -49,6 +48,36 @@ struct TString {
     size_t len;    // Number of non-nul characters.
     char *data;    // Heap-allocated buffer.
 };
+
+/**
+ * III:20.4     Building a Hash Table
+ * 
+ * This is a key-value pair element to be thrown into the hash table. It contains
+ * a "key" which is a currently a string that gets hashed, which determines the
+ * actual numerical index in the table.
+ */
+typedef struct {
+    TValue key;   // Key to be hashed.
+    TValue value; // Actual value to be retrieved.
+} Entry;
+
+/**
+ * III:20.4     Building a Hash Table
+ * 
+ * A hash table is a dynamic array with the unique property of contaning
+ * "key-value" pair elements, of which the index is determined by a so-called
+ * "hash function". It's useful for storing strings, but Lua extends them to
+ * also store numbers, booleans, functions, tables, userdata and threads.
+ * For now we'll only focus on hashing strings.
+ */
+struct Table {
+    Object object;  // Needed if this is a heap-allocated instance.
+    Entry *entries; // List of hashed key-value pairs.
+    size_t count;   // Current number of entries occupying the table.
+    size_t cap;     // How many entries the table can hold.
+};
+
+Table *new_table(LVM *vm);
 
 /**
  * III:24.1     Function Objects
@@ -107,18 +136,22 @@ void print_string(const TString *self);
 
 /* Given an `TValue*`, treat it as an `Object*` and get the type. */
 #define objtype(v)          (asobject(v)->type)
-#define isstring(v)         isobject(LUA_TSTRING, v)
+
+#define asfunction(v)       ((TFunction*)asobject(v))
+#define asluafunction(v)    (asfunction(v)->fn.lua)
+#define ascfunction(v)      (asfunction(v)->fn.c)
 #define asstring(v)         ((TString*)asobject(v))
 #define ascstring(v)        (asstring(v)->data)
-#define makestring(o)       makeobject(LUA_TSTRING, o)
+#define astable(v)          ((Table*)asobject(v))
 
 #define isfunction(v)       isobject(LUA_TFUNCTION, v)
-#define asfunction(v)       ((TFunction*)asobject(v))
-#define makefunction(o)     makeobject(LUA_TFUNCTION, o)
+#define iscfunction(v)      (isfunction(v) && asfunction(v)->is_c)
+#define isluafunction(v)    (!iscfunction(v))
+#define isstring(v)         isobject(LUA_TSTRING, v)
+#define istable(v)          isobject(LUA_TTABLE, v)
 
-#define isluafunction(v)    (!asfunction(v)->is_c)
-#define asluafunction(v)    (asfunction(v)->fn.lua)
-#define iscfunction(v)      (asfunction(v)->is_c)
-#define ascfunction(v)      (asfunction(v)->fn.c)
+#define makestring(o)       makeobject(LUA_TSTRING, o)
+#define makefunction(o)     makeobject(LUA_TFUNCTION, o)
+#define maketable(o)        makeobject(LUA_TTABLE, o)
 
 #endif /* LUA_OBJECT_H */

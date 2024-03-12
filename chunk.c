@@ -43,10 +43,10 @@ static void write_lineruns(LineRuns *self, int offset, int line) {
         self->cap     = grow_cap(oldcap);
         self->runs    = grow_array(LineRun, self->runs, oldcap, self->cap);
     }
-    self->runs[self->count].start = offset;
-    self->runs[self->count].end   = offset;
-    self->runs[self->count].where = line;
-    self->count++;
+    LineRun *run = &self->runs[self->count++];
+    run->start = offset;
+    run->end   = offset;
+    run->where = line;
 }
 
 /* Increment the end instruction pointer of the topmost run. */
@@ -72,10 +72,10 @@ void write_chunk(Chunk *self, Byte byte, int line) {
     self->count++;
 }
 
-size_t add_constant(Chunk *self, TValue value) {
+size_t add_constant(Chunk *self, const TValue *value) {
     // Linear search is inefficient but I really do not care
     for (size_t i = 0; i < self->constants.count; i++) {
-        if (values_equal(&self->constants.values[i], &value)) {
+        if (values_equal(&self->constants.values[i], value)) {
             return i;
         }
     }

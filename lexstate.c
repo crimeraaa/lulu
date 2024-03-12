@@ -321,8 +321,8 @@ static Token tokenize(LexState *self) {
     // Balanced pairs
     case '(': return make_token(self, TK_LPAREN);
     case ')': return make_token(self, TK_RPAREN);
-    case '{': return make_token(self, TK_LBRACE);
-    case '}': return make_token(self, TK_RBRACE);
+    case '{': return make_token(self, TK_LCURLY);
+    case '}': return make_token(self, TK_RCURLY);
     case '[': return make_token(self, TK_LBRACKET);
     case ']': return make_token(self, TK_RBRACKET);
 
