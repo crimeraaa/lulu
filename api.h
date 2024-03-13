@@ -77,19 +77,6 @@ size_t lua_gettop(LVM *self);
 void lua_settop(LVM *self, int offset);
 
 /**
- * Assumes that the current function's instruction pointer points to a 2-byte
- * operand for an `OP_JMP` instruction of some kind.
- * 
- * NOTE:
- * 
- * `OP_LOOP` jumps backwards, so do subtract from the instruction pointer pass
- * in `-1` for `sign`.
- */
-void lua_dojmp(LVM *self);
-void lua_dofjmp(LVM *self);
-void lua_doloop(LVM *self);
-
-/**
  * Assumes that the instruction pointer currently points to a 1-byte operand
  * representing the number of comma-separated arguments that the compiler was
  * able to resolve between the parentheses. This function can call either a Lua
@@ -112,7 +99,6 @@ bool lua_return(LVM *self);
  the particular instruction. */
 
 void lua_getfield(LVM *self, int offset, const char *field);
-void lua_getlocal(LVM *self);
 #define lua_getglobal(vm, s)    lua_getfield(vm, LUA_GLOBALSINDEX, s)
 
 
@@ -142,7 +128,6 @@ void lua_settable(LVM *self, int offset);
  * - https://www.lua.org/manual/5.1/manual.html#lua_setfield
  */
 void lua_setfield(LVM *self, int offset, const char *field);
-void lua_setlocal(LVM *self);
 
 /**
  * Assumes that a value to be stored as a global variable, given identifier `s`,

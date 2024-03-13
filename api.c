@@ -120,24 +120,6 @@ void lua_settop(LVM *self, int offset) {
     }
 }
 
-void lua_dojmp(LVM *self) {
-    self->cf->ip += readbyte2(self);
-}
-
-void lua_dofjmp(LVM *self) {
-    // Reading this regardless of falsiness is required to move to the next
-    // non-jump instruction cleanly.
-    Word jump = readbyte2(self);
-    if (!lua_asboolean(self, -1)) {
-        self->cf->ip += jump;
-    }
-}
-
-void lua_doloop(LVM *self) {
-    // Loops are just backwards jumps to the instruction for their condition.
-    self->cf->ip -= readbyte2(self);
-}
-
 /**
  * III:24.5     Function Calls
  *
@@ -271,18 +253,6 @@ void lua_setfield(LVM *self, int offset, const char *field) {
     }
     table_set(astable(table), &key, lua_poke(self, - 1));
     lua_pop(self, 1);
-}
-
-void lua_getlocal(LVM *self) {
-    const TValue *locals = self->cf->bp;
-    const size_t index   = lua_nextbyte(self);
-    lua_pushobject(self, &locals[index]);
-}
-
-void lua_setlocal(LVM *self) {
-    TValue *locals = self->cf->bp;
-    size_t index   = lua_nextbyte(self);
-    locals[index]  = lua_peek(self, -1);
 }
 
 /* }}} ---------------------------------------------------------------------- */

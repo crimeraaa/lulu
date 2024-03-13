@@ -79,6 +79,10 @@ typedef enum {
     // -*- III:24.5     Function Calls ---------------------------------------*-
     OP_CALL,
 
+    OP_FORPREP, // Keep some state such as if the for increment is negative. 
+    OP_FORCOND, // Indicate to the VM we need to evaluate a for loop condition.
+    OP_FORINCR, // Incrementing a for iterator is a bit of work.
+
     OP_RETURN,
 } OpCode;
 

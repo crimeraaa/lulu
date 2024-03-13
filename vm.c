@@ -119,7 +119,7 @@ static InterpretResult run_bytecode(LVM *self) {
         ptrdiff_t byteoffset = self->cf->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
-        for (const TValue *slot = self->stack; slot < self->sp; slot++) {
+        for (const TValue *slot = self->bp; slot < self->sp; slot++) {
             printf("[ ");
             print_value(slot);
             printf(" ]");
@@ -145,8 +145,18 @@ static InterpretResult run_bytecode(LVM *self) {
         case OP_NPOP:       lua_pop(self, lua_nextbyte(self));  break;
 
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
-        case OP_GETLOCAL:   lua_getlocal(self);     break;
-        case OP_SETLOCAL:   lua_setlocal(self);     break;
+        case OP_GETLOCAL: {
+            const TValue *locals = self->cf->bp;
+            const size_t index   = lua_nextbyte(self);
+            lua_pushobject(self, &locals[index]);
+        } break;
+ 
+        case OP_SETLOCAL: {
+            TValue *locals = self->cf->bp;
+            size_t index   = lua_nextbyte(self);
+            locals[index]  = lua_peek(self, -1);
+            lua_pop(self, 1);
+        } break;
 
         // -*- III:21.2     Variable Declarations ----------------------------*-
         // NOTE: As of III:21.4 I've removed the `OP_DEFINE*` opcodes and cases.
@@ -220,11 +230,67 @@ static InterpretResult run_bytecode(LVM *self) {
         }
 
         // -*- III:23.1     If Statements ------------------------------------*-
-        case OP_JMP:    lua_dojmp(self);  break;
-        case OP_FJMP:   lua_dofjmp(self); break;
+        case OP_JMP: {
+            self->cf->ip += readbyte2(self);
+        } break;
+
+        case OP_FJMP: {
+            // Reading this regardless of falsiness is required to move to the next
+            // non-jump instruction cleanly.
+            Word jump = readbyte2(self);
+            if (!lua_asboolean(self, -1)) {
+                self->cf->ip += jump;
+            }
+        } break;
 
         // -*- III:23.3     While Statements ---------------------------------*-
-        case OP_LOOP:   lua_doloop(self); break;
+        // Loops are just backwards jumps to the instruction for their condition.
+        case OP_LOOP: {
+            self->cf->ip -= readbyte2(self); 
+        } break;
+                        
+        case OP_FORPREP: {
+            // iterator is lower down the stack, increment is the most recent.
+            const TValue *iterator  = lua_poke(self, -3);
+            const TValue *condition = lua_poke(self, -2);
+            const TValue *increment = lua_poke(self, -1);
+            if (!isnumber(iterator)) {
+                lua_error(self, "'for' initial value must be a number");
+            } else if (!isnumber(condition)) {
+                lua_error(self, "'for' limit must be a number");
+            } else if (!isnumber(increment)) {
+                lua_error(self, "'for' increment must be a number");
+            } else if (asnumber(increment) == (lua_Number)0) {
+                // Allowed in Lua but I'd prefer to consider it an error
+                lua_error(self, "'for' increment must be nonzero");
+            }
+        } break;
+
+        case OP_FORCOND: {
+            // A bit slow to do it like this constantly evaluating increment,
+            // but we need this especially for nested loops.
+            lua_Number iterator  = asnumber(lua_poke(self, -3));
+            lua_Number condition = asnumber(lua_poke(self, -2));
+            lua_Number increment = asnumber(lua_poke(self, -1));
+
+            // We push a boolean as an argument for the OP_FJMP instruction.
+            if (increment > (lua_Number)0) {
+                // keep looping while (iterator <= condition)
+                // a.k.a. !(iterator > condition)
+                lua_pushboolean(self, !lua_numgt(iterator, condition));
+            } else {
+                // keep looping while (iterator >= condition)
+                // a.k.a. !(iterator < condition)
+                lua_pushboolean(self, !lua_numlt(iterator, condition));
+            }
+        } break;
+                         
+        case OP_FORINCR: {
+            // iterator is lower down the stack, increment is the most recent.
+            TValue *iterator  = lua_poke(self, -3);
+            TValue *increment = lua_poke(self, -1);
+            asnumber(iterator) += asnumber(increment);
+        } break;
 
         // -*- III:24.5.1   Binding arguments to parameters ------------------*-
         case OP_CALL: {

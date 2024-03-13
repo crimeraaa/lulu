@@ -489,6 +489,11 @@ static void mark_initialized(Compiler *self) {
  * Lua doesn't because there are no differences between global variable
  * declaration and assignment. So in Lua we don't allow these to nest, e.g.
  * `a = 1; a = a = 2;` is an invalid statment.
+ * 
+ * III:24.7     Native Functions
+ * 
+ * With my refactoring of the API, `OP_SETGLOBAL` just calls `lua_setglobal`
+ * which is a macro for `lua_setfield`, which pops the expression for you.
  */
 static void define_variable(Compiler *self, DWord index, bool islocal) {
     // There is no code needed to create a local variable at runtime, since
@@ -504,8 +509,6 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
     } else {
         compiler_error(self, "Too many global variable identifiers.");
     }
-    // Mimicking the otherwise implied behavior of OP_DEFINE_GLOBAL.
-    // emit_byte(self, OP_POP);
 }
 
 /**
@@ -1199,6 +1202,7 @@ static void variable_statement(Compiler *self) {
 static Token for_initializer(Compiler *self) {
     LexState *lex = self->lex;
     const Token name = lex->token;
+
     // Iterator variable is always a local declaration.
     consume_token(lex, TK_IDENT, "Expected identifier");
     add_local(self, name);
@@ -1257,11 +1261,6 @@ static void push_unnamed_local(Compiler *self) {
  * the condition.
  */
 static DWord for_limit(Compiler *self, const Token *name) {
-    // 'for' condition can only be a number literal, a variable that resolves
-    // to a number, or a function call thereof (functions are variables).
-    if (!check_token(self->lex, TK_DASH, TK_NUMBER, TK_IDENT)) {
-        compiler_error(self, "'for' limit must be a variable/number");
-    }
     // Emit the expression first so we can attempt to resolve outer instances of
     // our iterator variable, THEN we define and resolve the iterator.
     // (iter <= cond) <=> (cond > iter)
@@ -1284,10 +1283,6 @@ static DWord for_limit(Compiler *self, const Token *name) {
 static void for_increment(Compiler *self) {
     // 'for' increment is a bit convoluted.
     if (match_token(self->lex, TK_COMMA)) {
-        // Ensure we actually have something.
-        if (!check_token(self->lex, TK_DASH, TK_IDENT, TK_NUMBER)) {
-            compiler_error(self, "'for' increment must be variable/number");
-        }
         expression(self);
     } else {
         // Positive increment of 1 is our default.
@@ -1295,25 +1290,31 @@ static void for_increment(Compiler *self) {
         emit_constant(self, &incr);
     }
     push_unnamed_local(self);
+    emit_byte(self, OP_FORPREP); // Signal to VM to check the arguments.
 }
 
-static size_t emit_for_condition(Compiler *self, DWord index) {
-    emit_bytes(self, OP_GETLOCAL, index);     // index + 0 is the iterator.
-    emit_bytes(self, OP_GETLOCAL, index + 1); // index + 1 is the condition.
-    emit_bytes(self, OP_GT, OP_NOT);          // iterator <= condition
+/**
+ * III:24.7     Native Functions
+ * 
+ * Now it's up to the VM to use these 3 values as it needs. We need to first
+ * evaluate if the increment is negative or not. It's up to the VM to emit
+ * a `true` or `false` at runtime to determine if we should jump.
+ */
+static size_t emit_for_condition(Compiler *self) {
+    emit_byte(self, OP_FORCOND); // Let VM deal with it
     return emit_jump(self, OP_FJMP);
 }
 
-static size_t emit_for_increment(Compiler *self, DWord index, size_t loopstart) {
+static size_t emit_for_increment(Compiler *self, size_t loopstart) {
     // Hacky but we need this in order to keep our compiler single-pass.
     // For the first iteration we immediately jump OVER increment expression.
     size_t bodyjump = emit_jump(self, OP_JMP);
     size_t incrstart = current_chunk(self)->count;
-    emit_bytes(self, OP_GETLOCAL, index);     // index + 0 is the iterator.
-    emit_bytes(self, OP_GETLOCAL, index + 2); // index + 2 is the increment.
-    emit_byte(self, OP_ADD);
-    emit_bytes(self, OP_SETLOCAL, index);
-    emit_byte(self, OP_POP); // Need to do this manually now.
+    
+    // This operation will take care of poking at the locals and determining if
+    // we should increment/decrement. It depends on the increment's signedness.
+    emit_byte(self, OP_FORINCR);
+
     // Strange but this is what we have to do to evaluate the increment AFTER.
     emit_loop(self, loopstart);
     patch_jump(self, bodyjump);
@@ -1361,15 +1362,15 @@ static void for_statement(Compiler *self) {
 
     // Push iterator, condition expression, and increment as local variables.
     const Token iter = for_initializer(self);
-    DWord index      = for_limit(self, &iter); // Index into locals array.
-    for_increment(self);
+    for_limit(self, &iter); // Index into locals array.
+    for_increment(self); 
 
     size_t loopstart = current_chunk(self)->count;
-    size_t exitjump  = emit_for_condition(self, index);
+    size_t exitjump  = emit_for_condition(self);
     emit_byte(self, OP_POP); // Cleanup condition expression.
 
     // Since we need to do the increment expression last, we have to jump over.
-    loopstart = emit_for_increment(self, index, loopstart);
+    loopstart = emit_for_increment(self, loopstart);
     consume_token(self->lex, TK_DO, "Expected 'do' after 'for' clause");
 
     // This creates a new scope but given our resolution rules it's probably ok.

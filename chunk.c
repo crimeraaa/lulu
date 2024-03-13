@@ -272,6 +272,10 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
 
     // -*- III:23.3     While Statements -------------------------------------*-
     case OP_LOOP:       return opjump("OP_LOOP", -1, self, offset);
+                        
+    case OP_FORPREP:    return opsimple("OP_FORPREP", offset);
+    case OP_FORCOND:    return opsimple("OP_FORCOND", offset);
+    case OP_FORINCR:    return opsimple("OP_FORINCR", offset);
 
     // -*- III:24.5     Function Calls ---------------------------------------*-
     case OP_CALL:       return opbyte("OP_CALL", self, offset);

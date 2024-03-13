@@ -10,9 +10,4 @@
  */
 void lua_loadbase(LVM *vm);
 
-TValue base_dumptable(LVM *vm, int argc, TValue *argv);
-TValue base_clock(LVM *vm, int argc, TValue *argv);
-TValue base_print(LVM *vm, int argc, TValue *argv);
-TValue base_type(LVM *vm, int argc, TValue *argv);
-
 #endif /* LUA_BASELIB_H */
