@@ -4,86 +4,25 @@
 #include "vm.h"
 
 // Placeholder value for invalid stack accesses. Do NOT modify it!
-static TValue noneobject = {.type = LUA_TNONE, .as = {.number = 0}};
-static TValue nilobject  = makenil;
+// static TValue noneobject = {.type = LUA_TNONE, .as = {.number = 0}};
 
-/* VM CALL FRAME MANIPULATION ------------------------------------------- {{{ */
+static const TValue nilvalue  = makenil;
 
-/**
- * III:23.1     If Statements
- *
- * Read the next 2 instructions and combine them into a 16-bit operand.
- *
- * The compiler emitted the 2 byte operands for a jump instruction in order of
- * msb, lsb. So our instruction pointer points at msb currently.
- */
-static Word readbyte2(LVM *self) {
-    Byte msb = lua_nextbyte(self);
-    Byte lsb = lua_nextbyte(self);
-    return byteunmask(msb, 1) | lsb;
+void lua_settable(LVM *self, int offset) {
+    TValue *table = lua_poke(self, offset);
+    TValue *key   = lua_poke(self, -2);
+    TValue *value = lua_poke(self, -1);
+    if (!istable(table)) {
+        lua_unoperror(self, offset, LUA_ERROR_INDEX);
+    }
+    table_set(astable(table), key, value);
+    lua_pop(self, 2);
 }
-
-/**
- * Read the next 3 instructions and combine those 3 bytes into 1 24-bit operand.
- *
- * NOTE:
- *
- * This MUST be able to fit in a `DWord`.
- *
- * Compiler emitted them in this order: msb, mid, lsb. Since ip currently points
- * at msb, we can safely walk in this order.
- */
-static DWord readbyte3(LVM *self) {
-    Byte msb = lua_nextbyte(self);
-    Byte mid = lua_nextbyte(self);
-    Byte lsb = lua_nextbyte(self);
-    return byteunmask(msb, 2) | byteunmask(mid, 1) | lsb;
-}
-
-/**
- * Read the next byte from the bytecode treating the received value as an index
- * into the VM's current chunk's constants pool.
- */
-static TValue *readconstant_at(LVM *self, size_t index) {
-    return &self->cf->function->chunk.constants.values[index];
-}
-
-static TValue *readconstant(LVM *self) {
-    return readconstant_at(self, lua_nextbyte(self));
-}
-
-static TValue *readlconstant(LVM *self) {
-    return readconstant_at(self, readbyte3(self));
-}
-
-/**
- * Simply copies `object` by value to the current top of the stack as pointed
- * to by `self->sp`. Afterwards, `self->sp` is incremented to point to the
- * next free slot in the stack.
- */
-static void pushobject(LVM *self, const TValue *object) {
-    *self->sp = *object;
-    self->sp++;
-}
-
-/**
- * III:21.2     Variable Declarations
- *
- * Helper macro to read the current top of the stack and increment the VM's
- * instruction pointer and then cast the result to a `TString*`.
- */
-#define readstring_at(vm, i)    asstring(readconstant_at(vm, i))
-#define readstring(vm)          asstring(readconstant(vm))
-#define readlstring(vm)         asstring(readlconstant(vm))
-
-/* }}} ---------------------------------------------------------------------- */
 
 void lua_registerlib(LVM *self, const lua_Library library) {
     for (size_t i = 0; library[i].name != NULL; i++) {
-        lua_pushliteral(self, library[i].name);   // Stack index 0.
-        lua_pushcfunction(self, library[i].func); // Stack index 1.
-        table_set(&self->globals, &self->stack[0], &self->stack[1]);
-        lua_pop(self, 2);
+        lua_pushcfunction(self, library[i].func);
+        lua_setglobal(self, library[i].name);
     }
 }
 
@@ -114,6 +53,12 @@ void lua_unoperror(LVM *self, int n, ErrType err) {
     case LUA_ERROR_ARITH:
         lua_error(self, "Attempt to perform arithmetic on a %s value", s1);
         break;
+    case LUA_ERROR_INDEX:
+        lua_error(self, "Attempt to index a %s value", s1);
+        break;
+    case LUA_ERROR_FIELD:
+        lua_error(self, "Attempt to access field of type %s", s1);
+        break;
     default:
         break;
     }
@@ -141,15 +86,23 @@ TValue *lua_poke(LVM *self, int offset) {
         // Positive or zero offset in relation to base pointer, which may not
         // necessarily point to the bottom of the stack.
         TValue *value = self->bp + offset;
-        return (value >= self->sp) ? &noneobject : value;
-    } else {
+        if (value >= self->sp) {
+            lua_error(self, "Out of bounds offset '%i' to C stack", offset);
+        }
+        return value;
+    } else if (offset > LUA_GLOBALSINDEX) {
         // Negative offset in relation to stack pointer.
         return self->sp + offset;
+    } else {
+        switch (offset) {
+        case LUA_GLOBALSINDEX: return &self->_G;
+        default:               return NULL;
+        }
     }
 }
 
 size_t lua_gettop(LVM *self) {
-    return self->sp - self->stack;
+    return self->sp - self->bp;
 }
 
 void lua_settop(LVM *self, int offset) {
@@ -229,7 +182,7 @@ static bool call_cfunction(LVM *self, lua_CFunction cfn, int argc) {
     TValue *argv = self->sp - argc;
     const TValue res = cfn(self, argc, argv);
     self->sp -= argc + 1; // Point to slot right below the function object.
-    pushobject(self, &res);
+    lua_pushobject(self, &res);
     return true;
 }
 
@@ -277,7 +230,7 @@ bool lua_return(LVM *self) {
     // and local variables, which are the same slots the caller (us)
     // used to push the arguments in the first place.
     self->sp = self->cf->bp;
-    pushobject(self, &res);
+    lua_pushobject(self, &res);
 
     // Return control of the stack back to the caller now that this
     // particular function call is done.
@@ -294,44 +247,36 @@ bool lua_return(LVM *self) {
 
 /* 'GET' and 'SET' FUNCTIONS -------------------------------------------- {{{ */
 
-static void getglobal_at(LVM *self, bool islong) {
-    const TValue *key = (islong) ? readlconstant(self) : readconstant(self);
+void lua_getfield(LVM *self, int offset, const char *field) {
+    TValue *table = lua_poke(self, offset);
+    TValue key = makestring(copy_string(self, field, strlen(field)));
     TValue value;
-    // If not present in the hash table, the variable never existed.
-    if (!table_get(&self->globals, key, &value)) {
-        if (isstring(key)) {
-            lua_error(self, "Undefined variable '%s'.", asstring(key)->data);
-        } 
+    if (!istable(table)) {
+        lua_unoperror(self, offset, LUA_ERROR_INDEX);
+    } 
+    if (!table_get(astable(table), &key, &value)) {
+        const char *scope = (offset == LUA_GLOBALSINDEX) ? "variable" : "field";
+        lua_error(self, "Undefined %s '%s'.", scope, ascstring(&key));
     }
-    pushobject(self, &value);
+    lua_pushobject(self, &value);
 }
 
-void lua_getglobal(LVM *self) {
-    getglobal_at(self, false);
-}
-
-void lua_getlglobal(LVM *self) {
-    getglobal_at(self, true);
-}
-
-static void setglobal_at(LVM *self, bool islong) {
-    // TString *name = (islong) ? readlstring(self) : readstring(self);
-    const TValue *key = (islong) ? readlconstant(self) : readconstant(self);
-    table_set(&self->globals, key, lua_poke(self, -1));
-}
-
-void lua_setglobal(LVM *self) {
-    setglobal_at(self, false);
-}
-
-void lua_setlglobal(LVM *self) {
-    setglobal_at(self, true);
+void lua_setfield(LVM *self, int offset, const char *field) {
+    TValue *table = lua_poke(self, offset);
+    TValue key    = makestring(copy_string(self, field, strlen(field)));
+    if (!istable(table)) {
+        lua_unoperror(self, offset, LUA_ERROR_INDEX);
+    } else if (!isstring(&key)) {
+        lua_unoperror(self, offset, LUA_ERROR_FIELD);
+    }
+    table_set(astable(table), &key, lua_poke(self, - 1));
+    lua_pop(self, 1);
 }
 
 void lua_getlocal(LVM *self) {
     const TValue *locals = self->cf->bp;
     const size_t index   = lua_nextbyte(self);
-    pushobject(self, &locals[index]);
+    lua_pushobject(self, &locals[index]);
 }
 
 void lua_setlocal(LVM *self) {
@@ -355,7 +300,7 @@ const char *lua_typename(LVM *self, VType type) {
 
 bool lua_iscfunction(LVM *self, int offset) {
     const TValue *v = lua_poke(self, offset);
-    return isfunction(v) && iscfunction(v);
+    return iscfunction(v);
 }
 
 /* }}} */
@@ -405,31 +350,31 @@ TFunction *lua_asfunction(LVM *self, int offset) {
 
 void lua_pushconstant(LVM *self) {
     const TValue *constant = readconstant(self);
-    pushobject(self, constant);
+    lua_pushobject(self, constant);
 }
 
 void lua_pushlconstant(LVM *self) {
     const TValue *constant = readlconstant(self);
-    pushobject(self, constant);
+    lua_pushobject(self, constant);
 }
 
 void lua_pushboolean(LVM *self, bool b) {
     TValue v = makeboolean(b);
-    pushobject(self, &v);
+    lua_pushobject(self, &v);
 }
 
 void lua_pushnil(LVM *self) {
-    pushobject(self, &nilobject);
+    lua_pushobject(self, &nilvalue);
 }
 
 void lua_pushnumber(LVM *self, lua_Number n) {
     TValue v = makenumber(n);
-    pushobject(self, &v);
+    lua_pushobject(self, &v);
 }
 
 void lua_pushlstring(LVM *self, char *data, size_t len) {
     TValue v = makestring(take_string(self, data, len));
-    pushobject(self, &v);
+    lua_pushobject(self, &v);
 }
 
 void lua_pushstring(LVM *self, char *data) {
@@ -443,12 +388,17 @@ void lua_pushstring(LVM *self, char *data) {
 void lua_pushliteral(LVM *self, const char *data) {
     size_t len = strlen(data);
     TValue v = makestring(copy_string(self, data, len));
-    pushobject(self, &v);
+    lua_pushobject(self, &v);
+}
+
+void lua_pushtable(LVM *self, Table *table) {
+    TValue v = maketable(table);
+    lua_pushobject(self, &v);
 }
 
 void lua_pushfunction(LVM *self, TFunction *tfunc) {
     TValue v = makefunction(tfunc);
-    pushobject(self, &v);
+    lua_pushobject(self, &v);
 }
 
 void lua_pushcfunction(LVM *self, lua_CFunction function) {

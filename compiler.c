@@ -505,7 +505,7 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
         compiler_error(self, "Too many global variable identifiers.");
     }
     // Mimicking the otherwise implied behavior of OP_DEFINE_GLOBAL.
-    emit_byte(self, OP_POP);
+    // emit_byte(self, OP_POP);
 }
 
 /**
@@ -1162,18 +1162,24 @@ static void variable_declaration(Compiler *self) {
  * Assumes we consumed some identifier token and now need to do something with
  * it. Depending on the succeeding token/s, this can be a single assignment,
  * a function call, or a get expression.
+ * 
+ * NOTE:
+ * 
+ * Also assumes that this is the first expression in a statement. If this is a
+ * function call, this means that whatever the return value is we should just
+ * pop it since it's not being used.
  */
 static void variable_statement(Compiler *self) {
     LexState *lex = self->lex;
     named_variable(self, true); 
 
     // Since functions are first-class values, we can detect function calls if
-    // after emitting a value we have a '(' token.
+    // after emitting a value we have a '(' token
     if (match_token(lex, TK_LPAREN)) {
         call(self);
+        emit_byte(self, OP_POP); // Is a function call but not assigning
     }
     match_token(lex, TK_SEMICOL);
-    emit_byte(self, OP_POP);
 }
 
 /**
@@ -1493,7 +1499,7 @@ static void return_statement(Compiler *self) {
         expression(self);
         emit_byte(self, OP_RETURN);
     } else {
-        // Emit OP_POP and OP_RETURN if no return value is specified.
+        // Emit OP_NIL and OP_RETURN if no return value is specified.
         emit_return(self);
     }
     match_token(lex, TK_SEMICOL);

@@ -13,17 +13,17 @@ void init_chunk(Chunk *self) {
     self->count = 0;
     self->cap   = 0;
     self->prevline = -1; // Set to an always invalid line number to start with.
-    init_valuearray(&self->constants);
+    init_tarray(&self->constants);
     init_lineruns(&self->lines);
 }
 
-static inline void free_lineruns(LineRuns *self) {
+static void free_lineruns(LineRuns *self) {
     deallocate_array(LineRun, self->runs, self->cap);
 }
 
 void free_chunk(Chunk *self) {
     deallocate_array(Byte, self->code, self->cap);
-    free_valuearray(&self->constants);
+    free_tarray(&self->constants);
     free_lineruns(&self->lines);
     init_chunk(self);
     init_lineruns(&self->lines);
@@ -75,11 +75,11 @@ void write_chunk(Chunk *self, Byte byte, int line) {
 size_t add_constant(Chunk *self, const TValue *value) {
     // Linear search is inefficient but I really do not care
     for (size_t i = 0; i < self->constants.count; i++) {
-        if (values_equal(&self->constants.values[i], value)) {
+        if (values_equal(&self->constants.array[i], value)) {
             return i;
         }
     }
-    write_valuearray(&self->constants, value);
+    write_tarray(&self->constants, value);
     return self->constants.count - 1;
 }
 
@@ -119,7 +119,7 @@ void disassemble_chunk(Chunk *self, const char *name) {
     printf("=== %s ===\n", name);
     for (size_t i = 0; i < self->constants.count; i++) {
         printf("constants[%zu]: '", i);
-        print_value(&self->constants.values[i]);
+        print_value(&self->constants.array[i]);
         printf("'\n");
     }
     printf("\n");
@@ -139,7 +139,7 @@ static int opconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     // into the self's constants pool.
     Byte index = self->code[offset + 1];
     printf("%-16s %4i '", name, index);
-    print_value(&self->constants.values[index]);
+    print_value(&self->constants.array[index]);
     printf("'\n");
     return next_instruction(offset, LUA_OPSIZE_BYTE);
 }
@@ -167,7 +167,7 @@ static inline DWord read_byte3(const Chunk *self, ptrdiff_t offset) {
 static int oplconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     DWord index = read_byte3(self, offset);
     printf("%-16s %4u '", name, index);
-    print_value(&self->constants.values[index]);
+    print_value(&self->constants.array[index]);
     printf("'\n");
     return next_instruction(offset, LUA_OPSIZE_BYTE3);
 }

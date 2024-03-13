@@ -31,6 +31,10 @@ void init_vm(LVM *self, const char *name) {
     reset_stack(self);
     self->objects = NULL;
     self->name    = name;
+    self->_G      = maketable(&self->globals);
+    // Store a reference to our globals table in the global variable `_G`.
+    lua_pushtable(self, &self->globals);
+    lua_setglobal(self, "_G");
     intern_identifiers(self);
 }
 
@@ -146,15 +150,29 @@ static InterpretResult run_bytecode(LVM *self) {
 
         // -*- III:21.2     Variable Declarations ----------------------------*-
         // NOTE: As of III:21.4 I've removed the `OP_DEFINE*` opcodes and cases.
-        case OP_GETGLOBAL:  lua_getglobal(self);    break;
-        case OP_LGETGLOBAL: lua_getlglobal(self);   break;
+        case OP_GETGLOBAL:  {
+            const char *name = ascstring(readconstant(self));
+            lua_getglobal(self, name);
+        } break;
+
+        case OP_LGETGLOBAL: {
+            const char *name = ascstring(readlconstant(self));
+            lua_getglobal(self, name);
+        } break;
 
         // -*- III:21.4     Assignment ---------------------------------------*-
         // Unlike in Lox, Lua allows implicit declaration of globals.
         // Also unlike Lox you simply can't type the equivalent of `var ident;`
         // in Lua as all global variables must be assigned at declaration.
-        case OP_SETGLOBAL:  lua_setglobal(self);    break;
-        case OP_LSETGLOBAL: lua_setlglobal(self);   break;
+        case OP_SETGLOBAL:  {
+            const char *name = ascstring(readconstant(self));
+            lua_setglobal(self, name);
+        } break;
+
+        case OP_LSETGLOBAL: {
+            const char *name = ascstring(readlconstant(self));
+            lua_setglobal(self, name);
+        } break;
 
         // -*- III:18.4.2   Equality and comparison operators ----------------*-
         case OP_EQ: {

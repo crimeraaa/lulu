@@ -19,24 +19,24 @@ const TNameInfo *get_tnameinfo(VType tag) {
     return &typenames[(tag >= LUA_TCOUNT) ? LUA_TNONE : tag];
 }
 
-void init_valuearray(TArray *self) {
-    self->values   = NULL;
+void init_tarray(TArray *self) {
+    self->array   = NULL;
     self->count    = 0;
     self->cap = 0;
 }
 
-void free_valuearray(TArray *self) {
-    deallocate_array(TValue, self->values, self->cap);
-    init_valuearray(self);
+void free_tarray(TArray *self) {
+    deallocate_array(TValue, self->array, self->cap);
+    init_tarray(self);
 }
 
-void write_valuearray(TArray *self, const TValue *value) {
+void write_tarray(TArray *self, const TValue *value) {
     if (self->count + 1 > self->cap) {
-        size_t oldcap  = self->cap;
-        self->cap    = grow_cap(oldcap);
-        self->values = grow_array(TValue, self->values, oldcap, self->cap);
+        size_t oldcap = self->cap;
+        self->cap     = grow_cap(oldcap);
+        self->array   = grow_array(TValue, self->array, oldcap, self->cap);
     }
-    self->values[self->count] = *value;
+    self->array[self->count] = *value;
     self->count++;
 }
 

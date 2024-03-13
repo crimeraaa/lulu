@@ -53,14 +53,14 @@ struct TValue {
 };
 
 typedef struct {
-    TValue *values; // 1D array of Lua values.
+    TValue *array; // 1D array of Lua values.
     size_t count;
     size_t cap;
 } TArray;
 
-void init_valuearray(TArray *self);
-void write_valuearray(TArray *self, const TValue *value);
-void free_valuearray(TArray *self);
+void init_tarray(TArray *self);
+void write_tarray(TArray *self, const TValue *value);
+void free_tarray(TArray *self);
 void print_value(const TValue *value);
 
 /**

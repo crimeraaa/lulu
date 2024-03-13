@@ -6,10 +6,11 @@
 #include "value.h"
 
 static const lua_Library baselib = {
-    {"clock",   base_clock},
-    {"print",   base_print},
-    {"type",    base_type},
-    {NULL,      NULL},
+    {"dumptable",   base_dumptable},
+    {"clock",       base_clock},
+    {"print",       base_print},
+    {"type",        base_type},
+    {NULL,          NULL},
 };
 
 void lua_loadbase(LVM *vm) {
@@ -33,8 +34,17 @@ TValue base_print(LVM *vm, int argc, TValue *argv) {
 
 TValue base_type(LVM *vm, int argc, TValue *argv) {
     if (argc != 1) {
-        lua_error(vm, "'type' requires exactly one argument.");
+        lua_error(vm, "'type' expects exactly 1 argument.");
     }
     const TNameInfo *tname = get_tnameinfo(argv[0].type);
     return makestring(copy_string(vm, tname->what, tname->len));
+}
+
+TValue base_dumptable(LVM *vm, int argc, TValue *argv) {
+    if (argc != 1 || !istable(&argv[0])) {
+        lua_error(vm, "'dumptable' expects exactly 1 argument of type 'table'.");
+    } 
+    const Table *table = astable(&argv[0]);
+    print_table(table, true);
+    return makenil;
 }

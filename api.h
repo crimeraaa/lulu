@@ -5,10 +5,14 @@
 #include "value.h"
 #include "object.h"
 
+#define LUA_GLOBALSINDEX    (-10002)
+
 typedef enum {
     LUA_ERROR_ARITH,
     LUA_ERROR_COMPARE,
     LUA_ERROR_CONCAT,
+    LUA_ERROR_INDEX,   // Using '[]' on non-tables
+    LUA_ERROR_FIELD,   // Got non-string as key when a string was expected.
 } ErrType;
 
 /**
@@ -45,14 +49,6 @@ void lua_registerlib(LVM *self, const lua_Library library);
 /* BASIC STACK MANIPULATION --------------------------------------------- {{{ */
 
 /**
- * Read the current instruction and move the instruction pointer.
- *
- * Remember that postfix increment returns the original value of the expression.
- * So we effectively increment the pointer but we dereference the original one.
- */
-#define lua_nextbyte(vm)        (*(vm)->cf->ip++)
-
-/**
  * III:23.3     While Statements
  *
  * Custom addition to mimick the Lua C API. Get the 0-based index of the current
@@ -62,6 +58,12 @@ void lua_registerlib(LVM *self, const lua_Library library);
  * NOTE:
  *
  * Assumes that sp is ALWAYS greater than stack base.
+ * 
+ * III:24.7     Native Functions
+ * 
+ * Each function has its own "window" into the stack frame, where their base 
+ * pointer points to the calling function object itself rather than the very 
+ * bottom of the stack.
  */
 size_t lua_gettop(LVM *self);
 
@@ -109,13 +111,44 @@ bool lua_return(LVM *self);
  the identifiers and literals we need. What we do with this constant is up to
  the particular instruction. */
 
-void lua_getglobal(LVM *self);
-void lua_getlglobal(LVM *self);
+void lua_getfield(LVM *self, int offset, const char *field);
 void lua_getlocal(LVM *self);
+#define lua_getglobal(vm, s)    lua_getfield(vm, LUA_GLOBALSINDEX, s)
 
-void lua_setglobal(LVM *self);
-void lua_setlglobal(LVM *self);
+
+/**
+ * Does the equivalent of `tbl[key] = val`, where:
+ * 1. `tbl` is at the given offset from the stack.
+ * 2. `key` is just below the value at the top of the stack.
+ * 3. `val` is the value at the top of the stack.
+ *
+ * This function pops the key and the value from the stack, but not the table.
+ *
+ * See:
+ * - https://www.lua.org/manual/5.1/manual.html#lua_settable
+ */
+void lua_settable(LVM *self, int offset);
+
+/**
+ * Assumes that a value to be stored in a table is at the top of the stack.
+ *
+ * @param offset    Index/offset table in current stack frame window. If using a
+ *                  pseudo-index like `LUA_GLOBALSINDEX`, retrieve the pointer
+ *                  to the value associated with that pseudo-index rather than 
+ *                  an actual value from the stack.
+ * @param field     Desired field name.
+ * 
+ * This function pops the value from the stack. See:
+ * - https://www.lua.org/manual/5.1/manual.html#lua_setfield
+ */
+void lua_setfield(LVM *self, int offset, const char *field);
 void lua_setlocal(LVM *self);
+
+/**
+ * Assumes that a value to be stored as a global variable, given identifier `s`,
+ * is on the top of the stack.
+ */
+#define lua_setglobal(vm, s)    lua_setfield(vm, LUA_GLOBALSINDEX, s)
 
 /* }}} ---------------------------------------------------------------------- */
 
@@ -177,6 +210,13 @@ TFunction *lua_asfunction(LVM *self, int offset);
 /* 'PUSH' FUNCTIONS ----------------------------------------------------- {{{ */
 
 /**
+ * Simply copies `object` by value to the current top of the stack as pointed
+ * to by `self->sp`. Afterwards, `self->sp` is incremented to point to the
+ * next free slot in the stack.
+ */
+#define lua_pushobject(vm, o)   (*(vm)->sp++ = *(o))
+
+/**
  * Assumes that the current CallFrame's instruction pointer is currently at the
  * 1-byte operand for an `OP_CONSTANT` instruction which we will use to index
  * into the CallFrame's functions' chunk's constants array.
@@ -210,6 +250,8 @@ void lua_pushlstring(LVM *self, char *data, size_t len);
  * try to create a `TString*` of. Do NOT use this with malloc'd strings.
  */
 void lua_pushliteral(LVM *self, const char *data);
+
+void lua_pushtable(LVM *self, Table *table);
 
 /**
  * Push the given tagged union function object `tfunc` to the top of the stack.
