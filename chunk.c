@@ -83,17 +83,26 @@ size_t add_constant(Chunk *self, const TValue *value) {
     return self->constants.count - 1;
 }
 
-int current_line(const Chunk *self) {
-    return self->lines.runs[self->prevline - 1].where;
-}
-
-int next_line(Chunk *self, ptrdiff_t offset) {
-    // When iterating, `self->prevline` points to the next index.
-    if (offset > 0 && offset <= self->lines.runs[self->prevline - 1].end) {
+int get_linenumber(const Chunk *self, ptrdiff_t offset) {
+    const LineRuns *ranges = &self->lines;
+    if (ranges->count == 0) {
         return -1;
     }
-    self->prevline++;
-    return current_line(self);
+    size_t left  = 0;                 // Current left half index.
+    size_t right = ranges->count - 1; // Current right half index.
+    while (left <= right) {
+        size_t i = (left + right) / 2; // Index in middle of this half.
+        const LineRun *range = &ranges->runs[i];
+        if (incrange(offset, range->start, range->end)) {
+            return range->where;
+        }
+        if (offset < range->start) {
+            right = i - 1; // Should look to the left            
+        } else if (offset > range->end) {
+            left  = i + 1; // Should look to the right
+        }
+    }
+    return -1;
 }
 
 /**
@@ -202,11 +211,12 @@ static int opjump(const char *name, int sign, const Chunk *self, ptrdiff_t offse
 
 int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     printf("0x%04tx ", offset); // Print number left-padded with 0's
-    int line = next_line(self, offset);
-    if (line == -1) {
+    int line = get_linenumber(self, offset);
+    if (line == self->prevline) {
         printf("   | ");
     } else {
         printf("%4i ", line);
+        self->prevline = line;
     }
     Byte instruction = self->code[offset];
     switch(instruction) {

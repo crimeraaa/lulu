@@ -2,6 +2,7 @@
 #define LUA_CHUNK_H
 
 #include "common.h"
+#include "table.h"
 #include "value.h"
 
 /** 
@@ -17,7 +18,7 @@
  * 
  * This MUST fit in a `DWord`.
  */
-#define LUA_MAXLCONSTANTS  ((1 << (bitsize(Word) + bitsize(Byte))) - 1)
+#define LUA_MAXLCONSTANTS  ((1 << bytetobits(3)) - 1)
 
 typedef enum {
     OP_CONSTANT, // Load constant value into memory using an 8-bit operand.
@@ -100,6 +101,11 @@ typedef struct {
 } LineRuns;
 
 typedef struct {
+    Table names;   // Map identifiers and literals to indexes into `values`.
+    TArray values; // Contains the actual values to be retrieved.
+} Constants;
+
+typedef struct {
     TArray constants;
     LineRuns lines;
     Byte *code;   // Heap-allocated 1D array of `Byte` instructions.
@@ -122,28 +128,15 @@ void write_chunk(Chunk *self, Byte byte, int line);
 size_t add_constant(Chunk *self, const TValue *value);
 
 /**
- * Get the current line based the state of the Chunk's `prevline` membe.
- * 
- * NOTE:
- * 
- * Ensure that it resolves to a valid index, such as by resetting it before
- * calling `disassemble_chunk()` or `disassemble_instruction()`. Also only do so
- * if the current function actually has a chunk, because C functions do not have
- * any such information. For that case simply use whatever the current value of
- * prevline is because we do not need to "step into" C function.
- */
-int current_line(const Chunk *self);
-
-/**
- * Challenge III:14.1
- * 
+ * III:14.1     Challenge
+ *
  * In addition to using run-length encoding, we have to be able to somehow query
  * into it using an instruction offset.
  * 
- * Do note that this increments `chunk->prevline` if the previous line does not
- * match the current line at the given bytecode offset.
+ * Try to find where the given `offset` fits into a particular line range.
+ * Assumes that the chunk's lineruns array is sorted.
  */
-int next_line(Chunk *chunk, ptrdiff_t offset);
+int get_linenumber(const Chunk *self, ptrdiff_t offset);
 
 /**
  * Challenge III:14.1

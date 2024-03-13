@@ -5,11 +5,6 @@
 #include "chunk.h"
 #include "value.h"
 
-struct Object {
-    VType type; // Unlike Lox, we use the same tag for objects.
-    Object *next;   // Part of an instrusive linked list for GC.
-};
-
 /**
  * III:24.7     Native Functions
  *
@@ -31,14 +26,12 @@ struct LFunction {
     TString *name; // Interned identifier from source code.
 };
 
-typedef union {
-    LFunction lua;   // Note how we use a struct value itself, not the pointer.
-    lua_CFunction c; // C function pointer, nothing more and nothing less.
-} Function;
-
 struct TFunction {
     Object object; // Metadata/GC info.
-    Function fn;   // We can be either a Lua function or a C function.
+    union {
+        LFunction lua;   // Note how we use struct value itself, not pointer.
+        lua_CFunction c; // C function pointer, nothing more and nothing less.
+    } fn;   // We can be either a Lua function or a C function.
     bool is_c;     // Determine which member of the union to use.
 };
 
@@ -47,34 +40,6 @@ struct TString {
     DWord hash;    // Result of throwing `data` into a hash function.
     size_t len;    // Number of non-nul characters.
     char *data;    // Heap-allocated buffer.
-};
-
-/**
- * III:20.4     Building a Hash Table
- * 
- * This is a key-value pair element to be thrown into the hash table. It contains
- * a "key" which is a currently a string that gets hashed, which determines the
- * actual numerical index in the table.
- */
-typedef struct {
-    TValue key;   // Key to be hashed.
-    TValue value; // Actual value to be retrieved.
-} Entry;
-
-/**
- * III:20.4     Building a Hash Table
- * 
- * A hash table is a dynamic array with the unique property of contaning
- * "key-value" pair elements, of which the index is determined by a so-called
- * "hash function". It's useful for storing strings, but Lua extends them to
- * also store numbers, booleans, functions, tables, userdata and threads.
- * For now we'll only focus on hashing strings.
- */
-struct Table {
-    Object object;  // Needed if this is a heap-allocated instance.
-    Entry *entries; // List of hashed key-value pairs.
-    size_t count;   // Current number of entries occupying the table.
-    size_t cap;     // How many entries the table can hold.
 };
 
 Table *new_table(LVM *vm);

@@ -38,16 +38,18 @@ const TNameInfo *get_tnameinfo(VType tag);
 
 typedef LUA_NUMBER lua_Number;
 
-/* The union part of the tagged union `TValue`. Do NOT use this as is! */
-typedef union {
-    bool boolean;
-    lua_Number number;
-    Object *object;
-} Value;
+struct Object {
+    VType type; // Unlike Lox, we use the same tag for objects.
+    Object *next;   // Part of an instrusive linked list for GC.
+};
 
 struct TValue {
     VType type; // Tag for the union to ensure some type safety.
-    Value as; // Actual value contained within this struct. Be very careful!
+    union {
+        bool boolean;      // `true` and `false,` nothing more, nothing less.
+        lua_Number number; // Our one and only numerical datatype.
+        Object *object;    // Heap-allocated and garbage-collectible.
+    } as; // Actual value contained within this struct. Be very careful!
 };
 
 typedef struct {

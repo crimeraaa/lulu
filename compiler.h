@@ -78,10 +78,10 @@ typedef enum {
 typedef struct Compiler {
     struct Compiler *enclosing; // Nested function calls as a stack/linked list.
     TFunction *function; // Contains the chunk we're currently compiling.
-    FnType type;    // Function type to differentiate from the top-level script.
     LexState *lex;  // Maintain pointers to the source code and emit tokens.
     Locals locals;  // Keep track of information about local variables in scope.
     LVM *vm;        // Stupid but we need to pass this to `copy_string()`.
+    FnType type;    // Function type to differentiate from the top-level script.
 } Compiler;
 
 /**

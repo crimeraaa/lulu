@@ -177,13 +177,6 @@ TFunction *lua_asfunction(LVM *self, int offset);
 /* 'PUSH' FUNCTIONS ----------------------------------------------------- {{{ */
 
 /**
- * Simply copies `object` by value to the current top of the stack as pointed
- * to by `self->sp`. Afterwards, `self->sp` is incremented to point to the
- * next free slot in the stack.
- */
-void lua_pushobject(LVM *self, const TValue *object);
-
-/**
  * Assumes that the current CallFrame's instruction pointer is currently at the
  * 1-byte operand for an `OP_CONSTANT` instruction which we will use to index
  * into the CallFrame's functions' chunk's constants array.

@@ -2,8 +2,35 @@
 #define LUA_TABLE_H
 
 #include "common.h"
-#include "object.h"
 #include "value.h"
+
+/**
+ * III:20.4     Building a Hash Table
+ * 
+ * This is a key-value pair element to be thrown into the hash table. It contains
+ * a "key" which is a currently a string that gets hashed, which determines the
+ * actual numerical index in the table.
+ */
+typedef struct {
+    TValue key;   // Key to be hashed.
+    TValue value; // Actual value to be retrieved.
+} Entry;
+
+/**
+ * III:20.4     Building a Hash Table
+ * 
+ * A hash table is a dynamic array with the unique property of contaning
+ * "key-value" pair elements, of which the index is determined by a so-called
+ * "hash function". It's useful for storing strings, but Lua extends them to
+ * also store numbers, booleans, functions, tables, userdata and threads.
+ * For now we'll only focus on hashing strings.
+ */
+struct Table {
+    Object object;  // Needed if this is a heap-allocated instance.
+    Entry *entries; // List of hashed key-value pairs.
+    size_t count;   // Current number of entries occupying the table.
+    size_t cap;     // How many entries the table can hold.
+};
 
 void init_table(Table *self);
 void free_table(Table *self);

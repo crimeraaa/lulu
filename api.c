@@ -1,4 +1,5 @@
 #include "api.h"
+#include "chunk.h"
 #include "memory.h"
 #include "vm.h"
 
@@ -55,7 +56,12 @@ static TValue *readlconstant(LVM *self) {
     return readconstant_at(self, readbyte3(self));
 }
 
-void lua_pushobject(LVM *self, const TValue *object) {
+/**
+ * Simply copies `object` by value to the current top of the stack as pointed
+ * to by `self->sp`. Afterwards, `self->sp` is incremented to point to the
+ * next free slot in the stack.
+ */
+static void pushobject(LVM *self, const TValue *object) {
     *self->sp = *object;
     self->sp++;
 }
@@ -88,9 +94,11 @@ void lua_error(LVM *self, const char *format, ...) {
     va_end(args);
     fputs("\n", stderr);
     for (int i = self->fc - 1; i >= 0; i--) {
-        const LFunction *function = self->frames[i].function;
+        const CallFrame *frame    = &self->frames[i];
+        const LFunction *function = frame->function;
+        const ptrdiff_t offset    = frame->ip - function->chunk.code;
         const Chunk *chunk        = &function->chunk;
-        fprintf(stderr, "%s:%i: in ", self->name, current_line(chunk));
+        fprintf(stderr, "%s:%i: in ", self->name, get_linenumber(chunk, offset));
         if (function->name == NULL) {
             fprintf(stderr, "main chunk\n");
         } else {
@@ -201,7 +209,7 @@ static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
     // We want to iterate properly over something that has its own chunk, and as
     // a result its own lineruns. We do not do this for C functions as they do
     // not have any chunk, therefore no lineruns info, to begin with.
-    luafn->chunk.prevline = 0;
+    luafn->chunk.prevline = -1;
 
     CallFrame *frame = &self->frames[self->fc++];
     frame->function = luafn;
@@ -221,7 +229,7 @@ static bool call_cfunction(LVM *self, lua_CFunction cfn, int argc) {
     TValue *argv = self->sp - argc;
     const TValue res = cfn(self, argc, argv);
     self->sp -= argc + 1; // Point to slot right below the function object.
-    lua_pushobject(self, &res);
+    pushobject(self, &res);
     return true;
 }
 
@@ -269,7 +277,7 @@ bool lua_return(LVM *self) {
     // and local variables, which are the same slots the caller (us)
     // used to push the arguments in the first place.
     self->sp = self->cf->bp;
-    lua_pushobject(self, &res);
+    pushobject(self, &res);
 
     // Return control of the stack back to the caller now that this
     // particular function call is done.
@@ -295,7 +303,7 @@ static void getglobal_at(LVM *self, bool islong) {
             lua_error(self, "Undefined variable '%s'.", asstring(key)->data);
         } 
     }
-    lua_pushobject(self, &value);
+    pushobject(self, &value);
 }
 
 void lua_getglobal(LVM *self) {
@@ -323,7 +331,7 @@ void lua_setlglobal(LVM *self) {
 void lua_getlocal(LVM *self) {
     const TValue *locals = self->cf->bp;
     const size_t index   = lua_nextbyte(self);
-    lua_pushobject(self, &locals[index]);
+    pushobject(self, &locals[index]);
 }
 
 void lua_setlocal(LVM *self) {
@@ -397,31 +405,31 @@ TFunction *lua_asfunction(LVM *self, int offset) {
 
 void lua_pushconstant(LVM *self) {
     const TValue *constant = readconstant(self);
-    lua_pushobject(self, constant);
+    pushobject(self, constant);
 }
 
 void lua_pushlconstant(LVM *self) {
     const TValue *constant = readlconstant(self);
-    lua_pushobject(self, constant);
+    pushobject(self, constant);
 }
 
 void lua_pushboolean(LVM *self, bool b) {
     TValue v = makeboolean(b);
-    lua_pushobject(self, &v);
+    pushobject(self, &v);
 }
 
 void lua_pushnil(LVM *self) {
-    lua_pushobject(self, &nilobject);
+    pushobject(self, &nilobject);
 }
 
 void lua_pushnumber(LVM *self, lua_Number n) {
     TValue v = makenumber(n);
-    lua_pushobject(self, &v);
+    pushobject(self, &v);
 }
 
 void lua_pushlstring(LVM *self, char *data, size_t len) {
     TValue v = makestring(take_string(self, data, len));
-    lua_pushobject(self, &v);
+    pushobject(self, &v);
 }
 
 void lua_pushstring(LVM *self, char *data) {
@@ -435,12 +443,12 @@ void lua_pushstring(LVM *self, char *data) {
 void lua_pushliteral(LVM *self, const char *data) {
     size_t len = strlen(data);
     TValue v = makestring(copy_string(self, data, len));
-    lua_pushobject(self, &v);
+    pushobject(self, &v);
 }
 
 void lua_pushfunction(LVM *self, TFunction *tfunc) {
     TValue v = makefunction(tfunc);
-    lua_pushobject(self, &v);
+    pushobject(self, &v);
 }
 
 void lua_pushcfunction(LVM *self, lua_CFunction function) {
@@ -451,8 +459,8 @@ void lua_pushcfunction(LVM *self, lua_CFunction function) {
 /* }}} */
 
 void lua_concat(LVM *self) {
-    TString *rhs = lua_aststring(self, -1);
     TString *lhs = lua_aststring(self, -2);
+    TString *rhs = lua_aststring(self, -1);
     if (lhs == NULL || rhs == NULL) {
         lua_binoperror(self, -2, -1, LUA_ERROR_CONCAT);
     }
