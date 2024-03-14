@@ -200,10 +200,14 @@ TString *table_findstring(Table *self, const char *data, size_t len, DWord hash)
 
 void print_table(const Table *self, bool dodump) {
     printf("table: %p", (void*)self);
-    if (!dodump || self->count == 0) {
+    if (!dodump) {
         return;
     }
     printf("\n");
+    if (self->count == 0) {
+        return;
+    }
+
     // self->count isn't necessarily correct, e.g. count of 5 yet we can have
     // valuesa at index 7 for example. So we prefer to use self->cap.
     for (size_t i = 0; i < self->cap; i++) {

@@ -103,6 +103,7 @@ void free_vm(LVM *self) {
 
 static InterpretResult run_bytecode(LVM *self) {
     Chunk *chunk = &self->cf->function->chunk;
+
     // longjmp here to handle errors.
     // Ensure that all functions that need manual cleanup have been taken care 
     // of, but for the most part our VM's objects linked list tracks ALL 
@@ -112,9 +113,6 @@ static InterpretResult run_bytecode(LVM *self) {
         return INTERPRET_RUNTIME_ERROR;
     }
 
-    // Hack, but we reset so we can disassemble properly.
-    // We need that start with index 0 into the lines.runs array.
-    // So effectively this becames our iterator for each function frame.
     for (;;) {
         ptrdiff_t byteoffset = self->cf->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
@@ -330,6 +328,9 @@ InterpretResult interpret_vm(LVM *self, const char *input) {
     Compiler compiler;
     compiler.lex = &lex;
     self->input  = input;
+    
+    // We'll just point to and modify the VM's error handler while compiling.
+    init_lexstate(&lex, &self->errjmp, self->name, input);
     init_compiler(&compiler, NULL, self, FNTYPE_SCRIPT); // NULL = top-level.
     TFunction *script = compile_bytecode(&compiler);
     if (script == NULL) {

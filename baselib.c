@@ -46,5 +46,5 @@ static const lua_Library baselib = {
 };
 
 void lua_loadbase(LVM *vm) {
-    lua_registerlib(vm, baselib);
+    lua_loadlibrary(vm, "_G", baselib);
 }

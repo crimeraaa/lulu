@@ -6,7 +6,7 @@
 // Placeholder value for invalid stack accesses. Do NOT modify it!
 // static TValue noneobject = {.type = LUA_TNONE, .as = {.number = 0}};
 
-static const TValue nilvalue  = makenil;
+static const TValue nilvalue = makenil;
 
 void lua_settable(LVM *self, int offset) {
     TValue *table = lua_poke(self, offset);
@@ -19,11 +19,20 @@ void lua_settable(LVM *self, int offset) {
     lua_pop(self, 2);
 }
 
-void lua_registerlib(LVM *self, const lua_Library library) {
-    for (size_t i = 0; library[i].name != NULL; i++) {
-        lua_pushcfunction(self, library[i].func);
-        lua_setglobal(self, library[i].name);
+void lua_loadlibrary(LVM *self, const char *name, const lua_Library library) {
+    // Push the desired module table onto the top of the stack at offset -2.
+    // If the table didn't exist beforehand, an error would've been thrown.
+    if (setjmp(self->errjmp) == 0) {
+        lua_getglobal(self, name);
+    } else {
+        return;
     }
+
+    for (size_t i = 0; library[i].name != NULL; i++) {
+        lua_pushcfunction(self, library[i].func); // offset -1
+        lua_setfield(self, -2, library[i].name);  // will pop the C function
+    }
+    lua_pop(self, 1); // Pop the table we were modifying
 }
 
 void lua_error(LVM *self, const char *format, ...) {

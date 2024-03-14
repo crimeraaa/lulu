@@ -1,9 +1,10 @@
 #include <ctype.h>
 #include "lexstate.h"
 
-void init_lexstate(LexState *self, const char *name, const char *input) {
+void init_lexstate(LexState *self, jmp_buf *errjmp, const char *name, const char *input) {
     self->token      = (Token){0};
     self->consumed   = (Token){0};
+    self->errjmp     = errjmp;
     self->lexeme     = input;
     self->current    = input; // Points to very start of source code string.
     self->name       = name;
@@ -376,7 +377,7 @@ void throw_lexerror_at(LexState *self, const Token *token, const char *info) {
         // Field precision MUST be of type int.
         fprintf(stderr, ", near '%.*s'\n", (int)token->len, token->start);
     }
-    longjmp(self->errjmp, 1);
+    longjmp(*self->errjmp, 1);
 }
 
 void throw_lexerror(LexState *self, const char *info) {

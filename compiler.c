@@ -13,10 +13,8 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
         // Potentially dangerous as I'm not certain if the jmp_buf is being
         // copied correctly.
         self->lex = current->lex;
-    }  else {
-        // Hacky but I assign lex OUTSIDE of this function.
-        init_lexstate(self->lex, vm->name, vm->input);
     }
+    // The first self->lex is assigned and initalized outside of this function.
     self->locals.count = 0;
     self->locals.depth = 0;
     self->vm = vm;
@@ -1635,7 +1633,7 @@ TFunction *compile_bytecode(Compiler *self) {
     // setjmp returns 0 on init, else a nonzero when called by longjmp.
     // Be VERY careful not to longjmp from functions with heap allocations since
     // we won't do most forms of cleanup.
-    if (setjmp(self->lex->errjmp) == 0) {
+    if (setjmp(*lex->errjmp) == 0) {
         begin_scope(self); // File-scope/REPL line scope is its own block scope.
         next_token(self->lex);
         while (!match_token(lex, TK_EOF)) {

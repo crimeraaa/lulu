@@ -26,9 +26,9 @@ typedef enum {
 typedef struct {
     const char *name;
     lua_CFunction func;
-} RegFn;
+} lua_RegisterFn;
 
-typedef RegFn lua_Library[];
+typedef lua_RegisterFn lua_Library[];
 
 /**
  * III:24.7     Native Functions
@@ -39,12 +39,11 @@ typedef RegFn lua_Library[];
  * done with this memory, so storing them on the stack (will) accomplish that
  * when we get to that point.
  * 
- * NOTE:
- * 
- * Since this is called during VM initialization, we can safely assume that the
- * stack is currently empty.
+ * @param self      A Lua VM instance to manage.
+ * @param name      Desired module table name, assumes it already exists.
+ * @param library   Array of `lua_RegisterFn` instances to register.
  */
-void lua_registerlib(LVM *self, const lua_Library library);
+void lua_loadlibrary(LVM *self, const char *name, const lua_Library library);
 
 /* BASIC STACK MANIPULATION --------------------------------------------- {{{ */
 
@@ -99,6 +98,14 @@ bool lua_return(LVM *self);
  the particular instruction. */
 
 void lua_getfield(LVM *self, int offset, const char *field);
+
+/**
+ * Simple pushes the global value associated with identifier `s` to the stack.
+ * It is your responsibility to pop this value off as needed.
+ * 
+ * @param vm    LVM*
+ * @param s     char*
+ */
 #define lua_getglobal(vm, s)    lua_getfield(vm, LUA_GLOBALSINDEX, s)
 
 
@@ -130,8 +137,11 @@ void lua_settable(LVM *self, int offset);
 void lua_setfield(LVM *self, int offset, const char *field);
 
 /**
- * Assumes that a value to be stored as a global variable, given identifier `s`,
- * is on the top of the stack.
+ * Assigns the value at the top of the stack to the global variable associated
+ * with the Lua-facing identifier `s`.
+ * 
+ * @param vm    LVM*
+ * @param s     char*
  */
 #define lua_setglobal(vm, s)    lua_setfield(vm, LUA_GLOBALSINDEX, s)
 

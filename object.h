@@ -31,8 +31,8 @@ struct TFunction {
     union {
         LFunction lua;   // Note how we use struct value itself, not pointer.
         lua_CFunction c; // C function pointer, nothing more and nothing less.
-    } fn;   // We can be either a Lua function or a C function.
-    bool is_c;     // Determine which member of the union to use.
+    } fn;                // We can be either a Lua function or a C function.
+    bool is_c;           // Determine which member of the union to use.
 };
 
 struct TString {

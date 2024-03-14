@@ -111,7 +111,7 @@ typedef struct {
 typedef struct {
     Token token;    // Token we're currently pointing at and want to consume.
     Token consumed; // Token we just consumed.
-    jmp_buf errjmp; // Where to unconditionally jump after reporting errors.
+    jmp_buf *errjmp; // Where to unconditionally jump after reporting errors.
     const char *lexeme; // Pointer to start of current token in the code.
     const char *current; // Pointer to current character being looked at.
     const char *name; // Filename or `stdin`.
@@ -122,10 +122,11 @@ typedef struct {
 
 /**
  * @param self      A LexState instance we want to modify.
+ * @param errjmp    A jmp_buf instance we want to use across lexers/compilers.
  * @param name      Filename string literal, or "stdin".
  * @param input     User's source code in one monolithic line.
  */
-void init_lexstate(LexState *self, const char *name, const char *input);
+void init_lexstate(LexState *self, jmp_buf *errjmp, const char *name, const char *input);
 
 /**
  * III:17.2     Parsing Tokens

@@ -12,3 +12,5 @@ for i=0, LIMIT, INCREMENT do
     LIMIT = LIMIT + 1         -- should not affect local #2 (condition)
     INCREMENT = INCREMENT + 1 -- should not affect local #3 (increment)
 end
+
+print("LIMIT:", LIMIT, "INCREMENT:", INCREMENT)
