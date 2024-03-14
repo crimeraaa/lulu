@@ -110,7 +110,7 @@ typedef struct {
 } Constants;
 
 typedef struct {
-    TArray constants;
+    Constants constants;
     LineRuns lines;
     Byte *code;   // Heap-allocated 1D array of `Byte` instructions.
     size_t count; // Current number of instructions written to `code`.

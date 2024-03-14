@@ -211,19 +211,6 @@ TFunction *lua_asfunction(LVM *self, int offset);
  */
 #define lua_pushobject(vm, o)   (*(vm)->sp++ = *(o))
 
-/**
- * Assumes that the current CallFrame's instruction pointer is currently at the
- * 1-byte operand for an `OP_CONSTANT` instruction which we will use to index
- * into the CallFrame's functions' chunk's constants array.
- */
-void lua_pushconstant(LVM *self);
-
-/**
- * Similar to `lua_pushconstant` except that we instead assume a 3-byte operand.
- * See the comments for that function for more information.
- */
-void lua_pushlconstant(LVM *self);
-
 void lua_pushboolean(LVM *self, bool b);
 void lua_pushnil(LVM *self);
 void lua_pushnumber(LVM *self, lua_Number n);

@@ -2,10 +2,15 @@
 #include "memory.h"
 #include "value.h"
 
-static inline void init_lineruns(LineRuns *self) {
+static void init_lineruns(LineRuns *self) {
     self->count = 0;
     self->cap   = 0;
     self->runs  = NULL;
+}
+
+static void init_constants(Constants *self) {
+    init_table(&self->names);
+    init_tarray(&self->values);
 }
 
 void init_chunk(Chunk *self) {
@@ -13,7 +18,7 @@ void init_chunk(Chunk *self) {
     self->count = 0;
     self->cap   = 0;
     self->prevline = -1; // Set to an always invalid line number to start with.
-    init_tarray(&self->constants);
+    init_constants(&self->constants);
     init_lineruns(&self->lines);
 }
 
@@ -21,9 +26,14 @@ static void free_lineruns(LineRuns *self) {
     deallocate_array(LineRun, self->runs, self->cap);
 }
 
+static void free_constants(Constants *self) {
+    free_table(&self->names);
+    free_tarray(&self->values);
+}
+
 void free_chunk(Chunk *self) {
     deallocate_array(Byte, self->code, self->cap);
-    free_tarray(&self->constants);
+    free_constants(&self->constants);
     free_lineruns(&self->lines);
     init_chunk(self);
     init_lineruns(&self->lines);
@@ -50,7 +60,7 @@ static void write_lineruns(LineRuns *self, int offset, int line) {
 }
 
 /* Increment the end instruction pointer of the topmost run. */
-static inline void increment_lineruns(LineRuns *self) {
+static void increment_lineruns(LineRuns *self) {
     self->runs[self->count - 1].end++;
 }
 
@@ -73,14 +83,20 @@ void write_chunk(Chunk *self, Byte byte, int line) {
 }
 
 size_t add_constant(Chunk *self, const TValue *value) {
-    // Linear search is inefficient but I really do not care
-    for (size_t i = 0; i < self->constants.count; i++) {
-        if (values_equal(&self->constants.array[i], value)) {
-            return i;
-        }
+    Constants *constants = &self->constants;
+    TValue index;
+    // The value-index mapping exists so return the index.
+    if (table_get(&constants->names, value, &index)) {
+        return index.as.usize;
     }
-    write_tarray(&self->constants, value);
-    return self->constants.count - 1;
+    // Append the constant value to the values array.
+    write_tarray(&constants->values, value);
+    
+    // Map the given value to its new index as written in the values array.
+    index.type      = LUA_TUSIZE;
+    index.as.usize  = constants->values.count - 1;
+    table_set(&constants->names, value, &index);
+    return index.as.usize;
 }
 
 int get_linenumber(const Chunk *self, ptrdiff_t offset) {
@@ -117,9 +133,9 @@ void disassemble_chunk(Chunk *self, const char *name) {
     // Kinda hacky but this will serve as our iterator of sorts.
     self->prevline = 0;
     printf("=== %s ===\n", name);
-    for (size_t i = 0; i < self->constants.count; i++) {
+    for (size_t i = 0; i < self->constants.values.count; i++) {
         printf("constants[%zu]: '", i);
-        print_value(&self->constants.array[i]);
+        print_value(&self->constants.values.array[i]);
         printf("'\n");
     }
     printf("\n");
@@ -139,12 +155,12 @@ static int opconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     // into the self's constants pool.
     Byte index = self->code[offset + 1];
     printf("%-16s %4i '", name, index);
-    print_value(&self->constants.array[index]);
+    print_value(&self->constants.values.array[index]);
     printf("'\n");
     return next_instruction(offset, LUA_OPSIZE_BYTE);
 }
 
-static inline DWord read_byte3(const Chunk *self, ptrdiff_t offset) {
+static DWord read_byte3(const Chunk *self, ptrdiff_t offset) {
     DWord msb = byteunmask(self->code[offset + 1], 2); // Unmask upper 8 bits.
     DWord mid = byteunmask(self->code[offset + 2], 1); // Unmask middle 8 bits.
     DWord lsb = byteunmask(self->code[offset + 3], 0); // Unmask lower 8 bits.
@@ -167,7 +183,7 @@ static inline DWord read_byte3(const Chunk *self, ptrdiff_t offset) {
 static int oplconst(const char *name, const Chunk *self, ptrdiff_t offset) {
     DWord index = read_byte3(self, offset);
     printf("%-16s %4u '", name, index);
-    print_value(&self->constants.array[index]);
+    print_value(&self->constants.values.array[index]);
     printf("'\n");
     return next_instruction(offset, LUA_OPSIZE_BYTE3);
 }

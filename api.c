@@ -327,16 +327,6 @@ TFunction *lua_asfunction(LVM *self, int offset) {
 
 /* PUSH FUNCTIONS ------------------------------------------------------- {{{ */
 
-void lua_pushconstant(LVM *self) {
-    const TValue *constant = readconstant(self);
-    lua_pushobject(self, constant);
-}
-
-void lua_pushlconstant(LVM *self) {
-    const TValue *constant = readlconstant(self);
-    lua_pushobject(self, constant);
-}
-
 void lua_pushboolean(LVM *self, bool b) {
     TValue v = makeboolean(b);
     lua_pushobject(self, &v);

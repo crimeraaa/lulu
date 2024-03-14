@@ -18,6 +18,7 @@ typedef enum {
     LUA_TTABLE,
     LUA_TNONE,      // Dummy type, distinct from nil, used for no args errors.
     LUA_TCOUNT,     // Not an actual type, used for the typenames array only.
+    LUA_TUSIZE,     // Put after count so it's never a valid user-facing type.
 } VType;
 
 /**
@@ -39,7 +40,7 @@ const TNameInfo *get_tnameinfo(VType tag);
 typedef LUA_NUMBER lua_Number;
 
 struct Object {
-    VType type; // Unlike Lox, we use the same tag for objects.
+    VType type;     // Unlike Lox, we use the same tag for objects.
     Object *next;   // Part of an instrusive linked list for GC.
 };
 
@@ -48,6 +49,7 @@ struct TValue {
     union {
         bool boolean;      // `true` and `false,` nothing more, nothing less.
         lua_Number number; // Our one and only numerical datatype.
+        size_t usize;      // Internal use only, specifically in chunk.c.
         Object *object;    // Heap-allocated and garbage-collectible.
     } as; // Actual value contained within this struct. Be very careful!
 };
@@ -79,10 +81,10 @@ void print_value(const TValue *value);
  */
 bool values_equal(const TValue *lhs, const TValue *rhs);
 
-#define makeboolean(B)      ((TValue){LUA_TBOOLEAN, {.boolean = (B)}})
+#define makeboolean(b)      ((TValue){LUA_TBOOLEAN, {.boolean = (b)}})
 #define makenil             ((TValue){LUA_TNIL,     {.number = 0.0}})
 #define makenone            ((TValue){LUA_TNONE,    {.number = 0.0}})
-#define makenumber(N)       ((TValue){LUA_TNUMBER,  {.number = (N)}})
+#define makenumber(n)       ((TValue){LUA_TNUMBER,  {.number = (n)}})
 
 /** 
  * Wrap a bare object pointer or a specific object type pointer into a somewhat

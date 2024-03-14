@@ -7,6 +7,90 @@
 /* HELPERS -------------------------------------------------------------- {{{ */
 
 /**
+ * Read the current instruction and move the instruction pointer.
+ *
+ * Remember that postfix increment returns the original value of the expression.
+ * So we effectively increment the pointer but we dereference the original one.
+ */
+#define lua_nextbyte(vm)        (*(vm)->cf->ip++)
+
+/**
+ * III:23.1     If Statements
+ *
+ * Read the next 2 instructions and combine them into a 16-bit operand.
+ *
+ * The compiler emitted the 2 byte operands for a jump instruction in order of
+ * msb, lsb. So our instruction pointer points at msb currently.
+ */
+static Word readbyte2(LVM *self) {
+    Byte msb = lua_nextbyte(self);
+    Byte lsb = lua_nextbyte(self);
+    return byteunmask(msb, 1) | lsb;
+}
+
+/**
+ * Read the next 3 instructions and combine those 3 bytes into 1 24-bit operand.
+ *
+ * NOTE:
+ *
+ * This MUST be able to fit in a `DWord`.
+ *
+ * Compiler emitted them in this order: msb, mid, lsb. Since ip currently points
+ * at msb, we can safely walk in this order.
+ */
+static DWord readbyte3(LVM *self) {
+    Byte msb = lua_nextbyte(self);
+    Byte mid = lua_nextbyte(self);
+    Byte lsb = lua_nextbyte(self);
+    return byteunmask(msb, 2) | byteunmask(mid, 1) | lsb;
+}
+
+/**
+ * Read the next byte from the bytecode treating the received value as an index
+ * into the VM's current chunk's constants pool.
+ */
+static TValue *readconstant_at(LVM *self, size_t index) {
+    return &self->cf->function->chunk.constants.values.array[index];
+}
+
+static TValue *readconstant(LVM *self) {
+    return readconstant_at(self, lua_nextbyte(self));
+}
+
+static TValue *readlconstant(LVM *self) {
+    return readconstant_at(self, readbyte3(self));
+}
+
+/**
+ * III:21.2     Variable Declarations
+ *
+ * Helper macro to read the current top of the stack and increment the VM's
+ * instruction pointer and then cast the result to a `TString*`.
+ */
+#define readstring_at(vm, i)    asstring(readconstant_at(vm, i))
+#define readstring(vm)          asstring(readconstant(vm))
+#define readlstring(vm)         asstring(readlconstant(vm))
+
+/**
+ * Assumes that the current CallFrame's instruction pointer is currently at the
+ * 1-byte operand for an `OP_CONSTANT` instruction which we will use to index
+ * into the CallFrame's functions' chunk's constants array.
+ */
+static void lua_pushconstant(LVM *self) {
+    const TValue *constant = readconstant(self);
+    lua_pushobject(self, constant);
+}
+
+/**
+ * Similar to `lua_pushconstant` except that we instead assume a 3-byte operand.
+ * See the comments for that function for more information.
+ */
+static void lua_pushlconstant(LVM *self) {
+    const TValue *constant = readlconstant(self);
+    lua_pushobject(self, constant);
+}
+
+/**
  * Make the VM's stack pointer point to the base of the stack array.
  * The same is done for the base pointer.
  */
