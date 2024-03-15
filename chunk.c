@@ -294,6 +294,7 @@ int disassemble_instruction(Chunk *self, ptrdiff_t offset) {
     case OP_FORINCR:    return opsimple("OP_FORINCR", offset);
 
     // -*- III:24.5     Function Calls ---------------------------------------*-
+    case OP_ARGS:       return opsimple("OP_ARGS", offset);
     case OP_CALL:       return opbyte("OP_CALL", self, offset);
     case OP_RETURN:     return opsimple("OP_RETURN", offset);
     default:            break;

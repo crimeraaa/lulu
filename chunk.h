@@ -77,6 +77,7 @@ typedef enum {
     OP_LOOP, // Unconditional, like `OP_JMP`. Subtracts its operand from sp.
     
     // -*- III:24.5     Function Calls ---------------------------------------*-
+    OP_ARGS, // Calling function is at top of stack so set the base pointer.
     OP_CALL,
 
     OP_FORPREP, // Check if all 3 arguments to the for loop resolved to numbers.

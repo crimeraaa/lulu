@@ -366,12 +366,22 @@ static InterpretResult run_bytecode(LVM *self) {
                          
         case OP_FORINCR: {
             // iterator is lower down the stack, increment is the most recent.
-            TValue *iterator  = lua_poke(self, -3);
-            TValue *increment = lua_poke(self, -1);
+            TValue *iterator    = lua_poke(self, -3);
+            TValue *increment   = lua_poke(self, -1);
             asnumber(iterator) += asnumber(increment);
         } break;
 
         // -*- III:24.5.1   Binding arguments to parameters ------------------*-
+        case OP_ARGS: {
+            // Right before calling a function but before evaluating its arglist
+            // we know that the function object is at the top of the stack.
+            // self->bp = self->sp - 1;
+            
+            printf("[DEBUG]: self->sp - 1 = ");
+            print_value(self->sp - 1);
+            printf("\n");
+        } break;
+
         case OP_CALL: {
             // We always know that the argument count is written to the constants 
             // array. In practice this should only actually be only 0-255.
@@ -386,6 +396,11 @@ static InterpretResult run_bytecode(LVM *self) {
                 return INTERPRET_RUNTIME_ERROR;
             }
 
+            // What's the top of the stack after returning from a C function?
+            printf("[DEBUG]: self->sp - 1 = ");
+            print_value(self->sp - 1);
+            printf("\n");
+
             chunk = &self->cf->function->chunk;
         } break;
 
@@ -397,6 +412,7 @@ static InterpretResult run_bytecode(LVM *self) {
             // quickly without doing like 4 dereference operations all the time. 
             chunk = &self->cf->function->chunk;
         } break;
+
         // I hate how case statements don't introduce their own block scope...
         }
     }
