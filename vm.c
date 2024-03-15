@@ -243,12 +243,12 @@ static InterpretResult run_bytecode(LVM *self) {
         // -*- III:21.2     Variable Declarations ----------------------------*-
         // NOTE: As of III:21.4 I've removed the `OP_DEFINE*` opcodes and cases.
         case OP_GETGLOBAL:  {
-            const char *name = ascstring(readconstant(self));
+            const char *name = readstring(self)->data;
             lua_getglobal(self, name);
         } break;
 
         case OP_LGETGLOBAL: {
-            const char *name = ascstring(readlconstant(self));
+            const char *name = readlstring(self)->data;
             lua_getglobal(self, name);
         } break;
 
@@ -333,16 +333,13 @@ static InterpretResult run_bytecode(LVM *self) {
                         
         case OP_FORPREP: {
             // iterator is lower down the stack, increment is the most recent.
-            const TValue *iterator  = lua_poke(self, -3);
-            const TValue *condition = lua_poke(self, -2);
-            const TValue *increment = lua_poke(self, -1);
-            if (!isnumber(iterator)) {
+            if (!lua_isnumber(self, -3)) {
                 lua_error(self, "'for' initial value must be a number");
-            } else if (!isnumber(condition)) {
+            } else if (!lua_isnumber(self, -2)) {
                 lua_error(self, "'for' limit must be a number");
-            } else if (!isnumber(increment)) {
+            } else if (!lua_isnumber(self, -1)) {
                 lua_error(self, "'for' increment must be a number");
-            } else if (asnumber(increment) == (lua_Number)0) {
+            } else if (lua_asnumber(self, -1) == (lua_Number)0) {
                 // Allowed in Lua but I'd prefer to consider it an error
                 lua_error(self, "'for' increment must be nonzero");
             }
@@ -351,9 +348,9 @@ static InterpretResult run_bytecode(LVM *self) {
         case OP_FORCOND: {
             // A bit slow to do it like this constantly evaluating increment,
             // but we need this especially for nested loops.
-            lua_Number iterator  = asnumber(lua_poke(self, -3));
-            lua_Number condition = asnumber(lua_poke(self, -2));
-            lua_Number increment = asnumber(lua_poke(self, -1));
+            lua_Number iterator  = lua_asnumber(self, -3);
+            lua_Number condition = lua_asnumber(self, -2);
+            lua_Number increment = lua_asnumber(self, -1);
 
             // We push a boolean as an argument for the OP_FJMP instruction.
             if (increment > (lua_Number)0) {

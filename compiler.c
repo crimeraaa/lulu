@@ -24,7 +24,7 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     // consumed the identifier.
     if (type != FNTYPE_SCRIPT) {
         const Token *name = &self->lex->consumed;
-        LFunction *luafn = &self->function->fn.lua;
+        LFunction *luafn  = &self->function->fn.lua;
         luafn->name = copy_string(self->vm, name->start, name->len);
     }
 
@@ -56,7 +56,7 @@ static void compiler_error(Compiler *self, const char *message) {
  * mainly helpful when we consume a token and check the next one.
  */
 static void compiler_error_current(Compiler *self, const char *message) {
-    throw_lexerror_current(self->lex, message);    
+    throw_lexerror_current(self->lex, message);
 }
 
 /**
@@ -232,7 +232,7 @@ static void patch_jump(Compiler *self, size_t opindex) {
  *
  * For now we always emit a return for the compiler's current chunk.
  * This makes it so we don't have to remember to do it as ALL chunks need it.
- * 
+ *
  * We now also return the function of this particular compiler instance, so that
  * nested function definitions can be emitted properly into the main compiler
  * instance.
@@ -487,9 +487,9 @@ static void mark_initialized(Compiler *self) {
  * Lua doesn't because there are no differences between global variable
  * declaration and assignment. So in Lua we don't allow these to nest, e.g.
  * `a = 1; a = a = 2;` is an invalid statment.
- * 
+ *
  * III:24.7     Native Functions
- * 
+ *
  * With my refactoring of the API, `OP_SETGLOBAL` just calls `lua_setglobal`
  * which is a macro for `lua_setfield`, which pops the expression for you.
  */
@@ -618,6 +618,13 @@ void binary(Compiler *self) {
  *
  * Assumes we consumed the '(' token, emits `OP_CALL` along with 1-byte operand
  * representing how many arguments are needed.
+ *
+ * NOTE:
+ *
+ * I think it's better to emit the number of *expressions* to evaluate for the
+ * function call in order to determine where the base pointer should lie? But
+ * this approach will definitely break if a function returns multiple values and
+ * the results of which are used in another function call...
  */
 void call(Compiler *self) {
     Byte argc = arglist(self);
@@ -809,7 +816,7 @@ static VarInfo resolve_variable(Compiler *self, const Token *name) {
  * So in order to facilitate this, any call of `variable()` WITHIN an expression
  * will always set `assignable` to false.
  *
- * Otherwise, when parsing the first token in the statement we assume it to be 
+ * Otherwise, when parsing the first token in the statement we assume it to be
  * assignable.
  */
 static void named_variable(Compiler *self, bool assignable) {
@@ -839,7 +846,7 @@ static void named_variable(Compiler *self, bool assignable) {
  * III:22.4     Using Locals
  *
  * I've changed the semantics so that this function, which is only ever called
- * by `expression()` and `parse_precedence()`, will never allow us to assign a 
+ * by `expression()` and `parse_precedence()`, will never allow us to assign a
  * variable. Simple variable assignment is detected by `statement()` which also
  * takes care of resolving function calls and the like.
  */
@@ -931,9 +938,9 @@ static void parse_precedence(Compiler *self, Precedence precedence) {
  * We call `parse_precedence()` using `PREC_ASSIGNMENT` so we evaluate everything
  * that's stronger than or equal to an assignment. We use `PREC_NONE`, which is
  * lower in the enumerations, to break out of this recursion.
- * 
+ *
  * NOTE:
- * 
+ *
  * I've now made it so assignment is NOT an expression. This allows us to make
  * the assumption that occurences of '=' outside of statements are errors.
  */
@@ -973,10 +980,10 @@ static void doblock(Compiler *self) {
 
 /**
  * III:24.4:    Function Declarations
- * 
+ *
  * Create a new compiler instance to house a new function's bytecode, and then
  * emit that function into the caller compiler's constants chunk.
- * 
+ *
  * This is different from the other `emit_*` functions due to how complicated it
  * is and how much it relies on other static functions.
  */
@@ -991,7 +998,7 @@ static void emit_function(Compiler *self, FnType type) {
     // Set this AFTER initializing to ensure we're pointing at the one that was
     // copied over from `self`.
     LexState *lex = next->lex;
-    
+
     // Poke at the address of the Lua function part so we can populate its
     // members, mostly the arity.
     LFunction *luafn = &next->function->fn.lua;
@@ -1027,9 +1034,9 @@ static void emit_function(Compiler *self, FnType type) {
 
 /**
  * III:24.7     Native Functions
- * 
+ *
  * Assumes we consumed the 'function' keyword, and that we only have a '(' next.
- * 
+ *
  * This isn't the same as the one in the book, this is my revamp of the API so
  * we can assign anonymous functions to variables e.g. `i = function() ... end`.
  */
@@ -1043,17 +1050,17 @@ void function(Compiler *self) {
 /**
  * III:24.4     Function Declarations
  *
- * For now we'll only work with global functions, local functions are too much 
+ * For now we'll only work with global functions, local functions are too much
  * to think about. This function assumes we consumed the 'function' keyword, and
  * that an identifier is sitting waiting to be consumed.
- * 
+ *
  * NOTE:
- * 
+ *
  * I've now added support for local functions. It wasn't that difficult it turns
  * out! Since functions are first-class values, all we needed to do was to emit
  * them to the constans chunk, then push them to the stack and pop as needed.
- */ 
-static void function_declaration(Compiler *self, bool islocal) { 
+ */
+static void function_declaration(Compiler *self, bool islocal) {
     DWord index = parse_variable(self, "Expected identifier after 'function'", islocal);
 
     // Emit this already because function params will append stuff to the locals
@@ -1163,16 +1170,16 @@ static void variable_declaration(Compiler *self) {
  * Assumes we consumed some identifier token and now need to do something with
  * it. Depending on the succeeding token/s, this can be a single assignment,
  * a function call, or a get expression.
- * 
+ *
  * NOTE:
- * 
+ *
  * Also assumes that this is the first expression in a statement. If this is a
  * function call, this means that whatever the return value is we should just
  * pop it since it's not being used.
  */
 static void variable_statement(Compiler *self) {
     LexState *lex = self->lex;
-    named_variable(self, true); 
+    named_variable(self, true);
 
     // Since functions are first-class values, we can detect function calls if
     // after emitting a value we have a '(' token
@@ -1202,8 +1209,7 @@ static Token for_initializer(Compiler *self) {
     const Token name = lex->token;
 
     // Iterator variable is always a local declaration.
-    consume_token(lex, TK_IDENT, "Expected identifier");
-    add_local(self, name);
+    parse_variable(self, "Expected identifier", true);
     consume_token(lex, TK_ASSIGN, "Expected '=' after identifier");
     expression(self);
     consume_token(lex, TK_COMMA, "Expected ',' after 'for' initializer");
@@ -1293,7 +1299,7 @@ static void for_increment(Compiler *self) {
 
 /**
  * III:24.7     Native Functions
- * 
+ *
  * Now it's up to the VM to use these 3 values as it needs. We need to first
  * evaluate if the increment is negative or not. It's up to the VM to emit
  * a `true` or `false` at runtime to determine if we should jump.
@@ -1308,7 +1314,7 @@ static size_t emit_for_increment(Compiler *self, size_t loopstart) {
     // For the first iteration we immediately jump OVER increment expression.
     size_t bodyjump = emit_jump(self, OP_JMP);
     size_t incrstart = current_chunk(self)->count;
-    
+
     // This operation will take care of poking at the locals and determining if
     // we should increment/decrement. It depends on the increment's signedness.
     emit_byte(self, OP_FORINCR);
@@ -1361,7 +1367,7 @@ static void for_statement(Compiler *self) {
     // Push iterator, condition expression, and increment as local variables.
     const Token iter = for_initializer(self);
     for_limit(self, &iter); // Index into locals array.
-    for_increment(self); 
+    for_increment(self);
 
     size_t loopstart = current_chunk(self)->count;
     size_t exitjump  = emit_for_condition(self);
