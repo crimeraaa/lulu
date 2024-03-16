@@ -341,23 +341,17 @@ void lua_pushnumber(LVM *self, lua_Number n) {
     lua_pushobject(self, &v);
 }
 
-void lua_pushlstring(LVM *self, char *data, size_t len) {
-    TValue v = makestring(take_string(self, data, len));
+void lua_pushlstring(LVM *self, const char *data, size_t len) {
+    TValue v = makestring(copy_string(self, data, len));
     lua_pushobject(self, &v);
 }
 
-void lua_pushstring(LVM *self, char *data) {
+void lua_pushstring(LVM *self, const char *data) {
     if (data == NULL) {
         lua_pushnil(self);
     } else {
         lua_pushlstring(self, data, strlen(data));
     }
-}
-
-void lua_pushliteral(LVM *self, const char *data) {
-    size_t len = strlen(data);
-    TValue v = makestring(copy_string(self, data, len));
-    lua_pushobject(self, &v);
 }
 
 void lua_pushtable(LVM *self, Table *table) {
@@ -384,12 +378,7 @@ void lua_concat(LVM *self) {
         lua_binoperror(self, -2, -1, LUA_ERROR_CONCAT);
     }
     lua_pop(self, 2); // Clean up operands
-
-    size_t len = lhs->len + rhs->len;
-    char *data = allocate(char, len + 1);
-
-    memcpy(&data[0],        lhs->data, lhs->len);
-    memcpy(&data[lhs->len], rhs->data, rhs->len);
-    data[len] = '\0';
-    lua_pushlstring(self, data, len);
+    TString *s = concat_string(self, lhs, rhs);
+    TValue o   = makestring(s);
+    lua_pushobject(self, &o);
 }

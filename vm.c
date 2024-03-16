@@ -213,7 +213,7 @@ static InterpretResult run_bytecode(LVM *self) {
     for (;;) {
         int byteoffset = self->cf->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
-        print_stack(self);
+        // print_stack(self);
         disassemble_instruction(chunk, byteoffset);
 #endif
         Byte instruction;
@@ -377,15 +377,10 @@ static InterpretResult run_bytecode(LVM *self) {
 
         // -*- III:24.5.1   Binding arguments to parameters ------------------*-
         case OP_CALL: {
+            print_stack(self);
             // We always know that the argument count is written to the constants 
             // array. In practice this should only actually be only 0-255.
             int argc = lua_nextbyte(self);
-
-            // If successful there will be a new frame on the CallFrame stack for
-            // the called function. This may also set the prevline counter if we
-            // have a Lua function with its own chunk and linerun info. If we
-            // have a C function we just call it and leave the prevline as is
-            // since we do not change the current frame anyway.
             if (!lua_call(self, argc)) {
                 return INTERPRET_RUNTIME_ERROR;
             }
@@ -394,8 +389,10 @@ static InterpretResult run_bytecode(LVM *self) {
 
         case OP_RETURN: {
             if (lua_return(self)) {
+                print_stack(self);
                 return INTERPRET_OK;
             }
+            print_stack(self);
             // Also set the chunk pointer so we know where to look for constants
             // quickly without doing like 4 dereference operations all the time. 
             chunk = &self->cf->function->chunk;

@@ -39,7 +39,7 @@ struct TString {
     Object object; // Header for meta-information.
     DWord hash;    // Result of throwing `data` into a hash function.
     size_t len;    // Number of non-nul characters.
-    char *data;    // Heap-allocated buffer.
+    char data[];   // C89-style flexible array member, a heap-allocated buffer.
 };
 
 Table *new_table(LVM *vm);
@@ -68,23 +68,9 @@ TFunction *new_function(LVM *vm);
 TFunction *new_cfunction(LVM *vm, lua_CFunction function);
 
 /**
- * III:19.4.1   Concatenation
- *
- * Given a heap-allocated pointer `buffer`, we "take ownership" by immediately
- * assigning it to a `TString*` instance instead of taking the time to allocate
- * a new pointer and copy contents.
- *
- * III:19.5     Freeing Objects
- *
- * We need to have a pointer to the VM in question so its objects linked list
- * can be updated accordingly.
- */
-TString *take_string(LVM *vm, char *buffer, size_t len);
-
-/**
  * III:19.3     Strings
  *
- * Allocate enough memory to copy the string `literal` byte for byte.
+ * Allocate enough memory to copy the string `data` byte for byte.
  * Currently, we don't have our hashtable implementation so we leak memory.
  *
  * III:19.5     Freeing Objects
@@ -94,7 +80,14 @@ TString *take_string(LVM *vm, char *buffer, size_t len);
  * Compiler struct, but it'll do since the VM is always initialized before the
  * compiler ever is.
  */
-TString *copy_string(LVM *vm, const char *literal, size_t len);
+TString *copy_string(LVM *vm, const char *data, size_t len);
+
+/**
+ * Allocate enough memory to hold the sum of `lhs` and `rhs` lengths combined,
+ * then fill the instance's buffer with the appropriate concatenated contents.
+ * Then we check if the string is already interned.
+ */
+TString *concat_string(LVM *vm, const TString *lhs, const TString *rhs);
 
 void print_function(const TFunction *self);
 void print_string(const TString *self);

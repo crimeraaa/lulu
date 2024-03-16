@@ -19,8 +19,8 @@ void *reallocate(void *pointer, size_t oldsize, size_t newsize) {
 }
 
 static void free_string(TString *self) {
-    deallocate_array(char, self->data, self->len);
-    deallocate(TString, self);
+    // deallocate_array(char, self->data, self->len);
+    deallocate(TString, self); // NOTE: Does not include flexarray member size.
 }
 
 static void free_function(TFunction *self) {

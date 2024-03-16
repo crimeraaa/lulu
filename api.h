@@ -216,23 +216,10 @@ void lua_pushboolean(LVM *self, bool b);
 void lua_pushnil(LVM *self);
 void lua_pushnumber(LVM *self, lua_Number n);
 
-/**
- * Assumes that `data` is either NULL or a heap-allocated and nul-terminated
- * string buffer with which we'll attempt to take ownership of.
- */
-void lua_pushstring(LVM *self, char *data);
+void lua_pushstring(LVM *self, const char *data);
+void lua_pushlstring(LVM *self, const char *data, size_t len);
 
-/**
- * Assumes that `data` is a heap-allocated buffer which we'll attempt to take
- * ownership of via a call to `take_string()`.
- */
-void lua_pushlstring(LVM *self, char *data, size_t len);
-
-/**
- * Assumes `data` is a read-only nul-terminated C string literal with which we
- * try to create a `TString*` of. Do NOT use this with malloc'd strings.
- */
-void lua_pushliteral(LVM *self, const char *data);
+#define lua_pushliteral(vm, s)  lua_pushlstring(vm, s, arraylen(s) - 1)
 
 void lua_pushtable(LVM *self, Table *table);
 
