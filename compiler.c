@@ -515,7 +515,6 @@ static void define_variable(Compiler *self, DWord index, bool islocal) {
  * Count the number of arguments in the given argument list that we compiled.
  */
 static Byte arglist(Compiler *self) {
-    emit_byte(self, OP_ARGS);
     int argc = 0;
     LexState *lex = self->lex;
     if (!check_token(lex, TK_RPAREN)) {

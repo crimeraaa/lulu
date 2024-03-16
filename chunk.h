@@ -77,7 +77,6 @@ typedef enum {
     OP_LOOP, // Unconditional, like `OP_JMP`. Subtracts its operand from sp.
     
     // -*- III:24.5     Function Calls ---------------------------------------*-
-    OP_ARGS, // Calling function is at top of stack so set the base pointer.
     OP_CALL,
 
     OP_FORPREP, // Check if all 3 arguments to the for loop resolved to numbers.
@@ -141,7 +140,7 @@ size_t add_constant(Chunk *self, const TValue *value);
  * Try to find where the given `offset` fits into a particular line range.
  * Assumes that the chunk's lineruns array is sorted.
  */
-int get_linenumber(const Chunk *self, ptrdiff_t offset);
+int get_linenumber(const Chunk *self, int offset);
 
 /**
  * Challenge III:14.1
@@ -164,7 +163,7 @@ int get_linenumber(const Chunk *self, ptrdiff_t offset);
 #ifdef DEBUG_PRINT_CODE
 
 void disassemble_chunk(Chunk *self, const char *name);
-int disassemble_instruction(Chunk *self, ptrdiff_t offset);
+int disassemble_instruction(Chunk *self, int offset);
 
 #endif /* DEBUG_PRINT_CODE */
 

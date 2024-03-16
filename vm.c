@@ -185,6 +185,19 @@ void free_vm(LVM *self) {
 #define binop_cmp(vm, operation) \
     binop_template(vm, bool, assert_comparison, operation, lua_pushboolean)
 
+static void print_stack(const LVM *self) {
+    printf("        sp ---> [ ??? ]\n");
+    for (const TValue *slot = self->sp - 1; slot >= self->stack; slot--) {
+        if (slot == self->bp) {
+            printf("        bp ---> [ ");
+        } else {
+            printf("                [ ");
+        }
+        print_value(slot);
+        printf(" ]\n");
+    }
+}
+
 static InterpretResult run_bytecode(LVM *self) {
     Chunk *chunk = &self->cf->function->chunk;
 
@@ -198,19 +211,10 @@ static InterpretResult run_bytecode(LVM *self) {
     }
 
     for (;;) {
-        ptrdiff_t byteoffset = self->cf->ip - chunk->code;
+        int byteoffset = self->cf->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
-        printf("        ");
-        for (const TValue *slot = self->bp; slot < self->sp; slot++) {
-            printf("[ ");
-            print_value(slot);
-            printf(" ]");
-        }
-        printf("\n");
+        print_stack(self);
         disassemble_instruction(chunk, byteoffset);
-#else
-        // Even if not disassembling we still need this to report errors.
-        next_line(chunk, byteoffset);
 #endif
         Byte instruction;
         switch (instruction = lua_nextbyte(self)) {
@@ -372,16 +376,6 @@ static InterpretResult run_bytecode(LVM *self) {
         } break;
 
         // -*- III:24.5.1   Binding arguments to parameters ------------------*-
-        case OP_ARGS: {
-            // Right before calling a function but before evaluating its arglist
-            // we know that the function object is at the top of the stack.
-            // self->bp = self->sp - 1;
-            
-            printf("[DEBUG]: self->sp - 1 = ");
-            print_value(self->sp - 1);
-            printf("\n");
-        } break;
-
         case OP_CALL: {
             // We always know that the argument count is written to the constants 
             // array. In practice this should only actually be only 0-255.
@@ -395,12 +389,6 @@ static InterpretResult run_bytecode(LVM *self) {
             if (!lua_call(self, argc)) {
                 return INTERPRET_RUNTIME_ERROR;
             }
-
-            // What's the top of the stack after returning from a C function?
-            printf("[DEBUG]: self->sp - 1 = ");
-            print_value(self->sp - 1);
-            printf("\n");
-
             chunk = &self->cf->function->chunk;
         } break;
 

@@ -64,7 +64,7 @@ void lua_loadlibrary(LVM *self, const char *name, const lua_Library library);
  * pointer points to the calling function object itself rather than the very 
  * bottom of the stack.
  */
-size_t lua_gettop(LVM *self);
+int lua_gettop(LVM *self);
 
 /**
  * III:23.3     While Statements
@@ -100,7 +100,7 @@ bool lua_return(LVM *self);
 void lua_getfield(LVM *self, int offset, const char *field);
 
 /**
- * Simple pushes the global value associated with identifier `s` to the stack.
+ * Simply pushes the global value associated with identifier `s` to the stack.
  * It is your responsibility to pop this value off as needed.
  * 
  * @param vm    LVM*
@@ -188,6 +188,7 @@ TValue *lua_poke(LVM *self, int offset);
 #define lua_isnil(vm, n)        (lua_type(vm, n) == LUA_TNIL)
 #define lua_isnumber(vm, n)     (lua_type(vm, n) == LUA_TNUMBER)
 #define lua_isstring(vm, n)     (lua_type(vm, n) == LUA_TSTRING)
+#define lua_istable(vm, n)      (lua_type(vm, n) == LUA_TTABLE)
 
 bool lua_iscfunction(LVM *self, int offset);
 

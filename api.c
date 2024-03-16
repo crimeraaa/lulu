@@ -44,7 +44,7 @@ void lua_error(LVM *self, const char *format, ...) {
     for (int i = self->fc - 1; i >= 0; i--) {
         const CallFrame *frame    = &self->frames[i];
         const LFunction *function = frame->function;
-        const ptrdiff_t offset    = frame->ip - function->chunk.code;
+        const int offset          = (int)(frame->ip - function->chunk.code);
         const Chunk *chunk        = &function->chunk;
         fprintf(stderr, "%s:%i: in ", self->name, get_linenumber(chunk, offset));
         if (function->name == NULL) {
@@ -110,7 +110,7 @@ TValue *lua_poke(LVM *self, int offset) {
     }
 }
 
-size_t lua_gettop(LVM *self) {
+int lua_gettop(LVM *self) {
     return self->sp - self->bp;
 }
 
