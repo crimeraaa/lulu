@@ -18,12 +18,12 @@
 #define LUA_MAXQWORD            ((QWord)-1)
 
 /* --- LUA OPCODE SIZES ---------------------------------------------------- {{{
- Lua opcode operands can come in multiple sizes.
+Lua opcode operands can come in multiple sizes.
 
- LUA_OPSIZE_NONE:   No operand so we don't add or subtract anything.
- LUA_OPSIZE_BYTE:   1-byte operand, e.g. operand to `OP_GETLOCAL`.
- LUA_OPSIZE_BYTE2:  2-byte operand, e.g. operand to `OP_JMP`.
- LUA_OPSIZE_BYTE3:   3-byte operand, e.g. operand to `OP_LCONSTANT`. */
+LUA_OPSIZE_NONE:   No operand so we don't add or subtract anything.
+LUA_OPSIZE_BYTE:   1-byte operand, e.g. operand to `OP_GETLOCAL`.
+LUA_OPSIZE_BYTE2:  2-byte operand, e.g. operand to `OP_JMP`.
+LUA_OPSIZE_BYTE3:  3-byte operand, e.g. operand to `OP_LCONSTANT`. */
 
 #define LUA_OPSIZE_NONE         (0)
 #define LUA_OPSIZE_BYTE         (1)

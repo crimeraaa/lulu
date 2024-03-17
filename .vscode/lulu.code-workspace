@@ -4,5 +4,14 @@
 			"path": ".."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.associations": {
+			"*.asm": "masm",
+			"*.h": "c",
+			".clangd": "yaml",
+			".clang_format": "yaml",
+			"*.lox": "swift",
+			"memory": "c"
+		}
+	}
 }

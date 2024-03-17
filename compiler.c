@@ -1284,7 +1284,7 @@ static DWord for_limit(Compiler *self, const Token *name) {
     return index;
 }
 
-static void for_increment(Compiler *self) {
+static size_t for_increment(Compiler *self) {
     // 'for' increment is a bit convoluted.
     if (match_token(self->lex, TK_COMMA)) {
         expression(self);
@@ -1295,6 +1295,8 @@ static void for_increment(Compiler *self) {
     }
     push_unnamed_local(self);
     emit_byte(self, OP_FORPREP); // Signal to VM to check the arguments.
+    emit_byte(self, 0xff);       // Dummy offset.
+    return current_chunk(self)->count - LUA_OPSIZE_BYTE;
 }
 
 /**
@@ -1304,8 +1306,18 @@ static void for_increment(Compiler *self) {
  * evaluate if the increment is negative or not. It's up to the VM to emit
  * a `true` or `false` at runtime to determine if we should jump.
  */
-static size_t emit_for_condition(Compiler *self) {
-    emit_byte(self, OP_FORCOND); // Let VM deal with it
+static size_t emit_for_limit(Compiler *self, DWord iter, size_t prep) {
+    // Default: iterator <= condition is the same as !(iterator > condition)
+    // However, in FORPREP the VM will check if the increment is negative.
+    // If it is, we modify the code at runtime to replace OP_GT with OP_LT.
+    emit_bytes(self, OP_GETLOCAL, iter);
+    emit_bytes(self, OP_GETLOCAL, iter + 1);
+    emit_bytes(self, OP_GT, OP_NOT);
+    
+    // Woohoo self modifying code! Since the above instructions are always
+    // emitted right AFTER OP_FORPREP, this should fit in a Byte.
+    size_t offset = current_chunk(self)->count - prep - LUA_OPSIZE_BYTE;
+    current_chunk(self)->code[prep] = (Byte)offset;
     return emit_jump(self, OP_FJMP);
 }
 
@@ -1314,9 +1326,6 @@ static size_t emit_for_increment(Compiler *self, size_t loopstart) {
     // For the first iteration we immediately jump OVER increment expression.
     size_t bodyjump = emit_jump(self, OP_JMP);
     size_t incrstart = current_chunk(self)->count;
-
-    // This operation will take care of poking at the locals and determining if
-    // we should increment/decrement. It depends on the increment's signedness.
     emit_byte(self, OP_FORINCR);
 
     // Strange but this is what we have to do to evaluate the increment AFTER.
@@ -1365,12 +1374,12 @@ static void for_statement(Compiler *self) {
     begin_scope(self);
 
     // Push iterator, condition expression, and increment as local variables.
-    const Token iter = for_initializer(self);
-    for_limit(self, &iter); // Index into locals array.
-    for_increment(self);
+    const Token _iter = for_initializer(self);
+    DWord iter        = for_limit(self, &_iter); // Index into locals array.
+    size_t prep       = for_increment(self);    // Index of OP_FORPREP's operand.
 
     size_t loopstart = current_chunk(self)->count;
-    size_t exitjump  = emit_for_condition(self);
+    size_t exitjump  = emit_for_limit(self, iter, prep);
     emit_byte(self, OP_POP); // Cleanup condition expression.
 
     // Since we need to do the increment expression last, we have to jump over.

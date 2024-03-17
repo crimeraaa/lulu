@@ -181,7 +181,7 @@ bool lua_call(LVM *self, int argc) {
     if (self->fc >= LUA_MAXFRAMES) {
         lua_error(self, "Stack overflow.");
         return false;
-    }    
+    }
     // -1 to poke at top of stack, this is the function object itself.
     // In other words this is the base pointer of the next CallFrame.
     //

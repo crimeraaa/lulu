@@ -32,8 +32,8 @@ struct LVM {
     Table strings; // Interned string literals/user-created ones.
     jmp_buf errjmp; // Unconditional jump when errors are triggered.
     CallFrame *cf; // Current calling stack frame as indexed into `frames`.
-    TValue *bp;    // Pointer to base of current calling stack frame.
-    TValue *sp;    // Stack pointer to 1 past the lastest written element.
+    TValue *bp; // Pointer to base of current calling stack frame.
+    TValue *sp; // Stack pointer to 1 past the lastest written element.
     Object *objects; // Head of intrusive linked list of allocated objects.
     const char *name; // Filename or `stdin`.
     const char *input; // Read-only pointer to malloc'd script contents.

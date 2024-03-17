@@ -76,16 +76,16 @@ static TValue *readlconstant(LVM *self) {
  * 1-byte operand for an `OP_CONSTANT` instruction which we will use to index
  * into the CallFrame's functions' chunk's constants array.
  */
-static void lua_pushconstant(LVM *self) {
+static void pushconstant(LVM *self) {
     const TValue *constant = readconstant(self);
     lua_pushobject(self, constant);
 }
 
 /**
- * Similar to `lua_pushconstant` except that we instead assume a 3-byte operand.
+ * Similar to `pushconstant` except that we instead assume a 3-byte operand.
  * See the comments for that function for more information.
  */
-static void lua_pushlconstant(LVM *self) {
+static void pushlconstant(LVM *self) {
     const TValue *constant = readlconstant(self);
     lua_pushobject(self, constant);
 }
@@ -185,8 +185,13 @@ void free_vm(LVM *self) {
 #define binop_cmp(vm, operation) \
     binop_template(vm, bool, assert_comparison, operation, lua_pushboolean)
 
+#ifdef DEBUG_TRACE_EXECUTION
 static void print_stack(const LVM *self) {
-    printf("        sp ---> [ ??? ]\n");
+    if (self->sp == self->bp) {
+        printf("        s/bp -> [ ??? ]\n");
+    } else {
+        printf("        sp ---> [ ??? ]\n");
+    }
     for (const TValue *slot = self->sp - 1; slot >= self->stack; slot--) {
         if (slot == self->bp) {
             printf("        bp ---> [ ");
@@ -197,6 +202,9 @@ static void print_stack(const LVM *self) {
         printf(" ]\n");
     }
 }
+#else /* DEBUG_TRACE_EXECUTION not defined, so just make a no-op function. */
+#define print_stack(...)
+#endif /* DEBUG_TRACE_EXECUTION */
 
 static InterpretResult run_bytecode(LVM *self) {
     Chunk *chunk = &self->cf->function->chunk;
@@ -211,24 +219,24 @@ static InterpretResult run_bytecode(LVM *self) {
     }
 
     for (;;) {
-        int byteoffset = self->cf->ip - chunk->code;
 #ifdef DEBUG_TRACE_EXECUTION
         // print_stack(self);
+        int byteoffset = (int)(self->cf->ip - chunk->code);
         disassemble_instruction(chunk, byteoffset);
 #endif
         Byte instruction;
         switch (instruction = lua_nextbyte(self)) {
-        case OP_CONSTANT:   lua_pushconstant(self);     break;
-        case OP_LCONSTANT:  lua_pushlconstant(self);    break;
+        case OP_CONSTANT:   pushconstant(self); break;
+        case OP_LCONSTANT:  pushlconstant(self); break;
 
         // -*- III:18.4     Two New Types ------------------------------------*-
-        case OP_NIL:        lua_pushnil(self);              break;
-        case OP_TRUE:       lua_pushboolean(self, true);    break;
-        case OP_FALSE:      lua_pushboolean(self, false);   break;
+        case OP_NIL:        lua_pushnil(self); break;
+        case OP_TRUE:       lua_pushboolean(self, true); break;
+        case OP_FALSE:      lua_pushboolean(self, false); break;
 
         // -*- III:21.1.2   Expression statements ----------------------------*-
-        case OP_POP:        lua_pop(self, 1);                   break;
-        case OP_NPOP:       lua_pop(self, lua_nextbyte(self));  break;
+        case OP_POP:        lua_pop(self, 1); break;
+        case OP_NPOP:       lua_pop(self, lua_nextbyte(self)); break;
 
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
         case OP_GETLOCAL: {
@@ -321,8 +329,8 @@ static InterpretResult run_bytecode(LVM *self) {
         } break;
 
         case OP_FJMP: {
-            // Reading this regardless of falsiness is required to move to the next
-            // non-jump instruction cleanly.
+            // Reading this regardless of falsiness is required to move to the 
+            // next non-jump instruction cleanly.
             Word jump = readbyte2(self);
             if (!lua_asboolean(self, -1)) {
                 self->cf->ip += jump;
@@ -336,54 +344,41 @@ static InterpretResult run_bytecode(LVM *self) {
         } break;
                         
         case OP_FORPREP: {
-            // iterator is lower down the stack, increment is the most recent.
+            Byte *opforprep = self->cf->ip - 1;
+            Byte *opcompare = opforprep + lua_nextbyte(self);
             if (!lua_isnumber(self, -3)) {
                 lua_error(self, "'for' initial value must be a number");
             } else if (!lua_isnumber(self, -2)) {
                 lua_error(self, "'for' limit must be a number");
             } else if (!lua_isnumber(self, -1)) {
                 lua_error(self, "'for' increment must be a number");
-            } else if (lua_asnumber(self, -1) == (lua_Number)0) {
-                // Allowed in Lua but I'd prefer to consider it an error
+            }
+            // Allowed in Lua but I'd prefer to consider it an error
+            if (lua_asnumber(self, -1) == 0) {
                 lua_error(self, "'for' increment must be nonzero");
             }
+
+            // In case we're modifying the same chunk, this may have been set to
+            // OP_LT beforehand when we need OP_GT now. So let's play it safe.
+            *opcompare = (lua_asnumber(self, -1) > 0) ? OP_GT : OP_LT;
         } break;
 
-        case OP_FORCOND: {
-            // A bit slow to do it like this constantly evaluating increment,
-            // but we need this especially for nested loops.
-            lua_Number iterator  = lua_asnumber(self, -3);
-            lua_Number condition = lua_asnumber(self, -2);
-            lua_Number increment = lua_asnumber(self, -1);
-
-            // We push a boolean as an argument for the OP_FJMP instruction.
-            if (increment > (lua_Number)0) {
-                // keep looping while (iterator <= condition)
-                // a.k.a. !(iterator > condition)
-                lua_pushboolean(self, !lua_numgt(iterator, condition));
-            } else {
-                // keep looping while (iterator >= condition)
-                // a.k.a. !(iterator < condition)
-                lua_pushboolean(self, !lua_numlt(iterator, condition));
-            }
-        } break;
-                         
         case OP_FORINCR: {
-            // iterator is lower down the stack, increment is the most recent.
-            TValue *iterator    = lua_poke(self, -3);
-            TValue *increment   = lua_poke(self, -1);
-            asnumber(iterator) += asnumber(increment);
+            lua_poke(self, -3)->as.number += lua_asnumber(self, -1);
         } break;
 
         // -*- III:24.5.1   Binding arguments to parameters ------------------*-
         case OP_CALL: {
-            print_stack(self);
-            // We always know that the argument count is written to the constants 
-            // array. In practice this should only actually be only 0-255.
+            // For C functions, we'll make the bp point to the first argument.
+            TValue *savedbp = self->bp;
             int argc = lua_nextbyte(self);
+            self->bp = self->sp - argc;
+            print_stack(self);
             if (!lua_call(self, argc)) {
                 return INTERPRET_RUNTIME_ERROR;
             }
+            // When C functions are done calling we immediately restore the bp.
+            self->bp = savedbp;
             chunk = &self->cf->function->chunk;
         } break;
 

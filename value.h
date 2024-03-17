@@ -102,8 +102,8 @@ bool values_equal(const TValue *lhs, const TValue *rhs);
 #define asobject(v)         ((v)->as.object)
 
 #define isboolean(v)        ((v)->type == LUA_TBOOLEAN)
-#define isexactlytrue(v)    (isboolean(v) && !asboolean(v))
-#define isexactlyfalse(v)   (isboolean(v) && asboolean(v))
+#define isexactlytrue(v)    (isboolean(v) && asboolean(v))
+#define isexactlyfalse(v)   !isexactlytrue(v)
 
 #define isfalsy(v)          ((isnil(v)) || (isboolean(v) && !asboolean(v)))
 #define isnil(v)            ((v)->type == LUA_TNIL)
