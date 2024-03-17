@@ -35,18 +35,33 @@ void lua_loadlibrary(LVM *self, const char *name, const lua_Library library) {
     lua_pop(self, 1); // Pop the table we were modifying
 }
 
+static int current_line(const CallFrame *cf) {
+    const Chunk *chunk = &cf->function->chunk;
+    int offset = (int)(cf->ip - chunk->code);
+    return get_linenumber(chunk, offset);
+}
+
+void lua_argerror(LVM *self, int argn, const char *name, const char *type, const char *what) {
+    if (type == NULL) {
+        type = "value";
+    }
+    if (what == NULL) {
+        what = "none";
+    }
+    lua_error(self, "Bad argument #%i to '%s' (%s expected, got %s)", argn, name, type, what);
+}
+
 void lua_error(LVM *self, const char *format, ...) {
     va_list args;
     va_start(args, format);
+    fprintf(stderr, "%s:%i: ", self->name, current_line(self->cf));
     vfprintf(stderr, format, args);
     va_end(args);
-    fputs("\n", stderr);
+    fputs("\nstack traceback:\n", stderr);
     for (int i = self->fc - 1; i >= 0; i--) {
         const CallFrame *frame    = &self->frames[i];
         const LFunction *function = frame->function;
-        const int offset          = (int)(frame->ip - function->chunk.code);
-        const Chunk *chunk        = &function->chunk;
-        fprintf(stderr, "%s:%i: in ", self->name, get_linenumber(chunk, offset));
+        fprintf(stderr, "\t%s:%i: in ", self->name, current_line(frame));
         if (function->name == NULL) {
             fprintf(stderr, "main chunk\n");
         } else {
@@ -94,11 +109,7 @@ TValue *lua_poke(LVM *self, int offset) {
     if (offset >= 0) {
         // Positive or zero offset in relation to base pointer, which may not
         // necessarily point to the bottom of the stack.
-        TValue *value = self->bp + offset;
-        if (value >= self->sp) {
-            lua_error(self, "Out of bounds offset '%i' to C stack", offset);
-        }
-        return value;
+        return self->bp + offset;
     } else if (offset > LUA_GLOBALSINDEX) {
         // Negative offset in relation to stack pointer.
         return self->sp + offset;
@@ -170,8 +181,7 @@ static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
  * the result. Control is immediately passed back to the caller.
  */
 static bool call_cfunction(LVM *self, lua_CFunction cfn, int argc) {
-    TValue *argv = self->sp - argc;
-    const TValue res = cfn(self, argc, argv);
+    const TValue res = cfn(self, argc);
     self->sp -= argc + 1; // Point to slot right below the function object.
     lua_pushobject(self, &res);
     return true;
@@ -323,7 +333,44 @@ TFunction *lua_asfunction(LVM *self, int offset) {
     return (isfunction(v)) ? asfunction(v) : NULL;
 }
 
+Table *lua_astable(LVM *self, int offset) {
+    TValue *v = lua_poke(self, offset);
+    return (istable(v)) ? astable(v) : NULL;
+}
+
 /* }}} --------------------------------------------------------------------- */
+
+const char *lua_tostring(LVM *self, int offset) {
+    TValue *v = lua_poke(self, offset);
+    char data[64]; // I'm hoping this is enough for most address/number lengths.
+    int len = 0;
+    static const size_t max = arraylen(data);
+    switch (v->type) {
+    case LUA_TBOOLEAN: 
+        return asboolean(v) ? "true" : "false";
+    case LUA_TFUNCTION:
+        if (isluafunction(v) && asluafunction(v).name == NULL) {
+            return "(script)";
+        }
+        len = snprintf(data, max, "function: %p", (void*)asobject(v));
+        break;
+    case LUA_TNIL:
+        return "nil";
+    case LUA_TNUMBER:
+        len = snprintf(data, max, LUA_NUMBER_FMT, asnumber(v));
+        break;
+    case LUA_TSTRING:
+        return ascstring(v);
+    case LUA_TTABLE:
+        len = snprintf(data, max, "table: %p", (void*)asobject(v));
+        break;
+    default:
+        return "(unknown)";
+    }
+    data[len] = '\0';
+    TString *res = copy_string(self, data, len);
+    return res->data;
+}
 
 /* PUSH FUNCTIONS ------------------------------------------------------- {{{ */
 

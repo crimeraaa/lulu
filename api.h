@@ -56,7 +56,7 @@ void lua_loadlibrary(LVM *self, const char *name, const lua_Library library);
  *
  * NOTE:
  *
- * Assumes that sp is ALWAYS greater than stack base.
+ * Assumes that sp is ALWAYS greater than or equal to the current base pointer.
  * 
  * III:24.7     Native Functions
  * 
@@ -200,8 +200,32 @@ bool lua_asboolean(LVM *self, int offset);
 lua_Number lua_asnumber(LVM *self, int offset);
 TString *lua_aststring(LVM *self, int offset);
 TFunction *lua_asfunction(LVM *self, int offset);
+Table *lua_astable(LVM *self, int offset);
 
 /* }}} ---------------------------------------------------------------------- */
+
+/* 'TO' FUNCTIONS ------------------------------------------------------- {{{ */
+
+/**
+ * III:24.7     Native Functions
+ * 
+ * Returns a nul-terminated C string representation of the value at the given
+ * offset.
+ * 
+ * NOTE:
+ * 
+ * Although this function may allocate particular strings (numbers/pointers), 
+ * you are not meant to free any strings returned from this. Also, this function
+ * has literally zero error handling as the idea is ANY value can be represented
+ * as a string. 
+ * 
+ * The only limits are the current machine's number of digits in a virtual 
+ * memory address (e.g. `0x55ed37299a40`), or, for `lua_Number`, the configured 
+ * desired maximum precision, e.g. `"%.14g"`.
+ */
+const char *lua_tostring(LVM *self, int offset);
+
+/* }}} */
 
 /* 'PUSH' FUNCTIONS ----------------------------------------------------- {{{ */
 
@@ -263,6 +287,7 @@ void lua_concat(LVM *self);
  * have gone wrong. It includes a dump of the call stack up until that point.
  */
 void lua_error(LVM *self, const char *format, ...);
+void lua_argerror(LVM *self, int argn, const char *name, const char *type, const char *what);
 void lua_unoperror(LVM *self, int n, ErrType err);
 void lua_binoperror(LVM *self, int n1, int n2, ErrType err);
 

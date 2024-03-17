@@ -135,7 +135,7 @@ void print_function(const TFunction *self) {
         return;
     }
     if (self->fn.lua.name == NULL) {
-        printf("<script>");
+        printf("(script)");
     } else {
         printf("function: %p", (void*)self);
     }

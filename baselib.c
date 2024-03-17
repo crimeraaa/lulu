@@ -5,35 +5,36 @@
 #include "object.h"
 #include "value.h"
 
-static TValue base_clock(LVM *vm, int argc, TValue *argv) {
-    unused3(vm, argc, argv);
+static TValue base_clock(LVM *vm, int argc) {
+    unused2(vm, argc);
     return makenumber((lua_Number)clock() / CLOCKS_PER_SEC);
 }
 
-static TValue base_print(LVM *vm, int argc, TValue *argv) {
+static TValue base_print(LVM *vm, int argc) {
     unused(vm);
     for (int i = 0; i < argc; i++) {
-        print_value(&argv[i]);
-        printf("\t");
+        printf("%s\t", lua_tostring(vm, i));
     }
     printf("\n");
     return makenil;
 }
 
-static TValue base_type(LVM *vm, int argc, TValue *argv) {
-    if (argc != 1) {
-        lua_error(vm, "'type' expects exactly 1 argument.");
+static TValue base_type(LVM *vm, int argc) {
+    if (argc == 0) {
+        lua_argerror(vm, 1, "type", NULL, NULL);
     }
-    const TNameInfo *tname = get_tnameinfo(argv[0].type);
+    const TNameInfo *tname = get_tnameinfo(lua_type(vm, 0));
     return makestring(copy_string(vm, tname->what, tname->len));
 }
 
-static TValue base_dumptable(LVM *vm, int argc, TValue *argv) {
-    if (argc != 1 || !istable(&argv[0])) {
-        lua_error(vm, "'dumptable' expects exactly 1 argument of type 'table'.");
-    } 
-    const Table *table = astable(&argv[0]);
-    print_table(table, true);
+static TValue base_dumptable(LVM *vm, int argc) {
+    if (argc == 0) {
+        lua_argerror(vm, 1, "dumptable", NULL, NULL);
+    } else if (!lua_istable(vm, 0)) {
+        const char *typename = lua_typename(vm, lua_type(vm, 0));
+        lua_argerror(vm, 1, "dumptable", "table", typename);
+    }
+    print_table(lua_astable(vm, 0), true);
     return makenil;
 }
 

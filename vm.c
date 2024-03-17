@@ -186,20 +186,22 @@ void free_vm(LVM *self) {
     binop_template(vm, bool, assert_comparison, operation, lua_pushboolean)
 
 #ifdef DEBUG_TRACE_EXECUTION
-static void print_stack(const LVM *self) {
+static void print_stack(LVM *self) {
     if (self->sp == self->bp) {
-        printf("        s/bp -> [ ??? ]\n");
+        bool isbottom = (self->sp == self->stack);
+        const char *s = (isbottom) ? lua_tostring(self, 0) : "(top)";
+        printf("   sp/bp -> [ %s ]\n", s);
     } else {
-        printf("        sp ---> [ ??? ]\n");
+        printf("      sp -> [ (top) ]\n");
     }
     for (const TValue *slot = self->sp - 1; slot >= self->stack; slot--) {
+        int i = self->sp - slot;
+        const char *s = lua_tostring(self, -i);
         if (slot == self->bp) {
-            printf("        bp ---> [ ");
+            printf("      bp -> [ %s ]\n", s);
         } else {
-            printf("                [ ");
+            printf("            [ %s ]\n", s);
         }
-        print_value(slot);
-        printf(" ]\n");
     }
 }
 #else /* DEBUG_TRACE_EXECUTION not defined, so just make a no-op function. */

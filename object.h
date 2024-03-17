@@ -18,7 +18,7 @@
  * poke at their parent VM (the `lua_State*`). This is helpful to check if a
  * string has been interned, to intern new strings, etc.
  */
-typedef TValue (*lua_CFunction)(LVM *vm, int argc, TValue *argv);
+typedef TValue (*lua_CFunction)(LVM *vm, int argc);
 
 struct LFunction {
     int arity;     // How many arguments are expected.

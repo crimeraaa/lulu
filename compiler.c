@@ -244,7 +244,7 @@ static TFunction *end_compiler(Compiler *self) {
 #ifdef DEBUG_PRINT_CODE
     if (!self->lex->haderror) {
         // Implicit main function does not have a name.
-        const char *name = (luafn->name) ? luafn->name->data : "<script>";
+        const char *name = (luafn->name) ? luafn->name->data : "(script)";
         disassemble_chunk(current_chunk(self), name);
     }
 #endif
@@ -1167,25 +1167,21 @@ static void variable_declaration(Compiler *self) {
 }
 
 /**
- * Assumes we consumed some identifier token and now need to do something with
- * it. Depending on the succeeding token/s, this can be a single assignment,
- * a function call, or a get expression.
- *
- * NOTE:
- *
- * Also assumes that this is the first expression in a statement. If this is a
- * function call, this means that whatever the return value is we should just
- * pop it since it's not being used.
+ * Assumes we consumed some identifier token as the first expression in a
+ * statement. For our purposes, we want to only ever allow a variable assignment
+ * or a get expressions for a function call. A statement consisting of JUST a
+ * single get expression is not allowed.
  */
 static void variable_statement(Compiler *self) {
     LexState *lex = self->lex;
     named_variable(self, true);
 
     // Since functions are first-class values, we can detect function calls if
-    // after emitting a value we have a '(' token
+    // after emitting a value we have a '(' token. Also, since this is the first
+    // expression of the statement, we can safely discard the return value.
     if (match_token(lex, TK_LPAREN)) {
         call(self);
-        emit_byte(self, OP_POP); // Is a function call but not assigning
+        emit_byte(self, OP_POP);
     }
     match_token(lex, TK_SEMICOL);
 }
