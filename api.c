@@ -140,6 +140,25 @@ void lua_settop(LVM *self, int offset) {
     }
 }
 
+void lua_dumpstack(LVM *self) {
+    if (self->sp == self->bp) {
+        bool isbottom = (self->sp == self->stack);
+        const char *s = (isbottom) ? lua_tostring(self, 0) : "(top)";
+        printf("   sp/bp -> [ %s ]\n", s);
+    } else {
+        printf("      sp -> [ (top) ]\n");
+    }
+    for (const TValue *slot = self->sp - 1; slot >= self->stack; slot--) {
+        int i = self->sp - slot;
+        const char *s = lua_tostring(self, -i);
+        if (slot == self->bp) {
+            printf("      bp -> [ %s ]\n", s);
+        } else {
+            printf("            [ %s ]\n", s);
+        }
+    }
+}
+
 /**
  * III:24.5     Function Calls
  *
@@ -192,12 +211,10 @@ bool lua_call(LVM *self, int argc) {
         lua_error(self, "Stack overflow.");
         return false;
     }
-    // -1 to poke at top of stack, this is the function object itself.
-    // In other words this is the base pointer of the next CallFrame.
-    //
-    // The function to be called was pushed first, then its arguments, then its
-    // argument count.
+    TValue *savedbp = self->bp;
     TValue *callee = self->sp - 1 - argc;
+    self->bp = self->sp - argc;
+    lua_dumpstack(self);
     if (callee->type != LUA_TFUNCTION) {
         const char *tname = lua_typename(self, callee->type);
         lua_error(self, "Attempt to call %s as function", tname);
@@ -206,7 +223,9 @@ bool lua_call(LVM *self, int argc) {
 
     // Call the correct function in the union based on the boolean.
     if (asfunction(callee)->is_c) {
-        return call_cfunction(self, ascfunction(callee), argc);
+        call_cfunction(self, ascfunction(callee), argc);
+        self->bp = savedbp;
+        return true;
     } else {
         return call_luafunction(self, &asluafunction(callee), argc);
     }
@@ -339,6 +358,18 @@ Table *lua_astable(LVM *self, int offset) {
 }
 
 /* }}} --------------------------------------------------------------------- */
+
+lua_Number lua_tonumber(LVM *self, int offset) {
+    TValue *v = lua_poke(self, offset);
+    if (isnumber(v)) {
+        return asnumber(v);
+    } else if (isstring(v)) {
+        lua_Number result;
+        return check_tonumber(ascstring(v), &result) ? result : 0;
+    } else {
+        return 0;
+    }
+}
 
 const char *lua_tostring(LVM *self, int offset) {
     TValue *v = lua_poke(self, offset);

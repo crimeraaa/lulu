@@ -81,6 +81,13 @@ void print_value(const TValue *value);
  */
 bool values_equal(const TValue *lhs, const TValue *rhs);
 
+/** 
+ * Not really meant to be a user-facing API function, but this is needed when we
+ * want to verify a particular string can be converted to a number with error.
+ * - https://www.lua.org/source/5.1/lobject.c.html#luaO_str2d 
+ */
+bool check_tonumber(const char *source, lua_Number *result);
+
 #define makeboolean(b)      ((TValue){LUA_TBOOLEAN, {.boolean = (b)}})
 #define makenil             ((TValue){LUA_TNIL,     {.number = 0.0}})
 #define makenone            ((TValue){LUA_TNONE,    {.number = 0.0}})

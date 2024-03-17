@@ -68,6 +68,11 @@ integers, they are still more than adequate for most people's uses. */
 #define LUA_NUMBER_SCAN     "%lf"
 #define LUA_NUMBER_FMT      "%.14g"
 
+/* `lua_num2str` number-to-string conversion, with buffer `s` the value `n`. 
+`lua_str2num` string-to-number conversion, with buffer `s`, end pointer `p`. */
+#define lua_num2str(s, n)   sprintf((s), LUA_NUMBER_FMT, (n))
+#define lua_str2num(s, p)   strtod((s), (p))
+
 /* --- MATH CONFIGURATIONS ------------------------------------------------- {{{
 Series of function-like macros so that we can treat primitive operations as if 
 they were function calls. This also helps unify the implementation of the file

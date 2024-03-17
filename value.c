@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include "memory.h"
 #include "object.h"
 #include "table.h"
@@ -68,4 +69,26 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     }
     fprintf(stderr, "Unknown type: %i", (int)lhs->type);
     return false;
+}
+
+bool check_tonumber(const char *source, lua_Number *result) {
+    char *endptr;
+    *result = lua_str2num(source, &endptr);
+    if (endptr == source) {
+        return false; // Conversion failed since endptr is just the start.
+    }
+    if (*endptr == 'x' || *endptr == 'X') {
+        // Maybe a hexidecimal constant.
+        *result = (lua_Number)strtoul(source, &endptr, 16);
+    }
+    if (*endptr == '\0') {
+        return true;
+    }
+    while (isspace(*endptr)) {
+        endptr++;
+    }
+    if (*endptr != '\0') {
+        return false; // Invalid trailing characters.
+    }
+    return true;
 }

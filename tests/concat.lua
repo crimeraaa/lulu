@@ -1,5 +1,9 @@
-function makegreet(name)
-    return "Hi " .. name .. '!'
+function makegreeting(greeting, name)
+    return greeting .. ' ' .. name .. '!'
 end
 
-print(makegreet("Bobby"))
+function sayhi(name)
+    print(makegreeting("Hi", name))
+end
+
+sayhi("Bobby")

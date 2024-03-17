@@ -185,29 +185,6 @@ void free_vm(LVM *self) {
 #define binop_cmp(vm, operation) \
     binop_template(vm, bool, assert_comparison, operation, lua_pushboolean)
 
-#ifdef DEBUG_TRACE_EXECUTION
-static void print_stack(LVM *self) {
-    if (self->sp == self->bp) {
-        bool isbottom = (self->sp == self->stack);
-        const char *s = (isbottom) ? lua_tostring(self, 0) : "(top)";
-        printf("   sp/bp -> [ %s ]\n", s);
-    } else {
-        printf("      sp -> [ (top) ]\n");
-    }
-    for (const TValue *slot = self->sp - 1; slot >= self->stack; slot--) {
-        int i = self->sp - slot;
-        const char *s = lua_tostring(self, -i);
-        if (slot == self->bp) {
-            printf("      bp -> [ %s ]\n", s);
-        } else {
-            printf("            [ %s ]\n", s);
-        }
-    }
-}
-#else /* DEBUG_TRACE_EXECUTION not defined, so just make a no-op function. */
-#define print_stack(...)
-#endif /* DEBUG_TRACE_EXECUTION */
-
 static InterpretResult run_bytecode(LVM *self) {
     Chunk *chunk = &self->cf->function->chunk;
 
@@ -222,8 +199,8 @@ static InterpretResult run_bytecode(LVM *self) {
 
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
-        // print_stack(self);
         int byteoffset = (int)(self->cf->ip - chunk->code);
+        // lua_dumpstack(self);
         disassemble_instruction(chunk, byteoffset);
 #endif
         Byte instruction;
@@ -371,25 +348,19 @@ static InterpretResult run_bytecode(LVM *self) {
 
         // -*- III:24.5.1   Binding arguments to parameters ------------------*-
         case OP_CALL: {
-            // For C functions, we'll make the bp point to the first argument.
-            TValue *savedbp = self->bp;
             int argc = lua_nextbyte(self);
-            self->bp = self->sp - argc;
-            print_stack(self);
             if (!lua_call(self, argc)) {
                 return INTERPRET_RUNTIME_ERROR;
             }
-            // When C functions are done calling we immediately restore the bp.
-            self->bp = savedbp;
             chunk = &self->cf->function->chunk;
         } break;
 
         case OP_RETURN: {
-            if (lua_return(self)) {
-                print_stack(self);
+            bool finished = lua_return(self);
+            lua_dumpstack(self);
+            if (finished) {
                 return INTERPRET_OK;
             }
-            print_stack(self);
             // Also set the chunk pointer so we know where to look for constants
             // quickly without doing like 4 dereference operations all the time. 
             chunk = &self->cf->function->chunk;

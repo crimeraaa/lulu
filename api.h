@@ -225,6 +225,19 @@ Table *lua_astable(LVM *self, int offset);
  */
 const char *lua_tostring(LVM *self, int offset);
 
+/**
+ * Converts the `TValue` at given offset into the VM's stack to a `lua_Number`.
+ * If it's a number to begin with, we return the number as-is.
+ * If it's a string, we attempt to convert it to a numerical representation.
+ * Otherwise, we return 0 for any other type.
+ * 
+ * NOTE:
+ * 
+ * This function does not signal any errors by itself. You may want to pair it
+ * with calls to `lua_isnumber` and `lua_isstring`.
+ */
+lua_Number lua_tonumber(LVM *self, int offset);
+
 /* }}} */
 
 /* 'PUSH' FUNCTIONS ----------------------------------------------------- {{{ */
@@ -276,6 +289,7 @@ bool lua_equal(LVM *self, int offset1, int offset2);
  */
 void lua_concat(LVM *self);
 
+void lua_dumpstack(LVM *self);
 /**
  * III:18.3.1   Unary negation and runtime errors
  *

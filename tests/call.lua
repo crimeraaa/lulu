@@ -7,6 +7,17 @@
 --       compile-time argument count which makes this all the more difficult.
 --       We can't just go down the stack pointer until we hit the first function
 --       because functions can be passed as arguments to other functions!
-print("Hi mom!")
-print("Hi", clock())
-print(clock(), "Hi")
+-- print("Hi mom!")
+-- print("Hi", clock())
+-- print(clock(), "Hi")
+
+
+function abs(n)
+    return (n >= 0 and n) or (-n)
+end
+
+function add(x, y)
+    return x + y
+end
+
+print(abs(add(1,2)), abs(add(3.00,0.14)), abs(add(-9.00,-0.81)))

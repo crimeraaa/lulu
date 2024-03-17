@@ -38,10 +38,41 @@ static TValue base_dumptable(LVM *vm, int argc) {
     return makenil;
 }
 
+static TValue base_tonumber(LVM *vm, int argc) {
+    if (argc == 0) {
+        lua_argerror(vm, 1, "tonumber", NULL, NULL);
+    }
+    if (lua_isnumber(vm, 0)) {
+        return makenumber(lua_asnumber(vm, 0));
+    } else if (lua_isstring(vm, 0)) {
+        lua_Number result;
+        if (!check_tonumber(lua_tostring(vm, 0), &result)) {
+            return makenil;
+        }
+        return makenumber(result);
+    } else {
+        return makenil;
+    }
+}
+
+static TValue base_tostring(LVM *vm, int argc) {
+    if (argc == 0) {
+        lua_argerror(vm, 1, "tostring", NULL, NULL);
+    } else if (lua_isstring(vm, 0)) {
+        TString *ts = lua_aststring(vm, 0);
+        return makestring(ts);
+    }
+    const char *s = lua_tostring(vm, 0);
+    TString *ts   = copy_string(vm, s, strlen(s));
+    return makestring(ts);
+}
+
 static const lua_Library baselib = {
     {"dumptable",   base_dumptable},
     {"clock",       base_clock},
     {"print",       base_print},
+    {"tostring",    base_tostring},
+    {"tonumber",    base_tonumber},
     {"type",        base_type},
     {NULL,          NULL},
 };
