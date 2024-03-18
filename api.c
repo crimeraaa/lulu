@@ -1,6 +1,7 @@
 #include "api.h"
 #include "chunk.h"
 #include "memory.h"
+#include "value.h"
 #include "vm.h"
 
 // Placeholder value for invalid stack accesses. Do NOT modify it!
@@ -39,16 +40,6 @@ static int current_line(const CallFrame *cf) {
     const Chunk *chunk = &cf->function->chunk;
     int offset = (int)(cf->ip - chunk->code);
     return get_linenumber(chunk, offset);
-}
-
-void lua_argerror(LVM *self, int argn, const char *name, const char *type, const char *what) {
-    if (type == NULL) {
-        type = "value";
-    }
-    if (what == NULL) {
-        what = "none";
-    }
-    lua_error(self, "Bad argument #%i to '%s' (%s expected, got %s)", argn, name, type, what);
 }
 
 void lua_error(LVM *self, const char *format, ...) {
@@ -373,32 +364,12 @@ lua_Number lua_tonumber(LVM *self, int offset) {
 
 const char *lua_tostring(LVM *self, int offset) {
     TValue *v = lua_poke(self, offset);
-    char data[64]; // I'm hoping this is enough for most address/number lengths.
-    int len = 0;
-    static const size_t max = arraylen(data);
-    switch (v->type) {
-    case LUA_TBOOLEAN: 
-        return asboolean(v) ? "true" : "false";
-    case LUA_TFUNCTION:
-        if (isluafunction(v) && asluafunction(v).name == NULL) {
-            return "(script)";
-        }
-        len = snprintf(data, max, "function: %p", (void*)asobject(v));
-        break;
-    case LUA_TNIL:
-        return "nil";
-    case LUA_TNUMBER:
-        len = snprintf(data, max, LUA_NUMBER_FMT, asnumber(v));
-        break;
-    case LUA_TSTRING:
-        return ascstring(v);
-    case LUA_TTABLE:
-        len = snprintf(data, max, "table: %p", (void*)asobject(v));
-        break;
-    default:
-        return "(unknown)";
+    char data[LUA_MAXNUM2STR];
+    const char *literal; // Will be set by `check_tostring()`.
+    int len = check_tostring(v, data, &literal);
+    if (len == 0) {
+        return literal;
     }
-    data[len] = '\0';
     TString *res = copy_string(self, data, len);
     return res->data;
 }

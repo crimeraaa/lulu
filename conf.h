@@ -73,6 +73,19 @@ integers, they are still more than adequate for most people's uses. */
 #define lua_num2str(s, n)   sprintf((s), LUA_NUMBER_FMT, (n))
 #define lua_str2num(s, p)   strtod((s), (p))
 
+/* Used mainly by our various `tostring` implementations. We assume 64 chars
+are more than enough space for hard-coded char[] to fit some type information
+like `"function: "` with a virtual memory address (`"%p"`) or the precision of
+`LUA_NUMBER_FMT`, e.g. `"%.14g"` will require at most 14 characters.
+
+If you addresses are longer than 64 characters, or your LUA_NUMBER_FMT choice is
+more than 64 digits, change this accordingly. */
+#define LUA_MAXNUM2STR      (64)
+
+/* When a particular formatted output needs to occupy a fixed amount of space,
+this is used to help determine how much to pad by. */
+#define LUA_MAXPAD          (16)
+
 /* --- MATH CONFIGURATIONS ------------------------------------------------- {{{
 Series of function-like macros so that we can treat primitive operations as if 
 they were function calls. This also helps unify the implementation of the file

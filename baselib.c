@@ -11,7 +11,6 @@ static TValue base_clock(LVM *vm, int argc) {
 }
 
 static TValue base_print(LVM *vm, int argc) {
-    unused(vm);
     for (int i = 0; i < argc; i++) {
         printf("%s\t", lua_tostring(vm, i));
     }
@@ -21,7 +20,7 @@ static TValue base_print(LVM *vm, int argc) {
 
 static TValue base_type(LVM *vm, int argc) {
     if (argc == 0) {
-        lua_argerror(vm, 1, "type", NULL, NULL);
+        lua_argany(vm, 1, "type");
     }
     const TNameInfo *tname = get_tnameinfo(lua_type(vm, 0));
     return makestring(copy_string(vm, tname->what, tname->len));
@@ -29,18 +28,37 @@ static TValue base_type(LVM *vm, int argc) {
 
 static TValue base_dumptable(LVM *vm, int argc) {
     if (argc == 0) {
-        lua_argerror(vm, 1, "dumptable", NULL, NULL);
+        lua_argany(vm, 1, "dumptable");
     } else if (!lua_istable(vm, 0)) {
         const char *typename = lua_typename(vm, lua_type(vm, 0));
-        lua_argerror(vm, 1, "dumptable", "table", typename);
+        lua_typerror(vm, 1, "dumptable", "table", typename);
     }
-    print_table(lua_astable(vm, 0), true);
+    const Table *table = lua_astable(vm, 0);
+    printf("table: %p\n", (void*)table);
+    for (size_t i = 0; i < table->cap; i++) {
+        const Entry *entry = &table->entries[i];
+        if (!isnil(&entry->value)) {
+            char buf[LUA_MAXNUM2STR];
+            const char *out;
+            check_tostring(&entry->key, buf, &out);
+
+            // If less than 16, pad spaces to the right for prettier output.
+            // We do it this way so the ',' stays connected to the string.
+            int pad = LUA_MAXPAD - printf("K: %s, ",   out);
+            for (int i = 0; i < pad; i++) {
+                printf(" ");
+            }
+            check_tostring(&entry->value, buf, &out);
+            printf("V: %s\n", out);
+        }
+    }
+    // print_table(lua_astable(vm, 0), true);
     return makenil;
 }
 
 static TValue base_tonumber(LVM *vm, int argc) {
     if (argc == 0) {
-        lua_argerror(vm, 1, "tonumber", NULL, NULL);
+        lua_argany(vm, 1, "tonumber");
     }
     if (lua_isnumber(vm, 0)) {
         return makenumber(lua_asnumber(vm, 0));
@@ -57,7 +75,7 @@ static TValue base_tonumber(LVM *vm, int argc) {
 
 static TValue base_tostring(LVM *vm, int argc) {
     if (argc == 0) {
-        lua_argerror(vm, 1, "tostring", NULL, NULL);
+        lua_argany(vm, 1, "tostring");
     } else if (lua_isstring(vm, 0)) {
         TString *ts = lua_aststring(vm, 0);
         return makestring(ts);

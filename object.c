@@ -87,7 +87,7 @@ static TString *allocate_string(LVM *vm, const char *data, size_t len, DWord has
  * 
  * Unfortunately due to how we allocate the TString pointers, we have to
  * determine the hash AFTER writing the data pointer as we don't have access to
- * the full string in functions like `concat_strings()`.
+ * the full string in functions like `concat_string()`.
  */
 static DWord hash_string(const char *key, size_t len) {
     DWord hash = FNV32_OFFSET;

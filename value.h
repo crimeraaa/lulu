@@ -81,6 +81,21 @@ void print_value(const TValue *value);
  */
 bool values_equal(const TValue *lhs, const TValue *rhs);
 
+/**
+ * Create a string representation of `v`. Assumes `buf` is a stack-allocated 
+ * `char` array of size `LUA_MAXNUM2STR`.
+ * 
+ * NOTE:
+ * 
+ * If the resulting string is string literal in read-only memory, the pointer
+ * stored in `out` will point to that and `0` will be returned to indicate
+ * nothing was written.
+ * 
+ * Otherwise, we will return a positive nonzero value to indicate we wrote to
+ * `buf` and that `out` likely points to the first character.
+ */
+int check_tostring(const TValue *v, char *buf, const char **out);
+
 /** 
  * Not really meant to be a user-facing API function, but this is needed when we
  * want to verify a particular string can be converted to a number with error.

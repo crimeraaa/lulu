@@ -209,8 +209,9 @@ Table *lua_astable(LVM *self, int offset);
 /**
  * III:24.7     Native Functions
  * 
- * Returns a nul-terminated C string representation of the value at the given
- * offset.
+ * Create the string representation of the `TValue` at the given `offset` into
+ * the VM's stack. May return a pointer to a string literal or to a `TString*`
+ * buffer.
  * 
  * NOTE:
  * 
@@ -289,7 +290,13 @@ bool lua_equal(LVM *self, int offset1, int offset2);
  */
 void lua_concat(LVM *self);
 
+/**
+ * Utility function to print the contents of the stack at the time of calling.
+ * Prints vertically from top of the stack going to the bottom.
+ * It also identifies which of the stack values are the stack/base pointer.
+ */
 void lua_dumpstack(LVM *self);
+
 /**
  * III:18.3.1   Unary negation and runtime errors
  *
@@ -301,8 +308,13 @@ void lua_dumpstack(LVM *self);
  * have gone wrong. It includes a dump of the call stack up until that point.
  */
 void lua_error(LVM *self, const char *format, ...);
-void lua_argerror(LVM *self, int argn, const char *name, const char *type, const char *what);
 void lua_unoperror(LVM *self, int n, ErrType err);
 void lua_binoperror(LVM *self, int n1, int n2, ErrType err);
+
+#define lua_badarg(info) "Bad argument #%i to '%s' (" info ")"
+#define lua_argany(vm, argn, name) \
+    lua_error(vm, lua_badarg("value expected"), argn, name)
+#define lua_typerror(vm, argn, name, want, got) \
+    lua_error(vm, lua_badarg("%s expected, got %s"), argn, name, want, got)
 
 #endif /* LUA_API_H */

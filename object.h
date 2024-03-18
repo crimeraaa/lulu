@@ -39,7 +39,7 @@ struct TString {
     Object object; // Header for meta-information.
     DWord hash;    // Result of throwing `data` into a hash function.
     size_t len;    // Number of non-nul characters.
-    char data[];   // C89-style flexible array member, a heap-allocated buffer.
+    char data[];   // C99-style flexible array member, a heap-allocated buffer.
 };
 
 Table *new_table(LVM *vm);
@@ -104,7 +104,7 @@ void print_string(const TString *self);
 
 #define isfunction(v)       isobject(LUA_TFUNCTION, v)
 #define iscfunction(v)      (isfunction(v) && asfunction(v)->is_c)
-#define isluafunction(v)    (!iscfunction(v))
+#define isluafunction(v)    (isfunction(v) && !asfunction(v)->is_c)
 #define isstring(v)         isobject(LUA_TSTRING, v)
 #define istable(v)          isobject(LUA_TTABLE, v)
 

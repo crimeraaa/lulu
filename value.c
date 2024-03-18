@@ -71,6 +71,39 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     return false;
 }
 
+int check_tostring(const TValue *v, char *buf, const char **out) {
+    int len = 0;
+    *out = NULL;
+    switch (v->type) {
+    case LUA_TBOOLEAN:
+        len = snprintf(buf, LUA_MAXNUM2STR, asboolean(v) ? "true" : "false");
+        break;
+    case LUA_TNIL:
+        *out = "nil";
+        return 0;
+    case LUA_TNUMBER:
+        len = lua_num2str(buf, asnumber(v));
+        break;
+    case LUA_TSTRING:
+        // Can't safely assume we can write to fixed-size `buf`.
+        *out = ascstring(v);
+        return 0;
+    default: {
+        // User should not be able to query the top-level script itself though!
+        if (isluafunction(v) && asluafunction(v).name == NULL) {
+            *out = "(script)";
+            return 0;
+        }
+        const char *s = get_tnameinfo(v->type)->what;
+        const void *p = asobject(v);
+        len = snprintf(buf, LUA_MAXNUM2STR, "%s: %p", s, p);
+    } break;
+    }
+    buf[len] = '\0';
+    *out = buf;
+    return len;
+}
+
 bool check_tonumber(const char *source, lua_Number *result) {
     char *endptr;
     *result = lua_str2num(source, &endptr);

@@ -213,11 +213,11 @@ void print_table(const Table *self, bool dodump) {
     for (size_t i = 0; i < self->cap; i++) {
         const Entry *entry = &self->entries[i];
         if (!isempty(entry)) {
-            printf("\tK: ");
+            printf("\t[ K: ");
             print_value(&entry->key);
-            printf(", V: ");
+            printf(" ][ V: ");
             print_value(&entry->value);
-            printf("\n");
+            printf(" ]\n");
         }
     }
 }
