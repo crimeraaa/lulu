@@ -1341,12 +1341,17 @@ static size_t emit_for_limit(Compiler *self, DWord iter, size_t prep) {
     return emit_jump(self, OP_FJMP);
 }
 
-static size_t emit_for_increment(Compiler *self, size_t loopstart) {
+static size_t emit_for_increment(Compiler *self, DWord iter, size_t loopstart) {
     // Hacky but we need this in order to keep our compiler single-pass.
     // For the first iteration we immediately jump OVER increment expression.
     size_t bodyjump = emit_jump(self, OP_JMP);
     size_t incrstart = current_chunk(self)->count;
-    emit_byte(self, OP_FORINCR);
+
+    emit_bytes(self, OP_GETLOCAL, iter);
+    emit_bytes(self, OP_GETLOCAL, iter + 2);
+    emit_byte(self, OP_ADD);
+    emit_bytes(self, OP_SETLOCAL, iter);
+    
 
     // Strange but this is what we have to do to evaluate the increment AFTER.
     emit_loop(self, loopstart);
@@ -1413,7 +1418,7 @@ static void for_statement(Compiler *self) {
     emit_byte(self, OP_POP); // Cleanup condition expression.
 
     // Since we need to do the increment expression last, we have to jump over.
-    loopstart = emit_for_increment(self, loopstart);
+    loopstart = emit_for_increment(self, iter, loopstart);
     consume_token(self->lex, TK_DO, "Expected 'do' after 'for' clause");
 
     // This creates a new scope but given our resolution rules it's probably ok.

@@ -80,7 +80,6 @@ typedef enum {
     OP_CALL,
 
     OP_FORPREP, // Check if all 3 arguments to the for loop resolved to numbers.
-    OP_FORINCR, // Directly modify the iterator, based on its offset from sp.
 
     OP_RETURN,
 } OpCode;

@@ -7,12 +7,39 @@
 // Placeholder value for invalid stack accesses. Do NOT modify it!
 // static TValue noneobject = {.type = LUA_TNONE, .as = {.number = 0}};
 
-static const TValue nilvalue = makenil;
+static const TValue lua_nilvalue = makenil;
+
+/**
+ * Convert a positive or negative offset into a pointer to a particular value in
+ * the VM's stack. If invalid we return the address of `noneobject` rather than
+ * return `NULL` as that'll be terrible.
+ *
+ * If negative, we use a negative offset relative to the stack top pointer.
+ * If positive, we use a positive offset relative to the stack base pointer.
+ *
+ * See:
+ * - https://www.lua.org/source/5.1/lapi.c.html#index2adr
+ */
+static TValue *offset_to_address(LVM *self, int offset) {
+    if (offset >= 0) {
+        // Positive or zero offset in relation to base pointer, which may not
+        // necessarily point to the bottom of the stack.
+        return self->bp + offset;
+    } else if (offset > LUA_GLOBALSINDEX) {
+        // Negative offset in relation to stack pointer.
+        return self->sp + offset;
+    } else {
+        switch (offset) {
+        case LUA_GLOBALSINDEX: return &self->_G;
+        default:               return NULL;
+        }
+    }
+}
 
 void lua_settable(LVM *self, int offset) {
-    TValue *table = lua_poke(self, offset);
-    TValue *key   = lua_poke(self, -2);
-    TValue *value = lua_poke(self, -1);
+    TValue *table = offset_to_address(self, offset);
+    TValue *key   = offset_to_address(self, -2);
+    TValue *value = offset_to_address(self, -1);
     if (!istable(table)) {
         lua_unoperror(self, offset, LUA_ERROR_INDEX);
     }
@@ -95,22 +122,6 @@ void lua_binoperror(LVM *self, int n1, int n2, ErrType err) {
 }
 
 /* BASIC STACK MANIPULATION --------------------------------------------- {{{ */
-
-TValue *lua_poke(LVM *self, int offset) {
-    if (offset >= 0) {
-        // Positive or zero offset in relation to base pointer, which may not
-        // necessarily point to the bottom of the stack.
-        return self->bp + offset;
-    } else if (offset > LUA_GLOBALSINDEX) {
-        // Negative offset in relation to stack pointer.
-        return self->sp + offset;
-    } else {
-        switch (offset) {
-        case LUA_GLOBALSINDEX: return &self->_G;
-        default:               return NULL;
-        }
-    }
-}
 
 int lua_gettop(LVM *self) {
     return self->sp - self->bp;
@@ -226,7 +237,7 @@ bool lua_return(LVM *self) {
     // When a function returns a value, its result will be on the top of
     // the stack. We're about to discard the function's entire stack
     // window so we hold onto the return value.
-    const TValue res = lua_peek(self, -1);
+    const TValue res = *offset_to_address(self, -1);
     lua_pop(self, 1);
 
     // Conceptually discard the call frame. If this was the very last
@@ -259,7 +270,7 @@ bool lua_return(LVM *self) {
 /* 'GET' and 'SET' FUNCTIONS -------------------------------------------- {{{ */
 
 void lua_getfield(LVM *self, int offset, const char *field) {
-    TValue *table = lua_poke(self, offset);
+    TValue *table = offset_to_address(self, offset);
     TValue key = makestring(copy_string(self, field, strlen(field)));
     TValue value;
     if (!istable(table)) {
@@ -273,21 +284,21 @@ void lua_getfield(LVM *self, int offset, const char *field) {
 }
 
 void lua_setfield(LVM *self, int offset, const char *field) {
-    TValue *table = lua_poke(self, offset);
+    TValue *table = offset_to_address(self, offset);
     TValue key    = makestring(copy_string(self, field, strlen(field)));
     if (!istable(table)) {
         lua_unoperror(self, offset, LUA_ERROR_INDEX);
     } else if (!isstring(&key)) {
         lua_unoperror(self, offset, LUA_ERROR_FIELD);
     }
-    table_set(astable(table), &key, lua_poke(self, - 1));
+    table_set(astable(table), &key, offset_to_address(self, - 1));
     lua_pop(self, 1);
 }
 
 /* }}} ---------------------------------------------------------------------- */
 
 VType lua_type(LVM *self, int offset) {
-    return lua_poke(self, offset)->type;
+    return offset_to_address(self, offset)->type;
 }
 
 const char *lua_typename(LVM *self, VType type) {
@@ -298,15 +309,15 @@ const char *lua_typename(LVM *self, VType type) {
 /* 'IS' FUNCTIONS ------------------------------------------------------- {{{ */
 
 bool lua_iscfunction(LVM *self, int offset) {
-    const TValue *v = lua_poke(self, offset);
+    const TValue *v = offset_to_address(self, offset);
     return iscfunction(v);
 }
 
 /* }}} */
 
 bool lua_equal(LVM *self, int offset1, int offset2) {
-    const TValue *lhs = lua_poke(self, offset1);
-    const TValue *rhs = lua_poke(self, offset2);
+    const TValue *lhs = offset_to_address(self, offset1);
+    const TValue *rhs = offset_to_address(self, offset2);
     if (lhs->type != rhs->type) {
         return false;
     }
@@ -324,34 +335,40 @@ bool lua_equal(LVM *self, int offset1, int offset2) {
 /* 'AS' FUNCTIONS ------------------------------------------------------- {{{ */
 
 bool lua_asboolean(LVM *self, int offset) {
-    const TValue *v = lua_poke(self, offset);
-    return !isfalsy(v);
+    const TValue *v = offset_to_address(self, offset);
+    if (isnil(v)) {
+        return false;
+    } else if (isboolean(v)) {
+        return asboolean(v);
+    }
+    // Every other value, even 0 and empty containers, is considered true.
+    return true;
 }
 
 lua_Number lua_asnumber(LVM *self, int offset) {
-    const TValue *v = lua_poke(self, offset);
+    const TValue *v = offset_to_address(self, offset);
     return isnumber(v) ? asnumber(v) : (lua_Number)0;
 }
 
 TString *lua_aststring(LVM *self, int offset) {
-    TValue *v = lua_poke(self, offset);
+    TValue *v = offset_to_address(self, offset);
     return (isstring(v)) ? asstring(v) : NULL;
 }
 
 TFunction *lua_asfunction(LVM *self, int offset) {
-    TValue *v = lua_poke(self, offset);
+    TValue *v = offset_to_address(self, offset);
     return (isfunction(v)) ? asfunction(v) : NULL;
 }
 
 Table *lua_astable(LVM *self, int offset) {
-    TValue *v = lua_poke(self, offset);
+    TValue *v = offset_to_address(self, offset);
     return (istable(v)) ? astable(v) : NULL;
 }
 
 /* }}} --------------------------------------------------------------------- */
 
 lua_Number lua_tonumber(LVM *self, int offset) {
-    TValue *v = lua_poke(self, offset);
+    TValue *v = offset_to_address(self, offset);
     if (isnumber(v)) {
         return asnumber(v);
     } else if (isstring(v)) {
@@ -363,7 +380,7 @@ lua_Number lua_tonumber(LVM *self, int offset) {
 }
 
 const char *lua_tostring(LVM *self, int offset) {
-    TValue *v = lua_poke(self, offset);
+    TValue *v = offset_to_address(self, offset);
     char data[LUA_MAXNUM2STR];
     const char *literal; // Will be set by `check_tostring()`.
     int len = check_tostring(v, data, &literal);
@@ -382,7 +399,7 @@ void lua_pushboolean(LVM *self, bool b) {
 }
 
 void lua_pushnil(LVM *self) {
-    lua_pushobject(self, &nilvalue);
+    lua_pushobject(self, &lua_nilvalue);
 }
 
 void lua_pushnumber(LVM *self, lua_Number n) {

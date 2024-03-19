@@ -42,15 +42,10 @@ void write_tarray(TArray *self, const TValue *value) {
 }
 
 void print_value(const TValue *value) {
-    switch (value->type) {
-    case LUA_TBOOLEAN:  printf(value->as.boolean ? "true" : "false"); break;
-    case LUA_TFUNCTION: print_function(asfunction(value)); break;
-    case LUA_TNIL:      printf("nil"); break;
-    case LUA_TNUMBER:   printf(LUA_NUMBER_FMT, value->as.number); break;
-    case LUA_TSTRING:   print_string(asstring(value)); break;
-    case LUA_TTABLE:    print_table(astable(value), false); break;
-    default:            printf("Unknown type: %i", (int)value->type); break;
-    }
+    char buf[LUA_MAXNUM2STR];
+    const char *out;
+    check_tostring(value, buf, &out);
+    printf("%s", out);
 }
 
 bool values_equal(const TValue *lhs, const TValue *rhs) {
@@ -76,8 +71,8 @@ int check_tostring(const TValue *v, char *buf, const char **out) {
     *out = NULL;
     switch (v->type) {
     case LUA_TBOOLEAN:
-        len = snprintf(buf, LUA_MAXNUM2STR, asboolean(v) ? "true" : "false");
-        break;
+        *out = asboolean(v) ? "true" : "false";
+        return 0;
     case LUA_TNIL:
         *out = "nil";
         return 0;
@@ -85,7 +80,7 @@ int check_tostring(const TValue *v, char *buf, const char **out) {
         len = lua_num2str(buf, asnumber(v));
         break;
     case LUA_TSTRING:
-        // Can't safely assume we can write to fixed-size `buf`.
+        // Can't safely assume we can write to the fixed-size `buf`.
         *out = ascstring(v);
         return 0;
     default: {

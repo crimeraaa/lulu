@@ -80,6 +80,4 @@ void copy_table(Table *dst, Table *src);
  */
 TString *table_findstring(Table *self, const char *what, size_t len, DWord hash);
 
-void print_table(const Table *self, bool dodump);
-
 #endif /* LUA_TABLE_H */

@@ -5,8 +5,6 @@
 
 /* Tombstones use a nil key with a non-nil value to be distict. */
 #define maketombstone       ((Entry){makenil, makeboolean(false)})
-#define istombstone(e)      (isnil(&(e)->key) && isexactlyfalse(&(e)->value))
-#define isempty(e)          (isnil(&(e)->key) && isnil(&(e)->value))
 
 /**
  * III:20.4.2   Inserting Entries
@@ -195,29 +193,5 @@ TString *table_findstring(Table *self, const char *data, size_t len, DWord hash)
             }
         } 
         index = (index + 1) % self->cap;
-    }
-}
-
-void print_table(const Table *self, bool dodump) {
-    printf("table: %p", (void*)self);
-    if (!dodump) {
-        return;
-    }
-    printf("\n");
-    if (self->count == 0) {
-        return;
-    }
-
-    // self->count isn't necessarily correct, e.g. count of 5 yet we can have
-    // valuesa at index 7 for example. So we prefer to use self->cap.
-    for (size_t i = 0; i < self->cap; i++) {
-        const Entry *entry = &self->entries[i];
-        if (!isempty(entry)) {
-            printf("\t[ K: ");
-            print_value(&entry->key);
-            printf(" ][ V: ");
-            print_value(&entry->value);
-            printf(" ]\n");
-        }
     }
 }

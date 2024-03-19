@@ -205,7 +205,7 @@ static int opbyte(const char *name, const Chunk *self, int offset) {
     return next_instruction(offset, LUA_OPSIZE_BYTE);
 }
 
-static Word read_byte2(const Chunk *self, int offset) {
+static Word readbyte2(const Chunk *self, int offset) {
     Word msb = byteunmask(self->code[offset + 1], 1);
     Word lsb = byteunmask(self->code[offset + 2], 0);
     return msb | lsb;
@@ -218,7 +218,7 @@ static Word read_byte2(const Chunk *self, int offset) {
  * because later on we'll also allow for jumping backwards.
  */
 static int opjump(const char *name, int sign, const Chunk *self, int offset) {
-    Word jump = read_byte2(self, offset);
+    Word jump = readbyte2(self, offset);
     int next = next_instruction(offset, LUA_OPSIZE_BYTE2);
     int target = next + (sign * jump);
     printf("%-16s    0x%04x->0x%04x\n", name, offset, target);
@@ -290,7 +290,6 @@ int disassemble_instruction(Chunk *self, int offset) {
     case OP_LOOP:       return opjump("OP_LOOP", -1, self, offset);
                         
     case OP_FORPREP:    return opbyte("OP_FORPREP", self, offset);
-    case OP_FORINCR:    return opsimple("OP_FORINCR", offset);
 
     // -*- III:24.5     Function Calls ---------------------------------------*-
     case OP_CALL:       return opbyte("OP_CALL", self, offset);

@@ -155,25 +155,6 @@ void lua_setfield(LVM *self, int offset, const char *field);
  */
 #define lua_absindex(vm, n)     ((n) < 0 ? lua_gettop(vm) + (n) : (n))
 
-/**
- * Convert a positive or negative offset into a pointer to a particular value in
- * the VM's stack. If invalid we return the address of `noneobject` rather than
- * return `NULL` as that'll be terrible.
- *
- * If negative, we use a negative offset relative to the stack top pointer.
- * If positive, we use a positive offset relative to the stack base pointer.
- *
- * See:
- * - https://www.lua.org/source/5.1/lapi.c.html#index2adr
- */
-TValue *lua_poke(LVM *self, int offset);
-
-/**
- * Exactly the same as `lua_poke()` except that we immediately dereference the
- * retrieved pointer.
- */
-#define lua_peek(vm, n)         (*lua_poke(vm, n))
-
 /* Pop `n` elements from the stack by decrementing the stack top pointer. */
 #define lua_pop(vm, n)         lua_settop(vm, -(n)-1)
 

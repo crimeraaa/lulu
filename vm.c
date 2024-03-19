@@ -12,7 +12,12 @@
  * Remember that postfix increment returns the original value of the expression.
  * So we effectively increment the pointer but we dereference the original one.
  */
-#define lua_nextbyte(vm)        (*(vm)->cf->ip++)
+#define readbyte(vm)            (*(vm)->cf->ip++)
+
+/* Get a pointer to a value in the VM's stack given a negative offset to sp. */
+#define getarg(vm, i)           ((vm)->sp + (i))
+#define setboolean(dst, b)      (*(dst) = makeboolean(b))
+#define setnumber(dst, n)       (*(dst) = makenumber(n))
 
 /**
  * III:23.1     If Statements
@@ -23,8 +28,8 @@
  * msb, lsb. So our instruction pointer points at msb currently.
  */
 static Word readbyte2(LVM *self) {
-    Byte msb = lua_nextbyte(self);
-    Byte lsb = lua_nextbyte(self);
+    Byte msb = readbyte(self);
+    Byte lsb = readbyte(self);
     return byteunmask(msb, 1) | lsb;
 }
 
@@ -39,9 +44,9 @@ static Word readbyte2(LVM *self) {
  * at msb, we can safely walk in this order.
  */
 static DWord readbyte3(LVM *self) {
-    Byte msb = lua_nextbyte(self);
-    Byte mid = lua_nextbyte(self);
-    Byte lsb = lua_nextbyte(self);
+    Byte msb = readbyte(self);
+    Byte mid = readbyte(self);
+    Byte lsb = readbyte(self);
     return byteunmask(msb, 2) | byteunmask(mid, 1) | lsb;
 }
 
@@ -54,7 +59,7 @@ static TValue *readconstant_at(LVM *self, size_t index) {
 }
 
 static TValue *readconstant(LVM *self) {
-    return readconstant_at(self, lua_nextbyte(self));
+    return readconstant_at(self, readbyte(self));
 }
 
 static TValue *readlconstant(LVM *self) {
@@ -186,7 +191,7 @@ void free_vm(LVM *self) {
     binop_template(vm, bool, assert_comparison, operation, lua_pushboolean)
 
 static InterpretResult run_bytecode(LVM *self) {
-    Chunk *chunk = &self->cf->function->chunk;
+    TValue *ra; // Register A is usually an operand or a destination.
 
     // longjmp here to handle errors.
     // Ensure that all functions that need manual cleanup have been taken care 
@@ -199,12 +204,13 @@ static InterpretResult run_bytecode(LVM *self) {
 
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
+        Chunk *chunk = &self->cf->function->chunk;
         int byteoffset = (int)(self->cf->ip - chunk->code);
-        // lua_dumpstack(self);
         disassemble_instruction(chunk, byteoffset);
 #endif
-        Byte instruction;
-        switch (instruction = lua_nextbyte(self)) {
+        Byte instruction = readbyte(self);
+        ra = getarg(self, -1);
+        switch (instruction) {
         case OP_CONSTANT:   pushconstant(self); break;
         case OP_LCONSTANT:  pushlconstant(self); break;
 
@@ -215,19 +221,19 @@ static InterpretResult run_bytecode(LVM *self) {
 
         // -*- III:21.1.2   Expression statements ----------------------------*-
         case OP_POP:        lua_pop(self, 1); break;
-        case OP_NPOP:       lua_pop(self, lua_nextbyte(self)); break;
+        case OP_NPOP:       lua_pop(self, readbyte(self)); break;
 
         // -*- III:22.4.1   Interpreting local variables ---------------------*-
         case OP_GETLOCAL: {
             const TValue *locals = self->cf->bp;
-            const size_t index   = lua_nextbyte(self);
+            const size_t index   = readbyte(self);
             lua_pushobject(self, &locals[index]);
         } break;
  
         case OP_SETLOCAL: {
             TValue *locals = self->cf->bp;
-            size_t index   = lua_nextbyte(self);
-            locals[index]  = lua_peek(self, -1);
+            size_t index   = readbyte(self);
+            locals[index]  = *ra;
             lua_pop(self, 1);
         } break;
 
@@ -287,15 +293,15 @@ static InterpretResult run_bytecode(LVM *self) {
         // -*- III:18.4.1   Logical not and falsiness ------------------------*-
         case OP_NOT: {
             bool res = lua_asboolean(self, -1);
-            *lua_poke(self, -1) = makeboolean(!res);
+            setboolean(ra, !res);
         } break;
 
         // -*- III:15.3     An Arithmetic Calculator -------------------------*-
         case OP_UNM: {
             // Challenge 15.4: Negate in place
-            if (lua_isnumber(self, -1)) {
-                TValue *value    = lua_poke(self, -1);
-                value->as.number = lua_numunm(value->as.number);
+            if (isnumber(ra)) {
+                lua_Number n  = lua_numunm(asnumber(ra));
+                setnumber(ra, n);
                 break;
             }
             lua_unoperror(self, -1, LUA_ERROR_ARITH);
@@ -324,35 +330,33 @@ static InterpretResult run_bytecode(LVM *self) {
                         
         case OP_FORPREP: {
             Byte *opforprep = self->cf->ip - 1;
-            Byte *opcompare = opforprep + lua_nextbyte(self);
-            if (!lua_isnumber(self, -3)) {
+            Byte *opcompare = opforprep + readbyte(self);
+            ra -= 2; // Point to the iterator value (lower down the stack).
+            if (!isnumber(ra)) {
                 lua_error(self, "'for' initial value must be a number");
-            } else if (!lua_isnumber(self, -2)) {
+            } else if (!isnumber(ra + 1)) {
                 lua_error(self, "'for' limit must be a number");
-            } else if (!lua_isnumber(self, -1)) {
+            } else if (!isnumber(ra + 2)) {
                 lua_error(self, "'for' increment must be a number");
             }
+
+            lua_Number incr = asnumber(ra + 2);
             // Allowed in Lua but I'd prefer to consider it an error
-            if (lua_asnumber(self, -1) == 0) {
+            if (incr == 0) {
                 lua_error(self, "'for' increment must be nonzero");
             }
 
             // In case we're modifying the same chunk, this may have been set to
             // OP_LT beforehand when we need OP_GT now. So let's play it safe.
-            *opcompare = (lua_asnumber(self, -1) > 0) ? OP_GT : OP_LT;
-        } break;
-
-        case OP_FORINCR: {
-            lua_poke(self, -3)->as.number += lua_asnumber(self, -1);
+            *opcompare = (incr > 0) ? OP_GT : OP_LT;
         } break;
 
         // -*- III:24.5.1   Binding arguments to parameters ------------------*-
         case OP_CALL: {
-            int argc = lua_nextbyte(self);
+            int argc = readbyte(self);
             if (!lua_call(self, argc)) {
                 return INTERPRET_RUNTIME_ERROR;
             }
-            chunk = &self->cf->function->chunk;
         } break;
 
         case OP_RETURN: {
@@ -361,9 +365,6 @@ static InterpretResult run_bytecode(LVM *self) {
             if (finished) {
                 return INTERPRET_OK;
             }
-            // Also set the chunk pointer so we know where to look for constants
-            // quickly without doing like 4 dereference operations all the time. 
-            chunk = &self->cf->function->chunk;
         } break;
 
         // I hate how case statements don't introduce their own block scope...

@@ -124,10 +124,6 @@ bool check_tonumber(const char *source, lua_Number *result);
 #define asobject(v)         ((v)->as.object)
 
 #define isboolean(v)        ((v)->type == LUA_TBOOLEAN)
-#define isexactlytrue(v)    (isboolean(v) && asboolean(v))
-#define isexactlyfalse(v)   !isexactlytrue(v)
-
-#define isfalsy(v)          ((isnil(v)) || (isboolean(v) && !asboolean(v)))
 #define isnil(v)            ((v)->type == LUA_TNIL)
 #define isnone(v)           ((v)->type == LUA_TNONE)
 #define isnilornone(v)      (isnil(v) || isnone(v))
