@@ -1,3 +1,4 @@
+#include <errno.h>
 #include "compiler.h"
 #include "value.h"
 #include "object.h"
@@ -688,8 +689,18 @@ void grouping(Compiler *self) {
 
 /* Parse a number literal and emit it as a constant. */
 void number(Compiler *self) {
-    double value = strtod(self->lex->consumed.start, NULL);
-    emit_constant(self, &makenumber(value));
+    char *last;
+    const Token *tk = &self->lex->consumed;
+    const char *end = tk->start + tk->len;
+    lua_Number n    = lua_str2num(tk->start, &last); // May be nan or inf
+
+    // Can't use `check_tonumber` since it's very likely we don't end on a nul.
+    if (last != end) {
+        compiler_error(self, "Malformed number");
+    } else {
+        TValue v = makenumber(n);
+        emit_constant(self, &v);
+    }
 }
 
 /**
@@ -823,11 +834,24 @@ static void named_variable(Compiler *self, bool assignable) {
     LexState *lex = self->lex;
     const VarInfo vi = resolve_variable(self, &lex->consumed);
 
-    // Check if our precedence is assignable and we can consume a '=' token.
-    // We only pass 'true' when called from `statement()`.
-    if (assignable && match_token(lex, TK_ASSIGN)) {
-        expression(self);
-        vi.emitfn(self, vi.setop, vi.index);
+    // assignable is only true when this is called by `variable_statement()`.
+    // You cannot have get expressions as lone statements e.g:
+    //
+    // PI=3.14
+    // PI
+    //
+    // The 2nd 'PI' is invalid because it does nothing but would otherwise emit
+    // a get expression that pushes to the stack but never pops it. Over time
+    // this will overflow the stack!
+    if (assignable) {
+        if (match_token(lex, TK_ASSIGN)) {
+            expression(self);
+            vi.emitfn(self, vi.setop, vi.index);
+        } else if (check_token(lex, TK_LPAREN)) {
+            vi.emitfn(self, vi.getop, vi.index);
+        } else {
+            compiler_error(self, "'=' or '(' expected");
+        }
     } else {
         // Otherwise we simply emit instructions to get variable's value. If it
         // is is a function, one of `variable_statement()`/`parse_precedence()`
@@ -1341,10 +1365,20 @@ static size_t emit_for_increment(Compiler *self, size_t loopstart) {
  * - compile and evaluate condition expression, push to local[1]
  * - compile and evaluate increment expression, push to local[2]
  *
+ *        FORPREP:
+ *            assert isnumber(local[0]) # sp - 3
+ *            assert isnumber(local[1]) # sp - 2
+ *            assert isnumber(local[2]) # sp - 1
+ *            assert local[2] != 0      # Disallow for sanity
+ *            if (local[2] > 0)         # Change FOR_CONDITION's 3rd operation.
+ *              comparison is OP_GT
+ *            else
+ *              comparison is OP_LT
+ *
  *        FOR_CONDITION:
  *            OP_GETLOCAL 0 <--+        # local[1], "iterator"
  *            OP_GETLOCAL 1    |        # local[0], "condition"
- *            OP_LT            |
+ *            OP_LT            |        # May be modified by OP_FORPREP
  *            OP_NOT           |        # local[1] >= local[0] ?
  * +--------- OP_FJMP          |        # goto FOR_END
  * |          OP_POP           |        # expression of for loop condition

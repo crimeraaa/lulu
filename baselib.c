@@ -52,7 +52,6 @@ static TValue base_dumptable(LVM *vm, int argc) {
             printf("V: %s\n", out);
         }
     }
-    // print_table(lua_astable(vm, 0), true);
     return makenil;
 }
 

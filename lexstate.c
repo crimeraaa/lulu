@@ -18,6 +18,10 @@ void init_lexstate(LexState *self, jmp_buf *errjmp, const char *name, const char
 #define isidentstarter(ch)  (isalpha(ch) || (ch) == '_')
 #define isident(ch)         (isalnum(ch) || (ch) == '_')
 
+/* We allow any alphanumeric character or the dash '-' symbol. Errors will be
+handled by/delegated to the compiler. */
+#define isnumlit(ch)        (isalnum(ch) || (ch) == '-')
+
 static char peek_current(const LexState *self) {
     return *self->current;
 }
@@ -238,17 +242,48 @@ static Token ident_token(LexState *self) {
     return make_token(self, ident_type(self));
 }
 
-static Token number_token(LexState *self) {
+static void consume_digits(LexState *self) {
     while (isdigit(peek_current(self))) {
         next_char(self);
     }
-    // Look for a fractional part.
-    if (peek_current(self) == '.' && isdigit(peek_next(self))) {
-        // Consume the '.' character.
+}
+
+static void consume_xdigits(LexState *self) {
+    while (isxdigit(peek_current(self))) {
         next_char(self);
-        while (isdigit(peek_current(self))) {
+    }
+}
+
+static void consume_exponent(LexState *self) {
+    char ch = peek_current(self);
+    // Consume the 'e' or 'E' character.
+    if (ch == 'e' || ch == 'E') {
+        next_char(self);
+        ch = peek_current(self);
+        // These leading characters are allowed in exponents.
+        if (ch == '+' || ch == '-') {
             next_char(self);
         }
+        consume_digits(self);  // Create the decimal representation.
+    }
+}
+
+/* Assumes we consumed some digit and are ready to consume a number literal.
+At this point we don't know if this is a hexadecimal constant (e.g. 0xff) or
+literal in exponent form (e.g. 10e6). Such errors will be reported by the
+compiler. */
+static Token number_token(LexState *self) {
+    char prefix = peek_current(self);
+    if (prefix == 'x' || prefix == 'X') {
+        next_char(self); // Consume the prefix.
+        consume_xdigits(self);
+    } else {
+        consume_digits(self);
+        if (peek_current(self) == '.') {
+            next_char(self); // Consume the '.' character.
+            consume_digits(self);
+        }
+        consume_exponent(self);
     }
     return make_token(self, TK_NUMBER);
 }
@@ -367,7 +402,7 @@ void throw_lexerror_at(LexState *self, const Token *token, const char *info) {
     self->haderror = true;
     fprintf(stderr, "%s:%i: %s", self->name, self->lastline, info);
     if (token->type == TK_EOF) {
-        fprintf(stderr, ", at end\n");
+        fprintf(stderr, " at end\n");
     } else {
         // We already printed the error token message so try to help the user a 
         // little more by showing them where the error could be near by.
@@ -375,7 +410,7 @@ void throw_lexerror_at(LexState *self, const Token *token, const char *info) {
             token = &self->consumed;
         }
         // Field precision MUST be of type int.
-        fprintf(stderr, ", near '%.*s'\n", (int)token->len, token->start);
+        fprintf(stderr, " near '%.*s'\n", (int)token->len, token->start);
     }
     longjmp(*self->errjmp, 1);
 }
