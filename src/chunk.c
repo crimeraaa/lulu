@@ -32,7 +32,7 @@ void disassemble_chunk(Chunk *self, const char *name) {
 
 static int simple_instruction(const char *opname, int offset) {
     printf("%s\n", opname);
-    return LULU_OPCODE_NEXT(offset, LULU_OPSIZE_BYTE);
+    return next_instruction(offset, OPERAND_BYTE);
 }
 
 int disassemble_instruction(Chunk *self, int offset) {
@@ -44,6 +44,6 @@ int disassemble_instruction(Chunk *self, int offset) {
     default:
         printf("Unknown opcode %i\n", instruction);
         // Go to very next byte, whatever it may be. Might cascade errors.
-        return LULU_OPCODE_NEXT(offset, LULU_OPSIZE_BYTE);
+        return next_instruction(offset, OPERAND_BYTE);
     }
 }
