@@ -25,7 +25,7 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type) {
     // consumed the identifier.
     if (type != FNTYPE_SCRIPT) {
         const Token *name = &self->lex->consumed;
-        LFunction *luafn  = &self->function->fn.lua;
+        TClosure *luafn  = &self->function->fn.lua;
         luafn->name = copy_string(self->vm, name->start, name->len);
     }
 
@@ -238,10 +238,10 @@ static void patch_jump(Compiler *self, size_t opindex) {
  * nested function definitions can be emitted properly into the main compiler
  * instance.
  */
-static TFunction *end_compiler(Compiler *self) {
+static Proto *end_compiler(Compiler *self) {
     emit_return(self);
-    TFunction *tagfn = self->function;
-    LFunction *luafn = &tagfn->fn.lua;
+    Proto *tagfn = self->function;
+    TClosure *luafn = &tagfn->fn.lua;
 #ifdef DEBUG_PRINT_CODE
     if (!self->lex->haderror) {
         // Implicit main function does not have a name.
@@ -1025,7 +1025,7 @@ static void emit_function(Compiler *self, FnType type) {
 
     // Poke at the address of the Lua function part so we can populate its
     // members, mostly the arity.
-    LFunction *luafn = &next->function->fn.lua;
+    TClosure *luafn = &next->function->fn.lua;
 
     // Local scope to capture our arguments. Note that we don't have a paired
     // call to `end()` because we effectively throw out the local compiler
@@ -1051,7 +1051,7 @@ static void emit_function(Compiler *self, FnType type) {
     consume_token(lex, TK_RPAREN, "Expected ')' after parameters");
     doblock(next);
 
-    TFunction *f = end_compiler(next);
+    Proto *f = end_compiler(next);
     TValue o     = makefunction(f);
     emit_bytes(self, OP_CONSTANT, make_constant(self, &o));
 }
@@ -1673,7 +1673,7 @@ static void statement(Compiler *self) {
     }
 }
 
-TFunction *compile_bytecode(Compiler *self) {
+Proto *compile_bytecode(Compiler *self) {
     // I'm worried about using a local variable here since `longjmp()` might
     // restore registers to the "snapshot" when `setjmp()` was called.
     // The `volatile` keyword would be needed, but then that might have a
@@ -1691,6 +1691,6 @@ TFunction *compile_bytecode(Compiler *self) {
         }
         end_scope(self);
     }
-    TFunction *function = end_compiler(self);
+    Proto *function = end_compiler(self);
     return (lex->haderror) ? NULL : function;
 }

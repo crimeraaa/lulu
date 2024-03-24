@@ -64,9 +64,13 @@ void lua_loadlibrary(LVM *self, const char *name, const lua_Library library) {
 }
 
 static int current_line(const CallFrame *cf) {
-    const Chunk *chunk = &cf->function->chunk;
-    int offset = (int)(cf->ip - chunk->code);
-    return get_linenumber(chunk, offset);
+    if (cf->closure->is_c) {
+        const Chunk *chunk = &cf->closure->closure.l.proto->chunk;
+        int offset = (int)(cf->ip - chunk->code);
+        return get_linenumber(chunk, offset);
+    } else {
+        return -1;
+    }
 }
 
 void lua_error(LVM *self, const char *format, ...) {
@@ -77,13 +81,13 @@ void lua_error(LVM *self, const char *format, ...) {
     va_end(args);
     fputs("\nstack traceback:\n", stderr);
     for (int i = self->fc - 1; i >= 0; i--) {
-        const CallFrame *frame    = &self->frames[i];
-        const LFunction *function = frame->function;
+        const CallFrame *frame  = &self->frames[i];
+        const TClosure *closure = frame->closure;
         fprintf(stderr, "\t%s:%i: in ", self->name, current_line(frame));
-        if (function->name == NULL) {
+        if (closure->name == NULL) {
             fprintf(stderr, "main chunk\n");
         } else {
-            fprintf(stderr, "function '%s'\n", function->name->data);
+            fprintf(stderr, "function '%s'\n", closure->name->data);
         }
     }
     longjmp(self->errjmp, 1);
@@ -177,7 +181,7 @@ void lua_dumpstack(LVM *self) {
  * are populated with `nil`. If we have too many arguments, the rest are simply
  * ignored in the function call but the stack pointer is still set properly.
  */
-static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
+static bool call_luafunction(LVM *self, TClosure *luafn, int argc) {
     if (argc != luafn->arity) {
         lua_error(self, "Expected %i arguments but got %i.", luafn->arity, argc);
         return false;
@@ -188,7 +192,7 @@ static bool call_luafunction(LVM *self, LFunction *luafn, int argc) {
     luafn->chunk.prevline = -1;
 
     CallFrame *frame = &self->frames[self->fc++];
-    frame->function = luafn;
+    frame->closure = luafn;
     frame->ip   = luafn->chunk.code;   // Beginning of function's bytecode.
     frame->bp   = self->sp - argc - 1; // Base pointer to function object itself.
     self->bp    = frame->bp;           // Allow us to use positive stack offsets.
@@ -355,7 +359,7 @@ TString *lua_aststring(LVM *self, int offset) {
     return (isstring(v)) ? asstring(v) : NULL;
 }
 
-TFunction *lua_asfunction(LVM *self, int offset) {
+Proto *lua_asfunction(LVM *self, int offset) {
     TValue *v = offset_to_address(self, offset);
     return (isfunction(v)) ? asfunction(v) : NULL;
 }
@@ -425,13 +429,13 @@ void lua_pushtable(LVM *self, Table *table) {
     lua_pushobject(self, &v);
 }
 
-void lua_pushfunction(LVM *self, TFunction *tfunc) {
+void lua_pushfunction(LVM *self, Proto *tfunc) {
     TValue v = makefunction(tfunc);
     lua_pushobject(self, &v);
 }
 
 void lua_pushcfunction(LVM *self, lua_CFunction function) {
-    TFunction *tfunc = new_cfunction(self, function);
+    Proto *tfunc = new_cfunction(self, function);
     lua_pushfunction(self, tfunc);
 }
 

@@ -20,20 +20,33 @@
  */
 typedef TValue (*lua_CFunction)(LVM *vm, int argc);
 
-struct LFunction {
-    int arity;     // How many arguments are expected.
+struct Proto {
+    Object object; // Metadata/GC info.
     Chunk chunk;   // Bytecode, constants and such.
     TString *name; // Interned identifier from source code.
+    int arity;     // How many arguments are expected.
 };
 
-struct TFunction {
-    Object object; // Metadata/GC info.
+typedef struct CClosure {
+    Object object;
+    lua_CFunction function;
+    TValue upvalues[];
+} CClosure;
+
+typedef struct LClosure {
+    Object object;
+    Proto *proto;
+    TValue upvalues[];
+} LClosure;
+
+typedef struct TClosure {
+    Object object;
     union {
-        LFunction lua;   // Note how we use struct value itself, not pointer.
-        lua_CFunction c; // C function pointer, nothing more and nothing less.
-    } fn;                // We can be either a Lua function or a C function.
-    bool is_c;           // Determine which member of the union to use.
-};
+        CClosure c;
+        LClosure l;
+    } closure;
+    bool is_c;
+} TClosure;
 
 struct TString {
     Object object; // Header for meta-information.
@@ -53,19 +66,19 @@ Table *new_table(LVM *vm);
  * 
  * III:24.7     Native Functions
  * 
- * This now creates a tagged union struct `TFunction` with `is_c` set to false
+ * This now creates a tagged union struct `Proto` with `is_c` set to false
  * and the appropriate values for a Lua function type `LFunction` defaulted.
  * It is to responsibility of the compiler to populate these values as needed.
  */
-TFunction *new_function(LVM *vm);
+Proto *new_function(LVM *vm);
 
 /**
  * III:24.7     Native Functions
  * 
- * This allocates a new `TFunction` object, where the union tag `is_c` is set to
+ * This allocates a new `Proto` object, where the union tag `is_c` is set to
  * true and the `fn.c` union member is set to argument `function`.
  */
-TFunction *new_cfunction(LVM *vm, lua_CFunction function);
+Proto *new_cfunction(LVM *vm, lua_CFunction function);
 
 /**
  * III:19.3     Strings
@@ -89,13 +102,13 @@ TString *copy_string(LVM *vm, const char *data, size_t len);
  */
 TString *concat_string(LVM *vm, const TString *lhs, const TString *rhs);
 
-void print_function(const TFunction *self);
+void print_function(const Proto *self);
 void print_string(const TString *self);
 
 /* Given an `TValue*`, treat it as an `Object*` and get the type. */
 #define objtype(v)          (asobject(v)->type)
 
-#define asfunction(v)       ((TFunction*)asobject(v))
+#define asfunction(v)       ((Proto*)asobject(v))
 #define asluafunction(v)    (asfunction(v)->fn.lua)
 #define ascfunction(v)      (asfunction(v)->fn.c)
 #define asstring(v)         ((TString*)asobject(v))

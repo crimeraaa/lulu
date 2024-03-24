@@ -180,7 +180,7 @@ bool lua_iscfunction(LVM *self, int offset);
 bool lua_asboolean(LVM *self, int offset);
 lua_Number lua_asnumber(LVM *self, int offset);
 TString *lua_aststring(LVM *self, int offset);
-TFunction *lua_asfunction(LVM *self, int offset);
+Proto *lua_asfunction(LVM *self, int offset);
 Table *lua_astable(LVM *self, int offset);
 
 /* }}} ---------------------------------------------------------------------- */
@@ -246,7 +246,7 @@ void lua_pushtable(LVM *self, Table *table);
  * Push the given tagged union function object `tfunc` to the top of the stack.
  * This is mainly used so it can be immediately followed by an `OP_CALL` opcode.
  */
-void lua_pushfunction(LVM *self, TFunction *tfunc);
+void lua_pushfunction(LVM *self, Proto *tfunc);
 void lua_pushcfunction(LVM *self, lua_CFunction func);
 
 /* }}} ---------------------------------------------------------------------- */

@@ -29,20 +29,11 @@ Table *new_table(LVM *vm) {
     return tbl;
 }
 
-TFunction *new_function(LVM *vm) {
-    TFunction *tf     = allocate_object(vm, TFunction, LUA_TFUNCTION);
-    LFunction *luafn  = &tf->fn.lua;
-    tf->is_c     = false;
-    luafn->arity = 0;
-    luafn->name  = NULL;
-    init_chunk(&luafn->chunk);
-    return tf;
-}
-
-TFunction *new_cfunction(LVM *vm, lua_CFunction function) {
-    TFunction *tf = allocate_object(vm, TFunction, LUA_TFUNCTION);
-    tf->is_c = true;
-    tf->fn.c = function;
+Proto *new_function(LVM *vm) {
+    Proto *tf = allocate_object(vm, Proto, LUA_TFUNCTION);
+    tf->arity = 0;
+    tf->name = NULL;
+    init_chunk(&tf->chunk);
     return tf;
 }
 
@@ -129,12 +120,8 @@ TString *concat_string(LVM *vm, const TString *lhs, const TString *rhs) {
     return intern_string(vm, s);
 }
 
-void print_function(const TFunction *self) {
-    if (self->is_c) {
-        printf("C function: %p", (void*)self);
-        return;
-    }
-    if (self->fn.lua.name == NULL) {
+void print_function(const Proto *self) {
+    if (self->name == NULL) {
         printf("(script)");
     } else {
         printf("function: %p", (void*)self);

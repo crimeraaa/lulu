@@ -23,12 +23,12 @@ static void free_string(TString *self) {
     deallocate(TString, self); // NOTE: Does not include flexarray member size.
 }
 
-static void free_function(TFunction *self) {
+static void free_function(Proto *self) {
     // C Functions don't have chunks, so don't free that part of the union.
     if (!self->is_c) {
         free_chunk(&self->fn.lua.chunk);
     }
-    deallocate(TFunction, self);
+    deallocate(Proto, self);
 }
 
 // Don't reinit and also need to free the pointer itself.
@@ -39,7 +39,7 @@ static void free_table2(Table *self) {
 
 static void free_object(Object *self) {
     switch (self->type) {
-    case LUA_TFUNCTION: free_function((TFunction*)self); break;
+    case LUA_TFUNCTION: free_function((Proto*)self); break;
     case LUA_TSTRING:   free_string((TString*)self);     break;
     case LUA_TTABLE:    free_table2((Table*)self);       break;
     default:            return;

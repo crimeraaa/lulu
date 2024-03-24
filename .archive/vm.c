@@ -55,7 +55,7 @@ static DWord readbyte3(LVM *self) {
  * into the VM's current chunk's constants pool.
  */
 static TValue *readconstant_at(LVM *self, size_t index) {
-    return &self->cf->function->chunk.constants.values.array[index];
+    return &self->cf->closure->chunk.constants.values.array[index];
 }
 
 static TValue *readconstant(LVM *self) {
@@ -204,7 +204,7 @@ static InterpretResult run_bytecode(LVM *self) {
 
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
-        Chunk *chunk = &self->cf->function->chunk;
+        Chunk *chunk = &self->cf->closure->chunk;
         int byteoffset = (int)(self->cf->ip - chunk->code);
         disassemble_instruction(chunk, byteoffset);
 #endif
@@ -383,7 +383,7 @@ InterpretResult interpret_vm(LVM *self, const char *input) {
     // We'll just point to and modify the VM's error handler while compiling.
     init_lexstate(&lex, &self->errjmp, self->name, input);
     init_compiler(&compiler, NULL, self, FNTYPE_SCRIPT); // NULL = top-level.
-    TFunction *script = compile_bytecode(&compiler);
+    Proto *script = compile_bytecode(&compiler);
     if (script == NULL) {
         return INTERPRET_COMPILE_ERROR;
     }

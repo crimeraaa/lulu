@@ -77,7 +77,7 @@ typedef enum {
  */
 typedef struct Compiler {
     struct Compiler *enclosing; // Nested function calls as a stack/linked list.
-    TFunction *function; // Contains the chunk we're currently compiling.
+    Proto *function; // Contains the chunk we're currently compiling.
     LexState *lex;  // Maintain pointers to the source code and emit tokens.
     Locals locals;  // Keep track of information about local variables in scope.
     LVM *vm;        // Stupid but we need to pass this to `copy_string()`.
@@ -137,6 +137,6 @@ void init_compiler(Compiler *self, Compiler *current, LVM *vm, FnType type);
  * we don't need the `source` parameter anymore as the `LexState*` is shared
  * and it points to the correct stuff.
  */
-TFunction *compile_bytecode(Compiler *self);
+Proto *compile_bytecode(Compiler *self);
 
 #endif /* LUA_COMPILER_H */

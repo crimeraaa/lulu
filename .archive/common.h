@@ -117,13 +117,7 @@ typedef struct TString TString;
  */
 typedef struct Table Table;
 
-/**
- * III:24.7     Native Functions
- * 
- * I've now made it so that functions that originate from Lua and functions that
- * originate from C use the same struct as a "tagged union" similar to `TValue`.
- */
-typedef struct TFunction TFunction;
+typedef struct Proto Proto;
 
 /**
  * III:24.1     Function Objects
@@ -141,7 +135,7 @@ typedef struct TFunction TFunction;
  * We now need to differentiate between functions created directly from Lua
  * and functions created directly from C, hence the 'L' prefix.
  */
-typedef struct LFunction LFunction;
+typedef struct TClosure TClosure;
 
 /**
  * III:19.5     Freeing Objects

@@ -1,42 +1,49 @@
-CC	    := clang
-CCFLAGS := -std=c11 -Wall -Wextra -Werror -pedantic
+EXE 		:= lulu
+CC 			:= clang
+CC_FLAGS	:= -std=c11 -Wall -Wextra -Werror -pedantic \
+			-fdiagnostics-color=always -Wno-error=unused-variable \
+			-Wno-error=unused-function -Wno-error=unused-parameter \
+			-Wno-error=unused-but-set-variable
+LD_FLAGS	:= -lm
 
-EXE 	:= lulu
-CC_SRC	:= $(wildcard *.c)
-CC_OBJ	:= $(patsubst %.c, obj/%.o, $(CC_SRC))
-DEBUGFLAGS := -fdiagnostics-color=always -g -O0 \
-	-DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION \
-	-Wno-error=unused-function -Wno-error=unused-parameter
+CC_SRC 		:= $(wildcard src/*.c)
+CC_OBJ 		:= $(patsubst src/%.c,obj/%.o,$(CC_SRC))
+CC_INCLUDE 	:= $(wildcard src/*.h)
 
-# -*- BEGIN RECIPES ------------------------------------------------------*- {{{
+# -*- PREAMBLE ------------------------------------------------------------- {{{
 
 all: debug
-
-debug: CCFLAGS += $(DEBUGFLAGS)
+	
+debug: CC_FLAGS += -g -O0 -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION
 debug: build
 
-release: CCFLAGS += -Os
+release: CC_FLAGS += -Os
+release: LD_FLAGS += -s
 release: build
 	
-# Whichever one is the caller target $@ will cause 'mkdir --parents' to be run.
-bin obj:
-	$(MKDIR) $@
+# }}} --------------------------------------------------------------------------
+
+# -*- TARGETS -------------------------------------------------------------- {{{
 
 build: bin/$(EXE)
 
-# We need to explicitly link with libm (math library) to have access to `pow()`.
+src bin obj:
+	$(MKDIR) $@
+	
 bin/$(EXE): $(CC_OBJ) | bin
-	$(CC) $(CCFLAGS) -o $@ $^ -lm
-
-obj/%.o: %.c | obj
-	$(CC) $(CCFLAGS) -c -o $@ $<
-
+	$(CC) $(CC_FLAGS) -o $@ $^ $(LD_FLAGS)
+	
+obj/%.o: src/%.c | obj
+	$(CC) $(CC_FLAGS) -c -o $@ $<
+	
 clean:
 	$(RM) $(CC_OBJ)
 
 uninstall: clean
 	$(RM) bin/$(EXE)
-
-# }}} -*- END RECIPES --------------------------------------------------------*-
+	$(RMDIR) bin obj
+	
+# }}}
 
 .PHONY: all build debug release clean uninstall
+.PRECIOUS: obj/%.o
