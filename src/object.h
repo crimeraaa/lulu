@@ -15,12 +15,12 @@ typedef struct lua_TValue {
         lua_Number number; // Also used for `nil`, it just has a distinct tag.
         bool boolean;      // Since Lua is written in C89 it uses `int`.
     } as;
-    int tag; // Tagged union type. One of the `LUA_T*` enum members.
+    int tag; // Tagged union type. Use one of the `LUA_T*` enum members.
 } TValue;
 
 #define tagtype(o)          ((o)->tag)
 
-// All garbage-collectible tags start with the `LUA_TSTRING` enum member.
+// All garbage-collectible tags come after the `LUA_TSTRING` enum member.
 #define iscollectible(o)    (tagtype(o) >= LUA_TSTRING)
 
 #define isnil(o)            (tagtype(o) == LUA_TNIL)
@@ -30,8 +30,8 @@ typedef struct lua_TValue {
 #define istable(o)          (tagtype(o) == LUA_TTABLE)
 #define isfunction(o)       (tagtype(o) == LUA_TFUNCTION)
 
-#define asboolean(o)        check_exp(isboolean(o),  (o)->as.boolean)
-#define asnumber(o)         check_exp(isnumber(o),   (o)->as.number)
+#define asboolean(o)        check_exp(isboolean(o),     (o)->as.boolean)
+#define asnumber(o)         check_exp(isnumber(o),      (o)->as.number)
 #define asobject(o)         check_exp(iscollectible(o), (o)->as.object)
 
 #endif /* LUA_OBJECT_H */

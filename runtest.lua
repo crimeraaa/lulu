@@ -22,6 +22,10 @@ local function basic_call(self, pargs)
     return cmd, out
 end
 
+local function quote(s)
+    return string.format("'%s'", s)
+end
+
 INTERPRETER = "./bin/lulu"
 OPTIONS = {
     ["help"] = {
@@ -48,7 +52,7 @@ OPTIONS = {
     ["run"] = {
         cmd  = INTERPRETER,
         flags = {},
-        help = "No pargs runs " .. INTERPRETER .. ", else runs each script (left-right)",
+        help = "No pargs runs " .. quote(INTERPRETER) .. ", else runs each script (left-right)",
         call = basic_call,
     },
     ["disassemble"] = {
@@ -66,12 +70,46 @@ OPTIONS = {
             return basic_call(self, pargs)
         end
     },
+    --[[ From `man nm`:
+        A   - Value is absolute: will not be changed by further linking.
+        B|b - In BSS data section (0-initialized/unitialized).
+        C|c - Common symbols (uninitialized data), can occur multiple times.
+            - If defined anywhere common symbols are treated as undefined
+            - references. Lowercase c is in a special section for small commons.
+        D|d - In the initialized data section.
+        G|g - In the initialized data section for small objects.
+        i   - PE: Symbol is in implementation-specific section of DLL.
+            - ELF: Is an indirect function (GNU extension).
+        I   - Indirect reference to another symbol.
+        N   - Debugging symbol.
+        n   - Read-only data section.
+        p   - Stack unwind section.
+        R|r - Read-only data section. Lowercase may mean static.
+        S|s - Uninitialized/0-initialized data section for small objects.
+        T|t - Text (code) section. Lowercase may mean static.
+        U   - Undefined.
+        u   - Unique lglobal symbol (GNU Extension).
+        V|v - Weak object.
+        W|w - Weak symbol ]]
+    ["names"] = {
+        cmd = "nm",
+        help = "Print name list (symbol table) for given pargs.",
+        flags = {"--demangle",
+                "--format=bsd", -- I prefer one of bsd or sysv
+                "--radix=x",    -- 'd':decimal, 'o':octal, 'x':hexadecimal
+                "--numeric-sort",
+                "--with-symbol-versions"},
+        call = function(self, pargs)
+            assert(#pargs > 0, "'names' requires at least 1 parg.")
+            return basic_call(self, pargs)
+        end,
+    },
     ["memcheck"] = {
         cmd  = "valgrind",
         flags = {"--leak-check=full", 
                 "--track-origins=yes", 
                 "2>&1"}, -- valgrind writes to stderr by default so redirect.
-        help = "No pargs runs " .. INTERPRETER .. ", else puts pargs after '--'.",
+        help = "No pargs runs " .. quote(INTERPRETER) .. ", else puts pargs after '--'.",
         call = function(self, pargs)
             if #pargs == 0 then
                 pargs = {INTERPRETER}
@@ -81,15 +119,16 @@ OPTIONS = {
     },
 }
 
-PARGS_NOTE = [[
-- 'pargs' means 'positional arguments' which usually come after a '--'.
-- Usually it is a variadic argument list, e.g. `ls -- src obj bin`.]]
+PARGS_NOTE = {
+    "'pargs' means 'positional arguments' which usually come after a '--'.",
+    "Usually it is a variadic argument list, e.g. `ls -- src obj bin`.",
+}
 
 local function main(argc, argv)
     -- argc was adjusted to reflect the presence of argv[0].
     if argc == 1 then
-        io.stderr:write("[USAGE]:\n", argv[0], " <option> [pargs..]\n")
-        io.stderr:write("[NOTE]:\n", PARGS_NOTE, '\n')
+        io.stderr:write("[USAGE]:\n\t", argv[0], " <option> [pargs..]\n")
+        io.stderr:write("[NOTE]:\n\t", table.concat(PARGS_NOTE, "\n\t"), '\n')
         OPTIONS["help"]:call(nil)
         os.exit(2)
     end

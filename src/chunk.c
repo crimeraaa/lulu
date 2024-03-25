@@ -37,7 +37,6 @@ static void simple_instruction(const char *opname) {
 int disassemble_instruction(Chunk *self, int offset) {
     printf("%04i ", offset);
     Instruction instruction = self->code[offset];
-    
     switch (instruction) {
     case OP_RETURN:
         simple_instruction("OP_RETURN");
@@ -46,5 +45,6 @@ int disassemble_instruction(Chunk *self, int offset) {
         printf("Unknown opcode %i\n", instruction);
         break;
     }
+    // We can assume that instructions always come one after the other.
     return offset + 1;
 }

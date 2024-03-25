@@ -52,6 +52,8 @@ typedef unsigned char Byte;
  */
 typedef lua_Int32 Instruction;
 
+#define LUA_MAXINSTRUCTION      (~(Instruction)0)
+
 // Maximum stack size for a Lua function.
 #define LUA_MAXSTACK    250
 
