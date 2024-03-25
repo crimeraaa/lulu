@@ -9,15 +9,15 @@ void init_chunk(Chunk *self) {
 }
 
 void free_chunk(Chunk *self) {
-    free_array(Byte, self->code, self->cap);
+    free_array(Instruction, self->code, self->cap);
     init_chunk(self);
 }
 
-void write_chunk(Chunk *self, Byte byte) {
+void write_chunk(Chunk *self, Instruction byte) {
     if (self->len + 1 > self->cap) {
         int oldcap = self->cap;
         self->cap  = grow_capacity(oldcap);
-        self->code = grow_array(Byte, self->code, oldcap, self->cap);
+        self->code = grow_array(Instruction, self->code, oldcap, self->cap);
     }
     self->code[self->len] = byte;
     self->len++;
@@ -30,20 +30,21 @@ void disassemble_chunk(Chunk *self, const char *name) {
     }
 }
 
-static int simple_instruction(const char *opname, int offset) {
+static void simple_instruction(const char *opname) {
     printf("%s\n", opname);
-    return next_instruction(offset, OPERAND_BYTE);
 }
 
 int disassemble_instruction(Chunk *self, int offset) {
     printf("%04i ", offset);
-    Byte instruction = self->code[offset];
+    Instruction instruction = self->code[offset];
+    
     switch (instruction) {
     case OP_RETURN:
-        return simple_instruction("OP_RETURN", offset);
+        simple_instruction("OP_RETURN");
+        break;
     default:
         printf("Unknown opcode %i\n", instruction);
-        // Go to very next byte, whatever it may be. Might cascade errors.
-        return next_instruction(offset, OPERAND_BYTE);
+        break;
     }
+    return offset + 1;
 }
