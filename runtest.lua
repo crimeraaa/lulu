@@ -68,7 +68,9 @@ OPTIONS = {
     },
     ["memcheck"] = {
         cmd  = "valgrind",
-        flags = {"--leak-check=full", "--track-origins=yes"},
+        flags = {"--leak-check=full", 
+                "--track-origins=yes", 
+                "2>&1"}, -- valgrind writes to stderr by default so redirect.
         help = "No pargs runs " .. INTERPRETER .. ", else puts pargs after '--'.",
         call = function(self, pargs)
             if #pargs == 0 then

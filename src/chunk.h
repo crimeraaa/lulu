@@ -3,9 +3,8 @@
 
 #include "conf.h"
 #include "lua.h"
+#include "limits.h"
 
-/* Must be an unsigned 32-bit integer to fit registers A-C and an opcode. */
-typedef LUAI_UINT32 Instruction;
 typedef struct Chunk Chunk;
 
 struct Chunk {

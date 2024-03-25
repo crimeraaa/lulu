@@ -15,4 +15,6 @@ enum {
     LUA_TFUNCTION,
 };
 
+typedef LUA_NUMBER lua_Number;
+
 #endif /* LUA_H */

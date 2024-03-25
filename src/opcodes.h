@@ -48,28 +48,49 @@ Otherwise, Register C is the 9 least significant bits of some 18-bit integer.
 
 typedef enum {
     OP_RETURN,
+    NUM_OPCODES, // Not a real opcode.
 } OpCode;
 
 // Basic instruction format: https://www.lua.org/source/5.1/lopcodes.h.html#OpMode
 enum OpMode {iABC, iABx, iAsBx};
 
-#define SIZE_OPCODE         (6)
-#define SIZE_REGISTER_A     (8)
-#define SIZE_REGISTER_B     (9)
-#define SIZE_REGISTER_C     (9)
+/* -*- REGISTER BIT SIZES ---------------------------------------------*- {{{ */
+
+#define SIZE_OPCODE         6
+#define SIZE_REGISTER_A     8
+#define SIZE_REGISTER_B     9
+#define SIZE_REGISTER_C     9
 #define SIZE_REGISTER_Bx    (SIZE_REGISTER_B + SIZE_REGISTER_C)
 
-#define POS_OPCODE          (0)
+/* }}} ---------------------------------------------------------------------- */
+
+/* -*- REGISTER BIT POSITIONS -----------------------------------------*- {{{ */
+
+#define POS_OPCODE          0
 #define POS_REGISTER_A      (POS_OPCODE + SIZE_OPCODE)
 #define POS_REGISTER_C      (POS_REGISTER_A + SIZE_REGISTER_A)
 #define POS_REGISTER_B      (POS_REGISTER_C + SIZE_REGISTER_C)
+#define POS_REGISTER_Bx     POS_REGISTER_C
 
-#if SIZE_REGISTER_Bx < (LUAI_BITSINT - 1)
-#define MAXARG_REGISTER_Bx  ((1 << SIZE_REGISTER_Bx) - 1)
-#define MAXARG_REGISTER_sBx (MAXARG_REGISTER_Bx >> 1)
-#else
-#define MAXARG_REGISTER_Bx  INT_MAX
-#define MAXARG_REGISTER_sBx INT_MAX
-#endif
+/* }}} ---------------------------------------------------------------------- */
+
+/* -*- REGISTER MAX VALUES ---------------------------------------------- {{{ */
+
+#define MAX_OPCODE          NUM_OPCODES
+#define MAX_REGISTER_A      ((1 << SIZE_REGISTER_A) - 1)
+#define MAX_REGISTER_B      ((1 << SIZE_REGISTER_B) - 1)
+#define MAX_REGISTER_C      ((1 << SIZE_REGISTER_C) - 1)
+
+/**
+ * @brief   Maximum allowble values for combined registers. Note that we use
+ *          signed int to manipulate the arguments.
+ *
+ * @note    Assumes that arguments fit in (sizeof(int) * CHAR_BIT) - 1 bits,
+ *          where we reserve 1 bit for the sign.
+ */
+#define MAX_REGISTER_Bx     ((1 << SIZE_REGISTER_Bx) - 1)
+#define MAX_REGISTER_sBx    (MAX_REGISTER_Bx >> 1)
+
+/* }}} ---------------------------------------------------------------------- */
 
 #endif /* LUA_OPCODES_H */
