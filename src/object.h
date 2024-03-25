@@ -34,4 +34,17 @@ typedef struct lua_TValue {
 #define asnumber(o)         check_exp(isnumber(o),      (o)->as.number)
 #define asobject(o)         check_exp(iscollectible(o), (o)->as.object)
 
+#define setnil(obj) \
+    { TValue *_o = (obj); _o->as.number = 0; _o->tag = LUA_TNIL; }
+
+#define setboolean(obj, b) \
+    { TValue *_o = (obj); _o->as.boolean = (b); _b->tag = LUA_TBOOLEAN; }
+
+#define setnumber(obj, n) \
+    { TValue *_o = (obj); _o->as.number = (n); _o->tag = LUA_TNUMBER; }
+
+void print_value(const TValue *value);
+
+extern const char *const luaT_typenames[LUA_TCOUNT];
+
 #endif /* LUA_OBJECT_H */
