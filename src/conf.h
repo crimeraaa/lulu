@@ -19,7 +19,6 @@
 #if defined(LUA_BUILD_AS_DLL)
 
 /* Primarily an MSVC feature but MinGW should support this as well. */
-hk
 #if defined(LUA_CORE) || defined(LUA_LIB)
 #define LUA_API __declspec(dllexport)
 #else /* neither LUA_CORE nor LUA_LIB defined. */
