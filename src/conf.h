@@ -5,7 +5,6 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h> /* malloc family */
-#include <stdint.h> 
 #include <stdio.h>  /* printf family */
 #include <string.h>
 #include <math.h>   /* Needed by some `luai_*` macros, link with `-lm`. */
@@ -63,6 +62,15 @@ hk
 #define LUA_NUMBER_FMT      "%.14g"
 #define lua_num2str(s,n)    sprintf((s), LUA_NUMBER_FMT, (n))
 #define lua_str2num(s,p)    strtod((s), (p))
+
+/** 
+ * @brief   Fixed buffer size when converting non-string Lua values to strings. 
+ *          Should fit `"function: %p"` and `LUA_NUMBER_FMT`.
+ *
+ * @note    If your machine's pointers are printed out in a much longer format
+ *          or your desired precision is large, change this value as needed.
+ */
+#define LUA_MAXTOSTRING      64
 
 #define luai_numadd(x,y)    ((x)+(y))
 #define luai_numsub(x,y)    ((x)-(y))

@@ -45,6 +45,6 @@ typedef struct lua_TValue {
 
 void print_value(const TValue *value);
 
-extern const char *const luaT_typenames[LUA_TCOUNT];
+LUA_API const char *const luaT_typenames[LUA_TCOUNT];
 
 #endif /* LUA_OBJECT_H */

@@ -12,9 +12,9 @@ possible instruction formats:
 
 -*- VISUALIZATION: -------------------------------------------------------*- {{{
 SIZE:   |      9-BIT     |     9-BIT      |      8-BIT     |     6-BIT      |
-INDEX:  |     [31:24]    |    [23:15]     |     [14:06]    |     [5:0]      |
+INDEX:  | [31........24] | [23........15] | [14........06] | [5..........0] |
         |----------------|----------------|----------------|----------------|
-iABC:   |   REGISTER C   |   REGISTER B   |   REGISTER A   |     OPCODE     |
+iABC:   |   REGISTER B   |   REGISTER C   |   REGISTER A   |     OPCODE     |
 iABx:   |           REGISTER Bx           |   REGISTER A   |     OPCODE     |
 iAsBx:  |           REGISTER sBx          |   REGISTER A   |     OPCODE     |
 iAx:    |                    REGISTER Ax                   |     OPCODE     |
@@ -29,8 +29,9 @@ The 8 bits to the left of the opcode are Register A.
 - At the same time we need to be keeping these registers in mind.
 - Register A ALWAYS refers to a register, never an index to a constant.
 
-Depending on the instruction format, the next 9 bits may be Register B.
-- Is treated as an unsigned 9-bit integer.
+Note that Register B is the more significant byte than Register C.
+- This allows us to use Register B as MSB of Bx, where we treat Bx as unsigned.
+- Both Register B and Register C are treated as unsigned 9-bit integers.
 - May also be the upper half of an unsigned/signed 18-bit integer.
 - Register B and Register C use their 9th bit when they are a constant index.
 - That is, it is toggled when they are an index to a value in a constants array.
@@ -64,6 +65,7 @@ enum OpMode {iABC, iABx, iAsBx};
 /* }}} ---------------------------------------------------------------------- */
 
 /* --- REGISTER BIT POSITIONS ------------------------------------------- {{{ */
+// Note that in terms of bit position, Register B is more significant than C.
 
 #define POS_OPCODE          0
 #define POS_REGISTER_A      (POS_OPCODE + SIZE_OPCODE)
@@ -183,25 +185,21 @@ MASK1(N = SIZE_OPCODE, offset = 0) => {
 
 /* --- GET REGISTERS ---------------------------------------------------- {{{ */
 
-#define GET_REGISTER(instruction, pos, size)                                   \
+#define _get_register(instruction, pos, size)                                  \
     (cast(int, (instruction) >> pos)                                           \
     & MASK1(size, 0))
-
+    
 #define GET_REGISTER_A(instruction) \
-    (cast(int, (instruction) >> POS_REGISTER_A) \
-    & MASK1(SIZE_REGISTER_A, 0))
+    _get_register(instruction, POS_REGISTER_A, SIZE_REGISTER_A)
 
 #define GET_REGISTER_B(instruction) \
-    (cast(int, (instruction) >> POS_REGISTER_B) \
-    & MASK1(SIZE_REGISTER_B, 0))
+    _get_register(instruction, POS_REGISTER_B, SIZE_REGISTER_B)
 
 #define GET_REGISTER_C(instruction) \
-    (cast(int, (instruction) >> POS_REGISTER_C) \
-    & MASK1(SIZE_REGISTER_C, 0))    
+    _get_register(instruction, POS_REGISTER_C, SIZE_REGISTER_C)
 
 #define GET_REGISTER_Bx(instruction) \
-    (cast(int, (instruction) >> POS_REGISTER_Bx) \
-    & MASK1(SIZE_REGISTER_Bx, 0))
+    _get_register(instruction, POS_REGISTER_Bx, SIZE_REGISTER_Bx)
 
 #define GET_REGISTER_sBx(instruction) \
     (GET_REGISTER_Bx(instruction) - MAX_REGISTER_sBx)
@@ -210,55 +208,39 @@ MASK1(N = SIZE_OPCODE, offset = 0) => {
 
 /* --- SET REGISTERS ---------------------------------------------------- {{{ */
 
-#define SET_REGISTER(instruction, data, pos, size)                             \
+#define _set_register(instruction, data, pos, size)                            \
     ((instruction) = (                                                         \
         ((instruction) & MASK0(size, pos))                                     \
         | ((cast(Instruction, data) << pos) & MASK1(size, pos))                \
     ))
 
 #define SET_REGISTER_A(instruction, data) \
-    ((instruction) = ( \
-        ((instruction) & MASK0(SIZE_REGISTER_A, POS_REGISTER_A)) \
-        | ((cast(Instruction, data) << POS_REGISTER_A) \
-            & MASK1(SIZE_REGISTER_A, POS_REGISTER_A)) \
-    ))
+    _set_register(instruction, data, POS_REGISTER_A, SIZE_REGISTER_A)
 
 #define SET_REGISTER_B(instruction, data) \
-    ((instruction) = ( \
-        ((instruction) & MASK0(SIZE_REGISTER_B, POS_REGISTER_B)) \
-        | ((cast(Instruction, data) << POS_REGISTER_B) \
-            & MASK1(SIZE_REGISTER_B, POS_REGISTER_B)) \
-    ))
+    _set_register(instruction, data, POS_REGISTER_B, SIZE_REGISTER_B)
 
 #define SET_REGISTER_C(instruction, data) \
-    ((instruction) = ( \
-        ((instruction) & MASK0(SIZE_REGISTER_C, POS_REGISTER_C)) \
-        | ((cast(Instruction, data) << POS_REGISTER_C) \
-            & MASK1(SIZE_REGISTER_C, POS_REGISTER_C)) \
-    ))
+    _set_register(instruction, data, POS_REGISTER_C, SIZE_REGISTER_C)
 
 #define SET_REGISTER_Bx(instruction, data) \
-    ((instruction) = ( \
-        ((instruction) & MASK0(SIZE_REGISTER_Bx, POS_REGISTER_Bx)) \
-        | ((cast(Instruction, data) << POS_REGISTER_Bx) \
-            & MASK1(SIZE_REGISTER_Bx, POS_REGISTER_Bx)) \
-    ))
+    _set_register(instruction, data, POS_REGISTER_Bx, SIZE_REGISTER_Bx)
 
 #define SET_REGISTER_sBx(instruction, data) \
     SET_REGISTER_Bx(instruction, cast(unsigned int, (data) + MAX_REGISTER_sBx))
 
 /* }}} ---------------------------------------------------------------------- */
 
-#define CREATE_ABC(opcode, a, b, c) \
-    ((cast(Instruction, opcode) << POS_OPCODE) \
-    | (cast(Instruction, a) << POS_REGISTER_A) \
-    | (cast(Instruction, b) << POS_REGISTER_B) \
-    | (cast(Instruction, c) << POS_REGISTER_C))
+#define CREATE_ABC(opcode, ra, rb, rc)                                         \
+    ((cast(Instruction, opcode) << POS_OPCODE)                                 \
+    | (cast(Instruction, ra) << POS_REGISTER_A)                                \
+    | (cast(Instruction, rb) << POS_REGISTER_B)                                \
+    | (cast(Instruction, rc) << POS_REGISTER_C))
 
-#define CREATE_ABx(opcode, a, bc) \
-    ((cast(Instruction, opcode) << POS_OPCODE) \
-    | (cast(Instruction, a) << POS_REGISTER_A) \
-    | (cast(Instruction, bc) << POS_REGISTER_Bx))
+#define CREATE_ABx(opcode, ra, bx)                                             \
+    ((cast(Instruction, opcode) << POS_OPCODE)                                 \
+    | (cast(Instruction, ra) << POS_REGISTER_A)                                \
+    | (cast(Instruction, bx) << POS_REGISTER_Bx))
 
 // This is a bit: 0 == is a register, 1 == is a constant.
 #define BITRK       (1 << (SIZE_REGISTER_B - 1))
@@ -300,8 +282,8 @@ enum OpArgMask {
     OpArgK, // Argument is a constant index.
 };
 
-extern const Byte luaP_opmodes[NUM_OPCODES];
-extern const char *const luaP_opnames[NUM_OPCODES + 1];
+LUA_API const Byte luaP_opmodes[NUM_OPCODES];
+LUA_API const char *const luaP_opnames[NUM_OPCODES + 1];
 
 #define get_OpMode(mode)   (cast(enum OpMode, luaP_opmodes[mode] & 3))
 #define get_BMode(mode)    (cast(enum OpArgMask, (luaP_opmodes[mode] >> 4) & 3))

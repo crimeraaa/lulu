@@ -15,8 +15,9 @@ typedef struct {
 } TArray;
 
 struct Chunk {
-    Instruction *code; // 1D array of bytecode.
     TArray constants; // 1D array of constant values to load at runtime.
+    Instruction *code; // 1D array of bytecode.
+    int *lines; // Line information mirrors the bytecode array for simplicity.
     int len; // Current number of individual `Byte` elements written.
     int cap; // Total useable/writeable number of `Byte` elements.
 };
@@ -27,7 +28,7 @@ void write_tarray(TArray *self, const TValue *value);
 
 void init_chunk(Chunk *self);
 void free_chunk(Chunk *self);
-void write_chunk(Chunk *self, Instruction instruction);
+void write_chunk(Chunk *self, Instruction instruction, int line);
 
 // Appends `value` to chunk's constants array and returns index we appended to.
 int add_constant(Chunk *self, const TValue *value);

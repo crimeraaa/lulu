@@ -3,6 +3,7 @@
 
 #include <limits.h>
 #include <stddef.h>
+#include <stdint.h>
 #include "lua.h"
 
 typedef uint32_t    lua_Int32;

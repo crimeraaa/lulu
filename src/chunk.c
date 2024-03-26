@@ -24,25 +24,29 @@ void write_tarray(TArray *self, const TValue *value) {
 }
 
 void init_chunk(Chunk *self) {
-    self->code = NULL;
     init_tarray(&self->constants);
+    self->code = NULL;
+    self->lines = NULL;
     self->len = 0;
     self->cap = 0;
 }
 
 void free_chunk(Chunk *self) {
-    free_array(Instruction, self->code, self->cap);
     free_tarray(&self->constants);
+    free_array(Instruction, self->code, self->cap);
+    free_array(int, self->lines, self->cap);
     init_chunk(self);
 }
 
-void write_chunk(Chunk *self, Instruction byte) {
+void write_chunk(Chunk *self, Instruction byte, int line) {
     if (self->len + 1 > self->cap) {
-        int oldcap = self->cap;
-        self->cap  = grow_capacity(oldcap);
-        self->code = grow_array(Instruction, self->code, oldcap, self->cap);
+        int oldcap  = self->cap;
+        self->cap   = grow_capacity(oldcap);
+        self->code  = grow_array(Instruction, self->code, oldcap, self->cap);
+        self->lines = grow_array(int, self->lines, oldcap, self->cap);
     }
-    self->code[self->len] = byte;
+    self->code[self->len]  = byte;
+    self->lines[self->len] = line;
     self->len++;
 }
 
@@ -51,6 +55,7 @@ int add_constant(Chunk *self, const TValue *value) {
     return self->constants.len - 1;
 }
 
+/* This style of section disassembly was taken from ChunkSpy. */
 static void disassemble_section(const TArray *self, const char *name) {
     for (int i = 0; i < self->len; i++) {
         printf("%-8s ", name);
@@ -84,6 +89,12 @@ static void constant_instruction(OpCode opcode, const Chunk *chunk, Instruction 
 
 int disassemble_instruction(Chunk *self, int offset) {
     printf("[%i] ", offset);
+    // Only print line number when it doesn't match previous line.
+    if (offset > 0 && self->lines[offset] == self->lines[offset - 1]) {
+        printf("   | ");
+    } else {
+        printf("%4i ", self->lines[offset]);
+    }
     Instruction instruction = self->code[offset];
     OpCode opcode = GET_OPCODE(instruction);
     switch (opcode) {

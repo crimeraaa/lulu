@@ -7,10 +7,9 @@ int main(int argc, const char *argv[]) {
 
     TValue *n = &(TValue){0};
     setnumber(n, 1.2);
-    Instruction instruction = CREATE_ABx(OP_CONSTANT, 1, add_constant(chunk, n));
-    write_chunk(chunk, instruction);
+    write_chunk(chunk, CREATE_ABx(OP_CONSTANT, 0, add_constant(chunk, n)), 111);
 
-    write_chunk(chunk, OP_RETURN);
+    write_chunk(chunk, OP_RETURN, 111);
     disassemble_chunk(chunk, "test chunk");
     free_chunk(chunk);
     return 0;
