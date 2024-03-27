@@ -22,7 +22,7 @@ void print_value(const TValue *value) {
         printf(LUA_NUMBER_FMT, asnumber(value)); 
         break;
     default:
-        printf("%s: %p", luaT_typenames[value->tag], (void*)asobject(value));
+        printf("%s: %p", astypename(value), (void*)asobject(value));
         break;
     }
 }

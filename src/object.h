@@ -18,33 +18,53 @@ typedef struct lua_TValue {
     int tag; // Tagged union type. Use one of the `LUA_T*` enum members.
 } TValue;
 
-#define tagtype(o)          ((o)->tag)
+#define tagtype(value)      (value)->tag
 
 // All garbage-collectible tags come after the `LUA_TSTRING` enum member.
-#define iscollectible(o)    (tagtype(o) >= LUA_TSTRING)
+// `LUA_TSTRING` itself is garbage collectible so we include it.
+#define iscollectible(value)    (tagtype(value) >= LUA_TSTRING)
 
-#define isnil(o)            (tagtype(o) == LUA_TNIL)
-#define isboolean(o)        (tagtype(o) == LUA_TBOOLEAN)
-#define isnumber(o)         (tagtype(o) == LUA_TNUMBER)
-#define isstring(o)         (tagtype(o) == LUA_TSTRING)
-#define istable(o)          (tagtype(o) == LUA_TTABLE)
-#define isfunction(o)       (tagtype(o) == LUA_TFUNCTION)
+#define isnil(value)        (tagtype(value) == LUA_TNIL)
+#define isboolean(value)    (tagtype(value) == LUA_TBOOLEAN)
+#define isnumber(value)     (tagtype(value) == LUA_TNUMBER)
+#define isobject(value)     iscollectible(value)
+#define isstring(value)     (tagtype(value) == LUA_TSTRING)
+#define istable(value)      (tagtype(value) == LUA_TTABLE)
+#define isfunction(value)   (tagtype(value) == LUA_TFUNCTION)
 
-#define asboolean(o)        check_exp(isboolean(o),     (o)->as.boolean)
-#define asnumber(o)         check_exp(isnumber(o),      (o)->as.number)
-#define asobject(o)         check_exp(iscollectible(o), (o)->as.object)
+#define asboolean(value)    (value)->as.boolean
+#define asnumber(value)     (value)->as.number
+#define asobject(value)     check_exp(isobject(value),  (value)->as.object)
 
-#define setnil(obj) \
-    { TValue *_o = (obj); _o->as.number = 0; _o->tag = LUA_TNIL; }
+#define setnil(obj) {                                                          \
+    TValue *dst = (obj);                                                       \
+    dst->as.number = 0;                                                        \
+    dst->tag = LUA_TNIL;                                                       \
+}
 
-#define setboolean(obj, b) \
-    { TValue *_o = (obj); _o->as.boolean = (b); _b->tag = LUA_TBOOLEAN; }
+#define setboolean(obj, b) {                                                   \
+    TValue *dst = (obj);                                                       \
+    dst->as.boolean = (b);                                                     \
+    dst->tag = LUA_TBOOLEAN;                                                   \
+}
 
-#define setnumber(obj, n) \
-    { TValue *_o = (obj); _o->as.number = (n); _o->tag = LUA_TNUMBER; }
+#define setnumber(obj, n) {                                                    \
+    TValue *dst    = (obj);                                                    \
+    dst->as.number = (n);                                                      \
+    dst->tag = LUA_TNUMBER;                                                    \
+}
+
+#define setobj(dst, src) {                                                     \
+    TValue *_dst       = (dst);                                                \
+    const TValue *_src = (src);                                                \
+    _dst->tag = _src->tag;                                                     \
+    _dst->as  = _src->as;                                                      \
+}
 
 void print_value(const TValue *value);
 
 LUA_API const char *const luaT_typenames[LUA_TCOUNT];
+
+#define astypename(value) luaT_typenames[tagtype(value)]
 
 #endif /* LUA_OBJECT_H */

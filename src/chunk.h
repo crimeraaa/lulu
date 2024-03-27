@@ -33,7 +33,4 @@ void write_chunk(Chunk *self, Instruction instruction, int line);
 // Appends `value` to chunk's constants array and returns index we appended to.
 int add_constant(Chunk *self, const TValue *value);
 
-void disassemble_chunk(Chunk *self, const char *name);
-int disassemble_instruction(Chunk *self, int offset);
-
 #endif /* LUA_CHUNK_H */

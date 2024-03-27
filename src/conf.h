@@ -77,7 +77,7 @@
 #define luai_numdiv(x,y)    ((x)/(y))
 #define luai_nummod(x,y)    ((x) - floor((x)/(y)) * (y))
 #define luai_numpow(x,y)    (pow(x,y))
-#define luai_numunm(x)      (-(a))
+#define luai_numunm(x)      (-(x))
 #define luai_numeq(x,y)     ((x)==(y))
 #define luai_numlt(x,y)     ((x)<(y))
 #define luai_numle(x,y)     ((x)<=(y))

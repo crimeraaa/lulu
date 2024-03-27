@@ -57,10 +57,10 @@ enum OpMode {iABC, iABx, iAsBx};
 /* --- REGISTER BIT SIZES ----------------------------------------------- {{{ */
 
 #define SIZE_OPCODE         6
-#define SIZE_REGISTER_A     8
-#define SIZE_REGISTER_B     9
-#define SIZE_REGISTER_C     9
-#define SIZE_REGISTER_Bx    (SIZE_REGISTER_B + SIZE_REGISTER_C)
+#define SIZE_RA             8
+#define SIZE_RB             9
+#define SIZE_RC             9
+#define SIZE_RBx            (SIZE_RB + SIZE_RC)
 
 /* }}} ---------------------------------------------------------------------- */
 
@@ -68,19 +68,19 @@ enum OpMode {iABC, iABx, iAsBx};
 // Note that in terms of bit position, Register B is more significant than C.
 
 #define POS_OPCODE          0
-#define POS_REGISTER_A      (POS_OPCODE + SIZE_OPCODE)
-#define POS_REGISTER_C      (POS_REGISTER_A + SIZE_REGISTER_A)
-#define POS_REGISTER_B      (POS_REGISTER_C + SIZE_REGISTER_C)
-#define POS_REGISTER_Bx     POS_REGISTER_C
+#define POS_RA              (POS_OPCODE + SIZE_OPCODE)
+#define POS_RC              (POS_RA + SIZE_RA)
+#define POS_RB              (POS_RC + SIZE_RC)
+#define POS_RBx             POS_RC
 
 /* }}} ---------------------------------------------------------------------- */
 
 /* --- REGISTER MAX VALUES ---------------------------------------------- {{{ */
 
 #define MAX_OPCODE          NUM_OPCODES
-#define MAX_REGISTER_A      ((1 << SIZE_REGISTER_A) - 1)
-#define MAX_REGISTER_B      ((1 << SIZE_REGISTER_B) - 1)
-#define MAX_REGISTER_C      ((1 << SIZE_REGISTER_C) - 1)
+#define MAXARG_RA           ((1 << SIZE_RA) - 1)
+#define MAXARG_RB           ((1 << SIZE_RB) - 1)
+#define MAXARG_RC           ((1 << SIZE_RC) - 1)
 
 /**
  * @brief   Maximum allowble values for combined registers. Note that we use
@@ -89,8 +89,8 @@ enum OpMode {iABC, iABx, iAsBx};
  * @note    Assumes that arguments fit in (sizeof(int) * CHAR_BIT) - 1 bits,
  *          where we reserve 1 bit for the sign.
  */
-#define MAX_REGISTER_Bx     ((1 << SIZE_REGISTER_Bx) - 1)
-#define MAX_REGISTER_sBx    (MAX_REGISTER_Bx >> 1)
+#define MAXARG_RBx          ((1 << SIZE_RBx) - 1)
+#define MAXARG_RsBx         (MAXARG_RBx >> 1)
 
 /* }}} --------------------------------------------------------------------*- */
 
@@ -185,24 +185,28 @@ MASK1(N = SIZE_OPCODE, offset = 0) => {
 
 /* --- GET REGISTERS ---------------------------------------------------- {{{ */
 
-#define _get_register(instruction, pos, size)                                  \
-    (cast(int, (instruction) >> pos)                                           \
-    & MASK1(size, 0))
+// Helper function to extract specific parts of the instruction. This could be 
+// implemented as a function-like macro but I find that very unreadable.
+static inline int _get_register(Instruction instruction, int pos, int size) {
+    int part = instruction >> pos; // Extract the desired segment using `pos`.
+    int mask = MASK1(size, 0);     // Extract segment value only.
+    return part & mask;
+}
     
-#define GET_REGISTER_A(instruction) \
-    _get_register(instruction, POS_REGISTER_A, SIZE_REGISTER_A)
+#define GETARG_RA(instruction) \
+    _get_register(instruction, POS_RA, SIZE_RA)
 
-#define GET_REGISTER_B(instruction) \
-    _get_register(instruction, POS_REGISTER_B, SIZE_REGISTER_B)
+#define GETARG_RB(instruction) \
+    _get_register(instruction, POS_RB, SIZE_RB)
 
-#define GET_REGISTER_C(instruction) \
-    _get_register(instruction, POS_REGISTER_C, SIZE_REGISTER_C)
+#define GETARG_RC(instruction) \
+    _get_register(instruction, POS_RC, SIZE_RC)
 
-#define GET_REGISTER_Bx(instruction) \
-    _get_register(instruction, POS_REGISTER_Bx, SIZE_REGISTER_Bx)
+#define GETARG_RBx(instruction) \
+    _get_register(instruction, POS_RBx, SIZE_RBx)
 
-#define GET_REGISTER_sBx(instruction) \
-    (GET_REGISTER_Bx(instruction) - MAX_REGISTER_sBx)
+#define GETARG_RsBx(instruction) \
+    (GETARG_RBx(instruction) - MAXARG_RsBx)
 
 /* }}} ---------------------------------------------------------------------- */
 
@@ -214,36 +218,36 @@ MASK1(N = SIZE_OPCODE, offset = 0) => {
         | ((cast(Instruction, data) << pos) & MASK1(size, pos))                \
     ))
 
-#define SET_REGISTER_A(instruction, data) \
-    _set_register(instruction, data, POS_REGISTER_A, SIZE_REGISTER_A)
+#define SETARG_RA(instruction, data) \
+    _set_register(instruction, data, POS_RA, SIZE_RA)
 
-#define SET_REGISTER_B(instruction, data) \
-    _set_register(instruction, data, POS_REGISTER_B, SIZE_REGISTER_B)
+#define SETARG_RB(instruction, data) \
+    _set_register(instruction, data, POS_RB, SIZE_RB)
 
-#define SET_REGISTER_C(instruction, data) \
-    _set_register(instruction, data, POS_REGISTER_C, SIZE_REGISTER_C)
+#define SETARG_RC(instruction, data) \
+    _set_register(instruction, data, POS_RC, SIZE_RC)
 
-#define SET_REGISTER_Bx(instruction, data) \
-    _set_register(instruction, data, POS_REGISTER_Bx, SIZE_REGISTER_Bx)
+#define SETARG_RBx(instruction, data) \
+    _set_register(instruction, data, POS_RBx, SIZE_RBx)
 
-#define SET_REGISTER_sBx(instruction, data) \
-    SET_REGISTER_Bx(instruction, cast(unsigned int, (data) + MAX_REGISTER_sBx))
+#define SETARG_RsBx(instruction, data) \
+    SETARG_RBx(instruction, cast(unsigned int, (data) + MAXARG_RsBx))
 
 /* }}} ---------------------------------------------------------------------- */
 
 #define CREATE_ABC(opcode, ra, rb, rc)                                         \
     ((cast(Instruction, opcode) << POS_OPCODE)                                 \
-    | (cast(Instruction, ra) << POS_REGISTER_A)                                \
-    | (cast(Instruction, rb) << POS_REGISTER_B)                                \
-    | (cast(Instruction, rc) << POS_REGISTER_C))
+    | (cast(Instruction, ra) << POS_RA)                                        \
+    | (cast(Instruction, rb) << POS_RB)                                        \
+    | (cast(Instruction, rc) << POS_RC))
 
 #define CREATE_ABx(opcode, ra, bx)                                             \
     ((cast(Instruction, opcode) << POS_OPCODE)                                 \
-    | (cast(Instruction, ra) << POS_REGISTER_A)                                \
-    | (cast(Instruction, bx) << POS_REGISTER_Bx))
+    | (cast(Instruction, ra) << POS_RA)                                        \
+    | (cast(Instruction, bx) << POS_RBx))
 
 // This is a bit: 0 == is a register, 1 == is a constant.
-#define BITRK       (1 << (SIZE_REGISTER_B - 1))
+#define BITRK       (1 << (SIZE_RB - 1))
 
 // Test whether a value is a constant.
 #define ISK(x)      ((x) & BITRK)
@@ -253,28 +257,38 @@ MASK1(N = SIZE_OPCODE, offset = 0) => {
 #define MAXINDEXRK  (BITRK - 1)
 
 // Code a constant index as an RK value.
-#define RK_AS_K(x)  ((x) | BITRK)
+#define RKASK(x)    ((x) | BITRK)
 
 // Invalid register that fits in 8 bits.
-#define NO_REG      MAX_REGISTER_A
+#define NO_REG      MAXARG_RA
 
 /* }}} ---------------------------------------------------------------------- */
 
+/** 
+ * Some Terms:
+ * R(x)   := register with index `x`.
+ * Kst(x) := constant value from constants table `Kst`.
+ * RK(x)  := if `x` is a constant index, use `Kst(INDEXK(x))` else use `R(x)`. 
+ */
 typedef enum {
     /* -------------------------------------------------------------------------
     NAME            ARGS            DESCRIPTION
     ------------------------------------------------------------------------- */
-    OP_CONSTANT, // A Bx            R(A) := Constants(Bx)
+    OP_CONSTANT, // A Bx            R(A) := Kst(Bx)
+    OP_UNM,      // A B             R(A) := -R(B)
     OP_RETURN,
     NUM_OPCODES, // Not a real opcode.
 } OpCode;
 
-/* MASKS FOR INSTRUCTION PROPERTIES
-bits 0-1:   opmode
-bits 2-3:   C arg mode
-bits 4-5:   B arg mode
-bit 6:      instruction set register A
-bit 7:      operator is a test */
+/** 
+ * MASKS FOR INSTRUCTION PROPERTIES
+bits 0-1:   opmode/instruction format: iABC, iABx, iAsBx
+bits 2-3:   C arg mode: used/unused, register/jump offset, constant index
+bits 4-5:   B arg mode: used/unused, register/jump offset, constant index
+bit 6:      instruction set register A is used or not.
+bit 7:      operator is a test or not.
+
+Note that we use a bitmask of `3` (`0b100`) to extract modes with 3 options. */
 enum OpArgMask {
     OpArgN, // Unused argument.
     OpArgU, // Used argument.
@@ -282,13 +296,22 @@ enum OpArgMask {
     OpArgK, // Argument is a constant index.
 };
 
+/**
+ * @brief   Each opcode maps to an opmode which lists particular behaviors. 
+ *          Specifically, we can tell if a register is used or not, and if 
+ *          is used then we can also determine if they as indexes to VM 
+ *          registers or constants.
+ *
+ * @note    See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes 
+ */
 LUA_API const Byte luaP_opmodes[NUM_OPCODES];
 LUA_API const char *const luaP_opnames[NUM_OPCODES + 1];
 
-#define get_OpMode(mode)   (cast(enum OpMode, luaP_opmodes[mode] & 3))
-#define get_BMode(mode)    (cast(enum OpArgMask, (luaP_opmodes[mode] >> 4) & 3))
-#define get_CMode(mode)    (cast(enum OpArgMask, (luaP_opmodes[mode] >> 2) & 3))
-#define test_AMode(mode)   (luaP_opmodes[mode] & (1 << 6))
-#define test_TMode(mode)   (luaP_opmodes[mode] & (1 << 7))
+#define get_opname(opcode)  luaP_opnames[opcode]
+#define get_OpMode(opcode)  (cast(enum OpMode, luaP_opmodes[opcode] & 3))
+#define get_BMode(opcode)   (cast(enum OpArgMask, (luaP_opmodes[opcode] >> 4) & 3))
+#define get_CMode(opcode)   (cast(enum OpArgMask, (luaP_opmodes[opcode] >> 2) & 3))
+#define test_AMode(opcode)  (luaP_opmodes[opcode] & (1 << 6))
+#define test_TMode(opcode)  (luaP_opmodes[opcode] & (1 << 7))
 
 #endif /* LUA_OPCODES_H */

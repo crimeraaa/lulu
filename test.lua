@@ -33,17 +33,17 @@ OPTIONS = {
         flags = {},
         help = "No pargs lists all options, otherwise gets help for each.",
         call = function(self, pargs)
-            io.stderr:write("[OPTIONS]:\n")
-            if (type(pargs) ~= "table") or (#pargs == 0) then
+            io.stdout:write("[OPTIONS]:\n")
+            if (#pargs == 0) then
                 pargs = table.array_of_keys(OPTIONS)
             end
             for _, key in ipairs(pargs) do
                 local opt = OPTIONS[key]
                 if not opt then
-                    io.stderr:write("Unknown option '", tostring(key), "'.\n")
+                    io.stdout:write("Unknown option '", tostring(key), "'.\n")
                 else
                     local info = string.format("\t%-16s", key)
-                    io.stderr:write(info, opt.help, '\n')
+                    io.stdout:write(info, opt.help, '\n')
                 end
             end
             os.exit(0) -- End usage here as otherwise we'd print output
@@ -108,7 +108,7 @@ OPTIONS = {
         cmd  = "valgrind",
         flags = {"--leak-check=full", 
                 "--track-origins=yes", 
-                "2>&1"}, -- valgrind writes to stderr by default so redirect.
+                "2>&1"}, -- valgrind writes to stdout by default so redirect.
         help = "No pargs runs " .. quote(INTERPRETER) .. ", else puts pargs after '--'.",
         call = function(self, pargs)
             if #pargs == 0 then
@@ -127,21 +127,21 @@ PARGS_NOTE = {
 local function main(argc, argv)
     -- argc was adjusted to reflect the presence of argv[0].
     if argc == 1 then
-        io.stderr:write("[USAGE]:\n\t", argv[0], " <option> [pargs..]\n")
-        io.stderr:write("[NOTE]:\n\t", table.concat(PARGS_NOTE, "\n\t"), '\n')
+        io.stdout:write("[USAGE]:\n\t", argv[0], " <option> [pargs..]\n")
+        io.stdout:write("[NOTE]:\n\t", table.concat(PARGS_NOTE, "\n\t"), '\n')
         OPTIONS["help"]:call(nil)
         os.exit(2)
     end
     local opt = OPTIONS[argv[1]]
     if not opt then
-        io.stderr:write("[ERROR]:\nUnknown option '", argv[1], "'.\n")
+        io.stdout:write("[ERROR]:\nUnknown option '", argv[1], "'.\n")
         os.exit(2)
     end
     -- Positional argument list to argv[1] which is the option.
     local pargs = table.slice(argv, 2, argc)
     local cmd, output = opt:call(pargs)
-    io.stderr:write("[COMMAND]:\n", cmd, "\n")
-    io.stderr:write("[OUTPUT]:\n", output, "\n")
+    io.stdout:write("[COMMAND]:\n", cmd, "\n")
+    io.stdout:write("[OUTPUT]:\n", output, "\n")
 end
 
 main(#arg + 1, arg)

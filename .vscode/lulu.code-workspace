@@ -11,7 +11,13 @@
 			".clangd": "yaml",
 			".clang_format": "yaml",
 			"*.lox": "swift",
-			"memory": "c"
+			"memory": "c",
+			"system_error": "c",
+			"array": "c",
+			"functional": "c",
+			"tuple": "c",
+			"type_traits": "c",
+			"utility": "c"
 		},
 		"files.exclude": {
 			"**/.git": true,

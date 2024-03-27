@@ -3,6 +3,7 @@
 // See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opnames
 const char *const luaP_opnames[] = {
     [OP_CONSTANT]   = "OP_CONSTANT",
+    [OP_UNM]        = "OP_UNM",
     [OP_RETURN]     = "OP_RETURN",
     NULL,
 };
@@ -10,10 +11,10 @@ const char *const luaP_opnames[] = {
 #define opmode(test, ra, rb, rc, mode) \
     (((test) << 7) | ((ra) << 6) | ((rb) << 4) | ((rc) << 2) | (mode))
 
-// See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
-const Byte luaP_opmodes[] = {
+const Byte luaP_opmodes[NUM_OPCODES] = {
     // OPCODE                TEST   R(A)    R(B)        R(C)        OPMODE
     [OP_CONSTANT]   = opmode(0,     1,      OpArgK,     OpArgN,     iABx),
+    [OP_UNM]        = opmode(0,     1,      OpArgR,     OpArgN,     iABC),
     [OP_RETURN]     = opmode(0,     0,      OpArgU,     OpArgN,     iABC),
 };
 
