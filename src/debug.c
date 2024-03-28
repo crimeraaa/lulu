@@ -19,23 +19,36 @@ void disassemble_chunk(Chunk *self, const char *name) {
     printf("END:   '%s'\n", name);
 }
 
-static void simple_instruction(OpCode opcode) {
-    printf("%s\n", get_opname(opcode));
-}
-
 static void constant_instruction(OpCode opcode, const Chunk *chunk, Instruction instruction) {
-    int ra = GETARG_RA(instruction);  // R(A) = destination register
-    int bx = GETARG_RBx(instruction); // Bx = constants index
-    const TValue *value = &chunk->constants.values[bx];
-    printf("%-16s R(A=%i) := Kst(Bx=%i) ; '", get_opname(opcode), ra, bx);
+    int ra  = GETARG_RA(instruction);  // R(A) = destination register
+    int rbx = GETARG_RBx(instruction); // Bx = constants index
+    const TValue *value = &chunk->constants.values[rbx];
+    printf("%-16s %4i %4i %4c ; R(A) := Kst(Bx) '", 
+        get_opname(opcode), ra, rbx, ' ');
     print_value(value);
     printf("' (%s)\n", astypename(value));
 }
 
-static void negate_instruction(OpCode opcode, Instruction instruction) {
+static void negate_instruction(Instruction instruction) {
     int ra = GETARG_RA(instruction); // R(A) := destination register
     int rb = GETARG_RB(instruction); // R(B) := source register
-    printf("%-16s R(A=%i) := -R(B=%i)\n", get_opname(opcode), ra, rb);
+    printf("%-16s %4i %4i %4c ; R(A) := -R(B)\n", 
+        get_opname(OP_UNM), ra, rb, ' ');
+}
+
+static void arith_instruction(OpCode opcode, Instruction instruction, char arith_op) { 
+    int ra  = GETARG_RA(instruction); // R(A) := destination register
+    int rkb = GETARG_RB(instruction); // RK(B) := left hand side of operation
+    int rkc = GETARG_RC(instruction); // RK(C) := right hand side of operation
+    printf("%-16s %4i %4i %4i ; R(A) := RK(B) %c RK(C)\n", 
+        get_opname(opcode), ra, rkb, rkc, arith_op);
+}
+
+static void return_instruction(Instruction instruction) {
+    int ra = GETARG_RA(instruction); // R(A) := first argument to return
+    int rb = GETARG_RB(instruction); // If 0 then return up to 'top'.
+    printf("%-16s %4i %4i %4c ; return R(A), ..., R(A+B-2)\n",
+        get_opname(OP_RETURN), ra, rb, ' ');
 }
 
 int disassemble_instruction(Chunk *self, int offset) {
@@ -52,11 +65,29 @@ int disassemble_instruction(Chunk *self, int offset) {
     case OP_CONSTANT:
         constant_instruction(OP_CONSTANT, self, instruction);
         break;
+    case OP_ADD:
+        arith_instruction(OP_ADD, instruction, '+');
+        break;
+    case OP_SUB:
+        arith_instruction(OP_SUB, instruction, '-');
+        break;
+    case OP_MUL:
+        arith_instruction(OP_MUL, instruction, '*');
+        break;
+    case OP_DIV:
+        arith_instruction(OP_DIV, instruction, '/');
+        break;
+    case OP_MOD:
+        arith_instruction(OP_MOD, instruction, '%');
+        break;
+    case OP_POW:
+        arith_instruction(OP_POW, instruction, '^');
+        break;
     case OP_UNM:
-        negate_instruction(OP_UNM, instruction);
+        negate_instruction(instruction);
         break;
     case OP_RETURN:
-        simple_instruction(OP_RETURN);
+        return_instruction(instruction);
         break;
     default:
         printf("Unknown opcode %i.\n", opcode);

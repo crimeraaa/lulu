@@ -36,6 +36,11 @@ typedef struct lua_TValue {
 #define asnumber(value)     (value)->as.number
 #define asobject(value)     check_exp(isobject(value),  (value)->as.object)
 
+#define makenil()           (TValue){.as = {.number = 0},  .tag = LUA_TNIL}
+#define makeboolean(b)      (TValue){.as = {.boolean = b}, .tag = LUA_TBOOLEAN}
+#define makenumber(n)       (TValue){.as = {.number = n},  .tag = LUA_TNUMBER}
+#define makeobject(o, tt)   (TValue){.as = {.object = o},  .tag = tt}
+
 #define setnil(obj) {                                                          \
     TValue *dst = (obj);                                                       \
     dst->as.number = 0;                                                        \
