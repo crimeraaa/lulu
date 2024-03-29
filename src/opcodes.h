@@ -78,9 +78,9 @@ enum OpMode {iABC, iABx, iAsBx};
 // --- REGISTER MAX VALUES ------------------------------------------------ {{{1
 
 #define MAX_OPCODE          NUM_OPCODES
-#define MAXARG_RA           ((1 << SIZE_RA) - 1)
-#define MAXARG_RB           ((1 << SIZE_RB) - 1)
-#define MAXARG_RC           ((1 << SIZE_RC) - 1)
+#define MAXARG_A            ((1 << SIZE_RA) - 1)
+#define MAXARG_B            ((1 << SIZE_RB) - 1)
+#define MAXARG_C            ((1 << SIZE_RC) - 1)
 
 /**
  * @brief   Maximum allowble values for combined registers. Note that we use
@@ -89,8 +89,8 @@ enum OpMode {iABC, iABx, iAsBx};
  * @note    Assumes that arguments fit in (sizeof(int) * CHAR_BIT) - 1 bits,
  *          where we reserve 1 bit for the sign.
  */
-#define MAXARG_RBx          ((1 << SIZE_RBx) - 1)
-#define MAXARG_RsBx         (MAXARG_RBx >> 1)
+#define MAXARG_Bx          ((1 << SIZE_RBx) - 1)
+#define MAXARG_sBx         (MAXARG_Bx >> 1)
 
 // 1}}} ------------------------------------------------------------------------
 
@@ -193,20 +193,20 @@ static inline int _get_register(Instruction instruction, int pos, int size) {
     return part & mask;
 }
 
-#define GETARG_RA(instruction) \
+#define GETARG_A(instruction) \
     _get_register(instruction, POS_RA, SIZE_RA)
 
-#define GETARG_RB(instruction) \
+#define GETARG_B(instruction) \
     _get_register(instruction, POS_RB, SIZE_RB)
 
-#define GETARG_RC(instruction) \
+#define GETARG_C(instruction) \
     _get_register(instruction, POS_RC, SIZE_RC)
 
-#define GETARG_RBx(instruction) \
+#define GETARG_Bx(instruction) \
     _get_register(instruction, POS_RBx, SIZE_RBx)
 
-#define GETARG_RsBx(instruction) \
-    (GETARG_RBx(instruction) - MAXARG_RsBx)
+#define GETARG_sBx(instruction) \
+    (GETARG_Bx(instruction) - MAXARG_sBx)
 
 // 2}}} ------------------------------------------------------------------------
 
@@ -218,20 +218,20 @@ static inline int _get_register(Instruction instruction, int pos, int size) {
         | ((cast(Instruction, data) << pos) & MASK1(size, pos))                \
     ))
 
-#define SETARG_RA(instruction, data) \
+#define SETARG_A(instruction, data) \
     _set_register(instruction, data, POS_RA, SIZE_RA)
 
-#define SETARG_RB(instruction, data) \
+#define SETARG_B(instruction, data) \
     _set_register(instruction, data, POS_RB, SIZE_RB)
 
-#define SETARG_RC(instruction, data) \
+#define SETARG_C(instruction, data) \
     _set_register(instruction, data, POS_RC, SIZE_RC)
 
-#define SETARG_RBx(instruction, data) \
+#define SETARG_Bx(instruction, data) \
     _set_register(instruction, data, POS_RBx, SIZE_RBx)
 
-#define SETARG_RsBx(instruction, data) \
-    SETARG_RBx(instruction, cast(unsigned int, (data) + MAXARG_RsBx))
+#define SETARG_sBx(instruction, data) \
+    SETARG_Bx(instruction, cast(unsigned int, (data) + MAXARG_sBx))
 
 // 2}}} ------------------------------------------------------------------------
 
@@ -249,7 +249,7 @@ static inline int _get_register(Instruction instruction, int pos, int size) {
 #define RKASK(x)    ((x) | BITRK)
 
 // Invalid register that fits in 8 bits.
-#define NO_REG      MAXARG_RA
+#define NO_REG      MAXARG_A
 
 // 1}}} ------------------------------------------------------------------------
 

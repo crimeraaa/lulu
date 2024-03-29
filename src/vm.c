@@ -29,13 +29,13 @@ static bool check_CMode(Instruction instruction, enum OpArgMask mode) {
 }
 
 static const TValue *read_constant(const TValue *Kst, Instruction instruction) {
-    int index = GETARG_RBx(instruction);
+    int index = GETARG_Bx(instruction);
     const TValue *constant = &Kst[index];
     return constant;
 }
 
 static const TValue *read_rkb(TValue *base, const TValue *Kst, Instruction instruction) {
-    int rb = GETARG_RB(instruction); // May be register or constant index.
+    int rb = GETARG_B(instruction); // May be register or constant index.
     if (ISK(rb)) {
         int index = INDEXK(rb);
         return &Kst[index];
@@ -45,7 +45,7 @@ static const TValue *read_rkb(TValue *base, const TValue *Kst, Instruction instr
 }
 
 static const TValue *read_rkc(TValue *base, const TValue *Kst, Instruction instruction) {
-    int rc = GETARG_RC(instruction); // May be register or constant index.
+    int rc = GETARG_C(instruction); // May be register or constant index.
     if (ISK(rc)) {
         int index = INDEXK(rc);
         return &Kst[index];
@@ -54,9 +54,10 @@ static const TValue *read_rkc(TValue *base, const TValue *Kst, Instruction instr
     }
 }
 
-static bool is_constant_c(Instruction instruction) {
-    int rc = GETARG_RC(instruction);
-    return ISK(rc);
+static bool is_poppable(Instruction instruction) {
+    int rb = GETARG_B(instruction);
+    int rc = GETARG_C(instruction);
+    return !ISK(rb) && !ISK(rc);
 }
 
 static InterpretResult run(lua_VM *self) {
@@ -69,11 +70,11 @@ static InterpretResult run(lua_VM *self) {
 // NOTE: Many of these rely on implied variable names, e.g. `Kst` and `base`.
 
 #define READ_INSTRUCTION()      (*self->ip++)
-#define RA(instruction)         (base + GETARG_RA(instruction))
+#define RA(instruction)         (base + GETARG_A(instruction))
 #define RB(instruction) \
-    check_exp(check_BMode(instruction, OpArgR), base + GETARG_RB(instruction))
+    check_exp(check_BMode(instruction, OpArgR), base + GETARG_B(instruction))
 #define RC(instruction) \
-    check_exp(check_CMode(instruction, OpArgR), base + GETARG_RC(instruction))
+    check_exp(check_CMode(instruction, OpArgR), base + GETARG_C(instruction))
 
 /* Read a register index or a constant index from argument B. */
 #define RKB(instruction) \
@@ -87,16 +88,15 @@ static InterpretResult run(lua_VM *self) {
 #define KBx(instruction) \
     check_exp(check_BMode(instruction, OpArgK), read_constant(Kst, instruction))
 
-/* WARNING: Likely dangerous to assume we should pop if C is a register. */
+/* WARNING: Makes a dangerous assumption that we need to pop when both args are 
+registers. This assumes that we pushed some arguments and need to pop them. */
 #define arith_op(op) {                                                         \
     const TValue *rkb = RKB(instruction);                                      \
     const TValue *rkc = RKC(instruction);                                      \
     lua_Number lhs = asnumber(rkb);                                            \
     lua_Number rhs = asnumber(rkc);                                            \
     setnumber(ra, op(lhs, rhs));                                               \
-    if (!is_constant_c(instruction)) {                                         \
-        self->top--;                                                           \
-    }                                                                          \
+    if (is_poppable(instruction)) self->top--;                                 \
 }
     
 // 1}}} ------------------------------------------------------------------------
@@ -117,8 +117,11 @@ static InterpretResult run(lua_VM *self) {
         TValue *ra = RA(instruction);
         switch (opcode) {
             case OP_CONSTANT: {
-                // Possibly dangerous to assume we need to increment.
-                self->top++;
+                // Only increment if we're increasing the current number of 
+                // active values. However 'dead' values are still in the stack.
+                if (ra >= self->top) {
+                    self->top++;
+                }
                 const TValue *constant = KBx(instruction);
                 setobj(ra, constant);
             } break;
@@ -147,10 +150,14 @@ static InterpretResult run(lua_VM *self) {
                 setnumber(ra, luai_numunm(nb));
             } break;
             case OP_RETURN: {
-                int b = GETARG_RB(instruction);
+                int b = GETARG_B(instruction);
                 // NOTE: This might break easily later on
                 for (int i = 0; i < b; i++) {
                     print_value(ra + i);
+                }
+                // Set top of stack to point to before the first return value.
+                if (b != 0) {
+                    self->top = ra + b - 1;
                 }
                 printf("\n");
             } return INTERPRET_OK;
@@ -174,6 +181,5 @@ static InterpretResult run(lua_VM *self) {
 InterpretResult interpret(lua_VM *self, Chunk *chunk) {
     self->chunk = chunk;
     self->ip    = chunk->code;
-    reset_stack(self);
     return run(self);
 }

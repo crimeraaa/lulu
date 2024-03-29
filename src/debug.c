@@ -20,8 +20,8 @@ void disassemble_chunk(Chunk *self, const char *name) {
 }
 
 static void constant_instruction(OpCode opcode, const Chunk *chunk, Instruction instruction) {
-    int ra  = GETARG_RA(instruction);  // R(A) = destination register
-    int rbx = GETARG_RBx(instruction); // Bx = constants index
+    int ra  = GETARG_A(instruction);  // R(A) = destination register
+    int rbx = GETARG_Bx(instruction); // Bx = constants index
     const TValue *value = &chunk->constants.values[rbx];
     printf("%-16s %4i %4i %4c ; R(A) := Kst(Bx) '", 
         get_opname(opcode), ra, rbx, ' ');
@@ -30,23 +30,23 @@ static void constant_instruction(OpCode opcode, const Chunk *chunk, Instruction 
 }
 
 static void negate_instruction(Instruction instruction) {
-    int ra = GETARG_RA(instruction); // R(A) := destination register
-    int rb = GETARG_RB(instruction); // R(B) := source register
+    int ra = GETARG_A(instruction); // R(A) := destination register
+    int rb = GETARG_B(instruction); // R(B) := source register
     printf("%-16s %4i %4i %4c ; R(A) := -R(B)\n", 
         get_opname(OP_UNM), ra, rb, ' ');
 }
 
 static void arith_instruction(OpCode opcode, Instruction instruction, char arith_op) { 
-    int ra  = GETARG_RA(instruction); // R(A) := destination register
-    int rkb = GETARG_RB(instruction); // RK(B) := left hand side of operation
-    int rkc = GETARG_RC(instruction); // RK(C) := right hand side of operation
+    int ra  = GETARG_A(instruction); // R(A) := destination register
+    int rkb = GETARG_B(instruction); // RK(B) := left hand side of operation
+    int rkc = GETARG_C(instruction); // RK(C) := right hand side of operation
     printf("%-16s %4i %4i %4i ; R(A) := RK(B) %c RK(C)\n", 
         get_opname(opcode), ra, rkb, rkc, arith_op);
 }
 
 static void return_instruction(Instruction instruction) {
-    int ra = GETARG_RA(instruction); // R(A) := first argument to return
-    int rb = GETARG_RB(instruction); // If 0 then return up to 'top'.
+    int ra = GETARG_A(instruction); // R(A) := first argument to return
+    int rb = GETARG_B(instruction); // If 0 then return up to 'top'.
     printf("%-16s %4i %4i %4c ; return R(A), ..., R(A+B-2)\n",
         get_opname(OP_RETURN), ra, rb, ' ');
 }
