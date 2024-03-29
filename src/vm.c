@@ -1,5 +1,6 @@
 #include "vm.h"
 #include "opcodes.h"
+#include "compiler.h"
 #include "debug.h"
 
 static void reset_stack(lua_VM *self) {
@@ -178,8 +179,10 @@ registers. This assumes that we pushed some arguments and need to pop them. */
 #undef KBx
 #undef arith_op
 
-InterpretResult interpret(lua_VM *self, Chunk *chunk) {
-    self->chunk = chunk;
-    self->ip    = chunk->code;
-    return run(self);
+InterpretResult interpret(lua_VM *self, const char *input) {
+    unused(self);
+    Compiler *compiler = &(Compiler){0};
+    compiler->lexstate = &(LexState){0};
+    compile(compiler, input);
+    return INTERPRET_OK;
 }

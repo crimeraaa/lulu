@@ -3,7 +3,7 @@
 require "slice"
 
 ---@brief Create one giant line for use on the command-line.
----@param cmd  string      Program to be executed from the command-line.
+---@param cmd  string       Program to be executed from the command-line.
 ---@param flags string[]    Command-line flags to said program.
 ---@param pargs string[]    Positional arguments, if any, for said program.
 local function make_cmd(cmd, flags, pargs)
@@ -34,7 +34,7 @@ OPTIONS = {
         help = "No pargs lists all options, otherwise gets help for each.",
         call = function(self, pargs)
             io.stdout:write("[OPTIONS]:\n")
-            if (#pargs == 0) then
+            if (not pargs or #pargs == 0) then
                 pargs = table.array_of_keys(OPTIONS)
             end
             for _, key in ipairs(pargs) do

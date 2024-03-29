@@ -26,6 +26,13 @@ typedef unsigned char Byte;
 #define cast_number(N)  cast(lua_Number, (N))
 #define cast_int(N)     cast(int, (N))
 
+// Quickly create a C99 compound literal and cast it to be an array.
+#define arraylit(T, ...)    ((T[]){__VA_ARGS__})
+
+// NOTE: Will not work for arrays that decayed to pointers!
+#define arraylen(array)     (sizeof((array)) / sizeof((array)[0]))
+#define arraysize(T, N)     (sizeof(T) * N)
+
 #if defined(DEBUG_USE_ASSERT)
 
 /**

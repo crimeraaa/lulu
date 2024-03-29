@@ -19,6 +19,6 @@ typedef enum {
 
 void init_vm(lua_VM *self);
 void free_vm(lua_VM *self);
-InterpretResult interpret(lua_VM *self, Chunk *chunk);
+InterpretResult interpret(lua_VM *self, const char *input);
 
 #endif /* LUA_VIRTUAL_MACHINE_H */
