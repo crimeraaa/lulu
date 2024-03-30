@@ -16,7 +16,7 @@ static int repl(lua_VM *vm) {
             printf("\n");
             break;
         }
-        interpret(vm, line);
+        interpret(vm, "stdin", line);
     }
     return EXIT_SUCCESS;
 }
@@ -58,7 +58,7 @@ static int run_file(lua_VM *vm, const char *filename) {
     if (contents == NULL) {
         return EX_IOERR;
     }
-    InterpretResult result = interpret(vm, contents);
+    InterpretResult result = interpret(vm, filename, contents);
     free(contents);
     
     switch (result) {

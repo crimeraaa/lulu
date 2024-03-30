@@ -112,7 +112,24 @@ OPTIONS = {
         help = "No pargs runs " .. quote(INTERPRETER) .. ", else puts pargs after '--'.",
         call = function(self, pargs)
             if #pargs == 0 then
+                print("(enter input, prompt is hidden)")
                 pargs = {INTERPRETER}
+            end
+            return basic_call(self, pargs)
+        end
+    },
+    ["whitespace"] = {
+        cmd = "grep",
+        flags = {"--perl-regexp", -- \s is a perl thing
+                "--line-number", 
+                "--files-with-matches", 
+                "\"\\s+$\""}, -- match trailing whitespaces per line
+        help = "List all the source files that have trailing whitespaces.",
+        call = function(self, pargs)
+            -- No args so resort to checking only the files in `./src/`.
+            if #pargs == 0 then
+                local ls = io.popen("readlink --canonicalize -- ./src/*"):read("*a")
+                pargs = string.split(ls, "\n")
             end
             return basic_call(self, pargs)
         end

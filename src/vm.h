@@ -9,6 +9,7 @@ struct lua_VM {
     TValue *top;     // First free slot in the stack.
     Chunk *chunk;    // Bytecode to be executed and constants list.
     Instruction *ip; // Points to next instruction to be executed.
+    jmp_buf errorjmp; // Current error recovery point. Call `longjmp` with 1.
 };
 
 typedef enum {
@@ -19,6 +20,6 @@ typedef enum {
 
 void init_vm(lua_VM *self);
 void free_vm(lua_VM *self);
-InterpretResult interpret(lua_VM *self, const char *input);
+InterpretResult interpret(lua_VM *self, const char *name, const char *input);
 
 #endif /* LUA_VIRTUAL_MACHINE_H */

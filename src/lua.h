@@ -13,7 +13,6 @@ enum {
     LUA_TSTRING,
     LUA_TTABLE,
     LUA_TFUNCTION,
-    LUA_TCOUNT, // Not a real tag-type, count of valid types.
 };
 
 typedef LUA_NUMBER lua_Number;

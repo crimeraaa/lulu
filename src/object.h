@@ -5,6 +5,9 @@
 #include "lua.h"
 #include "limits.h"
 
+// Not a real tag-type, only meant as a count of valid types.
+#define NUM_TYPETAGS        (LUA_TFUNCTION + 1)
+
 // Tagged union of garbage-collectible structs: strings, tables, functions, etc.
 typedef struct Object Object;
 
@@ -36,40 +39,20 @@ typedef struct lua_TValue {
 #define asnumber(value)     (value)->as.number
 #define asobject(value)     check_exp(isobject(value),  (value)->as.object)
 
-#define makenil()           (TValue){.as = {.number = 0},  .tag = LUA_TNIL}
-#define makeboolean(b)      (TValue){.as = {.boolean = b}, .tag = LUA_TBOOLEAN}
-#define makenumber(n)       (TValue){.as = {.number = n},  .tag = LUA_TNUMBER}
-#define makeobject(o, tt)   (TValue){.as = {.object = o},  .tag = tt}
+#define makenil()           (TValue){.as = {.number  = 0},  .tag = LUA_TNIL}
+#define makeboolean(b)      (TValue){.as = {.boolean = b},  .tag = LUA_TBOOLEAN}
+#define makenumber(n)       (TValue){.as = {.number  = n},  .tag = LUA_TNUMBER}
+#define makeobject(o, tt)   (TValue){.as = {.object  = o},  .tag = tt}
 
-#define setnil(obj) {                                                          \
-    TValue *dst = (obj);                                                       \
-    dst->as.number = 0;                                                        \
-    dst->tag = LUA_TNIL;                                                       \
-}
-
-#define setboolean(obj, b) {                                                   \
-    TValue *dst = (obj);                                                       \
-    dst->as.boolean = (b);                                                     \
-    dst->tag = LUA_TBOOLEAN;                                                   \
-}
-
-#define setnumber(obj, n) {                                                    \
-    TValue *dst    = (obj);                                                    \
-    dst->as.number = (n);                                                      \
-    dst->tag = LUA_TNUMBER;                                                    \
-}
-
-#define setobj(dst, src) {                                                     \
-    TValue *_dst       = (dst);                                                \
-    const TValue *_src = (src);                                                \
-    _dst->tag = _src->tag;                                                     \
-    _dst->as  = _src->as;                                                      \
-}
+#define setnil(obj)         (*(obj) = makenil())
+#define setboolean(obj, b)  (*(obj) = makeboolean(b))
+#define setnumber(obj, n)   (*(obj) = makenumber(n))
+#define setobj(dst, src)    (*(dst) = *(src))
 
 void print_value(const TValue *value);
 
-LUA_API const char *const luaT_typenames[LUA_TCOUNT];
+extern const char *const LUA_TYPENAMES[NUM_TYPETAGS];
 
-#define astypename(value) luaT_typenames[tagtype(value)]
+#define astypename(value) LUA_TYPENAMES[tagtype(value)]
 
 #endif /* LUA_OBJECT_H */

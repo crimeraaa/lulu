@@ -26,8 +26,11 @@ typedef unsigned char Byte;
 #define cast_number(N)  cast(lua_Number, (N))
 #define cast_int(N)     cast(int, (N))
 
+// We can't use `cast` since `exp` is surrounded by parentheses there.
+#define compoundlit(T, ...) ((T){__VA_ARGS__})
+
 // Quickly create a C99 compound literal and cast it to be an array.
-#define arraylit(T, ...)    ((T[]){__VA_ARGS__})
+#define arraylit(T, ...)    compoundlit(T[], __VA_ARGS__)
 
 // NOTE: Will not work for arrays that decayed to pointers!
 #define arraylen(array)     (sizeof((array)) / sizeof((array)[0]))

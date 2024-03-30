@@ -326,14 +326,14 @@ enum OpArgMask {
  *
  * @note    See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
  */
-LUA_API const Byte luaP_opmodes[NUM_OPCODES];
-LUA_API const char *const luaP_opnames[NUM_OPCODES + 1];
+LUA_API const Byte LUA_OPMODES[NUM_OPCODES];
+LUA_API const char *const LUA_OPNAMES[NUM_OPCODES + 1];
 
-#define get_opname(opcode)  luaP_opnames[opcode]
-#define get_OpMode(opcode)  (cast(enum OpMode, luaP_opmodes[opcode] & 3))
-#define get_BMode(opcode)   (cast(enum OpArgMask, (luaP_opmodes[opcode] >> 4) & 3))
-#define get_CMode(opcode)   (cast(enum OpArgMask, (luaP_opmodes[opcode] >> 2) & 3))
-#define test_AMode(opcode)  (luaP_opmodes[opcode] & (1 << 6))
-#define test_TMode(opcode)  (luaP_opmodes[opcode] & (1 << 7))
+#define get_opname(opcode)  LUA_OPNAMES[opcode]
+#define get_OpMode(opcode)  (cast(enum OpMode, LUA_OPMODES[opcode] & 3))
+#define get_BMode(opcode)   (cast(enum OpArgMask, (LUA_OPMODES[opcode] >> 4) & 3))
+#define get_CMode(opcode)   (cast(enum OpArgMask, (LUA_OPMODES[opcode] >> 2) & 3))
+#define test_AMode(opcode)  (LUA_OPMODES[opcode] & (1 << 6))
+#define test_TMode(opcode)  (LUA_OPMODES[opcode] & (1 << 7))
 
 #endif /* LUA_OPCODES_H */

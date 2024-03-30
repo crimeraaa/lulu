@@ -1,7 +1,7 @@
 #include "opcodes.h"
 #include "object.h"
 
-const char *const luaT_typenames[LUA_TCOUNT] = {
+const char *const LUA_TYPENAMES[NUM_TYPETAGS] = {
     [LUA_TNIL]      = "nil",
     [LUA_TBOOLEAN]  = "boolean",
     [LUA_TNUMBER]   = "number",
@@ -22,7 +22,7 @@ void print_value(const TValue *value) {
         printf(LUA_NUMBER_FMT, asnumber(value)); 
         break;
     default:
-        printf("%s: %p", astypename(value), (void*)asobject(value));
+        printf("%s: %p", astypename(value), (const void*)asobject(value));
         break;
     }
 }

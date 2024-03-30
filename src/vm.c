@@ -179,10 +179,30 @@ registers. This assumes that we pushed some arguments and need to pop them. */
 #undef KBx
 #undef arith_op
 
-InterpretResult interpret(lua_VM *self, const char *input) {
-    unused(self);
-    Compiler *compiler = &(Compiler){0};
-    compiler->lexstate = &(LexState){0};
-    compile(compiler, input);
-    return INTERPRET_OK;
+InterpretResult interpret(lua_VM *self, const char *name, const char *input) {
+    Chunk *chunk   = &compoundlit(Chunk, 0);
+    Lexer *lex     = &compoundlit(Lexer, 0); // Ensure valid lifetime
+    Compiler *func = &compoundlit(Compiler, 0);
+    self->chunk    = chunk; // Compiler and Lexer rely on the VM to have this.
+
+    // Set our error handler and ensure nothing bad occured.
+    switch (setjmp(self->errorjmp)) {
+    case 0:
+        init_chunk(chunk, name);
+        init_compiler(func, self, lex);
+        compile(func, input);
+        break;
+    case 1:
+        free_chunk(chunk);
+        return INTERPRET_COMPILE_ERROR;
+    default:
+        fprintf(stderr, "Unknown setjmp code\n");
+        return INTERPRET_COMPILE_ERROR;
+    } 
+
+    self->chunk = chunk;
+    self->ip    = chunk->code;
+    InterpretResult res = run(self);
+    free_chunk(chunk);
+    return res;
 }

@@ -1,7 +1,7 @@
 #include "opcodes.h"
 
 // See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opnames
-const char *const luaP_opnames[] = {
+const char *const LUA_OPNAMES[] = {
     [OP_CONSTANT]   = "OP_CONSTANT",
     [OP_ADD]        = "OP_ADD",
     [OP_SUB]        = "OP_SUB",
@@ -17,7 +17,7 @@ const char *const luaP_opnames[] = {
 #define opmode(test, ra, rb, rc, mode) \
     (((test) << 7) | ((ra) << 6) | ((rb) << 4) | ((rc) << 2) | (mode))
 
-const Byte luaP_opmodes[NUM_OPCODES] = {
+const Byte LUA_OPMODES[NUM_OPCODES] = {
     // OPCODE                TEST   R(A)    R(B)        R(C)        OPMODE
     [OP_CONSTANT]   = opmode(0,     1,      OpArgK,     OpArgN,     iABx),
     [OP_ADD]        = opmode(0,     1,      OpArgK,     OpArgK,     iABC),

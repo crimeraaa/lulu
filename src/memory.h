@@ -10,6 +10,9 @@
 #define free_array(T, ptr, N) \
     reallocate(ptr, sizeof(T) * (N), 0)
 
+#define allocate(T)         reallocate(NULL, 0, sizeof(T))
+#define deallocate(T, ptr)  reallocate(ptr, sizeof(T), 0)
+
 // May call `exit(1)` if realloc returns NULL.
 void *reallocate(void *ptr, size_t oldsz, size_t newsz);
 

@@ -6,27 +6,22 @@
 #include "limits.h"
 #include "object.h"
 
-typedef struct Chunk Chunk;
-
 typedef struct {
     TValue *values;
     int len;
     int cap;
 } TArray;
 
-struct Chunk {
+typedef struct Chunk {
     TArray constants; // 1D array of constant values to load at runtime.
+    const char *name; // Filename of script, or `"stdin"` if in REPL.
     Instruction *code; // 1D array of bytecode.
     int *lines; // Line information mirrors the bytecode array for simplicity.
     int len; // Current number of individual `Byte` elements written.
     int cap; // Total useable/writeable number of `Byte` elements.
-};
+} Chunk;
 
-void init_tarray(TArray *self);
-void free_tarray(TArray *self);
-void write_tarray(TArray *self, const TValue *value);
-
-void init_chunk(Chunk *self);
+void init_chunk(Chunk *self, const char *name);
 void free_chunk(Chunk *self);
 void write_chunk(Chunk *self, Instruction instruction, int line);
 

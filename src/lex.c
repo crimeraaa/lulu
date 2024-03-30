@@ -1,33 +1,43 @@
 #include <ctype.h>
-#include "lexer.h"
+#include "lex.h"
+#include "compiler.h"
+#include "vm.h"
 
 #define isidentstart(ch)    (isalpha(ch) || (ch) == '_')
 #define isident(ch)         (isalnum(ch) || (ch) == '_')
 
-void init_lexstate(LexState *self, const char *input) {
+// --- LEXER -------------------------------------------------------------- {{{1
+
+void init_lex(Lexer *self, Compiler *compiler, const char *name, const char *input) {
+    self->token      = compoundlit(Token, 0);
+    self->lookahead  = compoundlit(Token, 0);
+    self->func       = compiler;
+    self->name       = name;
     self->lexeme     = input;
     self->position   = input;
     self->linenumber = 1;
     self->lastline   = 1;
 }
 
+// --- BASIC LEXER MANIPULATION ------------------------------------------- {{{2
+
 // Since we use one giant nul-terminated string we assume nul means we're done.
 // Test sending a null char by typing `CTRL + @` where `@ := SHIFT + 2`.
-static bool is_at_end(const LexState *self) {
+static bool is_at_end(const Lexer *self) {
     return *self->position == '\0';
 }
 
 // Return the current character being pointed to and increment the position.
-static char advance_lexer(LexState *self) {
+static char next_char(Lexer *self) {
     return *(self->position++);
 }
 
 // Get the current character being pointed at without modifying any state.
-static char peek_lexer_current(const LexState *self) {
+static char peek_current_char(const Lexer *self) {
     return *self->position;
 }
 
-static char peek_lexer_next(const LexState *self) {
+static char peek_next_char(const Lexer *self) {
     if (is_at_end(self)) {
         return '\0';
     }
@@ -35,7 +45,7 @@ static char peek_lexer_next(const LexState *self) {
 }
 
 // Return `true` and advance the position pointer if matches, else do nothing.
-static bool match_lexer(LexState *self, char expected) {
+static bool match_char(Lexer *self, char expected) {
     if (is_at_end(self)) {
         return false;
     }
@@ -46,7 +56,7 @@ static bool match_lexer(LexState *self, char expected) {
     return true;
 }
 
-static Token make_token(const LexState *self, TkType type) {
+static Token make_token(const Lexer *self, TkType type) {
     Token token;
     token.type  = type;
     token.start = self->lexeme;
@@ -57,7 +67,7 @@ static Token make_token(const LexState *self, TkType type) {
 
 // Please only pass C string literals, as these are usually stored in the
 // executable's read-only data section and thus their validity is guaranteed.
-static Token error_token(const LexState *self, const char *info) {
+static Token error_token(const Lexer *self, const char *info) {
     Token token;
     token.type  = TK_ERROR;
     token.start = info;
@@ -66,46 +76,53 @@ static Token error_token(const LexState *self, const char *info) {
     return token;
 }
 
-static void skip_simple_comment(LexState *self) {
-    while (peek_lexer_current(self) != '\n' && !is_at_end(self)) {
-        advance_lexer(self);
+// 2}}} ------------------------------------------------------------------------
+
+// --- LEXER: IGNOREABLE TOKENS ------------------------------------------- {{{2
+    
+static void skip_simple_comment(Lexer *self) {
+    while (peek_current_char(self) != '\n' && !is_at_end(self)) {
+        next_char(self);
     }
 }
 
-static void skip_multiline_comment(LexState *self, int nesting) {
+static void skip_multiline_comment(Lexer *self, int nesting) {
     unused(nesting);
     for (;;) {
-        char current = advance_lexer(self);
-        char next    = peek_lexer_current(self);
-        if (current == ']' && next == ']') {
-            advance_lexer(self); // We can safely consume the 2nd ']'.
+        char lhs = next_char(self);
+        char rhs = peek_current_char(self);
+        // TODO: Using `nesting`, check for the appropriate closing pair
+        if (lhs == ']' && rhs == ']') {
+            next_char(self); // We can safely consume the 2nd ']'.
             break;
         }
-
-        // TODO: Use longjmp for 'throwing' 'exceptions' here
-        if (current == '\0' || next == '\0') {
-            fprintf(stderr, "Unfinished long comment\n");
+        // Will call `longjmp` to get us out of here.
+        // Somewhat hacky to modify the lookahead token directly but this works.
+        if (lhs == '\0' || rhs == '\0') {
+            self->lookahead.line = self->linenumber;
+            lexerror_lookahead(self, "Unfinished long comment");
             break;
         }
-
-        if (current == '\n') {
+        // `lhs` was 'consumed' for lack of better word.
+        if (lhs == '\n') {
             self->linenumber++;            
         }
     }
 }
 
 // Assumes we are pointing to the first character after a '--' token.
-static void skip_comment(LexState *self) {
-    // If we have a '[' right after the '--', determine if it's a multiline.
-    if (match_lexer(self, '[')) {
+// If we have a '[' right after the '--', we still need to determine if it's a
+// single-line comment or a multi-line comment.
+static void skip_comment(Lexer *self) {
+    if (match_char(self, '[')) {
         // Determine how many nested '[]' pairs are allowed, using the '='
         // syntax, e.g. `--[==[]==]` allows you to nest 2 [] pairs.
         int nesting = 0;
-        while (match_lexer(self, '=')) {
+        while (match_char(self, '=')) {
             nesting++;
         }
         // If we don't find another '[' we can assume this is a simple comment.
-        if (!match_lexer(self, '[')) {
+        if (!match_char(self, '[')) {
             skip_simple_comment(self);
         } else {
             skip_multiline_comment(self, nesting);
@@ -115,26 +132,26 @@ static void skip_comment(LexState *self) {
     }
 }
 
-static void skip_whitespace(LexState *self) {
+static void skip_whitespace(Lexer *self) {
     for (;;) {
-        char ch = peek_lexer_current(self);
+        char ch = peek_current_char(self);
         switch (ch) {
         case ' ':
         case '\r':
         case '\t': 
-            advance_lexer(self);
+            next_char(self);
             break;
         case '\n':
             self->linenumber++;
-            advance_lexer(self);
+            next_char(self);
             break;
         case '-':
             // Comment aren't whitespace but we may as well do it here.
-            if (peek_lexer_next(self) == '-') {
+            if (peek_next_char(self) == '-') {
                 // Consume the first '-' and second '-' so we can point at the
                 // first character that is directly after them.
-                advance_lexer(self);
-                advance_lexer(self);
+                next_char(self);
+                next_char(self);
                 skip_comment(self);
                 break;
             } else {
@@ -145,6 +162,10 @@ static void skip_whitespace(LexState *self) {
         }
     }
 }
+
+// 2}}} ------------------------------------------------------------------------
+
+// --- LEXER: KEYWORD HELPERS --------------------------------------------- 2{{{
 
 typedef struct {
     const char *data;
@@ -195,8 +216,12 @@ static TkType check_keyword(const char *word, int len, TkType expected) {
     return TK_NAME;
 }
 
-static TkType get_identifier_type(LexState *self) {
-    int len = (int)(self->position - self->lexeme);
+// 2}}} ------------------------------------------------------------------------
+
+// LEXER: VARIABLE LENGTH TOKENS ------------------------------------------ 2{{{
+
+static TkType get_identifier_type(Lexer *self) {
+    const int len    = cast(int, self->position - self->lexeme);
     const char *word = self->lexeme;
 
 // Helper macro so I don't go insane.
@@ -212,6 +237,8 @@ static TkType get_identifier_type(LexState *self) {
         case arraylen("end") - 1:    return check_keyword(TK_END);
         case arraylen("else") - 1:   return check_keyword(TK_ELSE);
         case arraylen("elseif") - 1: return check_keyword(TK_ELSEIF);
+        default:
+            break;
         }
         break;
     case 'f':
@@ -219,12 +246,16 @@ static TkType get_identifier_type(LexState *self) {
         case 'a': return check_keyword(TK_FALSE);
         case 'o': return check_keyword(TK_FOR);
         case 'u': return check_keyword(TK_FUNCTION);
+        default:
+            break;
         }
         break;
     case 'i':
         switch (word[1]) {
         case 'f': return check_keyword(TK_IF);
         case 'n': return check_keyword(TK_IN);            
+        default:
+            break;
         }
         break;
     case 'l': return check_keyword(TK_LOCAL);
@@ -232,6 +263,8 @@ static TkType get_identifier_type(LexState *self) {
         switch (word[1]) {
         case 'i': return check_keyword(TK_NIL);
         case 'o': return check_keyword(TK_NOT);
+        default:
+            break;
         }
         break;
     case 'o': return check_keyword(TK_OR);
@@ -240,61 +273,66 @@ static TkType get_identifier_type(LexState *self) {
         switch (word[1]) {
         case 'h': return check_keyword(TK_THEN);
         case 'r': return check_keyword(TK_TRUE);
+        default:
+            break;
         }
         break;
     case 'w': return check_keyword(TK_WHILE);
     }
     return TK_NAME;
-// Only used inside of this function.
+
+// Only used inside of this function so get rid of it.
 #undef check_keyword
+
 }
 
-
-static Token make_identifier_token(LexState *self) {
+static Token make_identifier_token(Lexer *self) {
     char ch;
-    while ((ch = peek_lexer_current(self)) && isident(ch)) {
-        advance_lexer(self);
+    while ((ch = peek_current_char(self)) && isident(ch)) {
+        next_char(self);
     }
     return make_token(self, get_identifier_type(self));
 }
 
-static Token make_number_token(LexState *self) {
-    while (isdigit(peek_lexer_current(self))) {
-        advance_lexer(self);
+static Token make_number_token(Lexer *self) {
+    while (isdigit(peek_current_char(self))) {
+        next_char(self);
     }
     // Look for a fractional part.
-    if (peek_lexer_current(self) == '.' && isdigit(peek_lexer_next(self))) {
+    if (peek_current_char(self) == '.' && isdigit(peek_next_char(self))) {
         // Consume the '.'.
-        advance_lexer(self);
+        next_char(self);
         
         // Literals like 1. are allowed in Lua.
-        while (isdigit(peek_lexer_current(self))) {
-            advance_lexer(self);
+        while (isdigit(peek_current_char(self))) {
+            next_char(self);
         }
     }
     return make_token(self, TK_NUMBER);
 }
 
-static Token make_string_token(LexState *self, char quote) {
-    while (peek_lexer_current(self) != quote && !is_at_end(self)) {
-        if (peek_lexer_current(self) == '\n') {
-            return error_token(self, "Unbalanced quotation mark");
+static Token make_string_token(Lexer *self, char quote) {
+    while (peek_current_char(self) != quote && !is_at_end(self)) {
+        if (peek_current_char(self) == '\n') {
+            return error_token(self, "Unfinished string");
         }
-        advance_lexer(self);
+        next_char(self);
     }
     if (is_at_end(self)) {
-        return error_token(self, "Unterminated string.");
+        return error_token(self, "Unfinished string");
     }
     // Consume the closing quote.
-    advance_lexer(self);
+    next_char(self);
     return make_token(self, TK_STRING);
 }
 
+// 2}}} ------------------------------------------------------------------------
+
 // Helper. If we match `ch`, evaluate to `y`. Else evaluate to `n`.
 #define make_ifeq(ls, ch, y, n) \
-    make_token(ls, match_lexer(ls, ch) ? (y) : (n))
+    make_token(ls, match_char(ls, ch) ? (y) : (n))
 
-Token scan_token(LexState *self) {
+Token scan_token(Lexer *self) {
     // Ensure the lexeme points to something that isn't a whitespace character.
     skip_whitespace(self);
 
@@ -305,7 +343,7 @@ Token scan_token(LexState *self) {
         return make_token(self, TK_EOF);
     }
     
-    char ch = advance_lexer(self);
+    char ch = next_char(self);
     if (isalpha(ch)) {
         return make_identifier_token(self);
     }
@@ -324,10 +362,10 @@ Token scan_token(LexState *self) {
 
     // Relational operators
     case '~':
-        if (match_lexer(self, '=')) {
+        if (match_char(self, '=')) {
             make_token(self, TK_NEQ);
         } else {
-            return error_token(self, "Expected '=' after '~'.");
+            return error_token(self, "Expected '=' after '~'");
         }
     case '=': return make_ifeq(self, '=', TK_ASSIGN, TK_EQ);
     case '>': return make_ifeq(self, '=', TK_GE, TK_GT);
@@ -347,7 +385,7 @@ Token scan_token(LexState *self) {
     case '.':
         // If the next character also a '.'? If yes, we definitely have at least
         // a '..' token. If we match it again we have a '...' token.
-        if (match_lexer(self, '.')) {
+        if (match_char(self, '.')) {
             return make_ifeq(self, '.', TK_VARARG, TK_CONCAT);
         } else {
             return make_token(self, TK_PERIOD);
@@ -356,5 +394,53 @@ Token scan_token(LexState *self) {
     case '\'': return make_string_token(self, '\'');
     }
     
-    return error_token(self, "Unexpected symbol.");
+    return error_token(self, "Unexpected symbol");
 }
+
+// 1}}} ------------------------------------------------------------------------
+
+// --- PARSER ------------------------------------------------------------- 1{{{
+
+void lexerror_at(Lexer *self, const Token *token, const char *info) {
+    lua_VM *vm   = self->func->vm;
+    Chunk *chunk = vm->chunk; // Later on, VM will have a CallInfo array.
+    fprintf(stderr, "%s:%i: %s ", chunk->name, token->line, info);
+    if (token->type == TK_EOF) {
+        fprintf(stderr, "at end\n");
+    } else if (token->type == TK_ERROR) {
+        // Do nothing since error tokens already passed the necessary message
+        // and an error token is not located within the source code.
+    } else {
+        fprintf(stderr, "near '%.*s'\n", token->len, token->start);
+    }
+    longjmp(vm->errorjmp, 1); // Set in `vm.c:compile()`.
+}
+
+void lexerror_consumed(Lexer *self, const char *info) {
+    lexerror_at(self, &self->token, info);
+}
+
+void lexerror_lookahead(Lexer *self, const char *info) {
+    lexerror_at(self, &self->lookahead, info);
+}
+
+void next_token(Lexer *self) {
+    self->lastline  = self->linenumber;
+    self->token     = self->lookahead;
+    self->lookahead = scan_token(self);
+    // Error tokens already have error messages so we can just use that.
+    // NOTE: This will call `longjmp`.
+    if (self->lookahead.type == TK_ERROR) {
+        lexerror_lookahead(self, self->token.start);
+    }
+}
+
+void consume_token(Lexer *self, TkType expected, const char *info) {
+    if (self->lookahead.type == expected) {
+        next_token(self);
+    } else {
+        lexerror_lookahead(self, info);
+    }
+}
+
+// 1}}} ------------------------------------------------------------------------

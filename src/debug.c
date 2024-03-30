@@ -10,13 +10,13 @@ static void disassemble_section(const TArray *self, const char *name) {
     }
 }
 
-void disassemble_chunk(Chunk *self, const char *name) {
-    printf("BEGIN: '%s'\n", name);
+void disassemble_chunk(Chunk *self) {
+    printf("BEGIN: '%s'\n", self->name);
     disassemble_section(&self->constants, ".const");
     for (int offset = 0; offset < self->len;) {
         offset = disassemble_instruction(self, offset);
     }
-    printf("END:   '%s'\n", name);
+    printf("END:   '%s'\n", self->name);
 }
 
 static void constant_instruction(OpCode opcode, const Chunk *chunk, Instruction instruction) {
