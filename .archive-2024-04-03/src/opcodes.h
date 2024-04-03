@@ -272,8 +272,9 @@ typedef enum {
     OP_POW,      // A B C           R(A) := RK(B) ^ RK(C)
     OP_UNM,      // A B             R(A) := -R(B)
     OP_RETURN,   // A B             return R(A), ..., R(A + B - 2)   (See NOTES)
-    NUM_OPCODES, // Not a real opcode.
 } OpCode;
+
+#define NUM_OPCODES     (OP_RETURN + 1)
 
 /* --- NOTES -------------------------------------------------------------- {{{1
 OP_RETURN:  A is the index of the first return value.

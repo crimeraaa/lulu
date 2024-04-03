@@ -80,6 +80,20 @@ static void parse_precedence(Compiler *self, ExprDesc *expr, Precedence prec);
 
 // --- INFIX EXPRESSIONS -------------------------------------------------- {{{1
 
+static OpCode get_binop(TkType optype) {
+    switch (optype) {
+    case TK_PLUS:       return OP_ADD;
+    case TK_DASH:       return OP_SUB;
+    case TK_STAR:       return OP_MUL;
+    case TK_SLASH:      return OP_DIV;
+    case TK_PERCENT:    return OP_MOD;
+    case TK_CARET:      return OP_POW;
+    default:
+        // Should be unreachable in normal circumstances...
+        return cast(OpCode, 0);
+    }
+}
+
 /**
  * TODO:    How to manage register arguments here?
  *
@@ -90,35 +104,26 @@ static void parse_precedence(Compiler *self, ExprDesc *expr, Precedence prec);
 static void binary(Compiler *self, ExprDesc *expr) {
     Lexer *lex = self->lex;
     TkType optype  = lex->token.type;
-    ExprDesc *rhs = &compoundlit(ExprDesc, 0);
-
-    // Compile only right-hand expressions of higher precedence in order to
-    // enforce left-associativity.
-    parse_precedence(self, rhs, get_rule(optype)->prec + 1);
+    ExprDesc rhs = {0};
+    Precedence prec = get_rule(optype)->prec;
     
-    OpCode opcode;
-    switch (optype) {
-    case TK_PLUS:
-        opcode = OP_ADD;
-        break;
-    case TK_DASH:
-        opcode = OP_SUB;
-        break;
-    case TK_STAR:
-        opcode = OP_MUL;
-        break;
-    case TK_SLASH:
-        opcode = OP_DIV;
-        break;
-    default:
-        lexerror_consumed(lex, "Operator not yet implemented");
-        return;
+    // Only enforce right-associativity for exponentiation.
+    if (optype == TK_CARET) {
+        prec++;
     }
+    parse_precedence(self, &rhs, prec);
+    
     // NOTE: This assumes that both arguments are just registers...
-    int ra = expr->args.info;
+    int ra  = expr->args.info;
     int rkb = ra;
-    int rkc = rhs->args.info;
-    Instruction inst = CREATE_ABC(opcode, ra, rkb, rkc);
+    int rkc = rhs.args.info;
+    Instruction inst = CREATE_ABC(get_binop(optype), ra, rkb, rkc);
+    if (expr->tag == EXPR_CONSTANT) {
+        SETARG_B(inst, RKASK(rkb));
+    }
+    if (rhs.tag == EXPR_CONSTANT) {
+        SETARG_C(inst, RKASK(rkc));
+    }
     emit_instruction(self, inst);
 }
 
@@ -152,7 +157,8 @@ static void number(Compiler *self, ExprDesc *expr) {
     if (endptr != refptr) {
         lexerror_consumed(lex, "Malformed number");
     } else {
-        int index = emit_constant(self, &makenumber(n));
+        // int index = emit_constant(self, &makenumber(n));
+        int index = make_constant(self, &makenumber(n));
         init_exprdesc(expr, EXPR_CONSTANT, index);
     }
 }
@@ -291,14 +297,30 @@ static void expression(Compiler *self, ExprDesc *expr) {
     parse_precedence(self, expr, PREC_ASSIGNMENT + 1);
 }
 
+static void statement(Compiler *self) {
+    Lexer *lex = self->lex;
+    Token *token = &lex->token;
+    ExprDesc expr = {0};
+    switch (token->type) {
+    case TK_NUMBER:
+        // Hack for the meantime in order to push *something* to a register
+        number(self, &expr);
+        emit_instruction(self, CREATE_ABx(OP_CONSTANT, self->freereg++, expr.args.info));
+        next_token(lex);
+        break;
+    default:
+        break;
+    }
+    expression(self, &expr);
+}
+
 bool compile(Compiler *self, const char *input) {
     lua_VM *vm    = self->vm;
     Lexer *lex    = self->lex;
     Chunk *chunk  = vm->chunk;
-    ExprDesc expr = {0};
     init_lex(lex, self, chunk->name, input);
     next_token(lex);
-    expression(self, &expr);
+    statement(self);
     consume_token(lex, TK_EOF, "Expected end of expression");
     end_compiler(self);
     return true;
