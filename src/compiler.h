@@ -4,6 +4,26 @@
 #include "lua.h"
 #include "lex.h"
 
+// Determine the intended behvior for a particular expression and register.
+typedef enum {
+    EXPR_VOID,      // No value.
+    EXPR_CONSTANT,  // info := index of constant in `constants`.
+} ExprKind;
+
+typedef struct {
+    ExprKind tag;   // Determine which member/s of the union to use.
+    struct {
+        int info;  // Register, constant index, or instruction counter.
+        int aux;   // If a table, this is the register where the key is.
+    } args;
+} ExprDesc;
+
+// Helper type to chain all assignments in a comma-separated list.
+typedef struct Assignment {
+    struct Assignment *prev;
+    ExprDesc variable; // May be global, local, upvalue or indexed.
+} Assignment;
+
 typedef enum {
     PREC_NONE,
     PREC_ASSIGNMENT, // =
@@ -18,7 +38,7 @@ typedef enum {
     PREC_PRIMARY,
 } Precedence;
 
-typedef void (*ParseFn)(Compiler *self);
+typedef void (*ParseFn)(Compiler *self, ExprDesc *expr);
 
 typedef struct {
     ParseFn prefix;

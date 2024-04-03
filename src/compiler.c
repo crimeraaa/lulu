@@ -3,6 +3,10 @@
 #include "opcodes.h"
 #include "vm.h"
 
+#define xtostring(x)    #x
+#define stringify(x)    xtostring(x)
+#define logformat(s)    __FILE__ ":" stringify(__LINE__) ": " s
+
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
 #endif
@@ -38,7 +42,7 @@ static void emit_return(Compiler *self, int results) {
  *
  * @note    Assumes that type `int` can fit `MAXARG_Bx` and above.
  */
-static Instruction make_constant(Compiler *self, const TValue *value) {
+static int make_constant(Compiler *self, const TValue *value) {
     int index = add_constant(current_chunk(self), value);
     if (index >= MAXARG_Bx) {
         lexerror_consumed(self->lex, "Too many constants in one chunk.");
@@ -48,9 +52,10 @@ static Instruction make_constant(Compiler *self, const TValue *value) {
 }
 
 // TODO: How to manage emitting to register A here?
-static void emit_constant(Compiler *self, const TValue *value) {
-    Instruction index = make_constant(self, value);
+static int emit_constant(Compiler *self, const TValue *value) {
+    int index = make_constant(self, value);
     emit_instruction(self, CREATE_ABx(OP_CONSTANT, self->freereg++, index));
+    return index;
 }
 
 /**
@@ -64,9 +69,14 @@ static void end_compiler(Compiler *self) {
 #endif
 }
 
-static void expression(Compiler *self);
+static void init_exprdesc(ExprDesc *self, ExprKind kind, int info) {
+    self->tag = kind;
+    self->args.info = info;
+}
+
+static void expression(Compiler *self, ExprDesc *expr);
 static const ParseRule *get_rule(TkType type);
-static void parse_precedence(Compiler *self, Precedence prec);
+static void parse_precedence(Compiler *self, ExprDesc *expr, Precedence prec);
 
 // --- INFIX EXPRESSIONS -------------------------------------------------- {{{1
 
@@ -77,23 +87,39 @@ static void parse_precedence(Compiler *self, Precedence prec);
  *          has been consumed and that the entire left hand side expressions has
  *          been compiled.
  */
-static void binary(Compiler *self) {
+static void binary(Compiler *self, ExprDesc *expr) {
     Lexer *lex = self->lex;
-    TkType op  = lex->token.type;
-    const ParseRule *rule = get_rule(op);
+    TkType optype  = lex->token.type;
+    ExprDesc *rhs = &compoundlit(ExprDesc, 0);
 
-    // Compile only expressions of higher precedence for left-associativity.
-    parse_precedence(self, rule->prec + 1);
+    // Compile only right-hand expressions of higher precedence in order to
+    // enforce left-associativity.
+    parse_precedence(self, rhs, get_rule(optype)->prec + 1);
     
-    switch (op) {
+    OpCode opcode;
+    switch (optype) {
     case TK_PLUS:
+        opcode = OP_ADD;
+        break;
     case TK_DASH:
+        opcode = OP_SUB;
+        break;
     case TK_STAR:
+        opcode = OP_MUL;
+        break;
     case TK_SLASH:
+        opcode = OP_DIV;
+        break;
     default:
-        lexerror_consumed(lex, "Binary operators not implemented yet");
+        lexerror_consumed(lex, "Operator not yet implemented");
         return;
     }
+    // NOTE: This assumes that both arguments are just registers...
+    int ra = expr->args.info;
+    int rkb = ra;
+    int rkc = rhs->args.info;
+    Instruction inst = CREATE_ABC(opcode, ra, rkb, rkc);
+    emit_instruction(self, inst);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -107,13 +133,17 @@ static void binary(Compiler *self) {
  * @note    Assumes that the first `'('` has been consumed.
  *          Calls `expression()` which may recurse back to this.
  */
-static void grouping(Compiler *self) {
-    expression(self);
+static void grouping(Compiler *self, ExprDesc *expr) {
+    expression(self, expr);
     consume_token(self->lex, TK_RPAREN, "Expected ')' after expression.");
 }
 
-// Assumes we just consumed a `TK_NUMBER` token, it is now in `lex->token`.
-static void number(Compiler *self) {
+/**
+ * @note    Assumes we just consumed a `TK_NUMBER` token and that it is now in 
+ *          `self->lex->token`.
+ *          See: https://www.lua.org/source/5.1/lparser.c.html#simpleexp
+ */
+static void number(Compiler *self, ExprDesc *expr) {
     Lexer *lex = self->lex;
     const Token *token = &lex->token;
     const char *refptr = token->start + token->len;
@@ -121,8 +151,10 @@ static void number(Compiler *self) {
     lua_Number n = lua_str2num(token->start, &endptr);
     if (endptr != refptr) {
         lexerror_consumed(lex, "Malformed number");
+    } else {
+        int index = emit_constant(self, &makenumber(n));
+        init_exprdesc(expr, EXPR_CONSTANT, index);
     }
-    emit_constant(self, &makenumber(n));
 }
 
 /**
@@ -134,13 +166,13 @@ static void number(Compiler *self) {
  *          as `TK_DASH`. We also assume the sole argument to an unary operator
  *          is the most recently use register.
  */
-static void unary(Compiler *self) {
+static void unary(Compiler *self, ExprDesc *expr) {
     Lexer *lex = self->lex;
     TkType op  = lex->token.type; // Keep in stack frame memory for recursion.
 
     // Compile any and all operands/operations that are of a higher or equal
     // precedence. We use the same precedence to enforce right-associativity.
-    parse_precedence(self, PREC_UNARY);
+    parse_precedence(self, expr, PREC_UNARY);
 
     // Index of most recently used register to be modified in-place.
     int arg = self->freereg - 1;
@@ -233,7 +265,7 @@ static const ParseRule rules[] = {
 
 // 1}}} ------------------------------------------------------------------------
 
-static void parse_precedence(Compiler *self, Precedence prec) {
+static void parse_precedence(Compiler *self, ExprDesc *expr, Precedence prec) {
     Lexer *lex = self->lex;
     next_token(lex);
     ParseFn prefixfn = get_rule(lex->token.type)->prefix;
@@ -241,12 +273,12 @@ static void parse_precedence(Compiler *self, Precedence prec) {
         lexerror_consumed(lex, "Expected an expression");
         return;
     }
-    prefixfn(self);
+    prefixfn(self, expr);
     
     while (prec <= get_rule(lex->lookahead.type)->prec) {
         next_token(lex);
         ParseFn infixfn = get_rule(lex->token.type)->infix;
-        infixfn(self);
+        infixfn(self, expr);
     }
 }
 
@@ -254,18 +286,19 @@ static const ParseRule *get_rule(TkType type) {
     return &rules[type];
 }
 
-static void expression(Compiler *self) {
+static void expression(Compiler *self, ExprDesc *expr) {
     // Disallow assignments outside of dedicated assignment statements.
-    parse_precedence(self, PREC_ASSIGNMENT + 1);
+    parse_precedence(self, expr, PREC_ASSIGNMENT + 1);
 }
 
 bool compile(Compiler *self, const char *input) {
-    lua_VM *vm   = self->vm;
-    Lexer *lex   = self->lex;
-    Chunk *chunk = vm->chunk;
+    lua_VM *vm    = self->vm;
+    Lexer *lex    = self->lex;
+    Chunk *chunk  = vm->chunk;
+    ExprDesc expr = {0};
     init_lex(lex, self, chunk->name, input);
     next_token(lex);
-    expression(self);
+    expression(self, &expr);
     consume_token(lex, TK_EOF, "Expected end of expression");
     end_compiler(self);
     return true;
