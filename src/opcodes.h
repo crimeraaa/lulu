@@ -277,9 +277,10 @@ typedef enum {
 
 /* --- NOTES -------------------------------------------------------------- {{{1
 OP_RETURN:  A is the index of the first return value.
-            B is the number of return values.
+            B is the index of the last return value.
             C is unused.
-            If B == 0 then no value is returned. 
+            If B == 0 then this indicates that no value is to be returned, so we
+            only return up to the current top of the stack.
 1}}} ------------------------------------------------------------------------ */
 
 static inline Instruction _make_iABC(OpCode op, int ra, int rb, int rc) {

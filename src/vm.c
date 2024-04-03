@@ -55,12 +55,6 @@ static const TValue *read_rkc(TValue *base, const TValue *Kst, Instruction instr
     }
 }
 
-static bool is_poppable(Instruction instruction) {
-    int rb = GETARG_B(instruction);
-    int rc = GETARG_C(instruction);
-    return !ISK(rb) && !ISK(rc);
-}
-
 static InterpretResult run(lua_VM *self) {
     // Base pointer for current calling frame. For now assume stack base.
     TValue *base = self->stack;
@@ -89,15 +83,12 @@ static InterpretResult run(lua_VM *self) {
 #define KBx(instruction) \
     check_exp(check_BMode(instruction, OpArgK), read_constant(Kst, instruction))
 
-/* WARNING: Makes a dangerous assumption that we need to pop when both args are 
-registers. This assumes that we pushed some arguments and need to pop them. */
 #define arith_op(op) {                                                         \
     const TValue *rkb = RKB(instruction);                                      \
     const TValue *rkc = RKC(instruction);                                      \
     lua_Number lhs = asnumber(rkb);                                            \
     lua_Number rhs = asnumber(rkc);                                            \
     setnumber(ra, op(lhs, rhs));                                               \
-    if (is_poppable(instruction)) self->top--;                                 \
 }
     
 // 1}}} ------------------------------------------------------------------------

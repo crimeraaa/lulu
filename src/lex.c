@@ -37,11 +37,12 @@ static char peek_current_char(const Lexer *self) {
     return *self->position;
 }
 
+// Get the character immediately right after where our position pointer is.
 static char peek_next_char(const Lexer *self) {
     if (is_at_end(self)) {
         return '\0';
     }
-    return *self->position;
+    return *(self->position + 1);
 }
 
 // Return `true` and advance the position pointer if matches, else do nothing.
@@ -79,7 +80,7 @@ static Token error_token(const Lexer *self, const char *info) {
 // 2}}} ------------------------------------------------------------------------
 
 // --- LEXER: IGNOREABLE TOKENS ------------------------------------------- {{{2
-    
+
 static void skip_simple_comment(Lexer *self) {
     while (peek_current_char(self) != '\n' && !is_at_end(self)) {
         next_char(self);
@@ -105,7 +106,7 @@ static void skip_multiline_comment(Lexer *self, int nesting) {
         }
         // `lhs` was 'consumed' for lack of better word.
         if (lhs == '\n') {
-            self->linenumber++;            
+            self->linenumber++;
         }
     }
 }
@@ -138,7 +139,7 @@ static void skip_whitespace(Lexer *self) {
         switch (ch) {
         case ' ':
         case '\r':
-        case '\t': 
+        case '\t':
             next_char(self);
             break;
         case '\n':
@@ -253,7 +254,7 @@ static TkType get_identifier_type(Lexer *self) {
     case 'i':
         switch (word[1]) {
         case 'f': return check_keyword(TK_IF);
-        case 'n': return check_keyword(TK_IN);            
+        case 'n': return check_keyword(TK_IN);
         default:
             break;
         }
@@ -298,12 +299,8 @@ static Token make_number_token(Lexer *self) {
     while (isdigit(peek_current_char(self))) {
         next_char(self);
     }
-    // Look for a fractional part.
-    if (peek_current_char(self) == '.' && isdigit(peek_next_char(self))) {
-        // Consume the '.'.
-        next_char(self);
-        
-        // Literals like 1. are allowed in Lua.
+    // Look for a fractional part. Lua also allows literals like `1.`.
+    if (match_char(self, '.')) {
         while (isdigit(peek_current_char(self))) {
             next_char(self);
         }
@@ -342,7 +339,7 @@ Token scan_token(Lexer *self) {
     if (is_at_end(self)) {
         return make_token(self, TK_EOF);
     }
-    
+
     char ch = next_char(self);
     if (isalpha(ch)) {
         return make_identifier_token(self);
@@ -378,7 +375,7 @@ Token scan_token(Lexer *self) {
     case ']': return make_token(self, TK_RBRACKET);
     case '{': return make_token(self, TK_LCURLY);
     case '}': return make_token(self, TK_RCURLY);
-              
+
     // Punctuation marks
     case ',': return make_token(self, TK_COMMA);
     case ';': return make_token(self, TK_SEMICOL);
@@ -393,13 +390,13 @@ Token scan_token(Lexer *self) {
     case '"':  return make_string_token(self, '"');
     case '\'': return make_string_token(self, '\'');
     }
-    
+
     return error_token(self, "Unexpected symbol");
 }
 
 // 1}}} ------------------------------------------------------------------------
 
-// --- PARSER ------------------------------------------------------------- 1{{{
+// --- TOKENIZER ---------------------------------------------------------- 1{{{
 
 void lexerror_at(Lexer *self, const Token *token, const char *info) {
     lua_VM *vm   = self->func->vm;

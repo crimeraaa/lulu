@@ -4,6 +4,28 @@
 #include "lua.h"
 #include "lex.h"
 
+typedef enum {
+    PREC_NONE,
+    PREC_ASSIGNMENT, // =
+    PREC_OR,         // or
+    PREC_AND,        // and
+    PREC_EQUALITY,   // == ~=
+    PREC_COMPARISON, // < > <= >=
+    PREC_TERMINAL,   // + -
+    PREC_FACTOR,     // * /
+    PREC_UNARY,      // - not
+    PREC_CALL,       // . ()
+    PREC_PRIMARY,
+} Precedence;
+
+typedef void (*ParseFn)(Compiler *self);
+
+typedef struct {
+    ParseFn prefix;
+    ParseFn infix;
+    Precedence prec;
+} ParseRule;
+
 struct Compiler {
     lua_VM *vm;  // Track and adjust primary VM state as needed.
     Lexer *lex;  // May be shared across multiple instances.
