@@ -26,7 +26,8 @@
 			"**/CVS": true,
 			"**/.DS_Store": true,
 			"**/Thumbs.db": true,
-			"**/.archive": true,
+			"**/archive": true,
+			"**/.archive-*": true,
 			"**/bin": true,
 			"**/obj": true
 		}
