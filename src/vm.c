@@ -1,4 +1,5 @@
 #include "vm.h"
+#include "compiler.h"
 #include "debug.h"
 #include "limits.h"
 
@@ -6,8 +7,9 @@ static void reset_stack(VM *self) {
     self->top = self->stack;
 }
 
-void init_vm(VM *self) {
+void init_vm(VM *self, const char *name) {
     reset_stack(self);
+    self->name = name;
 }
 
 void free_vm(VM *self) {
@@ -100,14 +102,21 @@ static InterpretResult run(VM *self) {
 #undef arith_op
 }
 
-InterpretResult interpret(VM *self, Chunk *chunk) {
+InterpretResult interpret(VM *self, const char *input) {
+    Chunk chunk;
+    Lexer lexer;
+    Compiler compiler;
+
     switch (setjmp(self->errorjmp)) {
     case 0:
-        self->chunk = chunk; 
-        self->ip    = chunk->code;
+        init_chunk(&chunk, "something");
+        init_compiler(&compiler, &lexer, self);
+        self->chunk = &chunk; 
+        self->ip    = chunk.code;
         break;
     default:
         return INTERPRET_RUNTIME_ERROR;
     }
-    return run(self);
+    compile(&compiler, input);
+    return INTERPRET_OK;
 }
