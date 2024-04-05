@@ -13,6 +13,6 @@ void disassemble_chunk(const Chunk *self);
  * @note    Assumes that the bytecode at the given `offset` represents a valid
  *          `OpCode`, which in turn should fit in a `Byte`.
  */
-int disassemble_instruction(const Chunk *self, int offset);
+void disassemble_instruction(const Chunk *self, int offset);
 
 #endif /* LULU_DEBUG_H */

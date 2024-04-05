@@ -1,6 +1,14 @@
 #include "object.h"
 #include "memory.h"
 
+const char *const LULU_TYPENAMES[] = {
+    [TYPE_NIL]     = "nil",
+    [TYPE_BOOLEAN] = "boolean",
+    [TYPE_NUMBER]  = "number",
+};
+
+static_assert(arraylen(LULU_TYPENAMES) == NUM_TYPES, "Bad typename count");
+
 void print_value(const TValue *self) {
     switch (self->tag) {
     case TYPE_NIL:

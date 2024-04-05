@@ -9,6 +9,12 @@ typedef enum {
     TYPE_NUMBER,
 } VType;
 
+// Please keep this up to date as needed!
+#define NUM_TYPES   (TYPE_NUMBER + 1)
+
+// Lookup table: maps `VType` to `const char*`.
+extern const char *const LULU_TYPENAMES[];
+
 // Tagged union to somewhat enfore safety. Also, anonymous unions are from C11.
 typedef struct {
     VType tag;
@@ -24,9 +30,12 @@ typedef struct {
     int cap;
 } TArray;
 
-#define make_nil()      (TValue){.tag = TYPE_NIL,       .as = {.number  = 0}}
-#define make_boolean(b) (TValue){.tag = TYPE_BOOLEAN,   .as = {.boolean = (b)}}
-#define make_number(n)  (TValue){.tag = TYPE_NUMBER,    .as = {.number  = (n)}}
+#define get_tagtype(v)      ((v)->tag)
+#define get_typename(v)     LULU_TYPENAMES[get_tagtype(v)]
+
+#define make_nil()          (TValue){TYPE_NIL,       {.number  = 0}}
+#define make_boolean(b)     (TValue){TYPE_BOOLEAN,   {.boolean = (b)}}
+#define make_number(n)      (TValue){TYPE_NUMBER,    {.number  = (n)}}
 
 void print_value(const TValue *self);
 

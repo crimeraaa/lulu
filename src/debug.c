@@ -1,41 +1,54 @@
 #include "debug.h"
 
 void disassemble_chunk(const Chunk *self) {
-    printf("==== %s ====\n", self->name);
-    for (int offset = 0; offset < self->len;) {
-        offset = disassemble_instruction(self, offset);
+    printf("[CONSTANTS]: '%s'\n", self->name);
+    for (int i = 0; i < self->constants.len; i++) {
+        const TValue *value = &self->constants.values[i];
+        printf("%04i := '", i);
+        print_value(value);
+        printf("' (%s)\n", get_typename(value));
+    }
+    printf("\n[BYTECODE]: '%s'\n", self->name);
+    for (int offset = 0; offset < self->len; offset++) {
+        disassemble_instruction(self, offset);
     }
 }
 
-static int constant_instruction(OpCode opcode, const Chunk *chunk, int offset) {
-    int index = chunk->code[offset + 1];
-    printf("%-16s %4i '", get_opname(opcode), index);
-    print_value(&chunk->constants.values[index]);
-    printf("'\n");
-    return offset + 2; // 1 byte operand so move to 1 past next instruction.
+// 1 Argument: Bx (unsigned 26-bit integer)
+static void constant_instruction(const Instruction self, const Chunk *chunk) {
+    OpCode opcode = getarg_op(self);
+    int index     = getarg_Bx(self);
+    const TValue *value = &chunk->constants.values[index];
+    printf("%-16s Constants[Bx := %i] ; '", get_opname(opcode), index);
+    print_value(value);
+    printf("' (%s)\n", get_typename(value));
 }
 
-static int simple_instruction(OpCode opcode, int offset) {
+// No arguments.
+static void simple_instruction(const Instruction self) {
+    OpCode opcode = getarg_op(self);
     printf("%s\n", get_opname(opcode));
-    return offset + 1; // No operands so just move to next instruction.
 }
 
-int disassemble_instruction(const Chunk *self, int offset) {
+void disassemble_instruction(const Chunk *self, int offset) {
     printf("%04i ", offset);
     int line = self->lines[offset];
     if (offset > 0 && line == self->lines[offset - 1]) {
-        printf("    | ");
+        printf("   | ");
     } else {
         printf("%4i ", line);
     }
-    Byte opcode = self->code[offset];
+    Instruction inst = self->code[offset];
+    OpCode opcode = getarg_op(inst);
     switch (opcode) {
     case OP_CONSTANT:
-        return constant_instruction(opcode, self, offset);
+        constant_instruction(inst, self);
+        break;
     case OP_RETURN:
-        return simple_instruction(opcode, offset);
+        simple_instruction(inst);
+        break;
     default:
         printf("Unknown opcode '%i'.\n", cast(int, opcode));
-        return offset + 1; // Move to immediate next instruction.
+        break;
     }
 }
