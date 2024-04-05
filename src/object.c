@@ -1,4 +1,5 @@
 #include "object.h"
+#include "limits.h"
 #include "memory.h"
 
 const char *const LULU_TYPENAMES[] = {
@@ -18,7 +19,7 @@ void print_value(const TValue *self) {
         printf(self->as.boolean ? "true" : "false");
         break;
     case TYPE_NUMBER:
-        printf(NUMBER_FMT, self->as.number);
+        printf(LULU_NUMBER_FMT, self->as.number);
         break;
     }
 }

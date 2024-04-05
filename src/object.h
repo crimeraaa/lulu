@@ -1,7 +1,9 @@
 #ifndef LULU_OBJECT_H
 #define LULU_OBJECT_H
 
-#include "conf.h"
+#include "lulu.h"
+
+typedef LULU_NUMBER_TYPE Number;
 
 typedef enum {
     TYPE_NIL,
@@ -20,7 +22,7 @@ typedef struct {
     VType tag;
     union {
         bool boolean;
-        double number;
+        Number number;
     } as;
 } TValue;
 
@@ -33,9 +35,20 @@ typedef struct {
 #define get_tagtype(v)      ((v)->tag)
 #define get_typename(v)     LULU_TYPENAMES[get_tagtype(v)]
 
+#define is_nil(v)           (get_tagtype(v) == TYPE_NIL)
+#define is_boolean(v)       (get_tagtype(v) == TYPE_BOOLEAN)
+#define is_number(v)        (get_tagtype(v) == TYPE_NUMBER)
+
+#define as_boolean(v)       ((v)->as.boolean)
+#define as_number(v)        ((v)->as.number)
+
 #define make_nil()          (TValue){TYPE_NIL,       {.number  = 0}}
 #define make_boolean(b)     (TValue){TYPE_BOOLEAN,   {.boolean = (b)}}
 #define make_number(n)      (TValue){TYPE_NUMBER,    {.number  = (n)}}
+
+#define set_nil(v)          (get_tagtype(v) = TYPE_NIL, as_number(v) = 0)
+#define set_boolean(v, b)   (as_boolean(v) = (b))
+#define set_number(v, n)    (as_number(v) = (n))
 
 void print_value(const TValue *self);
 

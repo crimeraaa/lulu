@@ -1,4 +1,5 @@
 #include "debug.h"
+#include "limits.h"
 
 void disassemble_chunk(const Chunk *self) {
     printf("[CONSTANTS]: '%s'\n", self->name);
@@ -8,10 +9,13 @@ void disassemble_chunk(const Chunk *self) {
         print_value(value);
         printf("' (%s)\n", get_typename(value));
     }
-    printf("\n[BYTECODE]: '%s'\n", self->name);
+    printf("\n");
+
+    printf("[BYTECODE]: '%s'\n", self->name);
     for (int offset = 0; offset < self->len; offset++) {
         disassemble_instruction(self, offset);
     }
+    printf("\n");
 }
 
 // 1 Argument: Bx (unsigned 26-bit integer)
@@ -24,7 +28,7 @@ static void constant_instruction(const Instruction self, const Chunk *chunk) {
     printf("' (%s)\n", get_typename(value));
 }
 
-// No arguments.
+// No directly encoded arguments. However, they may be implicitly on the stack.
 static void simple_instruction(const Instruction self) {
     OpCode opcode = getarg_op(self);
     printf("%s\n", get_opname(opcode));
@@ -44,11 +48,15 @@ void disassemble_instruction(const Chunk *self, int offset) {
     case OP_CONSTANT:
         constant_instruction(inst, self);
         break;
+    case OP_ADD:
+    case OP_SUB:
+    case OP_MUL:
+    case OP_DIV:
+    case OP_MOD:
+    case OP_POW:
+    case OP_UNM:
     case OP_RETURN:
         simple_instruction(inst);
-        break;
-    default:
-        printf("Unknown opcode '%i'.\n", cast(int, opcode));
         break;
     }
 }

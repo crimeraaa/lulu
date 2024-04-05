@@ -1,7 +1,8 @@
 #ifndef LULU_MEMORY_H
 #define LULU_MEMORY_H
 
-#include "conf.h"
+#include "lulu.h"
+#include "limits.h"
 
 #define grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 #define grow_array(T, ptr, oldsz, newsz) \

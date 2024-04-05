@@ -1,7 +1,7 @@
 #ifndef LULU_DEBUG_H
 #define LULU_DEBUG_H
 
-#include "conf.h"
+#include "lulu.h"
 #include "chunk.h"
 
 void disassemble_chunk(const Chunk *self);

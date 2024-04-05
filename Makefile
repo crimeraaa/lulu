@@ -34,7 +34,7 @@ src bin obj:
 bin/$(EXE): $(CC_OBJ) | bin
 	$(CC) $(CC_FLAGS) -o $@ $^ $(LD_FLAGS)
 	
-obj/%.o: src/%.c | obj
+obj/%.o: src/%.c src/%.h | obj
 	$(CC) $(CC_FLAGS) -c -o $@ $<
 	
 clean:
@@ -44,7 +44,7 @@ uninstall: clean
 	$(RM) bin/$(EXE)
 	$(RMDIR) bin obj
 	
-# }}}
+# }}} --------------------------------------------------------------------------
 
 .PHONY: all build debug release clean uninstall
 .PRECIOUS: obj/%.o

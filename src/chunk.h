@@ -1,14 +1,23 @@
 #ifndef LULU_CHUNK_H
 #define LULU_CHUNK_H
 
-#include "conf.h"
+#include "lulu.h"
+#include "limits.h"
 #include "object.h"
 
+/* See: https://www.lua.org/source/4.0/lopcodes.h.html */
 typedef enum {
     /* ----------+--------+----------------+---------------+-------------------|
     |  NAME      |  ARGS  |  STACK BEFORE  |  STACK AFTER  |  SIDE EFFECTS     |
     -------------+--------+----------------+---------------+----------------- */
     OP_CONSTANT, // Bx    |  -             | Constants[Bx] |                   |
+    OP_ADD,      // -     |  y, x          | x + y         |                   |
+    OP_SUB,      // -     |  y, x          | x - y         |                   |
+    OP_MUL,      // -     |  y, x          | x * y         |                   |
+    OP_DIV,      // -     |  y, x          | x / y         |                   |
+    OP_MOD,      // -     |  y, x          | x % y         |                   |
+    OP_POW,      // -     |  y, x          | x ^ y         |                   |
+    OP_UNM,      // -     |  x             | -x            |                   |
     OP_RETURN,   // -     |  -             |               |                   |
 } OpCode;
 
@@ -93,18 +102,6 @@ typedef struct {
 #define setarg_sBx(inst, bx)    setarg_Bx(inst, (bx) + MAXARG_sBx)
 
 /**
- * @brief   Some arguments don't have their own operands, like `OP_ADD` and 
- *          friends because their operands are already on the stack.
- */
-static inline Instruction create_iNone(OpCode op) {
-    Instruction inst;
-    setarg_op(inst, op);
-    setarg_A(inst, 0);
-    setarg_B(inst, 0);
-    return inst;
-}
-
-/**
  * @brief   Instructions that require only 1 unsigned operand. Particularly nice
  *          for `OP_CONSTANT` as having the full range of the operand grants us
  *          a lot of possible indexes for constant values.
@@ -134,6 +131,14 @@ static inline Instruction create_iAB(OpCode op, int a, int b) {
     setarg_A(inst, a);
     setarg_B(inst, b);
     return inst;
+}
+
+/**
+ * @brief   Some arguments don't have their own operands, like `OP_ADD` and 
+ *          friends because their operands are already on the stack.
+ */
+static inline Instruction create_iNone(OpCode op) {
+    return create_iAB(op, 0, 0);
 }
     
 // 1}}} ------------------------------------------------------------------------
