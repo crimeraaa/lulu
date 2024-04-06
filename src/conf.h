@@ -38,7 +38,6 @@ You may wish to change `MAX_NUMTOSTRING` based on the following conditions:
 #define NUMBER_FMT         "%.14g"
 #define MAX_NUMTOSTRING     64
 #define num_tostring(s, n)  snprintf((s), MAX_NUMTOSTRING, NUMBER_FMT, (n))
-#define str_tonumber(s, p)  strtod(s, p)
 #define num_add(a, b)       ((a) + (b))
 #define num_sub(a, b)       ((a) - (b))
 #define num_mul(a, b)       ((a) * (b))
@@ -50,6 +49,8 @@ You may wish to change `MAX_NUMTOSTRING` based on the following conditions:
 #define num_lt(a, b)        ((a) <  (b))
 #define num_le(a, b)        ((a) <= (b))
 #define num_isnan(a)        (!num_eq(a, b))
+
+#define cstr_tonumber(s, p) strtod(s, p)
 
 // 1}}} ------------------------------------------------------------------------
 

@@ -30,6 +30,10 @@
 #define unused2(x, y)       unused(x); unused(y)
 #define unused3(x, y, z)    unused2(x, y); unused(z)
 
+// Helper macro to get string literal length.
+#define cstr_litsize(s)     (arraylen(s) - 1)
+#define cstr_equal(a, b, n) (memcmp(a, b, n) == 0)
+
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)

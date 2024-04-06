@@ -4,11 +4,11 @@ require "slice"
 
 ---@brief Create one giant line for use on the command-line.
 ---@param cmd     string    Program to be executed from the command-line.
----@param flags   string[]  Command-line flags to said program.
+---@param flags   string[]? Command-line flags to said program.
 ---@param pargs   string[]? Positional arguments, if any, for said program.
 ---@param default string[]? Default positional arguments if none given.
 local function make_cmd(cmd, flags, pargs, default)
-    local t = {cmd, table.concat(flags, ' ')}
+    local t = {cmd, table.concat(flags or {}, ' ')}
     
     -- If no pargs given and this command has defaults, use them instead.
     if (not pargs or #pargs == 0) and default then
@@ -52,9 +52,21 @@ local function dquote(subject)
     return surround(subject, '\"')
 end
 
-local function unsurround(subject, delimiter)
-    local pattern = string.format("^%s+(.*)%s+$", delimiter, delimiter)
-    return string.match(subject, delimiter)
+-- Actually even nil keys will cancel the operation.
+local confirm_choices = {y = true, yes = true, n = false, no = false}
+local function confirm_command(targets)
+    local list = table.concat(targets, ", ")
+    io.stdout:write("[WARNING]:\n",
+                    "This will find-and-replace: ", list, "\n",
+                    "Do you want to continue? (y/n): ")
+    local input = io.stdin:read("*l")
+    if confirm_choices[string.lower(input)] then
+        io.stdout:write("Continuing...\n")
+        return true
+    else
+        io.stdout:write("Aborting.\n")
+        return false
+    end
 end
 
 INTERPRETER = "./bin/lulu"
@@ -179,7 +191,8 @@ OPTIONS = {
         flags = {"--color=never",
                 "--files-with-matches",
                 "--directories=recurse",
-                "\"[[:space:]]\\+$\""}, -- match trailing whitespaces per line
+                "\"[[:space:]]\\+$\""}, -- match trailing whitespaces per line,
+                                        -- enclose in quotes due to shell rules.
         default = {"./src/"},
         help = "For each `directory` (or `./src/`), list files with trailing whitespaces.",
         usage = "[directory...]",
@@ -192,11 +205,16 @@ OPTIONS = {
         usage = "<regex> <substitution> [file...]",
         default = {"./src/*"},
         call = function(self, pargs)
-            assert(#pargs >= 3, "Requires <regex>, <substitution> and 1+ file/s")
+            assert(#pargs >= 2, "Requires <regex>, <substitution> at least")
             -- Remove regex and replacement pattern from pargs
             local pat = table.remove(pargs, 1)
             local sub = table.remove(pargs, 1) -- Shifted down to index 1
             local command = string.format("--expression=\"s/%s/%s/g\"", pat, sub)
+            
+            if not confirm_command(#pargs > 0 and pargs or self.default) then
+                return 1
+            end
+
             self.flags[#self.flags + 1] = command
             return execute_command(self, pargs)
         end,
@@ -208,35 +226,19 @@ OPTIONS = {
         usage = "[directory]...",
         default = {"./src/"},
         call = function(self, pargs)
-            if #pargs == 0 then
-                local choices = {y = true, yes = true, n = false, no = false}
-                io.stdout:write("WARNING: This will find-and-replace everything in `./src/`.\n",
-                    "Do you want to continue? (y/n): ")
-                local confirm = io.stdin:read("*l")
-                if choices[string.lower(confirm)] then
-                    io.stdout:write("Continuing...\n")
-                else
-                    io.stdout:write("Aborting.\n")
-                    return 1
-                end
-            end
-
             local search  = OPTIONS["whitespace"]
             local replace = OPTIONS["replace"]
             local _, list = capture_command(search, pargs)
-            list = string.split(list, '\n')
-            
-            if #list == 0 then
+            if list == "" then
                 io.stdout:write("No files with trailing whitespace found.\n")
                 return 1
             end
             
             -- Prepend regex and substitution due to how replace works
             -- We need to remove the quotes from the regex as well.
-            table.insert(list, 1, search.flags[#search.flags]:sub(2, -2))
-            table.insert(list, 2, "")
-            
-            return replace:call(list)
+            table.insert(pargs, 1, search.flags[#search.flags]:sub(2, -2))
+            table.insert(pargs, 2, "")
+            return replace:call(pargs)
         end,
     }
 }
@@ -247,12 +249,10 @@ PARGS_NOTE = {
 }
 
 local function main(argc, argv)
-    -- argc was adjusted to reflect the presence of argv[0].
-    if argc == 1 then
-        local help = OPTIONS["help"]
+    if argc == 0 then
         io.stdout:write("[USAGE]:\n\t", argv[0], " <option> [pargs...]\n")
+        io.stdout:write("\tSee `", argv[0], " help`.\n")
         io.stdout:write("[NOTE]:\n\t", table.concat(PARGS_NOTE, "\n\t"), '\n')
-        help:call(nil)
         os.exit(2)
     end
 
@@ -262,9 +262,10 @@ local function main(argc, argv)
         os.exit(2)
     end
     -- Positional argument list to argv[1] which is the option.
-    local pargs = table.slice(argv, 2, argc)
+    local pargs = table.slice(argv, 2, argc + 1)
     local res = opt:call(pargs)
     io.stdout:write("[RETURN]:\n", res, "\n")
+    os.exit(res)
 end
 
-main(#arg + 1, arg)
+main(#arg, arg)

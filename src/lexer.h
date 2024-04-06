@@ -53,7 +53,7 @@ typedef enum {
 
     TK_IDENT,  // ` [a-zA-Z_][a-zA-Z0-9_]+ ` := variable name/identifier
     TK_STRING, // ` (".*"|'.*') ` := string literal
-    TK_NUMBER, // ` -?(0x[0-9a-fA-F]+|[0-9]+(\.|e)[0-9]+) ` := number literal
+    TK_NUMBER, // ` -?[0-9]+(\.[0-9]+)? ` OR ` -?0x[a-fA-F0-9]+ ` := number literal
     TK_ERROR,
     TK_EOF,
 } TkType;
@@ -68,7 +68,7 @@ typedef struct {
 } Token;
 
 typedef struct {
-    const char *lexeme;   // Start of first
+    const char *lexeme;   // Pointer to first character of the current lexeme.
     const char *position; // Current character in source code.
     const char *name;     // Current filename or `"stdin"`.
     int line;             // Current line number we're on.

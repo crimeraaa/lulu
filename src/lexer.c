@@ -40,28 +40,6 @@ static bool match_char(Lexer *self, char expected) {
     }
 }
 
-// 1}}} ------------------------------------------------------------------------
-
-// TOKENIZER -------------------------------------------------------------- {{{1
-
-static Token make_token(const Lexer *self, TkType type) {
-    Token token;
-    token.start = self->lexeme;
-    token.len   = cast(int, self->position - self->lexeme);
-    token.line  = self->line;
-    token.type  = type;
-    return token;
-}
-
-static Token error_token(const Lexer *self, const char *info) {
-    Token token;
-    token.start = info;
-    token.len   = cast(int, strlen(info));
-    token.line  = self->line;
-    token.type  = TK_ERROR;
-    return token;
-}
-
 static void singleline(Lexer *self) {
     while (peek_current_char(self) != '\n' && !is_at_end(self)) {
         next_char(self);
@@ -117,6 +95,28 @@ static void skip_comment(Lexer *self) {
     }
 }
 
+// 1}}} ------------------------------------------------------------------------
+
+// TOKENIZER -------------------------------------------------------------- {{{1
+
+static Token make_token(const Lexer *self, TkType type) {
+    Token token;
+    token.start = self->lexeme;
+    token.len   = cast(int, self->position - self->lexeme);
+    token.line  = self->line;
+    token.type  = type;
+    return token;
+}
+
+static Token error_token(const Lexer *self, const char *info) {
+    Token token;
+    token.start = info;
+    token.len   = cast(int, strlen(info));
+    token.line  = self->line;
+    token.type  = TK_ERROR;
+    return token;
+}
+
 static void skip_whitespace(Lexer *self) {
     for (;;) {
         char ch = peek_current_char(self);
@@ -145,8 +145,101 @@ static void skip_whitespace(Lexer *self) {
     }
 }
 
-static TkType get_identifier_type(Lexer *self) {
-    unused(self);
+typedef struct {
+    const char *word;
+    int len;
+} Keyword;
+
+#define make_keyword(s)     (Keyword){s, cstr_litsize(s)}
+
+static const Keyword KEYWORDS[] = {
+    [TK_AND]      = make_keyword("and"),
+    [TK_BREAK]    = make_keyword("break"),
+    [TK_DO]       = make_keyword("do"),
+    [TK_ELSE]     = make_keyword("else"),
+    [TK_ELSEIF]   = make_keyword("elseif"),
+    [TK_END]      = make_keyword("end"),
+    [TK_FALSE]    = make_keyword("false"),
+    [TK_FOR]      = make_keyword("for"),
+    [TK_FUNCTION] = make_keyword("function"),
+    [TK_IF]       = make_keyword("if"),
+    [TK_IN]       = make_keyword("in"),
+    [TK_LOCAL]    = make_keyword("local"),
+    [TK_NIL]      = make_keyword("nil"),
+    [TK_NOT]      = make_keyword("not"),
+    [TK_OR]       = make_keyword("or"),
+    [TK_RETURN]   = make_keyword("return"),
+    [TK_THEN]     = make_keyword("then"),
+    [TK_TRUE]     = make_keyword("true"),
+    [TK_WHILE]    = make_keyword("while"),
+};
+
+static_assert(arraylen(KEYWORDS) == NUM_KEYWORDS, "Bad keyword count");
+
+static TkType check_keyword(TkType expect, const char *word, int len) {
+    const Keyword *kw = &KEYWORDS[expect];
+    if (kw->len == len && cstr_equal(kw->word, word, len)) {
+        return expect;
+    }
+    return TK_IDENT;
+}
+
+static TkType get_identifier_type(const Lexer *self) {
+    const char *word = self->lexeme;
+    const int len = self->position - self->lexeme;
+
+    switch (word[0]) {
+    case 'a': return check_keyword(TK_AND, word, len);
+    case 'b': return check_keyword(TK_BREAK, word, len);
+    case 'd': return check_keyword(TK_DO, word, len);
+    case 'e':
+        switch (len) {
+        case cstr_litsize("end"):
+            return check_keyword(TK_END, word, len);    
+        case cstr_litsize("else"):
+            return check_keyword(TK_ELSE, word, len);
+        case cstr_litsize("elseif"):
+            return check_keyword(TK_ELSEIF, word, len);
+        }
+        break;
+    case 'f':
+        if (len > 1) {
+            switch (word[1]) {
+            case 'a': return check_keyword(TK_FALSE, word, len);
+            case 'o': return check_keyword(TK_FOR, word, len);
+            case 'u': return check_keyword(TK_FUNCTION, word, len);
+            }
+        }
+        break;
+    case 'i':
+        if (len > 1) {
+            switch (word[1]) {
+            case 'f': return check_keyword(TK_IF, word, len);
+            case 'n': return check_keyword(TK_IN, word, len); 
+            }
+        }
+        break;
+    case 'l': return check_keyword(TK_LOCAL, word, len);
+    case 'n':
+        if (len > 1) {
+            switch (word[1]) {
+            case 'i': return check_keyword(TK_NIL, word, len);
+            case 'o': return check_keyword(TK_NOT, word, len);
+            }
+        }
+        break;
+    case 'o': return check_keyword(TK_OR, word, len);
+    case 'r': return check_keyword(TK_RETURN, word, len);
+    case 't':
+        if (len > 1) {
+            switch (word[1]) {
+            case 'h': return check_keyword(TK_THEN, word, len);
+            case 'r': return check_keyword(TK_TRUE, word, len);
+            }
+        }
+        break;
+    case 'w': return check_keyword(TK_WHILE, word, len);
+    }
     return TK_IDENT;
 }
 
@@ -157,18 +250,67 @@ static Token identifier_token(Lexer *self) {
     return make_token(self, get_identifier_type(self));
 }
 
-static Token number_token(Lexer *self) {
+/**
+ * @brief   Consume a sequence of characters in the regular expression:
+ *          ` [0-9]+(e(+|-)?[0-9]+)? `.
+ *          
+ * @details Although recursive, it's designed to accept the following forms:
+ *
+ *          1. Integer literals     := 1, 13, 45000, 65536, 127
+ *          2. Integer w/ Exponent  := 1e2, 3e+4, 5e-6, 13e900
+ *          3. Float literals       := 1.2, 3.14, .5, 0.00013, 6.32, 9.81, .45
+ *          4. Float with Exponent  := .2e3, 1.2e+3, 3.14e-2, 6.022e23
+ *          
+ *          We also consume the following invalid forms for later errors:
+ * 
+ *          1. Empty exponent       := 1e
+ *          2. Invalid digits       := 13fgi, 4e12ijslkd
+ *          3. Multiple periods     := 1.2.3.4
+ *          4. Python/JS separators := 1_000_000, 4_294_967_295
+ * 
+ * @note    This function does not report errors on its own, that will be the
+ *          responsibility of the compiler.
+ */
+static void decimal_sequence(Lexer *self) {
     while (isdigit(peek_current_char(self))) {
         next_char(self);
     }
 
-    // Look for a fractional part, empty fractions like `1.` are allowed.
-    if (match_char(self, '.')) {
-        // Consume the '.' character.
-        next_char(self);
-        while (isdigit(peek_current_char(self))) {
+    // Have an exponent? It CANNOT come after the decimal point.
+    if (match_char(self, 'e')) {
+        char ch = peek_current_char(self);
+        // Explicit signedness is optional.
+        if (ch == '+' || ch == '-') {
             next_char(self);
         }
+        // Must have at least 1 digit but that's a problem for the compiler.
+        decimal_sequence(self);
+        return;
+    }
+    
+    // Have a fraction? This sequence of digits can also have an exponent.
+    if (match_char(self, '.')) {
+        decimal_sequence(self);
+        return;
+    }
+}
+
+/**
+ * @brief   Assumes we already consumed a digit character and are pointing at
+ *          the first character right after it.
+ */
+static Token number_token(Lexer *self) {
+    // Does not verify if we had a `0` character before, but whatever
+    if (match_char(self, 'x')) {
+        while (isxdigit(peek_current_char(self))) {
+            next_char(self);
+        }
+    } else {
+        decimal_sequence(self);
+    }
+    // Consume any trailing characters for error handling later on.
+    while (isident(peek_current_char(self))) {
+        next_char(self);
     }
     return make_token(self, TK_NUMBER);
 }
@@ -222,6 +364,9 @@ Token scan_token(Lexer *self) {
     case '.':
         if (match_char(self, '.')) {
             return make_ifeq(self, '.', TK_VARARG, TK_CONCAT);
+        } else if (isdigit(peek_current_char(self))) {
+            // Have a decimal literal with no leading digits, e.g. `.1`.
+            return number_token(self);
         } else {
             return make_token(self, TK_PERIOD);
         }
