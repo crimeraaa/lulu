@@ -19,7 +19,7 @@ void print_value(const TValue *self) {
         printf(self->as.boolean ? "true" : "false");
         break;
     case TYPE_NUMBER:
-        printf(LULU_NUMBER_FMT, self->as.number);
+        printf(NUMBER_FMT, self->as.number);
         break;
     }
 }
@@ -43,4 +43,4 @@ void write_tarray(TArray *self, const TValue *value) {
     }
     self->values[self->len] = *value;
     self->len++;
-} 
+}

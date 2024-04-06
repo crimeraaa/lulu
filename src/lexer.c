@@ -6,7 +6,7 @@
 
 void init_lexer(Lexer *self, const char *input, const char *name) {
     self->lexeme   = input;
-    self->position = input; 
+    self->position = input;
     self->name     = name;
     self->line     = 1;
 }
@@ -25,7 +25,8 @@ static char peek_next_char(const Lexer *self) {
     return *(self->position + 1);
 }
 
-// The same as `advance()` in the book.
+// Return current character then increment the Lexer's position pointer.
+// This is the same as `advance()` in the book.
 static char next_char(Lexer *self) {
     return *self->position++;
 }
@@ -46,7 +47,7 @@ static bool match_char(Lexer *self, char expected) {
 static Token make_token(const Lexer *self, TkType type) {
     Token token;
     token.start = self->lexeme;
-    token.len   = cast(int, self->position - self->lexeme);    
+    token.len   = cast(int, self->position - self->lexeme);
     token.line  = self->line;
     token.type  = type;
     return token;
@@ -94,6 +95,7 @@ static void multiline(Lexer *self, int nesting) {
             return;
         }
 
+        // If all went well we can safely consume this character.
         next_char(self);
         if (ch == '\n') {
             self->line++;
@@ -106,7 +108,7 @@ static void skip_comment(Lexer *self) {
     if (match_char(self, '[')) {
         int nesting = get_nesting(self);
         if (match_char(self, '[')) {
-            multiline(self, nesting);     
+            multiline(self, nesting);
         } else {
             singleline(self);
         }
@@ -157,9 +159,9 @@ static Token identifier_token(Lexer *self) {
 
 static Token number_token(Lexer *self) {
     while (isdigit(peek_current_char(self))) {
-        next_char(self);     
+        next_char(self);
     }
-    
+
     // Look for a fractional part, empty fractions like `1.` are allowed.
     if (match_char(self, '.')) {
         // Consume the '.' character.
@@ -172,18 +174,17 @@ static Token number_token(Lexer *self) {
 }
 
 static Token string_token(Lexer *self, char quote) {
-    char ch;
-    while ((ch = peek_current_char(self)) != quote && !is_at_end(self)) {
-        if (ch == '\n') {
+    while (peek_current_char(self) != quote && !is_at_end(self)) {
+        if (peek_current_char(self) == '\n') {
             return error_token(self, "Unterminated string literal");
         }
         next_char(self);
     }
-    
+
     if (is_at_end(self)) {
         return error_token(self, "Unterminated string literal");
     }
-    
+
     // Consume closing quote.
     next_char(self);
     return make_token(self, TK_STRING);
@@ -198,7 +199,7 @@ Token scan_token(Lexer *self) {
     if (is_at_end(self)) {
         return make_token(self, TK_EOF);
     }
-    
+
     char ch = next_char(self);
     if (isdigit(ch)) {
         return number_token(self);
@@ -224,14 +225,14 @@ Token scan_token(Lexer *self) {
         } else {
             return make_token(self, TK_PERIOD);
         }
-                
+
     case '+':   return make_token(self, TK_PLUS);
     case '-':   return make_token(self, TK_DASH);
     case '*':   return make_token(self, TK_STAR);
     case '/':   return make_token(self, TK_SLASH);
     case '%':   return make_token(self, TK_PERCENT);
     case '^':   return make_token(self, TK_CARET);
-                
+
     case '=':   return make_ifeq(self, '=', TK_EQ, TK_ASSIGN);
     case '~':
         if (match_char(self, '=')) {
@@ -241,7 +242,7 @@ Token scan_token(Lexer *self) {
         }
     case '>':   return make_ifeq(self, '=', TK_GE, TK_GT);
     case '<':   return make_ifeq(self, '=', TK_LE, TK_LT);
-                
+
     case '"':   return string_token(self, '"');
     case '\'':  return string_token(self, '\'');
     }

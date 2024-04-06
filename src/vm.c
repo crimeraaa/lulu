@@ -38,7 +38,7 @@ static InterpretResult run(VM *self) {
 #define read_constant()         (&constants[getarg_Bx(inst)])
 #define poke_top(n)             (self->top + n)
 #define poke_base(n)            (self->stack + n)
-    
+
 // Remember that LHS would be pushed before RHS, so it's lower down the stack.
 #define arith_op(fn) { \
     TValue *lhs = poke_top(-2); \
@@ -46,46 +46,46 @@ static InterpretResult run(VM *self) {
     set_number(lhs, fn(as_number(lhs), as_number(rhs))); \
     self->top--; \
 }
-    
+
 // 1}}} ------------------------------------------------------------------------
 
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
         printf("        ");
         for (const TValue *slot = self->stack; slot < self->top; slot++) {
-            printf("[ "); 
+            printf("[ ");
             print_value(slot);
             printf(" ]");
         }
         printf("\n");
         disassemble_instruction(chunk, cast(int, self->ip - chunk->code));
 #endif
-        inst = read_instruction();        
+        inst = read_instruction();
         switch (getarg_op(inst)) {
         case OP_CONSTANT:
             push_vm(self, read_constant());
-            break; 
+            break;
         case OP_ADD:
-            arith_op(lulu_numadd);
+            arith_op(num_add);
             break;
         case OP_SUB:
-            arith_op(lulu_numsub);
+            arith_op(num_sub);
             break;
         case OP_MUL:
-            arith_op(lulu_nummul);
+            arith_op(num_mul);
             break;
         case OP_DIV:
-            arith_op(lulu_numdiv);
+            arith_op(num_div);
             break;
         case OP_MOD:
-            arith_op(lulu_nummod);
+            arith_op(num_mod);
             break;
         case OP_POW:
-            arith_op(lulu_numpow);
+            arith_op(num_pow);
             break;
         case OP_UNM: {
             TValue *value    = poke_top(-1);
-            as_number(value) = lulu_numunm(as_number(value));
+            as_number(value) = num_unm(as_number(value));
         } break;
         case OP_RETURN:
             print_value(poke_top(-1));
@@ -111,7 +111,7 @@ InterpretResult interpret(VM *self, const char *input) {
     case 0:
         init_chunk(&chunk, "something");
         init_compiler(&compiler, &lexer, self);
-        self->chunk = &chunk; 
+        self->chunk = &chunk;
         self->ip    = chunk.code;
         break;
     default:

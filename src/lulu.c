@@ -9,9 +9,9 @@
 VM global_vm = {0};
 
 static int repl(VM *vm) {
-    char line[LULU_MAXLINE];
+    char line[MAX_LINE];
     for (;;) {
-        fputs(LULU_PROMPT, stdout);
+        fputs(PROMPT, stdout);
         if (!fgets(line, sizeof(line), stdin)) {
             fputc('\n', stdout);
             break;
@@ -27,7 +27,7 @@ static char *read_file(const char *file_name) {
     char *buffer = NULL;
     size_t file_size = 0;
     size_t bytes_read = 0;
-    
+
     if (handle == NULL) {
         logprintfln("Failed to open file '%s'.", file_name);
         return NULL;
@@ -36,7 +36,7 @@ static char *read_file(const char *file_name) {
     fseek(handle, 0L, SEEK_END);
     file_size = ftell(handle);
     rewind(handle);
-    
+
     buffer = malloc(file_size + 1);
     if (buffer == NULL) {
         fclose(handle);
@@ -63,11 +63,11 @@ static int run_file(VM *vm, const char *file_name) {
     free(input);
 
     switch (res) {
-    case INTERPRET_OK: 
+    case INTERPRET_OK:
         return 0;
-    case INTERPRET_COMPILE_ERROR: 
+    case INTERPRET_COMPILE_ERROR:
         return EX_DATAERR;
-    case INTERPRET_RUNTIME_ERROR: 
+    case INTERPRET_RUNTIME_ERROR:
         return EX_SOFTWARE;
     default:
         return EXIT_FAILURE;

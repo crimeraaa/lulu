@@ -6,8 +6,8 @@
 typedef enum {
     // -*- RESERVED WORDS ------------------------------------------------- {{{1
 
-    TK_AND,     
-    TK_BREAK,   
+    TK_AND,
+    TK_BREAK,
     TK_DO,
     TK_ELSE,    TK_ELSEIF,  TK_END,
     TK_FALSE,   TK_FOR,     TK_FUNCTION,
@@ -18,11 +18,11 @@ typedef enum {
     TK_RETURN,
     TK_THEN,    TK_TRUE,
     TK_WHILE,
-    
+
     // 1}}} --------------------------------------------------------------------
-    
+
     // -*- SINGLE-CHARACTER TOKENS ---------------------------------------- {{{1
-    
+
     TK_LPAREN,   TK_RPAREN,   // `(`, `)` := function calls, groupings
     TK_LBRACKET, TK_RBRACKET, // `[`, `]` := table index/field access
     TK_LCURLY,   TK_RCURLY,   // `{`, `}` := table constructors
@@ -37,13 +37,13 @@ typedef enum {
     TK_DASH,    // `-` := subtraction, Lua-style comment (single or multi-line)
     TK_STAR,    // `*` := multiplication
     TK_SLASH,   // `/` := division
-    TK_PERCENT, // `%` := modulo 
+    TK_PERCENT, // `%` := modulo
     TK_CARET,   // `^` := exponentiation
 
     // 1}}} --------------------------------------------------------------------
-    
+
     // -*- MULTI-CHARACTER TOKENS ----------------------------------------- {{{1
-    
+
     TK_ASSIGN,     // `=` := variable assignment
     TK_EQ, TK_NEQ, // `==`, `~=` := equal to,     not equal to
     TK_GT, TK_GE,  // `>`,  `>=` := greater than, greater-than-or-equal-to
@@ -54,7 +54,7 @@ typedef enum {
     TK_IDENT,  // ` [a-zA-Z_][a-zA-Z0-9_]+ ` := variable name/identifier
     TK_STRING, // ` (".*"|'.*') ` := string literal
     TK_NUMBER, // ` -?(0x[0-9a-fA-F]+|[0-9]+(\.|e)[0-9]+) ` := number literal
-    TK_ERROR, 
+    TK_ERROR,
     TK_EOF,
 } TkType;
 

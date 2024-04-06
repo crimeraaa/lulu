@@ -8,7 +8,7 @@
 struct VM {
     Chunk *chunk;     // Bytecode, constants and such.
     Instruction *ip;  // Pointer to next instruction to be executed.
-    TValue stack[LULU_MAXSTACK];
+    TValue stack[MAX_STACK];
     TValue *top;      // Pointer to first free slot in the stack.
     const char *name; // Filename or `"stdin"` if in REPL.
     jmp_buf errorjmp; // Used for error-handling (kinda) like C++ exceptions.

@@ -3,14 +3,23 @@
 require "slice"
 
 ---@brief Create one giant line for use on the command-line.
----@param cmd  string       Program to be executed from the command-line.
----@param flags string[]    Command-line flags to said program.
----@param pargs string[]    Positional arguments, if any, for said program.
-local function make_cmd(cmd, flags, pargs)
+---@param cmd     string    Program to be executed from the command-line.
+---@param flags   string[]  Command-line flags to said program.
+---@param pargs   string[]? Positional arguments, if any, for said program.
+---@param default string[]? Default positional arguments if none given.
+local function make_cmd(cmd, flags, pargs, default)
     local t = {cmd, table.concat(flags, ' ')}
-    if cmd ~= INTERPRETER then
+    
+    -- If no pargs given and this command has defaults, use them instead.
+    if (not pargs or #pargs == 0) and default then
+        pargs = default
+    end
+
+    -- Don't append '--' for the interpreter as it can't handle them.
+    if cmd ~= INTERPRETER and #pargs >= 1 then
         t[#t + 1] = "--"
     end
+
     -- Don't append a positional argument list if we don't have any.
     if #pargs >= 1 then
         t[#t + 1] = table.concat(pargs, ' ')
@@ -18,31 +27,42 @@ local function make_cmd(cmd, flags, pargs)
     return table.concat(t, ' ')
 end
 
-local function basic_call(self, pargs)
-    local cmd = make_cmd(self.cmd, self.flags, pargs)
+local function execute_command(self, pargs)
+    local cmd = make_cmd(self.cmd, self.flags, pargs, self.default)
     io.stdout:write("[COMMAND]:\n", cmd, '\n')
-    io.stdout:write("[OUTPUT:]\n")
+    io.stdout:write("[OUTPUT]:\n")
     return os.execute(cmd) -- Bad practice but I'm lazy :)
 end
 
-local function surround(s, q)
-    return string.format("%s%s%s", q, s, q)
+local function capture_command(self, pargs)
+    local cmd = make_cmd(self.cmd, self.flags, pargs, self.default)
+    local out = io.popen(cmd, "r"):read("*a")
+    return cmd, out
 end
 
-local function squote(s)
-    return surround(s, '\'')
+local function surround(subject, delimiter)
+    return string.format("%s%s%s", delimiter, subject, delimiter)
 end
 
-local function dquote(s)
-    return surround(s, '\"')
+local function squote(subject)
+    return surround(subject, '\'')
+end
+
+local function dquote(subject)
+    return surround(subject, '\"')
+end
+
+local function unsurround(subject, delimiter)
+    local pattern = string.format("^%s+(.*)%s+$", delimiter, delimiter)
+    return string.match(subject, delimiter)
 end
 
 INTERPRETER = "./bin/lulu"
 OPTIONS = {
     ["help"] = {
         cmd = arg[0] .. " help",
-        flags = {},
-        help = "If no pargs list help for all commands else get help for each.",
+        flags = nil,
+        help = "List help for each item in [command...] else print all help.",
         usage = "[command...]",
         call = function(self, pargs)
             io.stdout:write("[OPTIONS]:\n")
@@ -54,21 +74,27 @@ OPTIONS = {
                 if not opt then
                     io.stdout:write("Unknown option '", tostring(key), "'.\n")
                 else
-                    local flags = table.concat(opt.flags, ' ')
                     io.stdout:write(key, '\n')
-                    io.stdout:write('\t', opt.cmd, ' ', flags, ' ', opt.usage, '\n')
+                    io.stdout:write('\t')
+                    if opt.cmd then
+                        io.stdout:write(opt.cmd, ' ')
+                    end
+                    if opt.flags then
+                        io.stdout:write(table.concat(opt.flags, ' '), ' ')
+                    end
+                    io.stdout:write(opt.usage, '\n')
                     io.stdout:write('\t', opt.help, '\n')
                 end
             end
-            os.exit(0) -- End usage here as otherwise we'd print output
+            return 0
         end,
     },
     ["run"] = {
         cmd  = INTERPRETER,
-        flags = {},
+        flags = nil,
         help = "If no pargs, run " .. squote(INTERPRETER) .. " else run [script]",
         usage = "[script]",
-        call = basic_call,
+        call = execute_command,
     },
     ["disassemble"] = {
         cmd = "objdump",
@@ -83,7 +109,7 @@ OPTIONS = {
         usage = "<file...>",
         call = function(self, pargs)
             assert(#pargs > 0, "'disassemble' requires at least 1 file")
-            return basic_call(self, pargs)
+            return execute_command(self, pargs)
         end
     },
     --  From `man nm`:
@@ -118,7 +144,7 @@ OPTIONS = {
         usage = "<file...>",
         call = function(self, pargs)
             assert(#pargs > 0, "'names' requires at least 1 file")
-            return basic_call(self, pargs)
+            return execute_command(self, pargs)
         end,
     },
     ["memcheck"] = {
@@ -128,50 +154,91 @@ OPTIONS = {
                 "2>&1"}, -- valgrind writes to stdout by default so redirect.
         help = "Run Valgrind memcheck with some helpful defaults.",
         usage = "[exe [args...]]",
-        call = function(self, pargs)
-            if #pargs == 0 then
-                print("(enter input, prompt is hidden)")
-                pargs = {INTERPRETER}
-            end
-            return basic_call(self, pargs)
-        end
+        default = {INTERPRETER},
+        call = execute_command,
     },
-    ["regex"] = {
+    ["search"] = {
         cmd = "grep",
-        flags = {"--perl-regexp", -- I personally prefer perl regex
-                "--line-number",
+        flags = {"--line-number",
+                "--directories=recurse",
+                "--include=*.c",
+                "--include=*.h",
                 "--color=always"},
-        help = "Run a Perl-style regular expression on [file...] or `./src/*`.",
-        usage = "<regex> [file...]",
+        help = "Find all occurences of POSIX `<regex>` in `directory`/ies.",
+        default = {"./src/"},
+        usage = "<regex> [directory...]",
         call = function(self, pargs)
-            assert(#pargs ~= 0, "'regex' requires at least a regular expression.")
+            assert(#pargs >= 1, "Requires at least a regular expression")
             -- Remove regex from pargs and append to flags
             self.flags[#self.flags + 1] = dquote(table.remove(pargs, 1))
-            -- Only had regex?
-            if #pargs == 0 then
-                local ls = io.popen("readlink --canonicalize -- ./src/*")
-                pargs = string.split(ls:read("*a"), '\n')
-            end
-            return basic_call(self, pargs)
+            return execute_command(self, pargs)
         end
     },
     ["whitespace"] = {
         cmd = "grep",
-        flags = {"--perl-regexp", -- \s is a perl thing
-                "--line-number", 
-                "--files-with-matches", 
-                "\"\\s+$\""}, -- match trailing whitespaces per line
-        help = "List all the source files that have trailing whitespaces.",
-        usage = "<file...>",
-        call = function(self, pargs)
-            -- No args so resort to checking only the files in `./src/`.
-            if #pargs == 0 then
-                local ls = io.popen("readlink --canonicalize -- ./src/*")
-                pargs = string.split(ls:read("*a"), "\n")
-            end
-            return basic_call(self, pargs)
-        end
+        flags = {"--color=never",
+                "--files-with-matches",
+                "--directories=recurse",
+                "\"[[:space:]]\\+$\""}, -- match trailing whitespaces per line
+        default = {"./src/"},
+        help = "For each `directory` (or `./src/`), list files with trailing whitespaces.",
+        usage = "[directory...]",
+        call = execute_command,
     },
+    ["replace"] = {
+        cmd = "sed",
+        flags = {"--in-place"},
+        help = "Replace POSIX `regex` with `substitution` in [file...] or `./src/`.",
+        usage = "<regex> <substitution> [file...]",
+        default = {"./src/*"},
+        call = function(self, pargs)
+            assert(#pargs >= 3, "Requires <regex>, <substitution> and 1+ file/s")
+            -- Remove regex and replacement pattern from pargs
+            local pat = table.remove(pargs, 1)
+            local sub = table.remove(pargs, 1) -- Shifted down to index 1
+            local command = string.format("--expression=\"s/%s/%s/g\"", pat, sub)
+            self.flags[#self.flags + 1] = command
+            return execute_command(self, pargs)
+        end,
+    },
+    ["fix-whitespace"] = {
+        cmd = nil,
+        flags = nil,
+        help = "Remove all trailing whitespaces from each file in [directory...] or `./src/`.",
+        usage = "[directory]...",
+        default = {"./src/"},
+        call = function(self, pargs)
+            if #pargs == 0 then
+                local choices = {y = true, yes = true, n = false, no = false}
+                io.stdout:write("WARNING: This will find-and-replace everything in `./src/`.\n",
+                    "Do you want to continue? (y/n): ")
+                local confirm = io.stdin:read("*l")
+                if choices[string.lower(confirm)] then
+                    io.stdout:write("Continuing...\n")
+                else
+                    io.stdout:write("Aborting.\n")
+                    return 1
+                end
+            end
+
+            local search  = OPTIONS["whitespace"]
+            local replace = OPTIONS["replace"]
+            local _, list = capture_command(search, pargs)
+            list = string.split(list, '\n')
+            
+            if #list == 0 then
+                io.stdout:write("No files with trailing whitespace found.\n")
+                return 1
+            end
+            
+            -- Prepend regex and substitution due to how replace works
+            -- We need to remove the quotes from the regex as well.
+            table.insert(list, 1, search.flags[#search.flags]:sub(2, -2))
+            table.insert(list, 2, "")
+            
+            return replace:call(list)
+        end,
+    }
 }
 
 PARGS_NOTE = {
@@ -182,11 +249,13 @@ PARGS_NOTE = {
 local function main(argc, argv)
     -- argc was adjusted to reflect the presence of argv[0].
     if argc == 1 then
+        local help = OPTIONS["help"]
         io.stdout:write("[USAGE]:\n\t", argv[0], " <option> [pargs...]\n")
         io.stdout:write("[NOTE]:\n\t", table.concat(PARGS_NOTE, "\n\t"), '\n')
-        OPTIONS["help"]:call(nil)
+        help:call(nil)
         os.exit(2)
     end
+
     local opt = OPTIONS[argv[1]]
     if not opt then
         io.stdout:write("[ERROR]:\nUnknown option '", argv[1], "'.\n")

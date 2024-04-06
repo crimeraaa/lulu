@@ -27,7 +27,7 @@
 
 #define cast(T, expr)       (T)(expr)
 #define unused(x)           (void)(x)
-#define unused2(x, y)       unused(x); unused(y) 
+#define unused2(x, y)       unused(x); unused(y)
 #define unused3(x, y, z)    unused2(x, y); unused(z)
 
 #define MAX_BYTE            cast(Byte,  -1)

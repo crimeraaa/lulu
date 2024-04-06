@@ -60,10 +60,9 @@ No Arguments:   [                Unused              ][ OpCode ]
 Argument Bx and sBx use the exact same register and actually carry the exact
 same bits. The only difference is, in order to treat sBx as signed while not
 changing the bit representation we simply use the maximum positive signed value
-as an offset. 
+as an offset.
 
-When setting sBx we use +MAXARG_sBx, when getting sBx we use -MAXARG_sBx. This
-is a different way of representing negative values than Two's Complement.
+When setting sBx we use +MAXARG_sBx, when getting sBx we use -MAXARG_sBx.
 
 -*- 3}}} -----------------------------------------------------------------------
 
@@ -134,13 +133,13 @@ static inline Instruction create_iAB(OpCode op, int a, int b) {
 }
 
 /**
- * @brief   Some arguments don't have their own operands, like `OP_ADD` and 
+ * @brief   Some arguments don't have their own operands, like `OP_ADD` and
  *          friends because their operands are already on the stack.
  */
 static inline Instruction create_iNone(OpCode op) {
     return create_iAB(op, 0, 0);
 }
-    
+
 // 1}}} ------------------------------------------------------------------------
 
 typedef struct {

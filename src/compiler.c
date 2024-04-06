@@ -10,7 +10,7 @@ void compile(Compiler *self, const char *input) {
     Lexer *lexer = self->lexer;
     VM *vm       = self->vm;
     init_lexer(lexer, input, vm->name);
-    
+
     int line = -1;
     for (;;) {
         Token token = scan_token(lexer);

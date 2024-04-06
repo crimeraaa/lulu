@@ -3,7 +3,7 @@
 void *reallocate(void *ptr, size_t oldsz, size_t newsz) {
     // May be useful for custom allocators, however C standard allocators do the
     // book-keeping for us already so we can afford to ignore it here.
-    unused(oldsz); 
+    unused(oldsz);
     if (newsz == 0) {
         free(ptr);
         return NULL;
