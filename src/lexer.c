@@ -195,7 +195,7 @@ static TkType get_identifier_type(const Lexer *self) {
     case 'e':
         switch (len) {
         case cstr_litsize("end"):
-            return check_keyword(TK_END, word, len);    
+            return check_keyword(TK_END, word, len);
         case cstr_litsize("else"):
             return check_keyword(TK_ELSE, word, len);
         case cstr_litsize("elseif"):
@@ -215,7 +215,7 @@ static TkType get_identifier_type(const Lexer *self) {
         if (len > 1) {
             switch (word[1]) {
             case 'f': return check_keyword(TK_IF, word, len);
-            case 'n': return check_keyword(TK_IN, word, len); 
+            case 'n': return check_keyword(TK_IN, word, len);
             }
         }
         break;
@@ -253,21 +253,21 @@ static Token identifier_token(Lexer *self) {
 /**
  * @brief   Consume a sequence of characters in the regular expression:
  *          ` [0-9]+(e(+|-)?[0-9]+)? `.
- *          
+ *
  * @details Although recursive, it's designed to accept the following forms:
  *
  *          1. Integer literals     := 1, 13, 45000, 65536, 127
  *          2. Integer w/ Exponent  := 1e2, 3e+4, 5e-6, 13e900
  *          3. Float literals       := 1.2, 3.14, .5, 0.00013, 6.32, 9.81, .45
  *          4. Float with Exponent  := .2e3, 1.2e+3, 3.14e-2, 6.022e23
- *          
+ *
  *          We also consume the following invalid forms for later errors:
- * 
+ *
  *          1. Empty exponent       := 1e
  *          2. Invalid digits       := 13fgi, 4e12ijslkd
  *          3. Multiple periods     := 1.2.3.4
  *          4. Python/JS separators := 1_000_000, 4_294_967_295
- * 
+ *
  * @note    This function does not report errors on its own, that will be the
  *          responsibility of the compiler.
  */
@@ -287,7 +287,7 @@ static void decimal_sequence(Lexer *self) {
         decimal_sequence(self);
         return;
     }
-    
+
     // Have a fraction? This sequence of digits can also have an exponent.
     if (match_char(self, '.')) {
         decimal_sequence(self);

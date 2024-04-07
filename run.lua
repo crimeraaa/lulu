@@ -1,6 +1,8 @@
 #!/usr/bin/env lua
 
-require "slice"
+require "util/common"
+require "util/table"
+require "util/string"
 
 ---@brief Create one giant line for use on the command-line.
 ---@param cmd     string    Program to be executed from the command-line.
@@ -36,7 +38,7 @@ end
 
 local function capture_command(self, pargs)
     local cmd = make_cmd(self.cmd, self.flags, pargs, self.default)
-    local out = io.popen(cmd, "r"):read("*a")
+    local out = io.popen(cmd, "r"):read("*all")
     return cmd, out
 end
 
@@ -59,7 +61,7 @@ local function confirm_command(targets)
     io.stdout:write("[WARNING]:\n",
                     "This will find-and-replace: ", list, "\n",
                     "Do you want to continue? (y/n): ")
-    local input = io.stdin:read("*l")
+    local input = io.stdin:read("*line")
     if confirm_choices[string.lower(input)] then
         io.stdout:write("Continuing...\n")
         return true
@@ -70,9 +72,10 @@ local function confirm_command(targets)
 end
 
 INTERPRETER = "./bin/lulu"
+LULU_CC_SRC = script_path() .. "src/" -- Directory for all Lulu source files.
 OPTIONS = {
     ["help"] = {
-        cmd = arg[0] .. " help",
+        cmd = nil,
         flags = nil,
         help = "List help for each item in [command...] else print all help.",
         usage = "[command...]",
@@ -84,17 +87,10 @@ OPTIONS = {
             for _, key in ipairs(pargs) do
                 local opt = OPTIONS[key]
                 if not opt then
-                    io.stdout:write("Unknown option '", tostring(key), "'.\n")
+                    io.stderr:write("Unknown option '", tostring(key), "'.\n")
                 else
                     io.stdout:write(key, '\n')
-                    io.stdout:write('\t')
-                    if opt.cmd then
-                        io.stdout:write(opt.cmd, ' ')
-                    end
-                    if opt.flags then
-                        io.stdout:write(table.concat(opt.flags, ' '), ' ')
-                    end
-                    io.stdout:write(opt.usage, '\n')
+                    io.stdout:write('\t', arg[0], ' ', key, ' ', opt.usage, '\n')
                     io.stdout:write('\t', opt.help, '\n')
                 end
             end
@@ -176,8 +172,8 @@ OPTIONS = {
                 "--include=*.c",
                 "--include=*.h",
                 "--color=always"},
-        help = "Find all occurences of POSIX `<regex>` in `directory`/ies.",
-        default = {"./src/"},
+        help = "Find all occurences of POSIX <regex> in directory/ies.",
+        default = {LULU_CC_SRC},
         usage = "<regex> [directory...]",
         call = function(self, pargs)
             assert(#pargs >= 1, "Requires at least a regular expression")
@@ -193,17 +189,17 @@ OPTIONS = {
                 "--directories=recurse",
                 "\"[[:space:]]\\+$\""}, -- match trailing whitespaces per line,
                                         -- enclose in quotes due to shell rules.
-        default = {"./src/"},
-        help = "For each `directory` (or `./src/`), list files with trailing whitespaces.",
+        default = {LULU_CC_SRC},
+        help = "For each directory, or src/, list files with trailing whitespaces.",
         usage = "[directory...]",
         call = execute_command,
     },
     ["replace"] = {
         cmd = "sed",
         flags = {"--in-place"},
-        help = "Replace POSIX `regex` with `substitution` in [file...] or `./src/`.",
+        help = "Replace POSIX regex with substitution in [file...] or src/*.",
         usage = "<regex> <substitution> [file...]",
-        default = {"./src/*"},
+        default = {LULU_CC_SRC .. '*'}, -- `sed` only works with globbing.
         call = function(self, pargs)
             assert(#pargs >= 2, "Requires <regex>, <substitution> at least")
             -- Remove regex and replacement pattern from pargs
@@ -222,15 +218,15 @@ OPTIONS = {
     ["fix-whitespace"] = {
         cmd = nil,
         flags = nil,
-        help = "Remove all trailing whitespaces from each file in [directory...] or `./src/`.",
+        help = "Remove all trailing whitespaces from each file in [directory...] or src/.",
         usage = "[directory]...",
-        default = {"./src/"},
+        default = {LULU_CC_SRC},
         call = function(self, pargs)
             local search  = OPTIONS["whitespace"]
             local replace = OPTIONS["replace"]
             local _, list = capture_command(search, pargs)
             if list == "" then
-                io.stdout:write("No files with trailing whitespace found.\n")
+                io.stderr:write("No files with trailing whitespace found.\n")
                 return 1
             end
             
@@ -245,7 +241,7 @@ OPTIONS = {
 
 PARGS_NOTE = {
     "'pargs' means 'positional arguments' which usually come after a '--'.",
-    "Usually it is a variadic argument list, e.g. `ls -- src obj bin`.",
+    "Usually it is a variadic argument list, e.g. ls -- src obj bin.",
 }
 
 local function main(argc, argv)
@@ -258,7 +254,7 @@ local function main(argc, argv)
 
     local opt = OPTIONS[argv[1]]
     if not opt then
-        io.stdout:write("[ERROR]:\nUnknown option '", argv[1], "'.\n")
+        io.stderr:write("[ERROR]:\nUnknown option '", argv[1], "'.\n")
         os.exit(2)
     end
     -- Positional argument list to argv[1] which is the option.

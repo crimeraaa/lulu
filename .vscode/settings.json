@@ -1,0 +1,4 @@
+{
+    "Lua.completion.showWord": "Fallback",
+    "Lua.completion.workspaceWord": false,
+}
