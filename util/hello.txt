@@ -1,3 +1,22 @@
-Hi mom! 
-The quick brown fox jumps over the lazy dog. 
+Hi mom!
+The quick brown fox jumps over the lazy dog.
 There is a house in New Orleans, they call "The Rising Sun".
+
+SHE SELLS SEASHELLS
+Sally sells seashells by the seashore.
+She sells seashells on the seashell shore.
+The seashells she sells are seashore shells,
+Of that I'm sure.
+
+PETER PIPER
+Peter Piper picked a peck of pickle peppers.
+A peck of pickled peppers Peter Piper picked.
+If Peter Piper picked a peck of pickled peppers,
+where are the pickle peppers Peter Piper picked?
+
+C CODE:
+/* Technically, no parameters means varargs in C up until C11... */
+int main() {
+    printf("Hi mom!")
+    return 0;
+}

@@ -27,7 +27,7 @@ function range(start, stop, step)
     end
 
     assert(step ~= 0, "range() `step` of 0 will cause an infinite loop.")
-    
+
     -- If only we didn't rely on the upvalue `step` we could avoid constantly
     -- allocating memory for temporary functions like this by moving it out into
     -- the top-level file scope but as a local.
@@ -38,7 +38,7 @@ function range(start, stop, step)
         -- Due to how logical operators short-circuit we need separate checks,
         -- e.g. `(step > 0 and control < invariant) or control > invariant`
         -- would always fall back to the `control > invariant` part.
-        if step > 0 then 
+        if step > 0 then
             if control < invariant then return control end
         else
             if control > invariant then return control end

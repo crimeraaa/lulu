@@ -3,35 +3,44 @@
 -- Ensure that LUA_PATH is set to lulu's directory!
 require "util/ansi"
 require "util/common"
-require "util/string"
 
--- Prints the contents of `line` with individual matches highlighted in red.
----@param start   integer   Starting index of the match.
----@param stop    integer   Ending index of the match.
----@param line    string    The entire line to print get matches through.
----@param pattern string    Lua pattern to match.
-local function print_matches_inline(start, stop, line, pattern)
-    -- Stupid but we print the left side if it doesn't match, if it does
-    -- match, start will be 1 and line:sub(1,0) will be empty.
-    io.stdout:write(SGR:reset_colors(), line:sub(1, start - 1))
-    
-    while start and stop do
-        -- Save for later so we can extract the `rest` substring.
-        local prev = stop
-        
-        -- Extract the match and the match only, nothing else.
-        local match = line:sub(start, stop)
-        io.stdout:write(SGR:set_fg_color("red", "bold"), match)
+local set_color    = SGR.set_fg_color
+local reset_styles = SGR.reset_styles
+local reset_colors = SGR.reset_colors
 
-        start, stop = line:find(pattern, stop + 1)
-        
-        -- This is the unmatched string. If `start` is nil, match until
-        -- the end of the string as -1 is shorthand for the last index.
-        local rest = line:sub(prev + 1, (start or 0) - 1)
-        io.stdout:write(SGR:reset_styles(), rest) 
+-- Print matches inline with the rest of the unmatched string. Please ensure
+-- that all SGR styles have been reset before calling this function!
+---@param subject string
+---@param pattern string
+local function match_linewise(subject, pattern)
+    local start, stop = subject:find(pattern)
+
+    -- If there is an unmatched string to our left, print it out.
+    if start > 1 then
+        io.stdout:write(subject:sub(1, start - 1))
     end
-    io.stdout:write(SGR:reset_colors(), '\n')
+
+    while start and stop do
+        -- Track the ending index of the current match so we can extract the
+        -- start of the unmatched string later.
+        local prev = stop
+
+        -- Extract the ONLY the current match.
+        local matched = subject:sub(start, stop)
+
+        -- Try to find where the next match will be located.
+        start, stop = subject:find(pattern, stop + 1)
+
+        -- Extract the rest of the string sans the next match. If `start` is
+        -- `nil` that indicates there's no more matches so we can safely write
+        -- out the rest of the string hence we use an ending index of -1.
+        local unmatched = subject:sub(prev + 1, (start and start - 1) or -1)
+
+        io.stdout:write(set_color("red", "bold"), matched, reset_styles(), unmatched)
+    end
+    io.stdout:write('\n')
 end
+
 
 ---Essentially a barebones UNIX `grep` but using Lua pattern matching.
 ---Mimics `grep --color=always --line-number --regexp=<pattern> -- <filename>`
@@ -48,15 +57,14 @@ local function match_pattern_in_file(filename, pattern)
 
     -- We somewhat save memory by not loading into an array beforehand.
     for line in handle:lines("*line") do
-        ---@type integer|nil, integer|nil
-        local start, stop = line:find(pattern)
-        if start and stop then
+        if string.match(line, pattern) then
             -- Colored preamble, similar to grep with colors enabled
-            io.stdout:write(SGR:set_fg_color("magenta"), filename, 
-                            SGR:set_fg_color("cyan"), ':',
-                            SGR:set_fg_color("green"), i,
-                            SGR:set_fg_color("cyan"), ':')
-            print_matches_inline(start, stop, line, pattern)
+            io.stdout:write(set_color("magenta"), filename,
+                            set_color("cyan"),    ':',
+                            set_color("green"),   i,
+                            set_color("cyan"),    ':',
+                            reset_colors())
+            match_linewise(line, pattern)
         end
         i = i + 1
     end
@@ -66,7 +74,7 @@ end
 local function main(argc, argv)
     if argc < 2 then
         io.stderr:write("[USAGE]: ", argv[0], " <pattern> <file...>\n")
-        os.exit(1) 
+        os.exit(1)
     end
 
     for i = 2, argc, 1 do
