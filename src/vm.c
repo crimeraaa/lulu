@@ -108,15 +108,23 @@ InterpretResult interpret(VM *self, const char *input) {
     Compiler compiler;
 
     switch (setjmp(self->errorjmp)) {
-    case 0:
-        init_chunk(&chunk, "something");
+    case LULU_ERROR_NONE:
+        init_chunk(&chunk, self->name);
         init_compiler(&compiler, &lexer, self);
-        self->chunk = &chunk;
-        self->ip    = chunk.code;
+        compile(&compiler, input, &chunk);
         break;
+    case LULU_ERROR_COMPTIME:
+        free_chunk(&chunk);
+        return INTERPRET_COMPILE_ERROR;
+    case LULU_ERROR_RUNTIME:
     default:
+        free_chunk(&chunk);
         return INTERPRET_RUNTIME_ERROR;
     }
-    compile(&compiler, input);
-    return INTERPRET_OK;
+    // Prep the VM
+    self->chunk = &chunk;
+    self->ip    = chunk.code;
+    InterpretResult result = run(self);
+    free_chunk(&chunk);
+    return result;
 }

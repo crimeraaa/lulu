@@ -1,13 +1,23 @@
 #include <ctype.h>
 #include "lexer.h"
+#include "compiler.h"
 #include "limits.h"
+#include "vm.h"
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-void init_lexer(Lexer *self, const char *input, const char *name) {
+void init_lexer(Lexer *self,
+                const char *input,
+                struct VM *vm,
+                struct Compiler *compiler)
+{
+    self->token    = compoundlit(Token, 0);
+    self->consumed = self->token;
     self->lexeme   = input;
     self->position = input;
-    self->name     = name;
+    self->vm       = vm;
+    self->compiler = compiler;
+    self->name     = vm->name;
     self->line     = 1;
 }
 
@@ -68,8 +78,8 @@ static void multiline(Lexer *self, int nesting) {
             }
         }
         // Above call may have fallen through to here as well.
-        // TODO: Need to throw error here, using `longjmp`
         if (is_at_end(self)) {
+            lexerror_at_consumed(self, "Unfinished multiline comment");
             return;
         }
 
@@ -318,13 +328,13 @@ static Token number_token(Lexer *self) {
 static Token string_token(Lexer *self, char quote) {
     while (peek_current_char(self) != quote && !is_at_end(self)) {
         if (peek_current_char(self) == '\n') {
-            return error_token(self, "Unterminated string literal");
+            lexerror_at_consumed(self, "Unfinished string");
         }
         next_char(self);
     }
 
     if (is_at_end(self)) {
-        return error_token(self, "Unterminated string literal");
+        lexerror_at_consumed(self, "Unfinished string");
     }
 
     // Consume closing quote.
@@ -383,7 +393,7 @@ Token scan_token(Lexer *self) {
         if (match_char(self, '=')) {
             return make_token(self, TK_NEQ);
         } else {
-            return error_token(self, "Expected '=' after '~'");
+            lexerror_at_consumed(self, "Expected '=' after '~'");
         }
     case '>':   return make_ifeq(self, '=', TK_GE, TK_GT);
     case '<':   return make_ifeq(self, '=', TK_LE, TK_LT);
@@ -392,6 +402,49 @@ Token scan_token(Lexer *self) {
     case '\'':  return string_token(self, '\'');
     }
     return error_token(self, "Unexpected symbol");
+}
+
+void next_token(Lexer *self) {
+    self->consumed = self->token;
+    self->token = scan_token(self);
+    if (self->token.type == TK_ERROR) {
+        lexerror_at_token(self, self->token.start);
+    }
+}
+
+void consume_token(Lexer *self, TkType expected, const char *info) {
+    if (self->token.type == expected) {
+        next_token(self);
+    } else {
+        lexerror_at_token(self, info);
+    }
+}
+
+// 1}}} ------------------------------------------------------------------------
+
+// ERROR HANDLING --------------------------------------------------------- {{{1
+
+void lexerror_at(Lexer *self, const Token *token, const char *info) {
+    fprintf(stderr, "%s:%i: %s", self->name, self->line, info);
+    if (token->type == TK_EOF) {
+        fprintf(stderr, " at end\n");
+    } else {
+        // Error tokens take up the `self->token` slot, so use the consumed slot
+        // to give the user some context as to where the error occured.
+        if (token->type == TK_ERROR) {
+            token = &self->consumed;
+        }
+        fprintf(stderr, " near '%.*s'\n", token->len, token->start);
+    }
+    longjmp(self->vm->errorjmp, LULU_ERROR_COMPTIME);
+}
+
+void lexerror_at_token(Lexer *self, const char *info) {
+    lexerror_at(self, &self->token, info);
+}
+
+void lexerror_at_consumed(Lexer *self, const char *info) {
+    lexerror_at(self, &self->consumed, info);
 }
 
 // 1}}} ------------------------------------------------------------------------

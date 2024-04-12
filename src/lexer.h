@@ -59,6 +59,7 @@ typedef enum {
 } TkType;
 
 #define NUM_KEYWORDS    (TK_WHILE + 1)
+#define NUM_TOKENS      (TK_EOF + 1)
 
 typedef struct {
     const char *start;
@@ -68,14 +69,42 @@ typedef struct {
 } Token;
 
 typedef struct {
+    Token token;          // analogous to `Parser::current` in the book.
+    Token consumed;       // analogous to `Parser::previous` in the book.
+    struct VM *vm;        // Private to implementation. Has our `jmp_buf`.
+    struct Compiler *compiler; // Private to implementation.
     const char *lexeme;   // Pointer to first character of the current lexeme.
     const char *position; // Current character in source code.
     const char *name;     // Current filename or `"stdin"`.
     int line;             // Current line number we're on.
 } Lexer;
 
-void init_lexer(Lexer *self, const char *input, const char *name);
+void init_lexer(Lexer *self,
+                const char *input,
+                struct VM *vm,
+                struct Compiler *compiler);
 
 Token scan_token(Lexer *self);
+
+// Analogous to `compiler.c:advance()` in the book.
+void next_token(Lexer *self);
+
+// Analogous to `compiler.c:consume()` in the book.
+void consume_token(Lexer *self, TkType expected, const char *info);
+
+/**
+ * @brief   Similar to `luaX_lexerror()`, analogout to `errorAt()` in the book.
+ *
+ * @warning Calls `longjmp`. If used incorrectly you may leak memory, corrupt
+ *          the C stack, or just cause undefined behavior all around. By all
+ *          means DO NOT call `longjmp` at the same callsite/stackframe twice!
+ */
+void lexerror_at(Lexer *self, const Token *token, const char *info);
+
+// Similar to `luaX_syntaxerror()`, analogous to `errorAtCurrent()` in the book.
+void lexerror_at_token(Lexer *self, const char *info);
+
+// Analogous to `error()` in the book.
+void lexerror_at_consumed(Lexer *self, const char *info);
 
 #endif /* LULU_LEXER_H */

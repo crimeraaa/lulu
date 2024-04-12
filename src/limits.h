@@ -13,13 +13,16 @@
 #define logformat(s)        loginfo() ": " s
 #define logprintln(s)       fputs(logformat(s) "\n", stderr)
 #define logprintf(s, ...)   fprintf(stderr, logformat(s), __VA_ARGS__)
-#define logprintfln(s, ...) fprintf(stderr, logformat(s) "\n", __VA_ARGS__)
+#define logprintfln(s, ...) logprintf(s "\n", __VA_ARGS__)
 
 #define BITS_PER_BYTE       CHAR_BIT
+
+#define compoundlit(T, ...) (T){__VA_ARGS__}
 
 /* Will not work for pointer-decayed arrays. */
 #define arraylen(array)     (sizeof(array) / sizeof(array[0]))
 #define arraysize(T, N)     (sizeof(T) * (N))
+#define arraylit(T, ...)    compoundlit(T[], __VA_ARGS__)
 
 /* Get the number of bits that `N` bytes holds. */
 #define bytes_to_bits(N)    ((N) * BITS_PER_BYTE)
