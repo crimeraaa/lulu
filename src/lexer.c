@@ -6,17 +6,12 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-void init_lexer(Lexer *self,
-                const char *input,
-                struct VM *vm,
-                struct Compiler *compiler)
-{
+void init_lexer(Lexer *self, const char *input, struct VM *vm) {
     self->token    = compoundlit(Token, 0);
     self->consumed = self->token;
     self->lexeme   = input;
     self->position = input;
     self->vm       = vm;
-    self->compiler = compiler;
     self->name     = vm->name;
     self->line     = 1;
 }
@@ -118,14 +113,14 @@ static Token make_token(const Lexer *self, TkType type) {
     return token;
 }
 
-static Token error_token(const Lexer *self, const char *info) {
-    Token token;
-    token.start = info;
-    token.len   = cast(int, strlen(info));
-    token.line  = self->line;
-    token.type  = TK_ERROR;
-    return token;
-}
+// static Token error_token(const Lexer *self, const char *info) {
+//     Token token;
+//     token.start = info;
+//     token.len   = cast(int, strlen(info));
+//     token.line  = self->line;
+//     token.type  = TK_ERROR;
+//     return token;
+// }
 
 static void skip_whitespace(Lexer *self) {
     for (;;) {
@@ -362,15 +357,15 @@ Token scan_token(Lexer *self) {
         return identifier_token(self);
     }
     switch (ch) {
-    case '(':   return make_token(self, TK_LPAREN);
-    case ')':   return make_token(self, TK_RPAREN);
-    case '[':   return make_token(self, TK_LBRACKET);
-    case ']':   return make_token(self, TK_RBRACKET);
-    case '{':   return make_token(self, TK_LCURLY);
-    case '}':   return make_token(self, TK_RCURLY);
+    case '(': return make_token(self, TK_LPAREN);
+    case ')': return make_token(self, TK_RPAREN);
+    case '[': return make_token(self, TK_LBRACKET);
+    case ']': return make_token(self, TK_RBRACKET);
+    case '{': return make_token(self, TK_LCURLY);
+    case '}': return make_token(self, TK_RCURLY);
 
-    case ',':   return make_token(self, TK_COMMA);
-    case ';':   return make_token(self, TK_SEMICOL);
+    case ',': return make_token(self, TK_COMMA);
+    case ';': return make_token(self, TK_SEMICOL);
     case '.':
         if (match_char(self, '.')) {
             return make_ifeq(self, '.', TK_VARARG, TK_CONCAT);
@@ -381,34 +376,34 @@ Token scan_token(Lexer *self) {
             return make_token(self, TK_PERIOD);
         }
 
-    case '+':   return make_token(self, TK_PLUS);
-    case '-':   return make_token(self, TK_DASH);
-    case '*':   return make_token(self, TK_STAR);
-    case '/':   return make_token(self, TK_SLASH);
-    case '%':   return make_token(self, TK_PERCENT);
-    case '^':   return make_token(self, TK_CARET);
+    case '+': return make_token(self, TK_PLUS);
+    case '-': return make_token(self, TK_DASH);
+    case '*': return make_token(self, TK_STAR);
+    case '/': return make_token(self, TK_SLASH);
+    case '%': return make_token(self, TK_PERCENT);
+    case '^': return make_token(self, TK_CARET);
 
-    case '=':   return make_ifeq(self, '=', TK_EQ, TK_ASSIGN);
+    case '=': return make_ifeq(self, '=', TK_EQ, TK_ASSIGN);
     case '~':
         if (match_char(self, '=')) {
             return make_token(self, TK_NEQ);
         } else {
             lexerror_at_consumed(self, "Expected '=' after '~'");
         }
-    case '>':   return make_ifeq(self, '=', TK_GE, TK_GT);
-    case '<':   return make_ifeq(self, '=', TK_LE, TK_LT);
+    case '>': return make_ifeq(self, '=', TK_GE, TK_GT);
+    case '<': return make_ifeq(self, '=', TK_LE, TK_LT);
 
-    case '"':   return string_token(self, '"');
-    case '\'':  return string_token(self, '\'');
+    case '\"': return string_token(self, '\"');
+    case '\'': return string_token(self, '\'');
+    default:   return make_token(self, TK_ERROR);
     }
-    return error_token(self, "Unexpected symbol");
 }
 
 void next_token(Lexer *self) {
     self->consumed = self->token;
-    self->token = scan_token(self);
+    self->token    = scan_token(self);
     if (self->token.type == TK_ERROR) {
-        lexerror_at_token(self, self->token.start);
+        lexerror_at_token(self, "Unexpected symbol");
     }
 }
 
@@ -429,11 +424,6 @@ void lexerror_at(Lexer *self, const Token *token, const char *info) {
     if (token->type == TK_EOF) {
         fprintf(stderr, " at end\n");
     } else {
-        // Error tokens take up the `self->token` slot, so use the consumed slot
-        // to give the user some context as to where the error occured.
-        if (token->type == TK_ERROR) {
-            token = &self->consumed;
-        }
         fprintf(stderr, " near '%.*s'\n", token->len, token->start);
     }
     longjmp(self->vm->errorjmp, LULU_ERROR_COMPTIME);

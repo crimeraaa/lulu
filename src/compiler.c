@@ -71,8 +71,8 @@ static OpCode get_binop(TkType optype) {
 // Assumes we just consumed a binary operator as a possible infix expression,
 // and that the left-hand side has been fully compiled.
 static void binary(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
+    Lexer *lexer  = self->lexer;
+    Token *token  = &lexer->consumed;
     TkType optype = token->type;
     OpCode opcode = get_binop(optype);
     const ParseRule *rule = get_parserule(optype);
@@ -97,7 +97,7 @@ static void grouping(Compiler *self) {
 static void number(Compiler *self) {
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
-    char *endptr;
+    char *endptr; // Populated by below function call
     Number value = cstr_tonumber(token->start, &endptr);
 
     // If this is true, strtod failed to convert the entire token/lexeme.
@@ -126,6 +126,7 @@ static void unary(Compiler *self) {
         break;
     default:
         // Should be unreachable.
+        assert(false);
         return;
     }
 }
@@ -210,6 +211,7 @@ static void parse_precedence(Compiler *self, Precedence prec) {
     }
     prefixfn(self);
 
+    // Is the right-hand-side something we can compile?
     while (prec <= get_parserule(lexer->token.type)->prec) {
         next_token(lexer);
         ParseFn infixfn = get_parserule(lexer->consumed.type)->infixfn;
@@ -227,7 +229,7 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
     Lexer *lexer = self->lexer;
     VM *vm       = self->vm;
     self->chunk  = chunk;
-    init_lexer(lexer, input, vm, self);
+    init_lexer(lexer, input, vm);
     next_token(lexer);
     expression(self);
     consume_token(lexer, TK_EOF, "Expected end of expression");

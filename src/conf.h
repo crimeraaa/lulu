@@ -4,9 +4,8 @@
 #ifndef LULU_CONFIGURATION_H
 #define LULU_CONFIGURATION_H
 
-#include <assert.h>         /* `assert`, `static_assert` */
 #include <limits.h>
-#include <math.h>           /* Needed by `number_*` macros. */
+#include <math.h>           /* Needed by `num_*` macros. */
 #include <stdbool.h>        /* C99 `_Bool` along with alias `bool` */
 #include <stddef.h>         /* `size_t`, `NULL` */
 #include <stdlib.h>         /* `realloc`, `free` */
@@ -50,6 +49,7 @@ You may wish to change `MAX_NUMTOSTRING` based on the following conditions:
 #define num_le(a, b)        ((a) <= (b))
 #define num_isnan(a)        (!num_eq(a, b))
 
+// See `man 3 strtod`. For other `cstr_*` macros, see `limits.h`.
 #define cstr_tonumber(s, p) strtod(s, p)
 
 // 1}}} ------------------------------------------------------------------------
