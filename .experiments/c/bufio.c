@@ -7,11 +7,9 @@
 
 #include "ansi.h"
 
-#ifdef _WIN32
-#define NEWLINE "\r\n"
-#else /// _WIN32 not defined.
-#define NEWLINE "\n"
-#endif /// _WIN32
+// No need for this as Windows' stdout automatically converts \n to \r\n
+// Although the same cannot be said for text files obviously...
+// #define NEWLINE "\n"
 
 #define MAX_BUFFER  256
 #define PROMPT      "> "
@@ -24,9 +22,9 @@
 #define stringify(x)            _stringify(x)
 #define loglocation()           __FILE__ ":" stringify(__LINE__)
 #define logformat(info)         loglocation() ": " info
-#define logprintln(info)        fputs(logformat(info) NEWLINE, stderr)
+#define logprintln(info)        fputs(logformat(info) "\n", stderr)
 #define logprintf(fmt, ...)     fprintf(stderr, logformat(fmt), __VA_ARGS__)
-#define logprintfln(fmt, ...)   logprintf(fmt NEWLINE, __VA_ARGS__)
+#define logprintfln(fmt, ...)   logprintf(fmt "\n", __VA_ARGS__)
 
 typedef enum {
     BUF_OK,   // We read all that we needed to. We have a full string.
@@ -277,7 +275,7 @@ void try_repl() {
             // Fall through
         case BUF_EOF:
             free_stringbuilder(&builder);
-            fputs(NEWLINE, stdout);
+            fputc('\n', stdout);
             return;
         }
     }

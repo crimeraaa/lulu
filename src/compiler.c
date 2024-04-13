@@ -8,6 +8,7 @@
 void init_compiler(Compiler *self, Lexer *lexer, VM *vm) {
     self->lexer = lexer;
     self->vm    = vm;
+    self->chunk = NULL;
 }
 
 static Chunk *current_chunk(Compiler *self) {
@@ -26,6 +27,7 @@ static void emit_return(Compiler *self) {
     emit_instruction(self, create_iNone(OP_RETURN));
 }
 
+// Returns the index of `value` in the constants table.
 static int make_constant(Compiler *self, const TValue *value) {
     Lexer *lexer = self->lexer;
     int index = add_constant(current_chunk(self), value);
@@ -36,7 +38,7 @@ static int make_constant(Compiler *self, const TValue *value) {
 }
 
 static void emit_constant(Compiler *self, const TValue *value) {
-    const int index = make_constant(self, value);
+    int index = make_constant(self, value);
     emit_instruction(self, create_iBx(OP_CONSTANT, index));
 }
 
@@ -202,7 +204,7 @@ static void expression(Compiler *self) {
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
 // exprssions following it.
 static void parse_precedence(Compiler *self, Precedence prec) {
-    Lexer *lexer = self->lexer;
+    Lexer *lexer    = self->lexer;
     next_token(lexer);
     ParseFn prefixfn = get_parserule(lexer->consumed.type)->prefixfn;
     if (prefixfn == NULL) {

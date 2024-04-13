@@ -351,11 +351,10 @@ Token scan_token(Lexer *self) {
     if (isdigit(ch)) {
         return number_token(self);
     }
-    // Identifiers and keywords can only start with alpha and underscore.
-    // However past that, digits are also allowed.
     if (isalpha(ch) || ch == '_') {
         return identifier_token(self);
     }
+
     switch (ch) {
     case '(': return make_token(self, TK_LPAREN);
     case ')': return make_token(self, TK_RPAREN);

@@ -11,18 +11,13 @@ require "util/string"
 ---@param default string[]? Default positional arguments if none given.
 local function make_cmd(cmd, flags, pargs, default)
     local t = {cmd, table.concat(flags or {}, ' ')}
-    
-    -- If no pargs given and this command has defaults, use them instead.
     if (not pargs or #pargs == 0) and default then
         pargs = default
     end
-
     -- Don't append '--' for the interpreter as it can't handle them.
     if cmd ~= INTERPRETER and #pargs >= 1 then
         t[#t + 1] = "--"
     end
-
-    -- Don't append a positional argument list if we don't have any.
     if #pargs >= 1 then
         t[#t + 1] = table.concat(pargs, ' ')
     end

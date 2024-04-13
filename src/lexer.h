@@ -53,7 +53,7 @@ typedef enum {
 
     TK_IDENT,  // ` [a-zA-Z_][a-zA-Z0-9_]+ ` := variable name/identifier
     TK_STRING, // ` (".*"|'.*') ` := string literal
-    TK_NUMBER, // ` -?[0-9]+(\.[0-9]+)? ` OR ` -?0x[a-fA-F0-9]+ ` := number literal
+    TK_NUMBER, // ` [0-9]+(\.[0-9]+)? `, ` 0x[a-fA-F0-9]+ ` := number literal
     TK_ERROR,
     TK_EOF,
 } TkType;
@@ -82,10 +82,10 @@ void init_lexer(Lexer *self, const char *input, struct VM *vm);
 
 Token scan_token(Lexer *self);
 
-// Analogous to `compiler.c:advance()` in the book.
+// Analogous to `compiler.c:advance()` in the book. May call `lexerror_*`.
 void next_token(Lexer *self);
 
-// Analogous to `compiler.c:consume()` in the book.
+// Analogous to `compiler.c:consume()` in the book. May call `lexerror_*`.
 void consume_token(Lexer *self, TkType expected, const char *info);
 
 /**
