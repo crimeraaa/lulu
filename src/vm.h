@@ -14,16 +14,10 @@ struct VM {
     jmp_buf errorjmp; // Used for error-handling (kinda) like C++ exceptions.
 };
 
-typedef enum {
-    INTERPRET_OK,
-    INTERPRET_COMPILE_ERROR,
-    INTERPRET_RUNTIME_ERROR,
-} InterpretResult;
-
 void init_vm(VM *self, const char *name);
 void free_vm(VM *self);
 void push_vm(VM *self, const TValue *value);
 TValue pop_vm(VM *self);
-InterpretResult interpret(VM *self, const char *input);
+ErrType interpret(VM *self, const char *input);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */

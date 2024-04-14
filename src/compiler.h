@@ -10,10 +10,6 @@
 #include "chunk.h"
 #include "lexer.h"
 
-#define LULU_ERROR_NONE     0
-#define LULU_ERROR_COMPTIME 1
-#define LULU_ERROR_RUNTIME  2
-
 typedef struct Compiler {
     Lexer *lexer; // May be shared across multiple Compiler instances.
     VM *vm;       // Track and modify parent VM state as needed.

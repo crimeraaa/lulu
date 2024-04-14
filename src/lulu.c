@@ -59,15 +59,15 @@ static char *read_file(const char *file_name) {
 
 static int run_file(VM *vm, const char *file_name) {
     char *input = read_file(file_name);
-    InterpretResult res = interpret(vm, input);
+    ErrType res = interpret(vm, input);
     free(input);
 
     switch (res) {
-    case INTERPRET_OK:
+    case ERROR_NONE:
         return 0;
-    case INTERPRET_COMPILE_ERROR:
+    case ERROR_COMPTIME:
         return EX_DATAERR;
-    case INTERPRET_RUNTIME_ERROR:
+    case ERROR_RUNTIME:
         return EX_SOFTWARE;
     default:
         return EXIT_FAILURE;

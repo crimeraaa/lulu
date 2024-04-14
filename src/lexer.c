@@ -425,7 +425,7 @@ void lexerror_at(Lexer *self, const Token *token, const char *info) {
     } else {
         fprintf(stderr, " near '%.*s'\n", token->len, token->start);
     }
-    longjmp(self->vm->errorjmp, LULU_ERROR_COMPTIME);
+    longjmp(self->vm->errorjmp, ERROR_COMPTIME);
 }
 
 void lexerror_at_token(Lexer *self, const char *info) {

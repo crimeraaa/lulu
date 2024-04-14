@@ -50,4 +50,10 @@
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)
 
+typedef enum {
+    ERROR_NONE,
+    ERROR_COMPTIME,
+    ERROR_RUNTIME,
+} ErrType;
+
 #endif /* LULU_LIMITS_H */
