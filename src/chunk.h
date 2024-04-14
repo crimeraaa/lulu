@@ -11,12 +11,16 @@ typedef enum {
     |  NAME      |  ARGS  |  STACK BEFORE  |  STACK AFTER  |  SIDE EFFECTS     |
     -------------+--------+----------------+---------------+----------------- */
     OP_CONSTANT, // Byte3 |  -             | Constants[B3] |                   |
+    OP_NIL,      // -     |  -             | nil           |                   |
+    OP_TRUE,     // -     |  -             | true          |                   |
+    OP_FALSE,    // -     |  -             | false         |                   |
     OP_ADD,      // -     |  y, x          | x + y         |                   |
     OP_SUB,      // -     |  y, x          | x - y         |                   |
     OP_MUL,      // -     |  y, x          | x * y         |                   |
     OP_DIV,      // -     |  y, x          | x / y         |                   |
     OP_MOD,      // -     |  y, x          | x % y         |                   |
     OP_POW,      // -     |  y, x          | x ^ y         |                   |
+    OP_NOT,      // -     |  x             | not x         |                   |
     OP_UNM,      // -     |  x             | -x            |                   |
     OP_RETURN,   // -     |  -             |               |                   |
 } OpCode;

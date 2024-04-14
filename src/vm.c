@@ -110,6 +110,15 @@ static ErrType run(VM *self) {
         case OP_CONSTANT:
             push_vm(self, read_constant());
             break;
+        case OP_NIL:
+            push_vm(self, &make_nil());
+            break;
+        case OP_TRUE:
+            push_vm(self, &make_boolean(true));
+            break;
+        case OP_FALSE:
+            push_vm(self, &make_boolean(false));
+            break;
         case OP_ADD:
             arith_op(num_add);
             break;
@@ -127,6 +136,9 @@ static ErrType run(VM *self) {
             break;
         case OP_POW:
             arith_op(num_pow);
+            break;
+        case OP_NOT:
+            *poke_top(-1) = make_boolean(is_falsy(poke_top(-1)));
             break;
         case OP_UNM: {
             TValue *value = poke_top(-1);

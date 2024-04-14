@@ -27,17 +27,27 @@ static void binary(Compiler *self) {
     Lexer *lexer  = self->lexer;
     Token *token  = &lexer->consumed;
     TkType optype = token->type;
-    OpCode opcode = get_binop(optype);
     const ParseRule *rule = get_parserule(optype);
 
     // For exponentiation, enforce right-associativity.
     parse_precedence(self, (optype == TK_CARET) ? rule->prec : rule->prec + 1);
-    emit_byte(self, opcode);
+    emit_byte(self, get_binop(optype));
 }
 
 // 1}}} ------------------------------------------------------------------------
 
 // PREFIX EXPRESSIONS ----------------------------------------------------- {{{1
+
+static void literal(Compiler *self) {
+    switch (self->lexer->consumed.type) {
+    case TK_NIL:    emit_byte(self, OP_NIL);   break;
+    case TK_TRUE:   emit_byte(self, OP_TRUE);  break;
+    case TK_FALSE:  emit_byte(self, OP_FALSE); break;
+    default:
+        // Should not happen
+        break;
+    }
+}
 
 // Assumes we just consumed a '(' as a possible prefix expression: a grouping.
 static void grouping(Compiler *self) {
@@ -61,6 +71,16 @@ static void number(Compiler *self) {
     }
 }
 
+static OpCode get_unop(TkType type) {
+    switch (type) {
+    case TK_NOT:    return OP_NOT;
+    case TK_DASH:   return OP_UNM;
+    default:
+        // Should not happen
+        return OP_RETURN;
+    }
+}
+
 // Assumes a leading operator has been consumed as prefix expression, e.g. '-'.
 static void unary(Compiler *self) {
     Lexer *lexer  = self->lexer;
@@ -69,18 +89,7 @@ static void unary(Compiler *self) {
 
     // Recursively compiles until we hit something with a lower precedence.
     parse_precedence(self, PREC_UNARY);
-
-    // Emit the operator instruction. Since we're a stack-based VM we can assume
-    // that the operand is on the top of the stack so no operands are baked into
-    // the instructions themselves.
-    switch (optype) {
-    case TK_DASH:
-        emit_byte(self, OP_UNM);
-        break;
-    default:
-        // Should not happen
-        return;
-    }
+    emit_byte(self, get_unop(optype));
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -95,18 +104,18 @@ static const ParseRule parserules[] = {
     [TK_ELSE]       = {NULL,        NULL,       PREC_NONE},
     [TK_ELSEIF]     = {NULL,        NULL,       PREC_NONE},
     [TK_END]        = {NULL,        NULL,       PREC_NONE},
-    [TK_FALSE]      = {NULL,        NULL,       PREC_NONE},
+    [TK_FALSE]      = {literal,     NULL,       PREC_NONE},
     [TK_FOR]        = {NULL,        NULL,       PREC_NONE},
     [TK_FUNCTION]   = {NULL,        NULL,       PREC_NONE},
     [TK_IF]         = {NULL,        NULL,       PREC_NONE},
     [TK_IN]         = {NULL,        NULL,       PREC_NONE},
     [TK_LOCAL]      = {NULL,        NULL,       PREC_NONE},
-    [TK_NIL]        = {NULL,        NULL,       PREC_NONE},
-    [TK_NOT]        = {NULL,        NULL,       PREC_NONE},
+    [TK_NIL]        = {literal,     NULL,       PREC_NONE},
+    [TK_NOT]        = {unary,       NULL,       PREC_NONE},
     [TK_OR]         = {NULL,        NULL,       PREC_NONE},
     [TK_RETURN]     = {NULL,        NULL,       PREC_NONE},
     [TK_THEN]       = {NULL,        NULL,       PREC_NONE},
-    [TK_TRUE]       = {NULL,        NULL,       PREC_NONE},
+    [TK_TRUE]       = {literal,     NULL,       PREC_NONE},
     [TK_WHILE]      = {NULL,        NULL,       PREC_NONE},
 
     [TK_LPAREN]     = {grouping,    NULL,       PREC_NONE},

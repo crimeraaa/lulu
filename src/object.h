@@ -50,6 +50,8 @@ typedef struct {
 #define set_boolean(v, b)   (as_boolean(v) = (b))
 #define set_number(v, n)    (as_number(v) = (n))
 
+#define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
+
 void print_value(const TValue *self);
 
 void init_tarray(TArray *self);

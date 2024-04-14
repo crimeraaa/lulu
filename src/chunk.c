@@ -2,18 +2,20 @@
 #include "memory.h"
 
 const char *const LULU_OPNAMES[] = {
-    [OP_CONSTANT] = "OP_CONSTANT",
-    [OP_ADD]      = "OP_ADD",
-    [OP_SUB]      = "OP_SUB",
-    [OP_MUL]      = "OP_MUL",
-    [OP_DIV]      = "OP_DIV",
-    [OP_MOD]      = "OP_MOD",
-    [OP_POW]      = "OP_POW",
-    [OP_UNM]      = "OP_UNM",
-    [OP_RETURN]   = "OP_RETURN",
+    [OP_CONSTANT]   = "OP_CONSTANT",
+    [OP_NIL]        = "OP_NIL",
+    [OP_TRUE]       = "OP_TRUE",
+    [OP_FALSE]      = "OP_FALSE",
+    [OP_ADD]        = "OP_ADD",
+    [OP_SUB]        = "OP_SUB",
+    [OP_MUL]        = "OP_MUL",
+    [OP_DIV]        = "OP_DIV",
+    [OP_MOD]        = "OP_MOD",
+    [OP_POW]        = "OP_POW",
+    [OP_NOT]        = "OP_NOT",
+    [OP_UNM]        = "OP_UNM",
+    [OP_RETURN]     = "OP_RETURN",
 };
-
-static_assert(arraylen(LULU_OPNAMES) == NUM_OPCODES, "Bad opname count");
 
 void init_chunk(Chunk *self, const char *name) {
     self->name  = name;
