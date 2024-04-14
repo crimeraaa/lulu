@@ -3,7 +3,7 @@
 
 #include "lulu.h"
 
-typedef NUMBER_TYPE Number;
+typedef lulu_Number Number;
 
 typedef enum {
     TYPE_NIL,

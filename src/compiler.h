@@ -1,3 +1,8 @@
+/**
+ * @brief   The Compiler handles code generation. For precedences and such, that
+ *          is handled by `parser.h` which is independent of this file although
+ *          all the parser functions manipulate their Compiler struct.
+ */
 #ifndef LULU_COMPILER_H
 #define LULU_COMPILER_H
 
@@ -15,31 +20,15 @@ typedef struct Compiler {
     Chunk *chunk; // The current compiling chunk for this function/closure.
 } Compiler;
 
-typedef enum {
-    PREC_NONE,
-    PREC_ASSIGN,     // `=`
-    PREC_OR,         // `or`
-    PREC_AND,        // `and`
-    PREC_EQUALITY,   // `==` and `!=`
-    PREC_COMPARISON, // `<`, `>`, `<=` and `>=`
-    PREC_TERMINAL,   // `+` and `-`
-    PREC_FACTOR,     // `*`, `/`, `%` and `^`
-    PREC_UNARY,      // `not`, `-` and `#`
-    PREC_CALL,       // `.` `()`
-    PREC_PRIMARY,
-} Precedence;
-
-typedef void (*ParseFn)(Compiler *self);
-
-typedef struct {
-    ParseFn prefixfn;
-    ParseFn infixfn;
-    Precedence prec;
-} ParseRule;
-
 // We pass a Lexer and a VM to be shared across compiler instances.
 void init_compiler(Compiler *self, Lexer *lexer, VM *vm);
-
 void compile(Compiler *self, const char *input, Chunk *chunk);
+void emit_instruction(Compiler *self, Instruction inst);
+void emit_return(Compiler *self);
+
+// Returns the index of `value` in the constants table.
+int make_constant(Compiler *self, const TValue *value);
+void emit_constant(Compiler *self, const TValue *value);
+void end_compiler(Compiler *self);
 
 #endif /* LULU_COMPILER_H */
