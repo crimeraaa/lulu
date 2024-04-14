@@ -19,7 +19,9 @@ typedef struct Compiler {
 // We pass a Lexer and a VM to be shared across compiler instances.
 void init_compiler(Compiler *self, Lexer *lexer, VM *vm);
 void compile(Compiler *self, const char *input, Chunk *chunk);
-void emit_instruction(Compiler *self, Instruction inst);
+void emit_byte(Compiler *self, Byte data);
+void emit_byte2(Compiler *self, Byte2 data);
+void emit_byte3(Compiler *self, Byte3 data);
 void emit_return(Compiler *self);
 
 // Returns the index of `value` in the constants table.

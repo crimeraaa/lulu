@@ -14,7 +14,7 @@ static void reset_stack(VM *self) {
     self->top = self->stack;
 }
 
-static void runtime_error(VM *self, enum RT_ErrType rt_errtype) {
+static void runtime_error(VM *self, enum RT_ErrType rterr) {
     
 // Errors occur with the guilty operands at the very top of the stack.
 #define _get_typename(n)    get_typename(self->top + (n))
@@ -23,7 +23,7 @@ static void runtime_error(VM *self, enum RT_ErrType rt_errtype) {
     int line = self->chunk->lines[offset];
     fprintf(stderr, "%s:%i: ", self->name, line);
 
-    switch (rt_errtype) {
+    switch (rterr) {
     case RT_ERROR_NEGATE:
         fprintf(stderr, "Attempt to negate a %s value", _get_typename(-1));
         break;
@@ -68,17 +68,18 @@ TValue pop_vm(VM *self) {
 }
 
 static ErrType run(VM *self) {
-    Instruction inst;
     const Chunk *chunk      = self->chunk;
     const TValue *constants = chunk->constants.values;
 
 // --- HELPER MACROS ------------------------------------------------------ {{{1
 // Many of these rely on variables local to this function.
 
-#define read_instruction()      (*self->ip++)
-#define read_constant()         (&constants[getarg_Bx(inst)])
-#define poke_top(n)             (self->top + (n))
-#define poke_base(n)            (self->stack + (n))
+#define read_byte()         (*self->ip++)
+#define read_byte2()        (decode_byte2(read_byte(), read_byte()))
+#define read_byte3()        (decode_byte3(read_byte(), read_byte(), read_byte()))
+#define read_constant()     (&constants[read_byte3()])
+#define poke_top(n)         (self->top + (n))
+#define poke_base(n)        (self->stack + (n))
 
 // Remember that LHS would be pushed before RHS, so it's lower down the stack.
 #define arith_op(fn) {                                                         \
@@ -104,8 +105,8 @@ static ErrType run(VM *self) {
         printf("\n");
         disassemble_instruction(chunk, cast(int, self->ip - chunk->code));
 #endif
-        inst = read_instruction();
-        switch (getarg_op(inst)) {
+        OpCode opcode = read_byte();
+        switch (opcode) {
         case OP_CONSTANT:
             push_vm(self, read_constant());
             break;
@@ -142,7 +143,7 @@ static ErrType run(VM *self) {
         }
     }
 
-#undef read_instruction
+#undef read_byte
 #undef read_constant
 #undef poke_top
 #undef poke_base
@@ -153,8 +154,8 @@ ErrType interpret(VM *self, const char *input) {
     Chunk chunk;
     Lexer lexer;
     Compiler compiler;
-    ErrType errtype = setjmp(self->errorjmp); // WARNING: Call `longjmp` right!
-    switch (errtype) {
+    ErrType err = setjmp(self->errorjmp); // WARNING: Call `longjmp` correctly!!
+    switch (err) {
     case ERROR_NONE:
         init_chunk(&chunk, self->name);
         init_compiler(&compiler, &lexer, self);
@@ -164,7 +165,7 @@ ErrType interpret(VM *self, const char *input) {
     case ERROR_RUNTIME:
     default: // WARNING: Should not happen! Check all uses of `(set|long)jmp`.
         free_chunk(&chunk);
-        return errtype;
+        return err;
     }
     // Prep the VM
     self->chunk = &chunk;

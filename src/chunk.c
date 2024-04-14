@@ -26,16 +26,16 @@ void init_chunk(Chunk *self, const char *name) {
 
 void free_chunk(Chunk *self) {
     free_tarray(&self->constants);
-    free_array(Instruction, self->code, self->len);
+    free_array(Byte, self->code, self->len);
     free_array(int, self->lines, self->len);
     init_chunk(self, "(freed chunk)");
 }
 
-void write_chunk(Chunk *self, Instruction data, int line) {
+void write_chunk(Chunk *self, Byte data, int line) {
     if (self->len + 1 > self->cap) {
         int oldcap  = self->cap;
         self->cap   = grow_capacity(oldcap);
-        self->code  = grow_array(Instruction, self->code, oldcap, self->cap);
+        self->code  = grow_array(Byte, self->code, oldcap, self->cap);
         self->lines = grow_array(int , self->lines, oldcap, self->cap);
     }
     self->code[self->len]  = data;

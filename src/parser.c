@@ -16,7 +16,7 @@ static OpCode get_binop(TkType optype) {
     case TK_PERCENT: return OP_MOD;
     case TK_CARET:   return OP_POW;
     default:
-        assert(false); // Should not happen but just in case
+        // Should not happen
         return OP_RETURN;
     }
 }
@@ -32,7 +32,7 @@ static void binary(Compiler *self) {
 
     // For exponentiation, enforce right-associativity.
     parse_precedence(self, (optype == TK_CARET) ? rule->prec : rule->prec + 1);
-    emit_instruction(self, create_iNone(opcode));
+    emit_byte(self, opcode);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -75,11 +75,10 @@ static void unary(Compiler *self) {
     // the instructions themselves.
     switch (optype) {
     case TK_DASH:
-        emit_instruction(self, create_iNone(OP_UNM));
+        emit_byte(self, OP_UNM);
         break;
     default:
-        // Should be unreachable.
-        assert(false);
+        // Should not happen
         return;
     }
 }

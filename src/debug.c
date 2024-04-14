@@ -12,29 +12,29 @@ void disassemble_chunk(const Chunk *self) {
     printf("\n");
 
     printf("[BYTECODE]: '%s'\n", self->name);
-    for (int offset = 0; offset < self->len; offset++) {
-        disassemble_instruction(self, offset);
+    for (int offset = 0; offset < self->len; ) {
+        offset = disassemble_instruction(self, offset);
     }
     printf("\n");
 }
 
-// 1 Argument: Bx (unsigned 26-bit integer)
-static void constant_instruction(const Instruction self, const Chunk *chunk) {
-    OpCode opcode = getarg_op(self);
-    int index     = getarg_Bx(self);
+static int constant_instruction(OpCode opcode, const Chunk *chunk, int offset) {
+    int index = decode_byte3(chunk->code[offset + 1],
+                             chunk->code[offset + 2],
+                             chunk->code[offset + 3]);
     const TValue *value = &chunk->constants.values[index];
     printf("%-16s Constants[Bx := %i] ; '", get_opname(opcode), index);
     print_value(value);
     printf("' (%s)\n", get_typename(value));
+    return offset + 3 + 1; // 3-byte argument, +1 to get index of next opcode
 }
 
-// No directly encoded arguments. However, they may be implicitly on the stack.
-static void simple_instruction(const Instruction self) {
-    OpCode opcode = getarg_op(self);
+static int simple_instruction(OpCode opcode, int offset) {
     printf("%s\n", get_opname(opcode));
+    return offset + 1; // 0-byte argument, +1 to get index of next opcode
 }
 
-void disassemble_instruction(const Chunk *self, int offset) {
+int disassemble_instruction(const Chunk *self, int offset) {
     printf("%04i ", offset);
     int line = self->lines[offset];
     if (offset > 0 && line == self->lines[offset - 1]) {
@@ -42,12 +42,10 @@ void disassemble_instruction(const Chunk *self, int offset) {
     } else {
         printf("%4i ", line);
     }
-    Instruction inst = self->code[offset];
-    OpCode opcode = getarg_op(inst);
+    OpCode opcode = self->code[offset];
     switch (opcode) {
     case OP_CONSTANT:
-        constant_instruction(inst, self);
-        break;
+        return constant_instruction(opcode, self, offset);
     case OP_ADD:
     case OP_SUB:
     case OP_MUL:
@@ -56,7 +54,10 @@ void disassemble_instruction(const Chunk *self, int offset) {
     case OP_POW:
     case OP_UNM:
     case OP_RETURN:
-        simple_instruction(inst);
-        break;
+        return simple_instruction(opcode, offset);
+    default:
+        // Should not happen
+        printf("Unknown opcode '%i'.\n", opcode);
+        return offset + 1;
     }
 }

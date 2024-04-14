@@ -16,20 +16,31 @@ static Chunk *current_chunk(Compiler *self) {
     return self->chunk;
 }
 
-void emit_instruction(Compiler *self, Instruction inst) {
+void emit_byte(Compiler *self, Byte data) {
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
-    write_chunk(current_chunk(self), inst, token->line);
+    write_chunk(current_chunk(self), data, token->line);
+}
+
+void emit_byte2(Compiler *self, Byte2 data) {
+    emit_byte(self, encode_byte2_msb(data));
+    emit_byte(self, encode_byte2_lsb(data));
+}
+
+void emit_byte3(Compiler *self, Byte3 data) {
+    emit_byte(self, encode_byte3_msb(data));
+    emit_byte(self, encode_byte3_mid(data));
+    emit_byte(self, encode_byte3_lsb(data));
 }
 
 void emit_return(Compiler *self) {
-    emit_instruction(self, create_iNone(OP_RETURN));
+    emit_byte(self, OP_RETURN);
 }
 
 int make_constant(Compiler *self, const TValue *value) {
     Lexer *lexer = self->lexer;
     int index = add_constant(current_chunk(self), value);
-    if (index >= MAXARG_Bx) {
+    if (index >= MAX_CONSTANTS) {
         lexerror_at_consumed(lexer, "Too many constants in current chunk");
     }
     return index;
@@ -37,7 +48,8 @@ int make_constant(Compiler *self, const TValue *value) {
 
 void emit_constant(Compiler *self, const TValue *value) {
     int index = make_constant(self, value);
-    emit_instruction(self, create_iBx(OP_CONSTANT, index));
+    emit_byte(self, OP_CONSTANT);
+    emit_byte3(self, cast(Byte3, index));
 }
 
 void end_compiler(Compiler *self) {
@@ -49,9 +61,8 @@ void end_compiler(Compiler *self) {
 
 void compile(Compiler *self, const char *input, Chunk *chunk) {
     Lexer *lexer = self->lexer;
-    VM *vm       = self->vm;
     self->chunk  = chunk;
-    init_lexer(lexer, input, vm);
+    init_lexer(lexer, input, self->vm);
     next_token(lexer);
     expression(self);
     consume_token(lexer, TK_EOF, "Expected end of expression");
