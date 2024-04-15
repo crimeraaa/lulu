@@ -75,20 +75,26 @@ static ErrType run(VM *self) {
 // Many of these rely on variables local to this function.
 
 #define read_byte()         (*self->ip++)
+
+// Assumes MSB is read first then LSB.
 #define read_byte2()        (decode_byte2(read_byte(), read_byte()))
+
+// Assumes MSB is read first, then middle, then LSB.
 #define read_byte3()        (decode_byte3(read_byte(), read_byte(), read_byte()))
+    
+// Assumes a 3-byte operand comes right after the opcode.
 #define read_constant()     (&constants[read_byte3()])
 #define poke_top(n)         (self->top + (n))
 #define poke_base(n)        (self->stack + (n))
 
-// Remember that LHS would be pushed before RHS, so it's lower down the stack.
-#define arith_op(fn) {                                                         \
+// Remember that LHS would be pushed before RHS, so LHS is lower down the stack.
+#define arith_op(arithfn) {                                                         \
     TValue *lhs = poke_top(-2);                                                \
     TValue *rhs = poke_top(-1);                                                \
     if (!is_number(lhs) || !is_number(rhs)) {                                  \
         runtime_error(self, RT_ERROR_ARITH);                                   \
     }                                                                          \
-    set_number(lhs, fn(as_number(lhs), as_number(rhs)));                       \
+    set_number(lhs, arithfn(as_number(lhs), as_number(rhs)));                  \
     self->top--;                                                               \
 }
 
@@ -138,15 +144,14 @@ static ErrType run(VM *self) {
             arith_op(num_pow);
             break;
         case OP_NOT:
-            *poke_top(-1) = make_boolean(is_falsy(poke_top(-1)));
+            set_boolean(poke_top(-1), is_falsy(poke_top(-1)));
             break;
-        case OP_UNM: {
-            TValue *value = poke_top(-1);
-            if (!is_number(value)) {
+        case OP_UNM:
+            if (!is_number(poke_top(-1))) {
                 runtime_error(self, RT_ERROR_NEGATE); // throws
             }
-            as_number(value) = num_unm(as_number(value));
-        } break;
+            set_number(poke_top(-1), num_unm(as_number(poke_top(-1))));
+            break;
         case OP_RETURN:
             print_value(poke_top(-1));
             printf("\n\n");

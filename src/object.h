@@ -32,6 +32,7 @@ typedef struct {
     int cap;
 } TArray;
 
+// NOTE: All `get_*`, `is_*`, `as_*` and `set_*` functions expect a pointer.
 #define get_tagtype(v)      ((v)->tag)
 #define get_typename(v)     LULU_TYPENAMES[get_tagtype(v)]
 
@@ -46,9 +47,15 @@ typedef struct {
 #define make_boolean(b)     (TValue){TYPE_BOOLEAN,   {.boolean = (b)}}
 #define make_number(n)      (TValue){TYPE_NUMBER,    {.number  = (n)}}
 
-#define set_nil(v)          (get_tagtype(v) = TYPE_NIL, as_number(v) = 0)
-#define set_boolean(v, b)   (as_boolean(v) = (b))
-#define set_number(v, n)    (as_number(v) = (n))
+/** 
+ * @note    Setting value BEFORE type tag is needed for evaluating type.
+ *          Also, don't use `tag` as the macro parameter name as substitution
+ *          will mess up in that case.
+ */
+#define set_tagtype(v, T)   (get_tagtype(v) = (T))
+#define set_nil(v)          (as_number(v)   = 0,    set_tagtype(v, TYPE_NIL))
+#define set_boolean(v, b)   (as_boolean(v)  = (b),  set_tagtype(v, TYPE_BOOLEAN))
+#define set_number(v, n)    (as_number(v)   = (n),  set_tagtype(v, TYPE_NUMBER))
 
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
