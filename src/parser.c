@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "chunk.h"
+#include "object.h"
 
 // Forward declarations to allow recursive descent parsing.
 static const ParseRule *get_parserule(TkType key);
@@ -15,6 +16,7 @@ static OpCode get_binop(TkType optype) {
     case TK_SLASH:   return OP_DIV;
     case TK_PERCENT: return OP_MOD;
     case TK_CARET:   return OP_POW;
+    case TK_CONCAT:  return OP_CONCAT;
 
     case TK_EQ:      return OP_EQ;
     case TK_LT:      return OP_LT;
@@ -32,9 +34,13 @@ static void binary(Compiler *self) {
     Token *token  = &lexer->consumed;
     TkType optype = token->type;
     const ParseRule *rule = get_parserule(optype);
-
-    // For exponentiation, enforce right-associativity.
-    parse_precedence(self, (optype == TK_CARET) ? rule->prec : rule->prec + 1);
+    
+    // For exponentiation and concatenation, enforce right-associativity.
+    if (optype == TK_CARET || optype == TK_CONCAT) {
+        parse_precedence(self, rule->prec);
+    } else {
+        parse_precedence(self, rule->prec + 1);
+    }
     
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (optype) {
@@ -83,6 +89,15 @@ static void number(Compiler *self) {
     } else {
         emit_constant(self, &make_number(value));
     }
+}
+
+static void string(Compiler *self) {
+    Lexer *lexer  = self->lexer;
+    Token *token  = &lexer->consumed;
+    
+    // Left +1 to skip left quote, len -2 to get offset of last non-quote.
+    TString *tstr = copy_string(self->vm, token->start + 1, token->len - 2);
+    emit_constant(self, &make_string(tstr));
 }
 
 static OpCode get_unop(TkType type) {
@@ -142,7 +157,7 @@ static const ParseRule PARSERULES_LOOKUP[] = {
     [TK_COMMA]      = {NULL,        NULL,       PREC_NONE},
     [TK_SEMICOL]    = {NULL,        NULL,       PREC_NONE},
     [TK_VARARG]     = {NULL,        NULL,       PREC_NONE},
-    [TK_CONCAT]     = {NULL,        NULL,       PREC_NONE},
+    [TK_CONCAT]     = {NULL,        binary,     PREC_CONCAT},
     [TK_PERIOD]     = {NULL,        NULL,       PREC_NONE},
 
     [TK_PLUS]       = {NULL,        binary,     PREC_TERMINAL},
@@ -150,7 +165,7 @@ static const ParseRule PARSERULES_LOOKUP[] = {
     [TK_STAR]       = {NULL,        binary,     PREC_FACTOR},
     [TK_SLASH]      = {NULL,        binary,     PREC_FACTOR},
     [TK_PERCENT]    = {NULL,        binary,     PREC_FACTOR},
-    [TK_CARET]      = {NULL,        binary,     PREC_FACTOR},
+    [TK_CARET]      = {NULL,        binary,     PREC_POW},
 
     [TK_ASSIGN]     = {NULL,        NULL,       PREC_NONE},
     [TK_EQ]         = {NULL,        binary,     PREC_EQUALITY},
@@ -161,7 +176,7 @@ static const ParseRule PARSERULES_LOOKUP[] = {
     [TK_LE]         = {NULL,        binary,     PREC_COMPARISON},
 
     [TK_IDENT]      = {NULL,        NULL,       PREC_NONE},
-    [TK_STRING]     = {NULL,        NULL,       PREC_NONE},
+    [TK_STRING]     = {string,      NULL,       PREC_NONE},
     [TK_NUMBER]     = {number,      NULL,       PREC_NONE},
     [TK_ERROR]      = {NULL,        NULL,       PREC_NONE},
     [TK_EOF]        = {NULL,        NULL,       PREC_NONE},

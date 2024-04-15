@@ -20,9 +20,11 @@ typedef enum {
     PREC_AND,        // `and`
     PREC_EQUALITY,   // `==` and `!=`
     PREC_COMPARISON, // `<`, `>`, `<=` and `>=`
+    PREC_CONCAT,     // `..`
     PREC_TERMINAL,   // `+` and `-`
     PREC_FACTOR,     // `*`, `/`, `%` and `^`
     PREC_UNARY,      // `not`, `-` and `#`
+    PREC_POW,        // `^`
     PREC_CALL,       // `.` `()`
     PREC_PRIMARY,
 } Precedence;

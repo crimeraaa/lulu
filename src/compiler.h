@@ -18,7 +18,9 @@ typedef struct Compiler {
 
 // We pass a Lexer and a VM to be shared across compiler instances.
 void init_compiler(Compiler *self, Lexer *lexer, VM *vm);
+void end_compiler(Compiler *self);
 void compile(Compiler *self, const char *input, Chunk *chunk);
+
 void emit_byte(Compiler *self, Byte data);
 void emit_byte2(Compiler *self, Byte2 data);
 void emit_byte3(Compiler *self, Byte3 data);
@@ -28,10 +30,9 @@ void emit_return(Compiler *self);
 // Returns the index of `value` in the constants table.
 int make_constant(Compiler *self, const TValue *value);
 void emit_constant(Compiler *self, const TValue *value);
-void end_compiler(Compiler *self);
 
 // Helper macro so you don't have to manually specify the number of varargs.
-#define emit_nbytes(compiler, ...)                                             \
+#define emit_nbytes(compiler, ...) \
     emit_nbytes(compiler, arraylitlen(Byte, __VA_ARGS__), __VA_ARGS__)
 
 #endif /* LULU_COMPILER_H */

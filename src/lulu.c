@@ -59,6 +59,9 @@ static char *read_file(const char *file_name) {
 
 static int run_file(VM *vm, const char *file_name) {
     char *input = read_file(file_name);
+    if (input == NULL) {
+        return EX_IOERR;
+    }
     ErrType res = interpret(vm, input);
     free(input);
 

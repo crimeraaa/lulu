@@ -3,11 +3,13 @@
 #include "compiler.h"
 #include "debug.h"
 #include "limits.h"
+#include "memory.h"
 
 enum RT_ErrType {
     RT_ERROR_NEGATE,
     RT_ERROR_ARITH,
     RT_ERROR_COMPARE,
+    RT_ERROR_CONCAT,
 };
 
 static void reset_stack(VM *self) {
@@ -17,7 +19,7 @@ static void reset_stack(VM *self) {
 static void runtime_error(VM *self, enum RT_ErrType rterr) {
     
 // Errors occur with the guilty operands at the very top of the stack.
-#define _get_typename(n)    get_typename(self->top + (n))
+#define _typename(n)    get_typename(self->top + (n))
 
     size_t offset = self->ip - self->chunk->code - 1;
     int line = self->chunk->lines[offset];
@@ -25,36 +27,43 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
 
     switch (rterr) {
     case RT_ERROR_NEGATE:
-        fprintf(stderr, "Attempt to negate a %s value", _get_typename(-1));
+        fprintf(stderr, "Attempt to negate a %s value", _typename(-1));
         break;
     case RT_ERROR_ARITH:
         fprintf(stderr,
                 "Attempt to perform arithmetic on %s with %s",
-                _get_typename(-2),
-                _get_typename(-1));
+                _typename(-2),
+                _typename(-1));
         break;
     case RT_ERROR_COMPARE:
         fprintf(stderr,
                 "Attempt to compare %s with %s",
-                _get_typename(-2),
-                _get_typename(-1));
+                _typename(-2),
+                _typename(-1));
+        break;
+    case RT_ERROR_CONCAT:
+        fprintf(stderr,
+                "Attempt to concatenate %s with %s",
+                _typename(-2),
+                _typename(-1));
         break;
     }
     fputc('\n', stderr);
     reset_stack(self);
     longjmp(self->errorjmp, ERROR_RUNTIME);
     
-#undef _get_typename
+#undef _typename
 
 }
 
 void init_vm(VM *self, const char *name) {
     reset_stack(self);
-    self->name = name;
+    self->name    = name;
+    self->objects = NULL;
 }
 
 void free_vm(VM *self) {
-    unused(self);
+    free_objects(self);
 }
 
 void push_vm(VM *self, const TValue *value) {
@@ -156,6 +165,17 @@ static ErrType run(VM *self) {
             break;
         case OP_POW:
             arith_op(num_pow);
+            break;
+        case OP_CONCAT:
+            if (!is_string(poke_top(-2)) || !is_string(poke_top(-1))) {
+                runtime_error(self, RT_ERROR_CONCAT); // throws
+            } else {
+                TString *ts = concat_strings(self,
+                                             as_string(poke_top(-2)),
+                                             as_string(poke_top(-1)));
+                popn(2);
+                push_vm(self, &make_string(ts));
+            }
             break;
         case OP_NOT:
             set_boolean(poke_top(-1), is_falsy(poke_top(-1)));

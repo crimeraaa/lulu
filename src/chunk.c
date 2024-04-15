@@ -15,6 +15,7 @@ const char *const LULU_OPNAMES[] = {
     [OP_DIV]        = "OP_DIV",
     [OP_MOD]        = "OP_MOD",
     [OP_POW]        = "OP_POW",
+    [OP_CONCAT]     = "OP_CONCAT",
     [OP_NOT]        = "OP_NOT",
     [OP_UNM]        = "OP_UNM",
     [OP_RETURN]     = "OP_RETURN",

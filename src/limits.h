@@ -34,11 +34,14 @@
 #define arraylit(T, ...)    compoundlit(T[], __VA_ARGS__)
 #define arraylitlen(T, ...) (sizeof(arraylit(T, __VA_ARGS__)) / sizeof(T))
 
+// `ST` stands for `Struct Type`, and `MT` stands for `Member Type`.
+#define flexarray_size(ST, MT, N)   (sizeof(ST) + arraysize(MT, N))
+
 // Get the number of bits that `N` bytes holds.
 #define bytes_to_bits(N)    ((N) * BITS_PER_BYTE)
 #define bitsize(T)          bytes_to_bits(sizeof(T))
 
-#define cast(T, expr)       (T)(expr)
+#define cast(T, expr)       ((T)(expr))
 #define unused(x)           (void)(x)
 #define unused2(x, y)       unused(x); unused(y)
 #define unused3(x, y, z)    unused2(x, y); unused(z)
