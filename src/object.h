@@ -6,7 +6,6 @@
 
 typedef lulu_Number    Number;
 typedef struct Object  Object;
-typedef struct TString TString;
 
 typedef enum {
     TYPE_NIL,
@@ -42,11 +41,23 @@ struct Object {
     Object *next;   // Intrusive list (linked list) node.
 };
 
-struct TString {
+typedef struct {
     Object object;  // "Inherited" must come first to allow safe type-punning.
     int len;        // Nul-terminated length, not including the nul itself.
+    uint32_t hash;  // Hash code for use in addressing `Table`.
     char data[];    // See: C99 flexible array members, MUST be last member!
-};
+} TString;
+
+typedef struct {
+    TValue key;
+    TValue value;
+} Entry;
+
+typedef struct {
+    Entry *entries; // Associative array segment.
+    int count;      // Current number of active entries.
+    int cap;        // Total number of possible active entries.
+} Table;
 
 // NOTE: All `get_*`, `is_*`, `as_*` and `set_*` functions expect a pointer.
 #define get_tagtype(v)      (v)->tag
@@ -95,10 +106,25 @@ void print_value(const TValue *self);
 bool values_equal(const TValue *lhs, const TValue *rhs);
 
 void init_tarray(TArray *self);
-void free_tarray(TArray *self);
-void write_tarray(TArray *self, const TValue *value);
+void free_tarray(VM *vm, TArray *self);
+void write_tarray(VM *vm, TArray *self, const TValue *value);
 
 TString *copy_string(VM *vm, const char *literal, int len);
 TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs);
+
+void init_table(Table *self);
+void free_table(VM *vm, Table *self);
+bool get_table(VM *vm, Table *self, const TValue *key, TValue *out);
+bool set_table(VM *vm, Table *self, const TValue *key, const TValue *value);
+
+// Place a tombstone value. Analogous to `deleteTable()` in the book.
+bool unset_table(VM *vm, Table *self, const TValue *key);
+
+// Analogous to `tableAddAll()` in the book.
+void copy_table(VM *vm, Table *dst, const Table *src);
+
+// Check if we have already interned a string.
+// Assumes `vm->strings` only maps string keys to any value, even nil.
+TString *find_interned(VM *vm, const char *data, int len, uint32_t hash);
 
 #endif /* LULU_OBJECT_H */

@@ -27,7 +27,9 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
 
     switch (rterr) {
     case RT_ERROR_NEGATE:
-        fprintf(stderr, "Attempt to negate a %s value", _typename(-1));
+        fprintf(stderr,
+                "Attempt to negate a %s value",
+                _typename(-1));
         break;
     case RT_ERROR_ARITH:
         fprintf(stderr,
@@ -63,6 +65,7 @@ void init_vm(VM *self, const char *name) {
 }
 
 void free_vm(VM *self) {
+    free_table(self, &self->strings);
     free_objects(self);
 }
 
@@ -217,14 +220,15 @@ ErrType interpret(VM *self, const char *input) {
         break;
     case ERROR_COMPTIME: // Fall through
     case ERROR_RUNTIME:
-    default: // WARNING: Should not happen! Check all uses of `(set|long)jmp`.
-        free_chunk(&chunk);
+    case ERROR_ALLOC:
+    default:   // WARNING: Should not happen! Check all uses of `(set|long)jmp`.
+        free_chunk(self, &chunk);
         return err;
     }
     // Prep the VM
     self->chunk = &chunk;
     self->ip    = chunk.code;
-    ErrType result = run(self);
-    free_chunk(&chunk);
-    return result;
+    err = run(self);
+    free_chunk(self, &chunk);
+    return err;
 }

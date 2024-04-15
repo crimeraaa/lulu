@@ -15,8 +15,9 @@ static int repl(VM *vm) {
         if (!fgets(line, sizeof(line), stdin)) {
             fputc('\n', stdout);
             break;
-        } else {
-            interpret(vm, line);
+        } 
+        if (interpret(vm, line) == ERROR_ALLOC) {
+            break;
         }
     }
     return 0;
@@ -71,6 +72,8 @@ static int run_file(VM *vm, const char *file_name) {
     case ERROR_COMPTIME:
         return EX_DATAERR;
     case ERROR_RUNTIME:
+        return EX_SOFTWARE;
+    case ERROR_ALLOC:
         return EX_SOFTWARE;
     default:
         return EXIT_FAILURE;

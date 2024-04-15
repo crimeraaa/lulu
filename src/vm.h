@@ -11,6 +11,7 @@ struct VM {
     Chunk *chunk;     // Bytecode, constants and such.
     Byte *ip;  // Pointer to next instruction to be executed.
     const char *name; // Filename or `"stdin"` if in REPL.
+    Table strings;    // Collection of all interned strings.
     Object *objects;  // Head of linked list to all allocated objects.
     jmp_buf errorjmp; // Used for error-handling (kinda) like C++ exceptions.
 };

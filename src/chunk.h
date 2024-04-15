@@ -74,12 +74,12 @@ typedef struct {
 } Chunk;
 
 void init_chunk(Chunk *self, const char *name);
-void free_chunk(Chunk *self);
+void free_chunk(VM *vm, Chunk *self);
 
 // Append `data` to the bytecode array.
-void write_chunk(Chunk *self, Byte data, int line);
+void write_chunk(VM *vm, Chunk *self, Byte data, int line);
 
 // Append `value` to the constants array and return its index.
-int add_constant(Chunk *self, const TValue *value);
+int add_constant(VM *vm, Chunk *self, const TValue *value);
 
 #endif /* LULU_CHUNK_H */

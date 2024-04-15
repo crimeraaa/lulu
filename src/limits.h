@@ -34,7 +34,7 @@
 #define arraylit(T, ...)    compoundlit(T[], __VA_ARGS__)
 #define arraylitlen(T, ...) (sizeof(arraylit(T, __VA_ARGS__)) / sizeof(T))
 
-// `ST` stands for `Struct Type`, and `MT` stands for `Member Type`.
+// `ST` means `Struct Type`, `MT` means `(Flexible Array) Member Type`.
 #define flexarray_size(ST, MT, N)   (sizeof(ST) + arraysize(MT, N))
 
 // Get the number of bits that `N` bytes holds.
@@ -42,7 +42,7 @@
 #define bitsize(T)          bytes_to_bits(sizeof(T))
 
 #define cast(T, expr)       ((T)(expr))
-#define unused(x)           (void)(x)
+#define unused(x)           cast(void, x)
 #define unused2(x, y)       unused(x); unused(y)
 #define unused3(x, y, z)    unused2(x, y); unused(z)
 
@@ -59,6 +59,7 @@ typedef enum {
     ERROR_NONE,
     ERROR_COMPTIME,
     ERROR_RUNTIME,
+    ERROR_ALLOC,
 } ErrType;
 
 #endif /* LULU_LIMITS_H */
