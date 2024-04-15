@@ -19,7 +19,7 @@ static Object *_allocate_object(VM *vm, size_t size, VType tag) {
 
 #define allocate_tstring(vm, N) \
     allocate_flexarray(vm, TString, char, N, TYPE_STRING)
-    
+
 
 const char *const LULU_TYPENAMES[] = {
     [TYPE_NIL]     = "nil",
@@ -108,7 +108,7 @@ static char get_escape(char ch) {
     case 'r':   return '\r';
     case 't':   return '\t';
     case 'v':   return '\v';
-                
+
     case '\\':  return '\\';
     case '\'':  return '\'';
     case '\"':  return '\"';
@@ -153,7 +153,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
 TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs) {
     int len = lhs->len + rhs->len;
     TString *inst = allocate_string(vm, len);
-    
+
     // Don't use `build_string` as it would have already been called for both.
     memcpy(inst->data,            lhs->data, lhs->len);
     memcpy(inst->data + lhs->len, rhs->data, rhs->len);

@@ -18,7 +18,7 @@ void *reallocate(void *ptr, size_t oldsz, size_t newsz) {
         return res;
     }
 }
-    
+
 #define deallocate_flexarray(ST, MT, N, ptr) \
     reallocate(ptr, flexarray_size(ST, MT, N), 0)
 

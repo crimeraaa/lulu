@@ -6,7 +6,7 @@
 
 #define allocate(T, N) \
     reallocate(NULL, 0, arraysize(T, N))
-    
+
 #define deallocate(T, ptr) \
     reallocate(ptr, sizeof(T), 0)
 

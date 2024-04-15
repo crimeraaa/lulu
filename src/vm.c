@@ -17,7 +17,7 @@ static void reset_stack(VM *self) {
 }
 
 static void runtime_error(VM *self, enum RT_ErrType rterr) {
-    
+
 // Errors occur with the guilty operands at the very top of the stack.
 #define _typename(n)    get_typename(self->top + (n))
 
@@ -51,7 +51,7 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
     fputc('\n', stderr);
     reset_stack(self);
     longjmp(self->errorjmp, ERROR_RUNTIME);
-    
+
 #undef _typename
 
 }
@@ -90,7 +90,7 @@ static ErrType run(VM *self) {
 
 // Assumes MSB is read first, then middle, then LSB.
 #define read_byte3()        (decode_byte3(read_byte(), read_byte(), read_byte()))
-    
+
 // Assumes a 3-byte operand comes right after the opcode.
 #define read_constant()     (&constants[read_byte3()])
 #define poke_top(n)         (self->top + (n))

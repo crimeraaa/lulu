@@ -17,7 +17,7 @@
  *          `-`     When used like `V_B3..-..V_1`, indicates we need to concat
  *                  (`..`) values Stack[-B3] (`V_B3`) all the way up to top of
  *                  the Stack[-1] (`V_1`).
- * @note    See: https://www.lua.org/source/4.0/lopcodes.h.html 
+ * @note    See: https://www.lua.org/source/4.0/lopcodes.h.html
  */
 typedef enum {
     /* ----------+--------+----------------+------------------+----------------|

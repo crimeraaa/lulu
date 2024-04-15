@@ -75,7 +75,7 @@ static inline bool is_objtype(const TValue *self, VType expected) {
 #define make_object(p, tt)  (TValue){tt,           {.object  = cast(Object*,p)}}
 #define make_string(p)      make_object(p, TYPE_STRING)
 
-/** 
+/**
  * @note    Setting value BEFORE type tag is needed for evaluating type.
  *          Also, don't use `tag` as the macro parameter name as substitution
  *          will mess up in that case.

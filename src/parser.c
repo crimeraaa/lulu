@@ -34,14 +34,14 @@ static void binary(Compiler *self) {
     Token *token  = &lexer->consumed;
     TkType optype = token->type;
     const ParseRule *rule = get_parserule(optype);
-    
+
     // For exponentiation and concatenation, enforce right-associativity.
     if (optype == TK_CARET || optype == TK_CONCAT) {
         parse_precedence(self, rule->prec);
     } else {
         parse_precedence(self, rule->prec + 1);
     }
-    
+
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (optype) {
     case TK_NEQ: emit_nbytes(self, OP_EQ, OP_NOT);    break;
@@ -94,7 +94,7 @@ static void number(Compiler *self) {
 static void string(Compiler *self) {
     Lexer *lexer  = self->lexer;
     Token *token  = &lexer->consumed;
-    
+
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
     TString *tstr = copy_string(self->vm, token->start + 1, token->len - 2);
     emit_constant(self, &make_string(tstr));
