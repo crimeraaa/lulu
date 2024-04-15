@@ -15,6 +15,10 @@ static OpCode get_binop(TkType optype) {
     case TK_SLASH:   return OP_DIV;
     case TK_PERCENT: return OP_MOD;
     case TK_CARET:   return OP_POW;
+
+    case TK_EQ:      return OP_EQ;
+    case TK_LT:      return OP_LT;
+    case TK_LE:      return OP_LE;
     default:
         // Should not happen
         return OP_RETURN;
@@ -31,7 +35,14 @@ static void binary(Compiler *self) {
 
     // For exponentiation, enforce right-associativity.
     parse_precedence(self, (optype == TK_CARET) ? rule->prec : rule->prec + 1);
-    emit_byte(self, get_binop(optype));
+    
+    // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
+    switch (optype) {
+    case TK_NEQ: emit_nbytes(self, OP_EQ, OP_NOT);    break;
+    case TK_GT:  emit_nbytes(self, OP_LE, OP_NOT);    break;
+    case TK_GE:  emit_nbytes(self, OP_LT, OP_NOT);    break;
+    default:     emit_byte(self,  get_binop(optype)); break;
+    }
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -39,7 +50,10 @@ static void binary(Compiler *self) {
 // PREFIX EXPRESSIONS ----------------------------------------------------- {{{1
 
 static void literal(Compiler *self) {
-    switch (self->lexer->consumed.type) {
+    Lexer *lexer  = self->lexer;
+    Token *token  = &lexer->consumed;
+    TkType optype = token->type;
+    switch (optype) {
     case TK_NIL:    emit_byte(self, OP_NIL);   break;
     case TK_TRUE:   emit_byte(self, OP_TRUE);  break;
     case TK_FALSE:  emit_byte(self, OP_FALSE); break;
@@ -96,7 +110,7 @@ static void unary(Compiler *self) {
 
 // PARSING PRECEDENCE ----------------------------------------------------- {{{1
 
-static const ParseRule parserules[] = {
+static const ParseRule PARSERULES_LOOKUP[] = {
     // TOKEN           PREFIXFN     INFIXFN     PRECEDENCE
     [TK_AND]        = {NULL,        NULL,       PREC_AND},
     [TK_BREAK]      = {NULL,        NULL,       PREC_NONE},
@@ -139,12 +153,12 @@ static const ParseRule parserules[] = {
     [TK_CARET]      = {NULL,        binary,     PREC_FACTOR},
 
     [TK_ASSIGN]     = {NULL,        NULL,       PREC_NONE},
-    [TK_EQ]         = {NULL,        NULL,       PREC_NONE},
-    [TK_NEQ]        = {NULL,        NULL,       PREC_NONE},
-    [TK_GT]         = {NULL,        NULL,       PREC_NONE},
-    [TK_GE]         = {NULL,        NULL,       PREC_NONE},
-    [TK_LT]         = {NULL,        NULL,       PREC_NONE},
-    [TK_LE]         = {NULL,        NULL,       PREC_NONE},
+    [TK_EQ]         = {NULL,        binary,     PREC_EQUALITY},
+    [TK_NEQ]        = {NULL,        binary,     PREC_EQUALITY},
+    [TK_GT]         = {NULL,        binary,     PREC_COMPARISON},
+    [TK_GE]         = {NULL,        binary,     PREC_COMPARISON},
+    [TK_LT]         = {NULL,        binary,     PREC_COMPARISON},
+    [TK_LE]         = {NULL,        binary,     PREC_COMPARISON},
 
     [TK_IDENT]      = {NULL,        NULL,       PREC_NONE},
     [TK_STRING]     = {NULL,        NULL,       PREC_NONE},
@@ -178,7 +192,7 @@ static void parse_precedence(Compiler *self, Precedence prec) {
 }
 
 static const ParseRule *get_parserule(TkType key) {
-    return &parserules[key];
+    return &PARSERULES_LOOKUP[key];
 }
 
 // 1}}} ------------------------------------------------------------------------

@@ -32,6 +32,7 @@
 #define arraylen(array)     (sizeof(array) / sizeof(array[0]))
 #define arraysize(T, N)     (sizeof(T) * (N))
 #define arraylit(T, ...)    compoundlit(T[], __VA_ARGS__)
+#define arraylitlen(T, ...) (sizeof(arraylit(T, __VA_ARGS__)) / sizeof(T))
 
 // Get the number of bits that `N` bytes holds.
 #define bytes_to_bits(N)    ((N) * BITS_PER_BYTE)

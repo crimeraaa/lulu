@@ -46,16 +46,19 @@ int disassemble_instruction(const Chunk *self, int offset) {
     switch (opcode) {
     case OP_CONSTANT:
         return constant_instruction(opcode, self, offset);
-    case OP_NIL:
+    case OP_NIL:    // Literals
     case OP_TRUE:
     case OP_FALSE:
-    case OP_ADD:
+    case OP_EQ:     // Comparison operators
+    case OP_LT:
+    case OP_LE:
+    case OP_ADD:    // Arithmetic operators
     case OP_SUB:
     case OP_MUL:
     case OP_DIV:
     case OP_MOD:
     case OP_POW:
-    case OP_NOT:
+    case OP_NOT:    // Unary operators
     case OP_UNM:
     case OP_RETURN:
         return simple_instruction(opcode, offset);

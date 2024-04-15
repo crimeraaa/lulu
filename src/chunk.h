@@ -14,12 +14,15 @@ typedef enum {
     OP_NIL,      // -     |  -             | nil           |                   |
     OP_TRUE,     // -     |  -             | true          |                   |
     OP_FALSE,    // -     |  -             | false         |                   |
-    OP_ADD,      // -     |  y, x          | x + y         |                   |
-    OP_SUB,      // -     |  y, x          | x - y         |                   |
-    OP_MUL,      // -     |  y, x          | x * y         |                   |
-    OP_DIV,      // -     |  y, x          | x / y         |                   |
-    OP_MOD,      // -     |  y, x          | x % y         |                   |
-    OP_POW,      // -     |  y, x          | x ^ y         |                   |
+    OP_EQ,       // -     |  x, y          | x == y        |                   |
+    OP_LT,       // -     |  x, y          | x <  y        |                   |
+    OP_LE,       // -     |  x, y          | x <= y        |                   |
+    OP_ADD,      // -     |  x, y          | x + y         |                   |
+    OP_SUB,      // -     |  x, y          | x - y         |                   |
+    OP_MUL,      // -     |  x, y          | x * y         |                   |
+    OP_DIV,      // -     |  x, y          | x / y         |                   |
+    OP_MOD,      // -     |  x, y          | x % y         |                   |
+    OP_POW,      // -     |  x, y          | x ^ y         |                   |
     OP_NOT,      // -     |  x             | not x         |                   |
     OP_UNM,      // -     |  x             | -x            |                   |
     OP_RETURN,   // -     |  -             |               |                   |
@@ -28,17 +31,19 @@ typedef enum {
 // Please keep this up to date accordingly!
 #define NUM_OPCODES     (OP_RETURN + 1)
 
-#define encode_byte2_msb(N)                 (((N) >> bitsize(Byte)) & MAX_BYTE)
-#define encode_byte2_lsb(N)                 ((N) & MAX_BYTE)
-#define decode_byte2(msb, lsb)              (((msb) << bitsize(Byte)) \
-                                            | (lsb))
+#define encode_byte2_msb(N)     (((N) >> bitsize(Byte)) & MAX_BYTE)
+#define encode_byte2_lsb(N)     ((N) & MAX_BYTE)
+#define encode_byte2(N)         (encode_byte2_msb(N)                           \
+                                | encode_byte2_lsb(N))
+#define decode_byte2(msb, lsb)  (((msb) << bitsize(Byte))                      \
+                                | (lsb))
 
-#define encode_byte3_msb(N)                 (((N) >> bitsize(Byte2)) & MAX_BYTE)
-#define encode_byte3_mid(N)                 (((N) >> bitsize(Byte))  & MAX_BYTE)
-#define encode_byte3_lsb(N)                 ((N) & MAX_BYTE)
-#define decode_byte3(msb, mid, lsb)         (((msb) << bitsize(Byte2)) \
-                                            | ((mid) << bitsize(Byte)) \
-                                            | (lsb))
+#define encode_byte3_msb(N)     (((N) >> bitsize(Byte2)) & MAX_BYTE)
+#define encode_byte3_mid(N)     (((N) >> bitsize(Byte))  & MAX_BYTE)
+#define encode_byte3_lsb(N)     ((N) & MAX_BYTE)
+#define decode_byte3(msb, mid, lsb) (((msb) << bitsize(Byte2))                 \
+                                    | ((mid) << bitsize(Byte))                 \
+                                    | (lsb))
 
 // Lookup table. Maps `OpCode` to `const char*`.
 extern const char *const LULU_OPNAMES[];

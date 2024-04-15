@@ -59,7 +59,11 @@ typedef struct {
 
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
+// Writes to C `stdout`.
 void print_value(const TValue *self);
+
+// We cannot use `memcmp` due to struct padding.
+bool values_equal(const TValue *lhs, const TValue *rhs);
 
 void init_tarray(TArray *self);
 void free_tarray(TArray *self);

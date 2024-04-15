@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include "compiler.h"
 #include "parser.h"
 #include "vm.h"
@@ -20,6 +21,20 @@ void emit_byte(Compiler *self, Byte data) {
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
     write_chunk(current_chunk(self), data, token->line);
+}
+
+#undef emit_nbytes
+
+void emit_nbytes(Compiler *self, int count, ...) {
+    va_list args;
+    va_start(args, count);
+
+    for (int i = 0; i < count; i++) {
+        Byte datum = va_arg(args, int); // Anything smaller than int is promoted
+        emit_byte(self, datum);
+    }
+
+    va_end(args);
 }
 
 void emit_byte2(Compiler *self, Byte2 data) {

@@ -86,17 +86,21 @@ static ErrType run(VM *self) {
 #define read_constant()     (&constants[read_byte3()])
 #define poke_top(n)         (self->top + (n))
 #define poke_base(n)        (self->stack + (n))
+#define popn(n)             (self->top -= (n))
 
-// Remember that LHS would be pushed before RHS, so LHS is lower down the stack.
-#define arith_op(arithfn) {                                                         \
+#define binary_op(opfn, setfn, errtype) {                                      \
     TValue *lhs = poke_top(-2);                                                \
     TValue *rhs = poke_top(-1);                                                \
     if (!is_number(lhs) || !is_number(rhs)) {                                  \
-        runtime_error(self, RT_ERROR_ARITH);                                   \
+        runtime_error(self, errtype);                                          \
     }                                                                          \
-    set_number(lhs, arithfn(as_number(lhs), as_number(rhs)));                  \
-    self->top--;                                                               \
+    setfn(lhs, opfn(as_number(lhs), as_number(rhs)));                          \
+    popn(1); \
 }
+
+// Remember that LHS would be pushed before RHS, so LHS is lower down the stack.
+#define arith_op(fn)        binary_op(fn, set_number, RT_ERROR_ARITH)
+#define compare_op(fn)      binary_op(fn, set_boolean, RT_ERROR_COMPARE)
 
 // 1}}} ------------------------------------------------------------------------
 
@@ -124,6 +128,16 @@ static ErrType run(VM *self) {
             break;
         case OP_FALSE:
             push_vm(self, &make_boolean(false));
+            break;
+        case OP_EQ:
+            set_boolean(poke_top(-2), values_equal(poke_top(-2), poke_top(-1)));
+            popn(1);
+            break;
+        case OP_LT:
+            compare_op(num_lt);
+            break;
+        case OP_LE:
+            compare_op(num_le);
             break;
         case OP_ADD:
             arith_op(num_add);
@@ -155,7 +169,7 @@ static ErrType run(VM *self) {
         case OP_RETURN:
             print_value(poke_top(-1));
             printf("\n\n");
-            self->top--;
+            popn(1);
             return ERROR_NONE;
         }
     }
@@ -164,7 +178,10 @@ static ErrType run(VM *self) {
 #undef read_constant
 #undef poke_top
 #undef poke_base
+#undef popn
+#undef binary_op
 #undef arith_op
+#undef compare_op
 }
 
 ErrType interpret(VM *self, const char *input) {
