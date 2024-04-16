@@ -179,7 +179,7 @@ static const Keyword KEYWORDS[] = {
     [TK_WHILE]    = make_keyword("while"),
 };
 
-static_assert(arraylen(KEYWORDS) == NUM_KEYWORDS, "Bad keyword count");
+static_assert(array_len(KEYWORDS) == NUM_KEYWORDS, "Bad keyword count");
 
 static TkType check_keyword(TkType expect, const char *word, int len) {
     const Keyword *kw = &KEYWORDS[expect];

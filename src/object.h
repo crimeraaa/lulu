@@ -128,10 +128,10 @@ bool unset_table(Table *self, const TValue *key);
 // Analogous to `tableAddAll()` in the book.
 void copy_table(Table *dst, const Table *src, Allocator *allocator);
 
+// Mutates the `vm->strings` table. Maps strings to non-nil values.
 void set_interned(VM *vm, const TString *key);
 
-// Check if we have already interned a string.
-// Assumes `vm->strings` only maps string keys to any value, even nil.
+// Searches for interned strings. Analogous to `tableFindString()` in the book.
 TString *find_interned(VM *vm, const char *data, int len, uint32_t hash);
 
 #endif /* LULU_OBJECT_H */

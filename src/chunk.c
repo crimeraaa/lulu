@@ -22,7 +22,7 @@ const char *const LULU_OPNAMES[] = {
     [OP_RETURN]     = "OP_RETURN",
 };
 
-static_assert(arraylen(LULU_OPNAMES) == NUM_OPCODES, "Bad opcode count");
+static_assert(array_len(LULU_OPNAMES) == NUM_OPCODES, "Bad opcode count");
 
 void init_chunk(Chunk *self, const char *name) {
     init_tarray(&self->constants);

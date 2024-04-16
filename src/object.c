@@ -3,30 +3,41 @@
 #include "memory.h"
 #include "vm.h"
 
+// MEMORY MANAGEMENT ------------------------------------------------------ {{{1
+
 // Returns `node` since assignment expressions evaluate to the rvalue.
-#define prepend_to_list(head, node) \
-    ((node)->next = (head), (head) = (node))
+#define prepend_node(head, node)    ((node)->next = (head), (head) = (node))
+#define remove_node(head, node)     ((head) = (node)->next)
 
-#define remove_from_list(head, node) \
-    ((head) = (node)->next)
-
-// Assumes we are using the VM allocator.
-// Separate name from the macro since `new_flexarray` also needs access.
-static Object *_allocate_object(size_t size, VType tag, Allocator *allocator) {
+/**
+ * @brief   Assumes we are using the VM allocator. You are not meant to call
+ *          this function directly, rather you are meant to use wrapper macros.
+ *
+ * @note    Separate name from the macro since `new_tstring` also needs access.
+ */
+static Object *_new_object(size_t size, VType tag, Allocator *allocator) {
     VM *vm = cast(VM*, allocator->context);
     Object *object = allocator->allocfn(NULL, 0, size, vm);
     object->tag    = tag;
-    return prepend_to_list(vm->objects, object);
+    return prepend_node(vm->objects, object);
 }
 
 #define new_object(T, tag, allocator) \
-    (T*)_allocate_object(sizeof(T), tag, allocator)
+    cast(T*, _new_object(sizeof(T), tag, allocator))
 
-#define new_flexarray(ST, MT, N, tag, allocator) \
-    (ST*)_allocate_object(flexarray_size(ST, MT, N), tag, allocator)
+// Not meant to be used outside of the main `new_tstring()` function.
+#define _new_tstring(N, allocator) \
+    cast(TString*, _new_object(tstring_size(N), TYPE_STRING, (allocator)))
 
-#define new_tstring(N, allocator) \
-    new_flexarray(TString, char, N, TYPE_STRING, allocator)
+// NOTE: For `concat_string` we do not know the correct hash yet.
+// Analogous to `allocateString()` in the book.
+static TString *new_tstring(int len, Allocator *allocator) {
+    TString *inst = _new_tstring(len + 1, allocator);
+    inst->len     = len;
+    return inst;
+}
+
+// 1}}} ------------------------------------------------------------------------
 
 const char *const LULU_TYPENAMES[] = {
     [TYPE_NIL]     = "nil",
@@ -96,14 +107,6 @@ void write_tarray(TArray *self, const TValue *value, Allocator *allocator) {
 #define FNV1A_OFFSET32  0x811c9dc5
 #define FNV1A_PRIME64   0x00000100000001B3
 #define FNV1A_OFFSET64  0xcbf29ce484222325
-
-// NOTE: For `concat_string` we do not know the correct hash yet.
-// Analogous to `allocateString()` in the book.
-static TString *new_string(int len, Allocator *allocator) {
-    TString *inst = new_tstring(len + 1, allocator);
-    inst->len     = len;
-    return inst;
-}
 
 static char get_escape(char ch) {
     switch (ch) {
@@ -180,7 +183,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
         return interned;
     }
 
-    TString *inst = new_string(len, allocator);
+    TString *inst = new_tstring(len, allocator);
     build_string(inst, literal, len, hash);
 
     // If we have escapes, are we really REALLY sure this isn't interned?
@@ -188,7 +191,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
         interned = find_interned(vm, inst->data, inst->len, inst->hash);
         if (interned != NULL) {
             // Remove `inst` from the allocation list as it will be freed here.
-            remove_from_list(vm->objects, &inst->object);
+            remove_node(vm->objects, &inst->object);
             free_tstring(inst, inst->len, allocator);
             return interned;
         }
@@ -199,7 +202,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
 
 TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs) {
     int len = lhs->len + rhs->len;
-    TString *inst = new_string(len, &vm->allocator);
+    TString *inst = new_tstring(len, &vm->allocator);
 
     // Don't use `build_string` as we don't want to interpet escape sequences,
     // that would have been done already while building individual strings.
@@ -211,7 +214,7 @@ TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs) {
     TString *interned = find_interned(vm, inst->data, inst->len, inst->hash);
     if (interned != NULL) {
         // Remove `inst` from the allocation list as it will be freed here.
-        remove_from_list(vm->objects, &inst->object);
+        remove_node(vm->objects, &inst->object);
         free_tstring(inst, inst->len, &vm->allocator);
         return interned;
     }

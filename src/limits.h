@@ -12,9 +12,11 @@
 #else /* DEBUG_USE_ASSERT not defined. */
 
 #define assert(expr)
-#define static_assert(expr)
+#define static_assert(expr, info)
 
 #endif /* DEBUG_USE_ASSERT */
+
+#define BITS_PER_BYTE       CHAR_BIT
 
 #define _stringify(x)       #x
 #define stringify(x)        _stringify(x)
@@ -24,19 +26,17 @@
 #define logprintf(s, ...)   fprintf(stderr, logformat(s), __VA_ARGS__)
 #define logprintfln(s, ...) logprintf(s "\n", __VA_ARGS__)
 
-#define BITS_PER_BYTE       CHAR_BIT
-
+// Dangerous to use this for C++, so be careful!
 #define compoundlit(T, ...) (T){__VA_ARGS__}
 
 // Will not work for pointer-decayed arrays.
-#define arraylen(array)     (sizeof(array) / sizeof(array[0]))
-#define arraysize(T, N)     (sizeof(T) * (N))
-#define arraylit(T, ...)    compoundlit(T[], __VA_ARGS__)
-#define arraylitlen(T, ...) (sizeof(arraylit(T, __VA_ARGS__)) / sizeof(T))
+#define array_len(array)    (sizeof(array) / sizeof(array[0]))
+#define array_size(T, N)    (sizeof(T) * (N))
+#define array_lit(T, ...)   compoundlit(T[], __VA_ARGS__)
+#define tstring_size(N)     (sizeof(TString) + array_size(char, N))
 
-// `ST` means `Struct Type`, `MT` means `(Flexible Array) Member Type`.
-#define flexarray_size(ST, MT, N)   (sizeof(ST) + arraysize(MT, N))
-#define tstring_size(N)     (sizeof(TString) + arraysize(char, N))
+// Helper macro for functions that expects varargs of the same type.
+#define vargs_count(T, ...) (sizeof(array_lit(T, __VA_ARGS__)) / sizeof(T))
 
 // Get the number of bits that `N` bytes holds.
 #define bytes_to_bits(N)    ((N) * BITS_PER_BYTE)
@@ -48,7 +48,7 @@
 #define unused3(x, y, z)    unused2(x, y); unused(z)
 
 // String literal length. Useful for expressions needed at compile-time.
-#define cstr_litsize(s)     (arraylen(s) - 1)
+#define cstr_litsize(s)     (array_len(s) - 1)
 #define cstr_equal(a, b, n) (memcmp(a, b, n) == 0)
 
 #define MAX_BYTE            cast(Byte,  -1)

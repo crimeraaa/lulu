@@ -21,26 +21,24 @@ void free_objects(VM *vm);
 #define new_array(T, N, allocator)                                             \
     (allocator)->allocfn(NULL,                                                 \
                          0,                                                    \
-                         arraysize(T, N),                                      \
+                         array_size(T, N),                                     \
                          (allocator)->context)
 
 #define resize_array(T, ptr, oldcap, newcap, allocator)                        \
     (allocator)->allocfn((ptr),                                                \
-                        arraysize(T, oldcap),                                  \
-                        arraysize(T, newcap),                                  \
+                        array_size(T, oldcap),                                 \
+                        array_size(T, newcap),                                 \
                         (allocator)->context)
 
 #define free_array(T, ptr, len, allocator)                                     \
     (allocator)->freefn((ptr),                                                 \
-                        arraysize(T, len),                                     \
+                        array_size(T, len),                                    \
                         (allocator)->context)
 
-#define free_flexarray(ST, MT, ptr, len, allocator)                            \
+// Needed by `memory.c:free_object()` and `object.c:copy_string()`.
+#define free_tstring(ptr, len, allocator)                                      \
     (allocator)->freefn((ptr),                                                 \
-                        flexarray_size(ST, MT, len),                           \
+                        tstring_size(len),                                     \
                         (allocator)->context)
-
-#define free_tstring(ptr, len, allocator) \
-    free_flexarray(TString, char, ptr, len, allocator)
 
 #endif /* LULU_MEMORY_H */

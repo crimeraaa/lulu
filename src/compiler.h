@@ -33,6 +33,6 @@ void emit_constant(Compiler *self, const TValue *value);
 
 // Helper macro so you don't have to manually specify the number of varargs.
 #define emit_nbytes(compiler, ...) \
-    emit_nbytes(compiler, arraylitlen(Byte, __VA_ARGS__), __VA_ARGS__)
+    emit_nbytes(compiler, vargs_count(Byte, __VA_ARGS__),  __VA_ARGS__)
 
 #endif /* LULU_COMPILER_H */
