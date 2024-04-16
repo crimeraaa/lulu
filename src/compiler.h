@@ -31,6 +31,12 @@ void emit_return(Compiler *self);
 int make_constant(Compiler *self, const TValue *value);
 void emit_constant(Compiler *self, const TValue *value);
 
+// Intern the `TString*` for `name` so we can easily look it up later.
+int identifier_constant(Compiler *self, const Token *name);
+
+// Currently this is just a wrapper around `OP_SETGLOBAL`.
+void define_variable(Compiler *self, int index);
+
 // Helper macro so you don't have to manually specify the number of varargs.
 #define emit_nbytes(compiler, ...) \
     emit_nbytes(compiler, vargs_count(Byte, __VA_ARGS__),  __VA_ARGS__)

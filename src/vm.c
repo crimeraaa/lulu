@@ -10,6 +10,7 @@ enum RT_ErrType {
     RT_ERROR_ARITH,
     RT_ERROR_COMPARE,
     RT_ERROR_CONCAT,
+    RT_ERROR_UNDEF,   // Make sure to push the invalid variable name first.
 };
 
 static void *vm_allocfn(void *ptr, size_t oldsz, size_t newsz, void *context) {
@@ -66,6 +67,11 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
                 _typename(-2),
                 _typename(-1));
         break;
+    case RT_ERROR_UNDEF:
+        fprintf(stderr,
+                "Attempt to read undefined variable '%s'.",
+                as_cstring(self->top - 1));
+        break;
     }
     fputc('\n', stderr);
     reset_stack(self);
@@ -78,13 +84,16 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
 void init_vm(VM *self, const char *name) {
     reset_stack(self);
     init_allocator(&self->allocator, vm_allocfn, vm_deallocfn, self);
+    init_table(&self->globals);
     init_table(&self->strings);
     self->name    = name;
     self->objects = NULL;
 }
 
 void free_vm(VM *self) {
-    free_table(&self->strings, &self->allocator);
+    Allocator *allocator = &self->allocator;
+    free_table(&self->globals, allocator);
+    free_table(&self->strings, allocator);
     free_objects(self);
 }
 
@@ -99,6 +108,7 @@ TValue pop_vm(VM *self) {
 }
 
 static ErrType run(VM *self) {
+    Allocator *allocator    = &self->allocator;
     const Chunk *chunk      = self->chunk;
     const TValue *constants = chunk->constants.values;
 
@@ -115,6 +125,7 @@ static ErrType run(VM *self) {
 
 // Assumes a 3-byte operand comes right after the opcode.
 #define read_constant()     (&constants[read_byte3()])
+#define read_string()       as_string(read_constant())
 #define poke_top(n)         (self->top + (n))
 #define poke_base(n)        (self->stack + (n))
 #define popn(n)             (self->top -= (n))
@@ -126,11 +137,11 @@ static ErrType run(VM *self) {
         runtime_error(self, errtype);                                          \
     }                                                                          \
     setfn(lhs, opfn(as_number(lhs), as_number(rhs)));                          \
-    popn(1); \
+    popn(1);                                                                   \
 }
 
 // Remember that LHS would be pushed before RHS, so LHS is lower down the stack.
-#define arith_op(fn)        binary_op(fn, set_number, RT_ERROR_ARITH)
+#define arith_op(fn)        binary_op(fn, set_number,  RT_ERROR_ARITH)
 #define compare_op(fn)      binary_op(fn, set_boolean, RT_ERROR_COMPARE)
 
 // 1}}} ------------------------------------------------------------------------
@@ -159,6 +170,24 @@ static ErrType run(VM *self) {
             break;
         case OP_FALSE:
             push_vm(self, &make_boolean(false));
+            break;
+        case OP_POP:
+            popn(1);
+            break;
+        case OP_GETGLOBAL: {
+            // Assume this is a string for the variable's name.
+            const TValue *name = read_constant();
+            TValue value;
+            if (!get_table(&self->globals, name, &value)) {
+                push_vm(self, name);
+                runtime_error(self, RT_ERROR_UNDEF);
+            }
+            push_vm(self, &value);
+        } break;
+        case OP_SETGLOBAL:
+            // Same as `OP_GETGLOBAL`.
+            set_table(&self->globals, read_constant(), poke_top(-1), allocator);
+            popn(1);
             break;
         case OP_EQ:
             set_boolean(poke_top(-2), values_equal(poke_top(-2), poke_top(-1)));
@@ -208,16 +237,21 @@ static ErrType run(VM *self) {
             }
             set_number(poke_top(-1), num_unm(as_number(poke_top(-1))));
             break;
-        case OP_RETURN:
+        case OP_PRINT:
             print_value(poke_top(-1));
-            printf("\n\n");
+            printf("\n");
             popn(1);
+            break;
+        case OP_RETURN:
             return ERROR_NONE;
         }
     }
 
 #undef read_byte
+#undef read_byte2
+#undef read_byte3
 #undef read_constant
+#undef read_string
 #undef poke_top
 #undef poke_base
 #undef popn

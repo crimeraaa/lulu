@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <ctype.h>
 #include "lexer.h"
 #include "compiler.h"
@@ -173,6 +174,7 @@ static const Keyword KEYWORDS[] = {
     [TK_NIL]      = make_keyword("nil"),
     [TK_NOT]      = make_keyword("not"),
     [TK_OR]       = make_keyword("or"),
+    [TK_PRINT]    = make_keyword("print"),
     [TK_RETURN]   = make_keyword("return"),
     [TK_THEN]     = make_keyword("then"),
     [TK_TRUE]     = make_keyword("true"),
@@ -234,6 +236,7 @@ static TkType get_identifier_type(const Lexer *self) {
         }
         break;
     case 'o': return check_keyword(TK_OR, word, len);
+    case 'p': return check_keyword(TK_PRINT, word, len);
     case 'r': return check_keyword(TK_RETURN, word, len);
     case 't':
         if (len > 1) {
@@ -413,6 +416,29 @@ void consume_token(Lexer *self, TkType expected, const char *info) {
         lexerror_at_token(self, info);
     }
 }
+
+#undef check_token
+bool check_token(Lexer *self, const TkType expected[]) {
+    TkType actual = self->token.type;
+    int i = 0;
+    do {
+        if (actual == expected[i]) {
+            return true;
+        }
+        i++;
+    } while (expected[i] != TK_EOF); //Sentinel value.
+    return false;
+}
+
+#undef match_token
+bool match_token(Lexer *self, const TkType expected[]) {
+    if (check_token(self, expected)) {
+        next_token(self);
+        return true;
+    }
+    return false;
+}
+
 
 // 1}}} ------------------------------------------------------------------------
 

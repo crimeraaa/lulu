@@ -2,6 +2,7 @@
 #define LULU_LEXER_H
 
 #include "lulu.h"
+#include "limits.h"
 
 typedef enum {
     // -*- RESERVED WORDS ------------------------------------------------- {{{1
@@ -15,6 +16,7 @@ typedef enum {
     TK_LOCAL,
     TK_NIL,     TK_NOT,
     TK_OR,
+    TK_PRINT,   // This is temporary!
     TK_RETURN,
     TK_THEN,    TK_TRUE,
     TK_WHILE,
@@ -87,6 +89,13 @@ void next_token(Lexer *self);
 
 // Analogous to `compiler.c:consume()` in the book. May call `lexerror_*`.
 void consume_token(Lexer *self, TkType expected, const char *info);
+
+bool check_token(Lexer *self, const TkType expected[]);
+bool match_token(Lexer *self, const TkType expected[]);
+
+#define _token_vargs(...)       array_lit(TkType, __VA_ARGS__, TK_EOF)
+#define check_token(lexer, ...) check_token(lexer, _token_vargs(__VA_ARGS__))
+#define match_token(lexer, ...) match_token(lexer, _token_vargs(__VA_ARGS__))
 
 /**
  * @brief   Similar to `luaX_lexerror()`, analogout to `errorAt()` in the book.

@@ -7,6 +7,9 @@ const char *const LULU_OPNAMES[] = {
     [OP_NIL]        = "OP_NIL",
     [OP_TRUE]       = "OP_TRUE",
     [OP_FALSE]      = "OP_FALSE",
+    [OP_POP]        = "OP_POP",
+    [OP_GETGLOBAL]  = "OP_GETGLOBAL",
+    [OP_SETGLOBAL]  = "OP_SETGLOBAL",
     [OP_EQ]         = "OP_EQ",
     [OP_LT]         = "OP_LT",
     [OP_LE]         = "OP_LE",
@@ -19,6 +22,7 @@ const char *const LULU_OPNAMES[] = {
     [OP_CONCAT]     = "OP_CONCAT",
     [OP_NOT]        = "OP_NOT",
     [OP_UNM]        = "OP_UNM",
+    [OP_PRINT]      = "OP_PRINT",
     [OP_RETURN]     = "OP_RETURN",
 };
 

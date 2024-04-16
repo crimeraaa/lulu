@@ -23,7 +23,7 @@ static int constant_instruction(OpCode opcode, const Chunk *chunk, int offset) {
                              chunk->code[offset + 2],
                              chunk->code[offset + 3]);
     const TValue *value = &chunk->constants.values[index];
-    printf("%-16s Constants[Bx := %i] ; '", get_opname(opcode), index);
+    printf("%-16s Kst[Bx := %i] ; '", get_opname(opcode), index);
     print_value(value);
     printf("' (%s)\n", get_typename(value));
     return offset + 3 + 1; // 3-byte argument, +1 to get index of next opcode
@@ -45,10 +45,13 @@ int disassemble_instruction(const Chunk *self, int offset) {
     OpCode opcode = self->code[offset];
     switch (opcode) {
     case OP_CONSTANT:
+    case OP_GETGLOBAL:
+    case OP_SETGLOBAL:
         return constant_instruction(opcode, self, offset);
     case OP_NIL:    // Prefix literals
     case OP_TRUE:
     case OP_FALSE:
+    case OP_POP:
     case OP_EQ:     // Binary Comparison operators
     case OP_LT:
     case OP_LE:
@@ -61,6 +64,7 @@ int disassemble_instruction(const Chunk *self, int offset) {
     case OP_CONCAT: // Binary concatenation operator
     case OP_NOT:    // Unary operators
     case OP_UNM:
+    case OP_PRINT:
     case OP_RETURN:
         return simple_instruction(opcode, offset);
     default:

@@ -67,6 +67,17 @@ void emit_constant(Compiler *self, const TValue *value) {
     emit_byte3(self, cast(Byte3, index));
 }
 
+int identifier_constant(Compiler *self, const Token *name) {
+    TString *ident = copy_string(self->vm, name->start, name->len);
+    TValue wrapper = make_string(ident);
+    return make_constant(self, &wrapper);
+}
+
+void define_variable(Compiler *self, int index) {
+    emit_byte(self, OP_SETGLOBAL);
+    emit_byte3(self, index);
+}
+
 void end_compiler(Compiler *self) {
     emit_return(self);
 #ifdef DEBUG_PRINT_CODE
@@ -79,7 +90,10 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
     self->chunk  = chunk;
     init_lexer(lexer, input, self->vm);
     next_token(lexer);
-    expression(self);
+
+    while (!match_token(lexer, TK_EOF)) {
+        declaration(self);
+    }
     consume_token(lexer, TK_EOF, "Expected end of expression");
     end_compiler(self);
 }

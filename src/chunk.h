@@ -18,28 +18,34 @@
  *          `-`     When used like `V_B3..-..V_1`, indicates we need to concat
  *                  (`..`) values Stack[-B3] (`V_B3`) all the way up to top of
  *                  the Stack[-1] (`V_1`).
+ *          `_G`    Like in base Lua, this is the table where global variables
+ *                  can be accessed from and written to.
  * @note    See: https://www.lua.org/source/4.0/lopcodes.h.html
  */
 typedef enum {
-    /* ----------+--------+----------------+------------------+----------------|
-    |  NAME      |  ARGS  |  STACK BEFORE  |  STACK AFTER     |  SIDE EFFECTS  |
-    -------------+--------+----------------+------------------+---------------*/
-    OP_CONSTANT, // B3    |  -             | Kst[B3]          |                |
-    OP_NIL,      // -     |  -             | nil              |                |
-    OP_TRUE,     // -     |  -             | true             |                |
-    OP_FALSE,    // -     |  -             | false            |                |
-    OP_EQ,       // -     |  x, y          | x == y           |                |
-    OP_LT,       // -     |  x, y          | x < y            |                |
-    OP_LE,       // -     |  x, y          | x <= y           |                |
-    OP_ADD,      // -     |  x, y          | x + y            |                |
-    OP_SUB,      // -     |  x, y          | x - y            |                |
-    OP_MUL,      // -     |  x, y          | x * y            |                |
-    OP_DIV,      // -     |  x, y          | x / y            |                |
-    OP_MOD,      // -     |  x, y          | x % y            |                |
-    OP_POW,      // -     |  x, y          | x ^ y            |                |
-    OP_CONCAT,   // B3    |  V_B3,..,V_1   | V_B3..-..V_1     |                |
-    OP_NOT,      // -     |  x             | not x            |                |
-    OP_UNM,      // -     |  x             | -x               |                |
+    /* ----------+--------+----------------+-----------------+-----------------|
+    |  NAME      |  ARGS  |  STACK BEFORE  |  STACK AFTER    |  SIDE EFFECTS   |
+    -------------+--------+----------------+-----------------+----------------*/
+    OP_CONSTANT, // B3    |  -             | Kst[B3]         |                 |
+    OP_NIL,      // -     |  -             | nil             |                 |
+    OP_TRUE,     // -     |  -             | true            |                 |
+    OP_FALSE,    // -     |  -             | false           |                 |
+    OP_POP,      // -     |  x             | -               |                 |
+    OP_GETGLOBAL,// B3    |  -             | _G[Kst[B3]]     |                 |
+    OP_SETGLOBAL,// B3    |  x             | -               | _G[Kst[B3]] = x |
+    OP_EQ,       // -     |  x, y          | x == y          |                 |
+    OP_LT,       // -     |  x, y          | x < y           |                 |
+    OP_LE,       // -     |  x, y          | x <= y          |                 |
+    OP_ADD,      // -     |  x, y          | x + y           |                 |
+    OP_SUB,      // -     |  x, y          | x - y           |                 |
+    OP_MUL,      // -     |  x, y          | x * y           |                 |
+    OP_DIV,      // -     |  x, y          | x / y           |                 |
+    OP_MOD,      // -     |  x, y          | x % y           |                 |
+    OP_POW,      // -     |  x, y          | x ^ y           |                 |
+    OP_CONCAT,   // B3    |  V_B3,..,V_1   | V_B3..-..V_1    |                 |
+    OP_NOT,      // -     |  x             | not x           |                 |
+    OP_UNM,      // -     |  x             | -x              |                 |
+    OP_PRINT,    // TEMPORARY!
     OP_RETURN,   // -     |  -             |                  |                |
 } OpCode;
 

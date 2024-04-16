@@ -6,6 +6,21 @@
 static const ParseRule *get_parserule(TkType key);
 static void parse_precedence(Compiler *self, Precedence prec);
 
+// Intern a variable name.
+// static int parse_variable(Compiler *self, const char *info) {
+//     Lexer *lexer = self->lexer;
+//     consume_token(lexer, TK_IDENT, info);
+//     return identifier_constant(self, &lexer->consumed);
+// }
+
+/**
+ * @note    In the book, Robert uses `parsePrecedence(PREC_ASSIGNMENT)` but
+ *          doing that will allow nested assignments as in C. For Lua, we have
+ *          to use 1 precedence higher to disallow them.
+ */
+static void expression(Compiler *self);
+static void statement(Compiler *self);
+
 // INFIX EXPRESSIONS ------------------------------------------------------ {{{1
 
 static OpCode get_binop(TkType optype) {
@@ -92,12 +107,35 @@ static void number(Compiler *self) {
 }
 
 static void string(Compiler *self) {
-    Lexer *lexer  = self->lexer;
-    Token *token  = &lexer->consumed;
+    Lexer *lexer = self->lexer;
+    Token *token = &lexer->consumed;
 
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
-    TString *tstr = copy_string(self->vm, token->start + 1, token->len - 2);
-    emit_constant(self, &make_string(tstr));
+    TString *interned = copy_string(self->vm, token->start + 1, token->len - 2);
+    emit_constant(self, &make_string(interned));
+}
+
+// `assignable` is only true if the identifier is also the first statement.
+static void named_variable(Compiler *self, const Token *name, bool assignable) {
+    Lexer *lexer = self->lexer;
+    int arg = identifier_constant(self, name);
+    if (assignable) {
+        if (match_token(lexer, TK_ASSIGN)) {
+            expression(self);
+            define_variable(self, arg);
+        } else {
+            lexerror_at_token(lexer, "'=' expected");
+        }
+    } else {
+        emit_byte(self, OP_GETGLOBAL);
+        emit_byte3(self, arg);
+    }
+}
+
+// Past the first lexeme, assigning of variables is not allowed in Lua.
+static void variable(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    named_variable(self, &lexer->consumed, false);
 }
 
 static OpCode get_unop(TkType type) {
@@ -142,6 +180,7 @@ static const ParseRule PARSERULES_LOOKUP[] = {
     [TK_NIL]        = {literal,     NULL,       PREC_NONE},
     [TK_NOT]        = {unary,       NULL,       PREC_NONE},
     [TK_OR]         = {NULL,        NULL,       PREC_NONE},
+    [TK_PRINT]      = {NULL,        NULL,       PREC_NONE},
     [TK_RETURN]     = {NULL,        NULL,       PREC_NONE},
     [TK_THEN]       = {NULL,        NULL,       PREC_NONE},
     [TK_TRUE]       = {literal,     NULL,       PREC_NONE},
@@ -175,21 +214,66 @@ static const ParseRule PARSERULES_LOOKUP[] = {
     [TK_LT]         = {NULL,        binary,     PREC_COMPARISON},
     [TK_LE]         = {NULL,        binary,     PREC_COMPARISON},
 
-    [TK_IDENT]      = {NULL,        NULL,       PREC_NONE},
+    [TK_IDENT]      = {variable,    NULL,       PREC_NONE},
     [TK_STRING]     = {string,      NULL,       PREC_NONE},
     [TK_NUMBER]     = {number,      NULL,       PREC_NONE},
     [TK_ERROR]      = {NULL,        NULL,       PREC_NONE},
     [TK_EOF]        = {NULL,        NULL,       PREC_NONE},
 };
 
-void expression(Compiler *self) {
+static void expression(Compiler *self) {
     parse_precedence(self, PREC_ASSIGN + 1);
+}
+
+// static void vardecl(Compiler *self) {
+//     Lexer *lexer = self->lexer;
+//     int index = parse_variable(self, "Expected a variable name");
+//     // Lua does not allow implicit nil for globals
+//     consume_token(lexer, TK_ASSIGN, "Expected '=' after global variable name");
+//     expression(self);
+//     define_variable(self, index);
+// }
+
+static void print_statement(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    expression(self);
+    match_token(lexer, TK_SEMICOL);
+    emit_byte(self, OP_PRINT);
+}
+
+void declaration(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    // In Lua, globals aren't declared by rather assigned.
+    if (match_token(lexer, TK_IDENT)) {
+        named_variable(self, &lexer->consumed, true);
+    } else {
+        statement(self);
+    }
+}
+
+// Expressions produce values, but this will pop whatever it produces.
+static void exprstmt(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    expression(self);
+    match_token(lexer, TK_SEMICOL);
+    emit_byte(self, OP_POP);
+}
+
+// By themselves, statements have zero stack effect.
+static void statement(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    if (match_token(lexer, TK_PRINT)) {
+        print_statement(self);
+    } else {
+        // lexerror_at_token(lexer, "Expected a statement");
+        exprstmt(self);
+    }
 }
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
 // exprssions following it.
 static void parse_precedence(Compiler *self, Precedence prec) {
-    Lexer *lexer    = self->lexer;
+    Lexer *lexer = self->lexer;
     next_token(lexer);
     ParseFn prefixfn = get_parserule(lexer->consumed.type)->prefixfn;
     if (prefixfn == NULL) {
@@ -203,6 +287,11 @@ static void parse_precedence(Compiler *self, Precedence prec) {
         next_token(lexer);
         ParseFn infixfn = get_parserule(lexer->consumed.type)->infixfn;
         infixfn(self);
+    }
+
+    // This function can never consume the `=` token.
+    if (match_token(lexer, TK_ASSIGN)) {
+        lexerror_at_token(lexer, "Invalid assignment target");
     }
 }
 

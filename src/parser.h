@@ -37,11 +37,7 @@ typedef struct {
     Precedence prec;
 } ParseRule;
 
-/**
- * @note    In the book, Robert uses `parsePrecedence(PREC_ASSIGNMENT)` but
- *          doing that will allow nested assignments as in C. For Lua, we have
- *          to use 1 precedence higher to disallow them.
- */
-void expression(Compiler *self);
+// The main program/script/block.
+void declaration(Compiler *self);
 
 #endif /* LULU_PARSER_H */

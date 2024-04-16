@@ -1,4 +1,4 @@
 -- Ensure we don't leak memory!
--- "hi" .. ' ' .. "mom!" == "hi mom!"
--- "hi" .. ' ' .. "mom!" == "hi" .. " mom!"
-"hi" .. ' ' .. "mom" .. '!' == "hi" .. ' ' .. "mom" .. '!'
+print "hi" .. ' ' .. "mom!" == "hi mom!"
+print "hi" .. ' ' .. "mom!" == "hi" .. " mom!"
+print("hi" .. ' ' .. "mom" .. '!' == "hi" .. ' ' .. "mom" .. '!')
