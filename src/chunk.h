@@ -66,8 +66,8 @@ extern const char *const LULU_OPNAMES[];
 #define get_opname(opcode)  LULU_OPNAMES[opcode]
 
 typedef struct {
-    const char *name;
     TArray constants;
+    const char *name;
     Byte *code;
     int *lines; // Mirrors the bytecode array.
     int len;

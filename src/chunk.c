@@ -25,8 +25,8 @@ const char *const LULU_OPNAMES[] = {
 static_assert(arraylen(LULU_OPNAMES) == NUM_OPCODES, "Bad opcode count");
 
 void init_chunk(Chunk *self, const char *name) {
-    self->name  = name;
     init_tarray(&self->constants);
+    self->name  = name;
     self->code  = NULL;
     self->lines = NULL;
     self->len   = 0;
@@ -42,10 +42,11 @@ void free_chunk(Chunk *self, Allocator *allocator) {
 
 void write_chunk(Chunk *self, Byte data, int line, Allocator *allocator) {
     if (self->len + 1 > self->cap) {
-        int oldcap  = self->cap;
-        self->cap   = grow_capacity(oldcap);
-        resize_array(Byte, &self->code,  oldcap, self->cap, allocator);
-        resize_array(int,  &self->lines, oldcap, self->cap, allocator);
+        int prev    = self->cap;
+        int next    = grow_capacity(prev);
+        self->code  = resize_array(Byte, self->code,  prev, next, allocator);
+        self->lines = resize_array(int,  self->lines, prev, next, allocator);
+        self->cap   = next;
     }
     self->code[self->len]  = data;
     self->lines[self->len] = line;

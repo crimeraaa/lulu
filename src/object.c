@@ -36,7 +36,7 @@ const char *const LULU_TYPENAMES[] = {
 };
 
 void print_value(const TValue *self) {
-    switch (get_tagtype(self)) {
+    switch (get_tag(self)) {
     case TYPE_NIL:
         printf("nil");
         break;
@@ -54,11 +54,11 @@ void print_value(const TValue *self) {
 
 bool values_equal(const TValue *lhs, const TValue *rhs) {
     // Logically, differing types can never be equal.
-    if (get_tagtype(lhs) != get_tagtype(rhs)) {
+    if (get_tag(lhs) != get_tag(rhs)) {
         return false;
     }
     // For objects we assume they are correctly interned.
-    switch (get_tagtype(lhs)) {
+    switch (get_tag(lhs)) {
     case TYPE_NIL:      return true;
     case TYPE_BOOLEAN:  return as_boolean(lhs) == as_boolean(rhs);
     case TYPE_NUMBER:   return num_eq(as_number(lhs), as_number(rhs));
@@ -80,8 +80,10 @@ void free_tarray(TArray *self, Allocator *allocator) {
 void write_tarray(TArray *self, const TValue *value, Allocator *allocator) {
     if (self->len + 1 > self->cap) {
         int oldcap   = self->cap;
-        self->cap    = grow_capacity(oldcap);
-        resize_array(TValue, &self->values, oldcap, self->cap, allocator);
+        int newcap   = grow_capacity(oldcap);
+        TValue *ptr  = self->values;
+        self->values = resize_array(TValue, ptr, oldcap, newcap, allocator);
+        self->cap    = newcap;
     }
     self->values[self->len] = *value;
     self->len++;
@@ -99,7 +101,7 @@ void write_tarray(TArray *self, const TValue *value, Allocator *allocator) {
 // Analogous to `allocateString()` in the book.
 static TString *new_string(int len, Allocator *allocator) {
     TString *inst = new_tstring(len + 1, allocator);
-    inst->len = len;
+    inst->len     = len;
     return inst;
 }
 
@@ -170,8 +172,8 @@ static void build_string(TString *self, const char *src, int len, uint32_t hash)
 
 TString *copy_string(VM *vm, const char *literal, int len) {
     Allocator *allocator = &vm->allocator;
-    uint32_t hash = hash_string(literal, len);
-    TString *interned = find_interned(vm, literal, len, hash);
+    uint32_t hash        = hash_string(literal, len);
+    TString *interned    = find_interned(vm, literal, len, hash);
 
     // Is this string already interned?
     if (interned != NULL) {
@@ -191,7 +193,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
             return interned;
         }
     }
-    set_table(&vm->strings, &make_string(inst), &make_boolean(true), allocator);
+    set_interned(vm, inst);
     return inst;
 }
 
@@ -213,6 +215,7 @@ TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs) {
         free_tstring(inst, inst->len, &vm->allocator);
         return interned;
     }
+    set_interned(vm, inst);
     return inst;
 }
 
@@ -244,7 +247,7 @@ static uint32_t hash_number(Number number) {
 }
 
 static uint32_t hash_value(const TValue *self) {
-    switch (get_tagtype(self)) {
+    switch (get_tag(self)) {
     case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
     case TYPE_BOOLEAN:  return as_boolean(self);
     case TYPE_NUMBER:   return hash_number(as_number(self));
@@ -346,6 +349,13 @@ void copy_table(Table *dst, const Table *src, Allocator *allocator) {
         }
         set_table(dst, &entry->key, &entry->value, allocator);
     }
+}
+
+void set_interned(VM *vm, const TString *string) {
+    Allocator *allocator = &vm->allocator;
+    const TValue key = make_string(string);
+    const TValue val = make_boolean(true);
+    set_table(&vm->strings, &key, &val, allocator);
 }
 
 TString *find_interned(VM *vm, const char *data, int len, uint32_t hash) {

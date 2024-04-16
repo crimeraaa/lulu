@@ -61,25 +61,25 @@ typedef struct {
 } Table;
 
 // NOTE: All `get_*`, `is_*`, `as_*` and `set_*` functions expect a pointer.
-#define get_tagtype(v)      (v)->tag
-#define get_typename(v)     LULU_TYPENAMES[get_tagtype(v)]
+#define get_tag(v)          ((v)->tag)
+#define get_typename(v)     LULU_TYPENAMES[get_tag(v)]
 
-#define is_nil(v)           (get_tagtype(v) == TYPE_NIL)
-#define is_boolean(v)       (get_tagtype(v) == TYPE_BOOLEAN)
-#define is_number(v)        (get_tagtype(v) == TYPE_NUMBER)
-#define is_object(v)        (get_tagtype(v) >= TYPE_STRING)
+#define is_nil(v)           (get_tag(v) == TYPE_NIL)
+#define is_boolean(v)       (get_tag(v) == TYPE_BOOLEAN)
+#define is_number(v)        (get_tag(v) == TYPE_NUMBER)
+#define is_object(v)        (get_tag(v) >= TYPE_STRING)
 #define is_string(v)        is_objtype(v, TYPE_STRING)
 
 // Use a function to avoid multiple macro expansion.
 static inline bool is_objtype(const TValue *self, VType expected) {
-    return is_object(self) && get_tagtype(self) == expected;
+    return is_object(self) && get_tag(self) == expected;
 }
 
-#define as_boolean(v)       (v)->as.boolean
-#define as_number(v)        (v)->as.number
-#define as_object(v)        (v)->as.object
+#define as_boolean(v)       ((v)->as.boolean)
+#define as_number(v)        ((v)->as.number)
+#define as_object(v)        ((v)->as.object)
 #define as_string(v)        cast(TString*, as_object(v))
-#define as_cstring(v)       as_string(v)->data
+#define as_cstring(v)       (as_string(v)->data)
 
 #define make_nil()          (TValue){TYPE_NIL,     {.number  = 0}}
 #define make_boolean(b)     (TValue){TYPE_BOOLEAN, {.boolean = (b)}}
@@ -87,20 +87,23 @@ static inline bool is_objtype(const TValue *self, VType expected) {
 #define make_object(p, tt)  (TValue){tt,           {.object  = cast(Object*,p)}}
 #define make_string(p)      make_object(p, TYPE_STRING)
 
-/**
- * @note    Setting value BEFORE type tag is needed for evaluating type.
- *          Also, don't use `tag` as the macro parameter name as substitution
- *          will mess up in that case.
- */
-#define set_tagtype(v, tt)  (get_tagtype(v) = (tt))
-#define set_nil(v)          (as_number(v)  = 0,   set_tagtype(v, TYPE_NIL))
-#define set_boolean(v, b)   (as_boolean(v) = (b), set_tagtype(v, TYPE_BOOLEAN))
-#define set_number(v, n)    (as_number(v)  = (n), set_tagtype(v, TYPE_NUMBER))
-#define set_string(v, s)    (as_string(v)  = (s), set_tagtype(v, TYPE_STRING))
+// We use a local variable to avoid bugs caused by multiple macro expansion.
+// NOTE: We set the value before the tag type in case `val` evaluates `dst`.
+#define set_value(tt, as_fn, dst, val) {                                       \
+    TValue *_dst  = (dst);                                                     \
+    as_fn(_dst)   = (val);                                                     \
+    get_tag(_dst) = (tt);                                                      \
+}
+
+#define set_nil(v)          set_value(TYPE_NIL,     as_number,  v, 0)
+#define set_boolean(v, b)   set_value(TYPE_BOOLEAN, as_boolean, v, b)
+#define set_number(v, n)    set_value(TYPE_NUMBER,  as_number,  v, n)
+#define set_object(T, v, o) set_value(T,            as_object,  v, o)
+#define set_string(v, s)    set_object(TYPE_STRING, v, s)
 
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
-// Writes to C `stdout`.
+// Writes string representation of `self` to C `stdout`.
 void print_value(const TValue *self);
 
 // We cannot use `memcmp` due to struct padding.
@@ -110,7 +113,7 @@ void init_tarray(TArray *self);
 void free_tarray(TArray *self, Allocator *allocator);
 void write_tarray(TArray *self, const TValue *value, Allocator *allocator);
 
-// Globals functions that deal with strings need the VM to check for interned.
+// Global functions that deal with strings need the VM to check for interned.
 TString *copy_string(VM *vm, const char *literal, int len);
 TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs);
 
@@ -124,6 +127,8 @@ bool unset_table(Table *self, const TValue *key);
 
 // Analogous to `tableAddAll()` in the book.
 void copy_table(Table *dst, const Table *src, Allocator *allocator);
+
+void set_interned(VM *vm, const TString *key);
 
 // Check if we have already interned a string.
 // Assumes `vm->strings` only maps string keys to any value, even nil.

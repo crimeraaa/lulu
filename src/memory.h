@@ -25,10 +25,10 @@ void free_objects(VM *vm);
                          (allocator)->context)
 
 #define resize_array(T, ptr, oldcap, newcap, allocator)                        \
-    *(ptr) = (allocator)->allocfn(*(ptr),                                      \
-                                   arraysize(T, oldcap),                       \
-                                   arraysize(T, newcap),                       \
-                                   (allocator)->context)
+    (allocator)->allocfn((ptr),                                                \
+                        arraysize(T, oldcap),                                  \
+                        arraysize(T, newcap),                                  \
+                        (allocator)->context)
 
 #define free_array(T, ptr, len, allocator)                                     \
     (allocator)->freefn((ptr),                                                 \

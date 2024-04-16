@@ -78,6 +78,7 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
 void init_vm(VM *self, const char *name) {
     reset_stack(self);
     init_allocator(&self->allocator, vm_allocfn, vm_deallocfn, self);
+    init_table(&self->strings);
     self->name    = name;
     self->objects = NULL;
 }
