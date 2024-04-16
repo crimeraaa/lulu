@@ -3,13 +3,17 @@
 #include "memory.h"
 #include "vm.h"
 
+#define prepend_to_list(head, node) \
+    ((node)->next = (head), (head) = (node))
+
+#define remove_from_list(head, node) \
+    ((head) = (node)->next)
+
 // Separate name from the macro since `allocate_flexarray` also needs access.
 static Object *_allocate_object(VM *vm, size_t size, VType tag) {
     Object *object = reallocate(vm, NULL, 0, size);
     object->tag    = tag;
-    object->next   = vm->objects;
-    vm->objects    = object;
-    return object;
+    return prepend_to_list(vm->objects, object);
 }
 
 #define allocate_object(vm, T, tag) \
@@ -56,9 +60,6 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     case TYPE_BOOLEAN:  return as_boolean(lhs) == as_boolean(rhs);
     case TYPE_NUMBER:   return num_eq(as_number(lhs), as_number(rhs));
     case TYPE_STRING:   return as_object(lhs) == as_object(rhs);
-    default:
-        // Should not happen
-        return false;
     }
 }
 
@@ -85,7 +86,7 @@ void write_tarray(VM *vm, TArray *self, const TValue *value) {
 
 // TSTRING MANAGEMENT ----------------------------------------------------- {{{1
 
-// https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function 
+// https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
 #define FNV1A_PRIME32   0x01000193
 #define FNV1A_OFFSET32  0x811c9dc5
 #define FNV1A_PRIME64   0x00000100000001B3
@@ -165,14 +166,26 @@ static void build_string(TString *self, const char *src, int len, uint32_t hash)
 
 TString *copy_string(VM *vm, const char *literal, int len) {
     uint32_t hash = hash_string(literal, len);
-    TString *inst = find_interned(vm, literal, len, hash);
-    
+    TString *interned = find_interned(vm, literal, len, hash);
+
     // Is this string already interned?
-    if (inst != NULL) {
-        return inst;
+    if (interned != NULL) {
+        return interned;
     }
-    inst = allocate_string(vm, len);
+
+    TString *inst = allocate_string(vm, len);
     build_string(inst, literal, len, hash);
+
+    // If we have escapes, are we really REALLY sure this isn't interned?
+    if (inst->len != len) {
+        interned = find_interned(vm, inst->data, inst->len, inst->hash);
+        if (interned != NULL) {
+            // Remove `inst` from the allocation list as it will be freed here.
+            remove_from_list(vm->objects, &inst->object);
+            deallocate_tstring(vm, inst);
+            return interned;
+        }
+    }
     set_table(vm, &vm->strings, &make_string(inst), &make_boolean(true));
     return inst;
 }
@@ -189,12 +202,11 @@ TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs) {
 
     TString *interned = find_interned(vm, inst->data, inst->len, inst->hash);
     if (interned != NULL) {
-        // Remove `inst` from the allocation list as it will be freed.
-        Object *object = &inst->object;
-        vm->objects    = object->next;
+        // Remove `inst` from the allocation list as it will be freed here.
+        remove_from_list(vm->objects, &inst->object);
         deallocate_tstring(vm, inst);
         return interned;
-    }    
+    }
     return inst;
 }
 
@@ -225,9 +237,9 @@ static uint32_t hash_number(Number number) {
     return hash.bits % UINT32_MAX;
 }
 
-static uint32_t get_hash(const TValue *self) {
+static uint32_t hash_value(const TValue *self) {
     switch (get_tagtype(self)) {
-    case TYPE_NIL:      return 0; // Nil keys are not valid though
+    case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
     case TYPE_BOOLEAN:  return as_boolean(self);
     case TYPE_NUMBER:   return hash_number(as_number(self));
     case TYPE_STRING:   return as_string(self)->hash;
@@ -236,17 +248,15 @@ static uint32_t get_hash(const TValue *self) {
 
 // Find a free slot. Assumes there is at least 1 free slot left.
 static Entry *find_entry(Entry *self, int cap, const TValue *key) {
-    uint32_t index = get_hash(key) % cap;
+    uint32_t index = hash_value(key) % cap;
     Entry *tombstone = NULL;
     for (;;) {
         Entry *entry = &self[index];
         if (is_nil(&entry->key)) {
             if (is_nil(&entry->value)) {
                 return (tombstone == NULL) ? entry : tombstone;
-            } else {
-                if (tombstone == NULL) {
-                    tombstone = entry;
-                }
+            } else if (tombstone == NULL) {
+                tombstone = entry;
             }
         } else if (values_equal(&entry->key, key)) {
             return entry;
@@ -259,10 +269,10 @@ static Entry *find_entry(Entry *self, int cap, const TValue *key) {
 static void resize_table(VM *vm, Table *self, int newcap) {
     Entry *newbuf = allocate(vm, Entry, newcap);
     for (int i = 0; i < newcap; i++) {
-        newbuf[i].key   = make_nil();
-        newbuf[i].value = make_nil();
+        set_nil(&newbuf[i].key);
+        set_nil(&newbuf[i].value);
     }
-    
+
     // Copy non-empty and non-tombstone entries to the new table.
     self->count = 0;
     for (int i = 0; i < self->cap; i++) {
@@ -294,12 +304,12 @@ bool get_table(VM *vm, Table *self, const TValue *key, TValue *out) {
 }
 
 bool set_table(VM *vm, Table *self, const TValue *key, const TValue *value) {
-    if (self->count + 1 > self->cap) {
+    if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
         resize_table(vm, self, grow_capacity(self->cap));
     }
     Entry *entry  = find_entry(self->entries, self->cap, key);
     bool isnewkey = is_nil(&entry->key); // All keys implicitly nil by default.
-    
+
     // Don't increase the count for tombstones (nil-key with non-nil value)
     if (isnewkey && is_nil(&entry->value)) {
         self->count++;
@@ -318,7 +328,7 @@ bool unset_table(VM *vm, Table *self, const TValue *key) {
     if (is_nil(&entry->key)) {
         return false;
     }
-    // Place a tombstone, it must be distinct from nil key and nil value.
+    // Place a tombstone, it must be distinct from a nil key with a nil value.
     set_nil(&entry->key);
     set_boolean(&entry->value, false);
     return true;
@@ -347,11 +357,10 @@ TString *find_interned(VM *vm, const char *data, int len, uint32_t hash) {
             if (is_nil(&entry->value)) {
                 return NULL;
             }
-        } 
+        }
         // We assume ALL keys in this table are strings.
         TString *ts = as_string(&entry->key);
         if (ts->len == len && ts->hash == hash) {
-            // TODO: Account for unencoded and encoded escape sequences
             if (cstr_equal(ts->data, data, len)) {
                 return ts;
             }
@@ -360,4 +369,4 @@ TString *find_interned(VM *vm, const char *data, int len, uint32_t hash) {
     }
 }
 
-// 1}}} ------------------------------------------------------------------------ 
+// 1}}} ------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 #include "chunk.h"
+#include "object.h"
 #include "memory.h"
 
 const char *const LULU_OPNAMES[] = {
@@ -52,6 +53,13 @@ void write_chunk(VM *vm, Chunk *self, Byte data, int line) {
 }
 
 int add_constant(VM *vm, Chunk *self, const TValue *value) {
-    write_tarray(vm, &self->constants, value);
-    return self->constants.len - 1;
+    TArray *constants = &self->constants;
+    // TODO: Literally anything is faster than a linear search
+    for (int i = 0; i < constants->len; i++) {
+        if (values_equal(&constants->values[i], value)) {
+            return i;
+        }
+    }
+    write_tarray(vm, constants, value);
+    return constants->len - 1;
 }

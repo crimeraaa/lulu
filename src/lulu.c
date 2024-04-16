@@ -15,7 +15,7 @@ static int repl(VM *vm) {
         if (!fgets(line, sizeof(line), stdin)) {
             fputc('\n', stdout);
             break;
-        } 
+        }
         if (interpret(vm, line) == ERROR_ALLOC) {
             break;
         }

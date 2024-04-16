@@ -9,7 +9,7 @@ void *reallocate(VM *vm, void *ptr, size_t oldsz, size_t newsz) {
     if (newsz == 0) {
         free(ptr);
         return NULL;
-    } 
+    }
     void *res = realloc(ptr, newsz);
     if (res == NULL) {
         logprintln("[FATAL ERROR]: No more memory.");
