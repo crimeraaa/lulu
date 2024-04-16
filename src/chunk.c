@@ -33,26 +33,26 @@ void init_chunk(Chunk *self, const char *name) {
     self->cap   = 0;
 }
 
-void free_chunk(VM *vm, Chunk *self) {
-    free_tarray(vm, &self->constants);
-    free_array(vm, Byte, self->code, self->len);
-    free_array(vm, int, self->lines, self->len);
+void free_chunk(Chunk *self, Allocator *allocator) {
+    free_tarray(&self->constants, allocator);
+    free_array(Byte, self->code,  self->len, allocator);
+    free_array(int,  self->lines, self->len, allocator);
     init_chunk(self, "(freed chunk)");
 }
 
-void write_chunk(VM *vm, Chunk *self, Byte data, int line) {
+void write_chunk(Chunk *self, Byte data, int line, Allocator *allocator) {
     if (self->len + 1 > self->cap) {
         int oldcap  = self->cap;
         self->cap   = grow_capacity(oldcap);
-        self->code  = grow_array(vm, Byte, self->code, oldcap, self->cap);
-        self->lines = grow_array(vm, int , self->lines, oldcap, self->cap);
+        resize_array(Byte, &self->code,  oldcap, self->cap, allocator);
+        resize_array(int,  &self->lines, oldcap, self->cap, allocator);
     }
     self->code[self->len]  = data;
     self->lines[self->len] = line;
     self->len++;
 }
 
-int add_constant(VM *vm, Chunk *self, const TValue *value) {
+int add_constant(Chunk *self, const TValue *value, Allocator *allocator) {
     TArray *constants = &self->constants;
     // TODO: Literally anything is faster than a linear search
     for (int i = 0; i < constants->len; i++) {
@@ -60,6 +60,6 @@ int add_constant(VM *vm, Chunk *self, const TValue *value) {
             return i;
         }
     }
-    write_tarray(vm, constants, value);
+    write_tarray(constants, value, allocator);
     return constants->len - 1;
 }

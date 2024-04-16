@@ -20,7 +20,7 @@ static Chunk *current_chunk(Compiler *self) {
 void emit_byte(Compiler *self, Byte data) {
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
-    write_chunk(self->vm, current_chunk(self), data, token->line);
+    write_chunk(current_chunk(self), data, token->line, &self->vm->allocator);
 }
 
 #undef emit_nbytes
@@ -54,7 +54,7 @@ void emit_return(Compiler *self) {
 
 int make_constant(Compiler *self, const TValue *value) {
     Lexer *lexer = self->lexer;
-    int index = add_constant(self->vm, current_chunk(self), value);
+    int index = add_constant(current_chunk(self), value, &self->vm->allocator);
     if (index >= MAX_CONSTANTS) {
         lexerror_at_consumed(lexer, "Too many constants in current chunk");
     }

@@ -4,6 +4,7 @@
 #include "lulu.h"
 #include "limits.h"
 #include "object.h"
+#include "memory.h"
 
 /**
  * @brief   Conceptually, our stack grows from left to right. Values to the
@@ -74,12 +75,12 @@ typedef struct {
 } Chunk;
 
 void init_chunk(Chunk *self, const char *name);
-void free_chunk(VM *vm, Chunk *self);
+void free_chunk(Chunk *self, Allocator *allocator);
 
 // Append `data` to the bytecode array.
-void write_chunk(VM *vm, Chunk *self, Byte data, int line);
+void write_chunk(Chunk *self, Byte data, int line, Allocator *allocator);
 
 // Append `value` to the constants array and return its index.
-int add_constant(VM *vm, Chunk *self, const TValue *value);
+int add_constant(Chunk *self, const TValue *value, Allocator *allocator);
 
 #endif /* LULU_CHUNK_H */

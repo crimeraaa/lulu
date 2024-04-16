@@ -36,6 +36,7 @@
 
 // `ST` means `Struct Type`, `MT` means `(Flexible Array) Member Type`.
 #define flexarray_size(ST, MT, N)   (sizeof(ST) + arraysize(MT, N))
+#define tstring_size(N)     (sizeof(TString) + arraysize(char, N))
 
 // Get the number of bits that `N` bytes holds.
 #define bytes_to_bits(N)    ((N) * BITS_PER_BYTE)

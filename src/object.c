@@ -3,27 +3,30 @@
 #include "memory.h"
 #include "vm.h"
 
+// Returns `node` since assignment expressions evaluate to the rvalue.
 #define prepend_to_list(head, node) \
     ((node)->next = (head), (head) = (node))
 
 #define remove_from_list(head, node) \
     ((head) = (node)->next)
 
-// Separate name from the macro since `allocate_flexarray` also needs access.
-static Object *_allocate_object(VM *vm, size_t size, VType tag) {
-    Object *object = reallocate(vm, NULL, 0, size);
+// Assumes we are using the VM allocator.
+// Separate name from the macro since `new_flexarray` also needs access.
+static Object *_allocate_object(size_t size, VType tag, Allocator *allocator) {
+    VM *vm = cast(VM*, allocator->context);
+    Object *object = allocator->allocfn(NULL, 0, size, vm);
     object->tag    = tag;
     return prepend_to_list(vm->objects, object);
 }
 
-#define allocate_object(vm, T, tag) \
-    (T*)_allocate_object(vm, sizeof(T), tag)
+#define new_object(T, tag, allocator) \
+    (T*)_allocate_object(sizeof(T), tag, allocator)
 
-#define allocate_flexarray(vm, ST, MT, N, tag) \
-    (ST*)_allocate_object(vm, flexarray_size(ST, MT, N), tag)
+#define new_flexarray(ST, MT, N, tag, allocator) \
+    (ST*)_allocate_object(flexarray_size(ST, MT, N), tag, allocator)
 
-#define allocate_tstring(vm, N) \
-    allocate_flexarray(vm, TString, char, N, TYPE_STRING)
+#define new_tstring(N, allocator) \
+    new_flexarray(TString, char, N, TYPE_STRING, allocator)
 
 const char *const LULU_TYPENAMES[] = {
     [TYPE_NIL]     = "nil",
@@ -69,16 +72,16 @@ void init_tarray(TArray *self) {
     self->cap = 0;
 }
 
-void free_tarray(VM *vm, TArray *self) {
-    free_array(vm, TValue, self->values, self->len);
+void free_tarray(TArray *self, Allocator *allocator) {
+    free_array(TValue, self->values, self->len, allocator);
     init_tarray(self);
 }
 
-void write_tarray(VM *vm, TArray *self, const TValue *value) {
+void write_tarray(TArray *self, const TValue *value, Allocator *allocator) {
     if (self->len + 1 > self->cap) {
         int oldcap   = self->cap;
         self->cap    = grow_capacity(oldcap);
-        self->values = grow_array(vm, TValue, self->values, oldcap, self->cap);
+        resize_array(TValue, &self->values, oldcap, self->cap, allocator);
     }
     self->values[self->len] = *value;
     self->len++;
@@ -93,8 +96,9 @@ void write_tarray(VM *vm, TArray *self, const TValue *value) {
 #define FNV1A_OFFSET64  0xcbf29ce484222325
 
 // NOTE: For `concat_string` we do not know the correct hash yet.
-static TString *allocate_string(VM *vm, int len) {
-    TString *inst = allocate_tstring(vm, len + 1);
+// Analogous to `allocateString()` in the book.
+static TString *new_string(int len, Allocator *allocator) {
+    TString *inst = new_tstring(len + 1, allocator);
     inst->len = len;
     return inst;
 }
@@ -117,7 +121,7 @@ static char get_escape(char ch) {
     }
 }
 
-// Will hash escape sequences correctly.
+// Hashes strings with unencoded escape sequences correctly.
 static uint32_t hash_string(const char *data, int len) {
     uint32_t hash = FNV1A_OFFSET32;
     char prev = 0;
@@ -165,6 +169,7 @@ static void build_string(TString *self, const char *src, int len, uint32_t hash)
 }
 
 TString *copy_string(VM *vm, const char *literal, int len) {
+    Allocator *allocator = &vm->allocator;
     uint32_t hash = hash_string(literal, len);
     TString *interned = find_interned(vm, literal, len, hash);
 
@@ -173,7 +178,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
         return interned;
     }
 
-    TString *inst = allocate_string(vm, len);
+    TString *inst = new_string(len, allocator);
     build_string(inst, literal, len, hash);
 
     // If we have escapes, are we really REALLY sure this isn't interned?
@@ -182,19 +187,20 @@ TString *copy_string(VM *vm, const char *literal, int len) {
         if (interned != NULL) {
             // Remove `inst` from the allocation list as it will be freed here.
             remove_from_list(vm->objects, &inst->object);
-            deallocate_tstring(vm, inst);
+            free_tstring(inst, inst->len, allocator);
             return interned;
         }
     }
-    set_table(vm, &vm->strings, &make_string(inst), &make_boolean(true));
+    set_table(&vm->strings, &make_string(inst), &make_boolean(true), allocator);
     return inst;
 }
 
 TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs) {
     int len = lhs->len + rhs->len;
-    TString *inst = allocate_string(vm, len);
+    TString *inst = new_string(len, &vm->allocator);
 
-    // Don't use `build_string` as it would have already been called for both.
+    // Don't use `build_string` as we don't want to interpet escape sequences,
+    // that would have been done already while building individual strings.
     memcpy(inst->data,            lhs->data, lhs->len);
     memcpy(inst->data + lhs->len, rhs->data, rhs->len);
     inst->data[len] = '\0';
@@ -204,7 +210,7 @@ TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs) {
     if (interned != NULL) {
         // Remove `inst` from the allocation list as it will be freed here.
         remove_from_list(vm->objects, &inst->object);
-        deallocate_tstring(vm, inst);
+        free_tstring(inst, inst->len, &vm->allocator);
         return interned;
     }
     return inst;
@@ -222,8 +228,8 @@ void init_table(Table *self) {
     self->cap     = 0;
 }
 
-void free_table(VM *vm, Table *self) {
-    free_array(vm, Entry, self->entries, self->count);
+void free_table(Table *self, Allocator *allocator) {
+    free_array(Entry, self->entries, self->count, allocator);
     init_table(self);
 }
 
@@ -266,8 +272,8 @@ static Entry *find_entry(Entry *self, int cap, const TValue *key) {
 }
 
 // Analogous to `adjustCapacity()` in the book.
-static void resize_table(VM *vm, Table *self, int newcap) {
-    Entry *newbuf = allocate(vm, Entry, newcap);
+static void resize_table(Table *self, int newcap, Allocator *allocator) {
+    Entry *newbuf = new_array(Entry, newcap, allocator);
     for (int i = 0; i < newcap; i++) {
         set_nil(&newbuf[i].key);
         set_nil(&newbuf[i].value);
@@ -285,13 +291,12 @@ static void resize_table(VM *vm, Table *self, int newcap) {
         dst->value = src->value;
         self->count++;
     }
-    free_array(vm, Entry, self->entries, self->cap);
+    free_array(Entry, self->entries, self->cap, allocator);
     self->entries = newbuf;
     self->cap     = newcap;
 }
 
-bool get_table(VM *vm, Table *self, const TValue *key, TValue *out) {
-    unused(vm);
+bool get_table(Table *self, const TValue *key, TValue *out) {
     if (self->count == 0) {
         return false;
     }
@@ -303,9 +308,9 @@ bool get_table(VM *vm, Table *self, const TValue *key, TValue *out) {
     return true;
 }
 
-bool set_table(VM *vm, Table *self, const TValue *key, const TValue *value) {
+bool set_table(Table *self, const TValue *key, const TValue *value, Allocator *allocator) {
     if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
-        resize_table(vm, self, grow_capacity(self->cap));
+        resize_table(self, grow_capacity(self->cap), allocator);
     }
     Entry *entry  = find_entry(self->entries, self->cap, key);
     bool isnewkey = is_nil(&entry->key); // All keys implicitly nil by default.
@@ -319,8 +324,7 @@ bool set_table(VM *vm, Table *self, const TValue *key, const TValue *value) {
     return isnewkey;
 }
 
-bool unset_table(VM *vm, Table *self, const TValue *key) {
-    unused(vm);
+bool unset_table(Table *self, const TValue *key) {
     if (self->count == 0) {
         return false;
     }
@@ -334,13 +338,13 @@ bool unset_table(VM *vm, Table *self, const TValue *key) {
     return true;
 }
 
-void copy_table(VM *vm, Table *dst, const Table *src) {
+void copy_table(Table *dst, const Table *src, Allocator *allocator) {
     for (int i = 0; i < src->cap; i++) {
         const Entry *entry = &src->entries[i];
         if (is_nil(&entry->key)) {
             continue;
         }
-        set_table(vm, dst, &entry->key, &entry->value);
+        set_table(dst, &entry->key, &entry->value, allocator);
     }
 }
 

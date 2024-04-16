@@ -3,6 +3,7 @@
 
 #include "lulu.h"
 #include "limits.h"
+#include "memory.h"
 
 typedef lulu_Number    Number;
 typedef struct Object  Object;
@@ -92,10 +93,10 @@ static inline bool is_objtype(const TValue *self, VType expected) {
  *          will mess up in that case.
  */
 #define set_tagtype(v, tt)  (get_tagtype(v) = (tt))
-#define set_nil(v)          (as_number(v)   = 0,    set_tagtype(v, TYPE_NIL))
-#define set_boolean(v, b)   (as_boolean(v)  = (b),  set_tagtype(v, TYPE_BOOLEAN))
-#define set_number(v, n)    (as_number(v)   = (n),  set_tagtype(v, TYPE_NUMBER))
-#define set_string(v, s)    (as_string(v)   = (s),  set_tagtype(v, TYPE_STRING))
+#define set_nil(v)          (as_number(v)  = 0,   set_tagtype(v, TYPE_NIL))
+#define set_boolean(v, b)   (as_boolean(v) = (b), set_tagtype(v, TYPE_BOOLEAN))
+#define set_number(v, n)    (as_number(v)  = (n), set_tagtype(v, TYPE_NUMBER))
+#define set_string(v, s)    (as_string(v)  = (s), set_tagtype(v, TYPE_STRING))
 
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
@@ -106,22 +107,23 @@ void print_value(const TValue *self);
 bool values_equal(const TValue *lhs, const TValue *rhs);
 
 void init_tarray(TArray *self);
-void free_tarray(VM *vm, TArray *self);
-void write_tarray(VM *vm, TArray *self, const TValue *value);
+void free_tarray(TArray *self, Allocator *allocator);
+void write_tarray(TArray *self, const TValue *value, Allocator *allocator);
 
+// Globals functions that deal with strings need the VM to check for interned.
 TString *copy_string(VM *vm, const char *literal, int len);
 TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs);
 
 void init_table(Table *self);
-void free_table(VM *vm, Table *self);
-bool get_table(VM *vm, Table *self, const TValue *key, TValue *out);
-bool set_table(VM *vm, Table *self, const TValue *key, const TValue *value);
+void free_table(Table *self, Allocator *allocator);
+bool get_table(Table *self, const TValue *key, TValue *out);
+bool set_table(Table *self, const TValue *key, const TValue *value, Allocator *allocator);
 
 // Place a tombstone value. Analogous to `deleteTable()` in the book.
-bool unset_table(VM *vm, Table *self, const TValue *key);
+bool unset_table(Table *self, const TValue *key);
 
 // Analogous to `tableAddAll()` in the book.
-void copy_table(VM *vm, Table *dst, const Table *src);
+void copy_table(Table *dst, const Table *src, Allocator *allocator);
 
 // Check if we have already interned a string.
 // Assumes `vm->strings` only maps string keys to any value, even nil.
