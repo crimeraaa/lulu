@@ -11,10 +11,11 @@
  *          right are more recent and values to the left are older.
  *
  * @details Glossary:
- *          `B3`    An unsigned `Byte3`, decoded from the 3 bytes following the
+ *          `U`    An unsigned `Byte3`, decoded from the 3 bytes following the
  *                  current opcode.
  *          `Kst`   Constants table of the current chunk.
  *          `V_*`   Negative offset relative to the VM's top of the stack.
+ *          `A_*`   Not sure how this is different from `V_*`.
  *          `-`     When used like `V_B3..-..V_1`, indicates we need to concat
  *                  (`..`) values Stack[-B3] (`V_B3`) all the way up to top of
  *                  the Stack[-1] (`V_1`).
@@ -26,13 +27,13 @@ typedef enum {
     /* ----------+--------+----------------+-----------------+-----------------|
     |  NAME      |  ARGS  |  STACK BEFORE  |  STACK AFTER    |  SIDE EFFECTS   |
     -------------+--------+----------------+-----------------+----------------*/
-    OP_CONSTANT, // B3    |  -             | Kst[B3]         |                 |
+    OP_CONSTANT, // U     |  -             | Kst[U]          |                 |
     OP_NIL,      // -     |  -             | nil             |                 |
     OP_TRUE,     // -     |  -             | true            |                 |
     OP_FALSE,    // -     |  -             | false           |                 |
-    OP_POP,      // -     |  x             | -               |                 |
-    OP_GETGLOBAL,// B3    |  -             | _G[Kst[B3]]     |                 |
-    OP_SETGLOBAL,// B3    |  x             | -               | _G[Kst[B3]] = x |
+    OP_POP,      // U     |  A_U,...A_1    | -               |                 |
+    OP_GETGLOBAL,// U     |  -             | _G[Kst[U]]      |                 |
+    OP_SETGLOBAL,// U     |  x             | -               | _G[Kst[U]] = x  |
     OP_EQ,       // -     |  x, y          | x == y          |                 |
     OP_LT,       // -     |  x, y          | x < y           |                 |
     OP_LE,       // -     |  x, y          | x <= y          |                 |
@@ -42,11 +43,12 @@ typedef enum {
     OP_DIV,      // -     |  x, y          | x / y           |                 |
     OP_MOD,      // -     |  x, y          | x % y           |                 |
     OP_POW,      // -     |  x, y          | x ^ y           |                 |
-    OP_CONCAT,   // B3    |  V_B3,..,V_1   | V_B3..-..V_1    |                 |
-    OP_NOT,      // -     |  x             | not x           |                 |
+    OP_CONCAT,   // U     |  V_U,...,V_1   | V_U..-..V_1     |                 |
     OP_UNM,      // -     |  x             | -x              |                 |
+    OP_NOT,      // -     |  x             | not x           |                 |
+    OP_LEN,      // -     |  x             | len(x)          |                 |
     OP_PRINT,    // TEMPORARY!
-    OP_RETURN,   // -     |  -             |                  |                |
+    OP_RETURN,   // -     |  -             |                 |                 |
 } OpCode;
 
 // Please keep this up to date accordingly!

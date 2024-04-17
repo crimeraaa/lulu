@@ -21,8 +21,6 @@ struct VM {
 
 void init_vm(VM *self, const char *name);
 void free_vm(VM *self);
-void push_vm(VM *self, const TValue *value);
-TValue pop_vm(VM *self);
 ErrType interpret(VM *self, const char *input);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */

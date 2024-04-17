@@ -3,7 +3,7 @@
 #include "object.h"
 
 // Forward declarations to allow recursive descent parsing.
-static const ParseRule *get_parserule(TkType key);
+static ParseRule *get_parserule(TkType key);
 static void parse_precedence(Compiler *self, Precedence prec);
 
 // Intern a variable name.
@@ -31,7 +31,6 @@ static OpCode get_binop(TkType optype) {
     case TK_SLASH:   return OP_DIV;
     case TK_PERCENT: return OP_MOD;
     case TK_CARET:   return OP_POW;
-    case TK_CONCAT:  return OP_CONCAT;
 
     case TK_EQ:      return OP_EQ;
     case TK_LT:      return OP_LT;
@@ -48,14 +47,10 @@ static void binary(Compiler *self) {
     Lexer *lexer  = self->lexer;
     Token *token  = &lexer->consumed;
     TkType optype = token->type;
-    const ParseRule *rule = get_parserule(optype);
+    ParseRule *rule = get_parserule(optype);
 
-    // For exponentiation and concatenation, enforce right-associativity.
-    if (optype == TK_CARET || optype == TK_CONCAT) {
-        parse_precedence(self, rule->prec);
-    } else {
-        parse_precedence(self, rule->prec + 1);
-    }
+    // For exponentiation enforce right-associativity.
+    parse_precedence(self, rule->prec + (optype != TK_CARET));
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (optype) {
@@ -64,6 +59,22 @@ static void binary(Compiler *self) {
     case TK_GE:  emit_nbytes(self, OP_LT, OP_NOT);    break;
     default:     emit_byte(self,  get_binop(optype)); break;
     }
+}
+
+// Assumes we just consumed a `..` and the first argument has been compiled.
+static void concat(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    int argc = 1;
+
+    do {
+        // Although right associative, we don't recursively compile concat
+        // expressions in the same grouping.
+        parse_precedence(self, PREC_CONCAT + 1);
+        argc++;
+    } while (match_token(lexer, TK_CONCAT));
+
+    emit_byte(self, OP_CONCAT);
+    emit_byte3(self, argc);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -142,6 +153,7 @@ static OpCode get_unop(TkType type) {
     switch (type) {
     case TK_NOT:    return OP_NOT;
     case TK_DASH:   return OP_UNM;
+    case TK_POUND:  return OP_LEN;
     default:
         // Should not happen
         return OP_RETURN;
@@ -163,7 +175,7 @@ static void unary(Compiler *self) {
 
 // PARSING PRECEDENCE ----------------------------------------------------- {{{1
 
-static const ParseRule PARSERULES_LOOKUP[] = {
+static ParseRule PARSERULES_LOOKUP[] = {
     // TOKEN           PREFIXFN     INFIXFN     PRECEDENCE
     [TK_AND]        = {NULL,        NULL,       PREC_AND},
     [TK_BREAK]      = {NULL,        NULL,       PREC_NONE},
@@ -196,8 +208,9 @@ static const ParseRule PARSERULES_LOOKUP[] = {
     [TK_COMMA]      = {NULL,        NULL,       PREC_NONE},
     [TK_SEMICOL]    = {NULL,        NULL,       PREC_NONE},
     [TK_VARARG]     = {NULL,        NULL,       PREC_NONE},
-    [TK_CONCAT]     = {NULL,        binary,     PREC_CONCAT},
+    [TK_CONCAT]     = {NULL,        concat,     PREC_CONCAT},
     [TK_PERIOD]     = {NULL,        NULL,       PREC_NONE},
+    [TK_POUND]      = {unary,       NULL,       PREC_UNARY},
 
     [TK_PLUS]       = {NULL,        binary,     PREC_TERMINAL},
     [TK_DASH]       = {unary,       binary,     PREC_TERMINAL},
@@ -243,7 +256,9 @@ static void print_statement(Compiler *self) {
 
 void declaration(Compiler *self) {
     Lexer *lexer = self->lexer;
-    // In Lua, globals aren't declared by rather assigned.
+    /* In Lua, globals aren't declared, but rather assigned as needed. This may
+    be inconsistent with my design that accessing undefined globals is an error,
+    but at the same time I dislike implicit nil for undefined globals. */
     if (match_token(lexer, TK_IDENT)) {
         named_variable(self, &lexer->consumed, true);
     } else {
@@ -251,12 +266,12 @@ void declaration(Compiler *self) {
     }
 }
 
-// Expressions produce values, but this will pop whatever it produces.
+// Expressions produce values, but since statements need to have 0 stack effect
+// this will pop whatever it produces.
 static void exprstmt(Compiler *self) {
-    Lexer *lexer = self->lexer;
     expression(self);
-    match_token(lexer, TK_SEMICOL);
     emit_byte(self, OP_POP);
+    emit_byte3(self, 1);
 }
 
 // By themselves, statements have zero stack effect.
@@ -265,9 +280,10 @@ static void statement(Compiler *self) {
     if (match_token(lexer, TK_PRINT)) {
         print_statement(self);
     } else {
-        // lexerror_at_token(lexer, "Expected a statement");
         exprstmt(self);
     }
+    // Lua allows 1 semicolon to terminate statements, but no more.
+    match_token(lexer, TK_SEMICOL);
 }
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
@@ -295,7 +311,7 @@ static void parse_precedence(Compiler *self, Precedence prec) {
     }
 }
 
-static const ParseRule *get_parserule(TkType key) {
+static ParseRule *get_parserule(TkType key) {
     return &PARSERULES_LOOKUP[key];
 }
 

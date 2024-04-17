@@ -18,13 +18,17 @@
 
 #define BITS_PER_BYTE       CHAR_BIT
 
+#define eprintln(s)         fputs(s "\n", stderr)
+#define eprintf(s, ...)     fprintf(stderr, s, __VA_ARGS__)
+#define eprintfln(s, ...)   eprintf(s "\n", __VA_ARGS__)
+
 #define _stringify(x)       #x
 #define stringify(x)        _stringify(x)
 #define loginfo()           __FILE__ ":" stringify(__LINE__)
 #define logformat(s)        loginfo() ": " s
-#define logprintln(s)       fputs(logformat(s) "\n", stderr)
-#define logprintf(s, ...)   fprintf(stderr, logformat(s), __VA_ARGS__)
-#define logprintfln(s, ...) logprintf(s "\n", __VA_ARGS__)
+#define logprintln(s)       eprintln(logformat(s))
+#define logprintf(s, ...)   eprintf(logformat(s), __VA_ARGS__)
+#define logprintfln(s, ...) eprintfln(logformat(s), __VA_ARGS__)
 
 // Dangerous to use this for C++, so be careful!
 #define compoundlit(T, ...) (T){__VA_ARGS__}

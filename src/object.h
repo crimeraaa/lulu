@@ -68,12 +68,7 @@ typedef struct {
 #define is_boolean(v)       (get_tag(v) == TYPE_BOOLEAN)
 #define is_number(v)        (get_tag(v) == TYPE_NUMBER)
 #define is_object(v)        (get_tag(v) >= TYPE_STRING)
-#define is_string(v)        is_objtype(v, TYPE_STRING)
-
-// Use a function to avoid multiple macro expansion.
-static inline bool is_objtype(const TValue *self, VType expected) {
-    return is_object(self) && get_tag(self) == expected;
-}
+#define is_string(v)        (get_tag(v) == TYPE_STRING)
 
 #define as_boolean(v)       ((v)->as.boolean)
 #define as_number(v)        ((v)->as.number)
@@ -115,7 +110,9 @@ void write_tarray(TArray *self, const TValue *value, Allocator *allocator);
 
 // Global functions that deal with strings need the VM to check for interned.
 TString *copy_string(VM *vm, const char *literal, int len);
-TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs);
+
+// Assumes all arguments we already verified to be `TString*`.
+TString *concat_strings(VM *vm, int argc, const TValue argv[], int len);
 
 void init_table(Table *self);
 void free_table(Table *self, Allocator *allocator);

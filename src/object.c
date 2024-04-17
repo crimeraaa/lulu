@@ -9,12 +9,7 @@
 #define prepend_node(head, node)    ((node)->next = (head), (head) = (node))
 #define remove_node(head, node)     ((head) = (node)->next)
 
-/**
- * @brief   Assumes we are using the VM allocator. You are not meant to call
- *          this function directly, rather you are meant to use wrapper macros.
- *
- * @note    Separate name from the macro since `new_tstring` also needs access.
- */
+// Separate name from `new_object` since `new_tstring` also needs access.
 static Object *_new_object(size_t size, VType tag, Allocator *allocator) {
     VM *vm = cast(VM*, allocator->context);
     Object *object = allocator->allocfn(NULL, 0, size, vm);
@@ -27,7 +22,7 @@ static Object *_new_object(size_t size, VType tag, Allocator *allocator) {
 
 // Not meant to be used outside of the main `new_tstring()` function.
 #define _new_tstring(N, allocator) \
-    cast(TString*, _new_object(tstring_size(N), TYPE_STRING, (allocator)))
+    cast(TString*, _new_object(tstring_size(N), TYPE_STRING, allocator))
 
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
@@ -148,9 +143,9 @@ static uint32_t hash_string(const char *data, int len) {
 }
 
 static void build_string(TString *self, const char *src, int len, uint32_t hash) {
-    char *end   = self->data; // For loop counter may skip.
-    int skips   = 0;          // Number escape characters emitted.
-    char prev   = 0;
+    char *end = self->data; // For loop counter may skip.
+    int skips = 0;          // Number escape characters emitted.
+    char prev = 0;
     for (int i = 0; i < len; i++) {
         char ch = src[i];
         // Handle `"\\"` appropriately.
@@ -190,7 +185,6 @@ TString *copy_string(VM *vm, const char *literal, int len) {
     if (inst->len != len) {
         interned = find_interned(vm, inst->data, inst->len, inst->hash);
         if (interned != NULL) {
-            // Remove `inst` from the allocation list as it will be freed here.
             remove_node(vm->objects, &inst->object);
             free_tstring(inst, inst->len, allocator);
             return interned;
@@ -200,22 +194,24 @@ TString *copy_string(VM *vm, const char *literal, int len) {
     return inst;
 }
 
-TString *concat_strings(VM *vm, const TString *lhs, const TString *rhs) {
-    int len = lhs->len + rhs->len;
-    TString *inst = new_tstring(len, &vm->allocator);
+TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
+    Allocator *allocator = &vm->allocator;
+    TString *inst = new_tstring(len, allocator);
+    int offset = 0;
 
-    // Don't use `build_string` as we don't want to interpet escape sequences,
-    // that would have been done already while building individual strings.
-    memcpy(inst->data,            lhs->data, lhs->len);
-    memcpy(inst->data + lhs->len, rhs->data, rhs->len);
-    inst->data[len] = '\0';
-    inst->hash = hash_string(inst->data, len);
+    // We already built each individual string so no need to interpret escapes.
+    for (int i = 0; i < argc; i++) {
+        const TString *arg = as_string(&argv[i]);
+        memcpy(inst->data + offset, arg->data, arg->len);
+        offset += arg->len;
+    }
+    inst->hash = hash_string(inst->data, inst->len);
+    inst->data[inst->len] = '\0';
 
     TString *interned = find_interned(vm, inst->data, inst->len, inst->hash);
     if (interned != NULL) {
-        // Remove `inst` from the allocation list as it will be freed here.
         remove_node(vm->objects, &inst->object);
-        free_tstring(inst, inst->len, &vm->allocator);
+        free_tstring(inst, inst->len, allocator);
         return interned;
     }
     set_interned(vm, inst);
@@ -235,7 +231,7 @@ void init_table(Table *self) {
 }
 
 void free_table(Table *self, Allocator *allocator) {
-    free_array(Entry, self->entries, self->count, allocator);
+    free_array(Entry, self->entries, self->cap, allocator);
     init_table(self);
 }
 

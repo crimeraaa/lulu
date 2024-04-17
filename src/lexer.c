@@ -65,11 +65,9 @@ static int get_nesting(Lexer *self) {
 // Consume a multi-line string or comment with a known nesting level.
 static void multiline(Lexer *self, int nesting) {
     for (;;) {
-        char ch = peek_current_char(self);
-        if (ch == ']') {
-            next_char(self);
-            int closing = get_nesting(self);
-            if (match_char(self, ']') && closing == nesting) {
+        if (match_char(self, ']')) {
+            // `get_nesting()` will mutate `self` so call it first.
+            if (get_nesting(self) == nesting && match_char(self, ']')) {
                 return;
             }
         }
@@ -78,10 +76,8 @@ static void multiline(Lexer *self, int nesting) {
             lexerror_at_consumed(self, "Unfinished multiline comment");
             return;
         }
-
-        // If all went well we can safely consume this character.
-        next_char(self);
-        if (ch == '\n') {
+        // Think of this as the iterator increment.
+        if (next_char(self) == '\n') {
             self->line++;
         }
     }
@@ -113,15 +109,6 @@ static Token make_token(const Lexer *self, TkType type) {
     token.type  = type;
     return token;
 }
-
-// static Token error_token(const Lexer *self, const char *info) {
-//     Token token;
-//     token.start = info;
-//     token.len   = cast(int, strlen(info));
-//     token.line  = self->line;
-//     token.type  = TK_ERROR;
-//     return token;
-// }
 
 static void skip_whitespace(Lexer *self) {
     for (;;) {
@@ -377,6 +364,7 @@ Token scan_token(Lexer *self) {
         } else {
             return make_token(self, TK_PERIOD);
         }
+    case '#': return make_token(self, TK_POUND);
 
     case '+': return make_token(self, TK_PLUS);
     case '-': return make_token(self, TK_DASH);
@@ -417,22 +405,33 @@ void consume_token(Lexer *self, TkType expected, const char *info) {
     }
 }
 
-#undef check_token
-bool check_token(Lexer *self, const TkType expected[]) {
+bool check_token(Lexer *self, TkType expected) {
     TkType actual = self->token.type;
-    int i = 0;
-    do {
-        if (actual == expected[i]) {
-            return true;
-        }
-        i++;
-    } while (expected[i] != TK_EOF); //Sentinel value.
+    return actual == expected;
+}
+
+bool match_token(Lexer *self, TkType expected) {
+    if (check_token(self, expected)) {
+        next_token(self);
+        return true;
+    }
     return false;
 }
 
-#undef match_token
-bool match_token(Lexer *self, const TkType expected[]) {
-    if (check_token(self, expected)) {
+#undef check_token_any
+bool check_token_any(Lexer *self, const TkType expected[]) {
+    TkType actual = self->token.type;
+    for (int i = 0; expected[i] != TK_EOF; i++) {
+        if (actual == expected[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+#undef match_token_any
+bool match_token_any(Lexer *self, const TkType expected[]) {
+    if (check_token_any(self, expected)) {
         next_token(self);
         return true;
     }

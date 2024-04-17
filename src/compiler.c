@@ -24,7 +24,6 @@ void emit_byte(Compiler *self, Byte data) {
 }
 
 #undef emit_nbytes
-
 void emit_nbytes(Compiler *self, int count, ...) {
     va_list args;
     va_start(args, count);

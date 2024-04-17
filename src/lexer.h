@@ -34,6 +34,7 @@ typedef enum {
     TK_VARARG,  // `...` := variadic argument list, only useable in functions
     TK_CONCAT,  // `..`  := string concatenation
     TK_PERIOD,  // `.` := table field access, separate from `..` and `...`
+    TK_POUND,   // `#` := table/string length unary operator.
 
     TK_PLUS,    // `+` := addition
     TK_DASH,    // `-` := subtraction, Lua-style comment (single or multi-line)
@@ -90,12 +91,19 @@ void next_token(Lexer *self);
 // Analogous to `compiler.c:consume()` in the book. May call `lexerror_*`.
 void consume_token(Lexer *self, TkType expected, const char *info);
 
-bool check_token(Lexer *self, const TkType expected[]);
-bool match_token(Lexer *self, const TkType expected[]);
+// Return true if the current token matches, else do nothing.
+bool check_token(Lexer *self, TkType expected);
 
-#define _token_vargs(...)       array_lit(TkType, __VA_ARGS__, TK_EOF)
-#define check_token(lexer, ...) check_token(lexer, _token_vargs(__VA_ARGS__))
-#define match_token(lexer, ...) match_token(lexer, _token_vargs(__VA_ARGS__))
+// Advance the Lexer if the current token matches else do nothing.
+bool match_token(Lexer *self, TkType expected);
+
+// The `*_token_any` functions assume the array is terminated by `TK_EOF`.
+bool check_token_any(Lexer *self, const TkType expected[]);
+bool match_token_any(Lexer *self, const TkType expected[]);
+
+#define _tkvarg(...)                array_lit(TkType, __VA_ARGS__, TK_EOF)
+#define check_token_any(lexer, ...) check_token_any(lexer, _tkvarg(__VA_ARGS__))
+#define match_token_any(lexer, ...) match_token_any(lexer, _tkvarg(__VA_ARGS__))
 
 /**
  * @brief   Similar to `luaX_lexerror()`, analogout to `errorAt()` in the book.
