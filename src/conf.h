@@ -51,6 +51,9 @@ You may wish to change `MAX_NUMTOSTRING` based on the following conditions:
 
 // See `man 3 strtod`. For other `cstr_*` macros, see `limits.h`.
 #define cstr_tonumber(s, p) strtod(s, p)
+#define nil_tostring(s)     snprintf((s), MAX_NUMTOSTRING, "nil")
+#define bool_tostring(s, b) snprintf((s), MAX_NUMTOSTRING, (b) ? "true" : "false")
+#define ptr_tostring(s, p)  snprintf((s), MAX_NUMTOSTRING, "%p", (p))
 
 // 1}}} ------------------------------------------------------------------------
 

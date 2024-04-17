@@ -5,9 +5,9 @@ void disassemble_chunk(const Chunk *self) {
     printf("[CONSTANTS]: '%s'\n", self->name);
     for (int i = 0; i < self->constants.len; i++) {
         const TValue *value = &self->constants.values[i];
-        printf("%04i := '", i);
+        printf("%04i := ", i);
         print_value(value);
-        printf("' (%s)\n", get_typename(value));
+        printf("\n");
     }
     printf("\n");
 
@@ -29,9 +29,9 @@ void disassemble_chunk(const Chunk *self) {
 static int constant_instruction(OpCode opcode, const Chunk *chunk, int offset) {
     int arg = read_byte3(chunk, offset);
     const TValue *value = &read_constant(chunk, arg);
-    printf("%-16s Kst[%i] ; '", get_opname(opcode), arg);
+    printf("%-16s Kst[%i] ; ", get_opname(opcode), arg);
     print_value(value);
-    printf("' (%s)\n", get_typename(value));
+    printf("\n");
     return offset + 3 + 1; // 3-byte argument, +1 to get index of next opcode
 }
 

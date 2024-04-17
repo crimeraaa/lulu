@@ -116,6 +116,7 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len);
 
 void init_table(Table *self);
 void free_table(Table *self, Allocator *allocator);
+void dump_table(const Table *self, const char *name);
 bool get_table(Table *self, const TValue *key, TValue *out);
 bool set_table(Table *self, const TValue *key, const TValue *value, Allocator *allocator);
 

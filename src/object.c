@@ -53,7 +53,11 @@ void print_value(const TValue *self) {
         printf(NUMBER_FMT, as_number(self));
         break;
     case TYPE_STRING:
-        printf("%s", as_cstring(self));
+        if (as_string(self)->len <= 1) {
+            printf("\'%s\'", as_cstring(self));
+        } else {
+            printf("\"%s\"", as_cstring(self));
+        }
         break;
     }
 }
@@ -235,6 +239,27 @@ void free_table(Table *self, Allocator *allocator) {
     init_table(self);
 }
 
+void dump_table(const Table *self, const char *name) {
+    name = (name != NULL) ? name : "(anonymous table)";
+    if (self->count == 0) {
+        printf("%s = {}\n", name);
+        return;
+    }
+    printf("%s = {\n", name);
+    for (int i = 0, limit = self->cap; i < limit; i++) {
+        const Entry *entry  = &self->entries[i];
+        if (is_nil(&entry->key)) {
+            continue;
+        }
+        printf("\t[");
+        print_value(&entry->key);
+        printf("] = ");
+        print_value(&entry->value);
+        printf(",\n");
+    }
+    printf("}\n");
+}
+
 // WARNING: Assumes `Number` is `double` and is the same size as `uint64_t`!
 static uint32_t hash_number(Number number) {
     union {
@@ -255,11 +280,11 @@ static uint32_t hash_value(const TValue *self) {
 }
 
 // Find a free slot. Assumes there is at least 1 free slot left.
-static Entry *find_entry(Entry *self, int cap, const TValue *key) {
+static Entry *find_entry(Entry *list, int cap, const TValue *key) {
     uint32_t index = hash_value(key) % cap;
     Entry *tombstone = NULL;
     for (;;) {
-        Entry *entry = &self[index];
+        Entry *entry = &list[index];
         if (is_nil(&entry->key)) {
             if (is_nil(&entry->value)) {
                 return (tombstone == NULL) ? entry : tombstone;

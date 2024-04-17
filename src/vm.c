@@ -85,6 +85,8 @@ void init_vm(VM *self, const char *name) {
 
 void free_vm(VM *self) {
     Allocator *allocator = &self->allocator;
+    dump_table(&self->globals, ".globals");
+    dump_table(&self->strings, ".strings");
     free_table(&self->globals, allocator);
     free_table(&self->strings, allocator);
     free_objects(self);
