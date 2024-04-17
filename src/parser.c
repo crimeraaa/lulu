@@ -135,7 +135,7 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
             expression(self);
             define_variable(self, arg);
         } else {
-            lexerror_at_token(lexer, "'=' expected");
+            lexerror_at_token(lexer, "'=' expected for global variable");
         }
     } else {
         emit_byte(self, OP_GETGLOBAL);
@@ -248,9 +248,7 @@ static void expression(Compiler *self) {
 // }
 
 static void print_statement(Compiler *self) {
-    Lexer *lexer = self->lexer;
     expression(self);
-    match_token(lexer, TK_SEMICOL);
     emit_byte(self, OP_PRINT);
 }
 
@@ -261,6 +259,7 @@ void declaration(Compiler *self) {
     but at the same time I dislike implicit nil for undefined globals. */
     if (match_token(lexer, TK_IDENT)) {
         named_variable(self, &lexer->consumed, true);
+        match_token(lexer, TK_SEMICOL);
     } else {
         statement(self);
     }
