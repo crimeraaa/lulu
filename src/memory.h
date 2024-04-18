@@ -10,8 +10,8 @@ typedef void *(*AllocFn)(void *ptr, size_t oldsz, size_t newsz, void *context);
 typedef void  (*FreeFn)(void *ptr, size_t usedsz, void *context);
 
 typedef struct {
-    AllocFn allocfn; // Allocate/reallocate a block of memory.
-    FreeFn freefn;   // Free a block of memory.
+    AllocFn allocfn; // Handles both giving new blocks and resizing old ones.
+    FreeFn freefn;
     void *context;   // How this is interpreted is up to your functions.
 } Allocator;
 

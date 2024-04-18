@@ -68,7 +68,7 @@ typedef enum {
                                     | ((mid) << bitsize(Byte))                 \
                                     | (lsb))
 
-// Lookup table. Maps `OpCode` to `const char*`.
+// Lookup table. Maps `OpCode` to opcode names.
 extern const char *const LULU_OPNAMES[];
 
 #define get_opname(opcode)  LULU_OPNAMES[opcode]

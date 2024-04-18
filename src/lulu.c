@@ -92,7 +92,7 @@ int main(int argc, const char *argv[]) {
         err = run_file(vm, argv[1]);
     } else {
         fprintf(stderr, "Usage: %s [script]\n", argv[0]);
-        err = EX_USAGE;
+        return EX_USAGE;
     }
     free_vm(vm);
     return err;

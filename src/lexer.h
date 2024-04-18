@@ -16,7 +16,7 @@ typedef enum {
     TK_LOCAL,
     TK_NIL,     TK_NOT,
     TK_OR,
-    TK_PRINT,   // This is temporary!
+    TK_PRINT,   // This is temporary!!!
     TK_RETURN,
     TK_THEN,    TK_TRUE,
     TK_WHILE,

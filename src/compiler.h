@@ -10,7 +10,7 @@
 #include "chunk.h"
 #include "lexer.h"
 
-typedef struct Compiler {
+typedef struct {
     Lexer *lexer; // May be shared across multiple Compiler instances.
     VM *vm;       // Track and modify parent VM state as needed.
     Chunk *chunk; // The current compiling chunk for this function/closure.

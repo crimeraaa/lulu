@@ -11,13 +11,44 @@ CC_SRC 		:= $(wildcard src/*.c)
 CC_OBJ 		:= $(patsubst src/%.c,obj/%.o,$(CC_SRC))
 CC_INCLUDE 	:= $(wildcard src/*.h)
 
+# -*- DEPENDENCY GENERATION ----------------------------------------------- {{{1
+#
+# -MT<arg>
+#	Set the main target name to <arg>, unquoted.
+#
+# -MMD
+#	Write a depfile containing user headers.
+#
+# -MM
+#	Like -MMD, but also implies -E and writes to stdout by default.
+#
+# -MF <file>
+#	Write depfile output from -MMD, -MD, -MM or -M to <file>
+#
+# -MP
+#	Create phony targets for each dependency excluding the main target.
+#
+# See: https://make.mad-scientist.net/papers/advanced-auto-dependency-generation/
+#
+# ------------------------------------------------------------------------------
+
+DEPDIR 	:= obj/.deps
+
+# Very important to not expand this immediately using `:=` syntax!
+DEPFLAGS = -MT '$@' -MMD -MP -MF $(DEPDIR)/$*.d
+
+# 1}}} -------------------------------------------------------------------------
+
 # -*- PREAMBLE -----------------------------------------------------------*- {{{
 
+.PHONY: all
 all: debug
 
+.PHONY: debug
 debug: CC_FLAGS += $(CC_DBGFLAGS)
 debug: build
 
+.PHONY: release
 release: CC_FLAGS += -Os
 release: LD_FLAGS += -s
 release: build
@@ -26,25 +57,31 @@ release: build
 
 # -*- TARGETS ------------------------------------------------------------*- {{{
 
+.PHONY: build
 build: bin/$(EXE)
 
-src bin obj:
+src bin obj $(DEPDIR):
 	$(MKDIR) $@
 
 bin/$(EXE): $(CC_OBJ) | bin
 	$(CC) $(CC_FLAGS) -o $@ $^ $(LD_FLAGS)
 
-obj/%.o: src/%.c src/%.h | obj
-	$(CC) $(CC_FLAGS) -c -o $@ $<
+.PRECIOUS: obj/%.o
+obj/%.o: src/%.c $(DEPDIR)/%.d | obj $(DEPDIR)
+	$(CC) $(DEPFLAGS) $(CC_FLAGS) -c -o $@ $<
 
+DEPFILES := $(CC_SRC:src/%.c=$(DEPDIR)/%.d)
+$(DEPFILES):
+
+include $(wildcard $(DEPFILES))
+
+.PHONY: clean
 clean:
 	$(RM) $(CC_OBJ)
 
+.PHONY: uninstall
 uninstall: clean
-	$(RM) bin/$(EXE)
-	$(RMDIR) bin obj
+	$(RM) bin/$(EXE) $(DEPFILES)
+	$(RMDIR) $(DEPDIR) bin obj
 
 # }}} --------------------------------------------------------------------------
-
-.PHONY: all build debug release clean uninstall
-.PRECIOUS: obj/%.o

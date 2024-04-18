@@ -1,7 +1,6 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include "lexer.h"
-#include "compiler.h"
 #include "limits.h"
 #include "vm.h"
 

@@ -4,20 +4,36 @@ require "util/common"
 require "util/table"
 require "util/string"
 
+local CWD = script_path()
+local LULU_SRC = CWD .. "src/"
+local LULU_EXE = CWD .. "bin/lulu"
+
 local function make_cmdline(exe, flags, pargs)
     local output = exe
     if #flags > 0 then
         output = output .. ' ' .. table.concat(flags, ' ')
     end
     if pargs and #pargs > 0 then
-        output = output .. " -- " .. table.concat(pargs, ' ')
+        -- lulu can't handle "--" in its command-line arguments.
+        if exe == LULU_EXE then
+            output = output .. ' ' .. table.concat(pargs, ' ')
+        else
+            output = output .. " -- " .. table.concat(pargs, ' ')
+        end
     end
     return output
 end
 
-local function call_cmdline(exe, flags, pargs)
+local function capture_cmdline(exe, flags, pargs)
     local cmdline = make_cmdline(exe, flags, pargs)
     local output = io.popen(cmdline, 'r'):read("*all")
+    return cmdline, output
+end
+
+-- Used mainly if we have interactive prompts
+local function execute_cmdline(exe, flags, pargs)
+    local cmdline = make_cmdline(exe, flags, pargs)
+    local output = os.execute(cmdline, 'r')
     return cmdline, output
 end
 
@@ -48,6 +64,14 @@ local function confirm_cmdline(action, targets)
     end
 end
 
+-- Append `default` if no pargs were given.
+local function set_pargs_if_empty(pargs, default)
+    if #pargs == 0 then
+        table.insert(pargs, default)
+    end
+    return pargs
+end
+
 -- OPTIONS ---------------------------------------------------------------- {{{1
 
 local options = {}
@@ -55,8 +79,11 @@ local options = {}
 -- FIND IN FILES ---------------------------------------------------------- {{{2
 
 local function make_regexarg(regex)
-    if string.match(regex, "^%-%-regexp=") then
-        regex = string.match(regex, "^%-%-regexp=(.+)")
+    if regex:match("^%-%-regexp=") then
+        regex = regex:match("^%-%-regexp=(.+)")
+    end
+    if regex:match("^\'") then
+        return string.format("--regexp=\"%s\"", regex)
     end
     return string.format("--regexp='%s'", regex)
 end
@@ -72,16 +99,15 @@ options["find-pretty"] = {
         if not regex then
             return false
         end
+        set_pargs_if_empty(pargs, LULU_SRC)
         table.insert(self.flags, make_regexarg(regex))
         return true
     end,
     call = function(self, pargs)
         if not self:init(pargs) then
             return nil, nil, "No pattern received."
-        elseif #pargs == 0 then
-            return nil, nil, "No path/s received."
         end
-        local cmdline, output = call_cmdline(self.exe, self.flags, pargs)
+        local cmdline, output = capture_cmdline(self.exe, self.flags, pargs)
         return cmdline, output, nil
     end,
 }
@@ -113,6 +139,10 @@ options["find-and-replace"] = {
         if not regex or not subst then
             return false
         end
+
+        -- Get a list of matches in this directory if none given.
+        set_pargs_if_empty(pargs, LULU_SRC)
+
         -- Apply to all opened buffers, use magic to be more Perl-ish regex.
         local bufdo = ([[-c ':bufdo! %%s/\v%s/%s/ge']]):format(regex, subst)
 
@@ -125,8 +155,6 @@ options["find-and-replace"] = {
         local regex = pargs[1]
         if not self:init(pargs) then
             return nil, nil, "No pattern and/or substituion received."
-        elseif #pargs == 0 then
-            return nil, nil, "No path/s received."
         end
 
         -- prepend for find-terse
@@ -143,7 +171,7 @@ options["find-and-replace"] = {
         if not confirm_cmdline("find-and-replace", buflist) then
             return nil, nil, "Command aborted."
         end
-        local vim, output = call_cmdline(self.exe, self.flags, buflist)
+        local vim, output = capture_cmdline(self.exe, self.flags, buflist)
         return find .. '\n' .. vim, output, nil
     end,
 }
@@ -159,9 +187,13 @@ options["find-whitespace"] = {
     help = "List names of files from <path...> that have trailing whitespace.",
     note = "See `find-terse` for more info on how the search is done.",
     regex = [[\s+$]],
-    call = function(self, pargs)
+    init = function(self, pargs)
         -- Prepend since find-terse expects regex as the first parg
         table.insert(pargs, 1, self.regex)
+        return true
+    end,
+    call = function(self, pargs)
+        self:init(set_pargs_if_empty(pargs, LULU_SRC))
         return options["find-terse"]:call(pargs)
     end,
 }
@@ -189,6 +221,34 @@ options["fix-whitespace"] = {
 
 -- 2}}} ------------------------------------------------------------------------
 
+-- RUNNER COMMANDS -------------------------------------------------------- {{{2
+
+options["run"] = {
+    exe = LULU_EXE,
+    flags = {},
+    usage = "[script]",
+    help = "Runs the lulu interpreter.",
+    note = "If [script] is not given we will use REPL.",
+    call = function(self, pargs)
+        return execute_cmdline(self.exe, self.flags, pargs)
+    end
+}
+
+options["memcheck"] = {
+    exe = "valgrind",
+    flags = {"--leak-check=full", "--track-origins=yes"},
+    usage = "[exe = " .. LULU_EXE .. " [, args...]]",
+    help = "Runs valgrind with some helpful options.",
+    note = "If [exe] is not given we will default to " .. LULU_EXE .. ".",
+    call = function(self, pargs)
+        return execute_cmdline(self.exe, self.flags, set_pargs_if_empty(pargs, LULU_EXE))
+    end
+}
+
+-- 2}}} ------------------------------------------------------------------------
+
+-- HELP UTILITY ----------------------------------------------------------- {{{2
+
 local aliases = {
     ["find"]    = "find-pretty",
     ["replace"] = "find-and-replace",
@@ -208,14 +268,13 @@ local function print_opt(opt, name)
     if alias then
         io.stdout:write("\t\'", name, "\' is an alias for \'", alias, "\'.\n")
     end
-    io.stdout:write('\t', opt.help, '\n',
-                    '\t', opt.note, '\n')
     if opt.exe then
-        local pargs = string.match(opt.usage, "<%w-%.%.%.>$")
         local cmdline = make_cmdline(opt.exe, opt.flags)
-        io.stdout:write("\tInvokes: ", cmdline, " -- ", pargs, '\n')
+        io.stdout:write("\tInvokes: ", cmdline, '\n')
     end
-    io.stdout:write('\n')
+    io.stdout:write('\t', opt.help, '\n',
+                    '\t', opt.note, '\n',
+                    '\n')
 end
 
 options["help"] = {
@@ -240,6 +299,8 @@ options["help"] = {
         return "", "", nil
     end,
 }
+
+-- 2}}} ------------------------------------------------------------------------
 
 -- 1}}} ------------------------------------------------------------------------
 

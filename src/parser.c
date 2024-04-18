@@ -1,5 +1,4 @@
 #include "parser.h"
-#include "chunk.h"
 #include "object.h"
 
 // Forward declarations to allow recursive descent parsing.
