@@ -1,0 +1,187 @@
+#!/usr/bin/env lua
+
+require "util/common"
+require "util/table"
+require "util/string"
+
+local LULU_DIR = script_path()
+local LULU_SRC = LULU_DIR .. "src/"
+
+local function make_cmdline(exe, flags, pargs)
+    local out = exe
+    if #flags > 0 then
+        out = out .. ' ' .. table.concat(flags, ' ')
+    end
+    if #pargs > 0 then
+        out = out .. " -- " .. table.concat(pargs, ' ')
+    end
+    return out
+end
+
+local function call_cmdline(exe, flags, pargs)
+    local cmdline = make_cmdline(exe, flags, pargs)
+    local output = io.popen(cmdline, 'r'):read("*all")
+    return cmdline, output
+end
+
+local function confirm_command(action, targets)
+    local choices = {yes = true,  y = true, 
+                     no  = false, n = false}
+    io.stdout:write("[WARNING]:\n",
+                    "We are about to '", action, "' on:\n",
+                    table.concat(targets, ", "), '\n',
+                    "Do you want to continue? (y/n): ")
+    local input  = io.stdin:read("*line")
+    local choice = choices[input:lower()]
+    if choice == true then
+        io.stdout:write("Confirmed. Proceeding.\n")
+        return true
+    elseif choice == false then
+        io.stdout:write("Confirmed. Aborting.\n")
+        return false
+    else
+        io.stdout:write("Unknown option '", input, "'. Aborting.\n")
+        return false
+    end
+end
+
+-- OPTIONS ---------------------------------------------------------------- {{{1
+
+local options = {}
+
+-- FIND IN FILES ---------------------------------------------------------- {{{2
+
+local function make_regexopt(regex)
+    if string.match(regex, "^%-%-regexp=") then
+        regex = string.match(regex, "^%-%-regexp=(.+)")
+    end
+    return string.format("--regexp='%s'", regex)
+end
+
+options["find-pretty"] = {
+    exe = "rg",
+    flags = {"--line-number", "--color=always", "--heading"},
+    usage = "<pattern> <path...>",
+    init = function(self, pargs)
+        local regex = table.remove(pargs, 1)
+        if not regex then
+            return false
+        end
+        table.insert(self.flags, make_regexopt(regex))
+        return true
+    end,
+    call = function(self, pargs)
+        if not self:init(pargs) then
+            return nil, nil, "No pattern received."
+        elseif #pargs == 0 then
+            return nil, nil, "No path/s received."
+        end
+        local cmdline, output = call_cmdline(self.exe, self.flags, pargs)
+        return cmdline, output, nil
+    end,
+}
+
+options["find-terse"] = {
+    exe = "rg",
+    flags = {"--files-with-matches", "--color=never"},
+    usage = options["find-pretty"].usage,
+    init = options["find-pretty"].init,
+    call = options["find-pretty"].call,
+}
+
+options["find"] = options["find-pretty"]
+
+-- 2}}} ------------------------------------------------------------------------
+
+-- FIND AND REPLACE ------------------------------------------------------- {{{2
+
+options["replace"] = {
+    exe = "vim",
+    flags = {"-e", "-u NONE", "-c ':xa'"}, -- ex mode, no .vimrc, save & exit
+    usage = "<pattern> <subst> <path...>",
+    init = function(self, pargs)
+        local regex = table.remove(pargs, 1)
+        local subst = table.remove(pargs, 1) -- was shifted down by 1 index
+        if not regex or not subst then
+            return false
+        end
+        -- Apply to all opened buffers, use magic to be more Perl-ish regex.
+        local bufdo = ([[-c ':bufdo! %%s/\v%s/%s/g']]):format(regex, subst)
+
+        -- Insert before `-c ':xa'`.
+        table.insert(self.flags, #self.flags, bufdo)
+        return true
+    end,
+    call = function(self, pargs)
+        -- save so find-terse can access
+        local regex = pargs[1]
+        if not self:init(pargs) then
+            return nil, nil, "No pattern and/or substituion received."
+        elseif #pargs == 0 then
+            return nil, nil, "No path/s received."
+        end
+        -- prepend for find-terse
+        table.insert(pargs, 1, regex)
+        
+        -- find-terse will output a newline-separated string of filenames
+        local find, matchlist = options["find-terse"]:call(pargs)
+        if matchlist == "" then
+            return nil, nil, "No matches found."
+        end
+        local buflist = matchlist:split('\n')
+        if not confirm_command("find-and-replace", buflist) then
+            return nil, nil, "Command aborted."
+        end
+        local vim, output = call_cmdline(self.exe, self.flags, buflist)
+        return find .. '\n' .. vim, output, nil
+    end,
+}
+
+-- 2}}} ------------------------------------------------------------------------
+
+-- WHITESPACE COMMANDS ---------------------------------------------------- {{{2
+
+options["find-whitespace"] = {
+    exe = nil,
+    flags = nil,
+    usage = "<path...>",
+    call = function(self, pargs)
+        local regex  = [[\s+$]]
+        table.insert(pargs, 1, regex)
+        local find = options["find-terse"]
+        find:init(pargs)
+        if #pargs == 0 then
+            return nil, nil, "No path/s received."
+        end
+        local cmdline, output = call_cmdline(find.exe, find.flags, pargs)
+        return cmdline, output, nil
+    end,
+}
+
+options["fix-whitespace"] = {
+    usage = options["find-whitespace"].usage,
+    call = function(self, pargs)
+    end,
+}
+
+-- 2}}} ------------------------------------------------------------------------
+
+-- 1}}} ------------------------------------------------------------------------
+
+local function main(argc, argv)
+    local opt = options[argv[1]]
+    if not opt then
+        io.stderr:write("[ERROR]:\n", "Unknown option '", argv[1], "\'\n.")
+        return 1
+    end
+    local cmd, out, err = opt:call(table.slice(argv, 2))
+    if err then
+        io.stdout:write("[ERROR]:\n", argv[1], ": ", err, '\n')
+    else
+        io.stdout:write("[COMMAND]:\n", cmd, '\n')
+        io.stdout:write("[OUTPUT]:\n", out, '\n')
+    end
+    return 0
+end
+
+return main(#arg, arg)

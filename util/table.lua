@@ -6,7 +6,7 @@
 function table.slice(tbl, start, stop, step)
     assert(type(tbl) == "table", "Attempt to slice a non-table value")
     start = start or 1
-    stop  = (stop or #tbl) - 1 -- Must represent first index not in slice
+    stop  = (stop or #tbl + 1) - 1 -- Must represent first index not in slice
     step  = step or 1
     if step == 1 then
         return {unpack(tbl, start, stop)}
