@@ -38,7 +38,7 @@ local function capture_command(self, pargs)
 end
 
 local function surround(subject, delimiter)
-    return string.format("%s%s%s", delimiter, subject, delimiter)
+    return delimiter .. subject .. delimiter
 end
 
 local function squote(subject)
@@ -152,47 +152,47 @@ OPTIONS = {
     },
     ["memcheck"] = {
         cmd  = "valgrind",
-        flags = {"--leak-check=full", 
-                "--track-origins=yes", 
+        flags = {"--leak-check=full",
+                "--track-origins=yes",
                 "2>&1"}, -- valgrind writes to stdout by default so redirect.
         help = "Run Valgrind memcheck with some helpful defaults.",
         usage = "[exe [args...]]",
         default = {INTERPRETER},
         call = execute_command,
     },
-    ["search"] = {
-        cmd = "grep",
+    ["find"] = {
+        cmd   = "rg", -- ripgrep
         flags = {"--line-number",
-                "--directories=recurse",
-                "--include=*.c",
-                "--include=*.h",
-                "--color=always"},
-        help = "Find all occurences of POSIX <regex> in directory/ies.",
+                 "--color=auto",
+                 "--heading"},
+        help = "Find all occurences of Perl <regex> in directory/ies.",
         default = {LULU_CC_SRC},
         usage = "<regex> [directory...]",
         call = function(self, pargs)
             assert(#pargs >= 1, "Requires at least a regular expression")
             -- Remove regex from pargs and append to flags
-            self.flags[#self.flags + 1] = dquote(table.remove(pargs, 1))
+            self.flags[#self.flags + 1] = "--regexp=" .. dquote(table.remove(pargs, 1))
             return execute_command(self, pargs)
         end
     },
     ["whitespace"] = {
-        cmd = "grep",
-        flags = {"--color=never",
-                "--files-with-matches",
-                "--directories=recurse",
-                "\"[[:space:]]\\+$\""}, -- match trailing whitespaces per line,
-                                        -- enclose in quotes due to shell rules.
+        cmd = "rg",
+        flags = {"--line-number",
+                 "--color=auto",
+                 "--heading",
+                 [['\s+$']]}, -- match trailing whitespaces per line,
+                              -- enclose in quotes due to shell rules.
         default = {LULU_CC_SRC},
         help = "For each directory, or src/, list files with trailing whitespaces.",
         usage = "[directory...]",
         call = execute_command,
     },
     ["replace"] = {
-        cmd = "sed",
-        flags = {"--in-place"},
-        help = "Replace POSIX regex with substitution in [file...] or src/*.",
+        cmd = "vim",
+        flags = {"-e",      -- start in Ex mode
+                 "-u NONE", -- don't load any .vimrc, for performance
+                },
+        help = "Replace Perl regex with substitution in [file...] or src/*.",
         usage = "<regex> <substitution> [file...]",
         default = {LULU_CC_SRC .. '*'}, -- `sed` only works with globbing.
         call = function(self, pargs)
@@ -200,13 +200,16 @@ OPTIONS = {
             -- Remove regex and replacement pattern from pargs
             local pat = table.remove(pargs, 1)
             local sub = table.remove(pargs, 1) -- Shifted down to index 1
-            local command = string.format("--expression=\"s/%s/%s/g\"", pat, sub)
-            
+
+            -- Need to enable vim's magic mode to get more Perl-like regex
+            local command = string.format([[-c ':%%s/\v%s/%s/ge']], pat, sub)
+
             if not confirm_command(#pargs > 0 and pargs or self.default) then
                 return 1
             end
 
             self.flags[#self.flags + 1] = command
+            self.flags[#self.flags + 1] = [[-c ':x']]
             return execute_command(self, pargs)
         end,
     },
@@ -224,7 +227,7 @@ OPTIONS = {
                 io.stderr:write("No files with trailing whitespace found.\n")
                 return 1
             end
-            
+
             -- Prepend regex and substitution due to how replace works
             -- We need to remove the quotes from the regex as well.
             table.insert(pargs, 1, search.flags[#search.flags]:sub(2, -2))
