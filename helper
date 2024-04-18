@@ -76,23 +76,25 @@ end
 
 local options = {}
 
--- FIND IN FILES ---------------------------------------------------------- {{{2
+local function make_pathopt()
+    return string.format("[path...=\'%s\']", LULU_SRC)
+end
 
 local function make_regexarg(regex)
     if regex:match("^%-%-regexp=") then
         regex = regex:match("^%-%-regexp=(.+)")
     end
-    if regex:match("^\'") then
-        return string.format("--regexp=\"%s\"", regex)
-    end
-    return string.format("--regexp='%s'", regex)
+    local quote = (regex:match("^\'") and '\"') or '\''
+    return string.format("--regexp=" .. quote .. '%s' .. quote, regex)
 end
+
+-- FIND IN FILES ---------------------------------------------------------- {{{2
 
 options["find-pretty"] = {
     exe = "rg",
     flags = {"--line-number", "--color=always", "--heading"},
-    usage = "<pattern> <path...>",
-    help = "Pretty-prints all occurences of <pattern> in <path...>.",
+    usage = "<pattern> " .. make_pathopt(),
+    help = "Pretty-prints all occurences of <pattern> in [path...].",
     note = "Uses ripgrep and assumes it is installed.",
     init = function(self, pargs)
         local regex = table.remove(pargs, 1)
@@ -115,7 +117,7 @@ options["find-pretty"] = {
 options["find-terse"] = {
     exe = "rg",
     flags = {"--files-with-matches", "--color=never"},
-    help = "Lists filenames for matches of <pattern> in <path...>.",
+    help = "Lists filenames for matches of <pattern> in [path...].",
     usage = options["find-pretty"].usage,
     note = options["find-pretty"].note,
     init = options["find-pretty"].init,
@@ -129,8 +131,8 @@ options["find-terse"] = {
 options["find-and-replace"] = {
     exe = "vim",
     flags = {"-e", "-u NONE", "-c ':xa'"}, -- ex mode, no .vimrc, save & exit
-    usage = "<pattern> <subst> <path...>",
-    help = "In <path...>, replaces all occurences of <pattern> with <subst>.",
+    usage = "<pattern> <subst> " .. make_pathopt(),
+    help = "In [path...], replaces all occurences of <pattern> with <subst>.",
     note = "Uses vim in ex mode, with magic turned on for more Perl-like regex.\n"
         .. "\tPrepends `-c ':bufdo! %s/\\v<pattern>/<subst>/ge` before `-c ':xa'`.",
     init = function(self, pargs)
@@ -183,8 +185,8 @@ options["find-and-replace"] = {
 options["find-whitespace"] = {
     exe = nil,
     flags = nil,
-    usage = "<path...>",
-    help = "List names of files from <path...> that have trailing whitespace.",
+    usage = make_pathopt(),
+    help = "List names of files from [path...] that have trailing whitespace.",
     note = "See `find-terse` for more info on how the search is done.",
     regex = [[\s+$]],
     init = function(self, pargs)
@@ -201,11 +203,10 @@ options["find-whitespace"] = {
 options["fix-whitespace"] = {
     exe = nil,
     flags = nil,
-    usage = "<path...>",
-    help = "Strips files from <path...> of trailing whitespace.",
-    note = "See `find-and-replace` for more info.",
     regex = options["find-whitespace"].regex,
     usage = options["find-whitespace"].usage,
+    help = "Strips files from [path...] of trailing whitespace.",
+    note = "See `find-and-replace` for more info.",
     call = function(self, pargs)
         local _, matchlist, errmsg = options["find-whitespace"]:call(pargs)
         if errmsg then
@@ -237,7 +238,7 @@ options["run"] = {
 options["memcheck"] = {
     exe = "valgrind",
     flags = {"--leak-check=full", "--track-origins=yes"},
-    usage = "[exe = " .. LULU_EXE .. " [, args...]]",
+    usage = "[exe=" .. LULU_EXE .. " [,args...]]",
     help = "Runs valgrind with some helpful options.",
     note = "If [exe] is not given we will default to " .. LULU_EXE .. ".",
     call = function(self, pargs)
@@ -280,7 +281,7 @@ end
 options["help"] = {
     exe = nil,
     flags = nil,
-    usage = "[option... = all]",
+    usage = "[option...=all]",
     help = "Gets information about each command in [option...].",
     note = "Some commands are aliases, e.g. `find`, `replace`, and `trim`.",
     call = function(self, pargs)
@@ -305,6 +306,11 @@ options["help"] = {
 -- 1}}} ------------------------------------------------------------------------
 
 local function main(argc, argv)
+    if argc == 0 then
+        io.stderr:write("[USAGE]: ", argv[0], " <option [args...]>\n")
+        io.stderr:write("\tFor more information see `", argv[0], " help`.\n")
+        return 1
+    end
     local opt = options[argv[1]] or options[aliases[argv[1]]]
     if not opt then
         io.stderr:write("[ERROR]:\n", "Unknown option '", argv[1], "\'.\n")
