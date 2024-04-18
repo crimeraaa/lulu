@@ -4,18 +4,15 @@ require "util/common"
 require "util/table"
 require "util/string"
 
-local LULU_DIR = script_path()
-local LULU_SRC = LULU_DIR .. "src/"
-
 local function make_cmdline(exe, flags, pargs)
-    local out = exe
+    local output = exe
     if #flags > 0 then
-        out = out .. ' ' .. table.concat(flags, ' ')
+        output = output .. ' ' .. table.concat(flags, ' ')
     end
-    if #pargs > 0 then
-        out = out .. " -- " .. table.concat(pargs, ' ')
+    if pargs and #pargs > 0 then
+        output = output .. " -- " .. table.concat(pargs, ' ')
     end
-    return out
+    return output
 end
 
 local function call_cmdline(exe, flags, pargs)
@@ -24,14 +21,20 @@ local function call_cmdline(exe, flags, pargs)
     return cmdline, output
 end
 
-local function confirm_command(action, targets)
-    local choices = {yes = true,  y = true, 
+local function confirm_cmdline(action, targets)
+    local choices = {yes = true,  y = true,
                      no  = false, n = false}
     io.stdout:write("[WARNING]:\n",
                     "We are about to '", action, "' on:\n",
-                    table.concat(targets, ", "), '\n',
+                    table.concat(targets, '\n'), '\n',
                     "Do you want to continue? (y/n): ")
+
     local input  = io.stdin:read("*line")
+    if input == nil then
+        io.stdout:write("Received EOF.\n")
+        return false
+    end
+
     local choice = choices[input:lower()]
     if choice == true then
         io.stdout:write("Confirmed. Proceeding.\n")
@@ -51,7 +54,7 @@ local options = {}
 
 -- FIND IN FILES ---------------------------------------------------------- {{{2
 
-local function make_regexopt(regex)
+local function make_regexarg(regex)
     if string.match(regex, "^%-%-regexp=") then
         regex = string.match(regex, "^%-%-regexp=(.+)")
     end
@@ -62,12 +65,14 @@ options["find-pretty"] = {
     exe = "rg",
     flags = {"--line-number", "--color=always", "--heading"},
     usage = "<pattern> <path...>",
+    help = "Pretty-prints all occurences of <pattern> in <path...>.",
+    note = "Uses ripgrep and assumes it is installed.",
     init = function(self, pargs)
         local regex = table.remove(pargs, 1)
         if not regex then
             return false
         end
-        table.insert(self.flags, make_regexopt(regex))
+        table.insert(self.flags, make_regexarg(regex))
         return true
     end,
     call = function(self, pargs)
@@ -84,21 +89,24 @@ options["find-pretty"] = {
 options["find-terse"] = {
     exe = "rg",
     flags = {"--files-with-matches", "--color=never"},
+    help = "Lists filenames for matches of <pattern> in <path...>.",
     usage = options["find-pretty"].usage,
+    note = options["find-pretty"].note,
     init = options["find-pretty"].init,
     call = options["find-pretty"].call,
 }
-
-options["find"] = options["find-pretty"]
 
 -- 2}}} ------------------------------------------------------------------------
 
 -- FIND AND REPLACE ------------------------------------------------------- {{{2
 
-options["replace"] = {
+options["find-and-replace"] = {
     exe = "vim",
     flags = {"-e", "-u NONE", "-c ':xa'"}, -- ex mode, no .vimrc, save & exit
     usage = "<pattern> <subst> <path...>",
+    help = "In <path...>, replaces all occurences of <pattern> with <subst>.",
+    note = "Uses vim in ex mode, with magic turned on for more Perl-like regex.\n"
+        .. "\tPrepends `-c ':bufdo! %s/\\v<pattern>/<subst>/ge` before `-c ':xa'`.",
     init = function(self, pargs)
         local regex = table.remove(pargs, 1)
         local subst = table.remove(pargs, 1) -- was shifted down by 1 index
@@ -106,7 +114,7 @@ options["replace"] = {
             return false
         end
         -- Apply to all opened buffers, use magic to be more Perl-ish regex.
-        local bufdo = ([[-c ':bufdo! %%s/\v%s/%s/g']]):format(regex, subst)
+        local bufdo = ([[-c ':bufdo! %%s/\v%s/%s/ge']]):format(regex, subst)
 
         -- Insert before `-c ':xa'`.
         table.insert(self.flags, #self.flags, bufdo)
@@ -120,16 +128,19 @@ options["replace"] = {
         elseif #pargs == 0 then
             return nil, nil, "No path/s received."
         end
+
         -- prepend for find-terse
         table.insert(pargs, 1, regex)
-        
+
         -- find-terse will output a newline-separated string of filenames
         local find, matchlist = options["find-terse"]:call(pargs)
         if matchlist == "" then
             return nil, nil, "No matches found."
         end
+
+        -- Vim will open exactly these files.
         local buflist = matchlist:split('\n')
-        if not confirm_command("find-and-replace", buflist) then
+        if not confirm_cmdline("find-and-replace", buflist) then
             return nil, nil, "Command aborted."
         end
         local vim, output = call_cmdline(self.exe, self.flags, buflist)
@@ -145,41 +156,108 @@ options["find-whitespace"] = {
     exe = nil,
     flags = nil,
     usage = "<path...>",
+    help = "List names of files from <path...> that have trailing whitespace.",
+    note = "See `find-terse` for more info on how the search is done.",
+    regex = [[\s+$]],
     call = function(self, pargs)
-        local regex  = [[\s+$]]
-        table.insert(pargs, 1, regex)
-        local find = options["find-terse"]
-        find:init(pargs)
-        if #pargs == 0 then
-            return nil, nil, "No path/s received."
-        end
-        local cmdline, output = call_cmdline(find.exe, find.flags, pargs)
-        return cmdline, output, nil
+        -- Prepend since find-terse expects regex as the first parg
+        table.insert(pargs, 1, self.regex)
+        return options["find-terse"]:call(pargs)
     end,
 }
 
 options["fix-whitespace"] = {
+    exe = nil,
+    flags = nil,
+    usage = "<path...>",
+    help = "Strips files from <path...> of trailing whitespace.",
+    note = "See `find-and-replace` for more info.",
+    regex = options["find-whitespace"].regex,
     usage = options["find-whitespace"].usage,
     call = function(self, pargs)
+        local _, matchlist, errmsg = options["find-whitespace"]:call(pargs)
+        if errmsg then
+            return nil, nil, errmsg
+        elseif matchlist == "" then
+            return nil, nil, "No files with trailing whitespaces found."
+        end
+        -- Hacky but we need a single line for this to work
+        local buflist = table.concat(matchlist:split('\n'), ' ')
+        return options["find-and-replace"]:call({self.regex, '', buflist})
     end,
 }
 
 -- 2}}} ------------------------------------------------------------------------
 
+local aliases = {
+    ["find"]    = "find-pretty",
+    ["replace"] = "find-and-replace",
+    ["trim"]    = "fix-whitespace",
+    ["--help"]  = "help",
+    ["-h"]      = "help",
+}
+
+local function print_opt(opt, name)
+    local alias = aliases[name]
+    opt = opt or options[alias]
+    if not opt and not alias then
+        io.stdout:write("Unknown option '", name, "\'.\n")
+        return
+    end
+    io.stdout:write(name, ' ', opt.usage, '\n')
+    if alias then
+        io.stdout:write("\t\'", name, "\' is an alias for \'", alias, "\'.\n")
+    end
+    io.stdout:write('\t', opt.help, '\n',
+                    '\t', opt.note, '\n')
+    if opt.exe then
+        local pargs = string.match(opt.usage, "<%w-%.%.%.>$")
+        local cmdline = make_cmdline(opt.exe, opt.flags)
+        io.stdout:write("\tInvokes: ", cmdline, " -- ", pargs, '\n')
+    end
+    io.stdout:write('\n')
+end
+
+options["help"] = {
+    exe = nil,
+    flags = nil,
+    usage = "[option... = all]",
+    help = "Gets information about each command in [option...].",
+    note = "Some commands are aliases, e.g. `find`, `replace`, and `trim`.",
+    call = function(self, pargs)
+        if #pargs == 0 then
+            pargs = table.array_of_keys(options)
+            io.stdout:write("The following aliases are provided:\n")
+            for alias, target in pairs(aliases) do
+                local pretty = string.format("%-8s => %s", alias, target)
+                io.stdout:write('\t', pretty, '\n')
+            end
+            io.stdout:write('\n')
+        end
+        for _, name in ipairs(pargs) do
+            print_opt(options[name], name)
+        end
+        return "", "", nil
+    end,
+}
+
 -- 1}}} ------------------------------------------------------------------------
 
 local function main(argc, argv)
-    local opt = options[argv[1]]
+    local opt = options[argv[1]] or options[aliases[argv[1]]]
     if not opt then
-        io.stderr:write("[ERROR]:\n", "Unknown option '", argv[1], "\'\n.")
+        io.stderr:write("[ERROR]:\n", "Unknown option '", argv[1], "\'.\n")
         return 1
     end
-    local cmd, out, err = opt:call(table.slice(argv, 2))
-    if err then
-        io.stdout:write("[ERROR]:\n", argv[1], ": ", err, '\n')
+    local cmdline, output, errmsg = opt:call(table.slice(argv, 2))
+    if opt == options["help"] then
+        return 0
+    end
+    if errmsg then
+        io.stdout:write("[ERROR]:\n", argv[1], ": ", errmsg, '\n')
     else
-        io.stdout:write("[COMMAND]:\n", cmd, '\n')
-        io.stdout:write("[OUTPUT]:\n", out, '\n')
+        io.stdout:write("[COMMAND]:\n", cmdline, '\n')
+        io.stdout:write("[OUTPUT]:\n", output, '\n')
     end
     return 0
 end

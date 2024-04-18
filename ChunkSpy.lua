@@ -142,7 +142,7 @@ end
 --------------------------------------------------------------------------------
 -- Change this to your preferred default profile. Instead of x86 I use x64.
 --------------------------------------------------------------------------------
-SetProfile("x64 standard") 
+SetProfile("x64 standard")
 
 
 -----------------------------------------------------------------------
@@ -1461,7 +1461,7 @@ function ChunkSpy(chunk_name, chunk)
     -------------------------------------------------------------
     local function DescString(s, pos)
       local len = string.len(s or "")
-      if len > 0 then 
+      if len > 0 then
         len = len + 1   -- add the NUL back
         s = s.."\0"     -- was removed by LoadString
       end

@@ -18,7 +18,7 @@ EQUATION = f"MASK1(N, pos) => {SHIFTSTR}"
 
 def submiddle(src: str, mid: str, sub: str):
     """ Hard to explain, so let's just use an example.
-    
+
     Given:
     - `src="((~(Byte)0) << N)"`
     - `mid="(~(Byte)0)"`
@@ -55,7 +55,7 @@ def onebits_fill():
     print()
     return fill
 
-    
+
 def fill_to_mask(fill: int, N: int):
     mask = new_uint(fill << N)
     print(f"MASK => {SUBMASK}")
@@ -117,7 +117,7 @@ def main(argc: int, argv: list[str]):
     print(f"\tSHIFT := {SUBSHIFT}")
     print()
     shift = mask1(N, pos)
-    
+
     print(f"MASK1(N, pos) => {bin(shift)}")
     return 0
 

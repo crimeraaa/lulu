@@ -2,7 +2,7 @@
 
 # Assumes we want to debug in Windows Terminal specifically.
 
-# According to MS: 
+# According to MS:
 #   "Execution aliases do not work in WSL distributions. If you want to use
 #   wt.exe from a WSL command line, you can spawn it from CMD directly by
 #   running `cmd.exe`.
