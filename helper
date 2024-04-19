@@ -4,37 +4,28 @@ require "util/common"
 require "util/table"
 require "util/string"
 
-local CWD = script_path()
-local LULU_SRC = CWD .. "src/"
-local LULU_EXE = CWD .. "bin/lulu"
+local SCRIPT_PATH = script_path()
+local LULU_SRC    = SCRIPT_PATH .. "src/"
+local LULU_EXE    = SCRIPT_PATH .. "bin/lulu"
 
 local function make_cmdline(exe, flags, pargs)
-    local output = exe
-    if #flags > 0 then
-        output = output .. ' ' .. table.concat(flags, ' ')
+    local cmdline = string.join(exe, flags)
+    -- lulu can't handle "--" in its command-line arguments.
+    if pargs and #pargs > 0 and exe ~= LULU_EXE then
+        table.insert(pargs, 1, "--")
     end
-    if pargs and #pargs > 0 then
-        -- lulu can't handle "--" in its command-line arguments.
-        if exe == LULU_EXE then
-            output = output .. ' ' .. table.concat(pargs, ' ')
-        else
-            output = output .. " -- " .. table.concat(pargs, ' ')
-        end
-    end
-    return output
+    return string.join(cmdline, pargs)
 end
 
 local function capture_cmdline(exe, flags, pargs)
     local cmdline = make_cmdline(exe, flags, pargs)
-    local output = io.popen(cmdline, 'r'):read("*all")
-    return cmdline, output
+    return cmdline, io.popen(cmdline, 'r'):read("*all")
 end
 
--- Used mainly if we have interactive prompts
+-- Used mainly if we have interactive prompts, as io.popen won't print prompts.
 local function execute_cmdline(exe, flags, pargs)
     local cmdline = make_cmdline(exe, flags, pargs)
-    local output = os.execute(cmdline, 'r')
-    return cmdline, output
+    return cmdline, os.execute(cmdline)
 end
 
 local function confirm_cmdline(action, targets)
@@ -85,7 +76,7 @@ local function make_regexarg(regex)
         regex = regex:match("^%-%-regexp=(.+)")
     end
     local quote = (regex:match("^\'") and '\"') or '\''
-    return string.format("--regexp=" .. quote .. '%s' .. quote, regex)
+    return string.format("--regexp=" .. quote .. "%s" .. quote, regex)
 end
 
 -- FIND IN FILES ---------------------------------------------------------- {{{2
@@ -99,15 +90,16 @@ options["find-pretty"] = {
     init = function(self, pargs)
         local regex = table.remove(pargs, 1)
         if not regex then
-            return false
+            return false, "No pattern received"
         end
         set_pargs_if_empty(pargs, LULU_SRC)
         table.insert(self.flags, make_regexarg(regex))
-        return true
+        return true, nil
     end,
     call = function(self, pargs)
-        if not self:init(pargs) then
-            return nil, nil, "No pattern received."
+        local ok, msg = self:init(pargs)
+        if not ok then
+            return nil, nil, msg
         end
         local cmdline, output = capture_cmdline(self.exe, self.flags, pargs)
         return cmdline, output, nil
@@ -133,42 +125,38 @@ options["find-and-replace"] = {
     flags = {"-e", "-u NONE", "-c ':xa'"}, -- ex mode, no .vimrc, save & exit
     usage = "<pattern> <subst> " .. make_pathopt(),
     help = "In [path...], replaces all occurences of <pattern> with <subst>.",
-    note = "Uses vim in ex mode, with magic turned on for more Perl-like regex.\n"
-        .. "\tPrepends `-c ':bufdo! %s/\\v<pattern>/<subst>/ge` before `-c ':xa'`.",
+    note = "Please ensure <pattern> works for both ripgrep and vim (magic).",
     init = function(self, pargs)
         local regex = table.remove(pargs, 1)
         local subst = table.remove(pargs, 1) -- was shifted down by 1 index
         if not regex or not subst then
-            return false
+            return false, "No pattern and/or substitution received."
         end
-
-        -- Get a list of matches in this directory if none given.
         set_pargs_if_empty(pargs, LULU_SRC)
 
         -- Apply to all opened buffers, use magic to be more Perl-ish regex.
-        local bufdo = ([[-c ':bufdo! %%s/\v%s/%s/ge']]):format(regex, subst)
+        local bufdo = string.format("-c ':bufdo! %%s/\\v%s/%s/ge'", regex, subst)
 
-        -- Insert before `-c ':xa'`.
+        -- Insert BEFORE (array[len]) `-c ':xa'`, not AFTER (array[len + 1]).
         table.insert(self.flags, #self.flags, bufdo)
-        return true
+        return true, nil
     end,
     call = function(self, pargs)
-        -- save so find-terse can access
+        -- save so we can prepend to find-terse after self:init()
         local regex = pargs[1]
-        if not self:init(pargs) then
-            return nil, nil, "No pattern and/or substituion received."
+        local ok, msg = self:init(pargs)
+        if not ok then
+            return nil, nil, msg
         end
-
-        -- prepend for find-terse
+        -- find-terse requires the regex as the first parg.
         table.insert(pargs, 1, regex)
-
-        -- find-terse will output a newline-separated string of filenames
         local find, matchlist = options["find-terse"]:call(pargs)
         if matchlist == "" then
             return nil, nil, "No matches found."
         end
 
-        -- Vim will open exactly these files.
+        -- find-terse will output a newline-separated string of filenames.
+        -- Pass these file names as positional arguments for Vim to open.
         local buflist = matchlist:split('\n')
         if not confirm_cmdline("find-and-replace", buflist) then
             return nil, nil, "Command aborted."
@@ -208,15 +196,10 @@ options["fix-whitespace"] = {
     help = "Strips files from [path...] of trailing whitespace.",
     note = "See `find-and-replace` for more info.",
     call = function(self, pargs)
-        local _, matchlist, errmsg = options["find-whitespace"]:call(pargs)
-        if errmsg then
-            return nil, nil, errmsg
-        elseif matchlist == "" then
-            return nil, nil, "No files with trailing whitespaces found."
-        end
-        -- Hacky but we need a single line for this to work
-        local buflist = table.concat(matchlist:split('\n'), ' ')
-        return options["find-and-replace"]:call({self.regex, '', buflist})
+        -- find-and-replaces calls find-terse which needs <pattern> <subst>
+        table.insert(pargs, 1, self.regex)
+        table.insert(pargs, 2, "")
+        return options["find-and-replace"]:call(pargs)
     end,
 }
 
@@ -238,12 +221,67 @@ options["run"] = {
 options["memcheck"] = {
     exe = "valgrind",
     flags = {"--leak-check=full", "--track-origins=yes"},
-    usage = "[exe=" .. LULU_EXE .. " [,args...]]",
+    usage = "[exe='" .. LULU_EXE .. "' [,args...]]",
     help = "Runs valgrind with some helpful options.",
     note = "If [exe] is not given we will default to " .. LULU_EXE .. ".",
     call = function(self, pargs)
         return execute_cmdline(self.exe, self.flags, set_pargs_if_empty(pargs, LULU_EXE))
     end
+}
+
+local LUA_RESERVED = {["do"] = true,
+                      ["if"] = true,
+                      ["in"] = true,
+                      ["io"] = true,
+                      ["or"] = true}
+
+options["overflow"] = {
+    exe = "lua",
+    flags = nil,
+    usage = "[rows=12] [columns=18]",
+    help = "Generates a file 'overflow.lua' to test Lua's local variable limits.",
+    note = "By default, Lua will throw an error at around 200.",
+    rows = 0,
+    cols = 0,
+    init = function(self, pargs)
+        if #pargs == 0 then
+            self.rows = 12
+            self.cols = 18
+        elseif #pargs == 2 then
+            self.rows = table.remove(pargs, 1)
+            self.cols = table.remove(pargs, 1)
+        else
+            return false, "Please specify exactly only #rows and #columns."
+        end
+        return true
+    end,
+    call = function(self, pargs)
+        local ok, msg = self:init(pargs)
+        if not ok then
+            return nil, nil, msg
+        end
+        -- Should be empty now
+        pargs[1] = SCRIPT_PATH .. "overflow.lua"
+        local file, err = io.open(pargs[1], 'w')
+        if not file then
+            return nil, nil, err
+        end
+        file:write("-- Generated by \'", arg[0], "\'\n")
+        local lower = string.byte('a')
+        for outer = 0, self.rows do
+            local names = {}
+            for inner = 0, self.cols do
+                local name = string.char(lower + outer, lower + inner)
+                if not LUA_RESERVED[name] then
+                    names[#names + 1] = name
+                end
+            end
+            file:write("local ", table.concat(names, ','), '\n')
+        end
+        file:write('\n')
+        file:close()
+        return capture_cmdline(self.exe, self.flags, pargs)
+    end,
 }
 
 -- 2}}} ------------------------------------------------------------------------
@@ -283,7 +321,7 @@ options["help"] = {
     flags = nil,
     usage = "[option...=all]",
     help = "Gets information about each command in [option...].",
-    note = "Some commands are aliases, e.g. `find`, `replace`, and `trim`.",
+    note = "If no option/s is/are given we will list help for all commands.",
     call = function(self, pargs)
         if #pargs == 0 then
             pargs = table.array_of_keys(options)

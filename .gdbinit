@@ -1,22 +1,8 @@
 # Add one of these to ~/.config/gdb/gdbinit:
 #   add-auto-load-safe-path $HOME/.config/gdb/gdbinit
 #   set auto-load safe-path /
-# Note that I'm using https://github.com/cyrus-and/gdb-dashboard
 
-# Disable all the following modules
-dashboard assembly
-dashboard registers
-dashboard threads
-dashboard memory
-dashboard stack
-dashboard breakpoints
-# dashboard history
-
-# Use Python-style booleans.
-# Height of 0 will take up the entire pane.
-dashboard source -style height 30
-dashboard source -style highlight-line True
-dashboard variables -style compact False
+set print pretty on
 
 # https://sourceware.org/gdb/current/onlinedocs/gdb.html/Define.html
 # https://stackoverflow.com/a/36505832
@@ -41,6 +27,6 @@ end
 
 break vm.c:interpret
 break compiler.c:compile
-tbreak compiler.c:expression
+break parser.c:declaration
 
 run

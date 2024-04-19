@@ -163,7 +163,9 @@ static ErrType run(VM *self) {
             push_back(read_constant());
             break;
         case OP_NIL:
-            push_back(&make_nil());
+            for (int i = 0, limit = read_byte(); i < limit; i++) {
+                push_back(&make_nil());
+            }
             break;
         case OP_TRUE:
             push_back(&make_boolean(true));
@@ -172,7 +174,10 @@ static ErrType run(VM *self) {
             push_back(&make_boolean(false));
             break;
         case OP_POP:
-            popn(read_byte3());
+            popn(read_byte());
+            break;
+        case OP_GETLOCAL:
+            push_back(&self->stack[read_byte()]);
             break;
         case OP_GETGLOBAL: {
             // Assume this is a string for the variable's name.
@@ -184,6 +189,10 @@ static ErrType run(VM *self) {
             }
             push_back(&value);
         } break;
+        case OP_SETLOCAL:
+            self->stack[read_byte()] = *poke_top(-1);
+            pop_back();
+            break;
         case OP_SETGLOBAL:
             // Same as `OP_GETGLOBAL`.
             set_table(&self->globals, read_constant(), poke_top(-1), allocator);

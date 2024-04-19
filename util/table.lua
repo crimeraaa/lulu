@@ -29,7 +29,7 @@ function table.array_of_keys(tbl)
     return res
 end
 
-function table.isarray(tbl)
+function table.is_array(tbl)
     local len = #tbl
     local keys = 0
     for _ in pairs(tbl) do
@@ -38,10 +38,22 @@ function table.isarray(tbl)
     return keys == len
 end
 
-function table.dump(tbl)
-    local iter = (table.isarray(tbl) and ipairs) or pairs
-    for k, v in iter(tbl) do
-        local s = string.format("K: %-16s V: %s", tostring(k), tostring(v))
-        io.stdout:write(s, '\n')
+function table.dump(tbl, visited, level)
+    visited = visited or {} -- Help avoid infinite recursion.
+    level   = level or 0
+    local iterfn = (table.is_array(tbl) and ipairs) or pairs
+    local tab = string.rep('\t', level)
+    for k, v in iterfn(tbl) do
+        local kvpair = string.format("K: %-16s V: %s", tostring(k), tostring(v))
+        io.stdout:write(tab, kvpair, '\n')
+        if type(v) == "table" then
+            if not visited[v] then
+                visited[v] = true
+                table.dump(v, visited, level + 1)
+            else
+                local tab2 = string.rep('\t', level + 1)
+                io.stdout:write(tab2, "Visited ", tostring(v), ", skipping.\n")
+            end
+        end
     end
 end

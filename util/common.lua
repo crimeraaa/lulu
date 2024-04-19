@@ -1,11 +1,19 @@
--- Get the current working directory of the calling function.
+-- Get the source path of the calling function.
+-- The returned directory may not necessarily be absolute.
 ---@return string
----@note   The returned directory may not necessarily be absolute.
 function script_path()
-    -- Level 0 means `debug.getinfo`, 1, this function, 2 means the caller.
+    -- Level 0 means `debug.getinfo()`
+    -- Level 1 means this function `script_path()`.
+    -- Level 2 means the caller of `script_path()`.
     -- Need `sub(2)` because of the `@` symbol.
     local dir = debug.getinfo(2, "S").source:sub(2)
     return dir:match("(.*[/\\])") or "./"
+end
+
+function is_windows()
+    -- On my Debian WSL instance, returns: "/\n;\n?\n!\n-" so extract the first
+    -- character to see if we are configured with Windows-style slashes or not.
+    return package.config:sub(1,1) == '\\'
 end
 
 -- Python-style `range` function which actually returns a Lua iterator function.

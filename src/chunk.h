@@ -11,44 +11,49 @@
  *          right are more recent and values to the left are older.
  *
  * @details Glossary:
- *          `U`    An unsigned `Byte3`, decoded from the 3 bytes following the
+ *          `U`     An unsigned `Byte3`, decoded from the 3 bytes following the
  *                  current opcode.
+ *          `L`     An unsigned `Byte` representing an index into the current
+ *                  stack frame where local variables are found.
+ *          `B`     A single `Byte` argument.
  *          `Kst`   Constants table of the current chunk.
  *          `V_*`   Negative offset relative to the VM's top of the stack.
  *          `A_*`   Not sure how this is different from `V_*`.
  *          `-`     When used like `V_B3..-..V_1`, indicates we need to concat
- *                  (`..`) values Stack[-B3] (`V_B3`) all the way up to top of
+ *                  (`..`) values Stack[-U] (`V_U`) all the way up to top of
  *                  the Stack[-1] (`V_1`).
  *          `_G`    Like in base Lua, this is the table where global variables
  *                  can be accessed from and written to.
  * @note    See: https://www.lua.org/source/4.0/lopcodes.h.html
  */
 typedef enum {
-    /* ----------+--------+----------------+-----------------+-----------------|
-    |  NAME      |  ARGS  |  STACK BEFORE  |  STACK AFTER    |  SIDE EFFECTS   |
-    -------------+--------+----------------+-----------------+----------------*/
-    OP_CONSTANT, // U     |  -             | Kst[U]          |                 |
-    OP_NIL,      // -     |  -             | nil             |                 |
-    OP_TRUE,     // -     |  -             | true            |                 |
-    OP_FALSE,    // -     |  -             | false           |                 |
-    OP_POP,      // U     |  A_U,...A_1    | -               |                 |
-    OP_GETGLOBAL,// U     |  -             | _G[Kst[U]]      |                 |
-    OP_SETGLOBAL,// U     |  x             | -               | _G[Kst[U]] = x  |
-    OP_EQ,       // -     |  x, y          | x == y          |                 |
-    OP_LT,       // -     |  x, y          | x < y           |                 |
-    OP_LE,       // -     |  x, y          | x <= y          |                 |
-    OP_ADD,      // -     |  x, y          | x + y           |                 |
-    OP_SUB,      // -     |  x, y          | x - y           |                 |
-    OP_MUL,      // -     |  x, y          | x * y           |                 |
-    OP_DIV,      // -     |  x, y          | x / y           |                 |
-    OP_MOD,      // -     |  x, y          | x % y           |                 |
-    OP_POW,      // -     |  x, y          | x ^ y           |                 |
-    OP_CONCAT,   // U     |  V_U,...,V_1   | V_U..-..V_1     |                 |
-    OP_UNM,      // -     |  x             | -x              |                 |
-    OP_NOT,      // -     |  x             | not x           |                 |
-    OP_LEN,      // -     |  x             | len(x)          |                 |
-    OP_PRINT,    // TEMPORARY!
-    OP_RETURN,   // -     |  -             |                 |                 |
+/* ----------+--------+-----------------+-------------------+------------------|
+|  NAME      |  ARGS  |  STACK BEFORE   |  STACK AFTER      |  SIDE EFFECTS    |
+-------------+--------+-----------------+-------------------+-----------------*/
+OP_CONSTANT, // U     |  -              | Kst[U]            |                  |
+OP_NIL,      // B     |  -              | Top[-B..-1] = nil |                  |
+OP_TRUE,     // -     |  -              | true              |                  |
+OP_FALSE,    // -     |  -              | false             |                  |
+OP_POP,      // B     |  A_B,...A_1     | -                 |                  |
+OP_GETLOCAL, // L     |  -              | Loc[L]            |                  |
+OP_GETGLOBAL,// U     |  -              | _G[Kst[U]]        |                  |
+OP_SETLOCAL, // L     |  x              | -                 | Loc[L] = x       |
+OP_SETGLOBAL,// U     |  x              | -                 | _G[Kst[U]] = x   |
+OP_EQ,       // -     |  x, y           | x == y            |                  |
+OP_LT,       // -     |  x, y           | x < y             |                  |
+OP_LE,       // -     |  x, y           | x <= y            |                  |
+OP_ADD,      // -     |  x, y           | x + y             |                  |
+OP_SUB,      // -     |  x, y           | x - y             |                  |
+OP_MUL,      // -     |  x, y           | x * y             |                  |
+OP_DIV,      // -     |  x, y           | x / y             |                  |
+OP_MOD,      // -     |  x, y           | x % y             |                  |
+OP_POW,      // -     |  x, y           | x ^ y             |                  |
+OP_CONCAT,   // U     |  V_U,...,V_1    | V_U..-..V_1       |                  |
+OP_UNM,      // -     |  x              | -x                |                  |
+OP_NOT,      // -     |  x              | not x             |                  |
+OP_LEN,      // -     |  x              | #x                |                  |
+OP_PRINT,    // TEMPORARY!
+OP_RETURN,   // -     |  -              |                   |                 |
 } OpCode;
 
 // Please keep this up to date accordingly!

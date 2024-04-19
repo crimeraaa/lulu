@@ -5,12 +5,77 @@
 static ParseRule *get_parserule(TkType key);
 static void parse_precedence(Compiler *self, Precedence prec);
 
-// Intern a variable name.
-// static int parse_variable(Compiler *self, const char *info) {
-//     Lexer *lexer = self->lexer;
-//     consume_token(lexer, TK_IDENT, info);
-//     return identifier_constant(self, &lexer->consumed);
-// }
+static bool identifiers_equal(const Token *a, const Token *b) {
+    if (a->len != b->len) {
+        return false;
+    }
+    return cstr_equal(a->start, b->start, a->len);
+}
+
+// Returns index of a local variable or -1 if assumed to be global.
+static int resolve_local(Compiler *self, const Token *name) {
+    for (int i = self->localcount - 1; i >= 0; i--) {
+        const Local *local = &self->locals[i];
+        // If using itself in initializer, continue to resolve outward.
+        if (local->depth != -1 && identifiers_equal(name, &local->name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Initializes the current top of the locals array.
+// Returns index of newly initialized local into the locals array.
+static void add_local(Compiler *self, const Token *name) {
+    if (self->localcount + 1 > MAX_LOCALS) {
+        lexerror_at_consumed(self->lexer,
+            "More than " stringify(MAX_LOCALS) " local variables reached");
+    }
+    Local *local = &self->locals[self->localcount++];
+    local->name  = *name;
+    local->depth = -1;
+}
+
+// Analogous to `declareVariable()` in the book, but only for Lua locals.
+// Assumes we just consumed a local variable identifier token.
+void declare_local(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    const Token *name = &lexer->consumed;
+
+    // Detect variable shadowing in the same scope.
+    for (int i = self->localcount - 1; i >= 0; i--) {
+        const Local *local = &self->locals[i];
+        // Have we hit an outer scope?
+        if (local->depth != -1 && local->depth < self->scopedepth) {
+            break;
+        }
+        if (identifiers_equal(name, &local->name)) {
+            lexerror_at_consumed(lexer, "Shadowing of local variable");
+        }
+    }
+    add_local(self, name);
+}
+
+// Intern a local variable name. Analogous to `parseVariable()` in the book.
+static void parse_local(Compiler *self, const char *info) {
+    Lexer *lexer = self->lexer;
+    Token *token = &lexer->consumed;
+    consume_token(lexer, TK_IDENT, info);
+    declare_local(self);
+    identifier_constant(self, token); // We don't need the index into Kst.
+}
+
+static void mark_initialized(Compiler *self, int index) {
+    self->locals[index].depth = self->scopedepth;
+}
+
+// Analogous to `defineVariable()` in the book, but for a comma-separated list
+// form `'local' identifier [, identifier]* [';']`.
+static void define_locals(Compiler *self, int count) {
+    for (int i = 0; i < count; i++) {
+        mark_initialized(self, self->localcount - 1 - i);
+    }
+}
 
 /**
  * @note    In the book, Robert uses `parsePrecedence(PREC_ASSIGNMENT)` but
@@ -53,9 +118,9 @@ static void binary(Compiler *self) {
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (optype) {
-    case TK_NEQ: emit_nbytes(self, OP_EQ, OP_NOT);    break;
-    case TK_GT:  emit_nbytes(self, OP_LE, OP_NOT);    break;
-    case TK_GE:  emit_nbytes(self, OP_LT, OP_NOT);    break;
+    case TK_NEQ: emit_bytes(self, OP_EQ, OP_NOT);     break;
+    case TK_GT:  emit_bytes(self, OP_LE, OP_NOT);     break;
+    case TK_GE:  emit_bytes(self, OP_LT, OP_NOT);     break;
     default:     emit_byte(self,  get_binop(optype)); break;
     }
 }
@@ -72,8 +137,7 @@ static void concat(Compiler *self) {
         argc++;
     } while (match_token(lexer, TK_CONCAT));
 
-    emit_byte(self, OP_CONCAT);
-    emit_byte3(self, argc);
+    emit_byte3(self, OP_CONCAT, argc);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -85,9 +149,9 @@ static void literal(Compiler *self) {
     Token *token  = &lexer->consumed;
     TkType optype = token->type;
     switch (optype) {
-    case TK_NIL:    emit_byte(self, OP_NIL);   break;
-    case TK_TRUE:   emit_byte(self, OP_TRUE);  break;
-    case TK_FALSE:  emit_byte(self, OP_FALSE); break;
+    case TK_NIL:    emit_bytes(self, OP_NIL, 1); break;
+    case TK_TRUE:   emit_byte(self, OP_TRUE);    break;
+    case TK_FALSE:  emit_byte(self, OP_FALSE);   break;
     default:
         // Should not happen
         break;
@@ -128,17 +192,36 @@ static void string(Compiler *self) {
 // `assignable` is only true if the identifier is also the first statement.
 static void named_variable(Compiler *self, const Token *name, bool assignable) {
     Lexer *lexer = self->lexer;
-    int arg = identifier_constant(self, name);
+    Byte getop, setop;
+    int arg = resolve_local(self, name);
+    bool islocal = (arg != -1);
+
+    if (islocal) {
+        getop = OP_GETLOCAL;
+        setop = OP_SETLOCAL;
+    } else {
+        arg   = identifier_constant(self, name);
+        getop = OP_GETGLOBAL;
+        setop = OP_SETGLOBAL;
+    }
     if (assignable) {
         if (match_token(lexer, TK_ASSIGN)) {
             expression(self);
-            define_variable(self, arg);
+            // Operands are of different sizes.
+            if (islocal) {
+                emit_bytes(self, setop, arg);
+            } else {
+                emit_byte3(self, setop, arg);
+            }
         } else {
-            lexerror_at_token(lexer, "'=' expected for global variable");
+            lexerror_at_token(lexer, "Variable assignment with '=' expected");
         }
     } else {
-        emit_byte(self, OP_GETGLOBAL);
-        emit_byte3(self, arg);
+        if (islocal) {
+            emit_bytes(self, getop, arg);
+        } else {
+            emit_byte3(self, getop, arg);
+        }
     }
 }
 
@@ -237,28 +320,86 @@ static void expression(Compiler *self) {
     parse_precedence(self, PREC_ASSIGN + 1);
 }
 
-// static void vardecl(Compiler *self) {
-//     Lexer *lexer = self->lexer;
-//     int index = parse_variable(self, "Expected a variable name");
-//     // Lua does not allow implicit nil for globals
-//     consume_token(lexer, TK_ASSIGN, "Expected '=' after global variable name");
-//     expression(self);
-//     define_variable(self, index);
-// }
+static void block(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    while (!check_token_any(lexer, TK_END, TK_EOF)) {
+        declaration(self);
+    }
+    consume_token(lexer, TK_END, "Expected 'end' after block");
+}
+
+static int identlist_local(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    int idents = 0;
+    do {
+        parse_local(self, "Expected an identifier");
+        idents++;
+    } while (match_token(lexer, TK_COMMA));
+    return idents;
+}
+
+static int exprlist_local(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    int exprs = 0;
+    do {
+        expression(self);
+        exprs++;
+    } while (match_token(lexer, TK_COMMA));
+    return exprs;
+}
+
+static void adjust_exprlist(Compiler *self, int idents, int exprs) {
+    if (exprs == idents) {
+        return;
+    }
+    if (exprs > idents) {
+        // Discard extra expressions.
+        emit_bytes(self, OP_POP, exprs - idents);
+    } else {
+        // Assign nils to remaining identifiers.
+        emit_bytes(self, OP_NIL, idents - exprs);
+    }
+}
+
+/**
+ * @brief   For Lua this only matters for local variables. Analogous to
+ *          `varDeclaration()` in the book.
+ *
+ * @details vardecl     ::= 'local' identlist ['=' exprlist] ';'
+ *          identlist   ::= identifier [',' identifier]*
+ *          exprlist    ::= expression [',' expression]*
+ *
+ * @note    We don't emit `OP_SETLOCAL`, since we only need to push the value to
+ *          the stack without popping it. We already keep track of info like
+ *          variable name.
+ */
+static void var_declaration(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    int count = identlist_local(self);
+
+    if (match_token(lexer, TK_ASSIGN)) {
+        adjust_exprlist(self, count, exprlist_local(self));
+    } else {
+        emit_bytes(self, OP_NIL, count);
+    }
+
+    match_token(lexer, TK_SEMICOL);
+    define_locals(self, count);
+}
 
 static void print_statement(Compiler *self) {
     expression(self);
     emit_byte(self, OP_PRINT);
 }
 
+/**
+ * @details declaration ::= vardecl
+ *                        | statement
+ */
 void declaration(Compiler *self) {
     Lexer *lexer = self->lexer;
-    /* In Lua, globals aren't declared, but rather assigned as needed. This may
-    be inconsistent with my design that accessing undefined globals is an error,
-    but at the same time I dislike implicit nil for undefined globals. */
-    if (match_token(lexer, TK_IDENT)) {
-        named_variable(self, &lexer->consumed, true);
-        match_token(lexer, TK_SEMICOL);
+    if (match_token(lexer, TK_LOCAL)) {
+        var_declaration(self);
     } else {
         statement(self);
     }
@@ -268,15 +409,32 @@ void declaration(Compiler *self) {
 // this will pop whatever it produces.
 static void exprstmt(Compiler *self) {
     expression(self);
-    emit_byte(self, OP_POP);
-    emit_byte3(self, 1);
+    emit_bytes(self, OP_POP, 1);
 }
 
-// By themselves, statements have zero stack effect.
+/**
+ * @brief   In Lua, globals aren't declared, but rather assigned as needed.
+ *          This may be inconsistent with the design that accessing undefined
+ *          globals is an error, but at the same time I dislike implicit nil for
+ *          undefined globals.
+ *
+ * @details statement ::= identifier '=' expression ';'
+ *                      | 'print' expression ';'
+ *                      | 'do' block 'end' ';'
+ *                      | expression ';'
+ *
+ * @note    By themselves, statements should have zero net stack effect.
+ */
 static void statement(Compiler *self) {
     Lexer *lexer = self->lexer;
-    if (match_token(lexer, TK_PRINT)) {
+    if (match_token(lexer, TK_IDENT)) {
+        named_variable(self, &lexer->consumed, true);
+    } else if (match_token(lexer, TK_PRINT)) {
         print_statement(self);
+    } else if (match_token(lexer, TK_DO)) {
+        begin_scope(self);
+        block(self);
+        end_scope(self);
     } else {
         exprstmt(self);
     }

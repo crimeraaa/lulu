@@ -18,10 +18,16 @@ void disassemble_chunk(const Chunk *self) {
     printf("\n");
 }
 
+#define read_byte(chunk, offset) \
+    ((chunk)->code[(offset) + 1])
+
 #define read_byte3(chunk, offset)                                              \
-    decode_byte3((chunk)->code[offset + 1],                                    \
-                 (chunk)->code[offset + 2],                                    \
-                 (chunk)->code[offset + 3])
+    decode_byte3((chunk)->code[(offset) + 1],                                  \
+                 (chunk)->code[(offset) + 2],                                  \
+                 (chunk)->code[(offset) + 3])
+
+#define read_byte3_if(cond, chunk, offset) \
+    ((cond) ? read_byte3(chunk, offset) : read_byte(chunk, offset))
 
 #define read_constant(chunk, index) \
     ((chunk)->constants.values[(index)])
@@ -35,15 +41,23 @@ static int constant_instruction(OpCode opcode, const Chunk *chunk, int offset) {
     return offset + 3 + 1; // 3-byte argument, +1 to get index of next opcode
 }
 
-static int byte3_instruction(OpCode opcode, const Chunk *chunk, int offset) {
-    int arg = read_byte3(chunk, offset);
-    printf("%-16s Top[-%i,...,-1]\n", get_opname(opcode), arg);
-    return offset + 3 + 1; // 3-byte argument, +1 to get index of next opcode
-}
-
+// Opcodes with no arguments.
 static int simple_instruction(OpCode opcode, int offset) {
     printf("%s\n", get_opname(opcode));
-    return offset + 1; // 0-byte argument, +1 to get index of next opcode
+    return offset + 1;
+}
+
+static int range_instruction(OpCode opcode, const Chunk *chunk, int offset) {
+    bool ismulti = (opcode == OP_CONCAT);
+    int arg = read_byte3_if(ismulti, chunk, offset);
+    printf("%-16s Top[%i...-1]\n", get_opname(opcode), -arg);
+    return offset + (ismulti ? 3 : 1) + 1;
+}
+
+static int local_instruction(OpCode opcode, const Chunk *chunk, int offset) {
+    int arg = read_byte(chunk, offset);
+    printf("%-16s Loc[%i]\n", get_opname(opcode), arg);
+    return offset + 1 + 1;
 }
 
 int disassemble_instruction(const Chunk *self, int offset) {
@@ -60,11 +74,14 @@ int disassemble_instruction(const Chunk *self, int offset) {
     case OP_GETGLOBAL:
     case OP_SETGLOBAL:
         return constant_instruction(opcode, self, offset);
+    case OP_GETLOCAL:
+    case OP_SETLOCAL:
+        return local_instruction(opcode, self, offset);
     case OP_POP:
+    case OP_NIL:
     case OP_CONCAT:
-        return byte3_instruction(opcode, self, offset);
-    case OP_NIL:    // Prefix literals
-    case OP_TRUE:
+        return range_instruction(opcode, self, offset);
+    case OP_TRUE:   // Prefix literals
     case OP_FALSE:
     case OP_EQ:     // Binary Comparison operators
     case OP_LT:
@@ -88,4 +105,7 @@ int disassemble_instruction(const Chunk *self, int offset) {
     }
 }
 
+#undef read_byte
 #undef read_byte3
+#undef read_byte3_if
+#undef read_constant

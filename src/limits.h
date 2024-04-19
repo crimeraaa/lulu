@@ -58,7 +58,6 @@
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)
-#define MAX_CONSTANTS       MAX_BYTE3
 
 typedef enum {
     ERROR_NONE,
