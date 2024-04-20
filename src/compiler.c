@@ -29,13 +29,13 @@ void emit_bytes(Compiler *self, Byte data1, Byte data2) {
     emit_byte(self, data2);
 }
 
-void emit_byte2(Compiler *self, OpCode opcode, Byte2 data) {
+void emit_opcode_byte2(Compiler *self, OpCode opcode, Byte2 data) {
     emit_byte(self, opcode);
     emit_byte(self, encode_byte2_msb(data));
     emit_byte(self, encode_byte2_lsb(data));
 }
 
-void emit_byte3(Compiler *self, OpCode opcode, Byte3 data) {
+void emit_opcode_byte3(Compiler *self, OpCode opcode, Byte3 data) {
     emit_byte(self, opcode);
     emit_byte(self, encode_byte3_msb(data));
     emit_byte(self, encode_byte3_mid(data));
@@ -57,7 +57,7 @@ int make_constant(Compiler *self, const TValue *value) {
 
 void emit_constant(Compiler *self, const TValue *value) {
     int index = make_constant(self, value);
-    emit_byte3(self, OP_CONSTANT, cast(Byte3, index));
+    emit_opcode_byte3(self, OP_CONSTANT, cast(Byte3, index));
 }
 
 int identifier_constant(Compiler *self, const Token *name) {

@@ -6,6 +6,7 @@
 #include "object.h"
 #include "memory.h"
 
+// Forward declared in `lulu.h`.
 struct VM {
     TValue stack[MAX_STACK];
     Allocator allocator; // Will hold the VM itself as context.

@@ -30,8 +30,8 @@ void end_compiler(Compiler *self);
 void compile(Compiler *self, const char *input, Chunk *chunk);
 
 void emit_byte(Compiler *self, Byte data);
-void emit_byte2(Compiler *self, OpCode opcode, Byte2 data);
-void emit_byte3(Compiler *self, OpCode opcode, Byte3 data);
+void emit_opcode_byte2(Compiler *self, OpCode opcode, Byte2 data);
+void emit_opcode_byte3(Compiler *self, OpCode opcode, Byte3 data);
 void emit_bytes(Compiler *self, Byte data1, Byte data2);
 void emit_return(Compiler *self);
 

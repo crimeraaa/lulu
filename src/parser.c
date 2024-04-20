@@ -137,7 +137,7 @@ static void concat(Compiler *self) {
         argc++;
     } while (match_token(lexer, TK_CONCAT));
 
-    emit_byte3(self, OP_CONCAT, argc);
+    emit_opcode_byte3(self, OP_CONCAT, argc);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -190,38 +190,32 @@ static void string(Compiler *self) {
 }
 
 // `assignable` is only true if the identifier is also the first statement.
+// This is separate from declarations using `local`, see `var_declaration()`.
 static void named_variable(Compiler *self, const Token *name, bool assignable) {
     Lexer *lexer = self->lexer;
-    Byte getop, setop;
-    int arg = resolve_local(self, name);
-    bool islocal = (arg != -1);
+    int operand  = resolve_local(self, name);
+    bool islocal = (operand != -1);
+    OpCode opcode;
 
     if (islocal) {
-        getop = OP_GETLOCAL;
-        setop = OP_SETLOCAL;
+        opcode  = (assignable) ? OP_SETLOCAL  : OP_GETLOCAL;
     } else {
-        arg   = identifier_constant(self, name);
-        getop = OP_GETGLOBAL;
-        setop = OP_SETGLOBAL;
+        operand = identifier_constant(self, name);
+        opcode  = (assignable) ? OP_SETGLOBAL : OP_GETGLOBAL;
     }
+
     if (assignable) {
         if (match_token(lexer, TK_ASSIGN)) {
             expression(self);
-            // Operands are of different sizes.
-            if (islocal) {
-                emit_bytes(self, setop, arg);
-            } else {
-                emit_byte3(self, setop, arg);
-            }
         } else {
-            lexerror_at_token(lexer, "Variable assignment with '=' expected");
+            lexerror_at_consumed(lexer, "Variable assignment with '=' expected");
         }
+    }
+    // Global vs. local operands have different sizes.
+    if (islocal) {
+        emit_bytes(self, opcode, operand);
     } else {
-        if (islocal) {
-            emit_bytes(self, getop, arg);
-        } else {
-            emit_byte3(self, getop, arg);
-        }
+        emit_opcode_byte3(self, opcode, operand);
     }
 }
 
