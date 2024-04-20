@@ -40,19 +40,19 @@ void init_chunk(Chunk *self, const char *name) {
     self->cap   = 0;
 }
 
-void free_chunk(Chunk *self, Allocator *allocator) {
-    free_tarray(&self->constants, allocator);
-    free_array(Byte, self->code,  self->len, allocator);
-    free_array(int,  self->lines, self->len, allocator);
+void free_chunk(Chunk *self, Alloc *alloc) {
+    free_tarray(&self->constants, alloc);
+    free_array(Byte, self->code,  self->len, alloc);
+    free_array(int,  self->lines, self->len, alloc);
     init_chunk(self, "(freed chunk)");
 }
 
-void write_chunk(Chunk *self, Byte data, int line, Allocator *allocator) {
+void write_chunk(Chunk *self, Byte data, int line, Alloc *alloc) {
     if (self->len + 1 > self->cap) {
         int prev    = self->cap;
         int next    = grow_capacity(prev);
-        self->code  = resize_array(Byte, self->code,  prev, next, allocator);
-        self->lines = resize_array(int,  self->lines, prev, next, allocator);
+        self->code  = resize_array(Byte, self->code,  prev, next, alloc);
+        self->lines = resize_array(int,  self->lines, prev, next, alloc);
         self->cap   = next;
     }
     self->code[self->len]  = data;
@@ -60,7 +60,7 @@ void write_chunk(Chunk *self, Byte data, int line, Allocator *allocator) {
     self->len++;
 }
 
-int add_constant(Chunk *self, const TValue *value, Allocator *allocator) {
+int add_constant(Chunk *self, const TValue *value, Alloc *alloc) {
     TArray *constants = &self->constants;
     // TODO: Literally anything is faster than a linear search
     for (int i = 0; i < constants->len; i++) {
@@ -68,6 +68,6 @@ int add_constant(Chunk *self, const TValue *value, Allocator *allocator) {
             return i;
         }
     }
-    write_tarray(constants, value, allocator);
+    write_tarray(constants, value, alloc);
     return constants->len - 1;
 }

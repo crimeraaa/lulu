@@ -5,6 +5,17 @@
 static ParseRule *get_parserule(TkType key);
 static void parse_precedence(Compiler *self, Precedence prec);
 
+static void adjust_stackinfo(Compiler *self, int count) {
+    Lexer *lexer = self->lexer;
+    self->stackusage += count;
+    if (self->stackusage + 1 > MAX_STACK) {
+        lexerror_at_consumed(lexer, "Function uses too many stack slots");
+    }
+    if (self->stackusage > self->stacktotal) {
+        self->stacktotal = self->stackusage;
+    }
+}
+
 static bool identifiers_equal(const Token *a, const Token *b) {
     if (a->len != b->len) {
         return false;
@@ -118,26 +129,28 @@ static void binary(Compiler *self) {
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (optype) {
-    case TK_NEQ: emit_bytes(self, OP_EQ, OP_NOT);     break;
-    case TK_GT:  emit_bytes(self, OP_LE, OP_NOT);     break;
-    case TK_GE:  emit_bytes(self, OP_LT, OP_NOT);     break;
+    case TK_NEQ: emit_oparg1(self, OP_EQ, OP_NOT);    break;
+    case TK_GT:  emit_oparg1(self, OP_LE, OP_NOT);    break;
+    case TK_GE:  emit_oparg1(self, OP_LT, OP_NOT);    break;
     default:     emit_byte(self,  get_binop(optype)); break;
     }
+    // Popped 2 operands, pushed 1 value. Net stack usage -= 1.
+    adjust_stackinfo(self, -1);
 }
 
 // Assumes we just consumed a `..` and the first argument has been compiled.
 static void concat(Compiler *self) {
     Lexer *lexer = self->lexer;
     int argc = 1;
-
     do {
         // Although right associative, we don't recursively compile concat
         // expressions in the same grouping.
         parse_precedence(self, PREC_CONCAT + 1);
         argc++;
     } while (match_token(lexer, TK_CONCAT));
-
-    emit_opcode_byte3(self, OP_CONCAT, argc);
+    emit_oparg3(self, OP_CONCAT, argc);
+    // Pop all operands but push 1 result.
+    adjust_stackinfo(self, -argc + 1);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -149,13 +162,14 @@ static void literal(Compiler *self) {
     Token *token  = &lexer->consumed;
     TkType optype = token->type;
     switch (optype) {
-    case TK_NIL:    emit_bytes(self, OP_NIL, 1); break;
-    case TK_TRUE:   emit_byte(self, OP_TRUE);    break;
-    case TK_FALSE:  emit_byte(self, OP_FALSE);   break;
+    case TK_NIL:    emit_oparg1(self, OP_NIL, 1); break;
+    case TK_TRUE:   emit_byte(self, OP_TRUE);     break;
+    case TK_FALSE:  emit_byte(self, OP_FALSE);    break;
     default:
         // Should not happen
         break;
     }
+    adjust_stackinfo(self, 1);
 }
 
 // Assumes we just consumed a '(' as a possible prefix expression: a grouping.
@@ -176,7 +190,9 @@ static void number(Compiler *self) {
     if (endptr != (token->start + token->len)) {
         lexerror_at_consumed(lexer, "Malformed number");
     } else {
-        emit_constant(self, &make_number(value));
+        TValue wrapper = make_number(value);
+        emit_constant(self, &wrapper);
+        adjust_stackinfo(self, 1);
     }
 }
 
@@ -185,12 +201,14 @@ static void string(Compiler *self) {
     Token *token = &lexer->consumed;
 
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
-    TString *interned = copy_string(self->vm, token->start + 1, token->len - 2);
-    emit_constant(self, &make_string(interned));
+    TString *ts = copy_string(self->vm, token->start + 1, token->len - 2);
+    TValue wrapper = make_string(ts);
+    emit_constant(self, &wrapper);
+    adjust_stackinfo(self, 1);
 }
 
 // `assignable` is only true if the identifier is also the first statement.
-// This is separate from declarations using `local`, see `var_declaration()`.
+// This is separate from declarations using `local`, see `varlist_local()`.
 static void named_variable(Compiler *self, const Token *name, bool assignable) {
     Lexer *lexer = self->lexer;
     int operand  = resolve_local(self, name);
@@ -210,12 +228,14 @@ static void named_variable(Compiler *self, const Token *name, bool assignable) {
         } else {
             lexerror_at_consumed(lexer, "Variable assignment with '=' expected");
         }
+    } else {
+        adjust_stackinfo(self, 1);
     }
     // Global vs. local operands have different sizes.
     if (islocal) {
-        emit_bytes(self, opcode, operand);
+        emit_oparg1(self, opcode, operand);
     } else {
-        emit_opcode_byte3(self, opcode, operand);
+        emit_oparg3(self, opcode, operand);
     }
 }
 
@@ -348,10 +368,14 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs) {
     }
     if (exprs > idents) {
         // Discard extra expressions.
-        emit_bytes(self, OP_POP, exprs - idents);
+        int extra = exprs - idents;
+        emit_oparg1(self, OP_POP, extra);
+        adjust_stackinfo(self, -extra);
     } else {
         // Assign nils to remaining identifiers.
-        emit_bytes(self, OP_NIL, idents - exprs);
+        int extra = idents - exprs;
+        emit_oparg1(self, OP_NIL, extra);
+        adjust_stackinfo(self, extra);
     }
 }
 
@@ -367,17 +391,17 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs) {
  *          the stack without popping it. We already keep track of info like
  *          variable name.
  */
-static void var_declaration(Compiler *self) {
+static void varlist_local(Compiler *self) {
     Lexer *lexer = self->lexer;
     int count = identlist_local(self);
-
     if (match_token(lexer, TK_ASSIGN)) {
         adjust_exprlist(self, count, exprlist_local(self));
     } else {
-        emit_bytes(self, OP_NIL, count);
+        // Stack usage is otherwise modified by each call to `expression()` and
+        // potentially `adjust_exprlist()`.
+        emit_oparg1(self, OP_NIL, count);
+        adjust_stackinfo(self, count);
     }
-
-    match_token(lexer, TK_SEMICOL);
     define_locals(self, count);
 }
 
@@ -387,23 +411,32 @@ static void print_statement(Compiler *self) {
 }
 
 /**
+ * @brief   Declarations may have a stack effect/s, like pushing values from
+ *          expressions to act as locals variables.
+ *
  * @details declaration ::= vardecl
  *                        | statement
  */
 void declaration(Compiler *self) {
     Lexer *lexer = self->lexer;
     if (match_token(lexer, TK_LOCAL)) {
-        var_declaration(self);
+        varlist_local(self);
+    } else if (match_token(lexer, TK_DO)) {
+        begin_scope(self);
+        block(self);
+        end_scope(self);
     } else {
         statement(self);
     }
+    // Lua allows 1 semicolon to terminate statements, but no more.
+    match_token(lexer, TK_SEMICOL);
 }
 
 // Expressions produce values, but since statements need to have 0 stack effect
 // this will pop whatever it produces.
 static void exprstmt(Compiler *self) {
     expression(self);
-    emit_bytes(self, OP_POP, 1);
+    emit_oparg1(self, OP_POP, 1);
 }
 
 /**
@@ -425,15 +458,11 @@ static void statement(Compiler *self) {
         named_variable(self, &lexer->consumed, true);
     } else if (match_token(lexer, TK_PRINT)) {
         print_statement(self);
-    } else if (match_token(lexer, TK_DO)) {
-        begin_scope(self);
-        block(self);
-        end_scope(self);
     } else {
         exprstmt(self);
     }
-    // Lua allows 1 semicolon to terminate statements, but no more.
-    match_token(lexer, TK_SEMICOL);
+    // Statements will always implicitly or explicitly pop what they pushed.
+    adjust_stackinfo(self, -1);
 }
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
@@ -449,10 +478,11 @@ static void parse_precedence(Compiler *self, Precedence prec) {
     prefixfn(self);
 
     // Is the token to our right something we can further compile?
+    // Assume infix expressions take at least 2 prefix expressions, pop them,
+    // then push 1 result.
     while (prec <= get_parserule(lexer->token.type)->prec) {
         next_token(lexer);
-        ParseFn infixfn = get_parserule(lexer->consumed.type)->infixfn;
-        infixfn(self);
+        get_parserule(lexer->consumed.type)->infixfn(self);
     }
 
     // This function can never consume the `=` token.

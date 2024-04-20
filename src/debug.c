@@ -2,15 +2,6 @@
 #include "limits.h"
 
 void disassemble_chunk(const Chunk *self) {
-    printf("[CONSTANTS]: '%s'\n", self->name);
-    for (int i = 0; i < self->constants.len; i++) {
-        const TValue *value = &self->constants.values[i];
-        printf("%04i := ", i);
-        print_value(value);
-        printf("\n");
-    }
-    printf("\n");
-
     printf("[BYTECODE]: '%s'\n", self->name);
     for (int offset = 0; offset < self->len; ) {
         offset = disassemble_instruction(self, offset);
@@ -61,7 +52,7 @@ static int local_instruction(OpCode opcode, const Chunk *chunk, int offset) {
 }
 
 int disassemble_instruction(const Chunk *self, int offset) {
-    printf("%04i ", offset);
+    printf("%04x ", offset);
     int line = self->lines[offset];
     if (offset > 0 && line == self->lines[offset - 1]) {
         printf("   | ");

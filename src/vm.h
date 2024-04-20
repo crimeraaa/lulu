@@ -9,7 +9,7 @@
 // Forward declared in `lulu.h`.
 struct VM {
     TValue stack[MAX_STACK];
-    Allocator allocator; // Will hold the VM itself as context.
+    Alloc alloc;      // Will hold the VM itself as context.
     TValue *top;      // Pointer to first free slot in the stack.
     Chunk *chunk;     // Bytecode, constants and such.
     Byte *ip;  // Pointer to next instruction to be executed.

@@ -10,24 +10,26 @@
 #define remove_node(head, node)     ((head) = (node)->next)
 
 // Separate name from `new_object` since `new_tstring` also needs access.
-static Object *_new_object(size_t size, VType tag, Allocator *allocator) {
-    VM *vm = cast(VM*, allocator->context);
-    Object *object = allocator->allocfn(NULL, 0, size, vm);
-    object->tag    = tag;
-    return prepend_node(vm->objects, object);
+// Assumes casting `alloc->context` to `VM*` is a safe operation.
+static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
+    // If we just get a single pointer we won't modify the VM's state.
+    Object **head = &cast(VM*, alloc->context)->objects;
+    Object *node  = alloc->reallocfn(NULL, 0, size, alloc->context);
+    node->tag     = tag;
+    return prepend_node(*head, node);
 }
 
-#define new_object(T, tag, allocator) \
-    cast(T*, _new_object(sizeof(T), tag, allocator))
+#define new_object(T, tag, alloc) \
+    cast(T*, _new_object(sizeof(T), tag, alloc))
 
 // Not meant to be used outside of the main `new_tstring()` function.
-#define _new_tstring(N, allocator) \
-    cast(TString*, _new_object(tstring_size(N), TYPE_STRING, allocator))
+#define _new_tstring(N, alloc) \
+    cast(TString*, _new_object(tstring_size(N), TYPE_STRING, alloc))
 
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
-static TString *new_tstring(int len, Allocator *allocator) {
-    TString *inst = _new_tstring(len + 1, allocator);
+static TString *new_tstring(int len, Alloc *alloc) {
+    TString *inst = _new_tstring(len + 1, alloc); // +1 for nul char.
     inst->len     = len;
     return inst;
 }
@@ -82,17 +84,17 @@ void init_tarray(TArray *self) {
     self->cap = 0;
 }
 
-void free_tarray(TArray *self, Allocator *allocator) {
-    free_array(TValue, self->values, self->len, allocator);
+void free_tarray(TArray *self, Alloc *alloc) {
+    free_array(TValue, self->values, self->len, alloc);
     init_tarray(self);
 }
 
-void write_tarray(TArray *self, const TValue *value, Allocator *allocator) {
+void write_tarray(TArray *self, const TValue *value, Alloc *alloc) {
     if (self->len + 1 > self->cap) {
         int oldcap   = self->cap;
         int newcap   = grow_capacity(oldcap);
         TValue *ptr  = self->values;
-        self->values = resize_array(TValue, ptr, oldcap, newcap, allocator);
+        self->values = resize_array(TValue, ptr, oldcap, newcap, alloc);
         self->cap    = newcap;
     }
     self->values[self->len] = *value;
@@ -173,16 +175,16 @@ static void build_string(TString *self, const char *src, int len, uint32_t hash)
 }
 
 TString *copy_string(VM *vm, const char *literal, int len) {
-    Allocator *allocator = &vm->allocator;
-    uint32_t hash        = hash_string(literal, len);
-    TString *interned    = find_interned(vm, literal, len, hash);
+    Alloc *alloc      = &vm->alloc;
+    uint32_t hash     = hash_string(literal, len);
+    TString *interned = find_interned(vm, literal, len, hash);
 
     // Is this string already interned?
     if (interned != NULL) {
         return interned;
     }
 
-    TString *inst = new_tstring(len, allocator);
+    TString *inst = new_tstring(len, alloc);
     build_string(inst, literal, len, hash);
 
     // If we have escapes, are we really REALLY sure this isn't interned?
@@ -190,7 +192,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
         interned = find_interned(vm, inst->data, inst->len, inst->hash);
         if (interned != NULL) {
             remove_node(vm->objects, &inst->object);
-            free_tstring(inst, inst->len, allocator);
+            free_tstring(inst, inst->len, alloc);
             return interned;
         }
     }
@@ -199,8 +201,8 @@ TString *copy_string(VM *vm, const char *literal, int len) {
 }
 
 TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
-    Allocator *allocator = &vm->allocator;
-    TString *inst = new_tstring(len, allocator);
+    Alloc *alloc  = &vm->alloc;
+    TString *inst = new_tstring(len, alloc);
     int offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
@@ -215,7 +217,7 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
     TString *interned = find_interned(vm, inst->data, inst->len, inst->hash);
     if (interned != NULL) {
         remove_node(vm->objects, &inst->object);
-        free_tstring(inst, inst->len, allocator);
+        free_tstring(inst, inst->len, alloc);
         return interned;
     }
     set_interned(vm, inst);
@@ -234,8 +236,8 @@ void init_table(Table *self) {
     self->cap     = 0;
 }
 
-void free_table(Table *self, Allocator *allocator) {
-    free_array(Entry, self->entries, self->cap, allocator);
+void free_table(Table *self, Alloc *alloc) {
+    free_array(Entry, self->entries, self->cap, alloc);
     init_table(self);
 }
 
@@ -299,8 +301,8 @@ static Entry *find_entry(Entry *list, int cap, const TValue *key) {
 }
 
 // Analogous to `adjustCapacity()` in the book.
-static void resize_table(Table *self, int newcap, Allocator *allocator) {
-    Entry *newbuf = new_array(Entry, newcap, allocator);
+static void resize_table(Table *self, int newcap, Alloc *alloc) {
+    Entry *newbuf = new_array(Entry, newcap, alloc);
     for (int i = 0; i < newcap; i++) {
         set_nil(&newbuf[i].key);
         set_nil(&newbuf[i].value);
@@ -318,7 +320,7 @@ static void resize_table(Table *self, int newcap, Allocator *allocator) {
         dst->value = src->value;
         self->count++;
     }
-    free_array(Entry, self->entries, self->cap, allocator);
+    free_array(Entry, self->entries, self->cap, alloc);
     self->entries = newbuf;
     self->cap     = newcap;
 }
@@ -335,9 +337,9 @@ bool get_table(Table *self, const TValue *key, TValue *out) {
     return true;
 }
 
-bool set_table(Table *self, const TValue *key, const TValue *value, Allocator *allocator) {
+bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc) {
     if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
-        resize_table(self, grow_capacity(self->cap), allocator);
+        resize_table(self, grow_capacity(self->cap), alloc);
     }
     Entry *entry  = find_entry(self->entries, self->cap, key);
     bool isnewkey = is_nil(&entry->key); // All keys implicitly nil by default.
@@ -365,21 +367,21 @@ bool unset_table(Table *self, const TValue *key) {
     return true;
 }
 
-void copy_table(Table *dst, const Table *src, Allocator *allocator) {
+void copy_table(Table *dst, const Table *src, Alloc *alloc) {
     for (int i = 0; i < src->cap; i++) {
         const Entry *entry = &src->entries[i];
         if (is_nil(&entry->key)) {
             continue;
         }
-        set_table(dst, &entry->key, &entry->value, allocator);
+        set_table(dst, &entry->key, &entry->value, alloc);
     }
 }
 
 void set_interned(VM *vm, const TString *string) {
-    Allocator *allocator = &vm->allocator;
+    Alloc *alloc = &vm->alloc;
     const TValue key = make_string(string);
     const TValue val = make_boolean(true);
-    set_table(&vm->strings, &key, &val, allocator);
+    set_table(&vm->strings, &key, &val, alloc);
 }
 
 TString *find_interned(VM *vm, const char *data, int len, uint32_t hash) {

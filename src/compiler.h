@@ -22,6 +22,8 @@ typedef struct {
     Chunk *chunk; // The current compiling chunk for this function/closure.
     int localcount; // How many locals are currently in scope?
     int scopedepth; // 0 = global, 1 = top-level, 2 = more inner, etc.
+    int stacktotal; // How many stack slots at most does this function use?
+    int stackusage; // How many stack slots are currently being used?
 } Compiler;
 
 // We pass a Lexer and a VM to be shared across compiler instances.
@@ -30,12 +32,13 @@ void end_compiler(Compiler *self);
 void compile(Compiler *self, const char *input, Chunk *chunk);
 
 void emit_byte(Compiler *self, Byte data);
-void emit_opcode_byte2(Compiler *self, OpCode opcode, Byte2 data);
-void emit_opcode_byte3(Compiler *self, OpCode opcode, Byte3 data);
-void emit_bytes(Compiler *self, Byte data1, Byte data2);
+void emit_oparg1(Compiler *self, OpCode op, Byte arg);
+void emit_oparg2(Compiler *self, OpCode op, Byte2 arg);
+void emit_oparg3(Compiler *self, OpCode op, Byte3 arg);
 void emit_return(Compiler *self);
 
 // Returns the index of `value` in the constants table.
+// Will throw if our current number of constants exceeds `MAX_CONSTS`.
 int make_constant(Compiler *self, const TValue *value);
 void emit_constant(Compiler *self, const TValue *value);
 

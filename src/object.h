@@ -5,8 +5,8 @@
 #include "limits.h"
 #include "memory.h"
 
-typedef lulu_Number    Number;
-typedef struct Object  Object;
+typedef lulu_Number Number;
+typedef struct Object Object;
 
 typedef enum {
     TYPE_NIL,
@@ -44,8 +44,8 @@ struct Object {
 
 typedef struct {
     Object object;  // "Inherited" must come first to allow safe type-punning.
+    uint32_t hash;  // Hash code for use in addressing a `Table*`.
     int len;        // Nul-terminated length, not including the nul itself.
-    uint32_t hash;  // Hash code for use in addressing `Table`.
     char data[];    // See: C99 flexible array members, MUST be last member!
 } TString;
 
@@ -105,8 +105,8 @@ void print_value(const TValue *self);
 bool values_equal(const TValue *lhs, const TValue *rhs);
 
 void init_tarray(TArray *self);
-void free_tarray(TArray *self, Allocator *allocator);
-void write_tarray(TArray *self, const TValue *value, Allocator *allocator);
+void free_tarray(TArray *self, Alloc *alloc);
+void write_tarray(TArray *self, const TValue *value, Alloc *alloc);
 
 // Global functions that deal with strings need the VM to check for interned.
 TString *copy_string(VM *vm, const char *literal, int len);
@@ -115,16 +115,16 @@ TString *copy_string(VM *vm, const char *literal, int len);
 TString *concat_strings(VM *vm, int argc, const TValue argv[], int len);
 
 void init_table(Table *self);
-void free_table(Table *self, Allocator *allocator);
+void free_table(Table *self, Alloc *alloc);
 void dump_table(const Table *self, const char *name);
 bool get_table(Table *self, const TValue *key, TValue *out);
-bool set_table(Table *self, const TValue *key, const TValue *value, Allocator *allocator);
+bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc);
 
 // Place a tombstone value. Analogous to `deleteTable()` in the book.
 bool unset_table(Table *self, const TValue *key);
 
 // Analogous to `tableAddAll()` in the book.
-void copy_table(Table *dst, const Table *src, Allocator *allocator);
+void copy_table(Table *dst, const Table *src, Alloc *alloc);
 
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
 void set_interned(VM *vm, const TString *key);

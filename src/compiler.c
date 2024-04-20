@@ -12,6 +12,8 @@ void init_compiler(Compiler *self, Lexer *lexer, VM *vm) {
     self->chunk = NULL;
     self->localcount = 0;
     self->scopedepth = 0;
+    self->stacktotal = 0;
+    self->stackusage = 0;
 }
 
 static Chunk *current_chunk(Compiler *self) {
@@ -19,27 +21,28 @@ static Chunk *current_chunk(Compiler *self) {
 }
 
 void emit_byte(Compiler *self, Byte data) {
+    Alloc *alloc = &self->vm->alloc;
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
-    write_chunk(current_chunk(self), data, token->line, &self->vm->allocator);
+    write_chunk(current_chunk(self), data, token->line, alloc);
 }
 
-void emit_bytes(Compiler *self, Byte data1, Byte data2) {
-    emit_byte(self, data1);
-    emit_byte(self, data2);
+void emit_oparg1(Compiler *self, OpCode op, Byte arg) {
+    emit_byte(self, op);
+    emit_byte(self, arg);
 }
 
-void emit_opcode_byte2(Compiler *self, OpCode opcode, Byte2 data) {
-    emit_byte(self, opcode);
-    emit_byte(self, encode_byte2_msb(data));
-    emit_byte(self, encode_byte2_lsb(data));
+void emit_oparg2(Compiler *self, OpCode op, Byte2 arg) {
+    emit_byte(self, op);
+    emit_byte(self, encode_byte2_msb(arg));
+    emit_byte(self, encode_byte2_lsb(arg));
 }
 
-void emit_opcode_byte3(Compiler *self, OpCode opcode, Byte3 data) {
-    emit_byte(self, opcode);
-    emit_byte(self, encode_byte3_msb(data));
-    emit_byte(self, encode_byte3_mid(data));
-    emit_byte(self, encode_byte3_lsb(data));
+void emit_oparg3(Compiler *self, OpCode op, Byte3 arg) {
+    emit_byte(self, op);
+    emit_byte(self, encode_byte3_msb(arg));
+    emit_byte(self, encode_byte3_mid(arg));
+    emit_byte(self, encode_byte3_lsb(arg));
 }
 
 void emit_return(Compiler *self) {
@@ -48,8 +51,8 @@ void emit_return(Compiler *self) {
 
 int make_constant(Compiler *self, const TValue *value) {
     Lexer *lexer = self->lexer;
-    int index = add_constant(current_chunk(self), value, &self->vm->allocator);
-    if (index >= MAX_CONSTANTS) {
+    int index = add_constant(current_chunk(self), value, &self->vm->alloc);
+    if (index + 1 > MAX_CONSTS) {
         lexerror_at_consumed(lexer, "Too many constants in current chunk");
     }
     return index;
@@ -57,7 +60,7 @@ int make_constant(Compiler *self, const TValue *value) {
 
 void emit_constant(Compiler *self, const TValue *value) {
     int index = make_constant(self, value);
-    emit_opcode_byte3(self, OP_CONSTANT, cast(Byte3, index));
+    emit_oparg3(self, OP_CONSTANT, index);
 }
 
 int identifier_constant(Compiler *self, const Token *name) {
@@ -69,6 +72,10 @@ int identifier_constant(Compiler *self, const Token *name) {
 void end_compiler(Compiler *self) {
     emit_return(self);
 #ifdef DEBUG_PRINT_CODE
+    printf("[STACK USAGE]:\n");
+    printf("NET:    %i\n", self->stackusage);
+    printf("MOST:   %i\n", self->stacktotal);
+    printf("\n");
     disassemble_chunk(current_chunk(self));
 #endif
 }
@@ -90,7 +97,8 @@ void end_scope(Compiler *self) {
     }
     // Don't waste 2 bytes if nothing to pop
     if (popped > 0) {
-        emit_bytes(self, OP_POP, popped);
+        emit_oparg1(self, OP_POP, popped);
+        self->stackusage -= popped;
     }
 }
 

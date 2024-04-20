@@ -61,10 +61,8 @@ OP_RETURN,   // -     |  -              |                   |                 |
 
 #define encode_byte2_msb(N)     (((N) >> bitsize(Byte)) & MAX_BYTE)
 #define encode_byte2_lsb(N)     ((N) & MAX_BYTE)
-#define encode_byte2(N)         (encode_byte2_msb(N)                           \
-                                | encode_byte2_lsb(N))
-#define decode_byte2(msb, lsb)  (((msb) << bitsize(Byte))                      \
-                                | (lsb))
+#define encode_byte2(N)         (encode_byte2_msb(N) | encode_byte2_lsb(N))
+#define decode_byte2(msb, lsb)  (((msb) << bitsize(Byte)) | (lsb))
 
 #define encode_byte3_msb(N)     (((N) >> bitsize(Byte2)) & MAX_BYTE)
 #define encode_byte3_mid(N)     (((N) >> bitsize(Byte))  & MAX_BYTE)
@@ -88,12 +86,12 @@ typedef struct {
 } Chunk;
 
 void init_chunk(Chunk *self, const char *name);
-void free_chunk(Chunk *self, Allocator *allocator);
+void free_chunk(Chunk *self, Alloc *alloc);
 
 // Append `data` to the bytecode array.
-void write_chunk(Chunk *self, Byte data, int line, Allocator *allocator);
+void write_chunk(Chunk *self, Byte data, int line, Alloc *alloc);
 
 // Append `value` to the constants array and return its index.
-int add_constant(Chunk *self, const TValue *value, Allocator *allocator);
+int add_constant(Chunk *self, const TValue *value, Alloc *alloc);
 
 #endif /* LULU_CHUNK_H */

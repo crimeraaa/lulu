@@ -14,21 +14,20 @@ enum RT_ErrType {
     RTE_LENGTH,  // Using `#` on non-table and non-string values.
 };
 
-static void *vm_allocfn(void *ptr, size_t oldsz, size_t newsz, void *context) {
+// Assumes that `context` points to the parent `VM*` instance.
+static void *allocfn(void *ptr, size_t oldsz, size_t newsz, void *context) {
     VM *self  = cast(VM*, context);
-    void *res = realloc(ptr, newsz);
     unused(oldsz);
+    if (newsz == 0) {
+        free(ptr);
+        return NULL;
+    }
+    void *res = realloc(ptr, newsz);
     if (res == NULL) {
         logprintln("[FATAL ERROR]: No more memory");
         longjmp(self->errorjmp, ERROR_ALLOC);
     }
     return res;
-}
-
-static void vm_deallocfn(void *ptr, size_t size, void *context) {
-    VM *self = cast(VM*, context);
-    unused2(size, self);
-    free(ptr);
 }
 
 static void reset_stack(VM *self) {
@@ -76,7 +75,7 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
 
 void init_vm(VM *self, const char *name) {
     reset_stack(self);
-    init_allocator(&self->allocator, vm_allocfn, vm_deallocfn, self);
+    init_alloc(&self->alloc, allocfn, self);
     init_table(&self->globals);
     init_table(&self->strings);
     self->name    = name;
@@ -84,11 +83,11 @@ void init_vm(VM *self, const char *name) {
 }
 
 void free_vm(VM *self) {
-    Allocator *allocator = &self->allocator;
-    dump_table(&self->globals, ".globals");
-    dump_table(&self->strings, ".strings");
-    free_table(&self->globals, allocator);
-    free_table(&self->strings, allocator);
+    Alloc *alloc = &self->alloc;
+    // dump_table(&self->globals, ".globals");
+    // dump_table(&self->strings, ".strings");
+    free_table(&self->globals, alloc);
+    free_table(&self->strings, alloc);
     free_objects(self);
 }
 
@@ -105,7 +104,7 @@ static TString *try_concat(VM *self, int argc, const TValue argv[]) {
 }
 
 static ErrType run(VM *self) {
-    Allocator *allocator    = &self->allocator;
+    Alloc *alloc    = &self->alloc;
     const Chunk *chunk      = self->chunk;
     const TValue *constants = chunk->constants.values;
 
@@ -195,7 +194,7 @@ static ErrType run(VM *self) {
             break;
         case OP_SETGLOBAL:
             // Same as `OP_GETGLOBAL`.
-            set_table(&self->globals, read_constant(), poke_top(-1), allocator);
+            set_table(&self->globals, read_constant(), poke_top(-1), alloc);
             pop_back();
             break;
         case OP_EQ: {
@@ -294,13 +293,13 @@ ErrType interpret(VM *self, const char *input) {
     case ERROR_RUNTIME:
     case ERROR_ALLOC:
     default:   // WARNING: Should not happen! Check all uses of `(set|long)jmp`.
-        free_chunk(&chunk, &self->allocator);
+        free_chunk(&chunk, &self->alloc);
         return err;
     }
     // Prep the VM
     self->chunk = &chunk;
     self->ip    = chunk.code;
     err = run(self);
-    free_chunk(&chunk, &self->allocator);
+    free_chunk(&chunk, &self->alloc);
     return err;
 }

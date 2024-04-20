@@ -6,39 +6,41 @@
 
 #define grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
-typedef void *(*AllocFn)(void *ptr, size_t oldsz, size_t newsz, void *context);
-typedef void  (*FreeFn)(void *ptr, size_t usedsz, void *context);
+typedef void *(*ReallocFn)(void *ptr, size_t oldsz, size_t newsz, void *context);
 
+// A general purpose allocation wrapper that carries some context around.
 typedef struct {
-    AllocFn allocfn; // Handles both giving new blocks and resizing old ones.
-    FreeFn freefn;
-    void *context;   // How this is interpreted is up to your functions.
-} Allocator;
+    ReallocFn reallocfn; // To free `ptr`, pass `newsz` of `0`.
+    void *context;       // How this is interpreted is up to your functions.
+} Alloc;
 
-void init_allocator(Allocator *self, AllocFn allocfn, FreeFn freefn, void *context);
+// Once set, please do not reinitialize your allocator else it may break.
+void init_alloc(Alloc *self, ReallocFn reallocfn, void *context);
 void free_objects(VM *vm);
 
-#define new_array(T, N, allocator)                                             \
-    (allocator)->allocfn(NULL,                                                 \
-                         0,                                                    \
-                         array_size(T, N),                                     \
-                         (allocator)->context)
+#define new_array(T, N, alloc)                                                 \
+    (alloc)->reallocfn((NULL),                                                 \
+                        0,                                                     \
+                        array_size(T, N),                                      \
+                        (alloc)->context)
 
-#define resize_array(T, ptr, oldcap, newcap, allocator)                        \
-    (allocator)->allocfn((ptr),                                                \
+#define resize_array(T, ptr, oldcap, newcap, alloc)                            \
+    (alloc)->reallocfn((ptr),                                                  \
                         array_size(T, oldcap),                                 \
                         array_size(T, newcap),                                 \
-                        (allocator)->context)
+                        (alloc)->context)
 
-#define free_array(T, ptr, len, allocator)                                     \
-    (allocator)->freefn((ptr),                                                 \
+#define free_array(T, ptr, len, alloc)                                         \
+    (alloc)->reallocfn((ptr),                                                  \
                         array_size(T, len),                                    \
-                        (allocator)->context)
+                        0,                                                     \
+                        (alloc)->context)
 
 // Needed by `memory.c:free_object()` and `object.c:copy_string()`.
-#define free_tstring(ptr, len, allocator)                                      \
-    (allocator)->freefn((ptr),                                                 \
+#define free_tstring(ptr, len, alloc)                                          \
+    (alloc)->reallocfn((ptr),                                                  \
                         tstring_size(len),                                     \
-                        (allocator)->context)
+                        0,                                                     \
+                        (alloc)->context)
 
 #endif /* LULU_MEMORY_H */
