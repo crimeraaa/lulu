@@ -97,11 +97,11 @@ bool check_token(Lexer *self, TkType expected);
 // Advance the Lexer if the current token matches else do nothing.
 bool match_token(Lexer *self, TkType expected);
 
-// The `*_token_any` functions assume the array is terminated by `TK_EOF`.
+// The `*_token_any` functions assume the array is terminated by `TK_ERROR`.
 bool check_token_any(Lexer *self, const TkType expected[]);
 bool match_token_any(Lexer *self, const TkType expected[]);
 
-#define _tkvarg(...)                array_lit(TkType, __VA_ARGS__, TK_EOF)
+#define _tkvarg(...)                array_lit(TkType, __VA_ARGS__, TK_ERROR)
 #define check_token_any(lexer, ...) check_token_any(lexer, _tkvarg(__VA_ARGS__))
 #define match_token_any(lexer, ...) match_token_any(lexer, _tkvarg(__VA_ARGS__))
 

@@ -419,9 +419,8 @@ bool match_token(Lexer *self, TkType expected) {
 
 #undef check_token_any
 bool check_token_any(Lexer *self, const TkType expected[]) {
-    TkType actual = self->token.type;
-    for (int i = 0; expected[i] != TK_EOF; i++) {
-        if (actual == expected[i]) {
+    for (int i = 0; expected[i] != TK_ERROR; i++) {
+        if (check_token(self, expected[i])) {
             return true;
         }
     }

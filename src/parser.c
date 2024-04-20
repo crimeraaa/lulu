@@ -82,15 +82,13 @@ static int parse_identlist(Compiler *self, IdentFn identfn, void *context) {
     return idents;
 }
 
-static void mark_initialized(Compiler *self, int index) {
-    self->locals[index].depth = self->scopedepth;
-}
-
 // Analogous to `defineVariable()` in the book, but for a comma-separated list
 // form `'local' identifier [, identifier]* [';']`.
+// We considered "defined" local variables to be ready for reading/writing.
 static void define_locals(Compiler *self, int count) {
-    for (int i = 0; i < count; i++) {
-        mark_initialized(self, self->localcount - 1 - i);
+    int limit = self->localcount;
+    for (int i = count; i > 0; i--) {
+        self->locals[limit - i].depth = self->scopedepth;
     }
 }
 
@@ -164,10 +162,7 @@ static void concat(Compiler *self) {
 // PREFIX EXPRESSIONS ----------------------------------------------------- {{{1
 
 static void literal(Compiler *self) {
-    Lexer *lexer  = self->lexer;
-    Token *token  = &lexer->consumed;
-    TkType optype = token->type;
-    switch (optype) {
+    switch (self->lexer->consumed.type) {
     case TK_NIL:    emit_oparg1(self, OP_NIL, 1); break;
     case TK_TRUE:   emit_byte(self, OP_TRUE);     break;
     case TK_FALSE:  emit_byte(self, OP_FALSE);    break;
@@ -178,14 +173,14 @@ static void literal(Compiler *self) {
     adjust_stackinfo(self, 1);
 }
 
-// Assumes we just consumed a '(' as a possible prefix expression: a grouping.
+// Assumes we just consumed a '('.
 static void grouping(Compiler *self) {
     Lexer *lexer = self->lexer;
     expression(self);
     consume_token(lexer, TK_RPAREN, "Expected ')' after expression");
 }
 
-// Assumes we just consumed a possible number literal as a prefix expression.
+// Assumes we just consumed a possible number literal.
 static void number(Compiler *self) {
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
@@ -215,7 +210,7 @@ static void string(Compiler *self) {
 
 // Originally analogous to `namedVariable()` in the book, but with our current
 // semantics ours is radically different.
-static void get_variable(Compiler *self, const Token *name) {
+static void emit_getop(Compiler *self, const Token *name) {
     int operand  = resolve_local(self, name);
     bool islocal = (operand != -1);
 
@@ -234,7 +229,7 @@ static void get_variable(Compiler *self, const Token *name) {
 // So this function can only ever perform get operations.
 static void variable(Compiler *self) {
     Lexer *lexer = self->lexer;
-    get_variable(self, &lexer->consumed);
+    emit_getop(self, &lexer->consumed);
 }
 
 static OpCode get_unop(TkType type) {
@@ -248,7 +243,7 @@ static OpCode get_unop(TkType type) {
     }
 }
 
-// Assumes a leading operator has been consumed as prefix expression, e.g. '-'.
+// Assumes we just consumed an unary operator.
 static void unary(Compiler *self) {
     Lexer *lexer  = self->lexer;
     Token *token  = &lexer->consumed;
@@ -408,14 +403,14 @@ static void parse_variable(Compiler *self, int count, void *context) {
     Assign *list = cast(Assign*, context);
     Lexer *lexer = self->lexer;
     Token *name  = &lexer->consumed;
-    int index    = resolve_local(self, name);
-    bool islocal = (index != -1);
+    int operand  = resolve_local(self, name);
+    bool islocal = (operand != -1);
     if (count + 1 > MAX_MULTI) {
         lexerror_at_consumed(lexer,
             "More than " stringify(MAX_MULTI) " variables in assignment list");
     }
     list[count].op  = (islocal) ? OP_SETLOCAL : OP_SETGLOBAL;
-    list[count].arg = (islocal) ? index : identifier_constant(self, name);
+    list[count].arg = (islocal) ? operand : identifier_constant(self, name);
 }
 
 /**
@@ -452,13 +447,9 @@ static void assign_variables(Compiler *self) {
 // stream of expressions to act as arguments.
 static void print_statement(Compiler *self) {
     Lexer *lexer = self->lexer;
-    int argc = 0;
     // Hack so I can use normal function call syntax
     bool open = match_token(lexer, TK_LPAREN);
-    do {
-        expression(self);
-        argc++;
-    } while (match_token(lexer, TK_COMMA));
+    int argc  = exprlist(self);
     if (open) {
         consume_token(lexer, TK_RPAREN, "Expected ')' to close '('");
     }
