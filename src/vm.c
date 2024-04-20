@@ -253,11 +253,16 @@ static ErrType run(VM *self) {
             }
             set_number(arg, as_string(arg)->len);
         } break;
-        case OP_PRINT:
-            print_value(poke_top(-1));
+        case OP_PRINT: {
+            int argc     = read_byte();
+            TValue *argv = poke_top(-argc);
+            for (int i = 0; i < argc; i++) {
+                print_value(&argv[i]);
+                printf("\t");
+            }
             printf("\n");
-            pop_back();
-            break;
+            self->top = argv;
+        } break;
         case OP_RETURN:
             return ERROR_NONE;
         }

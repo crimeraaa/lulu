@@ -71,6 +71,7 @@ int disassemble_instruction(const Chunk *self, int offset) {
     case OP_POP:
     case OP_NIL:
     case OP_CONCAT:
+    case OP_PRINT:
         return range_instruction(opcode, self, offset);
     case OP_TRUE:   // Prefix literals
     case OP_FALSE:
@@ -86,7 +87,6 @@ int disassemble_instruction(const Chunk *self, int offset) {
     case OP_UNM:    // Unary operators
     case OP_NOT:
     case OP_LEN:
-    case OP_PRINT:  // Other no-argument operators
     case OP_RETURN:
         return simple_instruction(opcode, offset);
     default:

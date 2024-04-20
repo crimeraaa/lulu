@@ -67,13 +67,19 @@ static void init_local(Compiler *self) {
     add_local(self, name);
 }
 
-// Intern a local variable name. Analogous to `parseVariable()` in the book.
-static void parse_local(Compiler *self, const char *info) {
+// Callback function for `parse_identlist`.
+typedef void (*IdentFn)(Compiler *self, int count, void *context);
+
+// Generic function for `local` declaration/s or assignment list.
+static int parse_identlist(Compiler *self, IdentFn identfn, void *context) {
     Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
-    consume_token(lexer, TK_IDENT, info);
-    init_local(self);
-    identifier_constant(self, token); // We don't need the index into Kst.
+    int idents   = 0;
+    do {
+        consume_token(lexer, TK_IDENT, "Expected an identifier");
+        identfn(self, idents, context);
+        idents++;
+    } while (match_token(lexer, TK_COMMA));
+    return idents;
 }
 
 static void mark_initialized(Compiler *self, int index) {
@@ -328,16 +334,6 @@ static void block(Compiler *self) {
     consume_token(lexer, TK_END, "Expected 'end' after block");
 }
 
-static int identlist_local(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    int idents = 0;
-    do {
-        parse_local(self, "Expected an identifier");
-        idents++;
-    } while (match_token(lexer, TK_COMMA));
-    return idents;
-}
-
 static int exprlist(Compiler *self) {
     Lexer *lexer = self->lexer;
     int exprs = 0;
@@ -365,6 +361,16 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs) {
     }
 }
 
+// Declare a local variable by initializing and adding it to the current scope.
+// Intern a local variable name. Analogous to `parseVariable()` in the book.
+static void parse_local(Compiler *self, int count, void *context) {
+    unused2(count, context);
+    Lexer *lexer = self->lexer;
+    Token *token = &lexer->consumed;
+    init_local(self);
+    identifier_constant(self, token); // We don't need the index into Kst.
+}
+
 /**
  * @brief   For Lua this only matters for local variables. Analogous to
  *          `varDeclaration()` in the book.
@@ -379,7 +385,7 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs) {
  */
 static void declare_locals(Compiler *self) {
     Lexer *lexer = self->lexer;
-    int count = identlist_local(self);
+    int count = parse_identlist(self, parse_local, NULL);
     if (match_token(lexer, TK_ASSIGN)) {
         adjust_exprlist(self, count, exprlist(self));
     } else {
@@ -397,46 +403,37 @@ typedef struct {
     int arg;
 } Assign;
 
-// Assumes `list` is `MAX_MULTI` long.
-static int assign_variables(Compiler *self, Assign list[]) {
+// Setop for local or global. Assumes `list` is `MAX_MULTI` elements long.
+static void parse_variable(Compiler *self, int count, void *context) {
+    Assign *list = cast(Assign*, context);
     Lexer *lexer = self->lexer;
-    int idents = 0;
-    for (;;) {
-        Token *name  = &lexer->consumed;
-        int index    = resolve_local(self, name);
-        bool islocal = (index != -1);
-        // Treat `idents` as a 0-based index
-        if (idents + 1 > MAX_MULTI) {
-            lexerror_at_consumed(lexer, "Too many targets in assignment list");
-        }
-        list[idents].op  = (islocal) ? OP_SETLOCAL : OP_SETGLOBAL;
-        list[idents].arg = (islocal) ? index : identifier_constant(self, name);
-        idents++;
-        // Hacky but need this so our next consumed will be the identifier
-        if (match_token(lexer, TK_COMMA)) {
-            consume_token(lexer, TK_IDENT, "Expected an identifier");
-        } else {
-            break;
-        }
+    Token *name  = &lexer->consumed;
+    int index    = resolve_local(self, name);
+    bool islocal = (index != -1);
+    if (count + 1 > MAX_MULTI) {
+        lexerror_at_consumed(lexer,
+            "More than " stringify(MAX_MULTI) " variables in assignment list");
     }
-    return idents;
+    list[count].op  = (islocal) ? OP_SETLOCAL : OP_SETGLOBAL;
+    list[count].arg = (islocal) ? index : identifier_constant(self, name);
 }
 
 /**
- * @brief   Assumes we just consumed the first identifier in an assignment list.
+ * @brief   Assumes we are about to consume the first identifier in an
+ *          assignment list.
  *
- * @details varlist         ::= namelist '=' exprlist
- *          namelist        ::= identifier [',' identifier]*
+ * @details varlist         ::= identlist '=' exprlist
+ *          identlist       ::= identifier [',' identifier]*
  *          exprlist        ::= expression [',' expression]*
  *
  * @note    In Lua, a varlist as the first statement is either assumed to be
  *          1 or more assignments, or a function call. You cannot have comma
  *          separated function calls.
  */
-static void varlist_statement(Compiler *self) {
+static void assign_variables(Compiler *self) {
     Lexer *lexer = self->lexer;
     Assign list[MAX_MULTI];
-    int idents = assign_variables(self, list);
+    int idents = parse_identlist(self, parse_variable, list);
     consume_token(lexer, TK_ASSIGN, "Expected '='");
     adjust_exprlist(self, idents, exprlist(self));
 
@@ -451,29 +448,41 @@ static void varlist_statement(Compiler *self) {
     adjust_stackinfo(self, -idents);
 }
 
+// Assumes we just consumed the `print` keyword and are now ready to compile a
+// stream of expressions to act as arguments.
 static void print_statement(Compiler *self) {
-    expression(self);
-    emit_byte(self, OP_PRINT);
-    adjust_stackinfo(self, -1);
+    Lexer *lexer = self->lexer;
+    int argc = 0;
+    // Hack so I can use normal function call syntax
+    bool open = match_token(lexer, TK_LPAREN);
+    do {
+        expression(self);
+        argc++;
+    } while (match_token(lexer, TK_COMMA));
+    if (open) {
+        consume_token(lexer, TK_RPAREN, "Expected ')' to close '('");
+    }
+    emit_oparg1(self, OP_PRINT, argc);
+    adjust_stackinfo(self, -argc);
 }
 
 /**
  * @brief   Declarations may have a stack effect/s, like pushing values from
  *          expressions to act as locals variables.
  *
- * @details declaration ::= vardecl
- *                        | statement
+ * @details declaration ::= vardecl ';'
+ *                        | statement ';'
  */
 void declaration(Compiler *self) {
     Lexer *lexer = self->lexer;
-    if (match_token(lexer, TK_LOCAL)) {
+    switch (lexer->token.type) {
+    case TK_LOCAL:
+        next_token(lexer);
         declare_locals(self);
-    } else if (match_token(lexer, TK_DO)) {
-        begin_scope(self);
-        block(self);
-        end_scope(self);
-    } else {
+        break;
+    default:
         statement(self);
+        break;
     }
     // Lua allows 1 semicolon to terminate statements, but no more.
     match_token(lexer, TK_SEMICOL);
@@ -494,6 +503,7 @@ static void exprstmt(Compiler *self) {
  *          undefined globals.
  *
  * @details statement ::= identlist '=' exprlist
+ *                      | 'do' block 'end'
  *                      | 'print' expression
  *                      | expression
  *          identlist ::= identifier [',' identifier]*
@@ -503,12 +513,24 @@ static void exprstmt(Compiler *self) {
  */
 static void statement(Compiler *self) {
     Lexer *lexer = self->lexer;
-    if (match_token(lexer, TK_IDENT)) {
-        varlist_statement(self);
-    } else if (match_token(lexer, TK_PRINT)) {
+    switch (lexer->token.type) {
+    case TK_IDENT:
+        // Do not consume the identifier, we need it at the top.
+        assign_variables(self);
+        break;
+    case TK_DO:
+        next_token(lexer);
+        begin_scope(self);
+        block(self);
+        end_scope(self);
+        break;
+    case TK_PRINT:
+        next_token(lexer);
         print_statement(self);
-    } else {
+        break;
+    default:
         exprstmt(self);
+        break;
     }
 }
 

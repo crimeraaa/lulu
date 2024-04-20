@@ -25,7 +25,7 @@ typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 #define MAX_LINE    0x100
 #define MAX_LOCALS  200
 #define MAX_CONSTS  0x1000000
-#define MAX_MULTI   200
+#define MAX_MULTI   16
 
 /* --- NUMBER TYPE INFORMATION -------------------------------------------- {{{1
 You may wish to change `MAX_NUMTOSTRING` based on the following conditions:

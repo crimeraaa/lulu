@@ -7,5 +7,5 @@ print(x)
 
 do
     local x, y, z = 11, 22, 33
-    print(x + y * z)
+    print('x', x, 'y', y, 'z', z)
 end
