@@ -49,7 +49,7 @@ static void add_local(Compiler *self, const Token *name) {
 
 // Analogous to `declareVariable()` in the book, but only for Lua locals.
 // Assumes we just consumed a local variable identifier token.
-void declare_local(Compiler *self) {
+static void init_local(Compiler *self) {
     Lexer *lexer = self->lexer;
     const Token *name = &lexer->consumed;
 
@@ -72,7 +72,7 @@ static void parse_local(Compiler *self, const char *info) {
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
     consume_token(lexer, TK_IDENT, info);
-    declare_local(self);
+    init_local(self);
     identifier_constant(self, token); // We don't need the index into Kst.
 }
 
@@ -134,8 +134,8 @@ static void binary(Compiler *self) {
     case TK_GE:  emit_oparg1(self, OP_LT, OP_NOT);    break;
     default:     emit_byte(self,  get_binop(optype)); break;
     }
-    // Popped 2 operands, pushed 1 value. Net stack usage -= 1.
-    adjust_stackinfo(self, -1);
+    // Pop 2 operands, push 1 result.
+    adjust_stackinfo(self, -2 + 1);
 }
 
 // Assumes we just consumed a `..` and the first argument has been compiled.
@@ -207,42 +207,28 @@ static void string(Compiler *self) {
     adjust_stackinfo(self, 1);
 }
 
-// `assignable` is only true if the identifier is also the first statement.
-// This is separate from declarations using `local`, see `varlist_local()`.
-static void named_variable(Compiler *self, const Token *name, bool assignable) {
-    Lexer *lexer = self->lexer;
+// Originally analogous to `namedVariable()` in the book, but with our current
+// semantics ours is radically different.
+static void get_variable(Compiler *self, const Token *name) {
     int operand  = resolve_local(self, name);
     bool islocal = (operand != -1);
-    OpCode opcode;
 
-    if (islocal) {
-        opcode  = (assignable) ? OP_SETLOCAL  : OP_GETLOCAL;
-    } else {
-        operand = identifier_constant(self, name);
-        opcode  = (assignable) ? OP_SETGLOBAL : OP_GETGLOBAL;
-    }
+    // Getops will always push.
+    adjust_stackinfo(self, 1);
 
-    if (assignable) {
-        if (match_token(lexer, TK_ASSIGN)) {
-            expression(self);
-        } else {
-            lexerror_at_consumed(lexer, "Variable assignment with '=' expected");
-        }
-    } else {
-        adjust_stackinfo(self, 1);
-    }
     // Global vs. local operands have different sizes.
     if (islocal) {
-        emit_oparg1(self, opcode, operand);
+        emit_oparg1(self, OP_GETLOCAL, operand);
     } else {
-        emit_oparg3(self, opcode, operand);
+        emit_oparg3(self, OP_GETGLOBAL, identifier_constant(self, name));
     }
 }
 
 // Past the first lexeme, assigning of variables is not allowed in Lua.
+// So this function can only ever perform get operations.
 static void variable(Compiler *self) {
     Lexer *lexer = self->lexer;
-    named_variable(self, &lexer->consumed, false);
+    get_variable(self, &lexer->consumed);
 }
 
 static OpCode get_unop(TkType type) {
@@ -352,7 +338,7 @@ static int identlist_local(Compiler *self) {
     return idents;
 }
 
-static int exprlist_local(Compiler *self) {
+static int exprlist(Compiler *self) {
     Lexer *lexer = self->lexer;
     int exprs = 0;
     do {
@@ -391,11 +377,11 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs) {
  *          the stack without popping it. We already keep track of info like
  *          variable name.
  */
-static void varlist_local(Compiler *self) {
+static void declare_locals(Compiler *self) {
     Lexer *lexer = self->lexer;
     int count = identlist_local(self);
     if (match_token(lexer, TK_ASSIGN)) {
-        adjust_exprlist(self, count, exprlist_local(self));
+        adjust_exprlist(self, count, exprlist(self));
     } else {
         // Stack usage is otherwise modified by each call to `expression()` and
         // potentially `adjust_exprlist()`.
@@ -405,9 +391,70 @@ static void varlist_local(Compiler *self) {
     define_locals(self, count);
 }
 
+// Slightly ugly but I can't think of a better way to resolve compound assigns.
+typedef struct {
+    OpCode op;
+    int arg;
+} Assign;
+
+// Assumes `list` is `MAX_MULTI` long.
+static int assign_variables(Compiler *self, Assign list[]) {
+    Lexer *lexer = self->lexer;
+    int idents = 0;
+    for (;;) {
+        Token *name  = &lexer->consumed;
+        int index    = resolve_local(self, name);
+        bool islocal = (index != -1);
+        // Treat `idents` as a 0-based index
+        if (idents + 1 > MAX_MULTI) {
+            lexerror_at_consumed(lexer, "Too many targets in assignment list");
+        }
+        list[idents].op  = (islocal) ? OP_SETLOCAL : OP_SETGLOBAL;
+        list[idents].arg = (islocal) ? index : identifier_constant(self, name);
+        idents++;
+        // Hacky but need this so our next consumed will be the identifier
+        if (match_token(lexer, TK_COMMA)) {
+            consume_token(lexer, TK_IDENT, "Expected an identifier");
+        } else {
+            break;
+        }
+    }
+    return idents;
+}
+
+/**
+ * @brief   Assumes we just consumed the first identifier in an assignment list.
+ *
+ * @details varlist         ::= namelist '=' exprlist
+ *          namelist        ::= identifier [',' identifier]*
+ *          exprlist        ::= expression [',' expression]*
+ *
+ * @note    In Lua, a varlist as the first statement is either assumed to be
+ *          1 or more assignments, or a function call. You cannot have comma
+ *          separated function calls.
+ */
+static void varlist_statement(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    Assign list[MAX_MULTI];
+    int idents = assign_variables(self, list);
+    consume_token(lexer, TK_ASSIGN, "Expected '='");
+    adjust_exprlist(self, idents, exprlist(self));
+
+    // Emit in reverse order: topmost set operation is for the rightmost value.
+    for (int i = idents - 1; i >= 0; i--) {
+        if (list[i].op == OP_SETGLOBAL) {
+            emit_oparg3(self, list[i].op, list[i].arg);
+        } else {
+            emit_oparg1(self, list[i].op, list[i].arg);
+        }
+    }
+    adjust_stackinfo(self, -idents);
+}
+
 static void print_statement(Compiler *self) {
     expression(self);
     emit_byte(self, OP_PRINT);
+    adjust_stackinfo(self, -1);
 }
 
 /**
@@ -420,7 +467,7 @@ static void print_statement(Compiler *self) {
 void declaration(Compiler *self) {
     Lexer *lexer = self->lexer;
     if (match_token(lexer, TK_LOCAL)) {
-        varlist_local(self);
+        declare_locals(self);
     } else if (match_token(lexer, TK_DO)) {
         begin_scope(self);
         block(self);
@@ -437,6 +484,7 @@ void declaration(Compiler *self) {
 static void exprstmt(Compiler *self) {
     expression(self);
     emit_oparg1(self, OP_POP, 1);
+    adjust_stackinfo(self, -1);
 }
 
 /**
@@ -445,24 +493,23 @@ static void exprstmt(Compiler *self) {
  *          globals is an error, but at the same time I dislike implicit nil for
  *          undefined globals.
  *
- * @details statement ::= identifier '=' expression ';'
- *                      | 'print' expression ';'
- *                      | 'do' block 'end' ';'
- *                      | expression ';'
+ * @details statement ::= identlist '=' exprlist
+ *                      | 'print' expression
+ *                      | expression
+ *          identlist ::= identifier [',' identifier]*
+ *          exprlist  ::= expression [',' expression]*
  *
  * @note    By themselves, statements should have zero net stack effect.
  */
 static void statement(Compiler *self) {
     Lexer *lexer = self->lexer;
     if (match_token(lexer, TK_IDENT)) {
-        named_variable(self, &lexer->consumed, true);
+        varlist_statement(self);
     } else if (match_token(lexer, TK_PRINT)) {
         print_statement(self);
     } else {
         exprstmt(self);
     }
-    // Statements will always implicitly or explicitly pop what they pushed.
-    adjust_stackinfo(self, -1);
 }
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
@@ -478,8 +525,6 @@ static void parse_precedence(Compiler *self, Precedence prec) {
     prefixfn(self);
 
     // Is the token to our right something we can further compile?
-    // Assume infix expressions take at least 2 prefix expressions, pop them,
-    // then push 1 result.
     while (prec <= get_parserule(lexer->token.type)->prec) {
         next_token(lexer);
         get_parserule(lexer->consumed.type)->infixfn(self);

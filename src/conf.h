@@ -25,6 +25,7 @@ typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 #define MAX_LINE    0x100
 #define MAX_LOCALS  200
 #define MAX_CONSTS  0x1000000
+#define MAX_MULTI   200
 
 /* --- NUMBER TYPE INFORMATION -------------------------------------------- {{{1
 You may wish to change `MAX_NUMTOSTRING` based on the following conditions:
@@ -34,9 +35,9 @@ You may wish to change `MAX_NUMTOSTRING` based on the following conditions:
     to 64 characters.
 */
 
-#define NUMBER_TYPE        double
-#define NUMBER_SCAN        "%lf"
-#define NUMBER_FMT         "%.14g"
+#define NUMBER_TYPE         double
+#define NUMBER_SCAN         "%lf"
+#define NUMBER_FMT          "%.14g"
 #define MAX_NUMTOSTRING     64
 #define num_tostring(s, n)  snprintf((s), MAX_NUMTOSTRING, NUMBER_FMT, (n))
 #define num_add(a, b)       ((a) + (b))

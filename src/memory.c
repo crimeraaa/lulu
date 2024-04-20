@@ -18,12 +18,11 @@ static void free_object(Object *object, Alloc *alloc) {
 }
 
 void free_objects(VM *vm) {
-    Alloc *alloc   = &vm->alloc;
-    Object *object = vm->objects;
-
-    while (object != NULL) {
-        Object *next = object->next;
-        free_object(object, alloc);
-        object = next;
+    Alloc *alloc = &vm->alloc;
+    Object *head = vm->objects;
+    while (head != NULL) {
+        Object *next = head->next;
+        free_object(head, alloc);
+        head = next;
     }
 }
