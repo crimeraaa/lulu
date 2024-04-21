@@ -324,7 +324,7 @@ static uint32_t hash_value(const TValue *self) {
 // Find a free slot. Assumes there is at least 1 free slot left.
 static Entry *find_entry(Entry *list, int cap, const TValue *key) {
     uint32_t index = hash_value(key) % cap;
-    Entry *tombstone = NULL;
+    Entry   *tombstone = NULL;
     for (;;) {
         Entry *entry = &list[index];
         if (is_nil(&entry->key)) {
@@ -366,7 +366,7 @@ static void resize_table(Table *self, int newcap, Alloc *alloc) {
 }
 
 bool get_table(Table *self, const TValue *key, TValue *out) {
-    if (self->count == 0) {
+    if (self->count == 0 || is_nil(key)) {
         return false;
     }
     Entry *entry = find_entry(self->entries, self->cap, key);
@@ -378,6 +378,9 @@ bool get_table(Table *self, const TValue *key, TValue *out) {
 }
 
 bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc) {
+    if (is_nil(key)) {
+        return false;
+    }
     if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
         resize_table(self, grow_capacity(self->cap), alloc);
     }
@@ -394,7 +397,7 @@ bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc
 }
 
 bool unset_table(Table *self, const TValue *key) {
-    if (self->count == 0) {
+    if (self->count == 0 || is_nil(key)) {
         return false;
     }
     Entry *entry = find_entry(self->entries, self->cap, key);
@@ -418,9 +421,9 @@ void copy_table(Table *dst, const Table *src, Alloc *alloc) {
 }
 
 void set_interned(VM *vm, const TString *string) {
-    Alloc *alloc = &vm->alloc;
-    const TValue key = make_string(string);
-    const TValue val = make_boolean(true);
+    Alloc       *alloc = &vm->alloc;
+    const TValue key   = make_string(string);
+    const TValue val   = make_boolean(true);
     set_table(&vm->strings, &key, &val, alloc);
 }
 
