@@ -32,8 +32,8 @@ typedef enum {
 typedef void (*ParseFn)(Compiler *self);
 
 typedef const struct {
-    ParseFn prefixfn;
-    ParseFn infixfn;
+    ParseFn    prefixfn;
+    ParseFn    infixfn;
     Precedence prec;
 } ParseRule;
 

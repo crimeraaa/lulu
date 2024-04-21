@@ -12,7 +12,13 @@ static void free_object(Object *object, Alloc *alloc) {
     case TYPE_STRING:
         free_tstring(object, cast(TString*, object)->len + 1, alloc);
         break;
+    case TYPE_TABLE:
+        free_table(cast(Table*, object), alloc);
+        free_pointer(Table, object, alloc);
+        break;
     default:
+        eprintfln("[FATAL ERROR]:\nAttempt to free a %s", get_typename(object));
+        assert(false);
         break;
     }
 }

@@ -12,12 +12,13 @@ enum RT_ErrType {
     RTE_CONCAT,
     RTE_UNDEF,   // Make sure to push_back the invalid variable name first.
     RTE_LENGTH,  // Using `#` on non-table and non-string values.
+    RTE_INDEX,   // Using `[]` on non-table values.
 };
 
 // Assumes that `context` points to the parent `VM*` instance.
 static void *allocfn(void *ptr, size_t oldsz, size_t newsz, void *context) {
-    VM *self  = cast(VM*, context);
     unused(oldsz);
+    VM *self = context;
     if (newsz == 0) {
         free(ptr);
         return NULL;
@@ -62,6 +63,10 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
         break;
     case RTE_LENGTH:
         eprintf("Attempt to get length of a %s value", _type(-1));
+        break;
+    case RTE_INDEX:
+        // Key is on top, so table is right below it.
+        eprintf("Attempt to index a %s value", _type(-2));
         break;
     }
     fputc('\n', stderr);
@@ -188,6 +193,20 @@ static ErrType run(VM *self) {
             }
             push_back(&value);
         } break;
+        case OP_GETTABLE:
+            if (!is_table(poke_top(-2))) {
+                runtime_error(self, RTE_INDEX);
+            } else {
+                Table  *table = as_table(poke_top(-2));
+                TValue *key   = poke_top(-1);
+                TValue  value;
+                if (!get_table(table, key, &value)) {
+                    set_nil(&value);
+                }
+                popn(2);
+                push_back(&value);
+            }
+            break;
         case OP_SETLOCAL:
             self->stack[read_byte()] = *poke_top(-1);
             pop_back();
@@ -196,6 +215,12 @@ static ErrType run(VM *self) {
             // Same as `OP_GETGLOBAL`.
             set_table(&self->globals, read_constant(), poke_top(-1), alloc);
             pop_back();
+            break;
+        case OP_SETTABLE:
+            // Assumes Top[-1] = val, Top[-2] = key, Top[-3] = table.
+            // Pops val and key.
+            set_table(as_table(poke_top(-3)), poke_top(-2), poke_top(-1), alloc);
+            popn(2);
             break;
         case OP_EQ: {
             TValue *lhs = poke_top(-2);

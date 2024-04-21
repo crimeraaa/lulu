@@ -12,11 +12,10 @@
 // Separate name from `new_object` since `new_tstring` also needs access.
 // Assumes casting `alloc->context` to `VM*` is a safe operation.
 static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
-    // If we just get a single pointer we won't modify the VM's state.
-    Object **head = &cast(VM*, alloc->context)->objects;
-    Object *node  = alloc->reallocfn(NULL, 0, size, alloc->context);
-    node->tag     = tag;
-    return prepend_node(*head, node);
+    VM *vm       = alloc->context;
+    Object *node = alloc->reallocfn(NULL, 0, size, vm);
+    node->tag    = tag;
+    return prepend_node(vm->objects, node);
 }
 
 #define new_object(T, tag, alloc) \
@@ -26,14 +25,6 @@ static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
 #define _new_tstring(N, alloc) \
     cast(TString*, _new_object(tstring_size(N), TYPE_STRING, alloc))
 
-// NOTE: For `concat_string` we do not know the correct hash yet.
-// Analogous to `allocateString()` in the book.
-static TString *new_tstring(int len, Alloc *alloc) {
-    TString *inst = _new_tstring(len + 1, alloc); // +1 for nul char.
-    inst->len     = len;
-    return inst;
-}
-
 // 1}}} ------------------------------------------------------------------------
 
 const char *const LULU_TYPENAMES[] = {
@@ -41,26 +32,49 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_BOOLEAN] = "boolean",
     [TYPE_NUMBER]  = "number",
     [TYPE_STRING]  = "string",
+    [TYPE_TABLE]   = "table",
 };
 
-void print_value(const TValue *self) {
+const char *to_cstring(const TValue *self, char *buffer, int *len) {
+    int n = 0;
+    if (len != NULL) {
+        *len = -1;
+    }
     switch (get_tag(self)) {
     case TYPE_NIL:
-        printf("nil");
-        break;
+        return "nil";
     case TYPE_BOOLEAN:
-        printf(as_boolean(self) ? "true" : "false");
-        break;
+        return as_boolean(self) ? "true" : "false";
     case TYPE_NUMBER:
-        printf(NUMBER_FMT, as_number(self));
+        n = num_tostring(buffer, as_number(self));
         break;
     case TYPE_STRING:
+        return as_cstring(self);
+    case TYPE_TABLE:
+        n = snprintf(buffer,
+                     MAX_NUMTOSTRING,
+                     "%s: %p",
+                     get_typename(self),
+                     as_pointer(self));
+        break;
+    }
+    buffer[n] = '\0';
+    if (len != NULL) {
+        *len = n;
+    }
+    return buffer;
+}
+
+void print_value(const TValue *self) {
+    if (is_string(self)) {
         if (as_string(self)->len <= 1) {
             printf("\'%s\'", as_cstring(self));
         } else {
             printf("\"%s\"", as_cstring(self));
         }
-        break;
+    } else {
+        char buffer[MAX_NUMTOSTRING];
+        printf("%s", to_cstring(self, buffer, NULL));
     }
 }
 
@@ -69,12 +83,12 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     if (get_tag(lhs) != get_tag(rhs)) {
         return false;
     }
-    // For objects we assume they are correctly interned.
     switch (get_tag(lhs)) {
     case TYPE_NIL:      return true;
     case TYPE_BOOLEAN:  return as_boolean(lhs) == as_boolean(rhs);
     case TYPE_NUMBER:   return num_eq(as_number(lhs), as_number(rhs));
-    case TYPE_STRING:   return as_object(lhs) == as_object(rhs);
+    case TYPE_STRING:   // We assume all objects are correctly interned.
+    case TYPE_TABLE:    return as_object(lhs) == as_object(rhs);
     }
 }
 
@@ -108,6 +122,14 @@ void write_tarray(TArray *self, const TValue *value, Alloc *alloc) {
 #define FNV1A_OFFSET32  0x811c9dc5
 #define FNV1A_PRIME64   0x00000100000001B3
 #define FNV1A_OFFSET64  0xcbf29ce484222325
+
+// NOTE: For `concat_string` we do not know the correct hash yet.
+// Analogous to `allocateString()` in the book.
+static TString *new_tstring(int len, Alloc *alloc) {
+    TString *inst = _new_tstring(len + 1, alloc); // +1 for nul char.
+    inst->len     = len;
+    return inst;
+}
 
 static char get_escape(char ch) {
     switch (ch) {
@@ -230,6 +252,13 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
 
 #define TABLE_MAX_LOAD  0.75
 
+Table *new_table(Alloc *alloc) {
+    // Table *inst = new_object(Table, TYPE_TABLE, alloc);
+    Table *inst = (Table*)_new_object(sizeof(Table), TYPE_TABLE, alloc);
+    init_table(inst);
+    return inst;
+}
+
 void init_table(Table *self) {
     self->entries = NULL;
     self->count   = 0;
@@ -272,12 +301,23 @@ static uint32_t hash_number(Number number) {
     return hash.bits % UINT32_MAX;
 }
 
+// WARNING: May be a bad idea!
+// Assumes `value` is of type `TYPE_TABLE` or greater.
+static uint32_t hash_object(const TValue *value) {
+    char buffer[MAX_NUMTOSTRING];
+    int  len;
+    to_cstring(value, buffer, &len);
+    buffer[len] = '\0';
+    return hash_string(buffer, len);
+}
+
 static uint32_t hash_value(const TValue *self) {
     switch (get_tag(self)) {
     case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
     case TYPE_BOOLEAN:  return as_boolean(self);
     case TYPE_NUMBER:   return hash_number(as_number(self));
     case TYPE_STRING:   return as_string(self)->hash;
+    case TYPE_TABLE:    return hash_object(self);
     }
 }
 

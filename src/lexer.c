@@ -6,7 +6,7 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-void init_lexer(Lexer *self, const char *input, struct VM *vm) {
+void init_lexer(Lexer *self, const char *input, VM *vm) {
     self->token    = compoundlit(Token, 0);
     self->consumed = self->token;
     self->lexeme   = input;

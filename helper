@@ -220,7 +220,7 @@ options["run"] = {
 
 options["memcheck"] = {
     exe = "valgrind",
-    flags = {"--leak-check=full", "--track-origins=yes"},
+    flags = {"--leak-check=full", "--track-origins=yes", "--show-leak-kinds=all"},
     usage = "[exe='" .. LULU_EXE .. "' [,args...]]",
     help = "Runs valgrind with some helpful options.",
     note = "If [exe] is not given we will default to " .. LULU_EXE .. ".",

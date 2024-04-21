@@ -37,8 +37,10 @@ OP_FALSE,    // -     | -               | false             |                  |
 OP_POP,      // B     | A_B,...A_1      | -                 |                  |
 OP_GETLOCAL, // L     | -               | Loc[L]            |                  |
 OP_GETGLOBAL,// U     | -               | _G[Kst[U]]        |                  |
+OP_GETTABLE, // -     | table, key      | table, table[key] |                  |
 OP_SETLOCAL, // L     | x               | -                 | Loc[L] = x       |
 OP_SETGLOBAL,// U     | x               | -                 | _G[Kst[U]] = x   |
+OP_SETTABLE, // -     | table, key, val | table             | table[key] = val |
 OP_EQ,       // -     | x, y            | x == y            |                  |
 OP_LT,       // -     | x, y            | x < y             |                  |
 OP_LE,       // -     | x, y            | x <= y            |                  |
@@ -77,12 +79,12 @@ extern const char *const LULU_OPNAMES[];
 #define get_opname(opcode)  LULU_OPNAMES[opcode]
 
 typedef struct {
-    TArray constants;
+    TArray      constants;
     const char *name;
-    Byte *code;
-    int *lines; // Mirrors the bytecode array.
-    int len;
-    int cap;
+    Byte       *code;
+    int        *lines; // Mirrors the bytecode array.
+    int         len;
+    int         cap;
 } Chunk;
 
 void init_chunk(Chunk *self, const char *name);

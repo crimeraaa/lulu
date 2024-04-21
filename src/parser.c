@@ -1,5 +1,7 @@
+#include "debug.h"
 #include "parser.h"
 #include "object.h"
+#include "vm.h"
 
 // Forward declarations to allow recursive descent parsing.
 static ParseRule *get_parserule(TkType key);
@@ -51,7 +53,7 @@ static void add_local(Compiler *self, const Token *name) {
 // Assumes we just consumed a local variable identifier token.
 static void init_local(Compiler *self) {
     Lexer *lexer = self->lexer;
-    const Token *name = &lexer->consumed;
+    Token *name  = &lexer->consumed;
 
     // Detect variable shadowing in the same scope.
     for (int i = self->localcount - 1; i >= 0; i--) {
@@ -67,13 +69,12 @@ static void init_local(Compiler *self) {
     add_local(self, name);
 }
 
-// Callback function for `parse_identlist`.
 typedef void (*IdentFn)(Compiler *self, int count, void *context);
 
 // Generic function for `local` declaration/s or assignment list.
 static int parse_identlist(Compiler *self, IdentFn identfn, void *context) {
     Lexer *lexer = self->lexer;
-    int idents   = 0;
+    int idents = 0;
     do {
         consume_token(lexer, TK_IDENT, "Expected an identifier");
         identfn(self, idents, context);
@@ -82,13 +83,17 @@ static int parse_identlist(Compiler *self, IdentFn identfn, void *context) {
     return idents;
 }
 
+// Please pass only negative values, similar to `vm.c:poke_top()`.
+static void mark_initialized(Compiler *self, int offset) {
+    self->locals[self->localcount + offset].depth = self->scopedepth;
+}
+
 // Analogous to `defineVariable()` in the book, but for a comma-separated list
-// form `'local' identifier [, identifier]* [';']`.
-// We considered "defined" local variables to be ready for reading/writing.
+// in the form `'local' identifier [, identifier]* [';']`.
 static void define_locals(Compiler *self, int count) {
-    int limit = self->localcount;
+    // We considered "defined" local variables to be ready for reading/writing.
     for (int i = count; i > 0; i--) {
-        self->locals[limit - i].depth = self->scopedepth;
+        mark_initialized(self, -i);
     }
 }
 
@@ -126,10 +131,9 @@ static void binary(Compiler *self) {
     Lexer *lexer  = self->lexer;
     Token *token  = &lexer->consumed;
     TkType optype = token->type;
-    ParseRule *rule = get_parserule(optype);
 
     // For exponentiation enforce right-associativity.
-    parse_precedence(self, rule->prec + (optype != TK_CARET));
+    parse_precedence(self, get_parserule(optype)->prec + (optype != TK_CARET));
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (optype) {
@@ -138,23 +142,24 @@ static void binary(Compiler *self) {
     case TK_GE:  emit_oparg1(self, OP_LT, OP_NOT);    break;
     default:     emit_byte(self,  get_binop(optype)); break;
     }
-    // Pop 2 operands, push 1 result.
-    adjust_stackinfo(self, -2 + 1);
+
+    adjust_stackinfo(self, -2 + 1); // Pop 2 operands, push 1 result.
 }
 
 // Assumes we just consumed a `..` and the first argument has been compiled.
 static void concat(Compiler *self) {
     Lexer *lexer = self->lexer;
     int argc = 1;
+
     do {
         // Although right associative, we don't recursively compile concat
         // expressions in the same grouping.
         parse_precedence(self, PREC_CONCAT + 1);
         argc++;
     } while (match_token(lexer, TK_CONCAT));
+
     emit_oparg3(self, OP_CONCAT, argc);
-    // Pop all operands but push 1 result.
-    adjust_stackinfo(self, -argc + 1);
+    adjust_stackinfo(self, -argc + 1); // Pop all operands but push 1 result.
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -230,6 +235,13 @@ static void emit_getop(Compiler *self, const Token *name) {
 static void variable(Compiler *self) {
     Lexer *lexer = self->lexer;
     emit_getop(self, &lexer->consumed);
+
+    // Have `t[...]`, try to resolve the key for the table access
+    if (match_token(lexer, TK_LBRACKET)) {
+        expression(self);
+        consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
+        emit_byte(self, OP_GETTABLE);
+    }
 }
 
 static OpCode get_unop(TkType type) {
@@ -252,6 +264,45 @@ static void unary(Compiler *self) {
     // Recursively compiles until we hit something with a lower precedence.
     parse_precedence(self, PREC_UNARY);
     emit_byte(self, get_unop(optype));
+}
+
+static void assign_table(Compiler *self, int *index) {
+    Lexer *lexer = self->lexer;
+
+    // Keys should always have a net stack effect of +1.
+    if (match_token(lexer, TK_LBRACKET)) {
+        // Explicit hash key: `["Monday"] = ...` or an expression thereof
+        expression(self);
+        consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
+        consume_token(lexer, TK_ASSIGN, "Expected '=' to assign table field");
+    } else {
+        // Implicit index: `t = {13}`. is equivalent to `t = {[1] = 13}`
+        TValue value = make_number(*index++);
+        emit_constant(self, &value);
+    }
+    expression(self);
+    emit_byte(self, OP_SETTABLE);
+}
+
+// Table constructor is a prefix expression. Assumes we consumed a `'{'` token.
+static void table_ctor(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    Table *table = new_table(&self->vm->alloc);
+    TValue value = make_table(table);
+
+    // Emit table BEFORE setting any potential fields.
+    emit_constant(self, &value);
+
+    // Not an empty constructor?
+    if (!check_token(lexer, TK_RCURLY)) {
+        // Lua arrays start with 1 so for consistency I'll do the same.
+        int index = 1;
+        do {
+            assign_table(self, &index);
+        } while (match_token(lexer, TK_COMMA));
+    }
+    consume_token(lexer, TK_RCURLY, "Expected '}' after table constructor");
+    adjust_stackinfo(self, +1);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -285,7 +336,7 @@ static ParseRule PARSERULES_LOOKUP[] = {
     [TK_RPAREN]     = {NULL,        NULL,       PREC_NONE},
     [TK_LBRACKET]   = {NULL,        NULL,       PREC_NONE},
     [TK_RBRACKET]   = {NULL,        NULL,       PREC_NONE},
-    [TK_LCURLY]     = {NULL,        NULL,       PREC_NONE},
+    [TK_LCURLY]     = {table_ctor,  NULL,       PREC_NONE},
     [TK_RCURLY]     = {NULL,        NULL,       PREC_NONE},
 
     [TK_COMMA]      = {NULL,        NULL,       PREC_NONE},
@@ -329,7 +380,7 @@ static void block(Compiler *self) {
     consume_token(lexer, TK_END, "Expected 'end' after block");
 }
 
-static int exprlist(Compiler *self) {
+static int parse_exprlist(Compiler *self) {
     Lexer *lexer = self->lexer;
     int exprs = 0;
     do {
@@ -380,9 +431,9 @@ static void parse_local(Compiler *self, int count, void *context) {
  */
 static void declare_locals(Compiler *self) {
     Lexer *lexer = self->lexer;
-    int count = parse_identlist(self, parse_local, NULL);
+    int    count = parse_identlist(self, parse_local, NULL);
     if (match_token(lexer, TK_ASSIGN)) {
-        adjust_exprlist(self, count, exprlist(self));
+        adjust_exprlist(self, count, parse_exprlist(self));
     } else {
         // Stack usage is otherwise modified by each call to `expression()` and
         // potentially `adjust_exprlist()`.
@@ -393,24 +444,39 @@ static void declare_locals(Compiler *self) {
 }
 
 // Slightly ugly but I can't think of a better way to resolve compound assigns.
-typedef struct {
-    OpCode op;
-    int arg;
-} Assign;
+typedef struct Assign Assign;
+typedef struct ExprInfo ExprInfo;
+
+struct ExprInfo {
+    int addr; // Bytecode "address", a.k.a. index into the bytecode array.
+    int size; // Total number of bytes used for the entire expression.
+};
+
+struct Assign {
+    ExprInfo assignee;
+    ExprInfo value;  // Assigner.
+};
 
 // Setop for local or global. Assumes `list` is `MAX_MULTI` elements long.
 static void parse_variable(Compiler *self, int count, void *context) {
-    Assign *list = cast(Assign*, context);
-    Lexer *lexer = self->lexer;
-    Token *name  = &lexer->consumed;
-    int operand  = resolve_local(self, name);
-    bool islocal = (operand != -1);
+    Assign *list    = cast(Assign*, context);
+    Lexer  *lexer   = self->lexer;
+    Token  *name    = &lexer->consumed;
+    int     operand = resolve_local(self, name);
+    bool    islocal = (operand != -1);
     if (count + 1 > MAX_MULTI) {
         lexerror_at_consumed(lexer,
             "More than " stringify(MAX_MULTI) " variables in assignment list");
     }
-    list[count].op  = (islocal) ? OP_SETLOCAL : OP_SETGLOBAL;
-    list[count].arg = (islocal) ? operand : identifier_constant(self, name);
+    // Index of `OP_SET*` instruction.
+    list[count].assignee.addr = self->chunk->len;
+    if (islocal) {
+        emit_oparg1(self, OP_SETLOCAL, operand);
+        list[count].assignee.size = 1;
+    } else {
+        emit_oparg3(self, OP_SETGLOBAL, identifier_constant(self, name));
+        list[count].assignee.size = 3;
+    }
 }
 
 /**
@@ -426,20 +492,47 @@ static void parse_variable(Compiler *self, int count, void *context) {
  *          separated function calls.
  */
 static void assign_variables(Compiler *self) {
-    Lexer *lexer = self->lexer;
     Assign list[MAX_MULTI];
-    int idents = parse_identlist(self, parse_variable, list);
+    Lexer *lexer  = self->lexer;
+    int    idents = parse_identlist(self, parse_variable, list);
     consume_token(lexer, TK_ASSIGN, "Expected '='");
-    adjust_exprlist(self, idents, exprlist(self));
 
-    // Emit in reverse order: topmost set operation is for the rightmost value.
-    for (int i = idents - 1; i >= 0; i--) {
-        if (list[i].op == OP_SETGLOBAL) {
-            emit_oparg3(self, list[i].op, list[i].arg);
-        } else {
-            emit_oparg1(self, list[i].op, list[i].arg);
+    int exprs = 0;
+    do {
+        int offset = self->chunk->len;
+        expression(self);
+        // Don't modify the list if too many expressions vs. assignments.
+        if (exprs > idents) {
+            continue;
+        }
+        list[exprs].value.addr = offset;
+        list[exprs].value.size = self->chunk->len - offset - 1;
+        exprs++;
+    } while (match_token(lexer, TK_COMMA));
+    adjust_exprlist(self, idents, exprs);
+
+    // Too few expressions, remanining assignments are mass-assigned nil
+    // so we just need to get the index of the `OP_NIL` instruction.
+    if (exprs < idents) {
+        int opnil = self->chunk->len - 1 - 1;
+        for (int i = exprs; i < idents; i++) {
+            list[i].value.addr = opnil;
+            list[i].value.size = 2;
         }
     }
+
+    // Swap the bytecode at these points
+    disassemble_chunk(self->chunk);
+    for (int i = 0; i < idents; i++) {
+        // In-place swap bytecode of assignee and assigning
+        printf("assignee 0x%04x (size: %i) => value 0x%04x (size: %i)\n",
+                list[i].assignee.addr,
+                list[i].assignee.size,
+                list[i].value.addr,
+                list[i].value.size);
+    }
+    lexerror_at_consumed(lexer, "Multiple assignment is WIP again");
+
     adjust_stackinfo(self, -idents);
 }
 
@@ -447,9 +540,8 @@ static void assign_variables(Compiler *self) {
 // stream of expressions to act as arguments.
 static void print_statement(Compiler *self) {
     Lexer *lexer = self->lexer;
-    // Hack so I can use normal function call syntax
-    bool open = match_token(lexer, TK_LPAREN);
-    int argc  = exprlist(self);
+    bool   open  = match_token(lexer, TK_LPAREN); // Hack for function "call"
+    int    argc  = parse_exprlist(self);
     if (open) {
         consume_token(lexer, TK_RPAREN, "Expected ')' to close '('");
     }

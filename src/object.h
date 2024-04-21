@@ -13,10 +13,11 @@ typedef enum {
     TYPE_BOOLEAN,
     TYPE_NUMBER,
     TYPE_STRING,
+    TYPE_TABLE,
 } VType;
 
 // Please keep this up to date as needed!
-#define NUM_TYPES   (TYPE_STRING + 1)
+#define NUM_TYPES   (TYPE_TABLE + 1)
 
 // Lookup table: maps `VType` to `const char*`.
 extern const char *const LULU_TYPENAMES[];
@@ -25,28 +26,28 @@ extern const char *const LULU_TYPENAMES[];
 typedef struct {
     VType tag;
     union {
-        bool boolean;
-        Number number;
+        bool    boolean;
+        Number  number;
         Object *object; // Some heap-allocated, GC-managed data.
     } as;
 } TValue;
 
 typedef struct {
     TValue *values;
-    int len;
-    int cap;
+    int     len;
+    int     cap;
 } TArray;
 
 struct Object {
-    VType tag;      // Must be consistent with the parent `TValue`.
-    Object *next;   // Intrusive list (linked list) node.
+    VType   tag;  // Must be consistent with the parent `TValue`.
+    Object *next; // Intrusive list (linked list) node.
 };
 
 typedef struct {
-    Object object;  // "Inherited" must come first to allow safe type-punning.
-    uint32_t hash;  // Hash code for use in addressing a `Table*`.
-    int len;        // Nul-terminated length, not including the nul itself.
-    char data[];    // See: C99 flexible array members, MUST be last member!
+    Object   object; // "Inherited" must come first to allow safe type-punning.
+    uint32_t hash;   // Hash code for use in addressing a `Table*`.
+    int      len;    // Nul-terminated length, not including the nul itself.
+    char     data[]; // See: C99 flexible array members, MUST be last member!
 } TString;
 
 typedef struct {
@@ -55,9 +56,10 @@ typedef struct {
 } Entry;
 
 typedef struct {
+    Object object;  // For user-facing tables, not by VM internal tables.
     Entry *entries; // Associative array segment.
-    int count;      // Current number of active entries.
-    int cap;        // Total number of possible active entries.
+    int    count;   // Current number of active entries.
+    int    cap;     // Total number of possible active entries.
 } Table;
 
 // NOTE: All `get_*`, `is_*`, `as_*` and `set_*` functions expect a pointer.
@@ -69,18 +71,22 @@ typedef struct {
 #define is_number(v)        (get_tag(v) == TYPE_NUMBER)
 #define is_object(v)        (get_tag(v) >= TYPE_STRING)
 #define is_string(v)        (get_tag(v) == TYPE_STRING)
+#define is_table(v)         (get_tag(v) == TYPE_TABLE)
 
 #define as_boolean(v)       ((v)->as.boolean)
 #define as_number(v)        ((v)->as.number)
 #define as_object(v)        ((v)->as.object)
+#define as_pointer(v)       cast(void*,    as_object(v))
 #define as_string(v)        cast(TString*, as_object(v))
 #define as_cstring(v)       (as_string(v)->data)
+#define as_table(v)         cast(Table*,   as_object(v))
 
 #define make_nil()          (TValue){TYPE_NIL,     {.number  = 0}}
 #define make_boolean(b)     (TValue){TYPE_BOOLEAN, {.boolean = (b)}}
 #define make_number(n)      (TValue){TYPE_NUMBER,  {.number  = (n)}}
 #define make_object(p, tt)  (TValue){tt,           {.object  = cast(Object*,p)}}
 #define make_string(p)      make_object(p, TYPE_STRING)
+#define make_table(p)       make_object(p, TYPE_TABLE)
 
 // We use a local variable to avoid bugs caused by multiple macro expansion.
 // NOTE: We set the value before the tag type in case `val` evaluates `dst`.
@@ -94,12 +100,15 @@ typedef struct {
 #define set_boolean(v, b)   set_value(TYPE_BOOLEAN, as_boolean, v, b)
 #define set_number(v, n)    set_value(TYPE_NUMBER,  as_number,  v, n)
 #define set_object(T, v, o) set_value(T,            as_object,  v, o)
-#define set_string(v, s)    set_object(TYPE_STRING, v, s)
 
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
 // Writes string representation of `self` to C `stdout`.
 void print_value(const TValue *self);
+
+// Assumes buffer is a fixed-size array of length `MAX_NUMTOSTRING`.
+// If `len` is not `NULL`, it will be set to -1 if we do not own the result.
+const char *to_cstring(const TValue *self, char *buffer, int *len);
 
 // We cannot use `memcmp` due to struct padding.
 bool values_equal(const TValue *lhs, const TValue *rhs);
@@ -114,6 +123,8 @@ TString *copy_string(VM *vm, const char *literal, int len);
 // Assumes all arguments we already verified to be `TString*`.
 TString *concat_strings(VM *vm, int argc, const TValue argv[], int len);
 
+// Used for user-created tables, not VM's globals/strings tables.
+Table *new_table(Alloc *alloc);
 void init_table(Table *self);
 void free_table(Table *self, Alloc *alloc);
 void dump_table(const Table *self, const char *name);

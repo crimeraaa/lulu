@@ -1,7 +1,19 @@
 #include "debug.h"
 #include "limits.h"
 
+void disassemble_constants(const Chunk *self) {
+    const TArray *array = &self->constants;
+    printf("[CONSTANTS]:\n");
+    for (int i = 0; i < array->len; i++) {
+        printf("[%i] := ", i);
+        print_value(&array->values[i]);
+        printf("\n");
+    }
+    printf("\n");
+}
+
 void disassemble_chunk(const Chunk *self) {
+    disassemble_constants(self);
     printf("[BYTECODE]: '%s'\n", self->name);
     for (int offset = 0; offset < self->len; ) {
         offset = disassemble_instruction(self, offset);
@@ -73,6 +85,8 @@ int disassemble_instruction(const Chunk *self, int offset) {
     case OP_CONCAT:
     case OP_PRINT:
         return range_instruction(opcode, self, offset);
+    case OP_GETTABLE:
+    case OP_SETTABLE:
     case OP_TRUE:   // Prefix literals
     case OP_FALSE:
     case OP_EQ:     // Binary Comparison operators
