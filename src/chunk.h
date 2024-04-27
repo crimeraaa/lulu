@@ -50,7 +50,7 @@ OP_MUL,      // -     | x, y            | x * y             |                  |
 OP_DIV,      // -     | x, y            | x / y             |                  |
 OP_MOD,      // -     | x, y            | x % y             |                  |
 OP_POW,      // -     | x, y            | x ^ y             |                  |
-OP_CONCAT,   // U     | Top[-B...-1]    | concat(...)       |                  |
+OP_CONCAT,   // B     | Top[-B...-1]    | concat(...)       |                  |
 OP_UNM,      // -     | x               | -x                |                  |
 OP_NOT,      // -     | x               | not x             |                  |
 OP_LEN,      // -     | x               | #x                |                  |

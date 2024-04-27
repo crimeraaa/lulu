@@ -18,10 +18,7 @@ static void adjust_stackinfo(Compiler *self, int count) {
 }
 
 static bool identifiers_equal(const Token *a, const Token *b) {
-    if (a->len != b->len) {
-        return false;
-    }
-    return cstr_equal(a->start, b->start, a->len);
+    return (a->len == b->len) && cstr_equal(a->start, b->start, a->len);
 }
 
 // Returns index of a local variable or -1 if assumed to be global.
@@ -152,7 +149,7 @@ static void concat(Compiler *self) {
         parse_precedence(self, PREC_CONCAT + 1);
         argc++;
     } while (match_token(lexer, TK_CONCAT));
-    emit_oparg3(self, OP_CONCAT, argc);
+    emit_oparg1(self, OP_CONCAT, argc);
     // Pop all operands but push 1 result.
     adjust_stackinfo(self, -argc + 1);
 }
@@ -242,6 +239,7 @@ static void parse_ctor(Compiler *self, int *index) {
 }
 
 // Assumes we just consumed a `'{'`.
+// TODO: Fix stack info adjustments, it reports wrong values here.
 static void table(Compiler *self) {
     Lexer *lexer = self->lexer;
     Table *table = new_table(&self->vm->alloc);
@@ -450,66 +448,113 @@ static void declare_locals(Compiler *self) {
     define_locals(self, count);
 }
 
-// Slightly ugly but I can't think of a better way to resolve compound assigns.
-// New problem! This will break immediately with table accesses.
-typedef struct {
-    OpCode op;
-    int    arg;
-    int    sz;  // How big is the operand size for this argument?
-} Assign;
+typedef struct Assign Assign;
 
-// Setop for local or global. Assumes `list` is `MAX_MULTI` elements long.
-static int parse_variable(Compiler *self, int count, void *context) {
-    Assign *list  = cast(Assign*, context);
-    Lexer  *lexer = self->lexer;
-    Token  *name  = &lexer->consumed;
-    int     arg   = resolve_local(self, name);
-    bool    islocal = (arg != -1);
-    if (count + 1 > MAX_MULTI) {
-        lexerror_at_consumed(lexer,
-            "More than " stringify(MAX_MULTI) " stack slots used in assignment list");
-    }
-    // To account for table fields, we'll need to add each access to the list.
-    // Rather hacky but I hope it works
-    if (match_token_any(lexer, TK_PERIOD, TK_LBRACKET)) {
-        lexerror_at_consumed(lexer, "Table field access is WIP");
-    }
-    list[count].op  = (islocal) ? OP_SETLOCAL : OP_SETGLOBAL;
-    list[count].arg = (islocal) ? arg : identifier_constant(self, name);
-    list[count].sz  = (islocal) ? 1 : 3;
-    return 1;
-}
+// These are all mutually exclusive flags.
+typedef enum {
+    IS_GLOBAL,
+    IS_LOCAL,
+    IS_FIELD,
+} Flags;
 
-/**
- * @brief   Assumes we are about to consume the first identifier in an
- *          assignment list.
- *
- * @details varlist         ::= identlist '=' exprlist
- *          identlist       ::= identifier [',' identifier]*
- *          exprlist        ::= expression [',' expression]*
- *
- * @note    In Lua, a varlist as the first statement is either assumed to be
- *          1 or more assignments, or a function call. You cannot have comma
- *          separated function calls.
- *
- *          See: https://www.lua.org/source/4.0/lparser.c.html#assignment
- */
-static void assign_variables(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    Assign list[MAX_MULTI];
-    int    idents = parse_identlist(self, parse_variable, list);
-    consume_token(lexer, TK_ASSIGN, "Expected '='");
-    adjust_exprlist(self, idents, parse_exprlist(self));
+struct Assign {
+    Assign *prev;
+    OpCode  op;
+    int     arg;
+    Flags   flags;
+};
 
-    // Emit in reverse order: topmost set operation is for the rightmost value.
-    for (int i = idents - 1; i >= 0; i--) {
-        if (list[i].sz == 3) {
-            emit_oparg3(self, list[i].op, list[i].arg);
-        } else {
-            emit_oparg1(self, list[i].op, list[i].arg);
+static void emit_fields(Compiler *self, Assign *list, int *nest) {
+    // Emit inwards going outwards.
+    if (list != NULL) {
+        emit_fields(self, list->prev, nest);
+        switch (list->flags) {
+        case IS_GLOBAL:
+            emit_oparg3(self, list->op, list->arg);
+            break;
+        case IS_FIELD:
+            // We are dealing with nested table field accesses, e.g. `t.k.v`.
+            if (list->prev->flags == IS_FIELD) {
+                emit_byte(self, OP_GETTABLE);
+                (*nest)++;
+            }
+            emit_oparg3(self, list->op, list->arg);
+            break;
+        case IS_LOCAL:
+            emit_oparg1(self, list->op, list->arg);
+            break;
         }
     }
-    adjust_stackinfo(self, -idents);
+}
+
+// Assumes we consumed an identifier as the first element of a statement.
+static void ident_statement(Compiler *self, Assign *elem) {
+    Lexer *lexer  = self->lexer;
+    Token  ident  = lexer->consumed;
+    elem->arg     = resolve_local(self, &ident);
+    elem->flags   = (elem->arg != -1) ? IS_LOCAL : IS_GLOBAL;
+
+    // This is the first statement?
+    if (elem->prev == NULL) {
+        if (elem->flags == IS_GLOBAL) {
+            elem->op  = OP_GETGLOBAL;
+            elem->arg = identifier_constant(self, &ident);
+        } else {
+            elem->op  = OP_GETLOCAL;
+        }
+    } else {
+        // This is likely chained table fields
+        elem->op    = OP_CONSTANT;
+        elem->arg   = identifier_constant(self, &ident);
+        elem->flags = IS_FIELD;
+    }
+
+    // What's the lookahead?
+    switch (lexer->token.type) {
+    case TK_PERIOD: {
+        Assign next;
+        next.prev = elem;
+        next_token(lexer);
+        consume_token(lexer, TK_IDENT, "Expected an identifier after '.'");
+        ident_statement(self, &next);
+        break;
+    }
+    case TK_LBRACKET:
+        lexerror_at_consumed(lexer, "Table indexing not yet implemented");
+        break;
+    case TK_ASSIGN:
+        next_token(lexer);
+        switch (elem->flags) {
+        case IS_GLOBAL:
+            expression(self);
+            emit_oparg3(self, OP_SETGLOBAL, elem->arg);
+            break;
+        case IS_LOCAL:
+            expression(self);
+            emit_oparg1(self, OP_SETLOCAL, elem->arg);
+            break;
+        case IS_FIELD: {
+            int nest = 0;
+            // Need to emit the target table (table + key/s) before the value
+            emit_fields(self, elem, &nest);
+            expression(self);
+            emit_byte(self, OP_SETTABLE);
+            // HACK: This is stupid but lets us preserve the stack correctly
+            // Because if we had no nested tables, we just need to pop the main.
+            emit_oparg1(self, OP_POP, (nest == 0) ? 1 : nest);
+        } break;
+
+        }
+        break;
+    case TK_LPAREN:
+        lexerror_at_consumed(lexer, "Function calls not yet implemented");
+        break;
+    case TK_COMMA:
+        lexerror_at_consumed(lexer, "Multiple assignment not yet implemented");
+        break;
+    default:
+        lexerror_at_consumed(lexer, "Unexpected token in identifier statement");
+    }
 }
 
 // Assumes we just consumed the `print` keyword and are now ready to compile a
@@ -573,10 +618,13 @@ static void exprstmt(Compiler *self) {
 static void statement(Compiler *self) {
     Lexer *lexer = self->lexer;
     switch (lexer->token.type) {
-    case TK_IDENT:
-        // Do not consume the identifier, we need it at the top.
-        assign_variables(self);
+    case TK_IDENT: {
+        Assign ident;
+        ident.prev = NULL;
+        next_token(lexer);
+        ident_statement(self, &ident);
         break;
+    }
     case TK_DO:
         next_token(lexer);
         begin_scope(self);

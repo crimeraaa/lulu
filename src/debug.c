@@ -50,11 +50,12 @@ static int simple_instruction(OpCode opcode, int offset) {
     return offset + 1;
 }
 
+// Assumes all instructions that manipulate ranges of values on the stack will
+// only ever have a 1-byte argument.
 static int range_instruction(OpCode opcode, const Chunk *chunk, int offset) {
-    bool ismulti = (opcode == OP_CONCAT);
-    int arg = read_byte3_if(ismulti, chunk, offset);
+    int arg = read_byte(chunk, offset);
     printf("%-16s Top[%i...-1]\n", get_opname(opcode), -arg);
-    return offset + (ismulti ? 3 : 1) + 1;
+    return offset + 1 + 1;
 }
 
 static int local_instruction(OpCode opcode, const Chunk *chunk, int offset) {

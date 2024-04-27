@@ -65,8 +65,7 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
         eprintf("Attempt to get length of a %s value", _type(-1));
         break;
     case RTE_INDEX:
-        // Key is on top, so table is right below it.
-        eprintf("Attempt to index a %s value", _type(-2));
+        eprintf("Attempt to index a %s value", _type(-1));
         break;
     }
     fputc('\n', stderr);
@@ -194,7 +193,11 @@ static ErrType run(VM *self) {
             push_back(&value);
         } break;
         case OP_GETTABLE:
+            // TODO: Make it so we don't have to keep popping table as well
             if (!is_table(poke_top(-2))) {
+                // Push the guilty variable to the top so we can report it.
+                TValue *bad = poke_top(-2);
+                push_back(bad);
                 runtime_error(self, RTE_INDEX);
             } else {
                 Table  *table = as_table(poke_top(-2));
@@ -217,10 +220,17 @@ static ErrType run(VM *self) {
             pop_back();
             break;
         case OP_SETTABLE:
-            // Assumes Top[-1] = val, Top[-2] = key, Top[-3] = table.
-            // Pops val and key.
-            set_table(as_table(poke_top(-3)), poke_top(-2), poke_top(-1), alloc);
-            popn(2);
+            if (!is_table(poke_top(-3))) {
+                // Push the guilty variable to the top so we can report it.
+                push_back(poke_top(-3));
+                runtime_error(self, RTE_INDEX);
+            } else {
+                Table  *table = as_table(poke_top(-3));
+                TValue *key   = poke_top(-2);
+                TValue *val   = poke_top(-1);
+                set_table(table, key, val, alloc);
+                popn(2);
+            }
             break;
         case OP_EQ: {
             TValue *lhs = poke_top(-2);
@@ -254,9 +264,9 @@ static ErrType run(VM *self) {
             break;
         case OP_CONCAT: {
             // Assume at least 2 args since concat is an infix expression.
-            int argc = read_byte3();
+            int           argc = read_byte();
             const TValue *argv = poke_top(-argc);
-            TString *res = try_concat(self, argc, argv);
+            TString      *res  = try_concat(self, argc, argv);
             popn(argc);
             push_back(&make_string(res));
         } break;
@@ -279,7 +289,7 @@ static ErrType run(VM *self) {
             set_number(arg, as_string(arg)->len);
         } break;
         case OP_PRINT: {
-            int argc     = read_byte();
+            int     argc = read_byte();
             TValue *argv = poke_top(-argc);
             for (int i = 0; i < argc; i++) {
                 print_value(&argv[i]);
