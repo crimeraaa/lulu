@@ -404,7 +404,7 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs) {
         emit_oparg1(self, OP_POP, extra);
         adjust_stackinfo(self, -extra);
     } else {
-        // Assign nils to remaining identifiers.
+        // Assignment nils to remaining identifiers.
         int extra = idents - exprs;
         emit_oparg1(self, OP_NIL, extra);
         adjust_stackinfo(self, +extra);
@@ -448,102 +448,135 @@ static void declare_locals(Compiler *self) {
     define_locals(self, count);
 }
 
-typedef struct Assign Assign;
+typedef struct Assignment Assignment;
 
 // These are all mutually exclusive flags.
 typedef enum {
-    IS_GLOBAL,
-    IS_LOCAL,
-    IS_FIELD,
-} Flags;
+    ASSIGN_GLOBAL,
+    ASSIGN_LOCAL,
+    ASSIGN_FIELD,  // Indexing via dot notation e.g. `io.stdout`.
+    ASSIGN_INDEX,  // Indexing via bracket notation e.g. `_G["print"]`.
+} AssignType;
 
-struct Assign {
-    Assign *prev;
-    OpCode  op;
-    int     arg;
-    Flags   flags;
+struct Assignment {
+    Assignment *prev;
+    OpCode      op;
+    int         arg;
+    AssignType  type;
 };
 
-static void emit_fields(Compiler *self, Assign *list, int *nest) {
-    // Emit inwards going outwards.
-    if (list != NULL) {
-        emit_fields(self, list->prev, nest);
-        switch (list->flags) {
-        case IS_GLOBAL:
-            emit_oparg3(self, list->op, list->arg);
-            break;
-        case IS_FIELD:
-            // We are dealing with nested table field accesses, e.g. `t.k.v`.
-            if (list->prev->flags == IS_FIELD) {
-                emit_byte(self, OP_GETTABLE);
-                (*nest)++;
-            }
-            emit_oparg3(self, list->op, list->arg);
-            break;
-        case IS_LOCAL:
-            emit_oparg1(self, list->op, list->arg);
-            break;
-        }
+// We are dealing with nested table field accesses, e.g. `t.k.v`.
+static void emit_gettable(Compiler *self, Assignment *list, int *nest) {
+    if (list->prev != NULL && list->prev->type >= ASSIGN_FIELD) {
+        emit_byte(self, OP_GETTABLE);
+        (*nest)++;
     }
 }
 
-// Assumes we consumed an identifier as the first element of a statement.
-static void ident_statement(Compiler *self, Assign *elem) {
-    Lexer *lexer  = self->lexer;
-    Token  ident  = lexer->consumed;
-    elem->arg     = resolve_local(self, &ident);
-    elem->flags   = (elem->arg != -1) ? IS_LOCAL : IS_GLOBAL;
+static void emit_fields(Compiler *self, Assignment *list, int *nest) {
+    // Emit inwards going outwards.
+    if (list == NULL) {
+        return;
+    }
+    emit_fields(self, list->prev, nest);
+    switch (list->type) {
+    case ASSIGN_INDEX:
+        // Key is implicit thanks to the value pushed by `expression()`.
+        // So no need to emit an opcode.
+        emit_gettable(self, list, nest);
+        break;
+    case ASSIGN_FIELD:
+        emit_gettable(self, list, nest);
+        emit_oparg3(self, list->op, list->arg);
+        break;
+    case ASSIGN_GLOBAL:
+        emit_oparg3(self, list->op, list->arg);
+        break;
+    case ASSIGN_LOCAL:
+        emit_oparg1(self, list->op, list->arg);
+        break;
+    }
+}
 
-    // This is the first statement?
-    if (elem->prev == NULL) {
-        if (elem->flags == IS_GLOBAL) {
-            elem->op  = OP_GETGLOBAL;
-            elem->arg = identifier_constant(self, &ident);
-        } else {
-            elem->op  = OP_GETLOCAL;
-        }
+static void print_assignment(Assignment *list) {
+    if (list == NULL) {
+        return;
+    }
+    if (list->type != ASSIGN_INDEX) {
+        printf("%-16s %i\n", get_opname(list->op), list->arg);
     } else {
-        // This is likely chained table fields
-        elem->op    = OP_CONSTANT;
-        elem->arg   = identifier_constant(self, &ident);
-        elem->flags = IS_FIELD;
+        printf("(expression)\n");
+    }
+}
+
+static void emit_settable(Compiler *self, Assignment *list) {
+    int nest = 0;
+    // Need to emit the target table (table + key/s) before the value
+    emit_fields(self, list, &nest);
+    expression(self);
+    emit_byte(self, OP_SETTABLE);
+
+    // HACK: This is stupid but lets us preserve the stack correctly
+    // Because if we had no nested tables, we just need to pop the main.
+    emit_oparg1(self, OP_POP, (nest == 0) ? 1 : nest);
+}
+
+// Assumes we consumed an identifier as the first element of a statement.
+static void ident_statement(Compiler *self, Assignment *elem) {
+    Lexer *lexer = self->lexer;
+    Token  ident = lexer->consumed;
+
+    // Is this the first statement?
+    if (elem->prev == NULL) {
+        elem->arg  = resolve_local(self, &ident);
+        elem->type = (elem->arg != -1) ? ASSIGN_LOCAL : ASSIGN_GLOBAL;
+        elem->op   = (elem->arg != -1) ? OP_GETLOCAL  : OP_GETGLOBAL;
+        if (elem->arg == -1) {
+            elem->arg = identifier_constant(self, &ident);
+        }
+    } else if (elem->type == ASSIGN_FIELD) {
+        // Otherwise assume that a recursive call set the type beforehand.
+        elem->op  = OP_CONSTANT;
+        elem->arg = identifier_constant(self, &ident);
     }
 
     // What's the lookahead?
     switch (lexer->token.type) {
     case TK_PERIOD: {
-        Assign next;
+        Assignment next;
         next.prev = elem;
+        next.type = ASSIGN_FIELD;
         next_token(lexer);
         consume_token(lexer, TK_IDENT, "Expected an identifier after '.'");
         ident_statement(self, &next);
         break;
     }
-    case TK_LBRACKET:
-        lexerror_at_consumed(lexer, "Table indexing not yet implemented");
+    case TK_LBRACKET: {
+        Assignment next;
+        next.prev = elem;
+        next.type = ASSIGN_INDEX;
+        next_token(lexer);
+        expression(self);
+        consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
+        ident_statement(self, &next);
         break;
+    }
     case TK_ASSIGN:
         next_token(lexer);
-        switch (elem->flags) {
-        case IS_GLOBAL:
+        print_assignment(elem);
+        switch (elem->type) {
+        case ASSIGN_GLOBAL:
             expression(self);
             emit_oparg3(self, OP_SETGLOBAL, elem->arg);
             break;
-        case IS_LOCAL:
+        case ASSIGN_LOCAL:
             expression(self);
             emit_oparg1(self, OP_SETLOCAL, elem->arg);
             break;
-        case IS_FIELD: {
-            int nest = 0;
-            // Need to emit the target table (table + key/s) before the value
-            emit_fields(self, elem, &nest);
-            expression(self);
-            emit_byte(self, OP_SETTABLE);
-            // HACK: This is stupid but lets us preserve the stack correctly
-            // Because if we had no nested tables, we just need to pop the main.
-            emit_oparg1(self, OP_POP, (nest == 0) ? 1 : nest);
-        } break;
-
+        case ASSIGN_FIELD:
+        case ASSIGN_INDEX:
+            emit_settable(self, elem);
+            break;
         }
         break;
     case TK_LPAREN:
@@ -619,7 +652,7 @@ static void statement(Compiler *self) {
     Lexer *lexer = self->lexer;
     switch (lexer->token.type) {
     case TK_IDENT: {
-        Assign ident;
+        Assignment ident;
         ident.prev = NULL;
         next_token(lexer);
         ident_statement(self, &ident);
