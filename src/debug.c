@@ -35,33 +35,23 @@ void disassemble_chunk(const Chunk *self) {
 #define read_constant(chunk, index) \
     ((chunk)->constants.values[(index)])
 
-static int constant_instruction(OpCode opcode, const Chunk *chunk, int offset) {
+static void constant_instruction(OpCode op, const Chunk *chunk, int offset) {
     int arg = read_byte3(chunk, offset);
-    const TValue *value = &read_constant(chunk, arg);
-    printf("%-16s Kst[%i] ; ", get_opname(opcode), arg);
-    print_value(value);
+    printf("%-16s Kst[%i] ; ", get_opname(op), arg);
+    print_value(&read_constant(chunk, arg));
     printf("\n");
-    return offset + 3 + 1; // 3-byte argument, +1 to get index of next opcode
-}
-
-// Opcodes with no arguments.
-static int simple_instruction(OpCode opcode, int offset) {
-    printf("%s\n", get_opname(opcode));
-    return offset + 1;
 }
 
 // Assumes all instructions that manipulate ranges of values on the stack will
 // only ever have a 1-byte argument.
-static int range_instruction(OpCode opcode, const Chunk *chunk, int offset) {
+static void range_instruction(OpCode op, const Chunk *chunk, int offset) {
     int arg = read_byte(chunk, offset);
-    printf("%-16s Top[%i...-1]\n", get_opname(opcode), -arg);
-    return offset + 1 + 1;
+    printf("%-16s Top[%i...-1]\n", get_opname(op), -arg);
 }
 
-static int local_instruction(OpCode opcode, const Chunk *chunk, int offset) {
+static void local_instruction(OpCode op, const Chunk *chunk, int offset) {
     int arg = read_byte(chunk, offset);
-    printf("%-16s Loc[%i]\n", get_opname(opcode), arg);
-    return offset + 1 + 1;
+    printf("%-16s Loc[%i]\n", get_opname(op), arg);
 }
 
 int disassemble_instruction(const Chunk *self, int offset) {
@@ -72,20 +62,23 @@ int disassemble_instruction(const Chunk *self, int offset) {
     } else {
         printf("%4i ", line);
     }
-    OpCode opcode = self->code[offset];
-    switch (opcode) {
+    OpCode op = self->code[offset];
+    switch (op) {
     case OP_CONSTANT:
     case OP_GETGLOBAL:
     case OP_SETGLOBAL:
-        return constant_instruction(opcode, self, offset);
+        constant_instruction(op, self, offset);
+        break;
     case OP_GETLOCAL:
     case OP_SETLOCAL:
-        return local_instruction(opcode, self, offset);
+        local_instruction(op, self, offset);
+        break;
     case OP_POP:
     case OP_NIL:
     case OP_CONCAT:
     case OP_PRINT:
-        return range_instruction(opcode, self, offset);
+        range_instruction(op, self, offset);
+        break;
     case OP_GETTABLE:
     case OP_SETTABLE:
     case OP_TRUE:   // Prefix literals
@@ -103,12 +96,14 @@ int disassemble_instruction(const Chunk *self, int offset) {
     case OP_NOT:
     case OP_LEN:
     case OP_RETURN:
-        return simple_instruction(opcode, offset);
+        printf("%s\n", get_opname(op));
+        break;
     default:
         // Should not happen
-        printf("Unknown opcode '%i'.\n", opcode);
+        printf("Unknown opcode '%i'.\n", op);
         return offset + 1;
     }
+    return offset + get_opargc(op) + 1;
 }
 
 #undef read_byte

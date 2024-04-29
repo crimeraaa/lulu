@@ -72,13 +72,13 @@ typedef struct {
 } Token;
 
 typedef struct {
-    Token       token;    // analogous to `Parser::current` in the book.
-    Token       consumed; // analogous to `Parser::previous` in the book.
-    VM         *vm;       // Private to implementation. Has our `jmp_buf`.
-    const char *lexeme;   // Pointer to first character of the current lexeme.
-    const char *position; // Current character in source code.
-    const char *name;     // Current filename or `"stdin"`.
-    int         line;     // Current line number we're on.
+    Token       lookahead; // analogous to `Parser::current` in the book.
+    Token       consumed;  // analogous to `Parser::previous` in the book.
+    VM         *vm;        // Private to implementation. Has our `jmp_buf`.
+    const char *lexeme;    // Pointer to first character of the current lexeme.
+    const char *position;  // Current character in source code.
+    const char *name;      // Current filename or `"stdin"`.
+    int         line;      // Current line number we're on.
 } Lexer;
 
 void init_lexer(Lexer *self, const char *input, VM *vm);

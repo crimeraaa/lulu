@@ -5,16 +5,29 @@
 
 // MEMORY MANAGEMENT ------------------------------------------------------ {{{1
 
-// Returns `node` since assignment expressions evaluate to the rvalue.
 #define prepend_node(head, node)    ((node)->next = (head), (head) = (node))
 #define remove_node(head, node)     ((head) = (node)->next)
+
+// Hashes strings with unencoded escape sequences correctly.
+static uint32_t hash_string(const char *data, int len);
 
 // Separate name from `new_object` since `new_tstring` also needs access.
 // Assumes casting `alloc->context` to `VM*` is a safe operation.
 static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
-    VM *vm       = alloc->context;
+    VM     *vm   = alloc->context;
     Object *node = alloc->reallocfn(NULL, 0, size, vm);
     node->tag    = tag;
+
+    // Strings will be hashed correctly later on, but for the rest we need
+    // to hash the pointer by hashing its string representation.
+    if (tag != TYPE_STRING) {
+        TValue wrapper = make_object(node, tag);
+        char   buffer[MAX_NUMTOSTRING];
+        int    len = 0;
+
+        // Assumes that we will only ever pass a tag that is > TYPE_STRING.
+        node->hash = hash_string(to_cstring(&wrapper, buffer, &len), len);
+    }
     return prepend_node(vm->objects, node);
 }
 
@@ -149,10 +162,9 @@ static char get_escape(char ch) {
     }
 }
 
-// Hashes strings with unencoded escape sequences correctly.
 static uint32_t hash_string(const char *data, int len) {
     uint32_t hash = FNV1A_OFFSET32;
-    char prev = 0;
+    char     prev = 0;
     for (int i = 0; i < len; i++) {
         char ch = data[i];
         if (ch == '\\' && prev != '\\') {
@@ -171,9 +183,10 @@ static uint32_t hash_string(const char *data, int len) {
 }
 
 static void build_string(TString *self, const char *src, int len, uint32_t hash) {
-    char *end = self->data; // For loop counter may skip.
-    int skips = 0;          // Number escape characters emitted.
-    char prev = 0;
+    char   *end   = self->data; // For loop counter may skip.
+    int     skips = 0;          // Number escape characters emitted.
+    char    prev  = 0;
+
     for (int i = 0; i < len; i++) {
         char ch = src[i];
         // Handle `"\\"` appropriately.
@@ -191,15 +204,15 @@ static void build_string(TString *self, const char *src, int len, uint32_t hash)
         }
         end++;
     }
-    *end = '\0';
-    self->len  = len - skips;
-    self->hash = hash;
+    *end              = '\0';
+    self->len         = len - skips;
+    self->object.hash = hash;
 }
 
 TString *copy_string(VM *vm, const char *literal, int len) {
-    Alloc *alloc      = &vm->alloc;
-    uint32_t hash     = hash_string(literal, len);
-    TString *interned = find_interned(vm, literal, len, hash);
+    Alloc    *alloc    = &vm->alloc;
+    uint32_t  hash     = hash_string(literal, len);
+    TString  *interned = find_interned(vm, literal, len, hash);
 
     // Is this string already interned?
     if (interned != NULL) {
@@ -211,7 +224,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
 
     // If we have escapes, are we really REALLY sure this isn't interned?
     if (inst->len != len) {
-        interned = find_interned(vm, inst->data, inst->len, inst->hash);
+        interned = find_interned(vm, inst->data, inst->len, inst->object.hash);
         if (interned != NULL) {
             remove_node(vm->objects, &inst->object);
             free_tstring(inst, inst->len, alloc);
@@ -223,9 +236,9 @@ TString *copy_string(VM *vm, const char *literal, int len) {
 }
 
 TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
-    Alloc *alloc  = &vm->alloc;
-    TString *inst = new_tstring(len, alloc);
-    int offset = 0;
+    Alloc   *alloc  = &vm->alloc;
+    TString *inst   = new_tstring(len, alloc);
+    int      offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
     for (int i = 0; i < argc; i++) {
@@ -233,10 +246,10 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
         memcpy(inst->data + offset, arg->data, arg->len);
         offset += arg->len;
     }
-    inst->hash = hash_string(inst->data, inst->len);
+    inst->object.hash     = hash_string(inst->data, inst->len);
     inst->data[inst->len] = '\0';
 
-    TString *interned = find_interned(vm, inst->data, inst->len, inst->hash);
+    TString *interned = find_interned(vm, inst->data, inst->len, inst->object.hash);
     if (interned != NULL) {
         remove_node(vm->objects, &inst->object);
         free_tstring(inst, inst->len, alloc);
@@ -253,8 +266,7 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
 #define TABLE_MAX_LOAD  0.75
 
 Table *new_table(Alloc *alloc) {
-    // Table *inst = new_object(Table, TYPE_TABLE, alloc);
-    Table *inst = (Table*)_new_object(sizeof(Table), TYPE_TABLE, alloc);
+    Table *inst = new_object(Table, TYPE_TABLE, alloc);
     init_table(inst);
     return inst;
 }
@@ -278,7 +290,7 @@ void dump_table(const Table *self, const char *name) {
     }
     printf("%s = {\n", name);
     for (int i = 0, limit = self->cap; i < limit; i++) {
-        const Entry *entry  = &self->entries[i];
+        const Entry *entry = &self->entries[i];
         if (is_nil(&entry->key)) {
             continue;
         }
@@ -301,23 +313,13 @@ static uint32_t hash_number(Number number) {
     return hash.bits % UINT32_MAX;
 }
 
-// WARNING: May be a bad idea!
-// Assumes `value` is of type `TYPE_TABLE` or greater.
-static uint32_t hash_object(const TValue *value) {
-    char buffer[MAX_NUMTOSTRING];
-    int  len;
-    to_cstring(value, buffer, &len);
-    buffer[len] = '\0';
-    return hash_string(buffer, len);
-}
-
 static uint32_t hash_value(const TValue *self) {
     switch (get_tag(self)) {
     case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
     case TYPE_BOOLEAN:  return as_boolean(self);
     case TYPE_NUMBER:   return hash_number(as_number(self));
-    case TYPE_STRING:   return as_string(self)->hash;
-    case TYPE_TABLE:    return hash_object(self);
+    case TYPE_STRING:   // All objects pre-determine their hash value already.
+    case TYPE_TABLE:    return as_object(self)->hash;
     }
 }
 
@@ -384,8 +386,8 @@ bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc
     if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
         resize_table(self, grow_capacity(self->cap), alloc);
     }
-    Entry *entry  = find_entry(self->entries, self->cap, key);
-    bool isnewkey = is_nil(&entry->key); // All keys implicitly nil by default.
+    Entry *entry    = find_entry(self->entries, self->cap, key);
+    bool   isnewkey = is_nil(&entry->key);
 
     // Don't increase the count for tombstones (nil-key with non-nil value)
     if (isnewkey && is_nil(&entry->value)) {
@@ -421,9 +423,9 @@ void copy_table(Table *dst, const Table *src, Alloc *alloc) {
 }
 
 void set_interned(VM *vm, const TString *string) {
-    Alloc       *alloc = &vm->alloc;
-    const TValue key   = make_string(string);
-    const TValue val   = make_boolean(true);
+    Alloc  *alloc = &vm->alloc;
+    TValue  key   = make_string(string);
+    TValue  val   = make_boolean(true);
     set_table(&vm->strings, &key, &val, alloc);
 }
 
@@ -443,7 +445,7 @@ TString *find_interned(VM *vm, const char *data, int len, uint32_t hash) {
         }
         // We assume ALL keys in this table are strings.
         TString *ts = as_string(&entry->key);
-        if (ts->len == len && ts->hash == hash) {
+        if (ts->len == len && ts->object.hash == hash) {
             if (cstr_equal(ts->data, data, len)) {
                 return ts;
             }

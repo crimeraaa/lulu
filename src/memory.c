@@ -24,8 +24,8 @@ static void free_object(Object *object, Alloc *alloc) {
 }
 
 void free_objects(VM *vm) {
-    Alloc *alloc = &vm->alloc;
-    Object *head = vm->objects;
+    Alloc  *alloc = &vm->alloc;
+    Object *head  = vm->objects;
     while (head != NULL) {
         Object *next = head->next;
         free_object(head, alloc);

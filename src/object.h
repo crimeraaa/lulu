@@ -39,15 +39,15 @@ typedef struct {
 } TArray;
 
 struct Object {
-    VType   tag;  // Must be consistent with the parent `TValue`.
-    Object *next; // Intrusive list (linked list) node.
+    Object  *next; // Intrusive list (linked list) node.
+    VType    tag;  // Must be consistent with the parent `TValue`.
+    uint32_t hash; // All objects need this when they are used as table keys.
 };
 
 typedef struct {
-    Object   object; // "Inherited" must come first to allow safe type-punning.
-    uint32_t hash;   // Hash code for use in addressing a `Table*`.
-    int      len;    // Nul-terminated length, not including the nul itself.
-    char     data[]; // See: C99 flexible array members, MUST be last member!
+    Object object; // "Inherited" must come first to allow safe type-punning.
+    int    len;    // Nul-terminated length, not including the nul itself.
+    char   data[]; // See: C99 flexible array members, MUST be last member!
 } TString;
 
 typedef struct {

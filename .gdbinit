@@ -2,6 +2,7 @@
 #   add-auto-load-safe-path $HOME/.config/gdb/gdbinit
 #   set auto-load safe-path /
 
+file ./bin/lulu
 set print pretty on
 
 # https://sourceware.org/gdb/current/onlinedocs/gdb.html/Define.html
@@ -28,5 +29,6 @@ end
 break vm.c:interpret
 break compiler.c:compile
 break parser.c:declaration
+break parser.c:ident_statement
 
 run

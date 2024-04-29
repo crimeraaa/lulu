@@ -42,7 +42,7 @@ static void runtime_error(VM *self, enum RT_ErrType rterr) {
 #define _cstr(n)    as_cstring(self->top + (n))
 
     size_t offset = self->ip - self->chunk->code - 1;
-    int line = self->chunk->lines[offset];
+    int    line   = self->chunk->lines[offset];
     fprintf(stderr, "%s:%i: ", self->name, line);
 
     switch (rterr) {
@@ -108,9 +108,9 @@ static TString *try_concat(VM *self, int argc, const TValue argv[]) {
 }
 
 static ErrType run(VM *self) {
-    Alloc *alloc    = &self->alloc;
-    const Chunk *chunk      = self->chunk;
-    const TValue *constants = chunk->constants.values;
+    Alloc  *alloc     = &self->alloc;
+    Chunk  *chunk     = self->chunk;
+    TValue *constants = chunk->constants.values;
 
 // --- HELPER MACROS ------------------------------------------------------ {{{1
 // Many of these rely on variables local to this function.
@@ -184,16 +184,16 @@ static ErrType run(VM *self) {
             break;
         case OP_GETGLOBAL: {
             // Assume this is a string for the variable's name.
-            const TValue *name = read_constant();
-            TValue value;
+            TValue *name = read_constant();
+            TValue  value;
             if (!get_table(&self->globals, name, &value)) {
                 push_back(name);
                 runtime_error(self, RTE_UNDEF);
             }
             push_back(&value);
-        } break;
+            break;
+        }
         case OP_GETTABLE:
-            // TODO: Make it so we don't have to keep popping table as well
             if (!is_table(poke_top(-2))) {
                 // Push the guilty variable to the top so we can report it.
                 TValue *bad = poke_top(-2);
@@ -237,7 +237,8 @@ static ErrType run(VM *self) {
             TValue *rhs = poke_top(-1);
             set_boolean(lhs, values_equal(lhs, rhs));
             pop_back();
-        } break;
+            break;
+        }
         case OP_LT:
             compare_op(num_lt);
             break;
@@ -264,30 +265,35 @@ static ErrType run(VM *self) {
             break;
         case OP_CONCAT: {
             // Assume at least 2 args since concat is an infix expression.
-            int           argc = read_byte();
-            const TValue *argv = poke_top(-argc);
-            TString      *res  = try_concat(self, argc, argv);
+            int      argc = read_byte();
+            TValue  *argv = poke_top(-argc);
+            TString *res  = try_concat(self, argc, argv);
             popn(argc);
             push_back(&make_string(res));
-        } break;
+            break;
+        }
         case OP_UNM: {
             TValue *arg = poke_top(-1);
             if (!is_number(arg)) {
                 runtime_error(self, RTE_NEGATE); // throws
             }
             set_number(arg, num_unm(as_number(arg)));
-        } break;
+            break;
+        }
         case OP_NOT: {
             TValue *arg = poke_top(-1);
             set_boolean(arg, is_falsy(arg));
-        } break;
+            break;
+        }
         case OP_LEN: {
+            // TODO: Add support for tables, will need to implement arrays then
             TValue *arg = poke_top(-1);
             if (!is_string(arg)) {
                 runtime_error(self, RTE_LENGTH);
             }
             set_number(arg, as_string(arg)->len);
-        } break;
+            break;
+        }
         case OP_PRINT: {
             int     argc = read_byte();
             TValue *argv = poke_top(-argc);
@@ -332,7 +338,8 @@ ErrType interpret(VM *self, const char *input) {
     case ERROR_COMPTIME: // Fall through
     case ERROR_RUNTIME:
     case ERROR_ALLOC:
-    default:   // WARNING: Should not happen! Check all uses of `(set|long)jmp`.
+        // For the default case, please ensure all calls of `longjmp` ONLY
+        // ever pass an `ErrType` member.
         free_chunk(&chunk, &self->alloc);
         return err;
     }

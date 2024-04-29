@@ -31,7 +31,8 @@ void init_compiler(Compiler *self, Lexer *lexer, VM *vm);
 void end_compiler(Compiler *self);
 void compile(Compiler *self, const char *input, Chunk *chunk);
 
-void emit_byte(Compiler *self, Byte data);
+Chunk *current_chunk(Compiler *self);
+void emit_opcode(Compiler *self, OpCode op);
 void emit_oparg1(Compiler *self, OpCode op, Byte arg);
 void emit_oparg2(Compiler *self, OpCode op, Byte2 arg);
 void emit_oparg3(Compiler *self, OpCode op, Byte3 arg);

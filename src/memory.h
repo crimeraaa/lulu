@@ -11,8 +11,8 @@ typedef void *(*ReallocFn)(void *ptr, size_t oldsz, size_t newsz, void *context)
 // A general purpose allocation wrapper that carries some context around.
 // See: https://nullprogram.com/blog/2023/12/17/
 typedef struct {
-    ReallocFn reallocfn; // To free `ptr`, pass `newsz` of `0`.
-    void     *context;   // How this is interpreted is up to your function.
+    ReallocFn  reallocfn; // To free `ptr`, pass `newsz` of `0`.
+    void      *context;   // How this is interpreted is up to your function.
 } Alloc;
 
 // Once set, please do not reinitialize your allocator else it may break.

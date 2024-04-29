@@ -37,7 +37,7 @@ OP_FALSE,    // -     | -               | false             |                  |
 OP_POP,      // B     | A_B,...A_1      | -                 |                  |
 OP_GETLOCAL, // L     | -               | Loc[L]            |                  |
 OP_GETGLOBAL,// U     | -               | _G[Kst[U]]        |                  |
-OP_GETTABLE, // -     | table, key      | table, table[key] |                  |
+OP_GETTABLE, // -     | table, key      | table[key]        |                  |
 OP_SETLOCAL, // L     | x               | -                 | Loc[L] = x       |
 OP_SETGLOBAL,// U     | x               | -                 | _G[Kst[U]] = x   |
 OP_SETTABLE, // -     | table, key, val | table             | table[key] = val |
@@ -58,6 +58,17 @@ OP_PRINT,    // B     | Top[-B...-1]    | -                 | print(...)       |
 OP_RETURN,   // -     | -               |                   |                  |
 } OpCode;
 
+typedef const struct {
+    const char *name; // String representation sans `"OP_"`.
+    int8_t      argc; // How many bytes its argument/operand takes up.
+    int8_t      push; // How many stack pushes are made from this operation.
+    int8_t      pop;  // How many stack pops are made from this operation.
+} OpInfo;
+
+// Indicates number of pushes/pops is determined on a case-by-case basis. e.g.
+// `OP_NIL` may push anywhere from 1 to `MAX_BYTE` values.
+#define VAR_DELTA (-1)
+
 // Please keep this up to date accordingly!
 #define NUM_OPCODES             (OP_RETURN + 1)
 
@@ -73,10 +84,12 @@ OP_RETURN,   // -     | -               |                   |                  |
                                     | ((mid) << bitsize(Byte))                 \
                                     | (lsb))
 
-// Lookup table. Maps `OpCode` to opcode names.
-extern const char *const LULU_OPNAMES[];
+// Lookup table which maps `OpCode` to its respective `OpInfo` struct.
+extern OpInfo LULU_OPINFO[];
 
-#define get_opname(opcode)  LULU_OPNAMES[opcode]
+#define get_opinfo(op)  (&LULU_OPINFO[op])
+#define get_opname(op)  get_opinfo(op)->name
+#define get_opargc(op)  get_opinfo(op)->argc
 
 typedef struct {
     TArray      constants;

@@ -1,11 +1,10 @@
 x = 13
 do
     local x = x + 2
-    print(x)
+    do
+        local x = x * 2
+        print("Inner:", x)
+    end
+    print("Middle:", x)
 end
-print(x)
-
-do
-    local x, y, z = 11, 22, 33
-    print('x', x, 'y', y, 'z', z)
-end
+print("Outer:", x)

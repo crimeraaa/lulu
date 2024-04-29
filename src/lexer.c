@@ -7,13 +7,13 @@
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
 void init_lexer(Lexer *self, const char *input, VM *vm) {
-    self->token    = compoundlit(Token, 0);
-    self->consumed = self->token;
-    self->lexeme   = input;
-    self->position = input;
-    self->vm       = vm;
-    self->name     = vm->name;
-    self->line     = 1;
+    self->lookahead = compoundlit(Token, 0);
+    self->consumed  = self->lookahead;
+    self->lexeme    = input;
+    self->position  = input;
+    self->vm        = vm;
+    self->name      = vm->name;
+    self->line      = 1;
 }
 
 // HELPERS ---------------------------------------------------------------- {{{1
@@ -389,15 +389,15 @@ Token scan_token(Lexer *self) {
 }
 
 void next_token(Lexer *self) {
-    self->consumed = self->token;
-    self->token    = scan_token(self);
-    if (self->token.type == TK_ERROR) {
+    self->consumed  = self->lookahead;
+    self->lookahead = scan_token(self);
+    if (self->lookahead.type == TK_ERROR) {
         lexerror_at_token(self, "Unexpected symbol");
     }
 }
 
 void consume_token(Lexer *self, TkType expected, const char *info) {
-    if (self->token.type == expected) {
+    if (self->lookahead.type == expected) {
         next_token(self);
     } else {
         lexerror_at_token(self, info);
@@ -405,7 +405,7 @@ void consume_token(Lexer *self, TkType expected, const char *info) {
 }
 
 bool check_token(Lexer *self, TkType expected) {
-    TkType actual = self->token.type;
+    TkType actual = self->lookahead.type;
     return actual == expected;
 }
 
@@ -452,7 +452,7 @@ void lexerror_at(Lexer *self, const Token *token, const char *info) {
 }
 
 void lexerror_at_token(Lexer *self, const char *info) {
-    lexerror_at(self, &self->token, info);
+    lexerror_at(self, &self->lookahead, info);
 }
 
 void lexerror_at_consumed(Lexer *self, const char *info) {

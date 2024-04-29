@@ -2,36 +2,37 @@
 #include "object.h"
 #include "memory.h"
 
-const char *const LULU_OPNAMES[] = {
-    [OP_CONSTANT]   = "CONSTANT",
-    [OP_NIL]        = "NIL",
-    [OP_TRUE]       = "TRUE",
-    [OP_FALSE]      = "FALSE",
-    [OP_POP]        = "POP",
-    [OP_GETLOCAL]   = "GETLOCAL",
-    [OP_GETGLOBAL]  = "GETGLOBAL",
-    [OP_GETTABLE]   = "GETTABLE",
-    [OP_SETLOCAL]   = "SETLOCAL",
-    [OP_SETGLOBAL]  = "SETGLOBAL",
-    [OP_SETTABLE]   = "SETTABLE",
-    [OP_EQ]         = "EQ",
-    [OP_LT]         = "LT",
-    [OP_LE]         = "LE",
-    [OP_ADD]        = "ADD",
-    [OP_SUB]        = "SUB",
-    [OP_MUL]        = "MUL",
-    [OP_DIV]        = "DIV",
-    [OP_MOD]        = "MOD",
-    [OP_POW]        = "POW",
-    [OP_CONCAT]     = "CONCAT",
-    [OP_UNM]        = "UNM",
-    [OP_NOT]        = "NOT",
-    [OP_LEN]        = "LEN",
-    [OP_PRINT]      = "PRINT",
-    [OP_RETURN]     = "RETURN",
+OpInfo LULU_OPINFO[] = {
+    // OPCODE           NAME            ARGSZ       #PUSH       #POP
+    [OP_CONSTANT]   = {"CONSTANT",      3,          1,          0},
+    [OP_NIL]        = {"NIL",           1,          VAR_DELTA,  0},
+    [OP_TRUE]       = {"TRUE",          0,          1,          0},
+    [OP_FALSE]      = {"FALSE",         0,          1,          0},
+    [OP_POP]        = {"POP",           1,          0,          VAR_DELTA},
+    [OP_GETLOCAL]   = {"GETLOCAL",      1,          1,          0},
+    [OP_GETGLOBAL]  = {"GETGLOBAL",     3,          1,          0},
+    [OP_GETTABLE]   = {"GETTABLE",      0,          1,          2},
+    [OP_SETLOCAL]   = {"SETLOCAL",      1,          0,          1},
+    [OP_SETGLOBAL]  = {"SETGLOBAL",     3,          0,          1},
+    [OP_SETTABLE]   = {"SETTABLE",      0,          0,          2},
+    [OP_EQ]         = {"EQ",            0,          1,          2},
+    [OP_LT]         = {"LT",            0,          1,          2},
+    [OP_LE]         = {"LE",            0,          1,          2},
+    [OP_ADD]        = {"ADD",           0,          1,          2},
+    [OP_SUB]        = {"SUB",           0,          1,          2},
+    [OP_MUL]        = {"MUL",           0,          1,          2},
+    [OP_DIV]        = {"DIV",           0,          1,          2},
+    [OP_MOD]        = {"MOD",           0,          1,          2},
+    [OP_POW]        = {"POW",           0,          1,          2},
+    [OP_CONCAT]     = {"CONCAT",        1,          1,          VAR_DELTA},
+    [OP_UNM]        = {"UNM",           0,          1,          1},
+    [OP_NOT]        = {"NOT",           0,          1,          1},
+    [OP_LEN]        = {"LEN",           0,          1,          1},
+    [OP_PRINT]      = {"PRINT",         1,          0,          VAR_DELTA},
+    [OP_RETURN]     = {"RETURN",        0,          0,          0},
 };
 
-static_assert(array_len(LULU_OPNAMES) == NUM_OPCODES, "Bad opcode count");
+static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
 
 void init_chunk(Chunk *self, const char *name) {
     init_tarray(&self->constants);
