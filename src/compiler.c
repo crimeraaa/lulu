@@ -19,7 +19,7 @@ void init_compiler(Compiler *self, Lexer *lexer, VM *vm) {
 static void adjust_stackinfo(Compiler *self, int push, int pop) {
     Lexer *lexer = self->lexer;
     self->stackusage += push - pop;
-    if (self->stackusage + 1 > MAX_STACK) {
+    if (self->stackusage > MAX_STACK) {
         lexerror_at_consumed(lexer, "Function uses too many stack slots");
     }
     if (self->stackusage > self->stacktotal) {
@@ -110,7 +110,10 @@ void end_compiler(Compiler *self) {
 }
 
 void begin_scope(Compiler *self) {
-    self->scopedepth++;
+    Lexer *lexer = self->lexer;
+    if ((self->scopedepth += 1) > MAX_LEVELS) {
+        lexerror_at_token(lexer, "Function uses too many syntax levels");
+    }
 }
 
 void end_scope(Compiler *self) {

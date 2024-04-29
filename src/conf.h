@@ -21,10 +21,11 @@ typedef uint16_t    Byte2;
 typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 
 #define PROMPT      "> "
-#define MAX_STACK   0x100
-#define MAX_LINE    0x100
+#define MAX_STACK   0x0100
+#define MAX_LINE    0x0100
 #define MAX_LOCALS  200
 #define MAX_CONSTS  0x1000000
+#define MAX_LEVELS  200
 #define MAX_MULTI   16
 
 /* --- NUMBER TYPE INFORMATION -------------------------------------------- {{{1

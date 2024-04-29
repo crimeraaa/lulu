@@ -131,7 +131,7 @@ static void concat(Compiler *self) {
         // Although right associative, we don't recursively compile concat
         // expressions in the same grouping.
         parse_precedence(self, PREC_CONCAT + 1);
-        argc++;
+        argc += 1;
     } while (match_token(lexer, TK_CONCAT));
     emit_oparg1(self, OP_CONCAT, argc);
 }
@@ -164,15 +164,20 @@ static void literal(Compiler *self) {
 // Assumes we just consumed a '('.
 static void grouping(Compiler *self) {
     Lexer *lexer = self->lexer;
+
+    // Hacky to create a new scope, throws if we have too many nested calls.
+    // See: https://www.lua.org/source/5.1/lparser.c.html#enterlevel
+    begin_scope(self);
     expression(self);
     consume_token(lexer, TK_RPAREN, "Expected ')' after expression");
+    end_scope(self);
 }
 
 // Assumes we just consumed a possible number literal.
 static void number(Compiler *self) {
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
-    char *endptr; // Populated by below function call
+    char  *endptr; // Populated by below function call
     Number value = cstr_tonumber(token->start, &endptr);
 
     // If this is true, strtod failed to convert the entire token/lexeme.
@@ -220,7 +225,7 @@ static void parse_ctor(Compiler *self, int *index) {
     } else {
         TValue wrapper = make_number(*index);
         emit_constant(self, &wrapper);
-        (*index)++; // Different from `*index++` due to C operator precedence.
+        *index += 1;
     }
     expression(self);
     emit_opcode(self, OP_SETTABLE);
@@ -376,7 +381,7 @@ static int parse_exprlist(Compiler *self) {
     int exprs = 0;
     do {
         expression(self);
-        exprs++;
+        exprs += 1;
     } while (match_token(lexer, TK_COMMA));
     return exprs;
 }
@@ -417,20 +422,21 @@ static void parse_local(Compiler *self) {
  *          variable name.
  */
 static void declare_locals(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    int count = 0;
+    Lexer *lexer  = self->lexer;
+    int    idents = 0;
+    int    exprs  = 0;
+
     do {
         consume_token(lexer, TK_IDENT, "Expected an identifier");
         parse_local(self);
-        count += 1;
+        idents += 1;
     } while (match_token(lexer, TK_COMMA));
 
     if (match_token(lexer, TK_ASSIGN)) {
-        adjust_exprlist(self, count, parse_exprlist(self));
-    } else {
-        emit_oparg1(self, OP_NIL, count);
+        exprs = parse_exprlist(self);
     }
-    define_locals(self, count);
+    adjust_exprlist(self, idents, exprs);
+    define_locals(self, idents);
 }
 
 typedef struct Assignment Assignment;
