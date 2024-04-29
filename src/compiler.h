@@ -10,6 +10,9 @@
 #include "chunk.h"
 #include "lexer.h"
 
+// Defined in `parser.h`.
+typedef struct Assignment Assignment;
+
 typedef struct {
     Token name; // Identifier in the source code.
     int   depth;  // Scope depth at the time of declaration.
@@ -37,6 +40,8 @@ void emit_oparg1(Compiler *self, OpCode op, Byte arg);
 void emit_oparg2(Compiler *self, OpCode op, Byte2 arg);
 void emit_oparg3(Compiler *self, OpCode op, Byte3 arg);
 void emit_return(Compiler *self);
+void emit_fields(Compiler *self, Assignment *list, int *nest);
+void emit_gettable(Compiler *self, Assignment *list, int *nest);
 
 // Returns the index of `value` in the constants table.
 // Will throw if our current number of constants exceeds `MAX_CONSTS`.
@@ -48,5 +53,21 @@ int identifier_constant(Compiler *self, const Token *name);
 
 void begin_scope(Compiler *self);
 void end_scope(Compiler *self);
+
+// Analogous to `defineVariable()` in the book, but for a comma-separated list
+// form `'local' identifier [, identifier]* [';']`.
+// We considered "defined" local variables to be ready for reading/writing.
+void define_locals(Compiler *self, int count);
+
+// Analogous to `declareVariable()` in the book, but only for Lua locals.
+// Assumes we just consumed a local variable identifier token.
+void init_local(Compiler *self);
+
+// Initializes the current top of the locals array.
+// Returns index of newly initialized local into the locals array.
+void add_local(Compiler *self, const Token *name);
+
+// Returns index of a local variable or -1 if assumed to be global.
+int resolve_local(Compiler *self, const Token *name);
 
 #endif /* LULU_COMPILER_H */

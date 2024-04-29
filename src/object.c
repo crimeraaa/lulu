@@ -125,7 +125,7 @@ void write_tarray(TArray *self, const TValue *value, Alloc *alloc) {
         self->cap    = newcap;
     }
     self->values[self->len] = *value;
-    self->len++;
+    self->len += 1;
 }
 
 // TSTRING MANAGEMENT ----------------------------------------------------- {{{1

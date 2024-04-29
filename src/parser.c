@@ -6,73 +6,60 @@
 static ParseRule *get_parserule(TkType key);
 static void parse_precedence(Compiler *self, Precedence prec);
 
-static bool identifiers_equal(const Token *a, const Token *b) {
-    return (a->len == b->len) && cstr_equal(a->start, b->start, a->len);
-}
-
-// Returns index of a local variable or -1 if assumed to be global.
-static int resolve_local(Compiler *self, const Token *name) {
-    for (int i = self->localcount - 1; i >= 0; i--) {
-        const Local *local = &self->locals[i];
-        // If using itself in initializer, continue to resolve outward.
-        if (local->depth != -1 && identifiers_equal(name, &local->name)) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-// Initializes the current top of the locals array.
-// Returns index of newly initialized local into the locals array.
-static void add_local(Compiler *self, const Token *name) {
-    if (self->localcount + 1 > MAX_LOCALS) {
-        lexerror_at_consumed(self->lexer,
-            "More than " stringify(MAX_LOCALS) " local variables reached");
-    }
-    Local *local = &self->locals[self->localcount++];
-    local->name  = *name;
-    local->depth = -1;
-}
-
-// Analogous to `declareVariable()` in the book, but only for Lua locals.
-// Assumes we just consumed a local variable identifier token.
-static void init_local(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    const Token *name = &lexer->consumed;
-
-    // Detect variable shadowing in the same scope.
-    for (int i = self->localcount - 1; i >= 0; i--) {
-        const Local *local = &self->locals[i];
-        // Have we hit an outer scope?
-        if (local->depth != -1 && local->depth < self->scopedepth) {
-            break;
-        }
-        if (identifiers_equal(name, &local->name)) {
-            lexerror_at_consumed(lexer, "Shadowing of local variable");
-        }
-    }
-    add_local(self, name);
-}
-
-// Analogous to `defineVariable()` in the book, but for a comma-separated list
-// form `'local' identifier [, identifier]* [';']`.
-// We considered "defined" local variables to be ready for reading/writing.
-static void define_locals(Compiler *self, int count) {
-    int limit = self->localcount;
-    for (int i = count; i > 0; i--) {
-        self->locals[limit - i].depth = self->scopedepth;
-    }
-}
 
 /**
- * @note    In the book, Robert uses `parsePrecedence(PREC_ASSIGNMENT)` but
- *          doing that will allow nested assignments as in C. For Lua, we have
- *          to use 1 precedence higher to disallow them.
+ * @brief   In Lua, globals aren't declared, but rather assigned as needed.
+ *          This may be inconsistent with the design that accessing undefined
+ *          globals is an error, but at the same time I dislike implicit nil for
+ *          undefined globals.
+ *
+ * @details statement ::= identlist '=' exprlist
+ *                      | 'do' block 'end'
+ *                      | 'print' expression
+ *                      | expression
+ *          identlist ::= identifier [',' identifier]*
+ *          exprlist  ::= expression [',' expression]*
+ *
+ * @note    By themselves, statements should have zero net stack effect.
  */
-static void expression(Compiler *self);
 static void statement(Compiler *self);
 
-// INFIX EXPRESSIONS ------------------------------------------------------ {{{1
+/**
+ * @brief   By itself, always results in exactly 1 value being pushed.
+ *
+ * @note    We don't parse the same precedence as assignment in order to
+ *          disallow C-style constructs like `print(x = 13)`, which is usually
+ *          intended to be `print(x == 13)`.
+ */
+static void expression(Compiler *self);
+
+static int parse_exprlist(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    int exprs = 0;
+    do {
+        expression(self);
+        exprs += 1;
+    } while (match_token(lexer, TK_COMMA));
+    return exprs;
+}
+
+static void adjust_exprlist(Compiler *self, int idents, int exprs) {
+    if (exprs == idents) {
+        return;
+    }
+
+    if (exprs > idents) {
+        // Discard extra expressions.
+        emit_oparg1(self, OP_POP, exprs - idents);
+    } else {
+        // Assign nils to remaining identifiers.
+        emit_oparg1(self, OP_NIL, idents - exprs);
+    }
+}
+
+// EXPRESSIONS ------------------------------------------------------------ {{{1
+
+// INFIX ------------------------------------------------------------------ {{{2
 
 static OpCode get_binop(TkType optype) {
     switch (optype) {
@@ -95,13 +82,12 @@ static OpCode get_binop(TkType optype) {
 // Assumes we just consumed a binary operator as a possible infix expression,
 // and that the left-hand side has been fully compiled.
 static void binary(Compiler *self) {
-    Lexer *lexer  = self->lexer;
-    Token *token  = &lexer->consumed;
-    TkType optype = token->type;
-    ParseRule *rule = get_parserule(optype);
+    Lexer  *lexer  = self->lexer;
+    Token  *token  = &lexer->consumed;
+    TkType  optype = token->type;
 
     // For exponentiation enforce right-associativity.
-    parse_precedence(self, rule->prec + (optype != TK_CARET));
+    parse_precedence(self, get_parserule(optype)->prec + (optype != TK_CARET));
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (optype) {
@@ -136,23 +122,15 @@ static void concat(Compiler *self) {
     emit_oparg1(self, OP_CONCAT, argc);
 }
 
-// 1}}} ------------------------------------------------------------------------
+// 2}}} ------------------------------------------------------------------------
 
-// PREFIX EXPRESSIONS ----------------------------------------------------- {{{1
+// PREFIX ----------------------------------------------------------------- {{{2
 
 static void literal(Compiler *self) {
     switch (self->lexer->consumed.type) {
-    case TK_NIL: {
-        Chunk *chunk = current_chunk(self);
-        int    len   = chunk->len;
-        // Minor optimization: combine consecutive OP_NIL's
-        if (len >= 2 && chunk->code[len - 2] == OP_NIL) {
-            chunk->code[len - 1] += 1;
-        } else {
-            emit_oparg1(self, OP_NIL, 1);
-        }
+    case TK_NIL:
+        emit_oparg1(self, OP_NIL, 1);
         break;
-    }
     case TK_TRUE:  emit_opcode(self, OP_TRUE);   break;
     case TK_FALSE: emit_opcode(self, OP_FALSE);  break;
     default:
@@ -165,7 +143,7 @@ static void literal(Compiler *self) {
 static void grouping(Compiler *self) {
     Lexer *lexer = self->lexer;
 
-    // Hacky to create a new scope, throws if we have too many nested calls.
+    // Hacky to create a new scope, but lets us error at too many C-facing calls.
     // See: https://www.lua.org/source/5.1/lparser.c.html#enterlevel
     begin_scope(self);
     expression(self);
@@ -232,8 +210,6 @@ static void parse_ctor(Compiler *self, int *index) {
     match_token(lexer, TK_COMMA);
 }
 
-// Assumes we just consumed a `'{'`.
-// TODO: Fix stack info adjustments, it reports wrong values here.
 static void table(Compiler *self) {
     Lexer *lexer = self->lexer;
     Table *table = new_table(&self->vm->alloc);
@@ -301,196 +277,25 @@ static void unary(Compiler *self) {
     emit_opcode(self, get_unop(optype));
 }
 
-// 1}}} ------------------------------------------------------------------------
-
-// PARSING PRECEDENCE ----------------------------------------------------- {{{1
-
-static ParseRule PARSERULES_LOOKUP[] = {
-    // TOKEN           PREFIXFN     INFIXFN     PRECEDENCE
-    [TK_AND]        = {NULL,        NULL,       PREC_AND},
-    [TK_BREAK]      = {NULL,        NULL,       PREC_NONE},
-    [TK_DO]         = {NULL,        NULL,       PREC_NONE},
-    [TK_ELSE]       = {NULL,        NULL,       PREC_NONE},
-    [TK_ELSEIF]     = {NULL,        NULL,       PREC_NONE},
-    [TK_END]        = {NULL,        NULL,       PREC_NONE},
-    [TK_FALSE]      = {literal,     NULL,       PREC_NONE},
-    [TK_FOR]        = {NULL,        NULL,       PREC_NONE},
-    [TK_FUNCTION]   = {NULL,        NULL,       PREC_NONE},
-    [TK_IF]         = {NULL,        NULL,       PREC_NONE},
-    [TK_IN]         = {NULL,        NULL,       PREC_NONE},
-    [TK_LOCAL]      = {NULL,        NULL,       PREC_NONE},
-    [TK_NIL]        = {literal,     NULL,       PREC_NONE},
-    [TK_NOT]        = {unary,       NULL,       PREC_NONE},
-    [TK_OR]         = {NULL,        NULL,       PREC_NONE},
-    [TK_PRINT]      = {NULL,        NULL,       PREC_NONE},
-    [TK_RETURN]     = {NULL,        NULL,       PREC_NONE},
-    [TK_THEN]       = {NULL,        NULL,       PREC_NONE},
-    [TK_TRUE]       = {literal,     NULL,       PREC_NONE},
-    [TK_WHILE]      = {NULL,        NULL,       PREC_NONE},
-
-    [TK_LPAREN]     = {grouping,    NULL,       PREC_NONE},
-    [TK_RPAREN]     = {NULL,        NULL,       PREC_NONE},
-    [TK_LBRACKET]   = {NULL,        NULL,       PREC_NONE},
-    [TK_RBRACKET]   = {NULL,        NULL,       PREC_NONE},
-    [TK_LCURLY]     = {table,       NULL,       PREC_NONE},
-    [TK_RCURLY]     = {NULL,        NULL,       PREC_NONE},
-
-    [TK_COMMA]      = {NULL,        NULL,       PREC_NONE},
-    [TK_SEMICOL]    = {NULL,        NULL,       PREC_NONE},
-    [TK_VARARG]     = {NULL,        NULL,       PREC_NONE},
-    [TK_CONCAT]     = {NULL,        concat,     PREC_CONCAT},
-    [TK_PERIOD]     = {NULL,        NULL,       PREC_NONE},
-    [TK_POUND]      = {unary,       NULL,       PREC_UNARY},
-
-    [TK_PLUS]       = {NULL,        binary,     PREC_TERMINAL},
-    [TK_DASH]       = {unary,       binary,     PREC_TERMINAL},
-    [TK_STAR]       = {NULL,        binary,     PREC_FACTOR},
-    [TK_SLASH]      = {NULL,        binary,     PREC_FACTOR},
-    [TK_PERCENT]    = {NULL,        binary,     PREC_FACTOR},
-    [TK_CARET]      = {NULL,        binary,     PREC_POW},
-
-    [TK_ASSIGN]     = {NULL,        NULL,       PREC_NONE},
-    [TK_EQ]         = {NULL,        binary,     PREC_EQUALITY},
-    [TK_NEQ]        = {NULL,        binary,     PREC_EQUALITY},
-    [TK_GT]         = {NULL,        binary,     PREC_COMPARISON},
-    [TK_GE]         = {NULL,        binary,     PREC_COMPARISON},
-    [TK_LT]         = {NULL,        binary,     PREC_COMPARISON},
-    [TK_LE]         = {NULL,        binary,     PREC_COMPARISON},
-
-    [TK_IDENT]      = {variable,    NULL,       PREC_NONE},
-    [TK_STRING]     = {string,      NULL,       PREC_NONE},
-    [TK_NUMBER]     = {number,      NULL,       PREC_NONE},
-    [TK_ERROR]      = {NULL,        NULL,       PREC_NONE},
-    [TK_EOF]        = {NULL,        NULL,       PREC_NONE},
-};
+// 2}}} ------------------------------------------------------------------------
 
 static void expression(Compiler *self) {
     parse_precedence(self, PREC_ASSIGN + 1);
 }
 
-static void block(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    while (!check_token_any(lexer, TK_END, TK_EOF)) {
-        declaration(self);
-    }
-    consume_token(lexer, TK_END, "Expected 'end' after block");
+// 1}}} ------------------------------------------------------------------------
+
+// STATEMENTS ------------------------------------------------------------- {{{1
+
+// ASSIGNMENTS ------------------------------------------------------------ {{{2
+
+static void init_assignment(Assignment *self, Assignment *prev, AssignType type) {
+    self->prev = prev;
+    self->type = type;
+    self->arg  = -1;
 }
-
-static int parse_exprlist(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    int exprs = 0;
-    do {
-        expression(self);
-        exprs += 1;
-    } while (match_token(lexer, TK_COMMA));
-    return exprs;
-}
-
-static void adjust_exprlist(Compiler *self, int idents, int exprs) {
-    if (exprs == idents) {
-        return;
-    }
-
-    if (exprs > idents) {
-        // Discard extra expressions.
-        emit_oparg1(self, OP_POP, exprs - idents);
-    } else {
-        // Assignment nils to remaining identifiers.
-        emit_oparg1(self, OP_NIL, idents - exprs);
-    }
-}
-
-// Declare a local variable by initializing and adding it to the current scope.
-// Intern a local variable name. Analogous to `parseVariable()` in the book.
-static void parse_local(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
-    init_local(self);
-    identifier_constant(self, token); // We don't need the index here.
-}
-
-/**
- * @brief   For Lua this only matters for local variables. Analogous to
- *          `varDeclaration()` in the book.
- *
- * @details vardecl     ::= 'local' identlist ['=' exprlist] ';'
- *          identlist   ::= identifier [',' identifier]*
- *          exprlist    ::= expression [',' expression]*
- *
- * @note    We don't emit `OP_SETLOCAL`, since we only need to push the value to
- *          the stack without popping it. We already keep track of info like the
- *          variable name.
- */
-static void declare_locals(Compiler *self) {
-    Lexer *lexer  = self->lexer;
-    int    idents = 0;
-    int    exprs  = 0;
-
-    do {
-        consume_token(lexer, TK_IDENT, "Expected an identifier");
-        parse_local(self);
-        idents += 1;
-    } while (match_token(lexer, TK_COMMA));
-
-    if (match_token(lexer, TK_ASSIGN)) {
-        exprs = parse_exprlist(self);
-    }
-    adjust_exprlist(self, idents, exprs);
-    define_locals(self, idents);
-}
-
-typedef struct Assignment Assignment;
-
-// These are all mutually exclusive flags.
-typedef enum {
-    ASSIGN_GLOBAL,
-    ASSIGN_LOCAL,
-    ASSIGN_FIELD,  // Indexing via dot notation e.g. `io.stdout`.
-    ASSIGN_INDEX,  // Indexing via bracket notation e.g. `_G["print"]`.
-} AssignType;
-
-struct Assignment {
-    Assignment *prev;
-    int         arg;
-    AssignType  type;
-};
 
 // We are dealing with nested table field accesses, e.g. `t.k.v`.
-static void emit_gettable(Compiler *self, Assignment *list, int *nest) {
-    if (list->prev != NULL && list->prev->type >= ASSIGN_FIELD) {
-        emit_opcode(self, OP_GETTABLE);
-        if (nest != NULL) {
-            *nest += 1;
-        }
-    }
-}
-
-static void emit_fields(Compiler *self, Assignment *list, int *nest) {
-    if (list == NULL) {
-        return;
-    }
-    // Recurse in such a way that the previous-most (i.e. oldest) Assignment*
-    // has its operations resolved first, mainly an OP_GET(GLOBAL|LOCAL).
-    emit_fields(self, list->prev, nest);
-    switch (list->type) {
-    case ASSIGN_INDEX:
-        // Key is implicit thanks to the value pushed by `expression()`.
-        // So no need to emit an opcode.
-        emit_gettable(self, list, nest);
-        break;
-    case ASSIGN_FIELD:
-        emit_gettable(self, list, nest);
-        emit_oparg3(self, OP_CONSTANT, list->arg);
-        break;
-    case ASSIGN_GLOBAL:
-        emit_oparg3(self, OP_GETGLOBAL, list->arg);
-        break;
-    case ASSIGN_LOCAL:
-        emit_oparg1(self, OP_GETLOCAL, list->arg);
-        break;
-    }
-}
-
 static void emit_settable(Compiler *self, Assignment *list) {
     int nest = 0;
     // Need to emit the target table (table + key/s) before the value
@@ -501,12 +306,6 @@ static void emit_settable(Compiler *self, Assignment *list) {
     // HACK: This is stupid but lets us preserve the stack correctly
     // Because if we had no nested tables, we just need to pop the main one.
     emit_oparg1(self, OP_POP, (nest == 0) ? 1 : nest);
-}
-
-static void init_assignment(Assignment *self, Assignment *prev, AssignType type) {
-    self->prev = prev;
-    self->type = type;
-    self->arg  = -1;
 }
 
 // Assumes we consumed an identifier as the first element of a statement.
@@ -583,6 +382,8 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
     }
 }
 
+// OTHER ------------------------------------------------------------------ {{{3
+
 // Assumes we just consumed the `print` keyword and are now ready to compile a
 // stream of expressions to act as arguments.
 static void print_statement(Compiler *self) {
@@ -595,28 +396,6 @@ static void print_statement(Compiler *self) {
     emit_oparg1(self, OP_PRINT, argc);
 }
 
-/**
- * @brief   Declarations may have a stack effect/s, like pushing values from
- *          expressions to act as locals variables.
- *
- * @details declaration ::= vardecl ';'
- *                        | statement ';'
- */
-void declaration(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    switch (lexer->lookahead.type) {
-    case TK_LOCAL:
-        next_token(lexer);
-        declare_locals(self);
-        break;
-    default:
-        statement(self);
-        break;
-    }
-    // Lua allows 1 semicolon to terminate statements, but no more.
-    match_token(lexer, TK_SEMICOL);
-}
-
 // Expressions produce values, but since statements need to have 0 stack effect
 // this will pop whatever it produces.
 static void exprstmt(Compiler *self) {
@@ -624,21 +403,18 @@ static void exprstmt(Compiler *self) {
     emit_oparg1(self, OP_POP, 1);
 }
 
-/**
- * @brief   In Lua, globals aren't declared, but rather assigned as needed.
- *          This may be inconsistent with the design that accessing undefined
- *          globals is an error, but at the same time I dislike implicit nil for
- *          undefined globals.
- *
- * @details statement ::= identlist '=' exprlist
- *                      | 'do' block 'end'
- *                      | 'print' expression
- *                      | expression
- *          identlist ::= identifier [',' identifier]*
- *          exprlist  ::= expression [',' expression]*
- *
- * @note    By themselves, statements should have zero net stack effect.
- */
+static void block(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    while (!check_token_any(lexer, TK_END, TK_EOF)) {
+        declaration(self);
+    }
+    consume_token(lexer, TK_END, "Expected 'end' after block");
+}
+
+// 3}}} ------------------------------------------------------------------------
+
+// 2}}} ------------------------------------------------------------------------
+
 static void statement(Compiler *self) {
     Lexer *lexer = self->lexer;
     switch (lexer->lookahead.type) {
@@ -666,6 +442,68 @@ static void statement(Compiler *self) {
     }
 }
 
+// 1}}} ------------------------------------------------------------------------
+
+// DECLARATIONS ----------------------------------------------------------- {{{1
+
+// Declare a local variable by initializing and adding it to the current scope.
+// Intern a local variable name. Analogous to `parseVariable()` in the book.
+static void parse_local(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    Token *token = &lexer->consumed;
+    init_local(self);
+    identifier_constant(self, token); // We don't need the index here.
+}
+
+/**
+ * @brief   For Lua this only matters for local variables. Analogous to
+ *          `varDeclaration()` in the book.
+ *
+ * @details vardecl     ::= 'local' identlist ['=' exprlist] ';'
+ *          identlist   ::= identifier [',' identifier]*
+ *          exprlist    ::= expression [',' expression]*
+ *
+ * @note    We don't emit `OP_SETLOCAL`, since we only need to push the value to
+ *          the stack without popping it. We already keep track of info like the
+ *          variable name.
+ */
+static void declare_locals(Compiler *self) {
+    Lexer *lexer  = self->lexer;
+    int    idents = 0;
+    int    exprs  = 0;
+
+    do {
+        consume_token(lexer, TK_IDENT, "Expected an identifier");
+        parse_local(self);
+        idents += 1;
+    } while (match_token(lexer, TK_COMMA));
+
+    if (match_token(lexer, TK_ASSIGN)) {
+        exprs = parse_exprlist(self);
+    }
+    adjust_exprlist(self, idents, exprs);
+    define_locals(self, idents);
+}
+
+void declaration(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    switch (lexer->lookahead.type) {
+    case TK_LOCAL:
+        next_token(lexer);
+        declare_locals(self);
+        break;
+    default:
+        statement(self);
+        break;
+    }
+    // Lua allows 1 semicolon to terminate statements, but no more.
+    match_token(lexer, TK_SEMICOL);
+}
+
+// 1}}} ------------------------------------------------------------------------
+
+// PARSE RULES ------------------------------------------------------------ {{{1
+
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
 // exprssions following it.
 static void parse_precedence(Compiler *self, Precedence prec) {
@@ -689,6 +527,65 @@ static void parse_precedence(Compiler *self, Precedence prec) {
         lexerror_at_token(lexer, "Invalid assignment target");
     }
 }
+
+static ParseRule PARSERULES_LOOKUP[] = {
+    // TOKEN           PREFIXFN     INFIXFN     PRECEDENCE
+    [TK_AND]        = {NULL,        NULL,       PREC_AND},
+    [TK_BREAK]      = {NULL,        NULL,       PREC_NONE},
+    [TK_DO]         = {NULL,        NULL,       PREC_NONE},
+    [TK_ELSE]       = {NULL,        NULL,       PREC_NONE},
+    [TK_ELSEIF]     = {NULL,        NULL,       PREC_NONE},
+    [TK_END]        = {NULL,        NULL,       PREC_NONE},
+    [TK_FALSE]      = {&literal,    NULL,       PREC_NONE},
+    [TK_FOR]        = {NULL,        NULL,       PREC_NONE},
+    [TK_FUNCTION]   = {NULL,        NULL,       PREC_NONE},
+    [TK_IF]         = {NULL,        NULL,       PREC_NONE},
+    [TK_IN]         = {NULL,        NULL,       PREC_NONE},
+    [TK_LOCAL]      = {NULL,        NULL,       PREC_NONE},
+    [TK_NIL]        = {&literal,    NULL,       PREC_NONE},
+    [TK_NOT]        = {&unary,      NULL,       PREC_NONE},
+    [TK_OR]         = {NULL,        NULL,       PREC_NONE},
+    [TK_PRINT]      = {NULL,        NULL,       PREC_NONE},
+    [TK_RETURN]     = {NULL,        NULL,       PREC_NONE},
+    [TK_THEN]       = {NULL,        NULL,       PREC_NONE},
+    [TK_TRUE]       = {&literal,    NULL,       PREC_NONE},
+    [TK_WHILE]      = {NULL,        NULL,       PREC_NONE},
+
+    [TK_LPAREN]     = {&grouping,   NULL,       PREC_NONE},
+    [TK_RPAREN]     = {NULL,        NULL,       PREC_NONE},
+    [TK_LBRACKET]   = {NULL,        NULL,       PREC_NONE},
+    [TK_RBRACKET]   = {NULL,        NULL,       PREC_NONE},
+    [TK_LCURLY]     = {&table,      NULL,       PREC_NONE},
+    [TK_RCURLY]     = {NULL,        NULL,       PREC_NONE},
+
+    [TK_COMMA]      = {NULL,        NULL,       PREC_NONE},
+    [TK_SEMICOL]    = {NULL,        NULL,       PREC_NONE},
+    [TK_VARARG]     = {NULL,        NULL,       PREC_NONE},
+    [TK_CONCAT]     = {NULL,        &concat,    PREC_CONCAT},
+    [TK_PERIOD]     = {NULL,        NULL,       PREC_NONE},
+    [TK_POUND]      = {&unary,      NULL,       PREC_UNARY},
+
+    [TK_PLUS]       = {NULL,        &binary,    PREC_TERMINAL},
+    [TK_DASH]       = {&unary,      &binary,    PREC_TERMINAL},
+    [TK_STAR]       = {NULL,        &binary,    PREC_FACTOR},
+    [TK_SLASH]      = {NULL,        &binary,    PREC_FACTOR},
+    [TK_PERCENT]    = {NULL,        &binary,    PREC_FACTOR},
+    [TK_CARET]      = {NULL,        &binary,    PREC_POW},
+
+    [TK_ASSIGN]     = {NULL,        NULL,       PREC_NONE},
+    [TK_EQ]         = {NULL,        &binary,    PREC_EQUALITY},
+    [TK_NEQ]        = {NULL,        &binary,    PREC_EQUALITY},
+    [TK_GT]         = {NULL,        &binary,    PREC_COMPARISON},
+    [TK_GE]         = {NULL,        &binary,    PREC_COMPARISON},
+    [TK_LT]         = {NULL,        &binary,    PREC_COMPARISON},
+    [TK_LE]         = {NULL,        &binary,    PREC_COMPARISON},
+
+    [TK_IDENT]      = {&variable,   NULL,       PREC_NONE},
+    [TK_STRING]     = {&string,     NULL,       PREC_NONE},
+    [TK_NUMBER]     = {&number,     NULL,       PREC_NONE},
+    [TK_ERROR]      = {NULL,        NULL,       PREC_NONE},
+    [TK_EOF]        = {NULL,        NULL,       PREC_NONE},
+};
 
 static ParseRule *get_parserule(TkType key) {
     return &PARSERULES_LOOKUP[key];

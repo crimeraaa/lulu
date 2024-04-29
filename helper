@@ -251,8 +251,12 @@ options["overflow-locals"] = {
             self.rows = 12
             self.cols = 18
         elseif #pargs == 2 then
-            self.rows = table.remove(pargs, 1)
-            self.cols = table.remove(pargs, 1)
+            self.rows = tonumber(table.remove(pargs, 1))
+            self.cols = tonumber(table.remove(pargs, 1))
+            if not (self.rows and self.cols)
+                or (self.rows <= 0 or self.cols <= 0) then
+                return false, "#rows and #columns must both be positive integers."
+            end
         else
             return false, "Please specify exactly only #rows and #columns."
         end
@@ -297,13 +301,6 @@ options["overflow-locals"] = {
     end,
 }
 
-local function overflow_stack(file, current, limit)
-    if (current > limit) then
-        return
-    end
-    overflow_stack(file, current + 1)
-end
-
 options["overflow-stack"] = {
     exe   = LULU_EXE,
     flags = nil,
@@ -318,6 +315,9 @@ options["overflow-stack"] = {
             self.limit = 10
         elseif #pargs == 1 then
             self.limit = tonumber(table.remove(pargs, 1))
+            if (not self.limit) or self.limit <= 0 then
+                return false, "#limit must be a positive integer."
+            end
         else
             return false, "Please specify exactly only #limit."
         end

@@ -37,7 +37,28 @@ typedef const struct {
     Precedence prec;
 } ParseRule;
 
-// The main program/script/block.
+typedef enum {
+    ASSIGN_GLOBAL,
+    ASSIGN_LOCAL,
+    ASSIGN_FIELD,  // Indexing via dot notation e.g. `io.stdout`.
+    ASSIGN_INDEX,  // Indexing via bracket notation e.g. `_G["print"]`.
+} AssignType;
+
+struct Assignment {
+    Assignment *prev;
+    int         arg;
+    AssignType  type;
+};
+
+/**
+ * @brief   Declarations may have a stack effect/s, like pushing values from
+ *          expressions to act as locals variables.
+ *
+ * @details declaration ::= vardecl ';'
+ *                        | statement ';'
+ *
+ * @note    Similar to `lparser.c:chunk()`.
+ */
 void declaration(Compiler *self);
 
 #endif /* LULU_PARSER_H */
