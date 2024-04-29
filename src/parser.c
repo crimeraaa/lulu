@@ -308,6 +308,24 @@ static void emit_settable(Compiler *self, Assignment *list) {
     emit_oparg1(self, OP_POP, (nest == 0) ? 1 : nest);
 }
 
+// TODO: Make work with multiple assignment
+static void emit_assignment(Compiler *self, Assignment *list) {
+    switch (list->type) {
+    case ASSIGN_GLOBAL:
+        expression(self);
+        emit_oparg3(self, OP_SETGLOBAL, list->arg);
+        break;
+    case ASSIGN_LOCAL:
+        expression(self);
+        emit_oparg1(self, OP_SETLOCAL, list->arg);
+        break;
+    case ASSIGN_FIELD:
+    case ASSIGN_INDEX:
+        emit_settable(self, list);
+        break;
+    }
+}
+
 // Assumes we consumed an identifier as the first element of a statement.
 static void identifier_statement(Compiler *self, Assignment *elem) {
     Lexer *lexer = self->lexer;
@@ -344,9 +362,9 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
         init_assignment(&next, NULL, ASSIGN_INDEX);
         next_token(lexer);
 
-        // Emit the table up to this point and resolve nested bracket indexes.
+        // Emit the table up to this point and resolve nested table fields.
         emit_fields(self, elem, NULL);
-        if (elem->type == ASSIGN_INDEX) {
+        if (elem->type >= ASSIGN_FIELD) {
             emit_opcode(self, OP_GETTABLE);
         }
         expression(self);
@@ -356,20 +374,7 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
     }
     case TK_ASSIGN:
         next_token(lexer);
-        switch (elem->type) {
-        case ASSIGN_GLOBAL:
-            expression(self);
-            emit_oparg3(self, OP_SETGLOBAL, elem->arg);
-            break;
-        case ASSIGN_LOCAL:
-            expression(self);
-            emit_oparg1(self, OP_SETLOCAL, elem->arg);
-            break;
-        case ASSIGN_FIELD:
-        case ASSIGN_INDEX:
-            emit_settable(self, elem);
-            break;
-        }
+        emit_assignment(self, elem);
         break;
     case TK_LPAREN:
         lexerror_at_consumed(lexer, "Function calls not yet implemented");
