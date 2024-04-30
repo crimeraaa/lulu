@@ -82,9 +82,15 @@ void emit_oparg1(Compiler *self, OpCode op, Byte arg) {
 }
 
 void emit_oparg2(Compiler *self, OpCode op, Byte2 arg) {
-    emit_opcode(self, op);
+    emit_byte(self, op);
     emit_byte(self, encode_byte2_msb(arg));
     emit_byte(self, encode_byte2_lsb(arg));
+
+    // Silly to hardcode this but it works
+    if (op == OP_SETTABLE) {
+        int popped = encode_byte2_lsb(arg);
+        adjust_stackinfo(self, op, popped);
+    }
 }
 
 void emit_oparg3(Compiler *self, OpCode op, Byte3 arg) {

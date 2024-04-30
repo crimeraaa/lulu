@@ -29,7 +29,7 @@
 typedef enum {
 /* ----------+--------+-----------------+-------------------+------------------|
 |  NAME      |  ARGS  |  STACK BEFORE   |  STACK AFTER      |  SIDE EFFECTS    |
--------------+--------+-----------------+-------------------+-----------------*/
+-------------+--------+-----------------+-------------------+---------------- */
 OP_CONSTANT, // U     | -               | Kst[U]            |                  |
 OP_NIL,      // B     | -               | (push B nils)     |                  |
 OP_TRUE,     // -     | -               | true              |                  |
@@ -40,7 +40,7 @@ OP_GETGLOBAL,// U     | -               | _G[Kst[U]]        |                  |
 OP_GETTABLE, // -     | table, key      | table[key]        |                  |
 OP_SETLOCAL, // L     | x               | -                 | Loc[L] = x       |
 OP_SETGLOBAL,// U     | x               | -                 | _G[Kst[U]] = x   |
-OP_SETTABLE, // -     | table, key, val | table             | table[key] = val |
+OP_SETTABLE, // A, B  | t, k, ..., v    | (pop B values)    | t[k] = v         |
 OP_EQ,       // -     | x, y            | x == y            |                  |
 OP_LT,       // -     | x, y            | x < y             |                  |
 OP_LE,       // -     | x, y            | x <= y            |                  |
@@ -57,6 +57,21 @@ OP_LEN,      // -     | x               | #x                |                  |
 OP_PRINT,    // B     | Top[-B...-1]    | -                 | print(...)       |
 OP_RETURN,   // -     | -               |                   |                  |
 } OpCode;
+
+/* -----------------------------------------------------------------------------
+ OP_SETTABLE:
+    Argument A refers to an absolute index into the stack where the table is
+    found. We assume that +1 from it is the desired key. We also assume that
+    the very top of the stack is where the desired value is.
+
+    We do it this way to allow multiple assignment semantics. It's quite a bit
+    of indirection but it works well enough.
+
+    Argument B refers to how many values will be popped by this instruction.
+    Since this is a variable delta we cannot afford an implicit pop of the value
+    otherwise the compiler will report wrong stack usages. Doing so will also
+    break how table fields due to their reliance on `Compiler::stack_usage`.
+----------------------------------------------------------------------------- */
 
 typedef const struct {
     const char *name;  // String representation sans `"OP_"`.

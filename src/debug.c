@@ -22,15 +22,12 @@ void disassemble_chunk(const Chunk *self) {
 }
 
 #define read_byte(chunk, offset) \
-    ((chunk)->code[(offset) + 1])
+    ((chunk)->code[(offset)])
 
 #define read_byte3(chunk, offset)                                              \
     decode_byte3((chunk)->code[(offset) + 1],                                  \
                  (chunk)->code[(offset) + 2],                                  \
                  (chunk)->code[(offset) + 3])
-
-#define read_byte3_if(cond, chunk, offset) \
-    ((cond) ? read_byte3(chunk, offset) : read_byte(chunk, offset))
 
 #define read_constant(chunk, index) \
     ((chunk)->constants.values[(index)])
@@ -45,13 +42,25 @@ static void constant_instruction(OpCode op, const Chunk *chunk, int offset) {
 // Assumes all instructions that manipulate ranges of values on the stack will
 // only ever have a 1-byte argument.
 static void range_instruction(OpCode op, const Chunk *chunk, int offset) {
-    int arg = read_byte(chunk, offset);
+    int arg = read_byte(chunk, offset + 1);
     printf("%-16s Top[%i...-1]\n", get_opname(op), -arg);
 }
 
+static void simple_instruction(OpCode op, const Chunk *chunk, int offset) {
+    int         arg = read_byte(chunk, offset + 1);
+    const char *act = (op == OP_POP) ? "Pop" : "Nil";
+    printf("%-16s %s(%i)\n", get_opname(op), act, arg);
+}
+
 static void local_instruction(OpCode op, const Chunk *chunk, int offset) {
-    int arg = read_byte(chunk, offset);
+    int arg = read_byte(chunk, offset + 1);
     printf("%-16s Loc[%i]\n", get_opname(op), arg);
+}
+
+static void settable_instruction(OpCode op, const Chunk *chunk, int offset) {
+    int index  = chunk->code[offset + 1];
+    int popped = chunk->code[offset + 2];
+    printf("%-16s Stk[%i] Pop(%i)\n", get_opname(op), index, popped);
 }
 
 int disassemble_instruction(const Chunk *self, int offset) {
@@ -75,12 +84,16 @@ int disassemble_instruction(const Chunk *self, int offset) {
         break;
     case OP_POP:
     case OP_NIL:
+        simple_instruction(op, self, offset);
+        break;
     case OP_CONCAT:
     case OP_PRINT:
         range_instruction(op, self, offset);
         break;
-    case OP_GETTABLE:
     case OP_SETTABLE:
+        settable_instruction(op, self, offset);
+        break;
+    case OP_GETTABLE:
     case OP_TRUE:   // Prefix literals
     case OP_FALSE:
     case OP_EQ:     // Binary Comparison operators
@@ -108,5 +121,4 @@ int disassemble_instruction(const Chunk *self, int offset) {
 
 #undef read_byte
 #undef read_byte3
-#undef read_byte3_if
 #undef read_constant

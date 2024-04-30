@@ -194,9 +194,9 @@ static void parse_field(Compiler *self) {
     }
 }
 
-// Table setops always assume table is at Top[-1].
 static void parse_ctor(Compiler *self, int *index) {
-    Lexer *lexer = self->lexer;
+    Lexer *lexer  = self->lexer;
+    Byte   offset = self->stack_usage - 1; // Absolute index of table itself.
     if (match_token_any(lexer, TK_LBRACKET, TK_IDENT)) {
         parse_field(self);
         consume_token(lexer, TK_ASSIGN, "Expected '=' to assign table field");
@@ -206,7 +206,9 @@ static void parse_ctor(Compiler *self, int *index) {
         *index += 1;
     }
     expression(self);
-    emit_opcode(self, OP_SETTABLE);
+
+    // Always pop the key and value for each field in a table constructor.
+    emit_oparg2(self, OP_SETTABLE, decode_byte2(offset, 2));
     match_token(lexer, TK_COMMA);
 }
 
@@ -333,8 +335,8 @@ static void emit_assignment_tail(Compiler *self, Assignment *list) {
         emit_oparg1(self, OP_SETLOCAL, list->arg);
         break;
     case ASSIGN_TABLE:
-        emit_opcode(self, OP_SETTABLE);
-        emit_oparg1(self, OP_POP, 1);
+        // For arg A use absolute index of table, for arg B pop only the value.
+        emit_oparg2(self, OP_SETTABLE, decode_byte2(list->arg, 1));
         break;
     }
     emit_assignment_tail(self, list->prev);
@@ -345,18 +347,15 @@ static void emit_assignment(Compiler *self, Assignment *list) {
     int exprs  = parse_exprlist(self);
     adjust_exprlist(self, idents, exprs);
     emit_assignment_tail(self, list);
-}
 
-// Find the most recent non-table assignment. Used to remove table assignments
-// from the linked list.
-static Assignment *prev_assignment(Assignment *self) {
-    if (self == NULL) {
-        return NULL;
+    // Clean up stack as emitted table fields are never implicitly cleaned up.
+    Assignment *node = list;
+    while (node != NULL) {
+        if (node->istable) {
+            emit_oparg1(self, OP_POP, 2);
+        }
+        node = node->prev;
     }
-    if (!self->istable) {
-        return self;
-    }
-    return prev_assignment(self->prev);
 }
 
 /**
@@ -392,8 +391,8 @@ static void discharge_assignment(Compiler *self, Assignment *list, TkType type) 
         break;
     }
 
-    // Don't pass `list` itself to `prev_assignment()` as it'll infinite loop.
-    init_assignment(list, prev_assignment(list->prev), ASSIGN_TABLE);
+    init_assignment(list, list->prev, ASSIGN_TABLE);
+    list->arg = self->stack_usage - 2; // 0 is top, -1 is key, -2 is table.
 }
 
 // Assumes we consumed an identifier as the first element of a statement.
@@ -455,7 +454,7 @@ static void print_statement(Compiler *self) {
 
 // Expressions produce values, but since statements need to have 0 stack effect
 // this will pop whatever it produces.
-static void gtmt(Compiler *self) {
+static void exprstmt(Compiler *self) {
     expression(self);
     emit_oparg1(self, OP_POP, 1);
 }
@@ -494,7 +493,7 @@ static void statement(Compiler *self) {
         print_statement(self);
         break;
     default:
-        gtmt(self);
+        exprstmt(self);
         break;
     }
 }
@@ -562,7 +561,7 @@ void declaration(Compiler *self) {
 // PARSE RULES ------------------------------------------------------------ {{{1
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
-// gsions following it.
+// expressions following it.
 static void parse_precedence(Compiler *self, Precedence prec) {
     Lexer *lexer = self->lexer;
     next_token(lexer);

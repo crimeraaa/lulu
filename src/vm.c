@@ -219,19 +219,23 @@ static ErrType run(VM *self) {
             set_table(&self->globals, read_constant(), poke_top(-1), alloc);
             pop_back();
             break;
-        case OP_SETTABLE:
-            if (!is_table(poke_top(-3))) {
+        case OP_SETTABLE: {
+            int     index  = read_byte(); // Absolute index of table itself.
+            int     popped = read_byte();
+            TValue *tbl    = poke_base(index);
+            TValue *key    = poke_base(index + 1);
+            TValue *val    = poke_top(-1);
+
+            if (!is_table(tbl)) {
                 // Push the guilty variable to the top so we can report it.
-                push_back(poke_top(-3));
+                push_back(tbl);
                 runtime_error(self, RTE_INDEX);
             } else {
-                Table  *table = as_table(poke_top(-3));
-                TValue *key   = poke_top(-2);
-                TValue *val   = poke_top(-1);
-                set_table(table, key, val, alloc);
-                popn(2);
+                set_table(as_table(tbl), key, val, alloc);
+                popn(popped);
             }
             break;
+        }
         case OP_EQ: {
             TValue *lhs = poke_top(-2);
             TValue *rhs = poke_top(-1);
