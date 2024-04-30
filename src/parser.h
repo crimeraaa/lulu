@@ -48,6 +48,7 @@ struct Assignment {
     Assignment *prev;
     int         arg;
     AssignType  type;
+    bool        istable;
 };
 
 /**

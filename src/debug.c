@@ -103,7 +103,7 @@ int disassemble_instruction(const Chunk *self, int offset) {
         printf("Unknown opcode '%i'.\n", op);
         return offset + 1;
     }
-    return offset + get_opargc(op) + 1;
+    return offset + get_opsize(op);
 }
 
 #undef read_byte

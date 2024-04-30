@@ -20,13 +20,14 @@ typedef struct {
 
 typedef struct {
     Local  locals[MAX_LOCALS];
-    Lexer *lexer;      // May be shared across multiple Compiler instances.
-    VM    *vm;         // Track and modify parent VM state as needed.
-    Chunk *chunk;      // The current compiling chunk for this function/closure.
-    int    localcount; // How many locals are currently in scope?
-    int    scopedepth; // 0 = global, 1 = top-level, 2 = more inner, etc.
-    int    stacktotal; // How many stack slots at most does this function use?
-    int    stackusage; // How many stack slots are currently being used?
+    Lexer *lexer;       // May be shared across multiple Compiler instances.
+    VM    *vm;          // Track and modify parent VM state as needed.
+    Chunk *chunk;       // The current compiling chunk for this function/closure.
+    int    local_count; // How many locals are currently in scope?
+    int    scope_depth; // 0 = global, 1 = top-level, 2 = more inner, etc.
+    int    stack_total; // How many stack slots at most does this function use?
+    int    stack_usage; // How many stack slots are currently being used?
+    OpCode prev_opcode; // Used to fold consecutive similar operations.
 } Compiler;
 
 // We pass a Lexer and a VM to be shared across compiler instances.

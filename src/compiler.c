@@ -7,23 +7,32 @@
 #endif
 
 void init_compiler(Compiler *self, Lexer *lexer, VM *vm) {
-    self->lexer      = lexer;
-    self->vm         = vm;
-    self->chunk      = NULL;
-    self->localcount = 0;
-    self->scopedepth = 0;
-    self->stacktotal = 0;
-    self->stackusage = 0;
+    self->lexer       = lexer;
+    self->vm          = vm;
+    self->chunk       = NULL;
+    self->local_count = 0;
+    self->scope_depth = 0;
+    self->stack_total = 0;
+    self->stack_usage = 0;
+    self->prev_opcode = OP_RETURN;
 }
 
-static void adjust_stackinfo(Compiler *self, int push, int pop) {
-    Lexer *lexer = self->lexer;
-    self->stackusage += push - pop;
-    if (self->stackusage > MAX_STACK) {
+// Will also set `prev_opcode`. Pass `delta` only when `op` has a variable stack
+// effect, as indicated by `VAR_DELTA`.
+static void adjust_stackinfo(Compiler *self, OpCode op, int delta) {
+    OpInfo *info  = get_opinfo(op);
+    Lexer  *lexer = self->lexer;
+    int     push  = (info->push == VAR_DELTA) ? delta : info->push;
+    int     pop   = (info->pop  == VAR_DELTA) ? delta : info->pop;
+
+    // If both push and pop are VAR_DELTA then something is horribly wrong.
+    self->stack_usage += push - pop;
+    self->prev_opcode = op;
+    if (self->stack_usage > MAX_STACK) {
         lexerror_at_consumed(lexer, "Function uses too many stack slots");
     }
-    if (self->stackusage > self->stacktotal) {
-        self->stacktotal = self->stackusage;
+    if (self->stack_usage > self->stack_total) {
+        self->stack_total = self->stack_usage;
     }
 }
 
@@ -41,39 +50,39 @@ Chunk *current_chunk(Compiler *self) {
 }
 
 void emit_opcode(Compiler *self, OpCode op) {
-    OpInfo *info = get_opinfo(op);
     emit_byte(self, op);
-    adjust_stackinfo(self, info->push, info->pop);
+    adjust_stackinfo(self, op, 0);
 }
 
 void emit_oparg1(Compiler *self, OpCode op, Byte arg) {
-    OpInfo *info = get_opinfo(op);
+    Chunk  *chunk = current_chunk(self);
+    int     len   = chunk->len;
 
     switch (op) {
-    case OP_NIL: {
-        Chunk *chunk = current_chunk(self);
-        int    len   = chunk->len;
-        // Minor optimization: combine consecutive OP_NIL's.
-        if (len >= 2 && chunk->code[len - 2] == OP_NIL) {
-            chunk->code[len - 1] += arg;
+    case OP_CONCAT:
+    case OP_NIL:
+    case OP_POP:
+        // Optimize consecutive opcodes with a variable delta.
+        if (self->prev_opcode == op) {
+            // -1 since each OP_CONCAT assumes at least 2 args, so folding 2+
+            // will result in 1 less explicit pop as it's now been combined.
+            chunk->code[len - 1] += (op == OP_CONCAT) ? arg - 1 : arg;
             break;
+        } else {
+            goto no_optimization;
         }
-        // Otherwise fall through to default case.
-    }
+    no_optimization:
     default:
         emit_byte(self, op);
         emit_byte(self, arg);
         break;
     }
 
-    // If both push and pop are VAR_DELTA then something is horribly wrong.
-    adjust_stackinfo(self,
-                    (info->push == VAR_DELTA) ? arg : info->push,
-                    (info->pop  == VAR_DELTA) ? arg : info->pop);
+    adjust_stackinfo(self, op, arg);
 }
 
 void emit_oparg2(Compiler *self, OpCode op, Byte2 arg) {
-    emit_byte(self, op);
+    emit_opcode(self, op);
     emit_byte(self, encode_byte2_msb(arg));
     emit_byte(self, encode_byte2_lsb(arg));
 }
@@ -153,8 +162,8 @@ void end_compiler(Compiler *self) {
     printf("[STACK USAGE]:\n"
            "NET:    %i\n"
            "MOST:   %i\n",
-           self->stackusage,
-           self->stacktotal);
+           self->stack_usage,
+           self->stack_total);
     printf("\n");
     disassemble_chunk(current_chunk(self));
 #endif
@@ -162,21 +171,21 @@ void end_compiler(Compiler *self) {
 
 void begin_scope(Compiler *self) {
     Lexer *lexer = self->lexer;
-    if ((self->scopedepth += 1) > MAX_LEVELS) {
+    if ((self->scope_depth += 1) > MAX_LEVELS) {
         lexerror_at_token(lexer, "Function uses too many syntax levels");
     }
 }
 
 void end_scope(Compiler *self) {
-    self->scopedepth--;
+    self->scope_depth--;
 
     int popped = 0;
-    while (self->localcount > 0) {
-        if (self->locals[self->localcount - 1].depth <= self->scopedepth) {
+    while (self->local_count > 0) {
+        if (self->locals[self->local_count - 1].depth <= self->scope_depth) {
             break;
         }
         popped++;
-        self->localcount--;
+        self->local_count--;
     }
     // Don't waste 2 bytes if nothing to pop
     if (popped > 0) {
@@ -206,7 +215,7 @@ static bool identifiers_equal(const Token *a, const Token *b) {
 }
 
 int resolve_local(Compiler *self, const Token *name) {
-    for (int i = self->localcount - 1; i >= 0; i--) {
+    for (int i = self->local_count - 1; i >= 0; i--) {
         const Local *local = &self->locals[i];
         // If using itself in initializer, continue to resolve outward.
         if (local->depth != -1 && identifiers_equal(name, &local->name)) {
@@ -217,11 +226,11 @@ int resolve_local(Compiler *self, const Token *name) {
 }
 
 void add_local(Compiler *self, const Token *name) {
-    if (self->localcount + 1 > MAX_LOCALS) {
+    if (self->local_count + 1 > MAX_LOCALS) {
         lexerror_at_consumed(self->lexer,
             "More than " stringify(MAX_LOCALS) " local variables reached");
     }
-    Local *local = &self->locals[self->localcount++];
+    Local *local = &self->locals[self->local_count++];
     local->name  = *name;
     local->depth = -1;
 }
@@ -231,10 +240,10 @@ void init_local(Compiler *self) {
     Token *name  = &lexer->consumed;
 
     // Detect variable shadowing in the same scope.
-    for (int i = self->localcount - 1; i >= 0; i--) {
+    for (int i = self->local_count - 1; i >= 0; i--) {
         const Local *local = &self->locals[i];
         // Have we hit an outer scope?
-        if (local->depth != -1 && local->depth < self->scopedepth) {
+        if (local->depth != -1 && local->depth < self->scope_depth) {
             break;
         }
         if (identifiers_equal(name, &local->name)) {
@@ -245,9 +254,9 @@ void init_local(Compiler *self) {
 }
 
 void define_locals(Compiler *self, int count) {
-    int limit = self->localcount;
+    int limit = self->local_count;
     for (int i = count; i > 0; i--) {
-        self->locals[limit - i].depth = self->scopedepth;
+        self->locals[limit - i].depth = self->scope_depth;
     }
 }
 

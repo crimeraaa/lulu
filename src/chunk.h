@@ -31,7 +31,7 @@ typedef enum {
 |  NAME      |  ARGS  |  STACK BEFORE   |  STACK AFTER      |  SIDE EFFECTS    |
 -------------+--------+-----------------+-------------------+-----------------*/
 OP_CONSTANT, // U     | -               | Kst[U]            |                  |
-OP_NIL,      // B     | -               | ... = nil         |                  |
+OP_NIL,      // B     | -               | (push B nils)     |                  |
 OP_TRUE,     // -     | -               | true              |                  |
 OP_FALSE,    // -     | -               | false             |                  |
 OP_POP,      // B     | A_B,...A_1      | -                 |                  |
@@ -59,10 +59,10 @@ OP_RETURN,   // -     | -               |                   |                  |
 } OpCode;
 
 typedef const struct {
-    const char *name; // String representation sans `"OP_"`.
-    int8_t      argc; // How many bytes its argument/operand takes up.
-    int8_t      push; // How many stack pushes are made from this operation.
-    int8_t      pop;  // How many stack pops are made from this operation.
+    const char *name;  // String representation sans `"OP_"`.
+    int8_t      argsz; // How many bytes the opcode's argument takes up.
+    int8_t      push;  // How many stack pushes are made from this operation.
+    int8_t      pop;   // How many stack pops are made from this operation.
 } OpInfo;
 
 // Indicates number of pushes/pops is determined on a case-by-case basis. e.g.
@@ -89,7 +89,7 @@ extern OpInfo LULU_OPINFO[];
 
 #define get_opinfo(op)  (&LULU_OPINFO[op])
 #define get_opname(op)  get_opinfo(op)->name
-#define get_opargc(op)  get_opinfo(op)->argc
+#define get_opsize(op)  (get_opinfo(op)->argsz + 1)
 
 typedef struct {
     TArray      constants;

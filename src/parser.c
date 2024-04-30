@@ -293,6 +293,7 @@ static void init_assignment(Assignment *self, Assignment *prev, AssignType type)
     self->prev = prev;
     self->type = type;
     self->arg  = -1;
+    self->istable = (type >= ASSIGN_FIELD && type <= ASSIGN_INDEX);
 }
 
 // We are dealing with nested table field accesses, e.g. `t.k.v`.
@@ -326,6 +327,26 @@ static void emit_assignment(Compiler *self, Assignment *list) {
     }
 }
 
+/**
+ * @brief   Emit a variable which is used as a table or fields thereof.
+ *          After this we can afford to "forget" the table and its fields hence
+ *          we "discharge" them from the linked list.
+ *
+ * @details In `t.k.v = 13` we want:
+ *          GETGLOBAL   't'
+ *          CONSTANT    'k'
+ *          GETTABLE
+ *          CONSTANT    'v'
+ *          CONSTANT    13
+ *          SETTABLE
+ */
+static void discharge_assignment(Compiler *self, Assignment *list) {
+    emit_fields(self, list, NULL);
+    if (list->istable) {
+        emit_opcode(self, OP_GETTABLE);
+    }
+}
+
 // Assumes we consumed an identifier as the first element of a statement.
 static void identifier_statement(Compiler *self, Assignment *elem) {
     Lexer *lexer = self->lexer;
@@ -333,7 +354,7 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
 
     // Is this the first statement and NOT an index using bracket notation?
     // NOTE: Recursive calls should initalize `elem` beforehand.
-    if (elem->prev == NULL && elem->type != ASSIGN_INDEX) {
+    if (elem->prev == NULL && !elem->istable) {
         // Assignment occurs first, is resolved to the lvalue, then comparison.
         bool islocal = (elem->arg = resolve_local(self, &ident)) != -1;
         elem->type   = (islocal) ? ASSIGN_LOCAL : ASSIGN_GLOBAL;
@@ -346,10 +367,11 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
     case TK_PERIOD: {
         Assignment next;
 
-        init_assignment(&next, elem, ASSIGN_FIELD);
+        // We are about to emit the table up to this point so don't link.
+        init_assignment(&next, NULL, ASSIGN_FIELD);
         next_token(lexer);
+        discharge_assignment(self, elem);
         consume_token(lexer, TK_IDENT, "Expected an identifier after '.'");
-
         ident    = lexer->consumed;
         next.arg = identifier_constant(self, &ident);
         identifier_statement(self, &next);
@@ -361,12 +383,7 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
         // Will emit the table up to this point so we can afford to forget it.
         init_assignment(&next, NULL, ASSIGN_INDEX);
         next_token(lexer);
-
-        // Emit the table up to this point and resolve nested table fields.
-        emit_fields(self, elem, NULL);
-        if (elem->type >= ASSIGN_FIELD) {
-            emit_opcode(self, OP_GETTABLE);
-        }
+        discharge_assignment(self, elem);
         expression(self);
         consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
         identifier_statement(self, &next);
