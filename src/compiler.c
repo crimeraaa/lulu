@@ -20,10 +20,10 @@ void init_compiler(Compiler *self, Lexer *lexer, VM *vm) {
 // Will also set `prev_opcode`. Pass `delta` only when `op` has a variable stack
 // effect, as indicated by `VAR_DELTA`.
 static void adjust_stackinfo(Compiler *self, OpCode op, int delta) {
-    OpInfo *info  = get_opinfo(op);
     Lexer  *lexer = self->lexer;
-    int     push  = (info->push == VAR_DELTA) ? delta : info->push;
-    int     pop   = (info->pop  == VAR_DELTA) ? delta : info->pop;
+    OpInfo  info  = get_opinfo(op);
+    int     push  = (info.push == VAR_DELTA) ? delta : info.push;
+    int     pop   = (info.pop  == VAR_DELTA) ? delta : info.pop;
 
     // If both push and pop are VAR_DELTA then something is horribly wrong.
     self->stack_usage += push - pop;
@@ -95,50 +95,22 @@ void emit_oparg3(Compiler *self, OpCode op, Byte3 arg) {
     emit_byte(self, encode_byte3_lsb(arg));
 }
 
+void emit_identifier(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    Token *ident = &lexer->consumed;
+    emit_oparg3(self, OP_CONSTANT, identifier_constant(self, ident));
+}
+
 void emit_return(Compiler *self) {
     emit_opcode(self, OP_RETURN);
-}
-
-void emit_gettable(Compiler *self, Assignment *list, int *nest) {
-    // Did we have a field/index previously? If so, resolve the table.
-    if (list->prev != NULL && list->prev->type >= ASSIGN_FIELD) {
-        emit_opcode(self, OP_GETTABLE);
-        if (nest != NULL) {
-            *nest += 1;
-        }
-    }
-}
-
-void emit_fields(Compiler *self, Assignment *list, int *nest) {
-    if (list == NULL) {
-        return;
-    }
-    // Recurse in such a way that the previous-most (i.e. oldest) Assignment*
-    // has its operations resolved first, mainly an OP_GET(GLOBAL|LOCAL).
-    emit_fields(self, list->prev, nest);
-    switch (list->type) {
-    case ASSIGN_INDEX:
-        // Key is implicit thanks to the value pushed by `expression()`.
-        emit_gettable(self, list, nest);
-        break;
-    case ASSIGN_FIELD:
-        emit_gettable(self, list, nest);
-        emit_oparg3(self, OP_CONSTANT, list->arg);
-        break;
-    case ASSIGN_GLOBAL:
-        emit_oparg3(self, OP_GETGLOBAL, list->arg);
-        break;
-    case ASSIGN_LOCAL:
-        emit_oparg1(self, OP_GETLOCAL, list->arg);
-        break;
-    }
 }
 
 // 1}}} ------------------------------------------------------------------------
 
 int make_constant(Compiler *self, const TValue *value) {
+    Alloc *alloc = &self->vm->alloc;
     Lexer *lexer = self->lexer;
-    int index = add_constant(current_chunk(self), value, &self->vm->alloc);
+    int    index = add_constant(current_chunk(self), value, alloc);
     if (index + 1 > MAX_CONSTS) {
         lexerror_at_consumed(lexer, "Too many constants in current chunk");
     }

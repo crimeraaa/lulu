@@ -40,8 +40,7 @@ typedef const struct {
 typedef enum {
     ASSIGN_GLOBAL,
     ASSIGN_LOCAL,
-    ASSIGN_FIELD,  // Indexing via dot notation e.g. `io.stdout`.
-    ASSIGN_INDEX,  // Indexing via bracket notation e.g. `_G["print"]`.
+    ASSIGN_TABLE,
 } AssignType;
 
 struct Assignment {

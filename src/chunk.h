@@ -87,9 +87,9 @@ typedef const struct {
 // Lookup table which maps `OpCode` to its respective `OpInfo` struct.
 extern OpInfo LULU_OPINFO[];
 
-#define get_opinfo(op)  (&LULU_OPINFO[op])
-#define get_opname(op)  get_opinfo(op)->name
-#define get_opsize(op)  (get_opinfo(op)->argsz + 1)
+#define get_opinfo(op)  LULU_OPINFO[op]
+#define get_opname(op)  get_opinfo(op).name
+#define get_opsize(op)  (get_opinfo(op).argsz + 1)
 
 typedef struct {
     TArray      constants;

@@ -35,7 +35,7 @@ static void expression(Compiler *self);
 
 static int parse_exprlist(Compiler *self) {
     Lexer *lexer = self->lexer;
-    int exprs = 0;
+    int    exprs = 0;
     do {
         expression(self);
         exprs += 1;
@@ -187,7 +187,7 @@ static void parse_field(Compiler *self) {
         consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
         break;
     case TK_IDENT:
-        emit_oparg3(self, OP_CONSTANT, identifier_constant(self, token));
+        emit_identifier(self);
         break;
     default:
         break;
@@ -290,41 +290,73 @@ static void expression(Compiler *self) {
 // ASSIGNMENTS ------------------------------------------------------------ {{{2
 
 static void init_assignment(Assignment *self, Assignment *prev, AssignType type) {
-    self->prev = prev;
-    self->type = type;
-    self->arg  = -1;
-    self->istable = (type >= ASSIGN_FIELD && type <= ASSIGN_INDEX);
+    self->prev    = prev;
+    self->type    = type;
+    self->arg     = -1;
+    self->istable = (type == ASSIGN_TABLE);
 }
 
-// We are dealing with nested table field accesses, e.g. `t.k.v`.
-static void emit_settable(Compiler *self, Assignment *list) {
-    int nest = 0;
-    // Need to emit the target table (table + key/s) before the value
-    emit_fields(self, list, &nest);
-    expression(self);
-    emit_opcode(self, OP_SETTABLE);
-
-    // HACK: This is stupid but lets us preserve the stack correctly
-    // Because if we had no nested tables, we just need to pop the main one.
-    emit_oparg1(self, OP_POP, (nest == 0) ? 1 : nest);
+static int count_assignments(Assignment *self) {
+    Assignment *node = self;
+    int         count = 0;
+    while (node != NULL) {
+        count += 1;
+        node = node->prev;
+    }
+    return count;
 }
 
-// TODO: Make work with multiple assignment
-static void emit_assignment(Compiler *self, Assignment *list) {
+// Only ever called when dealing with nested table field accesses.
+static void emit_field(Compiler *self, Assignment *list) {
     switch (list->type) {
     case ASSIGN_GLOBAL:
-        expression(self);
+        emit_oparg3(self, OP_GETGLOBAL, list->arg);
+        break;
+    case ASSIGN_LOCAL:
+        emit_oparg1(self, OP_GETLOCAL, list->arg);
+        break;
+    case ASSIGN_TABLE:
+        emit_opcode(self, OP_GETTABLE);
+        break;
+    }
+}
+
+static void emit_assignment_tail(Compiler *self, Assignment *list) {
+    if (list == NULL) {
+        return;
+    }
+    switch (list->type) {
+    case ASSIGN_GLOBAL:
         emit_oparg3(self, OP_SETGLOBAL, list->arg);
         break;
     case ASSIGN_LOCAL:
-        expression(self);
         emit_oparg1(self, OP_SETLOCAL, list->arg);
         break;
-    case ASSIGN_FIELD:
-    case ASSIGN_INDEX:
-        emit_settable(self, list);
+    case ASSIGN_TABLE:
+        emit_opcode(self, OP_SETTABLE);
+        emit_oparg1(self, OP_POP, 1);
         break;
     }
+    emit_assignment_tail(self, list->prev);
+}
+
+static void emit_assignment(Compiler *self, Assignment *list) {
+    int idents = count_assignments(list);
+    int exprs  = parse_exprlist(self);
+    adjust_exprlist(self, idents, exprs);
+    emit_assignment_tail(self, list);
+}
+
+// Find the most recent non-table assignment. Used to remove table assignments
+// from the linked list.
+static Assignment *prev_assignment(Assignment *self) {
+    if (self == NULL) {
+        return NULL;
+    }
+    if (!self->istable) {
+        return self;
+    }
+    return prev_assignment(self->prev);
 }
 
 /**
@@ -340,11 +372,28 @@ static void emit_assignment(Compiler *self, Assignment *list) {
  *          CONSTANT    13
  *          SETTABLE
  */
-static void discharge_assignment(Compiler *self, Assignment *list) {
-    emit_fields(self, list, NULL);
-    if (list->istable) {
-        emit_opcode(self, OP_GETTABLE);
+static void discharge_assignment(Compiler *self, Assignment *list, TkType type) {
+    Lexer *lexer = self->lexer;
+    next_token(lexer);
+    emit_field(self, list);
+
+    // Discharge the field we just consumed instead of storing it in the list.
+    switch (type) {
+    case TK_LBRACKET:
+        expression(self);
+        consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
+        break;
+    case TK_PERIOD:
+        consume_token(lexer, TK_IDENT, "Expected an identifier after '.'");
+        emit_identifier(self);
+        break;
+    default:
+        // Should be unreachable
+        break;
     }
+
+    // Don't pass `list` itself to `prev_assignment()` as it'll infinite loop.
+    init_assignment(list, prev_assignment(list->prev), ASSIGN_TABLE);
 }
 
 // Assumes we consumed an identifier as the first element of a statement.
@@ -354,7 +403,7 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
 
     // Is this the first statement and NOT an index using bracket notation?
     // NOTE: Recursive calls should initalize `elem` beforehand.
-    if (elem->prev == NULL && !elem->istable) {
+    if (!elem->istable) {
         // Assignment occurs first, is resolved to the lvalue, then comparison.
         bool islocal = (elem->arg = resolve_local(self, &ident)) != -1;
         elem->type   = (islocal) ? ASSIGN_LOCAL : ASSIGN_GLOBAL;
@@ -364,31 +413,12 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
     }
 
     switch (lexer->lookahead.type) {
-    case TK_PERIOD: {
-        Assignment next;
-
-        // We are about to emit the table up to this point so don't link.
-        init_assignment(&next, NULL, ASSIGN_FIELD);
-        next_token(lexer);
-        discharge_assignment(self, elem);
-        consume_token(lexer, TK_IDENT, "Expected an identifier after '.'");
-        ident    = lexer->consumed;
-        next.arg = identifier_constant(self, &ident);
-        identifier_statement(self, &next);
+    case TK_PERIOD: // Fall through
+    case TK_LBRACKET:
+        // Emit the table up to this point then remove it from the linked list.
+        discharge_assignment(self, elem, lexer->lookahead.type);
+        identifier_statement(self, elem);
         break;
-    }
-    case TK_LBRACKET: {
-        Assignment next;
-
-        // Will emit the table up to this point so we can afford to forget it.
-        init_assignment(&next, NULL, ASSIGN_INDEX);
-        next_token(lexer);
-        discharge_assignment(self, elem);
-        expression(self);
-        consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
-        identifier_statement(self, &next);
-        break;
-    }
     case TK_ASSIGN:
         next_token(lexer);
         emit_assignment(self, elem);
@@ -396,9 +426,14 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
     case TK_LPAREN:
         lexerror_at_consumed(lexer, "Function calls not yet implemented");
         break;
-    case TK_COMMA:
-        lexerror_at_consumed(lexer, "Multiple assignment not yet implemented");
+    case TK_COMMA: {
+        Assignment next;
+        init_assignment(&next, elem, ASSIGN_GLOBAL);
+        next_token(lexer);
+        consume_token(lexer, TK_IDENT, "Expected an identifier after ','");
+        identifier_statement(self, &next);
         break;
+    }
     default:
         lexerror_at_consumed(lexer, "Unexpected token in identifier statement");
     }
@@ -420,7 +455,7 @@ static void print_statement(Compiler *self) {
 
 // Expressions produce values, but since statements need to have 0 stack effect
 // this will pop whatever it produces.
-static void exprstmt(Compiler *self) {
+static void gtmt(Compiler *self) {
     expression(self);
     emit_oparg1(self, OP_POP, 1);
 }
@@ -459,7 +494,7 @@ static void statement(Compiler *self) {
         print_statement(self);
         break;
     default:
-        exprstmt(self);
+        gtmt(self);
         break;
     }
 }
@@ -527,7 +562,7 @@ void declaration(Compiler *self) {
 // PARSE RULES ------------------------------------------------------------ {{{1
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
-// exprssions following it.
+// gsions following it.
 static void parse_precedence(Compiler *self, Precedence prec) {
     Lexer *lexer = self->lexer;
     next_token(lexer);
