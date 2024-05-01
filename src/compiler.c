@@ -177,7 +177,8 @@ void emit_variable(Compiler *self, const Token ident) {
 }
 
 int identifier_constant(Compiler *self, const Token ident) {
-    TValue wrapper = make_string(copy_string(self->vm, ident.start, ident.len));
+    StrView view    = ident.view;
+    TValue  wrapper = make_string(copy_string(self->vm, view.begin, view.len));
     return make_constant(self, &wrapper);
 }
 
@@ -236,7 +237,9 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
 
 static bool identifiers_equal(const Token a, const Token b) {
-    return (a.len == b.len) && cstr_equal(a.start, b.start, a.len);
+    const StrView s1 = a.view;
+    const StrView s2 = b.view;
+    return (s1.len == s2.len) && cstr_eq(s1.begin, s2.begin, s1.len);
 }
 
 int resolve_local(Compiler *self, const Token ident) {

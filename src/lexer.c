@@ -6,105 +6,108 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-typedef const struct {
-    const char *word;
-    int         len;
-} TkInfo;
+static StrView LULU_TKINFO[] = {
+    [TK_AND]      = strview_lit("and"),
+    [TK_BREAK]    = strview_lit("break"),
+    [TK_DO]       = strview_lit("do"),
+    [TK_ELSE]     = strview_lit("else"),
+    [TK_ELSEIF]   = strview_lit("elseif"),
+    [TK_END]      = strview_lit("end"),
+    [TK_FALSE]    = strview_lit("false"),
+    [TK_FOR]      = strview_lit("for"),
+    [TK_FUNCTION] = strview_lit("function"),
+    [TK_IF]       = strview_lit("if"),
+    [TK_IN]       = strview_lit("in"),
+    [TK_LOCAL]    = strview_lit("local"),
+    [TK_NIL]      = strview_lit("nil"),
+    [TK_NOT]      = strview_lit("not"),
+    [TK_OR]       = strview_lit("or"),
+    [TK_PRINT]    = strview_lit("print"),
+    [TK_RETURN]   = strview_lit("return"),
+    [TK_THEN]     = strview_lit("then"),
+    [TK_TRUE]     = strview_lit("true"),
+    [TK_WHILE]    = strview_lit("while"),
 
-#define make_tkinfo(s)      {(s), cstr_litsize(s)}
+    [TK_LPAREN]   = strview_lit("("),
+    [TK_RPAREN]   = strview_lit(")"),
+    [TK_LBRACKET] = strview_lit("["),
+    [TK_RBRACKET] = strview_lit("]"),
+    [TK_LCURLY]   = strview_lit("{"),
+    [TK_RCURLY]   = strview_lit("}"),
 
-static TkInfo LULU_TKINFO[] = {
-    [TK_AND]      = make_tkinfo("and"),
-    [TK_BREAK]    = make_tkinfo("break"),
-    [TK_DO]       = make_tkinfo("do"),
-    [TK_ELSE]     = make_tkinfo("else"),
-    [TK_ELSEIF]   = make_tkinfo("elseif"),
-    [TK_END]      = make_tkinfo("end"),
-    [TK_FALSE]    = make_tkinfo("false"),
-    [TK_FOR]      = make_tkinfo("for"),
-    [TK_FUNCTION] = make_tkinfo("function"),
-    [TK_IF]       = make_tkinfo("if"),
-    [TK_IN]       = make_tkinfo("in"),
-    [TK_LOCAL]    = make_tkinfo("local"),
-    [TK_NIL]      = make_tkinfo("nil"),
-    [TK_NOT]      = make_tkinfo("not"),
-    [TK_OR]       = make_tkinfo("or"),
-    [TK_PRINT]    = make_tkinfo("print"),
-    [TK_RETURN]   = make_tkinfo("return"),
-    [TK_THEN]     = make_tkinfo("then"),
-    [TK_TRUE]     = make_tkinfo("true"),
-    [TK_WHILE]    = make_tkinfo("while"),
+    [TK_COMMA]    = strview_lit(","),
+    [TK_SEMICOL]  = strview_lit(";"),
+    [TK_VARARG]   = strview_lit("..."),
+    [TK_CONCAT]   = strview_lit(".."),
+    [TK_PERIOD]   = strview_lit("."),
+    [TK_POUND]    = strview_lit("#"),
 
-    [TK_LPAREN]   = make_tkinfo("("),
-    [TK_RPAREN]   = make_tkinfo(")"),
-    [TK_LBRACKET] = make_tkinfo("["),
-    [TK_RBRACKET] = make_tkinfo("]"),
-    [TK_LCURLY]   = make_tkinfo("{"),
-    [TK_RCURLY]   = make_tkinfo("}"),
+    [TK_PLUS]     = strview_lit("+"),
+    [TK_DASH]     = strview_lit("-"),
+    [TK_STAR]     = strview_lit("*"),
+    [TK_SLASH]    = strview_lit("/"),
+    [TK_PERCENT]  = strview_lit("%"),
+    [TK_CARET]    = strview_lit("^"),
 
-    [TK_COMMA]    = make_tkinfo(","),
-    [TK_SEMICOL]  = make_tkinfo(";"),
-    [TK_VARARG]   = make_tkinfo("..."),
-    [TK_CONCAT]   = make_tkinfo(".."),
-    [TK_PERIOD]   = make_tkinfo("."),
-    [TK_POUND]    = make_tkinfo("#"),
+    [TK_ASSIGN]   = strview_lit("="),
+    [TK_EQ]       = strview_lit("=="),
+    [TK_NEQ]      = strview_lit("~="),
+    [TK_GT]       = strview_lit(">"),
+    [TK_GE]       = strview_lit(">="),
+    [TK_LT]       = strview_lit("<"),
+    [TK_LE]       = strview_lit("<="),
 
-    [TK_PLUS]     = make_tkinfo("+"),
-    [TK_DASH]     = make_tkinfo("-"),
-    [TK_STAR]     = make_tkinfo("*"),
-    [TK_SLASH]    = make_tkinfo("/"),
-    [TK_PERCENT]  = make_tkinfo("%"),
-    [TK_CARET]    = make_tkinfo("^"),
-
-    [TK_ASSIGN]   = make_tkinfo("="),
-    [TK_EQ]       = make_tkinfo("=="),
-    [TK_NEQ]      = make_tkinfo("~="),
-    [TK_GT]       = make_tkinfo(">"),
-    [TK_GE]       = make_tkinfo(">="),
-    [TK_LT]       = make_tkinfo("<"),
-    [TK_LE]       = make_tkinfo("<="),
-
-    [TK_IDENT]    = make_tkinfo("<identifier>"),
-    [TK_STRING]   = make_tkinfo("<string>"),
-    [TK_NUMBER]   = make_tkinfo("<number>"),
-    [TK_ERROR]    = make_tkinfo("<error>"),
-    [TK_EOF]      = make_tkinfo("<eof>"),
+    [TK_IDENT]    = strview_lit("<identifier>"),
+    [TK_STRING]   = strview_lit("<string>"),
+    [TK_NUMBER]   = strview_lit("<number>"),
+    [TK_ERROR]    = strview_lit("<error>"),
+    [TK_EOF]      = strview_lit("<eof>"),
 };
 
-#undef make_tkinfo
+static void init_strview(StrView *self, const char *view) {
+    self->begin = view;
+    self->end   = view;
+    self->len   = 0;
+}
+
+static void init_token(Token *self, const char *view) {
+    init_strview(&self->view, view);
+    self->line  = 0;
+    self->type  = TK_EOF;
+}
 
 void init_lexer(Lexer *self, const char *input, VM *vm) {
-    self->lookahead = compoundlit(Token, 0);
-    self->consumed  = self->lookahead;
-    self->lexeme    = input;
-    self->position  = input;
-    self->vm        = vm;
-    self->name      = vm->name;
-    self->line      = 1;
+    init_token(&self->lookahead, input);
+    init_token(&self->consumed, input);
+    init_strview(&self->lexeme, input);
+    self->vm   = vm;
+    self->name = vm->name;
+    self->line = 1;
 }
 
 // HELPERS ---------------------------------------------------------------- {{{1
 
 static bool is_at_end(const Lexer *self) {
-    return *self->position == '\0';
+    return *self->lexeme.end == '\0';
 }
 
 static char peek_current_char(const Lexer *self) {
-    return *self->position;
+    return *self->lexeme.end;
 }
 
 static char peek_next_char(const Lexer *self) {
-    return *(self->position + 1);
+    return *(self->lexeme.end + 1);
 }
 
-// Return current character then increment the Lexer's position pointer.
-// This is the same as `advance()` in the book.
+// Analogous to `scanner.c:advance()` in the book.
 static char next_char(Lexer *self) {
-    return *self->position++;
+    self->lexeme.len += 1;
+    self->lexeme.end += 1;
+    return *(self->lexeme.end - 1);
 }
 
 static bool match_char(Lexer *self, char expected) {
-    if (is_at_end(self) || *self->position != expected) {
+    if (is_at_end(self) || peek_current_char(self) != expected) {
         return false;
     } else {
         next_char(self);
@@ -167,12 +170,11 @@ static void skip_comment(Lexer *self) {
 
 // TOKENIZER -------------------------------------------------------------- {{{1
 
-static Token make_token(const Lexer *self, TkType type) {
+static Token make_token(Lexer *self, TkType type) {
     Token token;
-    token.start = self->lexeme;
-    token.len   = cast(int, self->position - self->lexeme);
-    token.line  = self->line;
-    token.type  = type;
+    token.view = self->lexeme;
+    token.type = type;
+    token.line = self->line;
     return token;
 }
 
@@ -204,70 +206,68 @@ static void skip_whitespace(Lexer *self) {
     }
 }
 
-static TkType check_keyword(TkType expected, const char *word, int len) {
-    TkInfo kw = LULU_TKINFO[expected];
-    if (kw.len == len && cstr_equal(kw.word, word, len)) {
+static TkType check_keyword(TkType expected, StrView word) {
+    StrView kw = LULU_TKINFO[expected];
+    if (kw.len == word.len && cstr_eq(kw.begin, word.begin, word.len)) {
         return expected;
     }
     return TK_IDENT;
 }
 
 static TkType get_identifier_type(const Lexer *self) {
-    const char *word = self->lexeme;
-    const int   len  = self->position - self->lexeme;
-
-    switch (word[0]) {
-    case 'a': return check_keyword(TK_AND, word, len);
-    case 'b': return check_keyword(TK_BREAK, word, len);
-    case 'd': return check_keyword(TK_DO, word, len);
+    StrView word = self->lexeme;
+    switch (word.begin[0]) {
+    case 'a': return check_keyword(TK_AND, word);
+    case 'b': return check_keyword(TK_BREAK, word);
+    case 'd': return check_keyword(TK_DO, word);
     case 'e':
-        switch (len) {
-        case cstr_litsize("end"):
-            return check_keyword(TK_END, word, len);
-        case cstr_litsize("else"):
-            return check_keyword(TK_ELSE, word, len);
-        case cstr_litsize("elseif"):
-            return check_keyword(TK_ELSEIF, word, len);
+        switch (word.len) {
+        case cstr_len("end"):
+            return check_keyword(TK_END, word);
+        case cstr_len("else"):
+            return check_keyword(TK_ELSE, word);
+        case cstr_len("elseif"):
+            return check_keyword(TK_ELSEIF, word);
         }
         break;
     case 'f':
-        if (len > 1) {
-            switch (word[1]) {
-            case 'a': return check_keyword(TK_FALSE, word, len);
-            case 'o': return check_keyword(TK_FOR, word, len);
-            case 'u': return check_keyword(TK_FUNCTION, word, len);
+        if (word.len > 1) {
+            switch (word.begin[1]) {
+            case 'a': return check_keyword(TK_FALSE, word);
+            case 'o': return check_keyword(TK_FOR, word);
+            case 'u': return check_keyword(TK_FUNCTION, word);
             }
         }
         break;
     case 'i':
-        if (len > 1) {
-            switch (word[1]) {
-            case 'f': return check_keyword(TK_IF, word, len);
-            case 'n': return check_keyword(TK_IN, word, len);
+        if (word.len > 1) {
+            switch (word.begin[1]) {
+            case 'f': return check_keyword(TK_IF, word);
+            case 'n': return check_keyword(TK_IN, word);
             }
         }
         break;
-    case 'l': return check_keyword(TK_LOCAL, word, len);
+    case 'l': return check_keyword(TK_LOCAL, word);
     case 'n':
-        if (len > 1) {
-            switch (word[1]) {
-            case 'i': return check_keyword(TK_NIL, word, len);
-            case 'o': return check_keyword(TK_NOT, word, len);
+        if (word.len > 1) {
+            switch (word.begin[1]) {
+            case 'i': return check_keyword(TK_NIL, word);
+            case 'o': return check_keyword(TK_NOT, word);
             }
         }
         break;
-    case 'o': return check_keyword(TK_OR, word, len);
-    case 'p': return check_keyword(TK_PRINT, word, len);
-    case 'r': return check_keyword(TK_RETURN, word, len);
+    case 'o': return check_keyword(TK_OR, word);
+    case 'p': return check_keyword(TK_PRINT, word);
+    case 'r': return check_keyword(TK_RETURN, word);
     case 't':
-        if (len > 1) {
-            switch (word[1]) {
-            case 'h': return check_keyword(TK_THEN, word, len);
-            case 'r': return check_keyword(TK_TRUE, word, len);
+        if (word.len > 1) {
+            switch (word.begin[1]) {
+            case 'h': return check_keyword(TK_THEN, word);
+            case 'r': return check_keyword(TK_TRUE, word);
             }
         }
         break;
-    case 'w': return check_keyword(TK_WHILE, word, len);
+    case 'w': return check_keyword(TK_WHILE, word);
     }
     return TK_IDENT;
 }
@@ -366,7 +366,7 @@ static Token string_token(Lexer *self, char quote) {
 
 Token scan_token(Lexer *self) {
     skip_whitespace(self);
-    self->lexeme = self->position;
+    init_strview(&self->lexeme, self->lexeme.end);
     if (is_at_end(self)) {
         return make_token(self, TK_EOF);
     }
@@ -463,10 +463,10 @@ void expect_token(Lexer *self, TkType expected, const char *info) {
     }
 
     Builder message;
-    TkInfo  tkinfo = LULU_TKINFO[expected];
+    StrView tkinfo = LULU_TKINFO[expected];
 
     init_builder(&message);
-    append_builder(&message, "Expected '%s'", tkinfo.word);
+    append_builder(&message, "Expected '%s'", tkinfo.begin);
 
     if (info != NULL) {
         append_builder(&message, " %s", info);
@@ -517,7 +517,7 @@ void lexerror_at(Lexer *self, const Token token, const char *info) {
     if (token.type == TK_EOF) {
         fprintf(stderr, " at <eof>\n");
     } else {
-        fprintf(stderr, " near '%.*s'\n", token.len, token.start);
+        fprintf(stderr, " near '%.*s'\n", token.view.len, token.view.begin);
     }
     longjmp(self->vm->errorjmp, ERROR_COMPTIME);
 }

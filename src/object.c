@@ -446,7 +446,7 @@ TString *find_interned(VM *vm, const char *data, int len, uint32_t hash) {
         // We assume ALL keys in this table are strings.
         TString *ts = as_string(&entry->key);
         if (ts->len == len && ts->object.hash == hash) {
-            if (cstr_equal(ts->data, data, len)) {
+            if (cstr_eq(ts->data, data, len)) {
                 return ts;
             }
         }

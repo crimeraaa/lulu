@@ -52,8 +52,8 @@
 #define unused3(x, y, z)    unused2(x, y); unused(z)
 
 // String literal length. Useful for expressions needed at compile-time.
-#define cstr_litsize(s)     (array_len(s) - 1)
-#define cstr_equal(a, b, n) (memcmp(a, b, n) == 0)
+#define cstr_len(s)         (array_len(s) - 1)
+#define cstr_eq(a, b, n)    (memcmp(a, b, n) == 0)
 
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
@@ -65,5 +65,14 @@ typedef enum {
     ERROR_RUNTIME,
     ERROR_ALLOC,
 } ErrType;
+
+typedef struct {
+    const char *begin; // Pointer to the first character in the string.
+    const char *end;   // Pointer to nul character or 1 past last valid index.
+    int         len;   // What the result of `strlen` would be.
+} StrView;
+
+// Silly to populate both end and len like this but we need consistency.
+#define strview_lit(s)      {(s), &(s)[0] + cstr_len(s), cstr_len(s)}
 
 #endif /* LULU_LIMITS_H */

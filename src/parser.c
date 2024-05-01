@@ -154,10 +154,10 @@ static void number(Compiler *self) {
     Lexer *lexer = self->lexer;
     Token  token = lexer->consumed;
     char  *endptr; // Populated by below function call
-    Number value = cstr_tonumber(token.start, &endptr);
+    Number value = cstr_tonumber(token.view.begin, &endptr);
 
     // If this is true, strtod failed to convert the entire token/lexeme.
-    if (endptr != (token.start + token.len)) {
+    if (endptr != token.view.end) {
         lexerror_at_consumed(lexer, "Malformed number");
     } else {
         TValue wrapper = make_number(value);
@@ -166,11 +166,12 @@ static void number(Compiler *self) {
 }
 
 static void string(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    Token  token = lexer->consumed;
+    Lexer  *lexer = self->lexer;
+    Token   token = lexer->consumed;
+    StrView view  = token.view;
 
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
-    TString *ts    = copy_string(self->vm, token.start + 1, token.len - 2);
+    TString *ts    = copy_string(self->vm, view.begin + 1, view.len - 2);
     TValue wrapper = make_string(ts);
     emit_constant(self, &wrapper);
 }
