@@ -83,8 +83,8 @@ static OpCode get_binop(TkType optype) {
 // and that the left-hand side has been fully compiled.
 static void binary(Compiler *self) {
     Lexer  *lexer  = self->lexer;
-    Token  *token  = &lexer->consumed;
-    TkType  optype = token->type;
+    Token   token  = lexer->consumed;
+    TkType  optype = token.type;
 
     // For exponentiation enforce right-associativity.
     parse_precedence(self, get_parserule(optype)->prec + (optype != TK_CARET));
@@ -141,7 +141,7 @@ static void literal(Compiler *self) {
 static void grouping(Compiler *self) {
     Lexer *lexer = self->lexer;
 
-    // Hacky to create a new scope, but lets us error at too many C-facing calls.
+    // Hacky to create a new scope but lets us error at too many C-facing calls.
     // See: https://www.lua.org/source/5.1/lparser.c.html#enterlevel
     begin_scope(self);
     expression(self);
@@ -152,12 +152,12 @@ static void grouping(Compiler *self) {
 // Assumes we just consumed a possible number literal.
 static void number(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
+    Token  token = lexer->consumed;
     char  *endptr; // Populated by below function call
-    Number value = cstr_tonumber(token->start, &endptr);
+    Number value = cstr_tonumber(token.start, &endptr);
 
     // If this is true, strtod failed to convert the entire token/lexeme.
-    if (endptr != (token->start + token->len)) {
+    if (endptr != (token.start + token.len)) {
         lexerror_at_consumed(lexer, "Malformed number");
     } else {
         TValue wrapper = make_number(value);
@@ -167,41 +167,56 @@ static void number(Compiler *self) {
 
 static void string(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
+    Token  token = lexer->consumed;
 
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
-    TString *ts    = copy_string(self->vm, token->start + 1, token->len - 2);
+    TString *ts    = copy_string(self->vm, token.start + 1, token.len - 2);
     TValue wrapper = make_string(ts);
     emit_constant(self, &wrapper);
 }
 
+static void emit_index(Compiler *self, int *index) {
+    TValue wrapper = make_number(*index);
+    emit_constant(self, &wrapper);
+    *index += 1;
+}
+
 // Assumes we consumed a `'['` or an identifier representing a table field.
-static void parse_field(Compiler *self) {
+static bool parse_field(Compiler *self, bool assigning) {
     Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
-    switch (token->type) {
+    Token  token = lexer->consumed;
+    switch (token.type) {
     case TK_LBRACKET:
         expression(self);
         expect_token(lexer, TK_RBRACKET, NULL);
         break;
+    case TK_PERIOD:
+        if (assigning) {
+            return false;
+        }
+        expect_token(lexer, TK_IDENT, NULL); // Fall through
     case TK_IDENT:
         emit_identifier(self);
         break;
     default:
         break;
     }
+    if (!assigning) {
+        emit_opcode(self, OP_GETTABLE);
+    }
+    return true;
 }
 
 static void parse_ctor(Compiler *self, int *index) {
     Lexer *lexer  = self->lexer;
     Byte   offset = self->stack_usage - 1; // Absolute index of table itself.
+
+    // TODO: Allow identifiers as implied array elements
     if (match_token_any(lexer, TK_LBRACKET, TK_IDENT)) {
-        parse_field(self);
+        parse_field(self, true);
         expect_token(lexer, TK_ASSIGN, "to assign table field");
     } else {
-        TValue wrapper = make_number(*index);
-        emit_constant(self, &wrapper);
-        *index += 1;
+        emit_index(self, index);
     }
     expression(self);
 
@@ -223,36 +238,22 @@ static void table(Compiler *self) {
     }
 }
 
-// Originally analogous to `namedVariable()` in the book, but with our current
-// semantics ours is radically different.
-static void emit_getop(Compiler *self, const Token *name) {
-    Lexer *lexer   = self->lexer;
-    int    operand = resolve_local(self, name);
-    bool   islocal = (operand != -1);
-
-
-    // Global vs. local operands have different sizes.
-    if (islocal) {
-        emit_oparg1(self, OP_GETLOCAL, operand);
-    } else {
-        emit_oparg3(self, OP_GETGLOBAL, identifier_constant(self, name));
-    }
+/**
+ * @brief   Originally analogous to `namedVariable()` in the book, but with our
+ *          current semantics ours is radically different.
+ *
+ * @note    Past the first lexeme, assigning of variables is not allowed in Lua.
+ *          So this function can only ever perform get operations.
+ */
+static void variable(Compiler *self) {
+    Lexer *lexer = self->lexer;
+    Token  name  = lexer->consumed;
+    emit_variable(self, name);
 
     // Have 1+ table fields?
     while (match_token_any(lexer, TK_LBRACKET, TK_PERIOD)) {
-        if (lexer->consumed.type == TK_PERIOD) {
-            expect_token(lexer, TK_IDENT, NULL);
-        }
-        parse_field(self);
-        emit_opcode(self, OP_GETTABLE);
+        parse_field(self, false);
     }
-}
-
-// Past the first lexeme, assigning of variables is not allowed in Lua.
-// So this function can only ever perform get operations.
-static void variable(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    emit_getop(self, &lexer->consumed);
 }
 
 static OpCode get_unop(TkType type) {
@@ -269,8 +270,8 @@ static OpCode get_unop(TkType type) {
 // Assumes we just consumed an unary operator.
 static void unary(Compiler *self) {
     Lexer *lexer  = self->lexer;
-    Token *token  = &lexer->consumed;
-    TkType optype = token->type; // Save due to recursion when compiling.
+    Token  token  = lexer->consumed;
+    TkType optype = token.type; // Save due to recursion when compiling.
 
     // Recursively compiles until we hit something with a lower precedence.
     parse_precedence(self, PREC_UNARY);
@@ -293,6 +294,12 @@ static void init_assignment(Assignment *self, Assignment *prev, AssignType type)
     self->prev    = prev;
     self->type    = type;
     self->arg     = -1;
+    self->istable = (type == ASSIGN_TABLE);
+}
+
+static void set_assignment(Assignment *self, AssignType type, int arg) {
+    self->type    = type;
+    self->arg     = arg;
     self->istable = (type == ASSIGN_TABLE);
 }
 
@@ -338,6 +345,12 @@ static void emit_assignment_tail(Compiler *self, Assignment *list) {
         break;
     }
     emit_assignment_tail(self, list->prev);
+
+    // After recursion, clean up stack if we emitted table fields as they cannot
+    // be implicitly popped due to SETTABLE being a VAR_DELTA pop.
+    if (list->istable) {
+        emit_oparg1(self, OP_POP, 2);
+    }
 }
 
 static void emit_assignment(Compiler *self, Assignment *list) {
@@ -345,15 +358,6 @@ static void emit_assignment(Compiler *self, Assignment *list) {
     int exprs  = parse_exprlist(self);
     adjust_exprlist(self, idents, exprs);
     emit_assignment_tail(self, list);
-
-    // Clean up stack as emitted table fields are never implicitly cleaned up.
-    Assignment *node = list;
-    while (node != NULL) {
-        if (node->istable) {
-            emit_oparg1(self, OP_POP, 2);
-        }
-        node = node->prev;
-    }
 }
 
 /**
@@ -389,8 +393,8 @@ static void discharge_assignment(Compiler *self, Assignment *list, TkType type) 
         break;
     }
 
-    init_assignment(list, list->prev, ASSIGN_TABLE);
-    list->arg = self->stack_usage - 2; // 0 is top, -1 is key, -2 is table.
+    // 0 is top, -1 is key, -2 is table.
+    set_assignment(list, ASSIGN_TABLE, self->stack_usage - 2);
 }
 
 // Assumes we consumed an identifier as the first element of a statement.
@@ -398,21 +402,19 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
     Lexer *lexer = self->lexer;
     Token  ident = lexer->consumed;
 
-    // Is this the first statement and NOT an index using bracket notation?
-    // NOTE: Recursive calls should initalize `elem` beforehand.
     if (!elem->istable) {
-        // Assignment occurs first, is resolved to the lvalue, then comparison.
-        bool islocal = (elem->arg = resolve_local(self, &ident)) != -1;
-        elem->type   = (islocal) ? ASSIGN_LOCAL : ASSIGN_GLOBAL;
+        int  arg     = resolve_local(self, ident);
+        bool islocal = (arg != -1);
         if (!islocal) {
-            elem->arg = identifier_constant(self, &ident);
+            arg = identifier_constant(self, ident);
         }
+        set_assignment(elem, islocal ? ASSIGN_LOCAL : ASSIGN_GLOBAL, arg);
     }
 
     switch (lexer->lookahead.type) {
     case TK_PERIOD: // Fall through
     case TK_LBRACKET:
-        // Emit the table up to this point then remove it from the linked list.
+        // Emit the table up to this point then mark `elem` as a table.
         discharge_assignment(self, elem, lexer->lookahead.type);
         identifier_statement(self, elem);
         break;
@@ -504,7 +506,7 @@ static void statement(Compiler *self) {
 // Intern a local variable name. Analogous to `parseVariable()` in the book.
 static void parse_local(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
+    Token  token = lexer->consumed;
     init_local(self);
     identifier_constant(self, token); // We don't need the index here.
 }

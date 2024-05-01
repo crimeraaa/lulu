@@ -14,8 +14,8 @@
 typedef struct Assignment Assignment;
 
 typedef struct {
-    Token name; // Identifier in the source code.
-    int   depth;  // Scope depth at the time of declaration.
+    Token ident; // Identifier in the source code.
+    int   depth; // Scope depth at the time of declaration.
 } Local;
 
 typedef struct {
@@ -47,9 +47,10 @@ void emit_identifier(Compiler *self);
 // Will throw if our current number of constants exceeds `MAX_CONSTS`.
 int make_constant(Compiler *self, const TValue *value);
 void emit_constant(Compiler *self, const TValue *value);
+void emit_variable(Compiler *self, const Token ident);
 
 // Intern the `TString*` for `name` so we can easily look it up later.
-int identifier_constant(Compiler *self, const Token *name);
+int identifier_constant(Compiler *self, const Token ident);
 
 void begin_scope(Compiler *self);
 void end_scope(Compiler *self);
@@ -65,9 +66,9 @@ void init_local(Compiler *self);
 
 // Initializes the current top of the locals array.
 // Returns index of newly initialized local into the locals array.
-void add_local(Compiler *self, const Token *name);
+void add_local(Compiler *self, const Token ident);
 
 // Returns index of a local variable or -1 if assumed to be global.
-int resolve_local(Compiler *self, const Token *name);
+int resolve_local(Compiler *self, const Token ident);
 
 #endif /* LULU_COMPILER_H */

@@ -41,8 +41,8 @@ static void adjust_stackinfo(Compiler *self, OpCode op, int delta) {
 static void emit_byte(Compiler *self, Byte data) {
     Alloc *alloc = &self->vm->alloc;
     Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
-    write_chunk(current_chunk(self), data, token->line, alloc);
+    int    line  = lexer->consumed.line;
+    write_chunk(current_chunk(self), data, line, alloc);
 }
 
 Chunk *current_chunk(Compiler *self) {
@@ -54,24 +54,57 @@ void emit_opcode(Compiler *self, OpCode op) {
     adjust_stackinfo(self, op, 0);
 }
 
-void emit_oparg1(Compiler *self, OpCode op, Byte arg) {
-    Chunk  *chunk = current_chunk(self);
-    int     len   = chunk->len;
+/**
+ * @brief   Optimize consecutive opcodes with a variable delta. Assumes we
+ *          already know we want to adjust_vardelta an instruction/set thereof.
+ *
+ * @note    Assumes that the variable delta is always at the top of the bytecode.
+ */
+static bool adjust_vardelta(Compiler *self, OpCode op, Byte arg) {
+    Chunk *chunk = current_chunk(self);
+    int    len   = chunk->len;
+    int    delta = arg;
 
     switch (op) {
-    case OP_CONCAT:
-    case OP_NIL:
+    // Instead of emitting a separate POP we can just add to the variable delta
+    // of SETTABLE.
     case OP_POP:
-        // Optimize consecutive opcodes with a variable delta.
-        if (self->prev_opcode == op) {
-            // -1 since each OP_CONCAT assumes at least 2 args, so folding 2+
-            // will result in 1 less explicit pop as it's now been combined.
-            chunk->code[len - 1] += (op == OP_CONCAT) ? arg - 1 : arg;
-            break;
-        } else {
+        if (self->prev_opcode == OP_SETTABLE) {
+            return adjust_vardelta(self, OP_SETTABLE, arg);
+        }
+        break;
+    // -1 since each OP_CONCAT assumes at least 2 args, so folding 2+ will
+    // result in 1 less explicit pop as it's now been combined.
+    case OP_CONCAT:
+        delta -= 1;
+        break;
+    default:
+        break;
+    }
+
+    // This branch is down here in case of POP needing to optimize SETTABLE.
+    if (self->prev_opcode != op) {
+        return false;
+    }
+
+    // Adjusting would cause overflow? (Assumes `int` is bigger than `Byte`)
+    if (cast(int, chunk->code[len - 1]) + delta > MAX_BYTE) {
+        return false;
+    }
+    chunk->code[len - 1] += delta;
+    return true;
+}
+
+void emit_oparg1(Compiler *self, OpCode op, Byte arg) {
+    switch (op) {
+    case OP_POP:
+    case OP_CONCAT: // Fall through
+    case OP_NIL:
+        if (!adjust_vardelta(self, op, arg)) {
             goto no_optimization;
         }
-    no_optimization:
+        break;
+no_optimization:
     default:
         emit_byte(self, op);
         emit_byte(self, arg);
@@ -86,10 +119,13 @@ void emit_oparg2(Compiler *self, OpCode op, Byte2 arg) {
     emit_byte(self, encode_byte2_msb(arg));
     emit_byte(self, encode_byte2_lsb(arg));
 
-    // Silly to hardcode this but it works
-    if (op == OP_SETTABLE) {
-        int popped = encode_byte2_lsb(arg);
-        adjust_stackinfo(self, op, popped);
+    switch (op) {
+    case OP_SETTABLE:
+        // arg A is msb, arg B is lsb, and SETTABLE has variable delta arg B
+        adjust_stackinfo(self, op, encode_byte2_lsb(arg));
+        break;
+    default:
+        break;
     }
 }
 
@@ -103,7 +139,7 @@ void emit_oparg3(Compiler *self, OpCode op, Byte3 arg) {
 
 void emit_identifier(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token *ident = &lexer->consumed;
+    Token  ident = lexer->consumed;
     emit_oparg3(self, OP_CONSTANT, identifier_constant(self, ident));
 }
 
@@ -128,9 +164,20 @@ void emit_constant(Compiler *self, const TValue *value) {
     emit_oparg3(self, OP_CONSTANT, index);
 }
 
-int identifier_constant(Compiler *self, const Token *name) {
-    TString *ident = copy_string(self->vm, name->start, name->len);
-    TValue wrapper = make_string(ident);
+void emit_variable(Compiler *self, const Token ident) {
+    int  arg     = resolve_local(self, ident);
+    bool islocal = (arg != -1);
+
+    // Global vs. local operands have different sizes.
+    if (islocal) {
+        emit_oparg1(self, OP_GETLOCAL, arg);
+    } else {
+        emit_oparg3(self, OP_GETGLOBAL, identifier_constant(self, ident));
+    }
+}
+
+int identifier_constant(Compiler *self, const Token ident) {
+    TValue wrapper = make_string(copy_string(self->vm, ident.start, ident.len));
     return make_constant(self, &wrapper);
 }
 
@@ -188,34 +235,34 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
 
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
 
-static bool identifiers_equal(const Token *a, const Token *b) {
-    return (a->len == b->len) && cstr_equal(a->start, b->start, a->len);
+static bool identifiers_equal(const Token a, const Token b) {
+    return (a.len == b.len) && cstr_equal(a.start, b.start, a.len);
 }
 
-int resolve_local(Compiler *self, const Token *name) {
+int resolve_local(Compiler *self, const Token ident) {
     for (int i = self->local_count - 1; i >= 0; i--) {
         const Local *local = &self->locals[i];
         // If using itself in initializer, continue to resolve outward.
-        if (local->depth != -1 && identifiers_equal(name, &local->name)) {
+        if (local->depth != -1 && identifiers_equal(ident, local->ident)) {
             return i;
         }
     }
     return -1;
 }
 
-void add_local(Compiler *self, const Token *name) {
+void add_local(Compiler *self, const Token ident) {
     if (self->local_count + 1 > MAX_LOCALS) {
         lexerror_at_consumed(self->lexer,
             "More than " stringify(MAX_LOCALS) " local variables reached");
     }
     Local *local = &self->locals[self->local_count++];
-    local->name  = *name;
+    local->ident = ident;
     local->depth = -1;
 }
 
 void init_local(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token *name  = &lexer->consumed;
+    Token  ident = lexer->consumed;
 
     // Detect variable shadowing in the same scope.
     for (int i = self->local_count - 1; i >= 0; i--) {
@@ -224,11 +271,11 @@ void init_local(Compiler *self) {
         if (local->depth != -1 && local->depth < self->scope_depth) {
             break;
         }
-        if (identifiers_equal(name, &local->name)) {
+        if (identifiers_equal(ident, local->ident)) {
             lexerror_at_consumed(lexer, "Shadowing of local variable");
         }
     }
-    add_local(self, name);
+    add_local(self, ident);
 }
 
 void define_locals(Compiler *self, int count) {

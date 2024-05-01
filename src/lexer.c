@@ -75,11 +75,11 @@ static TkInfo LULU_TKINFO[] = {
     [TK_LT]       = make_quoted("<"),
     [TK_LE]       = make_quoted("<="),
 
-    [TK_IDENT]    = make_angled("identifier"),
-    [TK_STRING]   = make_angled("string"),
-    [TK_NUMBER]   = make_angled("number"),
-    [TK_ERROR]    = make_angled("error"),
-    [TK_EOF]      = make_angled("eof"),
+    [TK_IDENT]    = make_angled("<identifier>"),
+    [TK_STRING]   = make_angled("<string>"),
+    [TK_NUMBER]   = make_angled("<number>"),
+    [TK_ERROR]    = make_angled("<error>"),
+    [TK_EOF]      = make_angled("<eof>"),
 };
 
 #undef make_tkinfo
@@ -481,11 +481,7 @@ void expect_token(Lexer *self, TkType expected, const char *info) {
     TkInfo  tkinfo = LULU_TKINFO[expected];
 
     init_builder(&message);
-    if (tkinfo.flags & IS_QUOTED) {
-        append_builder(&message, "Expected '%s'", tkinfo.word);
-    } else {
-        append_builder(&message, "Expected <%s>", tkinfo.word);
-    }
+    append_builder(&message, "Expected '%s'", tkinfo.word);
 
     if (info != NULL) {
         append_builder(&message, " %s", info);
