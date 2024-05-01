@@ -6,87 +6,72 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-enum {
-    IS_RESERVED = 1, // bit 0
-    IS_QUOTED   = 2, // bit 1: if 1, enclose in single quotes else use angles.
-    IS_OPENED   = 4, // bit 2: if 1, report opening pair for ')', '}' and ']'.
-};
-
 typedef const struct {
     const char *word;
     int         len;
-    uint8_t     flags;
 } TkInfo;
 
-#define make_tkinfo(s, flags)   {(s), cstr_litsize(s), (flags)}
-#define make_angled(s)          make_tkinfo(s, IS_QUOTED & 0)
-#define make_reserved(s)        make_tkinfo(s, IS_RESERVED | IS_QUOTED)
-#define make_quoted(s)          make_tkinfo(s, IS_QUOTED)
-#define make_opened(s)          make_tkinfo(s, IS_QUOTED | IS_OPENED)
+#define make_tkinfo(s)      {(s), cstr_litsize(s)}
 
 static TkInfo LULU_TKINFO[] = {
-    [TK_AND]      = make_reserved("and"),
-    [TK_BREAK]    = make_reserved("break"),
-    [TK_DO]       = make_reserved("do"),
-    [TK_ELSE]     = make_reserved("else"),
-    [TK_ELSEIF]   = make_reserved("elseif"),
-    [TK_END]      = make_reserved("end"),
-    [TK_FALSE]    = make_reserved("false"),
-    [TK_FOR]      = make_reserved("for"),
-    [TK_FUNCTION] = make_reserved("function"),
-    [TK_IF]       = make_reserved("if"),
-    [TK_IN]       = make_reserved("in"),
-    [TK_LOCAL]    = make_reserved("local"),
-    [TK_NIL]      = make_reserved("nil"),
-    [TK_NOT]      = make_reserved("not"),
-    [TK_OR]       = make_reserved("or"),
-    [TK_PRINT]    = make_reserved("print"),
-    [TK_RETURN]   = make_reserved("return"),
-    [TK_THEN]     = make_reserved("then"),
-    [TK_TRUE]     = make_reserved("true"),
-    [TK_WHILE]    = make_reserved("while"),
+    [TK_AND]      = make_tkinfo("and"),
+    [TK_BREAK]    = make_tkinfo("break"),
+    [TK_DO]       = make_tkinfo("do"),
+    [TK_ELSE]     = make_tkinfo("else"),
+    [TK_ELSEIF]   = make_tkinfo("elseif"),
+    [TK_END]      = make_tkinfo("end"),
+    [TK_FALSE]    = make_tkinfo("false"),
+    [TK_FOR]      = make_tkinfo("for"),
+    [TK_FUNCTION] = make_tkinfo("function"),
+    [TK_IF]       = make_tkinfo("if"),
+    [TK_IN]       = make_tkinfo("in"),
+    [TK_LOCAL]    = make_tkinfo("local"),
+    [TK_NIL]      = make_tkinfo("nil"),
+    [TK_NOT]      = make_tkinfo("not"),
+    [TK_OR]       = make_tkinfo("or"),
+    [TK_PRINT]    = make_tkinfo("print"),
+    [TK_RETURN]   = make_tkinfo("return"),
+    [TK_THEN]     = make_tkinfo("then"),
+    [TK_TRUE]     = make_tkinfo("true"),
+    [TK_WHILE]    = make_tkinfo("while"),
 
-    [TK_LPAREN]   = make_quoted("("),
-    [TK_RPAREN]   = make_opened(")"),
-    [TK_LBRACKET] = make_quoted("["),
-    [TK_RBRACKET] = make_opened("]"),
-    [TK_LCURLY]   = make_quoted("{"),
-    [TK_RCURLY]   = make_opened("}"),
+    [TK_LPAREN]   = make_tkinfo("("),
+    [TK_RPAREN]   = make_tkinfo(")"),
+    [TK_LBRACKET] = make_tkinfo("["),
+    [TK_RBRACKET] = make_tkinfo("]"),
+    [TK_LCURLY]   = make_tkinfo("{"),
+    [TK_RCURLY]   = make_tkinfo("}"),
 
-    [TK_COMMA]    = make_quoted(","),
-    [TK_SEMICOL]  = make_quoted(";"),
-    [TK_VARARG]   = make_quoted("..."),
-    [TK_CONCAT]   = make_quoted(".."),
-    [TK_PERIOD]   = make_quoted("."),
-    [TK_POUND]    = make_quoted("#"),
+    [TK_COMMA]    = make_tkinfo(","),
+    [TK_SEMICOL]  = make_tkinfo(";"),
+    [TK_VARARG]   = make_tkinfo("..."),
+    [TK_CONCAT]   = make_tkinfo(".."),
+    [TK_PERIOD]   = make_tkinfo("."),
+    [TK_POUND]    = make_tkinfo("#"),
 
-    [TK_PLUS]     = make_quoted("+"),
-    [TK_DASH]     = make_quoted("-"),
-    [TK_STAR]     = make_quoted("*"),
-    [TK_SLASH]    = make_quoted("/"),
-    [TK_PERCENT]  = make_quoted("%"),
-    [TK_CARET]    = make_quoted("^"),
+    [TK_PLUS]     = make_tkinfo("+"),
+    [TK_DASH]     = make_tkinfo("-"),
+    [TK_STAR]     = make_tkinfo("*"),
+    [TK_SLASH]    = make_tkinfo("/"),
+    [TK_PERCENT]  = make_tkinfo("%"),
+    [TK_CARET]    = make_tkinfo("^"),
 
-    [TK_ASSIGN]   = make_quoted("="),
-    [TK_EQ]       = make_quoted("=="),
-    [TK_NEQ]      = make_quoted("~="),
-    [TK_GT]       = make_quoted(">"),
-    [TK_GE]       = make_quoted(">="),
-    [TK_LT]       = make_quoted("<"),
-    [TK_LE]       = make_quoted("<="),
+    [TK_ASSIGN]   = make_tkinfo("="),
+    [TK_EQ]       = make_tkinfo("=="),
+    [TK_NEQ]      = make_tkinfo("~="),
+    [TK_GT]       = make_tkinfo(">"),
+    [TK_GE]       = make_tkinfo(">="),
+    [TK_LT]       = make_tkinfo("<"),
+    [TK_LE]       = make_tkinfo("<="),
 
-    [TK_IDENT]    = make_angled("<identifier>"),
-    [TK_STRING]   = make_angled("<string>"),
-    [TK_NUMBER]   = make_angled("<number>"),
-    [TK_ERROR]    = make_angled("<error>"),
-    [TK_EOF]      = make_angled("<eof>"),
+    [TK_IDENT]    = make_tkinfo("<identifier>"),
+    [TK_STRING]   = make_tkinfo("<string>"),
+    [TK_NUMBER]   = make_tkinfo("<number>"),
+    [TK_ERROR]    = make_tkinfo("<error>"),
+    [TK_EOF]      = make_tkinfo("<eof>"),
 };
 
 #undef make_tkinfo
-#undef make_angled
-#undef make_reserved
-#undef make_quoted
-#undef make_opened
 
 void init_lexer(Lexer *self, const char *input, VM *vm) {
     self->lookahead = compoundlit(Token, 0);
@@ -159,7 +144,7 @@ static void multiline(Lexer *self, int nesting) {
         }
         // Think of this as the iterator increment.
         if (next_char(self) == '\n') {
-            self->line++;
+            self->line += 1;
         }
     }
 }
@@ -201,7 +186,7 @@ static void skip_whitespace(Lexer *self) {
             next_char(self);
             break;
         case '\n':
-            self->line++;
+            self->line += 1;
             next_char(self);
             break;
         case '-':
@@ -527,22 +512,22 @@ bool match_token_any(Lexer *self, const TkType expected[]) {
 
 // ERROR HANDLING --------------------------------------------------------- {{{1
 
-void lexerror_at(Lexer *self, const Token *token, const char *info) {
+void lexerror_at(Lexer *self, const Token token, const char *info) {
     fprintf(stderr, "%s:%i: %s", self->name, self->line, info);
-    if (token->type == TK_EOF) {
+    if (token.type == TK_EOF) {
         fprintf(stderr, " at <eof>\n");
     } else {
-        fprintf(stderr, " near '%.*s'\n", token->len, token->start);
+        fprintf(stderr, " near '%.*s'\n", token.len, token.start);
     }
     longjmp(self->vm->errorjmp, ERROR_COMPTIME);
 }
 
 void lexerror_at_token(Lexer *self, const char *info) {
-    lexerror_at(self, &self->lookahead, info);
+    lexerror_at(self, self->lookahead, info);
 }
 
 void lexerror_at_consumed(Lexer *self, const char *info) {
-    lexerror_at(self, &self->consumed, info);
+    lexerror_at(self, self->consumed, info);
 }
 
 // 1}}} ------------------------------------------------------------------------
