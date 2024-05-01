@@ -79,6 +79,12 @@ local function make_regexarg(regex)
     return string.format("--regexp=" .. quote .. "%s" .. quote, regex)
 end
 
+local function copy_option(opt, pargs)
+    local res = table.copy(opt, true)
+    res.pargs = table.copy(pargs, true)
+    return res
+end
+
 -- FIND IN FILES ---------------------------------------------------------- {{{2
 
 options["find-pretty"] = {
@@ -88,20 +94,23 @@ options["find-pretty"] = {
     help = "Pretty-prints all occurences of <pattern> in [path...].",
     note = "Uses ripgrep and assumes it is installed.",
     init = function(self, pargs)
-        local regex = table.remove(pargs, 1)
+        local caller = copy_option(self, pargs)
+        local regex  = table.remove(caller.pargs, 1)
         if not regex then
-            return false, "No pattern received"
+            return nil, "No pattern received."
         end
-        set_pargs_if_empty(pargs, LULU_SRC)
-        table.insert(self.flags, make_regexarg(regex))
-        return true, nil
+        set_pargs_if_empty(caller.pargs, LULU_SRC)
+        table.insert(caller.flags, make_regexarg(regex))
+        return caller, nil
     end,
     call = function(self, pargs)
-        local ok, msg = self:init(pargs)
-        if not ok then
-            return nil, nil, msg
+        local caller, err = self:init(pargs)
+        if err then
+            return nil, nil, err
         end
-        local cmdline, output = capture_cmdline(self.exe, self.flags, pargs)
+        local cmdline, output = capture_cmdline(caller.exe,
+                                                caller.flags,
+                                                caller.pargs)
         return cmdline, output, nil
     end,
 }
@@ -127,41 +136,41 @@ options["find-and-replace"] = {
     help = "In [path...], replaces all occurences of <pattern> with <subst>.",
     note = "Please ensure <pattern> works for both ripgrep and vim (magic).",
     init = function(self, pargs)
-        local regex = table.remove(pargs, 1)
-        local subst = table.remove(pargs, 1) -- was shifted down by 1 index
+        local caller = copy_option(self, pargs)
+        local regex  = table.remove(caller.pargs, 1)
+        local subst  = table.remove(caller.pargs, 1) -- shifted down by 1 index
         if not regex or not subst then
-            return false, "No pattern and/or substitution received."
+            return nil, "No pattern and/or substitution received."
         end
-        set_pargs_if_empty(pargs, LULU_SRC)
+        set_pargs_if_empty(caller.pargs, LULU_SRC)
 
         -- Apply to all opened buffers, use magic to be more Perl-ish regex.
         local bufdo = string.format("-c ':bufdo! %%s/\\v%s/%s/ge'", regex, subst)
 
         -- Insert BEFORE (array[len]) `-c ':xa'`, not AFTER (array[len + 1]).
-        table.insert(self.flags, #self.flags, bufdo)
-        return true, nil
+        table.insert(caller.flags, #caller.flags, bufdo)
+
+        -- find-terse requires the regex as the first parg. Only find-terse
+        -- will use the pargs here.
+        table.insert(caller.pargs, 1, regex)
+        return caller, nil
     end,
     call = function(self, pargs)
-        -- save so we can prepend to find-terse after self:init()
-        local regex = pargs[1]
-        local ok, msg = self:init(pargs)
-        if not ok then
-            return nil, nil, msg
+        local caller, err = self:init(pargs)
+        if err then
+            return nil, nil, err
         end
-        -- find-terse requires the regex as the first parg.
-        table.insert(pargs, 1, regex)
-        local find, matchlist = options["find-terse"]:call(pargs)
+        local find, matchlist = options["find-terse"]:call(caller.pargs)
         if matchlist == "" then
             return nil, nil, "No matches found."
         end
-
         -- find-terse will output a newline-separated string of filenames.
         -- Pass these file names as positional arguments for Vim to open.
         local buflist = matchlist:split('\n')
         if not confirm_cmdline("find-and-replace", buflist) then
             return nil, nil, "Command aborted."
         end
-        local vim, output = capture_cmdline(self.exe, self.flags, buflist)
+        local vim, output = capture_cmdline(caller.exe, caller.flags, buflist)
         return find .. '\n' .. vim, output, nil
     end,
 }
@@ -178,13 +187,17 @@ options["find-whitespace"] = {
     note = "See `find-terse` for more info on how the search is done.",
     regex = [[\s+$]],
     init = function(self, pargs)
+        local caller = copy_option(self, pargs)
         -- Prepend since find-terse expects regex as the first parg
-        table.insert(pargs, 1, self.regex)
-        return true
+        table.insert(caller.pargs, 1, caller.regex)
+        return caller, nil
     end,
     call = function(self, pargs)
-        self:init(set_pargs_if_empty(pargs, LULU_SRC))
-        return options["find-terse"]:call(pargs)
+        local caller, err = self:init(set_pargs_if_empty(pargs, LULU_SRC))
+        if err then
+            return nil, nil, err
+        end
+        return options["find-terse"]:call(caller.pargs)
     end,
 }
 
@@ -196,10 +209,11 @@ options["fix-whitespace"] = {
     help = "Strips files from [path...] of trailing whitespace.",
     note = "See `find-and-replace` for more info.",
     call = function(self, pargs)
+        local caller = copy_option(self, pargs)
         -- find-and-replaces calls find-terse which needs <pattern> <subst>
-        table.insert(pargs, 1, self.regex)
-        table.insert(pargs, 2, "")
-        return options["find-and-replace"]:call(pargs)
+        table.insert(caller.pargs, 1, caller.regex)
+        table.insert(caller.pargs, 2, "")
+        return options["find-and-replace"]:call(caller.pargs)
     end,
 }
 
@@ -214,7 +228,8 @@ options["run"] = {
     help = "Runs the lulu interpreter.",
     note = "If [script] is not given we will use REPL.",
     call = function(self, pargs)
-        return execute_cmdline(self.exe, self.flags, pargs)
+        local caller = copy_option(self, pargs)
+        return execute_cmdline(caller.exe, caller.flags, caller.pargs)
     end
 }
 
@@ -225,7 +240,9 @@ options["memcheck"] = {
     help = "Runs valgrind with some helpful options.",
     note = "If [exe] is not given we will default to " .. LULU_EXE .. ".",
     call = function(self, pargs)
-        return execute_cmdline(self.exe, self.flags, set_pargs_if_empty(pargs, LULU_EXE))
+        local caller = copy_option(self, pargs)
+        caller.pargs = set_pargs_if_empty(caller.pargs, LULU_EXE)
+        return execute_cmdline(caller.exe, caller.flags, caller.pargs)
     end
 }
 
@@ -233,7 +250,8 @@ local LUA_RESERVED = {["do"] = true,
                       ["if"] = true,
                       ["in"] = true,
                       ["io"] = true,
-                      ["or"] = true}
+                      ["or"] = true,
+                      ["os"] = true}
 
 options["overflow-locals"] = {
     -- exe = "lua",
@@ -247,57 +265,58 @@ options["overflow-locals"] = {
     cols = 0,
     file = nil, ---@type file*
     init = function(self, pargs)
-        if #pargs == 0 then
-            self.rows = 12
-            self.cols = 18
-        elseif #pargs == 2 then
-            self.rows = tonumber(table.remove(pargs, 1))
-            self.cols = tonumber(table.remove(pargs, 1))
-            if not (self.rows and self.cols)
-                or (self.rows <= 0 or self.cols <= 0) then
-                return false, "#rows and #columns must both be positive integers."
+        local caller = copy_option(self, pargs)
+        if #caller.pargs == 0 then
+            caller.rows = 12
+            caller.cols = 18
+        elseif #caller.pargs == 2 then
+            caller.rows = tonumber(table.remove(caller.pargs, 1))
+            caller.cols = tonumber(table.remove(caller.pargs, 1))
+            if not (caller.rows and caller.cols)
+                or (caller.rows <= 0 or caller.cols <= 0) then
+                return nil, "#rows and #columns must both be positive integers."
             end
         else
-            return false, "Please specify exactly only #rows and #columns."
+            return nil, "Please specify exactly only #rows and #columns."
         end
-        local ok, msg = self:open(pargs)
+        local ok, msg = self.open(caller)
         if not ok then
-            return false, msg
+            return nil, msg
         end
-        return true
+        return caller, nil
     end,
-    open = function(self, pargs)
-        pargs[1] = self.name
-        local file, err = io.open(pargs[1], 'w')
+    open = function(caller)
+        caller.pargs[1] = caller.name
+        local file, err = io.open(caller.pargs[1], 'w')
         if not file then
             return false, err
         end
-        self.file = file
-        self.file:write("-- Generated by \'", arg[0], "\'\n")
+        file:write("-- Generated by \'", arg[0], "\'\n")
+        caller.file = file
         return true
     end,
-    generate = function(self, file)
+    generate = function(caller)
         local lower = string.byte('a')
-        for outer = 0, self.rows do
+        for outer = 0, caller.rows - 1 do
             local names = {}
-            for inner = 0, self.cols do
+            for inner = 0, caller.cols - 1 do
                 local name = string.char(lower + outer, lower + inner)
                 if not LUA_RESERVED[name] then
                     names[#names + 1] = name
                 end
             end
-            file:write("local ", table.concat(names, ','), '\n')
+            caller.file:write("local ", table.concat(names, ','), '\n')
         end
-        file:write('\n')
-        file:close()
+        caller.file:write('\n')
+        caller.file:close()
     end,
     call = function(self, pargs)
-        local ok, msg = self:init(pargs)
-        if not ok then
-            return nil, nil, msg
+        local caller, err = self:init(pargs)
+        if err then
+            return nil, nil, err
         end
-        self:generate(self.file)
-        return capture_cmdline(self.exe, self.flags, pargs)
+        self.generate(caller)
+        return capture_cmdline(caller.exe, caller.flags, caller.pargs)
     end,
 }
 
@@ -311,45 +330,46 @@ options["overflow-stack"] = {
     help  = "Generates a file that manually calculates the summation of [limit].",
     note  = "By default, Lulu *should* error at 256 stack slots.",
     init  = function(self, pargs)
+        local caller = copy_option(self, pargs)
         if #pargs == 0 then
-            self.limit = 10
+            caller.limit = 10
         elseif #pargs == 1 then
-            self.limit = tonumber(table.remove(pargs, 1))
-            if (not self.limit) or self.limit <= 0 then
-                return false, "#limit must be a positive integer."
+            caller.limit = tonumber(table.remove(pargs, 1))
+            if (not caller.limit) or caller.limit <= 0 then
+                return nil, "#limit must be a positive integer."
             end
         else
-            return false, "Please specify exactly only #limit."
+            return nil, "Please specify exactly only #limit."
         end
-        local ok, msg = self:open(pargs)
+        local ok, msg = self.open(caller)
         if not ok then
-            return false, msg
+            return nil, msg
         end
-        return true
+        return caller, nil
     end,
     open  = options["overflow-locals"].open,
-    recurse = function(self, file, acc, limit)
-        if acc > limit then
-            file:write(acc)
-            return
+    generate = function(caller)
+        caller.file:write("print")
+        local function recurse(file, acc, limit)
+            if acc > limit then
+                file:write(acc)
+                return
+            end
+            file:write('(', acc, " + ")
+            recurse(file, acc + 1, limit)
+            file:write(')')
         end
-        file:write('(', acc, " + ")
-        self:recurse(file, acc + 1, limit)
-        file:write(')')
-    end,
-    generate = function(self, file)
-        file:write("print")
-        self:recurse(file, 1, self.limit)
-        file:write('\n')
-        file:close()
+        recurse(caller.file, 1, caller.limit)
+        caller.file:write('\n')
+        caller.file:close()
     end,
     call  = function(self, pargs)
-        local ok, msg = self:init(pargs)
-        if not ok then
-            return nil, nil, msg
+        local caller, err = self:init(pargs)
+        if err then
+            return nil, nil, err
         end
-        self:generate(self.file)
-        return capture_cmdline(self.exe, self.flags, pargs)
+        self.generate(caller)
+        return capture_cmdline(caller.exe, caller.flags, caller.pargs)
     end,
 }
 

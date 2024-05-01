@@ -57,3 +57,33 @@ function table.dump(tbl, visited, level)
         end
     end
 end
+
+local function copy_recurse(dst, src, isdeep, visited)
+    for k, v in pairs(src) do
+        if type(v) == "table" and isdeep then
+            if not visited[v] then
+                visited[v] = true
+                dst[k] = {}
+                copy_recurse(dst[k], v, isdeep, visited)
+            end
+        else
+            dst[k] = v
+        end
+    end
+end
+
+function table.shallow_copy(src)
+    local res = {}
+    copy_recurse(res, src, false, {})
+    return res
+end
+
+function table.deep_copy(src)
+    local res = {}
+    copy_recurse(res, src, true, {})
+    return res
+end
+
+function table.copy(src, isdeep)
+    return isdeep and table.deep_copy(src) or table.shallow_copy(src)
+end
