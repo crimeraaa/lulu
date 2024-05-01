@@ -181,7 +181,7 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
     while (!match_token(lexer, TK_EOF)) {
         declaration(self);
     }
-    consume_token(lexer, TK_EOF, "Expected end of expression");
+    expect_token(lexer, TK_EOF, "Expected end of expression");
     end_scope(self);
     end_compiler(self);
 }

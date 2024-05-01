@@ -128,9 +128,7 @@ static void concat(Compiler *self) {
 
 static void literal(Compiler *self) {
     switch (self->lexer->consumed.type) {
-    case TK_NIL:
-        emit_oparg1(self, OP_NIL, 1);
-        break;
+    case TK_NIL:   emit_oparg1(self, OP_NIL, 1); break;
     case TK_TRUE:  emit_opcode(self, OP_TRUE);   break;
     case TK_FALSE: emit_opcode(self, OP_FALSE);  break;
     default:
@@ -147,7 +145,7 @@ static void grouping(Compiler *self) {
     // See: https://www.lua.org/source/5.1/lparser.c.html#enterlevel
     begin_scope(self);
     expression(self);
-    consume_token(lexer, TK_RPAREN, "Expected ')' after expression");
+    expect_token(lexer, TK_RPAREN, NULL);
     end_scope(self);
 }
 
@@ -184,7 +182,7 @@ static void parse_field(Compiler *self) {
     switch (token->type) {
     case TK_LBRACKET:
         expression(self);
-        consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
+        expect_token(lexer, TK_RBRACKET, NULL);
         break;
     case TK_IDENT:
         emit_identifier(self);
@@ -199,7 +197,7 @@ static void parse_ctor(Compiler *self, int *index) {
     Byte   offset = self->stack_usage - 1; // Absolute index of table itself.
     if (match_token_any(lexer, TK_LBRACKET, TK_IDENT)) {
         parse_field(self);
-        consume_token(lexer, TK_ASSIGN, "Expected '=' to assign table field");
+        expect_token(lexer, TK_ASSIGN, "to assign table field");
     } else {
         TValue wrapper = make_number(*index);
         emit_constant(self, &wrapper);
@@ -243,7 +241,7 @@ static void emit_getop(Compiler *self, const Token *name) {
     // Have 1+ table fields?
     while (match_token_any(lexer, TK_LBRACKET, TK_PERIOD)) {
         if (lexer->consumed.type == TK_PERIOD) {
-            consume_token(lexer, TK_IDENT, "Expected an identifier");
+            expect_token(lexer, TK_IDENT, NULL);
         }
         parse_field(self);
         emit_opcode(self, OP_GETTABLE);
@@ -380,10 +378,10 @@ static void discharge_assignment(Compiler *self, Assignment *list, TkType type) 
     switch (type) {
     case TK_LBRACKET:
         expression(self);
-        consume_token(lexer, TK_RBRACKET, "Expected ']' to close '['");
+        expect_token(lexer, TK_RBRACKET, NULL);
         break;
     case TK_PERIOD:
-        consume_token(lexer, TK_IDENT, "Expected an identifier after '.'");
+        expect_token(lexer, TK_IDENT, "after '.'");
         emit_identifier(self);
         break;
     default:
@@ -429,7 +427,7 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
         Assignment next;
         init_assignment(&next, elem, ASSIGN_GLOBAL);
         next_token(lexer);
-        consume_token(lexer, TK_IDENT, "Expected an identifier after ','");
+        expect_token(lexer, TK_IDENT, "after ','");
         identifier_statement(self, &next);
         break;
     }
@@ -447,7 +445,7 @@ static void print_statement(Compiler *self) {
     bool   open  = match_token(lexer, TK_LPAREN);
     int    argc  = parse_exprlist(self);
     if (open) {
-        consume_token(lexer, TK_RPAREN, "Expected ')' to close '('");
+        expect_token(lexer, TK_RPAREN, NULL);
     }
     emit_oparg1(self, OP_PRINT, argc);
 }
@@ -464,7 +462,7 @@ static void block(Compiler *self) {
     while (!check_token_any(lexer, TK_END, TK_EOF)) {
         declaration(self);
     }
-    consume_token(lexer, TK_END, "Expected 'end' after block");
+    expect_token(lexer, TK_END, "after block");
 }
 
 // 3}}} ------------------------------------------------------------------------
@@ -529,7 +527,7 @@ static void declare_locals(Compiler *self) {
     int    exprs  = 0;
 
     do {
-        consume_token(lexer, TK_IDENT, "Expected an identifier");
+        expect_token(lexer, TK_IDENT, NULL);
         parse_local(self);
         idents += 1;
     } while (match_token(lexer, TK_COMMA));

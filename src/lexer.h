@@ -88,8 +88,9 @@ Token scan_token(Lexer *self);
 // Analogous to `compiler.c:advance()` in the book. May call `lexerror_*`.
 void next_token(Lexer *self);
 
-// Analogous to `compiler.c:consume()` in the book. May call `lexerror_*`.
-void consume_token(Lexer *self, TkType expected, const char *info);
+// Analogous to `compiler.c:consume()` in the book. Throws error if no match.
+// If `info` is non-null we will append it to the error message.
+void expect_token(Lexer *self, TkType expected, const char *info);
 
 // Return true if the current token matches, else do nothing.
 bool check_token(Lexer *self, TkType expected);

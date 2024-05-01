@@ -6,6 +6,88 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
+enum {
+    IS_RESERVED = 1, // bit 0
+    IS_QUOTED   = 2, // bit 1: if 1, enclose in single quotes else use angles.
+    IS_OPENED   = 4, // bit 2: if 1, report opening pair for ')', '}' and ']'.
+};
+
+typedef const struct {
+    const char *word;
+    int         len;
+    uint8_t     flags;
+} TkInfo;
+
+#define make_tkinfo(s, flags)   {(s), cstr_litsize(s), (flags)}
+#define make_angled(s)          make_tkinfo(s, IS_QUOTED & 0)
+#define make_reserved(s)        make_tkinfo(s, IS_RESERVED | IS_QUOTED)
+#define make_quoted(s)          make_tkinfo(s, IS_QUOTED)
+#define make_opened(s)          make_tkinfo(s, IS_QUOTED | IS_OPENED)
+
+static TkInfo LULU_TKINFO[] = {
+    [TK_AND]      = make_reserved("and"),
+    [TK_BREAK]    = make_reserved("break"),
+    [TK_DO]       = make_reserved("do"),
+    [TK_ELSE]     = make_reserved("else"),
+    [TK_ELSEIF]   = make_reserved("elseif"),
+    [TK_END]      = make_reserved("end"),
+    [TK_FALSE]    = make_reserved("false"),
+    [TK_FOR]      = make_reserved("for"),
+    [TK_FUNCTION] = make_reserved("function"),
+    [TK_IF]       = make_reserved("if"),
+    [TK_IN]       = make_reserved("in"),
+    [TK_LOCAL]    = make_reserved("local"),
+    [TK_NIL]      = make_reserved("nil"),
+    [TK_NOT]      = make_reserved("not"),
+    [TK_OR]       = make_reserved("or"),
+    [TK_PRINT]    = make_reserved("print"),
+    [TK_RETURN]   = make_reserved("return"),
+    [TK_THEN]     = make_reserved("then"),
+    [TK_TRUE]     = make_reserved("true"),
+    [TK_WHILE]    = make_reserved("while"),
+
+    [TK_LPAREN]   = make_quoted("("),
+    [TK_RPAREN]   = make_opened(")"),
+    [TK_LBRACKET] = make_quoted("["),
+    [TK_RBRACKET] = make_opened("]"),
+    [TK_LCURLY]   = make_quoted("{"),
+    [TK_RCURLY]   = make_opened("}"),
+
+    [TK_COMMA]    = make_quoted(","),
+    [TK_SEMICOL]  = make_quoted(";"),
+    [TK_VARARG]   = make_quoted("..."),
+    [TK_CONCAT]   = make_quoted(".."),
+    [TK_PERIOD]   = make_quoted("."),
+    [TK_POUND]    = make_quoted("#"),
+
+    [TK_PLUS]     = make_quoted("+"),
+    [TK_DASH]     = make_quoted("-"),
+    [TK_STAR]     = make_quoted("*"),
+    [TK_SLASH]    = make_quoted("/"),
+    [TK_PERCENT]  = make_quoted("%"),
+    [TK_CARET]    = make_quoted("^"),
+
+    [TK_ASSIGN]   = make_quoted("="),
+    [TK_EQ]       = make_quoted("=="),
+    [TK_NEQ]      = make_quoted("~="),
+    [TK_GT]       = make_quoted(">"),
+    [TK_GE]       = make_quoted(">="),
+    [TK_LT]       = make_quoted("<"),
+    [TK_LE]       = make_quoted("<="),
+
+    [TK_IDENT]    = make_angled("identifier"),
+    [TK_STRING]   = make_angled("string"),
+    [TK_NUMBER]   = make_angled("number"),
+    [TK_ERROR]    = make_angled("error"),
+    [TK_EOF]      = make_angled("eof"),
+};
+
+#undef make_tkinfo
+#undef make_angled
+#undef make_reserved
+#undef make_quoted
+#undef make_opened
+
 void init_lexer(Lexer *self, const char *input, VM *vm) {
     self->lookahead = compoundlit(Token, 0);
     self->consumed  = self->lookahead;
@@ -137,49 +219,17 @@ static void skip_whitespace(Lexer *self) {
     }
 }
 
-typedef struct {
-    const char *word;
-    int len;
-} Keyword;
-
-#define make_keyword(s)     (Keyword){s, cstr_litsize(s)}
-
-static const Keyword KEYWORDS[] = {
-    [TK_AND]      = make_keyword("and"),
-    [TK_BREAK]    = make_keyword("break"),
-    [TK_DO]       = make_keyword("do"),
-    [TK_ELSE]     = make_keyword("else"),
-    [TK_ELSEIF]   = make_keyword("elseif"),
-    [TK_END]      = make_keyword("end"),
-    [TK_FALSE]    = make_keyword("false"),
-    [TK_FOR]      = make_keyword("for"),
-    [TK_FUNCTION] = make_keyword("function"),
-    [TK_IF]       = make_keyword("if"),
-    [TK_IN]       = make_keyword("in"),
-    [TK_LOCAL]    = make_keyword("local"),
-    [TK_NIL]      = make_keyword("nil"),
-    [TK_NOT]      = make_keyword("not"),
-    [TK_OR]       = make_keyword("or"),
-    [TK_PRINT]    = make_keyword("print"),
-    [TK_RETURN]   = make_keyword("return"),
-    [TK_THEN]     = make_keyword("then"),
-    [TK_TRUE]     = make_keyword("true"),
-    [TK_WHILE]    = make_keyword("while"),
-};
-
-static_assert(array_len(KEYWORDS) == NUM_KEYWORDS, "Bad keyword count");
-
-static TkType check_keyword(TkType expect, const char *word, int len) {
-    const Keyword *kw = &KEYWORDS[expect];
-    if (kw->len == len && cstr_equal(kw->word, word, len)) {
-        return expect;
+static TkType check_keyword(TkType expected, const char *word, int len) {
+    TkInfo kw = LULU_TKINFO[expected];
+    if (kw.len == len && cstr_equal(kw.word, word, len)) {
+        return expected;
     }
     return TK_IDENT;
 }
 
 static TkType get_identifier_type(const Lexer *self) {
     const char *word = self->lexeme;
-    const int len = self->position - self->lexeme;
+    const int   len  = self->position - self->lexeme;
 
     switch (word[0]) {
     case 'a': return check_keyword(TK_AND, word, len);
@@ -396,12 +446,52 @@ void next_token(Lexer *self) {
     }
 }
 
-void consume_token(Lexer *self, TkType expected, const char *info) {
+typedef struct {
+    char  buffer[256];
+    char *end;         // +1 past the last written character.
+    int   left;        // How many free slots we can still write in.
+    int   writes;      // How many slots we have written to so far.
+} Builder;
+
+static void init_builder(Builder *self) {
+    self->end    = self->buffer;
+    self->left   = sizeof(self->buffer);
+    self->writes = 0;
+}
+
+static void append_builder(Builder *self, const char *format, ...) {
+    va_list argp;
+    va_start(argp, format);
+
+    self->writes = vsnprintf(self->end, self->left, format, argp);
+    self->end   += self->writes;
+    self->left  -= self->writes;
+    *self->end   = '\0';
+
+    va_end(argp);
+}
+
+void expect_token(Lexer *self, TkType expected, const char *info) {
     if (self->lookahead.type == expected) {
         next_token(self);
-    } else {
-        lexerror_at_token(self, info);
+        return;
     }
+
+    Builder message;
+    TkInfo  tkinfo = LULU_TKINFO[expected];
+
+    init_builder(&message);
+    if (tkinfo.flags & IS_QUOTED) {
+        append_builder(&message, "Expected '%s'", tkinfo.word);
+    } else {
+        append_builder(&message, "Expected <%s>", tkinfo.word);
+    }
+
+    if (info != NULL) {
+        append_builder(&message, " %s", info);
+    }
+
+    lexerror_at_token(self, message.buffer);
 }
 
 bool check_token(Lexer *self, TkType expected) {
@@ -444,7 +534,7 @@ bool match_token_any(Lexer *self, const TkType expected[]) {
 void lexerror_at(Lexer *self, const Token *token, const char *info) {
     fprintf(stderr, "%s:%i: %s", self->name, self->line, info);
     if (token->type == TK_EOF) {
-        fprintf(stderr, " at end\n");
+        fprintf(stderr, " at <eof>\n");
     } else {
         fprintf(stderr, " near '%.*s'\n", token->len, token->start);
     }
