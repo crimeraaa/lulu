@@ -139,7 +139,7 @@ void emit_oparg3(Compiler *self, OpCode op, Byte3 arg) {
 
 void emit_identifier(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token  ident = lexer->consumed;
+    Token *ident = &lexer->consumed;
     emit_oparg3(self, OP_CONSTANT, identifier_constant(self, ident));
 }
 
@@ -164,7 +164,7 @@ void emit_constant(Compiler *self, const TValue *value) {
     emit_oparg3(self, OP_CONSTANT, index);
 }
 
-void emit_variable(Compiler *self, const Token ident) {
+void emit_variable(Compiler *self, const Token *ident) {
     int  arg     = resolve_local(self, ident);
     bool islocal = (arg != -1);
 
@@ -176,8 +176,8 @@ void emit_variable(Compiler *self, const Token ident) {
     }
 }
 
-int identifier_constant(Compiler *self, const Token ident) {
-    TValue  wrapper = make_string(copy_string(self->vm, ident.view, false));
+int identifier_constant(Compiler *self, const Token *ident) {
+    TValue wrapper = make_string(copy_string(self->vm, &ident->view));
     return make_constant(self, &wrapper);
 }
 
@@ -235,37 +235,37 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
 
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
 
-static bool identifiers_equal(const Token a, const Token b) {
-    if (a.view.len != b.view.len) {
+static bool identifiers_equal(const Token *a, const Token *b) {
+    if (a->view.len != b->view.len) {
         return false;
     }
-    return cstr_eq(a.view.begin, b.view.begin, a.view.len);
+    return cstr_eq(a->view.begin, b->view.begin, a->view.len);
 }
 
-int resolve_local(Compiler *self, const Token ident) {
+int resolve_local(Compiler *self, const Token *ident) {
     for (int i = self->local_count - 1; i >= 0; i--) {
         const Local *local = &self->locals[i];
         // If using itself in initializer, continue to resolve outward.
-        if (local->depth != -1 && identifiers_equal(ident, local->ident)) {
+        if (local->depth != -1 && identifiers_equal(ident, &local->ident)) {
             return i;
         }
     }
     return -1;
 }
 
-void add_local(Compiler *self, const Token ident) {
+void add_local(Compiler *self, const Token *ident) {
     if (self->local_count + 1 > MAX_LOCALS) {
         lexerror_at_consumed(self->lexer,
             "More than " stringify(MAX_LOCALS) " local variables reached");
     }
     Local *local = &self->locals[self->local_count++];
-    local->ident = ident;
+    local->ident = *ident;
     local->depth = -1;
 }
 
 void init_local(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token  ident = lexer->consumed;
+    Token *ident = &lexer->consumed;
 
     // Detect variable shadowing in the same scope.
     for (int i = self->local_count - 1; i >= 0; i--) {
@@ -274,7 +274,7 @@ void init_local(Compiler *self) {
         if (local->depth != -1 && local->depth < self->scope_depth) {
             break;
         }
-        if (identifiers_equal(ident, local->ident)) {
+        if (identifiers_equal(ident, &local->ident)) {
             lexerror_at_consumed(lexer, "Shadowing of local variable");
         }
     }

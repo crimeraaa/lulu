@@ -368,7 +368,7 @@ bad_string:
 
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
     StrView view = make_strview(self->lexeme.begin + 1, self->lexeme.len - 2);
-    self->string = copy_string(self->vm, view, false);
+    self->string = copy_string(self->vm, &view);
     return make_token(self, TK_STRING);
 }
 
@@ -379,10 +379,11 @@ static Token lstring_token(Lexer *self, int nesting) {
     }
     multiline(self, nesting);
 
+    // Skip "[[" and '=' nesting, as well as "]]" and '=' - 2 for last index.
     int     mark = nesting + open + 2;
     int     len  = self->lexeme.len - mark - 2;
     StrView view = make_strview(self->lexeme.begin + mark, len);
-    self->string = copy_string(self->vm, view, true);
+    self->string = copy_lstring(self->vm, &view);
     return make_token(self, TK_STRING);
 }
 

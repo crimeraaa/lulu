@@ -34,10 +34,10 @@ static char get_escape(char ch) {
 }
 
 // Note that we need to hash escapes correctly too.
-static uint32_t hash_string(StrView view) {
+static uint32_t hash_string(const StrView *view) {
     uint32_t hash = FNV1A_OFFSET32;
     char     prev = 0;
-    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+    for (const char *ptr = view->begin; ptr < view->end; ptr++) {
         char ch = *ptr;
         if (ch == '\\' && prev != '\\') {
             prev = ch;
@@ -53,29 +53,33 @@ static uint32_t hash_string(StrView view) {
 }
 
 // This function will not hash any escape sequences at all.
-static uint32_t hash_lstring(StrView view) {
+static uint32_t hash_lstring(const StrView *view) {
     uint32_t hash = FNV1A_OFFSET32;
-    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+    for (const char *ptr = view->begin; ptr < view->end; ptr++) {
         hash ^= cast(Byte, *ptr);
         hash *= FNV1A_PRIME32;
     }
     return hash;
 }
 
-static uint32_t hash_pointer(void *ptr) {
+static uint32_t hash_pointer(Object *ptr) {
     union {
-        void *data;
-        char  raw[sizeof(ptr)];
-    } hash = {.data = ptr};
-    return hash_string(make_strview(hash.raw, sizeof(hash.raw)));
+        Object *data;
+        char    raw[sizeof(ptr)];
+    } hash;
+    hash.data    = ptr;
+    StrView view = make_strview(hash.raw, sizeof(hash.raw));
+    return hash_string(&view);
 }
 
 static uint32_t hash_number(Number number) {
     union {
         Number data;
-        char   raw[sizeof(Number)];
-    } hash = {.data = number};
-    return hash_string(make_strview(hash.raw, sizeof(hash.raw)));
+        char   raw[sizeof(number)];
+    } hash;
+    hash.data    = number;
+    StrView view = make_strview(hash.raw, sizeof(hash.raw));
+    return hash_string(&view);
 }
 
 // Separate name from `new_object` since `new_tstring` also needs access.
@@ -92,8 +96,9 @@ static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
     cast(T*, _new_object(sizeof(T), tag, alloc))
 
 // Not meant to be used outside of the main `new_tstring()` function.
+// Note how we add 1 for the nul char.
 #define _new_tstring(N, alloc) \
-    cast(TString*, _new_object(tstring_size(N), TYPE_STRING, alloc))
+    cast(TString*, _new_object(tstring_size(N) + 1, TYPE_STRING, alloc))
 
 // 1}}} ------------------------------------------------------------------------
 
@@ -193,17 +198,17 @@ void write_tarray(TArray *self, const TValue *value, Alloc *alloc) {
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
 static TString *new_tstring(int len, Alloc *alloc) {
-    TString *inst = _new_tstring(len + 1, alloc); // +1 for nul char.
+    TString *inst = _new_tstring(len, alloc);
     inst->len     = len;
     return inst;
 }
 
-static void build_string(TString *self, StrView view) {
+static void build_string(TString *self, const StrView *view) {
     char   *end   = self->data; // For loop counter may skip.
     int     skips = 0;          // Number escape characters emitted.
     char    prev  = 0;
 
-    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+    for (const char *ptr = view->begin; ptr < view->end; ptr++) {
         char ch = *ptr;
         // Handle `"\\"` appropriately.
         if (ch == '\\' && prev != '\\') {
@@ -220,8 +225,8 @@ static void build_string(TString *self, StrView view) {
         }
         end++;
     }
-    *end       = '\0';
-    self->len  = view.len - skips;
+    *end      = '\0';
+    self->len = view->len - skips;
 }
 
 static void end_string(TString *self, uint32_t hash) {
@@ -229,7 +234,7 @@ static void end_string(TString *self, uint32_t hash) {
     self->object.hash     = hash;
 }
 
-TString *copy_string(VM *vm, StrView view, bool islong) {
+static TString *copy_string_or_lstring(VM *vm, const StrView *view, bool islong) {
     Alloc    *alloc    = &vm->alloc;
     uint32_t  hash     = (islong) ? hash_lstring(view) : hash_string(view);
     TString  *interned = find_interned(vm, view, hash);
@@ -239,17 +244,18 @@ TString *copy_string(VM *vm, StrView view, bool islong) {
         return interned;
     }
 
-    TString *inst = new_tstring(view.len ,alloc);
+    TString *inst = new_tstring(view->len ,alloc);
     if (islong) {
-        memcpy(inst->data, view.begin, view.len);
+        memcpy(inst->data, view->begin, view->len);
     } else {
         build_string(inst, view);
     }
     end_string(inst, hash);
 
     // If we have escapes, are we really REALLY sure this isn't interned?
-    if (inst->len != view.len) {
-        interned = find_interned(vm, make_strview(inst->data, inst->len), hash);
+    if (inst->len != view->len) {
+        StrView v2 = make_strview(inst->data, inst->len);
+        interned   = find_interned(vm, &v2, hash);
         if (interned != NULL) {
             remove_node(vm->objects, &inst->object);
             free_tstring(inst, inst->len, alloc);
@@ -258,6 +264,14 @@ TString *copy_string(VM *vm, StrView view, bool islong) {
     }
     set_interned(vm, inst);
     return inst;
+}
+
+TString *copy_lstring(VM *vm, const StrView *view) {
+    return copy_string_or_lstring(vm, view, true);
+}
+
+TString *copy_string(VM *vm, const StrView *view) {
+    return copy_string_or_lstring(vm, view, false);
 }
 
 TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
@@ -272,8 +286,8 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
         memcpy(inst->data + offset, arg->data, arg->len);
         offset += arg->len;
     }
-    end_string(inst, hash_string(view));
-    TString *interned = find_interned(vm, view, inst->object.hash);
+    end_string(inst, hash_string(&view));
+    TString *interned = find_interned(vm, &view, inst->object.hash);
     if (interned != NULL) {
         remove_node(vm->objects, &inst->object);
         free_tstring(inst, inst->len, alloc);
@@ -443,7 +457,7 @@ void set_interned(VM *vm, const TString *string) {
     set_table(&vm->strings, &key, &val, alloc);
 }
 
-TString *find_interned(VM *vm, StrView view, uint32_t hash) {
+TString *find_interned(VM *vm, const StrView *view, uint32_t hash) {
     Table *table = &vm->strings;
     if (table->count == 0) {
         return NULL;
@@ -459,8 +473,8 @@ TString *find_interned(VM *vm, StrView view, uint32_t hash) {
         }
         // We assume ALL keys in this table are strings.
         TString *ts = as_string(&entry->key);
-        if (ts->len == view.len && ts->object.hash == hash) {
-            if (cstr_eq(ts->data, view.begin, view.len)) {
+        if (ts->len == view->len && ts->object.hash == hash) {
+            if (cstr_eq(ts->data, view->begin, view->len)) {
                 return ts;
             }
         }

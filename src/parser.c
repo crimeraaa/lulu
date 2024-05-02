@@ -83,8 +83,7 @@ static OpCode get_binop(TkType optype) {
 // and that the left-hand side has been fully compiled.
 static void binary(Compiler *self) {
     Lexer  *lexer  = self->lexer;
-    Token   token  = lexer->consumed;
-    TkType  optype = token.type;
+    TkType  optype = lexer->consumed.type;
 
     // For exponentiation enforce right-associativity.
     parse_precedence(self, get_parserule(optype)->prec + (optype != TK_CARET));
@@ -171,8 +170,7 @@ static void emit_index(Compiler *self, int *index) {
 // Assumes we consumed a `'['` or an identifier representing a table field.
 static bool parse_field(Compiler *self, bool assigning) {
     Lexer *lexer = self->lexer;
-    Token  token = lexer->consumed;
-    switch (token.type) {
+    switch (lexer->consumed.type) {
     case TK_LBRACKET:
         expression(self);
         expect_token(lexer, TK_RBRACKET, NULL);
@@ -234,8 +232,8 @@ static void table(Compiler *self) {
  */
 static void variable(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token  name  = lexer->consumed;
-    emit_variable(self, name);
+    Token *ident = &lexer->consumed;
+    emit_variable(self, ident);
 
     // Have 1+ table fields?
     while (match_token_any(lexer, TK_LBRACKET, TK_PERIOD)) {
@@ -256,13 +254,12 @@ static OpCode get_unop(TkType type) {
 
 // Assumes we just consumed an unary operator.
 static void unary(Compiler *self) {
-    Lexer *lexer  = self->lexer;
-    Token  token  = lexer->consumed;
-    TkType optype = token.type; // Save due to recursion when compiling.
+    Lexer *lexer = self->lexer;
+    TkType type  = lexer->consumed.type; // Save in stack-frame memory.
 
     // Recursively compiles until we hit something with a lower precedence.
     parse_precedence(self, PREC_UNARY);
-    emit_opcode(self, get_unop(optype));
+    emit_opcode(self, get_unop(type));
 }
 
 // 2}}} ------------------------------------------------------------------------
@@ -387,7 +384,7 @@ static void discharge_assignment(Compiler *self, Assignment *list, TkType type) 
 // Assumes we consumed an identifier as the first element of a statement.
 static void identifier_statement(Compiler *self, Assignment *elem) {
     Lexer *lexer = self->lexer;
-    Token  ident = lexer->consumed;
+    Token *ident = &lexer->consumed;
 
     if (!elem->istable) {
         int  arg     = resolve_local(self, ident);
@@ -493,7 +490,7 @@ static void statement(Compiler *self) {
 // Intern a local variable name. Analogous to `parseVariable()` in the book.
 static void parse_local(Compiler *self) {
     Lexer *lexer = self->lexer;
-    Token  token = lexer->consumed;
+    Token *token = &lexer->consumed;
     init_local(self);
     identifier_constant(self, token); // We don't need the index here.
 }

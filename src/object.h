@@ -118,7 +118,8 @@ void free_tarray(TArray *self, Alloc *alloc);
 void write_tarray(TArray *self, const TValue *value, Alloc *alloc);
 
 // Global functions that deal with strings need the VM to check for interned.
-TString *copy_string(VM *vm, StrView view, bool islong);
+TString *copy_string(VM *vm, const StrView *view);
+TString *copy_lstring(VM *vm, const StrView *view);
 
 // Assumes all arguments we already verified to be `TString*`.
 TString *concat_strings(VM *vm, int argc, const TValue argv[], int len);
@@ -141,6 +142,6 @@ void copy_table(Table *dst, const Table *src, Alloc *alloc);
 void set_interned(VM *vm, const TString *key);
 
 // Searches for interned strings. Analogous to `tableFindString()` in the book.
-TString *find_interned(VM *vm, StrView view, uint32_t hash);
+TString *find_interned(VM *vm, const StrView *view, uint32_t hash);
 
 #endif /* LULU_OBJECT_H */
