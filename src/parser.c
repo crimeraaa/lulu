@@ -114,7 +114,9 @@ static void concat(Compiler *self) {
     int argc = 1;
     do {
         // Although right associative, we don't recursively compile concat
-        // expressions in the same grouping.
+        // expressions in the same grouping. We can do this iteratively, which
+        // is marginally better than constantly allocating stack frames for
+        // recursive calls.
         parse_precedence(self, PREC_CONCAT + 1);
         argc += 1;
     } while (match_token(lexer, TK_CONCAT));
@@ -156,8 +158,8 @@ static void number(Compiler *self) {
 }
 
 static void string(Compiler *self) {
-    Lexer  *lexer   = self->lexer;
-    TValue  wrapper = make_string(lexer->string);
+    Lexer *lexer   = self->lexer;
+    TValue wrapper = make_string(lexer->string);
     emit_constant(self, &wrapper);
 }
 
@@ -564,7 +566,7 @@ static void parse_precedence(Compiler *self, Precedence prec) {
 
     // This function can never consume the `=` token.
     if (match_token(lexer, TK_ASSIGN)) {
-        lexerror_at_token(lexer, "Invalid assignment target");
+        lexerror_at_lookahead(lexer, "Invalid assignment target");
     }
 }
 

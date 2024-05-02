@@ -144,7 +144,7 @@ static void multiline(Lexer *self, int nesting) {
         }
         // Above call may have fallen through to here as well.
         if (is_at_end(self)) {
-            lexerror_at_consumed(self, "Unfinished multiline sequence");
+            lexerror_at_middle(self, "Unfinished multiline sequence");
             return;
         }
         // Think of this as the iterator increment.
@@ -344,7 +344,7 @@ static Token number_token(Lexer *self) {
     self->number = cstr_tonumber(self->lexeme.begin, &end);
     // If this is true, strtod failed to convert the entire token/lexeme.
     if (end != self->lexeme.end) {
-        lexerror_at(self, make_token(self, TK_ERROR), "Malformed number");
+        lexerror_at_middle(self, "Malformed number");
     }
     return make_token(self, TK_NUMBER);
 }
@@ -360,7 +360,7 @@ static Token string_token(Lexer *self, char quote) {
     // The label isn't actually in its own block scope.
     if (is_at_end(self)) {
 bad_string:
-        lexerror_at(self, make_token(self, TK_ERROR), "Unterminated string");
+        lexerror_at_middle(self, "Unterminated string");
     }
 
     // Consume closing quote.
@@ -444,7 +444,7 @@ Token scan_token(Lexer *self) {
         if (match_char(self, '=')) {
             return make_token(self, TK_NEQ);
         } else {
-            lexerror_at_consumed(self, "Expected '=' after '~'");
+            lexerror_at_middle(self, "Expected '='");
         }
     case '>': return make_ifeq(self, '=', TK_GE, TK_GT);
     case '<': return make_ifeq(self, '=', TK_LE, TK_LT);
@@ -459,7 +459,7 @@ void next_token(Lexer *self) {
     self->consumed  = self->lookahead;
     self->lookahead = scan_token(self);
     if (self->lookahead.type == TK_ERROR) {
-        lexerror_at_token(self, "Unexpected symbol");
+        lexerror_at_lookahead(self, "Unexpected symbol");
     }
 }
 
@@ -504,7 +504,7 @@ void expect_token(Lexer *self, TkType expected, const char *info) {
         append_builder(&message, " %s", info);
     }
 
-    lexerror_at_token(self, message.buffer);
+    lexerror_at_lookahead(self, message.buffer);
 }
 
 bool check_token(Lexer *self, TkType expected) {
@@ -544,22 +544,27 @@ bool match_token_any(Lexer *self, const TkType expected[]) {
 
 // ERROR HANDLING --------------------------------------------------------- {{{1
 
-void lexerror_at(Lexer *self, const Token token, const char *info) {
+void lexerror_at(Lexer *self, const Token *token, const char *info) {
     fprintf(stderr, "%s:%i: %s", self->name, self->line, info);
-    if (token.type == TK_EOF) {
+    if (token->type == TK_EOF) {
         fprintf(stderr, " at <eof>\n");
     } else {
-        fprintf(stderr, " near '%.*s'\n", token.view.len, token.view.begin);
+        fprintf(stderr, " near '%.*s'\n", token->view.len, token->view.begin);
     }
     longjmp(self->vm->errorjmp, ERROR_COMPTIME);
 }
 
-void lexerror_at_token(Lexer *self, const char *info) {
-    lexerror_at(self, self->lookahead, info);
+void lexerror_at_lookahead(Lexer *self, const char *info) {
+    lexerror_at(self, &self->lookahead, info);
 }
 
 void lexerror_at_consumed(Lexer *self, const char *info) {
-    lexerror_at(self, self->consumed, info);
+    lexerror_at(self, &self->consumed, info);
 }
+void lexerror_at_middle(Lexer *self, const char *info) {
+    Token token = make_token(self, TK_ERROR);
+    lexerror_at(self, &token, info);
+}
+
 
 // 1}}} ------------------------------------------------------------------------

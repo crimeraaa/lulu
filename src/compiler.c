@@ -197,7 +197,7 @@ void end_compiler(Compiler *self) {
 void begin_scope(Compiler *self) {
     Lexer *lexer = self->lexer;
     if ((self->scope_depth += 1) > MAX_LEVELS) {
-        lexerror_at_token(lexer, "Function uses too many syntax levels");
+        lexerror_at_lookahead(lexer, "Function uses too many syntax levels");
     }
 }
 
@@ -236,10 +236,9 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
 
 static bool identifiers_equal(const Token *a, const Token *b) {
-    if (a->view.len != b->view.len) {
-        return false;
-    }
-    return cstr_eq(a->view.begin, b->view.begin, a->view.len);
+    const StrView *s1 = &a->view;
+    const StrView *s2 = &b->view;
+    return s1->len == s2->len && cstr_eq(s1->begin, s2->begin, s1->len);
 }
 
 int resolve_local(Compiler *self, const Token *ident) {

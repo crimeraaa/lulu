@@ -114,12 +114,15 @@ bool match_token_any(Lexer *self, const TkType expected[]);
  *          the C stack, or just cause undefined behavior all around. By all
  *          means DO NOT call `longjmp` at the same callsite/stackframe twice!
  */
-void lexerror_at(Lexer *self, const Token token, const char *info);
+void lexerror_at(Lexer *self, const Token *token, const char *info);
 
 // Similar to `luaX_syntaxerror()`, analogous to `errorAtCurrent()` in the book.
-void lexerror_at_token(Lexer *self, const char *info);
+void lexerror_at_lookahead(Lexer *self, const char *info);
 
 // Analogous to `error()` in the book.
 void lexerror_at_consumed(Lexer *self, const char *info);
+
+// Only used when we need to error in the middle of consuming a token.
+void lexerror_at_middle(Lexer *self, const char *info);
 
 #endif /* LULU_LEXER_H */
