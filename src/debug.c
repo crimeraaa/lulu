@@ -6,7 +6,7 @@ void disassemble_constants(const Chunk *self) {
     printf("[CONSTANTS]:\n");
     for (int i = 0; i < array->len; i++) {
         printf("[%i] := ", i);
-        print_value(&array->values[i]);
+        print_value(&array->values[i], true);
         printf("\n");
     }
     printf("\n");
@@ -35,7 +35,7 @@ void disassemble_chunk(const Chunk *self) {
 static void constant_instruction(OpCode op, const Chunk *chunk, int offset) {
     int arg = read_byte3(chunk, offset);
     printf("%-16s Kst[%i] ; ", get_opname(op), arg);
-    print_value(&read_constant(chunk, arg));
+    print_value(&read_constant(chunk, arg), true);
     printf("\n");
 }
 

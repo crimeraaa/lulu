@@ -6,7 +6,7 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-static StrView LULU_TKINFO[] = {
+static const StrView LULU_TKINFO[] = {
     [TK_AND]      = strview_lit("and"),
     [TK_BREAK]    = strview_lit("break"),
     [TK_DO]       = strview_lit("do"),
@@ -70,19 +70,21 @@ static void init_strview(StrView *self, const char *view) {
     self->len   = 0;
 }
 
-static void init_token(Token *self, const char *view) {
-    init_strview(&self->view, view);
+static void init_token(Token *self) {
+    init_strview(&self->view, NULL);
     self->line  = 0;
     self->type  = TK_EOF;
 }
 
 void init_lexer(Lexer *self, const char *input, VM *vm) {
-    init_token(&self->lookahead, input);
-    init_token(&self->consumed, input);
+    init_token(&self->lookahead);
+    init_token(&self->consumed);
     init_strview(&self->lexeme, input);
-    self->vm   = vm;
-    self->name = vm->name;
-    self->line = 1;
+    self->vm     = vm;
+    self->name   = vm->name;
+    self->string = NULL;
+    self->number = 0;
+    self->line   = 1;
 }
 
 // HELPERS ---------------------------------------------------------------- {{{1
@@ -142,7 +144,7 @@ static void multiline(Lexer *self, int nesting) {
         }
         // Above call may have fallen through to here as well.
         if (is_at_end(self)) {
-            lexerror_at_consumed(self, "Unfinished multiline comment");
+            lexerror_at_consumed(self, "Unfinished multiline sequence");
             return;
         }
         // Think of this as the iterator increment.
@@ -296,9 +298,6 @@ static Token identifier_token(Lexer *self) {
  *          2. Invalid digits       := 13fgi, 4e12ijslkd
  *          3. Multiple periods     := 1.2.3.4
  *          4. Python/JS separators := 1_000_000, 4_294_967_295
- *
- * @note    This function does not report errors on its own, that will be the
- *          responsibility of the compiler.
  */
 static void decimal_sequence(Lexer *self) {
     while (isdigit(peek_current_char(self))) {
@@ -312,7 +311,7 @@ static void decimal_sequence(Lexer *self) {
         if (ch == '+' || ch == '-') {
             next_char(self);
         }
-        // Must have at least 1 digit but that's a problem for the compiler.
+        // Must have at least 1 digit but that's a problem for later.
         decimal_sequence(self);
         return;
     }
@@ -341,23 +340,49 @@ static Token number_token(Lexer *self) {
     while (isident(peek_current_char(self))) {
         next_char(self);
     }
+    char *end;
+    self->number = cstr_tonumber(self->lexeme.begin, &end);
+    // If this is true, strtod failed to convert the entire token/lexeme.
+    if (end != self->lexeme.end) {
+        lexerror_at(self, make_token(self, TK_ERROR), "Malformed number");
+    }
     return make_token(self, TK_NUMBER);
 }
 
 static Token string_token(Lexer *self, char quote) {
     while (peek_current_char(self) != quote && !is_at_end(self)) {
         if (peek_current_char(self) == '\n') {
-            lexerror_at_consumed(self, "Unfinished string");
+            goto bad_string;
         }
         next_char(self);
     }
 
+    // The label isn't actually in its own block scope.
     if (is_at_end(self)) {
-        lexerror_at_consumed(self, "Unfinished string");
+bad_string:
+        lexerror_at(self, make_token(self, TK_ERROR), "Unterminated string");
     }
 
     // Consume closing quote.
     next_char(self);
+
+    // Left +1 to skip left quote, len -2 to get offset of last non-quote.
+    StrView view = make_strview(self->lexeme.begin + 1, self->lexeme.len - 2);
+    self->string = copy_string(self->vm, view, false);
+    return make_token(self, TK_STRING);
+}
+
+static Token lstring_token(Lexer *self, int nesting) {
+    bool open = match_char(self, '\n');
+    if (open) {
+        self->line++;
+    }
+    multiline(self, nesting);
+
+    int     mark = nesting + open + 2;
+    int     len  = self->lexeme.len - mark - 2;
+    StrView view = make_strview(self->lexeme.begin + mark, len);
+    self->string = copy_string(self->vm, view, true);
     return make_token(self, TK_STRING);
 }
 
@@ -382,7 +407,13 @@ Token scan_token(Lexer *self) {
     switch (ch) {
     case '(': return make_token(self, TK_LPAREN);
     case ')': return make_token(self, TK_RPAREN);
-    case '[': return make_token(self, TK_LBRACKET);
+    case '[': {
+        int nesting = get_nesting(self);
+        if (match_char(self, '[')) {
+            return lstring_token(self, nesting);
+        }
+        return make_token(self, TK_LBRACKET);
+    }
     case ']': return make_token(self, TK_RBRACKET);
     case '{': return make_token(self, TK_LCURLY);
     case '}': return make_token(self, TK_RCURLY);

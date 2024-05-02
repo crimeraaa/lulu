@@ -10,6 +10,4 @@
 
 typedef struct VM VM;
 
-typedef NUMBER_TYPE lulu_Number;
-
 #endif /* LULU_H */

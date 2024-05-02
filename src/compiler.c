@@ -88,7 +88,7 @@ static bool adjust_vardelta(Compiler *self, OpCode op, Byte arg) {
     }
 
     // Adjusting would cause overflow? (Assumes `int` is bigger than `Byte`)
-    if (cast(int, chunk->code[len - 1]) + delta > MAX_BYTE) {
+    if (cast(int, chunk->code[len - 1]) + delta > cast(int, MAX_BYTE)) {
         return false;
     }
     chunk->code[len - 1] += delta;
@@ -177,8 +177,7 @@ void emit_variable(Compiler *self, const Token ident) {
 }
 
 int identifier_constant(Compiler *self, const Token ident) {
-    StrView view    = ident.view;
-    TValue  wrapper = make_string(copy_string(self->vm, view.begin, view.len));
+    TValue  wrapper = make_string(copy_string(self->vm, ident.view, false));
     return make_constant(self, &wrapper);
 }
 
@@ -237,9 +236,10 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
 
 static bool identifiers_equal(const Token a, const Token b) {
-    const StrView s1 = a.view;
-    const StrView s2 = b.view;
-    return (s1.len == s2.len) && cstr_eq(s1.begin, s2.begin, s1.len);
+    if (a.view.len != b.view.len) {
+        return false;
+    }
+    return cstr_eq(a.view.begin, b.view.begin, a.view.len);
 }
 
 int resolve_local(Compiler *self, const Token ident) {

@@ -3,6 +3,7 @@
 
 #include "lulu.h"
 #include "limits.h"
+#include "object.h"
 
 typedef enum {
     // -*- RESERVED WORDS ------------------------------------------------- {{{1
@@ -76,6 +77,8 @@ typedef struct {
     StrView     lexeme;    // Holds pointers to 1st and current of lexeme.
     VM         *vm;        // Private to implementation. Has our `jmp_buf`.
     const char *name;      // Current filename or `"stdin"`.
+    TString    *string;    // Interned string literal or identifier.
+    Number      number;    // Encoded number literal.
     int         line;      // Current line number we're on.
 } Lexer;
 

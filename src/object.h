@@ -5,7 +5,7 @@
 #include "limits.h"
 #include "memory.h"
 
-typedef lulu_Number Number;
+typedef NUMBER_TYPE   Number;
 typedef struct Object Object;
 
 typedef enum {
@@ -46,7 +46,7 @@ struct Object {
 
 typedef struct {
     Object object; // "Inherited" must come first to allow safe type-punning.
-    int    len;    // Nul-terminated length, not including the nul itself.
+    int    len;    // String length with nul and escapes omitted.
     char   data[]; // See: C99 flexible array members, MUST be last member!
 } TString;
 
@@ -104,9 +104,9 @@ typedef struct {
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
 // Writes string representation of `self` to C `stdout`.
-void print_value(const TValue *self);
+void print_value(const TValue *self, bool quoted);
 
-// Assumes buffer is a fixed-size array of length `MAX_NUMTOSTRING`.
+// Assumes buffer is a fixed-size array of length `MAX_TOSTRING`.
 // If `len` is not `NULL`, it will be set to -1 if we do not own the result.
 const char *to_cstring(const TValue *self, char *buffer, int *len);
 
@@ -118,7 +118,7 @@ void free_tarray(TArray *self, Alloc *alloc);
 void write_tarray(TArray *self, const TValue *value, Alloc *alloc);
 
 // Global functions that deal with strings need the VM to check for interned.
-TString *copy_string(VM *vm, const char *literal, int len);
+TString *copy_string(VM *vm, StrView view, bool islong);
 
 // Assumes all arguments we already verified to be `TString*`.
 TString *concat_strings(VM *vm, int argc, const TValue argv[], int len);
@@ -141,6 +141,6 @@ void copy_table(Table *dst, const Table *src, Alloc *alloc);
 void set_interned(VM *vm, const TString *key);
 
 // Searches for interned strings. Analogous to `tableFindString()` in the book.
-TString *find_interned(VM *vm, const char *data, int len, uint32_t hash);
+TString *find_interned(VM *vm, StrView view, uint32_t hash);
 
 #endif /* LULU_OBJECT_H */

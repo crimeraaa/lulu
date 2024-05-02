@@ -41,9 +41,10 @@ void free_objects(VM *vm);
     free_array(T, ptr, 1, alloc)
 
 // Needed by `memory.c:free_object()` and `object.c:copy_string()`.
+// Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
 #define free_tstring(ptr, len, alloc)                                          \
     (alloc)->reallocfn((ptr),                                                  \
-                        tstring_size(len),                                     \
+                        tstring_size(len) + 1,                                 \
                         0,                                                     \
                         (alloc)->context)
 

@@ -149,30 +149,16 @@ static void grouping(Compiler *self) {
     end_scope(self);
 }
 
-// Assumes we just consumed a possible number literal.
+// Assumes the lexer successfully consumed and encoded a number literal.
 static void number(Compiler *self) {
-    Lexer *lexer = self->lexer;
-    Token  token = lexer->consumed;
-    char  *endptr; // Populated by below function call
-    Number value = cstr_tonumber(token.view.begin, &endptr);
-
-    // If this is true, strtod failed to convert the entire token/lexeme.
-    if (endptr != token.view.end) {
-        lexerror_at_consumed(lexer, "Malformed number");
-    } else {
-        TValue wrapper = make_number(value);
-        emit_constant(self, &wrapper);
-    }
+    Lexer *lexer   = self->lexer;
+    TValue wrapper = make_number(lexer->number);
+    emit_constant(self, &wrapper);
 }
 
 static void string(Compiler *self) {
-    Lexer  *lexer = self->lexer;
-    Token   token = lexer->consumed;
-    StrView view  = token.view;
-
-    // Left +1 to skip left quote, len -2 to get offset of last non-quote.
-    TString *ts    = copy_string(self->vm, view.begin + 1, view.len - 2);
-    TValue wrapper = make_string(ts);
+    Lexer  *lexer   = self->lexer;
+    TValue  wrapper = make_string(lexer->string);
     emit_constant(self, &wrapper);
 }
 

@@ -8,8 +8,75 @@
 #define prepend_node(head, node)    ((node)->next = (head), (head) = (node))
 #define remove_node(head, node)     ((head) = (node)->next)
 
-// Hashes strings with unencoded escape sequences correctly.
-static uint32_t hash_string(const char *data, int len);
+// https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+#define FNV1A_PRIME32   0x01000193
+#define FNV1A_OFFSET32  0x811c9dc5
+#define FNV1A_PRIME64   0x00000100000001B3
+#define FNV1A_OFFSET64  0xcbf29ce484222325
+
+static char get_escape(char ch) {
+    switch (ch) {
+    case '\\':  return '\\';
+    case '\'':  return '\'';
+    case '\"':  return '\"';
+
+    case '0':   return '\0';
+    case 'a':   return '\a';
+    case 'b':   return '\b';
+    case 'f':   return '\f';
+    case 'n':   return '\n';
+    case 'r':   return '\r';
+    case 't':   return '\t';
+    case 'v':   return '\v';
+
+    default:    return ch;   // TODO: Warn user? Throw error?
+    }
+}
+
+// Note that we need to hash escapes correctly too.
+static uint32_t hash_string(StrView view) {
+    uint32_t hash = FNV1A_OFFSET32;
+    char     prev = 0;
+    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+        char ch = *ptr;
+        if (ch == '\\' && prev != '\\') {
+            prev = ch;
+            continue;
+        }
+        hash ^= cast(Byte, (prev == '\\') ? get_escape(ch) : ch);
+        hash *= FNV1A_PRIME32;
+        if (prev == '\\') {
+            prev = 0;
+        }
+    }
+    return hash;
+}
+
+// This function will not hash any escape sequences at all.
+static uint32_t hash_lstring(StrView view) {
+    uint32_t hash = FNV1A_OFFSET32;
+    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+        hash ^= cast(Byte, *ptr);
+        hash *= FNV1A_PRIME32;
+    }
+    return hash;
+}
+
+static uint32_t hash_pointer(void *ptr) {
+    union {
+        void *data;
+        char  raw[sizeof(ptr)];
+    } hash = {.data = ptr};
+    return hash_string(make_strview(hash.raw, sizeof(hash.raw)));
+}
+
+static uint32_t hash_number(Number number) {
+    union {
+        Number data;
+        char   raw[sizeof(Number)];
+    } hash = {.data = number};
+    return hash_string(make_strview(hash.raw, sizeof(hash.raw)));
+}
 
 // Separate name from `new_object` since `new_tstring` also needs access.
 // Assumes casting `alloc->context` to `VM*` is a safe operation.
@@ -17,17 +84,7 @@ static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
     VM     *vm   = alloc->context;
     Object *node = alloc->reallocfn(NULL, 0, size, vm);
     node->tag    = tag;
-
-    // Strings will be hashed correctly later on, but for the rest we need
-    // to hash the pointer by hashing its string representation.
-    if (tag != TYPE_STRING) {
-        TValue wrapper = make_object(node, tag);
-        char   buffer[MAX_NUMTOSTRING];
-        int    len = 0;
-
-        // Assumes that we will only ever pass a tag that is > TYPE_STRING.
-        node->hash = hash_string(to_cstring(&wrapper, buffer, &len), len);
-    }
+    node->hash   = hash_pointer(node);
     return prepend_node(vm->objects, node);
 }
 
@@ -65,7 +122,7 @@ const char *to_cstring(const TValue *self, char *buffer, int *len) {
         return as_cstring(self);
     case TYPE_TABLE:
         n = snprintf(buffer,
-                     MAX_NUMTOSTRING,
+                     MAX_TOSTRING,
                      "%s: %p",
                      get_typename(self),
                      as_pointer(self));
@@ -78,15 +135,18 @@ const char *to_cstring(const TValue *self, char *buffer, int *len) {
     return buffer;
 }
 
-void print_value(const TValue *self) {
-    if (is_string(self)) {
-        if (as_string(self)->len <= 1) {
-            printf("\'%s\'", as_cstring(self));
+void print_value(const TValue *self, bool quoted) {
+    if (is_string(self) && quoted) {
+        const TString *s = as_string(self);
+        // printf("string: %p ", as_pointer(self));
+        if (s->len <= 1) {
+            printf("\'%s\'", s->data);
         } else {
-            printf("\"%s\"", as_cstring(self));
+            printf("\"%s\"", s->data);
         }
+        // printf(" (len: %i, hash: %u)", s->len, s->object.hash);
     } else {
-        char buffer[MAX_NUMTOSTRING];
+        char buffer[MAX_TOSTRING];
         printf("%s", to_cstring(self, buffer, NULL));
     }
 }
@@ -130,12 +190,6 @@ void write_tarray(TArray *self, const TValue *value, Alloc *alloc) {
 
 // TSTRING MANAGEMENT ----------------------------------------------------- {{{1
 
-// https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
-#define FNV1A_PRIME32   0x01000193
-#define FNV1A_OFFSET32  0x811c9dc5
-#define FNV1A_PRIME64   0x00000100000001B3
-#define FNV1A_OFFSET64  0xcbf29ce484222325
-
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
 static TString *new_tstring(int len, Alloc *alloc) {
@@ -144,51 +198,13 @@ static TString *new_tstring(int len, Alloc *alloc) {
     return inst;
 }
 
-static char get_escape(char ch) {
-    switch (ch) {
-    case '0':   return '\0';
-    case 'a':   return '\a';
-    case 'b':   return '\b';
-    case 'f':   return '\f';
-    case 'n':   return '\n';
-    case 'r':   return '\r';
-    case 't':   return '\t';
-    case 'v':   return '\v';
-
-    case '\\':  return '\\';
-    case '\'':  return '\'';
-    case '\"':  return '\"';
-    default:    return ch;   // TODO: Warn user? Throw error?
-    }
-}
-
-static uint32_t hash_string(const char *data, int len) {
-    uint32_t hash = FNV1A_OFFSET32;
-    char     prev = 0;
-    for (int i = 0; i < len; i++) {
-        char ch = data[i];
-        if (ch == '\\' && prev != '\\') {
-            prev = ch;
-            continue;
-        }
-        if (prev == '\\') {
-            hash ^= cast(Byte, get_escape(ch));
-            prev = 0;
-        } else {
-            hash ^= cast(Byte, ch);
-        }
-        hash *= FNV1A_PRIME32;
-    }
-    return hash;
-}
-
-static void build_string(TString *self, const char *src, int len, uint32_t hash) {
+static void build_string(TString *self, StrView view) {
     char   *end   = self->data; // For loop counter may skip.
     int     skips = 0;          // Number escape characters emitted.
     char    prev  = 0;
 
-    for (int i = 0; i < len; i++) {
-        char ch = src[i];
+    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+        char ch = *ptr;
         // Handle `"\\"` appropriately.
         if (ch == '\\' && prev != '\\') {
             skips++;
@@ -198,33 +214,42 @@ static void build_string(TString *self, const char *src, int len, uint32_t hash)
         // TODO: 3-digit number literals (0-prefixed), 2-digit ASCII codes
         if (prev == '\\') {
             *end = get_escape(ch);
-            prev   = 0;
+            prev = 0;
         } else {
             *end = ch;
         }
         end++;
     }
-    *end              = '\0';
-    self->len         = len - skips;
-    self->object.hash = hash;
+    *end       = '\0';
+    self->len  = view.len - skips;
 }
 
-TString *copy_string(VM *vm, const char *literal, int len) {
+static void end_string(TString *self, uint32_t hash) {
+    self->data[self->len] = '\0';
+    self->object.hash     = hash;
+}
+
+TString *copy_string(VM *vm, StrView view, bool islong) {
     Alloc    *alloc    = &vm->alloc;
-    uint32_t  hash     = hash_string(literal, len);
-    TString  *interned = find_interned(vm, literal, len, hash);
+    uint32_t  hash     = (islong) ? hash_lstring(view) : hash_string(view);
+    TString  *interned = find_interned(vm, view, hash);
 
     // Is this string already interned?
     if (interned != NULL) {
         return interned;
     }
 
-    TString *inst = new_tstring(len, alloc);
-    build_string(inst, literal, len, hash);
+    TString *inst = new_tstring(view.len ,alloc);
+    if (islong) {
+        memcpy(inst->data, view.begin, view.len);
+    } else {
+        build_string(inst, view);
+    }
+    end_string(inst, hash);
 
     // If we have escapes, are we really REALLY sure this isn't interned?
-    if (inst->len != len) {
-        interned = find_interned(vm, inst->data, inst->len, inst->object.hash);
+    if (inst->len != view.len) {
+        interned = find_interned(vm, make_strview(inst->data, inst->len), hash);
         if (interned != NULL) {
             remove_node(vm->objects, &inst->object);
             free_tstring(inst, inst->len, alloc);
@@ -238,6 +263,7 @@ TString *copy_string(VM *vm, const char *literal, int len) {
 TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
     Alloc   *alloc  = &vm->alloc;
     TString *inst   = new_tstring(len, alloc);
+    StrView  view   = make_strview(inst->data, inst->len);
     int      offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
@@ -246,10 +272,8 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
         memcpy(inst->data + offset, arg->data, arg->len);
         offset += arg->len;
     }
-    inst->object.hash     = hash_string(inst->data, inst->len);
-    inst->data[inst->len] = '\0';
-
-    TString *interned = find_interned(vm, inst->data, inst->len, inst->object.hash);
+    end_string(inst, hash_string(view));
+    TString *interned = find_interned(vm, view, inst->object.hash);
     if (interned != NULL) {
         remove_node(vm->objects, &inst->object);
         free_tstring(inst, inst->len, alloc);
@@ -295,25 +319,15 @@ void dump_table(const Table *self, const char *name) {
             continue;
         }
         printf("\t[");
-        print_value(&entry->key);
+        print_value(&entry->key, true);
         printf("] = ");
-        print_value(&entry->value);
+        print_value(&entry->value, true);
         printf(",\n");
     }
     printf("}\n");
 }
 
-// WARNING: Assumes `Number` is `double` and is the same size as `uint64_t`!
-static uint32_t hash_number(Number number) {
-    union {
-        Number   data;
-        uint64_t bits;
-    } hash;
-    hash.data = number;
-    return hash.bits % UINT32_MAX;
-}
-
-static uint32_t hash_value(const TValue *self) {
+static uint32_t get_hash(const TValue *self) {
     switch (get_tag(self)) {
     case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
     case TYPE_BOOLEAN:  return as_boolean(self);
@@ -325,7 +339,7 @@ static uint32_t hash_value(const TValue *self) {
 
 // Find a free slot. Assumes there is at least 1 free slot left.
 static Entry *find_entry(Entry *list, int cap, const TValue *key) {
-    uint32_t index = hash_value(key) % cap;
+    uint32_t index = get_hash(key) % cap;
     Entry   *tombstone = NULL;
     for (;;) {
         Entry *entry = &list[index];
@@ -429,7 +443,7 @@ void set_interned(VM *vm, const TString *string) {
     set_table(&vm->strings, &key, &val, alloc);
 }
 
-TString *find_interned(VM *vm, const char *data, int len, uint32_t hash) {
+TString *find_interned(VM *vm, StrView view, uint32_t hash) {
     Table *table = &vm->strings;
     if (table->count == 0) {
         return NULL;
@@ -445,8 +459,8 @@ TString *find_interned(VM *vm, const char *data, int len, uint32_t hash) {
         }
         // We assume ALL keys in this table are strings.
         TString *ts = as_string(&entry->key);
-        if (ts->len == len && ts->object.hash == hash) {
-            if (cstr_eq(ts->data, data, len)) {
+        if (ts->len == view.len && ts->object.hash == hash) {
+            if (cstr_eq(ts->data, view.begin, view.len)) {
                 return ts;
             }
         }

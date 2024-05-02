@@ -9,9 +9,13 @@ void init_alloc(Alloc *self, ReallocFn reallocfn, void *context) {
 
 static void free_object(Object *object, Alloc *alloc) {
     switch (object->tag) {
-    case TYPE_STRING:
-        free_tstring(object, cast(TString*, object)->len + 1, alloc);
+    case TYPE_STRING: {
+        // In case of custom allocators we want to provide the exact allocated
+        // size, not all platforms will have malloc bookkeeping.
+        TString *string = cast(TString*, object);
+        free_tstring(string, string->len, alloc);
         break;
+    }
     case TYPE_TABLE:
         free_table(cast(Table*, object), alloc);
         free_pointer(Table, object, alloc);

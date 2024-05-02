@@ -21,26 +21,33 @@ typedef uint16_t    Byte2;
 typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 
 #define PROMPT      "> "
-#define MAX_STACK   0x0100
-#define MAX_LINE    0x0100
+#define MAX_STACK   256
+#define MAX_LINE    256
 #define MAX_LOCALS  200
 #define MAX_CONSTS  0x1000000
 #define MAX_LEVELS  200
 #define MAX_MULTI   16
 
-/* --- NUMBER TYPE INFORMATION -------------------------------------------- {{{1
-You may wish to change `MAX_NUMTOSTRING` based on the following conditions:
-1.  `NUMBER_FMT` uses a precision larger 64 digits or is longer than the format
-    specification of #2.
-2.  The formatted length of `"function: %p", (void*)p"` is greater than or equal
-    to 64 characters.
-*/
+// NUMBER TYPE INFORMATION ------------------------------------------------ {{{1
 
+/**
+ * @brief   Arbitrary limit for all tostring-like functions. Must be large
+ *          enough to hold the string representation of your desired number type
+ *          with its desired precision, as well as any pointer with a typename.
+ *
+ * @details You may wish to change `MAX_TOSTRING` based on the following:
+ *          1.  `NUMBER_FMT` uses a precision larger than currently value or is
+ *              longer than the format specification of #2.
+ *          2.  The formatted length of `"function: %p", (void*)p"` is greater
+ *              than or equal to the current value.
+ *
+ * @note    The default is 64, and we assume both numbers and pointers fit here.
+*/
+#define MAX_TOSTRING        64
 #define NUMBER_TYPE         double
 #define NUMBER_SCAN         "%lf"
 #define NUMBER_FMT          "%.14g"
-#define MAX_NUMTOSTRING     64
-#define num_tostring(s, n)  snprintf((s), MAX_NUMTOSTRING, NUMBER_FMT, (n))
+#define num_tostring(s, n)  snprintf((s), MAX_TOSTRING, NUMBER_FMT, (n))
 #define num_add(a, b)       ((a) + (b))
 #define num_sub(a, b)       ((a) - (b))
 #define num_mul(a, b)       ((a) * (b))

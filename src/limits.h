@@ -11,8 +11,8 @@
 #include <assert.h>
 #else /* DEBUG_USE_ASSERT not defined. */
 
-#define assert(expr)
-#define static_assert(expr, info)
+#define assert(expr)                struct _silence_stray_semicolon_warning
+#define static_assert(expr, info)   assert(expr)
 
 #endif /* DEBUG_USE_ASSERT */
 
@@ -24,8 +24,7 @@
 
 #define _stringify(x)       #x
 #define stringify(x)        _stringify(x)
-#define loginfo()           __FILE__ ":" stringify(__LINE__)
-#define logformat(s)        loginfo() ": " s
+#define logformat(s)        __FILE__ ":" stringify(__LINE__) ": " s
 #define logprintln(s)       eprintln(logformat(s))
 #define logprintf(s, ...)   eprintf(logformat(s), __VA_ARGS__)
 #define logprintfln(s, ...) eprintfln(logformat(s), __VA_ARGS__)
@@ -74,5 +73,6 @@ typedef struct {
 
 // Silly to populate both end and len like this but we need consistency.
 #define strview_lit(s)      {(s), &(s)[0] + cstr_len(s), cstr_len(s)}
+#define make_strview(s, n)  (StrView){(s), (s) + (n), (n)}
 
 #endif /* LULU_LIMITS_H */

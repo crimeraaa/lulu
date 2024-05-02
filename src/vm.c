@@ -154,7 +154,7 @@ static ErrType run(VM *self) {
         printf("        ");
         for (const TValue *slot = self->stack; slot < self->top; slot++) {
             printf("[ ");
-            print_value(slot);
+            print_value(slot, true);
             printf(" ]");
         }
         printf("\n");
@@ -302,7 +302,7 @@ static ErrType run(VM *self) {
             int     argc = read_byte();
             TValue *argv = poke_top(-argc);
             for (int i = 0; i < argc; i++) {
-                print_value(&argv[i]);
+                print_value(&argv[i], false);
                 printf("\t");
             }
             printf("\n");
