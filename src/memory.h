@@ -4,6 +4,9 @@
 #include "lulu.h"
 #include "limits.h"
 
+// Defined in `object.h`.
+typedef struct Object Object;
+
 #define grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
 typedef void *(*ReallocFn)(void *ptr, size_t oldsz, size_t newsz, void *context);
@@ -18,6 +21,12 @@ typedef struct {
 // Once set, please do not reinitialize your allocator else it may break.
 void init_alloc(Alloc *self, ReallocFn reallocfn, void *context);
 void free_objects(VM *vm);
+
+// Prepend `node` to the linked list pointer pointed to by `head`. Returns `node`.
+Object *prepend_object(Object **head, Object *node);
+
+// Remove node from the linked list pointer pointed to by `head`. Returns `node`.
+Object *remove_object(Object **head, Object *node);
 
 #define new_array(T, N, alloc)                                                 \
     (alloc)->reallocfn((NULL),                                                 \

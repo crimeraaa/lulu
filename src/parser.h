@@ -43,11 +43,12 @@ typedef enum {
     ASSIGN_TABLE,
 } AssignType;
 
+typedef struct Assignment Assignment;
+
 struct Assignment {
     Assignment *prev;
     int         arg;
     AssignType  type;
-    bool        istable;
 };
 
 /**

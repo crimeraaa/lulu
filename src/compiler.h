@@ -10,9 +10,6 @@
 #include "chunk.h"
 #include "lexer.h"
 
-// Defined in `parser.h`.
-typedef struct Assignment Assignment;
-
 typedef struct {
     Token ident; // Identifier in the source code.
     int   depth; // Scope depth at the time of declaration.

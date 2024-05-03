@@ -7,6 +7,17 @@ void init_alloc(Alloc *self, ReallocFn reallocfn, void *context) {
     self->context   = context;
 }
 
+Object *prepend_object(Object **head, Object *node) {
+    node->next = *head;
+    *head      = node;
+    return node;
+}
+
+Object *remove_object(Object **head, Object *node) {
+    *head = node->next;
+    return node;
+}
+
 static void free_object(Object *object, Alloc *alloc) {
     switch (object->tag) {
     case TYPE_STRING: {

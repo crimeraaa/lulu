@@ -5,9 +5,6 @@
 
 // MEMORY MANAGEMENT ------------------------------------------------------ {{{1
 
-#define prepend_node(head, node)    ((node)->next = (head), (head) = (node))
-#define remove_node(head, node)     ((head) = (node)->next)
-
 // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
 #define FNV1A_PRIME32   0x01000193
 #define FNV1A_OFFSET32  0x811c9dc5
@@ -85,11 +82,15 @@ static uint32_t hash_number(Number number) {
 // Separate name from `new_object` since `new_tstring` also needs access.
 // Assumes casting `alloc->context` to `VM*` is a safe operation.
 static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
-    VM     *vm   = alloc->context;
-    Object *node = alloc->reallocfn(NULL, 0, size, vm);
-    node->tag    = tag;
-    node->hash   = hash_pointer(node);
-    return prepend_node(vm->objects, node);
+    VM      *vm   = alloc->context;
+    Object **head = &vm->objects;
+    Object  *node = alloc->reallocfn(NULL, 0, size, vm);
+    node->tag     = tag;
+    node->hash    = hash_pointer(node);
+    node->next    = *head;
+    *head         = node;
+    return node;
+    // return prepend_object(&vm->objects, node);
 }
 
 #define new_object(T, tag, alloc) \
@@ -257,7 +258,8 @@ static TString *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
         StrView v2 = make_strview(inst->data, inst->len);
         interned   = find_interned(vm, &v2, hash);
         if (interned != NULL) {
-            remove_node(vm->objects, &inst->object);
+            vm->objects = inst->object.next;
+            // remove_object(&vm->objects, &inst->object);
             free_tstring(inst, inst->len, alloc);
             return interned;
         }
@@ -289,7 +291,8 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
     end_string(inst, hash_string(&view));
     TString *interned = find_interned(vm, &view, inst->object.hash);
     if (interned != NULL) {
-        remove_node(vm->objects, &inst->object);
+        vm->objects = inst->object.next;
+        // remove_object(&vm->objects, &inst->object);
         free_tstring(inst, inst->len, alloc);
         return interned;
     }

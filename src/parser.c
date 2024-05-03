@@ -277,24 +277,21 @@ static void expression(Compiler *self) {
 // ASSIGNMENTS ------------------------------------------------------------ {{{2
 
 static void init_assignment(Assignment *self, Assignment *prev, AssignType type) {
-    self->prev    = prev;
-    self->type    = type;
-    self->arg     = -1;
-    self->istable = (type == ASSIGN_TABLE);
+    self->prev = prev;
+    self->type = type;
+    self->arg  = -1;
 }
 
 static void set_assignment(Assignment *self, AssignType type, int arg) {
-    self->type    = type;
-    self->arg     = arg;
-    self->istable = (type == ASSIGN_TABLE);
+    self->type = type;
+    self->arg  = arg;
 }
 
 static int count_assignments(Assignment *self) {
-    Assignment *node = self;
-    int         count = 0;
-    while (node != NULL) {
+    int count = 0;
+    while (self != NULL) {
         count += 1;
-        node = node->prev;
+        self   = self->prev;
     }
     return count;
 }
@@ -334,7 +331,7 @@ static void emit_assignment_tail(Compiler *self, Assignment *list) {
 
     // After recursion, clean up stack if we emitted table fields as they cannot
     // be implicitly popped due to SETTABLE being a VAR_DELTA pop.
-    if (list->istable) {
+    if (list->type == ASSIGN_TABLE) {
         emit_oparg1(self, OP_POP, 2);
     }
 }
@@ -388,7 +385,7 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
     Lexer *lexer = self->lexer;
     Token *ident = &lexer->consumed;
 
-    if (!elem->istable) {
+    if (elem->type != ASSIGN_TABLE) {
         int  arg     = resolve_local(self, ident);
         bool islocal = (arg != -1);
         if (!islocal) {

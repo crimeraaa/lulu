@@ -62,7 +62,7 @@ void emit_opcode(Compiler *self, OpCode op) {
  */
 static bool adjust_vardelta(Compiler *self, OpCode op, Byte arg) {
     Chunk *chunk = current_chunk(self);
-    int    len   = chunk->len;
+    Byte  *code  = chunk->code + (chunk->len - 1);
     int    delta = arg;
 
     switch (op) {
@@ -88,10 +88,14 @@ static bool adjust_vardelta(Compiler *self, OpCode op, Byte arg) {
     }
 
     // Adjusting would cause overflow? (Assumes `int` is bigger than `Byte`)
-    if (cast(int, chunk->code[len - 1]) + delta > cast(int, MAX_BYTE)) {
+    if (cast(int, *code) + delta > cast(int, MAX_BYTE)) {
         return false;
     }
-    chunk->code[len - 1] += delta;
+    *code += delta;
+
+    // Do this here mainly for the case of POP delegating to SETTABLE. This is
+    // to prevent the wrong prev opcode from being set in such cases.
+    adjust_stackinfo(self, op, delta);
     return true;
 }
 
@@ -100,18 +104,16 @@ void emit_oparg1(Compiler *self, OpCode op, Byte arg) {
     case OP_POP:
     case OP_CONCAT: // Fall through
     case OP_NIL:
-        if (!adjust_vardelta(self, op, arg)) {
-            goto no_optimization;
+        if (adjust_vardelta(self, op, arg)) {
+            return;
         }
-        break;
-no_optimization:
+        // Fall through
     default:
         emit_byte(self, op);
         emit_byte(self, arg);
+        adjust_stackinfo(self, op, arg);
         break;
     }
-
-    adjust_stackinfo(self, op, arg);
 }
 
 void emit_oparg2(Compiler *self, OpCode op, Byte2 arg) {
