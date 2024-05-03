@@ -1,4 +1,8 @@
-EXE 		:= lulu
+DIR_SRC		:= src
+DIR_OBJ		:= obj
+DIR_BIN		:= bin
+DIR_DEP 	:= $(DIR_OBJ)/.deps
+
 CC 			:= clang
 CC_FLAGS	:= -std=c11 -Wall -Wextra -Werror -pedantic \
 			-fdiagnostics-color=always -Wno-error=unused-variable \
@@ -7,9 +11,10 @@ CC_FLAGS	:= -std=c11 -Wall -Wextra -Werror -pedantic \
 LD_FLAGS	:= -lm
 CC_DBGFLAGS	:= -g -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION -DDEBUG_USE_ASSERT
 
-CC_SRC 		:= $(wildcard src/*.c)
-CC_OBJ 		:= $(patsubst src/%.c,obj/%.o,$(CC_SRC))
-CC_INCLUDE 	:= $(wildcard src/*.h)
+CC_EXE		:= $(DIR_BIN)/lulu
+CC_SRC 		:= $(wildcard $(DIR_SRC)/*.c)
+CC_OBJ 		:= $(patsubst $(DIR_SRC)/%.c,$(DIR_OBJ)/%.o,$(CC_SRC))
+CC_INCLUDE 	:= $(wildcard $(DIR_SRC)/*.h)
 
 # -*- DEPENDENCY GENERATION ----------------------------------------------- {{{1
 #
@@ -32,10 +37,8 @@ CC_INCLUDE 	:= $(wildcard src/*.h)
 #
 # ------------------------------------------------------------------------------
 
-DEPDIR 	:= obj/.deps
-
 # Very important to not expand this immediately using `:=` syntax!
-DEPFLAGS = -MT '$@' -MMD -MP -MF $(DEPDIR)/$*.d
+DEPFLAGS = -MT '$@' -MMD -MP -MF $(DIR_DEP)/$*.d
 
 # 1}}} -------------------------------------------------------------------------
 
@@ -49,31 +52,35 @@ debug: CC_FLAGS += $(CC_DBGFLAGS)
 debug: build
 
 .PHONY: release
-release: CC_FLAGS += -Os
+release: CC_FLAGS += -O2
 release: LD_FLAGS += -s
 release: build
+
+.PHONY: run
+run: build
+	$(CC_EXE)
 
 # }}} --------------------------------------------------------------------------
 
 # -*- TARGETS ------------------------------------------------------------*- {{{
 
 .PHONY: build
-build: bin/$(EXE)
+build: $(CC_EXE)
 
-src bin obj $(DEPDIR):
+src bin obj $(DIR_DEP):
 	$(MKDIR) $@
 
-bin/$(EXE): $(CC_OBJ) | bin
+$(CC_EXE): $(CC_OBJ) | $(DIR_BIN)
 	$(CC) $(CC_FLAGS) -o $@ $^ $(LD_FLAGS)
 
-.PRECIOUS: obj/%.o
-obj/%.o: src/%.c $(DEPDIR)/%.d | obj $(DEPDIR)
+.PRECIOUS: $(DIR_OBJ)/%.o
+$(DIR_OBJ)/%.o: $(DIR_SRC)/%.c $(DIR_DEP)/%.d | $(DIR_OBJ) $(DIR_DEP)
 	$(CC) $(DEPFLAGS) $(CC_FLAGS) -c -o $@ $<
 
-DEPFILES := $(CC_SRC:src/%.c=$(DEPDIR)/%.d)
-$(DEPFILES):
+CC_DEP := $(CC_SRC:$(DIR_SRC)/%.c=$(DIR_DEP)/%.d)
+$(CC_DEP):
 
-include $(wildcard $(DEPFILES))
+include $(wildcard $(CC_DEP))
 
 .PHONY: clean
 clean:
@@ -81,7 +88,7 @@ clean:
 
 .PHONY: uninstall
 uninstall: clean
-	$(RM) bin/$(EXE) $(DEPFILES)
-	$(RMDIR) $(DEPDIR) bin obj
+	$(RM) $(CC_EXE) $(CC_DEP)
+	$(RMDIR) $(DIR_DEP) bin obj
 
 # }}} --------------------------------------------------------------------------

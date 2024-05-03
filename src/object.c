@@ -69,7 +69,7 @@ static uint32_t hash_pointer(Object *ptr) {
     } hash;
     hash.data    = ptr;
     StrView view = make_strview(hash.raw, sizeof(hash.raw));
-    return hash_string(&view);
+    return hash_lstring(&view);
 }
 
 static uint32_t hash_number(Number number) {
@@ -79,7 +79,7 @@ static uint32_t hash_number(Number number) {
     } hash;
     hash.data    = number;
     StrView view = make_strview(hash.raw, sizeof(hash.raw));
-    return hash_string(&view);
+    return hash_lstring(&view);
 }
 
 // Separate name from `new_object` since `new_tstring` also needs access.
