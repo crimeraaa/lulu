@@ -62,20 +62,20 @@ static uint32_t hash_lstring(const StrView *view) {
 static uint32_t hash_pointer(Object *ptr) {
     union {
         Object *data;
-        char    raw[sizeof(ptr)];
-    } hash;
-    hash.data    = ptr;
-    StrView view = make_strview(hash.raw, sizeof(hash.raw));
+        char    bytes[sizeof(ptr)];
+    } punning;
+    punning.data = ptr;
+    StrView view = make_strview(punning.bytes, sizeof(punning.bytes));
     return hash_lstring(&view);
 }
 
 static uint32_t hash_number(Number number) {
     union {
         Number data;
-        char   raw[sizeof(number)];
-    } hash;
-    hash.data    = number;
-    StrView view = make_strview(hash.raw, sizeof(hash.raw));
+        char   bytes[sizeof(number)];
+    } punning;
+    punning.data = number;
+    StrView view = make_strview(punning.bytes, sizeof(punning.bytes));
     return hash_lstring(&view);
 }
 
@@ -107,10 +107,10 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_TABLE]   = "table",
 };
 
-const char *to_cstring(const TValue *self, char *buffer, int *len) {
+const char *to_cstring(const TValue *self, char *buffer, int *out) {
     int n = 0;
-    if (len != NULL) {
-        *len = -1;
+    if (out != NULL) {
+        *out = -1;
     }
     switch (get_tag(self)) {
     case TYPE_NIL:
@@ -131,8 +131,8 @@ const char *to_cstring(const TValue *self, char *buffer, int *len) {
         break;
     }
     buffer[n] = '\0';
-    if (len != NULL) {
-        *len = n;
+    if (out != NULL) {
+        *out = n;
     }
     return buffer;
 }

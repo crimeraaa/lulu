@@ -107,8 +107,8 @@ typedef struct {
 void print_value(const TValue *self, bool quoted);
 
 // Assumes buffer is a fixed-size array of length `MAX_TOSTRING`.
-// If `len` is not `NULL`, it will be set to -1 if we do not own the result.
-const char *to_cstring(const TValue *self, char *buffer, int *len);
+// If `out` is not `NULL`, it will be set to -1 if we do not own the result.
+const char *to_cstring(const TValue *self, char *buffer, int *out);
 
 // We cannot use `memcmp` due to struct padding.
 bool values_equal(const TValue *lhs, const TValue *rhs);
