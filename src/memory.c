@@ -2,23 +2,27 @@
 #include "object.h"
 #include "vm.h"
 
-void init_alloc(Alloc *self, ReallocFn reallocfn, void *context) {
+void init_alloc(Alloc *self, ReallocFn reallocfn, void *context)
+{
     self->reallocfn = reallocfn;
     self->context   = context;
 }
 
-Object *prepend_object(Object **head, Object *node) {
+Object *prepend_object(Object **head, Object *node)
+{
     node->next = *head;
     *head      = node;
     return node;
 }
 
-Object *remove_object(Object **head, Object *node) {
+Object *remove_object(Object **head, Object *node)
+{
     *head = node->next;
     return node;
 }
 
-static void free_object(Object *object, Alloc *alloc) {
+static void free_object(Object *object, Alloc *alloc)
+{
     switch (object->tag) {
     case TYPE_STRING: {
         // In case of custom allocators we want to provide the exact allocated
@@ -38,7 +42,8 @@ static void free_object(Object *object, Alloc *alloc) {
     }
 }
 
-void free_objects(VM *vm) {
+void free_objects(VM *vm)
+{
     Alloc  *alloc = &vm->alloc;
     Object *head  = vm->objects;
     while (head != NULL) {

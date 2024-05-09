@@ -113,10 +113,10 @@ static void concat(Compiler *self) {
     Lexer *lexer = self->lexer;
     int argc = 1;
     do {
-        // Although right associative, we don't recursively compile concat
-        // expressions in the same grouping. We can do this iteratively, which
-        // is marginally better than constantly allocating stack frames for
-        // recursive calls.
+        /* Although right associative, we don't recursively compile concat
+        expressions in the same grouping. We can do this iteratively, which
+        is marginally better than constantly allocating stack frames for
+        recursive calls. */
         parse_precedence(self, PREC_CONCAT + 1);
         argc += 1;
     } while (match_token(lexer, TK_CONCAT));
@@ -196,7 +196,7 @@ static bool parse_field(Compiler *self, bool assigning) {
 
 static void parse_ctor(Compiler *self, int *index) {
     Lexer *lexer  = self->lexer;
-    Byte   offset = self->stack_usage - 1; // Absolute index of table itself.
+    Byte   offset = self->stack.usage - 1; // Absolute index of table itself.
 
     // TODO: Allow identifiers as implied array elements
     if (match_token_any(lexer, TK_LBRACKET, TK_IDENT)) {
@@ -258,8 +258,6 @@ static OpCode get_unop(TkType type) {
 static void unary(Compiler *self) {
     Lexer *lexer = self->lexer;
     TkType type  = lexer->consumed.type; // Save in stack-frame memory.
-
-    // Recursively compiles until we hit something with a lower precedence.
     parse_precedence(self, PREC_UNARY);
     emit_opcode(self, get_unop(type));
 }
@@ -296,21 +294,6 @@ static int count_assignments(Assignment *self) {
     return count;
 }
 
-// Only ever called when dealing with nested table field accesses.
-static void emit_field(Compiler *self, Assignment *list) {
-    switch (list->type) {
-    case ASSIGN_GLOBAL:
-        emit_oparg3(self, OP_GETGLOBAL, list->arg);
-        break;
-    case ASSIGN_LOCAL:
-        emit_oparg1(self, OP_GETLOCAL, list->arg);
-        break;
-    case ASSIGN_TABLE:
-        emit_opcode(self, OP_GETTABLE);
-        break;
-    }
-}
-
 static void emit_assignment_tail(Compiler *self, Assignment *list) {
     if (list == NULL) {
         return;
@@ -344,9 +327,8 @@ static void emit_assignment(Compiler *self, Assignment *list) {
 }
 
 /**
- * @brief   Emit a variable which is used as a table or fields thereof.
- *          After this we can afford to "forget" the table and its fields hence
- *          we "discharge" them from the linked list.
+ * @brief   Emit a variable which is used as a table and the fields thereof.
+ *          We do this in order to support multiple assignment semantics.
  *
  * @details In `t.k.v = 13` we want:
  *          GETGLOBAL   't'
@@ -355,11 +337,28 @@ static void emit_assignment(Compiler *self, Assignment *list) {
  *          CONSTANT    'v'
  *          CONSTANT    13
  *          SETTABLE
+ *
+ * @note    We don't need to "hold on" to the table/fields themselves, but we do
+ *          need to track where in the stack the table occurs so the SETTABLE
+ *          instruction knows where to look.
  */
 static void discharge_assignment(Compiler *self, Assignment *list, TkType type) {
     Lexer *lexer = self->lexer;
     next_token(lexer);
-    emit_field(self, list);
+
+    // Emit the table itself if this is the first token in an lvalue, or if this
+    // is part of a recursive call we need GETTABLE to push the subtable.
+    switch (list->type) {
+    case ASSIGN_GLOBAL:
+        emit_oparg3(self, OP_GETGLOBAL, list->arg);
+        break;
+    case ASSIGN_LOCAL:
+        emit_oparg1(self, OP_GETLOCAL, list->arg);
+        break;
+    case ASSIGN_TABLE:
+        emit_opcode(self, OP_GETTABLE);
+        break;
+    }
 
     // Discharge the field we just consumed instead of storing it in the list.
     switch (type) {
@@ -377,7 +376,7 @@ static void discharge_assignment(Compiler *self, Assignment *list, TkType type) 
     }
 
     // 0 is top, -1 is key, -2 is table.
-    set_assignment(list, ASSIGN_TABLE, self->stack_usage - 2);
+    set_assignment(list, ASSIGN_TABLE, self->stack.usage - 2);
 }
 
 // Assumes we consumed an identifier as the first element of a statement.
@@ -409,6 +408,7 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
         lexerror_at_consumed(lexer, "Function calls not yet implemented");
         break;
     case TK_COMMA: {
+        // Recursive call so chain elements together.
         Assignment next;
         init_assignment(&next, elem, ASSIGN_GLOBAL);
         next_token(lexer);
@@ -435,13 +435,6 @@ static void print_statement(Compiler *self) {
     emit_oparg1(self, OP_PRINT, argc);
 }
 
-// Expressions produce values, but since statements need to have 0 stack effect
-// this will pop whatever it produces.
-static void exprstmt(Compiler *self) {
-    expression(self);
-    emit_oparg1(self, OP_POP, 1);
-}
-
 static void block(Compiler *self) {
     Lexer *lexer = self->lexer;
     while (!check_token_any(lexer, TK_END, TK_EOF)) {
@@ -459,8 +452,7 @@ static void statement(Compiler *self) {
     switch (lexer->lookahead.type) {
     case TK_IDENT: {
         Assignment ident;
-        // Use dummy type that's not ASSIGN_INDEX or ASSIGN_FIELD so not garbage
-        init_assignment(&ident, NULL, ASSIGN_GLOBAL);
+        init_assignment(&ident, NULL, ASSIGN_GLOBAL); // Ensure no garbage.
         next_token(lexer);
         identifier_statement(self, &ident);
         break;
@@ -476,7 +468,7 @@ static void statement(Compiler *self) {
         print_statement(self);
         break;
     default:
-        exprstmt(self);
+        lexerror_at_lookahead(lexer, "Expected a statement");
         break;
     }
 }

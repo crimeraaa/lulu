@@ -64,19 +64,22 @@ static const StrView LULU_TKINFO[] = {
     [TK_EOF]      = strview_lit("<eof>"),
 };
 
-static void init_strview(StrView *self, const char *view) {
+static void init_strview(StrView *self, const char *view)
+{
     self->begin = view;
     self->end   = view;
     self->len   = 0;
 }
 
-static void init_token(Token *self) {
+static void init_token(Token *self)
+{
     init_strview(&self->view, NULL);
     self->line  = 0;
     self->type  = TK_EOF;
 }
 
-void init_lexer(Lexer *self, const char *input, VM *vm) {
+void init_lexer(Lexer *self, const char *input, VM *vm)
+{
     init_token(&self->lookahead);
     init_token(&self->consumed);
     init_strview(&self->lexeme, input);
@@ -89,26 +92,31 @@ void init_lexer(Lexer *self, const char *input, VM *vm) {
 
 // HELPERS ---------------------------------------------------------------- {{{1
 
-static bool is_at_end(const Lexer *self) {
+static bool is_at_end(const Lexer *self)
+{
     return *self->lexeme.end == '\0';
 }
 
-static char peek_current_char(const Lexer *self) {
+static char peek_current_char(const Lexer *self)
+{
     return *self->lexeme.end;
 }
 
-static char peek_next_char(const Lexer *self) {
+static char peek_next_char(const Lexer *self)
+{
     return *(self->lexeme.end + 1);
 }
 
 // Analogous to `scanner.c:advance()` in the book.
-static char next_char(Lexer *self) {
+static char next_char(Lexer *self)
+{
     self->lexeme.len += 1;
     self->lexeme.end += 1;
     return *(self->lexeme.end - 1);
 }
 
-static bool match_char(Lexer *self, char expected) {
+static bool match_char(Lexer *self, char expected)
+{
     if (is_at_end(self) || peek_current_char(self) != expected) {
         return false;
     } else {
@@ -117,7 +125,8 @@ static bool match_char(Lexer *self, char expected) {
     }
 }
 
-static void singleline(Lexer *self) {
+static void singleline(Lexer *self)
+{
     while (peek_current_char(self) != '\n' && !is_at_end(self)) {
         next_char(self);
     }
@@ -125,7 +134,8 @@ static void singleline(Lexer *self) {
 
 // Assuming we've consumed a `"[["`, check its bracket nesting level.
 // Note this will also mutate state, so be wary of the order you call it in.
-static int get_nesting(Lexer *self) {
+static int get_nesting(Lexer *self)
+{
     int nesting = 0;
     while (match_char(self, '=')) {
         nesting++;
@@ -134,7 +144,8 @@ static int get_nesting(Lexer *self) {
 }
 
 // Consume a multi-line string or comment with a known nesting level.
-static void multiline(Lexer *self, int nesting) {
+static void multiline(Lexer *self, int nesting)
+{
     for (;;) {
         if (match_char(self, ']')) {
             // `get_nesting()` will mutate `self` so call it first.
@@ -154,25 +165,26 @@ static void multiline(Lexer *self, int nesting) {
     }
 }
 
-static void skip_comment(Lexer *self) {
+static void skip_comment(Lexer *self)
+{
     // Look for the first '[' which starts off a multiline string/comment.
     if (match_char(self, '[')) {
         int nesting = get_nesting(self);
         if (match_char(self, '[')) {
             multiline(self, nesting);
-        } else {
-            singleline(self);
+            return;
         }
-    } else {
-        singleline(self);
     }
+    // Didn't match 2 '['. Fall through case.
+    singleline(self);
 }
 
 // 1}}} ------------------------------------------------------------------------
 
 // TOKENIZER -------------------------------------------------------------- {{{1
 
-static Token make_token(Lexer *self, TkType type) {
+static Token make_token(Lexer *self, TkType type)
+{
     Token token;
     token.view = self->lexeme;
     token.type = type;
@@ -180,7 +192,20 @@ static Token make_token(Lexer *self, TkType type) {
     return token;
 }
 
-static void skip_whitespace(Lexer *self) {
+static Token error_token(Lexer *self)
+{
+    Token token = make_token(self, TK_ERROR);
+    // For error tokens, report only the first line if this is a multiline.
+    char *newline = strchr(token.view.begin, '\n');
+    if (newline != NULL) {
+        token.view.end = newline;
+        token.view.len = cast(int, token.view.end - token.view.begin);
+    }
+    return token;
+}
+
+static void skip_whitespace(Lexer *self)
+{
     for (;;) {
         char ch = peek_current_char(self);
         switch (ch) {
@@ -208,15 +233,17 @@ static void skip_whitespace(Lexer *self) {
     }
 }
 
-static TkType check_keyword(TkType expected, StrView word) {
-    StrView kw = LULU_TKINFO[expected];
-    if (kw.len == word.len && cstr_eq(kw.begin, word.begin, word.len)) {
+static TkType check_keyword(TkType expected, StrView word)
+{
+    StrView keyword = LULU_TKINFO[expected];
+    if (keyword.len == word.len && cstr_eq(keyword.begin, word.begin, word.len)) {
         return expected;
     }
     return TK_IDENT;
 }
 
-static TkType get_identifier_type(const Lexer *self) {
+static TkType get_identifier_type(const Lexer *self)
+{
     StrView word = self->lexeme;
     switch (word.begin[0]) {
     case 'a': return check_keyword(TK_AND, word);
@@ -274,7 +301,8 @@ static TkType get_identifier_type(const Lexer *self) {
     return TK_IDENT;
 }
 
-static Token identifier_token(Lexer *self) {
+static Token identifier_token(Lexer *self)
+{
     while (isident(peek_current_char(self))) {
         next_char(self);
     }
@@ -299,7 +327,8 @@ static Token identifier_token(Lexer *self) {
  *          3. Multiple periods     := 1.2.3.4
  *          4. Python/JS separators := 1_000_000, 4_294_967_295
  */
-static void decimal_sequence(Lexer *self) {
+static void decimal_sequence(Lexer *self)
+{
     while (isdigit(peek_current_char(self))) {
         next_char(self);
     }
@@ -327,7 +356,8 @@ static void decimal_sequence(Lexer *self) {
  * @brief   Assumes we already consumed a digit character and are pointing at
  *          the first character right after it.
  */
-static Token number_token(Lexer *self) {
+static Token number_token(Lexer *self)
+{
     // Does not verify if we had a `0` character before, but whatever
     if (match_char(self, 'x')) {
         while (isxdigit(peek_current_char(self))) {
@@ -349,7 +379,8 @@ static Token number_token(Lexer *self) {
     return make_token(self, TK_NUMBER);
 }
 
-static Token string_token(Lexer *self, char quote) {
+static Token string_token(Lexer *self, char quote)
+{
     while (peek_current_char(self) != quote && !is_at_end(self)) {
         if (peek_current_char(self) == '\n') {
             goto bad_string;
@@ -372,7 +403,8 @@ bad_string:
     return make_token(self, TK_STRING);
 }
 
-static Token lstring_token(Lexer *self, int nesting) {
+static Token lstring_token(Lexer *self, int nesting)
+{
     bool open = match_char(self, '\n');
     if (open) {
         self->line++;
@@ -390,7 +422,8 @@ static Token lstring_token(Lexer *self, int nesting) {
 #define make_ifeq(lexer, ch, y, n) \
     make_token(lexer, match_char(lexer, ch) ? (y) : (n))
 
-Token scan_token(Lexer *self) {
+Token scan_token(Lexer *self)
+{
     skip_whitespace(self);
     init_strview(&self->lexeme, self->lexeme.end);
     if (is_at_end(self)) {
@@ -451,11 +484,12 @@ Token scan_token(Lexer *self) {
 
     case '\"': return string_token(self, '\"');
     case '\'': return string_token(self, '\'');
-    default:   return make_token(self, TK_ERROR);
+    default:   return error_token(self);
     }
 }
 
-void next_token(Lexer *self) {
+void next_token(Lexer *self)
+{
     self->consumed  = self->lookahead;
     self->lookahead = scan_token(self);
     if (self->lookahead.type == TK_ERROR) {
@@ -470,13 +504,15 @@ typedef struct {
     int   writes;      // How many slots we have written to so far.
 } Builder;
 
-static void init_builder(Builder *self) {
+static void init_builder(Builder *self)
+{
     self->end    = self->buffer;
     self->left   = sizeof(self->buffer);
     self->writes = 0;
 }
 
-static void append_builder(Builder *self, const char *format, ...) {
+static void append_builder(Builder *self, const char *format, ...)
+{
     va_list argp;
     va_start(argp, format);
 
@@ -488,7 +524,8 @@ static void append_builder(Builder *self, const char *format, ...) {
     va_end(argp);
 }
 
-void expect_token(Lexer *self, TkType expected, const char *info) {
+void expect_token(Lexer *self, TkType expected, const char *info)
+{
     if (self->lookahead.type == expected) {
         next_token(self);
         return;
@@ -507,12 +544,14 @@ void expect_token(Lexer *self, TkType expected, const char *info) {
     lexerror_at_lookahead(self, message.buffer);
 }
 
-bool check_token(Lexer *self, TkType expected) {
+bool check_token(Lexer *self, TkType expected)
+{
     TkType actual = self->lookahead.type;
     return actual == expected;
 }
 
-bool match_token(Lexer *self, TkType expected) {
+bool match_token(Lexer *self, TkType expected)
+{
     if (check_token(self, expected)) {
         next_token(self);
         return true;
@@ -521,7 +560,8 @@ bool match_token(Lexer *self, TkType expected) {
 }
 
 #undef check_token_any
-bool check_token_any(Lexer *self, const TkType expected[]) {
+bool check_token_any(Lexer *self, const TkType expected[])
+{
     for (int i = 0; expected[i] != TK_ERROR; i++) {
         if (check_token(self, expected[i])) {
             return true;
@@ -531,7 +571,8 @@ bool check_token_any(Lexer *self, const TkType expected[]) {
 }
 
 #undef match_token_any
-bool match_token_any(Lexer *self, const TkType expected[]) {
+bool match_token_any(Lexer *self, const TkType expected[])
+{
     if (check_token_any(self, expected)) {
         next_token(self);
         return true;
@@ -544,7 +585,8 @@ bool match_token_any(Lexer *self, const TkType expected[]) {
 
 // ERROR HANDLING --------------------------------------------------------- {{{1
 
-void lexerror_at(Lexer *self, const Token *token, const char *info) {
+void lexerror_at(Lexer *self, const Token *token, const char *info)
+{
     fprintf(stderr, "%s:%i: %s", self->name, self->line, info);
     if (token->type == TK_EOF) {
         fprintf(stderr, " at <eof>\n");
@@ -554,15 +596,19 @@ void lexerror_at(Lexer *self, const Token *token, const char *info) {
     longjmp(self->vm->errorjmp, ERROR_COMPTIME);
 }
 
-void lexerror_at_lookahead(Lexer *self, const char *info) {
+void lexerror_at_lookahead(Lexer *self, const char *info)
+{
     lexerror_at(self, &self->lookahead, info);
 }
 
-void lexerror_at_consumed(Lexer *self, const char *info) {
+void lexerror_at_consumed(Lexer *self, const char *info)
+{
     lexerror_at(self, &self->consumed, info);
 }
-void lexerror_at_middle(Lexer *self, const char *info) {
-    Token token = make_token(self, TK_ERROR);
+
+void lexerror_at_middle(Lexer *self, const char *info)
+{
+    Token token = error_token(self);
     lexerror_at(self, &token, info);
 }
 

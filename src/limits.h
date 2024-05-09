@@ -33,7 +33,7 @@
 #define compoundlit(T, ...) (T){__VA_ARGS__}
 
 // Will not work for pointer-decayed arrays.
-#define array_len(array)    (sizeof(array) / sizeof(array[0]))
+#define array_len(array)    (sizeof((array)) / sizeof((array)[0]))
 #define array_size(T, N)    (sizeof(T) * (N))
 #define array_lit(T, ...)   compoundlit(T[], __VA_ARGS__)
 #define tstring_size(N)     (sizeof(TString) + array_size(char, N))

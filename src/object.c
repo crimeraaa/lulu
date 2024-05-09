@@ -11,7 +11,8 @@
 #define FNV1A_PRIME64   0x00000100000001B3
 #define FNV1A_OFFSET64  0xcbf29ce484222325
 
-static char get_escape(char ch) {
+static char get_escape(char ch)
+{
     switch (ch) {
     case '\\':  return '\\';
     case '\'':  return '\'';
@@ -371,8 +372,8 @@ static Entry *find_entry(Entry *list, int cap, const TValue *key) {
 static void resize_table(Table *self, int newcap, Alloc *alloc) {
     Entry *newbuf = new_array(Entry, newcap, alloc);
     for (int i = 0; i < newcap; i++) {
-        set_nil(&newbuf[i].key);
-        set_nil(&newbuf[i].value);
+        setv_nil(&newbuf[i].key);
+        setv_nil(&newbuf[i].value);
     }
 
     // Copy non-empty and non-tombstone entries to the new table.
@@ -432,8 +433,8 @@ bool unset_table(Table *self, const TValue *key) {
         return false;
     }
     // Place a tombstone, it must be distinct from a nil key with a nil value.
-    set_nil(&entry->key);
-    set_boolean(&entry->value, false);
+    setv_nil(&entry->key);
+    setv_boolean(&entry->value, false);
     return true;
 }
 

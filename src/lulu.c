@@ -8,7 +8,8 @@
 
 VM global_vm = {0};
 
-static int repl(VM *vm) {
+static int repl(VM *vm)
+{
     char line[MAX_LINE];
     for (;;) {
         fputs(PROMPT, stdout);
@@ -23,7 +24,8 @@ static int repl(VM *vm) {
     return 0;
 }
 
-static char *read_file(const char *file_name) {
+static char *read_file(const char *file_name)
+{
     FILE *handle = fopen(file_name, "rb");
     char *buffer = NULL;
     size_t file_size = 0;
@@ -58,7 +60,8 @@ static char *read_file(const char *file_name) {
     return buffer;
 }
 
-static int run_file(VM *vm, const char *file_name) {
+static int run_file(VM *vm, const char *file_name)
+{
     char *input = read_file(file_name);
     if (input == NULL) {
         return EX_IOERR;
@@ -80,7 +83,8 @@ static int run_file(VM *vm, const char *file_name) {
     }
 }
 
-int main(int argc, const char *argv[]) {
+int main(int argc, const char *argv[])
+{
     VM *vm = &global_vm;
     int err = 0;
 

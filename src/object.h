@@ -96,10 +96,12 @@ typedef struct {
     get_tag(_dst) = (tt);                                                      \
 }
 
-#define set_nil(v)          set_value(TYPE_NIL,     as_number,  v, 0)
-#define set_boolean(v, b)   set_value(TYPE_BOOLEAN, as_boolean, v, b)
-#define set_number(v, n)    set_value(TYPE_NUMBER,  as_number,  v, n)
-#define set_object(T, v, o) set_value(T,            as_object,  v, o)
+#define setv_nil(v)          set_value(TYPE_NIL,     as_number,  v, 0)
+#define setv_boolean(v, b)   set_value(TYPE_BOOLEAN, as_boolean, v, b)
+#define setv_number(v, n)    set_value(TYPE_NUMBER,  as_number,  v, n)
+#define setv_object(T, v, o) set_value(T,            as_object,  v, o)
+#define setv_string(dst, src)   setv_object(TYPE_STRING, dst, src)
+#define setv_table(dst, src)    setv_object(TYPE_TABLE,  dst, src)
 
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 

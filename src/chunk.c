@@ -34,7 +34,8 @@ OpInfo LULU_OPINFO[] = {
 
 static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
 
-void init_chunk(Chunk *self, const char *name) {
+void init_chunk(Chunk *self, const char *name)
+{
     init_tarray(&self->constants);
     self->name  = name;
     self->code  = NULL;
@@ -43,14 +44,16 @@ void init_chunk(Chunk *self, const char *name) {
     self->cap   = 0;
 }
 
-void free_chunk(Chunk *self, Alloc *alloc) {
+void free_chunk(Chunk *self, Alloc *alloc)
+{
     free_tarray(&self->constants, alloc);
     free_array(Byte, self->code,  self->len, alloc);
     free_array(int,  self->lines, self->len, alloc);
     init_chunk(self, "(freed chunk)");
 }
 
-void write_chunk(Chunk *self, Byte data, int line, Alloc *alloc) {
+void write_chunk(Chunk *self, Byte data, int line, Alloc *alloc)
+{
     if (self->len + 1 > self->cap) {
         int prev    = self->cap;
         int next    = grow_capacity(prev);
@@ -63,7 +66,8 @@ void write_chunk(Chunk *self, Byte data, int line, Alloc *alloc) {
     self->len++;
 }
 
-int add_constant(Chunk *self, const TValue *value, Alloc *alloc) {
+int add_constant(Chunk *self, const TValue *value, Alloc *alloc)
+{
     TArray *constants = &self->constants;
     // TODO: Literally anything is faster than a linear search
     for (int i = 0; i < constants->len; i++) {

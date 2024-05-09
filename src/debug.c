@@ -1,7 +1,8 @@
 #include "debug.h"
 #include "limits.h"
 
-void disassemble_constants(const Chunk *self) {
+void disassemble_constants(const Chunk *self)
+{
     const TArray *array = &self->constants;
     printf("[CONSTANTS]:\n");
     for (int i = 0; i < array->len; i++) {
@@ -12,7 +13,8 @@ void disassemble_constants(const Chunk *self) {
     printf("\n");
 }
 
-void disassemble_chunk(const Chunk *self) {
+void disassemble_chunk(const Chunk *self)
+{
     disassemble_constants(self);
     printf("[BYTECODE]: '%s'\n", self->name);
     for (int offset = 0; offset < self->len; ) {
@@ -32,7 +34,8 @@ void disassemble_chunk(const Chunk *self) {
 #define read_constant(chunk, index) \
     ((chunk)->constants.values[(index)])
 
-static void constant_instruction(OpCode op, const Chunk *chunk, int offset) {
+static void constant_instruction(OpCode op, const Chunk *chunk, int offset)
+{
     int arg = read_byte3(chunk, offset);
     printf("%-16s Kst[%i] ; ", get_opname(op), arg);
     print_value(&read_constant(chunk, arg), true);
@@ -41,29 +44,34 @@ static void constant_instruction(OpCode op, const Chunk *chunk, int offset) {
 
 // Assumes all instructions that manipulate ranges of values on the stack will
 // only ever have a 1-byte argument.
-static void range_instruction(OpCode op, const Chunk *chunk, int offset) {
+static void range_instruction(OpCode op, const Chunk *chunk, int offset)
+{
     int arg = read_byte(chunk, offset + 1);
     printf("%-16s Top[%i...-1]\n", get_opname(op), -arg);
 }
 
-static void simple_instruction(OpCode op, const Chunk *chunk, int offset) {
+static void simple_instruction(OpCode op, const Chunk *chunk, int offset)
+{
     int         arg = read_byte(chunk, offset + 1);
     const char *act = (op == OP_POP) ? "Pop" : "Nil";
     printf("%-16s %s(%i)\n", get_opname(op), act, arg);
 }
 
-static void local_instruction(OpCode op, const Chunk *chunk, int offset) {
+static void local_instruction(OpCode op, const Chunk *chunk, int offset)
+{
     int arg = read_byte(chunk, offset + 1);
     printf("%-16s Loc[%i]\n", get_opname(op), arg);
 }
 
-static void settable_instruction(OpCode op, const Chunk *chunk, int offset) {
+static void settable_instruction(OpCode op, const Chunk *chunk, int offset)
+{
     int index  = chunk->code[offset + 1];
     int popped = chunk->code[offset + 2];
     printf("%-16s Stk[%i] Pop(%i)\n", get_opname(op), index, popped);
 }
 
-int disassemble_instruction(const Chunk *self, int offset) {
+int disassemble_instruction(const Chunk *self, int offset)
+{
     printf("%04x ", offset);
     int line = self->lines[offset];
     if (offset > 0 && line == self->lines[offset - 1]) {

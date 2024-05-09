@@ -10,10 +10,10 @@ void init_compiler(Compiler *self, Lexer *lexer, VM *vm) {
     self->lexer       = lexer;
     self->vm          = vm;
     self->chunk       = NULL;
-    self->local_count = 0;
-    self->scope_depth = 0;
-    self->stack_total = 0;
-    self->stack_usage = 0;
+    self->scope.count = 0;
+    self->scope.depth = 0;
+    self->stack.total = 0;
+    self->stack.usage = 0;
     self->prev_opcode = OP_RETURN;
 }
 
@@ -26,27 +26,27 @@ static void adjust_stackinfo(Compiler *self, OpCode op, int delta) {
     int     pop   = (info.pop  == VAR_DELTA) ? delta : info.pop;
 
     // If both push and pop are VAR_DELTA then something is horribly wrong.
-    self->stack_usage += push - pop;
+    self->stack.usage += push - pop;
     self->prev_opcode = op;
-    if (self->stack_usage > MAX_STACK) {
+    if (self->stack.usage > MAX_STACK) {
         lexerror_at_consumed(lexer, "Function uses too many stack slots");
     }
-    if (self->stack_usage > self->stack_total) {
-        self->stack_total = self->stack_usage;
+    if (self->stack.usage > self->stack.total) {
+        self->stack.total = self->stack.usage;
     }
 }
 
 // EMITTING BYTECODE ------------------------------------------------------ {{{1
+
+static Chunk *current_chunk(Compiler *self) {
+    return self->chunk;
+}
 
 static void emit_byte(Compiler *self, Byte data) {
     Alloc *alloc = &self->vm->alloc;
     Lexer *lexer = self->lexer;
     int    line  = lexer->consumed.line;
     write_chunk(current_chunk(self), data, line, alloc);
-}
-
-Chunk *current_chunk(Compiler *self) {
-    return self->chunk;
 }
 
 void emit_opcode(Compiler *self, OpCode op) {
@@ -189,8 +189,8 @@ void end_compiler(Compiler *self) {
     printf("[STACK USAGE]:\n"
            "NET:    %i\n"
            "MOST:   %i\n",
-           self->stack_usage,
-           self->stack_total);
+           self->stack.usage,
+           self->stack.total);
     printf("\n");
     disassemble_chunk(current_chunk(self));
 #endif
@@ -198,21 +198,22 @@ void end_compiler(Compiler *self) {
 
 void begin_scope(Compiler *self) {
     Lexer *lexer = self->lexer;
-    if ((self->scope_depth += 1) > MAX_LEVELS) {
+    self->scope.depth += 1;
+    if (self->scope.depth > MAX_LEVELS) {
         lexerror_at_lookahead(lexer, "Function uses too many syntax levels");
     }
 }
 
 void end_scope(Compiler *self) {
-    self->scope_depth--;
+    self->scope.depth--;
 
     int popped = 0;
-    while (self->local_count > 0) {
-        if (self->locals[self->local_count - 1].depth <= self->scope_depth) {
+    while (self->scope.count > 0) {
+        if (self->locals[self->scope.count - 1].depth <= self->scope.depth) {
             break;
         }
         popped++;
-        self->local_count--;
+        self->scope.count--;
     }
     // Don't waste 2 bytes if nothing to pop
     if (popped > 0) {
@@ -244,7 +245,7 @@ static bool identifiers_equal(const Token *a, const Token *b) {
 }
 
 int resolve_local(Compiler *self, const Token *ident) {
-    for (int i = self->local_count - 1; i >= 0; i--) {
+    for (int i = self->scope.count - 1; i >= 0; i--) {
         const Local *local = &self->locals[i];
         // If using itself in initializer, continue to resolve outward.
         if (local->depth != -1 && identifiers_equal(ident, &local->ident)) {
@@ -255,11 +256,11 @@ int resolve_local(Compiler *self, const Token *ident) {
 }
 
 void add_local(Compiler *self, const Token *ident) {
-    if (self->local_count + 1 > MAX_LOCALS) {
+    if (self->scope.count + 1 > MAX_LOCALS) {
         lexerror_at_consumed(self->lexer,
             "More than " stringify(MAX_LOCALS) " local variables reached");
     }
-    Local *local = &self->locals[self->local_count++];
+    Local *local = &self->locals[self->scope.count++];
     local->ident = *ident;
     local->depth = -1;
 }
@@ -269,10 +270,10 @@ void init_local(Compiler *self) {
     Token *ident = &lexer->consumed;
 
     // Detect variable shadowing in the same scope.
-    for (int i = self->local_count - 1; i >= 0; i--) {
+    for (int i = self->scope.count - 1; i >= 0; i--) {
         const Local *local = &self->locals[i];
         // Have we hit an outer scope?
-        if (local->depth != -1 && local->depth < self->scope_depth) {
+        if (local->depth != -1 && local->depth < self->scope.depth) {
             break;
         }
         if (identifiers_equal(ident, &local->ident)) {
@@ -283,9 +284,9 @@ void init_local(Compiler *self) {
 }
 
 void define_locals(Compiler *self, int count) {
-    int limit = self->local_count;
+    int limit = self->scope.count;
     for (int i = count; i > 0; i--) {
-        self->locals[limit - i].depth = self->scope_depth;
+        self->locals[limit - i].depth = self->scope.depth;
     }
 }
 
