@@ -24,16 +24,12 @@ Object *remove_object(Object **head, Object *node)
 static void free_object(Object *object, Alloc *alloc)
 {
     switch (object->tag) {
-    case TYPE_STRING: {
-        // In case of custom allocators we want to provide the exact allocated
-        // size, not all platforms will have malloc bookkeeping.
-        TString *string = cast(TString*, object);
-        free_tstring(string, string->len, alloc);
+    case TYPE_STRING:
+        free_tstring(cast(TString*, object), alloc);
         break;
-    }
     case TYPE_TABLE:
         free_table(cast(Table*, object), alloc);
-        free_pointer(Table, object, alloc);
+        free_pointer(object, sizeof(Table), alloc);
         break;
     default:
         eprintfln("[FATAL ERROR]:\nAttempt to free a %s", get_typename(object));

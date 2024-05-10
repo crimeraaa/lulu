@@ -32,7 +32,8 @@ static char get_escape(char ch)
 }
 
 // Note that we need to hash escapes correctly too.
-static uint32_t hash_string(const StrView *view) {
+static uint32_t hash_string(const StrView *view)
+{
     uint32_t hash = FNV1A_OFFSET32;
     char     prev = 0;
     for (const char *ptr = view->begin; ptr < view->end; ptr++) {
@@ -51,7 +52,8 @@ static uint32_t hash_string(const StrView *view) {
 }
 
 // This function will not hash any escape sequences at all.
-static uint32_t hash_lstring(const StrView *view) {
+static uint32_t hash_lstring(const StrView *view)
+{
     uint32_t hash = FNV1A_OFFSET32;
     for (const char *ptr = view->begin; ptr < view->end; ptr++) {
         hash ^= cast(Byte, *ptr);
@@ -60,7 +62,8 @@ static uint32_t hash_lstring(const StrView *view) {
     return hash;
 }
 
-static uint32_t hash_pointer(Object *ptr) {
+static uint32_t hash_pointer(Object *ptr)
+{
     union {
         Object *data;
         char    bytes[sizeof(ptr)];
@@ -70,7 +73,8 @@ static uint32_t hash_pointer(Object *ptr) {
     return hash_lstring(&view);
 }
 
-static uint32_t hash_number(Number number) {
+static uint32_t hash_number(Number number)
+{
     union {
         Number data;
         char   bytes[sizeof(number)];
@@ -82,9 +86,10 @@ static uint32_t hash_number(Number number) {
 
 // Separate name from `new_object` since `new_tstring` also needs access.
 // Assumes casting `alloc->context` to `VM*` is a safe operation.
-static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
+static Object *_new_object(size_t size, VType tag, Alloc *alloc)
+{
     VM     *vm   = alloc->context;
-    Object *node = alloc->reallocfn(NULL, 0, size, vm);
+    Object *node = new_pointer(size, alloc);
     node->tag    = tag;
     node->hash   = hash_pointer(node);
     return prepend_object(&vm->objects, node);
@@ -93,10 +98,6 @@ static Object *_new_object(size_t size, VType tag, Alloc *alloc) {
 #define new_object(T, tag, alloc) \
     cast(T*, _new_object(sizeof(T), tag, alloc))
 
-// Not meant to be used outside of the main `new_tstring()` function.
-// Note how we add 1 for the nul char.
-#define _new_tstring(N, alloc) \
-    cast(TString*, _new_object(tstring_size(N) + 1, TYPE_STRING, alloc))
 
 // 1}}} ------------------------------------------------------------------------
 
@@ -108,7 +109,8 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_TABLE]   = "table",
 };
 
-const char *to_cstring(const TValue *self, char *buffer, int *out) {
+const char *to_cstring(const TValue *self, char *buffer, int *out)
+{
     int n = 0;
     if (out != NULL) {
         *out = -1;
@@ -138,7 +140,8 @@ const char *to_cstring(const TValue *self, char *buffer, int *out) {
     return buffer;
 }
 
-void print_value(const TValue *self, bool quoted) {
+void print_value(const TValue *self, bool quoted)
+{
     if (is_string(self) && quoted) {
         const TString *s = as_string(self);
         // printf("string: %p ", as_pointer(self));
@@ -154,7 +157,8 @@ void print_value(const TValue *self, bool quoted) {
     }
 }
 
-bool values_equal(const TValue *lhs, const TValue *rhs) {
+bool values_equal(const TValue *lhs, const TValue *rhs)
+{
     // Logically, differing types can never be equal.
     if (get_tag(lhs) != get_tag(rhs)) {
         return false;
@@ -168,18 +172,21 @@ bool values_equal(const TValue *lhs, const TValue *rhs) {
     }
 }
 
-void init_tarray(TArray *self) {
+void init_tarray(TArray *self)
+{
     self->values = NULL;
     self->len = 0;
     self->cap = 0;
 }
 
-void free_tarray(TArray *self, Alloc *alloc) {
+void free_tarray(TArray *self, Alloc *alloc)
+{
     free_array(TValue, self->values, self->len, alloc);
     init_tarray(self);
 }
 
-void write_tarray(TArray *self, const TValue *value, Alloc *alloc) {
+void write_tarray(TArray *self, const TValue *value, Alloc *alloc)
+{
     if (self->len + 1 > self->cap) {
         int oldcap   = self->cap;
         int newcap   = grow_capacity(oldcap);
@@ -193,15 +200,23 @@ void write_tarray(TArray *self, const TValue *value, Alloc *alloc) {
 
 // TSTRING MANAGEMENT ----------------------------------------------------- {{{1
 
-// NOTE: For `concat_string` we do not know the correct hash yet.
-// Analogous to `allocateString()` in the book.
-static TString *new_tstring(int len, Alloc *alloc) {
-    TString *inst = _new_tstring(len, alloc);
+TString *new_tstring(int len, Alloc *alloc)
+{
+    // Note how we add 1 for the nul char.
+    Object  *obj  = _new_object(tstring_size(len) + 1, TYPE_STRING, alloc);
+    TString *inst = cast(TString*, obj);
     inst->len     = len;
     return inst;
 }
 
-static void build_string(TString *self, const StrView *view) {
+// Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
+void free_tstring(TString *self, Alloc *alloc)
+{
+    free_pointer(self, tstring_size(self->len + 1), alloc);
+}
+
+static void build_string(TString *self, const StrView *view)
+{
     char   *end   = self->data; // For loop counter may skip.
     int     skips = 0;          // Number escape characters emitted.
     char    prev  = 0;
@@ -227,12 +242,14 @@ static void build_string(TString *self, const StrView *view) {
     self->len = view->len - skips;
 }
 
-static void end_string(TString *self, uint32_t hash) {
+static void end_string(TString *self, uint32_t hash)
+{
     self->data[self->len] = '\0';
     self->object.hash     = hash;
 }
 
-static TString *copy_string_or_lstring(VM *vm, const StrView *view, bool islong) {
+static TString *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
+{
     Alloc    *alloc    = &vm->alloc;
     uint32_t  hash     = (islong) ? hash_lstring(view) : hash_string(view);
     TString  *interned = find_interned(vm, view, hash);
@@ -256,7 +273,7 @@ static TString *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
         interned   = find_interned(vm, &v2, hash);
         if (interned != NULL) {
             remove_object(&vm->objects, &inst->object);
-            free_tstring(inst, inst->len, alloc);
+            free_tstring(inst, alloc);
             return interned;
         }
     }
@@ -264,15 +281,18 @@ static TString *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
     return inst;
 }
 
-TString *copy_lstring(VM *vm, const StrView *view) {
+TString *copy_lstring(VM *vm, const StrView *view)
+{
     return copy_string_or_lstring(vm, view, true);
 }
 
-TString *copy_string(VM *vm, const StrView *view) {
+TString *copy_string(VM *vm, const StrView *view)
+{
     return copy_string_or_lstring(vm, view, false);
 }
 
-TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
+TString *concat_strings(VM *vm, int argc, const TValue argv[], int len)
+{
     Alloc   *alloc  = &vm->alloc;
     TString *inst   = new_tstring(len, alloc);
     StrView  view   = make_strview(inst->data, inst->len);
@@ -288,7 +308,7 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
     TString *interned = find_interned(vm, &view, inst->object.hash);
     if (interned != NULL) {
         remove_object(&vm->objects, &inst->object);
-        free_tstring(inst, inst->len, alloc);
+        free_tstring(inst, alloc);
         return interned;
     }
     set_interned(vm, inst);
@@ -301,24 +321,28 @@ TString *concat_strings(VM *vm, int argc, const TValue argv[], int len) {
 
 #define TABLE_MAX_LOAD  0.75
 
-Table *new_table(Alloc *alloc) {
+Table *new_table(Alloc *alloc)
+{
     Table *inst = new_object(Table, TYPE_TABLE, alloc);
     init_table(inst);
     return inst;
 }
 
-void init_table(Table *self) {
+void init_table(Table *self)
+{
     self->entries = NULL;
     self->count   = 0;
     self->cap     = 0;
 }
 
-void free_table(Table *self, Alloc *alloc) {
+void free_table(Table *self, Alloc *alloc)
+{
     free_array(Entry, self->entries, self->cap, alloc);
     init_table(self);
 }
 
-void dump_table(const Table *self, const char *name) {
+void dump_table(const Table *self, const char *name)
+{
     name = (name != NULL) ? name : "(anonymous table)";
     if (self->count == 0) {
         printf("%s = {}\n", name);
@@ -339,7 +363,8 @@ void dump_table(const Table *self, const char *name) {
     printf("}\n");
 }
 
-static uint32_t get_hash(const TValue *self) {
+static uint32_t get_hash(const TValue *self)
+{
     switch (get_tag(self)) {
     case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
     case TYPE_BOOLEAN:  return as_boolean(self);
@@ -350,7 +375,8 @@ static uint32_t get_hash(const TValue *self) {
 }
 
 // Find a free slot. Assumes there is at least 1 free slot left.
-static Entry *find_entry(Entry *list, int cap, const TValue *key) {
+static Entry *find_entry(Entry *list, int cap, const TValue *key)
+{
     uint32_t index = get_hash(key) % cap;
     Entry   *tombstone = NULL;
     for (;;) {
@@ -369,7 +395,8 @@ static Entry *find_entry(Entry *list, int cap, const TValue *key) {
 }
 
 // Analogous to `adjustCapacity()` in the book.
-static void resize_table(Table *self, int newcap, Alloc *alloc) {
+static void resize_table(Table *self, int newcap, Alloc *alloc)
+{
     Entry *newbuf = new_array(Entry, newcap, alloc);
     for (int i = 0; i < newcap; i++) {
         setv_nil(&newbuf[i].key);
@@ -393,7 +420,8 @@ static void resize_table(Table *self, int newcap, Alloc *alloc) {
     self->cap     = newcap;
 }
 
-bool get_table(Table *self, const TValue *key, TValue *out) {
+bool get_table(Table *self, const TValue *key, TValue *out)
+{
     if (self->count == 0 || is_nil(key)) {
         return false;
     }
@@ -405,7 +433,8 @@ bool get_table(Table *self, const TValue *key, TValue *out) {
     return true;
 }
 
-bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc) {
+bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc)
+{
     if (is_nil(key)) {
         return false;
     }
@@ -424,7 +453,8 @@ bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc
     return isnewkey;
 }
 
-bool unset_table(Table *self, const TValue *key) {
+bool unset_table(Table *self, const TValue *key)
+{
     if (self->count == 0 || is_nil(key)) {
         return false;
     }
@@ -438,7 +468,8 @@ bool unset_table(Table *self, const TValue *key) {
     return true;
 }
 
-void copy_table(Table *dst, const Table *src, Alloc *alloc) {
+void copy_table(Table *dst, const Table *src, Alloc *alloc)
+{
     for (int i = 0; i < src->cap; i++) {
         const Entry *entry = &src->entries[i];
         if (is_nil(&entry->key)) {
@@ -448,14 +479,16 @@ void copy_table(Table *dst, const Table *src, Alloc *alloc) {
     }
 }
 
-void set_interned(VM *vm, const TString *string) {
+void set_interned(VM *vm, const TString *string)
+{
     Alloc  *alloc = &vm->alloc;
     TValue  key   = make_string(string);
     TValue  val   = make_boolean(true);
     set_table(&vm->strings, &key, &val, alloc);
 }
 
-TString *find_interned(VM *vm, const StrView *view, uint32_t hash) {
+TString *find_interned(VM *vm, const StrView *view, uint32_t hash)
+{
     Table *table = &vm->strings;
     if (table->count == 0) {
         return NULL;

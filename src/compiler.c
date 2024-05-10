@@ -6,7 +6,8 @@
 #include "debug.h"
 #endif
 
-void init_compiler(Compiler *self, Lexer *lexer, VM *vm) {
+void init_compiler(Compiler *self, Lexer *lexer, VM *vm)
+{
     self->lexer       = lexer;
     self->vm          = vm;
     self->chunk       = NULL;
@@ -19,7 +20,8 @@ void init_compiler(Compiler *self, Lexer *lexer, VM *vm) {
 
 // Will also set `prev_opcode`. Pass `delta` only when `op` has a variable stack
 // effect, as indicated by `VAR_DELTA`.
-static void adjust_stackinfo(Compiler *self, OpCode op, int delta) {
+static void adjust_stackinfo(Compiler *self, OpCode op, int delta)
+{
     Lexer  *lexer = self->lexer;
     OpInfo  info  = get_opinfo(op);
     int     push  = (info.push == VAR_DELTA) ? delta : info.push;
@@ -38,18 +40,21 @@ static void adjust_stackinfo(Compiler *self, OpCode op, int delta) {
 
 // EMITTING BYTECODE ------------------------------------------------------ {{{1
 
-static Chunk *current_chunk(Compiler *self) {
+static Chunk *current_chunk(Compiler *self)
+{
     return self->chunk;
 }
 
-static void emit_byte(Compiler *self, Byte data) {
+static void emit_byte(Compiler *self, Byte data)
+{
     Alloc *alloc = &self->vm->alloc;
     Lexer *lexer = self->lexer;
     int    line  = lexer->consumed.line;
     write_chunk(current_chunk(self), data, line, alloc);
 }
 
-void emit_opcode(Compiler *self, OpCode op) {
+void emit_opcode(Compiler *self, OpCode op)
+{
     emit_byte(self, op);
     adjust_stackinfo(self, op, 0);
 }
@@ -60,7 +65,8 @@ void emit_opcode(Compiler *self, OpCode op) {
  *
  * @note    Assumes that the variable delta is always at the top of the bytecode.
  */
-static bool adjust_vardelta(Compiler *self, OpCode op, Byte arg) {
+static bool adjust_vardelta(Compiler *self, OpCode op, Byte arg)
+{
     Chunk *chunk = current_chunk(self);
     Byte  *code  = chunk->code + (chunk->len - 1);
     int    delta = arg;
@@ -99,7 +105,8 @@ static bool adjust_vardelta(Compiler *self, OpCode op, Byte arg) {
     return true;
 }
 
-void emit_oparg1(Compiler *self, OpCode op, Byte arg) {
+void emit_oparg1(Compiler *self, OpCode op, Byte arg)
+{
     switch (op) {
     case OP_POP:
     case OP_CONCAT: // Fall through
@@ -116,7 +123,8 @@ void emit_oparg1(Compiler *self, OpCode op, Byte arg) {
     }
 }
 
-void emit_oparg2(Compiler *self, OpCode op, Byte2 arg) {
+void emit_oparg2(Compiler *self, OpCode op, Byte2 arg)
+{
     emit_byte(self, op);
     emit_byte(self, encode_byte2_msb(arg));
     emit_byte(self, encode_byte2_lsb(arg));
@@ -131,7 +139,8 @@ void emit_oparg2(Compiler *self, OpCode op, Byte2 arg) {
     }
 }
 
-void emit_oparg3(Compiler *self, OpCode op, Byte3 arg) {
+void emit_oparg3(Compiler *self, OpCode op, Byte3 arg)
+{
     // We assume that no opcode with a 3-byte argument has a variable delta.
     emit_opcode(self, op);
     emit_byte(self, encode_byte3_msb(arg));
@@ -139,19 +148,22 @@ void emit_oparg3(Compiler *self, OpCode op, Byte3 arg) {
     emit_byte(self, encode_byte3_lsb(arg));
 }
 
-void emit_identifier(Compiler *self) {
+void emit_identifier(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     Token *ident = &lexer->consumed;
     emit_oparg3(self, OP_CONSTANT, identifier_constant(self, ident));
 }
 
-void emit_return(Compiler *self) {
+void emit_return(Compiler *self)
+{
     emit_opcode(self, OP_RETURN);
 }
 
 // 1}}} ------------------------------------------------------------------------
 
-int make_constant(Compiler *self, const TValue *value) {
+int make_constant(Compiler *self, const TValue *value)
+{
     Alloc *alloc = &self->vm->alloc;
     Lexer *lexer = self->lexer;
     int    index = add_constant(current_chunk(self), value, alloc);
@@ -161,12 +173,14 @@ int make_constant(Compiler *self, const TValue *value) {
     return index;
 }
 
-void emit_constant(Compiler *self, const TValue *value) {
+void emit_constant(Compiler *self, const TValue *value)
+{
     int index = make_constant(self, value);
     emit_oparg3(self, OP_CONSTANT, index);
 }
 
-void emit_variable(Compiler *self, const Token *ident) {
+void emit_variable(Compiler *self, const Token *ident)
+{
     int  arg     = resolve_local(self, ident);
     bool islocal = (arg != -1);
 
@@ -178,12 +192,14 @@ void emit_variable(Compiler *self, const Token *ident) {
     }
 }
 
-int identifier_constant(Compiler *self, const Token *ident) {
+int identifier_constant(Compiler *self, const Token *ident)
+{
     TValue wrapper = make_string(copy_string(self->vm, &ident->view));
     return make_constant(self, &wrapper);
 }
 
-void end_compiler(Compiler *self) {
+void end_compiler(Compiler *self)
+{
     emit_return(self);
 #ifdef DEBUG_PRINT_CODE
     printf("[STACK USAGE]:\n"
@@ -196,7 +212,8 @@ void end_compiler(Compiler *self) {
 #endif
 }
 
-void begin_scope(Compiler *self) {
+void begin_scope(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     self->scope.depth += 1;
     if (self->scope.depth > MAX_LEVELS) {
@@ -204,7 +221,8 @@ void begin_scope(Compiler *self) {
     }
 }
 
-void end_scope(Compiler *self) {
+void end_scope(Compiler *self)
+{
     self->scope.depth--;
 
     int popped = 0;
@@ -221,7 +239,8 @@ void end_scope(Compiler *self) {
     }
 }
 
-void compile(Compiler *self, const char *input, Chunk *chunk) {
+void compile(Compiler *self, const char *input, Chunk *chunk)
+{
     Lexer *lexer = self->lexer;
     self->chunk  = chunk;
     init_lexer(lexer, input, self->vm);
@@ -238,13 +257,15 @@ void compile(Compiler *self, const char *input, Chunk *chunk) {
 
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
 
-static bool identifiers_equal(const Token *a, const Token *b) {
+static bool identifiers_equal(const Token *a, const Token *b)
+{
     const StrView *s1 = &a->view;
     const StrView *s2 = &b->view;
     return s1->len == s2->len && cstr_eq(s1->begin, s2->begin, s1->len);
 }
 
-int resolve_local(Compiler *self, const Token *ident) {
+int resolve_local(Compiler *self, const Token *ident)
+{
     for (int i = self->scope.count - 1; i >= 0; i--) {
         const Local *local = &self->locals[i];
         // If using itself in initializer, continue to resolve outward.
@@ -255,7 +276,8 @@ int resolve_local(Compiler *self, const Token *ident) {
     return -1;
 }
 
-void add_local(Compiler *self, const Token *ident) {
+void add_local(Compiler *self, const Token *ident)
+{
     if (self->scope.count + 1 > MAX_LOCALS) {
         lexerror_at_consumed(self->lexer,
             "More than " stringify(MAX_LOCALS) " local variables reached");
@@ -265,7 +287,8 @@ void add_local(Compiler *self, const Token *ident) {
     local->depth = -1;
 }
 
-void init_local(Compiler *self) {
+void init_local(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     Token *ident = &lexer->consumed;
 
@@ -283,7 +306,8 @@ void init_local(Compiler *self) {
     add_local(self, ident);
 }
 
-void define_locals(Compiler *self, int count) {
+void define_locals(Compiler *self, int count)
+{
     int limit = self->scope.count;
     for (int i = count; i > 0; i--) {
         self->locals[limit - i].depth = self->scope.depth;

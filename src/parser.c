@@ -43,7 +43,8 @@ static int parse_exprlist(Compiler *self) {
     return exprs;
 }
 
-static void adjust_exprlist(Compiler *self, int idents, int exprs) {
+static void adjust_exprlist(Compiler *self, int idents, int exprs)
+{
     if (exprs == idents) {
         return;
     }
@@ -61,7 +62,8 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs) {
 
 // INFIX ------------------------------------------------------------------ {{{2
 
-static OpCode get_binop(TkType optype) {
+static OpCode get_binop(TkType optype)
+{
     switch (optype) {
     case TK_PLUS:    return OP_ADD;
     case TK_DASH:    return OP_SUB;
@@ -81,7 +83,8 @@ static OpCode get_binop(TkType optype) {
 
 // Assumes we just consumed a binary operator as a possible infix expression,
 // and that the left-hand side has been fully compiled.
-static void binary(Compiler *self) {
+static void binary(Compiler *self)
+{
     Lexer  *lexer  = self->lexer;
     TkType  optype = lexer->consumed.type;
 
@@ -109,7 +112,8 @@ static void binary(Compiler *self) {
 }
 
 // Assumes we just consumed a `..` and the first argument has been compiled.
-static void concat(Compiler *self) {
+static void concat(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     int argc = 1;
     do {
@@ -127,7 +131,8 @@ static void concat(Compiler *self) {
 
 // PREFIX ----------------------------------------------------------------- {{{2
 
-static void literal(Compiler *self) {
+static void literal(Compiler *self)
+{
     switch (self->lexer->consumed.type) {
     case TK_NIL:   emit_oparg1(self, OP_NIL, 1); break;
     case TK_TRUE:  emit_opcode(self, OP_TRUE);   break;
@@ -139,7 +144,8 @@ static void literal(Compiler *self) {
 }
 
 // Assumes we just consumed a '('.
-static void grouping(Compiler *self) {
+static void grouping(Compiler *self)
+{
     Lexer *lexer = self->lexer;
 
     // Hacky to create a new scope but lets us error at too many C-facing calls.
@@ -151,26 +157,30 @@ static void grouping(Compiler *self) {
 }
 
 // Assumes the lexer successfully consumed and encoded a number literal.
-static void number(Compiler *self) {
+static void number(Compiler *self)
+{
     Lexer *lexer   = self->lexer;
     TValue wrapper = make_number(lexer->number);
     emit_constant(self, &wrapper);
 }
 
-static void string(Compiler *self) {
+static void string(Compiler *self)
+{
     Lexer *lexer   = self->lexer;
     TValue wrapper = make_string(lexer->string);
     emit_constant(self, &wrapper);
 }
 
-static void emit_index(Compiler *self, int *index) {
+static void emit_index(Compiler *self, int *index)
+{
     TValue wrapper = make_number(*index);
     emit_constant(self, &wrapper);
     *index += 1;
 }
 
 // Assumes we consumed a `'['` or an identifier representing a table field.
-static bool parse_field(Compiler *self, bool assigning) {
+static bool parse_field(Compiler *self, bool assigning)
+{
     Lexer *lexer = self->lexer;
     switch (lexer->consumed.type) {
     case TK_LBRACKET:
@@ -194,7 +204,8 @@ static bool parse_field(Compiler *self, bool assigning) {
     return true;
 }
 
-static void parse_ctor(Compiler *self, int *index) {
+static void parse_ctor(Compiler *self, int *index)
+{
     Lexer *lexer  = self->lexer;
     Byte   offset = self->stack.usage - 1; // Absolute index of table itself.
 
@@ -212,7 +223,8 @@ static void parse_ctor(Compiler *self, int *index) {
     match_token(lexer, TK_COMMA);
 }
 
-static void table(Compiler *self) {
+static void table(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     Table *table = new_table(&self->vm->alloc);
     TValue value = make_table(table);
@@ -232,7 +244,8 @@ static void table(Compiler *self) {
  * @note    Past the first lexeme, assigning of variables is not allowed in Lua.
  *          So this function can only ever perform get operations.
  */
-static void variable(Compiler *self) {
+static void variable(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     Token *ident = &lexer->consumed;
     emit_variable(self, ident);
@@ -243,7 +256,8 @@ static void variable(Compiler *self) {
     }
 }
 
-static OpCode get_unop(TkType type) {
+static OpCode get_unop(TkType type)
+{
     switch (type) {
     case TK_NOT:    return OP_NOT;
     case TK_DASH:   return OP_UNM;
@@ -255,7 +269,8 @@ static OpCode get_unop(TkType type) {
 }
 
 // Assumes we just consumed an unary operator.
-static void unary(Compiler *self) {
+static void unary(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     TkType type  = lexer->consumed.type; // Save in stack-frame memory.
     parse_precedence(self, PREC_UNARY);
@@ -264,7 +279,8 @@ static void unary(Compiler *self) {
 
 // 2}}} ------------------------------------------------------------------------
 
-static void expression(Compiler *self) {
+static void expression(Compiler *self)
+{
     parse_precedence(self, PREC_ASSIGN + 1);
 }
 
@@ -274,18 +290,21 @@ static void expression(Compiler *self) {
 
 // ASSIGNMENTS ------------------------------------------------------------ {{{2
 
-static void init_assignment(Assignment *self, Assignment *prev, AssignType type) {
+static void init_assignment(Assignment *self, Assignment *prev, AssignType type)
+{
     self->prev = prev;
     self->type = type;
     self->arg  = -1;
 }
 
-static void set_assignment(Assignment *self, AssignType type, int arg) {
+static void set_assignment(Assignment *self, AssignType type, int arg)
+{
     self->type = type;
     self->arg  = arg;
 }
 
-static int count_assignments(Assignment *self) {
+static int count_assignments(Assignment *self)
+{
     int count = 0;
     while (self != NULL) {
         count += 1;
@@ -294,7 +313,8 @@ static int count_assignments(Assignment *self) {
     return count;
 }
 
-static void emit_assignment_tail(Compiler *self, Assignment *list) {
+static void emit_assignment_tail(Compiler *self, Assignment *list)
+{
     if (list == NULL) {
         return;
     }
@@ -319,7 +339,8 @@ static void emit_assignment_tail(Compiler *self, Assignment *list) {
     }
 }
 
-static void emit_assignment(Compiler *self, Assignment *list) {
+static void emit_assignment(Compiler *self, Assignment *list)
+{
     int idents = count_assignments(list);
     int exprs  = parse_exprlist(self);
     adjust_exprlist(self, idents, exprs);
@@ -342,7 +363,8 @@ static void emit_assignment(Compiler *self, Assignment *list) {
  *          need to track where in the stack the table occurs so the SETTABLE
  *          instruction knows where to look.
  */
-static void discharge_assignment(Compiler *self, Assignment *list, TkType type) {
+static void discharge_assignment(Compiler *self, Assignment *list, TkType type)
+{
     Lexer *lexer = self->lexer;
     next_token(lexer);
 
@@ -380,7 +402,8 @@ static void discharge_assignment(Compiler *self, Assignment *list, TkType type) 
 }
 
 // Assumes we consumed an identifier as the first element of a statement.
-static void identifier_statement(Compiler *self, Assignment *elem) {
+static void identifier_statement(Compiler *self, Assignment *elem)
+{
     Lexer *lexer = self->lexer;
     Token *ident = &lexer->consumed;
 
@@ -425,7 +448,8 @@ static void identifier_statement(Compiler *self, Assignment *elem) {
 
 // Assumes we just consumed the `print` keyword and are now ready to compile a
 // stream of expressions to act as arguments.
-static void print_statement(Compiler *self) {
+static void print_statement(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     bool   open  = match_token(lexer, TK_LPAREN);
     int    argc  = parse_exprlist(self);
@@ -435,7 +459,8 @@ static void print_statement(Compiler *self) {
     emit_oparg1(self, OP_PRINT, argc);
 }
 
-static void block(Compiler *self) {
+static void block(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     while (!check_token_any(lexer, TK_END, TK_EOF)) {
         declaration(self);
@@ -447,7 +472,8 @@ static void block(Compiler *self) {
 
 // 2}}} ------------------------------------------------------------------------
 
-static void statement(Compiler *self) {
+static void statement(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     switch (lexer->lookahead.type) {
     case TK_IDENT: {
@@ -479,7 +505,8 @@ static void statement(Compiler *self) {
 
 // Declare a local variable by initializing and adding it to the current scope.
 // Intern a local variable name. Analogous to `parseVariable()` in the book.
-static void parse_local(Compiler *self) {
+static void parse_local(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     Token *token = &lexer->consumed;
     init_local(self);
@@ -498,7 +525,8 @@ static void parse_local(Compiler *self) {
  *          the stack without popping it. We already keep track of info like the
  *          variable name.
  */
-static void declare_locals(Compiler *self) {
+static void declare_locals(Compiler *self)
+{
     Lexer *lexer  = self->lexer;
     int    idents = 0;
     int    exprs  = 0;
@@ -516,7 +544,8 @@ static void declare_locals(Compiler *self) {
     define_locals(self, idents);
 }
 
-void declaration(Compiler *self) {
+void declaration(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     switch (lexer->lookahead.type) {
     case TK_LOCAL:
@@ -537,7 +566,8 @@ void declaration(Compiler *self) {
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
 // expressions following it.
-static void parse_precedence(Compiler *self, Precedence prec) {
+static void parse_precedence(Compiler *self, Precedence prec)
+{
     Lexer *lexer = self->lexer;
     next_token(lexer);
     ParseFn prefixfn = get_parserule(lexer->consumed.type)->prefixfn;
@@ -618,7 +648,8 @@ static ParseRule PARSERULES_LOOKUP[] = {
     [TK_EOF]        = {NULL,        NULL,       PREC_NONE},
 };
 
-static ParseRule *get_parserule(TkType key) {
+static ParseRule *get_parserule(TkType key)
+{
     return &PARSERULES_LOOKUP[key];
 }
 

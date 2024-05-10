@@ -119,6 +119,10 @@ void init_tarray(TArray *self);
 void free_tarray(TArray *self, Alloc *alloc);
 void write_tarray(TArray *self, const TValue *value, Alloc *alloc);
 
+// NOTE: For `concat_string` we do not know the correct hash yet.
+// Analogous to `allocateString()` in the book.
+TString *new_tstring(int len, Alloc *alloc);
+void free_tstring(TString *self, Alloc *alloc);
 // Global functions that deal with strings need the VM to check for interned.
 TString *copy_string(VM *vm, const StrView *view);
 TString *copy_lstring(VM *vm, const StrView *view);

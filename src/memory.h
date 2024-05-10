@@ -28,33 +28,22 @@ Object *prepend_object(Object **head, Object *node);
 // Remove node from the linked list pointer pointed to by `head`. Returns `node`.
 Object *remove_object(Object **head, Object *node);
 
-#define new_array(T, N, alloc)                                                 \
-    (alloc)->reallocfn((NULL),                                                 \
-                        0,                                                     \
-                        array_size(T, N),                                      \
-                        (alloc)->context)
+#define new_pointer(size, alloc) \
+    (alloc)->reallocfn((NULL), 0, (size), (alloc)->context)
 
-#define resize_array(T, ptr, oldcap, newcap, alloc)                            \
-    (alloc)->reallocfn((ptr),                                                  \
-                        array_size(T, oldcap),                                 \
-                        array_size(T, newcap),                                 \
-                        (alloc)->context)
+#define resize_pointer(ptr, oldsz, newsz, alloc) \
+    (alloc)->reallocfn((ptr), (oldsz), (newsz), (alloc)->context)
 
-#define free_array(T, ptr, len, alloc)                                         \
-    (alloc)->reallocfn((ptr),                                                  \
-                        array_size(T, len),                                    \
-                        0,                                                     \
-                        (alloc)->context)
+#define free_pointer(ptr, size, alloc) \
+    (alloc)->reallocfn((ptr), (size), 0, (alloc)->context)
 
-#define free_pointer(T, ptr, alloc) \
-    free_array(T, ptr, 1, alloc)
+#define new_array(T, N, alloc) \
+    new_pointer(array_size(T, N), alloc)
 
-// Needed by `memory.c:free_object()` and `object.c:copy_string()`.
-// Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
-#define free_tstring(ptr, len, alloc)                                          \
-    (alloc)->reallocfn((ptr),                                                  \
-                        tstring_size(len) + 1,                                 \
-                        0,                                                     \
-                        (alloc)->context)
+#define resize_array(T, ptr, oldcap, newcap, alloc) \
+    resize_pointer(ptr, array_size(T, oldcap), array_size(T, newcap), alloc)
+
+#define free_array(T, ptr, len, alloc) \
+    free_pointer(ptr, array_size(T, len), alloc)
 
 #endif /* LULU_MEMORY_H */
