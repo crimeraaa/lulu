@@ -160,20 +160,20 @@ static void grouping(Compiler *self)
 static void number(Compiler *self)
 {
     Lexer *lexer   = self->lexer;
-    TValue wrapper = make_number(lexer->number);
+    Value wrapper = make_number(lexer->number);
     emit_constant(self, &wrapper);
 }
 
 static void string(Compiler *self)
 {
     Lexer *lexer   = self->lexer;
-    TValue wrapper = make_string(lexer->string);
+    Value wrapper = make_string(lexer->string);
     emit_constant(self, &wrapper);
 }
 
 static void emit_index(Compiler *self, int *index)
 {
-    TValue wrapper = make_number(*index);
+    Value wrapper = make_number(*index);
     emit_constant(self, &wrapper);
     *index += 1;
 }
@@ -227,7 +227,7 @@ static void table(Compiler *self)
 {
     Lexer *lexer = self->lexer;
     Table *table = new_table(&self->vm->alloc);
-    TValue value = make_table(table);
+    Value value = make_table(table);
     int    index = 1;
 
     // Always emit a getop for the table itself, especially when assigning

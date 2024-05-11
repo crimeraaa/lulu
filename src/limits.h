@@ -36,7 +36,7 @@
 #define array_len(array)    (sizeof((array)) / sizeof((array)[0]))
 #define array_size(T, N)    (sizeof(T) * (N))
 #define array_lit(T, ...)   compoundlit(T[], __VA_ARGS__)
-#define tstring_size(N)     (sizeof(TString) + array_size(char, N))
+#define tstring_size(N)     (sizeof(String) + array_size(char, N))
 
 // Helper macro for functions that expects varargs of the same type.
 #define vargs_count(T, ...) (sizeof(array_lit(T, __VA_ARGS__)) / sizeof(T))

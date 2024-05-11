@@ -28,6 +28,9 @@ typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 #define MAX_LEVELS  200
 #define MAX_MULTI   16
 
+// Lua's indexes starting at 1 is controversial. If you wish you can change it.
+#define ARRAY_START 1
+
 // NUMBER TYPE INFORMATION ------------------------------------------------ {{{1
 
 /**

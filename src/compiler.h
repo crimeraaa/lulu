@@ -45,11 +45,11 @@ void emit_identifier(Compiler *self);
 
 // Returns the index of `value` in the constants table.
 // Will throw if our current number of constants exceeds `MAX_CONSTS`.
-int make_constant(Compiler *self, const TValue *value);
-void emit_constant(Compiler *self, const TValue *value);
+int make_constant(Compiler *self, const Value *value);
+void emit_constant(Compiler *self, const Value *value);
 void emit_variable(Compiler *self, const Token *ident);
 
-// Intern the `TString*` for `name` so we can easily look it up later.
+// Intern the `String*` for `name` so we can easily look it up later.
 int identifier_constant(Compiler *self, const Token *ident);
 
 void begin_scope(Compiler *self);

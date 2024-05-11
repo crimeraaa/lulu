@@ -4,9 +4,6 @@
 #include "lulu.h"
 #include "limits.h"
 
-// Defined in `object.h`.
-typedef struct Object Object;
-
 #define grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
 typedef void *(*ReallocFn)(void *ptr, size_t oldsz, size_t newsz, void *context);

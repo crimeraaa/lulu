@@ -8,13 +8,13 @@
 
 // Forward declared in `lulu.h`.
 struct VM {
-    TValue      stack[MAX_STACK];
+    Value       stack[MAX_STACK];
     Alloc       alloc;    // Will hold the VM itself as context.
-    TValue     *top;      // Pointer to first free slot in the stack.
+    Value      *top;      // Pointer to first free slot in the stack.
     Chunk      *chunk;    // Bytecode, constants and such.
     Byte       *ip;       // Pointer to next instruction to be executed.
     const char *name;     // Filename or `"stdin"` if in REPL.
-    Table       globals;  // Maps string names to TValues.
+    Table       globals;  // Maps identifiers to Values.
     Table       strings;  // Collection of all interned strings.
     Object     *objects;  // Head of linked list to all allocated objects.
     jmp_buf     errorjmp; // Used for error-handling (kinda) like C++ exceptions.

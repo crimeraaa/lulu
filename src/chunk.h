@@ -107,7 +107,7 @@ extern OpInfo LULU_OPINFO[];
 #define get_opsize(op)  (get_opinfo(op).argsz + 1)
 
 typedef struct {
-    TArray      constants;
+    ArrayList   constants;
     const char *name;
     Byte       *code;
     int        *lines; // Mirrors the bytecode array.
@@ -122,6 +122,6 @@ void free_chunk(Chunk *self, Alloc *alloc);
 void write_chunk(Chunk *self, Byte data, int line, Alloc *alloc);
 
 // Append `value` to the constants array and return its index.
-int add_constant(Chunk *self, const TValue *value, Alloc *alloc);
+int add_constant(Chunk *self, const Value *value, Alloc *alloc);
 
 #endif /* LULU_CHUNK_H */

@@ -25,7 +25,7 @@ static void free_object(Object *object, Alloc *alloc)
 {
     switch (object->tag) {
     case TYPE_STRING:
-        free_tstring(cast(TString*, object), alloc);
+        free_tstring(cast(String*, object), alloc);
         break;
     case TYPE_TABLE:
         free_table(cast(Table*, object), alloc);

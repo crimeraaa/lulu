@@ -109,7 +109,7 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_TABLE]   = "table",
 };
 
-const char *to_cstring(const TValue *self, char *buffer, int *out)
+const char *to_cstring(const Value *self, char *buffer, int *out)
 {
     int n = 0;
     if (out != NULL) {
@@ -140,10 +140,10 @@ const char *to_cstring(const TValue *self, char *buffer, int *out)
     return buffer;
 }
 
-void print_value(const TValue *self, bool quoted)
+void print_value(const Value *self, bool quoted)
 {
     if (is_string(self) && quoted) {
-        const TString *s = as_string(self);
+        const String *s = as_string(self);
         // printf("string: %p ", as_pointer(self));
         if (s->len <= 1) {
             printf("\'%s\'", s->data);
@@ -157,7 +157,7 @@ void print_value(const TValue *self, bool quoted)
     }
 }
 
-bool values_equal(const TValue *lhs, const TValue *rhs)
+bool values_equal(const Value *lhs, const Value *rhs)
 {
     // Logically, differing types can never be equal.
     if (get_tag(lhs) != get_tag(rhs)) {
@@ -172,50 +172,67 @@ bool values_equal(const TValue *lhs, const TValue *rhs)
     }
 }
 
-void init_tarray(TArray *self)
+void init_arraylist(ArrayList *self)
 {
     self->values = NULL;
     self->len = 0;
     self->cap = 0;
 }
 
-void free_tarray(TArray *self, Alloc *alloc)
+void free_arraylist(ArrayList *self, Alloc *alloc)
 {
-    free_array(TValue, self->values, self->len, alloc);
-    init_tarray(self);
+    free_array(Value, self->values, self->len, alloc);
+    init_arraylist(self);
 }
 
-void write_tarray(TArray *self, const TValue *value, Alloc *alloc)
+void write_arraylist(ArrayList *self, const Value *value, Alloc *alloc)
 {
     if (self->len + 1 > self->cap) {
         int oldcap   = self->cap;
         int newcap   = grow_capacity(oldcap);
-        TValue *ptr  = self->values;
-        self->values = resize_array(TValue, ptr, oldcap, newcap, alloc);
+        self->values = resize_array(Value, self->values, oldcap, newcap, alloc);
         self->cap    = newcap;
     }
     self->values[self->len] = *value;
     self->len += 1;
 }
 
+void init_hashmap(HashMap *self)
+{
+    self->maps  = NULL;
+    self->count = 0;
+    self->cap   = 0;
+}
+
+void free_hashmap(HashMap *self, Alloc *alloc)
+{
+    free_array(Entry, self->maps, self->cap, alloc);
+    init_hashmap(self);
+}
+
+// void write_hashmap(HashMap *self, const Value *key, const Value *value, Alloc *alloc)
+// {
+
+// }
+
 // TSTRING MANAGEMENT ----------------------------------------------------- {{{1
 
-TString *new_tstring(int len, Alloc *alloc)
+String *new_tstring(int len, Alloc *alloc)
 {
     // Note how we add 1 for the nul char.
     Object  *obj  = _new_object(tstring_size(len) + 1, TYPE_STRING, alloc);
-    TString *inst = cast(TString*, obj);
+    String *inst = cast(String*, obj);
     inst->len     = len;
     return inst;
 }
 
 // Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
-void free_tstring(TString *self, Alloc *alloc)
+void free_tstring(String *self, Alloc *alloc)
 {
     free_pointer(self, tstring_size(self->len + 1), alloc);
 }
 
-static void build_string(TString *self, const StrView *view)
+static void build_string(String *self, const StrView *view)
 {
     char   *end   = self->data; // For loop counter may skip.
     int     skips = 0;          // Number escape characters emitted.
@@ -242,24 +259,24 @@ static void build_string(TString *self, const StrView *view)
     self->len = view->len - skips;
 }
 
-static void end_string(TString *self, uint32_t hash)
+static void end_string(String *self, uint32_t hash)
 {
     self->data[self->len] = '\0';
     self->object.hash     = hash;
 }
 
-static TString *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
+static String *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
 {
     Alloc    *alloc    = &vm->alloc;
     uint32_t  hash     = (islong) ? hash_lstring(view) : hash_string(view);
-    TString  *interned = find_interned(vm, view, hash);
+    String  *interned = find_interned(vm, view, hash);
 
     // Is this string already interned?
     if (interned != NULL) {
         return interned;
     }
 
-    TString *inst = new_tstring(view->len, alloc);
+    String *inst = new_tstring(view->len, alloc);
     if (islong) {
         memcpy(inst->data, view->begin, view->len);
     } else {
@@ -281,31 +298,31 @@ static TString *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
     return inst;
 }
 
-TString *copy_lstring(VM *vm, const StrView *view)
+String *copy_lstring(VM *vm, const StrView *view)
 {
     return copy_string_or_lstring(vm, view, true);
 }
 
-TString *copy_string(VM *vm, const StrView *view)
+String *copy_string(VM *vm, const StrView *view)
 {
     return copy_string_or_lstring(vm, view, false);
 }
 
-TString *concat_strings(VM *vm, int argc, const TValue argv[], int len)
+String *concat_strings(VM *vm, int argc, const Value argv[], int len)
 {
     Alloc   *alloc  = &vm->alloc;
-    TString *inst   = new_tstring(len, alloc);
+    String *inst   = new_tstring(len, alloc);
     StrView  view   = make_strview(inst->data, inst->len);
     int      offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
     for (int i = 0; i < argc; i++) {
-        const TString *arg = as_string(&argv[i]);
+        const String *arg = as_string(&argv[i]);
         memcpy(inst->data + offset, arg->data, arg->len);
         offset += arg->len;
     }
     end_string(inst, hash_string(&view));
-    TString *interned = find_interned(vm, &view, inst->object.hash);
+    String *interned = find_interned(vm, &view, inst->object.hash);
     if (interned != NULL) {
         remove_object(&vm->objects, &inst->object);
         free_tstring(inst, alloc);
@@ -363,7 +380,7 @@ void dump_table(const Table *self, const char *name)
     printf("}\n");
 }
 
-static uint32_t get_hash(const TValue *self)
+static uint32_t get_hash(const Value *self)
 {
     switch (get_tag(self)) {
     case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
@@ -375,7 +392,7 @@ static uint32_t get_hash(const TValue *self)
 }
 
 // Find a free slot. Assumes there is at least 1 free slot left.
-static Entry *find_entry(Entry *list, int cap, const TValue *key)
+static Entry *find_entry(Entry *list, int cap, const Value *key)
 {
     uint32_t index = get_hash(key) % cap;
     Entry   *tombstone = NULL;
@@ -394,14 +411,19 @@ static Entry *find_entry(Entry *list, int cap, const TValue *key)
     }
 }
 
+static void clear_entries(Entry *entries, int cap)
+{
+    for (int i = 0; i < cap; i++) {
+        setv_nil(&entries[i].key);
+        setv_nil(&entries[i].value);
+    }
+}
+
 // Analogous to `adjustCapacity()` in the book.
 static void resize_table(Table *self, int newcap, Alloc *alloc)
 {
     Entry *newbuf = new_array(Entry, newcap, alloc);
-    for (int i = 0; i < newcap; i++) {
-        setv_nil(&newbuf[i].key);
-        setv_nil(&newbuf[i].value);
-    }
+    clear_entries(newbuf, newcap);
 
     // Copy non-empty and non-tombstone entries to the new table.
     self->count = 0;
@@ -420,7 +442,7 @@ static void resize_table(Table *self, int newcap, Alloc *alloc)
     self->cap     = newcap;
 }
 
-bool get_table(Table *self, const TValue *key, TValue *out)
+bool get_table(Table *self, const Value *key, Value *out)
 {
     if (self->count == 0 || is_nil(key)) {
         return false;
@@ -433,7 +455,7 @@ bool get_table(Table *self, const TValue *key, TValue *out)
     return true;
 }
 
-bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc)
+bool set_table(Table *self, const Value *key, const Value *value, Alloc *alloc)
 {
     if (is_nil(key)) {
         return false;
@@ -453,7 +475,7 @@ bool set_table(Table *self, const TValue *key, const TValue *value, Alloc *alloc
     return isnewkey;
 }
 
-bool unset_table(Table *self, const TValue *key)
+bool unset_table(Table *self, const Value *key)
 {
     if (self->count == 0 || is_nil(key)) {
         return false;
@@ -479,15 +501,15 @@ void copy_table(Table *dst, const Table *src, Alloc *alloc)
     }
 }
 
-void set_interned(VM *vm, const TString *string)
+void set_interned(VM *vm, const String *string)
 {
-    Alloc  *alloc = &vm->alloc;
-    TValue  key   = make_string(string);
-    TValue  val   = make_boolean(true);
+    Alloc *alloc = &vm->alloc;
+    Value  key   = make_string(string);
+    Value  val   = make_boolean(true);
     set_table(&vm->strings, &key, &val, alloc);
 }
 
-TString *find_interned(VM *vm, const StrView *view, uint32_t hash)
+String *find_interned(VM *vm, const StrView *view, uint32_t hash)
 {
     Table *table = &vm->strings;
     if (table->count == 0) {
@@ -501,14 +523,16 @@ TString *find_interned(VM *vm, const StrView *view, uint32_t hash)
             if (is_nil(&entry->value)) {
                 return NULL;
             }
+            goto next_index;
         }
-        // We assume ALL keys in this table are strings.
-        TString *ts = as_string(&entry->key);
-        if (ts->len == view->len && ts->object.hash == hash) {
-            if (cstr_eq(ts->data, view->begin, view->len)) {
-                return ts;
+        // We assume ALL valid (i.e: non-nil) keys are strings.
+        String *interned = as_string(&entry->key);
+        if (interned->len == view->len && interned->object.hash == hash) {
+            if (cstr_eq(interned->data, view->begin, view->len)) {
+                return interned;
             }
         }
+next_index:
         index = (index + 1) % table->cap;
     }
 }

@@ -162,7 +162,7 @@ void emit_return(Compiler *self)
 
 // 1}}} ------------------------------------------------------------------------
 
-int make_constant(Compiler *self, const TValue *value)
+int make_constant(Compiler *self, const Value *value)
 {
     Alloc *alloc = &self->vm->alloc;
     Lexer *lexer = self->lexer;
@@ -173,7 +173,7 @@ int make_constant(Compiler *self, const TValue *value)
     return index;
 }
 
-void emit_constant(Compiler *self, const TValue *value)
+void emit_constant(Compiler *self, const Value *value)
 {
     int index = make_constant(self, value);
     emit_oparg3(self, OP_CONSTANT, index);
@@ -194,7 +194,7 @@ void emit_variable(Compiler *self, const Token *ident)
 
 int identifier_constant(Compiler *self, const Token *ident)
 {
-    TValue wrapper = make_string(copy_string(self->vm, &ident->view));
+    Value wrapper = make_string(copy_string(self->vm, &ident->view));
     return make_constant(self, &wrapper);
 }
 
