@@ -95,7 +95,7 @@ int main(int argc, const char *argv[])
         init_vm(vm, argv[1]);
         err = run_file(vm, argv[1]);
     } else {
-        fprintf(stderr, "Usage: %s [script]\n", argv[0]);
+        eprintfln("Usage: %s [script]", argv[0]);
         return EX_USAGE;
     }
     free_vm(vm);

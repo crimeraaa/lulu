@@ -587,11 +587,11 @@ bool match_token_any(Lexer *self, const TkType expected[])
 
 void lexerror_at(Lexer *self, const Token *token, const char *info)
 {
-    fprintf(stderr, "%s:%i: %s", self->name, self->line, info);
+    eprintf("%s:%i: %s", self->name, self->line, info);
     if (token->type == TK_EOF) {
-        fprintf(stderr, " at <eof>\n");
+        eprintln(" at <eof>");
     } else {
-        fprintf(stderr, " near '%.*s'\n", token->view.len, token->view.begin);
+        eprintfln(" near '%.*s'", token->view.len, token->view.begin);
     }
     longjmp(self->vm->errorjmp, ERROR_COMPTIME);
 }

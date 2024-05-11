@@ -84,7 +84,7 @@ static uint32_t hash_number(Number number)
     return hash_lstring(&view);
 }
 
-// Separate name from `new_object` since `new_tstring` also needs access.
+// Separate name from `new_object` since `new_string` also needs access.
 // Assumes casting `alloc->context` to `VM*` is a safe operation.
 static Object *_new_object(size_t size, VType tag, Alloc *alloc)
 {
@@ -172,20 +172,20 @@ bool values_equal(const Value *lhs, const Value *rhs)
     }
 }
 
-void init_arraylist(ArrayList *self)
+void init_varray(VArray *self)
 {
     self->values = NULL;
     self->len = 0;
     self->cap = 0;
 }
 
-void free_arraylist(ArrayList *self, Alloc *alloc)
+void free_varray(VArray *self, Alloc *alloc)
 {
     free_array(Value, self->values, self->len, alloc);
-    init_arraylist(self);
+    init_varray(self);
 }
 
-void write_arraylist(ArrayList *self, const Value *value, Alloc *alloc)
+void write_varray(VArray *self, const Value *value, Alloc *alloc)
 {
     if (self->len + 1 > self->cap) {
         int oldcap   = self->cap;
@@ -197,39 +197,21 @@ void write_arraylist(ArrayList *self, const Value *value, Alloc *alloc)
     self->len += 1;
 }
 
-void init_hashmap(HashMap *self)
-{
-    self->maps  = NULL;
-    self->count = 0;
-    self->cap   = 0;
-}
-
-void free_hashmap(HashMap *self, Alloc *alloc)
-{
-    free_array(Entry, self->maps, self->cap, alloc);
-    init_hashmap(self);
-}
-
-// void write_hashmap(HashMap *self, const Value *key, const Value *value, Alloc *alloc)
-// {
-
-// }
-
 // TSTRING MANAGEMENT ----------------------------------------------------- {{{1
 
-String *new_tstring(int len, Alloc *alloc)
+String *new_string(int len, Alloc *alloc)
 {
     // Note how we add 1 for the nul char.
-    Object  *obj  = _new_object(tstring_size(len) + 1, TYPE_STRING, alloc);
+    Object *obj  = _new_object(string_size(len + 1), TYPE_STRING, alloc);
     String *inst = cast(String*, obj);
-    inst->len     = len;
+    inst->len    = len;
     return inst;
 }
 
 // Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
-void free_tstring(String *self, Alloc *alloc)
+void free_string(String *self, Alloc *alloc)
 {
-    free_pointer(self, tstring_size(self->len + 1), alloc);
+    free_pointer(self, string_size(self->len + 1), alloc);
 }
 
 static void build_string(String *self, const StrView *view)
@@ -276,7 +258,7 @@ static String *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
         return interned;
     }
 
-    String *inst = new_tstring(view->len, alloc);
+    String *inst = new_string(view->len, alloc);
     if (islong) {
         memcpy(inst->data, view->begin, view->len);
     } else {
@@ -290,7 +272,7 @@ static String *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
         interned   = find_interned(vm, &v2, hash);
         if (interned != NULL) {
             remove_object(&vm->objects, &inst->object);
-            free_tstring(inst, alloc);
+            free_string(inst, alloc);
             return interned;
         }
     }
@@ -311,7 +293,7 @@ String *copy_string(VM *vm, const StrView *view)
 String *concat_strings(VM *vm, int argc, const Value argv[], int len)
 {
     Alloc   *alloc  = &vm->alloc;
-    String *inst   = new_tstring(len, alloc);
+    String *inst   = new_string(len, alloc);
     StrView  view   = make_strview(inst->data, inst->len);
     int      offset = 0;
 
@@ -325,7 +307,7 @@ String *concat_strings(VM *vm, int argc, const Value argv[], int len)
     String *interned = find_interned(vm, &view, inst->object.hash);
     if (interned != NULL) {
         remove_object(&vm->objects, &inst->object);
-        free_tstring(inst, alloc);
+        free_string(inst, alloc);
         return interned;
     }
     set_interned(vm, inst);
@@ -347,27 +329,27 @@ Table *new_table(Alloc *alloc)
 
 void init_table(Table *self)
 {
-    self->entries = NULL;
-    self->count   = 0;
-    self->cap     = 0;
+    self->hashmap = NULL;
+    self->hashcount   = 0;
+    self->hashcap     = 0;
 }
 
 void free_table(Table *self, Alloc *alloc)
 {
-    free_array(Entry, self->entries, self->cap, alloc);
+    free_array(Entry, self->hashmap, self->hashcap, alloc);
     init_table(self);
 }
 
 void dump_table(const Table *self, const char *name)
 {
     name = (name != NULL) ? name : "(anonymous table)";
-    if (self->count == 0) {
+    if (self->hashcount == 0) {
         printf("%s = {}\n", name);
         return;
     }
     printf("%s = {\n", name);
-    for (int i = 0, limit = self->cap; i < limit; i++) {
-        const Entry *entry = &self->entries[i];
+    for (int i = 0, limit = self->hashcap; i < limit; i++) {
+        const Entry *entry = &self->hashmap[i];
         if (is_nil(&entry->key)) {
             continue;
         }
@@ -426,28 +408,28 @@ static void resize_table(Table *self, int newcap, Alloc *alloc)
     clear_entries(newbuf, newcap);
 
     // Copy non-empty and non-tombstone entries to the new table.
-    self->count = 0;
-    for (int i = 0; i < self->cap; i++) {
-        Entry *src = &self->entries[i];
+    self->hashcount = 0;
+    for (int i = 0; i < self->hashcap; i++) {
+        Entry *src = &self->hashmap[i];
         if (is_nil(&src->key)) {
             continue; // Throws away both empty and tombstone entries.
         }
         Entry *dst = find_entry(newbuf, newcap, &src->key);
         dst->key   = src->key;
         dst->value = src->value;
-        self->count++;
+        self->hashcount++;
     }
-    free_array(Entry, self->entries, self->cap, alloc);
-    self->entries = newbuf;
-    self->cap     = newcap;
+    free_array(Entry, self->hashmap, self->hashcap, alloc);
+    self->hashmap = newbuf;
+    self->hashcap = newcap;
 }
 
 bool get_table(Table *self, const Value *key, Value *out)
 {
-    if (self->count == 0 || is_nil(key)) {
+    if (self->hashcount == 0 || is_nil(key)) {
         return false;
     }
-    Entry *entry = find_entry(self->entries, self->cap, key);
+    Entry *entry = find_entry(self->hashmap, self->hashcap, key);
     if (is_nil(&entry->key)) {
         return false;
     }
@@ -460,15 +442,15 @@ bool set_table(Table *self, const Value *key, const Value *value, Alloc *alloc)
     if (is_nil(key)) {
         return false;
     }
-    if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
-        resize_table(self, grow_capacity(self->cap), alloc);
+    if (self->hashcount + 1 > self->hashcap * TABLE_MAX_LOAD) {
+        resize_table(self, grow_capacity(self->hashcap), alloc);
     }
-    Entry *entry    = find_entry(self->entries, self->cap, key);
+    Entry *entry    = find_entry(self->hashmap, self->hashcap, key);
     bool   isnewkey = is_nil(&entry->key);
 
     // Don't increase the count for tombstones (nil-key with non-nil value)
     if (isnewkey && is_nil(&entry->value)) {
-        self->count++;
+        self->hashcount++;
     }
     entry->key   = *key;
     entry->value = *value;
@@ -477,10 +459,10 @@ bool set_table(Table *self, const Value *key, const Value *value, Alloc *alloc)
 
 bool unset_table(Table *self, const Value *key)
 {
-    if (self->count == 0 || is_nil(key)) {
+    if (self->hashcount == 0 || is_nil(key)) {
         return false;
     }
-    Entry *entry = find_entry(self->entries, self->cap, key);
+    Entry *entry = find_entry(self->hashmap, self->hashcap, key);
     if (is_nil(&entry->key)) {
         return false;
     }
@@ -492,8 +474,8 @@ bool unset_table(Table *self, const Value *key)
 
 void copy_table(Table *dst, const Table *src, Alloc *alloc)
 {
-    for (int i = 0; i < src->cap; i++) {
-        const Entry *entry = &src->entries[i];
+    for (int i = 0; i < src->hashcap; i++) {
+        const Entry *entry = &src->hashmap[i];
         if (is_nil(&entry->key)) {
             continue;
         }
@@ -512,18 +494,15 @@ void set_interned(VM *vm, const String *string)
 String *find_interned(VM *vm, const StrView *view, uint32_t hash)
 {
     Table *table = &vm->strings;
-    if (table->count == 0) {
+    if (table->hashcount == 0) {
         return NULL;
     }
-    uint32_t index = hash % table->cap;
+    uint32_t index = hash % table->hashcap;
     for (;;) {
-        Entry *entry = &table->entries[index];
-        if (is_nil(&entry->key)) {
-            // Stop if we find a non-tombstone entry.
-            if (is_nil(&entry->value)) {
-                return NULL;
-            }
-            goto next_index;
+        Entry *entry = &table->hashmap[index];
+        // The strings table only ever has completely empty or full entries.
+        if (is_nil(&entry->key) && is_nil(&entry->value)) {
+            return NULL;
         }
         // We assume ALL valid (i.e: non-nil) keys are strings.
         String *interned = as_string(&entry->key);
@@ -532,8 +511,7 @@ String *find_interned(VM *vm, const StrView *view, uint32_t hash)
                 return interned;
             }
         }
-next_index:
-        index = (index + 1) % table->cap;
+        index = (index + 1) % table->hashcap;
     }
 }
 

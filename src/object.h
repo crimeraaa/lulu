@@ -45,23 +45,17 @@ struct Entry {
     Value value;
 };
 
-struct ArrayList {
+struct VArray {
     Value *values;
     int    len;
     int    cap;
 };
 
-struct HashMap {
-    Entry *maps;    // Map Value keys to Value values (lol).
-    int    count;   // Current number of active entries.
-    int    cap;     // Total number of possible active entires for now.
-};
-
 struct Table {
-    Object object;  // For user-facing tables, not by VM internal tables.
-    Entry *entries; // Associative array segment.
-    int    count;   // Current number of active entries.
-    int    cap;     // Total number of possible active entries.
+    Object object;    // For user-facing tables, not by VM internal tables.
+    Entry *hashmap;   // Associative array segment.
+    int    hashcount; // Current number of active entries in the hashmap.
+    int    hashcap;   // Total number of entries the hashmap can hold.
 };
 
 // NOTE: All `get_*`, `is_*`, `as_*` and `set_*` functions expect a pointer.
@@ -117,17 +111,14 @@ const char *to_cstring(const Value *self, char *buffer, int *out);
 // We cannot use `memcmp` due to struct padding.
 bool values_equal(const Value *lhs, const Value *rhs);
 
-void init_arraylist(ArrayList *self);
-void free_arraylist(ArrayList *self, Alloc *alloc);
-void write_arraylist(ArrayList *self, const Value *value, Alloc *alloc);
-
-void free_hashmap(HashMap *self, Alloc *alloc);
-void init_hashmap(HashMap *self);
+void init_varray(VArray *self);
+void free_varray(VArray *self, Alloc *alloc);
+void write_varray(VArray *self, const Value *value, Alloc *alloc);
 
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
-String *new_tstring(int len, Alloc *alloc);
-void free_tstring(String *self, Alloc *alloc);
+String *new_string(int len, Alloc *alloc);
+void free_string(String *self, Alloc *alloc);
 // Global functions that deal with strings need the VM to check for interned.
 String *copy_string(VM *vm, const StrView *view);
 String *copy_lstring(VM *vm, const StrView *view);

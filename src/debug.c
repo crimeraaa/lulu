@@ -3,7 +3,7 @@
 
 void disassemble_constants(const Chunk *self)
 {
-    const ArrayList *array = &self->constants;
+    const VArray *array = &self->constants;
     printf("[CONSTANTS]:\n");
     for (int i = 0; i < array->len; i++) {
         printf("[%i] := ", i);

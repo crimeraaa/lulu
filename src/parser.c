@@ -6,7 +6,6 @@
 static ParseRule *get_parserule(TkType key);
 static void parse_precedence(Compiler *self, Precedence prec);
 
-
 /**
  * @brief   In Lua, globals aren't declared, but rather assigned as needed.
  *          This may be inconsistent with the design that accessing undefined
@@ -33,7 +32,8 @@ static void statement(Compiler *self);
  */
 static void expression(Compiler *self);
 
-static int parse_exprlist(Compiler *self) {
+static int parse_exprlist(Compiler *self)
+{
     Lexer *lexer = self->lexer;
     int    exprs = 0;
     do {

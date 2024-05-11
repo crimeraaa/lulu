@@ -59,28 +59,27 @@ static void runtime_error(VM *self, enum RT_ErrType rterr)
 
     switch (rterr) {
     case RTE_NEGATE:
-        eprintf("negate a %s value", _type(-1));
+        eprintfln("negate a %s value", _type(-1));
         break;
     case RTE_ARITH:
-        eprintf("perform arithmetic on %s with %s", _type(-2), _type(-1));
+        eprintfln("perform arithmetic on %s with %s", _type(-2), _type(-1));
         break;
     case RTE_COMPARE:
-        eprintf("compare %s with %s", _type(-2), _type(-1));
+        eprintfln("compare %s with %s", _type(-2), _type(-1));
         break;
     case RTE_CONCAT:
-        eprintf("concatenate %s with %s", _type(-2), _type(-1));
+        eprintfln("concatenate %s with %s", _type(-2), _type(-1));
         break;
     case RTE_UNDEF:
-        eprintf("read undefined variable '%s'.", _cstr(-1));
+        eprintfln("read undefined variable '%s'.", _cstr(-1));
         break;
     case RTE_LENGTH:
-        eprintf("get length of a %s value", _type(-1));
+        eprintfln("get length of a %s value", _type(-1));
         break;
     case RTE_INDEX:
-        eprintf("index a %s value", _type(-1));
+        eprintfln("index a %s value", _type(-1));
         break;
     }
-    fputc('\n', stderr);
     reset_stack(self);
     longjmp(self->errorjmp, ERROR_RUNTIME);
 
@@ -134,9 +133,9 @@ static bool converted_tonumber(Value *value)
         return false;
     }
     String *string = as_string(value);
-    StrView  view   = make_strview(string->data, string->len);
-    char    *end;
-    Number   result = cstr_tonumber(view.begin, &end);
+    StrView view   = make_strview(string->data, string->len);
+    char   *end;
+    Number  result = cstr_tonumber(view.begin, &end);
 
     // Don't convert yet if we need to report the error.
     if (end != view.end) {
@@ -327,7 +326,7 @@ static ErrType run(VM *self)
             break;
         case OP_CONCAT: {
             // Assume at least 2 args since concat is an infix expression.
-            int      argc = read_byte();
+            int     argc = read_byte();
             Value  *argv = poke_at(self, -argc);
             String *res  = concat_op(self, argc, argv);
             popn(argc);
@@ -357,14 +356,14 @@ static ErrType run(VM *self)
             break;
         }
         case OP_PRINT: {
-            int     argc = read_byte();
+            int    argc = read_byte();
             Value *argv = poke_at(self, -argc);
             for (int i = 0; i < argc; i++) {
                 print_value(&argv[i], false);
                 printf("\t");
             }
             printf("\n");
-            self->top = argv;
+            popn(argc);
             break;
         }
         case OP_RETURN:

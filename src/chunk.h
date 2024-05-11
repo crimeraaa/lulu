@@ -107,7 +107,7 @@ extern OpInfo LULU_OPINFO[];
 #define get_opsize(op)  (get_opinfo(op).argsz + 1)
 
 typedef struct {
-    ArrayList   constants;
+    VArray      constants;
     const char *name;
     Byte       *code;
     int        *lines; // Mirrors the bytecode array.
