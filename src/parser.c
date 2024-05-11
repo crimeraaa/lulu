@@ -220,6 +220,7 @@ static void parse_ctor(Compiler *self, int t_idx, int *count)
             emit_oparg3(self, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
         } else {
             resolve_variable(self, &ident);
+            *count += 1;
         }
     } else if (match_token(lexer, TK_LBRACKET)) {
         int k_idx = self->stack.usage;
@@ -377,41 +378,36 @@ static void emit_assignment(Compiler *self, Assignment *list)
  *          need to track where in the stack the table occurs so the SETTABLE
  *          instruction knows where to look.
  */
-static void discharge_assignment(Compiler *self, Assignment *list, TkType type)
+static void discharge_assignment(Compiler *self, Assignment *list, bool isfield)
 {
     Lexer *lexer = self->lexer;
-    next_token(lexer);
 
-    // Emit the table itself if this is the first token in an lvalue, or if this
-    // is part of a recursive call we need GETTABLE to push the subtable.
+    // Get the table itself if this is the first token in an lvalue, or if this
+    // is part of a recursive call we need GETTABLE to push a subtable.
     switch (list->type) {
     case ASSIGN_GLOBAL:
         emit_oparg3(self, OP_GETGLOBAL, list->arg);
         break;
     case ASSIGN_LOCAL:
-        emit_oparg1(self, OP_GETLOCAL, list->arg);
+        emit_oparg1(self, OP_GETLOCAL,  list->arg);
         break;
     case ASSIGN_TABLE:
         emit_opcode(self, OP_GETTABLE);
         break;
     }
 
-    // Discharge the field we just consumed instead of storing it in the list.
-    switch (type) {
-    case TK_LBRACKET:
+    // Emit the key immediately. In recursive calls we'll emit another GETTABLE,
+    // otherwise we'll know the key is +1 after the table when we emit SETTABLE.
+    if (isfield) {
+        Token *ident = &lexer->consumed;
+        expect_token(lexer, TK_IDENT, "after '.'");
+        emit_identifier(self, ident);
+    } else {
         expression(self);
         expect_token(lexer, TK_RBRACKET, NULL);
-        break;
-    case TK_PERIOD:
-        expect_token(lexer, TK_IDENT, "after '.'");
-        emit_identifier(self, &lexer->consumed);
-        break;
-    default:
-        // Should be unreachable
-        break;
     }
 
-    // 0 is top, -1 is key, -2 is table.
+    // stack.usage - 0 is top, -1 is the key we emitted and -2 is the table.
     set_assignment(list, ASSIGN_TABLE, self->stack.usage - 2);
 }
 
@@ -434,7 +430,8 @@ static void identifier_statement(Compiler *self, Assignment *elem)
     case TK_PERIOD: // Fall through
     case TK_LBRACKET:
         // Emit the table up to this point then mark `elem` as a table.
-        discharge_assignment(self, elem, lexer->lookahead.type);
+        next_token(lexer);
+        discharge_assignment(self, elem, lexer->consumed.type == TK_PERIOD);
         identifier_statement(self, elem);
         break;
     case TK_ASSIGN:
