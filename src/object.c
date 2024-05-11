@@ -91,7 +91,6 @@ static Object *new_object(size_t size, VType tag, Alloc *alloc)
     VM     *vm   = alloc->context;
     Object *node = new_pointer(size, alloc);
     node->tag    = tag;
-    node->hash   = hash_pointer(node);
     return prepend_object(&vm->objects, node);
 }
 
@@ -107,7 +106,7 @@ const char *const LULU_TYPENAMES[] = {
 
 const char *to_cstring(const Value *self, char *buffer, int *out)
 {
-    int n = 0;
+    int len = 0;
     if (out != NULL) {
         *out = -1;
     }
@@ -117,21 +116,21 @@ const char *to_cstring(const Value *self, char *buffer, int *out)
     case TYPE_BOOLEAN:
         return as_boolean(self) ? "true" : "false";
     case TYPE_NUMBER:
-        n = num_tostring(buffer, as_number(self));
+        len = num_tostring(buffer, as_number(self));
         break;
     case TYPE_STRING:
         return as_cstring(self);
     case TYPE_TABLE:
-        n = snprintf(buffer,
-                     MAX_TOSTRING,
-                     "%s: %p",
-                     get_typename(self),
-                     as_pointer(self));
+        len = snprintf(buffer,
+                       MAX_TOSTRING,
+                       "%s: %p",
+                       get_typename(self),
+                       as_pointer(self));
         break;
     }
-    buffer[n] = '\0';
+    buffer[len] = '\0';
     if (out != NULL) {
-        *out = n;
+        *out = len;
     }
     return buffer;
 }
@@ -171,8 +170,8 @@ bool values_equal(const Value *lhs, const Value *rhs)
 void init_varray(VArray *self)
 {
     self->values = NULL;
-    self->len = 0;
-    self->cap = 0;
+    self->len    = 0;
+    self->cap    = 0;
 }
 
 void free_varray(VArray *self, Alloc *alloc)
@@ -240,7 +239,7 @@ static void build_string(String *self, const StrView *view)
 static void end_string(String *self, uint32_t hash)
 {
     self->data[self->len] = '\0';
-    self->object.hash     = hash;
+    self->hash            = hash;
 }
 
 static String *copy_string_or_lstring(VM *vm, const StrView *view, bool islong)
@@ -288,10 +287,10 @@ String *copy_string(VM *vm, const StrView *view)
 
 String *concat_strings(VM *vm, int argc, const Value argv[], int len)
 {
-    Alloc   *alloc  = &vm->alloc;
+    Alloc  *alloc  = &vm->alloc;
     String *inst   = new_string(len, alloc);
-    StrView  view   = make_strview(inst->data, inst->len);
-    int      offset = 0;
+    StrView view   = make_strview(inst->data, inst->len);
+    int     offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
     for (int i = 0; i < argc; i++) {
@@ -300,7 +299,7 @@ String *concat_strings(VM *vm, int argc, const Value argv[], int len)
         offset += arg->len;
     }
     end_string(inst, hash_string(&view));
-    String *interned = find_interned(vm, &view, inst->object.hash);
+    String *interned = find_interned(vm, &view, inst->hash);
     if (interned != NULL) {
         remove_object(&vm->objects, &inst->object);
         free_string(inst, alloc);
@@ -365,8 +364,8 @@ static uint32_t get_hash(const Value *self)
     case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
     case TYPE_BOOLEAN:  return as_boolean(self);
     case TYPE_NUMBER:   return hash_number(as_number(self));
-    case TYPE_STRING:   // All objects pre-determine their hash value already.
-    case TYPE_TABLE:    return as_object(self)->hash;
+    case TYPE_STRING:   return as_string(self)->hash;
+    case TYPE_TABLE:    return hash_pointer(as_object(self));
     }
 }
 
@@ -503,7 +502,7 @@ String *find_interned(VM *vm, const StrView *view, uint32_t hash)
         }
         // We assume ALL valid (i.e: non-nil) keys are strings.
         String *interned = as_string(&entry->key);
-        if (interned->len == view->len && interned->object.hash == hash) {
+        if (interned->len == view->len && interned->hash == hash) {
             if (cstr_eq(interned->data, view->begin, view->len)) {
                 return interned;
             }

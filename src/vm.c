@@ -116,8 +116,8 @@ static String *concat_op(VM *self, int argc, Value argv[])
             int     len  = num_tostring(buffer, as_number(arg));
             StrView view = make_strview(buffer, len);
 
-            // Assumes string representation of numbers has no escapes.
-            setv_string(arg, cast(Object*, copy_lstring(self, &view)));
+            // Use `copy_string` just in case chosen representation has escapes.
+            setv_string(arg, cast(Object*, copy_string(self, &view)));
         } else if (!is_string(arg)) {
             runtime_error(self, RTE_CONCAT);
         }
@@ -205,7 +205,7 @@ static ErrType run(VM *self)
 #define read_byte2()        (decode_byte2(read_byte(), read_byte()))
 
 // Assumes MSB is read first, then middle, then LSB.
-#define read_byte3()        (decode_byte3(read_byte(), read_byte(), read_byte()))
+#define read_byte3()        (encode_byte3(read_byte(), read_byte(), read_byte()))
 
 // Assumes a 3-byte operand comes right after the opcode.
 #define read_constant()     (&constants[read_byte3()])
@@ -289,10 +289,11 @@ static ErrType run(VM *self)
             pop_back();
             break;
         case OP_SETTABLE: {
-            int    index  = read_byte(); // Absolute index of the table itself.
-            int    popped = read_byte();
-            Value *tbl    = poke_at(self, index);
-            Value *key    = poke_at(self, index + 1);
+            int    t_idx  = read_byte();
+            int    k_idx  = read_byte();
+            int    to_pop = read_byte();
+            Value *tbl    = poke_at(self, t_idx);
+            Value *key    = poke_at(self, k_idx);
             Value *val    = poke_at(self, -1);
 
             if (!is_table(tbl)) {
@@ -301,18 +302,18 @@ static ErrType run(VM *self)
                 runtime_error(self, RTE_INDEX);
             }
             set_table(as_table(tbl), key, val, alloc);
-            popn(popped);
+            popn(to_pop);
             break;
         }
         case OP_SETARRAY: {
-            int     index = read_byte(); // Absolute index of the table.
+            int     t_idx = read_byte(); // Absolute index of the table.
             int     count = read_byte(); // How many elements in the array?
-            Table  *tbl   = as_table(poke_at(self, index));
-            
+            Table  *tbl   = as_table(poke_at(self, t_idx)); // Assume correct!
+
             // Remember: Lua uses 1-based indexing!
             for (int i = 1; i <= count; i++) {
                 Value  key = make_number(i);
-                Value *val = poke_at(self, index + i);
+                Value *val = poke_at(self, t_idx + i);
                 set_table(tbl, &key, val, alloc);
             }
             popn(count);

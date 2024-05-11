@@ -31,13 +31,13 @@ struct Value {
 struct Object {
     Object  *next; // Intrusive list (linked list) node.
     VType    tag;  // Must be consistent with the parent `Value`.
-    uint32_t hash; // All objects need this when they are used as table keys.
 };
 
 struct String {
-    Object object; // "Inherited" must come first to allow safe type-punning.
-    int    len;    // String length with nul and escapes omitted.
-    char   data[]; // See: C99 flexible array members, MUST be last member!
+    Object   object; // "Inherited" must come first to allow safe type-punning.
+    uint32_t hash;   // Used when strings are used as table keys.
+    int      len;    // String length with nul and escapes omitted.
+    char     data[]; // See: C99 flexible array members, MUST be last member!
 };
 
 struct Entry {

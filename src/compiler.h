@@ -41,7 +41,7 @@ void emit_oparg1(Compiler *self, OpCode op, Byte arg);
 void emit_oparg2(Compiler *self, OpCode op, Byte2 arg);
 void emit_oparg3(Compiler *self, OpCode op, Byte3 arg);
 void emit_return(Compiler *self);
-void emit_identifier(Compiler *self);
+void emit_identifier(Compiler *self, const Token *ident);
 
 // Returns the index of `value` in the constants table.
 // Will throw if our current number of constants exceeds `MAX_CONSTS`.

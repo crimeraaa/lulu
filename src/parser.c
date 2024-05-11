@@ -160,14 +160,14 @@ static void grouping(Compiler *self)
 static void number(Compiler *self)
 {
     Lexer *lexer   = self->lexer;
-    Value wrapper = make_number(lexer->number);
+    Value  wrapper = make_number(lexer->number);
     emit_constant(self, &wrapper);
 }
 
 static void string(Compiler *self)
 {
     Lexer *lexer   = self->lexer;
-    Value wrapper = make_string(lexer->string);
+    Value  wrapper = make_string(lexer->string);
     emit_constant(self, &wrapper);
 }
 
@@ -175,7 +175,8 @@ static void string(Compiler *self)
 static bool parse_field(Compiler *self, bool assigning)
 {
     Lexer *lexer = self->lexer;
-    switch (lexer->consumed.type) {
+    Token *token = &lexer->consumed;
+    switch (token->type) {
     case TK_LBRACKET:
         expression(self);
         expect_token(lexer, TK_RBRACKET, NULL);
@@ -186,7 +187,7 @@ static bool parse_field(Compiler *self, bool assigning)
         }
         expect_token(lexer, TK_IDENT, NULL); // Fall through
     case TK_IDENT:
-        emit_identifier(self);
+        emit_identifier(self, token);
         break;
     default:
         break;
@@ -197,18 +198,37 @@ static bool parse_field(Compiler *self, bool assigning)
     return true;
 }
 
-static void parse_ctor(Compiler *self, int index, int *count)
+static void resolve_variable(Compiler *self, const Token *ident) {
+    Lexer *lexer = self->lexer;
+    emit_variable(self, ident);
+    while (match_token_any(lexer, TK_LBRACKET, TK_PERIOD)) {
+        parse_field(self, false);
+    }
+}
+
+static void parse_ctor(Compiler *self, int t_idx, int *count)
 {
     Lexer *lexer = self->lexer;
 
-    // TODO: Allow identifiers as implied array elements
-    if (match_token_any(lexer, TK_LBRACKET, TK_IDENT)) {
+    if (match_token(lexer, TK_IDENT)) {
+        Token ident = lexer->consumed; // Save as lexer might update.
+        int   k_idx = self->stack.usage;
+        if (match_token(lexer, TK_ASSIGN)) {
+            emit_identifier(self, &ident);
+            expression(self);
+            emit_oparg3(self, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+        } else {
+            resolve_variable(self, &ident);
+        }
+    } else if (match_token(lexer, TK_LBRACKET)) {
+        int k_idx = self->stack.usage;
+
         parse_field(self, true);
         expect_token(lexer, TK_ASSIGN, "to assign table field");
         expression(self);
 
-        // Always pop the key and value for each field in a table constructor.
-        emit_oparg2(self, OP_SETTABLE, decode_byte2(index, 2));
+        // Always pop the key and value assigning in a table constructor.
+        emit_oparg3(self, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
     } else {
         expression(self);
         *count += 1;
@@ -218,19 +238,19 @@ static void parse_ctor(Compiler *self, int index, int *count)
 
 static void table(Compiler *self)
 {
-    Lexer *lexer = self->lexer;
-    Value  value = make_table(new_table(&self->vm->alloc));
-    int    index = self->stack.usage; // Absolute index of the table itself.
-    int    count = 0; // How many elements are in the array portion.
+    Lexer *lexer   = self->lexer;
+    Value  wrapper = make_table(new_table(&self->vm->alloc));
+    int    t_idx   = self->stack.usage;
+    int    count   = 0; // Array portion length.
 
     // Always emit a getop for the table itself when assigning.
-    emit_constant(self, &value);
+    emit_constant(self, &wrapper);
     while (!match_token(lexer, TK_RCURLY)) {
-        parse_ctor(self, index, &count);
+        parse_ctor(self, t_idx, &count);
     }
-    
+
     if (count > 0) {
-        emit_oparg2(self, OP_SETARRAY, decode_byte2(index, count));
+        emit_oparg2(self, OP_SETARRAY, encode_byte2(t_idx, count));
     }
 }
 
@@ -245,12 +265,7 @@ static void variable(Compiler *self)
 {
     Lexer *lexer = self->lexer;
     Token *ident = &lexer->consumed;
-    emit_variable(self, ident);
-
-    // Have 1+ table fields?
-    while (match_token_any(lexer, TK_LBRACKET, TK_PERIOD)) {
-        parse_field(self, false);
-    }
+    resolve_variable(self, ident);
 }
 
 static OpCode get_unop(TkType type)
@@ -324,8 +339,8 @@ static void emit_assignment_tail(Compiler *self, Assignment *list)
         emit_oparg1(self, OP_SETLOCAL, list->arg);
         break;
     case ASSIGN_TABLE:
-        // For arg A use absolute index of table, for arg B pop only the value.
-        emit_oparg2(self, OP_SETTABLE, decode_byte2(list->arg, 1));
+        // For assignments we assume the key is always right after the table.
+        emit_oparg3(self, OP_SETTABLE, encode_byte3(list->arg, list->arg + 1, 1));
         break;
     }
     emit_assignment_tail(self, list->prev);
@@ -388,7 +403,7 @@ static void discharge_assignment(Compiler *self, Assignment *list, TkType type)
         break;
     case TK_PERIOD:
         expect_token(lexer, TK_IDENT, "after '.'");
-        emit_identifier(self);
+        emit_identifier(self, &lexer->consumed);
         break;
     default:
         // Should be unreachable

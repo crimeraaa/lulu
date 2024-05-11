@@ -40,7 +40,7 @@ OP_GETGLOBAL,// U     | -               | _G[Kst[U]]        |                  |
 OP_GETTABLE, // -     | table, key      | table[key]        |                  |
 OP_SETLOCAL, // L     | x               | -                 | Loc[L] = x       |
 OP_SETGLOBAL,// U     | x               | -                 | _G[Kst[U]] = x   |
-OP_SETTABLE, // A, B  | t, k, ..., v    | (pop B values)    | t[k] = v         |
+OP_SETTABLE, // A,B,C | t, k, ..., v    | (pop B values)    | t[k] = v         |
 OP_SETARRAY, // A, B  | t, ...          | (set B values)    | t[1...A] = ...   |
 OP_EQ,       // -     | x, y            | x == y            |                  |
 OP_LT,       // -     | x, y            | x < y             |                  |
@@ -62,24 +62,27 @@ OP_RETURN,   // -     | -               |                   |                  |
 /* -----------------------------------------------------------------------------
 OP_SETTABLE:
     ARGUMENT A:
-    - An absolute index into the stack where the table is found. We assume +1
-    from it is the desired key. We also assume that the very top of the stack is
-    where the desired value is.
-
-    We do it this way to allow multiple assignment semantics. It's quite a bit
-    of indirection but it works well enough.
+    - An absolute index into the stack where the table is found. We assume that
+    the very top of the stack is where the desired value is.
 
     ARGUMENT B:
+    - An absolute index into the stack where the key is found. This should be
+    able to support both table constructors and multiple assignments, hence
+    we explicitly track it.
+
+    ARGUMENT C:
     - Refers to how many values will be popped by this instruction. Since it's
     a variable delta we cannot afford an implicit pop of the value otherwise the
     compiler will report wrong stack usages. Doing so will also break how table
     fields due to their reliance on `Compiler::stack_usage`.
 
+    - Note that ARGUMENT C can be increased by an OP_POP being optimized.
+
 OP_SETARRAY:
     ARGUMENT A:
     - Similar to OP_SETTABLE, this represents the absolute index into the stack
     where the table is found.
-    
+
     ARGUMENT B:
     - Refers to how many values from the top of the stack are to be assigned to
     the array portion of table referred to by ARGUMENT A. In other words, it is
@@ -103,15 +106,16 @@ typedef const struct {
 // Please keep this up to date accordingly!
 #define NUM_OPCODES             (OP_RETURN + 1)
 
-#define encode_byte2_msb(N)     (((N) >> bitsize(Byte)) & MAX_BYTE)
-#define encode_byte2_lsb(N)     ((N) & MAX_BYTE)
-#define encode_byte2(N)         (encode_byte2_msb(N) | encode_byte2_lsb(N))
-#define decode_byte2(msb, lsb)  (((msb) << bitsize(Byte)) | (lsb))
+#define decode_byte2_msb(N)     (((N) >> bitsize(Byte)) & MAX_BYTE)
+#define decode_byte2_lsb(N)     ((N) & MAX_BYTE)
+#define decode_byte2(N)         (decode_byte2_msb(N) | decode_byte2_lsb(N))
+#define encode_byte2(msb, lsb)  (((msb) << bitsize(Byte)) | (lsb))
 
-#define encode_byte3_msb(N)     (((N) >> bitsize(Byte2)) & MAX_BYTE)
-#define encode_byte3_mid(N)     (((N) >> bitsize(Byte))  & MAX_BYTE)
-#define encode_byte3_lsb(N)     ((N) & MAX_BYTE)
-#define decode_byte3(msb, mid, lsb) (((msb) << bitsize(Byte2))                 \
+#define decode_byte3_msb(N)     (((N) >> bitsize(Byte2)) & MAX_BYTE)
+#define decode_byte3_mid(N)     (((N) >> bitsize(Byte))  & MAX_BYTE)
+#define decode_byte3_lsb(N)     ((N) & MAX_BYTE)
+#define decode_byte3(N)         (decode_byte3_msb(N) | decode_byte3_mid(N) | decode_byte3_lsb(N))
+#define encode_byte3(msb, mid, lsb) (((msb) << bitsize(Byte2))                 \
                                     | ((mid) << bitsize(Byte))                 \
                                     | (lsb))
 

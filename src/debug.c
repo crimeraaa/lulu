@@ -23,20 +23,21 @@ void disassemble_chunk(const Chunk *self)
     printf("\n");
 }
 
+// Note the side-effect!
 #define read_byte(chunk, offset) \
-    ((chunk)->code[(offset)])
-
-#define read_byte3(chunk, offset)                                              \
-    decode_byte3((chunk)->code[(offset) + 1],                                  \
-                 (chunk)->code[(offset) + 2],                                  \
-                 (chunk)->code[(offset) + 3])
+    ((chunk)->code[(offset) += 1])
 
 #define read_constant(chunk, index) \
     ((chunk)->constants.values[(index)])
 
 static void constant_instruction(OpCode op, const Chunk *chunk, int offset)
 {
-    int arg = read_byte3(chunk, offset);
+    // Need to do it this way due to multiple unsequenced modifications being
+    // undefined behavior.
+    int msb = read_byte(chunk, offset);
+    int mid = read_byte(chunk, offset);
+    int lsb = read_byte(chunk, offset);
+    int arg = encode_byte3(msb, mid, lsb);
     printf("%-16s Kst[%i] ; ", get_opname(op), arg);
     print_value(&read_constant(chunk, arg), true);
     printf("\n");
@@ -46,28 +47,36 @@ static void constant_instruction(OpCode op, const Chunk *chunk, int offset)
 // only ever have a 1-byte argument.
 static void range_instruction(OpCode op, const Chunk *chunk, int offset)
 {
-    int arg = read_byte(chunk, offset + 1);
+    int arg = read_byte(chunk, offset);
     printf("%-16s Top[%i...-1]\n", get_opname(op), -arg);
 }
 
 static void simple_instruction(OpCode op, const Chunk *chunk, int offset)
 {
-    int         arg = read_byte(chunk, offset + 1);
+    int         arg = read_byte(chunk, offset);
     const char *act = (op == OP_POP) ? "Pop" : "Nil";
     printf("%-16s %s(%i)\n", get_opname(op), act, arg);
 }
 
 static void local_instruction(OpCode op, const Chunk *chunk, int offset)
 {
-    int arg = read_byte(chunk, offset + 1);
+    int arg = read_byte(chunk, offset);
     printf("%-16s Loc[%i]\n", get_opname(op), arg);
 }
 
 static void settable_instruction(OpCode op, const Chunk *chunk, int offset)
 {
-    int index  = chunk->code[offset + 1];
-    int popped = chunk->code[offset + 2];
-    printf("%-16s Stk[%i] Pop(%i)\n", get_opname(op), index, popped);
+    int t_idx  = read_byte(chunk, offset);
+    int k_idx  = read_byte(chunk, offset);
+    int to_pop = read_byte(chunk, offset);
+    printf("%-16s Tbl[%i] Key[%i] Pop(%i)\n", get_opname(op), t_idx, k_idx, to_pop);
+}
+
+static void setarray_instruction(OpCode op, const Chunk *chunk, int offset)
+{
+    int t_idx  = read_byte(chunk, offset);
+    int to_set = read_byte(chunk, offset);
+    printf("%-16s Tbl[%i] Set(%i)\n", get_opname(op), t_idx, to_set);
 }
 
 int disassemble_instruction(const Chunk *self, int offset)
@@ -99,8 +108,10 @@ int disassemble_instruction(const Chunk *self, int offset)
         range_instruction(op, self, offset);
         break;
     case OP_SETTABLE:
-    case OP_SETARRAY:
         settable_instruction(op, self, offset);
+        break;
+    case OP_SETARRAY:
+        setarray_instruction(op, self, offset);
         break;
     case OP_GETTABLE:
     case OP_TRUE:   // Prefix literals
@@ -129,5 +140,4 @@ int disassemble_instruction(const Chunk *self, int offset)
 }
 
 #undef read_byte
-#undef read_byte3
 #undef read_constant

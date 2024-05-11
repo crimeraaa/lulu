@@ -126,32 +126,41 @@ void emit_oparg1(Compiler *self, OpCode op, Byte arg)
 void emit_oparg2(Compiler *self, OpCode op, Byte2 arg)
 {
     emit_byte(self, op);
-    emit_byte(self, encode_byte2_msb(arg));
-    emit_byte(self, encode_byte2_lsb(arg));
+    emit_byte(self, decode_byte2_msb(arg));
+    emit_byte(self, decode_byte2_lsb(arg));
 
     switch (op) {
-    case OP_SETTABLE:
-        // arg A is msb, arg B is lsb, and SETTABLE has variable delta arg B
-        adjust_stackinfo(self, op, encode_byte2_lsb(arg));
+    case OP_SETARRAY:
+        // Arg B is the variable delta (how many to pop).
+        adjust_stackinfo(self, op, decode_byte2_lsb(arg));
         break;
     default:
+        adjust_stackinfo(self, op, 0);
         break;
     }
 }
 
 void emit_oparg3(Compiler *self, OpCode op, Byte3 arg)
 {
-    // We assume that no opcode with a 3-byte argument has a variable delta.
-    emit_opcode(self, op);
-    emit_byte(self, encode_byte3_msb(arg));
-    emit_byte(self, encode_byte3_mid(arg));
-    emit_byte(self, encode_byte3_lsb(arg));
+    emit_byte(self, op);
+    emit_byte(self, decode_byte3_msb(arg));
+    emit_byte(self, decode_byte3_mid(arg));
+    emit_byte(self, decode_byte3_lsb(arg));
+
+    switch (op) {
+    case OP_SETTABLE:
+        // Arg C is the variable delta since it needs to now how many to pop.
+        adjust_stackinfo(self, op, decode_byte3_lsb(arg));
+        break;
+    default:
+        // Other opcodes have a fixed stack effect.
+        adjust_stackinfo(self, op, 0);
+        break;
+    }
 }
 
-void emit_identifier(Compiler *self)
+void emit_identifier(Compiler *self, const Token *ident)
 {
-    Lexer *lexer = self->lexer;
-    Token *ident = &lexer->consumed;
     emit_oparg3(self, OP_CONSTANT, identifier_constant(self, ident));
 }
 
