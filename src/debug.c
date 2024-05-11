@@ -99,6 +99,7 @@ int disassemble_instruction(const Chunk *self, int offset)
         range_instruction(op, self, offset);
         break;
     case OP_SETTABLE:
+    case OP_SETARRAY:
         settable_instruction(op, self, offset);
         break;
     case OP_GETTABLE:

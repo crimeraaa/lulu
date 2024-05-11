@@ -41,6 +41,7 @@ OP_GETTABLE, // -     | table, key      | table[key]        |                  |
 OP_SETLOCAL, // L     | x               | -                 | Loc[L] = x       |
 OP_SETGLOBAL,// U     | x               | -                 | _G[Kst[U]] = x   |
 OP_SETTABLE, // A, B  | t, k, ..., v    | (pop B values)    | t[k] = v         |
+OP_SETARRAY, // A, B  | t, ...          | (set B values)    | t[1...A] = ...   |
 OP_EQ,       // -     | x, y            | x == y            |                  |
 OP_LT,       // -     | x, y            | x < y             |                  |
 OP_LE,       // -     | x, y            | x <= y            |                  |
@@ -59,18 +60,33 @@ OP_RETURN,   // -     | -               |                   |                  |
 } OpCode;
 
 /* -----------------------------------------------------------------------------
- OP_SETTABLE:
-    Argument A refers to an absolute index into the stack where the table is
-    found. We assume that +1 from it is the desired key. We also assume that
-    the very top of the stack is where the desired value is.
+OP_SETTABLE:
+    ARGUMENT A:
+    - An absolute index into the stack where the table is found. We assume +1
+    from it is the desired key. We also assume that the very top of the stack is
+    where the desired value is.
 
     We do it this way to allow multiple assignment semantics. It's quite a bit
     of indirection but it works well enough.
 
-    Argument B refers to how many values will be popped by this instruction.
-    Since this is a variable delta we cannot afford an implicit pop of the value
-    otherwise the compiler will report wrong stack usages. Doing so will also
-    break how table fields due to their reliance on `Compiler::stack_usage`.
+    ARGUMENT B:
+    - Refers to how many values will be popped by this instruction. Since it's
+    a variable delta we cannot afford an implicit pop of the value otherwise the
+    compiler will report wrong stack usages. Doing so will also break how table
+    fields due to their reliance on `Compiler::stack_usage`.
+
+OP_SETARRAY:
+    ARGUMENT A:
+    - Similar to OP_SETTABLE, this represents the absolute index into the stack
+    where the table is found.
+    
+    ARGUMENT B:
+    - Refers to how many values from the top of the stack are to be assigned to
+    the array portion of table referred to by ARGUMENT A. In other words, it is
+    the number of array elements. Remember that Lua indexes start at 1.
+
+    We achieve this behavior by popping the key-value pair for each non-array
+    index element, but let expressions without explicit keys remain until later.
 ----------------------------------------------------------------------------- */
 
 typedef const struct {

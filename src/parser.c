@@ -171,13 +171,6 @@ static void string(Compiler *self)
     emit_constant(self, &wrapper);
 }
 
-static void emit_index(Compiler *self, int *index)
-{
-    Value wrapper = make_number(*index);
-    emit_constant(self, &wrapper);
-    *index += 1;
-}
-
 // Assumes we consumed a `'['` or an identifier representing a table field.
 static bool parse_field(Compiler *self, bool assigning)
 {
@@ -204,36 +197,40 @@ static bool parse_field(Compiler *self, bool assigning)
     return true;
 }
 
-static void parse_ctor(Compiler *self, int *index)
+static void parse_ctor(Compiler *self, int index, int *count)
 {
-    Lexer *lexer  = self->lexer;
-    Byte   offset = self->stack.usage - 1; // Absolute index of table itself.
+    Lexer *lexer = self->lexer;
 
     // TODO: Allow identifiers as implied array elements
     if (match_token_any(lexer, TK_LBRACKET, TK_IDENT)) {
         parse_field(self, true);
         expect_token(lexer, TK_ASSIGN, "to assign table field");
-    } else {
-        emit_index(self, index);
-    }
-    expression(self);
+        expression(self);
 
-    // Always pop the key and value for each field in a table constructor.
-    emit_oparg2(self, OP_SETTABLE, decode_byte2(offset, 2));
+        // Always pop the key and value for each field in a table constructor.
+        emit_oparg2(self, OP_SETTABLE, decode_byte2(index, 2));
+    } else {
+        expression(self);
+        *count += 1;
+    }
     match_token(lexer, TK_COMMA);
 }
 
 static void table(Compiler *self)
 {
     Lexer *lexer = self->lexer;
-    Table *table = new_table(&self->vm->alloc);
-    Value value = make_table(table);
-    int    index = 1;
+    Value  value = make_table(new_table(&self->vm->alloc));
+    int    index = self->stack.usage; // Absolute index of the table itself.
+    int    count = 0; // How many elements are in the array portion.
 
-    // Always emit a getop for the table itself, especially when assigning
+    // Always emit a getop for the table itself when assigning.
     emit_constant(self, &value);
     while (!match_token(lexer, TK_RCURLY)) {
-        parse_ctor(self, &index);
+        parse_ctor(self, index, &count);
+    }
+    
+    if (count > 0) {
+        emit_oparg2(self, OP_SETARRAY, decode_byte2(index, count));
     }
 }
 
@@ -305,10 +302,11 @@ static void set_assignment(Assignment *self, AssignType type, int arg)
 
 static int count_assignments(Assignment *self)
 {
-    int count = 0;
-    while (self != NULL) {
+    Assignment *node = self;
+    int         count = 0;
+    while (node != NULL) {
+        node   = node->prev;
         count += 1;
-        self   = self->prev;
     }
     return count;
 }
@@ -568,9 +566,11 @@ void declaration(Compiler *self)
 // expressions following it.
 static void parse_precedence(Compiler *self, Precedence prec)
 {
-    Lexer *lexer = self->lexer;
+    Lexer  *lexer    = self->lexer;
+    Token  *token    = &lexer->lookahead; // Updated as lexer moves along
+    ParseFn prefixfn = get_parserule(token->type)->prefixfn;
+
     next_token(lexer);
-    ParseFn prefixfn = get_parserule(lexer->consumed.type)->prefixfn;
     if (prefixfn == NULL) {
         lexerror_at_consumed(lexer, "Expected a prefix expression");
         return;
@@ -578,9 +578,10 @@ static void parse_precedence(Compiler *self, Precedence prec)
     prefixfn(self);
 
     // Is the token to our right something we can further compile?
-    while (prec <= get_parserule(lexer->lookahead.type)->prec) {
+    while (prec <= get_parserule(token->type)->prec) {
+        ParseFn infixfn = get_parserule(token->type)->infixfn;
         next_token(lexer);
-        get_parserule(lexer->consumed.type)->infixfn(self);
+        infixfn(self);
     }
 
     // This function can never consume the `=` token.

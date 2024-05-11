@@ -15,6 +15,7 @@ OpInfo LULU_OPINFO[] = {
     [OP_SETLOCAL]   = {"SETLOCAL",      1,          0,          1},
     [OP_SETGLOBAL]  = {"SETGLOBAL",     3,          0,          1},
     [OP_SETTABLE]   = {"SETTABLE",      2,          0,          VAR_DELTA},
+    [OP_SETARRAY]   = {"SETARRAY",      2,          0,          VAR_DELTA},
     [OP_EQ]         = {"EQ",            0,          1,          2},
     [OP_LT]         = {"LT",            0,          1,          2},
     [OP_LE]         = {"LE",            0,          1,          2},

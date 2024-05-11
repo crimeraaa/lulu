@@ -299,10 +299,23 @@ static ErrType run(VM *self)
                 // Push the guilty variable to the top so we can report it.
                 push_back(tbl);
                 runtime_error(self, RTE_INDEX);
-            } else {
-                set_table(as_table(tbl), key, val, alloc);
-                popn(popped);
             }
+            set_table(as_table(tbl), key, val, alloc);
+            popn(popped);
+            break;
+        }
+        case OP_SETARRAY: {
+            int     index = read_byte(); // Absolute index of the table.
+            int     count = read_byte(); // How many elements in the array?
+            Table  *tbl   = as_table(poke_at(self, index));
+            
+            // Remember: Lua uses 1-based indexing!
+            for (int i = 1; i <= count; i++) {
+                Value  key = make_number(i);
+                Value *val = poke_at(self, index + i);
+                set_table(tbl, &key, val, alloc);
+            }
+            popn(count);
             break;
         }
         case OP_EQ: {

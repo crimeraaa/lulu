@@ -86,7 +86,7 @@ static uint32_t hash_number(Number number)
 
 // Separate name from `new_object` since `new_string` also needs access.
 // Assumes casting `alloc->context` to `VM*` is a safe operation.
-static Object *_new_object(size_t size, VType tag, Alloc *alloc)
+static Object *new_object(size_t size, VType tag, Alloc *alloc)
 {
     VM     *vm   = alloc->context;
     Object *node = new_pointer(size, alloc);
@@ -94,10 +94,6 @@ static Object *_new_object(size_t size, VType tag, Alloc *alloc)
     node->hash   = hash_pointer(node);
     return prepend_object(&vm->objects, node);
 }
-
-#define new_object(T, tag, alloc) \
-    cast(T*, _new_object(sizeof(T), tag, alloc))
-
 
 // 1}}} ------------------------------------------------------------------------
 
@@ -202,7 +198,7 @@ void write_varray(VArray *self, const Value *value, Alloc *alloc)
 String *new_string(int len, Alloc *alloc)
 {
     // Note how we add 1 for the nul char.
-    Object *obj  = _new_object(string_size(len + 1), TYPE_STRING, alloc);
+    Object *obj  = new_object(string_size(len + 1), TYPE_STRING, alloc);
     String *inst = cast(String*, obj);
     inst->len    = len;
     return inst;
@@ -322,7 +318,8 @@ String *concat_strings(VM *vm, int argc, const Value argv[], int len)
 
 Table *new_table(Alloc *alloc)
 {
-    Table *inst = new_object(Table, TYPE_TABLE, alloc);
+    Object *obj = new_object(sizeof(Table), TYPE_TABLE, alloc);
+    Table *inst = cast(Table*, obj);
     init_table(inst);
     return inst;
 }
