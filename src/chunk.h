@@ -11,18 +11,18 @@
  *          right are more recent and values to the left are older.
  *
  * @details Glossary:
- *          `U`     An unsigned `Byte3`, decoded from the 3 bytes following the
- *                  current opcode.
- *          `L`     An unsigned `Byte` representing an index into the current
+ *          L       An unsigned `Byte` representing an index into the current
  *                  stack frame where local variables are found.
- *          `B`     A single `Byte` argument.
- *          `Kst`   Constants table of the current chunk.
- *          `V_*`   Negative offset relative to the VM's top of the stack.
- *          `A_*`   Not sure how this is different from `V_*`.
- *          `-`     When used like `V_U..-..V_1`, indicates we need to concat
+ *          B1      A single `Byte` argument immediately following the opcode.
+ *          B3      A `Byte3` argument. The MSB is the byte immediately
+ *                  following the opcode, then the next, then LSB.
+ *          Kst     Constants table of the current chunk.
+ *          V_*     Negative offset relative to the VM's top of the stack.
+ *          A_*     Not sure how this is different from `V_*`.
+ *          -       When used like `V_U..-..V_1`, indicates we need to concat
  *                  (`..`) values Stack[-U] (`V_U`) all the way up to top of
  *                  the Stack[-1] (`V_1`).
- *          `_G`    Like in base Lua, this is the table where global variables
+ *          _G      Like in base Lua, this is the table where global variables
  *                  can be accessed from and written to.
  * @note    See: https://www.lua.org/source/4.0/lopcodes.h.html
  */
@@ -30,17 +30,17 @@ typedef enum {
 /* ----------+--------+-----------------+-------------------+------------------|
 |  NAME      |  ARGS  |  STACK BEFORE   |  STACK AFTER      |  SIDE EFFECTS    |
 -------------+--------+-----------------+-------------------+---------------- */
-OP_CONSTANT, // U     | -               | Kst[U]            |                  |
-OP_NIL,      // B     | -               | (push B nils)     |                  |
+OP_CONSTANT, // B3    | -               | Kst[B3]           |                  |
+OP_NIL,      // B1    | -               | (push B1 nils)    |                  |
 OP_TRUE,     // -     | -               | true              |                  |
 OP_FALSE,    // -     | -               | false             |                  |
-OP_POP,      // B     | A_B,...A_1      | -                 |                  |
+OP_POP,      // B1    | Top[-B1...-1]   | -                 |                  |
 OP_GETLOCAL, // L     | -               | Loc[L]            |                  |
-OP_GETGLOBAL,// U     | -               | _G[Kst[U]]        |                  |
-OP_GETTABLE, // -     | table, key      | table[key]        |                  |
+OP_GETGLOBAL,// B3    | -               | _G[Kst[B3]]       |                  |
+OP_GETTABLE, // -     | Tbl, Key        | Tbl[Key]          |                  |
 OP_SETLOCAL, // L     | x               | -                 | Loc[L] = x       |
-OP_SETGLOBAL,// U     | x               | -                 | _G[Kst[U]] = x   |
-OP_SETTABLE, // A,B,C | t, k, ..., v    | (pop B values)    | t[k] = v         |
+OP_SETGLOBAL,// B3    | x               | -                 | _G[Kst[B3]] = x  |
+OP_SETTABLE, // A,B,C | t, k, ..., v    | (pop C values)    | t[k] = v         |
 OP_SETARRAY, // A, B  | t, ...          | (set B values)    | t[1...A] = ...   |
 OP_EQ,       // -     | x, y            | x == y            |                  |
 OP_LT,       // -     | x, y            | x < y             |                  |
@@ -51,11 +51,11 @@ OP_MUL,      // -     | x, y            | x * y             |                  |
 OP_DIV,      // -     | x, y            | x / y             |                  |
 OP_MOD,      // -     | x, y            | x % y             |                  |
 OP_POW,      // -     | x, y            | x ^ y             |                  |
-OP_CONCAT,   // B     | Top[-B...-1]    | concat(...)       |                  |
+OP_CONCAT,   // B1    | Top[-B1...-1]   | concat(...)       |                  |
 OP_UNM,      // -     | x               | -x                |                  |
 OP_NOT,      // -     | x               | not x             |                  |
 OP_LEN,      // -     | x               | #x                |                  |
-OP_PRINT,    // B     | Top[-B...-1]    | -                 | print(...)       |
+OP_PRINT,    // B1    | Top[-B1...-1]   | -                 | print(...)       |
 OP_RETURN,   // -     | -               |                   |                  |
 } OpCode;
 
@@ -124,7 +124,7 @@ extern OpInfo LULU_OPINFO[];
 
 #define get_opinfo(op)  LULU_OPINFO[op]
 #define get_opname(op)  get_opinfo(op).name
-#define get_opsize(op)  (get_opinfo(op).argsz + 1)
+#define get_opargsz(op) get_opinfo(op).argsz
 
 typedef struct {
     VArray      constants;

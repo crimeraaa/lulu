@@ -198,7 +198,8 @@ static bool parse_field(Compiler *self, bool assigning)
     return true;
 }
 
-static void resolve_variable(Compiler *self, const Token *ident) {
+static void resolve_variable(Compiler *self, const Token *ident)
+{
     Lexer *lexer = self->lexer;
     emit_variable(self, ident);
     while (match_token_any(lexer, TK_LBRACKET, TK_PERIOD)) {

@@ -1,7 +1,7 @@
 #include "debug.h"
 #include "limits.h"
 
-void disassemble_constants(const Chunk *self)
+static void disassemble_constants(const Chunk *self)
 {
     const VArray *array = &self->constants;
     printf("[CONSTANTS]:\n");
@@ -24,63 +24,68 @@ void disassemble_chunk(const Chunk *self)
 }
 
 // Note the side-effect!
-#define read_byte(chunk, offset) \
-    ((chunk)->code[(offset) += 1])
+#define read_byte(ip)   (*(ip)++)
+
+// Strangely, the macro version will cause an unsequenced modification error.
+// Yet `vm.c` continues to compile just fine!
+static int read_byte3(const Byte *ip)
+{
+    Byte msb = read_byte(ip);
+    Byte mid = read_byte(ip);
+    Byte lsb = read_byte(ip);
+    return encode_byte3(msb, mid, lsb);
+}
 
 #define read_constant(chunk, index) \
     ((chunk)->constants.values[(index)])
 
-static void constant_instruction(OpCode op, const Chunk *chunk, int offset)
+static void constant_op(const Chunk *chunk, const Byte *ip)
 {
-    // Need to do it this way due to multiple unsequenced modifications being
-    // undefined behavior.
-    int msb = read_byte(chunk, offset);
-    int mid = read_byte(chunk, offset);
-    int lsb = read_byte(chunk, offset);
-    int arg = encode_byte3(msb, mid, lsb);
-    printf("%-16s Kst[%i] ; ", get_opname(op), arg);
+    int arg = read_byte3(ip);
+    printf("Kst[%i] ; ", arg);
     print_value(&read_constant(chunk, arg), true);
-    printf("\n");
 }
 
 // Assumes all instructions that manipulate ranges of values on the stack will
 // only ever have a 1-byte argument.
-static void range_instruction(OpCode op, const Chunk *chunk, int offset)
+static void range_op(const Byte *ip)
 {
-    int arg = read_byte(chunk, offset);
-    printf("%-16s Top[%i...-1]\n", get_opname(op), -arg);
+    int arg = read_byte(ip);
+    printf("Top[%i...-1]", -arg);
 }
 
-static void simple_instruction(OpCode op, const Chunk *chunk, int offset)
+static void simple_op(const char *action, const Byte *ip)
 {
-    int         arg = read_byte(chunk, offset);
-    const char *act = (op == OP_POP) ? "Pop" : "Nil";
-    printf("%-16s %s(%i)\n", get_opname(op), act, arg);
+    int arg = read_byte(ip);
+    printf("%s(%i)", action, arg);
 }
 
-static void local_instruction(OpCode op, const Chunk *chunk, int offset)
+static void local_op(const Byte *ip)
 {
-    int arg = read_byte(chunk, offset);
-    printf("%-16s Loc[%i]\n", get_opname(op), arg);
+    int arg = read_byte(ip);
+    printf("Loc[%i]", arg);
 }
 
-static void settable_instruction(OpCode op, const Chunk *chunk, int offset)
+static void settable_op(const Byte *ip)
 {
-    int t_idx  = read_byte(chunk, offset);
-    int k_idx  = read_byte(chunk, offset);
-    int to_pop = read_byte(chunk, offset);
-    printf("%-16s Tbl[%i] Key[%i] Pop(%i)\n", get_opname(op), t_idx, k_idx, to_pop);
+    int t_idx  = read_byte(ip);
+    int k_idx  = read_byte(ip);
+    int to_pop = read_byte(ip);
+    printf("Tbl[%i] Key[%i] Pop(%i)", t_idx, k_idx, to_pop);
 }
 
-static void setarray_instruction(OpCode op, const Chunk *chunk, int offset)
+static void setarray_op(const Byte *ip)
 {
-    int t_idx  = read_byte(chunk, offset);
-    int to_set = read_byte(chunk, offset);
-    printf("%-16s Tbl[%i] Set(%i)\n", get_opname(op), t_idx, to_set);
+    int t_idx  = read_byte(ip);
+    int to_set = read_byte(ip);
+    printf("Tbl[%i] Set(%i)", t_idx, to_set);
 }
 
 int disassemble_instruction(const Chunk *self, int offset)
 {
+    const Byte  *ip = &self->code[offset];
+    const OpCode op = read_byte(ip);
+
     printf("%04x ", offset);
     int line = self->lines[offset];
     if (offset > 0 && line == self->lines[offset - 1]) {
@@ -88,31 +93,20 @@ int disassemble_instruction(const Chunk *self, int offset)
     } else {
         printf("%4i ", line);
     }
-    OpCode op = self->code[offset];
+
+    printf("%-16s ", get_opinfo(op).name);
     switch (op) {
     case OP_CONSTANT:
     case OP_GETGLOBAL:
-    case OP_SETGLOBAL:
-        constant_instruction(op, self, offset);
-        break;
+    case OP_SETGLOBAL: constant_op(self, ip); break;
     case OP_GETLOCAL:
-    case OP_SETLOCAL:
-        local_instruction(op, self, offset);
-        break;
-    case OP_POP:
-    case OP_NIL:
-        simple_instruction(op, self, offset);
-        break;
+    case OP_SETLOCAL: local_op(ip); break;
+    case OP_POP:      simple_op("Pop", ip); break;
+    case OP_NIL:      simple_op("Nil", ip); break;
     case OP_CONCAT:
-    case OP_PRINT:
-        range_instruction(op, self, offset);
-        break;
-    case OP_SETTABLE:
-        settable_instruction(op, self, offset);
-        break;
-    case OP_SETARRAY:
-        setarray_instruction(op, self, offset);
-        break;
+    case OP_PRINT:    range_op(ip); break;
+    case OP_SETTABLE: settable_op(ip); break;
+    case OP_SETARRAY: setarray_op(ip); break;
     case OP_GETTABLE:
     case OP_TRUE:   // Prefix literals
     case OP_FALSE:
@@ -128,16 +122,17 @@ int disassemble_instruction(const Chunk *self, int offset)
     case OP_UNM:    // Unary operators
     case OP_NOT:
     case OP_LEN:
-    case OP_RETURN:
-        printf("%s\n", get_opname(op));
-        break;
+    case OP_RETURN:  break;
     default:
         // Should not happen
         printf("Unknown opcode '%i'.\n", op);
         return offset + 1;
     }
-    return offset + get_opsize(op);
+    printf("\n");
+    return offset + get_opinfo(op).argsz + 1;
 }
 
 #undef read_byte
+#undef read_byte2
+#undef read_byte3
 #undef read_constant
