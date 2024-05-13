@@ -3,7 +3,9 @@
 
 #include "lulu.h"
 #include "limits.h"
-#include "memory.h"
+
+typedef struct Object Object;
+typedef struct Alloc  Alloc;
 
 typedef enum {
     TYPE_NIL,
@@ -19,44 +21,44 @@ typedef enum {
 // Lookup table: maps `VType` to `const char*`.
 extern const char *const LULU_TYPENAMES[];
 
-struct Value {
+typedef struct {
     VType tag;
     union {
         bool    boolean;
         Number  number;
         Object *object; // Some heap-allocated, GC-managed data.
     } as;
-};
+} Value ;
 
 struct Object {
     Object  *next; // Intrusive list (linked list) node.
     VType    tag;  // Must be consistent with the parent `Value`.
 };
 
-struct String {
+typedef struct {
     Object   object; // "Inherited" must come first to allow safe type-punning.
     uint32_t hash;   // Used when strings are used as table keys.
     int      len;    // String length with nul and escapes omitted.
     char     data[]; // See: C99 flexible array members, MUST be last member!
-};
+} String;
 
-struct Entry {
+typedef struct {
     Value key;
     Value value;
-};
+} Entry;
 
-struct VArray {
+typedef struct {
     Value *values;
     int    len;
     int    cap;
-};
+} VArray ;
 
-struct Table {
+typedef struct {
     Object object;    // For user-facing tables, not by VM internal tables.
     Entry *hashmap;   // Associative array segment.
     int    hashcount; // Current number of active entries in the hashmap.
     int    hashcap;   // Total number of entries the hashmap can hold.
-};
+} Table;
 
 // NOTE: All `get_*`, `is_*`, `as_*` and `set_*` functions expect a pointer.
 #define get_tag(v)          ((v)->tag)
@@ -114,34 +116,6 @@ bool values_equal(const Value *lhs, const Value *rhs);
 void init_varray(VArray *self);
 void free_varray(VArray *self, Alloc *alloc);
 void write_varray(VArray *self, const Value *value, Alloc *alloc);
-
-// NOTE: For `concat_string` we do not know the correct hash yet.
-// Analogous to `allocateString()` in the book.
-String *new_string(int len, Alloc *alloc);
-void free_string(String *self, Alloc *alloc);
-// Global functions that deal with strings need the VM to check for interned.
-String *copy_string(VM *vm, const StrView *view);
-String *copy_lstring(VM *vm, const StrView *view);
-
-// Assumes all arguments we already verified to be `String*`.
-String *concat_strings(VM *vm, int argc, const Value argv[], int len);
-
-// Used for user-created tables, not VM's globals/strings tables.
-Table *new_table(Alloc *alloc);
-void init_table(Table *self);
-void free_table(Table *self, Alloc *alloc);
-void dump_table(const Table *self, const char *name);
-bool get_table(Table *self, const Value *key, Value *out);
-bool set_table(Table *self, const Value *key, const Value *value, Alloc *alloc);
-
-// Place a tombstone value. Analogous to `deleteTable()` in the book.
-bool unset_table(Table *self, const Value *key);
-
-// Analogous to `tableAddAll()` in the book.
-void copy_table(Table *dst, const Table *src, Alloc *alloc);
-
-// Analogous to `adjustCapacity()` in the book.
-void resize_table(Table *self, int newcap, Alloc *alloc);
 
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
 void set_interned(VM *vm, const String *key);

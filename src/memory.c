@@ -1,11 +1,21 @@
 #include "memory.h"
 #include "object.h"
+#include "string.h"
+#include "table.h"
 #include "vm.h"
 
 void init_alloc(Alloc *self, ReallocFn reallocfn, void *context)
 {
     self->reallocfn = reallocfn;
     self->context   = context;
+}
+
+Object *new_object(size_t size, VType tag, Alloc *alloc)
+{
+    VM     *vm   = alloc->context;
+    Object *node = new_pointer(size, alloc);
+    node->tag    = tag;
+    return prepend_object(&vm->objects, node);
 }
 
 Object *prepend_object(Object **head, Object *node)

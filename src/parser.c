@@ -1,5 +1,7 @@
 #include "parser.h"
 #include "object.h"
+#include "string.h"
+#include "table.h"
 #include "vm.h"
 
 // Forward declarations to allow recursive descent parsing.
@@ -126,7 +128,7 @@ static void concat(Compiler *self)
     Lexer *lexer = self->lexer;
     int argc = 1;
     do {
-        if (argc + 1 < MAX_BYTE) {
+        if (argc + 1 > MAX_BYTE) {
             lexerror_at_consumed(lexer, "More than <MAX_BYTE> concatentations");
         }
         parse_precedence(self, PREC_CONCAT + 1);

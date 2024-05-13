@@ -8,13 +8,7 @@
 
 #include "conf.h"
 
-typedef struct VM     VM;
-typedef NUMBER_TYPE   Number;
-typedef struct Object Object;
-typedef struct Value  Value;
-typedef struct VArray VArray; // A 1D array of type `Value`.
-typedef struct String String;
-typedef struct Entry  Entry;
-typedef struct Table  Table;
+typedef struct VM   VM;
+typedef NUMBER_TYPE Number;
 
 #endif /* LULU_H */

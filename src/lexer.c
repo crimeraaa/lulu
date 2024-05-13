@@ -2,6 +2,8 @@
 #include <ctype.h>
 #include "lexer.h"
 #include "limits.h"
+#include "string.h"
+#include "table.h"
 #include "vm.h"
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
@@ -403,7 +405,7 @@ bad_string:
     return make_token(self, TK_STRING);
 }
 
-static Token lstring_token(Lexer *self, int nesting)
+static Token rstring_token(Lexer *self, int nesting)
 {
     bool open = match_char(self, '\n');
     if (open) {
@@ -415,7 +417,7 @@ static Token lstring_token(Lexer *self, int nesting)
     int     mark = nesting + open + 2;
     int     len  = self->lexeme.len - mark - 2;
     StrView view = make_strview(self->lexeme.begin + mark, len);
-    self->string = copy_lstring(self->vm, &view);
+    self->string = copy_rstring(self->vm, &view);
     return make_token(self, TK_STRING);
 }
 
@@ -444,7 +446,7 @@ Token scan_token(Lexer *self)
     case '[': {
         int nesting = get_nesting(self);
         if (match_char(self, '[')) {
-            return lstring_token(self, nesting);
+            return rstring_token(self, nesting);
         }
         return make_token(self, TK_LBRACKET);
     }

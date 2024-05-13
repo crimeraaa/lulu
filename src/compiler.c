@@ -1,5 +1,7 @@
 #include "compiler.h"
 #include "parser.h"
+#include "string.h"
+#include "table.h"
 #include "vm.h"
 
 #ifdef DEBUG_PRINT_CODE

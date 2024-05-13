@@ -4,13 +4,15 @@
 #include "debug.h"
 #include "limits.h"
 #include "memory.h"
+#include "string.h"
+#include "table.h"
 
 enum RT_ErrType {
     RTE_NEGATE,
     RTE_ARITH,
     RTE_COMPARE,
     RTE_CONCAT,
-    RTE_UNDEF,   // Make sure to push_back the invalid variable name first.
+    RTE_UNDEF,   // Make sure to push the invalid variable name first.
     RTE_LENGTH,  // Using `#` on non-table and non-string values.
     RTE_INDEX,   // Using `[]` on non-table values.
 };
@@ -44,6 +46,33 @@ static Value *poke_at(VM *self, int offset)
         return self->top + offset;
     }
     return self->stack + offset;
+}
+
+// Please avoid using this as much as possible, it's too vague!
+static void push_value(VM *self, const Value *v)
+{
+    *self->top = *v;
+    self->top += 1;
+}
+
+static void push_nils(VM *self, int n)
+{
+    for (int i = 0; i < n; i++) {
+        setv_nil(self->top);
+        self->top++;
+    }
+}
+
+static void push_boolean(VM *self, bool b)
+{
+    setv_boolean(self->top, b);
+    self->top += 1;
+}
+
+static void push_string(VM *self, String *s)
+{
+    setv_string(self->top, &s->object);
+    self->top += 1;
 }
 
 static void runtime_error(VM *self, enum RT_ErrType rterr)
@@ -212,7 +241,6 @@ static ErrType run(VM *self)
 #define read_string()       as_string(read_constant())
 #define popn(n)             (self->top -= (n))
 #define pop_back()          (popn(1))
-#define push_back(v)        (*self->top++ = *(v))
 
 // 1}}} ------------------------------------------------------------------------
 
@@ -230,34 +258,32 @@ static ErrType run(VM *self)
         OpCode op = read_byte();
         switch (op) {
         case OP_CONSTANT:
-            push_back(read_constant());
+            push_value(self, read_constant());
             break;
         case OP_NIL:
-            for (int i = 0, limit = read_byte(); i < limit; i++) {
-                push_back(&make_nil());
-            }
+            push_nils(self, read_byte());
             break;
         case OP_TRUE:
-            push_back(&make_boolean(true));
+            push_boolean(self, true);
             break;
         case OP_FALSE:
-            push_back(&make_boolean(false));
+            push_boolean(self, false);
             break;
         case OP_POP:
             popn(read_byte());
             break;
         case OP_GETLOCAL:
-            push_back(&self->stack[read_byte()]);
+            push_value(self, &self->stack[read_byte()]);
             break;
         case OP_GETGLOBAL: {
             // Assume this is a string for the variable's name.
             Value *name = read_constant();
             Value  value;
             if (!get_table(&self->globals, name, &value)) {
-                push_back(name);
+                push_value(self, name);
                 runtime_error(self, RTE_UNDEF);
             }
-            push_back(&value);
+            push_value(self, &value);
             break;
         }
         case OP_GETTABLE: {
@@ -266,14 +292,14 @@ static ErrType run(VM *self)
             Value  val;
             if (!is_table(tbl)) {
                 // Push the guilty variable to the top so we can report it.
-                push_back(tbl);
+                push_value(self, tbl);
                 runtime_error(self, RTE_INDEX);
             }
             if (!get_table(as_table(tbl), key, &val)) {
                 setv_nil(&val);
             }
             popn(2);
-            push_back(&val);
+            push_value(self, &val);
             break;
         }
         case OP_SETLOCAL:
@@ -298,7 +324,7 @@ static ErrType run(VM *self)
 
             if (!is_table(tbl)) {
                 // Push the guilty variable to the top so we can report it.
-                push_back(tbl);
+                push_value(self, tbl);
                 runtime_error(self, RTE_INDEX);
             }
             set_table(as_table(tbl), key, val, alloc);
@@ -344,7 +370,7 @@ static ErrType run(VM *self)
             Value  *argv = poke_at(self, -argc);
             String *res  = concat_op(self, argc, argv);
             popn(argc);
-            push_back(&make_string(res));
+            push_string(self, res);
             break;
         }
         case OP_UNM: {
@@ -392,7 +418,6 @@ static ErrType run(VM *self)
 #undef read_string
 #undef popn
 #undef pop_back
-#undef push_back
 }
 
 ErrType interpret(VM *self, const char *input)

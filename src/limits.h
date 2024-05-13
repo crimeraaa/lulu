@@ -36,7 +36,10 @@
 #define array_len(array)    (sizeof((array)) / sizeof((array)[0]))
 #define array_size(T, N)    (sizeof(T) * (N))
 #define array_lit(T, ...)   compoundlit(T[], __VA_ARGS__)
-#define string_size(N)      (sizeof(String) + array_size(char, N))
+
+// Use when `P` is a pointer to a non-void type. Useful to make allocations
+// a little more robust by relying on pointer for sizeof instead of type.
+#define parray_size(P, N)   (sizeof(*(P)) * (N))
 
 // Helper macro for functions that expects varargs of the same type.
 #define vargs_count(T, ...) (sizeof(array_lit(T, __VA_ARGS__)) / sizeof(T))

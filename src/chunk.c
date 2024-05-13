@@ -48,8 +48,10 @@ void init_chunk(Chunk *self, const char *name)
 void free_chunk(Chunk *self, Alloc *alloc)
 {
     free_varray(&self->constants, alloc);
-    free_array(Byte, self->code,  self->len, alloc);
-    free_array(int,  self->lines, self->len, alloc);
+    // free_array(Byte, self->code,  self->len, alloc);
+    // free_array(int,  self->lines, self->len, alloc);
+    free_parray(self->lines, self->len, alloc);
+    free_parray(self->code, self->len, alloc);
     init_chunk(self, "(freed chunk)");
 }
 
