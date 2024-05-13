@@ -102,7 +102,7 @@ struct Table {
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
 // Writes string representation of `self` to C `stdout`.
-void print_value(const Value *self, bool quoted);
+void print_value(const Value *self, bool isdebug);
 
 // Assumes buffer is a fixed-size array of length `MAX_TOSTRING`.
 // If `out` is not `NULL`, it will be set to -1 if we do not own the result.
@@ -139,6 +139,9 @@ bool unset_table(Table *self, const Value *key);
 
 // Analogous to `tableAddAll()` in the book.
 void copy_table(Table *dst, const Table *src, Alloc *alloc);
+
+// Analogous to `adjustCapacity()` in the book.
+void resize_table(Table *self, int newcap, Alloc *alloc);
 
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
 void set_interned(VM *vm, const String *key);

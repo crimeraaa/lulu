@@ -86,13 +86,13 @@ static OpCode get_binop(TkType optype)
 static void binary(Compiler *self)
 {
     Lexer  *lexer  = self->lexer;
-    TkType  optype = lexer->consumed.type;
+    TkType  type = lexer->consumed.type;
 
     // For exponentiation enforce right-associativity.
-    parse_precedence(self, get_parserule(optype)->prec + (optype != TK_CARET));
+    parse_precedence(self, get_parserule(type)->prec + (type != TK_CARET));
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
-    switch (optype) {
+    switch (type) {
     case TK_NEQ:
         emit_opcode(self, OP_EQ);
         emit_opcode(self, OP_NOT);
@@ -106,21 +106,29 @@ static void binary(Compiler *self)
         emit_opcode(self, OP_NOT);
         break;
     default:
-        emit_opcode(self, get_binop(optype));
+        emit_opcode(self, get_binop(type));
         break;
     }
 }
 
-// Assumes we just consumed a `..` and the first argument has been compiled.
+/**
+ * @brief   Assumes we just consumed a `..` token and that the first argument
+ *          has already been compiled.
+ *
+ * @note    Although right associative, we don't recursively compile concat
+ *          expressions in the same grouping.
+ *
+ *          We do this iteratively which is (slightly) better than constantly
+ *          allocating stack frames for recursive calls.
+ */
 static void concat(Compiler *self)
 {
     Lexer *lexer = self->lexer;
     int argc = 1;
     do {
-        /* Although right associative, we don't recursively compile concat
-        expressions in the same grouping. We can do this iteratively, which
-        is marginally better than constantly allocating stack frames for
-        recursive calls. */
+        if (argc + 1 < MAX_BYTE) {
+            lexerror_at_consumed(lexer, "More than <MAX_BYTE> concatentations");
+        }
         parse_precedence(self, PREC_CONCAT + 1);
         argc += 1;
     } while (match_token(lexer, TK_CONCAT));
@@ -243,16 +251,27 @@ static void table(Compiler *self)
     Lexer *lexer   = self->lexer;
     Value  wrapper = make_table(new_table(&self->vm->alloc));
     int    t_idx   = self->stack.usage;
+    int    total   = 0; // Array length plus hashmap length.
     int    count   = 0; // Array portion length.
 
     // Always emit a getop for the table itself when assigning.
     emit_constant(self, &wrapper);
     while (!match_token(lexer, TK_RCURLY)) {
         parse_ctor(self, t_idx, &count);
+        total += 1;
     }
 
     if (count > 0) {
+        if (count + 1 > MAX_BYTE3) {
+            lexerror_at_consumed(lexer,
+                "More than <MAX_BYTE3> array elements in table constructor");
+        }
         emit_oparg2(self, OP_SETARRAY, encode_byte2(t_idx, count));
+    }
+
+    // We can pre-allocate now so we don't have to do so at runtime.
+    if (total > 0) {
+        resize_table(as_table(&wrapper), total, &self->vm->alloc);
     }
 }
 

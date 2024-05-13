@@ -135,9 +135,9 @@ const char *to_cstring(const Value *self, char *buffer, int *out)
     return buffer;
 }
 
-void print_value(const Value *self, bool quoted)
+void print_value(const Value *self, bool isdebug)
 {
-    if (is_string(self) && quoted) {
+    if (is_string(self) && isdebug) {
         const String *s = as_string(self);
         // printf("string: %p ", as_pointer(self));
         if (s->len <= 1) {
@@ -325,9 +325,9 @@ Table *new_table(Alloc *alloc)
 
 void init_table(Table *self)
 {
-    self->hashmap = NULL;
-    self->hashcount   = 0;
-    self->hashcap     = 0;
+    self->hashmap   = NULL;
+    self->hashcount = 0;
+    self->hashcap   = 0;
 }
 
 void free_table(Table *self, Alloc *alloc)
@@ -397,8 +397,7 @@ static void clear_entries(Entry *entries, int cap)
     }
 }
 
-// Analogous to `adjustCapacity()` in the book.
-static void resize_table(Table *self, int newcap, Alloc *alloc)
+void resize_table(Table *self, int newcap, Alloc *alloc)
 {
     Entry *newbuf = new_array(Entry, newcap, alloc);
     clear_entries(newbuf, newcap);
@@ -433,7 +432,7 @@ bool get_table(Table *self, const Value *key, Value *out)
     return true;
 }
 
-bool set_table(Table *self, const Value *key, const Value *value, Alloc *alloc)
+bool set_table(Table *self, const Value *key, const Value *val, Alloc *alloc)
 {
     if (is_nil(key)) {
         return false;
@@ -449,7 +448,7 @@ bool set_table(Table *self, const Value *key, const Value *value, Alloc *alloc)
         self->hashcount++;
     }
     entry->key   = *key;
-    entry->value = *value;
+    entry->value = *val;
     return isnewkey;
 }
 
