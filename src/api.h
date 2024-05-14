@@ -3,7 +3,8 @@
 
 #include "lulu.h"
 
-typedef struct Value Value;
+typedef struct Value  Value;
+typedef struct String String;
 
 // Negative values are offset from the top, positive are offset from the base.
 Value *poke_at(VM *self, int offset);
@@ -11,6 +12,9 @@ Value *poke_at(VM *self, int offset);
 void push_nils(VM *self, int n);
 void push_boolean(VM *self, bool b);
 void push_number(VM *self, Number n);
+
+// Push an instance of our string container datatype.
+void push_string(VM *self, String *s);
 
 // Push a nul-terminated C-string of yet-to-be-determined length.
 void push_cstring(VM *self, const char *s);
@@ -25,8 +29,5 @@ void push_vfstring(VM *self, const char *fmt, va_list argp);
 
 // See `push_vfstring` for constraints.
 void push_fstring(VM *self, const char *fmt, ...);
-
-// `argv` is a 1D array, not a singular element.
-void concat_op(VM *self, int argc, Value *argv);
 
 #endif /* LULU_API_H */

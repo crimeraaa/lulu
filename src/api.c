@@ -34,7 +34,7 @@ void push_number(VM *self, Number n)
     incr_top(self);
 }
 
-static void push_string(VM *self, String *s)
+void push_string(VM *self, String *s)
 {
     setv_string(self->top, &s->object);
     incr_top(self);
@@ -52,8 +52,11 @@ void push_lcstring(VM *self, const char *s, int len)
 
 void push_vfstring(VM *self, const char *fmt, va_list argp)
 {
-    const char *iter = fmt;
-    int         argc = 1;
+    const char *iter  = fmt;
+    int         argc  = 1;
+    int         total = 0;
+
+    // Concat strings works properly only with 2+ strings, so need a dummy.
     push_cstring(self, "");
     for (;;) {
         const char *spec = strchr(iter, '%');
@@ -64,22 +67,29 @@ void push_vfstring(VM *self, const char *fmt, va_list argp)
         if (spec != fmt) {
             StrView view = make_strview(iter, spec - iter);
             push_lcstring(self, view.begin, view.len);
-            argc += 1;
+            argc  += 1;
+            total += view.len;
         }
         // Move to character after '%' so we point at the specifier.
         spec += 1;
         switch (*spec) {
         case 'i':
-        case 'd':
-            push_number(self, va_arg(argp, int));
+        case 'd': {
+            char buf[MAX_TOSTRING];
+            int  len = int_tostring(buf, va_arg(argp, int));
+            push_lcstring(self, buf, len);
+            total += len;
             break;
+        }
         case 's':
             push_cstring(self, va_arg(argp, const char*));
+            total += as_string(poke_at(self, -1))->len;
             break;
         case 'p': {
             char buf[MAX_TOSTRING];
-            int  len = snprintf(buf, sizeof(buf), "%p", va_arg(argp, void*));
+            int  len = ptr_tostring(buf, va_arg(argp, void*));
             push_lcstring(self, buf, len);
+            total += len;
             break;
         }
         default:
@@ -93,9 +103,12 @@ void push_vfstring(VM *self, const char *fmt, va_list argp)
     // Still have stuff left in the format string?
     if (*iter != '\0') {
         push_cstring(self, iter);
-        argc += 1;
+        argc  += 1;
+        total += as_string(poke_at(self, -1))->len;
     }
-    concat_op(self, argc, poke_at(self, -argc));
+    String *res = concat_strings(self, argc, poke_at(self, -argc), total);
+    popn(self, argc);
+    push_string(self, res);
 }
 
 void push_fstring(VM *self, const char *fmt, ...)
@@ -104,26 +117,4 @@ void push_fstring(VM *self, const char *fmt, ...)
     va_start(argp, fmt);
     push_vfstring(self, fmt, argp);
     va_end(argp);
-}
-
-void concat_op(VM *self, int argc, Value *argv)
-{
-    int len = 0;
-    for (int i = 0; i < argc; i++) {
-        Value *arg = &argv[i];
-        if (is_number(arg)) {
-            char    buffer[MAX_TOSTRING];
-            int     len  = num_tostring(buffer, as_number(arg));
-            StrView view = make_strview(buffer, len);
-
-            // Use `copy_string` just in case chosen representation has escapes.
-            setv_string(arg, cast(Object*, copy_string(self, view)));
-        } else if (!is_string(arg)) {
-            runtime_error(self, "concatenate", get_typename(arg));
-        }
-        len += as_string(arg)->len;
-    }
-    String *res = concat_strings(self, argc, argv, len);
-    popn(self, argc);
-    push_string(self, res);
 }

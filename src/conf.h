@@ -29,7 +29,7 @@ typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 
 // Reserve 6 stack slots for error messages, meaning user-facing stack total is
 // more ike `(MAX_STACK - STACK_RESERVED)`.
-#define STACK_RESERVED  6
+#define STACK_RESERVED  10
 
 // NUMBER TYPE INFORMATION ------------------------------------------------ {{{1
 
@@ -65,6 +65,8 @@ typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 
 // See `man 3 strtod`. For other `cstr_*` macros, see `limits.h`.
 #define cstr_tonumber(s, p) strtod(s, p)
+#define ptr_tostring(s, p)  snprintf((s), MAX_TOSTRING, "%p", (p))
+#define int_tostring(s, i)  snprintf((s), MAX_TOSTRING, "%i", (i))
 
 // 1}}} ------------------------------------------------------------------------
 

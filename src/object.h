@@ -35,7 +35,7 @@ struct Object {
     VType    tag;  // Must be consistent with the parent `Value`.
 };
 
-typedef struct {
+typedef struct String {
     Object   object; // "Inherited" must come first to allow safe type-punning.
     uint32_t hash;   // Used when strings are used as table keys.
     int      len;    // String length with nul and escapes omitted.
@@ -89,7 +89,7 @@ typedef struct {
 // We use a local variable to avoid bugs caused by multiple macro expansion.
 // NOTE: We set the value before the tag type in case `val` evaluates `dst`.
 #define set_value(tt, as_fn, dst, val) {                                       \
-    Value *_dst  = (dst);                                                     \
+    Value *_dst  = (dst);                                                      \
     as_fn(_dst)   = (val);                                                     \
     get_tag(_dst) = (tt);                                                      \
 }

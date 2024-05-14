@@ -75,7 +75,7 @@ typedef struct {
 } StrView;
 
 // Silly to populate both end and len like this but we need consistency.
-#define strview_lit(s)      {(s), &(s)[0] + cstr_len(s), cstr_len(s)}
+#define strview_lit(s)      (StrView){(s), &(s)[0] + cstr_len(s), cstr_len(s)}
 #define make_strview(s, n)  (StrView){(s), (s) + (n), (n)}
 
 #endif /* LULU_LIMITS_H */

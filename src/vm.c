@@ -123,6 +123,28 @@ static void compare_op(VM *self, OpCode op)
     popn(self, 1);
 }
 
+static void concat_op(VM *self, int argc, Value *argv)
+{
+    int len = 0;
+    for (int i = 0; i < argc; i++) {
+        Value *arg = &argv[i];
+        if (is_number(arg)) {
+            char    buffer[MAX_TOSTRING];
+            int     len  = num_tostring(buffer, as_number(arg));
+            StrView view = make_strview(buffer, len);
+
+            // Use `copy_string` just in case chosen representation has escapes.
+            setv_string(arg, cast(Object*, copy_string(self, view)));
+        } else if (!is_string(arg)) {
+            runtime_error(self, "concatenate", get_typename(arg));
+        }
+        len += as_string(arg)->len;
+    }
+    String *res = concat_strings(self, argc, argv, len);
+    popn(self, argc);
+    push_string(self, res);
+}
+
 static ErrType run(VM *self)
 {
     Alloc *alloc     = &self->alloc;
