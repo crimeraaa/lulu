@@ -21,14 +21,14 @@ typedef enum {
 // Lookup table: maps `VType` to `const char*`.
 extern const char *const LULU_TYPENAMES[];
 
-typedef struct {
+typedef struct Value {
     VType tag;
     union {
         bool    boolean;
         Number  number;
         Object *object; // Some heap-allocated, GC-managed data.
     } as;
-} Value ;
+} Value;
 
 struct Object {
     Object  *next; // Intrusive list (linked list) node.
