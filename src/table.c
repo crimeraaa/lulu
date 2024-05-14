@@ -9,10 +9,9 @@ static uint32_t hash_pointer(Object *ptr)
     union {
         Object *data;
         char    bytes[sizeof(ptr)];
-    } punning;
-    punning.data = ptr;
-    StrView view = make_strview(punning.bytes, sizeof(punning.bytes));
-    return hash_rstring(&view);
+    } hash;
+    hash.data = ptr;
+    return hash_rstring(make_strview(hash.bytes, sizeof(hash.bytes)));
 }
 
 static uint32_t hash_number(Number number)
@@ -20,10 +19,9 @@ static uint32_t hash_number(Number number)
     union {
         Number data;
         char   bytes[sizeof(number)];
-    } punning;
-    punning.data = number;
-    StrView view = make_strview(punning.bytes, sizeof(punning.bytes));
-    return hash_rstring(&view);
+    } hash;
+    hash.data = number;
+    return hash_rstring(make_strview(hash.bytes, sizeof(hash.bytes)));
 }
 
 Table *new_table(Alloc *alloc)

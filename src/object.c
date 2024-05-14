@@ -110,7 +110,7 @@ void set_interned(VM *vm, const String *string)
     set_table(&vm->strings, &key, &val, alloc);
 }
 
-String *find_interned(VM *vm, const StrView *view, uint32_t hash)
+String *find_interned(VM *vm, StrView view, uint32_t hash)
 {
     Table *table = &vm->strings;
     if (table->hashcount == 0) {
@@ -125,8 +125,8 @@ String *find_interned(VM *vm, const StrView *view, uint32_t hash)
         }
         // We assume ALL valid (i.e: non-nil) keys are strings.
         String *interned = as_string(&entry->key);
-        if (interned->len == view->len && interned->hash == hash) {
-            if (cstr_eq(interned->data, view->begin, view->len)) {
+        if (interned->len == view.len && interned->hash == hash) {
+            if (cstr_eq(interned->data, view.begin, view.len)) {
                 return interned;
             }
         }

@@ -26,10 +26,10 @@ typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 #define MAX_LOCALS  200
 #define MAX_CONSTS  0x1000000
 #define MAX_LEVELS  200
-#define MAX_MULTI   16
 
-// Lua's indexes starting at 1 is controversial. If you wish you can change it.
-#define ARRAY_START 1
+// Reserve 6 stack slots for error messages, meaning user-facing stack total is
+// more ike `(MAX_STACK - STACK_RESERVED)`.
+#define STACK_RESERVED  6
 
 // NUMBER TYPE INFORMATION ------------------------------------------------ {{{1
 

@@ -197,8 +197,9 @@ static Token make_token(Lexer *self, TkType type)
 static Token error_token(Lexer *self)
 {
     Token token = make_token(self, TK_ERROR);
+
     // For error tokens, report only the first line if this is a multiline.
-    char *newline = strchr(token.view.begin, '\n');
+    const char *newline = memchr(token.view.begin, '\n', token.view.len);
     if (newline != NULL) {
         token.view.end = newline;
         token.view.len = cast(int, token.view.end - token.view.begin);
@@ -401,7 +402,7 @@ bad_string:
 
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
     StrView view = make_strview(self->lexeme.begin + 1, self->lexeme.len - 2);
-    self->string = copy_string(self->vm, &view);
+    self->string = copy_string(self->vm, view);
     return make_token(self, TK_STRING);
 }
 
@@ -417,7 +418,7 @@ static Token rstring_token(Lexer *self, int nesting)
     int     mark = nesting + open + 2;
     int     len  = self->lexeme.len - mark - 2;
     StrView view = make_strview(self->lexeme.begin + mark, len);
-    self->string = copy_rstring(self->vm, &view);
+    self->string = copy_rstring(self->vm, view);
     return make_token(self, TK_STRING);
 }
 

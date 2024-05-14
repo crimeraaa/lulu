@@ -32,7 +32,7 @@ static void adjust_stackinfo(Compiler *self, OpCode op, int delta)
     // If both push and pop are VAR_DELTA then something is horribly wrong.
     self->stack.usage += push - pop;
     self->prev_opcode = op;
-    if (self->stack.usage > MAX_STACK) {
+    if (self->stack.usage > MAX_STACK - STACK_RESERVED) {
         lexerror_at_consumed(lexer, "Function uses too many stack slots");
     }
     if (self->stack.usage > self->stack.total) {
@@ -205,7 +205,7 @@ void emit_variable(Compiler *self, const Token *ident)
 
 int identifier_constant(Compiler *self, const Token *ident)
 {
-    Value wrapper = make_string(copy_string(self->vm, &ident->view));
+    Value wrapper = make_string(copy_string(self->vm, ident->view));
     return make_constant(self, &wrapper);
 }
 

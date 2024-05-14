@@ -7,16 +7,6 @@
 #include "string.h"
 #include "table.h"
 
-enum RT_ErrType {
-    RTE_NEGATE,
-    RTE_ARITH,
-    RTE_COMPARE,
-    RTE_CONCAT,
-    RTE_UNDEF,   // Make sure to push the invalid variable name first.
-    RTE_LENGTH,  // Using `#` on non-table and non-string values.
-    RTE_INDEX,   // Using `[]` on non-table values.
-};
-
 // Assumes that `context` points to the parent `VM*` instance.
 static void *allocfn(void *ptr, size_t oldsz, size_t newsz, void *context)
 {
@@ -36,7 +26,8 @@ static void *allocfn(void *ptr, size_t oldsz, size_t newsz, void *context)
 
 static void reset_stack(VM *self)
 {
-    self->top = self->stack;
+    self->top  = self->stack;
+    self->base = self->stack;
 }
 
 // Negative values are offset from the top, positive are offset from the base.
@@ -45,76 +36,129 @@ static Value *poke_at(VM *self, int offset)
     if (offset < 0) {
         return self->top + offset;
     }
-    return self->stack + offset;
+    return self->base + offset;
 }
 
-// Please avoid using this as much as possible, it's too vague!
+// Please avoid using this as much as possible, it works but it's vague!
 static void push_value(VM *self, const Value *v)
 {
     *self->top = *v;
-    self->top += 1;
+    incr_top(self);
 }
 
 static void push_nils(VM *self, int n)
 {
     for (int i = 0; i < n; i++) {
-        setv_nil(self->top);
-        self->top++;
+        setv_nil(&self->top[0]);
     }
+    update_top(self, n);
 }
 
 static void push_boolean(VM *self, bool b)
 {
     setv_boolean(self->top, b);
-    self->top += 1;
+    incr_top(self);
+}
+
+static void push_number(VM *self, Number n)
+{
+    setv_number(self->top, n);
+    incr_top(self);
 }
 
 static void push_string(VM *self, String *s)
 {
     setv_string(self->top, &s->object);
-    self->top += 1;
+    incr_top(self);
 }
 
-static void runtime_error(VM *self, enum RT_ErrType rterr)
+// Push a nul-terminated C-string of yet-to-be-determined length.
+static void push_cstring(VM *self, const char *s)
 {
+    push_string(self, copy_string(self, make_strview(s, strlen(s))));
+}
 
-// Errors occur with the guilty operands at the very top of the stack.
-#define _type(n)    get_typename(poke_at(self, n))
-#define _cstr(n)    as_cstring(poke_at(self, n))
+// Push a nul-terminated C-string of desired length.
+static void push_lcstring(VM *self, const char *s, int len)
+{
+    push_string(self, copy_string(self, make_strview(s, len)));
+}
 
-    size_t offset = self->ip - self->chunk->code - 1;
-    int    line   = self->chunk->lines[offset];
-    eprintf("%s:%i: Attempt to ", self->name, line);
+static void concat_op(VM *self, int argc, Value argv[])
+{
+    int len = 0;
+    for (int i = 0; i < argc; i++) {
+        Value *arg = &argv[i];
+        if (is_number(arg)) {
+            char    buffer[MAX_TOSTRING];
+            int     len  = num_tostring(buffer, as_number(arg));
+            StrView view = make_strview(buffer, len);
 
-    switch (rterr) {
-    case RTE_NEGATE:
-        eprintfln("negate a %s value", _type(-1));
-        break;
-    case RTE_ARITH:
-        eprintfln("perform arithmetic on %s with %s", _type(-2), _type(-1));
-        break;
-    case RTE_COMPARE:
-        eprintfln("compare %s with %s", _type(-2), _type(-1));
-        break;
-    case RTE_CONCAT:
-        eprintfln("concatenate %s with %s", _type(-2), _type(-1));
-        break;
-    case RTE_UNDEF:
-        eprintfln("read undefined variable '%s'.", _cstr(-1));
-        break;
-    case RTE_LENGTH:
-        eprintfln("get length of a %s value", _type(-1));
-        break;
-    case RTE_INDEX:
-        eprintfln("index a %s value", _type(-1));
-        break;
+            // Use `copy_string` just in case chosen representation has escapes.
+            setv_string(arg, cast(Object*, copy_string(self, view)));
+        } else if (!is_string(arg)) {
+            runtime_error(self, "concatenate", get_typename(arg));
+        }
+        len += as_string(arg)->len;
     }
-    reset_stack(self);
-    longjmp(self->errorjmp, ERROR_RUNTIME);
+    String *res = concat_strings(self, argc, argv, len);
+    popn(self, argc);
+    push_string(self, res);
+}
 
-#undef _type
-#undef _cstr
+// Internal use for writing simple formatted messages.
+// Only accepts the following formats: i, d, s and p.
+static void push_vfstring(VM *self, const char *fmt, va_list argp)
+{
+    const char *iter = fmt;
+    int         argc = 1;
+    push_cstring(self, "");
+    for (;;) {
+        const char *spec = strchr(iter, '%');
+        if (spec == NULL) {
+            break;
+        }
+        // Push the contents of the string before '%', except if '%' is starter.
+        if (spec != fmt) {
+            StrView view = make_strview(iter, spec - iter);
+            push_lcstring(self, view.begin, view.len);
+            argc += 1;
+        }
+        // Move to character after '%' so we point at the specifier.
+        spec += 1;
+        switch (*spec) {
+        case 'i':
+        case 'd':
+            push_number(self, va_arg(argp, int));
+            break;
+        case 's':
+            push_cstring(self, va_arg(argp, const char*));
+            break;
+        case 'p': {
+            char buf[MAX_TOSTRING];
+            int  len = snprintf(buf, sizeof(buf), "%p", va_arg(argp, void*));
+            push_lcstring(self, buf, len);
+            break;
+        }
+        }
+        // Point to first character after the specifier.
+        iter  = spec + 1;
+        argc += 1;
+    }
+    // Still have stuff left in the format string?
+    if (*iter != '\0') {
+        push_cstring(self, iter);
+        argc += 1;
+    }
+    concat_op(self, argc, poke_at(self, -argc));
+}
 
+static void push_fstring(VM *self, const char *fmt, ...)
+{
+    va_list argp;
+    va_start(argp, fmt);
+    push_vfstring(self, fmt, argp);
+    va_end(argp);
 }
 
 void init_vm(VM *self, const char *name)
@@ -133,26 +177,6 @@ void free_vm(VM *self)
     free_table(&self->globals, alloc);
     free_table(&self->strings, alloc);
     free_objects(self);
-}
-
-static String *concat_op(VM *self, int argc, Value argv[])
-{
-    int len = 0;
-    for (int i = 0; i < argc; i++) {
-        Value *arg = &argv[i];
-        if (is_number(arg)) {
-            char    buffer[MAX_TOSTRING];
-            int     len  = num_tostring(buffer, as_number(arg));
-            StrView view = make_strview(buffer, len);
-
-            // Use `copy_string` just in case chosen representation has escapes.
-            setv_string(arg, cast(Object*, copy_string(self, &view)));
-        } else if (!is_string(arg)) {
-            runtime_error(self, RTE_CONCAT);
-        }
-        len += as_string(arg)->len;
-    }
-    return concat_strings(self, argc, argv, len);
 }
 
 // Return `true` if in-place conversion occured without error, else `false`.
@@ -174,37 +198,19 @@ static bool converted_tonumber(Value *value)
     return true;
 }
 
-typedef bool (*ValidateFn)(Value *a, Value *b);
-
-static bool validate_arith_op(Value *a, Value *b)
-{
-    if (!is_number(a) && !converted_tonumber(a)) {
-        return false;
-    }
-    if (!is_number(b) && !converted_tonumber(b)) {
-        return false;
-    }
-    return true;
-}
-
-// By default we assume simple binary operations ONLY work for numbers.
-static bool validate_binary_op(Value *a, Value *b)
-{
-    return is_number(a) && is_number(b);
-}
-
-static void binary_op(VM *self, OpCode op, enum RT_ErrType err, ValidateFn fn)
+static void arith_op(VM *self, OpCode op)
 {
     Value *a = poke_at(self, -2);
     Value *b = poke_at(self, -1);
-    if (!fn(a, b)) {
-        runtime_error(self, err);
+    if (!is_number(a) && !converted_tonumber(a)) {
+        runtime_error(self, "perform arithmetic on", get_typename(a));
+    }
+    if (!is_number(b) && !converted_tonumber(b)) {
+        runtime_error(self, "perform arithmetic on", get_typename(b));
     }
     Number x = as_number(a);
     Number y = as_number(b);
     switch (op) {
-    case OP_LT:  setv_boolean(a, num_lt(x, y)); break;
-    case OP_LE:  setv_boolean(a, num_le(x, y)); break;
     case OP_ADD: setv_number(a, num_add(x, y)); break;
     case OP_SUB: setv_number(a, num_sub(x, y)); break;
     case OP_MUL: setv_number(a, num_mul(x, y)); break;
@@ -212,11 +218,33 @@ static void binary_op(VM *self, OpCode op, enum RT_ErrType err, ValidateFn fn)
     case OP_MOD: setv_number(a, num_mod(x, y)); break;
     case OP_POW: setv_number(a, num_pow(x, y)); break;
     default:
-        // Unreachable
+        // Unreachable, assumes this function is never called wrongly!
         break;
     }
     // Pop 2 operands, push 1 result. We save 1 operation by modifying in-place.
-    self->top -= 1;
+    popn(self, 1);
+}
+
+static void compare_op(VM *self, OpCode op)
+{
+    Value *a = poke_at(self, -2);
+    Value *b = poke_at(self, -1);
+    if (!is_number(a)) {
+        runtime_error(self, "compare", get_typename(a));
+    }
+    if (!is_number(b)) {
+        runtime_error(self, "compare", get_typename(b));
+    }
+    Number x = as_number(a);
+    Number y = as_number(b);
+    switch (op) {
+    case OP_LT: setv_boolean(a, num_lt(x, y)); break;
+    case OP_LE: setv_boolean(a, num_le(x, y)); break;
+    default:
+        // Unreachable
+        break;
+    }
+    popn(self, 1);
 }
 
 static ErrType run(VM *self)
@@ -239,8 +267,6 @@ static ErrType run(VM *self)
 // Assumes a 3-byte operand comes right after the opcode.
 #define read_constant()     (&constants[read_byte3()])
 #define read_string()       as_string(read_constant())
-#define popn(n)             (self->top -= (n))
-#define pop_back()          (popn(1))
 
 // 1}}} ------------------------------------------------------------------------
 
@@ -270,18 +296,17 @@ static ErrType run(VM *self)
             push_boolean(self, false);
             break;
         case OP_POP:
-            popn(read_byte());
+            popn(self, read_byte());
             break;
         case OP_GETLOCAL:
-            push_value(self, &self->stack[read_byte()]);
+            push_value(self, &self->base[read_byte()]);
             break;
         case OP_GETGLOBAL: {
             // Assume this is a string for the variable's name.
             Value *name = read_constant();
             Value  value;
             if (!get_table(&self->globals, name, &value)) {
-                push_value(self, name);
-                runtime_error(self, RTE_UNDEF);
+                runtime_error(self, "read", "undefined");
             }
             push_value(self, &value);
             break;
@@ -291,20 +316,18 @@ static ErrType run(VM *self)
             Value *key = poke_at(self, -1);
             Value  val;
             if (!is_table(tbl)) {
-                // Push the guilty variable to the top so we can report it.
-                push_value(self, tbl);
-                runtime_error(self, RTE_INDEX);
+                runtime_error(self, "index", get_typename(tbl));
             }
             if (!get_table(as_table(tbl), key, &val)) {
                 setv_nil(&val);
             }
-            popn(2);
+            popn(self, 2);
             push_value(self, &val);
             break;
         }
         case OP_SETLOCAL:
-            self->stack[read_byte()] = *poke_at(self, -1);
-            pop_back();
+            self->base[read_byte()] = *poke_at(self, -1);
+            pop_back(self);
             break;
         case OP_SETGLOBAL:
             // Same as `OP_GETGLOBAL`.
@@ -312,23 +335,21 @@ static ErrType run(VM *self)
                       read_constant(),
                       poke_at(self, -1),
                       alloc);
-            pop_back();
+            pop_back(self);
             break;
         case OP_SETTABLE: {
-            int    t_idx  = read_byte();
-            int    k_idx  = read_byte();
-            int    to_pop = read_byte();
+            int    t_idx  = read_byte(); // Absolute index of the table.
+            int    k_idx  = read_byte(); // Absolute index of the key.
+            int    to_pop = read_byte(); // How many elements to pop?
             Value *tbl    = poke_at(self, t_idx);
             Value *key    = poke_at(self, k_idx);
             Value *val    = poke_at(self, -1);
 
             if (!is_table(tbl)) {
-                // Push the guilty variable to the top so we can report it.
-                push_value(self, tbl);
-                runtime_error(self, RTE_INDEX);
+                runtime_error(self, "index", get_typename(tbl));
             }
             set_table(as_table(tbl), key, val, alloc);
-            popn(to_pop);
+            popn(self, to_pop);
             break;
         }
         case OP_SETARRAY: {
@@ -342,19 +363,19 @@ static ErrType run(VM *self)
                 Value *val = poke_at(self, t_idx + i);
                 set_table(tbl, &key, val, alloc);
             }
-            popn(count);
+            popn(self, count);
             break;
         }
         case OP_EQ: {
             Value *a = poke_at(self, -2);
             Value *b = poke_at(self, -1);
             setv_boolean(a, values_equal(a, b));
-            pop_back();
+            pop_back(self);
             break;
         }
         case OP_LT:
         case OP_LE:
-            binary_op(self, op, RTE_COMPARE, &validate_binary_op);
+            compare_op(self, op);
             break;
         case OP_ADD:
         case OP_SUB:
@@ -362,21 +383,19 @@ static ErrType run(VM *self)
         case OP_DIV:
         case OP_MOD:
         case OP_POW:
-            binary_op(self, op, RTE_ARITH, &validate_arith_op);
+            arith_op(self, op);
             break;
         case OP_CONCAT: {
             // Assume at least 2 args since concat is an infix expression.
             int     argc = read_byte();
             Value  *argv = poke_at(self, -argc);
-            String *res  = concat_op(self, argc, argv);
-            popn(argc);
-            push_string(self, res);
+            concat_op(self, argc, argv);
             break;
         }
         case OP_UNM: {
             Value *arg = poke_at(self, -1);
             if (!is_number(arg) && !converted_tonumber(arg)) {
-                runtime_error(self, RTE_NEGATE);
+                runtime_error(self, "negate", get_typename(arg));
             }
             setv_number(arg, num_unm(as_number(arg)));
             break;
@@ -390,7 +409,7 @@ static ErrType run(VM *self)
             // TODO: Add support for tables, will need to implement arrays then
             Value *arg = poke_at(self, -1);
             if (!is_string(arg)) {
-                runtime_error(self, RTE_LENGTH);
+                runtime_error(self, "get length of", get_typename(arg));
             }
             setv_number(arg, as_string(arg)->len);
             break;
@@ -403,7 +422,7 @@ static ErrType run(VM *self)
                 printf("\t");
             }
             printf("\n");
-            popn(argc);
+            popn(self, argc);
             break;
         }
         case OP_RETURN:
@@ -416,8 +435,6 @@ static ErrType run(VM *self)
 #undef read_byte3
 #undef read_constant
 #undef read_string
-#undef popn
-#undef pop_back
 }
 
 ErrType interpret(VM *self, const char *input)
@@ -446,4 +463,18 @@ ErrType interpret(VM *self, const char *input)
     err = run(self);
     free_chunk(&chunk, &self->alloc);
     return err;
+}
+
+void runtime_error(VM *self, const char *act, const char *type)
+{
+    size_t offset = self->ip - self->chunk->code - 1;
+    int    line   = self->chunk->lines[offset];
+    push_fstring(self, "%s:%i: Attempt to %s a %s value\n",
+                self->name,
+                line,
+                act,
+                type);
+    print_value(poke_at(self, -1), false);
+    reset_stack(self);
+    longjmp(self->errorjmp, ERROR_RUNTIME);
 }
