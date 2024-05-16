@@ -55,33 +55,14 @@ void free_vm(VM *self)
     free_objects(self);
 }
 
-// Return `true` if in-place conversion occured without error, else `false`.
-static bool converted_tonumber(Value *value)
-{
-    if (!is_string(value)) {
-        return false;
-    }
-    String *string = as_string(value);
-    StrView view   = make_strview(string->data, string->len);
-    char   *end;
-    Number  result = cstr_tonumber(view.begin, &end);
-
-    // Don't convert yet if we need to report the error.
-    if (end != view.end) {
-        return false;
-    }
-    setv_number(value, result);
-    return true;
-}
-
 void arith_op(VM *self, OpCode op)
 {
     Value *a = poke_at(self, -2);
     Value *b = poke_at(self, -1);
-    if (!is_number(a) && !converted_tonumber(a)) {
+    if (!is_number(a) && !value_tonumber(a)) {
         runtime_error(self, "perform arithmetic on", get_typename(a));
     }
-    if (!is_number(b) && !converted_tonumber(b)) {
+    if (!is_number(b) && !value_tonumber(b)) {
         runtime_error(self, "perform arithmetic on", get_typename(b));
     }
     Number x = as_number(a);
@@ -169,16 +150,16 @@ static ErrType run(VM *self)
 // 1}}} ------------------------------------------------------------------------
 
     for (;;) {
-#ifdef DEBUG_TRACE_EXECUTION
-        printf("\t");
-        for (const Value *slot = self->stack; slot < self->top; slot++) {
-            printf("[ ");
-            print_value(slot, true);
-            printf(" ]");
+        if (is_enabled(DEBUG_TRACE_EXECUTION)) {
+            printf("\t");
+            for (const Value *slot = self->stack; slot < self->top; slot++) {
+                printf("[ ");
+                print_value(slot, true);
+                printf(" ]");
+            }
+            printf("\n");
+            disassemble_instruction(chunk, cast(int, self->ip - chunk->code));
         }
-        printf("\n");
-        disassemble_instruction(chunk, cast(int, self->ip - chunk->code));
-#endif
         OpCode op = read_byte();
         switch (op) {
         case OP_CONSTANT:
@@ -292,7 +273,7 @@ static ErrType run(VM *self)
         }
         case OP_UNM: {
             Value *arg = poke_at(self, -1);
-            if (!is_number(arg) && !converted_tonumber(arg)) {
+            if (!is_number(arg) && !value_tonumber(arg)) {
                 runtime_error(self, "negate", get_typename(arg));
             }
             setv_number(arg, num_unm(as_number(arg)));
@@ -313,11 +294,10 @@ static ErrType run(VM *self)
             break;
         }
         case OP_PRINT: {
-            int    argc = read_byte();
-            Value *argv = poke_at(self, -argc);
+            int argc = read_byte();
             for (int i = 0; i < argc; i++) {
-                print_value(&argv[i], false);
-                printf("\t");
+                printf("%s\t", to_cstring(self, i - argc));
+                pop_back(self); // to_cstring() will push the conversion.
             }
             printf("\n");
             popn(self, argc);
@@ -337,10 +317,10 @@ static ErrType run(VM *self)
 
 ErrType interpret(VM *self, const char *input)
 {
-    Chunk chunk;
-    Lexer lexer;
+    Chunk    chunk;
+    Lexer    lexer;
     Compiler compiler;
-    ErrType err = setjmp(self->errorjmp); // WARNING: Call `longjmp` correctly!!
+    ErrType  err = setjmp(self->errorjmp); // Assumes always called correctly!
     switch (err) {
     case ERROR_NONE:
         init_chunk(&chunk, self->name);

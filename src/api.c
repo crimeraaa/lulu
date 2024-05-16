@@ -13,6 +13,31 @@ Value *poke_at(VM *self, int offset)
     return self->base + offset;
 }
 
+const char *to_cstring(VM *self, int offset)
+{
+    Value *v = poke_at(self, offset);
+    switch (get_tag(v)) {
+    case TYPE_NIL:
+        push_cstring(self, "nil");
+        break;
+    case TYPE_BOOLEAN:
+        push_cstring(self, as_boolean(v) ? "true" : "false");
+        break;
+    case TYPE_NUMBER: {
+        char buf[MAX_TOSTRING];
+        int  len = num_tostring(buf, as_number(v));
+        push_lcstring(self, buf, len);
+        break;
+    }
+    case TYPE_STRING:
+        push_string(self, as_string(v));
+        break;
+    case TYPE_TABLE:
+        push_fstring(self, "%s: %p", get_typename(v), as_pointer(v));
+        break;
+    }
+    return as_string(poke_at(self, -1))->data;
+}
 
 void push_nils(VM *self, int n)
 {
@@ -42,22 +67,23 @@ void push_string(VM *self, String *s)
 
 void push_cstring(VM *self, const char *s)
 {
-    push_string(self, copy_string(self, make_strview(s, strlen(s))));
+    int     len  = strlen(s);
+    StrView view = make_strview(s, len);
+    push_string(self, copy_string(self, view));
 }
 
 void push_lcstring(VM *self, const char *s, int len)
 {
-    push_string(self, copy_string(self, make_strview(s, len)));
+    StrView view = make_strview(s, len);
+    push_string(self, copy_string(self, view));
 }
 
-void push_vfstring(VM *self, const char *fmt, va_list argp)
+const char *push_vfstring(VM *self, const char *fmt, va_list argp)
 {
     const char *iter  = fmt;
-    int         argc  = 1;
+    int         argc  = 0;
     int         total = 0;
 
-    // Concat strings works properly only with 2+ strings, so need a dummy.
-    push_cstring(self, "");
     for (;;) {
         const char *spec = strchr(iter, '%');
         if (spec == NULL) {
@@ -73,32 +99,39 @@ void push_vfstring(VM *self, const char *fmt, va_list argp)
         // Move to character after '%' so we point at the specifier.
         spec += 1;
         switch (*spec) {
+        case 'c': {
+            char buf[2];
+            buf[0] = cast(char, va_arg(argp, int)); // char promoted to int
+            buf[1] = '\0';
+            push_lcstring(self, buf, sizeof(buf));
+            break;
+        }
         case 'i':
         case 'd': {
             char buf[MAX_TOSTRING];
             int  len = int_tostring(buf, va_arg(argp, int));
             push_lcstring(self, buf, len);
-            total += len;
             break;
         }
-        case 's':
-            push_cstring(self, va_arg(argp, const char*));
-            total += as_string(poke_at(self, -1))->len;
+        case 's': {
+            const char *s = va_arg(argp, char*);
+            push_cstring(self, (s != NULL) ? s : "(null)");
             break;
+        }
         case 'p': {
             char buf[MAX_TOSTRING];
             int  len = ptr_tostring(buf, va_arg(argp, void*));
             push_lcstring(self, buf, len);
-            total += len;
             break;
         }
         default:
-            eprintfln("Unknown format specifier '%c'.", *spec);
+            // Unreachable! Assumes we never use any other specifier!
             break;
         }
         // Point to first character after the specifier.
-        iter  = spec + 1;
-        argc += 1;
+        iter   = spec + 1;
+        total += as_string(poke_at(self, -1))->len;
+        argc  += 1;
     }
     // Still have stuff left in the format string?
     if (*iter != '\0') {
@@ -109,12 +142,14 @@ void push_vfstring(VM *self, const char *fmt, va_list argp)
     String *res = concat_strings(self, argc, poke_at(self, -argc), total);
     popn(self, argc);
     push_string(self, res);
+    return res->data;
 }
 
-void push_fstring(VM *self, const char *fmt, ...)
+const char *push_fstring(VM *self, const char *fmt, ...)
 {
     va_list argp;
     va_start(argp, fmt);
-    push_vfstring(self, fmt, argp);
+    const char *res = push_vfstring(self, fmt, argp);
     va_end(argp);
+    return res;
 }

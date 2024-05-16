@@ -17,17 +17,13 @@ typedef struct {
 
 typedef struct {
     Local  locals[MAX_LOCALS];
-    struct {
-        int count;      // How many locals are currently in scope?
-        int depth;      // 0 = global, 1 = top-level, 2 = more inner, etc.
-    } scope;
-    struct {
-        int usage;      // How many stack slots at most does this function use?
-        int total;      // How many stack slots are currently being used?
-    } stack;
     Lexer *lexer;       // May be shared across multiple Compiler instances.
     VM    *vm;          // Track and modify parent VM state as needed.
     Chunk *chunk;       // The current compiling chunk for this function/closure.
+    int stack_usage;    // How many stack slots at most does this function use?
+    int stack_total;    // How many stack slots are currently being used?
+    int scope_count;    // How many locals are currently in scope?
+    int scope_depth;    // 0 = global, 1 = top-level, 2 = more inner, etc.
     OpCode prev_opcode; // Used to fold consecutive similar operations.
 } Compiler;
 

@@ -9,6 +9,9 @@ typedef struct String String;
 // Negative values are offset from the top, positive are offset from the base.
 Value *poke_at(VM *self, int offset);
 
+// Pushes the C-string representation of the value at the given `offset`.
+const char *to_cstring(VM *self, int offset);
+
 void push_nils(VM *self, int n);
 void push_boolean(VM *self, bool b);
 void push_number(VM *self, Number n);
@@ -25,9 +28,9 @@ void push_lcstring(VM *self, const char *s, int len);
 // Internal use for writing simple formatted messages.
 // Only accepts the following formats: i, d, s and p.
 // No modifiers are allowed.
-void push_vfstring(VM *self, const char *fmt, va_list argp);
+const char *push_vfstring(VM *self, const char *fmt, va_list argp);
 
 // See `push_vfstring` for constraints.
-void push_fstring(VM *self, const char *fmt, ...);
+const char *push_fstring(VM *self, const char *fmt, ...);
 
 #endif /* LULU_API_H */

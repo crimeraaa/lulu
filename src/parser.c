@@ -223,7 +223,7 @@ static void parse_ctor(Compiler *self, int t_idx, int *count)
 
     if (match_token(lexer, TK_IDENT)) {
         Token ident = lexer->consumed; // Save as lexer might update.
-        int   k_idx = self->stack.usage;
+        int   k_idx = self->stack_usage;
         if (match_token(lexer, TK_ASSIGN)) {
             emit_identifier(self, &ident);
             expression(self);
@@ -233,7 +233,7 @@ static void parse_ctor(Compiler *self, int t_idx, int *count)
             *count += 1;
         }
     } else if (match_token(lexer, TK_LBRACKET)) {
-        int k_idx = self->stack.usage;
+        int k_idx = self->stack_usage;
 
         parse_field(self, true);
         expect_token(lexer, TK_ASSIGN, "to assign table field");
@@ -252,7 +252,7 @@ static void table(Compiler *self)
 {
     Lexer *lexer   = self->lexer;
     Value  wrapper = make_table(new_table(&self->vm->alloc));
-    int    t_idx   = self->stack.usage;
+    int    t_idx   = self->stack_usage;
     int    total   = 0; // Array length plus hashmap length.
     int    count   = 0; // Array portion length.
 
@@ -428,8 +428,8 @@ static void discharge_assignment(Compiler *self, Assignment *list, bool isfield)
         expect_token(lexer, TK_RBRACKET, NULL);
     }
 
-    // stack.usage - 0 is top, -1 is the key we emitted and -2 is the table.
-    set_assignment(list, ASSIGN_TABLE, self->stack.usage - 2);
+    // stack_usage - 0 is top, -1 is the key we emitted and -2 is the table.
+    set_assignment(list, ASSIGN_TABLE, self->stack_usage - 2);
 }
 
 // Assumes we consumed an identifier as the first element of a statement.

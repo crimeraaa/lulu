@@ -88,16 +88,16 @@ typedef struct {
 
 // We use a local variable to avoid bugs caused by multiple macro expansion.
 // NOTE: We set the value before the tag type in case `val` evaluates `dst`.
-#define set_value(tt, as_fn, dst, val) {                                       \
-    Value *_dst  = (dst);                                                      \
+#define setv_value(tt, as_fn, dst, val) {                                      \
+    Value *_dst   = (dst);                                                     \
     as_fn(_dst)   = (val);                                                     \
     get_tag(_dst) = (tt);                                                      \
 }
 
-#define setv_nil(v)          set_value(TYPE_NIL,     as_number,  v, 0)
-#define setv_boolean(v, b)   set_value(TYPE_BOOLEAN, as_boolean, v, b)
-#define setv_number(v, n)    set_value(TYPE_NUMBER,  as_number,  v, n)
-#define setv_object(T, v, o) set_value(T,            as_object,  v, o)
+#define setv_nil(v)             setv_value(TYPE_NIL,     as_number,  v, 0)
+#define setv_boolean(v, b)      setv_value(TYPE_BOOLEAN, as_boolean, v, b)
+#define setv_number(v, n)       setv_value(TYPE_NUMBER,  as_number,  v, n)
+#define setv_object(T, v, o)    setv_value(T,            as_object,  v, o)
 #define setv_string(dst, src)   setv_object(TYPE_STRING, dst, src)
 #define setv_table(dst, src)    setv_object(TYPE_TABLE,  dst, src)
 
@@ -106,9 +106,13 @@ typedef struct {
 // Writes string representation of `self` to C `stdout`.
 void print_value(const Value *self, bool isdebug);
 
+// See: https://www.lua.org/source/5.1/lvm.c.html#luaV_tonumber
+// Note that this will likely mutate `self`!
+const Value *value_tonumber(Value *self);
+
 // Assumes buffer is a fixed-size array of length `MAX_TOSTRING`.
 // If `out` is not `NULL`, it will be set to -1 if we do not own the result.
-const char *to_cstring(const Value *self, char *buffer, int *out);
+const char *value_tocstring(const Value *self, char *buffer, int *out);
 
 // We cannot use `memcmp` due to struct padding.
 bool values_equal(const Value *lhs, const Value *rhs);

@@ -27,9 +27,9 @@ typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 #define MAX_CONSTS  0x1000000
 #define MAX_LEVELS  200
 
-// Reserve 6 stack slots for error messages, meaning user-facing stack total is
-// more ike `(MAX_STACK - STACK_RESERVED)`.
-#define STACK_RESERVED  10
+// Reserve stack slots for error messages, meaning user-facing stack total is
+// more like `(MAX_STACK - STACK_RESERVED)`.
+#define STACK_RESERVED  16
 
 // NUMBER TYPE INFORMATION ------------------------------------------------ {{{1
 

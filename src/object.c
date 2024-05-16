@@ -4,6 +4,7 @@
 #include "string.h"
 #include "table.h"
 #include "vm.h"
+#include "api.h"
 
 const char *const LULU_TYPENAMES[] = {
     [TYPE_NIL]     = "nil",
@@ -13,7 +14,26 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_TABLE]   = "table",
 };
 
-const char *to_cstring(const Value *self, char *buffer, int *out)
+const Value *value_tonumber(Value *self)
+{
+    if (is_number(self)) {
+        return self;
+    }
+    if (is_string(self)) {
+        String *s    = as_string(self);
+        StrView view = make_strview(s->data, s->len);
+        char   *end;
+        Number  n    = cstr_tonumber(view.begin, &end);
+        if (end != view.end) {
+            return NULL;
+        }
+        setv_number(self, n);
+        return self;
+    }
+    return NULL;
+}
+
+const char *value_tocstring(const Value *self, char *buffer, int *out)
 {
     int len = 0;
     if (out != NULL) {
@@ -57,7 +77,7 @@ void print_value(const Value *self, bool isdebug)
         // printf(" (len: %i, hash: %u)", s->len, s->object.hash);
     } else {
         char buffer[MAX_TOSTRING];
-        printf("%s", to_cstring(self, buffer, NULL));
+        printf("%s", value_tocstring(self, buffer, NULL));
     }
 }
 
@@ -95,7 +115,8 @@ void write_varray(VArray *self, const Value *value, Alloc *alloc)
     if (self->len + 1 > self->cap) {
         int oldcap   = self->cap;
         int newcap   = grow_capacity(oldcap);
-        self->values = resize_array(Value, self->values, oldcap, newcap, alloc);
+        // self->values = resize_array(Value, self->values, oldcap, newcap, alloc);
+        self->values = resize_parray(self->values, oldcap, newcap, alloc);
         self->cap    = newcap;
     }
     self->values[self->len] = *value;

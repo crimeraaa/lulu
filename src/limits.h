@@ -7,6 +7,43 @@
 
 #include "lulu.h"
 
+#define _ARG_PLACEHOLDER_1 0,
+
+/**
+ * @brief   Helps perform dead-code elimination and less reliance on `#ifdef`
+ *          inside of `.c` files.
+ * 
+ * @details Step 1: Expand the argument to its value (preferably `1`), else
+ *          expand to the token itself. E.g. given `#define CONF 1`, the call
+ *          `is_enabled(CONF)` will expand to `_is_enabled_a(1)`.
+ *
+ * @note    See: https://elixir.bootlin.com/linux/v4.4/ident/IS_ENABLED
+ */
+#define is_enabled(config) _is_enabled_a(config)
+
+/**
+ * @details Step 2: Given the expanded config previously, try to concatenate it
+ *          to the token `_arg_placeholder_`. E.g. if we got `1`, we would
+ *          receive `_arg_placeholder_1` which will be cherry picked in the next
+ *          step. Otherwise the resulting token will not be expandable and end
+ *          up cherry picking 0.
+ */
+#define _is_enabled_a(config) _is_enabled_b(_ARG_PLACEHOLDER_##config)
+
+/**
+ * @brief   Step 3: If we expanded to `_arg_placeholder_1`, insert `0, ` in order
+ *          to get the triplet `_is_enabled_c(0, 1, 0)` which will be cherry
+ *          picked in the next step. Otherwise we will insert whatever the token
+ *          was as-is.
+ */
+#define _is_enabled_b(arg_or_junk) _is_enabled_c(arg_or_junk 1, 0)
+
+/**
+ * @details Step 4: Depending on the result of the previous steps, we will have
+ *          either `(0, 1, 0)` or `(..., 1, 0)`.
+ */
+#define _is_enabled_c(ignore, val, ...) val
+
 #ifdef DEBUG_USE_ASSERT
 #include <assert.h>
 #else /* DEBUG_USE_ASSERT not defined. */
