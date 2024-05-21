@@ -60,7 +60,7 @@ static Entry *find_entry(Entry *list, int cap, const Value *key)
 // Analogous to `adjustCapacity()` in the book. Assumes we only ever grow!
 static void resize_table(Table *self, int newcap, Alloc *alloc)
 {
-    Entry *newbuf = new_array(Entry, newcap, alloc);
+    Entry *newbuf = new_parray(newbuf, newcap, alloc);
     clear_entries(newbuf, newcap);
 
     // Copy non-empty and non-tombstone entries to the new table.
@@ -75,7 +75,7 @@ static void resize_table(Table *self, int newcap, Alloc *alloc)
         dst->value = src->value;
         self->count++;
     }
-    free_array(Entry, self->entries, self->cap, alloc);
+    free_parray(self->entries, self->cap, alloc);
     self->entries = newbuf;
     self->cap     = newcap;
 }
@@ -99,7 +99,6 @@ void init_table(Table *self)
 
 void free_table(Table *self, Alloc *alloc)
 {
-    // free_array(Entry, self->entries, self->cap, alloc);
     free_parray(self->entries, self->cap, alloc);
     init_table(self);
 }

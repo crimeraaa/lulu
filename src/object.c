@@ -24,11 +24,10 @@ const Value *value_tonumber(Value *self)
         StrView view = make_strview(s->data, s->len);
         char   *end;
         Number  n    = cstr_tonumber(view.begin, &end);
-        if (end != view.end) {
-            return NULL;
+        if (end == view.end) {
+            setv_number(self, n);
+            return self;
         }
-        setv_number(self, n);
-        return self;
     }
     return NULL;
 }
@@ -105,7 +104,6 @@ void init_varray(VArray *self)
 
 void free_varray(VArray *self, Alloc *alloc)
 {
-    // free_array(Value, self->values, self->len, alloc);
     free_parray(self->values, self->len, alloc);
     init_varray(self);
 }
@@ -115,7 +113,6 @@ void write_varray(VArray *self, const Value *value, Alloc *alloc)
     if (self->len + 1 > self->cap) {
         int oldcap   = self->cap;
         int newcap   = grow_capacity(oldcap);
-        // self->values = resize_array(Value, self->values, oldcap, newcap, alloc);
         self->values = resize_parray(self->values, oldcap, newcap, alloc);
         self->cap    = newcap;
     }

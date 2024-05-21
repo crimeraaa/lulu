@@ -76,14 +76,14 @@ static void settable_op(const Byte *ip)
     int t_idx  = read_byte(ip);
     int k_idx  = read_byte(ip);
     int to_pop = read_byte(ip);
-    printf("Stk[%i] Key[%i] Pop(%i)", t_idx, k_idx, to_pop);
+    printf("Tbl[%i], Key[%i], Pop(%i)", t_idx, k_idx, to_pop);
 }
 
 static void setarray_op(const Byte *ip)
 {
     int t_idx  = read_byte(ip);
     int to_set = read_byte(ip);
-    printf("Stk[%i] Set(%i)", t_idx, to_set);
+    printf("Tbl[%i], Set(%i)", t_idx, to_set);
 }
 
 int disassemble_instruction(const Chunk *self, int offset)

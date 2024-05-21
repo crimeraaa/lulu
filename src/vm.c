@@ -37,6 +37,15 @@ static void push_value(VM *self, const Value *v)
     incr_top(self);
 }
 
+static void init_builtin(VM *self)
+{
+    Table *globals = &self->globals;
+    Value  wrapper = make_table(globals);
+    push_cstring(self, "_G");
+    set_table(globals, poke_at(self, -1), &wrapper, &self->alloc);
+    pop_back(self);
+}
+
 void init_vm(VM *self, const char *name)
 {
     reset_stack(self);
@@ -45,6 +54,9 @@ void init_vm(VM *self, const char *name)
     init_table(&self->strings);
     self->name    = name;
     self->objects = NULL;
+
+    // This must occur AFTER the strings table and objects list are initialized.
+    init_builtin(self);
 }
 
 void free_vm(VM *self)

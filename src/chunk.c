@@ -49,8 +49,6 @@ void init_chunk(Chunk *self, const char *name)
 void free_chunk(Chunk *self, Alloc *alloc)
 {
     free_varray(&self->constants, alloc);
-    // free_array(Byte, self->code,  self->len, alloc);
-    // free_array(int,  self->lines, self->len, alloc);
     free_parray(self->lines, self->len, alloc);
     free_parray(self->code, self->len, alloc);
     init_chunk(self, "(freed chunk)");
@@ -61,8 +59,8 @@ void write_chunk(Chunk *self, Byte data, int line, Alloc *alloc)
     if (self->len + 1 > self->cap) {
         int prev    = self->cap;
         int next    = grow_capacity(prev);
-        self->code  = resize_array(Byte, self->code,  prev, next, alloc);
-        self->lines = resize_array(int,  self->lines, prev, next, alloc);
+        self->code  = resize_parray(self->code,  prev, next, alloc);
+        self->lines = resize_parray(self->lines, prev, next, alloc);
         self->cap   = next;
     }
     self->code[self->len]  = data;

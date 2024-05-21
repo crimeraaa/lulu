@@ -88,7 +88,8 @@ typedef struct {
 
 // We use a local variable to avoid bugs caused by multiple macro expansion.
 // NOTE: We set the value before the tag type in case `val` evaluates `dst`.
-#define setv_value(tt, as_fn, dst, val) {                                      \
+#define setv_value(tt, as_fn, dst, val)                                        \
+{                                                                              \
     Value *_dst   = (dst);                                                     \
     as_fn(_dst)   = (val);                                                     \
     get_tag(_dst) = (tt);                                                      \

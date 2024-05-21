@@ -36,7 +36,7 @@
  *
  *          In the case of macros explicitly defined to be 1, we will insert
  *          _ARG_PLACEHOLDER_1. Otherwise insert the original expansion as-is.
- * 
+ *
  *          If there is no expansion, then we simply have `_is_enabled_c(1, 0)`.
  */
 #define _is_enabled_b(arg_or_junk) _is_enabled_c(arg_or_junk 1, 0)
