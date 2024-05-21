@@ -115,7 +115,7 @@ static void concat_op(VM *self, int argc, Value *argv)
             StrView view = make_strview(buffer, len);
 
             // Use `copy_string` just in case chosen representation has escapes.
-            setv_string(arg, cast(Object*, copy_string(self, view)));
+            setv_string(arg, copy_string(self, view));
         } else if (!is_string(arg)) {
             runtime_error(self, "concatenate", get_typename(arg));
         }
@@ -177,6 +177,12 @@ static ErrType run(VM *self)
         case OP_POP:
             popn(self, read_byte());
             break;
+        case OP_NEWTABLE: {
+            Table *tbl = new_table(alloc, read_byte3());
+            setv_table(self->top, tbl);
+            incr_top(self);
+            break;
+        }
         case OP_GETLOCAL:
             push_value(self, &self->base[read_byte()]);
             break;
@@ -296,8 +302,8 @@ static ErrType run(VM *self)
         case OP_PRINT: {
             int argc = read_byte();
             for (int i = 0; i < argc; i++) {
-                printf("%s\t", to_cstring(self, i - argc));
-                pop_back(self); // to_cstring() will push the conversion.
+                printf("%s\t", push_tostring(self, i - argc));
+                pop_back(self);
             }
             printf("\n");
             popn(self, argc);

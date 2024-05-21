@@ -9,6 +9,7 @@ OpInfo LULU_OPINFO[] = {
     [OP_TRUE]       = {"TRUE",          0,          1,          0},
     [OP_FALSE]      = {"FALSE",         0,          1,          0},
     [OP_POP]        = {"POP",           1,          0,          VAR_DELTA},
+    [OP_NEWTABLE]   = {"NEWTABLE",      3,          1,          0},
     [OP_GETLOCAL]   = {"GETLOCAL",      1,          1,          0},
     [OP_GETGLOBAL]  = {"GETGLOBAL",     3,          1,          0},
     [OP_GETTABLE]   = {"GETTABLE",      0,          1,          2},

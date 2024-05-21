@@ -12,7 +12,7 @@
 /**
  * @brief   Helps perform dead-code elimination and less reliance on `#ifdef`
  *          inside of `.c` files.
- * 
+ *
  * @details Step 1: Expand the argument to its value (preferably `1`), else
  *          expand to the token itself. E.g. given `#define CONF 1`, the call
  *          `is_enabled(CONF)` will expand to `_is_enabled_a(1)`.
@@ -31,16 +31,20 @@
 #define _is_enabled_a(config) _is_enabled_b(_ARG_PLACEHOLDER_##config)
 
 /**
- * @brief   Step 3: If we expanded to `_arg_placeholder_1`, insert `0, ` in order
- *          to get the triplet `_is_enabled_c(0, 1, 0)` which will be cherry
- *          picked in the next step. Otherwise we will insert whatever the token
- *          was as-is.
+ * @details Step 3: If the macro expands to anything, the expansion will now be
+ *          `_is_enabled_c({expansion}, 1, 0)`.
+ *
+ *          In the case of macros explicitly defined to be 1, we will insert
+ *          _ARG_PLACEHOLDER_1. Otherwise insert the original expansion as-is.
+ * 
+ *          If there is no expansion, then we simply have `_is_enabled_c(1, 0)`.
  */
 #define _is_enabled_b(arg_or_junk) _is_enabled_c(arg_or_junk 1, 0)
 
 /**
  * @details Step 4: Depending on the result of the previous steps, we will have
- *          either `(0, 1, 0)` or `(..., 1, 0)`.
+ *          either `(0, 1, 0)` or `({expansion}, 1, 0)` or simply `(1, 0)`.
+ *          Whatever the case, we will cherry pick the second argument.
  */
 #define _is_enabled_c(ignore, val, ...) val
 

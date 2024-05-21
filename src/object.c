@@ -134,12 +134,12 @@ void set_interned(VM *vm, const String *string)
 String *find_interned(VM *vm, StrView view, uint32_t hash)
 {
     Table *table = &vm->strings;
-    if (table->hashcount == 0) {
+    if (table->count == 0) {
         return NULL;
     }
-    uint32_t index = hash % table->hashcap;
+    uint32_t index = hash % table->cap;
     for (;;) {
-        Entry *entry = &table->hashmap[index];
+        Entry *entry = &table->entries[index];
         // The strings table only ever has completely empty or full entries.
         if (is_nil(&entry->key) && is_nil(&entry->value)) {
             return NULL;
@@ -151,6 +151,6 @@ String *find_interned(VM *vm, StrView view, uint32_t hash)
                 return interned;
             }
         }
-        index = (index + 1) % table->hashcap;
+        index = (index + 1) % table->cap;
     }
 }

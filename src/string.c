@@ -27,7 +27,8 @@ static char get_escape(char ch)
     }
 }
 
-uint32_t hash_string(StrView view)
+// Note that we need to hash escapes correctly too.
+static uint32_t hash_string(StrView view)
 {
     uint32_t hash = FNV1A_OFFSET32;
     char     prev = 0;

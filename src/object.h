@@ -54,10 +54,10 @@ typedef struct {
 } VArray ;
 
 typedef struct {
-    Object object;    // For user-facing tables, not by VM internal tables.
-    Entry *hashmap;   // Associative array segment.
-    int    hashcount; // Current number of active entries in the hashmap.
-    int    hashcap;   // Total number of entries the hashmap can hold.
+    Object object;  // For user-facing tables, not by VM internal tables.
+    Entry *entries; // Associative array segment.
+    int    count;   // Current number of active entries in the entries array.
+    int    cap;     // Total number of entries the entries array can hold.
 } Table;
 
 // NOTE: All `get_*`, `is_*`, `as_*` and `set_*` functions expect a pointer.
@@ -97,7 +97,7 @@ typedef struct {
 #define setv_nil(v)             setv_value(TYPE_NIL,     as_number,  v, 0)
 #define setv_boolean(v, b)      setv_value(TYPE_BOOLEAN, as_boolean, v, b)
 #define setv_number(v, n)       setv_value(TYPE_NUMBER,  as_number,  v, n)
-#define setv_object(T, v, o)    setv_value(T,            as_object,  v, o)
+#define setv_object(T, v, o)    setv_value(T, as_object,  v, cast(Object*, o))
 #define setv_string(dst, src)   setv_object(TYPE_STRING, dst, src)
 #define setv_table(dst, src)    setv_object(TYPE_TABLE,  dst, src)
 

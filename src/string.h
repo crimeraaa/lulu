@@ -6,9 +6,6 @@
 #define string_size(N)      (sizeof(String) + array_size(char, N))
 #define string_psize(P, N)  (sizeof(*(P)) + parray_size((P)->data, N))
 
-// Note that we need to hash escapes correctly too.
-uint32_t hash_string(StrView view);
-
 // This function will not hash any escape sequences at all.
 uint32_t hash_rstring(StrView view);
 

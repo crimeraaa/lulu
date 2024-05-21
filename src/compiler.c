@@ -32,7 +32,7 @@ static void adjust_stackinfo(Compiler *self, OpCode op, int delta)
     // If both push and pop are VAR_DELTA then something is horribly wrong.
     self->stack_usage += push - pop;
     self->prev_opcode = op;
-    if (self->stack_usage > MAX_STACK - STACK_RESERVED) {
+    if (self->stack_usage > MAX_STACK) {
         lexerror_at_consumed(lexer, "Function uses too many stack slots");
     }
     if (self->stack_usage > self->stack_total) {
@@ -169,6 +169,21 @@ void emit_identifier(Compiler *self, const Token *ident)
 void emit_return(Compiler *self)
 {
     emit_opcode(self, OP_RETURN);
+}
+
+int emit_table(Compiler *self)
+{
+    int offset = current_chunk(self)->len; // Index about to filled in.
+    emit_oparg3(self, OP_NEWTABLE, 0); // By default we assume an empty table.
+    return offset;
+}
+
+void patch_table(Compiler *self, int offset, Byte3 size)
+{
+    Byte *ip  = &current_chunk(self)->code[offset]; // OP_NEWTABLE itself
+    *(ip + 1) = decode_byte3_msb(size);
+    *(ip + 2) = decode_byte3_mid(size);
+    *(ip + 3) = decode_byte3_lsb(size);
 }
 
 // 1}}} ------------------------------------------------------------------------

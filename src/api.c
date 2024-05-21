@@ -13,38 +13,12 @@ Value *poke_at(VM *self, int offset)
     return self->base + offset;
 }
 
-const char *to_cstring(VM *self, int offset)
+void push_nils(VM *self, int count)
 {
-    Value *v = poke_at(self, offset);
-    switch (get_tag(v)) {
-    case TYPE_NIL:
-        push_cstring(self, "nil");
-        break;
-    case TYPE_BOOLEAN:
-        push_cstring(self, as_boolean(v) ? "true" : "false");
-        break;
-    case TYPE_NUMBER: {
-        char buf[MAX_TOSTRING];
-        int  len = num_tostring(buf, as_number(v));
-        push_lcstring(self, buf, len);
-        break;
-    }
-    case TYPE_STRING:
-        push_string(self, as_string(v));
-        break;
-    case TYPE_TABLE:
-        push_fstring(self, "%s: %p", get_typename(v), as_pointer(v));
-        break;
-    }
-    return as_string(poke_at(self, -1))->data;
-}
-
-void push_nils(VM *self, int n)
-{
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < count; i++) {
         setv_nil(&self->top[i]);
     }
-    update_top(self, n);
+    update_top(self, count);
 }
 
 void push_boolean(VM *self, bool b)
@@ -61,7 +35,7 @@ void push_number(VM *self, Number n)
 
 void push_string(VM *self, String *s)
 {
-    setv_string(self->top, &s->object);
+    setv_string(self->top, s);
     incr_top(self);
 }
 
@@ -106,8 +80,7 @@ const char *push_vfstring(VM *self, const char *fmt, va_list argp)
             push_lcstring(self, buf, sizeof(buf));
             break;
         }
-        case 'i':
-        case 'd': {
+        case 'i': {
             char buf[MAX_TOSTRING];
             int  len = int_tostring(buf, va_arg(argp, int));
             push_lcstring(self, buf, len);
@@ -152,4 +125,30 @@ const char *push_fstring(VM *self, const char *fmt, ...)
     const char *res = push_vfstring(self, fmt, argp);
     va_end(argp);
     return res;
+}
+
+const char *push_tostring(VM *self, int offset)
+{
+    Value *v = poke_at(self, offset);
+    switch (get_tag(v)) {
+    case TYPE_NIL:
+        push_cstring(self, "nil");
+        break;
+    case TYPE_BOOLEAN:
+        push_cstring(self, as_boolean(v) ? "true" : "false");
+        break;
+    case TYPE_NUMBER: {
+        char buf[MAX_TOSTRING];
+        int  len = num_tostring(buf, as_number(v));
+        push_lcstring(self, buf, len);
+        break;
+    }
+    case TYPE_STRING:
+        push_string(self, as_string(v));
+        break;
+    case TYPE_TABLE:
+        push_fstring(self, "%s: %p", get_typename(v), as_pointer(v));
+        break;
+    }
+    return as_string(poke_at(self, -1))->data;
 }

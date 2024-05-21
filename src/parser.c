@@ -251,13 +251,10 @@ static void parse_ctor(Compiler *self, int t_idx, int *count)
 static void table(Compiler *self)
 {
     Lexer *lexer   = self->lexer;
-    Value  wrapper = make_table(new_table(&self->vm->alloc));
     int    t_idx   = self->stack_usage;
     int    total   = 0; // Array length plus hashmap length.
     int    count   = 0; // Array portion length.
-
-    // Always emit a getop for the table itself when assigning.
-    emit_constant(self, &wrapper);
+    int    offset  = emit_table(self);
     while (!match_token(lexer, TK_RCURLY)) {
         parse_ctor(self, t_idx, &count);
         total += 1;
@@ -271,9 +268,8 @@ static void table(Compiler *self)
         emit_oparg2(self, OP_SETARRAY, encode_byte2(t_idx, count));
     }
 
-    // We can pre-allocate now so we don't have to do so at runtime.
     if (total > 0) {
-        resize_table(as_table(&wrapper), total, &self->vm->alloc);
+        patch_table(self, offset, total);
     }
 }
 

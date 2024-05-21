@@ -20,10 +20,10 @@ typedef struct {
     Lexer *lexer;       // May be shared across multiple Compiler instances.
     VM    *vm;          // Track and modify parent VM state as needed.
     Chunk *chunk;       // The current compiling chunk for this function/closure.
-    int stack_usage;    // How many stack slots at most does this function use?
-    int stack_total;    // How many stack slots are currently being used?
-    int scope_count;    // How many locals are currently in scope?
-    int scope_depth;    // 0 = global, 1 = top-level, 2 = more inner, etc.
+    int    stack_usage; // How many stack slots at most does this function use?
+    int    stack_total; // How many stack slots are currently being used?
+    int    scope_count; // How many locals are currently in scope?
+    int    scope_depth; // 0 = global, 1 = top-level, 2 = more inner, etc.
     OpCode prev_opcode; // Used to fold consecutive similar operations.
 } Compiler;
 
@@ -38,6 +38,11 @@ void emit_oparg2(Compiler *self, OpCode op, Byte2 arg);
 void emit_oparg3(Compiler *self, OpCode op, Byte3 arg);
 void emit_return(Compiler *self);
 void emit_identifier(Compiler *self, const Token *ident);
+
+// Returns the index of `OP_NEWTABLE` in the bytecode. We cannot use pointers
+// due to potential invalidation when reallocating the array.
+int emit_table(Compiler *self);
+void patch_table(Compiler *self, int offset, Byte3 size);
 
 // Returns the index of `value` in the constants table.
 // Will throw if our current number of constants exceeds `MAX_CONSTS`.

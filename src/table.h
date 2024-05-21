@@ -4,7 +4,7 @@
 #include "object.h"
 
 // Used for user-created tables, not VM's globals/strings tables.
-Table *new_table(Alloc *alloc);
+Table *new_table(Alloc *alloc, int size);
 void init_table(Table *self);
 void free_table(Table *self, Alloc *alloc);
 void dump_table(const Table *self, const char *name);
@@ -16,8 +16,5 @@ bool unset_table(Table *self, const Value *key);
 
 // Analogous to `tableAddAll()` in the book.
 void copy_table(Table *dst, const Table *src, Alloc *alloc);
-
-// Analogous to `adjustCapacity()` in the book. Assumes we only ever grow!
-void resize_table(Table *self, int newcap, Alloc *alloc);
 
 #endif /* LULU_TABLE_H */

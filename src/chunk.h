@@ -35,6 +35,7 @@ OP_NIL,      // B1    | -               | (push B1 nils)    |                  |
 OP_TRUE,     // -     | -               | true              |                  |
 OP_FALSE,    // -     | -               | false             |                  |
 OP_POP,      // B1    | Top[-B1...-1]   | -                 |                  |
+OP_NEWTABLE, // B3    | -               | {} (size B3)      |                  |
 OP_GETLOCAL, // L     | -               | Loc[L]            |                  |
 OP_GETGLOBAL,// B3    | -               | _G[Kst[B3]]       |                  |
 OP_GETTABLE, // -     | Tbl, Key        | Tbl[Key]          |                  |

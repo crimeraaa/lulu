@@ -8,7 +8,7 @@
 
 // Forward declared in `lulu.h`.
 struct VM {
-    Value       stack[MAX_STACK];
+    Value       stack[MAX_STACK + STACK_RESERVED];
     Alloc       alloc;    // Will hold the VM itself as context.
     Value      *top;      // Pointer to first free slot in the stack.
     Value      *base;     // Pointer to bottom of current stack frame.

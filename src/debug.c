@@ -24,7 +24,7 @@ void disassemble_chunk(const Chunk *self)
 }
 
 // Note the side-effect!
-#define read_byte(ip)   (*(ip)++)
+#define read_byte(ip)   (*((ip)++))
 
 // Strangely, the macro version will cause an unsequenced modification error.
 // Yet `vm.c` continues to compile just fine!
@@ -66,19 +66,24 @@ static void local_op(const Byte *ip)
     printf("Loc[%i]", arg);
 }
 
+static void newtable_op(const Byte *ip)
+{
+    printf("Tbl(size = %i)", read_byte3(ip));
+}
+
 static void settable_op(const Byte *ip)
 {
     int t_idx  = read_byte(ip);
     int k_idx  = read_byte(ip);
     int to_pop = read_byte(ip);
-    printf("Tbl[%i] Key[%i] Pop(%i)", t_idx, k_idx, to_pop);
+    printf("Stk[%i] Key[%i] Pop(%i)", t_idx, k_idx, to_pop);
 }
 
 static void setarray_op(const Byte *ip)
 {
     int t_idx  = read_byte(ip);
     int to_set = read_byte(ip);
-    printf("Tbl[%i] Set(%i)", t_idx, to_set);
+    printf("Stk[%i] Set(%i)", t_idx, to_set);
 }
 
 int disassemble_instruction(const Chunk *self, int offset)
@@ -100,30 +105,35 @@ int disassemble_instruction(const Chunk *self, int offset)
     case OP_GETGLOBAL:
     case OP_SETGLOBAL: constant_op(self, ip); break;
     case OP_GETLOCAL:
-    case OP_SETLOCAL: local_op(ip); break;
-    case OP_POP:      simple_op("Pop", ip); break;
-    case OP_NIL:      simple_op("Nil", ip); break;
+    case OP_SETLOCAL:  local_op(ip);          break;
+    case OP_POP:       simple_op("Pop", ip);  break;
+    case OP_NIL:       simple_op("Nil", ip);  break;
+    case OP_NEWTABLE:  newtable_op(ip);       break;
     case OP_CONCAT:
-    case OP_PRINT:    range_op(ip); break;
-    case OP_SETTABLE: settable_op(ip); break;
-    case OP_SETARRAY: setarray_op(ip); break;
+    case OP_PRINT:     range_op(ip);          break;
+    case OP_SETTABLE:  settable_op(ip);       break;
+    case OP_SETARRAY:  setarray_op(ip);       break;
     case OP_GETTABLE:
-    case OP_TRUE:   // Prefix literals
+    case OP_TRUE:
     case OP_FALSE:
-    case OP_EQ:     // Binary Comparison operators
+    case OP_EQ:
     case OP_LT:
     case OP_LE:
-    case OP_ADD:    // Binary Arithmetic operators
+    case OP_ADD:
     case OP_SUB:
     case OP_MUL:
     case OP_DIV:
     case OP_MOD:
     case OP_POW:
-    case OP_UNM:    // Unary operators
+    case OP_UNM:
     case OP_NOT:
     case OP_LEN:
-    case OP_RETURN:  break;
-    default:
+    case OP_RETURN: break;
+    }
+
+    // Separating so compiler can catch unhandled cases while still handling
+    // strange opcode errors
+    if (op < 0 || op >= NUM_OPCODES) {
         // Should not happen
         printf("Unknown opcode '%i'.\n", op);
         return offset + 1;
