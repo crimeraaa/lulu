@@ -57,53 +57,52 @@ void free_vm(VM *vm)
     free_objects(vm);
 }
 
-void arith_op(VM *vm, OpCode op)
+typedef enum {
+    TM_ADD, TM_SUB, TM_MUL, TM_DIV, TM_MOD, TM_POW, TM_UNM,
+    TM_LT,  TM_LE,
+} TagMethod;
+
+const char *pick_non_number(const Value *a, const Value *b)
 {
-    Value *a = poke_top(vm, -2);
-    Value *b = poke_top(vm, -1);
-    if (!is_number(a) && !value_tonumber(a)) {
-        lulu_type_error(vm, "perform arithmetic on", get_typename(a));
+    Value tmp;
+    // First operand is wrong?
+    if (!value_tonumber(a, &tmp)) {
+        return get_typename(a);
     }
-    if (!is_number(b) && !value_tonumber(b)) {
-        lulu_type_error(vm, "perform arithmetic on", get_typename(b));
-    }
-    Number x = as_number(a);
-    Number y = as_number(b);
-    switch (op) {
-    case OP_ADD: setv_number(a, num_add(x, y)); break;
-    case OP_SUB: setv_number(a, num_sub(x, y)); break;
-    case OP_MUL: setv_number(a, num_mul(x, y)); break;
-    case OP_DIV: setv_number(a, num_div(x, y)); break;
-    case OP_MOD: setv_number(a, num_mod(x, y)); break;
-    case OP_POW: setv_number(a, num_pow(x, y)); break;
-    default:
-        // Unreachable, assumes this function is never called wrongly!
-        break;
-    }
-    // Pop 2 operands, push 1 result. We save 1 operation by modifying in-place.
-    popn_back(vm, 1);
+    return get_typename(b);
 }
 
-static void compare_op(VM *vm, OpCode op)
+static void arith_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
 {
-    Value *a = poke_top(vm, -2);
-    Value *b = poke_top(vm, -1);
-    if (!is_number(a)) {
-        lulu_type_error(vm, "compare", get_typename(a));
+    Value tmp_a;
+    Value tmp_b;
+    if (value_tonumber(a, &tmp_a) && value_tonumber(b, &tmp_b)) {
+        Number na = as_number(&tmp_a);
+        Number nb = as_number(&tmp_b);
+        switch (tm) {
+        case TM_ADD: setv_number(a, num_add(na, nb)); break;
+        case TM_SUB: setv_number(a, num_sub(na, nb)); break;
+        case TM_MUL: setv_number(a, num_mul(na, nb)); break;
+        case TM_DIV: setv_number(a, num_div(na, nb)); break;
+        case TM_MOD: setv_number(a, num_mod(na, nb)); break;
+        case TM_POW: setv_number(a, num_pow(na, nb)); break;
+        case TM_UNM: setv_number(a, num_unm(na));     break;
+        default:
+            // Should be unreachable.
+            assert(false);
+            break;
+        }
+    } else {
+        lulu_type_error(vm, "perform arithmetic on", pick_non_number(a, b));
     }
-    if (!is_number(b)) {
-        lulu_type_error(vm, "compare", get_typename(b));
-    }
-    Number x = as_number(a);
-    Number y = as_number(b);
-    switch (op) {
-    case OP_LT: setv_boolean(a, num_lt(x, y)); break;
-    case OP_LE: setv_boolean(a, num_le(x, y)); break;
-    default:
-        // Unreachable
-        break;
-    }
-    pop_back(vm);
+}
+
+static void compare_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
+{
+    // Lua does implement comparison when both operands are the same, and by
+    // default they allow string comparisons.
+    unused(tm);
+    lulu_type_error(vm, "compare", pick_non_number(a, b));
 }
 
 static ErrType run(VM *vm)
@@ -126,6 +125,26 @@ static ErrType run(VM *vm)
 // Assumes a 3-byte operand comes right after the opcode.
 #define read_constant()     (&kst[read_byte3()])
 #define read_string()       as_string(read_constant())
+
+#define binary_op_or_tm(set_fn, op_fn, tm_fn, tm)                              \
+{                                                                              \
+    Value *a = poke_top(vm, -2);                                               \
+    Value *b = poke_top(vm, -1);                                               \
+    if (is_number(a) && is_number(b)) {                                        \
+        Number na = as_number(a);                                              \
+        Number nb = as_number(b);                                              \
+        set_fn(a, op_fn(na, nb));                                              \
+    } else {                                                                   \
+        tm_fn(vm, a, b, tm);                                                   \
+    }                                                                          \
+    pop_back(vm);                                                              \
+}
+
+#define arith_op_or_tm(op_fn, tm) \
+    binary_op_or_tm(setv_number, op_fn, arith_tm, tm)
+
+#define compare_op_or_tm(op_fn, tm) \
+    binary_op_or_tm(setv_boolean, op_fn, compare_tm, tm)
 
 // 1}}} ------------------------------------------------------------------------
 
@@ -200,28 +219,26 @@ static ErrType run(VM *vm)
             pop_back(vm);
             break;
         }
-        case OP_LT:
-        case OP_LE:
-            compare_op(vm, op);
-            break;
-        case OP_ADD:
-        case OP_SUB:
-        case OP_MUL:
-        case OP_DIV:
-        case OP_MOD:
-        case OP_POW:
-            arith_op(vm, op);
-            break;
+        case OP_LT:  compare_op_or_tm(num_lt, TM_LT); break;
+        case OP_LE:  compare_op_or_tm(num_le, TM_LE); break;
+        case OP_ADD: arith_op_or_tm(num_add, TM_ADD); break;
+        case OP_SUB: arith_op_or_tm(num_sub, TM_SUB); break;
+        case OP_MUL: arith_op_or_tm(num_mul, TM_MUL); break;
+        case OP_DIV: arith_op_or_tm(num_div, TM_DIV); break;
+        case OP_MOD: arith_op_or_tm(num_mod, TM_MOD); break;
+        case OP_POW: arith_op_or_tm(num_pow, TM_POW); break;
         case OP_CONCAT:
             // Assume at least 2 args since concat is an infix expression.
             lulu_concat(vm, read_byte());
             break;
         case OP_UNM: {
             Value *arg = poke_top(vm, -1);
-            if (!is_number(arg) && !value_tonumber(arg)) {
-                lulu_type_error(vm, "negate", get_typename(arg));
+            if (is_number(arg)) {
+                Number n = num_unm(as_number(arg));
+                setv_number(arg, n);
+            } else {
+                arith_tm(vm, arg, arg, TM_UNM);
             }
-            setv_number(arg, num_unm(as_number(arg)));
             break;
         }
         case OP_NOT: {

@@ -109,8 +109,8 @@ typedef struct lulu_Table {
 void print_value(const Value *vl, bool isdebug);
 
 // See: https://www.lua.org/source/5.1/lvm.c.html#luaV_tonumber
-// Note that this will likely mutate the value itself!
-const Value *value_tonumber(Value *vl);
+// Returns either `vl` or `out` if successful, else `NULL`.
+const Value *value_tonumber(const Value *vl, Value *out);
 
 // Assumes `buffer` is a fixed-size array of length `MAX_TOSTRING`.
 // If `out` is not `NULL`, it will be set to -1 if we do not own the result.

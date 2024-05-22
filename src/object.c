@@ -14,9 +14,10 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_TABLE]   = "table",
 };
 
-const Value *value_tonumber(Value *vl)
+const Value *value_tonumber(const Value *vl, Value *out)
 {
     if (is_number(vl)) {
+        setv_number(out, as_number(vl));
         return vl;
     }
     if (is_string(vl)) {
@@ -25,8 +26,8 @@ const Value *value_tonumber(Value *vl)
         StrView sv = sv_inst(s->data, s->len);
         Number  n  = cstr_tonumber(sv.begin, &end);
         if (end == sv.end) {
-            setv_number(vl, n);
-            return vl;
+            setv_number(out, n);
+            return out;
         }
     }
     return NULL;
