@@ -4,8 +4,9 @@
 #include "lulu.h"
 #include "limits.h"
 
-typedef struct Object Object;
-typedef struct Alloc  Alloc;
+struct  lulu_Alloc; // defined in `memory.h`.
+typedef lulu_Number Number;
+typedef struct lulu_Object Object;
 
 typedef enum {
     TYPE_NIL,
@@ -21,7 +22,7 @@ typedef enum {
 // Lookup table: maps `VType` to `const char*`.
 extern const char *const LULU_TYPENAMES[];
 
-typedef struct Value {
+typedef struct lulu_Value {
     VType tag;
     union {
         bool    boolean;
@@ -30,12 +31,12 @@ typedef struct Value {
     } as;
 } Value;
 
-struct Object {
-    Object  *next; // Intrusive list (linked list) node.
-    VType    tag;  // Must be consistent with the parent `Value`.
+struct lulu_Object {
+    Object *next; // Intrusive list (linked list) node.
+    VType   tag;  // Must be consistent with the parent `Value`.
 };
 
-typedef struct String {
+typedef struct lulu_String {
     Object   object; // "Inherited" must come first to allow safe type-punning.
     uint32_t hash;   // Used when strings are used as table keys.
     int      len;    // String length with nul and escapes omitted.
@@ -51,9 +52,9 @@ typedef struct {
     Value *values;
     int    len;
     int    cap;
-} VArray ;
+} VArray;
 
-typedef struct {
+typedef struct lulu_Table {
     Object object;  // For user-facing tables, not by VM internal tables.
     Entry *entries; // Associative array segment.
     int    count;   // Current number of active entries in the entries array.
@@ -105,27 +106,27 @@ typedef struct {
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
 // Writes string representation of `self` to C `stdout`.
-void print_value(const Value *self, bool isdebug);
+void print_value(const Value *vl, bool isdebug);
 
 // See: https://www.lua.org/source/5.1/lvm.c.html#luaV_tonumber
 // Note that this will likely mutate `self`!
-const Value *value_tonumber(Value *self);
+const Value *value_tonumber(Value *vl);
 
-// Assumes buffer is a fixed-size array of length `MAX_TOSTRING`.
+// Assumes `buffer` is a fixed-size array of length `MAX_TOSTRING`.
 // If `out` is not `NULL`, it will be set to -1 if we do not own the result.
-const char *value_tocstring(const Value *self, char *buffer, int *out);
+const char *value_tocstring(const Value *vl, char *buf, int *out);
 
 // We cannot use `memcmp` due to struct padding.
-bool values_equal(const Value *lhs, const Value *rhs);
+bool values_equal(const Value *a, const Value *b);
 
-void init_varray(VArray *self);
-void free_varray(VArray *self, Alloc *alloc);
-void write_varray(VArray *self, const Value *value, Alloc *alloc);
+void init_varray(VArray *va);
+void free_varray(VArray *va, struct lulu_Alloc *al);
+void write_varray(VArray *va, const Value *vl, struct lulu_Alloc *al);
 
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
-void set_interned(VM *vm, const String *key);
+void set_interned(struct lulu_VM *vm, const String *s);
 
 // Searches for interned strings. Analogous to `tableFindString()` in the book.
-String *find_interned(VM *vm, StrView view, uint32_t hash);
+String *find_interned(struct lulu_VM *vm, StrView sv, uint32_t hash);
 
 #endif /* LULU_OBJECT_H */

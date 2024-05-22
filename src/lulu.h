@@ -8,7 +8,11 @@
 
 #include "conf.h"
 
-typedef struct VM   VM;
-typedef NUMBER_TYPE Number;
+typedef NUMBER_TYPE lulu_Number;
+
+struct lulu_VM;     // defined in `vm.h`.
+struct lulu_Value;  // defined in `object.h`.
+struct lulu_String; // defined in `object.h`.
+struct lulu_Table;  // defined in `object.h`.
 
 #endif /* LULU_H */

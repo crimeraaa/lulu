@@ -4,42 +4,42 @@
 #include "table.h"
 #include "vm.h"
 
-void init_alloc(Alloc *self, ReallocFn reallocfn, void *context)
+void init_alloc(Alloc *al, ReallocFn fn, void *ctx)
 {
-    self->reallocfn = reallocfn;
-    self->context   = context;
+    al->reallocfn = fn;
+    al->context   = ctx;
 }
 
-Object *new_object(size_t size, VType tag, Alloc *alloc)
+struct lulu_Object *new_object(size_t size, VType tag, Alloc *al)
 {
-    VM     *vm   = alloc->context;
-    Object *node = new_pointer(size, alloc);
-    node->tag    = tag;
-    return prepend_object(&vm->objects, node);
+    VM     *vm = al->context;
+    Object *o  = new_pointer(size, al);
+    o->tag     = tag;
+    return prepend_object(&vm->objects, o);
 }
 
-Object *prepend_object(Object **head, Object *node)
+struct lulu_Object *prepend_object(struct lulu_Object **head, struct lulu_Object *o)
 {
-    node->next = *head;
-    *head      = node;
-    return node;
+    o->next = *head;
+    *head   = o;
+    return o;
 }
 
-Object *remove_object(Object **head, Object *node)
+struct lulu_Object *remove_object(struct lulu_Object **head, struct lulu_Object *o)
 {
-    *head = node->next;
-    return node;
+    *head = o->next;
+    return o;
 }
 
-static void free_object(Object *object, Alloc *alloc)
+static void free_object(Object *object, Alloc *al)
 {
     switch (object->tag) {
     case TYPE_STRING:
-        free_string(cast(String*, object), alloc);
+        free_string(cast(String*, object), al);
         break;
     case TYPE_TABLE:
-        free_table(cast(Table*, object), alloc);
-        free_pointer(object, sizeof(Table), alloc);
+        free_table(cast(Table*, object), al);
+        free_pointer(object, sizeof(Table), al);
         break;
     default:
         eprintfln("[FATAL ERROR]:\nAttempt to free a %s", get_typename(object));
@@ -48,13 +48,13 @@ static void free_object(Object *object, Alloc *alloc)
     }
 }
 
-void free_objects(VM *vm)
+void free_objects(struct lulu_VM *vm)
 {
-    Alloc  *alloc = &vm->alloc;
-    Object *head  = vm->objects;
+    Alloc  *al   = &vm->alloc;
+    Object *head = vm->objects;
     while (head != NULL) {
         Object *next = head->next;
-        free_object(head, alloc);
+        free_object(head, al);
         head = next;
     }
 }

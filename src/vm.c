@@ -11,7 +11,7 @@
 static void *allocfn(void *ptr, size_t oldsz, size_t newsz, void *context)
 {
     unused(oldsz);
-    VM *self = context;
+    VM *vm = context;
     if (newsz == 0) {
         free(ptr);
         return NULL;
@@ -19,63 +19,56 @@ static void *allocfn(void *ptr, size_t oldsz, size_t newsz, void *context)
     void *res = realloc(ptr, newsz);
     if (res == NULL) {
         logprintln("[FATAL ERROR]: No more memory");
-        longjmp(self->errorjmp, ERROR_ALLOC);
+        longjmp(vm->errorjmp, ERROR_ALLOC);
     }
     return res;
 }
 
-static void reset_stack(VM *self)
+static void reset_stack(VM *vm)
 {
-    self->top  = self->stack;
-    self->base = self->stack;
+    vm->top  = vm->stack;
+    vm->base = vm->stack;
 }
 
-// Please avoid using this as much as possible, it works but it's vague!
-static void push_value(VM *self, const Value *v)
+static void init_builtin(VM *vm)
 {
-    *self->top = *v;
-    incr_top(self);
+    Value G = make_table(&vm->globals);
+    lulu_push_cstring(vm, "_G");
+    push_back(vm, &G);
+    lulu_set_global(vm, poke_top(vm, -2));
+    pop_back(vm); // only val was popped by set_global, so pop key as well.
 }
 
-static void init_builtin(VM *self)
+void init_vm(VM *vm, const char *name)
 {
-    Table *globals = &self->globals;
-    Value  wrapper = make_table(globals);
-    push_cstring(self, "_G");
-    set_table(globals, poke_at(self, -1), &wrapper, &self->alloc);
-    pop_back(self);
-}
-
-void init_vm(VM *self, const char *name)
-{
-    reset_stack(self);
-    init_alloc(&self->alloc, &allocfn, self);
-    init_table(&self->globals);
-    init_table(&self->strings);
-    self->name    = name;
-    self->objects = NULL;
+    reset_stack(vm);
+    init_alloc(&vm->alloc, &allocfn, vm);
+    init_table(&vm->globals);
+    init_table(&vm->strings);
+    vm->name    = name;
+    vm->objects = NULL;
 
     // This must occur AFTER the strings table and objects list are initialized.
-    init_builtin(self);
+    init_builtin(vm);
 }
 
-void free_vm(VM *self)
+void free_vm(VM *vm)
 {
-    Alloc *alloc = &self->alloc;
-    free_table(&self->globals, alloc);
-    free_table(&self->strings, alloc);
-    free_objects(self);
+    Alloc *al = &vm->alloc;
+    free_table(&vm->globals, al);
+    free_table(&vm->strings, al);
+    free_objects(vm);
 }
 
-void arith_op(VM *self, OpCode op)
+void arith_op(VM *vm, OpCode op)
 {
-    Value *a = poke_at(self, -2);
-    Value *b = poke_at(self, -1);
+    Value *a = poke_top(vm, -2);
+    Value *b = poke_top(vm, -1);
     if (!is_number(a) && !value_tonumber(a)) {
-        runtime_error(self, "perform arithmetic on", get_typename(a));
+        runtime_error(vm, "perform arithmetic on", get_typename(a));
     }
     if (!is_number(b) && !value_tonumber(b)) {
-        runtime_error(self, "perform arithmetic on", get_typename(b));
+        runtime_error(vm, "perform arithmetic on", get_typename(b));
     }
     Number x = as_number(a);
     Number y = as_number(b);
@@ -91,18 +84,18 @@ void arith_op(VM *self, OpCode op)
         break;
     }
     // Pop 2 operands, push 1 result. We save 1 operation by modifying in-place.
-    popn(self, 1);
+    popn_back(vm, 1);
 }
 
-static void compare_op(VM *self, OpCode op)
+static void compare_op(VM *vm, OpCode op)
 {
-    Value *a = poke_at(self, -2);
-    Value *b = poke_at(self, -1);
+    Value *a = poke_top(vm, -2);
+    Value *b = poke_top(vm, -1);
     if (!is_number(a)) {
-        runtime_error(self, "compare", get_typename(a));
+        runtime_error(vm, "compare", get_typename(a));
     }
     if (!is_number(b)) {
-        runtime_error(self, "compare", get_typename(b));
+        runtime_error(vm, "compare", get_typename(b));
     }
     Number x = as_number(a);
     Number y = as_number(b);
@@ -113,41 +106,41 @@ static void compare_op(VM *self, OpCode op)
         // Unreachable
         break;
     }
-    popn(self, 1);
+    pop_back(vm);
 }
 
-static void concat_op(VM *self, int argc, Value *argv)
+static void concat_op(VM *vm, int argc, Value *argv)
 {
     int len = 0;
     for (int i = 0; i < argc; i++) {
         Value *arg = &argv[i];
         if (is_number(arg)) {
-            char    buffer[MAX_TOSTRING];
-            int     len  = num_tostring(buffer, as_number(arg));
-            StrView view = make_strview(buffer, len);
+            char    buf[MAX_TOSTRING];
+            int     len = num_tostring(buf, as_number(arg));
+            StrView sv  = make_strview(buf, len);
 
             // Use `copy_string` just in case chosen representation has escapes.
-            setv_string(arg, copy_string(self, view));
+            setv_string(arg, copy_string(vm, sv));
         } else if (!is_string(arg)) {
-            runtime_error(self, "concatenate", get_typename(arg));
+            runtime_error(vm, "concatenate", get_typename(arg));
         }
         len += as_string(arg)->len;
     }
-    String *res = concat_strings(self, argc, argv, len);
-    popn(self, argc);
-    push_string(self, res);
+    String *s = concat_strings(vm, argc, argv, len);
+    popn_back(vm, argc);
+    lulu_push_string(vm, s);
 }
 
-static ErrType run(VM *self)
+static ErrType run(VM *vm)
 {
-    Alloc *alloc     = &self->alloc;
-    Chunk *chunk     = self->chunk;
-    Value *constants = chunk->constants.values;
+    Alloc *al  = &vm->alloc;
+    Chunk *ck  = vm->chunk;
+    Value *kst = ck->constants.values;
 
 // --- HELPER MACROS ------------------------------------------------------ {{{1
 // Many of these rely on variables local to this function.
 
-#define read_byte()         (*self->ip++)
+#define read_byte()         (*vm->ip++)
 
 // Assumes MSB is read first then LSB.
 #define read_byte2()        (decode_byte2(read_byte(), read_byte()))
@@ -156,7 +149,7 @@ static ErrType run(VM *self)
 #define read_byte3()        (encode_byte3(read_byte(), read_byte(), read_byte()))
 
 // Assumes a 3-byte operand comes right after the opcode.
-#define read_constant()     (&constants[read_byte3()])
+#define read_constant()     (&kst[read_byte3()])
 #define read_string()       as_string(read_constant())
 
 // 1}}} ------------------------------------------------------------------------
@@ -164,115 +157,80 @@ static ErrType run(VM *self)
     for (;;) {
         if (is_enabled(DEBUG_TRACE_EXECUTION)) {
             printf("\t");
-            for (const Value *slot = self->stack; slot < self->top; slot++) {
+            for (const Value *slot = vm->stack; slot < vm->top; slot++) {
                 printf("[ ");
                 print_value(slot, true);
                 printf(" ]");
             }
             printf("\n");
-            disassemble_instruction(chunk, cast(int, self->ip - chunk->code));
+            disassemble_instruction(ck, cast(int, vm->ip - ck->code));
         }
         OpCode op = read_byte();
         switch (op) {
         case OP_CONSTANT:
-            push_value(self, read_constant());
+            push_back(vm, read_constant());
             break;
         case OP_NIL:
-            push_nils(self, read_byte());
+            lulu_push_nil(vm, read_byte());
             break;
         case OP_TRUE:
-            push_boolean(self, true);
+            lulu_push_boolean(vm, true);
             break;
         case OP_FALSE:
-            push_boolean(self, false);
+            lulu_push_boolean(vm, false);
             break;
         case OP_POP:
-            popn(self, read_byte());
+            popn_back(vm, read_byte());
             break;
         case OP_NEWTABLE: {
-            Table *tbl = new_table(alloc, read_byte3());
-            setv_table(self->top, tbl);
-            incr_top(self);
+            Table *t = new_table(read_byte3(), al);
+            setv_table(vm->top, t);
+            incr_top(vm);
             break;
         }
         case OP_GETLOCAL:
-            push_value(self, &self->base[read_byte()]);
+            push_back(vm, &vm->base[read_byte()]);
             break;
-        case OP_GETGLOBAL: {
-            // Assume this is a string for the variable's name.
-            Value *name = read_constant();
-            Value  value;
-            if (!get_table(&self->globals, name, &value)) {
-                runtime_error(self, "read", "undefined");
-            }
-            push_value(self, &value);
+        case OP_GETGLOBAL:
+            lulu_get_global(vm, read_constant());
             break;
-        }
-        case OP_GETTABLE: {
-            Value *tbl = poke_at(self, -2);
-            Value *key = poke_at(self, -1);
-            Value  val;
-            if (!is_table(tbl)) {
-                runtime_error(self, "index", get_typename(tbl));
-            }
-            if (!get_table(as_table(tbl), key, &val)) {
-                setv_nil(&val);
-            }
-            popn(self, 2);
-            push_value(self, &val);
+        case OP_GETTABLE:
+            lulu_get_table(vm, -2, -1);
             break;
-        }
         case OP_SETLOCAL:
-            self->base[read_byte()] = *poke_at(self, -1);
-            pop_back(self);
+            vm->base[read_byte()] = *poke_top(vm, -1);
+            pop_back(vm);
             break;
         case OP_SETGLOBAL:
-            // Same as `OP_GETGLOBAL`.
-            set_table(&self->globals,
-                      read_constant(),
-                      poke_at(self, -1),
-                      alloc);
-            pop_back(self);
+            lulu_set_global(vm, read_constant());
             break;
-        case OP_SETTABLE: {
-            int    t_idx  = read_byte(); // Absolute index of the table.
-            int    k_idx  = read_byte(); // Absolute index of the key.
-            int    to_pop = read_byte(); // How many elements to pop?
-            Value *tbl    = poke_at(self, t_idx);
-            Value *key    = poke_at(self, k_idx);
-            Value *val    = poke_at(self, -1);
-
-            if (!is_table(tbl)) {
-                runtime_error(self, "index", get_typename(tbl));
-            }
-            set_table(as_table(tbl), key, val, alloc);
-            popn(self, to_pop);
+        case OP_SETTABLE:
+            lulu_set_table(vm, read_byte(), read_byte(), read_byte());
             break;
-        }
         case OP_SETARRAY: {
             int     t_idx = read_byte(); // Absolute index of the table.
             int     count = read_byte(); // How many elements in the array?
-            Table  *tbl   = as_table(poke_at(self, t_idx)); // Assume correct!
+            Table  *t     = as_table(poke_base(vm, t_idx));
 
             // Remember: Lua uses 1-based indexing!
             for (int i = 1; i <= count; i++) {
-                Value  key = make_number(i);
-                Value *val = poke_at(self, t_idx + i);
-                set_table(tbl, &key, val, alloc);
+                Value  k = make_number(i);
+                Value *v = poke_base(vm, t_idx + i);
+                set_table(t, &k, v, al);
             }
-            popn(self, count);
+            popn_back(vm, count);
             break;
         }
         case OP_EQ: {
-            Value *a = poke_at(self, -2);
-            Value *b = poke_at(self, -1);
+            Value *a = poke_top(vm, -2);
+            Value *b = poke_top(vm, -1);
             setv_boolean(a, values_equal(a, b));
-            pop_back(self);
+            pop_back(vm);
             break;
         }
         case OP_LT:
         case OP_LE:
-            compare_op(self, op);
+            compare_op(vm, op);
             break;
         case OP_ADD:
         case OP_SUB:
@@ -280,33 +238,33 @@ static ErrType run(VM *self)
         case OP_DIV:
         case OP_MOD:
         case OP_POW:
-            arith_op(self, op);
+            arith_op(vm, op);
             break;
         case OP_CONCAT: {
             // Assume at least 2 args since concat is an infix expression.
             int     argc = read_byte();
-            Value  *argv = poke_at(self, -argc);
-            concat_op(self, argc, argv);
+            Value  *argv = poke_top(vm, -argc);
+            concat_op(vm, argc, argv);
             break;
         }
         case OP_UNM: {
-            Value *arg = poke_at(self, -1);
+            Value *arg = poke_top(vm, -1);
             if (!is_number(arg) && !value_tonumber(arg)) {
-                runtime_error(self, "negate", get_typename(arg));
+                runtime_error(vm, "negate", get_typename(arg));
             }
             setv_number(arg, num_unm(as_number(arg)));
             break;
         }
         case OP_NOT: {
-            Value *arg = poke_at(self, -1);
+            Value *arg = poke_top(vm, -1);
             setv_boolean(arg, is_falsy(arg));
             break;
         }
         case OP_LEN: {
-            // TODO: Add support for tables, will need to implement arrays then
-            Value *arg = poke_at(self, -1);
+            // TODO: Separate array segment from hash segment of tables.
+            Value *arg = poke_top(vm, -1);
             if (!is_string(arg)) {
-                runtime_error(self, "get length of", get_typename(arg));
+                runtime_error(vm, "get length of", get_typename(arg));
             }
             setv_number(arg, as_string(arg)->len);
             break;
@@ -314,11 +272,11 @@ static ErrType run(VM *self)
         case OP_PRINT: {
             int argc = read_byte();
             for (int i = 0; i < argc; i++) {
-                printf("%s\t", push_tostring(self, i - argc));
-                pop_back(self);
+                printf("%s\t", lulu_tostring(vm, i - argc));
+                pop_back(vm);
             }
             printf("\n");
-            popn(self, argc);
+            popn_back(vm, argc);
             break;
         }
         case OP_RETURN:
@@ -333,44 +291,44 @@ static ErrType run(VM *self)
 #undef read_string
 }
 
-ErrType interpret(VM *self, const char *input)
+ErrType interpret(VM *vm, const char *input)
 {
-    Chunk    chunk;
-    Lexer    lexer;
-    Compiler compiler;
-    ErrType  err = setjmp(self->errorjmp); // Assumes always called correctly!
+    Chunk    ck;
+    Lexer    ls;
+    Compiler cpl;
+    ErrType  err = setjmp(vm->errorjmp); // Assumes always called correctly!
     switch (err) {
     case ERROR_NONE:
-        init_chunk(&chunk, self->name);
-        init_compiler(&compiler, &lexer, self);
-        compile(&compiler, input, &chunk);
+        init_chunk(&ck, vm->name);
+        init_compiler(&cpl, &ls, vm);
+        compile(&cpl, input, &ck);
         break;
     case ERROR_COMPTIME: // Fall through
     case ERROR_RUNTIME:
     case ERROR_ALLOC:
         // For the default case, please ensure all calls of `longjmp` ONLY
         // ever pass an `ErrType` member.
-        free_chunk(&chunk, &self->alloc);
+        free_chunk(&ck, &vm->alloc);
         return err;
     }
     // Prep the VM
-    self->chunk = &chunk;
-    self->ip    = chunk.code;
-    err = run(self);
-    free_chunk(&chunk, &self->alloc);
+    vm->chunk = &ck;
+    vm->ip    = ck.code;
+    err       = run(vm);
+    free_chunk(&ck, &vm->alloc);
     return err;
 }
 
-void runtime_error(VM *self, const char *act, const char *type)
+void runtime_error(VM *vm, const char *act, const char *type)
 {
-    size_t offset = self->ip - self->chunk->code - 1;
-    int    line   = self->chunk->lines[offset];
-    push_fstring(self, "%s:%i: Attempt to %s a %s value\n",
-                self->name,
-                line,
-                act,
-                type);
-    print_value(poke_at(self, -1), false);
-    reset_stack(self);
-    longjmp(self->errorjmp, ERROR_RUNTIME);
+    size_t offset = vm->ip - vm->chunk->code - 1;
+    int    line   = vm->chunk->lines[offset];
+    lulu_push_fstring(vm, "%s:%i: Attempt to %s a %s value\n",
+                      vm->name,
+                      line,
+                      act,
+                      type);
+    print_value(poke_top(vm, -1), false);
+    reset_stack(vm);
+    longjmp(vm->errorjmp, ERROR_RUNTIME);
 }

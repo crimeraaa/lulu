@@ -66,169 +66,164 @@ static const StrView LULU_TKINFO[] = {
     [TK_EOF]      = strview_lit("<eof>"),
 };
 
-static void init_strview(StrView *self, const char *view)
+static void init_strview(StrView *sv, const char *src)
 {
-    self->begin = view;
-    self->end   = view;
-    self->len   = 0;
+    sv->begin = src;
+    sv->end   = src;
+    sv->len   = 0;
 }
 
-static void init_token(Token *self)
+static void init_token(Token *tk)
 {
-    init_strview(&self->view, NULL);
-    self->line  = 0;
-    self->type  = TK_EOF;
+    init_strview(&tk->view, NULL);
+    tk->line  = 0;
+    tk->type  = TK_EOF;
 }
 
-void init_lexer(Lexer *self, const char *input, VM *vm)
+void init_lexer(Lexer *ls, const char *input, struct lulu_VM *vm)
 {
-    init_token(&self->lookahead);
-    init_token(&self->consumed);
-    init_strview(&self->lexeme, input);
-    self->vm     = vm;
-    self->name   = vm->name;
-    self->string = NULL;
-    self->number = 0;
-    self->line   = 1;
+    init_token(&ls->lookahead);
+    init_token(&ls->consumed);
+    init_strview(&ls->lexeme, input);
+    ls->vm     = vm;
+    ls->name   = vm->name;
+    ls->string = NULL;
+    ls->number = 0;
+    ls->line   = 1;
 }
 
 // HELPERS ---------------------------------------------------------------- {{{1
 
-static bool is_at_end(const Lexer *self)
+static bool is_at_end(const Lexer *ls)
 {
-    return *self->lexeme.end == '\0';
+    return *ls->lexeme.end == '\0';
 }
 
-static char peek_current_char(const Lexer *self)
+static char peek_current_char(const Lexer *ls)
 {
-    return *self->lexeme.end;
+    return *ls->lexeme.end;
 }
 
-static char peek_next_char(const Lexer *self)
+static char peek_next_char(const Lexer *ls)
 {
-    return *(self->lexeme.end + 1);
+    return *(ls->lexeme.end + 1);
 }
 
 // Analogous to `scanner.c:advance()` in the book.
-static char next_char(Lexer *self)
+static char next_char(Lexer *ls)
 {
-    self->lexeme.len += 1;
-    self->lexeme.end += 1;
-    return *(self->lexeme.end - 1);
+    ls->lexeme.len += 1;
+    ls->lexeme.end += 1;
+    return *(ls->lexeme.end - 1);
 }
 
-static bool match_char(Lexer *self, char expected)
+static bool match_char(Lexer *ls, char ch)
 {
-    if (is_at_end(self) || peek_current_char(self) != expected) {
+    if (is_at_end(ls) || peek_current_char(ls) != ch) {
         return false;
     } else {
-        next_char(self);
+        next_char(ls);
         return true;
     }
 }
 
-static void singleline(Lexer *self)
+static void singleline(Lexer *ls)
 {
-    while (peek_current_char(self) != '\n' && !is_at_end(self)) {
-        next_char(self);
+    while (peek_current_char(ls) != '\n' && !is_at_end(ls)) {
+        next_char(ls);
     }
 }
 
 // Assuming we've consumed a `"[["`, check its bracket nesting level.
 // Note this will also mutate state, so be wary of the order you call it in.
-static int get_nesting(Lexer *self)
+static int get_nesting(Lexer *ls)
 {
     int nesting = 0;
-    while (match_char(self, '=')) {
+    while (match_char(ls, '=')) {
         nesting++;
     }
     return nesting;
 }
 
 // Consume a multi-line string or comment with a known nesting level.
-static void multiline(Lexer *self, int nesting)
+static void multiline(Lexer *ls, int lvl)
 {
     for (;;) {
-        if (match_char(self, ']')) {
-            // `get_nesting()` will mutate `self` so call it first.
-            if (get_nesting(self) == nesting && match_char(self, ']')) {
+        if (match_char(ls, ']')) {
+            int close = get_nesting(ls);
+            if (close == lvl && match_char(ls, ']')) {
                 return;
             }
         }
         // Above call may have fallen through to here as well.
-        if (is_at_end(self)) {
-            lexerror_at_middle(self, "Unfinished multiline sequence");
+        if (is_at_end(ls)) {
+            lexerror_at_middle(ls, "Unfinished multiline sequence");
             return;
         }
         // Think of this as the iterator increment.
-        if (next_char(self) == '\n') {
-            self->line += 1;
+        if (next_char(ls) == '\n') {
+            ls->line += 1;
         }
     }
 }
 
-static void skip_comment(Lexer *self)
+static void skip_comment(Lexer *ls)
 {
     // Look for the first '[' which starts off a multiline string/comment.
-    if (match_char(self, '[')) {
-        int nesting = get_nesting(self);
-        if (match_char(self, '[')) {
-            multiline(self, nesting);
+    if (match_char(ls, '[')) {
+        int lvl = get_nesting(ls);
+        if (match_char(ls, '[')) {
+            multiline(ls, lvl);
             return;
         }
     }
     // Didn't match 2 '['. Fall through case.
-    singleline(self);
+    singleline(ls);
 }
 
 // 1}}} ------------------------------------------------------------------------
 
 // TOKENIZER -------------------------------------------------------------- {{{1
 
-static Token make_token(Lexer *self, TkType type)
+static Token make_token(Lexer *ls, TkType type)
 {
-    Token token;
-    token.view = self->lexeme;
-    token.type = type;
-    token.line = self->line;
-    return token;
+    Token tk;
+    tk.view = ls->lexeme;
+    tk.type = type;
+    tk.line = ls->line;
+    return tk;
 }
 
-static Token error_token(Lexer *self)
+static Token error_token(Lexer *ls)
 {
-    Token token = make_token(self, TK_ERROR);
+    Token tk = make_token(ls, TK_ERROR);
 
     // For error tokens, report only the first line if this is a multiline.
-    const char *newline = memchr(token.view.begin, '\n', token.view.len);
+    const char *newline = memchr(tk.view.begin, '\n', tk.view.len);
     if (newline != NULL) {
-        token.view.end = newline;
-        token.view.len = cast(int, token.view.end - token.view.begin);
+        tk.view.end = newline;
+        tk.view.len = cast(int, tk.view.end - tk.view.begin);
     }
-    return token;
+    return tk;
 }
 
-static void skip_whitespace(Lexer *self)
+static void skip_whitespace(Lexer *ls)
 {
     for (;;) {
-        char ch = peek_current_char(self);
+        char ch = peek_current_char(ls);
         switch (ch) {
+        case '\n': ls->line += 1; // fall through
         case ' ':
         case '\r':
-        case '\t':
-            next_char(self);
-            break;
-        case '\n':
-            self->line += 1;
-            next_char(self);
-            break;
+        case '\t': next_char(ls); break;
         case '-':
-            if (peek_next_char(self) != '-') {
+            if (peek_next_char(ls) != '-') {
                 return;
             }
             // Skip the 2 '-' characters so we are at the comment's contents.
-            next_char(self);
-            next_char(self);
-            skip_comment(self);
+            next_char(ls);
+            next_char(ls);
+            skip_comment(ls);
             break;
         default:
             return;
@@ -236,18 +231,18 @@ static void skip_whitespace(Lexer *self)
     }
 }
 
-static TkType check_keyword(TkType expected, StrView word)
+static TkType check_keyword(TkType type, StrView word)
 {
-    StrView keyword = LULU_TKINFO[expected];
-    if (keyword.len == word.len && cstr_eq(keyword.begin, word.begin, word.len)) {
-        return expected;
+    StrView kw = LULU_TKINFO[type];
+    if (kw.len == word.len && cstr_eq(kw.begin, word.begin, word.len)) {
+        return type;
     }
     return TK_IDENT;
 }
 
-static TkType get_identifier_type(const Lexer *self)
+static TkType get_identifier_type(const Lexer *ls)
 {
-    StrView word = self->lexeme;
+    StrView word = ls->lexeme;
     switch (word.begin[0]) {
     case 'a': return check_keyword(TK_AND, word);
     case 'b': return check_keyword(TK_BREAK, word);
@@ -304,12 +299,12 @@ static TkType get_identifier_type(const Lexer *self)
     return TK_IDENT;
 }
 
-static Token identifier_token(Lexer *self)
+static Token identifier_token(Lexer *ls)
 {
-    while (isident(peek_current_char(self))) {
-        next_char(self);
+    while (isident(peek_current_char(ls))) {
+        next_char(ls);
     }
-    return make_token(self, get_identifier_type(self));
+    return make_token(ls, get_identifier_type(ls));
 }
 
 /**
@@ -330,27 +325,27 @@ static Token identifier_token(Lexer *self)
  *          3. Multiple periods     := 1.2.3.4
  *          4. Python/JS separators := 1_000_000, 4_294_967_295
  */
-static void decimal_sequence(Lexer *self)
+static void decimal_sequence(Lexer *ls)
 {
-    while (isdigit(peek_current_char(self))) {
-        next_char(self);
+    while (isdigit(peek_current_char(ls))) {
+        next_char(ls);
     }
 
     // Have an exponent? It CANNOT come after the decimal point.
-    if (match_char(self, 'e')) {
-        char ch = peek_current_char(self);
+    if (match_char(ls, 'e')) {
+        char ch = peek_current_char(ls);
         // Explicit signedness is optional.
         if (ch == '+' || ch == '-') {
-            next_char(self);
+            next_char(ls);
         }
         // Must have at least 1 digit but that's a problem for later.
-        decimal_sequence(self);
+        decimal_sequence(ls);
         return;
     }
 
     // Have a fraction? This sequence of digits can also have an exponent.
-    if (match_char(self, '.')) {
-        decimal_sequence(self);
+    if (match_char(ls, '.')) {
+        decimal_sequence(ls);
         return;
     }
 }
@@ -359,144 +354,144 @@ static void decimal_sequence(Lexer *self)
  * @brief   Assumes we already consumed a digit character and are pointing at
  *          the first character right after it.
  */
-static Token number_token(Lexer *self)
+static Token number_token(Lexer *ls)
 {
     // Does not verify if we had a `0` character before, but whatever
-    if (match_char(self, 'x')) {
-        while (isxdigit(peek_current_char(self))) {
-            next_char(self);
+    if (match_char(ls, 'x')) {
+        while (isxdigit(peek_current_char(ls))) {
+            next_char(ls);
         }
     } else {
-        decimal_sequence(self);
+        decimal_sequence(ls);
     }
     // Consume any trailing characters for error handling later on.
-    while (isident(peek_current_char(self))) {
-        next_char(self);
+    while (isident(peek_current_char(ls))) {
+        next_char(ls);
     }
     char *end;
-    self->number = cstr_tonumber(self->lexeme.begin, &end);
+    ls->number = cstr_tonumber(ls->lexeme.begin, &end);
     // If this is true, strtod failed to convert the entire token/lexeme.
-    if (end != self->lexeme.end) {
-        lexerror_at_middle(self, "Malformed number");
+    if (end != ls->lexeme.end) {
+        lexerror_at_middle(ls, "Malformed number");
     }
-    return make_token(self, TK_NUMBER);
+    return make_token(ls, TK_NUMBER);
 }
 
-static Token string_token(Lexer *self, char quote)
+static Token string_token(Lexer *ls, char quote)
 {
-    while (peek_current_char(self) != quote && !is_at_end(self)) {
-        if (peek_current_char(self) == '\n') {
+    while (peek_current_char(ls) != quote && !is_at_end(ls)) {
+        if (peek_current_char(ls) == '\n') {
             goto bad_string;
         }
-        next_char(self);
+        next_char(ls);
     }
 
     // The label isn't actually in its own block scope.
-    if (is_at_end(self)) {
+    if (is_at_end(ls)) {
 bad_string:
-        lexerror_at_middle(self, "Unterminated string");
+        lexerror_at_middle(ls, "Unterminated string");
     }
 
     // Consume closing quote.
-    next_char(self);
+    next_char(ls);
 
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
-    StrView view = make_strview(self->lexeme.begin + 1, self->lexeme.len - 2);
-    self->string = copy_string(self->vm, view);
-    return make_token(self, TK_STRING);
+    StrView sv = make_strview(ls->lexeme.begin + 1, ls->lexeme.len - 2);
+    ls->string = copy_string(ls->vm, sv);
+    return make_token(ls, TK_STRING);
 }
 
-static Token rstring_token(Lexer *self, int nesting)
+static Token rstring_token(Lexer *ls, int nesting)
 {
-    bool open = match_char(self, '\n');
+    bool open = match_char(ls, '\n');
     if (open) {
-        self->line++;
+        ls->line++;
     }
-    multiline(self, nesting);
+    multiline(ls, nesting);
 
     // Skip "[[" and '=' nesting, as well as "]]" and '=' - 2 for last index.
     int     mark = nesting + open + 2;
-    int     len  = self->lexeme.len - mark - 2;
-    StrView view = make_strview(self->lexeme.begin + mark, len);
-    self->string = copy_rstring(self->vm, view);
-    return make_token(self, TK_STRING);
+    int     len  = ls->lexeme.len - mark - 2;
+    StrView sv   = make_strview(ls->lexeme.begin + mark, len);
+    ls->string   = copy_rstring(ls->vm, sv);
+    return make_token(ls, TK_STRING);
 }
 
 #define make_ifeq(lexer, ch, y, n) \
     make_token(lexer, match_char(lexer, ch) ? (y) : (n))
 
-Token scan_token(Lexer *self)
+Token scan_token(Lexer *ls)
 {
-    skip_whitespace(self);
-    init_strview(&self->lexeme, self->lexeme.end);
-    if (is_at_end(self)) {
-        return make_token(self, TK_EOF);
+    skip_whitespace(ls);
+    init_strview(&ls->lexeme, ls->lexeme.end);
+    if (is_at_end(ls)) {
+        return make_token(ls, TK_EOF);
     }
 
-    char ch = next_char(self);
+    char ch = next_char(ls);
     if (isdigit(ch)) {
-        return number_token(self);
+        return number_token(ls);
     }
     if (isalpha(ch) || ch == '_') {
-        return identifier_token(self);
+        return identifier_token(ls);
     }
 
     switch (ch) {
-    case '(': return make_token(self, TK_LPAREN);
-    case ')': return make_token(self, TK_RPAREN);
+    case '(': return make_token(ls, TK_LPAREN);
+    case ')': return make_token(ls, TK_RPAREN);
     case '[': {
-        int nesting = get_nesting(self);
-        if (match_char(self, '[')) {
-            return rstring_token(self, nesting);
+        int lvl = get_nesting(ls);
+        if (match_char(ls, '[')) {
+            return rstring_token(ls, lvl);
         }
-        return make_token(self, TK_LBRACKET);
+        return make_token(ls, TK_LBRACKET);
     }
-    case ']': return make_token(self, TK_RBRACKET);
-    case '{': return make_token(self, TK_LCURLY);
-    case '}': return make_token(self, TK_RCURLY);
+    case ']': return make_token(ls, TK_RBRACKET);
+    case '{': return make_token(ls, TK_LCURLY);
+    case '}': return make_token(ls, TK_RCURLY);
 
-    case ',': return make_token(self, TK_COMMA);
-    case ';': return make_token(self, TK_SEMICOL);
+    case ',': return make_token(ls, TK_COMMA);
+    case ';': return make_token(ls, TK_SEMICOL);
     case '.':
-        if (match_char(self, '.')) {
-            return make_ifeq(self, '.', TK_VARARG, TK_CONCAT);
-        } else if (isdigit(peek_current_char(self))) {
+        if (match_char(ls, '.')) {
+            return make_ifeq(ls, '.', TK_VARARG, TK_CONCAT);
+        } else if (isdigit(peek_current_char(ls))) {
             // Have a decimal literal with no leading digits, e.g. `.1`.
-            return number_token(self);
+            return number_token(ls);
         } else {
-            return make_token(self, TK_PERIOD);
+            return make_token(ls, TK_PERIOD);
         }
-    case '#': return make_token(self, TK_POUND);
+    case '#': return make_token(ls, TK_POUND);
 
-    case '+': return make_token(self, TK_PLUS);
-    case '-': return make_token(self, TK_DASH);
-    case '*': return make_token(self, TK_STAR);
-    case '/': return make_token(self, TK_SLASH);
-    case '%': return make_token(self, TK_PERCENT);
-    case '^': return make_token(self, TK_CARET);
+    case '+': return make_token(ls, TK_PLUS);
+    case '-': return make_token(ls, TK_DASH);
+    case '*': return make_token(ls, TK_STAR);
+    case '/': return make_token(ls, TK_SLASH);
+    case '%': return make_token(ls, TK_PERCENT);
+    case '^': return make_token(ls, TK_CARET);
 
-    case '=': return make_ifeq(self, '=', TK_EQ, TK_ASSIGN);
+    case '=': return make_ifeq(ls, '=', TK_EQ, TK_ASSIGN);
     case '~':
-        if (match_char(self, '=')) {
-            return make_token(self, TK_NEQ);
+        if (match_char(ls, '=')) {
+            return make_token(ls, TK_NEQ);
         } else {
-            lexerror_at_middle(self, "Expected '='");
+            lexerror_at_middle(ls, "Expected '='");
         }
-    case '>': return make_ifeq(self, '=', TK_GE, TK_GT);
-    case '<': return make_ifeq(self, '=', TK_LE, TK_LT);
+    case '>': return make_ifeq(ls, '=', TK_GE, TK_GT);
+    case '<': return make_ifeq(ls, '=', TK_LE, TK_LT);
 
-    case '\"': return string_token(self, '\"');
-    case '\'': return string_token(self, '\'');
-    default:   return error_token(self);
+    case '\"': return string_token(ls, '\"');
+    case '\'': return string_token(ls, '\'');
+    default:   return error_token(ls);
     }
 }
 
-void next_token(Lexer *self)
+void next_token(Lexer *ls)
 {
-    self->consumed  = self->lookahead;
-    self->lookahead = scan_token(self);
-    if (self->lookahead.type == TK_ERROR) {
-        lexerror_at_lookahead(self, "Unexpected symbol");
+    ls->consumed  = ls->lookahead;
+    ls->lookahead = scan_token(ls);
+    if (ls->lookahead.type == TK_ERROR) {
+        lexerror_at_lookahead(ls, "Unexpected symbol");
     }
 }
 
@@ -507,66 +502,66 @@ typedef struct {
     int   writes;      // How many slots we have written to so far.
 } Builder;
 
-static void init_builder(Builder *self)
+static void init_builder(Builder *sb)
 {
-    self->end    = self->buffer;
-    self->left   = sizeof(self->buffer);
-    self->writes = 0;
+    sb->end    = sb->buffer;
+    sb->left   = sizeof(sb->buffer);
+    sb->writes = 0;
 }
 
-static void append_builder(Builder *self, const char *format, ...)
+static void append_builder(Builder *sb, const char *fmt, ...)
 {
     va_list argp;
-    va_start(argp, format);
+    va_start(argp, fmt);
 
-    self->writes = vsnprintf(self->end, self->left, format, argp);
-    self->end   += self->writes;
-    self->left  -= self->writes;
-    *self->end   = '\0';
+    sb->writes = vsnprintf(sb->end, sb->left, fmt, argp);
+    sb->end   += sb->writes;
+    sb->left  -= sb->writes;
+    *sb->end   = '\0';
 
     va_end(argp);
 }
 
-void expect_token(Lexer *self, TkType expected, const char *info)
+void expect_token(Lexer *ls, TkType type, const char *info)
 {
-    if (self->lookahead.type == expected) {
-        next_token(self);
+    if (ls->lookahead.type == type) {
+        next_token(ls);
         return;
     }
 
-    Builder message;
-    StrView tkinfo = LULU_TKINFO[expected];
+    Builder sb;
+    StrView sv = LULU_TKINFO[type];
 
-    init_builder(&message);
-    append_builder(&message, "Expected '%s'", tkinfo.begin);
+    init_builder(&sb);
+    append_builder(&sb, "type '%s'", sv.begin);
 
     if (info != NULL) {
-        append_builder(&message, " %s", info);
+        append_builder(&sb, " %s", info);
     }
 
-    lexerror_at_lookahead(self, message.buffer);
+    lexerror_at_lookahead(ls, sb.buffer);
 }
 
-bool check_token(Lexer *self, TkType expected)
+bool check_token(Lexer *ls, TkType type)
 {
-    TkType actual = self->lookahead.type;
-    return actual == expected;
+    TkType actual = ls->lookahead.type;
+    return actual == type;
 }
 
-bool match_token(Lexer *self, TkType expected)
+bool match_token(Lexer *ls, TkType type)
 {
-    if (check_token(self, expected)) {
-        next_token(self);
+    if (check_token(ls, type)) {
+        next_token(ls);
         return true;
     }
     return false;
 }
 
 #undef check_token_any
-bool check_token_any(Lexer *self, const TkType expected[])
+bool check_token_any(Lexer *ls, const TkType types[])
 {
-    for (int i = 0; expected[i] != TK_ERROR; i++) {
-        if (check_token(self, expected[i])) {
+    for (int i = 0; types[i] != TK_ERROR; i++) {
+        if (check_token(ls, types[i])) {
             return true;
         }
     }
@@ -574,10 +569,10 @@ bool check_token_any(Lexer *self, const TkType expected[])
 }
 
 #undef match_token_any
-bool match_token_any(Lexer *self, const TkType expected[])
+bool match_token_any(Lexer *ls, const TkType types[])
 {
-    if (check_token_any(self, expected)) {
-        next_token(self);
+    if (check_token_any(ls, types)) {
+        next_token(ls);
         return true;
     }
     return false;
@@ -588,31 +583,31 @@ bool match_token_any(Lexer *self, const TkType expected[])
 
 // ERROR HANDLING --------------------------------------------------------- {{{1
 
-void lexerror_at(Lexer *self, const Token *token, const char *info)
+void lexerror_at(Lexer *ls, const Token *tk, const char *info)
 {
-    eprintf("%s:%i: %s", self->name, self->line, info);
-    if (token->type == TK_EOF) {
+    eprintf("%s:%i: %s", ls->name, ls->line, info);
+    if (tk->type == TK_EOF) {
         eprintln(" at <eof>");
     } else {
-        eprintfln(" near '%.*s'", token->view.len, token->view.begin);
+        eprintfln(" near '%.*s'", tk->view.len, tk->view.begin);
     }
-    longjmp(self->vm->errorjmp, ERROR_COMPTIME);
+    longjmp(ls->vm->errorjmp, ERROR_COMPTIME);
 }
 
-void lexerror_at_lookahead(Lexer *self, const char *info)
+void lexerror_at_lookahead(Lexer *ls, const char *info)
 {
-    lexerror_at(self, &self->lookahead, info);
+    lexerror_at(ls, &ls->lookahead, info);
 }
 
-void lexerror_at_consumed(Lexer *self, const char *info)
+void lexerror_at_consumed(Lexer *ls, const char *info)
 {
-    lexerror_at(self, &self->consumed, info);
+    lexerror_at(ls, &ls->consumed, info);
 }
 
-void lexerror_at_middle(Lexer *self, const char *info)
+void lexerror_at_middle(Lexer *ls, const char *info)
 {
-    Token token = error_token(self);
-    lexerror_at(self, &token, info);
+    Token token = error_token(ls);
+    lexerror_at(ls, &token, info);
 }
 
 

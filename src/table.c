@@ -6,16 +6,16 @@
 
 static uint32_t hash_pointer(Object *ptr)
 {
-    char bytes[sizeof(ptr)];
-    memcpy(bytes, &ptr, sizeof(bytes));
-    return hash_rstring(make_strview(bytes, sizeof(bytes)));
+    char s[sizeof(ptr)];
+    memcpy(s, &ptr, sizeof(s));
+    return hash_rstring(make_strview(s, sizeof(s)));
 }
 
-static uint32_t hash_number(Number number)
+static uint32_t hash_number(Number n)
 {
-    char bytes[sizeof(number)];
-    memcpy(bytes, &number, sizeof(bytes));
-    return hash_rstring(make_strview(bytes, sizeof(bytes)));
+    char s[sizeof(n)];
+    memcpy(s, &n, sizeof(s));
+    return hash_rstring(make_strview(s, sizeof(s)));
 }
 
 static void clear_entries(Entry *entries, int cap)
@@ -26,93 +26,94 @@ static void clear_entries(Entry *entries, int cap)
     }
 }
 
-static uint32_t get_hash(const Value *self)
+static uint32_t get_hash(const Value *t)
 {
-    switch (get_tag(self)) {
+    switch (get_tag(t)) {
     case TYPE_NIL:      return 0; // WARNING: We should never hash `nil`!
-    case TYPE_BOOLEAN:  return as_boolean(self);
-    case TYPE_NUMBER:   return hash_number(as_number(self));
-    case TYPE_STRING:   return as_string(self)->hash;
-    case TYPE_TABLE:    return hash_pointer(as_object(self));
+    case TYPE_BOOLEAN:  return as_boolean(t);
+    case TYPE_NUMBER:   return hash_number(as_number(t));
+    case TYPE_STRING:   return as_string(t)->hash;
+    case TYPE_TABLE:    return hash_pointer(as_object(t));
     }
 }
 
-// Find a free slot. Assumes there is at least 1 free slot left.
-static Entry *find_entry(Entry *list, int cap, const Value *key)
+// Find al free slot. Assumes there is at least 1 free slot left.
+static Entry *find_entry(Entry *entries, int cap, const Value *k)
 {
-    uint32_t index = get_hash(key) % cap;
-    Entry   *tombstone = NULL;
+    uint32_t i = get_hash(k) % cap;
+    Entry   *tomb = NULL;
     for (;;) {
-        Entry *entry = &list[index];
-        if (is_nil(&entry->key)) {
-            if (is_nil(&entry->value)) {
-                return (tombstone == NULL) ? entry : tombstone;
-            } else if (tombstone == NULL) {
-                tombstone = entry;
+        Entry *ent = &entries[i];
+        if (is_nil(&ent->key)) {
+            if (is_nil(&ent->value)) {
+                return (tomb == NULL) ? ent : tomb;
             }
-        } else if (values_equal(&entry->key, key)) {
-            return entry;
+            if (tomb == NULL) {
+                tomb = ent;
+            }
+        } else if (values_equal(&ent->key, k)) {
+            return ent;
         }
-        index = (index + 1) % cap;
+        i = (i + 1) % cap;
     }
 }
 
 // Analogous to `adjustCapacity()` in the book. Assumes we only ever grow!
-static void resize_table(Table *self, int newcap, Alloc *alloc)
+static void resize_table(Table *t, int newcap, Alloc *al)
 {
-    Entry *newbuf = new_parray(newbuf, newcap, alloc);
+    Entry *newbuf = new_parray(newbuf, newcap, al);
     clear_entries(newbuf, newcap);
 
     // Copy non-empty and non-tombstone entries to the new table.
-    self->count = 0;
-    for (int i = 0; i < self->cap; i++) {
-        Entry *src = &self->entries[i];
+    t->count = 0;
+    for (int i = 0; i < t->cap; i++) {
+        Entry *src = &t->entries[i];
         if (is_nil(&src->key)) {
             continue; // Throws away both empty and tombstone entries.
         }
         Entry *dst = find_entry(newbuf, newcap, &src->key);
         dst->key   = src->key;
         dst->value = src->value;
-        self->count++;
+        t->count++;
     }
-    free_parray(self->entries, self->cap, alloc);
-    self->entries = newbuf;
-    self->cap     = newcap;
+    free_parray(t->entries, t->cap, al);
+    t->entries = newbuf;
+    t->cap     = newcap;
 }
 
-Table *new_table(Alloc *alloc, int size)
+Table *new_table(int size, struct lulu_Alloc *al)
 {
-    Table *inst = cast(Table*, new_object(sizeof(*inst), TYPE_TABLE, alloc));
-    init_table(inst);
+    Table *t = cast(Table*, new_object(sizeof(*t), TYPE_TABLE, al));
+    init_table(t);
     if (size > 0) {
-        resize_table(inst, size, alloc);
+        resize_table(t, size, al);
     }
-    return inst;
+    return t;
 }
 
-void init_table(Table *self)
+void init_table(Table *t)
 {
-    self->entries = NULL;
-    self->count   = 0;
-    self->cap     = 0;
+    t->entries = NULL;
+    t->count   = 0;
+    t->cap     = 0;
 }
 
-void free_table(Table *self, Alloc *alloc)
+void free_table(Table *t, struct lulu_Alloc *al)
 {
-    free_parray(self->entries, self->cap, alloc);
-    init_table(self);
+    free_parray(t->entries, t->cap, al);
+    init_table(t);
 }
 
-void dump_table(const Table *self, const char *name)
+void dump_table(const Table *t, const char *name)
 {
     name = (name != NULL) ? name : "(anonymous table)";
-    if (self->count == 0) {
+    if (t->count == 0) {
         printf("%s = {}\n", name);
         return;
     }
     printf("%s = {\n", name);
-    for (int i = 0, limit = self->cap; i < limit; i++) {
-        const Entry *entry = &self->entries[i];
+    for (int i = 0, limit = t->cap; i < limit; i++) {
+        const Entry *entry = &t->entries[i];
         if (is_nil(&entry->key)) {
             continue;
         }
@@ -125,61 +126,61 @@ void dump_table(const Table *self, const char *name)
     printf("}\n");
 }
 
-bool get_table(Table *self, const Value *key, Value *out)
+bool get_table(Table *t, const Value *k, Value *out)
 {
-    if (self->count == 0 || is_nil(key)) {
+    if (t->count == 0 || is_nil(k)) {
         return false;
     }
-    Entry *entry = find_entry(self->entries, self->cap, key);
-    if (is_nil(&entry->key)) {
+    Entry *ent = find_entry(t->entries, t->cap, k);
+    if (is_nil(&ent->key)) {
         return false;
     }
-    *out = entry->value;
+    *out = ent->value;
     return true;
 }
 
-bool set_table(Table *self, const Value *key, const Value *val, Alloc *alloc)
+bool set_table(Table *t, const Value *k, const Value *v, struct lulu_Alloc *al)
 {
-    if (is_nil(key)) {
+    if (is_nil(k)) {
         return false;
     }
-    if (self->count + 1 > self->cap * TABLE_MAX_LOAD) {
-        resize_table(self, grow_capacity(self->cap), alloc);
+    if (t->count + 1 > t->cap * TABLE_MAX_LOAD) {
+        resize_table(t, grow_capacity(t->cap), al);
     }
-    Entry *entry    = find_entry(self->entries, self->cap, key);
-    bool   isnewkey = is_nil(&entry->key);
+    Entry *ent      = find_entry(t->entries, t->cap, k);
+    bool   isnewkey = is_nil(&ent->key);
 
     // Don't increase the count for tombstones (nil-key with non-nil value)
-    if (isnewkey && is_nil(&entry->value)) {
-        self->count++;
+    if (isnewkey && is_nil(&ent->value)) {
+        t->count++;
     }
-    entry->key   = *key;
-    entry->value = *val;
+    ent->key   = *k;
+    ent->value = *v;
     return isnewkey;
 }
 
-bool unset_table(Table *self, const Value *key)
+bool unset_table(Table *t, const Value *k)
 {
-    if (self->count == 0 || is_nil(key)) {
+    if (t->count == 0 || is_nil(k)) {
         return false;
     }
-    Entry *entry = find_entry(self->entries, self->cap, key);
-    if (is_nil(&entry->key)) {
+    Entry *ent = find_entry(t->entries, t->cap, k);
+    if (is_nil(&ent->key)) {
         return false;
     }
-    // Place a tombstone, it must be distinct from a nil key with a nil value.
-    setv_nil(&entry->key);
-    setv_boolean(&entry->value, false);
+    // Place al tombstone, it must be distinct from al nil key with al nil value.
+    setv_nil(&ent->key);
+    setv_boolean(&ent->value, false);
     return true;
 }
 
-void copy_table(Table *dst, const Table *src, Alloc *alloc)
+void copy_table(Table *dst, const Table *src, struct lulu_Alloc *al)
 {
     for (int i = 0; i < src->cap; i++) {
-        const Entry *entry = &src->entries[i];
-        if (is_nil(&entry->key)) {
+        const Entry *ent = &src->entries[i];
+        if (is_nil(&ent->key)) {
             continue;
         }
-        set_table(dst, &entry->key, &entry->value, alloc);
+        set_table(dst, &ent->key, &ent->value, al);
     }
 }

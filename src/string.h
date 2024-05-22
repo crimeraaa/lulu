@@ -7,18 +7,18 @@
 #define string_psize(P, N)  (sizeof(*(P)) + parray_size((P)->data, N))
 
 // This function will not hash any escape sequences at all.
-uint32_t hash_rstring(StrView view);
+uint32_t hash_rstring(StrView sv);
 
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
-String *new_string(int len, Alloc *alloc);
-void free_string(String *self, Alloc *alloc);
+String *new_string(int len, struct lulu_Alloc *al);
+void free_string(String *s, struct lulu_Alloc *al);
 
 // Global functions that deal with strings need the VM to check for interned.
-String *copy_string(VM *vm, StrView view);
-String *copy_rstring(VM *vm, StrView view);
+String *copy_string(struct lulu_VM *vm, StrView sv);
+String *copy_rstring(struct lulu_VM *vm, StrView sv);
 
 // Assumes all arguments we already verified to be `String*`.
-String *concat_strings(VM *vm, int argc, const Value argv[], int len);
+String *concat_strings(struct lulu_VM *vm, int argc, const Value argv[], int len);
 
 #endif /* LULU_STRING_H */

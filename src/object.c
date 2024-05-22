@@ -14,60 +14,60 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_TABLE]   = "table",
 };
 
-const Value *value_tonumber(Value *self)
+const Value *value_tonumber(Value *vl)
 {
-    if (is_number(self)) {
-        return self;
+    if (is_number(vl)) {
+        return vl;
     }
-    if (is_string(self)) {
-        String *s    = as_string(self);
-        StrView view = make_strview(s->data, s->len);
+    if (is_string(vl)) {
         char   *end;
-        Number  n    = cstr_tonumber(view.begin, &end);
-        if (end == view.end) {
-            setv_number(self, n);
-            return self;
+        String *s  = as_string(vl);
+        StrView sv = make_strview(s->data, s->len);
+        Number  n  = cstr_tonumber(sv.begin, &end);
+        if (end == sv.end) {
+            setv_number(vl, n);
+            return vl;
         }
     }
     return NULL;
 }
 
-const char *value_tocstring(const Value *self, char *buffer, int *out)
+const char *value_tocstring(const Value *vl, char *buf, int *out)
 {
     int len = 0;
     if (out != NULL) {
         *out = -1;
     }
-    switch (get_tag(self)) {
+    switch (get_tag(vl)) {
     case TYPE_NIL:
         return "nil";
     case TYPE_BOOLEAN:
-        return as_boolean(self) ? "true" : "false";
+        return as_boolean(vl) ? "true" : "false";
     case TYPE_NUMBER:
-        len = num_tostring(buffer, as_number(self));
+        len = num_tostring(buf, as_number(vl));
         break;
     case TYPE_STRING:
-        return as_cstring(self);
+        return as_cstring(vl);
     case TYPE_TABLE:
-        len = snprintf(buffer,
+        len = snprintf(buf,
                        MAX_TOSTRING,
                        "%s: %p",
-                       get_typename(self),
-                       as_pointer(self));
+                       get_typename(vl),
+                       as_pointer(vl));
         break;
     }
-    buffer[len] = '\0';
+    buf[len] = '\0';
     if (out != NULL) {
         *out = len;
     }
-    return buffer;
+    return buf;
 }
 
-void print_value(const Value *self, bool isdebug)
+void print_value(const Value *vl, bool isdebug)
 {
-    if (is_string(self) && isdebug) {
-        const String *s = as_string(self);
-        // printf("string: %p ", as_pointer(self));
+    if (is_string(vl) && isdebug) {
+        const String *s = as_string(vl);
+        // printf("string: %p ", as_pointer(vl));
         if (s->len <= 1) {
             printf("\'%s\'", s->data);
         } else {
@@ -76,78 +76,79 @@ void print_value(const Value *self, bool isdebug)
         // printf(" (len: %i, hash: %u)", s->len, s->object.hash);
     } else {
         char buffer[MAX_TOSTRING];
-        printf("%s", value_tocstring(self, buffer, NULL));
+        printf("%s", value_tocstring(vl, buffer, NULL));
     }
 }
 
-bool values_equal(const Value *lhs, const Value *rhs)
+bool values_equal(const Value *a, const Value *b)
 {
     // Logically, differing types can never be equal.
-    if (get_tag(lhs) != get_tag(rhs)) {
+    if (get_tag(a) != get_tag(b)) {
         return false;
     }
-    switch (get_tag(lhs)) {
+    switch (get_tag(a)) {
     case TYPE_NIL:      return true;
-    case TYPE_BOOLEAN:  return as_boolean(lhs) == as_boolean(rhs);
-    case TYPE_NUMBER:   return num_eq(as_number(lhs), as_number(rhs));
+    case TYPE_BOOLEAN:  return as_boolean(a) == as_boolean(b);
+    case TYPE_NUMBER:   return num_eq(as_number(a), as_number(b));
     case TYPE_STRING:   // We assume all objects are correctly interned.
-    case TYPE_TABLE:    return as_object(lhs) == as_object(rhs);
+    case TYPE_TABLE:    return as_object(a) == as_object(b);
     }
 }
 
-void init_varray(VArray *self)
+void init_varray(VArray *va)
 {
-    self->values = NULL;
-    self->len    = 0;
-    self->cap    = 0;
+    va->values = NULL;
+    va->len    = 0;
+    va->cap    = 0;
 }
 
-void free_varray(VArray *self, Alloc *alloc)
+void free_varray(VArray *va, struct lulu_Alloc *al)
 {
-    free_parray(self->values, self->len, alloc);
-    init_varray(self);
+    free_parray(va->values, va->len, al);
+    init_varray(va);
 }
 
-void write_varray(VArray *self, const Value *value, Alloc *alloc)
+void write_varray(VArray *va, const Value *vl, struct lulu_Alloc *al)
 {
-    if (self->len + 1 > self->cap) {
-        int oldcap   = self->cap;
-        int newcap   = grow_capacity(oldcap);
-        self->values = resize_parray(self->values, oldcap, newcap, alloc);
-        self->cap    = newcap;
+    if (va->len + 1 > va->cap) {
+        int oldcap = va->cap;
+        int newcap = grow_capacity(oldcap);
+        va->values = resize_parray(va->values, oldcap, newcap, al);
+        va->cap    = newcap;
     }
-    self->values[self->len] = *value;
-    self->len += 1;
+    va->values[va->len] = *vl;
+    va->len += 1;
 }
 
-void set_interned(VM *vm, const String *string)
+void set_interned(struct lulu_VM *vm, const String *s)
 {
-    Alloc *alloc = &vm->alloc;
-    Value  key   = make_string(string);
-    Value  val   = make_boolean(true);
-    set_table(&vm->strings, &key, &val, alloc);
+    Alloc *al = &vm->alloc;
+    Table *t  = &vm->strings;
+    Value  k  = make_string(s);
+    Value  v  = make_boolean(true);
+    set_table(t, &k, &v, al);
 }
 
-String *find_interned(VM *vm, StrView view, uint32_t hash)
+String *find_interned(struct lulu_VM *vm, StrView sv, uint32_t hash)
 {
-    Table *table = &vm->strings;
-    if (table->count == 0) {
+    Table *t = &vm->strings;
+    if (t->count == 0) {
         return NULL;
     }
-    uint32_t index = hash % table->cap;
+    uint32_t i = hash % t->cap;
     for (;;) {
-        Entry *entry = &table->entries[index];
+        Entry *ent = &t->entries[i];
         // The strings table only ever has completely empty or full entries.
-        if (is_nil(&entry->key) && is_nil(&entry->value)) {
+        if (is_nil(&ent->key) && is_nil(&ent->value)) {
             return NULL;
         }
         // We assume ALL valid (i.e: non-nil) keys are strings.
-        String *interned = as_string(&entry->key);
-        if (interned->len == view.len && interned->hash == hash) {
-            if (cstr_eq(interned->data, view.begin, view.len)) {
-                return interned;
+        String *s = as_string(&ent->key);
+        if (s->len == sv.len && s->hash == hash) {
+            if (cstr_eq(s->data, sv.begin, sv.len)) {
+                return s;
             }
         }
-        index = (index + 1) % table->cap;
+        i = (i + 1) % t->cap;
     }
 }

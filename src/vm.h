@@ -6,8 +6,7 @@
 #include "object.h"
 #include "memory.h"
 
-// Forward declared in `lulu.h`.
-struct VM {
+typedef struct lulu_VM {
     Value       stack[MAX_STACK + STACK_RESERVED];
     Alloc       alloc;    // Will hold the VM itself as context.
     Value      *top;      // Pointer to first free slot in the stack.
@@ -19,16 +18,19 @@ struct VM {
     Table       strings;  // Collection of all interned strings.
     Object     *objects;  // Head of linked list to all allocated objects.
     jmp_buf     errorjmp; // Used for error-handling (kinda) like C++ exceptions.
-};
+} VM;
 
-#define popn(vm, n)         ((vm)->top -= (n))
-#define pop_back(vm)        (popn(vm, 1))
+#define popn_back(vm, n)    ((vm)->top -= (n))
+#define pop_back(vm)        (popn_back(vm, 1))
 #define update_top(vm, n)   ((vm)->top += (n))
 #define incr_top(vm)        update_top(vm, 1)
+#define poke_top(vm, n)     ((vm)->top + (n))
+#define poke_base(vm, n)    ((vm)->base + (n))
+#define push_back(vm, v)    *(vm)->top = *(v), incr_top(vm)
 
-void init_vm(VM *self, const char *name);
-void free_vm(VM *self);
-ErrType interpret(VM *self, const char *input);
-void runtime_error(VM *self, const char *act, const char *type);
+void init_vm(VM *vm, const char *name);
+void free_vm(VM *vm);
+ErrType interpret(VM *vm, const char *input);
+void runtime_error(VM *vm, const char *act, const char *type);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */

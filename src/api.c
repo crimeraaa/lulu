@@ -5,54 +5,58 @@
 #include "string.h"
 #include "table.h"
 
-Value *poke_at(VM *self, int offset)
+// Negative values are offset from the top, positive are offset from the base.
+static Value *poke_at_offset(VM *vm, int offset)
 {
-    if (offset < 0) {
-        return self->top + offset;
-    }
-    return self->base + offset;
+    return (offset >= 0) ? poke_base(vm, offset) : poke_top(vm, offset);
 }
 
-void push_nils(VM *self, int count)
+void lulu_push_nil(struct lulu_VM *vm, int count)
 {
     for (int i = 0; i < count; i++) {
-        setv_nil(&self->top[i]);
+        setv_nil(&vm->top[i]);
     }
-    update_top(self, count);
+    update_top(vm, count);
 }
 
-void push_boolean(VM *self, bool b)
+void lulu_push_boolean(struct lulu_VM *vm, bool b)
 {
-    setv_boolean(self->top, b);
-    incr_top(self);
+    setv_boolean(vm->top, b);
+    incr_top(vm);
 }
 
-void push_number(VM *self, Number n)
+void lulu_push_number(struct lulu_VM *vm, lulu_Number n)
 {
-    setv_number(self->top, n);
-    incr_top(self);
+    setv_number(vm->top, n);
+    incr_top(vm);
 }
 
-void push_string(VM *self, String *s)
+void lulu_push_string(struct lulu_VM *vm, struct lulu_String *s)
 {
-    setv_string(self->top, s);
-    incr_top(self);
+    setv_string(vm->top, s);
+    incr_top(vm);
 }
 
-void push_cstring(VM *self, const char *s)
+void lulu_push_cstring(struct lulu_VM *vm, const char *s)
 {
-    int     len  = strlen(s);
-    StrView view = make_strview(s, len);
-    push_string(self, copy_string(self, view));
+    int     len = strlen(s);
+    StrView sv  = make_strview(s, len);
+    lulu_push_string(vm, copy_string(vm, sv));
 }
 
-void push_lcstring(VM *self, const char *s, int len)
+void lulu_push_lcstring(struct lulu_VM *vm, const char *s, int len)
 {
-    StrView view = make_strview(s, len);
-    push_string(self, copy_string(self, view));
+    StrView sv = make_strview(s, len);
+    lulu_push_string(vm, copy_string(vm, sv));
 }
 
-const char *push_vfstring(VM *self, const char *fmt, va_list argp)
+void lulu_push_table(struct lulu_VM *vm, struct lulu_Table *t)
+{
+    setv_table(vm->top, t);
+    incr_top(vm);
+}
+
+const char *lulu_push_vfstring(struct lulu_VM *vm, const char *fmt, va_list argp)
 {
     const char *iter  = fmt;
     int         argc  = 0;
@@ -65,10 +69,10 @@ const char *push_vfstring(VM *self, const char *fmt, va_list argp)
         }
         // Push the contents of the string before '%', except if '%' is starter.
         if (spec != fmt) {
-            StrView view = make_strview(iter, spec - iter);
-            push_lcstring(self, view.begin, view.len);
+            StrView sv = make_strview(iter, spec - iter);
+            lulu_push_lcstring(vm, sv.begin, sv.len);
             argc  += 1;
-            total += view.len;
+            total += sv.len;
         }
         // Move to character after '%' so we point at the specifier.
         spec += 1;
@@ -77,24 +81,24 @@ const char *push_vfstring(VM *self, const char *fmt, va_list argp)
             char buf[2];
             buf[0] = cast(char, va_arg(argp, int)); // char promoted to int
             buf[1] = '\0';
-            push_lcstring(self, buf, sizeof(buf));
+            lulu_push_lcstring(vm, buf, sizeof(buf));
             break;
         }
         case 'i': {
             char buf[MAX_TOSTRING];
             int  len = int_tostring(buf, va_arg(argp, int));
-            push_lcstring(self, buf, len);
+            lulu_push_lcstring(vm, buf, len);
             break;
         }
         case 's': {
             const char *s = va_arg(argp, char*);
-            push_cstring(self, (s != NULL) ? s : "(null)");
+            lulu_push_cstring(vm, (s != NULL) ? s : "(null)");
             break;
         }
         case 'p': {
             char buf[MAX_TOSTRING];
             int  len = ptr_tostring(buf, va_arg(argp, void*));
-            push_lcstring(self, buf, len);
+            lulu_push_lcstring(vm, buf, len);
             break;
         }
         default:
@@ -103,52 +107,94 @@ const char *push_vfstring(VM *self, const char *fmt, va_list argp)
         }
         // Point to first character after the specifier.
         iter   = spec + 1;
-        total += as_string(poke_at(self, -1))->len;
+        total += as_string(poke_at_offset(vm, -1))->len;
         argc  += 1;
     }
     // Still have stuff left in the format string?
     if (*iter != '\0') {
-        push_cstring(self, iter);
+        lulu_push_cstring(vm, iter);
         argc  += 1;
-        total += as_string(poke_at(self, -1))->len;
+        total += as_string(poke_at_offset(vm, -1))->len;
     }
-    String *res = concat_strings(self, argc, poke_at(self, -argc), total);
-    popn(self, argc);
-    push_string(self, res);
+    String *res = concat_strings(vm, argc, poke_at_offset(vm, -argc), total);
+    popn_back(vm, argc);
+    lulu_push_string(vm, res);
     return res->data;
 }
 
-const char *push_fstring(VM *self, const char *fmt, ...)
+const char *lulu_push_fstring(struct lulu_VM *vm, const char *fmt, ...)
 {
     va_list argp;
     va_start(argp, fmt);
-    const char *res = push_vfstring(self, fmt, argp);
+    const char *res = lulu_push_vfstring(vm, fmt, argp);
     va_end(argp);
     return res;
 }
 
-const char *push_tostring(VM *self, int offset)
+const char *lulu_tostring(struct lulu_VM *vm, int offset)
 {
-    Value *v = poke_at(self, offset);
+    Value *v = poke_at_offset(vm, offset);
     switch (get_tag(v)) {
     case TYPE_NIL:
-        push_cstring(self, "nil");
+        lulu_push_cstring(vm, "nil");
         break;
     case TYPE_BOOLEAN:
-        push_cstring(self, as_boolean(v) ? "true" : "false");
+        lulu_push_cstring(vm, as_boolean(v) ? "true" : "false");
         break;
     case TYPE_NUMBER: {
         char buf[MAX_TOSTRING];
         int  len = num_tostring(buf, as_number(v));
-        push_lcstring(self, buf, len);
+        lulu_push_lcstring(vm, buf, len);
         break;
     }
     case TYPE_STRING:
-        push_string(self, as_string(v));
+        lulu_push_string(vm, as_string(v));
         break;
     case TYPE_TABLE:
-        push_fstring(self, "%s: %p", get_typename(v), as_pointer(v));
+        lulu_push_fstring(vm, "%s: %p", get_typename(v), as_pointer(v));
         break;
     }
-    return as_string(poke_at(self, -1))->data;
+    return as_string(poke_at_offset(vm, -1))->data;
+}
+
+void lulu_get_table(struct lulu_VM *vm, int t_offset, int k_offset)
+{
+    Value *t = poke_at_offset(vm, t_offset);
+    Value *k = poke_at_offset(vm, k_offset);
+    Value  v;
+    if (!is_table(t)) {
+        runtime_error(vm, "index", get_typename(t));
+    }
+    if (!get_table(as_table(t), k, &v)) {
+        setv_nil(&v);
+    }
+    popn_back(vm, 2);
+    push_back(vm, &v);
+}
+
+void lulu_set_table(struct lulu_VM *vm, int t_offset, int k_offset, int to_pop)
+{
+    Value *t = poke_at_offset(vm, t_offset);
+    Value *k = poke_at_offset(vm, k_offset);
+    Value *v = poke_at_offset(vm, -1);
+    if (!is_table(t)) {
+        runtime_error(vm, "index", get_typename(t));
+    }
+    set_table(as_table(t), k, v, &vm->alloc);
+    popn_back(vm, to_pop);
+}
+
+void lulu_get_global(struct lulu_VM *vm, const struct lulu_Value *k)
+{
+    Value out;
+    if (!get_table(&vm->globals, k, &out)) {
+        runtime_error(vm, "read", "undefined");
+    }
+    push_back(vm, &out);
+}
+
+void lulu_set_global(struct lulu_VM *vm, const struct lulu_Value *k)
+{
+    set_table(&vm->globals, k, poke_top(vm, -1), &vm->alloc);
+    pop_back(vm);
 }

@@ -5,33 +5,29 @@
 #include "limits.h"
 #include "object.h"
 
-typedef struct Object Object;
-typedef struct Alloc  Alloc;
+struct lulu_Object; // defined in `object.h`.
 
 #define grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
-typedef void *(*ReallocFn)(void *ptr, size_t oldsz, size_t newsz, void *context);
+typedef void *(*ReallocFn)(void *ptr, size_t oldsz, size_t newsz, void *ctx);
 
 // A general purpose allocation wrapper that carries some context around.
 // See: https://nullprogram.com/blog/2023/12/17/
-struct Alloc {
+typedef struct lulu_Alloc {
     ReallocFn reallocfn; // To free `ptr`, pass `newsz` of `0`.
     void     *context;   // How this is interpreted is up to your function.
-};
+} Alloc;
 
 // Once set, please do not reinitialize your allocator else it may break.
-void init_alloc(Alloc *self, ReallocFn reallocfn, void *context);
+void init_alloc(Alloc *al, ReallocFn fn, void *ctx);
 
 // Assumes casting `alloc->context` to `VM*` is a safe operation.
-Object *new_object(size_t size, VType tag, Alloc *alloc);
+struct lulu_Object *new_object(size_t size, VType tag, Alloc *al);
+void free_objects(struct lulu_VM *vm);
 
-void free_objects(VM *vm);
-
-// Prepend `node` to the linked list pointer pointed to by `head`. Returns `node`.
-Object *prepend_object(Object **head, Object *node);
-
-// Remove node from the linked list pointer pointed to by `head`. Returns `node`.
-Object *remove_object(Object **head, Object *node);
+// `prepend_object()` and `remove_object()` both return `o`.
+struct lulu_Object *prepend_object(struct lulu_Object **head, struct lulu_Object *o);
+struct lulu_Object *remove_object(struct lulu_Object **head, struct lulu_Object *o);
 
 #define new_pointer(size, alloc) \
     (alloc)->reallocfn((NULL), 0, (size), (alloc)->context)

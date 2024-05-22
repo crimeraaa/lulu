@@ -28,11 +28,11 @@ static char get_escape(char ch)
 }
 
 // Note that we need to hash escapes correctly too.
-static uint32_t hash_string(StrView view)
+static uint32_t hash_string(StrView sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
     char     prev = 0;
-    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+    for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
         char ch = *ptr;
         if (ch == '\\' && prev != '\\') {
             prev = ch;
@@ -47,38 +47,37 @@ static uint32_t hash_string(StrView view)
     return hash;
 }
 
-uint32_t hash_rstring(StrView view)
+uint32_t hash_rstring(StrView sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
-    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+    for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
         hash ^= cast(Byte, *ptr);
         hash *= FNV1A_PRIME32;
     }
     return hash;
 }
 
-String *new_string(int len, Alloc *alloc)
+String *new_string(int len, struct lulu_Alloc *al)
 {
     // Note how we add 1 for the nul char.
-    size_t  need = string_size(len + 1);
-    String *inst = cast(String*, new_object(need, TYPE_STRING, alloc));
-    inst->len    = len;
-    return inst;
+    String *s = cast(String*, new_object(string_size(len + 1), TYPE_STRING, al));
+    s->len    = len;
+    return s;
 }
 
 // Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
-void free_string(String *self, Alloc *alloc)
+void free_string(String *s, struct lulu_Alloc *al)
 {
-    free_pointer(self, string_size(self->len + 1), alloc);
+    free_pointer(s, string_size(s->len + 1), al);
 }
 
-static void build_string(String *self, StrView view)
+static void build_string(String *s, StrView sv)
 {
-    char   *end   = self->data; // For loop counter may skip.
+    char   *end   = s->data; // For loop counter may skip.
     int     skips = 0;          // Number escape characters emitted.
     char    prev  = 0;
 
-    for (const char *ptr = view.begin; ptr < view.end; ptr++) {
+    for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
         char ch = *ptr;
         // Handle `"\\"` appropriately.
         if (ch == '\\' && prev != '\\') {
@@ -95,78 +94,78 @@ static void build_string(String *self, StrView view)
         }
         end++;
     }
-    *end      = '\0';
-    self->len = view.len - skips;
+    *end   = '\0';
+    s->len = sv.len - skips;
 }
 
-static void end_string(String *self, uint32_t hash)
+static void end_string(String *s, uint32_t hash)
 {
-    self->data[self->len] = '\0';
-    self->hash            = hash;
+    s->data[s->len] = '\0';
+    s->hash         = hash;
 }
 
-static String *copy_string_or_rstring(VM *vm, StrView view, bool israw)
+static String *copy_string_or_rstring(VM *vm, StrView sv, bool israw)
 {
-    Alloc   *alloc    = &vm->alloc;
-    uint32_t hash     = (israw) ? hash_rstring(view) : hash_string(view);
-    String  *interned = find_interned(vm, view, hash);
+    Alloc   *al    = &vm->alloc;
+    uint32_t hash  = (israw) ? hash_rstring(sv) : hash_string(sv);
+    String  *found = find_interned(vm, sv, hash);
 
-    // Is this string already interned?
-    if (interned != NULL) {
-        return interned;
+    // Is this string already found?
+    if (found != NULL) {
+        return found;
     }
 
-    String *inst = new_string(view.len, alloc);
+    String *s = new_string(sv.len, al);
     if (israw) {
-        memcpy(inst->data, view.begin, view.len);
+        memcpy(s->data, sv.begin, sv.len);
     } else {
-        build_string(inst, view);
+        build_string(s, sv);
     }
-    end_string(inst, hash);
+    end_string(s, hash);
 
-    // If we have escapes, are we really REALLY sure this isn't interned?
-    if (inst->len != view.len) {
-        interned = find_interned(vm, make_strview(inst->data, inst->len), hash);
-        if (interned != NULL) {
-            remove_object(&vm->objects, &inst->object);
-            free_string(inst, alloc);
-            return interned;
+    // If we have escapes, are we really REALLY sure this isn't found?
+    if (s->len != sv.len) {
+        found = find_interned(vm, make_strview(s->data, s->len), hash);
+        if (found != NULL) {
+            remove_object(&vm->objects, &s->object);
+            free_string(s, al);
+            return found;
         }
     }
-    set_interned(vm, inst);
-    return inst;
+    set_interned(vm, s);
+    return s;
 }
 
-String *copy_rstring(VM *vm, StrView view)
+String *copy_rstring(struct lulu_VM *vm, StrView sv)
 {
-    return copy_string_or_rstring(vm, view, true);
+    return copy_string_or_rstring(vm, sv, true);
 }
 
-String *copy_string(VM *vm, StrView view)
+String *copy_string(struct lulu_VM *vm, StrView sv)
 {
-    return copy_string_or_rstring(vm, view, false);
+    return copy_string_or_rstring(vm, sv, false);
 }
 
-String *concat_strings(VM *vm, int argc, const Value argv[], int len)
+String *concat_strings(struct lulu_VM *vm, int argc, const Value argv[], int len)
 {
-    Alloc  *alloc  = &vm->alloc;
-    String *inst   = new_string(len, alloc);
-    StrView view   = make_strview(inst->data, inst->len);
+    Alloc  *al     = &vm->alloc;
+    String *s      = new_string(len, al);
+    StrView sv     = make_strview(s->data, s->len);
     int     offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
     for (int i = 0; i < argc; i++) {
         const String *arg = as_string(&argv[i]);
-        memcpy(inst->data + offset, arg->data, arg->len);
+        memcpy(s->data + offset, arg->data, arg->len);
         offset += arg->len;
     }
-    end_string(inst, hash_string(view));
-    String *interned = find_interned(vm, view, inst->hash);
-    if (interned != NULL) {
-        remove_object(&vm->objects, &inst->object);
-        free_string(inst, alloc);
-        return interned;
+    end_string(s, hash_string(sv));
+    String *found = find_interned(vm, sv, s->hash);
+    if (found != NULL) {
+        remove_object(&vm->objects, &s->object);
+        free_string(s, al);
+        return found;
     }
-    set_interned(vm, inst);
-    return inst;
+    set_interned(vm, s);
+    return s;
 }

@@ -1,12 +1,7 @@
 #include "lulu.h"
-#include "chunk.h"
-#include "debug.h"
-#include "limits.h"
 #include "vm.h"
 
 #include <sysexits.h>
-
-VM global_vm = {0};
 
 static int repl(VM *vm)
 {
@@ -26,10 +21,10 @@ static int repl(VM *vm)
 
 static char *read_file(const char *file_name)
 {
-    FILE *handle = fopen(file_name, "rb");
-    char *buffer = NULL;
-    size_t file_size = 0;
-    size_t bytes_read = 0;
+    FILE   *handle     = fopen(file_name, "rb");
+    char   *buffer     = NULL;
+    size_t  file_size  = 0;
+    size_t  bytes_read = 0;
 
     if (handle == NULL) {
         logprintfln("Failed to open file '%s'.", file_name);
@@ -82,6 +77,8 @@ static int run_file(VM *vm, const char *file_name)
         return EXIT_FAILURE;
     }
 }
+
+static VM global_vm = {0};
 
 int main(int argc, const char *argv[])
 {

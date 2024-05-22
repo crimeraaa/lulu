@@ -36,47 +36,47 @@ OpInfo LULU_OPINFO[] = {
 
 static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
 
-void init_chunk(Chunk *self, const char *name)
+void init_chunk(Chunk *ck, const char *name)
 {
-    init_varray(&self->constants);
-    self->name  = name;
-    self->code  = NULL;
-    self->lines = NULL;
-    self->len   = 0;
-    self->cap   = 0;
+    init_varray(&ck->constants);
+    ck->name  = name;
+    ck->code  = NULL;
+    ck->lines = NULL;
+    ck->len   = 0;
+    ck->cap   = 0;
 }
 
-void free_chunk(Chunk *self, Alloc *alloc)
+void free_chunk(Chunk *ck, Alloc *al)
 {
-    free_varray(&self->constants, alloc);
-    free_parray(self->lines, self->len, alloc);
-    free_parray(self->code, self->len, alloc);
-    init_chunk(self, "(freed chunk)");
+    free_varray(&ck->constants, al);
+    free_parray(ck->lines, ck->len, al);
+    free_parray(ck->code, ck->len, al);
+    init_chunk(ck, "(freed chunk)");
 }
 
-void write_chunk(Chunk *self, Byte data, int line, Alloc *alloc)
+void write_chunk(Chunk *ck, Byte data, int line, Alloc *al)
 {
-    if (self->len + 1 > self->cap) {
-        int prev    = self->cap;
-        int next    = grow_capacity(prev);
-        self->code  = resize_parray(self->code,  prev, next, alloc);
-        self->lines = resize_parray(self->lines, prev, next, alloc);
-        self->cap   = next;
+    if (ck->len + 1 > ck->cap) {
+        int prev  = ck->cap;
+        int next  = grow_capacity(prev);
+        ck->code  = resize_parray(ck->code,  prev, next, al);
+        ck->lines = resize_parray(ck->lines, prev, next, al);
+        ck->cap   = next;
     }
-    self->code[self->len]  = data;
-    self->lines[self->len] = line;
-    self->len++;
+    ck->code[ck->len]  = data;
+    ck->lines[ck->len] = line;
+    ck->len++;
 }
 
-int add_constant(Chunk *self, const Value *value, Alloc *alloc)
+int add_constant(Chunk *ck, const Value *vl, Alloc *al)
 {
-    VArray *constants = &self->constants;
-    // TODO: Literally anything is faster than a linear search
-    for (int i = 0; i < constants->len; i++) {
-        if (values_equal(&constants->values[i], value)) {
+    VArray *kst = &ck->constants;
+    // TODO: Literally anything is faster than al linear search
+    for (int i = 0; i < kst->len; i++) {
+        if (values_equal(&kst->values[i], vl)) {
             return i;
         }
     }
-    write_varray(constants, value, alloc);
-    return constants->len - 1;
+    write_varray(kst, vl, al);
+    return kst->len - 1;
 }
