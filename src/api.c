@@ -180,7 +180,7 @@ void lulu_set_table(struct lulu_VM *vm, int t_offset, int k_offset, int to_pop)
     if (!is_table(t)) {
         runtime_error(vm, "index", get_typename(t));
     }
-    set_table(as_table(t), k, v, &vm->alloc);
+    set_table(as_table(t), k, v, &vm->allocator);
     popn_back(vm, to_pop);
 }
 
@@ -195,6 +195,6 @@ void lulu_get_global(struct lulu_VM *vm, const struct lulu_Value *k)
 
 void lulu_set_global(struct lulu_VM *vm, const struct lulu_Value *k)
 {
-    set_table(&vm->globals, k, poke_top(vm, -1), &vm->alloc);
+    set_table(&vm->globals, k, poke_top(vm, -1), &vm->allocator);
     pop_back(vm);
 }

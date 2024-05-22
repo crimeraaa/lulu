@@ -42,7 +42,7 @@ static void init_builtin(VM *vm)
 void init_vm(VM *vm, const char *name)
 {
     reset_stack(vm);
-    init_alloc(&vm->alloc, &allocfn, vm);
+    init_alloc(&vm->allocator, &allocfn, vm);
     init_table(&vm->globals);
     init_table(&vm->strings);
     vm->name    = name;
@@ -54,7 +54,7 @@ void init_vm(VM *vm, const char *name)
 
 void free_vm(VM *vm)
 {
-    Alloc *al = &vm->alloc;
+    Alloc *al = &vm->allocator;
     free_table(&vm->globals, al);
     free_table(&vm->strings, al);
     free_objects(vm);
@@ -133,7 +133,7 @@ static void concat_op(VM *vm, int argc, Value *argv)
 
 static ErrType run(VM *vm)
 {
-    Alloc *al  = &vm->alloc;
+    Alloc *al  = &vm->allocator;
     Chunk *ck  = vm->chunk;
     Value *kst = ck->constants.values;
 
@@ -308,14 +308,14 @@ ErrType interpret(VM *vm, const char *input)
     case ERROR_ALLOC:
         // For the default case, please ensure all calls of `longjmp` ONLY
         // ever pass an `ErrType` member.
-        free_chunk(&ck, &vm->alloc);
+        free_chunk(&ck, &vm->allocator);
         return err;
     }
     // Prep the VM
     vm->chunk = &ck;
     vm->ip    = ck.code;
     err       = run(vm);
-    free_chunk(&ck, &vm->alloc);
+    free_chunk(&ck, &vm->allocator);
     return err;
 }
 

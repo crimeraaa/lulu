@@ -105,11 +105,11 @@ typedef struct lulu_Table {
 
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
-// Writes string representation of `self` to C `stdout`.
+// Writes string representation of the given value to C `stdout`.
 void print_value(const Value *vl, bool isdebug);
 
 // See: https://www.lua.org/source/5.1/lvm.c.html#luaV_tonumber
-// Note that this will likely mutate `self`!
+// Note that this will likely mutate the value itself!
 const Value *value_tonumber(Value *vl);
 
 // Assumes `buffer` is a fixed-size array of length `MAX_TOSTRING`.

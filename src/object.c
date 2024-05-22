@@ -122,7 +122,7 @@ void write_varray(VArray *va, const Value *vl, struct lulu_Alloc *al)
 
 void set_interned(struct lulu_VM *vm, const String *s)
 {
-    Alloc *al = &vm->alloc;
+    Alloc *al = &vm->allocator;
     Table *t  = &vm->strings;
     Value  k  = make_string(s);
     Value  v  = make_boolean(true);

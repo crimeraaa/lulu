@@ -138,11 +138,11 @@ static void singleline(Lexer *ls)
 // Note this will also mutate state, so be wary of the order you call it in.
 static int get_nesting(Lexer *ls)
 {
-    int nesting = 0;
+    int lvl = 0;
     while (match_char(ls, '=')) {
-        nesting++;
+        lvl++;
     }
-    return nesting;
+    return lvl;
 }
 
 // Consume a multi-line string or comment with a known nesting level.
@@ -401,24 +401,23 @@ bad_string:
     return make_token(ls, TK_STRING);
 }
 
-static Token rstring_token(Lexer *ls, int nesting)
+static Token rstring_token(Lexer *ls, int lvl)
 {
     bool open = match_char(ls, '\n');
     if (open) {
         ls->line++;
     }
-    multiline(ls, nesting);
+    multiline(ls, lvl);
 
-    // Skip "[[" and '=' nesting, as well as "]]" and '=' - 2 for last index.
-    int     mark = nesting + open + 2;
+    // Skip "[[" and '=' lvl, as well as "]]" and '=' - 2 for last index.
+    int     mark = lvl + open + 2;
     int     len  = ls->lexeme.len - mark - 2;
     StrView sv   = make_strview(ls->lexeme.begin + mark, len);
     ls->string   = copy_rstring(ls->vm, sv);
     return make_token(ls, TK_STRING);
 }
 
-#define make_ifeq(lexer, ch, y, n) \
-    make_token(lexer, match_char(lexer, ch) ? (y) : (n))
+#define make_ifeq(ls, ch, y, n) make_token(ls, match_char(ls, ch) ? (y) : (n))
 
 Token scan_token(Lexer *ls)
 {

@@ -17,59 +17,59 @@ typedef struct {
 
 typedef struct {
     Local           locals[MAX_LOCALS];
-    Lexer          *lexer; // May be shared across multiple Compiler instances.
-    struct lulu_VM *vm;    // Track and modify parent VM state as needed.
-    Chunk          *chunk; // The current compiling chunk for this function/closure.
+    Lexer          *lexer;       // Shared across multiple Compiler instances.
+    struct lulu_VM *vm;          // Track and modify parent VM state as needed.
+    Chunk          *chunk;       // Chunk for this function/closure.
     int             stack_usage; // #stack slots being use currently.
     int             stack_total; // maximum #stack-slots used.
     int             scope_count; // How many locals are currently in scope?
-    int             scope_depth; // 0 = global, 1 = top-level, 2 = more inner, etc.
+    int             scope_depth; // 0 = global, 1 = top, 2 = more inner, etc.
     OpCode          prev_opcode; // Used to fold consecutive similar operations.
 } Compiler;
 
 // We pass a Lexer and a VM to be shared across compiler instances.
-void init_compiler(Compiler *self, Lexer *lexer, struct lulu_VM *vm);
-void end_compiler(Compiler *self);
-void compile(Compiler *self, const char *input, Chunk *chunk);
+void init_compiler(Compiler *cpl, Lexer *ls, struct lulu_VM *vm);
+void end_compiler(Compiler *cpl);
+void compile(Compiler *cpl, const char *input, Chunk *chunk);
 
-void emit_opcode(Compiler *self, OpCode op);
-void emit_oparg1(Compiler *self, OpCode op, Byte arg);
-void emit_oparg2(Compiler *self, OpCode op, Byte2 arg);
-void emit_oparg3(Compiler *self, OpCode op, Byte3 arg);
-void emit_return(Compiler *self);
-void emit_identifier(Compiler *self, const Token *ident);
+void emit_opcode(Compiler *cpl, OpCode op);
+void emit_oparg1(Compiler *cpl, OpCode op, Byte arg);
+void emit_oparg2(Compiler *cpl, OpCode op, Byte2 arg);
+void emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg);
+void emit_return(Compiler *cpl);
+void emit_identifier(Compiler *cpl, const Token *id);
 
 // Returns the index of `OP_NEWTABLE` in the bytecode. We cannot use pointers
 // due to potential invalidation when reallocating the array.
-int emit_table(Compiler *self);
-void patch_table(Compiler *self, int offset, Byte3 size);
+int emit_table(Compiler *cpl);
+void patch_table(Compiler *cpl, int offset, Byte3 size);
 
-// Returns the index of `value` in the constants table.
+// Returns the index of `v` in the constants table.
 // Will throw if our current number of constants exceeds `MAX_CONSTS`.
-int make_constant(Compiler *self, const Value *value);
-void emit_constant(Compiler *self, const Value *value);
-void emit_variable(Compiler *self, const Token *ident);
+int make_constant(Compiler *cpl, const Value *vl);
+void emit_constant(Compiler *cpl, const Value *vl);
+void emit_variable(Compiler *cpl, const Token *id);
 
 // Intern the `String*` for `name` so we can easily look it up later.
-int identifier_constant(Compiler *self, const Token *ident);
+int identifier_constant(Compiler *cpl, const Token *id);
 
-void begin_scope(Compiler *self);
-void end_scope(Compiler *self);
+void begin_scope(Compiler *cpl);
+void end_scope(Compiler *cpl);
 
 // Analogous to `defineVariable()` in the book, but for a comma-separated list
 // form `'local' identifier [, identifier]* [';']`.
 // We considered "defined" local variables to be ready for reading/writing.
-void define_locals(Compiler *self, int count);
+void define_locals(Compiler *cpl, int count);
 
 // Analogous to `declareVariable()` in the book, but only for Lua locals.
 // Assumes we just consumed a local variable identifier token.
-void init_local(Compiler *self);
+void init_local(Compiler *cpl);
 
 // Initializes the current top of the locals array.
 // Returns index of newly initialized local into the locals array.
-void add_local(Compiler *self, const Token *ident);
+void add_local(Compiler *cpl, const Token *id);
 
 // Returns index of a local variable or -1 if assumed to be global.
-int resolve_local(Compiler *self, const Token *ident);
+int resolve_local(Compiler *cpl, const Token *id);
 
 #endif /* LULU_COMPILER_H */

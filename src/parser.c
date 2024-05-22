@@ -6,7 +6,7 @@
 
 // Forward declarations to allow recursive descent parsing.
 static ParseRule *get_parserule(TkType key);
-static void parse_precedence(Compiler *self, Precedence prec);
+static void parse_precedence(Compiler *cpl, Precedence prec);
 
 /**
  * @brief   In Lua, globals aren't declared, but rather assigned as needed.
@@ -23,7 +23,7 @@ static void parse_precedence(Compiler *self, Precedence prec);
  *
  * @note    By themselves, statements should have zero net stack effect.
  */
-static void statement(Compiler *self);
+static void statement(Compiler *cpl);
 
 /**
  * @brief   By itself, always results in exactly 1 value being pushed.
@@ -32,20 +32,20 @@ static void statement(Compiler *self);
  *          disallow C-style constructs like `print(x = 13)`, which is usually
  *          intended to be `print(x == 13)`.
  */
-static void expression(Compiler *self);
+static void expression(Compiler *cpl);
 
-static int parse_exprlist(Compiler *self)
+static int parse_exprlist(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
+    Lexer *ls    = cpl->lexer;
     int    exprs = 0;
     do {
-        expression(self);
+        expression(cpl);
         exprs += 1;
-    } while (match_token(lexer, TK_COMMA));
+    } while (match_token(ls, TK_COMMA));
     return exprs;
 }
 
-static void adjust_exprlist(Compiler *self, int idents, int exprs)
+static void adjust_exprlist(Compiler *cpl, int idents, int exprs)
 {
     if (exprs == idents) {
         return;
@@ -53,10 +53,10 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs)
 
     if (exprs > idents) {
         // Discard extra expressions.
-        emit_oparg1(self, OP_POP, exprs - idents);
+        emit_oparg1(cpl, OP_POP, exprs - idents);
     } else {
         // Assign nils to remaining identifiers.
-        emit_oparg1(self, OP_NIL, idents - exprs);
+        emit_oparg1(cpl, OP_NIL, idents - exprs);
     }
 }
 
@@ -64,9 +64,9 @@ static void adjust_exprlist(Compiler *self, int idents, int exprs)
 
 // INFIX ------------------------------------------------------------------ {{{2
 
-static OpCode get_binop(TkType optype)
+static OpCode get_binop(TkType type)
 {
-    switch (optype) {
+    switch (type) {
     case TK_PLUS:    return OP_ADD;
     case TK_DASH:    return OP_SUB;
     case TK_STAR:    return OP_MUL;
@@ -85,30 +85,30 @@ static OpCode get_binop(TkType optype)
 
 // Assumes we just consumed a binary operator as a possible infix expression,
 // and that the left-hand side has been fully compiled.
-static void binary(Compiler *self)
+static void binary(Compiler *cpl)
 {
-    Lexer  *lexer  = self->lexer;
-    TkType  type = lexer->consumed.type;
+    Lexer  *ls   = cpl->lexer;
+    TkType  type = ls->consumed.type;
 
     // For exponentiation enforce right-associativity.
-    parse_precedence(self, get_parserule(type)->prec + (type != TK_CARET));
+    parse_precedence(cpl, get_parserule(type)->precedence + (type != TK_CARET));
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (type) {
     case TK_NEQ:
-        emit_opcode(self, OP_EQ);
-        emit_opcode(self, OP_NOT);
+        emit_opcode(cpl, OP_EQ);
+        emit_opcode(cpl, OP_NOT);
         break;
     case TK_GT:
-        emit_opcode(self, OP_LE);
-        emit_opcode(self, OP_NOT);
+        emit_opcode(cpl, OP_LE);
+        emit_opcode(cpl, OP_NOT);
         break;
     case TK_GE:
-        emit_opcode(self, OP_LT);
-        emit_opcode(self, OP_NOT);
+        emit_opcode(cpl, OP_LT);
+        emit_opcode(cpl, OP_NOT);
         break;
     default:
-        emit_opcode(self, get_binop(type));
+        emit_opcode(cpl, get_binop(type));
         break;
     }
 }
@@ -123,30 +123,30 @@ static void binary(Compiler *self)
  *          We do this iteratively which is (slightly) better than constantly
  *          allocating stack frames for recursive calls.
  */
-static void concat(Compiler *self)
+static void concat(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
-    int argc = 1;
+    Lexer *ls   = cpl->lexer;
+    int    argc = 1;
     do {
         if (argc + 1 > MAX_BYTE) {
-            lexerror_at_consumed(lexer, "More than <MAX_BYTE> concatentations");
+            lexerror_at_consumed(ls, "More than <MAX_BYTE> concatentations");
         }
-        parse_precedence(self, PREC_CONCAT + 1);
+        parse_precedence(cpl, PREC_CONCAT + 1);
         argc += 1;
-    } while (match_token(lexer, TK_CONCAT));
-    emit_oparg1(self, OP_CONCAT, argc);
+    } while (match_token(ls, TK_CONCAT));
+    emit_oparg1(cpl, OP_CONCAT, argc);
 }
 
 // 2}}} ------------------------------------------------------------------------
 
 // PREFIX ----------------------------------------------------------------- {{{2
 
-static void literal(Compiler *self)
+static void literal(Compiler *cpl)
 {
-    switch (self->lexer->consumed.type) {
-    case TK_NIL:   emit_oparg1(self, OP_NIL, 1); break;
-    case TK_TRUE:  emit_opcode(self, OP_TRUE);   break;
-    case TK_FALSE: emit_opcode(self, OP_FALSE);  break;
+    switch (cpl->lexer->consumed.type) {
+    case TK_NIL:   emit_oparg1(cpl, OP_NIL, 1); break;
+    case TK_TRUE:  emit_opcode(cpl, OP_TRUE);   break;
+    case TK_FALSE: emit_opcode(cpl, OP_FALSE);  break;
     default:
         // Should not happen
         break;
@@ -154,122 +154,122 @@ static void literal(Compiler *self)
 }
 
 // Assumes we just consumed a '('.
-static void grouping(Compiler *self)
+static void grouping(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
+    Lexer *ls = cpl->lexer;
 
     // Hacky to create a new scope but lets us error at too many C-facing calls.
     // See: https://www.lua.org/source/5.1/lparser.c.html#enterlevel
-    begin_scope(self);
-    expression(self);
-    expect_token(lexer, TK_RPAREN, NULL);
-    end_scope(self);
+    begin_scope(cpl);
+    expression(cpl);
+    expect_token(ls, TK_RPAREN, NULL);
+    end_scope(cpl);
 }
 
 // Assumes the lexer successfully consumed and encoded a number literal.
-static void number(Compiler *self)
+static void number(Compiler *cpl)
 {
-    Lexer *lexer   = self->lexer;
-    Value  wrapper = make_number(lexer->number);
-    emit_constant(self, &wrapper);
+    Lexer *ls = cpl->lexer;
+    Value  v  = make_number(ls->number);
+    emit_constant(cpl, &v);
 }
 
-static void string(Compiler *self)
+static void string(Compiler *cpl)
 {
-    Lexer *lexer   = self->lexer;
-    Value  wrapper = make_string(lexer->string);
-    emit_constant(self, &wrapper);
+    Lexer *ls = cpl->lexer;
+    Value  v  = make_string(ls->string);
+    emit_constant(cpl, &v);
 }
 
 // Assumes we consumed a `'['` or an identifier representing a table field.
-static bool parse_field(Compiler *self, bool assigning)
+static bool parse_field(Compiler *cpl, bool assigning)
 {
-    Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
-    switch (token->type) {
+    Lexer *ls = cpl->lexer;
+    Token *tk = &ls->consumed;
+    switch (tk->type) {
     case TK_LBRACKET:
-        expression(self);
-        expect_token(lexer, TK_RBRACKET, NULL);
+        expression(cpl);
+        expect_token(ls, TK_RBRACKET, NULL);
         break;
     case TK_PERIOD:
         if (assigning) {
             return false;
         }
-        expect_token(lexer, TK_IDENT, NULL); // Fall through
+        expect_token(ls, TK_IDENT, NULL); // Fall through
     case TK_IDENT:
-        emit_identifier(self, token);
+        emit_identifier(cpl, tk);
         break;
     default:
         break;
     }
     if (!assigning) {
-        emit_opcode(self, OP_GETTABLE);
+        emit_opcode(cpl, OP_GETTABLE);
     }
     return true;
 }
 
-static void resolve_variable(Compiler *self, const Token *ident)
+static void resolve_variable(Compiler *cpl, const Token *id)
 {
-    Lexer *lexer = self->lexer;
-    emit_variable(self, ident);
-    while (match_token_any(lexer, TK_LBRACKET, TK_PERIOD)) {
-        parse_field(self, false);
+    Lexer *ls = cpl->lexer;
+    emit_variable(cpl, id);
+    while (match_token_any(ls, TK_LBRACKET, TK_PERIOD)) {
+        parse_field(cpl, false);
     }
 }
 
-static void parse_ctor(Compiler *self, int t_idx, int *count)
+static void parse_ctor(Compiler *cpl, int t_idx, int *count)
 {
-    Lexer *lexer = self->lexer;
+    Lexer *ls = cpl->lexer;
 
-    if (match_token(lexer, TK_IDENT)) {
-        Token ident = lexer->consumed; // Save as lexer might update.
-        int   k_idx = self->stack_usage;
-        if (match_token(lexer, TK_ASSIGN)) {
-            emit_identifier(self, &ident);
-            expression(self);
-            emit_oparg3(self, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+    if (match_token(ls, TK_IDENT)) {
+        Token id    = ls->consumed; // Copy by value as lexer might update.
+        int   k_idx = cpl->stack_usage;
+        if (match_token(ls, TK_ASSIGN)) {
+            emit_identifier(cpl, &id);
+            expression(cpl);
+            emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
         } else {
-            resolve_variable(self, &ident);
+            resolve_variable(cpl, &id);
             *count += 1;
         }
-    } else if (match_token(lexer, TK_LBRACKET)) {
-        int k_idx = self->stack_usage;
+    } else if (match_token(ls, TK_LBRACKET)) {
+        int k_idx = cpl->stack_usage;
 
-        parse_field(self, true);
-        expect_token(lexer, TK_ASSIGN, "to assign table field");
-        expression(self);
+        parse_field(cpl, true);
+        expect_token(ls, TK_ASSIGN, "to assign table field");
+        expression(cpl);
 
         // Always pop the key and value assigning in a table constructor.
-        emit_oparg3(self, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+        emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
     } else {
-        expression(self);
+        expression(cpl);
         *count += 1;
     }
-    match_token(lexer, TK_COMMA);
+    match_token(ls, TK_COMMA);
 }
 
-static void table(Compiler *self)
+static void table(Compiler *cpl)
 {
-    Lexer *lexer   = self->lexer;
-    int    t_idx   = self->stack_usage;
-    int    total   = 0; // Array length plus hashmap length.
-    int    count   = 0; // Array portion length.
-    int    offset  = emit_table(self);
-    while (!match_token(lexer, TK_RCURLY)) {
-        parse_ctor(self, t_idx, &count);
+    Lexer *ls     = cpl->lexer;
+    int    t_idx  = cpl->stack_usage;
+    int    total  = 0; // Array length plus hashmap length.
+    int    count  = 0; // Array portion length.
+    int    offset = emit_table(cpl);
+    while (!match_token(ls, TK_RCURLY)) {
+        parse_ctor(cpl, t_idx, &count);
         total += 1;
     }
 
     if (count > 0) {
         if (count + 1 > MAX_BYTE3) {
-            lexerror_at_consumed(lexer,
+            lexerror_at_consumed(ls,
                 "More than <MAX_BYTE3> array elements in table constructor");
         }
-        emit_oparg2(self, OP_SETARRAY, encode_byte2(t_idx, count));
+        emit_oparg2(cpl, OP_SETARRAY, encode_byte2(t_idx, count));
     }
 
     if (total > 0) {
-        patch_table(self, offset, total);
+        patch_table(cpl, offset, total);
     }
 }
 
@@ -280,11 +280,11 @@ static void table(Compiler *self)
  * @note    Past the first lexeme, assigning of variables is not allowed in Lua.
  *          So this function can only ever perform get operations.
  */
-static void variable(Compiler *self)
+static void variable(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
-    Token *ident = &lexer->consumed;
-    resolve_variable(self, ident);
+    Lexer *ls = cpl->lexer;
+    Token *id = &ls->consumed;
+    resolve_variable(cpl, id);
 }
 
 static OpCode get_unop(TkType type)
@@ -300,19 +300,19 @@ static OpCode get_unop(TkType type)
 }
 
 // Assumes we just consumed an unary operator.
-static void unary(Compiler *self)
+static void unary(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
-    TkType type  = lexer->consumed.type; // Save in stack-frame memory.
-    parse_precedence(self, PREC_UNARY);
-    emit_opcode(self, get_unop(type));
+    Lexer *ls   = cpl->lexer;
+    TkType type = ls->consumed.type; // Save in stack-frame memory.
+    parse_precedence(cpl, PREC_UNARY);
+    emit_opcode(cpl, get_unop(type));
 }
 
 // 2}}} ------------------------------------------------------------------------
 
-static void expression(Compiler *self)
+static void expression(Compiler *cpl)
 {
-    parse_precedence(self, PREC_ASSIGN + 1);
+    parse_precedence(cpl, PREC_ASSIGN + 1);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -321,22 +321,22 @@ static void expression(Compiler *self)
 
 // ASSIGNMENTS ------------------------------------------------------------ {{{2
 
-static void init_assignment(Assignment *self, Assignment *prev, AssignType type)
+static void init_assignment(Assignment *cpl, Assignment *prev, AssignType type)
 {
-    self->prev = prev;
-    self->type = type;
-    self->arg  = -1;
+    cpl->prev = prev;
+    cpl->type = type;
+    cpl->arg  = -1;
 }
 
-static void set_assignment(Assignment *self, AssignType type, int arg)
+static void set_assignment(Assignment *cpl, AssignType type, int arg)
 {
-    self->type = type;
-    self->arg  = arg;
+    cpl->type = type;
+    cpl->arg  = arg;
 }
 
-static int count_assignments(Assignment *self)
+static int count_assignments(Assignment *cpl)
 {
-    Assignment *node = self;
+    Assignment *node = cpl;
     int         count = 0;
     while (node != NULL) {
         node   = node->prev;
@@ -345,38 +345,38 @@ static int count_assignments(Assignment *self)
     return count;
 }
 
-static void emit_assignment_tail(Compiler *self, Assignment *list)
+static void emit_assignment_tail(Compiler *cpl, Assignment *list)
 {
     if (list == NULL) {
         return;
     }
     switch (list->type) {
     case ASSIGN_GLOBAL:
-        emit_oparg3(self, OP_SETGLOBAL, list->arg);
+        emit_oparg3(cpl, OP_SETGLOBAL, list->arg);
         break;
     case ASSIGN_LOCAL:
-        emit_oparg1(self, OP_SETLOCAL, list->arg);
+        emit_oparg1(cpl, OP_SETLOCAL, list->arg);
         break;
     case ASSIGN_TABLE:
         // For assignments we assume the key is always right after the table.
-        emit_oparg3(self, OP_SETTABLE, encode_byte3(list->arg, list->arg + 1, 1));
+        emit_oparg3(cpl, OP_SETTABLE, encode_byte3(list->arg, list->arg + 1, 1));
         break;
     }
-    emit_assignment_tail(self, list->prev);
+    emit_assignment_tail(cpl, list->prev);
 
     // After recursion, clean up stack if we emitted table fields as they cannot
     // be implicitly popped due to SETTABLE being a VAR_DELTA pop.
     if (list->type == ASSIGN_TABLE) {
-        emit_oparg1(self, OP_POP, 2);
+        emit_oparg1(cpl, OP_POP, 2);
     }
 }
 
-static void emit_assignment(Compiler *self, Assignment *list)
+static void emit_assignment(Compiler *cpl, Assignment *list)
 {
     int idents = count_assignments(list);
-    int exprs  = parse_exprlist(self);
-    adjust_exprlist(self, idents, exprs);
-    emit_assignment_tail(self, list);
+    int exprs  = parse_exprlist(cpl);
+    adjust_exprlist(cpl, idents, exprs);
+    emit_assignment_tail(cpl, list);
 }
 
 /**
@@ -395,80 +395,80 @@ static void emit_assignment(Compiler *self, Assignment *list)
  *          need to track where in the stack the table occurs so the SETTABLE
  *          instruction knows where to look.
  */
-static void discharge_assignment(Compiler *self, Assignment *list, bool isfield)
+static void discharge_assignment(Compiler *cpl, Assignment *list, bool isfield)
 {
-    Lexer *lexer = self->lexer;
+    Lexer *ls = cpl->lexer;
 
     // Get the table itself if this is the first token in an lvalue, or if this
     // is part of a recursive call we need GETTABLE to push a subtable.
     switch (list->type) {
     case ASSIGN_GLOBAL:
-        emit_oparg3(self, OP_GETGLOBAL, list->arg);
+        emit_oparg3(cpl, OP_GETGLOBAL, list->arg);
         break;
     case ASSIGN_LOCAL:
-        emit_oparg1(self, OP_GETLOCAL,  list->arg);
+        emit_oparg1(cpl, OP_GETLOCAL,  list->arg);
         break;
     case ASSIGN_TABLE:
-        emit_opcode(self, OP_GETTABLE);
+        emit_opcode(cpl, OP_GETTABLE);
         break;
     }
 
     // Emit the key immediately. In recursive calls we'll emit another GETTABLE,
     // otherwise we'll know the key is +1 after the table when we emit SETTABLE.
     if (isfield) {
-        Token *ident = &lexer->consumed;
-        expect_token(lexer, TK_IDENT, "after '.'");
-        emit_identifier(self, ident);
+        Token *id = &ls->consumed;
+        expect_token(ls, TK_IDENT, "after '.'");
+        emit_identifier(cpl, id);
     } else {
-        expression(self);
-        expect_token(lexer, TK_RBRACKET, NULL);
+        expression(cpl);
+        expect_token(ls, TK_RBRACKET, NULL);
     }
 
     // stack_usage - 0 is top, -1 is the key we emitted and -2 is the table.
-    set_assignment(list, ASSIGN_TABLE, self->stack_usage - 2);
+    set_assignment(list, ASSIGN_TABLE, cpl->stack_usage - 2);
 }
 
 // Assumes we consumed an identifier as the first element of a statement.
-static void identifier_statement(Compiler *self, Assignment *elem)
+static void identifier_statement(Compiler *cpl, Assignment *list)
 {
-    Lexer *lexer = self->lexer;
-    Token *ident = &lexer->consumed;
+    Lexer *ls = cpl->lexer;
+    Token *id = &ls->consumed;
 
-    if (elem->type != ASSIGN_TABLE) {
-        int  arg     = resolve_local(self, ident);
+    if (list->type != ASSIGN_TABLE) {
+        int  arg     = resolve_local(cpl, id);
         bool islocal = (arg != -1);
         if (!islocal) {
-            arg = identifier_constant(self, ident);
+            arg = identifier_constant(cpl, id);
         }
-        set_assignment(elem, islocal ? ASSIGN_LOCAL : ASSIGN_GLOBAL, arg);
+        set_assignment(list, islocal ? ASSIGN_LOCAL : ASSIGN_GLOBAL, arg);
     }
 
-    switch (lexer->lookahead.type) {
+    switch (ls->lookahead.type) {
     case TK_PERIOD: // Fall through
     case TK_LBRACKET:
-        // Emit the table up to this point then mark `elem` as a table.
-        next_token(lexer);
-        discharge_assignment(self, elem, lexer->consumed.type == TK_PERIOD);
-        identifier_statement(self, elem);
+        // Emit the table up to this point then mark `list` as a table.
+        next_token(ls);
+        discharge_assignment(cpl, list, ls->consumed.type == TK_PERIOD);
+        identifier_statement(cpl, list);
         break;
     case TK_ASSIGN:
-        next_token(lexer);
-        emit_assignment(self, elem);
+        next_token(ls);
+        emit_assignment(cpl, list);
         break;
     case TK_LPAREN:
-        lexerror_at_consumed(lexer, "Function calls not yet implemented");
+        lexerror_at_consumed(ls, "Function calls not yet implemented");
         break;
     case TK_COMMA: {
         // Recursive call so chain elements together.
         Assignment next;
-        init_assignment(&next, elem, ASSIGN_GLOBAL);
-        next_token(lexer);
-        expect_token(lexer, TK_IDENT, "after ','");
-        identifier_statement(self, &next);
+        init_assignment(&next, list, ASSIGN_GLOBAL);
+        next_token(ls);
+        expect_token(ls, TK_IDENT, "after ','");
+        identifier_statement(cpl, &next);
         break;
     }
     default:
-        lexerror_at_consumed(lexer, "Unexpected token in identifier statement");
+        lexerror_at_consumed(ls, "Unexpected token in identifier statement");
     }
 }
 
@@ -476,53 +476,53 @@ static void identifier_statement(Compiler *self, Assignment *elem)
 
 // Assumes we just consumed the `print` keyword and are now ready to compile a
 // stream of expressions to act as arguments.
-static void print_statement(Compiler *self)
+static void print_statement(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
-    bool   open  = match_token(lexer, TK_LPAREN);
-    int    argc  = parse_exprlist(self);
+    Lexer *ls   = cpl->lexer;
+    bool   open = match_token(ls, TK_LPAREN);
+    int    argc = parse_exprlist(cpl);
     if (open) {
-        expect_token(lexer, TK_RPAREN, NULL);
+        expect_token(ls, TK_RPAREN, NULL);
     }
-    emit_oparg1(self, OP_PRINT, argc);
+    emit_oparg1(cpl, OP_PRINT, argc);
 }
 
-static void block(Compiler *self)
+static void block(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
-    while (!check_token_any(lexer, TK_END, TK_EOF)) {
-        declaration(self);
+    Lexer *ls = cpl->lexer;
+    while (!check_token_any(ls, TK_END, TK_EOF)) {
+        declaration(cpl);
     }
-    expect_token(lexer, TK_END, "after block");
+    expect_token(ls, TK_END, "after block");
 }
 
 // 3}}} ------------------------------------------------------------------------
 
 // 2}}} ------------------------------------------------------------------------
 
-static void statement(Compiler *self)
+static void statement(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
-    switch (lexer->lookahead.type) {
+    Lexer *ls = cpl->lexer;
+    switch (ls->lookahead.type) {
     case TK_IDENT: {
-        Assignment ident;
-        init_assignment(&ident, NULL, ASSIGN_GLOBAL); // Ensure no garbage.
-        next_token(lexer);
-        identifier_statement(self, &ident);
+        Assignment list;
+        init_assignment(&list, NULL, ASSIGN_GLOBAL); // Ensure no garbage.
+        next_token(ls);
+        identifier_statement(cpl, &list);
         break;
     }
     case TK_DO:
-        next_token(lexer);
-        begin_scope(self);
-        block(self);
-        end_scope(self);
+        next_token(ls);
+        begin_scope(cpl);
+        block(cpl);
+        end_scope(cpl);
         break;
     case TK_PRINT:
-        next_token(lexer);
-        print_statement(self);
+        next_token(ls);
+        print_statement(cpl);
         break;
     default:
-        lexerror_at_lookahead(lexer, "Expected a statement");
+        lexerror_at_lookahead(ls, "Expected a statement");
         break;
     }
 }
@@ -533,12 +533,12 @@ static void statement(Compiler *self)
 
 // Declare a local variable by initializing and adding it to the current scope.
 // Intern a local variable name. Analogous to `parseVariable()` in the book.
-static void parse_local(Compiler *self)
+static void parse_local(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
-    Token *token = &lexer->consumed;
-    init_local(self);
-    identifier_constant(self, token); // We don't need the index here.
+    Lexer *ls = cpl->lexer;
+    Token *id = &ls->consumed;
+    init_local(cpl);
+    identifier_constant(cpl, id); // We don't need the index here.
 }
 
 /**
@@ -553,39 +553,39 @@ static void parse_local(Compiler *self)
  *          the stack without popping it. We already keep track of info like the
  *          variable name.
  */
-static void declare_locals(Compiler *self)
+static void declare_locals(Compiler *cpl)
 {
-    Lexer *lexer  = self->lexer;
+    Lexer *ls     = cpl->lexer;
     int    idents = 0;
     int    exprs  = 0;
 
     do {
-        expect_token(lexer, TK_IDENT, NULL);
-        parse_local(self);
+        expect_token(ls, TK_IDENT, NULL);
+        parse_local(cpl);
         idents += 1;
-    } while (match_token(lexer, TK_COMMA));
+    } while (match_token(ls, TK_COMMA));
 
-    if (match_token(lexer, TK_ASSIGN)) {
-        exprs = parse_exprlist(self);
+    if (match_token(ls, TK_ASSIGN)) {
+        exprs = parse_exprlist(cpl);
     }
-    adjust_exprlist(self, idents, exprs);
-    define_locals(self, idents);
+    adjust_exprlist(cpl, idents, exprs);
+    define_locals(cpl, idents);
 }
 
-void declaration(Compiler *self)
+void declaration(Compiler *cpl)
 {
-    Lexer *lexer = self->lexer;
-    switch (lexer->lookahead.type) {
+    Lexer *ls = cpl->lexer;
+    switch (ls->lookahead.type) {
     case TK_LOCAL:
-        next_token(lexer);
-        declare_locals(self);
+        next_token(ls);
+        declare_locals(cpl);
         break;
     default:
-        statement(self);
+        statement(cpl);
         break;
     }
     // Lua allows 1 semicolon to terminate statements, but no more.
-    match_token(lexer, TK_SEMICOL);
+    match_token(ls, TK_SEMICOL);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -594,29 +594,32 @@ void declaration(Compiler *self)
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
 // expressions following it.
-static void parse_precedence(Compiler *self, Precedence prec)
+static void parse_precedence(Compiler *cpl, Precedence prec)
 {
-    Lexer  *lexer    = self->lexer;
-    Token  *token    = &lexer->lookahead; // Updated as lexer moves along
-    ParseFn prefixfn = get_parserule(token->type)->prefixfn;
+    Lexer     *ls = cpl->lexer;
+    Token     *tk = &ls->lookahead; // NOTE: Is updated as lexer moves along!
+    ParseRule *pr = get_parserule(tk->type);
 
-    next_token(lexer);
-    if (prefixfn == NULL) {
-        lexerror_at_consumed(lexer, "Expected a prefix expression");
+    if (pr->prefixfn == NULL) {
+        lexerror_at_consumed(ls, "Expected a prefix expression");
         return;
     }
-    prefixfn(self);
+    next_token(ls);
+    pr->prefixfn(cpl);
 
-    // Is the token to our right something we can further compile?
-    while (prec <= get_parserule(token->type)->prec) {
-        ParseFn infixfn = get_parserule(token->type)->infixfn;
-        next_token(lexer);
-        infixfn(self);
+    for (;;) {
+        pr = get_parserule(tk->type);
+        // If we can't further compile the token to our right, end the loop.
+        if (!(prec <= pr->precedence)) {
+            break;
+        }
+        next_token(ls);
+        pr->infixfn(cpl);
     }
 
     // This function can never consume the `=` token.
-    if (match_token(lexer, TK_ASSIGN)) {
-        lexerror_at_lookahead(lexer, "Invalid assignment target");
+    if (match_token(ls, TK_ASSIGN)) {
+        lexerror_at_lookahead(ls, "Invalid assignment target");
     }
 }
 

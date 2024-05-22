@@ -106,7 +106,7 @@ static void end_string(String *s, uint32_t hash)
 
 static String *copy_string_or_rstring(VM *vm, StrView sv, bool israw)
 {
-    Alloc   *al    = &vm->alloc;
+    Alloc   *al    = &vm->allocator;
     uint32_t hash  = (israw) ? hash_rstring(sv) : hash_string(sv);
     String  *found = find_interned(vm, sv, hash);
 
@@ -148,7 +148,7 @@ String *copy_string(struct lulu_VM *vm, StrView sv)
 
 String *concat_strings(struct lulu_VM *vm, int argc, const Value argv[], int len)
 {
-    Alloc  *al     = &vm->alloc;
+    Alloc  *al     = &vm->allocator;
     String *s      = new_string(len, al);
     StrView sv     = make_strview(s->data, s->len);
     int     offset = 0;

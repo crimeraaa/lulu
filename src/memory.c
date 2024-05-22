@@ -50,7 +50,7 @@ static void free_object(Object *object, Alloc *al)
 
 void free_objects(struct lulu_VM *vm)
 {
-    Alloc  *al   = &vm->alloc;
+    Alloc  *al   = &vm->allocator;
     Object *head = vm->objects;
     while (head != NULL) {
         Object *next = head->next;
