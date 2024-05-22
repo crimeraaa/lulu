@@ -20,8 +20,6 @@ typedef struct lulu_VM {
     jmp_buf     errorjmp;  // Used for error-handling (kinda) like C++ exceptions.
 } VM;
 
-#define popn_back(vm, n)    ((vm)->top -= (n))
-#define pop_back(vm)        (popn_back(vm, 1))
 #define update_top(vm, n)   ((vm)->top += (n))
 #define incr_top(vm)        update_top(vm, 1)
 #define poke_top(vm, n)     ((vm)->top + (n))

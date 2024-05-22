@@ -586,18 +586,13 @@ bool match_token_any(Lexer *ls, const TkType types[])
 void lexerror_at(Lexer *ls, const Token *tk, const char *info)
 {
     VM *vm = ls->vm;
-    lulu_push_fstring(vm, "%s:%i: %s at ", ls->name, ls->line, info);
     if (tk->type == TK_EOF) {
-        lulu_push_literal(vm, "<eof>\n");
+        lulu_push_literal(vm, "at <eof>");
     } else {
-        const char *s;
         lulu_push_lcstring(vm, tk->view.begin, tk->view.len);
-        s = lulu_tostring(vm, -1);
-        pop_back(vm);
-        lulu_push_fstring(vm, "\'%s\'\n", s);
+        lulu_push_fstring(vm, "near \'%s\'", lulu_to_cstring(vm, -1));
     }
-    lulu_concat(vm, 2);
-    longjmp(vm->errorjmp, ERROR_COMPTIME);
+    lulu_comptime_error(vm, ls->line, info, lulu_to_cstring(vm, -1));
 }
 
 void lexerror_at_lookahead(Lexer *ls, const char *info)

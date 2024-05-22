@@ -16,8 +16,8 @@ static int repl(VM *vm)
         switch (interpret(vm, line)) {
         case ERROR_NONE:     break;
         case ERROR_COMPTIME: // Fall through.
-        case ERROR_RUNTIME:  printf("%s", lulu_tostring(vm, -1));
-                             pop_back(vm);
+        case ERROR_RUNTIME:  printf("%s", lulu_to_cstring(vm, -1));
+                             lulu_pop(vm, 1);
                              break;
         case ERROR_ALLOC:    return 1;
         }
@@ -73,8 +73,8 @@ static int run_file(VM *vm, const char *file_name)
     switch (res) {
     case ERROR_NONE:    return 0;
     case ERROR_COMPTIME: // fall through
-    case ERROR_RUNTIME: printf("%s", lulu_tostring(vm, -1));
-                        pop_back(vm);
+    case ERROR_RUNTIME: printf("%s", lulu_to_cstring(vm, -1));
+                        lulu_pop(vm, 1);
     case ERROR_ALLOC:   return EX_SOFTWARE;
     }
     return EXIT_FAILURE; // Should be unreachable.

@@ -137,7 +137,7 @@ static ErrType run(VM *vm)
     } else {                                                                   \
         tm_fn(vm, a, b, tm);                                                   \
     }                                                                          \
-    pop_back(vm);                                                              \
+    lulu_pop(vm, 1);                                                           \
 }
 
 #define arith_op_or_tm(op_fn, tm) \
@@ -174,7 +174,7 @@ static ErrType run(VM *vm)
             lulu_push_boolean(vm, false);
             break;
         case OP_POP:
-            popn_back(vm, read_byte());
+            lulu_pop(vm, cast(int, read_byte()));
             break;
         case OP_NEWTABLE:
             lulu_push_table(vm, new_table(read_byte3(), al));
@@ -190,7 +190,7 @@ static ErrType run(VM *vm)
             break;
         case OP_SETLOCAL:
             vm->base[read_byte()] = *poke_top(vm, -1);
-            pop_back(vm);
+            lulu_pop(vm, 1);
             break;
         case OP_SETGLOBAL:
             lulu_set_global(vm, read_string());
@@ -209,14 +209,14 @@ static ErrType run(VM *vm)
                 Value *v = poke_base(vm, t_idx + i);
                 set_table(t, &k, v, al);
             }
-            popn_back(vm, count);
+            lulu_pop(vm, count);
             break;
         }
         case OP_EQ: {
             Value *a = poke_top(vm, -2);
             Value *b = poke_top(vm, -1);
             setv_boolean(a, values_equal(a, b));
-            pop_back(vm);
+            lulu_pop(vm, 1);
             break;
         }
         case OP_LT:  compare_op_or_tm(num_lt, TM_LT); break;
@@ -241,11 +241,9 @@ static ErrType run(VM *vm)
             }
             break;
         }
-        case OP_NOT: {
-            Value *arg = poke_top(vm, -1);
-            setv_boolean(arg, is_falsy(arg));
+        case OP_NOT:
+            lulu_to_boolean(vm, -1);
             break;
-        }
         case OP_LEN: {
             // TODO: Separate array segment from hash segment of tables.
             Value *arg = poke_top(vm, -1);
@@ -258,10 +256,10 @@ static ErrType run(VM *vm)
         case OP_PRINT: {
             int argc = read_byte();
             for (int i = 0; i < argc; i++) {
-                printf("%s\t", lulu_tostring(vm, i - argc));
+                printf("%s\t", lulu_to_cstring(vm, i - argc));
             }
             printf("\n");
-            popn_back(vm, argc);
+            lulu_pop(vm, argc);
             break;
         }
         case OP_RETURN:

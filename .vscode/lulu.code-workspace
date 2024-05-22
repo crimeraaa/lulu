@@ -19,7 +19,8 @@
 			"type_traits": "c",
 			"utility": "c",
 			"exception": "c",
-			"typeinfo": "c"
+			"typeinfo": "c",
+			"random": "c"
 		},
 		"files.exclude": {
 			"**/.git": true,

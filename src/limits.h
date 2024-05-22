@@ -94,10 +94,6 @@
 #define unused2(x, y)       unused(x); unused(y)
 #define unused3(x, y, z)    unused2(x, y); unused(z)
 
-// String literal length. Useful for expressions needed at compile-time.
-#define cstr_len(s)         (array_len(s) - 1)
-#define cstr_eq(a, b, n)    (memcmp(a, b, n) == 0)
-
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)

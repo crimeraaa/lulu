@@ -129,7 +129,7 @@ static void concat(Compiler *cpl)
     int    argc = 1;
     do {
         if (argc + 1 > MAX_BYTE) {
-            lexerror_at_consumed(ls, "More than <MAX_BYTE> concatentations");
+            lexerror_at_consumed(ls, "Too many consecutive concatenations");
         }
         parse_precedence(cpl, PREC_CONCAT + 1);
         argc += 1;
@@ -262,8 +262,7 @@ static void table(Compiler *cpl)
 
     if (count > 0) {
         if (count + 1 > MAX_BYTE3) {
-            lexerror_at_consumed(ls,
-                "More than <MAX_BYTE3> array elements in table constructor");
+            lexerror_at_consumed(ls, "Too many elements in table constructor");
         }
         emit_oparg2(cpl, OP_SETARRAY, encode_byte2(t_idx, count));
     }

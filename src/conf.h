@@ -63,8 +63,10 @@ typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
 #define num_le(a, b)        ((a) <= (b))
 #define num_isnan(a)        (!num_eq(a, b))
 
-// See `man 3 strtod`. For other `cstr_*` macros, see `limits.h`.
 #define cstr_tonumber(s, p) strtod(s, p)
+#define cstr_len(s)         (array_len(s) - 1)
+#define cstr_eq(a, b, n)    (memcmp(a, b, n) == 0)
+
 #define ptr_tostring(s, p)  snprintf((s), MAX_TOSTRING, "%p", (p))
 #define int_tostring(s, i)  snprintf((s), MAX_TOSTRING, "%i", (i))
 
