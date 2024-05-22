@@ -4,51 +4,51 @@
 #include "table.h"
 #include "vm.h"
 
-void init_alloc(Alloc *al, ReallocFn fn, void *ctx)
+void init_alloc(Alloc *al, AllocFn fn, void *ctx)
 {
-    al->reallocfn = fn;
-    al->context   = ctx;
+    al->allocfn = fn;
+    al->context = ctx;
 }
 
-struct lulu_Object *new_object(size_t size, VType tag, Alloc *al)
+Object *new_object(size_t size, VType tag, Alloc *al)
 {
-    VM     *vm = al->context;
-    Object *o  = new_pointer(size, al);
-    o->tag     = tag;
-    return prepend_object(&vm->objects, o);
+    VM     *vm  = al->context;
+    Object *obj = new_pointer(size, al);
+    obj->tag    = tag;
+    return prepend_object(&vm->objects, obj);
 }
 
-struct lulu_Object *prepend_object(struct lulu_Object **head, struct lulu_Object *o)
+Object *prepend_object(Object **head, Object *obj)
 {
-    o->next = *head;
-    *head   = o;
-    return o;
+    obj->next = *head;
+    *head     = obj;
+    return obj;
 }
 
-struct lulu_Object *remove_object(struct lulu_Object **head, struct lulu_Object *o)
+Object *remove_object(Object **head, Object *obj)
 {
-    *head = o->next;
-    return o;
+    *head = obj->next;
+    return obj;
 }
 
-static void free_object(Object *object, Alloc *al)
+static void free_object(Object *obj, Alloc *al)
 {
-    switch (object->tag) {
+    switch (obj->tag) {
     case TYPE_STRING:
-        free_string(cast(String*, object), al);
+        free_string(cast(String*, obj), al);
         break;
     case TYPE_TABLE:
-        free_table(cast(Table*, object), al);
-        free_pointer(object, sizeof(Table), al);
+        free_table(cast(Table*, obj), al);
+        free_pointer(obj, sizeof(Table), al);
         break;
     default:
-        eprintfln("[FATAL ERROR]:\nAttempt to free a %s", get_typename(object));
+        eprintfln("[FATAL ERROR]:\nAttempt to free a %s", get_typename(obj));
         assert(false);
         break;
     }
 }
 
-void free_objects(struct lulu_VM *vm)
+void free_objects(lulu_VM *vm)
 {
     Alloc  *al   = &vm->allocator;
     Object *head = vm->objects;

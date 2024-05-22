@@ -57,7 +57,7 @@ uint32_t hash_rstring(StrView sv)
     return hash;
 }
 
-String *new_string(int len, struct lulu_Alloc *al)
+String *new_string(int len, Alloc *al)
 {
     // Note how we add 1 for the nul char.
     String *s = cast(String*, new_object(string_size(len + 1), TYPE_STRING, al));
@@ -66,7 +66,7 @@ String *new_string(int len, struct lulu_Alloc *al)
 }
 
 // Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
-void free_string(String *s, struct lulu_Alloc *al)
+void free_string(String *s, Alloc *al)
 {
     free_pointer(s, string_size(s->len + 1), al);
 }
@@ -136,17 +136,17 @@ static String *copy_string_or_rstring(VM *vm, StrView sv, bool israw)
     return s;
 }
 
-String *copy_rstring(struct lulu_VM *vm, StrView sv)
+String *copy_rstring(lulu_VM *vm, StrView sv)
 {
     return copy_string_or_rstring(vm, sv, true);
 }
 
-String *copy_string(struct lulu_VM *vm, StrView sv)
+String *copy_string(lulu_VM *vm, StrView sv)
 {
     return copy_string_or_rstring(vm, sv, false);
 }
 
-String *concat_strings(struct lulu_VM *vm, int argc, const Value argv[], int len)
+String *concat_strings(lulu_VM *vm, int argc, const Value argv[], int len)
 {
     Alloc  *al     = &vm->allocator;
     String *s      = new_string(len, al);

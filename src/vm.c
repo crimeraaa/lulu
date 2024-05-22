@@ -7,18 +7,17 @@
 #include "string.h"
 #include "table.h"
 
-// Assumes that `context` points to the parent `VM*` instance.
-static void *allocfn(void *ptr, size_t oldsz, size_t newsz, void *context)
+// Assumes that the context pointer points to the parent `VM*` instance.
+static void *allocatorfn(void *ptr, size_t oldsz, size_t newsz, void *ctx)
 {
     unused(oldsz);
-    VM *vm = context;
+    VM *vm = ctx;
     if (newsz == 0) {
         free(ptr);
         return NULL;
     }
     void *res = realloc(ptr, newsz);
     if (res == NULL) {
-        logprintln("[FATAL ERROR]: No more memory");
         longjmp(vm->errorjmp, ERROR_ALLOC);
     }
     return res;
@@ -32,17 +31,16 @@ static void reset_stack(VM *vm)
 
 static void init_builtin(VM *vm)
 {
-    Value G = make_table(&vm->globals);
-    lulu_push_cstring(vm, "_G");
-    push_back(vm, &G);
-    lulu_set_global(vm, poke_top(vm, -2));
-    pop_back(vm); // only val was popped by set_global, so pop key as well.
+    lulu_push_literal(vm, "_G");
+    lulu_push_table(vm, &vm->globals);
+    lulu_set_global(vm, poke_top(vm, -2)); // Will pop val.
+    pop_back(vm); // Pop key.
 }
 
 void init_vm(VM *vm, const char *name)
 {
     reset_stack(vm);
-    init_alloc(&vm->allocator, &allocfn, vm);
+    init_alloc(&vm->allocator, &allocatorfn, vm);
     init_table(&vm->globals);
     init_table(&vm->strings);
     vm->name    = name;
@@ -65,10 +63,10 @@ void arith_op(VM *vm, OpCode op)
     Value *a = poke_top(vm, -2);
     Value *b = poke_top(vm, -1);
     if (!is_number(a) && !value_tonumber(a)) {
-        runtime_error(vm, "perform arithmetic on", get_typename(a));
+        lulu_type_error(vm, "perform arithmetic on", get_typename(a));
     }
     if (!is_number(b) && !value_tonumber(b)) {
-        runtime_error(vm, "perform arithmetic on", get_typename(b));
+        lulu_type_error(vm, "perform arithmetic on", get_typename(b));
     }
     Number x = as_number(a);
     Number y = as_number(b);
@@ -92,10 +90,10 @@ static void compare_op(VM *vm, OpCode op)
     Value *a = poke_top(vm, -2);
     Value *b = poke_top(vm, -1);
     if (!is_number(a)) {
-        runtime_error(vm, "compare", get_typename(a));
+        lulu_type_error(vm, "compare", get_typename(a));
     }
     if (!is_number(b)) {
-        runtime_error(vm, "compare", get_typename(b));
+        lulu_type_error(vm, "compare", get_typename(b));
     }
     Number x = as_number(a);
     Number y = as_number(b);
@@ -107,28 +105,6 @@ static void compare_op(VM *vm, OpCode op)
         break;
     }
     pop_back(vm);
-}
-
-static void concat_op(VM *vm, int argc, Value *argv)
-{
-    int len = 0;
-    for (int i = 0; i < argc; i++) {
-        Value *arg = &argv[i];
-        if (is_number(arg)) {
-            char    buf[MAX_TOSTRING];
-            int     len = num_tostring(buf, as_number(arg));
-            StrView sv  = make_strview(buf, len);
-
-            // Use `copy_string` just in case chosen representation has escapes.
-            setv_string(arg, copy_string(vm, sv));
-        } else if (!is_string(arg)) {
-            runtime_error(vm, "concatenate", get_typename(arg));
-        }
-        len += as_string(arg)->len;
-    }
-    String *s = concat_strings(vm, argc, argv, len);
-    popn_back(vm, argc);
-    lulu_push_string(vm, s);
 }
 
 static ErrType run(VM *vm)
@@ -240,17 +216,14 @@ static ErrType run(VM *vm)
         case OP_POW:
             arith_op(vm, op);
             break;
-        case OP_CONCAT: {
+        case OP_CONCAT:
             // Assume at least 2 args since concat is an infix expression.
-            int     argc = read_byte();
-            Value  *argv = poke_top(vm, -argc);
-            concat_op(vm, argc, argv);
+            lulu_concat(vm, read_byte());
             break;
-        }
         case OP_UNM: {
             Value *arg = poke_top(vm, -1);
             if (!is_number(arg) && !value_tonumber(arg)) {
-                runtime_error(vm, "negate", get_typename(arg));
+                lulu_type_error(vm, "negate", get_typename(arg));
             }
             setv_number(arg, num_unm(as_number(arg)));
             break;
@@ -264,7 +237,7 @@ static ErrType run(VM *vm)
             // TODO: Separate array segment from hash segment of tables.
             Value *arg = poke_top(vm, -1);
             if (!is_string(arg)) {
-                runtime_error(vm, "get length of", get_typename(arg));
+                lulu_type_error(vm, "get length of", get_typename(arg));
             }
             setv_number(arg, as_string(arg)->len);
             break;
@@ -273,7 +246,6 @@ static ErrType run(VM *vm)
             int argc = read_byte();
             for (int i = 0; i < argc; i++) {
                 printf("%s\t", lulu_tostring(vm, i - argc));
-                pop_back(vm);
             }
             printf("\n");
             popn_back(vm, argc);
@@ -303,8 +275,8 @@ ErrType interpret(VM *vm, const char *input)
         init_compiler(&cpl, &ls, vm);
         compile(&cpl, input, &ck);
         break;
-    case ERROR_COMPTIME: // Fall through
     case ERROR_RUNTIME:
+    case ERROR_COMPTIME:
     case ERROR_ALLOC:
         // For the default case, please ensure all calls of `longjmp` ONLY
         // ever pass an `ErrType` member.
@@ -317,18 +289,4 @@ ErrType interpret(VM *vm, const char *input)
     err       = run(vm);
     free_chunk(&ck, &vm->allocator);
     return err;
-}
-
-void runtime_error(VM *vm, const char *act, const char *type)
-{
-    size_t offset = vm->ip - vm->chunk->code - 1;
-    int    line   = vm->chunk->lines[offset];
-    lulu_push_fstring(vm, "%s:%i: Attempt to %s a %s value\n",
-                      vm->name,
-                      line,
-                      act,
-                      type);
-    print_value(poke_top(vm, -1), false);
-    reset_stack(vm);
-    longjmp(vm->errorjmp, ERROR_RUNTIME);
 }

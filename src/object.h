@@ -4,8 +4,8 @@
 #include "lulu.h"
 #include "limits.h"
 
-struct  lulu_Alloc; // defined in `memory.h`.
-typedef lulu_Number Number;
+typedef        lulu_Number Number;
+typedef struct lulu_Alloc  Alloc; // defined in `memory.h`.
 typedef struct lulu_Object Object;
 
 typedef enum {
@@ -120,13 +120,13 @@ const char *value_tocstring(const Value *vl, char *buf, int *out);
 bool values_equal(const Value *a, const Value *b);
 
 void init_varray(VArray *va);
-void free_varray(VArray *va, struct lulu_Alloc *al);
-void write_varray(VArray *va, const Value *vl, struct lulu_Alloc *al);
+void free_varray(VArray *va, Alloc *al);
+void write_varray(VArray *va, const Value *vl, Alloc *al);
 
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
-void set_interned(struct lulu_VM *vm, const String *s);
+void set_interned(lulu_VM *vm, const String *s);
 
 // Searches for interned strings. Analogous to `tableFindString()` in the book.
-String *find_interned(struct lulu_VM *vm, StrView sv, uint32_t hash);
+String *find_interned(lulu_VM *vm, StrView sv, uint32_t hash);
 
 #endif /* LULU_OBJECT_H */

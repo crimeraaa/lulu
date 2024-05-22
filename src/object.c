@@ -102,13 +102,13 @@ void init_varray(VArray *va)
     va->cap    = 0;
 }
 
-void free_varray(VArray *va, struct lulu_Alloc *al)
+void free_varray(VArray *va, Alloc *al)
 {
     free_parray(va->values, va->len, al);
     init_varray(va);
 }
 
-void write_varray(VArray *va, const Value *vl, struct lulu_Alloc *al)
+void write_varray(VArray *va, const Value *vl, Alloc *al)
 {
     if (va->len + 1 > va->cap) {
         int oldcap = va->cap;
@@ -120,7 +120,7 @@ void write_varray(VArray *va, const Value *vl, struct lulu_Alloc *al)
     va->len += 1;
 }
 
-void set_interned(struct lulu_VM *vm, const String *s)
+void set_interned(lulu_VM *vm, const String *s)
 {
     Alloc *al = &vm->allocator;
     Table *t  = &vm->strings;
@@ -129,7 +129,7 @@ void set_interned(struct lulu_VM *vm, const String *s)
     set_table(t, &k, &v, al);
 }
 
-String *find_interned(struct lulu_VM *vm, StrView sv, uint32_t hash)
+String *find_interned(lulu_VM *vm, StrView sv, uint32_t hash)
 {
     Table *t = &vm->strings;
     if (t->count == 0) {

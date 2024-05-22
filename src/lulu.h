@@ -10,9 +10,9 @@
 
 typedef NUMBER_TYPE lulu_Number;
 
-struct lulu_VM;     // defined in `vm.h`.
-struct lulu_Value;  // defined in `object.h`.
-struct lulu_String; // defined in `object.h`.
-struct lulu_Table;  // defined in `object.h`.
+typedef struct lulu_VM     lulu_VM;     // defined in `vm.h`.
+typedef struct lulu_Value  lulu_Value;  // defined in `object.h`.
+typedef struct lulu_String lulu_String; // defined in `object.h`.
+typedef struct lulu_Table  lulu_Table;  // defined in `object.h`.
 
 #endif /* LULU_H */

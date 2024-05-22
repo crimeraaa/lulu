@@ -8,7 +8,7 @@
 #include "debug.h"
 #endif
 
-void init_compiler(Compiler *cpl, Lexer *ls, struct lulu_VM *vm)
+void init_compiler(Compiler *cpl, Lexer *ls, lulu_VM *vm)
 {
     cpl->lexer       = ls;
     cpl->vm          = vm;
@@ -161,9 +161,9 @@ void emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg)
     }
 }
 
-void emit_identifier(Compiler *cpl, const Token *ident)
+void emit_identifier(Compiler *cpl, const Token *id)
 {
-    emit_oparg3(cpl, OP_CONSTANT, identifier_constant(cpl, ident));
+    emit_oparg3(cpl, OP_CONSTANT, identifier_constant(cpl, id));
 }
 
 void emit_return(Compiler *cpl)
@@ -219,8 +219,8 @@ void emit_variable(Compiler *cpl, const Token *id)
 
 int identifier_constant(Compiler *cpl, const Token *id)
 {
-    Value wrapper = make_string(copy_string(cpl->vm, id->view));
-    return make_constant(cpl, &wrapper);
+    Value wrap = make_string(copy_string(cpl->vm, id->view));
+    return make_constant(cpl, &wrap);
 }
 
 void end_compiler(Compiler *cpl)
@@ -229,10 +229,9 @@ void end_compiler(Compiler *cpl)
     if (is_enabled(DEBUG_PRINT_CODE)) {
         printf("[STACK USAGE]:\n"
                "NET:    %i\n"
-               "MOST:   %i\n",
+               "MOST:   %i\n\n",
                cpl->stack_usage,
                cpl->stack_total);
-        printf("\n");
         disassemble_chunk(current_chunk(cpl));
     }
 }
@@ -289,12 +288,12 @@ static bool identifiers_equal(const Token *a, const Token *b)
     return s1->len == s2->len && cstr_eq(s1->begin, s2->begin, s1->len);
 }
 
-int resolve_local(Compiler *cpl, const Token *ident)
+int resolve_local(Compiler *cpl, const Token *id)
 {
     for (int i = cpl->scope_count - 1; i >= 0; i--) {
         const Local *local = &cpl->locals[i];
         // If using itself in initializer, continue to resolve outward.
-        if (local->depth != -1 && identifiers_equal(ident, &local->ident)) {
+        if (local->depth != -1 && identifiers_equal(id, &local->ident)) {
             return i;
         }
     }

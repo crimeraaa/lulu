@@ -4,10 +4,10 @@
 
 #define TABLE_MAX_LOAD  0.75
 
-static uint32_t hash_pointer(Object *ptr)
+static uint32_t hash_pointer(Object *obj)
 {
-    char s[sizeof(ptr)];
-    memcpy(s, &ptr, sizeof(s));
+    char s[sizeof(obj)];
+    memcpy(s, &obj, sizeof(s));
     return hash_rstring(make_strview(s, sizeof(s)));
 }
 
@@ -81,7 +81,7 @@ static void resize_table(Table *t, int newcap, Alloc *al)
     t->cap     = newcap;
 }
 
-Table *new_table(int size, struct lulu_Alloc *al)
+Table *new_table(int size, Alloc *al)
 {
     Table *t = cast(Table*, new_object(sizeof(*t), TYPE_TABLE, al));
     init_table(t);
@@ -98,32 +98,10 @@ void init_table(Table *t)
     t->cap     = 0;
 }
 
-void free_table(Table *t, struct lulu_Alloc *al)
+void free_table(Table *t, Alloc *al)
 {
     free_parray(t->entries, t->cap, al);
     init_table(t);
-}
-
-void dump_table(const Table *t, const char *name)
-{
-    name = (name != NULL) ? name : "(anonymous table)";
-    if (t->count == 0) {
-        printf("%s = {}\n", name);
-        return;
-    }
-    printf("%s = {\n", name);
-    for (int i = 0, limit = t->cap; i < limit; i++) {
-        const Entry *entry = &t->entries[i];
-        if (is_nil(&entry->key)) {
-            continue;
-        }
-        printf("\t[");
-        print_value(&entry->key, true);
-        printf("] = ");
-        print_value(&entry->value, true);
-        printf(",\n");
-    }
-    printf("}\n");
 }
 
 bool get_table(Table *t, const Value *k, Value *out)
@@ -139,7 +117,7 @@ bool get_table(Table *t, const Value *k, Value *out)
     return true;
 }
 
-bool set_table(Table *t, const Value *k, const Value *v, struct lulu_Alloc *al)
+bool set_table(Table *t, const Value *k, const Value *v, Alloc *al)
 {
     if (is_nil(k)) {
         return false;
@@ -168,13 +146,13 @@ bool unset_table(Table *t, const Value *k)
     if (is_nil(&ent->key)) {
         return false;
     }
-    // Place al tombstone, it must be distinct from al nil key with al nil value.
+    // Place a tombstone, it must be distinct from nil key with nil value.
     setv_nil(&ent->key);
     setv_boolean(&ent->value, false);
     return true;
 }
 
-void copy_table(Table *dst, const Table *src, struct lulu_Alloc *al)
+void copy_table(Table *dst, const Table *src, Alloc *al)
 {
     for (int i = 0; i < src->cap; i++) {
         const Entry *ent = &src->entries[i];

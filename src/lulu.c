@@ -1,3 +1,4 @@
+#include "api.h"
 #include "lulu.h"
 #include "vm.h"
 
@@ -12,8 +13,13 @@ static int repl(VM *vm)
             fputc('\n', stdout);
             break;
         }
-        if (interpret(vm, line) == ERROR_ALLOC) {
-            break;
+        switch (interpret(vm, line)) {
+        case ERROR_NONE:     break;
+        case ERROR_COMPTIME: // Fall through.
+        case ERROR_RUNTIME:  printf("%s", lulu_tostring(vm, -1));
+                             pop_back(vm);
+                             break;
+        case ERROR_ALLOC:    return 1;
         }
     }
     return 0;
@@ -65,17 +71,13 @@ static int run_file(VM *vm, const char *file_name)
     free(input);
 
     switch (res) {
-    case ERROR_NONE:
-        return 0;
-    case ERROR_COMPTIME:
-        return EX_DATAERR;
-    case ERROR_RUNTIME:
-        return EX_SOFTWARE;
-    case ERROR_ALLOC:
-        return EX_SOFTWARE;
-    default:
-        return EXIT_FAILURE;
+    case ERROR_NONE:    return 0;
+    case ERROR_COMPTIME: // fall through
+    case ERROR_RUNTIME: printf("%s", lulu_tostring(vm, -1));
+                        pop_back(vm);
+    case ERROR_ALLOC:   return EX_SOFTWARE;
     }
+    return EXIT_FAILURE; // Should be unreachable.
 }
 
 static VM global_vm = {0};

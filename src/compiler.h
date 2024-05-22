@@ -16,19 +16,19 @@ typedef struct {
 } Local;
 
 typedef struct {
-    Local           locals[MAX_LOCALS];
-    Lexer          *lexer;       // Shared across multiple Compiler instances.
-    struct lulu_VM *vm;          // Track and modify parent VM state as needed.
-    Chunk          *chunk;       // Chunk for this function/closure.
-    int             stack_usage; // #stack slots being use currently.
-    int             stack_total; // maximum #stack-slots used.
-    int             scope_count; // How many locals are currently in scope?
-    int             scope_depth; // 0 = global, 1 = top, 2 = more inner, etc.
-    OpCode          prev_opcode; // Used to fold consecutive similar operations.
+    Local    locals[MAX_LOCALS];
+    Lexer   *lexer;       // Shared across multiple Compiler instances.
+    lulu_VM *vm;          // Track and modify parent VM state as needed.
+    Chunk   *chunk;       // Chunk for this function/closure.
+    int      stack_usage; // #stack slots being use currently.
+    int      stack_total; // maximum #stack-slots used.
+    int      scope_count; // How many locals are currently in scope?
+    int      scope_depth; // 0 = global, 1 = top, 2 = more inner, etc.
+    OpCode   prev_opcode; // Used to fold consecutive similar operations.
 } Compiler;
 
 // We pass a Lexer and a VM to be shared across compiler instances.
-void init_compiler(Compiler *cpl, Lexer *ls, struct lulu_VM *vm);
+void init_compiler(Compiler *cpl, Lexer *ls, lulu_VM *vm);
 void end_compiler(Compiler *cpl);
 void compile(Compiler *cpl, const char *input, Chunk *chunk);
 

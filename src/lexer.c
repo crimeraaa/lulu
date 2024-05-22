@@ -1,5 +1,6 @@
 #include <stdarg.h>
 #include <ctype.h>
+#include "api.h"
 #include "lexer.h"
 #include "limits.h"
 #include "string.h"
@@ -8,62 +9,65 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
+// Silly to populate both end and len like this but we need consistency.
+#define sv_literal(s)   (StrView){(s), &(s)[0] + cstr_len(s), cstr_len(s)}
+
 static const StrView LULU_TKINFO[] = {
-    [TK_AND]      = strview_lit("and"),
-    [TK_BREAK]    = strview_lit("break"),
-    [TK_DO]       = strview_lit("do"),
-    [TK_ELSE]     = strview_lit("else"),
-    [TK_ELSEIF]   = strview_lit("elseif"),
-    [TK_END]      = strview_lit("end"),
-    [TK_FALSE]    = strview_lit("false"),
-    [TK_FOR]      = strview_lit("for"),
-    [TK_FUNCTION] = strview_lit("function"),
-    [TK_IF]       = strview_lit("if"),
-    [TK_IN]       = strview_lit("in"),
-    [TK_LOCAL]    = strview_lit("local"),
-    [TK_NIL]      = strview_lit("nil"),
-    [TK_NOT]      = strview_lit("not"),
-    [TK_OR]       = strview_lit("or"),
-    [TK_PRINT]    = strview_lit("print"),
-    [TK_RETURN]   = strview_lit("return"),
-    [TK_THEN]     = strview_lit("then"),
-    [TK_TRUE]     = strview_lit("true"),
-    [TK_WHILE]    = strview_lit("while"),
+    [TK_AND]      = sv_literal("and"),
+    [TK_BREAK]    = sv_literal("break"),
+    [TK_DO]       = sv_literal("do"),
+    [TK_ELSE]     = sv_literal("else"),
+    [TK_ELSEIF]   = sv_literal("elseif"),
+    [TK_END]      = sv_literal("end"),
+    [TK_FALSE]    = sv_literal("false"),
+    [TK_FOR]      = sv_literal("for"),
+    [TK_FUNCTION] = sv_literal("function"),
+    [TK_IF]       = sv_literal("if"),
+    [TK_IN]       = sv_literal("in"),
+    [TK_LOCAL]    = sv_literal("local"),
+    [TK_NIL]      = sv_literal("nil"),
+    [TK_NOT]      = sv_literal("not"),
+    [TK_OR]       = sv_literal("or"),
+    [TK_PRINT]    = sv_literal("print"),
+    [TK_RETURN]   = sv_literal("return"),
+    [TK_THEN]     = sv_literal("then"),
+    [TK_TRUE]     = sv_literal("true"),
+    [TK_WHILE]    = sv_literal("while"),
 
-    [TK_LPAREN]   = strview_lit("("),
-    [TK_RPAREN]   = strview_lit(")"),
-    [TK_LBRACKET] = strview_lit("["),
-    [TK_RBRACKET] = strview_lit("]"),
-    [TK_LCURLY]   = strview_lit("{"),
-    [TK_RCURLY]   = strview_lit("}"),
+    [TK_LPAREN]   = sv_literal("("),
+    [TK_RPAREN]   = sv_literal(")"),
+    [TK_LBRACKET] = sv_literal("["),
+    [TK_RBRACKET] = sv_literal("]"),
+    [TK_LCURLY]   = sv_literal("{"),
+    [TK_RCURLY]   = sv_literal("}"),
 
-    [TK_COMMA]    = strview_lit(","),
-    [TK_SEMICOL]  = strview_lit(";"),
-    [TK_VARARG]   = strview_lit("..."),
-    [TK_CONCAT]   = strview_lit(".."),
-    [TK_PERIOD]   = strview_lit("."),
-    [TK_POUND]    = strview_lit("#"),
+    [TK_COMMA]    = sv_literal(","),
+    [TK_SEMICOL]  = sv_literal(";"),
+    [TK_VARARG]   = sv_literal("..."),
+    [TK_CONCAT]   = sv_literal(".."),
+    [TK_PERIOD]   = sv_literal("."),
+    [TK_POUND]    = sv_literal("#"),
 
-    [TK_PLUS]     = strview_lit("+"),
-    [TK_DASH]     = strview_lit("-"),
-    [TK_STAR]     = strview_lit("*"),
-    [TK_SLASH]    = strview_lit("/"),
-    [TK_PERCENT]  = strview_lit("%"),
-    [TK_CARET]    = strview_lit("^"),
+    [TK_PLUS]     = sv_literal("+"),
+    [TK_DASH]     = sv_literal("-"),
+    [TK_STAR]     = sv_literal("*"),
+    [TK_SLASH]    = sv_literal("/"),
+    [TK_PERCENT]  = sv_literal("%"),
+    [TK_CARET]    = sv_literal("^"),
 
-    [TK_ASSIGN]   = strview_lit("="),
-    [TK_EQ]       = strview_lit("=="),
-    [TK_NEQ]      = strview_lit("~="),
-    [TK_GT]       = strview_lit(">"),
-    [TK_GE]       = strview_lit(">="),
-    [TK_LT]       = strview_lit("<"),
-    [TK_LE]       = strview_lit("<="),
+    [TK_ASSIGN]   = sv_literal("="),
+    [TK_EQ]       = sv_literal("=="),
+    [TK_NEQ]      = sv_literal("~="),
+    [TK_GT]       = sv_literal(">"),
+    [TK_GE]       = sv_literal(">="),
+    [TK_LT]       = sv_literal("<"),
+    [TK_LE]       = sv_literal("<="),
 
-    [TK_IDENT]    = strview_lit("<identifier>"),
-    [TK_STRING]   = strview_lit("<string>"),
-    [TK_NUMBER]   = strview_lit("<number>"),
-    [TK_ERROR]    = strview_lit("<error>"),
-    [TK_EOF]      = strview_lit("<eof>"),
+    [TK_IDENT]    = sv_literal("<identifier>"),
+    [TK_STRING]   = sv_literal("<string>"),
+    [TK_NUMBER]   = sv_literal("<number>"),
+    [TK_ERROR]    = sv_literal("<error>"),
+    [TK_EOF]      = sv_literal("<eof>"),
 };
 
 static void init_strview(StrView *sv, const char *src)
@@ -80,7 +84,7 @@ static void init_token(Token *tk)
     tk->type  = TK_EOF;
 }
 
-void init_lexer(Lexer *ls, const char *input, struct lulu_VM *vm)
+void init_lexer(Lexer *ls, const char *input, lulu_VM *vm)
 {
     init_token(&ls->lookahead);
     init_token(&ls->consumed);
@@ -532,7 +536,7 @@ void expect_token(Lexer *ls, TkType type, const char *info)
     StrView sv = LULU_TKINFO[type];
 
     init_builder(&sb);
-    append_builder(&sb, "type '%s'", sv.begin);
+    append_builder(&sb, "Expected '%s'", sv.begin);
 
     if (info != NULL) {
         append_builder(&sb, " %s", info);
@@ -584,13 +588,19 @@ bool match_token_any(Lexer *ls, const TkType types[])
 
 void lexerror_at(Lexer *ls, const Token *tk, const char *info)
 {
-    eprintf("%s:%i: %s", ls->name, ls->line, info);
+    VM *vm = ls->vm;
+    lulu_push_fstring(vm, "%s:%i: %s at ", ls->name, ls->line, info);
     if (tk->type == TK_EOF) {
-        eprintln(" at <eof>");
+        lulu_push_literal(vm, "<eof>\n");
     } else {
-        eprintfln(" near '%.*s'", tk->view.len, tk->view.begin);
+        const char *s;
+        lulu_push_lcstring(vm, tk->view.begin, tk->view.len);
+        s = lulu_tostring(vm, -1);
+        pop_back(vm);
+        lulu_push_fstring(vm, "\'%s\'\n", s);
     }
-    longjmp(ls->vm->errorjmp, ERROR_COMPTIME);
+    lulu_concat(vm, 2);
+    longjmp(vm->errorjmp, ERROR_COMPTIME);
 }
 
 void lexerror_at_lookahead(Lexer *ls, const char *info)
@@ -605,8 +615,8 @@ void lexerror_at_consumed(Lexer *ls, const char *info)
 
 void lexerror_at_middle(Lexer *ls, const char *info)
 {
-    Token token = error_token(ls);
-    lexerror_at(ls, &token, info);
+    Token tk = error_token(ls);
+    lexerror_at(ls, &tk, info);
 }
 
 

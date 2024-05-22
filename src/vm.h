@@ -31,6 +31,5 @@ typedef struct lulu_VM {
 void init_vm(VM *vm, const char *name);
 void free_vm(VM *vm);
 ErrType interpret(VM *vm, const char *input);
-void runtime_error(VM *vm, const char *act, const char *type);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */
