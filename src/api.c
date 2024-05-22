@@ -40,13 +40,13 @@ void lulu_push_string(lulu_VM *vm, lulu_String *s)
 void lulu_push_cstring(lulu_VM *vm, const char *s)
 {
     int     len = strlen(s);
-    StrView sv  = make_strview(s, len);
+    StrView sv  = sv_inst(s, len);
     lulu_push_string(vm, copy_string(vm, sv));
 }
 
 void lulu_push_lcstring(lulu_VM *vm, const char *s, int len)
 {
-    StrView sv = make_strview(s, len);
+    StrView sv = sv_inst(s, len);
     lulu_push_string(vm, copy_string(vm, sv));
 }
 
@@ -58,18 +58,17 @@ void lulu_push_table(lulu_VM *vm, lulu_Table *t)
 
 const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap)
 {
-    const char *iter  = fmt;
-    int         argc  = 0;
-    int         total = 0;
+    const char  *iter  = fmt;
+    int          argc  = 0;
+    int          total = 0;
 
     for (;;) {
         const char *spec = strchr(iter, '%');
-        if (spec == NULL) {
+        if (spec == NULL)
             break;
-        }
         // Push the contents of the string before '%', except if '%' is starter.
         if (spec != fmt) {
-            StrView sv = make_strview(iter, spec - iter);
+            StrView sv = sv_inst(iter, spec - iter);
             lulu_push_lcstring(vm, sv.begin, sv.len);
             argc  += 1;
             total += sv.len;
@@ -84,21 +83,26 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap)
             lulu_push_lcstring(vm, buf, sizeof(buf));
             break;
         }
-        case 'i': {
+        case 'f':
+        case 'i':
+        case 'p': {
             char buf[MAX_TOSTRING];
-            int  len = int_tostring(buf, va_arg(ap, int));
+            int  len;
+            if (*spec == 'f')
+                len = num_tostring(buf, va_arg(ap, lulu_Number));
+            else if (*spec == 'i')
+                len = int_tostring(buf, va_arg(ap, int));
+            else
+                len = ptr_tostring(buf, va_arg(ap, void*));
             lulu_push_lcstring(vm, buf, len);
             break;
         }
         case 's': {
             const char *s = va_arg(ap, char*);
-            lulu_push_cstring(vm, (s != NULL) ? s : "(null)");
-            break;
-        }
-        case 'p': {
-            char buf[MAX_TOSTRING];
-            int  len = ptr_tostring(buf, va_arg(ap, void*));
-            lulu_push_lcstring(vm, buf, len);
+            if (s != NULL)
+                lulu_push_cstring(vm, s);
+            else
+                lulu_push_literal(vm, "(null)");
             break;
         }
         default:
@@ -116,10 +120,17 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap)
         argc  += 1;
         total += as_string(poke_at_offset(vm, -1))->len;
     }
-    String *res = concat_strings(vm, argc, poke_at_offset(vm, -argc), total);
-    popn_back(vm, argc);
-    lulu_push_string(vm, res);
-    return res->data;
+
+    // concat will always allocate something, so try to avoid doing so if we
+    // have 1 string as concatenating 1 string is a waste of memory.
+    if (argc != 1) {
+        Value  *argv = poke_at_offset(vm, -argc);
+        String *s    = concat_strings(vm, argc, argv, total);
+        popn_back(vm, argc);
+        lulu_push_string(vm, s);
+        return s->data;
+    }
+    return as_cstring(poke_at_offset(vm, -1));
 }
 
 const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
@@ -140,18 +151,11 @@ const char *lulu_tostring(lulu_VM *vm, int offset)
         lulu_push_literal(vm, "nil");
         break;
     case TYPE_BOOLEAN:
-        if (as_boolean(vl)) {
-            lulu_push_literal(vm, "true");
-        } else {
-            lulu_push_literal(vm, "false");
-        }
+        lulu_push_cstring(vm, as_boolean(vl) ? "true" : "false");
         break;
-    case TYPE_NUMBER: {
-        char buf[MAX_TOSTRING];
-        int  len = num_tostring(buf, as_number(vl));
-        lulu_push_lcstring(vm, buf, len);
+    case TYPE_NUMBER:
+        lulu_push_fstring(vm, "%f", as_number(vl));
         break;
-    }
     case TYPE_STRING:
         lulu_push_string(vm, as_string(vl));
         break;
@@ -168,19 +172,13 @@ const char *lulu_tostring(lulu_VM *vm, int offset)
 const char *lulu_concat(lulu_VM *vm, int count)
 {
     int    len  = 0;
-    Value *argv = poke_top(vm, -count);
+    Value *argv = poke_at_offset(vm, -count);
     for (int i = 0; i < count; i++) {
         Value *arg = &argv[i];
-        if (is_number(arg)) {
-            char    buf[MAX_TOSTRING];
-            int     len = num_tostring(buf, as_number(arg));
-            StrView sv  = make_strview(buf, len);
-
-            // Use `copy_string` just in case chosen representation has escapes.
-            setv_string(arg, copy_string(vm, sv));
-        } else if (!is_string(arg)) {
+        if (is_number(arg))
+            lulu_tostring(vm, i - count);
+        else if (!is_string(arg))
             lulu_type_error(vm, "concatenate", get_typename(arg));
-        }
         len += as_string(arg)->len;
     }
     String *s = concat_strings(vm, count, argv, len);
@@ -216,18 +214,20 @@ void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
     popn_back(vm, to_pop);
 }
 
-void lulu_get_global(lulu_VM *vm, const lulu_Value *k)
+void lulu_get_global(lulu_VM *vm, lulu_String *s)
 {
+    Value id  = make_string(s);
     Value out;
-    if (!get_table(&vm->globals, k, &out)) {
+    if (!get_table(&vm->globals, &id, &out)) {
         lulu_type_error(vm, "read", "undefined");
     }
     push_back(vm, &out);
 }
 
-void lulu_set_global(lulu_VM *vm, const lulu_Value *k)
+void lulu_set_global(lulu_VM *vm, lulu_String *s)
 {
-    set_table(&vm->globals, k, poke_top(vm, -1), &vm->allocator);
+    Value id  = make_string(s);
+    set_table(&vm->globals, &id, poke_at_offset(vm, -1), &vm->allocator);
     pop_back(vm);
 }
 

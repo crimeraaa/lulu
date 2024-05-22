@@ -22,7 +22,7 @@ const Value *value_tonumber(Value *vl)
     if (is_string(vl)) {
         char   *end;
         String *s  = as_string(vl);
-        StrView sv = make_strview(s->data, s->len);
+        StrView sv = sv_inst(s->data, s->len);
         Number  n  = cstr_tonumber(sv.begin, &end);
         if (end == sv.end) {
             setv_number(vl, n);
@@ -67,16 +67,13 @@ void print_value(const Value *vl, bool isdebug)
 {
     if (is_string(vl) && isdebug) {
         const String *s = as_string(vl);
-        // printf("string: %p ", as_pointer(vl));
-        if (s->len <= 1) {
+        if (s->len <= 1)
             printf("\'%s\'", s->data);
-        } else {
+        else
             printf("\"%s\"", s->data);
-        }
-        // printf(" (len: %i, hash: %u)", s->len, s->object.hash);
     } else {
-        char buffer[MAX_TOSTRING];
-        printf("%s", value_tocstring(vl, buffer, NULL));
+        char buf[MAX_TOSTRING];
+        printf("%s", value_tocstring(vl, buf, NULL));
     }
 }
 

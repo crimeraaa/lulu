@@ -115,6 +115,9 @@ typedef struct {
     int         len;   // What the result of `strlen` would be.
 } StrView;
 
-#define make_strview(s, n)  (StrView){(s), (s) + (n), (n)}
+#define sv_inst(s, n)   (StrView){(s), (s) + (n), (n)}
+
+// Silly to populate both end and len like this but we need consistency.
+#define sv_literal(s)   (StrView){(s), &(s)[0] + cstr_len(s), cstr_len(s)}
 
 #endif /* LULU_LIMITS_H */

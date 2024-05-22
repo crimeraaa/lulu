@@ -9,9 +9,6 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-// Silly to populate both end and len like this but we need consistency.
-#define sv_literal(s)   (StrView){(s), &(s)[0] + cstr_len(s), cstr_len(s)}
-
 static const StrView LULU_TKINFO[] = {
     [TK_AND]      = sv_literal("and"),
     [TK_BREAK]    = sv_literal("break"),
@@ -400,7 +397,7 @@ bad_string:
     next_char(ls);
 
     // Left +1 to skip left quote, len -2 to get offset of last non-quote.
-    StrView sv = make_strview(ls->lexeme.begin + 1, ls->lexeme.len - 2);
+    StrView sv = sv_inst(ls->lexeme.begin + 1, ls->lexeme.len - 2);
     ls->string = copy_string(ls->vm, sv);
     return make_token(ls, TK_STRING);
 }
@@ -416,7 +413,7 @@ static Token rstring_token(Lexer *ls, int lvl)
     // Skip "[[" and '=' lvl, as well as "]]" and '=' - 2 for last index.
     int     mark = lvl + open + 2;
     int     len  = ls->lexeme.len - mark - 2;
-    StrView sv   = make_strview(ls->lexeme.begin + mark, len);
+    StrView sv   = sv_inst(ls->lexeme.begin + mark, len);
     ls->string   = copy_rstring(ls->vm, sv);
     return make_token(ls, TK_STRING);
 }

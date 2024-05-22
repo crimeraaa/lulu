@@ -15,9 +15,16 @@ void lulu_push_table(lulu_VM *vm, lulu_Table *t);
 
 /**
  * @brief   Internal use for writing simple formatted messages.
- *          Only accepts the following format specifiers: c, i, s and p.
+ *
+ * @details The following format specifiers are allowed:
+ *          `%c` - pushes an `int` as a string holding 1 ASCII character.
+ *          `%f` - pushes a `lulu_Number` in its string representation.
+ *          `%i` - pushes an `int` in its string representation.
+ *          `%s` - allocates/reuses a `String*` based on the `const char *`.
+ *          `%p` - pushes platform-specific pointer representation.
  *
  * @note    No modifiers are allowed.
+ *          See: https://www.lua.org/manual/5.1/manual.html#lua_pushfstring
  */
 const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap);
 const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
@@ -34,8 +41,8 @@ const char *lulu_concat(lulu_VM *vm, int count);
 
 void lulu_get_table(lulu_VM *vm, int t_offset, int k_offset);
 void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop);
-void lulu_get_global(lulu_VM *vm, const lulu_Value *k);
-void lulu_set_global(lulu_VM *vm, const lulu_Value *k);
+void lulu_get_global(lulu_VM *vm, lulu_String *s);
+void lulu_set_global(lulu_VM *vm, lulu_String *s);
 
 void lulu_type_error(lulu_VM *vm, const char *act, const char *type);
 

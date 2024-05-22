@@ -125,7 +125,7 @@ static String *copy_string_or_rstring(VM *vm, StrView sv, bool israw)
 
     // If we have escapes, are we really REALLY sure this isn't found?
     if (s->len != sv.len) {
-        found = find_interned(vm, make_strview(s->data, s->len), hash);
+        found = find_interned(vm, sv_inst(s->data, s->len), hash);
         if (found != NULL) {
             remove_object(&vm->objects, &s->object);
             free_string(s, al);
@@ -150,7 +150,7 @@ String *concat_strings(lulu_VM *vm, int argc, const Value argv[], int len)
 {
     Alloc  *al     = &vm->allocator;
     String *s      = new_string(len, al);
-    StrView sv     = make_strview(s->data, s->len);
+    StrView sv     = sv_inst(s->data, s->len);
     int     offset = 0;
 
     // We already built each individual string so no need to interpret escapes.

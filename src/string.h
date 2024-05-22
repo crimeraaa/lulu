@@ -6,7 +6,7 @@
 #define string_size(N)      (sizeof(String) + array_size(char, N))
 #define string_psize(P, N)  (sizeof(*(P)) + parray_size((P)->data, N))
 
-// This function will not hash any escape sequences at all.
+// Will not hash any escape sequences at all. Hence 'r' for "raw".
 uint32_t hash_rstring(StrView sv);
 
 // NOTE: For `concat_string` we do not know the correct hash yet.

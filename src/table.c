@@ -8,14 +8,14 @@ static uint32_t hash_pointer(Object *obj)
 {
     char s[sizeof(obj)];
     memcpy(s, &obj, sizeof(s));
-    return hash_rstring(make_strview(s, sizeof(s)));
+    return hash_rstring(sv_inst(s, sizeof(s)));
 }
 
 static uint32_t hash_number(Number n)
 {
     char s[sizeof(n)];
     memcpy(s, &n, sizeof(s));
-    return hash_rstring(make_strview(s, sizeof(s)));
+    return hash_rstring(sv_inst(s, sizeof(s)));
 }
 
 static void clear_entries(Entry *entries, int cap)

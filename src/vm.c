@@ -31,10 +31,9 @@ static void reset_stack(VM *vm)
 
 static void init_builtin(VM *vm)
 {
-    lulu_push_literal(vm, "_G");
+    StrView sv = sv_literal("_G");
     lulu_push_table(vm, &vm->globals);
-    lulu_set_global(vm, poke_top(vm, -2)); // Will pop val.
-    pop_back(vm); // Pop key.
+    lulu_set_global(vm, copy_string(vm, sv));
 }
 
 void init_vm(VM *vm, const char *name)
@@ -158,17 +157,14 @@ static ErrType run(VM *vm)
         case OP_POP:
             popn_back(vm, read_byte());
             break;
-        case OP_NEWTABLE: {
-            Table *t = new_table(read_byte3(), al);
-            setv_table(vm->top, t);
-            incr_top(vm);
+        case OP_NEWTABLE:
+            lulu_push_table(vm, new_table(read_byte3(), al));
             break;
-        }
         case OP_GETLOCAL:
             push_back(vm, &vm->base[read_byte()]);
             break;
         case OP_GETGLOBAL:
-            lulu_get_global(vm, read_constant());
+            lulu_get_global(vm, read_string());
             break;
         case OP_GETTABLE:
             lulu_get_table(vm, -2, -1);
@@ -178,7 +174,7 @@ static ErrType run(VM *vm)
             pop_back(vm);
             break;
         case OP_SETGLOBAL:
-            lulu_set_global(vm, read_constant());
+            lulu_set_global(vm, read_string());
             break;
         case OP_SETTABLE:
             lulu_set_table(vm, read_byte(), read_byte(), read_byte());
