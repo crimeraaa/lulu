@@ -94,6 +94,9 @@
 #define unused2(x, y)       unused(x); unused(y)
 #define unused3(x, y, z)    unused2(x, y); unused(z)
 
+#define cstr_len(s)         (array_len(s) - 1)
+#define cstr_eq(a, b, n)    (memcmp(a, b, n) == 0)
+
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)
@@ -109,11 +112,10 @@ typedef struct {
     const char *begin; // Pointer to the first character in the string.
     const char *end;   // Pointer to nul character or 1 past last valid index.
     int         len;   // What the result of `strlen` would be.
-} StrView;
+} StringView;
 
-#define sv_inst(s, n)   (StrView){(s), (s) + (n), (n)}
-
-// Silly to populate both end and len like this but we need consistency.
-#define sv_literal(s)   (StrView){(s), &(s)[0] + cstr_len(s), cstr_len(s)}
+#define sv_create_from_len(s, len)  (StringView){(s), (s) + (len), (len)}
+#define sv_create_from_end(s, end)  (StringView){(s), (end), (end) - (s)}
+#define sv_literal(s)               (StringView){(s), &(s)[0] + cstr_len(s), cstr_len(s)}
 
 #endif /* LULU_LIMITS_H */

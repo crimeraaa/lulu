@@ -26,7 +26,7 @@ void    lulu_push_string(lulu_VM *vm, lulu_String *s);
 void    lulu_push_cstring(lulu_VM *vm, const char *s);
 void    lulu_push_lcstring(lulu_VM *vm, const char *s, int len);
 void    lulu_push_table(lulu_VM *vm, lulu_Table *t);
-#define lulu_push_literal(vm, s) lulu_push_lcstring((vm), (s), cstr_len(s))
+#define lulu_push_literal(vm, s) lulu_push_lcstring((vm), (s), sizeof(s) - 1)
 
 /**
  * @brief   Internal use for writing simple formatted messages.
@@ -41,7 +41,7 @@ void    lulu_push_table(lulu_VM *vm, lulu_Table *t);
  * @note    No modifiers are allowed.
  *          See: https://www.lua.org/manual/5.1/manual.html#lua_pushfstring
  */
-const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap)
+const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
             lulu_check_format(2, 0);
 const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
             lulu_check_format(2, 3);
@@ -64,7 +64,7 @@ void lulu_runtime_error(lulu_VM *vm, const char *fmt, ...)
      lulu_check_format(2, 3);
 void lulu_push_error_fstring(lulu_VM *vm, int line, const char *fmt, ...)
      lulu_check_format(3, 4);
-void lulu_push_error_vfstring(lulu_VM *vm, int line, const char *fmt, va_list ap)
+void lulu_push_error_vfstring(lulu_VM *vm, int line, const char *fmt, va_list args)
      lulu_check_format(3, 0);
 
 #endif /* LULU_API_H */

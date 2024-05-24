@@ -28,7 +28,7 @@ static char get_escape(char ch)
 }
 
 // Note that we need to hash escapes correctly too.
-static uint32_t hash_string(StrView sv)
+static uint32_t hash_string(StringView sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
     char     prev = 0;
@@ -47,7 +47,7 @@ static uint32_t hash_string(StrView sv)
     return hash;
 }
 
-uint32_t hash_rstring(StrView sv)
+uint32_t hash_rstring(StringView sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
     for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
@@ -71,7 +71,7 @@ void free_string(String *s, Alloc *al)
     free_pointer(s, string_size(s->len + 1), al);
 }
 
-static void build_string(String *s, StrView sv)
+static void build_string(String *s, StringView sv)
 {
     char   *end   = s->data; // For loop counter may skip.
     int     skips = 0;          // Number escape characters emitted.
@@ -104,7 +104,7 @@ static void end_string(String *s, uint32_t hash)
     s->hash         = hash;
 }
 
-static String *copy_string_or_rstring(VM *vm, StrView sv, bool israw)
+static String *copy_string_or_rstring(VM *vm, StringView sv, bool israw)
 {
     Alloc   *al    = &vm->allocator;
     uint32_t hash  = (israw) ? hash_rstring(sv) : hash_string(sv);
@@ -125,7 +125,7 @@ static String *copy_string_or_rstring(VM *vm, StrView sv, bool israw)
 
     // If we have escapes, are we really REALLY sure this isn't found?
     if (s->len != sv.len) {
-        found = find_interned(vm, sv_inst(s->data, s->len), hash);
+        found = find_interned(vm, sv_create_from_len(s->data, s->len), hash);
         if (found != NULL) {
             remove_object(&vm->objects, &s->object);
             free_string(s, al);
@@ -136,22 +136,22 @@ static String *copy_string_or_rstring(VM *vm, StrView sv, bool israw)
     return s;
 }
 
-String *copy_rstring(lulu_VM *vm, StrView sv)
+String *copy_rstring(lulu_VM *vm, StringView sv)
 {
     return copy_string_or_rstring(vm, sv, true);
 }
 
-String *copy_string(lulu_VM *vm, StrView sv)
+String *copy_string(lulu_VM *vm, StringView sv)
 {
     return copy_string_or_rstring(vm, sv, false);
 }
 
 String *concat_strings(lulu_VM *vm, int argc, const Value argv[], int len)
 {
-    Alloc  *al     = &vm->allocator;
-    String *s      = new_string(len, al);
-    StrView sv     = sv_inst(s->data, s->len);
-    int     offset = 0;
+    Alloc     *al     = &vm->allocator;
+    String    *s      = new_string(len, al);
+    StringView sv     = sv_create_from_len(s->data, s->len);
+    int        offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
     for (int i = 0; i < argc; i++) {

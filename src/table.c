@@ -8,14 +8,14 @@ static uint32_t hash_pointer(Object *obj)
 {
     char s[sizeof(obj)];
     memcpy(s, &obj, sizeof(s));
-    return hash_rstring(sv_inst(s, sizeof(s)));
+    return hash_rstring(sv_create_from_len(s, sizeof(s)));
 }
 
 static uint32_t hash_number(Number n)
 {
     char s[sizeof(n)];
     memcpy(s, &n, sizeof(s));
-    return hash_rstring(sv_inst(s, sizeof(s)));
+    return hash_rstring(sv_create_from_len(s, sizeof(s)));
 }
 
 static void clear_entries(Entry *entries, int cap)
@@ -40,17 +40,15 @@ static uint32_t get_hash(const Value *t)
 // Find al free slot. Assumes there is at least 1 free slot left.
 static Entry *find_entry(Entry *entries, int cap, const Value *k)
 {
-    uint32_t i = get_hash(k) % cap;
+    uint32_t i    = get_hash(k) % cap;
     Entry   *tomb = NULL;
     for (;;) {
         Entry *ent = &entries[i];
         if (is_nil(&ent->key)) {
-            if (is_nil(&ent->value)) {
+            if (is_nil(&ent->value))
                 return (tomb == NULL) ? ent : tomb;
-            }
-            if (tomb == NULL) {
+            if (tomb == NULL)
                 tomb = ent;
-            }
         } else if (values_equal(&ent->key, k)) {
             return ent;
         }
@@ -68,9 +66,9 @@ static void resize_table(Table *t, int newcap, Alloc *al)
     t->count = 0;
     for (int i = 0; i < t->cap; i++) {
         Entry *src = &t->entries[i];
-        if (is_nil(&src->key)) {
+        if (is_nil(&src->key))
             continue; // Throws away both empty and tombstone entries.
-        }
+
         Entry *dst = find_entry(newbuf, newcap, &src->key);
         dst->key   = src->key;
         dst->value = src->value;
@@ -85,9 +83,8 @@ Table *new_table(int size, Alloc *al)
 {
     Table *t = cast(Table*, new_object(sizeof(*t), TYPE_TABLE, al));
     init_table(t);
-    if (size > 0) {
+    if (size > 0)
         resize_table(t, size, al);
-    }
     return t;
 }
 
@@ -119,19 +116,16 @@ bool get_table(Table *t, const Value *k, Value *out)
 
 bool set_table(Table *t, const Value *k, const Value *v, Alloc *al)
 {
-    if (is_nil(k)) {
+    if (is_nil(k))
         return false;
-    }
-    if (t->count + 1 > t->cap * TABLE_MAX_LOAD) {
+    if (t->count + 1 > t->cap * TABLE_MAX_LOAD)
         resize_table(t, grow_capacity(t->cap), al);
-    }
+
     Entry *ent      = find_entry(t->entries, t->cap, k);
     bool   isnewkey = is_nil(&ent->key);
-
     // Don't increase the count for tombstones (nil-key with non-nil value)
-    if (isnewkey && is_nil(&ent->value)) {
+    if (isnewkey && is_nil(&ent->value))
         t->count++;
-    }
     ent->key   = *k;
     ent->value = *v;
     return isnewkey;
@@ -139,13 +133,12 @@ bool set_table(Table *t, const Value *k, const Value *v, Alloc *al)
 
 bool unset_table(Table *t, const Value *k)
 {
-    if (t->count == 0 || is_nil(k)) {
+    if (t->count == 0 || is_nil(k))
         return false;
-    }
+
     Entry *ent = find_entry(t->entries, t->cap, k);
-    if (is_nil(&ent->key)) {
+    if (is_nil(&ent->key))
         return false;
-    }
     // Place a tombstone, it must be distinct from nil key with nil value.
     setv_nil(&ent->key);
     setv_boolean(&ent->value, false);

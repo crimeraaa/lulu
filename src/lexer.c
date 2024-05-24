@@ -9,7 +9,7 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-static const StrView LULU_TKINFO[] = {
+static const StringView LULU_TKINFO[] = {
     [TK_AND]      = sv_literal("and"),
     [TK_BREAK]    = sv_literal("break"),
     [TK_DO]       = sv_literal("do"),
@@ -67,7 +67,7 @@ static const StrView LULU_TKINFO[] = {
     [TK_EOF]      = sv_literal("<eof>"),
 };
 
-static void init_strview(StrView *sv, const char *src)
+static void init_stringview(StringView *sv, const char *src)
 {
     sv->begin = src;
     sv->end   = src;
@@ -76,16 +76,16 @@ static void init_strview(StrView *sv, const char *src)
 
 static void init_token(Token *tk)
 {
-    init_strview(&tk->view, NULL);
-    tk->line  = 0;
-    tk->type  = TK_EOF;
+    init_stringview(&tk->view, NULL);
+    tk->line = 0;
+    tk->type = TK_EOF;
 }
 
 void init_lexer(Lexer *ls, const char *input, lulu_VM *vm)
 {
     init_token(&ls->lookahead);
     init_token(&ls->consumed);
-    init_strview(&ls->lexeme, input);
+    init_stringview(&ls->lexeme, input);
     ls->vm     = vm;
     ls->name   = vm->name;
     ls->string = NULL;
@@ -232,9 +232,9 @@ static void skip_whitespace(Lexer *ls)
     }
 }
 
-static TkType check_keyword(TkType type, StrView word)
+static TkType check_keyword(TkType type, StringView word)
 {
-    StrView kw = LULU_TKINFO[type];
+    StringView kw = LULU_TKINFO[type];
     if (kw.len == word.len && cstr_eq(kw.begin, word.begin, word.len)) {
         return type;
     }
@@ -243,7 +243,7 @@ static TkType check_keyword(TkType type, StrView word)
 
 static TkType get_identifier_type(const Lexer *ls)
 {
-    StrView word = ls->lexeme;
+    StringView word = ls->lexeme;
     switch (word.begin[0]) {
     case 'a': return check_keyword(TK_AND, word);
     case 'b': return check_keyword(TK_BREAK, word);
@@ -372,18 +372,16 @@ static Token number_token(Lexer *ls)
     char *end;
     ls->number = cstr_tonumber(ls->lexeme.begin, &end);
     // If this is true, strtod failed to convert the entire token/lexeme.
-    if (end != ls->lexeme.end) {
+    if (end != ls->lexeme.end)
         lexerror_at_middle(ls, "Malformed number");
-    }
     return make_token(ls, TK_NUMBER);
 }
 
 static Token string_token(Lexer *ls, char quote)
 {
     while (peek_current_char(ls) != quote && !is_at_end(ls)) {
-        if (peek_current_char(ls) == '\n') {
+        if (peek_current_char(ls) == '\n')
             goto bad_string;
-        }
         next_char(ls);
     }
 
@@ -396,8 +394,9 @@ bad_string:
     // Consume closing quote.
     next_char(ls);
 
-    // Left +1 to skip left quote, len -2 to get offset of last non-quote.
-    StrView sv = sv_inst(ls->lexeme.begin + 1, ls->lexeme.len - 2);
+    const char *begin = ls->lexeme.begin + 1; // +1 to skip opening quote.
+    const char *end   = ls->lexeme.end - 1;   // -1 to skip closing quote.
+    StringView  sv    = sv_create_from_end(begin, end);
     ls->string = copy_string(ls->vm, sv);
     return make_token(ls, TK_STRING);
 }
@@ -410,11 +409,10 @@ static Token rstring_token(Lexer *ls, int lvl)
     }
     multiline(ls, lvl);
 
-    // Skip "[[" and '=' lvl, as well as "]]" and '=' - 2 for last index.
-    int     mark = lvl + open + 2;
-    int     len  = ls->lexeme.len - mark - 2;
-    StrView sv   = sv_inst(ls->lexeme.begin + mark, len);
-    ls->string   = copy_rstring(ls->vm, sv);
+    int        mark = lvl + open + 2;            // Skip [[ and opening nesting.
+    int        len  = ls->lexeme.len - mark - 2; // Offset of last non-quote.
+    StringView sv   = sv_create_from_len(ls->lexeme.begin + mark, len);
+    ls->string      = copy_rstring(ls->vm, sv);
     return make_token(ls, TK_STRING);
 }
 
@@ -423,7 +421,7 @@ static Token rstring_token(Lexer *ls, int lvl)
 Token scan_token(Lexer *ls)
 {
     skip_whitespace(ls);
-    init_strview(&ls->lexeme, ls->lexeme.end);
+    init_stringview(&ls->lexeme, ls->lexeme.end);
     if (is_at_end(ls)) {
         return make_token(ls, TK_EOF);
     }
@@ -500,25 +498,23 @@ typedef struct {
     char *end;         // +1 past the last written character.
     int   left;        // How many free slots we can still write in.
     int   writes;      // How many slots we have written to so far.
-} Builder;
+} StringBuilder;
 
-static void init_builder(Builder *sb)
+static void init_stringbuilder(StringBuilder *sb)
 {
     sb->end    = sb->buffer;
     sb->left   = sizeof(sb->buffer);
     sb->writes = 0;
 }
 
-static void append_builder(Builder *sb, const char *fmt, ...)
+static void append_stringbuilder(StringBuilder *sb, const char *fmt, ...)
 {
     va_list argp;
     va_start(argp, fmt);
-
     sb->writes = vsnprintf(sb->end, sb->left, fmt, argp);
     sb->end   += sb->writes;
     sb->left  -= sb->writes;
     *sb->end   = '\0';
-
     va_end(argp);
 }
 
@@ -528,17 +524,13 @@ void expect_token(Lexer *ls, TkType type, const char *info)
         next_token(ls);
         return;
     }
-
-    Builder sb;
-    StrView sv = LULU_TKINFO[type];
-
-    init_builder(&sb);
-    append_builder(&sb, "Expected '%s'", sv.begin);
-
+    StringBuilder sb;
+    StringView    sv = LULU_TKINFO[type];
+    init_stringbuilder(&sb);
+    append_stringbuilder(&sb, "Expected '%s'", sv.begin);
     if (info != NULL) {
-        append_builder(&sb, " %s", info);
+        append_stringbuilder(&sb, " %s", info);
     }
-
     lexerror_at_lookahead(ls, sb.buffer);
 }
 

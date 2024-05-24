@@ -127,6 +127,6 @@ void write_varray(VArray *va, const Value *vl, Alloc *al);
 void set_interned(lulu_VM *vm, const String *s);
 
 // Searches for interned strings. Analogous to `tableFindString()` in the book.
-String *find_interned(lulu_VM *vm, StrView sv, uint32_t hash);
+String *find_interned(lulu_VM *vm, StringView sv, uint32_t hash);
 
 #endif /* LULU_OBJECT_H */

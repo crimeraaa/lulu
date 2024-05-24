@@ -31,7 +31,7 @@ static void reset_stack(VM *vm)
 
 static void init_builtin(VM *vm)
 {
-    StrView sv = sv_literal("_G");
+    StringView sv = sv_literal("_G");
     lulu_push_table(vm, &vm->globals);
     lulu_set_global(vm, copy_string(vm, sv));
 }
@@ -195,9 +195,13 @@ static ErrType run(VM *vm)
         case OP_SETGLOBAL:
             lulu_set_global(vm, read_string());
             break;
-        case OP_SETTABLE:
-            lulu_set_table(vm, read_byte(), read_byte(), read_byte());
+        case OP_SETTABLE: {
+            int t_offset = read_byte();
+            int k_offset = read_byte();
+            int poppable = read_byte();
+            lulu_set_table(vm, t_offset, k_offset, poppable);
             break;
+        }
         case OP_SETARRAY: {
             int     t_idx = read_byte(); // Absolute index of the table.
             int     count = read_byte(); // How many elements in the array?

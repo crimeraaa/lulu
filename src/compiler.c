@@ -283,8 +283,8 @@ void compile(Compiler *cpl, const char *input, Chunk *chunk)
 
 static bool identifiers_equal(const Token *a, const Token *b)
 {
-    const StrView *s1 = &a->view;
-    const StrView *s2 = &b->view;
+    const StringView *s1 = &a->view;
+    const StringView *s2 = &b->view;
     return s1->len == s2->len && cstr_eq(s1->begin, s2->begin, s1->len);
 }
 

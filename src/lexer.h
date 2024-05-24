@@ -66,15 +66,15 @@ typedef enum {
 #define NUM_TOKENS      (TK_EOF + 1)
 
 typedef struct {
-    StrView view;
-    TkType  type;
-    int     line;
+    StringView view;
+    TkType     type;
+    int        line;
 } Token;
 
 typedef struct {
     Token       lookahead; // analogous to `Parser::current` in the book.
     Token       consumed;  // analogous to `Parser::previous` in the book.
-    StrView     lexeme;    // Holds pointers to 1st and current of lexeme.
+    StringView  lexeme;    // Holds pointers to 1st and current of lexeme.
     lulu_VM    *vm;        // Private to implementation. Has our `jmp_buf`.
     const char *name;      // Current filename or `"stdin"`.
     String     *string;    // Interned string literal or identifier.

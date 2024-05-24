@@ -47,14 +47,12 @@ void lulu_push_string(lulu_VM *vm, lulu_String *s)
 
 void lulu_push_cstring(lulu_VM *vm, const char *s)
 {
-    int     len = strlen(s);
-    StrView sv  = sv_inst(s, len);
-    lulu_push_string(vm, copy_string(vm, sv));
+    lulu_push_lcstring(vm, s, strlen(s));
 }
 
 void lulu_push_lcstring(lulu_VM *vm, const char *s, int len)
 {
-    StrView sv = sv_inst(s, len);
+    StringView sv = sv_create_from_len(s, len);
     lulu_push_string(vm, copy_string(vm, sv));
 }
 
@@ -76,7 +74,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap)
             break;
         // Push the contents of the string before '%', except if '%' is starter.
         if (spec != fmt) {
-            StrView sv = sv_inst(iter, spec - iter);
+            StringView sv = sv_create_from_end(iter, spec);
             lulu_push_lcstring(vm, sv.begin, sv.len);
             argc  += 1;
             total += sv.len;
@@ -232,12 +230,10 @@ void lulu_get_table(lulu_VM *vm, int t_offset, int k_offset)
     Value *t = poke_at_offset(vm, t_offset);
     Value *k = poke_at_offset(vm, k_offset);
     Value  v;
-    if (!is_table(t)) {
+    if (!is_table(t))
         lulu_type_error(vm, "index", get_typename(t));
-    }
-    if (!get_table(as_table(t), k, &v)) {
+    if (!get_table(as_table(t), k, &v))
         setv_nil(&v);
-    }
     lulu_pop(vm, 2);
     push_back(vm, &v);
 }
@@ -257,7 +253,7 @@ void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
 
 void lulu_get_global(lulu_VM *vm, lulu_String *s)
 {
-    Value id  = make_string(s);
+    Value id = make_string(s);
     Value out;
     if (!get_table(&vm->globals, &id, &out))
         lulu_runtime_error(vm, "read undefined global '%s'", s->data);
@@ -266,7 +262,7 @@ void lulu_get_global(lulu_VM *vm, lulu_String *s)
 
 void lulu_set_global(lulu_VM *vm, lulu_String *s)
 {
-    Value id  = make_string(s);
+    Value id = make_string(s);
     set_table(&vm->globals, &id, poke_at_offset(vm, -1), &vm->allocator);
     lulu_pop(vm, 1);
 }
@@ -287,11 +283,11 @@ void lulu_comptime_error(lulu_VM *vm, int line, const char *what, const char *wh
 
 void lulu_runtime_error(lulu_VM *vm, const char *fmt, ...)
 {
-    va_list   ap;
-    const int line = get_current_line(vm);
-    va_start(ap, fmt);
-    lulu_push_vfstring(vm, fmt, ap);
-    va_end(ap);
+    va_list args;
+    int     line = get_current_line(vm);
+    va_start(args, fmt);
+    lulu_push_vfstring(vm, fmt, args);
+    va_end(args);
     lulu_push_error_fstring(vm, line, "Attempt to %s\n", lulu_to_cstring(vm, -1));
     longjmp(vm->errorjmp, ERROR_RUNTIME);
 }
@@ -303,16 +299,16 @@ void lulu_type_error(lulu_VM *vm, const char *act, const char *type)
 
 void lulu_push_error_fstring(lulu_VM *vm, int line, const char *fmt, ...)
 {
-    va_list ap;
-    va_start(ap, fmt);
-    lulu_push_error_vfstring(vm, line, fmt, ap);
-    va_end(ap);
+    va_list args;
+    va_start(args, fmt);
+    lulu_push_error_vfstring(vm, line, fmt, args);
+    va_end(args);
 }
 
-void lulu_push_error_vfstring(lulu_VM *vm, int line, const char *fmt, va_list ap)
+void lulu_push_error_vfstring(lulu_VM *vm, int line, const char *fmt, va_list args)
 {
     lulu_set_top(vm, 0); // Reset VM stack before pushing the error message.
     lulu_push_fstring(vm, "%s:%i: ", vm->name, line);
-    lulu_push_vfstring(vm, fmt, ap);
+    lulu_push_vfstring(vm, fmt, args);
     lulu_concat(vm, 2);
 }

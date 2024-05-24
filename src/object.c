@@ -22,9 +22,9 @@ const Value *value_tonumber(const Value *vl, Value *out)
     }
     if (is_string(vl)) {
         char   *end;
-        String *s  = as_string(vl);
-        StrView sv = sv_inst(s->data, s->len);
-        Number  n  = cstr_tonumber(sv.begin, &end);
+        String    *s  = as_string(vl);
+        StringView sv = sv_create_from_len(s->data, s->len);
+        Number     n  = cstr_tonumber(sv.begin, &end);
         if (end == sv.end) {
             setv_number(out, n);
             return out;
@@ -36,9 +36,8 @@ const Value *value_tonumber(const Value *vl, Value *out)
 const char *value_tocstring(const Value *vl, char *buf, int *out)
 {
     int len = 0;
-    if (out != NULL) {
+    if (out != NULL)
         *out = -1;
-    }
     switch (get_tag(vl)) {
     case TYPE_NIL:
         return "nil";
@@ -58,9 +57,8 @@ const char *value_tocstring(const Value *vl, char *buf, int *out)
         break;
     }
     buf[len] = '\0';
-    if (out != NULL) {
+    if (out != NULL)
         *out = len;
-    }
     return buf;
 }
 
@@ -81,9 +79,8 @@ void print_value(const Value *vl, bool isdebug)
 bool values_equal(const Value *a, const Value *b)
 {
     // Logically, differing types can never be equal.
-    if (get_tag(a) != get_tag(b)) {
+    if (get_tag(a) != get_tag(b))
         return false;
-    }
     switch (get_tag(a)) {
     case TYPE_NIL:      return true;
     case TYPE_BOOLEAN:  return as_boolean(a) == as_boolean(b);
@@ -127,7 +124,7 @@ void set_interned(lulu_VM *vm, const String *s)
     set_table(t, &k, &v, al);
 }
 
-String *find_interned(lulu_VM *vm, StrView sv, uint32_t hash)
+String *find_interned(lulu_VM *vm, StringView sv, uint32_t hash)
 {
     Table *t = &vm->strings;
     if (t->count == 0) {
@@ -137,15 +134,13 @@ String *find_interned(lulu_VM *vm, StrView sv, uint32_t hash)
     for (;;) {
         Entry *ent = &t->entries[i];
         // The strings table only ever has completely empty or full entries.
-        if (is_nil(&ent->key) && is_nil(&ent->value)) {
+        if (is_nil(&ent->key) && is_nil(&ent->value))
             return NULL;
-        }
         // We assume ALL valid (i.e: non-nil) keys are strings.
         String *s = as_string(&ent->key);
         if (s->len == sv.len && s->hash == hash) {
-            if (cstr_eq(s->data, sv.begin, sv.len)) {
+            if (cstr_eq(s->data, sv.begin, sv.len))
                 return s;
-            }
         }
         i = (i + 1) % t->cap;
     }
