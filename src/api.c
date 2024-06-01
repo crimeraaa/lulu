@@ -64,9 +64,8 @@ void lulu_push_table(lulu_VM *vm, lulu_Table *t)
 
 const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap)
 {
-    const char  *iter  = fmt;
-    int          argc  = 0;
-    int          total = 0;
+    const char *iter = fmt;
+    int         argc = 0;
 
     for (;;) {
         const char *spec = strchr(iter, '%');
@@ -76,8 +75,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap)
         if (spec != fmt) {
             StringView sv = sv_create_from_end(iter, spec);
             lulu_push_lcstring(vm, sv.begin, sv.len);
-            argc  += 1;
-            total += sv.len;
+            argc += 1;
         }
         // Move to character after '%' so we point at the specifier.
         spec += 1;
@@ -120,27 +118,21 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list ap)
             break;
         }
         // Point to first character after the specifier.
-        iter   = spec + 1;
-        total += as_string(poke_at_offset(vm, -1))->len;
-        argc  += 1;
+        iter  = spec + 1;
+        argc += 1;
     }
     // Still have stuff left in the format string?
     if (*iter != '\0') {
         lulu_push_cstring(vm, iter);
-        argc  += 1;
-        total += as_string(poke_at_offset(vm, -1))->len;
+        argc += 1;
     }
 
     // concat will always allocate something, so try to avoid doing so if we
     // have 1 string as concatenating 1 string is a waste of memory.
-    if (argc != 1) {
-        Value  *argv = poke_at_offset(vm, -argc);
-        String *s    = concat_strings(vm, argc, argv, total);
-        lulu_pop(vm, argc);
-        lulu_push_string(vm, s);
-        return s->data;
-    }
-    return as_cstring(poke_at_offset(vm, -1));
+    if (argc != 1)
+        return lulu_concat(vm, argc);
+    else
+        return as_cstring(poke_at_offset(vm, -1));
 }
 
 const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)

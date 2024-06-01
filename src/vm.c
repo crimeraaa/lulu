@@ -36,12 +36,19 @@ static void init_builtin(VM *vm)
     lulu_set_global(vm, copy_string(vm, sv));
 }
 
+// Silly but need this as stack-allocated tables don't init their objects.
+static void _init_table(Table *t)
+{
+    t->object.tag = TYPE_TABLE;
+    init_table(t);
+}
+
 void init_vm(VM *vm, const char *name)
 {
     reset_stack(vm);
     init_alloc(&vm->allocator, &allocatorfn, vm);
-    init_table(&vm->globals);
-    init_table(&vm->strings);
+    _init_table(&vm->globals);
+    _init_table(&vm->strings);
     vm->name    = name;
     vm->objects = NULL;
 
@@ -66,9 +73,8 @@ const char *pick_non_number(const Value *a, const Value *b)
 {
     Value tmp;
     // First operand is wrong?
-    if (!value_tonumber(a, &tmp)) {
+    if (!value_tonumber(a, &tmp))
         return get_typename(a);
-    }
     return get_typename(b);
 }
 
@@ -237,12 +243,10 @@ static ErrType run(VM *vm)
             break;
         case OP_UNM: {
             Value *arg = poke_top(vm, -1);
-            if (is_number(arg)) {
-                Number n = num_unm(as_number(arg));
-                setv_number(arg, n);
-            } else {
+            if (is_number(arg))
+                setv_number(arg, num_unm(as_number(arg)));
+            else
                 arith_tm(vm, arg, arg, TM_UNM);
-            }
             break;
         }
         case OP_NOT:
@@ -251,18 +255,19 @@ static ErrType run(VM *vm)
         case OP_LEN: {
             // TODO: Separate array segment from hash segment of tables.
             Value *arg = poke_top(vm, -1);
-            if (!is_string(arg)) {
+            if (!is_string(arg))
                 lulu_type_error(vm, "get length of", get_typename(arg));
-            }
             setv_number(arg, as_string(arg)->len);
             break;
         }
         case OP_PRINT: {
             int argc = read_byte();
             for (int i = 0; i < argc; i++) {
-                printf("%s\t", lulu_to_cstring(vm, i - argc));
+                if (i > 0)
+                    fputs("\t", stdout);
+                fputs(lulu_to_cstring(vm, i - argc), stdout);
             }
-            printf("\n");
+            fputs("\n", stdout);
             lulu_pop(vm, argc);
             break;
         }

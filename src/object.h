@@ -90,11 +90,11 @@ typedef struct lulu_Table {
 // We use a local variable to avoid bugs caused by multiple macro expansion.
 // NOTE: We set the value before the tag type in case `val` evaluates `dst`.
 #define setv_value(tt, as_fn, dst, val)                                        \
-{                                                                              \
+do {                                                                           \
     Value *_dst   = (dst);                                                     \
     as_fn(_dst)   = (val);                                                     \
     get_tag(_dst) = (tt);                                                      \
-}
+} while (false)
 
 #define setv_nil(v)             setv_value(TYPE_NIL,     as_number,  v, 0)
 #define setv_boolean(v, b)      setv_value(TYPE_BOOLEAN, as_boolean, v, b)
