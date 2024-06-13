@@ -8,6 +8,9 @@ void     lulu_close(lulu_VM *vm);
 void     lulu_set_top(lulu_VM *vm, int offset);
 #define  lulu_pop(vm, n) lulu_set_top((vm), -(n))
 
+// Caller must allocate `input` properly however they need.
+lulu_ErrorCode lulu_interpret(lulu_VM *vm, const char *name, const char *input);
+
 void    lulu_push_nil(lulu_VM *vm, int count);
 void    lulu_push_boolean(lulu_VM *vm, bool b);
 void    lulu_push_number(lulu_VM *vm, lulu_Number n);

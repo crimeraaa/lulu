@@ -8,6 +8,7 @@
 lulu_VM *lulu_open(void)
 {
     static lulu_VM state = {0}; // lol
+    init_vm(&state);
     return &state;
 }
 
@@ -16,6 +17,8 @@ void lulu_close(lulu_VM *vm)
     free_vm(vm);
 }
 
+
+
 // Negative values are offset from the top, positive are offset from the base.
 static Value *poke_at_offset(VM *vm, int offset)
 {
@@ -23,6 +26,12 @@ static Value *poke_at_offset(VM *vm, int offset)
         return poke_base(vm, offset);
     else
         return poke_top(vm, offset);
+}
+
+lulu_ErrorCode lulu_interpret(lulu_VM *vm, const char *name, const char *input)
+{
+    vm->name = name;
+    return interpret(vm, input);
 }
 
 void lulu_set_top(lulu_VM *vm, int offset)

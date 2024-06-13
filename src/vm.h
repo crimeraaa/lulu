@@ -26,7 +26,7 @@ typedef struct lulu_VM {
 #define poke_base(vm, n)    ((vm)->base + (n))
 #define push_back(vm, v)    *(vm)->top = *(v), incr_top(vm)
 
-void init_vm(VM *vm, const char *name);
+void init_vm(VM *vm);
 void free_vm(VM *vm);
 lulu_ErrorCode interpret(VM *vm, const char *input);
 

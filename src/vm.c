@@ -42,13 +42,12 @@ static void _init_table(Table *t)
     init_table(t);
 }
 
-void init_vm(VM *vm, const char *name)
+void init_vm(VM *vm)
 {
     reset_stack(vm);
     init_alloc(&vm->allocator, &allocatorfn, vm);
     _init_table(&vm->globals);
     _init_table(&vm->strings);
-    vm->name    = name;
     vm->objects = NULL;
 
     // This must occur AFTER the strings table and objects list are initialized.

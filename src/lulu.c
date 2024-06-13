@@ -1,7 +1,6 @@
 #include "api.h"
 #include "lulu.h"
 #include "limits.h"
-#include "vm.h"
 
 #include <sysexits.h>
 
@@ -14,7 +13,7 @@ static int repl(lulu_VM *vm)
             fputc('\n', stdout);
             break;
         }
-        switch (interpret(vm, line)) {
+        switch (lulu_interpret(vm, "stdin", line)) {
         case LULU_ERROR_NONE:     break;
         case LULU_ERROR_COMPTIME: // Fall through.
         case LULU_ERROR_RUNTIME:  printf("%s", lulu_to_cstring(vm, -1));
@@ -68,7 +67,7 @@ static int run_file(lulu_VM *vm, const char *file_name)
     if (input == NULL) {
         return EX_IOERR;
     }
-    lulu_ErrorCode res = interpret(vm, input);
+    lulu_ErrorCode res = lulu_interpret(vm, file_name, input);
     free(input);
 
     switch (res) {
@@ -86,15 +85,13 @@ int main(int argc, const char *argv[])
     lulu_VM *vm = lulu_open();
     int err = 0;
     if (argc == 1) {
-        init_vm(vm, "stdin");
         err = repl(vm);
     } else if (argc == 2) {
-        init_vm(vm, argv[1]);
         err = run_file(vm, argv[1]);
     } else {
         eprintfln("Usage: %s [script]", argv[0]);
         return EX_USAGE;
     }
-    free_vm(vm);
+    lulu_close(vm);
     return err;
 }
