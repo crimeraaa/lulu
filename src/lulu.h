@@ -15,4 +15,11 @@ typedef struct lulu_Value  lulu_Value;  // defined in `object.h`.
 typedef struct lulu_String lulu_String; // defined in `object.h`.
 typedef struct lulu_Table  lulu_Table;  // defined in `object.h`.
 
+typedef enum {
+    LULU_ERROR_NONE,
+    LULU_ERROR_COMPTIME,
+    LULU_ERROR_RUNTIME,
+    LULU_ERROR_ALLOC,
+} lulu_ErrorCode;
+
 #endif /* LULU_H */

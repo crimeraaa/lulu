@@ -1,10 +1,11 @@
 #include "api.h"
 #include "lulu.h"
+#include "limits.h"
 #include "vm.h"
 
 #include <sysexits.h>
 
-static int repl(VM *vm)
+static int repl(lulu_VM *vm)
 {
     char line[MAX_LINE];
     for (;;) {
@@ -14,12 +15,12 @@ static int repl(VM *vm)
             break;
         }
         switch (interpret(vm, line)) {
-        case ERROR_NONE:     break;
-        case ERROR_COMPTIME: // Fall through.
-        case ERROR_RUNTIME:  printf("%s", lulu_to_cstring(vm, -1));
-                             lulu_pop(vm, 1);
-                             break;
-        case ERROR_ALLOC:    return 1;
+        case LULU_ERROR_NONE:     break;
+        case LULU_ERROR_COMPTIME: // Fall through.
+        case LULU_ERROR_RUNTIME:  printf("%s", lulu_to_cstring(vm, -1));
+                                  lulu_pop(vm, 1);
+                                  break;
+        case LULU_ERROR_ALLOC:    return 1;
         }
     }
     return 0;
@@ -61,32 +62,29 @@ static char *read_file(const char *file_name)
     return buffer;
 }
 
-static int run_file(VM *vm, const char *file_name)
+static int run_file(lulu_VM *vm, const char *file_name)
 {
     char *input = read_file(file_name);
     if (input == NULL) {
         return EX_IOERR;
     }
-    ErrType res = interpret(vm, input);
+    lulu_ErrorCode res = interpret(vm, input);
     free(input);
 
     switch (res) {
-    case ERROR_NONE:    return 0;
-    case ERROR_COMPTIME: // fall through
-    case ERROR_RUNTIME: printf("%s", lulu_to_cstring(vm, -1));
-                        lulu_pop(vm, 1);
-    case ERROR_ALLOC:   return EX_SOFTWARE;
+    case LULU_ERROR_NONE:    return 0;
+    case LULU_ERROR_COMPTIME: // fall through
+    case LULU_ERROR_RUNTIME: printf("%s", lulu_to_cstring(vm, -1));
+                             lulu_pop(vm, 1);
+    case LULU_ERROR_ALLOC:   return EX_SOFTWARE;
     }
     return EXIT_FAILURE; // Should be unreachable.
 }
 
-static VM global_vm = {0};
-
 int main(int argc, const char *argv[])
 {
-    VM *vm = &global_vm;
+    lulu_VM *vm = lulu_open();
     int err = 0;
-
     if (argc == 1) {
         init_vm(vm, "stdin");
         err = repl(vm);

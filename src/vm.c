@@ -18,7 +18,7 @@ static void *allocatorfn(void *ptr, size_t oldsz, size_t newsz, void *ctx)
     }
     void *res = realloc(ptr, newsz);
     if (res == NULL) {
-        longjmp(vm->errorjmp, ERROR_ALLOC);
+        lulu_alloc_error(vm);
     }
     return res;
 }
@@ -31,9 +31,8 @@ static void reset_stack(VM *vm)
 
 static void init_builtin(VM *vm)
 {
-    StringView sv = sv_literal("_G");
     lulu_push_table(vm, &vm->globals);
-    lulu_set_global(vm, copy_string(vm, sv));
+    lulu_set_global(vm, "_G");
 }
 
 // Silly but need this as stack-allocated tables don't init their objects.
@@ -111,7 +110,7 @@ static void compare_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
     lulu_type_error(vm, "compare", pick_non_number(a, b));
 }
 
-static ErrType run(VM *vm)
+static lulu_ErrorCode run(VM *vm)
 {
     Alloc *al  = &vm->allocator;
     Chunk *ck  = vm->chunk;
@@ -188,9 +187,11 @@ static ErrType run(VM *vm)
         case OP_GETLOCAL:
             push_back(vm, &vm->base[read_byte()]);
             break;
-        case OP_GETGLOBAL:
-            lulu_get_global(vm, read_string());
+        case OP_GETGLOBAL: {
+            String *s = read_string();
+            lulu_get_global(vm, s);
             break;
+        }
         case OP_GETTABLE:
             lulu_get_table(vm, -2, -1);
             break;
@@ -198,9 +199,11 @@ static ErrType run(VM *vm)
             vm->base[read_byte()] = *poke_top(vm, -1);
             lulu_pop(vm, 1);
             break;
-        case OP_SETGLOBAL:
-            lulu_set_global(vm, read_string());
+        case OP_SETGLOBAL: {
+            String *s = read_string();
+            lulu_set_global(vm, s);
             break;
+        }
         case OP_SETTABLE: {
             int t_offset = read_byte();
             int k_offset = read_byte();
@@ -272,7 +275,7 @@ static ErrType run(VM *vm)
             break;
         }
         case OP_RETURN:
-            return ERROR_NONE;
+            return LULU_ERROR_NONE;
         }
     }
 
@@ -283,23 +286,23 @@ static ErrType run(VM *vm)
 #undef read_string
 }
 
-ErrType interpret(VM *vm, const char *input)
+lulu_ErrorCode interpret(VM *vm, const char *input)
 {
     Chunk    ck;
     Lexer    ls;
     Compiler cpl;
-    ErrType  err = setjmp(vm->errorjmp); // Assumes always called correctly!
+    lulu_ErrorCode err = setjmp(vm->errorjmp);
     switch (err) {
-    case ERROR_NONE:
+    case LULU_ERROR_NONE:
         init_chunk(&ck, vm->name);
         init_compiler(&cpl, &ls, vm);
         compile(&cpl, input, &ck);
         break;
-    case ERROR_RUNTIME:
-    case ERROR_COMPTIME:
-    case ERROR_ALLOC:
+    case LULU_ERROR_RUNTIME:
+    case LULU_ERROR_COMPTIME:
+    case LULU_ERROR_ALLOC:
         // For the default case, please ensure all calls of `longjmp` ONLY
-        // ever pass an `ErrType` member.
+        // ever pass an `lulu_ErrorCode` member.
         free_chunk(&ck, &vm->allocator);
         return err;
     }

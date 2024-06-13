@@ -21,7 +21,7 @@ const Value *value_tonumber(const Value *vl, Value *out)
         return vl;
     }
     if (is_string(vl)) {
-        char   *end;
+        char      *end;
         String    *s  = as_string(vl);
         StringView sv = sv_create_from_len(s->data, s->len);
         Number     n  = cstr_tonumber(sv.begin, &end);

@@ -28,6 +28,6 @@ typedef struct lulu_VM {
 
 void init_vm(VM *vm, const char *name);
 void free_vm(VM *vm);
-ErrType interpret(VM *vm, const char *input);
+lulu_ErrorCode interpret(VM *vm, const char *input);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */

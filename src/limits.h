@@ -101,13 +101,6 @@
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)
 
-typedef enum {
-    ERROR_NONE,
-    ERROR_COMPTIME,
-    ERROR_RUNTIME,
-    ERROR_ALLOC,
-} ErrType;
-
 typedef struct {
     const char *begin; // Pointer to the first character in the string.
     const char *end;   // Pointer to nul character or 1 past last valid index.
