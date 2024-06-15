@@ -14,7 +14,7 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_TABLE]   = "table",
 };
 
-const Value *value_tonumber(const Value *vl, Value *out)
+const Value *luluVal_to_number(const Value *vl, Value *out)
 {
     if (is_number(vl)) {
         setv_number(out, as_number(vl));
@@ -33,7 +33,7 @@ const Value *value_tonumber(const Value *vl, Value *out)
     return NULL;
 }
 
-const char *value_tocstring(const Value *vl, char *buf, int *out)
+const char *luluVal_to_cstring(const Value *vl, char *buf, int *out)
 {
     int len = 0;
     if (out != NULL)
@@ -62,7 +62,7 @@ const char *value_tocstring(const Value *vl, char *buf, int *out)
     return buf;
 }
 
-void print_value(const Value *vl, bool isdebug)
+void luluVal_print_value(const Value *vl, bool isdebug)
 {
     if (is_string(vl) && isdebug) {
         const String *s = as_string(vl);
@@ -72,11 +72,11 @@ void print_value(const Value *vl, bool isdebug)
             printf("\"%s\"", s->data);
     } else {
         char buf[MAX_TOSTRING];
-        printf("%s", value_tocstring(vl, buf, NULL));
+        printf("%s", luluVal_to_cstring(vl, buf, NULL));
     }
 }
 
-bool values_equal(const Value *a, const Value *b)
+bool luluVal_equal(const Value *a, const Value *b)
 {
     // Logically, differing types can never be equal.
     if (get_tag(a) != get_tag(b))
@@ -90,58 +90,27 @@ bool values_equal(const Value *a, const Value *b)
     }
 }
 
-void init_varray(lulu_VM *vm, VArray *va)
+void luluVal_init_array(VArray *va)
 {
-    unused(vm);
     va->values = NULL;
     va->len    = 0;
     va->cap    = 0;
 }
 
-void free_varray(lulu_VM *vm, VArray *va)
+void luluVal_free_array(lulu_VM *vm, VArray *va)
 {
-    free_parray(vm, va->values, va->len);
-    init_varray(vm, va);
+    luluMem_free_parray(vm, va->values, va->len);
+    luluVal_init_array(va);
 }
 
-void write_varray(lulu_VM *vm, VArray *va, const Value *vl)
+void luluVal_write_array(lulu_VM *vm, VArray *va, const Value *vl)
 {
     if (va->len + 1 > va->cap) {
         int oldcap = va->cap;
-        int newcap = grow_capacity(oldcap);
-        va->values = resize_parray(vm, va->values, oldcap, newcap);
+        int newcap = luluMem_grow_capacity(oldcap);
+        va->values = luluMem_resize_parray(vm, va->values, oldcap, newcap);
         va->cap    = newcap;
     }
     va->values[va->len] = *vl;
     va->len += 1;
-}
-
-void set_interned(lulu_VM *vm, const String *s)
-{
-    Table *t  = &vm->strings;
-    Value  k  = make_string(s);
-    Value  v  = make_boolean(true);
-    set_table(vm, t, &k, &v);
-}
-
-String *find_interned(lulu_VM *vm, StringView sv, uint32_t hash)
-{
-    Table *t = &vm->strings;
-    if (t->count == 0)
-        return NULL;
-
-    uint32_t i = hash % t->cap;
-    for (;;) {
-        Entry *ent = &t->entries[i];
-        // The strings table only ever has completely empty or full entries.
-        if (is_nil(&ent->key) && is_nil(&ent->value))
-            return NULL;
-        // We assume ALL valid (i.e: non-nil) keys are strings.
-        String *s = as_string(&ent->key);
-        if (s->len == sv.len && s->hash == hash) {
-            if (cstr_eq(s->data, sv.begin, sv.len))
-                return s;
-        }
-        i = (i + 1) % t->cap;
-    }
 }

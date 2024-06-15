@@ -8,13 +8,13 @@
 lulu_VM *lulu_open(void)
 {
     static lulu_VM state = {0}; // lol
-    init_vm(&state);
+    luluVM_init(&state);
     return &state;
 }
 
 void lulu_close(lulu_VM *vm)
 {
-    free_vm(vm);
+    luluVM_free(vm);
 }
 
 
@@ -28,10 +28,10 @@ static Value *poke_at_offset(VM *vm, int offset)
         return poke_top(vm, offset);
 }
 
-lulu_ErrorCode lulu_interpret(lulu_VM *vm, const char *name, const char *input)
+lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
 {
     vm->name = name;
-    return interpret(vm, input);
+    return luluVM_interpret(vm, input);
 }
 
 void lulu_set_top(lulu_VM *vm, int offset)
@@ -73,7 +73,7 @@ void lulu_push_cstring(lulu_VM *vm, const char *s)
 void lulu_push_lcstring(lulu_VM *vm, const char *s, int len)
 {
     StringView sv = sv_create_from_len(s, len);
-    lulu_push_string(vm, copy_string(vm, sv));
+    lulu_push_string(vm, luluStr_copy(vm, sv));
 }
 
 void lulu_push_table(lulu_VM *vm, lulu_Table *t)
@@ -178,7 +178,7 @@ lulu_Number lulu_to_number(lulu_VM *vm, int offset)
     Value *v = poke_at_offset(vm, offset);
     Value  tmp;
     // As is, `lulu_to_number` does not do any error handling.
-    if (value_tonumber(v, &tmp)) {
+    if (luluVal_to_number(v, &tmp)) {
         Number n = as_number(&tmp);
         setv_number(v, n);
         return n;
@@ -231,7 +231,7 @@ const char *lulu_concat(lulu_VM *vm, int count)
             lulu_type_error(vm, "concatenate", get_typename(arg));
         len += as_string(arg)->len;
     }
-    String *s = concat_strings(vm, count, argv, len);
+    String *s = luluStr_concat(vm, count, argv, len);
     lulu_pop(vm, count);
     lulu_push_string(vm, s);
     return s->data;
@@ -244,7 +244,7 @@ void lulu_get_table(lulu_VM *vm, int t_offset, int k_offset)
     Value  v;
     if (!is_table(t))
         lulu_type_error(vm, "index", get_typename(t));
-    if (!get_table(vm, as_table(t), k, &v))
+    if (!luluTbl_get(as_table(t), k, &v))
         setv_nil(&v);
     lulu_pop(vm, 2);
     push_back(vm, &v);
@@ -259,7 +259,7 @@ void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
         lulu_type_error(vm, "index", get_typename(t));
     if (is_nil(k))
         lulu_runtime_error(vm, "set a nil index");
-    set_table(vm, as_table(t), k, v);
+    luluTbl_set(vm, as_table(t), k, v);
     lulu_pop(vm, to_pop);
 }
 
@@ -267,7 +267,7 @@ void lulu_get_global_from_string(lulu_VM *vm, lulu_String *s)
 {
     Value id = make_string(s);
     Value out;
-    if (!get_table(vm, &vm->globals, &id, &out))
+    if (!luluTbl_get(&vm->globals, &id, &out))
         lulu_runtime_error(vm, "read undefined global '%s'", s->data);
     push_back(vm, &out);
 }
@@ -280,14 +280,14 @@ void lulu_get_global_from_cstring(lulu_VM *vm, const char *s)
 void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, int len)
 {
     StringView sv = sv_create_from_len(s, len);
-    String    *id = copy_string(vm, sv);
+    String    *id = luluStr_copy(vm, sv);
     lulu_get_global_from_string(vm, id);
 }
 
 void lulu_set_global_from_string(lulu_VM *vm, lulu_String *s)
 {
     Value id = make_string(s);
-    set_table(vm, &vm->globals, &id, poke_at_offset(vm, -1));
+    luluTbl_set(vm, &vm->globals, &id, poke_at_offset(vm, -1));
     lulu_pop(vm, 1);
 }
 
@@ -299,7 +299,7 @@ void lulu_set_global_from_cstring(lulu_VM *vm, const char *s)
 void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, int len)
 {
     StringView sv = sv_create_from_len(s, len);
-    lulu_set_global_from_string(vm, copy_string(vm, sv));
+    lulu_set_global_from_string(vm, luluStr_copy(vm, sv));
 }
 
 static int get_current_line(const lulu_VM *vm)

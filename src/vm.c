@@ -7,7 +7,6 @@
 #include "string.h"
 #include "table.h"
 
-// Assumes that the context pointer points to the parent `VM*` instance.
 static void *allocate(void *ptr, size_t oldsz, size_t newsz, void *ctx)
 {
     unused(oldsz);
@@ -36,29 +35,29 @@ static void init_builtin(VM *vm)
 }
 
 // Silly but need this as stack-allocated tables don't init their objects.
-static void _init_table(lulu_VM *vm, Table *t)
+static void _init_table(Table *t)
 {
     t->object.tag = TYPE_TABLE;
-    init_table(vm, t);
+    luluTbl_init(t);
 }
 
-void init_vm(VM *vm)
+void luluVM_init(VM *vm)
 {
     reset_stack(vm);
-    lulu_set_allocator(vm, &allocate, NULL);
-    _init_table(vm, &vm->globals);
-    _init_table(vm, &vm->strings);
+    luluMem_set_allocator(vm, &allocate, vm);
+    _init_table(&vm->globals);
+    _init_table(&vm->strings);
     vm->objects = NULL;
 
     // This must occur AFTER the strings table and objects list are initialized.
     init_builtin(vm);
 }
 
-void free_vm(VM *vm)
+void luluVM_free(VM *vm)
 {
-    free_table(vm, &vm->globals);
-    free_table(vm, &vm->strings);
-    lulu_free_objects(vm);
+    luluTbl_free(vm, &vm->globals);
+    luluTbl_free(vm, &vm->strings);
+    luluObj_free_all(vm);
 }
 
 typedef enum {
@@ -70,7 +69,7 @@ const char *pick_non_number(const Value *a, const Value *b)
 {
     Value tmp;
     // First operand is wrong?
-    if (!value_tonumber(a, &tmp))
+    if (!luluVal_to_number(a, &tmp))
         return get_typename(a);
     return get_typename(b);
 }
@@ -79,7 +78,7 @@ static void arith_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
 {
     Value tmp_a;
     Value tmp_b;
-    if (value_tonumber(a, &tmp_a) && value_tonumber(b, &tmp_b)) {
+    if (luluVal_to_number(a, &tmp_a) && luluVal_to_number(b, &tmp_b)) {
         Number na = as_number(&tmp_a);
         Number nb = as_number(&tmp_b);
         switch (tm) {
@@ -108,7 +107,7 @@ static void compare_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
     lulu_type_error(vm, "compare", pick_non_number(a, b));
 }
 
-static lulu_ErrorCode run(VM *vm)
+static lulu_Status run(VM *vm)
 {
     Chunk *ck  = vm->chunk;
     Value *kst = ck->constants.values;
@@ -155,11 +154,11 @@ static lulu_ErrorCode run(VM *vm)
             printf("\t");
             for (const Value *slot = vm->stack; slot < vm->top; slot++) {
                 printf("[ ");
-                print_value(slot, true);
+                luluVal_print_value(slot, true);
                 printf(" ]");
             }
             printf("\n");
-            disassemble_instruction(ck, cast(int, vm->ip - ck->code));
+            luluDbg_disassemble_instruction(ck, cast(int, vm->ip - ck->code));
         }
         OpCode op = read_byte();
         switch (op) {
@@ -179,7 +178,7 @@ static lulu_ErrorCode run(VM *vm)
             lulu_pop(vm, cast(int, read_byte()));
             break;
         case OP_NEWTABLE:
-            lulu_push_table(vm, new_table(vm, read_byte3()));
+            lulu_push_table(vm, luluTbl_new(vm, read_byte3()));
             break;
         case OP_GETLOCAL:
             push_back(vm, &vm->base[read_byte()]);
@@ -217,7 +216,7 @@ static lulu_ErrorCode run(VM *vm)
             for (int i = 1; i <= count; i++) {
                 Value  k = make_number(i);
                 Value *v = poke_base(vm, t_idx + i);
-                set_table(vm, t, &k, v);
+                luluTbl_set(vm, t, &k, v);
             }
             lulu_pop(vm, count);
             break;
@@ -225,7 +224,7 @@ static lulu_ErrorCode run(VM *vm)
         case OP_EQ: {
             Value *a = poke_top(vm, -2);
             Value *b = poke_top(vm, -1);
-            setv_boolean(a, values_equal(a, b));
+            setv_boolean(a, luluVal_equal(a, b));
             lulu_pop(vm, 1);
             break;
         }
@@ -272,7 +271,7 @@ static lulu_ErrorCode run(VM *vm)
             break;
         }
         case OP_RETURN:
-            return LULU_ERROR_NONE;
+            return LULU_OK;
         }
     }
 
@@ -283,30 +282,30 @@ static lulu_ErrorCode run(VM *vm)
 #undef read_string
 }
 
-lulu_ErrorCode interpret(VM *vm, const char *input)
+lulu_Status luluVM_interpret(VM *vm, const char *input)
 {
     Chunk    ck;
     Lexer    ls;
     Compiler cpl;
-    lulu_ErrorCode err = setjmp(vm->errorjmp);
+    lulu_Status err = setjmp(vm->errorjmp);
     switch (err) {
-    case LULU_ERROR_NONE:
-        init_chunk(vm, &ck, vm->name);
-        init_compiler(&cpl, &ls, vm);
-        compile(&cpl, input, &ck);
+    case LULU_OK:
+        luluFun_init_chunk(&ck, vm->name);
+        luluCpl_init(&cpl, &ls, vm);
+        luluCpl_compile(&cpl, input, &ck);
         break;
     case LULU_ERROR_RUNTIME:
     case LULU_ERROR_COMPTIME:
     case LULU_ERROR_ALLOC:
         // For the default case, please ensure all calls of `longjmp` ONLY
-        // ever pass an `lulu_ErrorCode` member.
-        free_chunk(vm, &ck);
+        // ever pass an `lulu_Status` member.
+        luluFun_free_chunk(vm, &ck);
         return err;
     }
     // Prep the VM
     vm->chunk = &ck;
     vm->ip    = ck.code;
     err       = run(vm);
-    free_chunk(vm, &ck);
+    luluFun_free_chunk(vm, &ck);
     return err;
 }

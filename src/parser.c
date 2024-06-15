@@ -41,7 +41,7 @@ static int parse_exprlist(Compiler *cpl)
     do {
         expression(cpl);
         exprs += 1;
-    } while (match_token(ls, TK_COMMA));
+    } while (luluLex_match_token(ls, TK_COMMA));
     return exprs;
 }
 
@@ -53,10 +53,10 @@ static void adjust_exprlist(Compiler *cpl, int idents, int exprs)
 
     if (exprs > idents) {
         // Discard extra expressions.
-        emit_oparg1(cpl, OP_POP, exprs - idents);
+        luluCpl_emit_oparg1(cpl, OP_POP, exprs - idents);
     } else {
         // Assign nils to remaining identifiers.
-        emit_oparg1(cpl, OP_NIL, idents - exprs);
+        luluCpl_emit_oparg1(cpl, OP_NIL, idents - exprs);
     }
 }
 
@@ -96,19 +96,19 @@ static void binary(Compiler *cpl)
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (type) {
     case TK_NEQ:
-        emit_opcode(cpl, OP_EQ);
-        emit_opcode(cpl, OP_NOT);
+        luluCpl_emit_opcode(cpl, OP_EQ);
+        luluCpl_emit_opcode(cpl, OP_NOT);
         break;
     case TK_GT:
-        emit_opcode(cpl, OP_LE);
-        emit_opcode(cpl, OP_NOT);
+        luluCpl_emit_opcode(cpl, OP_LE);
+        luluCpl_emit_opcode(cpl, OP_NOT);
         break;
     case TK_GE:
-        emit_opcode(cpl, OP_LT);
-        emit_opcode(cpl, OP_NOT);
+        luluCpl_emit_opcode(cpl, OP_LT);
+        luluCpl_emit_opcode(cpl, OP_NOT);
         break;
     default:
-        emit_opcode(cpl, get_binop(type));
+        luluCpl_emit_opcode(cpl, get_binop(type));
         break;
     }
 }
@@ -129,12 +129,12 @@ static void concat(Compiler *cpl)
     int    argc = 1;
     do {
         if (argc + 1 > MAX_BYTE) {
-            lexerror_at_consumed(ls, "Too many consecutive concatenations");
+            luluLex_error_consumed(ls, "Too many consecutive concatenations");
         }
         parse_precedence(cpl, PREC_CONCAT + 1);
         argc += 1;
-    } while (match_token(ls, TK_CONCAT));
-    emit_oparg1(cpl, OP_CONCAT, argc);
+    } while (luluLex_match_token(ls, TK_CONCAT));
+    luluCpl_emit_oparg1(cpl, OP_CONCAT, argc);
 }
 
 // 2}}} ------------------------------------------------------------------------
@@ -144,9 +144,9 @@ static void concat(Compiler *cpl)
 static void literal(Compiler *cpl)
 {
     switch (cpl->lexer->consumed.type) {
-    case TK_NIL:   emit_oparg1(cpl, OP_NIL, 1); break;
-    case TK_TRUE:  emit_opcode(cpl, OP_TRUE);   break;
-    case TK_FALSE: emit_opcode(cpl, OP_FALSE);  break;
+    case TK_NIL:   luluCpl_emit_oparg1(cpl, OP_NIL, 1); break;
+    case TK_TRUE:  luluCpl_emit_opcode(cpl, OP_TRUE);   break;
+    case TK_FALSE: luluCpl_emit_opcode(cpl, OP_FALSE);  break;
     default:
         // Should not happen
         break;
@@ -160,10 +160,10 @@ static void grouping(Compiler *cpl)
 
     // Hacky to create a new scope but lets us error at too many C-facing calls.
     // See: https://www.lua.org/source/5.1/lparser.c.html#enterlevel
-    begin_scope(cpl);
+    luluCpl_begin_scope(cpl);
     expression(cpl);
-    expect_token(ls, TK_RPAREN, NULL);
-    end_scope(cpl);
+    luluLex_expect_token(ls, TK_RPAREN, NULL);
+    luluCpl_end_scope(cpl);
 }
 
 // Assumes the lexer successfully consumed and encoded a number literal.
@@ -171,14 +171,14 @@ static void number(Compiler *cpl)
 {
     Lexer *ls = cpl->lexer;
     Value  v  = make_number(ls->number);
-    emit_constant(cpl, &v);
+    luluCpl_emit_constant(cpl, &v);
 }
 
 static void string(Compiler *cpl)
 {
     Lexer *ls = cpl->lexer;
     Value  v  = make_string(ls->string);
-    emit_constant(cpl, &v);
+    luluCpl_emit_constant(cpl, &v);
 }
 
 // Assumes we consumed a `'['` or an identifier representing a table field.
@@ -189,21 +189,21 @@ static bool parse_field(Compiler *cpl, bool assigning)
     switch (tk->type) {
     case TK_LBRACKET:
         expression(cpl);
-        expect_token(ls, TK_RBRACKET, NULL);
+        luluLex_expect_token(ls, TK_RBRACKET, NULL);
         break;
     case TK_PERIOD:
         if (assigning) {
             return false;
         }
-        expect_token(ls, TK_IDENT, NULL); // Fall through
+        luluLex_expect_token(ls, TK_IDENT, NULL); // Fall through
     case TK_IDENT:
-        emit_identifier(cpl, tk);
+        luluCpl_emit_identifier(cpl, tk);
         break;
     default:
         break;
     }
     if (!assigning) {
-        emit_opcode(cpl, OP_GETTABLE);
+        luluCpl_emit_opcode(cpl, OP_GETTABLE);
     }
     return true;
 }
@@ -211,8 +211,8 @@ static bool parse_field(Compiler *cpl, bool assigning)
 static void resolve_variable(Compiler *cpl, const Token *id)
 {
     Lexer *ls = cpl->lexer;
-    emit_variable(cpl, id);
-    while (match_token_any(ls, TK_LBRACKET, TK_PERIOD)) {
+    luluCpl_emit_variable(cpl, id);
+    while (luluLex_match_token_any(ls, TK_LBRACKET, TK_PERIOD)) {
         parse_field(cpl, false);
     }
 }
@@ -221,31 +221,31 @@ static void parse_ctor(Compiler *cpl, int t_idx, int *count)
 {
     Lexer *ls = cpl->lexer;
 
-    if (match_token(ls, TK_IDENT)) {
+    if (luluLex_match_token(ls, TK_IDENT)) {
         Token id    = ls->consumed; // Copy by value as lexer might update.
         int   k_idx = cpl->stack_usage;
-        if (match_token(ls, TK_ASSIGN)) {
-            emit_identifier(cpl, &id);
+        if (luluLex_match_token(ls, TK_ASSIGN)) {
+            luluCpl_emit_identifier(cpl, &id);
             expression(cpl);
-            emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+            luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
         } else {
             resolve_variable(cpl, &id);
             *count += 1;
         }
-    } else if (match_token(ls, TK_LBRACKET)) {
+    } else if (luluLex_match_token(ls, TK_LBRACKET)) {
         int k_idx = cpl->stack_usage;
 
         parse_field(cpl, true);
-        expect_token(ls, TK_ASSIGN, "to assign table field");
+        luluLex_expect_token(ls, TK_ASSIGN, "to assign table field");
         expression(cpl);
 
         // Always pop the key and value assigning in a table constructor.
-        emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+        luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
     } else {
         expression(cpl);
         *count += 1;
     }
-    match_token(ls, TK_COMMA);
+    luluLex_match_token(ls, TK_COMMA);
 }
 
 static void table(Compiler *cpl)
@@ -254,21 +254,21 @@ static void table(Compiler *cpl)
     int    t_idx  = cpl->stack_usage;
     int    total  = 0; // Array length plus hashmap length.
     int    count  = 0; // Array portion length.
-    int    offset = emit_table(cpl);
-    while (!match_token(ls, TK_RCURLY)) {
+    int    offset = luluCpl_emit_table(cpl);
+    while (!luluLex_match_token(ls, TK_RCURLY)) {
         parse_ctor(cpl, t_idx, &count);
         total += 1;
     }
 
     if (count > 0) {
         if (count + 1 > MAX_BYTE3) {
-            lexerror_at_consumed(ls, "Too many elements in table constructor");
+            luluLex_error_consumed(ls, "Too many elements in table constructor");
         }
-        emit_oparg2(cpl, OP_SETARRAY, encode_byte2(t_idx, count));
+        luluCpl_emit_oparg2(cpl, OP_SETARRAY, encode_byte2(t_idx, count));
     }
 
     if (total > 0) {
-        patch_table(cpl, offset, total);
+        luluCpl_patch_table(cpl, offset, total);
     }
 }
 
@@ -304,7 +304,7 @@ static void unary(Compiler *cpl)
     Lexer *ls   = cpl->lexer;
     TkType type = ls->consumed.type; // Save in stack-frame memory.
     parse_precedence(cpl, PREC_UNARY);
-    emit_opcode(cpl, get_unop(type));
+    luluCpl_emit_opcode(cpl, get_unop(type));
 }
 
 // 2}}} ------------------------------------------------------------------------
@@ -351,14 +351,14 @@ static void emit_assignment_tail(Compiler *cpl, Assignment *list)
     }
     switch (list->type) {
     case ASSIGN_GLOBAL:
-        emit_oparg3(cpl, OP_SETGLOBAL, list->arg);
+        luluCpl_emit_oparg3(cpl, OP_SETGLOBAL, list->arg);
         break;
     case ASSIGN_LOCAL:
-        emit_oparg1(cpl, OP_SETLOCAL, list->arg);
+        luluCpl_emit_oparg1(cpl, OP_SETLOCAL, list->arg);
         break;
     case ASSIGN_TABLE:
         // For assignments we assume the key is always right after the table.
-        emit_oparg3(cpl, OP_SETTABLE, encode_byte3(list->arg, list->arg + 1, 1));
+        luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(list->arg, list->arg + 1, 1));
         break;
     }
     emit_assignment_tail(cpl, list->prev);
@@ -366,7 +366,7 @@ static void emit_assignment_tail(Compiler *cpl, Assignment *list)
     // After recursion, clean up stack if we emitted table fields as they cannot
     // be implicitly popped due to SETTABLE being a VAR_DELTA pop.
     if (list->type == ASSIGN_TABLE) {
-        emit_oparg1(cpl, OP_POP, 2);
+        luluCpl_emit_oparg1(cpl, OP_POP, 2);
     }
 }
 
@@ -402,13 +402,13 @@ static void discharge_assignment(Compiler *cpl, Assignment *list, bool isfield)
     // is part of a recursive call we need GETTABLE to push a subtable.
     switch (list->type) {
     case ASSIGN_GLOBAL:
-        emit_oparg3(cpl, OP_GETGLOBAL, list->arg);
+        luluCpl_emit_oparg3(cpl, OP_GETGLOBAL, list->arg);
         break;
     case ASSIGN_LOCAL:
-        emit_oparg1(cpl, OP_GETLOCAL,  list->arg);
+        luluCpl_emit_oparg1(cpl, OP_GETLOCAL,  list->arg);
         break;
     case ASSIGN_TABLE:
-        emit_opcode(cpl, OP_GETTABLE);
+        luluCpl_emit_opcode(cpl, OP_GETTABLE);
         break;
     }
 
@@ -416,11 +416,11 @@ static void discharge_assignment(Compiler *cpl, Assignment *list, bool isfield)
     // otherwise we'll know the key is +1 after the table when we emit SETTABLE.
     if (isfield) {
         Token *id = &ls->consumed;
-        expect_token(ls, TK_IDENT, "after '.'");
-        emit_identifier(cpl, id);
+        luluLex_expect_token(ls, TK_IDENT, "after '.'");
+        luluCpl_emit_identifier(cpl, id);
     } else {
         expression(cpl);
-        expect_token(ls, TK_RBRACKET, NULL);
+        luluLex_expect_token(ls, TK_RBRACKET, NULL);
     }
 
     // stack_usage - 0 is top, -1 is the key we emitted and -2 is the table.
@@ -434,10 +434,10 @@ static void identifier_statement(Compiler *cpl, Assignment *list)
     Token *id = &ls->consumed;
 
     if (list->type != ASSIGN_TABLE) {
-        int  arg     = resolve_local(cpl, id);
+        int  arg     = luluCpl_resolve_local(cpl, id);
         bool islocal = (arg != -1);
         if (!islocal) {
-            arg = identifier_constant(cpl, id);
+            arg = luluCpl_identifier_constant(cpl, id);
         }
         set_assignment(list, islocal ? ASSIGN_LOCAL : ASSIGN_GLOBAL, arg);
     }
@@ -446,28 +446,28 @@ static void identifier_statement(Compiler *cpl, Assignment *list)
     case TK_PERIOD: // Fall through
     case TK_LBRACKET:
         // Emit the table up to this point then mark `list` as a table.
-        next_token(ls);
+        luluLex_next_token(ls);
         discharge_assignment(cpl, list, ls->consumed.type == TK_PERIOD);
         identifier_statement(cpl, list);
         break;
     case TK_ASSIGN:
-        next_token(ls);
+        luluLex_next_token(ls);
         emit_assignment(cpl, list);
         break;
     case TK_LPAREN:
-        lexerror_at_consumed(ls, "Function calls not yet implemented");
+        luluLex_error_consumed(ls, "Function calls not yet implemented");
         break;
     case TK_COMMA: {
         // Recursive call so chain elements together.
         Assignment next;
         init_assignment(&next, list, ASSIGN_GLOBAL);
-        next_token(ls);
-        expect_token(ls, TK_IDENT, "after ','");
+        luluLex_next_token(ls);
+        luluLex_expect_token(ls, TK_IDENT, "after ','");
         identifier_statement(cpl, &next);
         break;
     }
     default:
-        lexerror_at_consumed(ls, "Unexpected token in identifier statement");
+        luluLex_error_consumed(ls, "Unexpected token in identifier statement");
     }
 }
 
@@ -478,21 +478,21 @@ static void identifier_statement(Compiler *cpl, Assignment *list)
 static void print_statement(Compiler *cpl)
 {
     Lexer *ls   = cpl->lexer;
-    bool   open = match_token(ls, TK_LPAREN);
+    bool   open = luluLex_match_token(ls, TK_LPAREN);
     int    argc = parse_exprlist(cpl);
     if (open) {
-        expect_token(ls, TK_RPAREN, NULL);
+        luluLex_expect_token(ls, TK_RPAREN, NULL);
     }
-    emit_oparg1(cpl, OP_PRINT, argc);
+    luluCpl_emit_oparg1(cpl, OP_PRINT, argc);
 }
 
 static void block(Compiler *cpl)
 {
     Lexer *ls = cpl->lexer;
-    while (!check_token_any(ls, TK_END, TK_EOF)) {
+    while (!luluLex_check_token_any(ls, TK_END, TK_EOF)) {
         declaration(cpl);
     }
-    expect_token(ls, TK_END, "after block");
+    luluLex_expect_token(ls, TK_END, "after block");
 }
 
 // 3}}} ------------------------------------------------------------------------
@@ -506,22 +506,22 @@ static void statement(Compiler *cpl)
     case TK_IDENT: {
         Assignment list;
         init_assignment(&list, NULL, ASSIGN_GLOBAL); // Ensure no garbage.
-        next_token(ls);
+        luluLex_next_token(ls);
         identifier_statement(cpl, &list);
         break;
     }
     case TK_DO:
-        next_token(ls);
-        begin_scope(cpl);
+        luluLex_next_token(ls);
+        luluCpl_begin_scope(cpl);
         block(cpl);
-        end_scope(cpl);
+        luluCpl_end_scope(cpl);
         break;
     case TK_PRINT:
-        next_token(ls);
+        luluLex_next_token(ls);
         print_statement(cpl);
         break;
     default:
-        lexerror_at_lookahead(ls, "Expected a statement");
+        luluLex_error_lookahead(ls, "Expected a statement");
         break;
     }
 }
@@ -536,8 +536,8 @@ static void parse_local(Compiler *cpl)
 {
     Lexer *ls = cpl->lexer;
     Token *id = &ls->consumed;
-    init_local(cpl);
-    identifier_constant(cpl, id); // We don't need the index here.
+    luluCpl_init_local(cpl);
+    luluCpl_identifier_constant(cpl, id); // We don't need the index here.
 }
 
 /**
@@ -559,16 +559,16 @@ static void declare_locals(Compiler *cpl)
     int    exprs  = 0;
 
     do {
-        expect_token(ls, TK_IDENT, NULL);
+        luluLex_expect_token(ls, TK_IDENT, NULL);
         parse_local(cpl);
         idents += 1;
-    } while (match_token(ls, TK_COMMA));
+    } while (luluLex_match_token(ls, TK_COMMA));
 
-    if (match_token(ls, TK_ASSIGN)) {
+    if (luluLex_match_token(ls, TK_ASSIGN)) {
         exprs = parse_exprlist(cpl);
     }
     adjust_exprlist(cpl, idents, exprs);
-    define_locals(cpl, idents);
+    luluCpl_define_locals(cpl, idents);
 }
 
 void declaration(Compiler *cpl)
@@ -576,7 +576,7 @@ void declaration(Compiler *cpl)
     Lexer *ls = cpl->lexer;
     switch (ls->lookahead.type) {
     case TK_LOCAL:
-        next_token(ls);
+        luluLex_next_token(ls);
         declare_locals(cpl);
         break;
     default:
@@ -584,7 +584,7 @@ void declaration(Compiler *cpl)
         break;
     }
     // Lua allows 1 semicolon to terminate statements, but no more.
-    match_token(ls, TK_SEMICOL);
+    luluLex_match_token(ls, TK_SEMICOL);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -600,10 +600,10 @@ static void parse_precedence(Compiler *cpl, Precedence prec)
     ParseRule *pr = get_parserule(tk->type);
 
     if (pr->prefixfn == NULL) {
-        lexerror_at_consumed(ls, "Expected a prefix expression");
+        luluLex_error_consumed(ls, "Expected a prefix expression");
         return;
     }
-    next_token(ls);
+    luluLex_next_token(ls);
     pr->prefixfn(cpl);
 
     for (;;) {
@@ -612,13 +612,13 @@ static void parse_precedence(Compiler *cpl, Precedence prec)
         if (!(prec <= pr->precedence)) {
             break;
         }
-        next_token(ls);
+        luluLex_next_token(ls);
         pr->infixfn(cpl);
     }
 
     // This function can never consume the `=` token.
-    if (match_token(ls, TK_ASSIGN)) {
-        lexerror_at_lookahead(ls, "Invalid assignment target");
+    if (luluLex_match_token(ls, TK_ASSIGN)) {
+        luluLex_error_lookahead(ls, "Invalid assignment target");
     }
 }
 

@@ -82,30 +82,33 @@ typedef struct {
     int         line;      // Current line number we're on.
 } Lexer;
 
-void init_lexer(Lexer *ls, const char *input, lulu_VM *vm);
+void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm);
 
-Token scan_token(Lexer *ls);
+Token luluLex_scan_token(Lexer *ls);
 
 // Analogous to `compiler.c:advance()` in the book. May call `lexerror_*`.
-void next_token(Lexer *ls);
+void luluLex_next_token(Lexer *ls);
 
 // Analogous to `compiler.c:consume()` in the book. Throws error if no match.
 // If `info` is non-null we will append it to the error message.
-void expect_token(Lexer *ls, TkType type, const char *info);
+void luluLex_expect_token(Lexer *ls, TkType type, const char *info);
 
 // Return true if the current token matches, else do nothing.
-bool check_token(Lexer *ls, TkType type);
+bool luluLex_check_token(Lexer *ls, TkType type);
 
 // Advance the Lexer if the current token matches else do nothing.
-bool match_token(Lexer *ls, TkType type);
+bool luluLex_match_token(Lexer *ls, TkType type);
 
 // The `*_token_any` functions assume the array is terminated by `TK_ERROR`.
-bool check_token_any(Lexer *ls, const TkType types[]);
-bool match_token_any(Lexer *ls, const TkType types[]);
+bool luluLex_check_token_any(Lexer *ls, const TkType types[]);
+bool luluLex_match_token_any(Lexer *ls, const TkType types[]);
 
-#define _tkvarg(...)                array_lit(TkType, __VA_ARGS__, TK_ERROR)
-#define check_token_any(lexer, ...) check_token_any(lexer, _tkvarg(__VA_ARGS__))
-#define match_token_any(lexer, ...) match_token_any(lexer, _tkvarg(__VA_ARGS__))
+#define _token_array(...) \
+    array_lit(TkType, __VA_ARGS__, TK_ERROR)
+#define luluLex_check_token_any(lexer, ...) \
+    luluLex_check_token_any(lexer, _token_array(__VA_ARGS__))
+#define luluLex_match_token_any(lexer, ...) \
+    luluLex_match_token_any(lexer, _token_array(__VA_ARGS__))
 
 /**
  * @brief   Similar to `luaX_lexerror()`, analogout to `errorAt()` in the book.
@@ -114,15 +117,15 @@ bool match_token_any(Lexer *ls, const TkType types[]);
  *          the C stack, or just cause undefined behavior all around. By all
  *          means DO NOT call `longjmp` at the same callsite/stackframe twice!
  */
-void lexerror_at(Lexer *ls, const Token *tk, const char *info);
+void luluLex_error_at(Lexer *ls, const Token *tk, const char *info);
 
 // Similar to `luaX_syntaxerror()`, analogous to `errorAtCurrent()` in the book.
-void lexerror_at_lookahead(Lexer *ls, const char *info);
+void luluLex_error_lookahead(Lexer *ls, const char *info);
 
 // Analogous to `error()` in the book.
-void lexerror_at_consumed(Lexer *ls, const char *info);
+void luluLex_error_consumed(Lexer *ls, const char *info);
 
 // Only used when we need to error in the middle of consuming a token.
-void lexerror_at_middle(Lexer *ls, const char *info);
+void luluLex_error_middle(Lexer *ls, const char *info);
 
 #endif /* LULU_LEXER_H */

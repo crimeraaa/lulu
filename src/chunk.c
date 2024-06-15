@@ -36,9 +36,9 @@ OpInfo LULU_OPINFO[] = {
 
 static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
 
-void init_chunk(lulu_VM *vm, Chunk *ck, const char *name)
+void luluFun_init_chunk(Chunk *ck, const char *name)
 {
-    init_varray(vm, &ck->constants);
+    luluVal_init_array(&ck->constants);
     ck->name  = name;
     ck->code  = NULL;
     ck->lines = NULL;
@@ -46,21 +46,21 @@ void init_chunk(lulu_VM *vm, Chunk *ck, const char *name)
     ck->cap   = 0;
 }
 
-void free_chunk(lulu_VM *vm, Chunk *ck)
+void luluFun_free_chunk(lulu_VM *vm, Chunk *ck)
 {
-    free_varray(vm, &ck->constants);
-    free_parray(vm, ck->lines, ck->len);
-    free_parray(vm, ck->code, ck->len);
-    init_chunk(vm, ck, "(freed chunk)");
+    luluVal_free_array(vm, &ck->constants);
+    luluMem_free_parray(vm, ck->lines, ck->len);
+    luluMem_free_parray(vm, ck->code, ck->len);
+    luluFun_init_chunk(ck, "(freed chunk)");
 }
 
-void write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
+void luluFun_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
 {
     if (ck->len + 1 > ck->cap) {
         int prev  = ck->cap;
-        int next  = grow_capacity(prev);
-        ck->code  = resize_parray(vm, ck->code,  prev, next);
-        ck->lines = resize_parray(vm, ck->lines, prev, next);
+        int next  = luluMem_grow_capacity(prev);
+        ck->code  = luluMem_resize_parray(vm, ck->code,  prev, next);
+        ck->lines = luluMem_resize_parray(vm, ck->lines, prev, next);
         ck->cap   = next;
     }
     ck->code[ck->len]  = data;
@@ -68,14 +68,14 @@ void write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
     ck->len++;
 }
 
-int add_constant(lulu_VM *vm, Chunk *ck, const Value *vl)
+int luluFun_add_constant(lulu_VM *vm, Chunk *ck, const Value *vl)
 {
     VArray *kst = &ck->constants;
     // TODO: Literally anything is faster than a linear search
     for (int i = 0; i < kst->len; i++) {
-        if (values_equal(&kst->values[i], vl))
+        if (luluVal_equal(&kst->values[i], vl))
             return i;
     }
-    write_varray(vm, kst, vl);
+    luluVal_write_array(vm, kst, vl);
     return kst->len - 1;
 }

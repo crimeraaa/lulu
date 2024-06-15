@@ -14,7 +14,7 @@ static int repl(lulu_VM *vm)
             break;
         }
         switch (lulu_interpret(vm, "stdin", line)) {
-        case LULU_ERROR_NONE:     break;
+        case LULU_OK:     break;
         case LULU_ERROR_COMPTIME: // Fall through.
         case LULU_ERROR_RUNTIME:  printf("%s", lulu_to_cstring(vm, -1));
                                   lulu_pop(vm, 1);
@@ -67,11 +67,11 @@ static int run_file(lulu_VM *vm, const char *file_name)
     if (input == NULL) {
         return EX_IOERR;
     }
-    lulu_ErrorCode res = lulu_interpret(vm, file_name, input);
+    lulu_Status res = lulu_interpret(vm, file_name, input);
     free(input);
 
     switch (res) {
-    case LULU_ERROR_NONE:    return 0;
+    case LULU_OK:    return 0;
     case LULU_ERROR_COMPTIME: // fall through
     case LULU_ERROR_RUNTIME: printf("%s", lulu_to_cstring(vm, -1));
                              lulu_pop(vm, 1);

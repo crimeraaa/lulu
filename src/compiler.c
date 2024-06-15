@@ -8,7 +8,7 @@
 #include "debug.h"
 #endif
 
-void init_compiler(Compiler *cpl, Lexer *ls, lulu_VM *vm)
+void luluCpl_init(Compiler *cpl, Lexer *ls, lulu_VM *vm)
 {
     cpl->lexer       = ls;
     cpl->vm          = vm;
@@ -33,7 +33,7 @@ static void adjust_stackinfo(Compiler *cpl, OpCode op, int delta)
     cpl->stack_usage += push - pop;
     cpl->prev_opcode = op;
     if (cpl->stack_usage > MAX_STACK) {
-        lexerror_at_consumed(ls, "Function uses too many stack slots");
+        luluLex_error_consumed(ls, "Function uses too many stack slots");
     }
     if (cpl->stack_usage > cpl->stack_total) {
         cpl->stack_total = cpl->stack_usage;
@@ -51,10 +51,10 @@ static void emit_byte(Compiler *cpl, Byte data)
 {
     Lexer *lexer = cpl->lexer;
     int    line  = lexer->consumed.line;
-    write_chunk(cpl->vm, current_chunk(cpl), data, line);
+    luluFun_write_chunk(cpl->vm, current_chunk(cpl), data, line);
 }
 
-void emit_opcode(Compiler *cpl, OpCode op)
+void luluCpl_emit_opcode(Compiler *cpl, OpCode op)
 {
     emit_byte(cpl, op);
     adjust_stackinfo(cpl, op, 0);
@@ -106,7 +106,7 @@ static bool adjust_vardelta(Compiler *cpl, OpCode op, Byte arg)
     return true;
 }
 
-void emit_oparg1(Compiler *cpl, OpCode op, Byte arg)
+void luluCpl_emit_oparg1(Compiler *cpl, OpCode op, Byte arg)
 {
     switch (op) {
     case OP_POP:
@@ -123,7 +123,7 @@ void emit_oparg1(Compiler *cpl, OpCode op, Byte arg)
     }
 }
 
-void emit_oparg2(Compiler *cpl, OpCode op, Byte2 arg)
+void luluCpl_emit_oparg2(Compiler *cpl, OpCode op, Byte2 arg)
 {
     emit_byte(cpl, op);
     emit_byte(cpl, decode_byte2_msb(arg));
@@ -140,7 +140,7 @@ void emit_oparg2(Compiler *cpl, OpCode op, Byte2 arg)
     }
 }
 
-void emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg)
+void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg)
 {
     emit_byte(cpl, op);
     emit_byte(cpl, decode_byte3_msb(arg));
@@ -159,24 +159,24 @@ void emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg)
     }
 }
 
-void emit_identifier(Compiler *cpl, const Token *id)
+void luluCpl_emit_identifier(Compiler *cpl, const Token *id)
 {
-    emit_oparg3(cpl, OP_CONSTANT, identifier_constant(cpl, id));
+    luluCpl_emit_oparg3(cpl, OP_CONSTANT, luluCpl_identifier_constant(cpl, id));
 }
 
-void emit_return(Compiler *cpl)
+void luluCpl_emit_return(Compiler *cpl)
 {
-    emit_opcode(cpl, OP_RETURN);
+    luluCpl_emit_opcode(cpl, OP_RETURN);
 }
 
-int emit_table(Compiler *cpl)
+int luluCpl_emit_table(Compiler *cpl)
 {
     int offset = current_chunk(cpl)->len; // Index about to filled in.
-    emit_oparg3(cpl, OP_NEWTABLE, 0); // By default we assume an empty table.
+    luluCpl_emit_oparg3(cpl, OP_NEWTABLE, 0); // By default we assume an empty table.
     return offset;
 }
 
-void patch_table(Compiler *cpl, int offset, Byte3 size)
+void luluCpl_patch_table(Compiler *cpl, int offset, Byte3 size)
 {
     Byte *ip  = &current_chunk(cpl)->code[offset]; // OP_NEWTABLE itself
     *(ip + 1) = decode_byte3_msb(size);
@@ -186,63 +186,63 @@ void patch_table(Compiler *cpl, int offset, Byte3 size)
 
 // 1}}} ------------------------------------------------------------------------
 
-int make_constant(Compiler *cpl, const Value *vl)
+int luluCpl_make_constant(Compiler *cpl, const Value *vl)
 {
     Lexer *ls = cpl->lexer;
-    int    i  = add_constant(cpl->vm, current_chunk(cpl), vl);
+    int    i  = luluFun_add_constant(cpl->vm, current_chunk(cpl), vl);
     if (i + 1 > MAX_CONSTS) {
-        lexerror_at_consumed(ls, "Too many constants in current chunk");
+        luluLex_error_consumed(ls, "Too many constants in current chunk");
     }
     return i;
 }
 
-void emit_constant(Compiler *cpl, const Value *vl)
+void luluCpl_emit_constant(Compiler *cpl, const Value *vl)
 {
-    emit_oparg3(cpl, OP_CONSTANT, make_constant(cpl, vl));
+    luluCpl_emit_oparg3(cpl, OP_CONSTANT, luluCpl_make_constant(cpl, vl));
 }
 
-void emit_variable(Compiler *cpl, const Token *id)
+void luluCpl_emit_variable(Compiler *cpl, const Token *id)
 {
-    int  arg     = resolve_local(cpl, id);
+    int  arg     = luluCpl_resolve_local(cpl, id);
     bool islocal = (arg != -1);
 
     // Global vs. local operands have different sizes.
     if (islocal) {
-        emit_oparg1(cpl, OP_GETLOCAL, arg);
+        luluCpl_emit_oparg1(cpl, OP_GETLOCAL, arg);
     } else {
-        emit_oparg3(cpl, OP_GETGLOBAL, identifier_constant(cpl, id));
+        luluCpl_emit_oparg3(cpl, OP_GETGLOBAL, luluCpl_identifier_constant(cpl, id));
     }
 }
 
-int identifier_constant(Compiler *cpl, const Token *id)
+int luluCpl_identifier_constant(Compiler *cpl, const Token *id)
 {
-    Value wrap = make_string(copy_string(cpl->vm, id->view));
-    return make_constant(cpl, &wrap);
+    Value wrap = make_string(luluStr_copy(cpl->vm, id->view));
+    return luluCpl_make_constant(cpl, &wrap);
 }
 
-void end_compiler(Compiler *cpl)
+void luluCpl_end(Compiler *cpl)
 {
-    emit_return(cpl);
+    luluCpl_emit_return(cpl);
     if (is_enabled(DEBUG_PRINT_CODE)) {
         printf("[STACK USAGE]:\n"
                "NET:    %i\n"
                "MOST:   %i\n\n",
                cpl->stack_usage,
                cpl->stack_total);
-        disassemble_chunk(current_chunk(cpl));
+        luluDbg_disassemble_chunk(current_chunk(cpl));
     }
 }
 
-void begin_scope(Compiler *cpl)
+void luluCpl_begin_scope(Compiler *cpl)
 {
     Lexer *ls = cpl->lexer;
     cpl->scope_depth += 1;
     if (cpl->scope_depth > MAX_LEVELS) {
-        lexerror_at_lookahead(ls, "Function uses too many syntax levels");
+        luluLex_error_lookahead(ls, "Function uses too many syntax levels");
     }
 }
 
-void end_scope(Compiler *cpl)
+void luluCpl_end_scope(Compiler *cpl)
 {
     cpl->scope_depth--;
 
@@ -256,24 +256,24 @@ void end_scope(Compiler *cpl)
     }
     // Don't waste 2 bytes if nothing to pop
     if (popped > 0) {
-        emit_oparg1(cpl, OP_POP, popped);
+        luluCpl_emit_oparg1(cpl, OP_POP, popped);
     }
 }
 
-void compile(Compiler *cpl, const char *input, Chunk *chunk)
+void luluCpl_compile(Compiler *cpl, const char *input, Chunk *chunk)
 {
     Lexer *ls  = cpl->lexer;
     cpl->chunk = chunk;
-    init_lexer(ls, input, cpl->vm);
-    next_token(ls);
+    luluLex_init(ls, input, cpl->vm);
+    luluLex_next_token(ls);
 
-    begin_scope(cpl); // Script/REPL can pop its own top-level locals
-    while (!match_token(ls, TK_EOF)) {
+    luluCpl_begin_scope(cpl); // Script/REPL can pop its own top-level locals
+    while (!luluLex_match_token(ls, TK_EOF)) {
         declaration(cpl);
     }
-    expect_token(ls, TK_EOF, "Expected end of expression");
-    end_scope(cpl);
-    end_compiler(cpl);
+    luluLex_expect_token(ls, TK_EOF, "Expected end of expression");
+    luluCpl_end_scope(cpl);
+    luluCpl_end(cpl);
 }
 
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
@@ -285,7 +285,7 @@ static bool identifiers_equal(const Token *a, const Token *b)
     return s1->len == s2->len && cstr_eq(s1->begin, s2->begin, s1->len);
 }
 
-int resolve_local(Compiler *cpl, const Token *id)
+int luluCpl_resolve_local(Compiler *cpl, const Token *id)
 {
     for (int i = cpl->scope_count - 1; i >= 0; i--) {
         const Local *local = &cpl->locals[i];
@@ -297,10 +297,10 @@ int resolve_local(Compiler *cpl, const Token *id)
     return -1;
 }
 
-void add_local(Compiler *cpl, const Token *id)
+void luluCpl_add_local(Compiler *cpl, const Token *id)
 {
     if (cpl->scope_count + 1 > MAX_LOCALS) {
-        lexerror_at_consumed(cpl->lexer,
+        luluLex_error_consumed(cpl->lexer,
             "More than " stringify(MAX_LOCALS) " local variables reached");
     }
     Local *loc = &cpl->locals[cpl->scope_count++];
@@ -308,7 +308,7 @@ void add_local(Compiler *cpl, const Token *id)
     loc->depth = -1;
 }
 
-void init_local(Compiler *cpl)
+void luluCpl_init_local(Compiler *cpl)
 {
     Lexer *ls = cpl->lexer;
     Token *id = &ls->consumed;
@@ -321,13 +321,13 @@ void init_local(Compiler *cpl)
             break;
         }
         if (identifiers_equal(id, &loc->ident)) {
-            lexerror_at_consumed(ls, "Shadowing of local variable");
+            luluLex_error_consumed(ls, "Shadowing of local variable");
         }
     }
-    add_local(cpl, id);
+    luluCpl_add_local(cpl, id);
 }
 
-void define_locals(Compiler *cpl, int count)
+void luluCpl_define_locals(Compiler *cpl, int count)
 {
     for (int i = count; i > 0; i--) {
         cpl->locals[cpl->scope_count - i].depth = cpl->scope_depth;

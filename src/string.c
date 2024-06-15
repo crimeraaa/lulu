@@ -1,4 +1,5 @@
 #include "string.h"
+#include "table.h"
 #include "vm.h"
 
 // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
@@ -47,7 +48,7 @@ static uint32_t hash_string(StringView sv)
     return hash;
 }
 
-uint32_t hash_rstring(StringView sv)
+uint32_t luluStr_hash_raw(StringView sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
     for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
@@ -57,18 +58,18 @@ uint32_t hash_rstring(StringView sv)
     return hash;
 }
 
-String *new_string(lulu_VM *vm, int len)
+String *luluStr_new(lulu_VM *vm, int len)
 {
     // Note how we add 1 for the nul char.
-    String *s = cast(String*, lulu_new_object(vm, string_size(len + 1), TYPE_STRING));
+    String *s = cast(String*, luluObj_new(vm, string_size(len + 1), TYPE_STRING));
     s->len    = len;
     return s;
 }
 
 // Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
-void free_string(lulu_VM *vm, String *s)
+void luluStr_free(lulu_VM *vm, String *s)
 {
-    lulu_free_pointer(vm, s, string_size(s->len + 1));
+    luluMem_free_pointer(vm, s, string_size(s->len + 1));
 }
 
 static void build_string(String *s, StringView sv)
@@ -104,17 +105,17 @@ static void end_string(String *s, uint32_t hash)
     s->hash         = hash;
 }
 
-static String *copy_string_or_rstring(VM *vm, StringView sv, bool israw)
+static String *copy_string(VM *vm, StringView sv, bool israw)
 {
-    uint32_t hash  = (israw) ? hash_rstring(sv) : hash_string(sv);
-    String  *found = find_interned(vm, sv, hash);
+    uint32_t hash  = (israw) ? luluStr_hash_raw(sv) : hash_string(sv);
+    String  *found = luluStr_find_interned(vm, sv, hash);
 
     // Is this string already found?
     if (found != NULL) {
         return found;
     }
 
-    String *s = new_string(vm, sv.len);
+    String *s = luluStr_new(vm, sv.len);
     if (israw)
         memcpy(s->data, sv.begin, sv.len);
     else
@@ -123,30 +124,30 @@ static String *copy_string_or_rstring(VM *vm, StringView sv, bool israw)
 
     // If we have escapes, are we really REALLY sure this isn't found?
     if (s->len != sv.len) {
-        found = find_interned(vm, sv_create_from_len(s->data, s->len), hash);
+        found = luluStr_find_interned(vm, sv_create_from_len(s->data, s->len), hash);
         if (found != NULL) {
-            lulu_remove_object(vm, &s->object);
-            free_string(vm, s);
+            luluObj_remove(vm, &s->object);
+            luluStr_free(vm, s);
             return found;
         }
     }
-    set_interned(vm, s);
+    luluStr_set_interned(vm, s);
     return s;
 }
 
-String *copy_rstring(lulu_VM *vm, StringView sv)
+String *luluStr_copy_raw(lulu_VM *vm, StringView sv)
 {
-    return copy_string_or_rstring(vm, sv, true);
+    return copy_string(vm, sv, true);
 }
 
-String *copy_string(lulu_VM *vm, StringView sv)
+String *luluStr_copy(lulu_VM *vm, StringView sv)
 {
-    return copy_string_or_rstring(vm, sv, false);
+    return copy_string(vm, sv, false);
 }
 
-String *concat_strings(lulu_VM *vm, int argc, const Value argv[], int len)
+String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], int len)
 {
-    String    *s      = new_string(vm, len);
+    String    *s      = luluStr_new(vm, len);
     StringView sv     = sv_create_from_len(s->data, s->len);
     int        offset = 0;
 
@@ -157,12 +158,42 @@ String *concat_strings(lulu_VM *vm, int argc, const Value argv[], int len)
         offset += arg->len;
     }
     end_string(s, hash_string(sv));
-    String *found = find_interned(vm, sv, s->hash);
+    String *found = luluStr_find_interned(vm, sv, s->hash);
     if (found != NULL) {
-        lulu_remove_object(vm, &s->object);
-        free_string(vm, s);
+        luluObj_remove(vm, &s->object);
+        luluStr_free(vm, s);
         return found;
     }
-    set_interned(vm, s);
+    luluStr_set_interned(vm, s);
     return s;
+}
+
+void luluStr_set_interned(lulu_VM *vm, const String *s)
+{
+    Table *t  = &vm->strings;
+    Value  k  = make_string(s);
+    Value  v  = make_boolean(true);
+    luluTbl_set(vm, t, &k, &v);
+}
+
+String *luluStr_find_interned(lulu_VM *vm, StringView sv, uint32_t hash)
+{
+    Table *t = &vm->strings;
+    if (t->count == 0)
+        return NULL;
+
+    uint32_t i = hash % t->cap;
+    for (;;) {
+        Entry *ent = &t->entries[i];
+        // The strings table only ever has completely empty or full entries.
+        if (is_nil(&ent->key) && is_nil(&ent->value))
+            return NULL;
+        // We assume ALL valid (i.e: non-nil) keys are strings.
+        String *s = as_string(&ent->key);
+        if (s->len == sv.len && s->hash == hash) {
+            if (cstr_eq(s->data, sv.begin, sv.len))
+                return s;
+        }
+        i = (i + 1) % t->cap;
+    }
 }

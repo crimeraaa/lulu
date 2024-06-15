@@ -4,43 +4,43 @@
 #include "table.h"
 #include "vm.h"
 
-void lulu_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx)
+void luluMem_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx)
 {
     vm->allocator.allocate = fn;
     vm->allocator.context  = ctx;
 }
 
-void *lulu_new_pointer(lulu_VM *vm, size_t size)
+void *luluMem_new_pointer(lulu_VM *vm, size_t size)
 {
     return vm->allocator.allocate(NULL, 0, size, vm->allocator.context);
 }
 
-void *lulu_resize_pointer(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
+void *luluMem_resize_pointer(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
 {
 
     return vm->allocator.allocate(ptr, oldsz, newsz, vm->allocator.context);
 }
 
-void lulu_free_pointer(lulu_VM *vm, void *ptr, size_t size)
+void luluMem_free_pointer(lulu_VM *vm, void *ptr, size_t size)
 {
     vm->allocator.allocate(ptr, size, 0, vm->allocator.context);
 }
 
-Object *lulu_new_object(lulu_VM *vm, size_t size, VType tag)
+Object *luluObj_new(lulu_VM *vm, size_t size, VType tag)
 {
-    Object *obj = lulu_new_pointer(vm, size);
+    Object *obj = luluMem_new_pointer(vm, size);
     obj->tag    = tag;
-    return lulu_prepend_object(vm, obj);
+    return luluObj_prepend(vm, obj);
 }
 
-Object *lulu_prepend_object(lulu_VM *vm, Object *obj)
+Object *luluObj_prepend(lulu_VM *vm, Object *obj)
 {
     obj->next   = vm->objects;
     vm->objects = obj;
     return obj;
 }
 
-Object *lulu_remove_object(lulu_VM *vm, Object *obj)
+Object *luluObj_remove(lulu_VM *vm, Object *obj)
 {
     vm->objects = obj->next;
     return obj;
@@ -50,11 +50,11 @@ static void free_object(lulu_VM *vm, Object *obj)
 {
     switch (obj->tag) {
     case TYPE_STRING:
-        free_string(vm, cast(String*, obj));
+        luluStr_free(vm, cast(String*, obj));
         break;
     case TYPE_TABLE:
-        free_table(vm, cast(Table*, obj));
-        lulu_free_pointer(vm, obj, sizeof(Table));
+        luluTbl_free(vm, cast(Table*, obj));
+        luluMem_free_pointer(vm, obj, sizeof(Table));
         break;
     default:
         eprintfln("[FATAL ERROR]:\nAttempt to free a %s", get_typename(obj));
@@ -63,7 +63,7 @@ static void free_object(lulu_VM *vm, Object *obj)
     }
 }
 
-void lulu_free_objects(lulu_VM *vm)
+void luluObj_free_all(lulu_VM *vm)
 {
     Object *head = vm->objects;
     while (head != NULL) {

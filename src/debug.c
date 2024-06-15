@@ -7,18 +7,18 @@ static void disassemble_constants(const Chunk *ck)
     printf("[CONSTANTS]:\n");
     for (int i = 0; i < kst->len; i++) {
         printf("[%i] := ", i);
-        print_value(&kst->values[i], true);
+        luluVal_print_value(&kst->values[i], true);
         printf("\n");
     }
     printf("\n");
 }
 
-void disassemble_chunk(const Chunk *ck)
+void luluDbg_disassemble_chunk(const Chunk *ck)
 {
     disassemble_constants(ck);
     printf("[BYTECODE]: '%s'\n", ck->name);
     for (int offset = 0; offset < ck->len; ) {
-        offset = disassemble_instruction(ck, offset);
+        offset = luluDbg_disassemble_instruction(ck, offset);
     }
     printf("\n");
 }
@@ -42,7 +42,7 @@ static void constant_op(const Chunk *ck, const Byte *ip)
 {
     int arg = read_byte3(ip);
     printf("Kst[%i] ; ", arg);
-    print_value(&read_constant(ck, arg), true);
+    luluVal_print_value(&read_constant(ck, arg), true);
 }
 
 static void simple_op(const char *act, const Byte *ip)
@@ -77,7 +77,7 @@ static void setarray_op(const Byte *ip)
     printf("Tbl[%i], Set(%i)", t_idx, to_set);
 }
 
-int disassemble_instruction(const Chunk *ck, int offset)
+int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
 {
     const Byte  *ip = &ck->code[offset];
     const OpCode op = read_byte(ip);

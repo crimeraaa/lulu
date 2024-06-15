@@ -81,7 +81,7 @@ static void init_token(Token *tk)
     tk->type = TK_EOF;
 }
 
-void init_lexer(Lexer *ls, const char *input, lulu_VM *vm)
+void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm)
 {
     init_token(&ls->lookahead);
     init_token(&ls->consumed);
@@ -140,9 +140,8 @@ static void singleline(Lexer *ls)
 static int get_nesting(Lexer *ls)
 {
     int lvl = 0;
-    while (match_char(ls, '=')) {
+    while (match_char(ls, '='))
         lvl++;
-    }
     return lvl;
 }
 
@@ -152,13 +151,12 @@ static void multiline(Lexer *ls, int lvl)
     for (;;) {
         if (match_char(ls, ']')) {
             int close = get_nesting(ls);
-            if (close == lvl && match_char(ls, ']')) {
+            if (close == lvl && match_char(ls, ']'))
                 return;
-            }
         }
         // Above call may have fallen through to here as well.
         if (is_at_end(ls)) {
-            lexerror_at_middle(ls, "Unfinished multiline sequence");
+            luluLex_error_middle(ls, "Unfinished multiline sequence");
             return;
         }
         // Think of this as the iterator increment.
@@ -373,7 +371,7 @@ static Token number_token(Lexer *ls)
     ls->number = cstr_tonumber(ls->lexeme.begin, &end);
     // If this is true, strtod failed to convert the entire token/lexeme.
     if (end != ls->lexeme.end)
-        lexerror_at_middle(ls, "Malformed number");
+        luluLex_error_middle(ls, "Malformed number");
     return make_token(ls, TK_NUMBER);
 }
 
@@ -388,7 +386,7 @@ static Token string_token(Lexer *ls, char quote)
     // The label isn't actually in its own block scope.
     if (is_at_end(ls)) {
 bad_string:
-        lexerror_at_middle(ls, "Unterminated string");
+        luluLex_error_middle(ls, "Unterminated string");
     }
 
     // Consume closing quote.
@@ -397,7 +395,7 @@ bad_string:
     const char *begin = ls->lexeme.begin + 1; // +1 to skip opening quote.
     const char *end   = ls->lexeme.end - 1;   // -1 to skip closing quote.
     StringView  sv    = sv_create_from_end(begin, end);
-    ls->string = copy_string(ls->vm, sv);
+    ls->string = luluStr_copy(ls->vm, sv);
     return make_token(ls, TK_STRING);
 }
 
@@ -412,36 +410,35 @@ static Token rstring_token(Lexer *ls, int lvl)
     int        mark = lvl + open + 2;            // Skip [[ and opening nesting.
     int        len  = ls->lexeme.len - mark - 2; // Offset of last non-quote.
     StringView sv   = sv_create_from_len(ls->lexeme.begin + mark, len);
-    ls->string      = copy_rstring(ls->vm, sv);
+    ls->string      = luluStr_copy_raw(ls->vm, sv);
     return make_token(ls, TK_STRING);
 }
 
-#define make_ifeq(ls, ch, y, n) make_token(ls, match_char(ls, ch) ? (y) : (n))
+static Token make_token_ifelse(Lexer *ls, char expected, TkType y, TkType n)
+{
+    return make_token(ls, match_char(ls, expected) ? y : n);
+}
 
-Token scan_token(Lexer *ls)
+Token luluLex_scan_token(Lexer *ls)
 {
     skip_whitespace(ls);
     init_stringview(&ls->lexeme, ls->lexeme.end);
-    if (is_at_end(ls)) {
+    if (is_at_end(ls))
         return make_token(ls, TK_EOF);
-    }
 
     char ch = next_char(ls);
-    if (isdigit(ch)) {
+    if (isdigit(ch))
         return number_token(ls);
-    }
-    if (isalpha(ch) || ch == '_') {
+    if (isalpha(ch) || ch == '_')
         return identifier_token(ls);
-    }
 
     switch (ch) {
     case '(': return make_token(ls, TK_LPAREN);
     case ')': return make_token(ls, TK_RPAREN);
     case '[': {
         int lvl = get_nesting(ls);
-        if (match_char(ls, '[')) {
+        if (match_char(ls, '['))
             return rstring_token(ls, lvl);
-        }
         return make_token(ls, TK_LBRACKET);
     }
     case ']': return make_token(ls, TK_RBRACKET);
@@ -451,32 +448,29 @@ Token scan_token(Lexer *ls)
     case ',': return make_token(ls, TK_COMMA);
     case ';': return make_token(ls, TK_SEMICOL);
     case '.':
-        if (match_char(ls, '.')) {
-            return make_ifeq(ls, '.', TK_VARARG, TK_CONCAT);
-        } else if (isdigit(peek_current_char(ls))) {
-            // Have a decimal literal with no leading digits, e.g. `.1`.
-            return number_token(ls);
-        } else {
+        if (match_char(ls, '.'))
+            return make_token_ifelse(ls, '.', TK_VARARG, TK_CONCAT);
+        else if (isdigit(peek_current_char(ls)))
+            return number_token(ls); // Decimal literal, no leading digits
+        else
             return make_token(ls, TK_PERIOD);
-        }
-    case '#': return make_token(ls, TK_POUND);
 
+    case '#': return make_token(ls, TK_POUND);
     case '+': return make_token(ls, TK_PLUS);
     case '-': return make_token(ls, TK_DASH);
     case '*': return make_token(ls, TK_STAR);
     case '/': return make_token(ls, TK_SLASH);
     case '%': return make_token(ls, TK_PERCENT);
     case '^': return make_token(ls, TK_CARET);
-
-    case '=': return make_ifeq(ls, '=', TK_EQ, TK_ASSIGN);
+    case '=': return make_token_ifelse(ls, '=', TK_EQ, TK_ASSIGN);
     case '~':
-        if (match_char(ls, '=')) {
+        if (match_char(ls, '='))
             return make_token(ls, TK_NEQ);
-        } else {
-            lexerror_at_middle(ls, "Expected '='");
-        }
-    case '>': return make_ifeq(ls, '=', TK_GE, TK_GT);
-    case '<': return make_ifeq(ls, '=', TK_LE, TK_LT);
+        else
+            luluLex_error_middle(ls, "Expected '='");
+
+    case '>': return make_token_ifelse(ls, '=', TK_GE, TK_GT);
+    case '<': return make_token_ifelse(ls, '=', TK_LE, TK_LT);
 
     case '\"': return string_token(ls, '\"');
     case '\'': return string_token(ls, '\'');
@@ -484,12 +478,12 @@ Token scan_token(Lexer *ls)
     }
 }
 
-void next_token(Lexer *ls)
+void luluLex_next_token(Lexer *ls)
 {
     ls->consumed  = ls->lookahead;
-    ls->lookahead = scan_token(ls);
+    ls->lookahead = luluLex_scan_token(ls);
     if (ls->lookahead.type == TK_ERROR) {
-        lexerror_at_lookahead(ls, "Unexpected symbol");
+        luluLex_error_lookahead(ls, "Unexpected symbol");
     }
 }
 
@@ -518,53 +512,51 @@ static void append_stringbuilder(StringBuilder *sb, const char *fmt, ...)
     va_end(argp);
 }
 
-void expect_token(Lexer *ls, TkType type, const char *info)
+void luluLex_expect_token(Lexer *ls, TkType type, const char *info)
 {
     if (ls->lookahead.type == type) {
-        next_token(ls);
+        luluLex_next_token(ls);
         return;
     }
     StringBuilder sb;
     StringView    sv = LULU_TKINFO[type];
     init_stringbuilder(&sb);
     append_stringbuilder(&sb, "Expected '%s'", sv.begin);
-    if (info != NULL) {
+    if (info != NULL)
         append_stringbuilder(&sb, " %s", info);
-    }
-    lexerror_at_lookahead(ls, sb.buffer);
+    luluLex_error_lookahead(ls, sb.buffer);
 }
 
-bool check_token(Lexer *ls, TkType type)
+bool luluLex_check_token(Lexer *ls, TkType type)
 {
     TkType actual = ls->lookahead.type;
     return actual == type;
 }
 
-bool match_token(Lexer *ls, TkType type)
+bool luluLex_match_token(Lexer *ls, TkType type)
 {
-    if (check_token(ls, type)) {
-        next_token(ls);
+    if (luluLex_check_token(ls, type)) {
+        luluLex_next_token(ls);
         return true;
     }
     return false;
 }
 
-#undef check_token_any
-bool check_token_any(Lexer *ls, const TkType types[])
+#undef luluLex_check_token_any
+bool luluLex_check_token_any(Lexer *ls, const TkType types[])
 {
     for (int i = 0; types[i] != TK_ERROR; i++) {
-        if (check_token(ls, types[i])) {
+        if (luluLex_check_token(ls, types[i]))
             return true;
-        }
     }
     return false;
 }
 
-#undef match_token_any
-bool match_token_any(Lexer *ls, const TkType types[])
+#undef luluLex_match_token_any
+bool luluLex_match_token_any(Lexer *ls, const TkType types[])
 {
-    if (check_token_any(ls, types)) {
-        next_token(ls);
+    if (luluLex_check_token_any(ls, types)) {
+        luluLex_next_token(ls);
         return true;
     }
     return false;
@@ -575,7 +567,7 @@ bool match_token_any(Lexer *ls, const TkType types[])
 
 // ERROR HANDLING --------------------------------------------------------- {{{1
 
-void lexerror_at(Lexer *ls, const Token *tk, const char *info)
+void luluLex_error_at(Lexer *ls, const Token *tk, const char *info)
 {
     VM *vm = ls->vm;
     if (tk->type == TK_EOF) {
@@ -587,20 +579,20 @@ void lexerror_at(Lexer *ls, const Token *tk, const char *info)
     lulu_comptime_error(vm, ls->line, info, lulu_to_cstring(vm, -1));
 }
 
-void lexerror_at_lookahead(Lexer *ls, const char *info)
+void luluLex_error_lookahead(Lexer *ls, const char *info)
 {
-    lexerror_at(ls, &ls->lookahead, info);
+    luluLex_error_at(ls, &ls->lookahead, info);
 }
 
-void lexerror_at_consumed(Lexer *ls, const char *info)
+void luluLex_error_consumed(Lexer *ls, const char *info)
 {
-    lexerror_at(ls, &ls->consumed, info);
+    luluLex_error_at(ls, &ls->consumed, info);
 }
 
-void lexerror_at_middle(Lexer *ls, const char *info)
+void luluLex_error_middle(Lexer *ls, const char *info)
 {
     Token tk = error_token(ls);
-    lexerror_at(ls, &tk, info);
+    luluLex_error_at(ls, &tk, info);
 }
 
 

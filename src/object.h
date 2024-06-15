@@ -4,9 +4,9 @@
 #include "lulu.h"
 #include "limits.h"
 
-typedef        lulu_Number Number;
-typedef struct lulu_Allocator  Alloc; // defined in `memory.h`.
-typedef struct lulu_Object Object;
+typedef        lulu_Number    Number;
+typedef struct lulu_Allocator Allocator; // defined in `memory.h`.
+typedef struct lulu_Object    Object;
 
 typedef enum {
     TYPE_NIL,
@@ -106,27 +106,21 @@ do {                                                                           \
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
 // Writes string representation of the given value to C `stdout`.
-void print_value(const Value *vl, bool isdebug);
+void luluVal_print_value(const Value *vl, bool isdebug);
 
 // See: https://www.lua.org/source/5.1/lvm.c.html#luaV_tonumber
 // Returns either `vl` or `out` if successful, else `NULL`.
-const Value *value_tonumber(const Value *vl, Value *out);
+const Value *luluVal_to_number(const Value *vl, Value *out);
 
 // Assumes `buffer` is a fixed-size array of length `MAX_TOSTRING`.
 // If `out` is not `NULL`, it will be set to -1 if we do not own the result.
-const char *value_tocstring(const Value *vl, char *buf, int *out);
+const char *luluVal_to_cstring(const Value *vl, char *buf, int *out);
 
 // We cannot use `memcmp` due to struct padding.
-bool values_equal(const Value *a, const Value *b);
+bool luluVal_equal(const Value *a, const Value *b);
 
-void init_varray(lulu_VM *vm, VArray *va);
-void free_varray(lulu_VM *vm, VArray *va);
-void write_varray(lulu_VM *vm, VArray *va, const Value *vl);
-
-// Mutates the `vm->strings` table. Maps strings to non-nil values.
-void set_interned(lulu_VM *vm, const String *s);
-
-// Searches for interned strings. Analogous to `tableFindString()` in the book.
-String *find_interned(lulu_VM *vm, StringView sv, uint32_t hash);
+void luluVal_init_array(VArray *va);
+void luluVal_free_array(lulu_VM *vm, VArray *va);
+void luluVal_write_array(lulu_VM *vm, VArray *va, const Value *vl);
 
 #endif /* LULU_OBJECT_H */

@@ -8,7 +8,7 @@
 
 typedef struct lulu_VM {
     Value       stack[MAX_STACK + STACK_RESERVED];
-    Alloc       allocator; // Will hold the VM itself as context.
+    Allocator   allocator; // Will hold the VM itself as context.
     Value      *top;       // Pointer to first free slot in the stack.
     Value      *base;      // Pointer to bottom of current stack frame.
     Chunk      *chunk;     // Bytecode, constants and such.
@@ -26,8 +26,8 @@ typedef struct lulu_VM {
 #define poke_base(vm, n)    ((vm)->base + (n))
 #define push_back(vm, v)    *(vm)->top = *(v), incr_top(vm)
 
-void init_vm(VM *vm);
-void free_vm(VM *vm);
-lulu_ErrorCode interpret(VM *vm, const char *input);
+void luluVM_init(VM *vm);
+void luluVM_free(VM *vm);
+lulu_Status luluVM_interpret(VM *vm, const char *input);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */
