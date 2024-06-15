@@ -1,6 +1,7 @@
 #include "table.h"
 #include "string.h"
 #include "memory.h"
+#include "vm.h"
 
 #define TABLE_MAX_LOAD  0.75
 
@@ -57,9 +58,9 @@ static Entry *find_entry(Entry *entries, int cap, const Value *k)
 }
 
 // Analogous to `adjustCapacity()` in the book. Assumes we only ever grow!
-static void resize_table(Table *t, int newcap, Alloc *al)
+static void resize_table(lulu_VM *vm, Table *t, int newcap)
 {
-    Entry *newbuf = new_parray(newbuf, newcap, al);
+    Entry *newbuf = new_parray(vm, newbuf, newcap);
     clear_entries(newbuf, newcap);
 
     // Copy non-empty and non-tombstone entries to the new table.
@@ -74,35 +75,37 @@ static void resize_table(Table *t, int newcap, Alloc *al)
         dst->value = src->value;
         t->count++;
     }
-    free_parray(t->entries, t->cap, al);
+    free_parray(vm, t->entries, t->cap);
     t->entries = newbuf;
     t->cap     = newcap;
 }
 
-Table *new_table(int size, Alloc *al)
+Table *new_table(lulu_VM *vm, int size)
 {
-    Table *t = cast(Table*, new_object(sizeof(*t), TYPE_TABLE, al));
-    init_table(t);
+    Table *t = cast(Table*, lulu_new_object(vm, sizeof(*t), TYPE_TABLE));
+    init_table(vm, t);
     if (size > 0)
-        resize_table(t, size, al);
+        resize_table(vm, t, size);
     return t;
 }
 
-void init_table(Table *t)
+void init_table(lulu_VM *vm, Table *t)
 {
+    unused(vm);
     t->entries = NULL;
     t->count   = 0;
     t->cap     = 0;
 }
 
-void free_table(Table *t, Alloc *al)
+void free_table(lulu_VM *vm, Table *t)
 {
-    free_parray(t->entries, t->cap, al);
-    init_table(t);
+    free_parray(vm, t->entries, t->cap);
+    init_table(vm, t);
 }
 
-bool get_table(Table *t, const Value *k, Value *out)
+bool get_table(lulu_VM *vm, Table *t, const Value *k, Value *out)
 {
+    unused(vm);
     if (t->count == 0 || is_nil(k)) {
         return false;
     }
@@ -114,12 +117,12 @@ bool get_table(Table *t, const Value *k, Value *out)
     return true;
 }
 
-bool set_table(Table *t, const Value *k, const Value *v, Alloc *al)
+bool set_table(lulu_VM *vm, Table *t, const Value *k, const Value *v)
 {
     if (is_nil(k))
         return false;
     if (t->count + 1 > t->cap * TABLE_MAX_LOAD)
-        resize_table(t, grow_capacity(t->cap), al);
+        resize_table(vm, t, grow_capacity(t->cap));
 
     Entry *ent      = find_entry(t->entries, t->cap, k);
     bool   isnewkey = is_nil(&ent->key);
@@ -131,8 +134,9 @@ bool set_table(Table *t, const Value *k, const Value *v, Alloc *al)
     return isnewkey;
 }
 
-bool unset_table(Table *t, const Value *k)
+bool unset_table(lulu_VM *vm, Table *t, const Value *k)
 {
+    unused(vm);
     if (t->count == 0 || is_nil(k))
         return false;
 
@@ -145,13 +149,12 @@ bool unset_table(Table *t, const Value *k)
     return true;
 }
 
-void copy_table(Table *dst, const Table *src, Alloc *al)
+void copy_table(lulu_VM *vm, Table *dst, const Table *src)
 {
     for (int i = 0; i < src->cap; i++) {
         const Entry *ent = &src->entries[i];
-        if (is_nil(&ent->key)) {
+        if (is_nil(&ent->key))
             continue;
-        }
-        set_table(dst, &ent->key, &ent->value, al);
+        set_table(vm, dst, &ent->key, &ent->value);
     }
 }

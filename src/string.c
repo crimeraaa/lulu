@@ -57,18 +57,18 @@ uint32_t hash_rstring(StringView sv)
     return hash;
 }
 
-String *new_string(int len, Alloc *al)
+String *new_string(lulu_VM *vm, int len)
 {
     // Note how we add 1 for the nul char.
-    String *s = cast(String*, new_object(string_size(len + 1), TYPE_STRING, al));
+    String *s = cast(String*, lulu_new_object(vm, string_size(len + 1), TYPE_STRING));
     s->len    = len;
     return s;
 }
 
 // Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
-void free_string(String *s, Alloc *al)
+void free_string(lulu_VM *vm, String *s)
 {
-    free_pointer(s, string_size(s->len + 1), al);
+    lulu_free_pointer(vm, s, string_size(s->len + 1));
 }
 
 static void build_string(String *s, StringView sv)
@@ -106,7 +106,6 @@ static void end_string(String *s, uint32_t hash)
 
 static String *copy_string_or_rstring(VM *vm, StringView sv, bool israw)
 {
-    Alloc   *al    = &vm->allocator;
     uint32_t hash  = (israw) ? hash_rstring(sv) : hash_string(sv);
     String  *found = find_interned(vm, sv, hash);
 
@@ -115,20 +114,19 @@ static String *copy_string_or_rstring(VM *vm, StringView sv, bool israw)
         return found;
     }
 
-    String *s = new_string(sv.len, al);
-    if (israw) {
+    String *s = new_string(vm, sv.len);
+    if (israw)
         memcpy(s->data, sv.begin, sv.len);
-    } else {
+    else
         build_string(s, sv);
-    }
     end_string(s, hash);
 
     // If we have escapes, are we really REALLY sure this isn't found?
     if (s->len != sv.len) {
         found = find_interned(vm, sv_create_from_len(s->data, s->len), hash);
         if (found != NULL) {
-            remove_object(&vm->objects, &s->object);
-            free_string(s, al);
+            lulu_remove_object(vm, &s->object);
+            free_string(vm, s);
             return found;
         }
     }
@@ -148,8 +146,7 @@ String *copy_string(lulu_VM *vm, StringView sv)
 
 String *concat_strings(lulu_VM *vm, int argc, const Value argv[], int len)
 {
-    Alloc     *al     = &vm->allocator;
-    String    *s      = new_string(len, al);
+    String    *s      = new_string(vm, len);
     StringView sv     = sv_create_from_len(s->data, s->len);
     int        offset = 0;
 
@@ -162,8 +159,8 @@ String *concat_strings(lulu_VM *vm, int argc, const Value argv[], int len)
     end_string(s, hash_string(sv));
     String *found = find_interned(vm, sv, s->hash);
     if (found != NULL) {
-        remove_object(&vm->objects, &s->object);
-        free_string(s, al);
+        lulu_remove_object(vm, &s->object);
+        free_string(vm, s);
         return found;
     }
     set_interned(vm, s);

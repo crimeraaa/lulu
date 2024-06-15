@@ -49,10 +49,9 @@ static Chunk *current_chunk(Compiler *cpl)
 
 static void emit_byte(Compiler *cpl, Byte data)
 {
-    Alloc *alloc = &cpl->vm->allocator;
     Lexer *lexer = cpl->lexer;
     int    line  = lexer->consumed.line;
-    write_chunk(current_chunk(cpl), data, line, alloc);
+    write_chunk(cpl->vm, current_chunk(cpl), data, line);
 }
 
 void emit_opcode(Compiler *cpl, OpCode op)
@@ -113,9 +112,8 @@ void emit_oparg1(Compiler *cpl, OpCode op, Byte arg)
     case OP_POP:
     case OP_CONCAT: // Fall through
     case OP_NIL:
-        if (adjust_vardelta(cpl, op, arg)) {
+        if (adjust_vardelta(cpl, op, arg))
             return;
-        }
         // Fall through
     default:
         emit_byte(cpl, op);
@@ -190,9 +188,8 @@ void patch_table(Compiler *cpl, int offset, Byte3 size)
 
 int make_constant(Compiler *cpl, const Value *vl)
 {
-    Alloc *al = &cpl->vm->allocator;
     Lexer *ls = cpl->lexer;
-    int    i  = add_constant(current_chunk(cpl), vl, al);
+    int    i  = add_constant(cpl->vm, current_chunk(cpl), vl);
     if (i + 1 > MAX_CONSTS) {
         lexerror_at_consumed(ls, "Too many constants in current chunk");
     }

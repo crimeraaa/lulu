@@ -8,7 +8,7 @@
 #include "table.h"
 
 // Assumes that the context pointer points to the parent `VM*` instance.
-static void *allocatorfn(void *ptr, size_t oldsz, size_t newsz, void *ctx)
+static void *allocate(void *ptr, size_t oldsz, size_t newsz, void *ctx)
 {
     unused(oldsz);
     VM *vm = ctx;
@@ -36,18 +36,18 @@ static void init_builtin(VM *vm)
 }
 
 // Silly but need this as stack-allocated tables don't init their objects.
-static void _init_table(Table *t)
+static void _init_table(lulu_VM *vm, Table *t)
 {
     t->object.tag = TYPE_TABLE;
-    init_table(t);
+    init_table(vm, t);
 }
 
 void init_vm(VM *vm)
 {
     reset_stack(vm);
-    init_alloc(&vm->allocator, &allocatorfn, vm);
-    _init_table(&vm->globals);
-    _init_table(&vm->strings);
+    lulu_set_allocator(vm, &allocate, NULL);
+    _init_table(vm, &vm->globals);
+    _init_table(vm, &vm->strings);
     vm->objects = NULL;
 
     // This must occur AFTER the strings table and objects list are initialized.
@@ -56,10 +56,9 @@ void init_vm(VM *vm)
 
 void free_vm(VM *vm)
 {
-    Alloc *al = &vm->allocator;
-    free_table(&vm->globals, al);
-    free_table(&vm->strings, al);
-    free_objects(vm);
+    free_table(vm, &vm->globals);
+    free_table(vm, &vm->strings);
+    lulu_free_objects(vm);
 }
 
 typedef enum {
@@ -111,7 +110,6 @@ static void compare_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
 
 static lulu_ErrorCode run(VM *vm)
 {
-    Alloc *al  = &vm->allocator;
     Chunk *ck  = vm->chunk;
     Value *kst = ck->constants.values;
 
@@ -181,7 +179,7 @@ static lulu_ErrorCode run(VM *vm)
             lulu_pop(vm, cast(int, read_byte()));
             break;
         case OP_NEWTABLE:
-            lulu_push_table(vm, new_table(read_byte3(), al));
+            lulu_push_table(vm, new_table(vm, read_byte3()));
             break;
         case OP_GETLOCAL:
             push_back(vm, &vm->base[read_byte()]);
@@ -219,7 +217,7 @@ static lulu_ErrorCode run(VM *vm)
             for (int i = 1; i <= count; i++) {
                 Value  k = make_number(i);
                 Value *v = poke_base(vm, t_idx + i);
-                set_table(t, &k, v, al);
+                set_table(vm, t, &k, v);
             }
             lulu_pop(vm, count);
             break;
@@ -293,7 +291,7 @@ lulu_ErrorCode interpret(VM *vm, const char *input)
     lulu_ErrorCode err = setjmp(vm->errorjmp);
     switch (err) {
     case LULU_ERROR_NONE:
-        init_chunk(&ck, vm->name);
+        init_chunk(vm, &ck, vm->name);
         init_compiler(&cpl, &ls, vm);
         compile(&cpl, input, &ck);
         break;
@@ -302,13 +300,13 @@ lulu_ErrorCode interpret(VM *vm, const char *input)
     case LULU_ERROR_ALLOC:
         // For the default case, please ensure all calls of `longjmp` ONLY
         // ever pass an `lulu_ErrorCode` member.
-        free_chunk(&ck, &vm->allocator);
+        free_chunk(vm, &ck);
         return err;
     }
     // Prep the VM
     vm->chunk = &ck;
     vm->ip    = ck.code;
     err       = run(vm);
-    free_chunk(&ck, &vm->allocator);
+    free_chunk(vm, &ck);
     return err;
 }

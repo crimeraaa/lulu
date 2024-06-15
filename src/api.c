@@ -244,7 +244,7 @@ void lulu_get_table(lulu_VM *vm, int t_offset, int k_offset)
     Value  v;
     if (!is_table(t))
         lulu_type_error(vm, "index", get_typename(t));
-    if (!get_table(as_table(t), k, &v))
+    if (!get_table(vm, as_table(t), k, &v))
         setv_nil(&v);
     lulu_pop(vm, 2);
     push_back(vm, &v);
@@ -259,7 +259,7 @@ void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
         lulu_type_error(vm, "index", get_typename(t));
     if (is_nil(k))
         lulu_runtime_error(vm, "set a nil index");
-    set_table(as_table(t), k, v, &vm->allocator);
+    set_table(vm, as_table(t), k, v);
     lulu_pop(vm, to_pop);
 }
 
@@ -267,7 +267,7 @@ void lulu_get_global_from_string(lulu_VM *vm, lulu_String *s)
 {
     Value id = make_string(s);
     Value out;
-    if (!get_table(&vm->globals, &id, &out))
+    if (!get_table(vm, &vm->globals, &id, &out))
         lulu_runtime_error(vm, "read undefined global '%s'", s->data);
     push_back(vm, &out);
 }
@@ -287,7 +287,7 @@ void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, int len)
 void lulu_set_global_from_string(lulu_VM *vm, lulu_String *s)
 {
     Value id = make_string(s);
-    set_table(&vm->globals, &id, poke_at_offset(vm, -1), &vm->allocator);
+    set_table(vm, &vm->globals, &id, poke_at_offset(vm, -1));
     lulu_pop(vm, 1);
 }
 

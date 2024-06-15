@@ -136,13 +136,13 @@ typedef struct {
     int         cap;
 } Chunk;
 
-void init_chunk(Chunk *c, const char *name);
-void free_chunk(Chunk *c, Alloc *a);
+void init_chunk(lulu_VM *vm, Chunk *ck, const char *name);
+void free_chunk(lulu_VM *vm, Chunk *ck);
 
 // Append `data` to the bytecode array.
-void write_chunk(Chunk *c, Byte data, int line, Alloc *a);
+void write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line);
 
 // Append `value` to the constants array and return its index.
-int add_constant(Chunk *c, const Value *v, Alloc *a);
+int add_constant(lulu_VM *vm, Chunk *ck, const Value *v);
 
 #endif /* LULU_CHUNK_H */

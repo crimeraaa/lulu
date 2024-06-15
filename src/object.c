@@ -90,25 +90,26 @@ bool values_equal(const Value *a, const Value *b)
     }
 }
 
-void init_varray(VArray *va)
+void init_varray(lulu_VM *vm, VArray *va)
 {
+    unused(vm);
     va->values = NULL;
     va->len    = 0;
     va->cap    = 0;
 }
 
-void free_varray(VArray *va, Alloc *al)
+void free_varray(lulu_VM *vm, VArray *va)
 {
-    free_parray(va->values, va->len, al);
-    init_varray(va);
+    free_parray(vm, va->values, va->len);
+    init_varray(vm, va);
 }
 
-void write_varray(VArray *va, const Value *vl, Alloc *al)
+void write_varray(lulu_VM *vm, VArray *va, const Value *vl)
 {
     if (va->len + 1 > va->cap) {
         int oldcap = va->cap;
         int newcap = grow_capacity(oldcap);
-        va->values = resize_parray(va->values, oldcap, newcap, al);
+        va->values = resize_parray(vm, va->values, oldcap, newcap);
         va->cap    = newcap;
     }
     va->values[va->len] = *vl;
@@ -117,19 +118,18 @@ void write_varray(VArray *va, const Value *vl, Alloc *al)
 
 void set_interned(lulu_VM *vm, const String *s)
 {
-    Alloc *al = &vm->allocator;
     Table *t  = &vm->strings;
     Value  k  = make_string(s);
     Value  v  = make_boolean(true);
-    set_table(t, &k, &v, al);
+    set_table(vm, t, &k, &v);
 }
 
 String *find_interned(lulu_VM *vm, StringView sv, uint32_t hash)
 {
     Table *t = &vm->strings;
-    if (t->count == 0) {
+    if (t->count == 0)
         return NULL;
-    }
+
     uint32_t i = hash % t->cap;
     for (;;) {
         Entry *ent = &t->entries[i];

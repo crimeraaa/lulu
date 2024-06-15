@@ -7,51 +7,45 @@
 
 #define grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
-typedef void *(*AllocFn)(void *ptr, size_t oldsz, size_t newsz, void *ctx);
+typedef void *(*lulu_AllocFn)(void *ptr, size_t oldsz, size_t newsz, void *ctx);
 
 // A general purpose allocation wrapper that carries some context around.
 // See: https://nullprogram.com/blog/2023/12/17/
-struct lulu_Alloc {
-    AllocFn allocfn; // To free `ptr`, pass `newsz` of `0`.
-    void   *context; // How this is interpreted is up to your function.
+struct lulu_Allocator {
+    lulu_AllocFn allocate; // To free `ptr`, pass `newsz` of `0`.
+    void        *context;  // How this is interpreted is up to your function.
 };
 
-// Once set, please do not reinitialize your allocator else it may break.
-void init_alloc(Alloc *al, AllocFn fn, void *ctx);
+void lulu_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx);
+void *lulu_new_pointer(lulu_VM *vm, size_t size);
+void *lulu_resize_pointer(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz);
+void  lulu_free_pointer(lulu_VM *vm, void *ptr, size_t size);
 
-// Assumes casting `al->context` to `VM*` is a safe operation.
-Object *new_object(size_t size, VType tag, Alloc *al);
-void free_objects(lulu_VM *vm);
+Object *lulu_new_object(lulu_VM *vm, size_t size, VType tag);
+void lulu_free_objects(lulu_VM *vm);
 
-// `prepend_object()` and `remove_object()` both return `o`.
-Object *prepend_object(Object **head, Object *obj);
-Object *remove_object(Object **head, Object *obj);
+// Pushes `obj` to the top of the VM's object linked list. Returns `obj`.
+Object *lulu_prepend_object(lulu_VM *vm, Object *obj);
 
-#define new_pointer(size, alloc) \
-    (alloc)->allocfn((NULL), 0, (size), (alloc)->context)
+// Unlink `obj` from the VM's linked list of objects. Returns `obj`.
+Object *lulu_remove_object(lulu_VM *vm, Object *obj);
 
-#define resize_pointer(ptr, oldsz, newsz, alloc) \
-    (alloc)->allocfn((ptr), (oldsz), (newsz), (alloc)->context)
+#define new_array(vm, T, len) \
+    lulu_new_pointer(vm, array_size(T, len))
 
-#define free_pointer(ptr, size, alloc) \
-    (alloc)->allocfn((ptr), (size), 0, (alloc)->context)
+#define resize_array(vm, T, ptr, oldcap, newcap) \
+    lulu_resize_pointer(vm, ptr, array_size(T, oldcap), array_size(T, newcap))
 
-#define new_array(T, N, alloc) \
-    new_pointer(array_size(T, N), alloc)
+#define free_array(vm, T, ptr, len) \
+    lulu_free_pointer(vm, ptr, array_size(T, len))
 
-#define resize_array(T, P, oldcap, newcap, alloc) \
-    resize_pointer(P, array_size(T, oldcap), array_size(T, newcap), alloc)
+#define new_parray(vm, ptr, len) \
+    lulu_new_pointer(vm, parray_size(ptr, len))
 
-#define free_array(T, P, len, alloc) \
-    free_pointer(P, array_size(T, len), alloc)
+#define resize_parray(vm, ptr, oldcap, newcap) \
+    lulu_resize_pointer(vm, ptr, parray_size(ptr, oldcap), parray_size(ptr, newcap))
 
-#define new_parray(P, N, alloc) \
-    new_pointer(parray_size(P, N), alloc)
-
-#define resize_parray(P, oldcap, newcap, alloc) \
-    resize_pointer(P, parray_size(P, oldcap), parray_size(P, newcap), alloc)
-
-#define free_parray(P, len, alloc) \
-    free_pointer(P, parray_size(P, len), alloc)
+#define free_parray(vm, ptr, len) \
+    lulu_free_pointer(vm, ptr, parray_size(ptr, len))
 
 #endif /* LULU_MEMORY_H */

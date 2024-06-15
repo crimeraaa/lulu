@@ -4,42 +4,57 @@
 #include "table.h"
 #include "vm.h"
 
-void init_alloc(Alloc *al, AllocFn fn, void *ctx)
+void lulu_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx)
 {
-    al->allocfn = fn;
-    al->context = ctx;
+    vm->allocator.allocate = fn;
+    vm->allocator.context  = ctx;
 }
 
-Object *new_object(size_t size, VType tag, Alloc *al)
+void *lulu_new_pointer(lulu_VM *vm, size_t size)
 {
-    VM     *vm  = al->context;
-    Object *obj = new_pointer(size, al);
+    return vm->allocator.allocate(NULL, 0, size, vm->allocator.context);
+}
+
+void *lulu_resize_pointer(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
+{
+
+    return vm->allocator.allocate(ptr, oldsz, newsz, vm->allocator.context);
+}
+
+void lulu_free_pointer(lulu_VM *vm, void *ptr, size_t size)
+{
+    vm->allocator.allocate(ptr, size, 0, vm->allocator.context);
+}
+
+Object *lulu_new_object(lulu_VM *vm, size_t size, VType tag)
+{
+    Object *obj = lulu_new_pointer(vm, size);
     obj->tag    = tag;
-    return prepend_object(&vm->objects, obj);
+    return lulu_prepend_object(vm, obj);
 }
 
-Object *prepend_object(Object **head, Object *obj)
+Object *lulu_prepend_object(lulu_VM *vm, Object *obj)
 {
-    obj->next = *head;
-    *head     = obj;
+    obj->next   = vm->objects;
+    vm->objects = obj;
     return obj;
 }
 
-Object *remove_object(Object **head, Object *obj)
+Object *lulu_remove_object(lulu_VM *vm, Object *obj)
 {
-    *head = obj->next;
+    vm->objects = obj->next;
     return obj;
 }
 
-static void free_object(Object *obj, Alloc *al)
+static void free_object(lulu_VM *vm, Object *obj)
 {
     switch (obj->tag) {
     case TYPE_STRING:
-        free_string(cast(String*, obj), al);
+        free_string(vm, cast(String*, obj));
         break;
     case TYPE_TABLE:
-        free_table(cast(Table*, obj), al);
-        free_pointer(obj, sizeof(Table), al);
+        free_table(vm, cast(Table*, obj));
+        lulu_free_pointer(vm, obj, sizeof(Table));
         break;
     default:
         eprintfln("[FATAL ERROR]:\nAttempt to free a %s", get_typename(obj));
@@ -48,13 +63,12 @@ static void free_object(Object *obj, Alloc *al)
     }
 }
 
-void free_objects(lulu_VM *vm)
+void lulu_free_objects(lulu_VM *vm)
 {
-    Alloc  *al   = &vm->allocator;
     Object *head = vm->objects;
     while (head != NULL) {
         Object *next = head->next;
-        free_object(head, al);
+        free_object(vm, head);
         head = next;
     }
 }

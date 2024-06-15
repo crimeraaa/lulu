@@ -36,9 +36,9 @@ OpInfo LULU_OPINFO[] = {
 
 static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
 
-void init_chunk(Chunk *ck, const char *name)
+void init_chunk(lulu_VM *vm, Chunk *ck, const char *name)
 {
-    init_varray(&ck->constants);
+    init_varray(vm, &ck->constants);
     ck->name  = name;
     ck->code  = NULL;
     ck->lines = NULL;
@@ -46,21 +46,21 @@ void init_chunk(Chunk *ck, const char *name)
     ck->cap   = 0;
 }
 
-void free_chunk(Chunk *ck, Alloc *al)
+void free_chunk(lulu_VM *vm, Chunk *ck)
 {
-    free_varray(&ck->constants, al);
-    free_parray(ck->lines, ck->len, al);
-    free_parray(ck->code, ck->len, al);
-    init_chunk(ck, "(freed chunk)");
+    free_varray(vm, &ck->constants);
+    free_parray(vm, ck->lines, ck->len);
+    free_parray(vm, ck->code, ck->len);
+    init_chunk(vm, ck, "(freed chunk)");
 }
 
-void write_chunk(Chunk *ck, Byte data, int line, Alloc *al)
+void write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
 {
     if (ck->len + 1 > ck->cap) {
         int prev  = ck->cap;
         int next  = grow_capacity(prev);
-        ck->code  = resize_parray(ck->code,  prev, next, al);
-        ck->lines = resize_parray(ck->lines, prev, next, al);
+        ck->code  = resize_parray(vm, ck->code,  prev, next);
+        ck->lines = resize_parray(vm, ck->lines, prev, next);
         ck->cap   = next;
     }
     ck->code[ck->len]  = data;
@@ -68,15 +68,14 @@ void write_chunk(Chunk *ck, Byte data, int line, Alloc *al)
     ck->len++;
 }
 
-int add_constant(Chunk *ck, const Value *vl, Alloc *al)
+int add_constant(lulu_VM *vm, Chunk *ck, const Value *vl)
 {
     VArray *kst = &ck->constants;
-    // TODO: Literally anything is faster than al linear search
+    // TODO: Literally anything is faster than a linear search
     for (int i = 0; i < kst->len; i++) {
-        if (values_equal(&kst->values[i], vl)) {
+        if (values_equal(&kst->values[i], vl))
             return i;
-        }
     }
-    write_varray(kst, vl, al);
+    write_varray(vm, kst, vl);
     return kst->len - 1;
 }

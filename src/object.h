@@ -5,7 +5,7 @@
 #include "limits.h"
 
 typedef        lulu_Number Number;
-typedef struct lulu_Alloc  Alloc; // defined in `memory.h`.
+typedef struct lulu_Allocator  Alloc; // defined in `memory.h`.
 typedef struct lulu_Object Object;
 
 typedef enum {
@@ -119,9 +119,9 @@ const char *value_tocstring(const Value *vl, char *buf, int *out);
 // We cannot use `memcmp` due to struct padding.
 bool values_equal(const Value *a, const Value *b);
 
-void init_varray(VArray *va);
-void free_varray(VArray *va, Alloc *al);
-void write_varray(VArray *va, const Value *vl, Alloc *al);
+void init_varray(lulu_VM *vm, VArray *va);
+void free_varray(lulu_VM *vm, VArray *va);
+void write_varray(lulu_VM *vm, VArray *va, const Value *vl);
 
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
 void set_interned(lulu_VM *vm, const String *s);
