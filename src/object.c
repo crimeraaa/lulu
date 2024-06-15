@@ -14,11 +14,13 @@ const char *const LULU_TYPENAMES[] = {
     [TYPE_TABLE]   = "table",
 };
 
-const Value *luluVal_to_number(const Value *vl, Value *out)
+ToNumber luluVal_to_number(const Value *vl)
 {
+    ToNumber conv;
+    conv.ok = false;
     if (is_number(vl)) {
-        setv_number(out, as_number(vl));
-        return vl;
+        conv.number = as_number(vl);
+        conv.ok = true;
     }
     if (is_string(vl)) {
         char      *end;
@@ -26,11 +28,11 @@ const Value *luluVal_to_number(const Value *vl, Value *out)
         StringView sv = sv_create_from_len(s->data, s->len);
         Number     n  = cstr_tonumber(sv.begin, &end);
         if (end == sv.end) {
-            setv_number(out, n);
-            return out;
+            conv.number = n;
+            conv.ok     = true;
         }
     }
-    return NULL;
+    return conv;
 }
 
 const char *luluVal_to_cstring(const Value *vl, char *buf, int *out)

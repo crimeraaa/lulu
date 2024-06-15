@@ -61,7 +61,7 @@ uint32_t luluStr_hash_raw(StringView sv)
 String *luluStr_new(lulu_VM *vm, int len)
 {
     // Note how we add 1 for the nul char.
-    String *s = cast(String*, luluObj_new(vm, string_size(len + 1), TYPE_STRING));
+    String *s = cast(String*, luluObj_new(vm, luluStr_size(len + 1), TYPE_STRING));
     s->len    = len;
     return s;
 }
@@ -69,7 +69,7 @@ String *luluStr_new(lulu_VM *vm, int len)
 // Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
 void luluStr_free(lulu_VM *vm, String *s)
 {
-    luluMem_free_pointer(vm, s, string_size(s->len + 1));
+    luluMem_free_pointer(vm, s, luluStr_size(s->len + 1));
 }
 
 static void build_string(String *s, StringView sv)

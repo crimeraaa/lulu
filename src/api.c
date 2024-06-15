@@ -175,13 +175,13 @@ bool lulu_to_boolean(lulu_VM *vm, int offset)
 
 lulu_Number lulu_to_number(lulu_VM *vm, int offset)
 {
-    Value *v = poke_at_offset(vm, offset);
-    Value  tmp;
-    // As is, `lulu_to_number` does not do any error handling.
-    if (luluVal_to_number(v, &tmp)) {
-        Number n = as_number(&tmp);
-        setv_number(v, n);
-        return n;
+    Value   *v    = poke_at_offset(vm, offset);
+    ToNumber conv = luluVal_to_number(v);
+
+    // As is, `luluVal_to_number` does not do any error handling.
+    if (conv.ok) {
+        setv_number(v, conv.number);
+        return conv.number;
     }
     // Don't silently set `v` to nil if the user didn't ask for it.
     return 0;

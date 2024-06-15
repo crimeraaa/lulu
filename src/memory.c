@@ -3,6 +3,7 @@
 #include "string.h"
 #include "table.h"
 #include "vm.h"
+#include "api.h"
 
 void luluMem_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx)
 {
@@ -10,20 +11,12 @@ void luluMem_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx)
     vm->allocator.context  = ctx;
 }
 
-void *luluMem_new_pointer(lulu_VM *vm, size_t size)
+void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
 {
-    return vm->allocator.allocate(NULL, 0, size, vm->allocator.context);
-}
-
-void *luluMem_resize_pointer(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
-{
-
-    return vm->allocator.allocate(ptr, oldsz, newsz, vm->allocator.context);
-}
-
-void luluMem_free_pointer(lulu_VM *vm, void *ptr, size_t size)
-{
-    vm->allocator.allocate(ptr, size, 0, vm->allocator.context);
+    void *res = vm->allocator.allocate(ptr, oldsz, newsz, vm->allocator.context);
+    if (res == NULL && newsz > 0)
+        lulu_alloc_error(vm);
+    return res;
 }
 
 Object *luluObj_new(lulu_VM *vm, size_t size, VType tag)

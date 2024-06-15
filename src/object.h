@@ -108,9 +108,13 @@ do {                                                                           \
 // Writes string representation of the given value to C `stdout`.
 void luluVal_print_value(const Value *vl, bool isdebug);
 
+typedef struct ToNumber {
+    Number number;
+    bool   ok;
+} ToNumber;
+
 // See: https://www.lua.org/source/5.1/lvm.c.html#luaV_tonumber
-// Returns either `vl` or `out` if successful, else `NULL`.
-const Value *luluVal_to_number(const Value *vl, Value *out);
+ToNumber luluVal_to_number(const Value *vl);
 
 // Assumes `buffer` is a fixed-size array of length `MAX_TOSTRING`.
 // If `out` is not `NULL`, it will be set to -1 if we do not own the result.

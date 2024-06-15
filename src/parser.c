@@ -47,17 +47,14 @@ static int parse_exprlist(Compiler *cpl)
 
 static void adjust_exprlist(Compiler *cpl, int idents, int exprs)
 {
-    if (exprs == idents) {
+    if (exprs == idents)
         return;
-    }
 
-    if (exprs > idents) {
-        // Discard extra expressions.
+    // True: Discard extra expressions. False: Assign nils to remaining idents.
+    if (exprs > idents)
         luluCpl_emit_oparg1(cpl, OP_POP, exprs - idents);
-    } else {
-        // Assign nils to remaining identifiers.
+    else
         luluCpl_emit_oparg1(cpl, OP_NIL, idents - exprs);
-    }
 }
 
 // EXPRESSIONS ------------------------------------------------------------ {{{1
@@ -128,9 +125,8 @@ static void concat(Compiler *cpl)
     Lexer *ls   = cpl->lexer;
     int    argc = 1;
     do {
-        if (argc + 1 > MAX_BYTE) {
+        if (argc + 1 > MAX_BYTE)
             luluLex_error_consumed(ls, "Too many consecutive concatenations");
-        }
         parse_precedence(cpl, PREC_CONCAT + 1);
         argc += 1;
     } while (luluLex_match_token(ls, TK_CONCAT));
@@ -346,9 +342,9 @@ static int count_assignments(Assignment *cpl)
 
 static void emit_assignment_tail(Compiler *cpl, Assignment *list)
 {
-    if (list == NULL) {
+    if (list == NULL)
         return;
-    }
+
     switch (list->type) {
     case ASSIGN_GLOBAL:
         luluCpl_emit_oparg3(cpl, OP_SETGLOBAL, list->arg);
@@ -365,9 +361,8 @@ static void emit_assignment_tail(Compiler *cpl, Assignment *list)
 
     // After recursion, clean up stack if we emitted table fields as they cannot
     // be implicitly popped due to SETTABLE being a VAR_DELTA pop.
-    if (list->type == ASSIGN_TABLE) {
+    if (list->type == ASSIGN_TABLE)
         luluCpl_emit_oparg1(cpl, OP_POP, 2);
-    }
 }
 
 static void emit_assignment(Compiler *cpl, Assignment *list)
@@ -480,9 +475,8 @@ static void print_statement(Compiler *cpl)
     Lexer *ls   = cpl->lexer;
     bool   open = luluLex_match_token(ls, TK_LPAREN);
     int    argc = parse_exprlist(cpl);
-    if (open) {
+    if (open)
         luluLex_expect_token(ls, TK_RPAREN, NULL);
-    }
     luluCpl_emit_oparg1(cpl, OP_PRINT, argc);
 }
 
@@ -564,9 +558,8 @@ static void declare_locals(Compiler *cpl)
         idents += 1;
     } while (luluLex_match_token(ls, TK_COMMA));
 
-    if (luluLex_match_token(ls, TK_ASSIGN)) {
+    if (luluLex_match_token(ls, TK_ASSIGN))
         exprs = parse_exprlist(cpl);
-    }
     adjust_exprlist(cpl, idents, exprs);
     luluCpl_define_locals(cpl, idents);
 }
@@ -609,9 +602,8 @@ static void parse_precedence(Compiler *cpl, Precedence prec)
     for (;;) {
         pr = get_parserule(tk->type);
         // If we can't further compile the token to our right, end the loop.
-        if (!(prec <= pr->precedence)) {
+        if (!(prec <= pr->precedence))
             break;
-        }
         luluLex_next_token(ls);
         pr->infixfn(cpl);
     }

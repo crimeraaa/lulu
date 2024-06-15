@@ -7,19 +7,15 @@
 #include "string.h"
 #include "table.h"
 
-static void *allocate(void *ptr, size_t oldsz, size_t newsz, void *ctx)
+// Simple allocation wrapper using the C standard library `realloc` and `free`.
+static void *stdc_allocate(void *ptr, size_t oldsz, size_t newsz, void *ctx)
 {
-    unused(oldsz);
-    VM *vm = ctx;
+    unused2(oldsz, ctx);
     if (newsz == 0) {
         free(ptr);
         return NULL;
     }
-    void *res = realloc(ptr, newsz);
-    if (res == NULL) {
-        lulu_alloc_error(vm);
-    }
-    return res;
+    return realloc(ptr, newsz);
 }
 
 static void reset_stack(VM *vm)
@@ -44,7 +40,7 @@ static void _init_table(Table *t)
 void luluVM_init(VM *vm)
 {
     reset_stack(vm);
-    luluMem_set_allocator(vm, &allocate, vm);
+    luluMem_set_allocator(vm, &stdc_allocate, vm);
     _init_table(&vm->globals);
     _init_table(&vm->strings);
     vm->objects = NULL;
@@ -67,28 +63,25 @@ typedef enum {
 
 const char *pick_non_number(const Value *a, const Value *b)
 {
-    Value tmp;
     // First operand is wrong?
-    if (!luluVal_to_number(a, &tmp))
+    if (!luluVal_to_number(a).ok)
         return get_typename(a);
     return get_typename(b);
 }
 
 static void arith_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
 {
-    Value tmp_a;
-    Value tmp_b;
-    if (luluVal_to_number(a, &tmp_a) && luluVal_to_number(b, &tmp_b)) {
-        Number na = as_number(&tmp_a);
-        Number nb = as_number(&tmp_b);
+    ToNumber ca = luluVal_to_number(a);
+    ToNumber cb = luluVal_to_number(b);
+    if (ca.ok && cb.ok) {
         switch (tm) {
-        case TM_ADD: setv_number(a, num_add(na, nb)); break;
-        case TM_SUB: setv_number(a, num_sub(na, nb)); break;
-        case TM_MUL: setv_number(a, num_mul(na, nb)); break;
-        case TM_DIV: setv_number(a, num_div(na, nb)); break;
-        case TM_MOD: setv_number(a, num_mod(na, nb)); break;
-        case TM_POW: setv_number(a, num_pow(na, nb)); break;
-        case TM_UNM: setv_number(a, num_unm(na));     break;
+        case TM_ADD: setv_number(a, num_add(ca.number, cb.number)); break;
+        case TM_SUB: setv_number(a, num_sub(ca.number, cb.number)); break;
+        case TM_MUL: setv_number(a, num_mul(ca.number, cb.number)); break;
+        case TM_DIV: setv_number(a, num_div(ca.number, cb.number)); break;
+        case TM_MOD: setv_number(a, num_mod(ca.number, cb.number)); break;
+        case TM_POW: setv_number(a, num_pow(ca.number, cb.number)); break;
+        case TM_UNM: setv_number(a, num_unm(ca.number));     break;
         default:
             // Should be unreachable.
             assert(false);
@@ -183,11 +176,9 @@ static lulu_Status run(VM *vm)
         case OP_GETLOCAL:
             push_back(vm, &vm->base[read_byte()]);
             break;
-        case OP_GETGLOBAL: {
-            String *s = read_string();
-            lulu_get_global(vm, s);
+        case OP_GETGLOBAL:
+            lulu_get_global(vm, read_string());
             break;
-        }
         case OP_GETTABLE:
             lulu_get_table(vm, -2, -1);
             break;
@@ -195,11 +186,9 @@ static lulu_Status run(VM *vm)
             vm->base[read_byte()] = *poke_top(vm, -1);
             lulu_pop(vm, 1);
             break;
-        case OP_SETGLOBAL: {
-            String *s = read_string();
-            lulu_set_global(vm, s);
+        case OP_SETGLOBAL:
+            lulu_set_global(vm, read_string());
             break;
-        }
         case OP_SETTABLE: {
             int t_offset = read_byte();
             int k_offset = read_byte();

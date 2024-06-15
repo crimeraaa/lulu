@@ -3,8 +3,7 @@
 
 #include "object.h"
 
-#define string_size(N)      (sizeof(String) + array_size(char, N))
-#define string_psize(P, N)  (sizeof(*(P)) + parray_size((P)->data, N))
+#define luluStr_size(len)       (sizeof(String) + array_size(char, len))
 
 // Will not hash any escape sequences at all. Hence 'r' for "raw".
 uint32_t luluStr_hash_raw(StringView sv);
