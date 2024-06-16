@@ -28,6 +28,6 @@ struct lulu_VM {
 
 void luluVM_init(lulu_VM *vm);
 void luluVM_free(lulu_VM *vm);
-lulu_Status luluVM_interpret(lulu_VM *vm, const char *input);
+lulu_Status luluVM_execute(lulu_VM *vm);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */

@@ -100,7 +100,7 @@ static void compare_tm(lulu_VM *vm, Value *a, const Value *b, TagMethod tm)
     lulu_type_error(vm, "compare", pick_non_number(a, b));
 }
 
-static lulu_Status run(lulu_VM *vm)
+lulu_Status luluVM_execute(lulu_VM *vm)
 {
     Chunk *ck  = vm->chunk;
     Value *kst = ck->constants.values;
@@ -269,32 +269,4 @@ static lulu_Status run(lulu_VM *vm)
 #undef read_byte3
 #undef read_constant
 #undef read_string
-}
-
-lulu_Status luluVM_interpret(lulu_VM *vm, const char *input)
-{
-    Chunk    ck;
-    Lexer    ls;
-    Compiler comp;
-    lulu_Status err = setjmp(vm->errorjmp);
-    switch (err) {
-    case LULU_OK:
-        luluFunc_init_chunk(&ck, vm->name);
-        luluComp_init(&comp, &ls, vm);
-        luluComp_compile(&comp, input, &ck);
-        break;
-    case LULU_ERROR_RUNTIME:
-    case LULU_ERROR_COMPTIME:
-    case LULU_ERROR_ALLOC:
-        // For the default case, please ensure all calls of `longjmp` ONLY
-        // ever pass an `lulu_Status` member.
-        luluFunc_free_chunk(vm, &ck);
-        return err;
-    }
-    // Prep the VM
-    vm->chunk = &ck;
-    vm->ip    = ck.code;
-    err       = run(vm);
-    luluFunc_free_chunk(vm, &ck);
-    return err;
 }
