@@ -105,7 +105,7 @@ static void end_string(String *s, uint32_t hash)
     s->hash         = hash;
 }
 
-static String *copy_string(VM *vm, StringView sv, bool israw)
+static String *copy_string(lulu_VM *vm, StringView sv, bool israw)
 {
     uint32_t hash  = (israw) ? luluStr_hash_raw(sv) : hash_string(sv);
     String  *found = luluStr_find_interned(vm, sv, hash);

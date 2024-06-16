@@ -4,9 +4,8 @@
 #include "lulu.h"
 #include "limits.h"
 
-typedef        lulu_Number    Number;
-typedef struct lulu_Allocator Allocator; // defined in `memory.h`.
-typedef struct lulu_Object    Object;
+typedef        lulu_Number Number;
+typedef struct lulu_Object Object;
 
 typedef enum {
     TYPE_NIL,
@@ -52,7 +51,7 @@ typedef struct {
     Value *values;
     int    len;
     int    cap;
-} VArray;
+} Array;
 
 typedef struct lulu_Table {
     Object object;  // For user-facing tables, not by VM internal tables.
@@ -106,9 +105,9 @@ do {                                                                           \
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
 // Writes string representation of the given value to C `stdout`.
-void luluVal_print_value(const Value *vl, bool isdebug);
+void luluVal_print_value(const Value *vl);
 
-typedef struct ToNumber {
+typedef struct {
     Number number;
     bool   ok;
 } ToNumber;
@@ -123,8 +122,8 @@ const char *luluVal_to_cstring(const Value *vl, char *buf, int *out);
 // We cannot use `memcmp` due to struct padding.
 bool luluVal_equal(const Value *a, const Value *b);
 
-void luluVal_init_array(VArray *va);
-void luluVal_free_array(lulu_VM *vm, VArray *va);
-void luluVal_write_array(lulu_VM *vm, VArray *va, const Value *vl);
+void luluVal_init_array(Array *va);
+void luluVal_free_array(lulu_VM *vm, Array *va);
+void luluVal_write_array(lulu_VM *vm, Array *va, const Value *vl);
 
 #endif /* LULU_OBJECT_H */

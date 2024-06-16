@@ -8,7 +8,7 @@
 #include "table.h"
 
 // Simple allocation wrapper using the C standard library `realloc` and `free`.
-static void *stdc_allocate(void *ptr, size_t oldsz, size_t newsz, void *ctx)
+static void *stdc_allocator(void *ptr, size_t oldsz, size_t newsz, void *ctx)
 {
     unused2(oldsz, ctx);
     if (newsz == 0) {
@@ -18,13 +18,13 @@ static void *stdc_allocate(void *ptr, size_t oldsz, size_t newsz, void *ctx)
     return realloc(ptr, newsz);
 }
 
-static void reset_stack(VM *vm)
+static void reset_stack(lulu_VM *vm)
 {
     vm->top  = vm->stack;
     vm->base = vm->stack;
 }
 
-static void init_builtin(VM *vm)
+static void init_builtin(lulu_VM *vm)
 {
     lulu_push_table(vm, &vm->globals);
     lulu_set_global(vm, "_G");
@@ -37,10 +37,10 @@ static void _init_table(Table *t)
     luluTbl_init(t);
 }
 
-void luluVM_init(VM *vm)
+void luluVM_init(lulu_VM *vm)
 {
     reset_stack(vm);
-    luluMem_set_allocator(vm, &stdc_allocate, vm);
+    luluMem_set_allocator(vm, &stdc_allocator, vm);
     _init_table(&vm->globals);
     _init_table(&vm->strings);
     vm->objects = NULL;
@@ -49,7 +49,7 @@ void luluVM_init(VM *vm)
     init_builtin(vm);
 }
 
-void luluVM_free(VM *vm)
+void luluVM_free(lulu_VM *vm)
 {
     luluTbl_free(vm, &vm->globals);
     luluTbl_free(vm, &vm->strings);
@@ -69,7 +69,7 @@ const char *pick_non_number(const Value *a, const Value *b)
     return get_typename(b);
 }
 
-static void arith_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
+static void arith_tm(lulu_VM *vm, Value *a, const Value *b, TagMethod tm)
 {
     ToNumber ca = luluVal_to_number(a);
     ToNumber cb = luluVal_to_number(b);
@@ -92,7 +92,7 @@ static void arith_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
     }
 }
 
-static void compare_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
+static void compare_tm(lulu_VM *vm, Value *a, const Value *b, TagMethod tm)
 {
     // Lua does implement comparison when both operands are the same, and by
     // default they allow string comparisons.
@@ -100,7 +100,7 @@ static void compare_tm(VM *vm, Value *a, const Value *b, TagMethod tm)
     lulu_type_error(vm, "compare", pick_non_number(a, b));
 }
 
-static lulu_Status run(VM *vm)
+static lulu_Status run(lulu_VM *vm)
 {
     Chunk *ck  = vm->chunk;
     Value *kst = ck->constants.values;
@@ -147,7 +147,7 @@ static lulu_Status run(VM *vm)
             printf("\t");
             for (const Value *slot = vm->stack; slot < vm->top; slot++) {
                 printf("[ ");
-                luluVal_print_value(slot, true);
+                luluDbg_print_value(slot);
                 printf(" ]");
             }
             printf("\n");
@@ -271,30 +271,30 @@ static lulu_Status run(VM *vm)
 #undef read_string
 }
 
-lulu_Status luluVM_interpret(VM *vm, const char *input)
+lulu_Status luluVM_interpret(lulu_VM *vm, const char *input)
 {
     Chunk    ck;
     Lexer    ls;
-    Compiler cpl;
+    Compiler comp;
     lulu_Status err = setjmp(vm->errorjmp);
     switch (err) {
     case LULU_OK:
-        luluFun_init_chunk(&ck, vm->name);
-        luluCpl_init(&cpl, &ls, vm);
-        luluCpl_compile(&cpl, input, &ck);
+        luluFunc_init_chunk(&ck, vm->name);
+        luluComp_init(&comp, &ls, vm);
+        luluComp_compile(&comp, input, &ck);
         break;
     case LULU_ERROR_RUNTIME:
     case LULU_ERROR_COMPTIME:
     case LULU_ERROR_ALLOC:
         // For the default case, please ensure all calls of `longjmp` ONLY
         // ever pass an `lulu_Status` member.
-        luluFun_free_chunk(vm, &ck);
+        luluFunc_free_chunk(vm, &ck);
         return err;
     }
     // Prep the VM
     vm->chunk = &ck;
     vm->ip    = ck.code;
     err       = run(vm);
-    luluFun_free_chunk(vm, &ck);
+    luluFunc_free_chunk(vm, &ck);
     return err;
 }

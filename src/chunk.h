@@ -128,7 +128,7 @@ extern OpInfo LULU_OPINFO[];
 #define get_opargsz(op) get_opinfo(op).argsz
 
 typedef struct {
-    VArray      constants;
+    Array       constants;
     const char *name;
     Byte       *code;
     int        *lines; // Mirrors the bytecode array.
@@ -136,13 +136,13 @@ typedef struct {
     int         cap;
 } Chunk;
 
-void luluFun_init_chunk(Chunk *ck, const char *name);
-void luluFun_free_chunk(lulu_VM *vm, Chunk *ck);
+void luluFunc_init_chunk(Chunk *ck, const char *name);
+void luluFunc_free_chunk(lulu_VM *vm, Chunk *ck);
 
 // Append `data` to the bytecode array.
-void luluFun_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line);
+void luluFunc_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line);
 
 // Append `value` to the constants array and return its index.
-int luluFun_add_constant(lulu_VM *vm, Chunk *ck, const Value *v);
+int luluFunc_add_constant(lulu_VM *vm, Chunk *ck, const Value *v);
 
 #endif /* LULU_CHUNK_H */

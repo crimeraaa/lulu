@@ -4,6 +4,8 @@
 #include "lulu.h"
 #include "chunk.h"
 
+// Wrapper to surround strings with quotes for easier identification.
+void luluDbg_print_value(const Value *v);
 void luluDbg_disassemble_chunk(const Chunk *ck);
 
 /**

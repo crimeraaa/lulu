@@ -10,6 +10,13 @@ void     lulu_set_top(lulu_VM *vm, int offset);
 
 // Caller must allocate `input` properly however they need.
 lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input);
+const char *lulu_get_typename(lulu_VM *vm, int offset);
+
+bool lulu_is_nil(lulu_VM *vm, int offset);
+bool lulu_is_number(lulu_VM *vm, int offset);
+bool lulu_is_boolean(lulu_VM *vm, int offset);
+bool lulu_is_string(lulu_VM *vm, int offset);
+bool lulu_is_table(lulu_VM *vm, int offset);
 
 void    lulu_push_nil(lulu_VM *vm, int count);
 void    lulu_push_boolean(lulu_VM *vm, bool b);

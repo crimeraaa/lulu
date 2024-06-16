@@ -29,7 +29,7 @@ typedef enum {
     PREC_PRIMARY,
 } Precedence;
 
-typedef void (*ParseFn)(Compiler *cpl);
+typedef void (*ParseFn)(Compiler *comp);
 
 typedef const struct {
     ParseFn    prefixfn;
@@ -60,6 +60,6 @@ struct Assignment {
  *
  * @note    Similar to `lparser.c:chunk()`.
  */
-void declaration(Compiler *cpl);
+void declaration(Compiler *comp);
 
 #endif /* LULU_PARSER_H */

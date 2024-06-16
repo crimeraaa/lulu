@@ -6,7 +6,7 @@
 
 // Forward declarations to allow recursive descent parsing.
 static ParseRule *get_parserule(TkType key);
-static void parse_precedence(Compiler *cpl, Precedence prec);
+static void parse_precedence(Compiler *comp, Precedence prec);
 
 /**
  * @brief   In Lua, globals aren't declared, but rather assigned as needed.
@@ -23,7 +23,7 @@ static void parse_precedence(Compiler *cpl, Precedence prec);
  *
  * @note    By themselves, statements should have zero net stack effect.
  */
-static void statement(Compiler *cpl);
+static void statement(Compiler *comp);
 
 /**
  * @brief   By itself, always results in exactly 1 value being pushed.
@@ -32,29 +32,29 @@ static void statement(Compiler *cpl);
  *          disallow C-style constructs like `print(x = 13)`, which is usually
  *          intended to be `print(x == 13)`.
  */
-static void expression(Compiler *cpl);
+static void expression(Compiler *comp);
 
-static int parse_exprlist(Compiler *cpl)
+static int parse_exprlist(Compiler *comp)
 {
-    Lexer *ls    = cpl->lexer;
+    Lexer *ls    = comp->lexer;
     int    exprs = 0;
     do {
-        expression(cpl);
+        expression(comp);
         exprs += 1;
     } while (luluLex_match_token(ls, TK_COMMA));
     return exprs;
 }
 
-static void adjust_exprlist(Compiler *cpl, int idents, int exprs)
+static void adjust_exprlist(Compiler *comp, int idents, int exprs)
 {
     if (exprs == idents)
         return;
 
     // True: Discard extra expressions. False: Assign nils to remaining idents.
     if (exprs > idents)
-        luluCpl_emit_oparg1(cpl, OP_POP, exprs - idents);
+        luluComp_emit_oparg1(comp, OP_POP, exprs - idents);
     else
-        luluCpl_emit_oparg1(cpl, OP_NIL, idents - exprs);
+        luluComp_emit_oparg1(comp, OP_NIL, idents - exprs);
 }
 
 // EXPRESSIONS ------------------------------------------------------------ {{{1
@@ -82,30 +82,30 @@ static OpCode get_binop(TkType type)
 
 // Assumes we just consumed a binary operator as a possible infix expression,
 // and that the left-hand side has been fully compiled.
-static void binary(Compiler *cpl)
+static void binary(Compiler *comp)
 {
-    Lexer  *ls   = cpl->lexer;
+    Lexer  *ls   = comp->lexer;
     TkType  type = ls->consumed.type;
 
     // For exponentiation enforce right-associativity.
-    parse_precedence(cpl, get_parserule(type)->precedence + (type != TK_CARET));
+    parse_precedence(comp, get_parserule(type)->precedence + (type != TK_CARET));
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (type) {
     case TK_NEQ:
-        luluCpl_emit_opcode(cpl, OP_EQ);
-        luluCpl_emit_opcode(cpl, OP_NOT);
+        luluComp_emit_opcode(comp, OP_EQ);
+        luluComp_emit_opcode(comp, OP_NOT);
         break;
     case TK_GT:
-        luluCpl_emit_opcode(cpl, OP_LE);
-        luluCpl_emit_opcode(cpl, OP_NOT);
+        luluComp_emit_opcode(comp, OP_LE);
+        luluComp_emit_opcode(comp, OP_NOT);
         break;
     case TK_GE:
-        luluCpl_emit_opcode(cpl, OP_LT);
-        luluCpl_emit_opcode(cpl, OP_NOT);
+        luluComp_emit_opcode(comp, OP_LT);
+        luluComp_emit_opcode(comp, OP_NOT);
         break;
     default:
-        luluCpl_emit_opcode(cpl, get_binop(type));
+        luluComp_emit_opcode(comp, get_binop(type));
         break;
     }
 }
@@ -120,29 +120,29 @@ static void binary(Compiler *cpl)
  *          We do this iteratively which is (slightly) better than constantly
  *          allocating stack frames for recursive calls.
  */
-static void concat(Compiler *cpl)
+static void concat(Compiler *comp)
 {
-    Lexer *ls   = cpl->lexer;
+    Lexer *ls   = comp->lexer;
     int    argc = 1;
     do {
         if (argc + 1 > MAX_BYTE)
             luluLex_error_consumed(ls, "Too many consecutive concatenations");
-        parse_precedence(cpl, PREC_CONCAT + 1);
+        parse_precedence(comp, PREC_CONCAT + 1);
         argc += 1;
     } while (luluLex_match_token(ls, TK_CONCAT));
-    luluCpl_emit_oparg1(cpl, OP_CONCAT, argc);
+    luluComp_emit_oparg1(comp, OP_CONCAT, argc);
 }
 
 // 2}}} ------------------------------------------------------------------------
 
 // PREFIX ----------------------------------------------------------------- {{{2
 
-static void literal(Compiler *cpl)
+static void literal(Compiler *comp)
 {
-    switch (cpl->lexer->consumed.type) {
-    case TK_NIL:   luluCpl_emit_oparg1(cpl, OP_NIL, 1); break;
-    case TK_TRUE:  luluCpl_emit_opcode(cpl, OP_TRUE);   break;
-    case TK_FALSE: luluCpl_emit_opcode(cpl, OP_FALSE);  break;
+    switch (comp->lexer->consumed.type) {
+    case TK_NIL:   luluComp_emit_oparg1(comp, OP_NIL, 1); break;
+    case TK_TRUE:  luluComp_emit_opcode(comp, OP_TRUE);   break;
+    case TK_FALSE: luluComp_emit_opcode(comp, OP_FALSE);  break;
     default:
         // Should not happen
         break;
@@ -150,41 +150,41 @@ static void literal(Compiler *cpl)
 }
 
 // Assumes we just consumed a '('.
-static void grouping(Compiler *cpl)
+static void grouping(Compiler *comp)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
 
     // Hacky to create a new scope but lets us error at too many C-facing calls.
     // See: https://www.lua.org/source/5.1/lparser.c.html#enterlevel
-    luluCpl_begin_scope(cpl);
-    expression(cpl);
+    luluComp_begin_scope(comp);
+    expression(comp);
     luluLex_expect_token(ls, TK_RPAREN, NULL);
-    luluCpl_end_scope(cpl);
+    luluComp_end_scope(comp);
 }
 
 // Assumes the lexer successfully consumed and encoded a number literal.
-static void number(Compiler *cpl)
+static void number(Compiler *comp)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     Value  v  = make_number(ls->number);
-    luluCpl_emit_constant(cpl, &v);
+    luluComp_emit_constant(comp, &v);
 }
 
-static void string(Compiler *cpl)
+static void string(Compiler *comp)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     Value  v  = make_string(ls->string);
-    luluCpl_emit_constant(cpl, &v);
+    luluComp_emit_constant(comp, &v);
 }
 
 // Assumes we consumed a `'['` or an identifier representing a table field.
-static bool parse_field(Compiler *cpl, bool assigning)
+static bool parse_field(Compiler *comp, bool assigning)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     Token *tk = &ls->consumed;
     switch (tk->type) {
     case TK_LBRACKET:
-        expression(cpl);
+        expression(comp);
         luluLex_expect_token(ls, TK_RBRACKET, NULL);
         break;
     case TK_PERIOD:
@@ -193,66 +193,66 @@ static bool parse_field(Compiler *cpl, bool assigning)
         }
         luluLex_expect_token(ls, TK_IDENT, NULL); // Fall through
     case TK_IDENT:
-        luluCpl_emit_identifier(cpl, tk);
+        luluComp_emit_identifier(comp, tk);
         break;
     default:
         break;
     }
     if (!assigning) {
-        luluCpl_emit_opcode(cpl, OP_GETTABLE);
+        luluComp_emit_opcode(comp, OP_GETTABLE);
     }
     return true;
 }
 
-static void resolve_variable(Compiler *cpl, const Token *id)
+static void resolve_variable(Compiler *comp, const Token *id)
 {
-    Lexer *ls = cpl->lexer;
-    luluCpl_emit_variable(cpl, id);
+    Lexer *ls = comp->lexer;
+    luluComp_emit_variable(comp, id);
     while (luluLex_match_token_any(ls, TK_LBRACKET, TK_PERIOD)) {
-        parse_field(cpl, false);
+        parse_field(comp, false);
     }
 }
 
-static void parse_ctor(Compiler *cpl, int t_idx, int *count)
+static void parse_ctor(Compiler *comp, int t_idx, int *count)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
 
     if (luluLex_match_token(ls, TK_IDENT)) {
         Token id    = ls->consumed; // Copy by value as lexer might update.
-        int   k_idx = cpl->stack_usage;
+        int   k_idx = comp->stack_usage;
         if (luluLex_match_token(ls, TK_ASSIGN)) {
-            luluCpl_emit_identifier(cpl, &id);
-            expression(cpl);
-            luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+            luluComp_emit_identifier(comp, &id);
+            expression(comp);
+            luluComp_emit_oparg3(comp, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
         } else {
-            resolve_variable(cpl, &id);
+            resolve_variable(comp, &id);
             *count += 1;
         }
     } else if (luluLex_match_token(ls, TK_LBRACKET)) {
-        int k_idx = cpl->stack_usage;
+        int k_idx = comp->stack_usage;
 
-        parse_field(cpl, true);
+        parse_field(comp, true);
         luluLex_expect_token(ls, TK_ASSIGN, "to assign table field");
-        expression(cpl);
+        expression(comp);
 
         // Always pop the key and value assigning in a table constructor.
-        luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+        luluComp_emit_oparg3(comp, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
     } else {
-        expression(cpl);
+        expression(comp);
         *count += 1;
     }
     luluLex_match_token(ls, TK_COMMA);
 }
 
-static void table(Compiler *cpl)
+static void table(Compiler *comp)
 {
-    Lexer *ls     = cpl->lexer;
-    int    t_idx  = cpl->stack_usage;
+    Lexer *ls     = comp->lexer;
+    int    t_idx  = comp->stack_usage;
     int    total  = 0; // Array length plus hashmap length.
     int    count  = 0; // Array portion length.
-    int    offset = luluCpl_emit_table(cpl);
+    int    offset = luluComp_emit_table(comp);
     while (!luluLex_match_token(ls, TK_RCURLY)) {
-        parse_ctor(cpl, t_idx, &count);
+        parse_ctor(comp, t_idx, &count);
         total += 1;
     }
 
@@ -260,11 +260,11 @@ static void table(Compiler *cpl)
         if (count + 1 > MAX_BYTE3) {
             luluLex_error_consumed(ls, "Too many elements in table constructor");
         }
-        luluCpl_emit_oparg2(cpl, OP_SETARRAY, encode_byte2(t_idx, count));
+        luluComp_emit_oparg2(comp, OP_SETARRAY, encode_byte2(t_idx, count));
     }
 
     if (total > 0) {
-        luluCpl_patch_table(cpl, offset, total);
+        luluComp_patch_table(comp, offset, total);
     }
 }
 
@@ -275,11 +275,11 @@ static void table(Compiler *cpl)
  * @note    Past the first lexeme, assigning of variables is not allowed in Lua.
  *          So this function can only ever perform get operations.
  */
-static void variable(Compiler *cpl)
+static void variable(Compiler *comp)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     Token *id = &ls->consumed;
-    resolve_variable(cpl, id);
+    resolve_variable(comp, id);
 }
 
 static OpCode get_unop(TkType type)
@@ -295,19 +295,19 @@ static OpCode get_unop(TkType type)
 }
 
 // Assumes we just consumed an unary operator.
-static void unary(Compiler *cpl)
+static void unary(Compiler *comp)
 {
-    Lexer *ls   = cpl->lexer;
+    Lexer *ls   = comp->lexer;
     TkType type = ls->consumed.type; // Save in stack-frame memory.
-    parse_precedence(cpl, PREC_UNARY);
-    luluCpl_emit_opcode(cpl, get_unop(type));
+    parse_precedence(comp, PREC_UNARY);
+    luluComp_emit_opcode(comp, get_unop(type));
 }
 
 // 2}}} ------------------------------------------------------------------------
 
-static void expression(Compiler *cpl)
+static void expression(Compiler *comp)
 {
-    parse_precedence(cpl, PREC_ASSIGN + 1);
+    parse_precedence(comp, PREC_ASSIGN + 1);
 }
 
 // 1}}} ------------------------------------------------------------------------
@@ -316,22 +316,22 @@ static void expression(Compiler *cpl)
 
 // ASSIGNMENTS ------------------------------------------------------------ {{{2
 
-static void init_assignment(Assignment *cpl, Assignment *prev, AssignType type)
+static void init_assignment(Assignment *comp, Assignment *prev, AssignType type)
 {
-    cpl->prev = prev;
-    cpl->type = type;
-    cpl->arg  = -1;
+    comp->prev = prev;
+    comp->type = type;
+    comp->arg  = -1;
 }
 
-static void set_assignment(Assignment *cpl, AssignType type, int arg)
+static void set_assignment(Assignment *comp, AssignType type, int arg)
 {
-    cpl->type = type;
-    cpl->arg  = arg;
+    comp->type = type;
+    comp->arg  = arg;
 }
 
-static int count_assignments(Assignment *cpl)
+static int count_assignments(Assignment *comp)
 {
-    Assignment *node = cpl;
+    Assignment *node = comp;
     int         count = 0;
     while (node != NULL) {
         node   = node->prev;
@@ -340,37 +340,37 @@ static int count_assignments(Assignment *cpl)
     return count;
 }
 
-static void emit_assignment_tail(Compiler *cpl, Assignment *list)
+static void emit_assignment_tail(Compiler *comp, Assignment *list)
 {
     if (list == NULL)
         return;
 
     switch (list->type) {
     case ASSIGN_GLOBAL:
-        luluCpl_emit_oparg3(cpl, OP_SETGLOBAL, list->arg);
+        luluComp_emit_oparg3(comp, OP_SETGLOBAL, list->arg);
         break;
     case ASSIGN_LOCAL:
-        luluCpl_emit_oparg1(cpl, OP_SETLOCAL, list->arg);
+        luluComp_emit_oparg1(comp, OP_SETLOCAL, list->arg);
         break;
     case ASSIGN_TABLE:
         // For assignments we assume the key is always right after the table.
-        luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(list->arg, list->arg + 1, 1));
+        luluComp_emit_oparg3(comp, OP_SETTABLE, encode_byte3(list->arg, list->arg + 1, 1));
         break;
     }
-    emit_assignment_tail(cpl, list->prev);
+    emit_assignment_tail(comp, list->prev);
 
     // After recursion, clean up stack if we emitted table fields as they cannot
     // be implicitly popped due to SETTABLE being a VAR_DELTA pop.
     if (list->type == ASSIGN_TABLE)
-        luluCpl_emit_oparg1(cpl, OP_POP, 2);
+        luluComp_emit_oparg1(comp, OP_POP, 2);
 }
 
-static void emit_assignment(Compiler *cpl, Assignment *list)
+static void emit_assignment(Compiler *comp, Assignment *list)
 {
     int idents = count_assignments(list);
-    int exprs  = parse_exprlist(cpl);
-    adjust_exprlist(cpl, idents, exprs);
-    emit_assignment_tail(cpl, list);
+    int exprs  = parse_exprlist(comp);
+    adjust_exprlist(comp, idents, exprs);
+    emit_assignment_tail(comp, list);
 }
 
 /**
@@ -389,21 +389,21 @@ static void emit_assignment(Compiler *cpl, Assignment *list)
  *          need to track where in the stack the table occurs so the SETTABLE
  *          instruction knows where to look.
  */
-static void discharge_assignment(Compiler *cpl, Assignment *list, bool isfield)
+static void discharge_assignment(Compiler *comp, Assignment *list, bool isfield)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
 
     // Get the table itself if this is the first token in an lvalue, or if this
     // is part of a recursive call we need GETTABLE to push a subtable.
     switch (list->type) {
     case ASSIGN_GLOBAL:
-        luluCpl_emit_oparg3(cpl, OP_GETGLOBAL, list->arg);
+        luluComp_emit_oparg3(comp, OP_GETGLOBAL, list->arg);
         break;
     case ASSIGN_LOCAL:
-        luluCpl_emit_oparg1(cpl, OP_GETLOCAL,  list->arg);
+        luluComp_emit_oparg1(comp, OP_GETLOCAL,  list->arg);
         break;
     case ASSIGN_TABLE:
-        luluCpl_emit_opcode(cpl, OP_GETTABLE);
+        luluComp_emit_opcode(comp, OP_GETTABLE);
         break;
     }
 
@@ -412,27 +412,27 @@ static void discharge_assignment(Compiler *cpl, Assignment *list, bool isfield)
     if (isfield) {
         Token *id = &ls->consumed;
         luluLex_expect_token(ls, TK_IDENT, "after '.'");
-        luluCpl_emit_identifier(cpl, id);
+        luluComp_emit_identifier(comp, id);
     } else {
-        expression(cpl);
+        expression(comp);
         luluLex_expect_token(ls, TK_RBRACKET, NULL);
     }
 
     // stack_usage - 0 is top, -1 is the key we emitted and -2 is the table.
-    set_assignment(list, ASSIGN_TABLE, cpl->stack_usage - 2);
+    set_assignment(list, ASSIGN_TABLE, comp->stack_usage - 2);
 }
 
 // Assumes we consumed an identifier as the first element of a statement.
-static void identifier_statement(Compiler *cpl, Assignment *list)
+static void identifier_statement(Compiler *comp, Assignment *list)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     Token *id = &ls->consumed;
 
     if (list->type != ASSIGN_TABLE) {
-        int  arg     = luluCpl_resolve_local(cpl, id);
+        int  arg     = luluComp_resolve_local(comp, id);
         bool islocal = (arg != -1);
         if (!islocal) {
-            arg = luluCpl_identifier_constant(cpl, id);
+            arg = luluComp_identifier_constant(comp, id);
         }
         set_assignment(list, islocal ? ASSIGN_LOCAL : ASSIGN_GLOBAL, arg);
     }
@@ -442,12 +442,12 @@ static void identifier_statement(Compiler *cpl, Assignment *list)
     case TK_LBRACKET:
         // Emit the table up to this point then mark `list` as a table.
         luluLex_next_token(ls);
-        discharge_assignment(cpl, list, ls->consumed.type == TK_PERIOD);
-        identifier_statement(cpl, list);
+        discharge_assignment(comp, list, ls->consumed.type == TK_PERIOD);
+        identifier_statement(comp, list);
         break;
     case TK_ASSIGN:
         luluLex_next_token(ls);
-        emit_assignment(cpl, list);
+        emit_assignment(comp, list);
         break;
     case TK_LPAREN:
         luluLex_error_consumed(ls, "Function calls not yet implemented");
@@ -458,7 +458,7 @@ static void identifier_statement(Compiler *cpl, Assignment *list)
         init_assignment(&next, list, ASSIGN_GLOBAL);
         luluLex_next_token(ls);
         luluLex_expect_token(ls, TK_IDENT, "after ','");
-        identifier_statement(cpl, &next);
+        identifier_statement(comp, &next);
         break;
     }
     default:
@@ -470,21 +470,21 @@ static void identifier_statement(Compiler *cpl, Assignment *list)
 
 // Assumes we just consumed the `print` keyword and are now ready to compile a
 // stream of expressions to act as arguments.
-static void print_statement(Compiler *cpl)
+static void print_statement(Compiler *comp)
 {
-    Lexer *ls   = cpl->lexer;
+    Lexer *ls   = comp->lexer;
     bool   open = luluLex_match_token(ls, TK_LPAREN);
-    int    argc = parse_exprlist(cpl);
+    int    argc = parse_exprlist(comp);
     if (open)
         luluLex_expect_token(ls, TK_RPAREN, NULL);
-    luluCpl_emit_oparg1(cpl, OP_PRINT, argc);
+    luluComp_emit_oparg1(comp, OP_PRINT, argc);
 }
 
-static void block(Compiler *cpl)
+static void block(Compiler *comp)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     while (!luluLex_check_token_any(ls, TK_END, TK_EOF)) {
-        declaration(cpl);
+        declaration(comp);
     }
     luluLex_expect_token(ls, TK_END, "after block");
 }
@@ -493,26 +493,26 @@ static void block(Compiler *cpl)
 
 // 2}}} ------------------------------------------------------------------------
 
-static void statement(Compiler *cpl)
+static void statement(Compiler *comp)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     switch (ls->lookahead.type) {
     case TK_IDENT: {
         Assignment list;
         init_assignment(&list, NULL, ASSIGN_GLOBAL); // Ensure no garbage.
         luluLex_next_token(ls);
-        identifier_statement(cpl, &list);
+        identifier_statement(comp, &list);
         break;
     }
     case TK_DO:
         luluLex_next_token(ls);
-        luluCpl_begin_scope(cpl);
-        block(cpl);
-        luluCpl_end_scope(cpl);
+        luluComp_begin_scope(comp);
+        block(comp);
+        luluComp_end_scope(comp);
         break;
     case TK_PRINT:
         luluLex_next_token(ls);
-        print_statement(cpl);
+        print_statement(comp);
         break;
     default:
         luluLex_error_lookahead(ls, "Expected a statement");
@@ -526,12 +526,12 @@ static void statement(Compiler *cpl)
 
 // Declare a local variable by initializing and adding it to the current scope.
 // Intern a local variable name. Analogous to `parseVariable()` in the book.
-static void parse_local(Compiler *cpl)
+static void parse_local(Compiler *comp)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     Token *id = &ls->consumed;
-    luluCpl_init_local(cpl);
-    luluCpl_identifier_constant(cpl, id); // We don't need the index here.
+    luluComp_init_local(comp);
+    luluComp_identifier_constant(comp, id); // We don't need the index here.
 }
 
 /**
@@ -546,34 +546,34 @@ static void parse_local(Compiler *cpl)
  *          the stack without popping it. We already keep track of info like the
  *          variable name.
  */
-static void declare_locals(Compiler *cpl)
+static void declare_locals(Compiler *comp)
 {
-    Lexer *ls     = cpl->lexer;
+    Lexer *ls     = comp->lexer;
     int    idents = 0;
     int    exprs  = 0;
 
     do {
         luluLex_expect_token(ls, TK_IDENT, NULL);
-        parse_local(cpl);
+        parse_local(comp);
         idents += 1;
     } while (luluLex_match_token(ls, TK_COMMA));
 
     if (luluLex_match_token(ls, TK_ASSIGN))
-        exprs = parse_exprlist(cpl);
-    adjust_exprlist(cpl, idents, exprs);
-    luluCpl_define_locals(cpl, idents);
+        exprs = parse_exprlist(comp);
+    adjust_exprlist(comp, idents, exprs);
+    luluComp_define_locals(comp, idents);
 }
 
-void declaration(Compiler *cpl)
+void declaration(Compiler *comp)
 {
-    Lexer *ls = cpl->lexer;
+    Lexer *ls = comp->lexer;
     switch (ls->lookahead.type) {
     case TK_LOCAL:
         luluLex_next_token(ls);
-        declare_locals(cpl);
+        declare_locals(comp);
         break;
     default:
-        statement(cpl);
+        statement(comp);
         break;
     }
     // Lua allows 1 semicolon to terminate statements, but no more.
@@ -586,9 +586,9 @@ void declaration(Compiler *cpl)
 
 // Assumes the first token is ALWAYS a prefix expression with 0 or more infix
 // expressions following it.
-static void parse_precedence(Compiler *cpl, Precedence prec)
+static void parse_precedence(Compiler *comp, Precedence prec)
 {
-    Lexer     *ls = cpl->lexer;
+    Lexer     *ls = comp->lexer;
     Token     *tk = &ls->lookahead; // NOTE: Is updated as lexer moves along!
     ParseRule *pr = get_parserule(tk->type);
 
@@ -597,7 +597,7 @@ static void parse_precedence(Compiler *cpl, Precedence prec)
         return;
     }
     luluLex_next_token(ls);
-    pr->prefixfn(cpl);
+    pr->prefixfn(comp);
 
     for (;;) {
         pr = get_parserule(tk->type);
@@ -605,7 +605,7 @@ static void parse_precedence(Compiler *cpl, Precedence prec)
         if (!(prec <= pr->precedence))
             break;
         luluLex_next_token(ls);
-        pr->infixfn(cpl);
+        pr->infixfn(comp);
     }
 
     // This function can never consume the `=` token.

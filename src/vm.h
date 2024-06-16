@@ -6,7 +6,7 @@
 #include "object.h"
 #include "memory.h"
 
-typedef struct lulu_VM {
+struct lulu_VM {
     Value       stack[MAX_STACK + STACK_RESERVED];
     Allocator   allocator; // Will hold the VM itself as context.
     Value      *top;       // Pointer to first free slot in the stack.
@@ -18,7 +18,7 @@ typedef struct lulu_VM {
     Table       strings;   // Collection of all interned strings.
     Object     *objects;   // Head of linked list to all allocated objects.
     jmp_buf     errorjmp;  // Used for error-handling (kinda) like C++ exceptions.
-} VM;
+};
 
 #define update_top(vm, n)   ((vm)->top += (n))
 #define incr_top(vm)        update_top(vm, 1)
@@ -26,8 +26,8 @@ typedef struct lulu_VM {
 #define poke_base(vm, n)    ((vm)->base + (n))
 #define push_back(vm, v)    *(vm)->top = *(v), incr_top(vm)
 
-void luluVM_init(VM *vm);
-void luluVM_free(VM *vm);
-lulu_Status luluVM_interpret(VM *vm, const char *input);
+void luluVM_init(lulu_VM *vm);
+void luluVM_free(lulu_VM *vm);
+lulu_Status luluVM_interpret(lulu_VM *vm, const char *input);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */

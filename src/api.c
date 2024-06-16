@@ -17,10 +17,8 @@ void lulu_close(lulu_VM *vm)
     luluVM_free(vm);
 }
 
-
-
 // Negative values are offset from the top, positive are offset from the base.
-static Value *poke_at_offset(VM *vm, int offset)
+static Value *poke_at_offset(lulu_VM *vm, int offset)
 {
     if (offset >= 0)
         return poke_base(vm, offset);
@@ -38,6 +36,44 @@ void lulu_set_top(lulu_VM *vm, int offset)
 {
     vm->top = poke_at_offset(vm, offset);
 }
+
+// TYPE RELATED FUNCTIONS ------------------------------------------------- {{{1
+
+const char *lulu_get_typename(lulu_VM *vm, int offset)
+{
+    return get_typename(poke_at_offset(vm, offset));
+}
+
+// "IS" FUNCTIONS --------------------------------------------------------- {{{2
+
+bool lulu_is_nil(lulu_VM *vm, int offset)
+{
+    return is_nil(poke_at_offset(vm, offset));
+}
+
+bool lulu_is_number(lulu_VM *vm, int offset)
+{
+    return is_number(poke_at_offset(vm, offset));
+}
+
+bool lulu_is_boolean(lulu_VM *vm, int offset)
+{
+    return is_boolean(poke_at_offset(vm, offset));
+}
+
+bool lulu_is_string(lulu_VM *vm, int offset)
+{
+    return is_string(poke_at_offset(vm, offset));
+}
+
+bool lulu_is_table(lulu_VM *vm, int offset)
+{
+    return is_table(poke_at_offset(vm, offset));
+}
+
+// 2}}} ------------------------------------------------------------------------
+
+// "PUSH" FUNCTIONS ------------------------------------------------------- {{{2
 
 void lulu_push_nil(lulu_VM *vm, int count)
 {
@@ -165,6 +201,10 @@ const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
     return s;
 }
 
+// 2}}} -------------------------------------------------------------------------
+
+// "TO" FUNCTIONS --------------------------------------------------------- {{{2
+
 bool lulu_to_boolean(lulu_VM *vm, int offset)
 {
     Value *v = poke_at_offset(vm, offset);
@@ -218,6 +258,10 @@ const char *lulu_to_cstring(lulu_VM *vm, int offset)
 {
     return lulu_to_string(vm, offset)->data;
 }
+
+// 2}}} ------------------------------------------------------------------------
+
+// 1}}} ------------------------------------------------------------------------
 
 const char *lulu_concat(lulu_VM *vm, int count)
 {

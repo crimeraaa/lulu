@@ -11,22 +11,18 @@ typedef void *(*lulu_AllocFn)(void *ptr, size_t oldsz, size_t newsz, void *ctx);
 
 // A general purpose allocation wrapper that carries some context around.
 // See: https://nullprogram.com/blog/2023/12/17/
-struct lulu_Allocator {
+typedef struct lulu_Allocator {
     lulu_AllocFn allocate; // To free `ptr`, pass `newsz` of `0`.
     void        *context;  // How this is interpreted is up to your function.
-};
+} Allocator;
 
 void  luluMem_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx);
 void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz);
 
 Object *luluObj_new(lulu_VM *vm, size_t size, VType tag);
-void luluObj_free_all(lulu_VM *vm);
-
-// Pushes `obj` to the top of the VM's object linked list. Returns `obj`.
 Object *luluObj_prepend(lulu_VM *vm, Object *obj);
-
-// Unlink `obj` from the VM's linked list of objects. Returns `obj`.
 Object *luluObj_remove(lulu_VM *vm, Object *obj);
+void    luluObj_free_all(lulu_VM *vm);
 
 #define luluMem_new_pointer(vm, sz) \
     luluMem_call_allocator(vm, NULL, 0, sz)

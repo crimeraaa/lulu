@@ -64,18 +64,10 @@ const char *luluVal_to_cstring(const Value *vl, char *buf, int *out)
     return buf;
 }
 
-void luluVal_print_value(const Value *vl, bool isdebug)
+void luluVal_print_value(const Value *vl)
 {
-    if (is_string(vl) && isdebug) {
-        const String *s = as_string(vl);
-        if (s->len <= 1)
-            printf("\'%s\'", s->data);
-        else
-            printf("\"%s\"", s->data);
-    } else {
-        char buf[MAX_TOSTRING];
-        printf("%s", luluVal_to_cstring(vl, buf, NULL));
-    }
+    char buf[MAX_TOSTRING];
+    printf("%s", luluVal_to_cstring(vl, buf, NULL));
 }
 
 bool luluVal_equal(const Value *a, const Value *b)
@@ -92,20 +84,20 @@ bool luluVal_equal(const Value *a, const Value *b)
     }
 }
 
-void luluVal_init_array(VArray *va)
+void luluVal_init_array(Array *va)
 {
     va->values = NULL;
     va->len    = 0;
     va->cap    = 0;
 }
 
-void luluVal_free_array(lulu_VM *vm, VArray *va)
+void luluVal_free_array(lulu_VM *vm, Array *va)
 {
     luluMem_free_parray(vm, va->values, va->len);
     luluVal_init_array(va);
 }
 
-void luluVal_write_array(lulu_VM *vm, VArray *va, const Value *vl)
+void luluVal_write_array(lulu_VM *vm, Array *va, const Value *vl)
 {
     if (va->len + 1 > va->cap) {
         int oldcap = va->cap;

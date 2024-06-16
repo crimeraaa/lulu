@@ -569,7 +569,7 @@ bool luluLex_match_token_any(Lexer *ls, const TkType types[])
 
 void luluLex_error_at(Lexer *ls, const Token *tk, const char *info)
 {
-    VM *vm = ls->vm;
+    lulu_VM *vm = ls->vm;
     if (tk->type == TK_EOF) {
         lulu_push_literal(vm, "at <eof>");
     } else {

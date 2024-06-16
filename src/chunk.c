@@ -36,7 +36,7 @@ OpInfo LULU_OPINFO[] = {
 
 static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
 
-void luluFun_init_chunk(Chunk *ck, const char *name)
+void luluFunc_init_chunk(Chunk *ck, const char *name)
 {
     luluVal_init_array(&ck->constants);
     ck->name  = name;
@@ -46,15 +46,15 @@ void luluFun_init_chunk(Chunk *ck, const char *name)
     ck->cap   = 0;
 }
 
-void luluFun_free_chunk(lulu_VM *vm, Chunk *ck)
+void luluFunc_free_chunk(lulu_VM *vm, Chunk *ck)
 {
     luluVal_free_array(vm, &ck->constants);
     luluMem_free_parray(vm, ck->lines, ck->len);
     luluMem_free_parray(vm, ck->code, ck->len);
-    luluFun_init_chunk(ck, "(freed chunk)");
+    luluFunc_init_chunk(ck, "(freed chunk)");
 }
 
-void luluFun_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
+void luluFunc_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
 {
     if (ck->len + 1 > ck->cap) {
         int prev  = ck->cap;
@@ -68,9 +68,9 @@ void luluFun_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
     ck->len++;
 }
 
-int luluFun_add_constant(lulu_VM *vm, Chunk *ck, const Value *vl)
+int luluFunc_add_constant(lulu_VM *vm, Chunk *ck, const Value *vl)
 {
-    VArray *kst = &ck->constants;
+    Array *kst = &ck->constants;
     // TODO: Literally anything is faster than a linear search
     for (int i = 0; i < kst->len; i++) {
         if (luluVal_equal(&kst->values[i], vl))

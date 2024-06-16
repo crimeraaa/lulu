@@ -3,14 +3,25 @@
 
 static void disassemble_constants(const Chunk *ck)
 {
-    const VArray *kst = &ck->constants;
+    const Array *kst = &ck->constants;
     printf("[CONSTANTS]:\n");
     for (int i = 0; i < kst->len; i++) {
         printf("[%i] := ", i);
-        luluVal_print_value(&kst->values[i], true);
+        luluDbg_print_value(&kst->values[i]);
         printf("\n");
     }
     printf("\n");
+}
+
+void luluDbg_print_value(const Value *v)
+{
+    if (is_string(v)) {
+        const String *s = as_string(v);
+        const char    q = (s->len == 1) ? '\'' : '\"'; // fake char literals
+        printf("%c%s%c", q, s->data, q);
+    } else {
+        luluVal_print_value(v);
+    }
 }
 
 void luluDbg_disassemble_chunk(const Chunk *ck)
@@ -42,7 +53,7 @@ static void constant_op(const Chunk *ck, const Byte *ip)
 {
     int arg = read_byte3(ip);
     printf("Kst[%i] ; ", arg);
-    luluVal_print_value(&read_constant(ck, arg), true);
+    luluDbg_print_value(&read_constant(ck, arg));
 }
 
 static void simple_op(const char *act, const Byte *ip)
