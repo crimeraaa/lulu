@@ -128,6 +128,7 @@ extern OpInfo LULU_OPINFO[];
 #define get_opargsz(op) get_opinfo(op).argsz
 
 typedef struct {
+    Table       mappings; // Map values to indexes into the `constants` array.
     Array       constants;
     const char *name;
     Byte       *code;

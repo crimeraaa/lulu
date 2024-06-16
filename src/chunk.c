@@ -1,6 +1,7 @@
 #include "chunk.h"
 #include "object.h"
 #include "memory.h"
+#include "table.h"
 
 OpInfo LULU_OPINFO[] = {
     // OPCODE           NAME            ARGSZ       #PUSH       #POP
@@ -38,6 +39,7 @@ static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
 
 void luluFunc_init_chunk(Chunk *ck, const char *name)
 {
+    luluTbl_init(&ck->mappings);
     luluVal_init_array(&ck->constants);
     ck->name  = name;
     ck->code  = NULL;
@@ -48,6 +50,7 @@ void luluFunc_init_chunk(Chunk *ck, const char *name)
 
 void luluFunc_free_chunk(lulu_VM *vm, Chunk *ck)
 {
+    luluTbl_free(vm, &ck->mappings);
     luluVal_free_array(vm, &ck->constants);
     luluMem_free_parray(vm, ck->lines, ck->len);
     luluMem_free_parray(vm, ck->code, ck->len);
@@ -68,14 +71,17 @@ void luluFunc_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
     ck->len++;
 }
 
-int luluFunc_add_constant(lulu_VM *vm, Chunk *ck, const Value *vl)
+int luluFunc_add_constant(lulu_VM *vm, Chunk *ck, const Value *val)
 {
-    Array *kst = &ck->constants;
-    // TODO: Literally anything is faster than a linear search
-    for (int i = 0; i < kst->len; i++) {
-        if (luluVal_equal(&kst->values[i], vl))
-            return i;
+    Value  i;
+    Table *t = &ck->mappings;
+    Array *k = &ck->constants;
+    // Need to create new mapping?
+    if (!luluTbl_get(t, val, &i)) {
+        luluVal_write_array(vm, k, val);
+        setv_number(&i, k->len - 1); // `int` should fit in `lulu_Number`
+        luluTbl_set(vm, t, val, &i);
+        return cast(int, as_number(&i));
     }
-    luluVal_write_array(vm, kst, vl);
-    return kst->len - 1;
+    return cast(int, as_number(&i));
 }
