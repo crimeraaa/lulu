@@ -5,10 +5,10 @@
 
 // Used for user-created tables, not VM's globals/strings tables.
 Table *luluTbl_new(lulu_VM *vm, int size);
-void luluTbl_init(Table *t);
-void luluTbl_free(lulu_VM *vm, Table *t);
-bool luluTbl_get(Table *t, const Value *k, Value *out);
-bool luluTbl_set(lulu_VM *vm, Table *t, const Value *k, const Value *v);
+void   luluTbl_init(Table *t);
+void   luluTbl_free(lulu_VM *vm, Table *t);
+bool   luluTbl_get(Table *t, const Value *k, Value *out);
+bool   luluTbl_set(lulu_VM *vm, Table *t, const Value *k, const Value *v);
 
 // Place a tombstone value. Analogous to `deleteTable()` in the book.
 bool luluTbl_unset(Table *t, const Value *k);

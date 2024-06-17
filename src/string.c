@@ -41,9 +41,8 @@ static uint32_t hash_string(StringView sv)
         }
         hash ^= cast(Byte, (prev == '\\') ? get_escape(ch) : ch);
         hash *= FNV1A_PRIME32;
-        if (prev == '\\') {
+        if (prev == '\\')
             prev = 0;
-        }
     }
     return hash;
 }
@@ -58,7 +57,7 @@ uint32_t luluStr_hash_raw(StringView sv)
     return hash;
 }
 
-String *luluStr_new(lulu_VM *vm, int len)
+String *luluStr_new(lulu_VM *vm, size_t len)
 {
     // Note how we add 1 for the nul char.
     String *s = cast(String*, luluObj_new(vm, luluStr_size(len + 1), TYPE_STRING));
@@ -69,13 +68,13 @@ String *luluStr_new(lulu_VM *vm, int len)
 // Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
 void luluStr_free(lulu_VM *vm, String *s)
 {
-    luluMem_free_pointer(vm, s, luluStr_size(s->len + 1));
+    luluMem_free_pointer(vm, luluObj_unlink(vm, &s->object), luluStr_size(s->len + 1));
 }
 
 static void build_string(String *s, StringView sv)
 {
     char   *end   = s->data; // For loop counter may skip.
-    int     skips = 0;          // Number escape characters emitted.
+    int     skips = 0;       // Number escape characters emitted.
     char    prev  = 0;
 
     for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
@@ -109,11 +108,8 @@ static String *copy_string(lulu_VM *vm, StringView sv, bool israw)
 {
     uint32_t hash  = (israw) ? luluStr_hash_raw(sv) : hash_string(sv);
     String  *found = luluStr_find_interned(vm, sv, hash);
-
-    // Is this string already found?
-    if (found != NULL) {
+    if (found != NULL)
         return found;
-    }
 
     String *s = luluStr_new(vm, sv.len);
     if (israw)
@@ -126,7 +122,6 @@ static String *copy_string(lulu_VM *vm, StringView sv, bool israw)
     if (s->len != sv.len) {
         found = luluStr_find_interned(vm, sv_create_from_len(s->data, s->len), hash);
         if (found != NULL) {
-            luluObj_remove(vm, &s->object);
             luluStr_free(vm, s);
             return found;
         }
@@ -145,22 +140,21 @@ String *luluStr_copy(lulu_VM *vm, StringView sv)
     return copy_string(vm, sv, false);
 }
 
-String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], int len)
+String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len)
 {
     String    *s      = luluStr_new(vm, len);
     StringView sv     = sv_create_from_len(s->data, s->len);
-    int        offset = 0;
+    size_t     offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
     for (int i = 0; i < argc; i++) {
         const String *arg = as_string(&argv[i]);
-        memcpy(s->data + offset, arg->data, arg->len);
+        memcpy(&s->data[offset], arg->data, arg->len);
         offset += arg->len;
     }
     end_string(s, hash_string(sv));
     String *found = luluStr_find_interned(vm, sv, s->hash);
     if (found != NULL) {
-        luluObj_remove(vm, &s->object);
         luluStr_free(vm, s);
         return found;
     }

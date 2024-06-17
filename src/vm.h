@@ -8,7 +8,7 @@
 
 struct lulu_VM {
     Value       stack[MAX_STACK + STACK_RESERVED];
-    Allocator   allocator; // Will hold the VM itself as context.
+    Allocator   allocator; // By default, holds a NULL context.
     Value      *top;       // Pointer to first free slot in the stack.
     Value      *base;      // Pointer to bottom of current stack frame.
     Chunk      *chunk;     // Bytecode, constants and such.

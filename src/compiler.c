@@ -187,9 +187,8 @@ int luluComp_make_constant(Compiler *comp, const Value *vl)
 {
     Lexer *ls = comp->lexer;
     int    i  = luluFunc_add_constant(comp->vm, current_chunk(comp), vl);
-    if (i + 1 > MAX_CONSTS) {
+    if (i + 1 > MAX_CONSTS)
         luluLex_error_consumed(ls, "Too many constants in current chunk");
-    }
     return i;
 }
 
@@ -204,11 +203,10 @@ void luluComp_emit_variable(Compiler *comp, const Token *id)
     bool islocal = (arg != -1);
 
     // Global vs. local operands have different sizes.
-    if (islocal) {
+    if (islocal)
         luluComp_emit_oparg1(comp, OP_GETLOCAL, arg);
-    } else {
+    else
         luluComp_emit_oparg3(comp, OP_GETGLOBAL, luluComp_identifier_constant(comp, id));
-    }
 }
 
 int luluComp_identifier_constant(Compiler *comp, const Token *id)
@@ -241,9 +239,9 @@ void luluComp_begin_scope(Compiler *comp)
 
 void luluComp_end_scope(Compiler *comp)
 {
-    comp->scope_depth--;
-
     int popped = 0;
+
+    comp->scope_depth--;
     while (comp->scope_count > 0) {
         if (comp->locals[comp->scope_count - 1].depth <= comp->scope_depth)
             break;
@@ -311,12 +309,10 @@ void luluComp_init_local(Compiler *comp)
     for (int i = comp->scope_count - 1; i >= 0; i--) {
         const Local *loc = &comp->locals[i];
         // Have we hit an outer scope?
-        if (loc->depth != -1 && loc->depth < comp->scope_depth) {
+        if (loc->depth != -1 && loc->depth < comp->scope_depth)
             break;
-        }
-        if (identifiers_equal(id, &loc->ident)) {
+        if (identifiers_equal(id, &loc->ident))
             luluLex_error_consumed(ls, "Shadowing of local variable");
-        }
     }
     luluComp_add_local(comp, id);
 }

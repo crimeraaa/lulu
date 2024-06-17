@@ -10,15 +10,15 @@ uint32_t luluStr_hash_raw(StringView sv);
 
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
-String *luluStr_new(lulu_VM *vm, int len);
-void luluStr_free(lulu_VM *vm, String *s);
+String *luluStr_new(lulu_VM *vm, size_t len);
+void    luluStr_free(lulu_VM *vm, String *s);
 
 // Global functions that deal with strings need the VM to check for interned.
 String *luluStr_copy(lulu_VM *vm, StringView sv);
 String *luluStr_copy_raw(lulu_VM *vm, StringView sv);
 
 // Assumes all arguments we already verified to be `String*`.
-String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], int len);
+String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len);
 
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
 void luluStr_set_interned(lulu_VM *vm, const String *s);

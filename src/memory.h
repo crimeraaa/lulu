@@ -20,8 +20,8 @@ void  luluMem_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx);
 void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz);
 
 Object *luluObj_new(lulu_VM *vm, size_t size, VType tag);
-Object *luluObj_prepend(lulu_VM *vm, Object *obj);
-Object *luluObj_remove(lulu_VM *vm, Object *obj);
+Object *luluObj_link(lulu_VM *vm, Object *obj);
+Object *luluObj_unlink(lulu_VM *vm, Object *obj);
 void    luluObj_free_all(lulu_VM *vm);
 
 #define luluMem_new_pointer(vm, sz) \

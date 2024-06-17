@@ -103,8 +103,8 @@
 
 typedef struct {
     const char *begin; // Pointer to the first character in the string.
-    const char *end;   // Pointer to nul character or 1 past last valid index.
-    int         len;   // What the result of `strlen` would be.
+    const char *end;   // Pointer to 1 past the last intended character.
+    size_t      len;   // Total/intended string length, sans nul.
 } StringView;
 
 #define sv_create_from_len(s, len)  (StringView){(s), (s) + (len), (len)}

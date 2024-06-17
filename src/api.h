@@ -23,7 +23,7 @@ void    lulu_push_boolean(lulu_VM *vm, bool b);
 void    lulu_push_number(lulu_VM *vm, lulu_Number n);
 void    lulu_push_string(lulu_VM *vm, lulu_String *s);
 void    lulu_push_cstring(lulu_VM *vm, const char *s);
-void    lulu_push_lcstring(lulu_VM *vm, const char *s, int len);
+void    lulu_push_lcstring(lulu_VM *vm, const char *s, size_t len);
 void    lulu_push_table(lulu_VM *vm, lulu_Table *t);
 #define lulu_push_literal(vm, s) lulu_push_lcstring((vm), (s), sizeof(s) - 1)
 
@@ -55,7 +55,7 @@ void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop);
 
 void lulu_get_global_from_string(lulu_VM *vm, lulu_String *s);
 void lulu_get_global_from_cstring(lulu_VM *vm, const char *s);
-void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, int len);
+void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, size_t len);
 
 #define lulu_get_global(vm, s) \
 _Generic((s), \
@@ -65,7 +65,7 @@ _Generic((s), \
 
 void lulu_set_global_from_string(lulu_VM *vm, lulu_String *s);
 void lulu_set_global_from_cstring(lulu_VM *vm, const char *s);
-void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, int len);
+void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, size_t len);
 
 #define lulu_set_global(vm, s) \
 _Generic((s), \

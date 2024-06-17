@@ -37,8 +37,8 @@ struct lulu_Object {
 
 typedef struct lulu_String {
     Object   object; // "Inherited" must come first to allow safe type-punning.
+    size_t   len;    // String length with nul and escapes omitted.
     uint32_t hash;   // Used when strings are used as table keys.
-    int      len;    // String length with nul and escapes omitted.
     char     data[]; // See: C99 flexible array members, MUST be last member!
 } String;
 
@@ -105,7 +105,7 @@ do {                                                                           \
 #define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
 // Writes string representation of the given value to C `stdout`.
-void luluVal_print_value(const Value *vl);
+void luluVal_print_value(const Value *val);
 
 typedef struct {
     Number number;
@@ -113,17 +113,16 @@ typedef struct {
 } ToNumber;
 
 // See: https://www.lua.org/source/5.1/lvm.c.html#luaV_tonumber
-ToNumber luluVal_to_number(const Value *vl);
+ToNumber luluVal_to_number(const Value *val);
 
-// Assumes `buffer` is a fixed-size array of length `MAX_TOSTRING`.
-// If `out` is not `NULL`, it will be set to -1 if we do not own the result.
-const char *luluVal_to_cstring(const Value *vl, char *buf, int *out);
+// Assumes `buf` is a fixed-size array of length `MAX_TOSTRING`.
+StringView luluVal_to_cstring(const Value *val, char *buf, size_t *out);
 
 // We cannot use `memcmp` due to struct padding.
 bool luluVal_equal(const Value *a, const Value *b);
 
-void luluVal_init_array(Array *va);
-void luluVal_free_array(lulu_VM *vm, Array *va);
-void luluVal_write_array(lulu_VM *vm, Array *va, const Value *vl);
+void luluVal_init_array(Array *arr);
+void luluVal_free_array(lulu_VM *vm, Array *arr);
+void luluVal_write_array(lulu_VM *vm, Array *arr, const Value *val);
 
 #endif /* LULU_OBJECT_H */

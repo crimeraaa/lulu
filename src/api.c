@@ -131,7 +131,7 @@ void lulu_push_cstring(lulu_VM *vm, const char *s)
     lulu_push_lcstring(vm, s, strlen(s));
 }
 
-void lulu_push_lcstring(lulu_VM *vm, const char *s, int len)
+void lulu_push_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
     StringView sv = sv_create_from_len(s, len);
     lulu_push_string(vm, luluStr_copy(vm, sv));
@@ -290,7 +290,7 @@ const char *lulu_to_cstring(lulu_VM *vm, int offset)
 
 const char *lulu_concat(lulu_VM *vm, int count)
 {
-    int    len  = 0;
+    size_t len  = 0;
     Value *argv = poke_at_offset(vm, -count);
     for (int i = 0; i < count; i++) {
         Value *arg = &argv[i];
@@ -346,7 +346,7 @@ void lulu_get_global_from_cstring(lulu_VM *vm, const char *s)
     lulu_get_global_from_lcstring(vm, s, strlen(s));
 }
 
-void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, int len)
+void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
     StringView sv = sv_create_from_len(s, len);
     String    *id = luluStr_copy(vm, sv);
@@ -365,7 +365,7 @@ void lulu_set_global_from_cstring(lulu_VM *vm, const char *s)
     lulu_set_global_from_lcstring(vm, s, strlen(s));
 }
 
-void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, int len)
+void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
     StringView sv = sv_create_from_len(s, len);
     lulu_set_global_from_string(vm, luluStr_copy(vm, sv));
