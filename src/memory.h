@@ -12,8 +12,8 @@ typedef void *(*lulu_AllocFn)(void *ptr, size_t oldsz, size_t newsz, void *ctx);
 // A general purpose allocation wrapper that carries some context around.
 // See: https://nullprogram.com/blog/2023/12/17/
 typedef struct lulu_Allocator {
-    lulu_AllocFn allocate; // To free `ptr`, pass `newsz` of `0`.
-    void        *context;  // How this is interpreted is up to your function.
+    lulu_AllocFn allocate;
+    void        *context;
 } Allocator;
 
 void  luluMem_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx);

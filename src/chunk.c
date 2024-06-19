@@ -32,6 +32,8 @@ OpInfo LULU_OPINFO[] = {
     [OP_NOT]        = {"NOT",           0,          1,          1},
     [OP_LEN]        = {"LEN",           0,          1,          1},
     [OP_PRINT]      = {"PRINT",         1,          0,          VAR_DELTA},
+    [OP_TEST]       = {"TEST",          1,          0,          1},
+    [OP_JUMP]       = {"JUMP",          3,          0,          0},
     [OP_RETURN]     = {"RETURN",        0,          0,          0},
 };
 
@@ -81,7 +83,6 @@ int luluFunc_add_constant(lulu_VM *vm, Chunk *ck, const Value *val)
         luluVal_write_array(vm, k, val);
         setv_number(&i, k->len - 1); // `int` should fit in `lulu_Number`
         luluTbl_set(vm, t, val, &i);
-        return cast(int, as_number(&i));
     }
-    return cast(int, as_number(&i));
+    return cast_int(as_number(&i));
 }

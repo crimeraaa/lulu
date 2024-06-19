@@ -7,7 +7,7 @@
 #include "string.h"
 #include "table.h"
 
-// Simple allocation wrapper using the C standard library `realloc` and `free`.
+// Simple allocation wrapper using the C standard library.
 static void *stdc_allocator(void *ptr, size_t oldsz, size_t newsz, void *ctx)
 {
     unused2(oldsz, ctx);
@@ -61,7 +61,7 @@ typedef enum {
     TM_LT,  TM_LE,
 } TagMethod;
 
-const char *pick_non_number(const Value *a, const Value *b)
+const char *pick_non_number(StackID a, StackID b)
 {
     // First operand is wrong?
     if (!luluVal_to_number(a).ok)
@@ -69,7 +69,7 @@ const char *pick_non_number(const Value *a, const Value *b)
     return get_typename(b);
 }
 
-static void arith_tm(lulu_VM *vm, Value *a, const Value *b, TagMethod tm)
+static void arith_tm(lulu_VM *vm, StackID a, StackID b, TagMethod tm)
 {
     ToNumber ca = luluVal_to_number(a);
     ToNumber cb = luluVal_to_number(b);
@@ -81,7 +81,7 @@ static void arith_tm(lulu_VM *vm, Value *a, const Value *b, TagMethod tm)
         case TM_DIV: setv_number(a, num_div(ca.number, cb.number)); break;
         case TM_MOD: setv_number(a, num_mod(ca.number, cb.number)); break;
         case TM_POW: setv_number(a, num_pow(ca.number, cb.number)); break;
-        case TM_UNM: setv_number(a, num_unm(ca.number));     break;
+        case TM_UNM: setv_number(a, num_unm(ca.number));            break;
         default:
             // Should be unreachable.
             assert(false);
@@ -92,7 +92,7 @@ static void arith_tm(lulu_VM *vm, Value *a, const Value *b, TagMethod tm)
     }
 }
 
-static void compare_tm(lulu_VM *vm, Value *a, const Value *b, TagMethod tm)
+static void compare_tm(lulu_VM *vm, StackID a, StackID b, TagMethod tm)
 {
     // Lua does implement comparison when both operands are the same, and by
     // default they allow string comparisons.
@@ -107,23 +107,19 @@ lulu_Status luluVM_execute(lulu_VM *vm)
 
 // --- HELPER MACROS ------------------------------------------------------ {{{1
 // Many of these rely on variables local to this function.
+// `read_byte2` assumes MSB is read first, then LSB.
+// `read_byte3` assumes MSB is read first, then middle, then LSB.
 
 #define read_byte()         (*vm->ip++)
-
-// Assumes MSB is read first then LSB.
-#define read_byte2()        (decode_byte2(read_byte(), read_byte()))
-
-// Assumes MSB is read first, then middle, then LSB.
+#define read_byte2()        (encode_byte2(read_byte(), read_byte()))
 #define read_byte3()        (encode_byte3(read_byte(), read_byte(), read_byte()))
-
-// Assumes a 3-byte operand comes right after the opcode.
 #define read_constant()     (&kst[read_byte3()])
 #define read_string()       as_string(read_constant())
 
 #define binary_op_or_tm(set_fn, op_fn, tm_fn, tm)                              \
 {                                                                              \
-    Value *a = poke_top(vm, -2);                                               \
-    Value *b = poke_top(vm, -1);                                               \
+    StackID a = poke_top(vm, -2);                                               \
+    StackID b = poke_top(vm, -1);                                               \
     if (is_number(a) && is_number(b)) {                                        \
         Number na = as_number(a);                                              \
         Number nb = as_number(b);                                              \
@@ -144,16 +140,12 @@ lulu_Status luluVM_execute(lulu_VM *vm)
 
     for (;;) {
         if (is_enabled(DEBUG_TRACE_EXECUTION)) {
-            printf("\t");
-            for (const Value *slot = vm->stack; slot < vm->top; slot++) {
-                printf("[ ");
-                luluDbg_print_value(slot);
-                printf(" ]");
-            }
-            printf("\n");
-            luluDbg_disassemble_instruction(ck, cast(int, vm->ip - ck->code));
+            if (vm->top != vm->stack)
+                luluDbg_print_stack(vm);
+            luluDbg_disassemble_instruction(ck, cast_int(vm->ip - ck->code));
         }
-        OpCode op = read_byte();
+        OpCode  op    = read_byte();
+        StackID arg_a = poke_top(vm, -1); // Used a ton here.
         switch (op) {
         case OP_CONSTANT:
             push_back(vm, read_constant());
@@ -168,7 +160,7 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             lulu_push_boolean(vm, false);
             break;
         case OP_POP:
-            lulu_pop(vm, cast(int, read_byte()));
+            lulu_pop(vm, cast_int(read_byte()));
             break;
         case OP_NEWTABLE:
             lulu_push_table(vm, luluTbl_new(vm, read_byte3()));
@@ -183,7 +175,7 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             lulu_get_table(vm, -2, -1);
             break;
         case OP_SETLOCAL:
-            vm->base[read_byte()] = *poke_top(vm, -1);
+            vm->base[read_byte()] = *arg_a;
             lulu_pop(vm, 1);
             break;
         case OP_SETGLOBAL:
@@ -203,16 +195,16 @@ lulu_Status luluVM_execute(lulu_VM *vm)
 
             // Remember: Lua uses 1-based indexing!
             for (int i = 1; i <= count; i++) {
-                Value  k = make_number(i);
-                Value *v = poke_base(vm, t_idx + i);
+                Value   k = make_number(i);
+                StackID v = poke_base(vm, t_idx + i);
                 luluTbl_set(vm, t, &k, v);
             }
             lulu_pop(vm, count);
             break;
         }
         case OP_EQ: {
-            Value *a = poke_top(vm, -2);
-            Value *b = poke_top(vm, -1);
+            StackID a = poke_top(vm, -2);
+            StackID b = poke_top(vm, -1);
             setv_boolean(a, luluVal_equal(a, b));
             lulu_pop(vm, 1);
             break;
@@ -230,24 +222,21 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             lulu_concat(vm, read_byte());
             break;
         case OP_UNM: {
-            Value *arg = poke_top(vm, -1);
-            if (is_number(arg))
-                setv_number(arg, num_unm(as_number(arg)));
+            if (is_number(arg_a))
+                setv_number(arg_a, num_unm(as_number(arg_a)));
             else
-                arith_tm(vm, arg, arg, TM_UNM);
+                arith_tm(vm, arg_a, arg_a, TM_UNM);
             break;
         }
         case OP_NOT:
-            lulu_to_boolean(vm, -1);
+            setv_boolean(arg_a, !lulu_to_boolean(vm, -1));
             break;
-        case OP_LEN: {
+        case OP_LEN:
             // TODO: Separate array segment from hash segment of tables.
-            Value *arg = poke_top(vm, -1);
-            if (!is_string(arg))
-                lulu_type_error(vm, "get length of", get_typename(arg));
-            setv_number(arg, as_string(arg)->len);
+            if (!is_string(arg_a))
+                lulu_type_error(vm, "get length of", get_typename(arg_a));
+            setv_number(arg_a, as_string(arg_a)->len);
             break;
-        }
         case OP_PRINT: {
             int argc = read_byte();
             for (int i = 0; i < argc; i++) {
@@ -259,6 +248,17 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             lulu_pop(vm, argc);
             break;
         }
+        case OP_TEST:
+            // <cond> is not used elsewhere so converting it should be safe.
+            // Jump over OP_JUMP and its arguments if we need to skip it.
+            if (lulu_to_boolean(vm, -1) != cast(bool, read_byte()))
+                vm->ip += get_opsize(OP_JUMP);
+            lulu_pop(vm, 1);
+            break;
+        // NOTE: At this point, `vm->ip` points to after OP_TEST and <cond>.
+        case OP_JUMP:
+            vm->ip += read_byte3();
+            break;
         case OP_RETURN:
             return LULU_OK;
         }

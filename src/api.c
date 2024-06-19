@@ -20,7 +20,7 @@ void lulu_close(lulu_VM *vm)
 }
 
 // Negative values are offset from the top, positive are offset from the base.
-static Value *poke_at_offset(lulu_VM *vm, int offset)
+static StackID poke_at_offset(lulu_VM *vm, int offset)
 {
     if (offset >= 0)
         return poke_base(vm, offset);
@@ -30,10 +30,10 @@ static Value *poke_at_offset(lulu_VM *vm, int offset)
 
 lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
 {
-    Chunk       ck;
-    Lexer       ls;
-    Compiler    comp;
-    lulu_Status res = setjmp(vm->errorjmp);
+    static Chunk    ck;
+    static Lexer    ls;
+    static Compiler comp;
+    lulu_Status     res = setjmp(vm->errorjmp);
     vm->name = name;
     switch (res) {
     case LULU_OK:
@@ -169,7 +169,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
             else
                 buf[0] = cast(char, va_arg(args, int));
             buf[1] = '\0';
-            lulu_push_cstring(vm, buf);
+            lulu_push_lcstring(vm, buf, sizeof(buf));
             break;
         }
         case 'f':
@@ -232,15 +232,15 @@ const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
 
 bool lulu_to_boolean(lulu_VM *vm, int offset)
 {
-    Value *v = poke_at_offset(vm, offset);
-    bool   b = is_falsy(v);
+    StackID v = poke_at_offset(vm, offset);
+    bool    b = !is_falsy(v);
     setv_boolean(v, b);
     return b;
 }
 
 lulu_Number lulu_to_number(lulu_VM *vm, int offset)
 {
-    Value   *v    = poke_at_offset(vm, offset);
+    StackID  v    = poke_at_offset(vm, offset);
     ToNumber conv = luluVal_to_number(v);
 
     // As is, `luluVal_to_number` does not do any error handling.
@@ -254,7 +254,7 @@ lulu_Number lulu_to_number(lulu_VM *vm, int offset)
 
 lulu_String *lulu_to_string(lulu_VM *vm, int offset)
 {
-    Value *vl = poke_at_offset(vm, offset);
+    StackID vl = poke_at_offset(vm, offset);
     switch (get_tag(vl)) {
     case TYPE_NIL:
         lulu_push_literal(vm, "nil");
@@ -290,10 +290,10 @@ const char *lulu_to_cstring(lulu_VM *vm, int offset)
 
 const char *lulu_concat(lulu_VM *vm, int count)
 {
-    size_t len  = 0;
-    Value *argv = poke_at_offset(vm, -count);
+    size_t  len  = 0;
+    StackID argv = poke_at_offset(vm, -count);
     for (int i = 0; i < count; i++) {
-        Value *arg = &argv[i];
+        StackID arg = &argv[i];
         if (is_number(arg))
             lulu_to_string(vm, i - count);
         else if (!is_string(arg))
@@ -308,9 +308,9 @@ const char *lulu_concat(lulu_VM *vm, int count)
 
 void lulu_get_table(lulu_VM *vm, int t_offset, int k_offset)
 {
-    Value *t = poke_at_offset(vm, t_offset);
-    Value *k = poke_at_offset(vm, k_offset);
-    Value  v;
+    StackID t = poke_at_offset(vm, t_offset);
+    StackID k = poke_at_offset(vm, k_offset);
+    Value   v;
     if (!is_table(t))
         lulu_type_error(vm, "index", get_typename(t));
     if (!luluTbl_get(as_table(t), k, &v))
@@ -321,9 +321,9 @@ void lulu_get_table(lulu_VM *vm, int t_offset, int k_offset)
 
 void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
 {
-    Value *t = poke_at_offset(vm, t_offset);
-    Value *k = poke_at_offset(vm, k_offset);
-    Value *v = poke_at_offset(vm, -1);
+    StackID t = poke_at_offset(vm, t_offset);
+    StackID k = poke_at_offset(vm, k_offset);
+    StackID v = poke_at_offset(vm, -1);
     if (!is_table(t))
         lulu_type_error(vm, "index", get_typename(t));
     if (is_nil(k))
@@ -421,6 +421,6 @@ void lulu_push_error_vfstring(lulu_VM *vm, int line, const char *fmt, va_list ar
 {
     lulu_set_top(vm, 0); // Reset VM stack before pushing the error message.
     const char *msg = lulu_push_vfstring(vm, fmt, args);
-    lulu_pop(vm, 1);
+    lulu_pop(vm, 1); // push_fstring will push a copy.
     lulu_push_fstring(vm, "%s:%i: %s", vm->name, line, msg);
 }

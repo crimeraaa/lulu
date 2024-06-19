@@ -6,6 +6,7 @@
 
 // Wrapper to surround strings with quotes for easier identification.
 void luluDbg_print_value(const Value *v);
+void luluDbg_print_stack(lulu_VM *vm);
 void luluDbg_disassemble_chunk(const Chunk *ck);
 
 /**

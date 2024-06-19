@@ -5,11 +5,7 @@
 file ./bin/lulu
 set print pretty on
 
-break vm.c:interpret
-break compiler.c:compile
-break parser.c:declaration
-# break parser.c:ident_statement
-break parser.c:table
+break parser.c:concat
 layout src
 
 run

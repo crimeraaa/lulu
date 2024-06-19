@@ -35,12 +35,9 @@ ToNumber luluVal_to_number(const Value *val)
     return conv;
 }
 
-StringView luluVal_to_cstring(const Value *val, char *buf, size_t *out)
+StringView luluVal_to_cstring(const Value *val, char *buf)
 {
     size_t len = 0;
-    if (out != NULL)
-        *out = 0;
-
     switch (get_tag(val)) {
     case TYPE_NIL:
         return sv_literal("nil");
@@ -52,19 +49,17 @@ StringView luluVal_to_cstring(const Value *val, char *buf, size_t *out)
     case TYPE_STRING:
         return sv_create_from_len(as_string(val)->data, as_string(val)->len);
     case TYPE_TABLE:
-        len = snprintf(buf, MAX_TOSTRING, "%s: %p", get_typename(val), as_pointer(val));
+        len = sprintf(buf, "%s: %p", get_typename(val), as_pointer(val));
         break;
     }
     buf[len] = '\0';
-    if (out != NULL)
-        *out = len;
     return sv_create_from_len(buf, len + 1);
 }
 
 void luluVal_print_value(const Value *val)
 {
     char buf[MAX_TOSTRING];
-    printf("%s", luluVal_to_cstring(val, buf, NULL).begin);
+    printf("%s", luluVal_to_cstring(val, buf).begin);
 }
 
 bool luluVal_equal(const Value *a, const Value *b)
@@ -97,8 +92,8 @@ void luluVal_free_array(lulu_VM *vm, Array *arr)
 void luluVal_write_array(lulu_VM *vm, Array *arr, const Value *val)
 {
     if (arr->len + 1 > arr->cap) {
-        int oldcap = arr->cap;
-        int newcap = luluMem_grow_capacity(oldcap);
+        int oldcap  = arr->cap;
+        int newcap  = luluMem_grow_capacity(oldcap);
         arr->values = luluMem_resize_parray(vm, arr->values, oldcap, newcap);
         arr->cap    = newcap;
     }

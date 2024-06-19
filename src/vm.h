@@ -6,11 +6,13 @@
 #include "object.h"
 #include "memory.h"
 
+typedef Value *StackID; // Pointer to a Lua stack value.
+
 struct lulu_VM {
     Value       stack[MAX_STACK + STACK_RESERVED];
     Allocator   allocator; // By default, holds a NULL context.
-    Value      *top;       // Pointer to first free slot in the stack.
-    Value      *base;      // Pointer to bottom of current stack frame.
+    StackID     top;       // Pointer to first free slot in the stack.
+    StackID     base;      // Pointer to bottom of current stack frame.
     Chunk      *chunk;     // Bytecode, constants and such.
     Byte       *ip;        // Pointer to next instruction to be executed.
     const char *name;      // Filename or `"stdin"` if in REPL.

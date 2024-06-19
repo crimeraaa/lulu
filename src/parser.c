@@ -489,6 +489,35 @@ static void block(Compiler *comp)
     luluLex_expect_token(ls, TK_END, "after block");
 }
 
+static void if_statement(Compiler *comp)
+{
+    Lexer *ls = comp->lexer;
+
+    // <condition> 'then'
+    expression(comp);
+    luluLex_expect_token(ls, TK_THEN, "after 'if' condition");
+    luluComp_emit_oparg1(comp, OP_TEST, cast_byte(false));
+
+    // <if-then-body>: jump over this block if <condition> is falsy.
+    int jump_over_if = luluComp_emit_jump(comp);
+    while (!luluLex_check_token_any(ls, TK_ELSEIF, TK_ELSE, TK_END, TK_EOF)) {
+        declaration(comp);
+    }
+
+    // <else-body> (optional)
+    if (luluLex_match_token(ls, TK_ELSE)) {
+        // <if-body> end will jump over <else-body> and the jump thereof.
+        int jump_over_else = jump_over_if;
+        jump_over_if = luluComp_emit_jump(comp);
+        luluComp_patch_jump(comp, jump_over_else);
+        while (!luluLex_check_token_any(ls, TK_END, TK_EOF)) {
+            declaration(comp);
+        }
+    }
+    luluComp_patch_jump(comp, jump_over_if);
+    luluLex_expect_token(ls, TK_END, "after 'if' body");
+}
+
 // 3}}} ------------------------------------------------------------------------
 
 // 2}}} ------------------------------------------------------------------------
@@ -513,6 +542,10 @@ static void statement(Compiler *comp)
     case TK_PRINT:
         luluLex_next_token(ls);
         print_statement(comp);
+        break;
+    case TK_IF:
+        luluLex_next_token(ls);
+        if_statement(comp);
         break;
     default:
         luluLex_error_lookahead(ls, "Expected a statement");
@@ -609,9 +642,8 @@ static void parse_precedence(Compiler *comp, Precedence prec)
     }
 
     // This function can never consume the `=` token.
-    if (luluLex_match_token(ls, TK_ASSIGN)) {
+    if (luluLex_match_token(ls, TK_ASSIGN))
         luluLex_error_lookahead(ls, "Invalid assignment target");
-    }
 }
 
 static ParseRule PARSERULES_LOOKUP[] = {

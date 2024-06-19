@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "limits.h"
+#include "vm.h"
 
 static void disassemble_constants(const Chunk *ck)
 {
@@ -11,6 +12,17 @@ static void disassemble_constants(const Chunk *ck)
         printf("\n");
     }
     printf("\n");
+}
+
+void luluDbg_print_stack(lulu_VM *vm)
+{
+    printf("\t[ ");
+    for (StackID slot = vm->stack; slot < vm->top; slot++) {
+        if (slot > vm->stack)
+            printf(", ");
+        luluDbg_print_value(slot);
+    }
+    printf(" ]\n");
 }
 
 void luluDbg_print_value(const Value *v)
@@ -88,19 +100,31 @@ static void setarray_op(const Byte *ip)
     printf("Tbl[%i], Set(%i)", t_idx, to_set);
 }
 
+static void jump_op(const Byte *ip, int offset)
+{
+    // `ip` points to OP_JUMP itself, so need to adjust.
+    int jump = read_byte3(ip) + get_opsize(OP_JUMP);
+    printf("goto %04x", offset + jump);
+}
+
+static void test_op(const Byte *ip, int offset)
+{
+    const char *arg  = read_byte(ip) ? "true" : "false";
+    const int   jump = offset + get_opsize(OP_JUMP) + get_opsize(OP_TEST);
+    printf("if Top[-1] != %s goto %04x", arg, jump);
+}
+
 int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
 {
     const Byte  *ip = &ck->code[offset];
     const OpCode op = read_byte(ip);
-    int          ln = ck->lines[offset];
+    const int    ln = ck->lines[offset];
 
     printf("%04x ", offset);
-    if (offset > 0 && ln == ck->lines[offset - 1]) {
+    if (offset > 0 && ln == ck->lines[offset - 1])
         printf("   | ");
-    } else {
+    else
         printf("%4i ", ln);
-    }
-
     printf("%-16s ", get_opinfo(op).name);
     switch (op) {
     case OP_CONSTANT:
@@ -113,8 +137,10 @@ int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
     case OP_NEWTABLE:  newtable_op(ip);         break;
     case OP_CONCAT:    simple_op("Concat", ip); break;
     case OP_PRINT:     simple_op("Print", ip);  break;
+    case OP_TEST:      test_op(ip, offset);     break;
     case OP_SETTABLE:  settable_op(ip);         break;
     case OP_SETARRAY:  setarray_op(ip);         break;
+    case OP_JUMP:      jump_op(ip, offset); break;
     case OP_GETTABLE:
     case OP_TRUE:
     case OP_FALSE:
@@ -141,7 +167,7 @@ int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
         return offset + 1;
     }
     printf("\n");
-    return offset + get_opinfo(op).argsz + 1;
+    return offset + get_opsize(op);
 }
 
 #undef read_byte

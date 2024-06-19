@@ -201,7 +201,7 @@ static Token error_token(Lexer *ls)
     const char *newline = memchr(tk.view.begin, '\n', tk.view.len);
     if (newline != NULL) {
         tk.view.end = newline;
-        tk.view.len = cast(int, tk.view.end - tk.view.begin);
+        tk.view.len = tk.view.end - tk.view.begin;
     }
     return tk;
 }
@@ -395,7 +395,7 @@ bad_string:
     const char *begin = ls->lexeme.begin + 1; // +1 to skip opening quote.
     const char *end   = ls->lexeme.end - 1;   // -1 to skip closing quote.
     StringView  sv    = sv_create_from_end(begin, end);
-    ls->string = luluStr_copy(ls->vm, sv);
+    ls->string        = luluStr_copy(ls->vm, sv);
     return make_token(ls, TK_STRING);
 }
 
@@ -407,8 +407,8 @@ static Token rstring_token(Lexer *ls, int lvl)
     }
     multiline(ls, lvl);
 
-    int        mark = lvl + open + 2;            // Skip [[ and opening nesting.
-    int        len  = ls->lexeme.len - mark - 2; // Offset of last non-quote.
+    size_t     mark = lvl + open + 2;            // Skip [[ and opening nesting.
+    size_t     len  = ls->lexeme.len - mark - 2; // Offset of last non-quote.
     StringView sv   = sv_create_from_len(ls->lexeme.begin + mark, len);
     ls->string      = luluStr_copy_raw(ls->vm, sv);
     return make_token(ls, TK_STRING);

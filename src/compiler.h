@@ -39,9 +39,13 @@ void luluComp_emit_oparg3(Compiler *comp, OpCode op, Byte3 arg);
 void luluComp_emit_return(Compiler *comp);
 void luluComp_emit_identifier(Compiler *comp, const Token *id);
 
+// Returns index of `OP_JUMP` in the chunk's bytecode.
+int  luluComp_emit_jump(Compiler *comp);
+void luluComp_patch_jump(Compiler *comp, int offset);
+
 // Returns the index of `OP_NEWTABLE` in the bytecode. We cannot use pointers
 // due to potential invalidation when reallocating the array.
-int luluComp_emit_table(Compiler *comp);
+int  luluComp_emit_table(Compiler *comp);
 void luluComp_patch_table(Compiler *comp, int offset, Byte3 size);
 
 // Returns the index of `v` in the constants table.

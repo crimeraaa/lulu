@@ -16,6 +16,21 @@
  *          B1      A single `Byte` argument immediately following the opcode.
  *          B3      A `Byte3` argument. The MSB is the byte immediately
  *                  following the opcode, then the next, then LSB.
+ *          sB3     A `Byte3` argument, however we fake signedness by utilizing
+ *                  a constant offset. This constant offset is determined by
+ *                  getting the value of the highest bit with all zeroes below.
+ *
+ *                  So `SByte*` is always encoded and decoded in terms of its
+ *                  `Byte*` counterpart.
+ *
+ *                  uint8_t:
+ *                  MAX = 0b1111_1111 = 255
+ *                  MIN = 0b0000_0000 = 0
+ *
+ *                  int8_t:
+ *                  MAX = 0b0111_1111 = 127
+ *                  MIN = ~MAX = 0b1000_0000 = -128
+ *
  *          Kst     Constants table of the current chunk.
  *          V_*     Negative offset relative to the VM's top of the stack.
  *          A_*     Not sure how this is different from `V_*`.
@@ -27,37 +42,39 @@
  * @note    See: https://www.lua.org/source/4.0/lopcodes.h.html
  */
 typedef enum {
-/* ----------+--------+-----------------+-------------------+------------------|
-|  NAME      |  ARGS  |  STACK BEFORE   |  STACK AFTER      |  SIDE EFFECTS    |
--------------+--------+-----------------+-------------------+---------------- */
-OP_CONSTANT, // B3    | -               | Kst[B3]           |                  |
-OP_NIL,      // B1    | -               | (push B1 nils)    |                  |
-OP_TRUE,     // -     | -               | true              |                  |
-OP_FALSE,    // -     | -               | false             |                  |
-OP_POP,      // B1    | Top[-B1...-1]   | -                 |                  |
-OP_NEWTABLE, // B3    | -               | {} (size B3)      |                  |
-OP_GETLOCAL, // L     | -               | Loc[L]            |                  |
-OP_GETGLOBAL,// B3    | -               | _G[Kst[B3]]       |                  |
-OP_GETTABLE, // -     | Tbl, Key        | Tbl[Key]          |                  |
-OP_SETLOCAL, // L     | x               | -                 | Loc[L] = x       |
-OP_SETGLOBAL,// B3    | x               | -                 | _G[Kst[B3]] = x  |
-OP_SETTABLE, // A,B,C | t, k, ..., v    | (pop C values)    | t[k] = v         |
-OP_SETARRAY, // A, B  | t, ...          | (set B values)    | t[1...A] = ...   |
-OP_EQ,       // -     | x, y            | x == y            |                  |
-OP_LT,       // -     | x, y            | x < y             |                  |
-OP_LE,       // -     | x, y            | x <= y            |                  |
-OP_ADD,      // -     | x, y            | x + y             |                  |
-OP_SUB,      // -     | x, y            | x - y             |                  |
-OP_MUL,      // -     | x, y            | x * y             |                  |
-OP_DIV,      // -     | x, y            | x / y             |                  |
-OP_MOD,      // -     | x, y            | x % y             |                  |
-OP_POW,      // -     | x, y            | x ^ y             |                  |
-OP_CONCAT,   // B1    | Top[-B1...-1]   | concat(...)       |                  |
-OP_UNM,      // -     | x               | -x                |                  |
-OP_NOT,      // -     | x               | not x             |                  |
-OP_LEN,      // -     | x               | #x                |                  |
-OP_PRINT,    // B1    | Top[-B1...-1]   | -                 | print(...)       |
-OP_RETURN,   // -     | -               |                   |                  |
+/* ----------+----------+-----------------------+-------------------------+----------------------|
+|  NAME      |  ARGS    |  STACK BEFORE         |  STACK AFTER            |  SIDE EFFECTS        |
+-------------+----------+-----------------------+-------------------------+---------------------*/
+OP_CONSTANT, // B3      | -                     | Kst[B3]                 |                      |
+OP_NIL,      // B1      | -                     | (push B1 nils)          |                      |
+OP_TRUE,     // -       | -                     | true                    |                      |
+OP_FALSE,    // -       | -                     | false                   |                      |
+OP_POP,      // B1      | Top[-B1...-1]         | -                       |                      |
+OP_NEWTABLE, // B3      | -                     | {} (size B3)            |                      |
+OP_GETLOCAL, // L       | -                     | Loc[L]                  |                      |
+OP_GETGLOBAL,// B3      | -                     | _G[Kst[B3]]             |                      |
+OP_GETTABLE, // -       | Tbl, Key              | Tbl[Key]                |                      |
+OP_SETLOCAL, // L       | x                     | -                       | Loc[L] = x           |
+OP_SETGLOBAL,// B3      | x                     | -                       | _G[Kst[B3]] = x      |
+OP_SETTABLE, // A, B, C | t, k, ..., v          | (pop C values)          | t[k] = v             |
+OP_SETARRAY, // A, B    | t, ...                | (set B values)          | t[1...A] = ...       |
+OP_EQ,       // -       | x, y                  | x == y                  |                      |
+OP_LT,       // -       | x, y                  | x < y                   |                      |
+OP_LE,       // -       | x, y                  | x <= y                  |                      |
+OP_ADD,      // -       | x, y                  | x + y                   |                      |
+OP_SUB,      // -       | x, y                  | x - y                   |                      |
+OP_MUL,      // -       | x, y                  | x * y                   |                      |
+OP_DIV,      // -       | x, y                  | x / y                   |                      |
+OP_MOD,      // -       | x, y                  | x % y                   |                      |
+OP_POW,      // -       | x, y                  | x ^ y                   |                      |
+OP_CONCAT,   // B1      | Top[-B1...-1]         | concat(...)             |                      |
+OP_UNM,      // -       | x                     | -x                      |                      |
+OP_NOT,      // -       | x                     | not x                   |                      |
+OP_LEN,      // -       | x                     | #x                      |                      |
+OP_PRINT,    // B1      | Top[-B1...-1]         | -                       | print(...)           |
+OP_TEST,     // B1      | Top[-1]               | -                       | if Top[-1] != B1 ip++|
+OP_JUMP,     // sB3     | -                     | -                       | ip += sB3            |
+OP_RETURN,   // -       | -                     |                         |                      |
 } OpCode;
 
 /* -----------------------------------------------------------------------------
@@ -91,6 +108,20 @@ OP_SETARRAY:
 
     We achieve this behavior by popping the key-value pair for each non-array
     index element, but let expressions without explicit keys remain until later.
+
+OP_TEST:
+    Argument B:
+    - Either 1 or 0, representing true or false. We test Top[-1] for equality
+    in terms of boolean-ness.
+
+    This instruction is used to implement if-then statements.
+
+    For example, OP_TEST(A := Top[-1], B := 0) will test for falsiness.
+    If Top[-1] == 0 then we move to the next instruction. We assume that the
+    next instruction is an OP_JUMP.
+
+ip++:
+    This assumes that the next instruction is an OP_JUMP.
 ----------------------------------------------------------------------------- */
 
 typedef const struct {
@@ -120,12 +151,14 @@ typedef const struct {
                                     | ((mid) << bitsize(Byte))                 \
                                     | (lsb))
 
+#define byte3_to_sbyte3(N)      ((N) - MAX_SBYTE3)
+#define sbyte3_to_byte3(N)      ((N) + MAX_SBYTE3)
+
 // Lookup table which maps `OpCode` to its respective `OpInfo` struct.
 extern OpInfo LULU_OPINFO[];
 
 #define get_opinfo(op)  LULU_OPINFO[op]
-#define get_opname(op)  get_opinfo(op).name
-#define get_opargsz(op) get_opinfo(op).argsz
+#define get_opsize(op)  (get_opinfo(op).argsz + 1)
 
 typedef struct {
     Table       mappings; // Map values to indexes into the `constants` array.

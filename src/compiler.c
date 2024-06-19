@@ -85,21 +85,19 @@ static bool optimized_opcode(Compiler *comp, OpCode op, Byte arg)
     default:
         break;
     }
-
     // This branch is down here in case of POP needing to optimize SETTABLE.
-    if (comp->prev_opcode != op) {
+    if (comp->prev_opcode != op)
         return false;
-    }
-
-    // Adjusting would cause overflow? (Assumes `int` is bigger than `Byte`)
-    if (cast(int, *ip) + delta > cast(int, MAX_BYTE)) {
+    if (cast_int(*ip) + delta > cast_int(MAX_BYTE))
         return false;
-    }
     *ip += delta;
 
     // Do this here mainly for the case of POP delegating to SETTABLE. This is
     // to prevent the wrong prev opcode from being set in such cases.
-    adjust_stackinfo(comp, op, delta);
+    //
+    // Note how we use `arg` and not `delta` since when adjusting stack info,
+    // we always use the argument as-is in other functions.
+    adjust_stackinfo(comp, op, arg);
     return true;
 }
 
@@ -156,6 +154,26 @@ void luluComp_emit_oparg3(Compiler *comp, OpCode op, Byte3 arg)
     }
 }
 
+int luluComp_emit_jump(Compiler *comp)
+{
+    int offset = current_chunk(comp)->len;
+    luluComp_emit_oparg3(comp, OP_JUMP, MAX_BYTE3);
+    return offset;
+}
+
+void luluComp_patch_jump(Compiler *comp, int offset)
+{
+    Chunk *ck   = current_chunk(comp);
+    size_t jump = ck->len - offset - get_opsize(OP_JUMP);
+    Byte  *ip   = &ck->code[offset]; // OP_JUMP itself
+    if (jump > MAX_BYTE3)
+        luluLex_error_consumed(comp->lexer, "Too much code to jump over");
+
+    ip[1] = decode_byte3_msb(jump);
+    ip[2] = decode_byte3_mid(jump);
+    ip[3] = decode_byte3_lsb(jump);
+}
+
 void luluComp_emit_identifier(Compiler *comp, const Token *id)
 {
     luluComp_emit_oparg3(comp, OP_CONSTANT, luluComp_identifier_constant(comp, id));
@@ -176,9 +194,9 @@ int luluComp_emit_table(Compiler *comp)
 void luluComp_patch_table(Compiler *comp, int offset, Byte3 size)
 {
     Byte *ip  = &current_chunk(comp)->code[offset]; // OP_NEWTABLE itself
-    *(ip + 1) = decode_byte3_msb(size);
-    *(ip + 2) = decode_byte3_mid(size);
-    *(ip + 3) = decode_byte3_lsb(size);
+    ip[1] = decode_byte3_msb(size);
+    ip[2] = decode_byte3_mid(size);
+    ip[3] = decode_byte3_lsb(size);
 }
 
 // 1}}} ------------------------------------------------------------------------

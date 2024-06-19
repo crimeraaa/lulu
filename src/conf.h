@@ -18,7 +18,8 @@
 // of each instruction's operand. This MUST be unsigned.
 typedef uint8_t     Byte;
 typedef uint16_t    Byte2;
-typedef uint32_t    Byte3; // We only need 24 bits at most but this will do.
+typedef uint32_t    Byte3;  // We only need 24 bits at most but this will do.
+typedef int32_t     SByte3; // Signed Byte3.
 
 #define PROMPT      "> "
 #define MAX_STACK   256

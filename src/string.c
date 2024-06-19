@@ -39,7 +39,7 @@ static uint32_t hash_string(StringView sv)
             prev = ch;
             continue;
         }
-        hash ^= cast(Byte, (prev == '\\') ? get_escape(ch) : ch);
+        hash ^= cast_byte((prev == '\\') ? get_escape(ch) : ch);
         hash *= FNV1A_PRIME32;
         if (prev == '\\')
             prev = 0;
@@ -51,7 +51,7 @@ uint32_t luluStr_hash_raw(StringView sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
     for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
-        hash ^= cast(Byte, *ptr);
+        hash ^= cast_byte(*ptr);
         hash *= FNV1A_PRIME32;
     }
     return hash;
@@ -73,9 +73,9 @@ void luluStr_free(lulu_VM *vm, String *s)
 
 static void build_string(String *s, StringView sv)
 {
-    char   *end   = s->data; // For loop counter may skip.
-    int     skips = 0;       // Number escape characters emitted.
-    char    prev  = 0;
+    char *end   = s->data; // For loop counter may skip.
+    int   skips = 0;       // Number escape characters emitted.
+    char  prev  = 0;
 
     for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
         char ch = *ptr;
@@ -164,9 +164,9 @@ String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len)
 
 void luluStr_set_interned(lulu_VM *vm, const String *s)
 {
-    Table *t  = &vm->strings;
-    Value  k  = make_string(s);
-    Value  v  = make_boolean(true);
+    Table *t = &vm->strings;
+    Value  k = make_string(s);
+    Value  v = make_boolean(true);
     luluTbl_set(vm, t, &k, &v);
 }
 
@@ -182,6 +182,7 @@ String *luluStr_find_interned(lulu_VM *vm, StringView sv, uint32_t hash)
         // The strings table only ever has completely empty or full entries.
         if (is_nil(&ent->key) && is_nil(&ent->value))
             return NULL;
+
         // We assume ALL valid (i.e: non-nil) keys are strings.
         String *s = as_string(&ent->key);
         if (s->len == sv.len && s->hash == hash) {

@@ -102,7 +102,7 @@ do {                                                                           \
 #define setv_string(dst, src)   setv_object(TYPE_STRING, dst, src)
 #define setv_table(dst, src)    setv_object(TYPE_TABLE,  dst, src)
 
-#define is_falsy(v)         (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
+#define is_falsy(v)             (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
 // Writes string representation of the given value to C `stdout`.
 void luluVal_print_value(const Value *val);
@@ -116,7 +116,7 @@ typedef struct {
 ToNumber luluVal_to_number(const Value *val);
 
 // Assumes `buf` is a fixed-size array of length `MAX_TOSTRING`.
-StringView luluVal_to_cstring(const Value *val, char *buf, size_t *out);
+StringView luluVal_to_cstring(const Value *val, char *buf);
 
 // We cannot use `memcmp` due to struct padding.
 bool luluVal_equal(const Value *a, const Value *b);

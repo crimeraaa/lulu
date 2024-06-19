@@ -38,7 +38,7 @@ static uint32_t get_hash(const Value *t)
     }
 }
 
-// Find al free slot. Assumes there is at least 1 free slot left.
+// Find a free slot. Assumes there is at least 1 free slot left.
 static Entry *find_entry(Entry *entries, int cap, const Value *k)
 {
     uint32_t i    = get_hash(k) % cap;

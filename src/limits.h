@@ -52,6 +52,7 @@
 #include <assert.h>
 #else /* DEBUG_USE_ASSERT not defined. */
 
+// Hack because void statements in global scope are disallowed.
 #define assert(expr)                struct _silence_stray_semicolon_warning
 #define static_assert(expr, info)   assert(expr)
 
@@ -90,9 +91,13 @@
 #define bitsize(T)          bytes_to_bits(sizeof(T))
 
 #define cast(T, expr)       ((T)(expr))
+#define cast_int(expr)      cast(int, expr)
+#define cast_num(expr)      cast(lulu_Number, expr)
+#define cast_byte(expr)     cast(Byte, expr)
+
 #define unused(x)           cast(void, x)
-#define unused2(x, y)       unused(x); unused(y)
-#define unused3(x, y, z)    unused2(x, y); unused(z)
+#define unused2(x, y)       unused(x),     unused(y)
+#define unused3(x, y, z)    unused2(x, y), unused(z)
 
 #define cstr_len(s)         (array_len(s) - 1)
 #define cstr_eq(a, b, n)    (memcmp(a, b, n) == 0)
@@ -100,6 +105,11 @@
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)
+#define MAX_SBYTE3          (MAX_BYTE3 >> 1)
+#define MIN_SBYTE3          (~MAX_SBYTE3)
+
+#define in_incrange(n, lo, hi)      ((n) >= (lo) && (n) <= (hi))
+#define in_excrange(n, lo, hi)      ((n) >= (lo) && (n) < (hi))
 
 typedef struct {
     const char *begin; // Pointer to the first character in the string.
