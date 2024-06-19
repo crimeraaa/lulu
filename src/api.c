@@ -32,28 +32,28 @@ lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
 {
     static Chunk    ck;
     static Lexer    ls;
-    static Compiler comp;
+    static Compiler cpl;
     lulu_Status     res = setjmp(vm->errorjmp);
     vm->name = name;
     switch (res) {
     case LULU_OK:
-        luluFunc_init_chunk(&ck, vm->name);
-        luluComp_init(&comp, &ls, vm);
-        luluComp_compile(&comp, input, &ck);
+        luluFun_init_chunk(&ck, vm->name);
+        luluCpl_init(&cpl, vm);
+        luluCpl_compile(&cpl, &ls, input, &ck);
         break;
     case LULU_ERROR_RUNTIME:
     case LULU_ERROR_COMPTIME:
     case LULU_ERROR_ALLOC:
         // For the default case, please ensure all calls of `longjmp` ONLY
         // ever pass an `lulu_Status` member.
-        luluFunc_free_chunk(vm, &ck);
+        luluFun_free_chunk(vm, &ck);
         return res;
     }
     // Prep the VM
     vm->chunk = &ck;
     vm->ip    = ck.code;
     res       = luluVM_execute(vm);
-    luluFunc_free_chunk(vm, &ck);
+    luluFun_free_chunk(vm, &ck);
     return res;
 }
 
