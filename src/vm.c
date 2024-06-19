@@ -40,7 +40,7 @@ static void _init_table(Table *t)
 void luluVM_init(lulu_VM *vm)
 {
     reset_stack(vm);
-    luluMem_set_allocator(vm, &stdc_allocator, vm);
+    luluMem_set_allocator(vm, &stdc_allocator, NULL);
     _init_table(&vm->globals);
     _init_table(&vm->strings);
     vm->objects = NULL;

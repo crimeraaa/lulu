@@ -148,11 +148,24 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
     const char *iter = fmt;
     int         argc = 0;
 
+#define push_numeric(T, fn)                                                    \
+    do {                                                                       \
+        char buf[MAX_TOSTRING];                                                \
+        int  len = fn(buf, va_arg(args, T));                                   \
+        lulu_push_lcstring(vm, buf, len);                                      \
+    } while (false)
+
+#define push_character(ch)                                                     \
+    do {                                                                       \
+        char buf[] = {ch, '\0'};                                               \
+        lulu_push_lcstring(vm, buf, sizeof(buf));                              \
+    } while (false);
+
     for (;;) {
         const char *spec = strchr(iter, '%');
         if (spec == NULL)
             break;
-        // Push the contents of the string before '%', except if '%' is starter.
+        // Push the contents of the string before '%' unless '%' is first char.
         if (spec != fmt) {
             StringView sv = sv_create_from_end(iter, spec);
             lulu_push_lcstring(vm, sv.begin, sv.len);
@@ -161,31 +174,11 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
         // Move to character after '%' so we point at the specifier.
         spec += 1;
         switch (*spec) {
-        case '%':
-        case 'c': {
-            char buf[2];
-            if (*spec == '%')
-                buf[0] = '%';
-            else
-                buf[0] = cast(char, va_arg(args, int));
-            buf[1] = '\0';
-            lulu_push_lcstring(vm, buf, sizeof(buf));
-            break;
-        }
-        case 'f':
-        case 'i':
-        case 'p': {
-            char buf[MAX_TOSTRING];
-            int  len;
-            if (*spec == 'f')
-                len = num_tostring(buf, va_arg(args, lulu_Number));
-            else if (*spec == 'i')
-                len = int_tostring(buf, va_arg(args, int));
-            else
-                len = ptr_tostring(buf, va_arg(args, void*));
-            lulu_push_lcstring(vm, buf, len);
-            break;
-        }
+        case '%': push_character('%');                break;
+        case 'c': push_character(va_arg(args, int));  break;
+        case 'f': push_numeric(Number, num_tostring); break;
+        case 'i': push_numeric(int,    int_tostring); break;
+        case 'p': push_numeric(void*,  ptr_tostring); break;
         case 's': {
             const char *s = va_arg(args, char*);
             if (s != NULL)
@@ -214,6 +207,9 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
         return lulu_concat(vm, argc);
     else
         return as_cstring(poke_at_offset(vm, -1));
+
+#undef push_character
+#undef push_numeric
 }
 
 const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
