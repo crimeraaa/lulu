@@ -83,10 +83,10 @@ static OpCode get_binop(TkType type)
 // and that the left-hand side has been fully compile.
 static void binary(Compiler *cpl, Lexer *ls)
 {
-    TkType type = ls->consumed.type;
+    TkType type  = ls->consumed.type;
+    int    assoc = (type != TK_CARET); // True: right associative. False: left.
 
-    // For exponentiation enforce right-associativity.
-    parse_precedence(cpl, ls, get_parserule(type)->precedence + (type != TK_CARET));
+    parse_precedence(cpl, ls, get_parserule(type)->precedence + assoc);
 
     // NEQ, GT and GE must be encoded as logical NOT of their counterparts.
     switch (type) {
@@ -130,6 +130,22 @@ static void concat(Compiler *cpl, Lexer *ls)
     luluCpl_emit_oparg1(cpl, OP_CONCAT, argc);
 }
 
+// <identifier> '[' <expression> ']'
+static void index(Compiler *cpl, Lexer *ls)
+{
+    expression(cpl, ls);
+    luluLex_expect_token(ls, TK_RBRACKET, NULL);
+    luluCpl_emit_opcode(cpl, OP_GETTABLE);
+}
+
+// <identifier> '.' <identifier>
+static void field(Compiler *cpl, Lexer *ls)
+{
+    luluLex_expect_token(ls, TK_IDENT, NULL);
+    luluCpl_emit_identifier(cpl, &ls->consumed);
+    luluCpl_emit_opcode(cpl, OP_GETTABLE);
+}
+
 // 2}}} ------------------------------------------------------------------------
 
 // PREFIX ----------------------------------------------------------------- {{{2
@@ -170,57 +186,35 @@ static void string(Compiler *cpl, Lexer *ls)
     luluCpl_emit_constant(cpl, &v);
 }
 
-// Assumes we consumed a `'['` or an identifier representing a table field.
-static bool parse_field(Compiler *cpl, Lexer *ls, bool assigning)
+static void resolve_fields(Compiler *cpl, Lexer *ls)
 {
-    Token *tk = &ls->consumed;
-    switch (tk->type) {
-    case TK_LBRACKET:
-        expression(cpl, ls);
-        luluLex_expect_token(ls, TK_RBRACKET, NULL);
-        break;
-    case TK_PERIOD:
-        if (assigning) {
-            return false;
-        }
-        luluLex_expect_token(ls, TK_IDENT, NULL); // Fall through
-    case TK_IDENT:
-        luluCpl_emit_identifier(cpl, tk);
-        break;
-    default:
-        break;
-    }
-    if (!assigning) {
-        luluCpl_emit_opcode(cpl, OP_GETTABLE);
-    }
-    return true;
-}
-
-static void resolve_variable(Compiler *cpl, Lexer *ls, const Token *id)
-{
-    luluCpl_emit_variable(cpl, id);
-    while (luluLex_match_token_any(ls, TK_LBRACKET, TK_PERIOD)) {
-        parse_field(cpl, ls, false);
+    for (;;) {
+        if (luluLex_match_token(ls, TK_LBRACKET))
+            index(cpl, ls);
+        else if (luluLex_match_token(ls, TK_PERIOD))
+            field(cpl, ls);
+        else
+            break;
     }
 }
 
-static void parse_ctor(Compiler *cpl, Lexer *ls, int t_idx, int *count)
+static void construct_table(Compiler *cpl, Lexer *ls, int t_idx, int *a_len)
 {
+    int k_idx = cpl->stack_usage;
     if (luluLex_match_token(ls, TK_IDENT)) {
-        Token id    = ls->consumed; // Copy by value as lexer might update.
-        int   k_idx = cpl->stack_usage;
+        Token id = ls->consumed; // Copy by value as lexer might update.
         if (luluLex_match_token(ls, TK_ASSIGN)) {
             luluCpl_emit_identifier(cpl, &id);
             expression(cpl, ls);
             luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
         } else {
-            resolve_variable(cpl, ls, &id);
-            *count += 1;
+            luluCpl_emit_variable(cpl, &id);
+            resolve_fields(cpl, ls);
+            *a_len += 1;
         }
     } else if (luluLex_match_token(ls, TK_LBRACKET)) {
-        int k_idx = cpl->stack_usage;
-
-        parse_field(cpl, ls, true);
+        expression(cpl, ls);
+        luluLex_expect_token(ls, TK_RBRACKET, NULL);
         luluLex_expect_token(ls, TK_ASSIGN, "to assign table field");
         expression(cpl, ls);
 
@@ -228,32 +222,30 @@ static void parse_ctor(Compiler *cpl, Lexer *ls, int t_idx, int *count)
         luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
     } else {
         expression(cpl, ls);
-        *count += 1;
+        *a_len += 1;
     }
     luluLex_match_token(ls, TK_COMMA);
 }
 
 static void table(Compiler *cpl, Lexer *ls)
 {
-    int    t_idx  = cpl->stack_usage;
-    int    total  = 0; // Array length plus hashmap length.
-    int    count  = 0; // Array portion length.
-    int    offset = luluCpl_emit_table(cpl);
+    int t_idx  = cpl->stack_usage;
+    int total  = 0; // Array length plus hashmap length.
+    int a_len  = 0; // Array portion length.
+    int offset = luluCpl_emit_table(cpl);
     while (!luluLex_match_token(ls, TK_RCURLY)) {
-        parse_ctor(cpl, ls, t_idx, &count);
+        construct_table(cpl, ls, t_idx, &a_len);
         total += 1;
     }
 
-    if (count > 0) {
-        if (count + 1 > MAX_BYTE3) {
+    if (a_len > 0) {
+        if (a_len > MAX_BYTE3)
             luluLex_error_consumed(ls, "Too many elements in table constructor");
-        }
-        luluCpl_emit_oparg2(cpl, OP_SETARRAY, encode_byte2(t_idx, count));
+        luluCpl_emit_oparg2(cpl, OP_SETARRAY, encode_byte2(t_idx, a_len));
     }
 
-    if (total > 0) {
+    if (total > 0)
         luluCpl_patch_table(cpl, offset, total);
-    }
 }
 
 /**
@@ -265,8 +257,7 @@ static void table(Compiler *cpl, Lexer *ls)
  */
 static void variable(Compiler *cpl, Lexer *ls)
 {
-    Token *id = &ls->consumed;
-    resolve_variable(cpl, ls, id);
+    luluCpl_emit_variable(cpl, &ls->consumed);
 }
 
 static OpCode get_unop(TkType type)
@@ -302,10 +293,10 @@ static void expression(Compiler *cpl, Lexer *ls)
 
 // ASSIGNMENTS ------------------------------------------------------------ {{{2
 
-static void init_assignment(Assignment *list, Assignment *prev, AssignType type)
+static void init_assignment(Assignment *list, Assignment *prev)
 {
     list->prev = prev;
-    list->type = type;
+    list->type = ASSIGN_GLOBAL;
     list->arg  = -1;
 }
 
@@ -359,6 +350,23 @@ static void emit_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
     emit_assignment_tail(cpl, list);
 }
 
+// Get the table itself if this is the first token in an lvalue, or if this
+// is part of a recursive call we need GETTABLE to push a subtable.
+static void discharge_subtable(Compiler *cpl, Assignment *list)
+{
+    switch (list->type) {
+    case ASSIGN_GLOBAL:
+        luluCpl_emit_oparg3(cpl, OP_GETGLOBAL, list->arg);
+        break;
+    case ASSIGN_LOCAL:
+        luluCpl_emit_oparg1(cpl, OP_GETLOCAL,  list->arg);
+        break;
+    case ASSIGN_TABLE:
+        luluCpl_emit_opcode(cpl, OP_GETTABLE);
+        break;
+    }
+}
+
 /**
  * @brief   Emit a variable which is used as a table and the fields thereof.
  *          We do this in order to support multiple assignment semantics.
@@ -375,26 +383,13 @@ static void emit_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
  *          need to track where in the stack the table occurs so the SETTABLE
  *          instruction knows where to look.
  */
-static void discharge_assignment(Compiler *cpl, Lexer *ls, Assignment *list, bool isfield)
+static void discharge_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
 {
-    // Get the table itself if this is the first token in an lvalue, or if this
-    // is part of a recursive call we need GETTABLE to push a subtable.
-    switch (list->type) {
-    case ASSIGN_GLOBAL:
-        luluCpl_emit_oparg3(cpl, OP_GETGLOBAL, list->arg);
-        break;
-    case ASSIGN_LOCAL:
-        luluCpl_emit_oparg1(cpl, OP_GETLOCAL,  list->arg);
-        break;
-    case ASSIGN_TABLE:
-        luluCpl_emit_opcode(cpl, OP_GETTABLE);
-        break;
-    }
+    Token *id = &ls->consumed;
 
     // Emit the key immediately. In recursive calls we'll emit another GETTABLE,
     // otherwise we'll know the key is +1 after the table when we emit SETTABLE.
-    if (isfield) {
-        Token *id = &ls->consumed;
+    if (id->type == TK_PERIOD) {
         luluLex_expect_token(ls, TK_IDENT, "after '.'");
         luluCpl_emit_identifier(cpl, id);
     } else {
@@ -414,9 +409,8 @@ static void identifier_statement(Compiler *cpl, Lexer *ls, Assignment *list)
     if (list->type != ASSIGN_TABLE) {
         int  arg     = luluCpl_resolve_local(cpl, id);
         bool islocal = (arg != -1);
-        if (!islocal) {
+        if (!islocal)
             arg = luluCpl_identifier_constant(cpl, id);
-        }
         set_assignment(list, islocal ? ASSIGN_LOCAL : ASSIGN_GLOBAL, arg);
     }
 
@@ -425,7 +419,8 @@ static void identifier_statement(Compiler *cpl, Lexer *ls, Assignment *list)
     case TK_LBRACKET:
         // Emit the table up to this point then mark `list` as a table.
         luluLex_next_token(ls);
-        discharge_assignment(cpl, ls, list, ls->consumed.type == TK_PERIOD);
+        discharge_subtable(cpl, list);
+        discharge_assignment(cpl, ls, list);
         identifier_statement(cpl, ls, list);
         break;
     case TK_ASSIGN:
@@ -438,7 +433,7 @@ static void identifier_statement(Compiler *cpl, Lexer *ls, Assignment *list)
     case TK_COMMA: {
         // Recursive call so chain elements together.
         Assignment next;
-        init_assignment(&next, list, ASSIGN_GLOBAL);
+        init_assignment(&next, list);
         luluLex_next_token(ls);
         luluLex_expect_token(ls, TK_IDENT, "after ','");
         identifier_statement(cpl, ls, &next);
@@ -494,7 +489,7 @@ static void if_statement(Compiler *cpl, Lexer *ls, bool is_elseif)
 {
     // <condition> 'then'
     expression(cpl, ls);
-    luluLex_expect_token(ls, TK_THEN, "after 'if'/'elseif' condition");
+    luluLex_expect_token(ls, TK_THEN, "after 'if' condition");
     luluCpl_emit_oparg1(cpl, OP_TEST, cast_byte(false));
 
     // jump over the entire if-block when <condition> is falsy.
@@ -527,7 +522,7 @@ static void statement(Compiler *cpl, Lexer *ls)
     switch (ls->lookahead.type) {
     case TK_IDENT: {
         Assignment list;
-        init_assignment(&list, NULL, ASSIGN_GLOBAL); // Ensure no garbage.
+        init_assignment(&list, NULL); // Ensure no garbage.
         luluLex_next_token(ls);
         identifier_statement(cpl, ls, &list);
         break;
@@ -616,8 +611,7 @@ void declaration(Compiler *cpl, Lexer *ls)
 // expressions following it.
 static void parse_precedence(Compiler *cpl, Lexer *ls, Precedence prec)
 {
-    Token     *tk = &ls->lookahead; // NOTE: Is updated as lexer moves along!
-    ParseRule *pr = get_parserule(tk->type);
+    ParseRule *pr = get_parserule(ls->lookahead.type);
 
     if (pr->prefixfn == NULL) {
         luluLex_error_consumed(ls, "Expected a prefix expression");
@@ -627,7 +621,7 @@ static void parse_precedence(Compiler *cpl, Lexer *ls, Precedence prec)
     pr->prefixfn(cpl, ls);
 
     for (;;) {
-        pr = get_parserule(tk->type);
+        pr = get_parserule(ls->lookahead.type);
         if (!(prec <= pr->precedence))
             break;
         luluLex_next_token(ls);
@@ -664,7 +658,7 @@ static ParseRule PARSERULES_LOOKUP[] = {
 
     [TK_LPAREN]     = {&grouping,   NULL,       PREC_NONE},
     [TK_RPAREN]     = {NULL,        NULL,       PREC_NONE},
-    [TK_LBRACKET]   = {NULL,        NULL,       PREC_NONE},
+    [TK_LBRACKET]   = {NULL,        &index,     PREC_CALL},
     [TK_RBRACKET]   = {NULL,        NULL,       PREC_NONE},
     [TK_LCURLY]     = {&table,      NULL,       PREC_NONE},
     [TK_RCURLY]     = {NULL,        NULL,       PREC_NONE},
@@ -673,7 +667,7 @@ static ParseRule PARSERULES_LOOKUP[] = {
     [TK_SEMICOL]    = {NULL,        NULL,       PREC_NONE},
     [TK_VARARG]     = {NULL,        NULL,       PREC_NONE},
     [TK_CONCAT]     = {NULL,        &concat,    PREC_CONCAT},
-    [TK_PERIOD]     = {NULL,        NULL,       PREC_NONE},
+    [TK_PERIOD]     = {NULL,        &field,     PREC_CALL},
     [TK_POUND]      = {&unary,      NULL,       PREC_UNARY},
 
     [TK_PLUS]       = {NULL,        &binary,    PREC_TERMINAL},
