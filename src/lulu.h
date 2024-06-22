@@ -8,8 +8,7 @@
 
 #include "conf.h"
 
-typedef NUMBER_TYPE lulu_Number;
-
+typedef LULU_NUMBER_TYPE   lulu_Number;
 typedef struct lulu_VM     lulu_VM;     // defined in `vm.h`.
 typedef struct lulu_Value  lulu_Value;  // defined in `object.h`.
 typedef struct lulu_String lulu_String; // defined in `object.h`.

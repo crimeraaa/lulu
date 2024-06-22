@@ -38,7 +38,7 @@ lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
     switch (res) {
     case LULU_OK:
         luluFun_init_chunk(&ck, vm->name);
-        luluCpl_init(&cpl, vm);
+        luluCpl_init_compiler(&cpl, vm);
         luluCpl_compile(&cpl, &ls, input, &ck);
         break;
     case LULU_ERROR_RUNTIME:
@@ -150,7 +150,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 
 #define push_numeric(T, fn)                                                    \
     do {                                                                       \
-        char buf[MAX_TOSTRING];                                                \
+        char buf[LULU_MAX_TOSTRING];                                           \
         int  len = fn(buf, va_arg(args, T));                                   \
         lulu_push_lcstring(vm, buf, len);                                      \
     } while (false)
@@ -176,9 +176,9 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
         switch (*spec) {
         case '%': push_character('%');                break;
         case 'c': push_character(va_arg(args, int));  break;
-        case 'f': push_numeric(Number, num_tostring); break;
-        case 'i': push_numeric(int,    int_tostring); break;
-        case 'p': push_numeric(void*,  ptr_tostring); break;
+        case 'f': push_numeric(Number, lulu_num_tostring); break;
+        case 'i': push_numeric(int,    lulu_int_tostring); break;
+        case 'p': push_numeric(void*,  lulu_ptr_tostring); break;
         case 's': {
             const char *s = va_arg(args, char*);
             if (s != NULL)

@@ -110,13 +110,13 @@ OP_SETARRAY:
     index element, but let expressions without explicit keys remain until later.
 
 OP_TEST:
-    Argument B:
+    Argument B1:
     - Either 1 or 0, representing true or false. We test Top[-1] for equality
     in terms of boolean-ness.
 
     This instruction is used to implement if-then statements.
 
-    For example, OP_TEST(A := Top[-1], B := 0) will test for falsiness.
+    For example, OP_TEST(B1 := 0) will test for falsiness.
     If Top[-1] == 0 then we move to the next instruction. We assume that the
     next instruction is an OP_JUMP.
 
@@ -138,17 +138,20 @@ typedef const struct {
 // Please keep this up to date accordingly!
 #define NUM_OPCODES             (OP_RETURN + 1)
 
-#define decode_byte2_msb(N)     (((N) >> bitsize(Byte)) & MAX_BYTE)
+#define decode_byte2_msb(N)     (((N) >> bit_size(Byte)) & MAX_BYTE)
 #define decode_byte2_lsb(N)     ((N) & MAX_BYTE)
 #define decode_byte2(N)         (decode_byte2_msb(N) | decode_byte2_lsb(N))
-#define encode_byte2(msb, lsb)  (((msb) << bitsize(Byte)) | (lsb))
+#define encode_byte2(msb, lsb)  (((msb) << bit_size(Byte)) | (lsb))
 
-#define decode_byte3_msb(N)     (((N) >> bitsize(Byte2)) & MAX_BYTE)
-#define decode_byte3_mid(N)     (((N) >> bitsize(Byte))  & MAX_BYTE)
+#define decode_byte3_msb(N)     (((N) >> bit_size(Byte2)) & MAX_BYTE)
+#define decode_byte3_mid(N)     (((N) >> bit_size(Byte))  & MAX_BYTE)
 #define decode_byte3_lsb(N)     ((N) & MAX_BYTE)
-#define decode_byte3(N)         (decode_byte3_msb(N) | decode_byte3_mid(N) | decode_byte3_lsb(N))
-#define encode_byte3(msb, mid, lsb) (((msb) << bitsize(Byte2))                 \
-                                    | ((mid) << bitsize(Byte))                 \
+#define decode_byte3(N)         (decode_byte3_msb(N) \
+                                | decode_byte3_mid(N) \
+                                | decode_byte3_lsb(N))
+
+#define encode_byte3(msb, mid, lsb) (((msb) << bit_size(Byte2))                 \
+                                    | ((mid) << bit_size(Byte))                 \
                                     | (lsb))
 
 #define byte3_to_sbyte3(N)      ((N) - MAX_SBYTE3)

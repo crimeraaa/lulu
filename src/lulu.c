@@ -6,9 +6,9 @@
 
 static int repl(lulu_VM *vm)
 {
-    char line[MAX_LINE];
+    char line[LULU_MAX_LINE];
     for (;;) {
-        fputs(PROMPT, stdout);
+        fputs(LULU_PROMPT, stdout);
         if (!fgets(line, sizeof(line), stdin)) {
             fputc('\n', stdout);
             break;

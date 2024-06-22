@@ -75,13 +75,13 @@ static void arith_tm(lulu_VM *vm, StackID a, StackID b, TagMethod tm)
     ToNumber cb = luluVal_to_number(b);
     if (ca.ok && cb.ok) {
         switch (tm) {
-        case TM_ADD: setv_number(a, num_add(ca.number, cb.number)); break;
-        case TM_SUB: setv_number(a, num_sub(ca.number, cb.number)); break;
-        case TM_MUL: setv_number(a, num_mul(ca.number, cb.number)); break;
-        case TM_DIV: setv_number(a, num_div(ca.number, cb.number)); break;
-        case TM_MOD: setv_number(a, num_mod(ca.number, cb.number)); break;
-        case TM_POW: setv_number(a, num_pow(ca.number, cb.number)); break;
-        case TM_UNM: setv_number(a, num_unm(ca.number));            break;
+        case TM_ADD: setv_number(a, lulu_num_add(ca.number, cb.number)); break;
+        case TM_SUB: setv_number(a, lulu_num_sub(ca.number, cb.number)); break;
+        case TM_MUL: setv_number(a, lulu_num_mul(ca.number, cb.number)); break;
+        case TM_DIV: setv_number(a, lulu_num_div(ca.number, cb.number)); break;
+        case TM_MOD: setv_number(a, lulu_num_mod(ca.number, cb.number)); break;
+        case TM_POW: setv_number(a, lulu_num_pow(ca.number, cb.number)); break;
+        case TM_UNM: setv_number(a, lulu_num_unm(ca.number));            break;
         default:
             // Should be unreachable.
             assert(false);
@@ -118,8 +118,8 @@ lulu_Status luluVM_execute(lulu_VM *vm)
 
 #define binary_op_or_tm(set_fn, op_fn, tm_fn, tm)                              \
 {                                                                              \
-    StackID a = poke_top(vm, -2);                                               \
-    StackID b = poke_top(vm, -1);                                               \
+    StackID a = poke_top(vm, -2);                                              \
+    StackID b = poke_top(vm, -1);                                              \
     if (is_number(a) && is_number(b)) {                                        \
         Number na = as_number(a);                                              \
         Number nb = as_number(b);                                              \
@@ -209,21 +209,21 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             lulu_pop(vm, 1);
             break;
         }
-        case OP_LT:  compare_op_or_tm(num_lt, TM_LT); break;
-        case OP_LE:  compare_op_or_tm(num_le, TM_LE); break;
-        case OP_ADD: arith_op_or_tm(num_add, TM_ADD); break;
-        case OP_SUB: arith_op_or_tm(num_sub, TM_SUB); break;
-        case OP_MUL: arith_op_or_tm(num_mul, TM_MUL); break;
-        case OP_DIV: arith_op_or_tm(num_div, TM_DIV); break;
-        case OP_MOD: arith_op_or_tm(num_mod, TM_MOD); break;
-        case OP_POW: arith_op_or_tm(num_pow, TM_POW); break;
+        case OP_LT:  compare_op_or_tm(lulu_num_lt, TM_LT); break;
+        case OP_LE:  compare_op_or_tm(lulu_num_le, TM_LE); break;
+        case OP_ADD: arith_op_or_tm(lulu_num_add, TM_ADD); break;
+        case OP_SUB: arith_op_or_tm(lulu_num_sub, TM_SUB); break;
+        case OP_MUL: arith_op_or_tm(lulu_num_mul, TM_MUL); break;
+        case OP_DIV: arith_op_or_tm(lulu_num_div, TM_DIV); break;
+        case OP_MOD: arith_op_or_tm(lulu_num_mod, TM_MOD); break;
+        case OP_POW: arith_op_or_tm(lulu_num_pow, TM_POW); break;
         case OP_CONCAT:
             // Assume at least 2 args since concat is an infix expression.
             lulu_concat(vm, read_byte());
             break;
         case OP_UNM: {
             if (is_number(arg_a))
-                setv_number(arg_a, num_unm(as_number(arg_a)));
+                setv_number(arg_a, lulu_num_unm(as_number(arg_a)));
             else
                 arith_tm(vm, arg_a, arg_a, TM_UNM);
             break;
@@ -250,12 +250,12 @@ lulu_Status luluVM_execute(lulu_VM *vm)
         }
         case OP_TEST:
             // Don't convert as other opcodes may need the value still.
+            // Skip the OP_JUMP if truthy as it's only needed when falsy.
             if (!is_falsy(poke_top(vm, -1)) == cast(bool, read_byte()))
                 vm->ip += get_opsize(OP_JUMP);
             break;
-        // NOTE: At this point, `vm->ip` points to after OP_TEST and <cond>.
         case OP_JUMP:
-            vm->ip += read_byte3();
+            vm->ip += cast(SByte3, byte3_to_sbyte3(read_byte3()));
             break;
         case OP_RETURN:
             return LULU_OK;

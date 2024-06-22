@@ -103,7 +103,7 @@ static void setarray_op(const Byte *ip)
 static void jump_op(const Byte *ip, int offset)
 {
     // `ip` points to OP_JUMP itself, so need to adjust.
-    int jump = read_byte3(ip) + get_opsize(OP_JUMP);
+    int jump = byte3_to_sbyte3(read_byte3(ip)) + get_opsize(OP_JUMP);
     printf("goto %04x", offset + jump);
 }
 
@@ -126,6 +126,7 @@ int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
     else
         printf("%4i ", ln);
     printf("%-16s ", get_opinfo(op).name);
+
     switch (op) {
     case OP_CONSTANT:
     case OP_GETGLOBAL:

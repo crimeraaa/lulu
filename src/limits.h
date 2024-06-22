@@ -7,7 +7,7 @@
 
 #include "lulu.h"
 
-#define _ARG_PLACEHOLDER_1 0,
+#define IS_ENABLED_PLACEHOLDER_1 0,
 
 /**
  * @brief   Helps perform dead-code elimination and less reliance on `#ifdef`
@@ -24,18 +24,18 @@
 /**
  * @details Step 2: Given the expanded config previously, try to concatenate it
  *          to the token `_arg_placeholder_`. E.g. if we got `1`, we would
- *          receive `_arg_placeholder_1` which will be cherry picked in the next
+ *          receive `IS_ENABLED_PLACEHOLDER_1` which will be cherry picked in the next
  *          step. Otherwise the resulting token will not be expandable and end
  *          up cherry picking 0.
  */
-#define _is_enabled_a(config) _is_enabled_b(_ARG_PLACEHOLDER_##config)
+#define _is_enabled_a(config) _is_enabled_b(IS_ENABLED_PLACEHOLDER_##config)
 
 /**
  * @details Step 3: If the macro expands to anything, the expansion will now be
  *          `_is_enabled_c({expansion}, 1, 0)`.
  *
  *          In the case of macros explicitly defined to be 1, we will insert
- *          _ARG_PLACEHOLDER_1. Otherwise insert the original expansion as-is.
+ *          IS_ENABLED_PLACEHOLDER_1. Otherwise insert the original expansion as-is.
  *
  *          If there is no expansion, then we simply have `_is_enabled_c(1, 0)`.
  */
@@ -58,6 +58,11 @@
 
 #endif /* DEBUG_USE_ASSERT */
 
+typedef LULU_BYTE   Byte;
+typedef LULU_BYTE2  Byte2;
+typedef LULU_BYTE3  Byte3;
+typedef LULU_SBYTE3 SByte3;
+
 #define BITS_PER_BYTE       CHAR_BIT
 
 #define eprintln(s)         fputs(s "\n", stderr)
@@ -70,25 +75,17 @@
 #define logprintln(s)       eprintln(logformat(s))
 #define logprintf(s, ...)   eprintf(logformat(s), __VA_ARGS__)
 #define logprintfln(s, ...) eprintfln(logformat(s), __VA_ARGS__)
-
-// Dangerous to use this for C++, so be careful!
-#define compoundlit(T, ...) (T){__VA_ARGS__}
-
-// Will not work for pointer-decayed arrays.
-#define array_len(array)    (sizeof((array)) / sizeof((array)[0]))
+#define array_len(array)    lulu_array_len(array)
 #define array_size(T, N)    (sizeof(T) * (N))
-#define array_lit(T, ...)   compoundlit(T[], __VA_ARGS__)
+#define array_lit(T, ...)   lulu_compound_lit(T[], __VA_ARGS__)
 
 // Use when `P` is a pointer to a non-void type. Useful to make allocations
 // a little more robust by relying on pointer for sizeof instead of type.
 #define parray_size(P, N)   (sizeof(*(P)) * (N))
 
-// Helper macro for functions that expects varargs of the same type.
-#define vargs_count(T, ...) (sizeof(array_lit(T, __VA_ARGS__)) / sizeof(T))
-
 // Get the number of bits that `N` bytes holds.
 #define bytes_to_bits(N)    ((N) * BITS_PER_BYTE)
-#define bitsize(T)          bytes_to_bits(sizeof(T))
+#define bit_size(T)         bytes_to_bits(sizeof(T))
 
 #define cast(T, expr)       ((T)(expr))
 #define cast_int(expr)      cast(int, expr)
@@ -99,14 +96,15 @@
 #define unused2(x, y)       unused(x),     unused(y)
 #define unused3(x, y, z)    unused2(x, y), unused(z)
 
-#define cstr_len(s)         (array_len(s) - 1)
-#define cstr_eq(a, b, n)    (memcmp(a, b, n) == 0)
-
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)
 #define MAX_SBYTE3          (MAX_BYTE3 >> 1)
 #define MIN_SBYTE3          (~MAX_SBYTE3)
+
+#define cstr_len(s)         lulu_cstr_len(s)
+#define cstr_eq(a, b, n)    lulu_cstr_eq(a, b, n)
+#define cstr_tonumber(s, p) lulu_cstr_tonumber(s, p)
 
 #define in_incrange(n, lo, hi)      ((n) >= (lo) && (n) <= (hi))
 #define in_excrange(n, lo, hi)      ((n) >= (lo) && (n) < (hi))

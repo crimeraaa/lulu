@@ -16,7 +16,7 @@ typedef struct {
 } Local;
 
 typedef struct {
-    Local    locals[MAX_LOCALS];
+    Local    locals[LULU_MAX_LOCALS];
     Lexer   *lexer;       // Shared across multiple Compiler instances.
     lulu_VM *vm;          // Track and modify parent VM state as needed.
     Chunk   *chunk;       // Chunk for this function/closure.
@@ -27,8 +27,8 @@ typedef struct {
     OpCode   prev_opcode; // Used to fold consecutive similar operations.
 } Compiler;
 
-void luluCpl_init(Compiler *cpl, lulu_VM *vm);
-void luluCpl_end(Compiler *cpl);
+void luluCpl_init_compiler(Compiler *cpl, lulu_VM *vm);
+void luluCpl_end_compiler(Compiler *cpl);
 void luluCpl_compile(Compiler *cpl, Lexer *ls, const char *input, Chunk *chunk);
 
 void luluCpl_emit_opcode(Compiler *cpl, OpCode op);

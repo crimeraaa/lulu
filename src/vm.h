@@ -9,7 +9,7 @@
 typedef Value *StackID; // Pointer to a Lua stack value.
 
 struct lulu_VM {
-    Value       stack[MAX_STACK + STACK_RESERVED];
+    Value       stack[LULU_MAX_STACK + LULU_STACK_RESERVED];
     Allocator   allocator; // By default, holds a NULL context.
     StackID     top;       // Pointer to first free slot in the stack.
     StackID     base;      // Pointer to bottom of current stack frame.

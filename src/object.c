@@ -35,31 +35,31 @@ ToNumber luluVal_to_number(const Value *val)
     return conv;
 }
 
-StringView luluVal_to_cstring(const Value *val, char *buf)
+const char *luluVal_to_cstring(const Value *val, char *buf)
 {
     size_t len = 0;
     switch (get_tag(val)) {
     case TYPE_NIL:
-        return sv_literal("nil");
+        return "nil";
     case TYPE_BOOLEAN:
-        return as_boolean(val) ? sv_literal("true") : sv_literal("false");
+        return as_boolean(val) ? "true" : "false";
     case TYPE_NUMBER:
-        len = num_tostring(buf, as_number(val));
+        len = lulu_num_tostring(buf, as_number(val));
         break;
     case TYPE_STRING:
-        return sv_create_from_len(as_string(val)->data, as_string(val)->len);
+        return as_string(val)->data;
     case TYPE_TABLE:
         len = sprintf(buf, "%s: %p", get_typename(val), as_pointer(val));
         break;
     }
     buf[len] = '\0';
-    return sv_create_from_len(buf, len + 1);
+    return buf;
 }
 
 void luluVal_print_value(const Value *val)
 {
-    char buf[MAX_TOSTRING];
-    printf("%s", luluVal_to_cstring(val, buf).begin);
+    char buf[LULU_MAX_TOSTRING];
+    printf("%s", luluVal_to_cstring(val, buf));
 }
 
 bool luluVal_equal(const Value *a, const Value *b)
@@ -70,7 +70,7 @@ bool luluVal_equal(const Value *a, const Value *b)
     switch (get_tag(a)) {
     case TYPE_NIL:      return true;
     case TYPE_BOOLEAN:  return as_boolean(a) == as_boolean(b);
-    case TYPE_NUMBER:   return num_eq(as_number(a), as_number(b));
+    case TYPE_NUMBER:   return lulu_num_eq(as_number(a), as_number(b));
     case TYPE_STRING:   // We assume all objects are correctly interned.
     case TYPE_TABLE:    return as_object(a) == as_object(b);
     }

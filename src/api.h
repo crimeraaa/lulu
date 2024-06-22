@@ -25,7 +25,7 @@ void    lulu_push_string(lulu_VM *vm, lulu_String *s);
 void    lulu_push_cstring(lulu_VM *vm, const char *s);
 void    lulu_push_lcstring(lulu_VM *vm, const char *s, size_t len);
 void    lulu_push_table(lulu_VM *vm, lulu_Table *t);
-#define lulu_push_literal(vm, s) lulu_push_lcstring((vm), (s), sizeof(s) - 1)
+#define lulu_push_literal(vm, s) lulu_push_lcstring((vm), (s), lulu_cstr_len(s))
 
 /**
  * @brief   Internal use for writing simple formatted messages.

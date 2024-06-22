@@ -160,9 +160,8 @@ static void multiline(Lexer *ls, int lvl)
             return;
         }
         // Think of this as the iterator increment.
-        if (next_char(ls) == '\n') {
+        if (next_char(ls) == '\n')
             ls->line += 1;
-        }
     }
 }
 
@@ -233,9 +232,8 @@ static void skip_whitespace(Lexer *ls)
 static TkType check_keyword(TkType type, StringView word)
 {
     StringView kw = LULU_TKINFO[type];
-    if (kw.len == word.len && cstr_eq(kw.begin, word.begin, word.len)) {
+    if (kw.len == word.len && cstr_eq(kw.begin, word.begin, word.len))
         return type;
-    }
     return TK_IDENT;
 }
 

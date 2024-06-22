@@ -8,7 +8,7 @@
 #include "debug.h"
 #endif
 
-void luluCpl_init(Compiler *cpl, lulu_VM *vm)
+void luluCpl_init_compiler(Compiler *cpl, lulu_VM *vm)
 {
     cpl->lexer       = NULL;
     cpl->vm          = vm;
@@ -32,7 +32,7 @@ static void adjust_stackinfo(Compiler *cpl, OpCode op, int delta)
     // If both push and pop are VAR_DELTA then something is horribly wrong.
     cpl->stack_usage += push - pop;
     cpl->prev_opcode = op;
-    if (cpl->stack_usage > MAX_STACK)
+    if (cpl->stack_usage > LULU_MAX_STACK)
         luluLex_error_consumed(ls, "Function uses too many stack slots");
     if (cpl->stack_usage > cpl->stack_total)
         cpl->stack_total = cpl->stack_usage;
@@ -154,9 +154,16 @@ int luluCpl_emit_jump(Compiler *cpl)
     return offset;
 }
 
+static size_t encode_jump(Compiler *cpl, int offset)
+{
+    // len - offset = index of last arg, sub opsize to get index of op itself.
+    size_t jump = current_chunk(cpl)->len - offset - get_opsize(OP_JUMP);
+    return sbyte3_to_byte3(jump);
+}
+
 void luluCpl_patch_jump(Compiler *cpl, int offset)
 {
-    size_t arg = current_chunk(cpl)->len - offset - get_opsize(OP_JUMP);
+    size_t arg = encode_jump(cpl, offset);
     Byte  *ip  = &current_chunk(cpl)->code[offset]; // jump opcode itself
     if (arg > MAX_BYTE3)
         luluLex_error_consumed(cpl->lexer, "Too much code to jump over");
@@ -197,7 +204,7 @@ int luluCpl_make_constant(Compiler *cpl, const Value *vl)
 {
     Lexer *ls = cpl->lexer;
     int    i  = luluFun_add_constant(cpl->vm, current_chunk(cpl), vl);
-    if (i + 1 > MAX_CONSTS)
+    if (i + 1 > LULU_MAX_CONSTS)
         luluLex_error_consumed(ls, "Too many constants in current chunk");
     return i;
 }
@@ -225,7 +232,7 @@ int luluCpl_identifier_constant(Compiler *cpl, const Token *id)
     return luluCpl_make_constant(cpl, &wrap);
 }
 
-void luluCpl_end(Compiler *cpl)
+void luluCpl_end_compiler(Compiler *cpl)
 {
     luluCpl_emit_return(cpl);
     if (is_enabled(DEBUG_PRINT_CODE)) {
@@ -242,9 +249,8 @@ void luluCpl_begin_scope(Compiler *cpl)
 {
     Lexer *ls = cpl->lexer;
     cpl->scope_depth += 1;
-    if (cpl->scope_depth > MAX_LEVELS) {
-        luluLex_error_lookahead(ls, "Function uses too many syntax levels");
-    }
+    if (cpl->scope_depth > LULU_MAX_LEVELS)
+        luluLex_error_lookahead(ls, stringify(LULU_MAX_LEVELS) "+ syntax levels");
 }
 
 void luluCpl_end_scope(Compiler *cpl)
@@ -275,16 +281,16 @@ void luluCpl_compile(Compiler *cpl, Lexer *ls, const char *input, Chunk *chunk)
         declaration(cpl, ls);
     }
     luluCpl_end_scope(cpl);
-    luluCpl_end(cpl);
+    luluCpl_end_compiler(cpl);
 }
 
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
 
 static bool identifiers_equal(const Token *a, const Token *b)
 {
-    const StringView *s1 = &a->view;
-    const StringView *s2 = &b->view;
-    return s1->len == s2->len && cstr_eq(s1->begin, s2->begin, s1->len);
+    const StringView s1 = a->view;
+    const StringView s2 = b->view;
+    return s1.len == s2.len && lulu_cstr_eq(s1.begin, s2.begin, s1.len);
 }
 
 int luluCpl_resolve_local(Compiler *cpl, const Token *id)
@@ -301,8 +307,8 @@ int luluCpl_resolve_local(Compiler *cpl, const Token *id)
 void luluCpl_add_local(Compiler *cpl, const Token *id)
 {
     Lexer *ls = cpl->lexer;
-    if (cpl->scope_count + 1 > MAX_LOCALS)
-        luluLex_error_consumed(ls, "More than " stringify(MAX_LOCALS) " local variables");
+    if (cpl->scope_count + 1 > LULU_MAX_LOCALS)
+        luluLex_error_consumed(ls, stringify(LULU_MAX_LOCALS) "+ local variables");
     Local *loc = &cpl->locals[cpl->scope_count++];
     loc->ident = *id;
     loc->depth = -1;

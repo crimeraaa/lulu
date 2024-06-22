@@ -14,23 +14,40 @@
 #include <setjmp.h>         /* `jmp_buf`, `setjmp`, `longjmp` */
 #include <string.h>         /* `str*` family, `mem*` family */
 
-// Must be large enough to hold all `OpCode` enumerations as well as act as part
-// of each instruction's operand. This MUST be unsigned.
-typedef uint8_t     Byte;
-typedef uint16_t    Byte2;
-typedef uint32_t    Byte3;  // We only need 24 bits at most but this will do.
-typedef int32_t     SByte3; // Signed Byte3.
+/**
+ * @brief The following properties are necessary for each macro.
+ *
+ * @details LULU_BYTE:
+ *          Unsigned. Must be large enough to hold all `OpCode` enumerations.
+ *          It will also act as the fundamental unit for our bytecode.
+ *
+ * @details LULU_BYTE2:
+ *          Unsigned. Must be large enough to hold 2 `LULU_BYTE`'s.
+ *          E.g. if `LULU_BYTE` is 8-bits then this should at least be 16 bits.
+ *
+ * @details LULU_BYTE3:
+ *          Unsigned. Must be large enough to hold 3 `LULU_BYTE`'s.
+ *          E.g. if `LULU_BYTE` is 8-bits then this should at least be 24 bits.
+ *          You may use 32 bit integers.
+ *
+ * @details LULU_SBYTE3:
+ *          Signed counterpart of `LULU_BYTE3`.
+ */
+#define LULU_BYTE       uint8_t
+#define LULU_BYTE2      uint16_t
+#define LULU_BYTE3      uint32_t
+#define LULU_SBYTE3     int32_t
 
-#define PROMPT      "> "
-#define MAX_STACK   256
-#define MAX_LINE    256
-#define MAX_LOCALS  200
-#define MAX_CONSTS  0x1000000
-#define MAX_LEVELS  200
+#define LULU_PROMPT     "> "
+#define LULU_MAX_STACK  256
+#define LULU_MAX_LINE   256
+#define LULU_MAX_LOCALS 200
+#define LULU_MAX_CONSTS 0x1000000
+#define LULU_MAX_LEVELS 10000
 
 // The entire VM will always reserve some extra stack space for error message
 // formatting and such.
-#define STACK_RESERVED  16
+#define LULU_STACK_RESERVED  16
 
 // NUMBER TYPE INFORMATION ------------------------------------------------ {{{1
 
@@ -47,27 +64,38 @@ typedef int32_t     SByte3; // Signed Byte3.
  *
  * @note    The default is 64, and we assume both numbers and pointers fit here.
 */
-#define MAX_TOSTRING        64
-#define NUMBER_TYPE         double
-#define NUMBER_SCAN         "%lf"
-#define NUMBER_FMT          "%.14g"
-#define num_tostring(s, n)  snprintf((s), MAX_TOSTRING, NUMBER_FMT, (n))
-#define num_add(a, b)       ((a) + (b))
-#define num_sub(a, b)       ((a) - (b))
-#define num_mul(a, b)       ((a) * (b))
-#define num_div(a, b)       ((a) / (b))
-#define num_mod(a, b)       (fmod(a, b))
-#define num_pow(a, b)       (pow(a, b))
-#define num_unm(a)          (-(a))
-#define num_eq(a, b)        ((a) == (b))
-#define num_lt(a, b)        ((a) <  (b))
-#define num_le(a, b)        ((a) <= (b))
-#define num_isnan(a)        (!num_eq(a, b))
-
-#define cstr_tonumber(s, p) strtod(s, p)
-#define ptr_tostring(s, p)  snprintf((s), MAX_TOSTRING, "%p", (p))
-#define int_tostring(s, i)  snprintf((s), MAX_TOSTRING, "%i", (i))
+#define LULU_MAX_TOSTRING       64
+#define LULU_NUMBER_TYPE        double
+#define LULU_NUMBER_SCAN        "%lf"
+#define LULU_NUMBER_FMT         "%.14g"
+#define lulu_num_tostring(s, n) sprintf((s), LULU_NUMBER_FMT, (n))
+#define lulu_num_add(a, b)      ((a) + (b))
+#define lulu_num_sub(a, b)      ((a) - (b))
+#define lulu_num_mul(a, b)      ((a) * (b))
+#define lulu_num_div(a, b)      ((a) / (b))
+#define lulu_num_mod(a, b)      (fmod(a, b))
+#define lulu_num_pow(a, b)      (pow(a, b))
+#define lulu_num_unm(a)         (-(a))
+#define lulu_num_eq(a, b)       ((a) == (b))
+#define lulu_num_lt(a, b)       ((a) <  (b))
+#define lulu_num_le(a, b)       ((a) <= (b))
+#define lulu_num_isnan(a)       (!num_eq(a, b))
 
 // 1}}} ------------------------------------------------------------------------
+
+// C99-style compound literals have very different semantics in C++.
+#ifdef __cplusplus
+#define lulu_compound_lit(T, ...)   {__VA_ARGS__}
+#else
+#define lulu_compound_lit(T, ...)   (T){__VA_ARGS__}
+#endif
+
+// Will not work for pointer-decayed arrays.
+#define lulu_array_len(arr)         (sizeof((arr)) / sizeof((arr)[0]))
+#define lulu_cstr_len(s)            (lulu_array_len(s) - 1)
+#define lulu_cstr_eq(a, b, n)       (memcmp((a), (b), (n)) == 0)
+#define lulu_cstr_tonumber(s, p)    strtod(s, p)
+#define lulu_ptr_tostring(s, p)     sprintf((s), "%p", (p))
+#define lulu_int_tostring(s, i)     sprintf((s), "%i", (i))
 
 #endif /* LULU_CONFIGURATION_H */
