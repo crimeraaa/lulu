@@ -27,7 +27,6 @@ typedef struct {
     OpCode   prev_opcode; // Used to fold consecutive similar operations.
 } Compiler;
 
-// We pass a Lexer and a VM to be shared across compiler instances.
 void luluCpl_init(Compiler *cpl, lulu_VM *vm);
 void luluCpl_end(Compiler *cpl);
 void luluCpl_compile(Compiler *cpl, Lexer *ls, const char *input, Chunk *chunk);
@@ -39,12 +38,11 @@ void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg);
 void luluCpl_emit_return(Compiler *cpl);
 void luluCpl_emit_identifier(Compiler *cpl, const Token *id);
 
-// Returns index of `OP_JUMP` in the chunk's bytecode.
+// Returns the index of `OP_JUMP` in the bytecode.
 int  luluCpl_emit_jump(Compiler *cpl);
 void luluCpl_patch_jump(Compiler *cpl, int offset);
 
-// Returns the index of `OP_NEWTABLE` in the bytecode. We cannot use pointers
-// due to potential invalidation when reallocating the array.
+// Returns the index of `OP_NEWTABLE` in the bytecode.
 int  luluCpl_emit_table(Compiler *cpl);
 void luluCpl_patch_table(Compiler *cpl, int offset, Byte3 size);
 

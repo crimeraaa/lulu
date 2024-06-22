@@ -249,11 +249,9 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             break;
         }
         case OP_TEST:
-            // <cond> is not used elsewhere so converting it should be safe.
-            // Jump over OP_JUMP and its arguments if we need to skip it.
-            if (lulu_to_boolean(vm, -1) != cast(bool, read_byte()))
+            // Don't convert as other opcodes may need the value still.
+            if (!is_falsy(poke_top(vm, -1)) == cast(bool, read_byte()))
                 vm->ip += get_opsize(OP_JUMP);
-            lulu_pop(vm, 1);
             break;
         // NOTE: At this point, `vm->ip` points to after OP_TEST and <cond>.
         case OP_JUMP:

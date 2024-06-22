@@ -156,14 +156,14 @@ int luluCpl_emit_jump(Compiler *cpl)
 
 void luluCpl_patch_jump(Compiler *cpl, int offset)
 {
-    size_t jump = current_chunk(cpl)->len - offset - get_opsize(OP_JUMP);
-    Byte  *ip   = &current_chunk(cpl)->code[offset]; // OP_JUMP itself
-    if (jump > MAX_BYTE3)
+    size_t arg = current_chunk(cpl)->len - offset - get_opsize(OP_JUMP);
+    Byte  *ip  = &current_chunk(cpl)->code[offset]; // jump opcode itself
+    if (arg > MAX_BYTE3)
         luluLex_error_consumed(cpl->lexer, "Too much code to jump over");
 
-    ip[1] = decode_byte3_msb(jump);
-    ip[2] = decode_byte3_mid(jump);
-    ip[3] = decode_byte3_lsb(jump);
+    ip[1] = decode_byte3_msb(arg);
+    ip[2] = decode_byte3_mid(arg);
+    ip[3] = decode_byte3_lsb(arg);
 }
 
 void luluCpl_emit_identifier(Compiler *cpl, const Token *id)

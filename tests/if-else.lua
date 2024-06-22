@@ -1,26 +1,22 @@
-local cond = true
 print("if-true:");
-if cond then
+if true then
     print("yay");
 end;
 
 print("if-false:")
-cond = false
-if cond then
-    print("nay");
+if false then
+    print("yay");
 end;
 
 print("if-true-else")
-cond = true
-if cond then
+if true then
     print("yay");
 else
     print("nay");
 end;
 
 print("if-false-else");
-cond = not cond
-if cond then
+if false then
     print("yay");
 else
     print("nay");

@@ -477,40 +477,37 @@ static void if_block(Compiler *cpl, Lexer *ls)
 
 static void discharge_jump(Compiler *cpl, int *jump)
 {
-    int prev = *jump;
-    *jump    = luluCpl_emit_jump(cpl);
+    int prev  = *jump;
+    *jump     = luluCpl_emit_jump(cpl);
     luluCpl_patch_jump(cpl, prev);
+    luluCpl_emit_oparg1(cpl, OP_POP, 1); // pop previous <condition>.
+    cpl->stack_usage += 1; // Undo weirdness from POP w/o a corresponding push
 }
 
 // The recursion is hacky but I can't think of a better way.
 // It's necessary so all <if-block> and <elseif-block> know where 'end' is.
 // See: https://github.com/crimeraaa/lulu/blob/main/.archive-2024-03-24/compiler.c#L1483
-static void if_statement(Compiler *cpl, Lexer *ls, bool is_elseif)
+static void if_statement(Compiler *cpl, Lexer *ls)
 {
     // <condition> 'then'
     expression(cpl, ls);
     luluLex_expect_token(ls, TK_THEN, "after 'if' condition");
-    luluCpl_emit_oparg1(cpl, OP_TEST, cast_byte(false));
+    luluCpl_emit_oparg1(cpl, OP_TEST, cast_byte(true));
 
     // jump over the entire if-block when <condition> is falsy.
     int if_jump = luluCpl_emit_jump(cpl);
+    luluCpl_emit_oparg1(cpl, OP_POP, 1);
     if_block(cpl, ls);
 
-    while (luluLex_match_token(ls, TK_ELSEIF)) {
-        // <if-block> end should jump over <elseif-block> and the jump thereof.
-        discharge_jump(cpl, &if_jump);
-        if_statement(cpl, ls, true);
-    }
-
-    if (luluLex_match_token(ls, TK_ELSE)) {
-        // <if-block> end should jump over <else-body> and the jump thereof.
-        discharge_jump(cpl, &if_jump);
+    // <if-block> end should jump over everything that follows.
+    discharge_jump(cpl, &if_jump);
+    if (luluLex_match_token(ls, TK_ELSEIF))
+        if_statement(cpl, ls);
+    if (luluLex_match_token(ls, TK_ELSE))
         do_block(cpl, ls);
-    }
 
+    // For all cases (including recursive), they should jump to the same 'end'.
     luluCpl_patch_jump(cpl, if_jump);
-    if (!is_elseif)
-        luluLex_expect_token(ls, TK_END, "after 'if' body");
 }
 
 // 3}}} ------------------------------------------------------------------------
@@ -538,7 +535,8 @@ static void statement(Compiler *cpl, Lexer *ls)
         break;
     case TK_IF:
         luluLex_next_token(ls);
-        if_statement(cpl, ls, false);
+        if_statement(cpl, ls);
+        luluLex_expect_token(ls, TK_END, "after 'if' body");
         break;
     default:
         luluLex_error_lookahead(ls, "Expected a statement");

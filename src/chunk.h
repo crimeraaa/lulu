@@ -72,7 +72,7 @@ OP_UNM,      // -       | x                     | -x                      |     
 OP_NOT,      // -       | x                     | not x                   |                      |
 OP_LEN,      // -       | x                     | #x                      |                      |
 OP_PRINT,    // B1      | Top[-B1...-1]         | -                       | print(...)           |
-OP_TEST,     // B1      | Top[-1]               | -                       | if Top[-1] != B1 ip++|
+OP_TEST,     // B1      | Top[-1]               | Top[-1]                 | if Top[-1] != B1 ip++|
 OP_JUMP,     // sB3     | -                     | -                       | ip += sB3            |
 OP_RETURN,   // -       | -                     |                         |                      |
 } OpCode;

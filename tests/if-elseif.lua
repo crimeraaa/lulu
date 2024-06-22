@@ -1,15 +1,10 @@
--- This program should print "huh"
-local x
-if x == true then
-    local s = "yay"
-    print("s:", s)
+local x = false -- OP_FALSE ; push false
+if x --[[OP_GETLOCAL 0, OP_TEST ]] then
+    print("yay")
+    -- OP_JUMP ; goto 'end'
 elseif x == false then
-    local s = "nay"
-    print("s:", s)
-elseif x == 1 then
-    local s = "#1"
-    print("s:", s)
+    print("nay")
+    -- OP_JUMP ; goto 'end'
 else
-    local s = "huh"
-    print("s:", s)
+    print("huh")
 end

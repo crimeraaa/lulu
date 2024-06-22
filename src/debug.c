@@ -109,9 +109,9 @@ static void jump_op(const Byte *ip, int offset)
 
 static void test_op(const Byte *ip, int offset)
 {
-    const char *arg  = read_byte(ip) ? "true" : "false";
+    const char *arg  = read_byte(ip) ? "truthy" : "falsy";
     const int   jump = offset + get_opsize(OP_JUMP) + get_opsize(OP_TEST);
-    printf("if Top[-1] != %s goto %04x", arg, jump);
+    printf("if Top[-1] is %s goto %04x", arg, jump);
 }
 
 int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
@@ -137,10 +137,10 @@ int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
     case OP_NEWTABLE:  newtable_op(ip);         break;
     case OP_CONCAT:    simple_op("Concat", ip); break;
     case OP_PRINT:     simple_op("Print", ip);  break;
-    case OP_TEST:      test_op(ip, offset);     break;
     case OP_SETTABLE:  settable_op(ip);         break;
     case OP_SETARRAY:  setarray_op(ip);         break;
-    case OP_JUMP:      jump_op(ip, offset); break;
+    case OP_TEST:      test_op(ip, offset);     break;
+    case OP_JUMP:      jump_op(ip, offset);     break;
     case OP_GETTABLE:
     case OP_TRUE:
     case OP_FALSE:
