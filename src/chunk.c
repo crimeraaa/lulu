@@ -32,7 +32,7 @@ OpInfo LULU_OPINFO[] = {
     [OP_NOT]        = {"NOT",           0,          1,          1},
     [OP_LEN]        = {"LEN",           0,          1,          1},
     [OP_PRINT]      = {"PRINT",         1,          0,          VAR_DELTA},
-    [OP_TEST]       = {"TEST",          1,          0,          0},
+    [OP_TEST]       = {"TEST",          0,          0,          0},
     [OP_JUMP]       = {"JUMP",          3,          0,          0},
     [OP_RETURN]     = {"RETURN",        0,          0,          0},
 };

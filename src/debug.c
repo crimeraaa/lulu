@@ -51,7 +51,7 @@ void luluDbg_disassemble_chunk(const Chunk *ck)
 
 // Strangely, the macro version will cause an unsequenced modification error.
 // Yet `vm.c` continues to compile just fine!
-static int read_byte3(const Byte *ip)
+static Byte3 read_byte3(const Byte *ip)
 {
     Byte msb = read_byte(ip);
     Byte mid = read_byte(ip);
@@ -103,15 +103,24 @@ static void setarray_op(const Byte *ip)
 static void jump_op(const Byte *ip, int offset)
 {
     // `ip` points to OP_JUMP itself, so need to adjust.
-    int jump = byte3_to_sbyte3(read_byte3(ip)) + get_opsize(OP_JUMP);
-    printf("goto %04x", offset + jump);
+    Byte3 jump = read_byte3(ip);
+    Byte3 addr = offset + get_opsize(OP_JUMP);
+    bool  neg  = check_sbyte3(jump);
+    char  sign = (neg) ? '-' : '+';
+    if (neg) {
+        addr -= decode_sbyte3(jump);
+        jump = offset - addr;
+    } else {
+        addr += jump;
+    }
+    printf("ip %c= %x ; goto %04x", sign, jump, addr);
 }
 
-static void test_op(const Byte *ip, int offset)
+static void test_op(int offset)
 {
-    const char *arg  = read_byte(ip) ? "truthy" : "falsy";
-    const int   jump = offset + get_opsize(OP_JUMP) + get_opsize(OP_TEST);
-    printf("if Top[-1] is %s goto %04x", arg, jump);
+    Byte3 jump = get_opsize(OP_JUMP) + get_opsize(OP_TEST);
+    Byte3 addr = offset + jump;
+    printf("if Top[-1] ip += %x ; goto %04x", jump, addr);
 }
 
 int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
@@ -140,7 +149,7 @@ int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
     case OP_PRINT:     simple_op("Print", ip);  break;
     case OP_SETTABLE:  settable_op(ip);         break;
     case OP_SETARRAY:  setarray_op(ip);         break;
-    case OP_TEST:      test_op(ip, offset);     break;
+    case OP_TEST:      test_op(offset);         break;
     case OP_JUMP:      jump_op(ip, offset);     break;
     case OP_GETTABLE:
     case OP_TRUE:

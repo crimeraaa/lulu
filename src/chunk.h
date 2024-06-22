@@ -17,19 +17,12 @@
  *          B3      A `Byte3` argument. The MSB is the byte immediately
  *                  following the opcode, then the next, then LSB.
  *          sB3     A `Byte3` argument, however we fake signedness by utilizing
- *                  a constant offset. This constant offset is determined by
- *                  getting the value of the highest bit with all zeroes below.
- *
- *                  So `SByte*` is always encoded and decoded in terms of its
- *                  `Byte*` counterpart.
- *
- *                  uint8_t:
- *                  MAX = 0b1111_1111 = 255
- *                  MIN = 0b0000_0000 = 0
- *
- *                  int8_t:
- *                  MAX = 0b0111_1111 = 127
- *                  MIN = ~MAX = 0b1000_0000 = -128
+ *                  bit manipulation. Simply put, we treat all sB3's as if they
+ *                  were unsigned. However we reserve the uppermost bit (24) as
+ *                  the sign bit as in two's complement. We toggle this bit ON
+ *                  when the number is negative, otherwise it is positive.
+ *                  
+ *                  See `chunk.h:(encode|decode)_sbyte3()` macros for more info.
  *
  *          Kst     Constants table of the current chunk.
  *          V_*     Negative offset relative to the VM's top of the stack.
@@ -72,7 +65,7 @@ OP_UNM,      // -       | x                     | -x                      |     
 OP_NOT,      // -       | x                     | not x                   |                      |
 OP_LEN,      // -       | x                     | #x                      |                      |
 OP_PRINT,    // B1      | Top[-B1...-1]         | -                       | print(...)           |
-OP_TEST,     // B1      | Top[-1]               | Top[-1]                 | if Top[-1] != B1 ip++|
+OP_TEST,     // _       | Top[-1]               | Top[-1]                 | if Top[-1] ip++      |
 OP_JUMP,     // sB3     | -                     | -                       | ip += sB3            |
 OP_RETURN,   // -       | -                     |                         |                      |
 } OpCode;
@@ -110,15 +103,11 @@ OP_SETARRAY:
     index element, but let expressions without explicit keys remain until later.
 
 OP_TEST:
-    Argument B1:
-    - Either 1 or 0, representing true or false. We test Top[-1] for equality
-    in terms of boolean-ness.
+    This instruction is used to implement logical and branching statements.
+    It always tests for truthiness.
 
-    This instruction is used to implement if-then statements.
-
-    For example, OP_TEST(B1 := 0) will test for falsiness.
-    If Top[-1] == 0 then we move to the next instruction. We assume that the
-    next instruction is an OP_JUMP.
+    If Top[-1] == 0 then we move to the next instruction (see ip++).
+    Otherwise, we jump over said instruction.
 
 ip++:
     This assumes that the next instruction is an OP_JUMP.
@@ -154,8 +143,9 @@ typedef const struct {
                                     | ((mid) << bit_size(Byte))                 \
                                     | (lsb))
 
-#define byte3_to_sbyte3(N)      ((N) - MAX_SBYTE3)
-#define sbyte3_to_byte3(N)      ((N) + MAX_SBYTE3)
+#define encode_sbyte3(b3)       ((b3) | MIN_SBYTE3)
+#define check_sbyte3(b3)        ((b3) & MIN_SBYTE3)
+#define decode_sbyte3(b3)       ((b3) & ~MIN_SBYTE3)
 
 // Lookup table which maps `OpCode` to its respective `OpInfo` struct.
 extern OpInfo LULU_OPINFO[];

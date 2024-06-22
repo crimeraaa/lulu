@@ -32,7 +32,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceRoot}/bin/lulu",
-            // "args": ["${workspaceRoot}/tests/table.lua"],
+            "args": ["${workspaceRoot}/tests/while.lua"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [],

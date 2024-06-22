@@ -154,23 +154,44 @@ int luluCpl_emit_jump(Compiler *cpl)
     return offset;
 }
 
-static size_t encode_jump(Compiler *cpl, int offset)
+// Get the amount of bytecode we need to jump over, no direction.
+static Byte3 get_jump(Compiler *cpl, int offset, int sign)
 {
-    // len - offset = index of last arg, sub opsize to get index of op itself.
-    size_t jump = current_chunk(cpl)->len - offset - get_opsize(OP_JUMP);
-    return sbyte3_to_byte3(jump);
+    Byte3 jump = current_chunk(cpl)->len - offset;
+    if (sign == +1)
+        return jump - get_opsize(OP_JUMP);
+    else
+        return jump;
+}
+
+static void patch_jump(Compiler *cpl, int offset, Byte3 arg)
+{
+    Byte *ip = &current_chunk(cpl)->code[offset]; // jump opcode itself
+    ip[1] = decode_byte3_msb(arg);
+    ip[2] = decode_byte3_mid(arg);
+    ip[3] = decode_byte3_lsb(arg);
 }
 
 void luluCpl_patch_jump(Compiler *cpl, int offset)
 {
-    size_t arg = encode_jump(cpl, offset);
-    Byte  *ip  = &current_chunk(cpl)->code[offset]; // jump opcode itself
-    if (arg > MAX_BYTE3)
+    Byte3 arg = get_jump(cpl, offset, +1);
+    if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Too much code to jump over");
+    patch_jump(cpl, offset, arg);
+}
 
-    ip[1] = decode_byte3_msb(arg);
-    ip[2] = decode_byte3_mid(arg);
-    ip[3] = decode_byte3_lsb(arg);
+int luluCpl_start_loop(Compiler *cpl)
+{
+    return current_chunk(cpl)->len;
+}
+
+void luluCpl_emit_loop(Compiler *cpl, int loop_start)
+{
+    int   offset = luluCpl_emit_jump(cpl);
+    Byte3 arg    = get_jump(cpl, loop_start, -1);
+    if (arg > MAX_SBYTE3)
+        luluLex_error_consumed(cpl->lexer, "Loop body too large");
+    patch_jump(cpl, offset, encode_sbyte3(arg));
 }
 
 void luluCpl_emit_identifier(Compiler *cpl, const Token *id)

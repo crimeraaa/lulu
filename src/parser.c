@@ -146,6 +146,35 @@ static void field(Compiler *cpl, Lexer *ls)
     luluCpl_emit_opcode(cpl, OP_GETTABLE);
 }
 
+static int emit_if_jump(Compiler *cpl, bool should_pop)
+{
+    luluCpl_emit_opcode(cpl, OP_TEST);
+    int offset = luluCpl_emit_jump(cpl);
+    if (should_pop)
+        luluCpl_emit_oparg1(cpl, OP_POP, 1);
+    return offset;
+}
+
+// Assumes left-hand side has already been compiled.
+static void logic_and(Compiler *cpl, Lexer *ls)
+{
+    // If LHS is truthy, skip the jump. If falsy, pop LHS, push RHS.
+    int end_jump = emit_if_jump(cpl, true);
+    parse_precedence(cpl, ls, PREC_AND);
+    luluCpl_patch_jump(cpl, end_jump);
+}
+
+static void logic_or(Compiler *cpl, Lexer *ls)
+{
+    int else_jump = emit_if_jump(cpl, false);
+    int end_jump  = luluCpl_emit_jump(cpl);
+
+    luluCpl_patch_jump(cpl, else_jump);  // Truthy: goto end.
+    luluCpl_emit_oparg1(cpl, OP_POP, 1); // Falsy: pop LHS, push RHS.
+    parse_precedence(cpl, ls, PREC_OR);
+    luluCpl_patch_jump(cpl, end_jump);
+}
+
 // 2}}} ------------------------------------------------------------------------
 
 // PREFIX ----------------------------------------------------------------- {{{2
@@ -492,11 +521,9 @@ static void if_statement(Compiler *cpl, Lexer *ls)
     // <condition> 'then'
     expression(cpl, ls);
     luluLex_expect_token(ls, TK_THEN, "after 'if' condition");
-    luluCpl_emit_oparg1(cpl, OP_TEST, cast_byte(true));
 
     // jump over the entire if-block when <condition> is falsy.
-    int if_jump = luluCpl_emit_jump(cpl);
-    luluCpl_emit_oparg1(cpl, OP_POP, 1);
+    int if_jump = emit_if_jump(cpl, true);
     if_block(cpl, ls);
 
     // <if-block> end should jump over everything that follows.
@@ -508,6 +535,24 @@ static void if_statement(Compiler *cpl, Lexer *ls)
 
     // For all cases (including recursive), they should jump to the same 'end'.
     luluCpl_patch_jump(cpl, if_jump);
+}
+
+static void while_statement(Compiler *cpl, Lexer *ls)
+{
+    int loop_start = luluCpl_start_loop(cpl);
+
+    // <expression> 'do'
+    expression(cpl, ls);
+    luluLex_expect_token(ls, TK_DO, "after 'while' condition");
+
+    // Truthy: skip this jump. Falsy: jump over the entire loop body.
+    int exit_jump = emit_if_jump(cpl, true);
+    do_block(cpl, ls);
+    luluCpl_emit_loop(cpl, loop_start);
+
+    luluCpl_patch_jump(cpl, exit_jump);
+    luluCpl_emit_oparg1(cpl, OP_POP, 1);
+    cpl->stack_usage += 1; // Weirdness from above POP
 }
 
 // 3}}} ------------------------------------------------------------------------
@@ -537,6 +582,11 @@ static void statement(Compiler *cpl, Lexer *ls)
         luluLex_next_token(ls);
         if_statement(cpl, ls);
         luluLex_expect_token(ls, TK_END, "after 'if' body");
+        break;
+    case TK_WHILE:
+        luluLex_next_token(ls);
+        while_statement(cpl, ls);
+        luluLex_expect_token(ls, TK_END, "after 'while' body");
         break;
     default:
         luluLex_error_lookahead(ls, "Expected a statement");
@@ -633,7 +683,7 @@ static void parse_precedence(Compiler *cpl, Lexer *ls, Precedence prec)
 
 static ParseRule PARSERULES_LOOKUP[] = {
     // TOKEN           PREFIXFN     INFIXFN     PRECEDENCE
-    [TK_AND]        = {NULL,        NULL,       PREC_AND},
+    [TK_AND]        = {NULL,        &logic_and, PREC_AND},
     [TK_BREAK]      = {NULL,        NULL,       PREC_NONE},
     [TK_DO]         = {NULL,        NULL,       PREC_NONE},
     [TK_ELSE]       = {NULL,        NULL,       PREC_NONE},
@@ -647,7 +697,7 @@ static ParseRule PARSERULES_LOOKUP[] = {
     [TK_LOCAL]      = {NULL,        NULL,       PREC_NONE},
     [TK_NIL]        = {&literal,    NULL,       PREC_NONE},
     [TK_NOT]        = {&unary,      NULL,       PREC_NONE},
-    [TK_OR]         = {NULL,        NULL,       PREC_NONE},
+    [TK_OR]         = {NULL,        &logic_or,  PREC_OR},
     [TK_PRINT]      = {NULL,        NULL,       PREC_NONE},
     [TK_RETURN]     = {NULL,        NULL,       PREC_NONE},
     [TK_THEN]       = {NULL,        NULL,       PREC_NONE},

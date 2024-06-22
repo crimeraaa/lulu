@@ -251,12 +251,17 @@ lulu_Status luluVM_execute(lulu_VM *vm)
         case OP_TEST:
             // Don't convert as other opcodes may need the value still.
             // Skip the OP_JUMP if truthy as it's only needed when falsy.
-            if (!is_falsy(poke_top(vm, -1)) == cast(bool, read_byte()))
+            if (!is_falsy(poke_top(vm, -1)))
                 vm->ip += get_opsize(OP_JUMP);
             break;
-        case OP_JUMP:
-            vm->ip += cast(SByte3, byte3_to_sbyte3(read_byte3()));
+        case OP_JUMP: {
+            Byte3 jump = read_byte3();
+            if (check_sbyte3(jump))
+                vm->ip -= decode_sbyte3(jump);
+            else
+                vm->ip += jump;
             break;
+        }
         case OP_RETURN:
             return LULU_OK;
         }

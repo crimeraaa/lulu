@@ -1,0 +1,16 @@
+print("true and false", true and false)
+print("false and true", false and true)
+print("false and nil", false and nil)
+print("nil and false", nil and false)
+
+print("true or false", true or false)
+print("false or true", false or true)
+print("false or nil", false or nil)
+print("nil or false", nil or false)
+
+print("true and false or nil", true and false or nil)
+print("true and nil or false", true and nil or false)
+print("false and true or nil", false and true or nil)
+print("false and nil or true", false and nil or true)
+print("nil and true or false", nil and true or false)
+print("nil and false or true", nil and false or true)

@@ -42,6 +42,10 @@ void luluCpl_emit_identifier(Compiler *cpl, const Token *id);
 int  luluCpl_emit_jump(Compiler *cpl);
 void luluCpl_patch_jump(Compiler *cpl, int offset);
 
+// Returns the index of the first instruction related to a 'while' loop.
+int  luluCpl_start_loop(Compiler *cpl);
+void luluCpl_emit_loop(Compiler *cpl, int loop_start);
+
 // Returns the index of `OP_NEWTABLE` in the bytecode.
 int  luluCpl_emit_table(Compiler *cpl);
 void luluCpl_patch_table(Compiler *cpl, int offset, Byte3 size);
