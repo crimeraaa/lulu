@@ -39,12 +39,12 @@ void luluCpl_emit_return(Compiler *cpl);
 void luluCpl_emit_identifier(Compiler *cpl, const Token *id);
 
 // Returns the index of `OP_JUMP` in the bytecode.
-int  luluCpl_emit_jump(Compiler *cpl);
+int  luluCpl_emit_jump(Compiler *cpl, OpCode op);
 void luluCpl_patch_jump(Compiler *cpl, int offset);
 
-// Returns the index of the first instruction related to a 'while' loop.
+// Returns the index of the first instruction related to a 'while' or 'for' loop.
 int  luluCpl_start_loop(Compiler *cpl);
-void luluCpl_emit_loop(Compiler *cpl, int loop_start);
+void luluCpl_emit_loop(Compiler *cpl, int loop_start, bool is_for);
 
 // Returns the index of `OP_NEWTABLE` in the bytecode.
 int  luluCpl_emit_table(Compiler *cpl);

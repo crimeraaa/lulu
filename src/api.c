@@ -323,7 +323,7 @@ void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
     if (!is_table(t))
         lulu_type_error(vm, "index", get_typename(t));
     if (is_nil(k))
-        lulu_runtime_error(vm, "set a nil index");
+        lulu_type_error(vm, "set", "nil index");
     luluTbl_set(vm, as_table(t), k, v);
     lulu_pop(vm, to_pop);
 }
@@ -333,7 +333,7 @@ void lulu_get_global_from_string(lulu_VM *vm, lulu_String *s)
     Value id = make_string(s);
     Value out;
     if (!luluTbl_get(&vm->globals, &id, &out))
-        lulu_runtime_error(vm, "read undefined global '%s'", s->data);
+        lulu_runtime_error(vm, "Global variable '%s' is undefined", s->data);
     push_back(vm, &out);
 }
 
@@ -391,7 +391,7 @@ void lulu_runtime_error(lulu_VM *vm, const char *fmt, ...)
     lulu_pop(vm, 1);
     va_end(args);
 
-    lulu_push_error_fstring(vm, line, "Attempt to %s\n", msg);
+    lulu_push_error_fstring(vm, line, "%s\n", msg);
     longjmp(vm->errorjmp, LULU_ERROR_RUNTIME);
 }
 
@@ -402,7 +402,7 @@ void lulu_alloc_error(lulu_VM *vm)
 
 void lulu_type_error(lulu_VM *vm, const char *act, const char *type)
 {
-    lulu_runtime_error(vm, "%s a %s value", act, type);
+    lulu_runtime_error(vm, "Attempt to %s a %s value", act, type);
 }
 
 void lulu_push_error_fstring(lulu_VM *vm, int line, const char *fmt, ...)

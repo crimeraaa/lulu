@@ -147,10 +147,10 @@ void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg)
     }
 }
 
-int luluCpl_emit_jump(Compiler *cpl)
+int luluCpl_emit_jump(Compiler *cpl, OpCode op)
 {
     int offset = current_chunk(cpl)->len;
-    luluCpl_emit_oparg3(cpl, OP_JUMP, MAX_BYTE3);
+    luluCpl_emit_oparg3(cpl, op, MAX_BYTE3);
     return offset;
 }
 
@@ -171,12 +171,13 @@ static Byte3 get_jump(Compiler *cpl, int offset, JumpType type)
     }
 }
 
-static void patch_jump(Compiler *cpl, int offset, Byte3 arg)
+static void patch_byte3(Compiler *cpl, int offset, Byte3 arg)
 {
-    Byte *ip = &current_chunk(cpl)->code[offset]; // jump opcode itself
+    Byte *ip = &current_chunk(cpl)->code[offset]; // target opcode itself
     ip[1] = decode_byte3_msb(arg);
     ip[2] = decode_byte3_mid(arg);
     ip[3] = decode_byte3_lsb(arg);
+
 }
 
 void luluCpl_patch_jump(Compiler *cpl, int offset)
@@ -184,7 +185,7 @@ void luluCpl_patch_jump(Compiler *cpl, int offset)
     Byte3 arg = get_jump(cpl, offset, JUMP_FORWARD);
     if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Too much code to jump over");
-    patch_jump(cpl, offset, arg);
+    patch_byte3(cpl, offset, arg);
 }
 
 int luluCpl_start_loop(Compiler *cpl)
@@ -192,14 +193,14 @@ int luluCpl_start_loop(Compiler *cpl)
     return current_chunk(cpl)->len;
 }
 
-void luluCpl_emit_loop(Compiler *cpl, int loop_start)
+void luluCpl_emit_loop(Compiler *cpl, int loop_start, bool is_for)
 {
-    int   offset = luluCpl_emit_jump(cpl);
+    int   offset = luluCpl_emit_jump(cpl, (is_for) ? OP_FORLOOP : OP_JUMP);
     Byte3 arg    = get_jump(cpl, loop_start, JUMP_BACKWARD);
     // We encoded a signed integer in an unsigned Byte3.
     if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Loop body too large");
-    patch_jump(cpl, offset, arg | MIN_SBYTE3); // toggle sign bit
+    patch_byte3(cpl, offset, arg | MIN_SBYTE3); // toggle sign bit
 }
 
 void luluCpl_emit_identifier(Compiler *cpl, const Token *id)
@@ -221,10 +222,7 @@ int luluCpl_emit_table(Compiler *cpl)
 
 void luluCpl_patch_table(Compiler *cpl, int offset, Byte3 size)
 {
-    Byte *ip  = &current_chunk(cpl)->code[offset]; // OP_NEWTABLE itself
-    ip[1] = decode_byte3_msb(size);
-    ip[2] = decode_byte3_mid(size);
-    ip[3] = decode_byte3_lsb(size);
+    patch_byte3(cpl, offset, size);
 }
 
 // 1}}} ------------------------------------------------------------------------

@@ -33,7 +33,8 @@ static void init_builtin(lulu_VM *vm)
 // Silly but need this as stack-allocated tables don't init their objects.
 static void _init_table(Table *t)
 {
-    t->object.tag = TYPE_TABLE;
+    t->object.tag  = TYPE_TABLE;
+    t->object.next = NULL; // impossible to collect stack-allocated object
     luluTbl_init(t);
 }
 
@@ -98,6 +99,23 @@ static void compare_tm(lulu_VM *vm, StackID a, StackID b, TagMethod tm)
     // default they allow string comparisons.
     unused(tm);
     lulu_type_error(vm, "compare", pick_non_number(a, b));
+}
+
+static void do_jump(lulu_VM *vm, Byte3 jump)
+{
+    // Sign bit is toggled?
+    if (jump & MIN_SBYTE3)
+        vm->ip -= jump & MAX_SBYTE3; // Clear sign bit to extract raw.
+    else
+        vm->ip += jump;
+}
+
+static bool to_number(StackID id)
+{
+    ToNumber conv = luluVal_to_number(id);
+    if (conv.ok)
+        setv_number(id, conv.number);
+    return conv.ok;
 }
 
 lulu_Status luluVM_execute(lulu_VM *vm)
@@ -204,7 +222,7 @@ lulu_Status luluVM_execute(lulu_VM *vm)
         }
         case OP_EQ: {
             StackID a = poke_top(vm, -2);
-            StackID b = poke_top(vm, -1);
+            StackID b = arg_a;
             setv_boolean(a, luluVal_equal(a, b));
             lulu_pop(vm, 1);
             break;
@@ -251,16 +269,49 @@ lulu_Status luluVM_execute(lulu_VM *vm)
         case OP_TEST:
             // Don't convert as other opcodes may need the value still.
             // Skip the OP_JUMP if truthy as it's only needed when falsy.
-            if (!is_falsy(poke_top(vm, -1)))
+            if (!is_falsy(arg_a))
                 vm->ip += get_opsize(OP_JUMP);
             break;
-        case OP_JUMP: {
-            Byte3 jump = read_byte3();
-            // Sign bit is toggled?
-            if (jump & MIN_SBYTE3)
-                vm->ip -= jump & MAX_SBYTE3; // Clear sign bit to extract raw.
-            else
-                vm->ip += jump;
+        case OP_JUMP:
+            do_jump(vm, read_byte3());
+            break;
+        case OP_FORPREP: {
+            Byte3   jump      = read_byte3();
+            StackID for_index = poke_top(vm, -3);
+            StackID for_limit = poke_top(vm, -2);
+            StackID for_step  = arg_a;
+
+            if (!to_number(for_index))
+                lulu_runtime_error(vm, "'for' index must be a number");
+            if (!to_number(for_limit))
+                lulu_runtime_error(vm, "'for' limit must be a number");
+            if (!to_number(for_step))
+                lulu_runtime_error(vm, "'for' step must be a number");
+            if (as_number(for_step) == 0)
+                lulu_runtime_error(vm, "'for' step of 0 will loop infinitely");
+
+            // FORLOOP will increment immediately, so offset that on 1st iter.
+            setv_number(for_index, lulu_num_sub(as_number(for_index),
+                                                as_number(for_step)));
+
+            // Push a copy of <for-index> to top due to parser semantics.
+            lulu_push_number(vm, as_number(for_index));
+            do_jump(vm, jump); // goto FORLOOP
+            break;
+        }
+        case OP_FORLOOP: {
+            Byte3  jump  = read_byte3();
+            Number step  = as_number(poke_top(vm, -2));
+            Number limit = as_number(poke_top(vm, -3));
+            Number index = lulu_num_add(as_number(arg_a), step);
+            bool   pos   = lulu_num_lt(0, step);
+
+            // Comparison we use depends on the signedness.
+            if (pos ?  lulu_num_le(index, limit) : lulu_num_le(limit, index)) {
+                setv_number(arg_a, index);
+                setv_number(poke_top(vm, -4), index);
+                do_jump(vm, jump);
+            }
             break;
         }
         case OP_RETURN:

@@ -123,9 +123,9 @@ static void jump_op(const Byte *ip, int offset)
 
 static void test_op(int offset)
 {
-    Byte3 jump = get_opsize(OP_JUMP) + get_opsize(OP_TEST);
-    Byte3 addr = offset + jump;
-    printf("if Top[-1] ip += %x ; goto %04x", jump, addr);
+    SByte3 jump = get_opsize(OP_JUMP) + get_opsize(OP_TEST);
+    Byte3  addr = offset + jump;
+    printf("if Top[-1] ip += %i ; goto %04x", jump, addr);
 }
 
 int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
@@ -155,6 +155,8 @@ int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
     case OP_SETTABLE:  settable_op(ip);         break;
     case OP_SETARRAY:  setarray_op(ip);         break;
     case OP_TEST:      test_op(offset);         break;
+    case OP_FORLOOP:   printf("if <loop> ");
+    case OP_FORPREP:
     case OP_JUMP:      jump_op(ip, offset);     break;
     case OP_GETTABLE:
     case OP_TRUE:

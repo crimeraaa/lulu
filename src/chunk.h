@@ -66,6 +66,8 @@ OP_LEN,      // -       | x                     | #x                      |     
 OP_PRINT,    // B1      | Top[-B1...-1]         | -                       | print(...)           |
 OP_TEST,     // _       | Top[-1]               | Top[-1]                 | if Top[-1] ip++      |
 OP_JUMP,     // sB3     | -                     | -                       | ip += sB3            |
+OP_FORPREP,  // sB3     | it, lim, inc          | it, lim, inc, cpy       | ip += sB3            |
+OP_FORLOOP,  // sB3     | it, lim, inc, cpy     | it, lim, inc, cpy       | if <loop> ip++       |
 OP_RETURN,   // -       | -                     |                         |                      |
 } OpCode;
 

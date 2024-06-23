@@ -1,4 +1,5 @@
 #include "parser.h"
+
 #include "object.h"
 #include "string.h"
 #include "table.h"
@@ -33,6 +34,15 @@ static void statement(Compiler *cpl, Lexer *ls);
  *          intended to be `print(x == 13)`.
  */
 static void expression(Compiler *cpl, Lexer *ls);
+
+// Declare a local variable by initializing and adding it to the current scope.
+// Intern a local variable name. Analogous to `parseVariable()` in the book.
+static void parse_local(Compiler *cpl, Lexer *ls)
+{
+    Token *id = &ls->consumed;
+    luluCpl_init_local(cpl);
+    luluCpl_identifier_constant(cpl, id); // We don't need the index here.
+}
 
 static int parse_exprlist(Compiler *cpl, Lexer *ls)
 {
@@ -146,12 +156,23 @@ static void field(Compiler *cpl, Lexer *ls)
     luluCpl_emit_opcode(cpl, OP_GETTABLE);
 }
 
-static int emit_if_jump(Compiler *cpl, bool should_pop)
+typedef enum {
+    TEST_WITH_POP,
+    TEST_NO_POP,
+} TestType;
+
+// TEST and JUMP, possibly a POP.
+static int emit_if_jump(Compiler *cpl, TestType type)
 {
     luluCpl_emit_opcode(cpl, OP_TEST);
-    int offset = luluCpl_emit_jump(cpl);
-    if (should_pop)
+    int offset = luluCpl_emit_jump(cpl, OP_JUMP);
+    switch (type) {
+    case TEST_WITH_POP:
         luluCpl_emit_oparg1(cpl, OP_POP, 1);
+        break;
+    case TEST_NO_POP:
+        break;
+    }
     return offset;
 }
 
@@ -159,15 +180,15 @@ static int emit_if_jump(Compiler *cpl, bool should_pop)
 static void logic_and(Compiler *cpl, Lexer *ls)
 {
     // If LHS is truthy, skip the jump. If falsy, pop LHS, push RHS.
-    int end_jump = emit_if_jump(cpl, true);
+    int end_jump = emit_if_jump(cpl, TEST_WITH_POP);
     parse_precedence(cpl, ls, PREC_AND);
     luluCpl_patch_jump(cpl, end_jump);
 }
 
 static void logic_or(Compiler *cpl, Lexer *ls)
 {
-    int else_jump = emit_if_jump(cpl, false);
-    int end_jump  = luluCpl_emit_jump(cpl);
+    int else_jump = emit_if_jump(cpl, TEST_NO_POP);
+    int end_jump  = luluCpl_emit_jump(cpl, OP_JUMP);
 
     luluCpl_patch_jump(cpl, else_jump);  // Truthy: goto end.
     luluCpl_emit_oparg1(cpl, OP_POP, 1); // Falsy: pop LHS, push RHS.
@@ -507,7 +528,7 @@ static void if_block(Compiler *cpl, Lexer *ls)
 static void discharge_jump(Compiler *cpl, int *jump)
 {
     int prev  = *jump;
-    *jump     = luluCpl_emit_jump(cpl);
+    *jump     = luluCpl_emit_jump(cpl, OP_JUMP);
     luluCpl_patch_jump(cpl, prev);
     luluCpl_emit_oparg1(cpl, OP_POP, 1); // pop previous <condition>.
     cpl->stack_usage += 1; // Undo weirdness from POP w/o a corresponding push
@@ -523,7 +544,7 @@ static void if_statement(Compiler *cpl, Lexer *ls)
     luluLex_expect_token(ls, TK_THEN, "after 'if' condition");
 
     // jump over the entire if-block when <condition> is falsy.
-    int if_jump = emit_if_jump(cpl, true);
+    int if_jump = emit_if_jump(cpl, TEST_WITH_POP);
     if_block(cpl, ls);
 
     // <if-block> end should jump over everything that follows.
@@ -537,7 +558,7 @@ static void if_statement(Compiler *cpl, Lexer *ls)
     luluCpl_patch_jump(cpl, if_jump);
 }
 
-static void while_statement(Compiler *cpl, Lexer *ls)
+static void while_loop(Compiler *cpl, Lexer *ls)
 {
     int loop_start = luluCpl_start_loop(cpl);
 
@@ -546,13 +567,74 @@ static void while_statement(Compiler *cpl, Lexer *ls)
     luluLex_expect_token(ls, TK_DO, "after 'while' condition");
 
     // Truthy: skip this jump. Falsy: jump over the entire loop body.
-    int exit_jump = emit_if_jump(cpl, true);
+    int loop_init = emit_if_jump(cpl, TEST_WITH_POP);
     do_block(cpl, ls);
-    luluCpl_emit_loop(cpl, loop_start);
+    luluCpl_emit_loop(cpl, loop_start, false);
 
-    luluCpl_patch_jump(cpl, exit_jump);
+    luluCpl_patch_jump(cpl, loop_init);
     luluCpl_emit_oparg1(cpl, OP_POP, 1);
     cpl->stack_usage += 1; // Weirdness from above POP
+}
+
+static void add_internal_local(Compiler *cpl, Lexer *ls, const char *name)
+{
+    Token  id;
+    size_t len = strlen(name);
+    id.view = sv_create_from_len(name, len);
+    id.type = TK_IDENT;
+    id.line = ls->line;
+    luluCpl_add_local(cpl, &id);
+    luluCpl_identifier_constant(cpl, &id);
+}
+
+static void for_index(Compiler *cpl, Lexer *ls)
+{
+    luluLex_expect_token(ls, TK_IDENT, NULL);
+    parse_local(cpl, ls);
+    luluLex_expect_token(ls, TK_ASSIGN, NULL);
+    expression(cpl, ls);
+    luluCpl_define_locals(cpl, 1);
+}
+
+static void for_limit(Compiler *cpl, Lexer *ls)
+{
+    luluLex_expect_token(ls, TK_COMMA, NULL);
+    expression(cpl, ls);
+}
+
+static void for_step(Compiler *cpl, Lexer *ls)
+{
+    if (luluLex_match_token(ls, TK_COMMA)) {
+        expression(cpl, ls);
+    } else {
+        Value n = make_number(1);
+        luluCpl_emit_constant(cpl, &n);
+    }
+}
+
+static void for_loop(Compiler *cpl, Lexer *ls)
+{
+    luluCpl_begin_scope(cpl);
+
+    // Order is important due to VM's assumptions about internal loop state.
+    add_internal_local(cpl, ls, "(for index)");
+    add_internal_local(cpl, ls, "(for limit)");
+    add_internal_local(cpl, ls, "(for step)");
+    luluCpl_define_locals(cpl, 3);
+
+    for_index(cpl, ls);  // <for-index> '=' <expression>
+    for_limit(cpl, ls);  // ',' <for-limit>
+    for_step(cpl, ls);   // [',' <for-step>]
+    luluLex_expect_token(ls, TK_DO, NULL);
+
+    // Check loop variables for consistency then jump to FORLOOP (loop_start).
+    int loop_init  = luluCpl_emit_jump(cpl, OP_FORPREP);
+    int loop_start = luluCpl_start_loop(cpl);
+
+    do_block(cpl, ls);
+    luluCpl_patch_jump(cpl, loop_init);
+    luluCpl_emit_loop(cpl,  loop_start, true);
+    luluCpl_end_scope(cpl);
 }
 
 // 3}}} ------------------------------------------------------------------------
@@ -561,32 +643,32 @@ static void while_statement(Compiler *cpl, Lexer *ls)
 
 static void statement(Compiler *cpl, Lexer *ls)
 {
-    switch (ls->lookahead.type) {
+    // `declaration()` already consumed a token for us.
+    switch (ls->consumed.type) {
     case TK_IDENT: {
         Assignment list;
         init_assignment(&list, NULL); // Ensure no garbage.
-        luluLex_next_token(ls);
         identifier_statement(cpl, ls, &list);
         break;
     }
     case TK_DO:
-        luluLex_next_token(ls);
         do_block(cpl, ls);
         luluLex_expect_token(ls, TK_END, "after block");
         break;
     case TK_PRINT:
-        luluLex_next_token(ls);
         print_statement(cpl, ls);
         break;
     case TK_IF:
-        luluLex_next_token(ls);
         if_statement(cpl, ls);
         luluLex_expect_token(ls, TK_END, "after 'if' body");
         break;
     case TK_WHILE:
-        luluLex_next_token(ls);
-        while_statement(cpl, ls);
-        luluLex_expect_token(ls, TK_END, "after 'while' body");
+        while_loop(cpl, ls);
+        luluLex_expect_token(ls, TK_END, "after 'while' loop body");
+        break;
+    case TK_FOR:
+        for_loop(cpl, ls);
+        luluLex_expect_token(ls, TK_END, "after 'for' loop body");
         break;
     default:
         luluLex_error_lookahead(ls, "Expected a statement");
@@ -597,15 +679,6 @@ static void statement(Compiler *cpl, Lexer *ls)
 // 1}}} ------------------------------------------------------------------------
 
 // DECLARATIONS ----------------------------------------------------------- {{{1
-
-// Declare a local variable by initializing and adding it to the current scope.
-// Intern a local variable name. Analogous to `parseVariable()` in the book.
-static void parse_local(Compiler *cpl, Lexer *ls)
-{
-    Token *id = &ls->consumed;
-    luluCpl_init_local(cpl);
-    luluCpl_identifier_constant(cpl, id); // We don't need the index here.
-}
 
 /**
  * @brief   For Lua this only matters for local variables. Analogous to
@@ -638,9 +711,9 @@ static void declare_locals(Compiler *cpl, Lexer *ls)
 
 void declaration(Compiler *cpl, Lexer *ls)
 {
-    switch (ls->lookahead.type) {
+    luluLex_next_token(ls);
+    switch (ls->consumed.type) {
     case TK_LOCAL:
-        luluLex_next_token(ls);
         declare_locals(cpl, ls);
         break;
     default:

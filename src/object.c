@@ -17,10 +17,10 @@ const char *const LULU_TYPENAMES[] = {
 ToNumber luluVal_to_number(const Value *val)
 {
     ToNumber conv;
-    conv.ok = false;
     if (is_number(val)) {
         conv.number = as_number(val);
-        conv.ok = true;
+        conv.ok     = true;
+        return conv;
     }
     if (is_string(val)) {
         char      *end;
@@ -30,8 +30,10 @@ ToNumber luluVal_to_number(const Value *val)
         if (end == sv.end) {
             conv.number = n;
             conv.ok     = true;
+            return conv;
         }
     }
+    conv.ok = false;
     return conv;
 }
 
