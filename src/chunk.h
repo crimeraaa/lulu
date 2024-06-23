@@ -17,12 +17,11 @@
  *          B3      A `Byte3` argument. The MSB is the byte immediately
  *                  following the opcode, then the next, then LSB.
  *          sB3     A `Byte3` argument, however we fake signedness by utilizing
- *                  bit manipulation. Simply put, we treat all sB3's as if they
- *                  were unsigned. However we reserve the uppermost bit (24) as
- *                  the sign bit as in two's complement. We toggle this bit ON
- *                  when the number is negative, otherwise it is positive.
- *                  
- *                  See `chunk.h:(encode|decode)_sbyte3()` macros for more info.
+ *                  bit manipulation. Specifically, we use *sign-magnitude*
+ *                  representation. It is not particularly good especially since
+ *                  it suffers from +0 and -0, but I am too lazy.
+ *
+ *                  See: https://en.wikipedia.org/wiki/Signed_number_representations#Sign%E2%80%93magnitude
  *
  *          Kst     Constants table of the current chunk.
  *          V_*     Negative offset relative to the VM's top of the stack.

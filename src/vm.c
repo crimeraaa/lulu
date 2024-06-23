@@ -256,8 +256,9 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             break;
         case OP_JUMP: {
             Byte3 jump = read_byte3();
-            if (check_sbyte3(jump))
-                vm->ip -= decode_sbyte3(jump);
+            // Sign bit is toggled?
+            if (jump & MIN_SBYTE3)
+                vm->ip -= jump & MAX_SBYTE3; // Clear sign bit to extract raw.
             else
                 vm->ip += jump;
             break;

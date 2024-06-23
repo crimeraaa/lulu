@@ -84,8 +84,8 @@ typedef LULU_SBYTE3 SByte3;
 #define parray_size(P, N)   (sizeof(*(P)) * (N))
 
 // Get the number of bits that `N` bytes holds.
-#define bytes_to_bits(N)    ((N) * BITS_PER_BYTE)
-#define bit_size(T)         bytes_to_bits(sizeof(T))
+#define bit_count(N)        ((N) * BITS_PER_BYTE)
+#define bit_size(T)         bit_count(sizeof(T))
 
 #define cast(T, expr)       ((T)(expr))
 #define cast_int(expr)      cast(int, expr)
@@ -98,7 +98,7 @@ typedef LULU_SBYTE3 SByte3;
 
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
-#define MAX_BYTE3           ((1 << bytes_to_bits(3)) - 1)
+#define MAX_BYTE3           ((1 << bit_count(3)) - 1)
 #define MAX_SBYTE3          (MAX_BYTE3 >> 1)
 #define MIN_SBYTE3          (~MAX_SBYTE3)
 

@@ -100,20 +100,25 @@ static void setarray_op(const Byte *ip)
     printf("Tbl[%i], Set(%i)", t_idx, to_set);
 }
 
+static SByte3 get_jump(Byte3 b3)
+{
+    // Sign bit is toggled?
+    if (b3 & MIN_SBYTE3)
+         // Throw away sign bit, negate raw value.
+        return -(b3 & MAX_SBYTE3);
+    else
+        return b3;
+}
+
 static void jump_op(const Byte *ip, int offset)
 {
     // `ip` points to OP_JUMP itself, so need to adjust.
-    Byte3 jump = read_byte3(ip);
-    Byte3 addr = offset + get_opsize(OP_JUMP);
-    bool  neg  = check_sbyte3(jump);
-    char  sign = (neg) ? '-' : '+';
-    if (neg) {
-        addr -= decode_sbyte3(jump);
-        jump = offset - addr;
-    } else {
-        addr += jump;
-    }
-    printf("ip %c= %x ; goto %04x", sign, jump, addr);
+    Byte3  arg  = read_byte3(ip);
+    SByte3 jump = get_jump(arg) + get_opsize(OP_JUMP);
+    Byte3  addr = offset + jump;
+    char   sign = (jump >= 0) ? '+' : '-';
+    int    raw  = (jump >= 0) ? jump : -jump;
+    printf("ip %c= %i ; goto %04x", sign, raw, addr);
 }
 
 static void test_op(int offset)

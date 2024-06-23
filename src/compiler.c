@@ -154,14 +154,21 @@ int luluCpl_emit_jump(Compiler *cpl)
     return offset;
 }
 
+typedef enum {
+    JUMP_FORWARD,
+    JUMP_BACKWARD,
+} JumpType;
+
 // Get the amount of bytecode we need to jump over, no direction.
-static Byte3 get_jump(Compiler *cpl, int offset, int sign)
+static Byte3 get_jump(Compiler *cpl, int offset, JumpType type)
 {
     Byte3 jump = current_chunk(cpl)->len - offset;
-    if (sign == +1)
-        return jump - get_opsize(OP_JUMP);
-    else
+    switch (type) {
+    case JUMP_FORWARD:
+        return jump - get_opsize(OP_JUMP); // skip jump operands as well.
+    case JUMP_BACKWARD:
         return jump;
+    }
 }
 
 static void patch_jump(Compiler *cpl, int offset, Byte3 arg)
@@ -174,7 +181,7 @@ static void patch_jump(Compiler *cpl, int offset, Byte3 arg)
 
 void luluCpl_patch_jump(Compiler *cpl, int offset)
 {
-    Byte3 arg = get_jump(cpl, offset, +1);
+    Byte3 arg = get_jump(cpl, offset, JUMP_FORWARD);
     if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Too much code to jump over");
     patch_jump(cpl, offset, arg);
@@ -188,10 +195,11 @@ int luluCpl_start_loop(Compiler *cpl)
 void luluCpl_emit_loop(Compiler *cpl, int loop_start)
 {
     int   offset = luluCpl_emit_jump(cpl);
-    Byte3 arg    = get_jump(cpl, loop_start, -1);
+    Byte3 arg    = get_jump(cpl, loop_start, JUMP_BACKWARD);
+    // We encoded a signed integer in an unsigned Byte3.
     if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Loop body too large");
-    patch_jump(cpl, offset, encode_sbyte3(arg));
+    patch_jump(cpl, offset, arg | MIN_SBYTE3); // toggle sign bit
 }
 
 void luluCpl_emit_identifier(Compiler *cpl, const Token *id)
