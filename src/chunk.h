@@ -167,16 +167,16 @@ extern OpInfo LULU_OPINFO[];
 #define get_opsize(op)  (get_opinfo(op).argsz + 1)
 
 typedef struct {
-    Table       mappings; // Map values to indexes into the `constants` array.
-    Array       constants;
-    const char *name;
-    Byte       *code;
-    int        *lines; // Mirrors the bytecode array.
-    int         len;
-    int         cap;
+    Table   mappings; // Map values to indexes into the `constants` array.
+    Array   constants;
+    String *name;
+    Byte   *code;
+    int    *lines; // Mirrors the bytecode array.
+    int     len;
+    int     cap;
 } Chunk;
 
-void luluFun_init_chunk(Chunk *ck, const char *name);
+void luluFun_init_chunk(Chunk *ck, String *name);
 void luluFun_free_chunk(lulu_VM *vm, Chunk *ck);
 
 // Append `data` to the bytecode array.

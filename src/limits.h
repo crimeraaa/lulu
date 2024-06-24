@@ -109,14 +109,15 @@ typedef LULU_SBYTE3 SByte3;
 #define in_incrange(n, lo, hi)      ((n) >= (lo) && (n) <= (hi))
 #define in_excrange(n, lo, hi)      ((n) >= (lo) && (n) < (hi))
 
+// A C++ style string view.
 typedef struct {
     const char *begin; // Pointer to the first character in the string.
     const char *end;   // Pointer to 1 past the last intended character.
-    size_t      len;   // Total/intended string length, sans nul.
-} StringView;
+} View;
 
-#define sv_create_from_len(s, len)  (StringView){(s), (s) + (len), (len)}
-#define sv_create_from_end(s, end)  (StringView){(s), (end), (end) - (s)}
-#define sv_literal(s)               (StringView){(s), &(s)[0] + cstr_len(s), cstr_len(s)}
+#define view_from_len(s, len)  (View){(s), (s) + (len)}
+#define view_from_end(s, end)  (View){(s), (end)}
+#define view_from_lit(s)       (View){(s), &(s)[0] + cstr_len(s)}
+#define view_len(sv)           ((sv).end - (sv).begin)
 
 #endif /* LULU_LIMITS_H */

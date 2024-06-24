@@ -41,7 +41,7 @@ OpInfo LULU_OPINFO[] = {
 
 static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
 
-void luluFun_init_chunk(Chunk *ck, const char *name)
+void luluFun_init_chunk(Chunk *ck, String *name)
 {
     luluTbl_init(&ck->mappings);
     luluVal_init_array(&ck->constants);
@@ -58,7 +58,7 @@ void luluFun_free_chunk(lulu_VM *vm, Chunk *ck)
     luluVal_free_array(vm, &ck->constants);
     luluMem_free_parray(vm, ck->lines, ck->len);
     luluMem_free_parray(vm, ck->code, ck->len);
-    luluFun_init_chunk(ck, "(freed chunk)");
+    luluFun_init_chunk(ck, NULL);
 }
 
 void luluFun_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)

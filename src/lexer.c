@@ -9,74 +9,73 @@
 
 #define isident(ch)     (isalnum(ch) || (ch) == '_')
 
-static const StringView LULU_TKINFO[] = {
-    [TK_AND]      = sv_literal("and"),
-    [TK_BREAK]    = sv_literal("break"),
-    [TK_DO]       = sv_literal("do"),
-    [TK_ELSE]     = sv_literal("else"),
-    [TK_ELSEIF]   = sv_literal("elseif"),
-    [TK_END]      = sv_literal("end"),
-    [TK_FALSE]    = sv_literal("false"),
-    [TK_FOR]      = sv_literal("for"),
-    [TK_FUNCTION] = sv_literal("function"),
-    [TK_IF]       = sv_literal("if"),
-    [TK_IN]       = sv_literal("in"),
-    [TK_LOCAL]    = sv_literal("local"),
-    [TK_NIL]      = sv_literal("nil"),
-    [TK_NOT]      = sv_literal("not"),
-    [TK_OR]       = sv_literal("or"),
-    [TK_PRINT]    = sv_literal("print"),
-    [TK_RETURN]   = sv_literal("return"),
-    [TK_THEN]     = sv_literal("then"),
-    [TK_TRUE]     = sv_literal("true"),
-    [TK_WHILE]    = sv_literal("while"),
+static const View LULU_TKINFO[] = {
+    [TK_AND]      = view_from_lit("and"),
+    [TK_BREAK]    = view_from_lit("break"),
+    [TK_DO]       = view_from_lit("do"),
+    [TK_ELSE]     = view_from_lit("else"),
+    [TK_ELSEIF]   = view_from_lit("elseif"),
+    [TK_END]      = view_from_lit("end"),
+    [TK_FALSE]    = view_from_lit("false"),
+    [TK_FOR]      = view_from_lit("for"),
+    [TK_FUNCTION] = view_from_lit("function"),
+    [TK_IF]       = view_from_lit("if"),
+    [TK_IN]       = view_from_lit("in"),
+    [TK_LOCAL]    = view_from_lit("local"),
+    [TK_NIL]      = view_from_lit("nil"),
+    [TK_NOT]      = view_from_lit("not"),
+    [TK_OR]       = view_from_lit("or"),
+    [TK_PRINT]    = view_from_lit("print"),
+    [TK_RETURN]   = view_from_lit("return"),
+    [TK_THEN]     = view_from_lit("then"),
+    [TK_TRUE]     = view_from_lit("true"),
+    [TK_WHILE]    = view_from_lit("while"),
 
-    [TK_LPAREN]   = sv_literal("("),
-    [TK_RPAREN]   = sv_literal(")"),
-    [TK_LBRACKET] = sv_literal("["),
-    [TK_RBRACKET] = sv_literal("]"),
-    [TK_LCURLY]   = sv_literal("{"),
-    [TK_RCURLY]   = sv_literal("}"),
+    [TK_LPAREN]   = view_from_lit("("),
+    [TK_RPAREN]   = view_from_lit(")"),
+    [TK_LBRACKET] = view_from_lit("["),
+    [TK_RBRACKET] = view_from_lit("]"),
+    [TK_LCURLY]   = view_from_lit("{"),
+    [TK_RCURLY]   = view_from_lit("}"),
 
-    [TK_COMMA]    = sv_literal(","),
-    [TK_SEMICOL]  = sv_literal(";"),
-    [TK_VARARG]   = sv_literal("..."),
-    [TK_CONCAT]   = sv_literal(".."),
-    [TK_PERIOD]   = sv_literal("."),
-    [TK_POUND]    = sv_literal("#"),
+    [TK_COMMA]    = view_from_lit(","),
+    [TK_SEMICOL]  = view_from_lit(";"),
+    [TK_VARARG]   = view_from_lit("..."),
+    [TK_CONCAT]   = view_from_lit(".."),
+    [TK_PERIOD]   = view_from_lit("."),
+    [TK_POUND]    = view_from_lit("#"),
 
-    [TK_PLUS]     = sv_literal("+"),
-    [TK_DASH]     = sv_literal("-"),
-    [TK_STAR]     = sv_literal("*"),
-    [TK_SLASH]    = sv_literal("/"),
-    [TK_PERCENT]  = sv_literal("%"),
-    [TK_CARET]    = sv_literal("^"),
+    [TK_PLUS]     = view_from_lit("+"),
+    [TK_DASH]     = view_from_lit("-"),
+    [TK_STAR]     = view_from_lit("*"),
+    [TK_SLASH]    = view_from_lit("/"),
+    [TK_PERCENT]  = view_from_lit("%"),
+    [TK_CARET]    = view_from_lit("^"),
 
-    [TK_ASSIGN]   = sv_literal("="),
-    [TK_EQ]       = sv_literal("=="),
-    [TK_NEQ]      = sv_literal("~="),
-    [TK_GT]       = sv_literal(">"),
-    [TK_GE]       = sv_literal(">="),
-    [TK_LT]       = sv_literal("<"),
-    [TK_LE]       = sv_literal("<="),
+    [TK_ASSIGN]   = view_from_lit("="),
+    [TK_EQ]       = view_from_lit("=="),
+    [TK_NEQ]      = view_from_lit("~="),
+    [TK_GT]       = view_from_lit(">"),
+    [TK_GE]       = view_from_lit(">="),
+    [TK_LT]       = view_from_lit("<"),
+    [TK_LE]       = view_from_lit("<="),
 
-    [TK_IDENT]    = sv_literal("<identifier>"),
-    [TK_STRING]   = sv_literal("<string>"),
-    [TK_NUMBER]   = sv_literal("<number>"),
-    [TK_ERROR]    = sv_literal("<error>"),
-    [TK_EOF]      = sv_literal("<eof>"),
+    [TK_IDENT]    = view_from_lit("<identifier>"),
+    [TK_STRING]   = view_from_lit("<string>"),
+    [TK_NUMBER]   = view_from_lit("<number>"),
+    [TK_ERROR]    = view_from_lit("<error>"),
+    [TK_EOF]      = view_from_lit("<eof>"),
 };
 
-static void init_stringview(StringView *sv, const char *src)
+static void init_view(View *sv, const char *src)
 {
     sv->begin = src;
     sv->end   = src;
-    sv->len   = 0;
 }
 
 static void init_token(Token *tk)
 {
-    init_stringview(&tk->view, NULL);
+    init_view(&tk->view, NULL);
     tk->line = 0;
     tk->type = TK_EOF;
     tk->data.string = NULL;
@@ -86,10 +85,9 @@ void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm)
 {
     init_token(&ls->lookahead);
     init_token(&ls->consumed);
-    init_stringview(&ls->lexeme, input);
-    ls->vm     = vm;
-    ls->name   = vm->name;
-    ls->line   = 1;
+    init_view(&ls->lexeme, input);
+    ls->vm   = vm;
+    ls->line = 1;
 }
 
 // HELPERS ---------------------------------------------------------------- {{{1
@@ -112,7 +110,6 @@ static char peek_next_char(const Lexer *ls)
 // Analogous to `scanner.c:advance()` in the book.
 static char next_char(Lexer *ls)
 {
-    ls->lexeme.len += 1;
     ls->lexeme.end += 1;
     return ls->lexeme.end[-1];
 }
@@ -194,12 +191,12 @@ static Token make_token(Lexer *ls, TkType type)
 static Token error_token(Lexer *ls)
 {
     Token tk = make_token(ls, TK_ERROR);
+    View *sv = &tk.view;
 
     // For error tokens, report only the first line if this is a multiline.
-    const char *newline = memchr(tk.view.begin, '\n', tk.view.len);
+    const char *newline = memchr(sv->begin, '\n', view_len(*sv));
     if (newline != NULL) {
-        tk.view.end = newline;
-        tk.view.len = tk.view.end - tk.view.begin;
+        sv->end = newline;
     }
     return tk;
 }
@@ -228,23 +225,26 @@ static void skip_whitespace(Lexer *ls)
     }
 }
 
-static TkType check_keyword(TkType type, StringView word)
+static TkType check_keyword(TkType type, View word)
 {
-    StringView kw = LULU_TKINFO[type];
-    if (kw.len == word.len && cstr_eq(kw.begin, word.begin, word.len))
+    View kw = LULU_TKINFO[type];
+    size_t     l1  = view_len(kw);
+    size_t     l2  = view_len(word);
+    if (l1 == l2 && cstr_eq(kw.begin, word.begin, l2))
         return type;
     return TK_IDENT;
 }
 
 static TkType get_identifier_type(const Lexer *ls)
 {
-    StringView word = ls->lexeme;
+    View word = ls->lexeme;
+    size_t     len  = view_len(word);
     switch (word.begin[0]) {
     case 'a': return check_keyword(TK_AND, word);
     case 'b': return check_keyword(TK_BREAK, word);
     case 'd': return check_keyword(TK_DO, word);
     case 'e':
-        switch (word.len) {
+        switch (len) {
         case cstr_len("end"):
             return check_keyword(TK_END, word);
         case cstr_len("else"):
@@ -254,7 +254,7 @@ static TkType get_identifier_type(const Lexer *ls)
         }
         break;
     case 'f':
-        if (word.len > 1) {
+        if (len > 1) {
             switch (word.begin[1]) {
             case 'a': return check_keyword(TK_FALSE, word);
             case 'o': return check_keyword(TK_FOR, word);
@@ -263,7 +263,7 @@ static TkType get_identifier_type(const Lexer *ls)
         }
         break;
     case 'i':
-        if (word.len > 1) {
+        if (len > 1) {
             switch (word.begin[1]) {
             case 'f': return check_keyword(TK_IF, word);
             case 'n': return check_keyword(TK_IN, word);
@@ -272,7 +272,7 @@ static TkType get_identifier_type(const Lexer *ls)
         break;
     case 'l': return check_keyword(TK_LOCAL, word);
     case 'n':
-        if (word.len > 1) {
+        if (len > 1) {
             switch (word.begin[1]) {
             case 'i': return check_keyword(TK_NIL, word);
             case 'o': return check_keyword(TK_NOT, word);
@@ -283,7 +283,7 @@ static TkType get_identifier_type(const Lexer *ls)
     case 'p': return check_keyword(TK_PRINT, word);
     case 'r': return check_keyword(TK_RETURN, word);
     case 't':
-        if (word.len > 1) {
+        if (len > 1) {
             switch (word.begin[1]) {
             case 'h': return check_keyword(TK_THEN, word);
             case 'r': return check_keyword(TK_TRUE, word);
@@ -397,8 +397,8 @@ bad_string:
 
     const char *begin = ls->lexeme.begin + 1; // +1 to skip opening quote.
     const char *end   = ls->lexeme.end - 1;   // -1 to skip closing quote.
-    StringView  sv    = sv_create_from_end(begin, end);
-    Token tk          = make_token(ls, TK_STRING);
+    View        sv    = view_from_end(begin, end);
+    Token       tk    = make_token(ls, TK_STRING);
     tk.data.string    = luluStr_copy(ls->vm, sv);
     return tk;
 }
@@ -411,11 +411,11 @@ static Token rstring_token(Lexer *ls, int lvl)
     }
     multiline(ls, lvl);
 
-    size_t     mark = lvl + open + 2;            // Skip [[ and opening nesting.
-    size_t     len  = ls->lexeme.len - mark - 2; // Offset of last non-quote.
-    StringView sv   = sv_create_from_len(ls->lexeme.begin + mark, len);
-    Token      tk   = make_token(ls, TK_STRING);
-    tk.data.string  = luluStr_copy_raw(ls->vm, sv);
+    size_t mark = lvl + open + 2;            // Skip [[ and opening nesting.
+    size_t len  = view_len(ls->lexeme) - mark - 2; // Offset of last non-quote.
+    View   sv   = view_from_len(ls->lexeme.begin + mark, len);
+    Token  tk   = make_token(ls, TK_STRING);
+    tk.data.string = luluStr_copy_raw(ls->vm, sv);
     return tk;
 }
 
@@ -427,7 +427,7 @@ static Token make_token_ifelse(Lexer *ls, char expected, TkType y, TkType n)
 Token luluLex_scan_token(Lexer *ls)
 {
     skip_whitespace(ls);
-    init_stringview(&ls->lexeme, ls->lexeme.end);
+    init_view(&ls->lexeme, ls->lexeme.end);
     if (is_at_end(ls))
         return make_token(ls, TK_EOF);
 
@@ -497,16 +497,16 @@ typedef struct {
     char *end;         // +1 past the last written character.
     int   left;        // How many free slots we can still write in.
     int   writes;      // How many slots we have written to so far.
-} StringBuilder;
+} Builder;
 
-static void init_stringbuilder(StringBuilder *sb)
+static void init_builder(Builder *sb)
 {
     sb->end    = sb->buffer;
     sb->left   = sizeof(sb->buffer);
     sb->writes = 0;
 }
 
-static void append_stringbuilder(StringBuilder *sb, const char *fmt, ...)
+static void append_builder(Builder *sb, const char *fmt, ...)
 {
     va_list argp;
     va_start(argp, fmt);
@@ -523,12 +523,12 @@ void luluLex_expect_token(Lexer *ls, TkType type, const char *info)
         luluLex_next_token(ls);
         return;
     }
-    StringBuilder sb;
-    StringView    sv = LULU_TKINFO[type];
-    init_stringbuilder(&sb);
-    append_stringbuilder(&sb, "Expected '%s'", sv.begin);
+    Builder sb;
+    View    sv = LULU_TKINFO[type];
+    init_builder(&sb);
+    append_builder(&sb, "Expected '%s'", sv.begin);
     if (info != NULL)
-        append_stringbuilder(&sb, " %s", info);
+        append_builder(&sb, " %s", info);
     luluLex_error_lookahead(ls, sb.buffer);
 }
 
@@ -578,7 +578,7 @@ void luluLex_error_at(Lexer *ls, const Token *tk, const char *info)
     if (tk->type == TK_EOF) {
         lulu_push_literal(vm, "at <eof>");
     } else {
-        lulu_push_lcstring(vm, tk->view.begin, tk->view.len);
+        lulu_push_lcstring(vm, tk->view.begin, view_len(tk->view));
         lulu_push_fstring(vm, "near \'%s\'", lulu_to_cstring(vm, -1));
     }
     lulu_comptime_error(vm, ls->line, info, lulu_to_cstring(vm, -1));

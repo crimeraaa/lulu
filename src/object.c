@@ -23,10 +23,10 @@ ToNumber luluVal_to_number(const Value *val)
         return conv;
     }
     if (is_string(val)) {
-        char      *end;
-        String    *s  = as_string(val);
-        StringView sv = sv_create_from_len(s->data, s->len);
-        Number     n  = cstr_tonumber(sv.begin, &end);
+        char   *end;
+        String *s  = as_string(val);
+        View    sv = view_from_len(s->data, s->len);
+        Number  n  = cstr_tonumber(sv.begin, &end);
         if (end == sv.end) {
             conv.number = n;
             conv.ok     = true;

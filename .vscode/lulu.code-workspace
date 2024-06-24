@@ -20,7 +20,13 @@
 			"utility": "c",
 			"exception": "c",
 			"typeinfo": "c",
-			"random": "c"
+			"random": "c",
+			"deque": "c",
+			"string": "c",
+			"unordered_map": "c",
+			"vector": "c",
+			"string_view": "c",
+			"initializer_list": "c"
 		},
 		"files.exclude": {
 			"**/.git": true,

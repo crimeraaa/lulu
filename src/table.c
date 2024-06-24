@@ -9,14 +9,14 @@ static uint32_t hash_pointer(Object *obj)
 {
     char s[sizeof(obj)];
     memcpy(s, &obj, sizeof(s));
-    return luluStr_hash_raw(sv_create_from_len(s, sizeof(s)));
+    return luluStr_hash_raw(view_from_len(s, sizeof(s)));
 }
 
 static uint32_t hash_number(Number n)
 {
     char s[sizeof(n)];
     memcpy(s, &n, sizeof(s));
-    return luluStr_hash_raw(sv_create_from_len(s, sizeof(s)));
+    return luluStr_hash_raw(view_from_len(s, sizeof(s)));
 }
 
 static void clear_entries(Entry *entries, int cap)

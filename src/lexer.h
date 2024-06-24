@@ -71,19 +71,18 @@ typedef union {
 } TkData;
 
 typedef struct {
-    StringView view;
+    View view;
     TkData     data;
     TkType     type;
     int        line;
 } Token;
 
 typedef struct {
-    Token       lookahead; // analogous to `Parser::current` in the book.
-    Token       consumed;  // analogous to `Parser::previous` in the book.
-    StringView  lexeme;    // Holds pointers to 1st and current of lexeme.
-    lulu_VM    *vm;        // Private to implementation. Has our `jmp_buf`.
-    const char *name;      // Current filename or `"stdin"`.
-    int         line;      // Current line number we're on.
+    Token    lookahead; // analogous to `Parser::current` in the book.
+    Token    consumed;  // analogous to `Parser::previous` in the book.
+    View     lexeme;    // Holds pointers to 1st and current of lexeme.
+    lulu_VM *vm;        // Private to implementation. Has our `jmp_buf`.
+    int      line;      // Current line number we're on.
 } Lexer;
 
 void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm);

@@ -34,7 +34,8 @@ lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
     static Lexer    ls;
     static Compiler cpl;
     lulu_Status     res = setjmp(vm->errorjmp);
-    vm->name = name;
+
+    vm->name = luluStr_copy(vm, view_from_len(name, strlen(name)));
     switch (res) {
     case LULU_OK:
         luluFun_init_chunk(&ck, vm->name);
@@ -133,7 +134,7 @@ void lulu_push_cstring(lulu_VM *vm, const char *s)
 
 void lulu_push_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
-    StringView sv = sv_create_from_len(s, len);
+    View sv = view_from_len(s, len);
     lulu_push_string(vm, luluStr_copy(vm, sv));
 }
 
@@ -167,8 +168,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
             break;
         // Push the contents of the string before '%' unless '%' is first char.
         if (spec != fmt) {
-            StringView sv = sv_create_from_end(iter, spec);
-            lulu_push_lcstring(vm, sv.begin, sv.len);
+            lulu_push_lcstring(vm, iter, spec - iter);
             argc += 1;
         }
         // Move to character after '%' so we point at the specifier.
@@ -344,8 +344,8 @@ void lulu_get_global_from_cstring(lulu_VM *vm, const char *s)
 
 void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
-    StringView sv = sv_create_from_len(s, len);
-    String    *id = luluStr_copy(vm, sv);
+    View    sv = view_from_len(s, len);
+    String *id = luluStr_copy(vm, sv);
     lulu_get_global_from_string(vm, id);
 }
 
@@ -363,7 +363,7 @@ void lulu_set_global_from_cstring(lulu_VM *vm, const char *s)
 
 void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
-    StringView sv = sv_create_from_len(s, len);
+    View sv = view_from_len(s, len);
     lulu_set_global_from_string(vm, luluStr_copy(vm, sv));
 }
 
@@ -418,5 +418,5 @@ void lulu_push_error_vfstring(lulu_VM *vm, int line, const char *fmt, va_list ar
     lulu_set_top(vm, 0); // Reset VM stack before pushing the error message.
     const char *msg = lulu_push_vfstring(vm, fmt, args);
     lulu_pop(vm, 1); // push_fstring will push a copy.
-    lulu_push_fstring(vm, "%s:%i: %s", vm->name, line, msg);
+    lulu_push_fstring(vm, "%s:%i: %s", vm->name->data, line, msg);
 }

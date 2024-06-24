@@ -29,7 +29,7 @@ static char get_escape(char ch)
 }
 
 // Note that we need to hash escapes correctly too.
-static uint32_t hash_string(StringView sv)
+static uint32_t hash_string(View sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
     char     prev = 0;
@@ -47,7 +47,7 @@ static uint32_t hash_string(StringView sv)
     return hash;
 }
 
-uint32_t luluStr_hash_raw(StringView sv)
+uint32_t luluStr_hash_raw(View sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
     for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
@@ -71,7 +71,7 @@ void luluStr_free(lulu_VM *vm, String *s)
     luluMem_free_pointer(vm, luluObj_unlink(vm, &s->object), luluStr_size(s->len + 1));
 }
 
-static void build_string(String *s, StringView sv)
+static void build_string(String *s, View sv)
 {
     char *end   = s->data; // For loop counter may skip.
     int   skips = 0;       // Number escape characters emitted.
@@ -95,7 +95,7 @@ static void build_string(String *s, StringView sv)
         end++;
     }
     *end   = '\0';
-    s->len = sv.len - skips;
+    s->len = view_len(sv) - skips;
 }
 
 static void end_string(String *s, uint32_t hash)
@@ -104,23 +104,24 @@ static void end_string(String *s, uint32_t hash)
     s->hash         = hash;
 }
 
-static String *copy_string(lulu_VM *vm, StringView sv, bool israw)
+static String *copy_string(lulu_VM *vm, View sv, bool israw)
 {
     uint32_t hash  = (israw) ? luluStr_hash_raw(sv) : hash_string(sv);
     String  *found = luluStr_find_interned(vm, sv, hash);
+    size_t   len   = view_len(sv);
     if (found != NULL)
         return found;
 
-    String *s = luluStr_new(vm, sv.len);
+    String *s = luluStr_new(vm, len);
     if (israw)
-        memcpy(s->data, sv.begin, sv.len);
+        memcpy(s->data, sv.begin, len);
     else
         build_string(s, sv);
     end_string(s, hash);
 
     // If we have escapes, are we really REALLY sure this isn't found?
-    if (s->len != sv.len) {
-        found = luluStr_find_interned(vm, sv_create_from_len(s->data, s->len), hash);
+    if (s->len != len) {
+        found = luluStr_find_interned(vm, view_from_len(s->data, s->len), hash);
         if (found != NULL) {
             luluStr_free(vm, s);
             return found;
@@ -130,21 +131,21 @@ static String *copy_string(lulu_VM *vm, StringView sv, bool israw)
     return s;
 }
 
-String *luluStr_copy_raw(lulu_VM *vm, StringView sv)
+String *luluStr_copy_raw(lulu_VM *vm, View sv)
 {
     return copy_string(vm, sv, true);
 }
 
-String *luluStr_copy(lulu_VM *vm, StringView sv)
+String *luluStr_copy(lulu_VM *vm, View sv)
 {
     return copy_string(vm, sv, false);
 }
 
 String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len)
 {
-    String    *s      = luluStr_new(vm, len);
-    StringView sv     = sv_create_from_len(s->data, s->len);
-    size_t     offset = 0;
+    String *s      = luluStr_new(vm, len);
+    View    sv     = view_from_len(s->data, s->len);
+    size_t  offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
     for (int i = 0; i < argc; i++) {
@@ -170,13 +171,14 @@ void luluStr_set_interned(lulu_VM *vm, const String *s)
     luluTbl_set(vm, t, &k, &v);
 }
 
-String *luluStr_find_interned(lulu_VM *vm, StringView sv, uint32_t hash)
+String *luluStr_find_interned(lulu_VM *vm, View sv, uint32_t hash)
 {
     Table *t = &vm->strings;
     if (t->count == 0)
         return NULL;
 
     uint32_t i = hash % t->cap;
+    size_t   n = view_len(sv);
     for (;;) {
         Entry *ent = &t->entries[i];
         // The strings table only ever has completely empty or full entries.
@@ -185,8 +187,8 @@ String *luluStr_find_interned(lulu_VM *vm, StringView sv, uint32_t hash)
 
         // We assume ALL valid (i.e: non-nil) keys are strings.
         String *s = as_string(&ent->key);
-        if (s->len == sv.len && s->hash == hash) {
-            if (cstr_eq(s->data, sv.begin, sv.len))
+        if (s->len == n && s->hash == hash) {
+            if (cstr_eq(s->data, sv.begin, n))
                 return s;
         }
         i = (i + 1) % t->cap;

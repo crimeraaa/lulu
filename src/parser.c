@@ -571,7 +571,7 @@ static void while_loop(Compiler *cpl, Lexer *ls)
 static void add_internal_local(Compiler *cpl, const char *name)
 {
     size_t  len = strlen(name);
-    String *id  = luluStr_copy(cpl->vm, sv_create_from_len(name, len));
+    String *id  = luluStr_copy(cpl->vm, view_from_len(name, len));
     luluCpl_add_local(cpl, id);
     luluCpl_identifier_constant(cpl, id);
 }

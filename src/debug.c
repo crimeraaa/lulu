@@ -39,7 +39,7 @@ void luluDbg_print_value(const Value *v)
 void luluDbg_disassemble_chunk(const Chunk *ck)
 {
     disassemble_constants(ck);
-    printf("[BYTECODE]: '%s'\n", ck->name);
+    printf("[BYTECODE]: '%s'\n", ck->name->data);
     for (int offset = 0; offset < ck->len; ) {
         offset = luluDbg_disassemble_instruction(ck, offset);
     }
