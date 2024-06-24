@@ -35,15 +35,6 @@ static void statement(Compiler *cpl, Lexer *ls);
  */
 static void expression(Compiler *cpl, Lexer *ls);
 
-// Declare a local variable by initializing and adding it to the current scope.
-// Intern a local variable name. Analogous to `parseVariable()` in the book.
-static void parse_local(Compiler *cpl, Lexer *ls)
-{
-    String *id = ls->consumed.data.string;
-    luluCpl_init_local(cpl, id);
-    luluCpl_identifier_constant(cpl, id); // We don't need the index here.
-}
-
 static int parse_exprlist(Compiler *cpl, Lexer *ls)
 {
     int exprs = 0;
@@ -585,46 +576,38 @@ static void add_internal_local(Compiler *cpl, const char *name)
     luluCpl_identifier_constant(cpl, id);
 }
 
-static void for_index(Compiler *cpl, Lexer *ls)
+static void emit_local(Compiler *cpl, String *id)
 {
-    luluLex_expect_token(ls, TK_IDENT, NULL);
-    parse_local(cpl, ls);
-    luluLex_expect_token(ls, TK_ASSIGN, NULL);
-    expression(cpl, ls);
-    luluCpl_define_locals(cpl, 1);
+    luluCpl_init_local(cpl, id);
+    luluCpl_identifier_constant(cpl, id);
 }
 
-static void for_limit(Compiler *cpl, Lexer *ls)
+static void numeric_for(Compiler *cpl,Lexer *ls, String *id)
 {
-    luluLex_expect_token(ls, TK_COMMA, NULL);
-    expression(cpl, ls);
-}
-
-static void for_step(Compiler *cpl, Lexer *ls)
-{
-    if (luluLex_match_token(ls, TK_COMMA)) {
-        expression(cpl, ls);
-    } else {
-        Value n = make_number(1);
-        luluCpl_emit_constant(cpl, &n);
-    }
-}
-
-static void for_loop(Compiler *cpl, Lexer *ls)
-{
-    luluCpl_begin_scope(cpl);
-
     // Order is important due to VM's assumptions about internal loop state.
     add_internal_local(cpl, "(for index)");
     add_internal_local(cpl, "(for limit)");
     add_internal_local(cpl, "(for step)");
-    luluCpl_define_locals(cpl, 3);
 
-    for_index(cpl, ls);  // <for-index> '=' <expression>
-    for_limit(cpl, ls);  // ',' <for-limit>
-    for_step(cpl, ls);   // [',' <for-step>]
+    // <for-index>
+    emit_local(cpl, id);
+    expression(cpl, ls);
+    luluCpl_define_locals(cpl, 4);
+
+    // <for-limit>
+    luluLex_expect_token(ls, TK_COMMA, "after 'for' index");
+    expression(cpl, ls);
+
+    // <for-step>
+    if (luluLex_match_token(ls, TK_COMMA)) {
+        expression(cpl, ls);
+    } else {
+        static const Value n = make_number(1);
+        luluCpl_emit_constant(cpl, &n);
+    }
+
+    // 'do' <block>
     luluLex_expect_token(ls, TK_DO, NULL);
-
     luluCpl_emit_opcode(cpl, OP_FORPREP);
     int loop_init  = luluCpl_emit_jump(cpl);
     int loop_start = luluCpl_start_loop(cpl);
@@ -633,6 +616,30 @@ static void for_loop(Compiler *cpl, Lexer *ls)
     luluCpl_patch_jump(cpl, loop_init);
     luluCpl_emit_opcode(cpl, OP_FORLOOP);
     luluCpl_emit_loop(cpl,  loop_start);
+}
+
+static void for_loop(Compiler *cpl, Lexer *ls)
+{
+    // Scope for internal loop variables.
+    luluCpl_begin_scope(cpl);
+    luluLex_expect_token(ls, TK_IDENT, "after 'for'");
+
+    String *id = ls->consumed.data.string;
+
+    luluLex_next_token(ls);
+    switch (ls->consumed.type) {
+    case TK_ASSIGN: // 'for' <identifier> '=' <expression> ',' ...
+        numeric_for(cpl, ls, id);
+        break;
+    case TK_COMMA:  // 'for' <identifier> [',' <identifier>]+ 'in' <expression>
+    case TK_IN:
+        luluLex_error_consumed(ls, "generic 'for' loop not yet supported");
+        break;
+    default:
+        luluLex_error_consumed(ls, "'=' or 'in' expected");
+        break;
+    }
+
     luluCpl_end_scope(cpl);
 }
 
@@ -698,7 +705,7 @@ static void declare_locals(Compiler *cpl, Lexer *ls)
 
     do {
         luluLex_expect_token(ls, TK_IDENT, NULL);
-        parse_local(cpl, ls);
+        emit_local(cpl, ls->consumed.data.string);
         idents += 1;
     } while (luluLex_match_token(ls, TK_COMMA));
 
