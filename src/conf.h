@@ -1,6 +1,3 @@
-/**
- * @brief   14.2: Getting Started
- */
 #ifndef LULU_CONFIGURATION_H
 #define LULU_CONFIGURATION_H
 
@@ -31,7 +28,12 @@
  *          You may use 32 bit integers.
  *
  * @details LULU_SBYTE3:
- *          Signed counterpart of `LULU_BYTE3`.
+ *          Signed counterpart of `LULU_BYTE3`. We currently use sign-magnitude
+ *          representation. That is, we use the lower 23 bits for the "payload"
+ *          and the upper 24th bit to determine the signedness.
+ *
+ *          This has the disadvantage of having separate representations for
+ *          +0 and -0, but a jump of 0 should be very bad anyway...
  */
 #define LULU_BYTE       uint8_t
 #define LULU_BYTE2      uint16_t
@@ -42,11 +44,21 @@
 #define LULU_MAX_STACK  256
 #define LULU_MAX_LINE   256
 #define LULU_MAX_LOCALS 200
-#define LULU_MAX_CONSTS 0x1000000
-#define LULU_MAX_LEVELS 10000
 
-// The entire VM will always reserve some extra stack space for error message
-// formatting and such.
+/**
+ * @details LULU_MAX_CONSTS:
+ *          A 24-bit unsigned integer limit. We enforce this as the arguments
+ *          to OP_CONSTANT must fit in a Byte3.
+ *
+ * @details LULU_MAX_LEVELS
+ *          An arbitrary limit to prevent the parser from recursing too much.
+ *
+ * @details LULU_STACK_RESERVED
+ *          VM will always have extra stack space for error message formatting
+ *          and such.
+ */
+#define LULU_MAX_CONSTS 16777215
+#define LULU_MAX_LEVELS 200
 #define LULU_STACK_RESERVED  16
 
 // NUMBER TYPE INFORMATION ------------------------------------------------ {{{1

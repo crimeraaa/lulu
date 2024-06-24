@@ -101,15 +101,6 @@ static void compare_tm(lulu_VM *vm, StackID a, StackID b, TagMethod tm)
     lulu_type_error(vm, "compare", pick_non_number(a, b));
 }
 
-static void do_jump(lulu_VM *vm, Byte3 jump)
-{
-    // Sign bit is toggled?
-    if (jump & MIN_SBYTE3)
-        vm->ip -= jump & MAX_SBYTE3; // Clear sign bit to extract raw.
-    else
-        vm->ip += jump;
-}
-
 static bool to_number(StackID id)
 {
     ToNumber conv = luluVal_to_number(id);
@@ -272,11 +263,16 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             if (!is_falsy(arg_a))
                 vm->ip += get_opsize(OP_JUMP);
             break;
-        case OP_JUMP:
-            do_jump(vm, read_byte3());
+        case OP_JUMP: {
+            Byte3 jump = read_byte3();
+            // Sign bit is toggled?
+            if (jump & MIN_SBYTE3)
+                vm->ip -= jump & MAX_SBYTE3; // Clear sign bit to extract raw.
+            else
+                vm->ip += jump;
             break;
+        }
         case OP_FORPREP: {
-            Byte3   jump      = read_byte3();
             StackID for_index = poke_top(vm, -3);
             StackID for_limit = poke_top(vm, -2);
             StackID for_step  = arg_a;
@@ -296,11 +292,9 @@ lulu_Status luluVM_execute(lulu_VM *vm)
 
             // Push a copy of <for-index> to top due to parser semantics.
             lulu_push_number(vm, as_number(for_index));
-            do_jump(vm, jump); // goto FORLOOP
-            break;
+            break; // Implicit OP_JUMP->OP_FORLOOP
         }
         case OP_FORLOOP: {
-            Byte3  jump  = read_byte3();
             Number step  = as_number(poke_top(vm, -2));
             Number limit = as_number(poke_top(vm, -3));
             Number index = lulu_num_add(as_number(arg_a), step);
@@ -310,7 +304,9 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             if (pos ?  lulu_num_le(index, limit) : lulu_num_le(limit, index)) {
                 setv_number(arg_a, index);
                 setv_number(poke_top(vm, -4), index);
-                do_jump(vm, jump);
+            } else {
+                // Skip the backwards jump to loop body.
+                vm->ip += get_opsize(OP_JUMP);
             }
             break;
         }

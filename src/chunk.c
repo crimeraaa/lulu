@@ -34,8 +34,8 @@ OpInfo LULU_OPINFO[] = {
     [OP_PRINT]      = {"PRINT",         1,          0,          VAR_DELTA},
     [OP_TEST]       = {"TEST",          0,          0,          0},
     [OP_JUMP]       = {"JUMP",          3,          0,          0},
-    [OP_FORPREP]    = {"FORPREP",       3,          1,          0},
-    [OP_FORLOOP]    = {"FORLOOP",       3,          0,          0},
+    [OP_FORPREP]    = {"FORPREP",       0,          1,          0},
+    [OP_FORLOOP]    = {"FORLOOP",       0,          0,          0},
     [OP_RETURN]     = {"RETURN",        0,          0,          0},
 };
 

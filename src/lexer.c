@@ -96,17 +96,17 @@ void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm)
 
 static bool is_at_end(const Lexer *ls)
 {
-    return *ls->lexeme.end == '\0';
+    return ls->lexeme.end[0] == '\0';
 }
 
 static char peek_current_char(const Lexer *ls)
 {
-    return *ls->lexeme.end;
+    return ls->lexeme.end[0];
 }
 
 static char peek_next_char(const Lexer *ls)
 {
-    return *(ls->lexeme.end + 1);
+    return ls->lexeme.end[1];
 }
 
 // Analogous to `scanner.c:advance()` in the book.
@@ -114,7 +114,7 @@ static char next_char(Lexer *ls)
 {
     ls->lexeme.len += 1;
     ls->lexeme.end += 1;
-    return *(ls->lexeme.end - 1);
+    return ls->lexeme.end[-1];
 }
 
 static bool match_char(Lexer *ls, char ch)

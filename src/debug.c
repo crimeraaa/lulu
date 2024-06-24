@@ -110,22 +110,37 @@ static SByte3 get_jump(Byte3 b3)
         return b3;
 }
 
+static void print_jump(int from, char sign, int jump, int to)
+{
+    printf("ip = %04x %c %04x ; goto %04x", from, sign, jump, to);
+}
+
 static void jump_op(const Byte *ip, int offset)
 {
     // `ip` points to OP_JUMP itself, so need to adjust.
     Byte3  arg  = read_byte3(ip);
+    // Account for the adjustment `read_byte3()` normally does to VM ip.
     SByte3 jump = get_jump(arg) + get_opsize(OP_JUMP);
-    Byte3  addr = offset + jump;
+    int    addr = offset + jump;
     char   sign = (jump >= 0) ? '+' : '-';
     int    raw  = (jump >= 0) ? jump : -jump;
-    printf("ip %c= %i ; goto %04x", sign, raw, addr);
+    print_jump(offset + 1, sign, raw, addr);
 }
 
+// Remember that normally the VM increments ip EVERY read_byte().
 static void test_op(int offset)
 {
-    SByte3 jump = get_opsize(OP_JUMP) + get_opsize(OP_TEST);
-    Byte3  addr = offset + jump;
-    printf("if Top[-1] ip += %i ; goto %04x", jump, addr);
+    int jump = get_opsize(OP_JUMP);
+    int addr = offset + jump + get_opsize(OP_TEST);
+    print_jump(offset + 1, '+', jump, addr);
+}
+
+static void for_loop(int offset)
+{
+    int jump = get_opsize(OP_JUMP);
+    int addr = offset + jump + get_opsize(OP_FORLOOP);
+    printf("if !<loop> ");
+    print_jump(offset + 1, '+', jump, addr);
 }
 
 int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
@@ -155,9 +170,9 @@ int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
     case OP_SETTABLE:  settable_op(ip);         break;
     case OP_SETARRAY:  setarray_op(ip);         break;
     case OP_TEST:      test_op(offset);         break;
-    case OP_FORLOOP:   printf("if <loop> ");
-    case OP_FORPREP:
     case OP_JUMP:      jump_op(ip, offset);     break;
+    case OP_FORLOOP:   for_loop(offset);        break;
+    case OP_FORPREP:
     case OP_GETTABLE:
     case OP_TRUE:
     case OP_FALSE:

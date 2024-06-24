@@ -152,10 +152,10 @@ void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg)
     }
 }
 
-int luluCpl_emit_jump(Compiler *cpl, OpCode op)
+int luluCpl_emit_jump(Compiler *cpl)
 {
     int offset = current_chunk(cpl)->len;
-    luluCpl_emit_oparg3(cpl, op, MAX_BYTE3);
+    luluCpl_emit_oparg3(cpl, OP_JUMP, MAX_BYTE3);
     return offset;
 }
 
@@ -199,9 +199,9 @@ int luluCpl_start_loop(Compiler *cpl)
     return current_chunk(cpl)->len;
 }
 
-void luluCpl_emit_loop(Compiler *cpl, int loop_start, bool is_for)
+void luluCpl_emit_loop(Compiler *cpl, int loop_start)
 {
-    int   offset = luluCpl_emit_jump(cpl, (is_for) ? OP_FORLOOP : OP_JUMP);
+    int   offset = luluCpl_emit_jump(cpl);
     Byte3 arg    = get_jump(cpl, loop_start, JUMP_BACKWARD);
     if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Loop body too large");
@@ -237,7 +237,7 @@ int luluCpl_make_constant(Compiler *cpl, const Value *vl)
     Lexer *ls = cpl->lexer;
     int    i  = luluFun_add_constant(cpl->vm, current_chunk(cpl), vl);
     if (i + 1 > LULU_MAX_CONSTS)
-        luluLex_error_consumed(ls, "Too many constants in current chunk");
+        luluLex_error_consumed(ls, stringify(LULU_MAX_CONSTS) "+ constants in current chunk");
     return i;
 }
 

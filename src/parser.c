@@ -165,7 +165,7 @@ typedef enum {
 static int emit_if_jump(Compiler *cpl, TestType type)
 {
     luluCpl_emit_opcode(cpl, OP_TEST);
-    int offset = luluCpl_emit_jump(cpl, OP_JUMP);
+    int offset = luluCpl_emit_jump(cpl);
     switch (type) {
     case TEST_WITH_POP:
         luluCpl_emit_oparg1(cpl, OP_POP, 1);
@@ -188,7 +188,7 @@ static void logic_and(Compiler *cpl, Lexer *ls)
 static void logic_or(Compiler *cpl, Lexer *ls)
 {
     int else_jump = emit_if_jump(cpl, TEST_NO_POP);
-    int end_jump  = luluCpl_emit_jump(cpl, OP_JUMP);
+    int end_jump  = luluCpl_emit_jump(cpl);
 
     luluCpl_patch_jump(cpl, else_jump);  // Truthy: goto end.
     luluCpl_emit_oparg1(cpl, OP_POP, 1); // Falsy: pop LHS, push RHS.
@@ -529,7 +529,7 @@ static void if_block(Compiler *cpl, Lexer *ls)
 static void discharge_jump(Compiler *cpl, int *jump)
 {
     int prev  = *jump;
-    *jump     = luluCpl_emit_jump(cpl, OP_JUMP);
+    *jump     = luluCpl_emit_jump(cpl);
     luluCpl_patch_jump(cpl, prev);
     luluCpl_emit_oparg1(cpl, OP_POP, 1); // pop previous <condition>.
     cpl->stack_usage += 1; // Undo weirdness from POP w/o a corresponding push
@@ -570,7 +570,7 @@ static void while_loop(Compiler *cpl, Lexer *ls)
     // Truthy: skip this jump. Falsy: jump over the entire loop body.
     int loop_init = emit_if_jump(cpl, TEST_WITH_POP);
     do_block(cpl, ls);
-    luluCpl_emit_loop(cpl, loop_start, false);
+    luluCpl_emit_loop(cpl, loop_start);
 
     luluCpl_patch_jump(cpl, loop_init);
     luluCpl_emit_oparg1(cpl, OP_POP, 1);
@@ -625,13 +625,14 @@ static void for_loop(Compiler *cpl, Lexer *ls)
     for_step(cpl, ls);   // [',' <for-step>]
     luluLex_expect_token(ls, TK_DO, NULL);
 
-    // Check loop variables for consistency then jump to FORLOOP (loop_start).
-    int loop_init  = luluCpl_emit_jump(cpl, OP_FORPREP);
+    luluCpl_emit_opcode(cpl, OP_FORPREP);
+    int loop_init  = luluCpl_emit_jump(cpl);
     int loop_start = luluCpl_start_loop(cpl);
 
     do_block(cpl, ls);
     luluCpl_patch_jump(cpl, loop_init);
-    luluCpl_emit_loop(cpl,  loop_start, true);
+    luluCpl_emit_opcode(cpl, OP_FORLOOP);
+    luluCpl_emit_loop(cpl,  loop_start);
     luluCpl_end_scope(cpl);
 }
 

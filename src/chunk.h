@@ -66,8 +66,8 @@ OP_LEN,      // -       | x                     | #x                      |     
 OP_PRINT,    // B1      | Top[-B1...-1]         | -                       | print(...)           |
 OP_TEST,     // _       | Top[-1]               | Top[-1]                 | if Top[-1] ip++      |
 OP_JUMP,     // sB3     | -                     | -                       | ip += sB3            |
-OP_FORPREP,  // sB3     | it, lim, inc          | it, lim, inc, cpy       | ip += sB3            |
-OP_FORLOOP,  // sB3     | it, lim, inc, cpy     | it, lim, inc, cpy       | if <loop> ip++       |
+OP_FORPREP,  // -       | it1, lim, inc         | it1, lim, inc, it2      |                      |
+OP_FORLOOP,  // -       | it1, lim, inc, it2    | it1, lim, inc, it2      | if !<loop> ip++      |
 OP_RETURN,   // -       | -                     |                         |                      |
 } OpCode;
 
@@ -109,6 +109,18 @@ OP_TEST:
 
     If Top[-1] == 0 then we move to the next instruction (see ip++).
     Otherwise, we jump over said instruction.
+
+OP_FORPREP:
+    This instruction simply resolves the internal numeric for state, throwing
+    errors if necessary. If all is successful, we proceed to the OP_JUMP.
+
+OP_FORLOOP:
+    This instruction simply accesses the internal loop variables and checks if
+    we need to keep going. If we do, we proceeed to the JUMP right after.
+    Otherwise we skip said jump to break out of the loop.
+
+    Due to parser semantics we push a copy of the index variable `it1` so
+    that it can be readily accessible on the top of the stack.
 
 ip++:
     This assumes that the next instruction is an OP_JUMP.
