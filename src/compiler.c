@@ -165,6 +165,7 @@ typedef enum {
 } JumpType;
 
 // Get the amount of bytecode we need to jump over, no direction.
+// TODO: Use excess-K representation instead of sign-magnitude.
 static Byte3 get_jump(Compiler *cpl, int offset, JumpType type)
 {
     Byte3 jump = current_chunk(cpl)->len - offset;
@@ -202,13 +203,12 @@ void luluCpl_emit_loop(Compiler *cpl, int loop_start, bool is_for)
 {
     int   offset = luluCpl_emit_jump(cpl, (is_for) ? OP_FORLOOP : OP_JUMP);
     Byte3 arg    = get_jump(cpl, loop_start, JUMP_BACKWARD);
-    // We encoded a signed integer in an unsigned Byte3.
     if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Loop body too large");
     patch_byte3(cpl, offset, arg | MIN_SBYTE3); // toggle sign bit
 }
 
-void luluCpl_emit_identifier(Compiler *cpl, const Token *id)
+void luluCpl_emit_identifier(Compiler *cpl, String *id)
 {
     luluCpl_emit_oparg3(cpl, OP_CONSTANT, luluCpl_identifier_constant(cpl, id));
 }
@@ -246,7 +246,7 @@ void luluCpl_emit_constant(Compiler *cpl, const Value *vl)
     luluCpl_emit_oparg3(cpl, OP_CONSTANT, luluCpl_make_constant(cpl, vl));
 }
 
-void luluCpl_emit_variable(Compiler *cpl, const Token *id)
+void luluCpl_emit_variable(Compiler *cpl, String *id)
 {
     int  arg     = luluCpl_resolve_local(cpl, id);
     bool islocal = (arg != -1);
@@ -258,9 +258,9 @@ void luluCpl_emit_variable(Compiler *cpl, const Token *id)
         luluCpl_emit_oparg3(cpl, OP_GETGLOBAL, luluCpl_identifier_constant(cpl, id));
 }
 
-int luluCpl_identifier_constant(Compiler *cpl, const Token *id)
+int luluCpl_identifier_constant(Compiler *cpl, String *id)
 {
-    Value wrap = make_string(id->data.string);
+    Value wrap = make_string(id);
     return luluCpl_make_constant(cpl, &wrap);
 }
 
@@ -319,41 +319,33 @@ void luluCpl_compile(Compiler *cpl, Lexer *ls, const char *input, Chunk *chunk)
 
 // LOCAL VARIABLES -------------------------------------------------------- {{{1
 
-static bool identifiers_equal(const Token *a, const Token *b)
-{
-    const StringView s1 = a->view;
-    const StringView s2 = b->view;
-    return s1.len == s2.len && lulu_cstr_eq(s1.begin, s2.begin, s1.len);
-}
-
-int luluCpl_resolve_local(Compiler *cpl, const Token *id)
+int luluCpl_resolve_local(Compiler *cpl, String *id)
 {
     Scope *scope = &cpl->scope;
     for (int i = scope->count - 1; i >= 0; i--) {
         const Local *local = &scope->locals[i];
         // If using itself in initializer, continue to resolve outward.
-        if (local->depth != -1 && identifiers_equal(id, &local->ident))
+        if (local->depth != -1 && id == local->identifier)
             return i;
     }
     return -1;
 }
 
-void luluCpl_add_local(Compiler *cpl, const Token *id)
+void luluCpl_add_local(Compiler *cpl, String *id)
 {
     Scope *scp = &cpl->scope;
     Lexer *ls  = cpl->lexer;
     if (scp->count + 1 > LULU_MAX_LOCALS)
         luluLex_error_consumed(ls, stringify(LULU_MAX_LOCALS) "+ local variables");
     Local *loc = &scp->locals[scp->count++];
-    loc->ident = *id;
-    loc->depth = -1;
+    loc->identifier = id;
+    loc->depth      = -1;
 }
 
-void luluCpl_init_local(Compiler *cpl)
+void luluCpl_init_local(Compiler *cpl, String *id)
 {
     Scope *scp = &cpl->scope;
     Lexer *ls  = cpl->lexer;
-    Token *id  = &ls->consumed;
 
     // Detect variable shadowing in the same scope_
     for (int i = scp->count - 1; i >= 0; i--) {
@@ -361,7 +353,7 @@ void luluCpl_init_local(Compiler *cpl)
         // Have we hit an outer scope?
         if (loc->depth != -1 && loc->depth < scp->depth)
             break;
-        if (identifiers_equal(id, &loc->ident))
+        if (id == loc->identifier)
             luluLex_error_consumed(ls, "Shadowing of local variable");
     }
     luluCpl_add_local(cpl, id);

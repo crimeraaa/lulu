@@ -39,8 +39,8 @@ static void expression(Compiler *cpl, Lexer *ls);
 // Intern a local variable name. Analogous to `parseVariable()` in the book.
 static void parse_local(Compiler *cpl, Lexer *ls)
 {
-    Token *id = &ls->consumed;
-    luluCpl_init_local(cpl);
+    String *id = ls->consumed.data.string;
+    luluCpl_init_local(cpl, id);
     luluCpl_identifier_constant(cpl, id); // We don't need the index here.
 }
 
@@ -152,7 +152,7 @@ static void index(Compiler *cpl, Lexer *ls)
 static void field(Compiler *cpl, Lexer *ls)
 {
     luluLex_expect_token(ls, TK_IDENT, NULL);
-    luluCpl_emit_identifier(cpl, &ls->consumed);
+    luluCpl_emit_identifier(cpl, ls->consumed.data.string);
     luluCpl_emit_opcode(cpl, OP_GETTABLE);
 }
 
@@ -253,13 +253,14 @@ static void construct_table(Compiler *cpl, Lexer *ls, int t_idx, int *a_len)
 {
     int k_idx = cpl->stack_usage;
     if (luluLex_match_token(ls, TK_IDENT)) {
-        Token id = ls->consumed; // Copy by value as lexer might update.
+        // Save because Lexer may update on the call to match_token.
+        String *id = ls->consumed.data.string;
         if (luluLex_match_token(ls, TK_ASSIGN)) {
-            luluCpl_emit_identifier(cpl, &id);
+            luluCpl_emit_identifier(cpl, id);
             expression(cpl, ls);
             luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
         } else {
-            luluCpl_emit_variable(cpl, &id);
+            luluCpl_emit_variable(cpl, id);
             resolve_fields(cpl, ls);
             *a_len += 1;
         }
@@ -308,7 +309,8 @@ static void table(Compiler *cpl, Lexer *ls)
  */
 static void variable(Compiler *cpl, Lexer *ls)
 {
-    luluCpl_emit_variable(cpl, &ls->consumed);
+    String *id = ls->consumed.data.string;
+    luluCpl_emit_variable(cpl, id);
 }
 
 static OpCode get_unop(TkType type)
@@ -436,13 +438,11 @@ static void discharge_subtable(Compiler *cpl, Assignment *list)
  */
 static void discharge_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
 {
-    Token *id = &ls->consumed;
-
     // Emit the key immediately. In recursive calls we'll emit another GETTABLE,
     // otherwise we'll know the key is +1 after the table when we emit SETTABLE.
-    if (id->type == TK_PERIOD) {
+    if (ls->consumed.type == TK_PERIOD) {
         luluLex_expect_token(ls, TK_IDENT, "after '.'");
-        luluCpl_emit_identifier(cpl, id);
+        luluCpl_emit_identifier(cpl, ls->consumed.data.string);
     } else {
         expression(cpl, ls);
         luluLex_expect_token(ls, TK_RBRACKET, NULL);
@@ -455,11 +455,11 @@ static void discharge_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
 // Assumes we consumed an identifier as the first element of a statement.
 static void identifier_statement(Compiler *cpl, Lexer *ls, Assignment *list)
 {
-    Token *id = &ls->consumed;
+    String *id = ls->consumed.data.string;
 
     if (list->type != ASSIGN_TABLE) {
-        int  arg     = luluCpl_resolve_local(cpl, id);
-        bool islocal = (arg != -1);
+        int     arg     = luluCpl_resolve_local(cpl, id);
+        bool    islocal = (arg != -1);
         if (!islocal)
             arg = luluCpl_identifier_constant(cpl, id);
         set_assignment(list, islocal ? ASSIGN_LOCAL : ASSIGN_GLOBAL, arg);
@@ -577,15 +577,12 @@ static void while_loop(Compiler *cpl, Lexer *ls)
     cpl->stack_usage += 1; // Weirdness from above POP
 }
 
-static void add_internal_local(Compiler *cpl, Lexer *ls, const char *name)
+static void add_internal_local(Compiler *cpl, const char *name)
 {
-    Token  id;
-    size_t len = strlen(name);
-    id.view = sv_create_from_len(name, len);
-    id.type = TK_IDENT;
-    id.line = ls->line;
-    luluCpl_add_local(cpl, &id);
-    luluCpl_identifier_constant(cpl, &id);
+    size_t  len = strlen(name);
+    String *id  = luluStr_copy(cpl->vm, sv_create_from_len(name, len));
+    luluCpl_add_local(cpl, id);
+    luluCpl_identifier_constant(cpl, id);
 }
 
 static void for_index(Compiler *cpl, Lexer *ls)
@@ -618,9 +615,9 @@ static void for_loop(Compiler *cpl, Lexer *ls)
     luluCpl_begin_scope(cpl);
 
     // Order is important due to VM's assumptions about internal loop state.
-    add_internal_local(cpl, ls, "(for index)");
-    add_internal_local(cpl, ls, "(for limit)");
-    add_internal_local(cpl, ls, "(for step)");
+    add_internal_local(cpl, "(for index)");
+    add_internal_local(cpl, "(for limit)");
+    add_internal_local(cpl, "(for step)");
     luluCpl_define_locals(cpl, 3);
 
     for_index(cpl, ls);  // <for-index> '=' <expression>

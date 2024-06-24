@@ -11,8 +11,8 @@
 #include "lexer.h"
 
 typedef struct {
-    Token ident; // Identifier in the source code.
-    int   depth; // Scope depth at the time of declaration.
+    String *identifier; // Interned by Lexer.
+    int     depth;      // Scope depth at the time of declaration.
 } Local;
 
 typedef struct {
@@ -40,7 +40,6 @@ void luluCpl_emit_oparg1(Compiler *cpl, OpCode op, Byte arg);
 void luluCpl_emit_oparg2(Compiler *cpl, OpCode op, Byte2 arg);
 void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg);
 void luluCpl_emit_return(Compiler *cpl);
-void luluCpl_emit_identifier(Compiler *cpl, const Token *id);
 
 // Returns the index of `OP_JUMP` in the bytecode.
 int  luluCpl_emit_jump(Compiler *cpl, OpCode op);
@@ -58,10 +57,9 @@ void luluCpl_patch_table(Compiler *cpl, int offset, Byte3 size);
 // Will throw if our current number of constants exceeds `MAX_CONSTS`.
 int  luluCpl_make_constant(Compiler *cpl, const Value *vl);
 void luluCpl_emit_constant(Compiler *cpl, const Value *vl);
-void luluCpl_emit_variable(Compiler *cpl, const Token *id);
-
-// Intern the `String*` for `name` so we can easily look it up later.
-int luluCpl_identifier_constant(Compiler *cpl, const Token *id);
+void luluCpl_emit_variable(Compiler *cpl, String *id);
+void luluCpl_emit_identifier(Compiler *cpl, String *id);
+int  luluCpl_identifier_constant(Compiler *cpl, String *id);
 
 void luluCpl_begin_scope(Compiler *cpl);
 void luluCpl_end_scope(Compiler *cpl);
@@ -73,13 +71,13 @@ void luluCpl_define_locals(Compiler *cpl, int count);
 
 // Analogous to `declareVariable()` in the book, but only for Lua locals.
 // Assumes we just consumed a local variable identifier token.
-void luluCpl_init_local(Compiler *cpl);
+void luluCpl_init_local(Compiler *cpl, String *id);
 
 // Initializes the current top of the locals array.
 // Returns index of newly initialized local into the locals array.
-void luluCpl_add_local(Compiler *cpl, const Token *id);
+void luluCpl_add_local(Compiler *cpl, String *id);
 
 // Returns index of a local variable or -1 if assumed to be global.
-int luluCpl_resolve_local(Compiler *cpl, const Token *id);
+int luluCpl_resolve_local(Compiler *cpl, String *id);
 
 #endif /* LULU_COMPILER_H */
