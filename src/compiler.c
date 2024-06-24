@@ -8,13 +8,18 @@
 #include "debug.h"
 #endif
 
+static void init_scope(Scope *scp)
+{
+    scp->count = 0;
+    scp->depth = 0;
+}
+
 void luluCpl_init_compiler(Compiler *cpl, lulu_VM *vm)
 {
+    init_scope(&cpl->scope);
     cpl->lexer       = NULL;
     cpl->vm          = vm;
     cpl->chunk       = NULL;
-    cpl->scope_count = 0;
-    cpl->scope_depth = 0;
     cpl->stack_total = 0;
     cpl->stack_usage = 0;
     cpl->prev_opcode = OP_RETURN;
@@ -255,7 +260,7 @@ void luluCpl_emit_variable(Compiler *cpl, const Token *id)
 
 int luluCpl_identifier_constant(Compiler *cpl, const Token *id)
 {
-    Value wrap = make_string(luluStr_copy(cpl->vm, id->view));
+    Value wrap = make_string(id->data.string);
     return luluCpl_make_constant(cpl, &wrap);
 }
 
@@ -275,21 +280,22 @@ void luluCpl_end_compiler(Compiler *cpl)
 void luluCpl_begin_scope(Compiler *cpl)
 {
     Lexer *ls = cpl->lexer;
-    cpl->scope_depth += 1;
-    if (cpl->scope_depth > LULU_MAX_LEVELS)
+    cpl->scope.depth += 1;
+    if (cpl->scope.depth > LULU_MAX_LEVELS)
         luluLex_error_lookahead(ls, stringify(LULU_MAX_LEVELS) "+ syntax levels");
 }
 
 void luluCpl_end_scope(Compiler *cpl)
 {
-    int popped = 0;
+    Scope *scope  = &cpl->scope;
+    int    popped = 0;
 
-    cpl->scope_depth -= 1;
-    while (cpl->scope_count > 0) {
-        if (cpl->locals[cpl->scope_count - 1].depth <= cpl->scope_depth)
+    scope->depth -= 1;
+    while (scope->count > 0) {
+        if (scope->locals[scope->count - 1].depth <= scope->depth)
             break;
         popped += 1;
-        cpl->scope_count -= 1;
+        scope->count -= 1;
     }
     // Don't waste 2 bytes if nothing to pop
     if (popped > 0)
@@ -322,8 +328,9 @@ static bool identifiers_equal(const Token *a, const Token *b)
 
 int luluCpl_resolve_local(Compiler *cpl, const Token *id)
 {
-    for (int i = cpl->scope_count - 1; i >= 0; i--) {
-        const Local *local = &cpl->locals[i];
+    Scope *scope = &cpl->scope;
+    for (int i = scope->count - 1; i >= 0; i--) {
+        const Local *local = &scope->locals[i];
         // If using itself in initializer, continue to resolve outward.
         if (local->depth != -1 && identifiers_equal(id, &local->ident))
             return i;
@@ -333,24 +340,26 @@ int luluCpl_resolve_local(Compiler *cpl, const Token *id)
 
 void luluCpl_add_local(Compiler *cpl, const Token *id)
 {
-    Lexer *ls = cpl->lexer;
-    if (cpl->scope_count + 1 > LULU_MAX_LOCALS)
+    Scope *scp = &cpl->scope;
+    Lexer *ls  = cpl->lexer;
+    if (scp->count + 1 > LULU_MAX_LOCALS)
         luluLex_error_consumed(ls, stringify(LULU_MAX_LOCALS) "+ local variables");
-    Local *loc = &cpl->locals[cpl->scope_count++];
+    Local *loc = &scp->locals[scp->count++];
     loc->ident = *id;
     loc->depth = -1;
 }
 
 void luluCpl_init_local(Compiler *cpl)
 {
-    Lexer *ls = cpl->lexer;
-    Token *id = &ls->consumed;
+    Scope *scp = &cpl->scope;
+    Lexer *ls  = cpl->lexer;
+    Token *id  = &ls->consumed;
 
     // Detect variable shadowing in the same scope_
-    for (int i = cpl->scope_count - 1; i >= 0; i--) {
-        const Local *loc = &cpl->locals[i];
+    for (int i = scp->count - 1; i >= 0; i--) {
+        const Local *loc = &scp->locals[i];
         // Have we hit an outer scope?
-        if (loc->depth != -1 && loc->depth < cpl->scope_depth)
+        if (loc->depth != -1 && loc->depth < scp->depth)
             break;
         if (identifiers_equal(id, &loc->ident))
             luluLex_error_consumed(ls, "Shadowing of local variable");
@@ -360,8 +369,9 @@ void luluCpl_init_local(Compiler *cpl)
 
 void luluCpl_define_locals(Compiler *cpl, int count)
 {
+    Scope *scp = &cpl->scope;
     for (int i = count; i > 0; i--) {
-        cpl->locals[cpl->scope_count - i].depth = cpl->scope_depth;
+        scp->locals[scp->count - i].depth = scp->depth;
     }
 }
 

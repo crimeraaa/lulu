@@ -6,7 +6,7 @@
 #include "object.h"
 
 typedef enum {
-    // -*- RESERVED WORDS ------------------------------------------------- {{{1
+    // --- RESERVED WORDS ------------------------------------------------- {{{1
 
     TK_AND,
     TK_BREAK,
@@ -24,7 +24,7 @@ typedef enum {
 
     // 1}}} --------------------------------------------------------------------
 
-    // -*- SINGLE-CHARACTER TOKENS ---------------------------------------- {{{1
+    // --- SINGLE-CHARACTER TOKENS ---------------------------------------- {{{1
 
     TK_LPAREN,   TK_RPAREN,   // `(`, `)` := function calls, groupings
     TK_LBRACKET, TK_RBRACKET, // `[`, `]` := table index/field access
@@ -46,7 +46,7 @@ typedef enum {
 
     // 1}}} --------------------------------------------------------------------
 
-    // -*- MULTI-CHARACTER TOKENS ----------------------------------------- {{{1
+    // --- MULTI-CHARACTER TOKENS ----------------------------------------- {{{1
 
     TK_ASSIGN,     // `=` := variable assignment
     TK_EQ, TK_NEQ, // `==`, `~=` := equal to,     not equal to
@@ -65,8 +65,14 @@ typedef enum {
 #define NUM_KEYWORDS    (TK_WHILE + 1)
 #define NUM_TOKENS      (TK_EOF + 1)
 
+typedef union {
+    String *string; // Used by TK_IDENT and TK_STRING.
+    Number  number; // Used by TK_NUMBER.
+} TkData;
+
 typedef struct {
     StringView view;
+    TkData     data;
     TkType     type;
     int        line;
 } Token;
@@ -77,8 +83,6 @@ typedef struct {
     StringView  lexeme;    // Holds pointers to 1st and current of lexeme.
     lulu_VM    *vm;        // Private to implementation. Has our `jmp_buf`.
     const char *name;      // Current filename or `"stdin"`.
-    String     *string;    // Interned string literal or identifier.
-    Number      number;    // Encoded number literal.
     int         line;      // Current line number we're on.
 } Lexer;
 

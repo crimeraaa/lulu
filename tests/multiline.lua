@@ -8,8 +8,8 @@ do
     print(s)
 end
 
-print([[Hi mom!]] == "Hi mom!")
-print([[Hi\tmom!]] == "Hi\tmom!")
-print([[Hi\tmom!]] == "Hi\\tmom!")
-print([[Hi]] .. [[ ]] .. [[mom]] .. '!' == "Hi" .. ' ' .. "mom" .. '!')
-print([[Hi]] .. '\t' .. [[mom]] .. '!' == "Hi\tmom!")
+print("Expect: true", [[Hi mom!]] == "Hi mom!")
+print("Expect: false", [[Hi\tmom!]] == "Hi\tmom!")
+print("Expect: true", [[Hi\tmom!]] == "Hi\\tmom!")
+print("Expect: true", [[Hi]] .. [[ ]] .. [[mom]] .. '!' == "Hi" .. ' ' .. "mom" .. '!')
+print("Expect: true", [[Hi]] .. '\t' .. [[mom]] .. '!' == "Hi\tmom!")

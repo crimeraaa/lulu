@@ -16,14 +16,18 @@ typedef struct {
 } Local;
 
 typedef struct {
-    Local    locals[LULU_MAX_LOCALS];
+    Local locals[LULU_MAX_LOCALS];
+    int   count; // How many locals are *currently* in scope?
+    int   depth; // 0 = global, 1 = top-level, 2 = more innter, etc.
+} Scope;
+
+typedef struct {
+    Scope    scope;
     Lexer   *lexer;       // Shared across multiple Compiler instances.
     lulu_VM *vm;          // Track and modify parent VM state as needed.
     Chunk   *chunk;       // Chunk for this function/closure.
     int      stack_usage; // #stack slots being use currently.
     int      stack_total; // maximum #stack-slots used.
-    int      scope_count; // How many locals are currently in scope?
-    int      scope_depth; // 0 = global, 1 = top, 2 = more inner, etc.
     OpCode   prev_opcode; // Used to fold consecutive similar operations.
 } Compiler;
 

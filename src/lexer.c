@@ -79,6 +79,7 @@ static void init_token(Token *tk)
     init_stringview(&tk->view, NULL);
     tk->line = 0;
     tk->type = TK_EOF;
+    tk->data.string = NULL;
 }
 
 void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm)
@@ -88,8 +89,6 @@ void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm)
     init_stringview(&ls->lexeme, input);
     ls->vm     = vm;
     ls->name   = vm->name;
-    ls->string = NULL;
-    ls->number = 0;
     ls->line   = 1;
 }
 
@@ -301,7 +300,10 @@ static Token identifier_token(Lexer *ls)
     while (isident(peek_current_char(ls))) {
         next_char(ls);
     }
-    return make_token(ls, get_identifier_type(ls));
+    Token tk = make_token(ls, get_identifier_type(ls));
+    if (tk.type == TK_IDENT)
+        tk.data.string = luluStr_copy(ls->vm, ls->lexeme);
+    return tk;
 }
 
 /**
@@ -365,12 +367,15 @@ static Token number_token(Lexer *ls)
     while (isident(peek_current_char(ls))) {
         next_char(ls);
     }
-    char *end;
-    ls->number = cstr_tonumber(ls->lexeme.begin, &end);
-    // If this is true, strtod failed to convert the entire token/lexeme.
+    char  *end = NULL;
+    Number n   = cstr_tonumber(ls->lexeme.begin, &end);
+    // Failed to convert entire lexeme? (see `man strtod` if using that)
     if (end != ls->lexeme.end)
         luluLex_error_middle(ls, "Malformed number");
-    return make_token(ls, TK_NUMBER);
+
+    Token tk = make_token(ls, TK_NUMBER);
+    tk.data.number = n;
+    return tk;
 }
 
 static Token string_token(Lexer *ls, char quote)
@@ -393,8 +398,9 @@ bad_string:
     const char *begin = ls->lexeme.begin + 1; // +1 to skip opening quote.
     const char *end   = ls->lexeme.end - 1;   // -1 to skip closing quote.
     StringView  sv    = sv_create_from_end(begin, end);
-    ls->string        = luluStr_copy(ls->vm, sv);
-    return make_token(ls, TK_STRING);
+    Token tk          = make_token(ls, TK_STRING);
+    tk.data.string    = luluStr_copy(ls->vm, sv);
+    return tk;
 }
 
 static Token rstring_token(Lexer *ls, int lvl)
@@ -408,8 +414,9 @@ static Token rstring_token(Lexer *ls, int lvl)
     size_t     mark = lvl + open + 2;            // Skip [[ and opening nesting.
     size_t     len  = ls->lexeme.len - mark - 2; // Offset of last non-quote.
     StringView sv   = sv_create_from_len(ls->lexeme.begin + mark, len);
-    ls->string      = luluStr_copy_raw(ls->vm, sv);
-    return make_token(ls, TK_STRING);
+    Token      tk   = make_token(ls, TK_STRING);
+    tk.data.string  = luluStr_copy_raw(ls->vm, sv);
+    return tk;
 }
 
 static Token make_token_ifelse(Lexer *ls, char expected, TkType y, TkType n)

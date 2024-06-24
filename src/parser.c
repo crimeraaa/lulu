@@ -226,13 +226,14 @@ static void grouping(Compiler *cpl, Lexer *ls)
 // Assumes the lexer successfully consumed and encoded a number literal.
 static void number(Compiler *cpl, Lexer *ls)
 {
-    Value v = make_number(ls->number);
+    Value v = make_number(ls->consumed.data.number);
     luluCpl_emit_constant(cpl, &v);
 }
 
+// Assumes we consumed a string literal.
 static void string(Compiler *cpl, Lexer *ls)
 {
-    Value v = make_string(ls->string);
+    Value v = make_string(ls->consumed.data.string);
     luluCpl_emit_constant(cpl, &v);
 }
 
