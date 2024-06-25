@@ -1,0 +1,33 @@
+#pragma once
+
+#include "conf.hpp"
+
+struct Reader {
+    using Fn = const char *(*)(size_t *out, void *ctx);
+    Fn    readfn;  // Callback function.
+    void *context; // C-style pseudo-closures.
+};
+
+struct Buffer {
+    char  *buffer;
+    size_t length;
+    size_t capacity;
+};
+
+struct Stream {
+    Reader      reader; // Has its own context.
+    size_t      unread;
+    const char *position;
+};
+
+void init_reader(Reader *r, Reader::Fn fn, void *ctx);
+
+void init_buffer(Buffer *b); // lzio.c:luaZ_initbuffer
+void reset_buffer(Buffer *b); // lzio.h:luaZ_resetbuffer
+void resize_buffer(Global *g, Buffer *b, size_t sz); // lzio.c:luaZ_resizebuffer
+void free_buffer(Global *g, Buffer *b);// lzio.c:luaZ_freebuffer
+
+void init_stream(Stream *z, Reader::Fn fn, void *ctx); // lzio.c:luaZ_init
+char fill_stream(Stream *z); // lzio.c:luaZ_fill
+char getc_stream(Stream *z); // lzio.h:zgetc
+char peek_stream(Stream *z); // lzio.c:luaZ_lookahead
