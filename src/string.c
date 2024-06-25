@@ -167,8 +167,7 @@ void luluStr_set_interned(lulu_VM *vm, const String *s)
 {
     Table *t = &vm->strings;
     Value  k = make_string(s);
-    Value  v = make_boolean(true);
-    luluTbl_set(vm, t, &k, &v);
+    luluTbl_set(vm, t, &k, &k);
 }
 
 String *luluStr_find_interned(lulu_VM *vm, View sv, uint32_t hash)

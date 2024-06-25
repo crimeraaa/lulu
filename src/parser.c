@@ -236,14 +236,12 @@ static void construct_table(Compiler *cpl, Lexer *ls, int t_idx, int *a_len)
 {
     int k_idx = cpl->stack_usage;
     if (luluLex_match_token(ls, TK_IDENT)) {
-        // Save because Lexer may update on the call to match_token.
-        String *id = ls->consumed.data.string;
+        luluCpl_emit_identifier(cpl, ls->consumed.data.string);
         if (luluLex_match_token(ls, TK_ASSIGN)) {
-            luluCpl_emit_identifier(cpl, id);
             expression(cpl, ls);
             luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
         } else {
-            luluCpl_emit_variable(cpl, id);
+            // TODO: Allow infix expressions past the identifier
             resolve_fields(cpl, ls);
             *a_len += 1;
         }

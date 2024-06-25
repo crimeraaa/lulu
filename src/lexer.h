@@ -66,15 +66,14 @@ typedef enum {
 #define NUM_TOKENS      (TK_EOF + 1)
 
 typedef union {
-    String *string; // Used by TK_IDENT and TK_STRING.
+    String *string; // Used by all tokens EXCEPT for TK_NUMBER.
     Number  number; // Used by TK_NUMBER.
 } TkData;
 
 typedef struct {
-    View view;
-    TkData     data;
-    TkType     type;
-    int        line;
+    TkData data;
+    TkType type;
+    int    line;
 } Token;
 
 typedef struct {

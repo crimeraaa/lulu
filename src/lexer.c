@@ -74,8 +74,8 @@ const char *luluLex_token_to_string(TkType type)
 
 void luluLex_intern_tokens(lulu_VM *vm)
 {
-    for (TkType type = 0; type < NUM_TOKENS; type += 1) {
-        String *s = luluStr_copy(vm, LULU_TKINFO[type]);
+    for (size_t i = 0; i < array_len(LULU_TKINFO); i++) {
+        String *s = luluStr_copy(vm, LULU_TKINFO[i]);
         luluStr_set_interned(vm, s);
     }
 }
@@ -88,7 +88,6 @@ static void init_view(View *sv, const char *src)
 
 static void init_token(Token *tk)
 {
-    init_view(&tk->view, NULL);
     tk->line = 0;
     tk->type = TK_EOF;
     tk->data.string = NULL;
@@ -195,7 +194,7 @@ static void skip_comment(Lexer *ls)
 static Token make_token(Lexer *ls, TkType type)
 {
     Token tk;
-    tk.view = ls->lexeme;
+    tk.data.string = luluStr_copy(ls->vm, ls->lexeme);
     tk.type = type;
     tk.line = ls->line;
     return tk;
@@ -203,15 +202,11 @@ static Token make_token(Lexer *ls, TkType type)
 
 static Token error_token(Lexer *ls)
 {
-    Token tk = make_token(ls, TK_ERROR);
-    View *sv = &tk.view;
-
     // For error tokens, report only the first line if this is a multiline.
-    const char *newline = memchr(sv->begin, '\n', view_len(*sv));
-    if (newline != NULL) {
-        sv->end = newline;
-    }
-    return tk;
+    const char *endl = memchr(ls->lexeme.begin, '\n', view_len(ls->lexeme));
+    if (endl != NULL)
+        ls->lexeme.end = endl;
+    return make_token(ls, TK_ERROR);
 }
 
 static void skip_whitespace(Lexer *ls)
@@ -224,9 +219,8 @@ static void skip_whitespace(Lexer *ls)
         case '\r':
         case '\t': next_char(ls); break;
         case '-':
-            if (peek_next_char(ls) != '-') {
+            if (peek_next_char(ls) != '-')
                 return;
-            }
             // Skip the 2 '-' characters so we are at the comment's contents.
             next_char(ls);
             next_char(ls);
@@ -313,10 +307,7 @@ static Token identifier_token(Lexer *ls)
     while (isident(peek_current_char(ls))) {
         next_char(ls);
     }
-    Token tk = make_token(ls, get_identifier_type(ls));
-    if (tk.type == TK_IDENT)
-        tk.data.string = luluStr_copy(ls->vm, ls->lexeme);
-    return tk;
+    return make_token(ls, get_identifier_type(ls));
 }
 
 /**
@@ -391,6 +382,20 @@ static Token number_token(Lexer *ls)
     return tk;
 }
 
+static Token copy_string(Lexer *ls, int offset, bool is_raw)
+{
+    const char *begin = ls->lexeme.begin + offset;
+    const char *end   = ls->lexeme.end - offset;
+    lulu_VM    *vm    = ls->vm;
+
+    View  sv = view_from_end(begin, end);
+    Token tk;
+    tk.type = TK_STRING;
+    tk.line = ls->line;
+    tk.data.string = (is_raw) ? luluStr_copy_raw(vm, sv) : luluStr_copy(vm, sv);
+    return tk;
+}
+
 static Token string_token(Lexer *ls, char quote)
 {
     while (peek_current_char(ls) != quote && !is_at_end(ls)) {
@@ -408,12 +413,8 @@ bad_string:
     // Consume closing quote.
     next_char(ls);
 
-    const char *begin = ls->lexeme.begin + 1; // +1 to skip opening quote.
-    const char *end   = ls->lexeme.end - 1;   // -1 to skip closing quote.
-    View        sv    = view_from_end(begin, end);
-    Token       tk    = make_token(ls, TK_STRING);
-    tk.data.string    = luluStr_copy(ls->vm, sv);
-    return tk;
+    // +1 offset to skip both quotes.
+    return copy_string(ls, +1, false);
 }
 
 static Token rstring_token(Lexer *ls, int lvl)
@@ -424,12 +425,8 @@ static Token rstring_token(Lexer *ls, int lvl)
     }
     multiline(ls, lvl);
 
-    size_t mark = lvl + open + 2;            // Skip [[ and opening nesting.
-    size_t len  = view_len(ls->lexeme) - mark - 2; // Offset of last non-quote.
-    View   sv   = view_from_len(ls->lexeme.begin + mark, len);
-    Token  tk   = make_token(ls, TK_STRING);
-    tk.data.string = luluStr_copy_raw(ls->vm, sv);
-    return tk;
+    int mark = lvl + open + 2; // Skip [[ and opening nesting.
+    return copy_string(ls, mark, true);
 }
 
 static Token make_token_ifelse(Lexer *ls, char expected, TkType y, TkType n)
@@ -569,8 +566,8 @@ void luluLex_error_at(Lexer *ls, const Token *tk, const char *info)
     if (tk->type == TK_EOF) {
         lulu_push_literal(vm, "at <eof>");
     } else {
-        lulu_push_lcstring(vm, tk->view.begin, view_len(tk->view));
-        lulu_push_fstring(vm, "near \'%s\'", lulu_to_cstring(vm, -1));
+        String *s = tk->data.string;
+        lulu_push_fstring(vm, "near \'%s\'", s->data);
     }
     lulu_comptime_error(vm, ls->line, info, lulu_to_cstring(vm, -1));
 }

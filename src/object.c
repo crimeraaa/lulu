@@ -6,13 +6,20 @@
 #include "vm.h"
 #include "api.h"
 
-const char *const LULU_TYPENAMES[] = {
-    [TYPE_NIL]     = "nil",
-    [TYPE_BOOLEAN] = "boolean",
-    [TYPE_NUMBER]  = "number",
-    [TYPE_STRING]  = "string",
-    [TYPE_TABLE]   = "table",
+const View LULU_TYPENAMES[] = {
+    [TYPE_NIL]     = view_from_lit("nil"),
+    [TYPE_BOOLEAN] = view_from_lit("boolean"),
+    [TYPE_NUMBER]  = view_from_lit("number"),
+    [TYPE_STRING]  = view_from_lit("string"),
+    [TYPE_TABLE]   = view_from_lit("table"),
 };
+
+void luluVal_intern_typenames(lulu_VM *vm)
+{
+    for (size_t i = 0; i < array_len(LULU_TYPENAMES); i++) {
+        luluStr_copy(vm, LULU_TYPENAMES[i]);
+    }
+}
 
 ToNumber luluVal_to_number(const Value *val)
 {
