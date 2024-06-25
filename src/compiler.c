@@ -155,18 +155,21 @@ void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg)
 int luluCpl_emit_jump(Compiler *cpl)
 {
     int offset = current_chunk(cpl)->len;
+    // TODO: Use as dummy argument to mark the end of a "patch list".
     luluCpl_emit_oparg3(cpl, OP_JUMP, MAX_BYTE3);
     return offset;
 }
 
-typedef enum {
-    JUMP_FORWARD,
-    JUMP_BACKWARD,
-} JumpType;
+int luluCpl_emit_if_jump(Compiler *cpl, bool can_pop)
+{
+    luluCpl_emit_opcode(cpl, OP_TEST);
+    int offset = luluCpl_emit_jump(cpl);
+    if (can_pop)
+        luluCpl_emit_oparg1(cpl, OP_POP, 1);
+    return offset;
+}
 
-// Get the amount of bytecode we need to jump over, no direction.
-// TODO: Use excess-K representation instead of sign-magnitude.
-static Byte3 get_jump(Compiler *cpl, int offset, JumpType type)
+Byte3 luluCpl_get_jump(Compiler *cpl, int offset, JumpType type)
 {
     Byte3 jump = current_chunk(cpl)->len - offset;
     switch (type) {
@@ -183,12 +186,11 @@ static void patch_byte3(Compiler *cpl, int offset, Byte3 arg)
     ip[1] = decode_byte3_msb(arg);
     ip[2] = decode_byte3_mid(arg);
     ip[3] = decode_byte3_lsb(arg);
-
 }
 
 void luluCpl_patch_jump(Compiler *cpl, int offset)
 {
-    Byte3 arg = get_jump(cpl, offset, JUMP_FORWARD);
+    Byte3 arg = luluCpl_get_jump(cpl, offset, JUMP_FORWARD);
     if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Too much code to jump over");
     patch_byte3(cpl, offset, arg);
@@ -201,11 +203,11 @@ int luluCpl_start_loop(Compiler *cpl)
 
 void luluCpl_emit_loop(Compiler *cpl, int loop_start)
 {
-    int   offset = luluCpl_emit_jump(cpl);
-    Byte3 arg    = get_jump(cpl, loop_start, JUMP_BACKWARD);
+    int   jump = luluCpl_emit_jump(cpl);
+    Byte3 arg  = luluCpl_get_jump(cpl, loop_start, JUMP_BACKWARD);
     if (arg > MAX_SBYTE3)
         luluLex_error_consumed(cpl->lexer, "Loop body too large");
-    patch_byte3(cpl, offset, arg | MIN_SBYTE3); // toggle sign bit
+    patch_byte3(cpl, jump, arg | MIN_SBYTE3); // toggle sign bit
 }
 
 void luluCpl_emit_identifier(Compiler *cpl, String *id)

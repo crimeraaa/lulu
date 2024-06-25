@@ -47,6 +47,7 @@ void luluVM_init(lulu_VM *vm)
     vm->objects = NULL;
 
     // This must occur AFTER the strings table and objects list are initialized.
+    luluLex_intern_tokens(vm);
     init_builtin(vm);
 }
 

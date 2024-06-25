@@ -85,12 +85,14 @@ typedef struct {
     int      line;      // Current line number we're on.
 } Lexer;
 
-void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm);
+const char *luluLex_token_to_string(TkType type);
+void        luluLex_intern_tokens(lulu_VM *vm);
 
+void  luluLex_init(Lexer *ls, const char *input, lulu_VM *vm);
 Token luluLex_scan_token(Lexer *ls);
 
 // Analogous to `compiler.c:advance()` in the book. May call `lexerror_*`.
-void luluLex_next_token(Lexer *ls);
+void luluLex_next_token(Lexer *ls); // `compiler.c:advance()`
 
 // Analogous to `compiler.c:consume()` in the book. Throws error if no match.
 // If `info` is non-null we will append it to the error message.
@@ -101,17 +103,6 @@ bool luluLex_check_token(Lexer *ls, TkType type);
 
 // Advance the Lexer if the current token matches else do nothing.
 bool luluLex_match_token(Lexer *ls, TkType type);
-
-// The `*_token_any` functions assume the array is terminated by `TK_ERROR`.
-bool luluLex_check_token_any(Lexer *ls, const TkType types[]);
-bool luluLex_match_token_any(Lexer *ls, const TkType types[]);
-
-#define _token_array(...) \
-    array_lit(TkType, __VA_ARGS__, TK_ERROR)
-#define luluLex_check_token_any(lexer, ...) \
-    luluLex_check_token_any(lexer, _token_array(__VA_ARGS__))
-#define luluLex_match_token_any(lexer, ...) \
-    luluLex_match_token_any(lexer, _token_array(__VA_ARGS__))
 
 /**
  * @brief   Similar to `luaX_lexerror()`, analogout to `errorAt()` in the book.

@@ -96,6 +96,18 @@ typedef LULU_SBYTE3 SByte3;
 #define unused2(x, y)       unused(x),     unused(y)
 #define unused3(x, y, z)    unused2(x, y), unused(z)
 
+/**
+ * @details MAX_BYTE:
+ *          0b11111111
+ * @details MAX_BYTE2:
+ *          0b11111111_11111111
+ * @details MAX_BYTE3:
+ *          0b11111111_11111111_11111111_11111111
+ * @details MAX_SBYTE3:
+ *          0b01111111_11111111_11111111_11111111
+ * @details MIN_SBYTE3:
+ *          0b10000000_00000000_00000000_00000000
+ */
 #define MAX_BYTE            cast(Byte,  -1)
 #define MAX_BYTE2           cast(Byte2, -1)
 #define MAX_BYTE3           ((1 << bit_count(3)) - 1)

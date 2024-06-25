@@ -132,6 +132,7 @@ static void test_op(int offset)
 {
     int jump = get_opsize(OP_JUMP);
     int addr = offset + jump + get_opsize(OP_TEST);
+    printf("if <cond> ");
     print_jump(offset + 1, '+', jump, addr);
 }
 

@@ -67,6 +67,19 @@ static const View LULU_TKINFO[] = {
     [TK_EOF]      = view_from_lit("<eof>"),
 };
 
+const char *luluLex_token_to_string(TkType type)
+{
+    return LULU_TKINFO[type].begin;
+}
+
+void luluLex_intern_tokens(lulu_VM *vm)
+{
+    for (TkType type = 0; type < NUM_TOKENS; type += 1) {
+        String *s = luluStr_copy(vm, LULU_TKINFO[type]);
+        luluStr_set_interned(vm, s);
+    }
+}
+
 static void init_view(View *sv, const char *src)
 {
     sv->begin = src;
@@ -524,9 +537,8 @@ void luluLex_expect_token(Lexer *ls, TkType type, const char *info)
         return;
     }
     Builder sb;
-    View    sv = LULU_TKINFO[type];
     init_builder(&sb);
-    append_builder(&sb, "Expected '%s'", sv.begin);
+    append_builder(&sb, "Expected '%s'", luluLex_token_to_string(type));
     if (info != NULL)
         append_builder(&sb, " %s", info);
     luluLex_error_lookahead(ls, sb.buffer);
@@ -546,27 +558,6 @@ bool luluLex_match_token(Lexer *ls, TkType type)
     }
     return false;
 }
-
-#undef luluLex_check_token_any
-bool luluLex_check_token_any(Lexer *ls, const TkType types[])
-{
-    for (int i = 0; types[i] != TK_ERROR; i++) {
-        if (luluLex_check_token(ls, types[i]))
-            return true;
-    }
-    return false;
-}
-
-#undef luluLex_match_token_any
-bool luluLex_match_token_any(Lexer *ls, const TkType types[])
-{
-    if (luluLex_check_token_any(ls, types)) {
-        luluLex_next_token(ls);
-        return true;
-    }
-    return false;
-}
-
 
 // 1}}} ------------------------------------------------------------------------
 

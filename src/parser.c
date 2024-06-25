@@ -131,58 +131,50 @@ static void concat(Compiler *cpl, Lexer *ls)
     luluCpl_emit_oparg1(cpl, OP_CONCAT, argc);
 }
 
+static void index_(Compiler *cpl, Lexer *ls, bool can_assign)
+{
+    expression(cpl, ls);
+    luluLex_expect_token(ls, TK_RBRACKET, "to close '['");
+    if (!can_assign)
+        luluCpl_emit_opcode(cpl, OP_GETTABLE);
+}
+
+static void field_(Compiler *cpl, Lexer *ls, bool can_assign)
+{
+    luluLex_expect_token(ls, TK_IDENT, "after '.'");
+    luluCpl_emit_identifier(cpl, ls->consumed.data.string);
+    if (!can_assign)
+        luluCpl_emit_opcode(cpl, OP_GETTABLE);
+}
+
 // <identifier> '[' <expression> ']'
 static void index(Compiler *cpl, Lexer *ls)
 {
-    expression(cpl, ls);
-    luluLex_expect_token(ls, TK_RBRACKET, NULL);
-    luluCpl_emit_opcode(cpl, OP_GETTABLE);
+    index_(cpl, ls, !CAN_ASSIGN);
 }
 
 // <identifier> '.' <identifier>
 static void field(Compiler *cpl, Lexer *ls)
 {
-    luluLex_expect_token(ls, TK_IDENT, NULL);
-    luluCpl_emit_identifier(cpl, ls->consumed.data.string);
-    luluCpl_emit_opcode(cpl, OP_GETTABLE);
-}
-
-typedef enum {
-    TEST_WITH_POP,
-    TEST_NO_POP,
-} TestType;
-
-// TEST and JUMP, possibly a POP.
-static int emit_if_jump(Compiler *cpl, TestType type)
-{
-    luluCpl_emit_opcode(cpl, OP_TEST);
-    int offset = luluCpl_emit_jump(cpl);
-    switch (type) {
-    case TEST_WITH_POP:
-        luluCpl_emit_oparg1(cpl, OP_POP, 1);
-        break;
-    case TEST_NO_POP:
-        break;
-    }
-    return offset;
+    field_(cpl, ls, !CAN_ASSIGN);
 }
 
 // Assumes left-hand side has already been compiled.
 static void logic_and(Compiler *cpl, Lexer *ls)
 {
-    // If LHS is truthy, skip the jump. If falsy, pop LHS, push RHS.
-    int end_jump = emit_if_jump(cpl, TEST_WITH_POP);
+    // If LHS is truthy, skip the jump. If falsy, pop LHS then push RHS.
+    int end_jump = luluCpl_emit_if_jump(cpl, CAN_POP);
+    end_jump = luluCpl_emit_if_jump(cpl, CAN_POP);
     parse_precedence(cpl, ls, PREC_AND);
     luluCpl_patch_jump(cpl, end_jump);
 }
 
 static void logic_or(Compiler *cpl, Lexer *ls)
 {
-    int else_jump = emit_if_jump(cpl, TEST_NO_POP);
-    int end_jump  = luluCpl_emit_jump(cpl);
-
-    luluCpl_patch_jump(cpl, else_jump);  // Truthy: goto end.
-    luluCpl_emit_oparg1(cpl, OP_POP, 1); // Falsy: pop LHS, push RHS.
+    int else_jump = luluCpl_emit_if_jump(cpl, !CAN_POP); // Truthy: goto 'end'.
+    int end_jump  = luluCpl_emit_jump(cpl); // Falsy: pop LHS, push RHS.
+    luluCpl_patch_jump(cpl, else_jump);
+    luluCpl_emit_oparg1(cpl, OP_POP, 1);
     parse_precedence(cpl, ls, PREC_OR);
     luluCpl_patch_jump(cpl, end_jump);
 }
@@ -256,8 +248,8 @@ static void construct_table(Compiler *cpl, Lexer *ls, int t_idx, int *a_len)
             *a_len += 1;
         }
     } else if (luluLex_match_token(ls, TK_LBRACKET)) {
-        expression(cpl, ls);
-        luluLex_expect_token(ls, TK_RBRACKET, NULL);
+        // Technically we are assigning, just not right now.
+        index_(cpl, ls, CAN_ASSIGN);
         luluLex_expect_token(ls, TK_ASSIGN, "to assign table field");
         expression(cpl, ls);
 
@@ -431,13 +423,10 @@ static void discharge_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
 {
     // Emit the key immediately. In recursive calls we'll emit another GETTABLE,
     // otherwise we'll know the key is +1 after the table when we emit SETTABLE.
-    if (ls->consumed.type == TK_PERIOD) {
-        luluLex_expect_token(ls, TK_IDENT, "after '.'");
-        luluCpl_emit_identifier(cpl, ls->consumed.data.string);
-    } else {
-        expression(cpl, ls);
-        luluLex_expect_token(ls, TK_RBRACKET, NULL);
-    }
+    if (ls->consumed.type == TK_PERIOD)
+        field_(cpl, ls, CAN_ASSIGN);
+    else
+        index_(cpl, ls, CAN_ASSIGN);
 
     // stack_usage - 0 is top, -1 is the key we emitted and -2 is the table.
     set_assignment(list, ASSIGN_TABLE, cpl->stack_usage - 2);
@@ -446,9 +435,9 @@ static void discharge_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
 // Assumes we consumed an identifier as the first element of a statement.
 static void identifier_statement(Compiler *cpl, Lexer *ls, Assignment *list)
 {
-    String *id = ls->consumed.data.string;
-
+Loop:
     if (list->type != ASSIGN_TABLE) {
+        String *id      = ls->consumed.data.string;
         int     arg     = luluCpl_resolve_local(cpl, id);
         bool    islocal = (arg != -1);
         if (!islocal)
@@ -463,8 +452,7 @@ static void identifier_statement(Compiler *cpl, Lexer *ls, Assignment *list)
         luluLex_next_token(ls);
         discharge_subtable(cpl, list);
         discharge_assignment(cpl, ls, list);
-        identifier_statement(cpl, ls, list);
-        break;
+        goto Loop; // No need for recursion, can be done pseudo-iteratively.
     case TK_ASSIGN:
         luluLex_next_token(ls);
         emit_assignment(cpl, ls, list);
@@ -502,8 +490,14 @@ static void print_statement(Compiler *cpl, Lexer *ls)
 static void do_block(Compiler *cpl, Lexer *ls)
 {
     luluCpl_begin_scope(cpl);
-    while (!luluLex_check_token_any(ls, TK_END, TK_EOF)) {
+Loop:
+    switch (ls->lookahead.type) {
+    case TK_END:
+    case TK_EOF:
+        break;
+    default:
         declaration(cpl, ls);
+        goto Loop;
     }
     luluCpl_end_scope(cpl);
 }
@@ -511,19 +505,38 @@ static void do_block(Compiler *cpl, Lexer *ls)
 static void if_block(Compiler *cpl, Lexer *ls)
 {
     luluCpl_begin_scope(cpl);
-    while (!luluLex_check_token_any(ls, TK_ELSEIF, TK_ELSE, TK_END, TK_EOF)) {
+Loop:
+    switch (ls->lookahead.type) {
+    case TK_ELSE:
+    case TK_ELSEIF:
+    case TK_END:
+    case TK_EOF:
+        break;
+    default:
         declaration(cpl, ls);
+        goto Loop;
     }
     luluCpl_end_scope(cpl);
 }
 
-static void discharge_jump(Compiler *cpl, int *jump)
+// Patch `jump` then set it to a new OP_JUMP.
+static void discharge_jump(Compiler *cpl, int *jump, bool can_pop)
 {
-    int prev  = *jump;
-    *jump     = luluCpl_emit_jump(cpl);
+    int prev = *jump;
+    *jump = luluCpl_emit_jump(cpl);
     luluCpl_patch_jump(cpl, prev);
-    luluCpl_emit_oparg1(cpl, OP_POP, 1); // pop previous <condition>.
-    cpl->stack_usage += 1; // Undo weirdness from POP w/o a corresponding push
+    // pop <condition> when truthy.
+    if (can_pop)
+        luluCpl_emit_oparg1(cpl, OP_POP, 1);
+    cpl->stack_usage += 1; // Undo weirdness from POP w/o a corresponding push.
+}
+
+// <expression> 'then'
+// <expression> 'do'
+static void condition(Compiler *cpl, Lexer *ls, TkType who)
+{
+    expression(cpl, ls);
+    luluLex_expect_token(ls, who, "after <condition>");
 }
 
 // The recursion is hacky but I can't think of a better way.
@@ -531,16 +544,14 @@ static void discharge_jump(Compiler *cpl, int *jump)
 // See: https://github.com/crimeraaa/lulu/blob/main/.archive-2024-03-24/compiler.c#L1483
 static void if_statement(Compiler *cpl, Lexer *ls)
 {
-    // <condition> 'then'
-    expression(cpl, ls);
-    luluLex_expect_token(ls, TK_THEN, "after 'if' condition");
+    condition(cpl, ls, TK_THEN);
 
     // jump over the entire if-block when <condition> is falsy.
-    int if_jump = emit_if_jump(cpl, TEST_WITH_POP);
+    int if_jump = luluCpl_emit_if_jump(cpl, CAN_POP);
     if_block(cpl, ls);
 
     // <if-block> end should jump over everything that follows.
-    discharge_jump(cpl, &if_jump);
+    discharge_jump(cpl, &if_jump, CAN_POP);
     if (luluLex_match_token(ls, TK_ELSEIF))
         if_statement(cpl, ls);
     if (luluLex_match_token(ls, TK_ELSE))
@@ -553,13 +564,10 @@ static void if_statement(Compiler *cpl, Lexer *ls)
 static void while_loop(Compiler *cpl, Lexer *ls)
 {
     int loop_start = luluCpl_start_loop(cpl);
-
-    // <expression> 'do'
-    expression(cpl, ls);
-    luluLex_expect_token(ls, TK_DO, "after 'while' condition");
+    condition(cpl, ls, TK_DO);
 
     // Truthy: skip this jump. Falsy: jump over the entire loop body.
-    int loop_init = emit_if_jump(cpl, TEST_WITH_POP);
+    int loop_init = luluCpl_emit_if_jump(cpl, CAN_POP);
     do_block(cpl, ls);
     luluCpl_emit_loop(cpl, loop_start);
 

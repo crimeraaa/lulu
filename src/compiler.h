@@ -10,6 +10,9 @@
 #include "chunk.h"
 #include "lexer.h"
 
+#define CAN_ASSIGN (true)
+#define CAN_POP    (true)
+
 typedef struct {
     String *identifier; // Interned by Lexer.
     int     depth;      // Scope depth at the time of declaration.
@@ -20,6 +23,16 @@ typedef struct {
     int   count; // How many locals are *currently* in scope?
     int   depth; // 0 = global, 1 = top-level, 2 = more innter, etc.
 } Scope;
+
+typedef enum {
+    JUMP_FORWARD,
+    JUMP_BACKWARD,
+} JumpType;
+
+typedef struct {
+    int if_true;  // Bytecode index of OP_JUMP when truthy.
+    int if_false; // Bytecode index of OP_JUMP when falsy.
+} Jump;
 
 typedef struct {
     Scope    scope;
@@ -42,8 +55,10 @@ void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg);
 void luluCpl_emit_return(Compiler *cpl);
 
 // Returns the index of `OP_JUMP` in the bytecode.
-int  luluCpl_emit_jump(Compiler *cpl);
-void luluCpl_patch_jump(Compiler *cpl, int offset);
+int   luluCpl_emit_jump(Compiler *cpl);
+int   luluCpl_emit_if_jump(Compiler *cpl, bool can_pop);
+Byte3 luluCpl_get_jump(Compiler *cpl, int offset, JumpType type);
+void  luluCpl_patch_jump(Compiler *cpl, int offset);
 
 // Returns the index of the first instruction related to a loop body.
 int  luluCpl_start_loop(Compiler *cpl);
