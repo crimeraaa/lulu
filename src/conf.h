@@ -57,9 +57,9 @@
  *          VM will always have extra stack space for error message formatting
  *          and such.
  */
-#define LULU_MAX_CONSTS 16777215
-#define LULU_MAX_LEVELS 200
-#define LULU_STACK_RESERVED  16
+#define LULU_MAX_CONSTS     16777215
+#define LULU_MAX_LEVELS     200
+#define LULU_STACK_RESERVED 16
 
 // NUMBER TYPE INFORMATION ------------------------------------------------ {{{1
 

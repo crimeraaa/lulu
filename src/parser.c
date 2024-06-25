@@ -232,14 +232,20 @@ static void resolve_fields(Compiler *cpl, Lexer *ls)
     }
 }
 
+// Always pop the key and value assigning in a table constructor.
+static void assign_table(Compiler *cpl, Lexer *ls, int t_idx, int k_idx)
+{
+    expression(cpl, ls);
+    luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+}
+
 static void construct_table(Compiler *cpl, Lexer *ls, int t_idx, int *a_len)
 {
     int k_idx = cpl->stack_usage;
     if (luluLex_match_token(ls, TK_IDENT)) {
         luluCpl_emit_identifier(cpl, ls->consumed.data.string);
         if (luluLex_match_token(ls, TK_ASSIGN)) {
-            expression(cpl, ls);
-            luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+            assign_table(cpl, ls, t_idx, k_idx);
         } else {
             // TODO: Allow infix expressions past the identifier
             resolve_fields(cpl, ls);
@@ -249,10 +255,7 @@ static void construct_table(Compiler *cpl, Lexer *ls, int t_idx, int *a_len)
         // Technically we are assigning, just not right now.
         index_(cpl, ls, CAN_ASSIGN);
         luluLex_expect_token(ls, TK_ASSIGN, "to assign table field");
-        expression(cpl, ls);
-
-        // Always pop the key and value assigning in a table constructor.
-        luluCpl_emit_oparg3(cpl, OP_SETTABLE, encode_byte3(t_idx, k_idx, 2));
+        assign_table(cpl, ls, t_idx, k_idx);
     } else {
         expression(cpl, ls);
         *a_len += 1;
@@ -433,6 +436,7 @@ static void discharge_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
 // Assumes we consumed an identifier as the first element of a statement.
 static void identifier_statement(Compiler *cpl, Lexer *ls, Assignment *list)
 {
+// No need for recursion, can be done pseudo-iteratively.
 Loop:
     if (list->type != ASSIGN_TABLE) {
         String *id      = ls->consumed.data.string;
@@ -450,7 +454,7 @@ Loop:
         luluLex_next_token(ls);
         discharge_subtable(cpl, list);
         discharge_assignment(cpl, ls, list);
-        goto Loop; // No need for recursion, can be done pseudo-iteratively.
+        goto Loop;
     case TK_ASSIGN:
         luluLex_next_token(ls);
         emit_assignment(cpl, ls, list);
@@ -588,7 +592,7 @@ static void emit_local(Compiler *cpl, String *id)
     luluCpl_identifier_constant(cpl, id);
 }
 
-static void numeric_for(Compiler *cpl,Lexer *ls, String *id)
+static void numeric_for(Compiler *cpl, Lexer *ls, String *id)
 {
     // Order is important due to VM's assumptions about internal loop state.
     add_internal_local(cpl, "(for index)");
@@ -631,7 +635,6 @@ static void for_loop(Compiler *cpl, Lexer *ls)
     luluLex_expect_token(ls, TK_IDENT, "after 'for'");
 
     String *id = ls->consumed.data.string;
-
     luluLex_next_token(ls);
     switch (ls->consumed.type) {
     case TK_ASSIGN: // 'for' <identifier> '=' <expression> ',' ...

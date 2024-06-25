@@ -7,8 +7,6 @@
 
 #define luluMem_grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
-typedef void *(*lulu_AllocFn)(void *ptr, size_t oldsz, size_t newsz, void *ctx);
-
 // A general purpose allocation wrapper that carries some context around.
 // See: https://nullprogram.com/blog/2023/12/17/
 typedef struct lulu_Allocator {

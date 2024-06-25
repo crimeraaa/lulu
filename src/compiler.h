@@ -53,6 +53,7 @@ void luluCpl_emit_oparg1(Compiler *cpl, OpCode op, Byte arg);
 void luluCpl_emit_oparg2(Compiler *cpl, OpCode op, Byte2 arg);
 void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg);
 void luluCpl_emit_return(Compiler *cpl);
+void luluCpl_patch_byte3(Compiler *cpl, int offset, Byte3 arg);
 
 // Returns the index of `OP_JUMP` in the bytecode.
 int   luluCpl_emit_jump(Compiler *cpl);
