@@ -19,7 +19,7 @@ static void parse(Global *g, Stream *z, Buffer *b, const char *name)
         } else {
             printf("   | ");
         }
-        printf("%2i '%.*s'\n", cast_int(t.type), cast_int(s.length), s.string);
+        printf("%-12s %.*s\n", name_token(t.type), cast_int(s.length), s.string);
 
         if (t.type == Token::Type::Eof)
             break;

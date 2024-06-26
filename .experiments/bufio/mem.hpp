@@ -11,7 +11,7 @@ struct Allocator {
 void  init_allocator(Allocator *a, Allocator::Fn fn, void *ctx);
 void *call_allocator(Global *g, void *p, size_t oldsz, size_t newsz);
 
-#define grow_capacity(N)    ((N) > 8 ? (N) * 2 : 8)
+#define grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
 template<class T>
 inline T *new_pointer(Global *g, size_t sz = sizeof(T))

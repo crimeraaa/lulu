@@ -27,7 +27,17 @@ void reset_buffer(Buffer *b); // lzio.h:luaZ_resetbuffer
 void resize_buffer(Global *g, Buffer *b, size_t sz); // lzio.c:luaZ_resizebuffer
 void free_buffer(Global *g, Buffer *b);// lzio.c:luaZ_freebuffer
 
-void init_stream(Stream *z, Reader::Fn fn, void *ctx); // lzio.c:luaZ_init
-char fill_stream(Stream *z); // lzio.c:luaZ_fill
-char getc_stream(Stream *z); // lzio.h:zgetc
-char peek_stream(Stream *z); // lzio.c:luaZ_lookahead
+// lzio.c:luaZ_init
+void init_stream(Stream *z, Reader::Fn fn, void *ctx);
+
+// Updates the internal reader and attempts to get a view into it.
+// lzio.c:luaZ_fill
+char fill_stream(Stream *z);
+
+// Returns currently viewed character and advances the internal view if possible.
+// lzio.h:zgetc
+char getc_stream(Stream *z);
+
+// Retrieves lookahead character if there is one.
+// lzio.c:luaZ_lookahead
+char peek_stream(Stream *z);

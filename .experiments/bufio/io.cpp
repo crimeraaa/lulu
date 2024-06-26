@@ -55,11 +55,10 @@ char fill_stream(Stream *z)
 char getc_stream(Stream *z)
 {
     // Still have more to read?
-    if (z->unread-- > 0) {
+    if (z->unread-- > 0)
         return *z->position++;
-    } else {
+    else
         return fill_stream(z);
-    }
 }
 
 char peek_stream(Stream *z)

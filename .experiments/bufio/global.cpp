@@ -145,7 +145,8 @@ String *new_string(Global *g, const char *cs, size_t len, String::Hash hash)
     s->data     = new_array<char>(g, len + 1);
     s->length   = len;
     s->hash     = hash;
-    std::memcpy(s->data, cs, len + 1);
+    std::memcpy(s->data, cs, len);
+    s->data[len] = '\0';
     return s;
 }
 
@@ -163,9 +164,6 @@ String *copy_string(Global *g, const char *cs, size_t len)
         return found;
     
     String *s = new_string(g, cs, len, hash);
-    memcpy(s->data, cs, len);
-    s->data[len] = '\0';
-    
     intern_string(g, s);
     return s;
 }
@@ -323,7 +321,7 @@ void dump_table(Table *t)
         Pair *p = &t->pairs[i];
         if (is_nil(&p->key))
             continue;
-        // Print on separate calls so `buf` isn't invalidated on each print.
+        // Separate calls so `buf` because `buf` is only 1 block of memory.
         printf("key: %s, ", to_cstring_value(&p->key, buf));
         printf("val: %s\n", to_cstring_value(&p->val, buf));
     }
