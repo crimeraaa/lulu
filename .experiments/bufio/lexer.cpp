@@ -54,9 +54,9 @@ static Token make_token(Lexer *ls, Type type)
 {
     Buffer *b = ls->buffer;
     Token   t;
-    t.type  = type;    
-    t.slice = {b->buffer, b->length};
-    t.line  = ls->line;
+    t.type = type;    
+    t.data = copy_string(ls->global, b->buffer, b->length);
+    t.line = ls->line;
     return t;
 }
 

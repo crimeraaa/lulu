@@ -12,14 +12,14 @@ static void parse(Global *g, Stream *z, Buffer *b, const char *name)
     int line = -1;
     for (;;) {
         Token t = scan_token(&ls);
-        Slice s = t.slice;
+        Slice s{t.data->data, t.data->length};
         if (t.line != line) {
             std::printf("%4i ", t.line);
             line = t.line;
         } else {
             printf("   | ");
         }
-        printf("%2i '%.*s'\n", (int)t.type, cast<int>(s.length), s.string);
+        printf("%2i '%.*s'\n", cast_int(t.type), cast_int(s.length), s.string);
 
         if (t.type == Token::Type::Eof)
             break;
@@ -67,6 +67,7 @@ int main(int argc, const char *argv[])
     Global g;
     char   input[MAX_INPUT] = {0};
 
+    unused2(argc, argv);
     init_global(&g);
     for (;;) {
         // Ensure prompt is printed
@@ -80,5 +81,6 @@ int main(int argc, const char *argv[])
         }
         load_buffer(&g, input, std::strlen(input), "=stdin");
     }
+    free_global(&g);
     return 0;
 }

@@ -10,16 +10,28 @@ CXX_INC := $(wildcard *.hpp)
 CXX_EXE := $(DIR_BIN)/main
 
 .PHONY: all
-all: $(CXX_EXE)
+all: build
+	
+.PHONY: build
+build: $(CXX_EXE)
 	
 $(DIR_OBJ) $(DIR_BIN):
 	$(MKDIR) $@
 	
 $(CXX_EXE): $(CXX_OBJ) | $(DIR_BIN)
 	$(CXX) $(CXX_FLAGS) -o $@ $^
-	
-$(DIR_OBJ)/%.o: $(DIR_SRC)/%.cpp | $(DIR_OBJ)
+
+.PRECIOUS: $(DIR_OBJ)/%.o
+$(DIR_OBJ)/%.o: $(DIR_SRC)/%.cpp $(DIR_SRC)/%.hpp | $(DIR_OBJ)
 	$(CXX) $(CXX_FLAGS) -c -o $@ $<
+	
+# Stupid but better than nothing
+conf.hpp:
+global.hpp: mem.hpp
+mem.hpp: conf.hpp
+io.hpp: conf.hpp mem.hpp
+main.hpp: conf.hpp io.hpp mem.hpp lexer.hpp global.hpp
+lexer.hpp: io.hpp global.hpp
 
 .PHONY: clean
 clean:

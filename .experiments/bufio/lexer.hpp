@@ -7,9 +7,12 @@ struct Token {
     enum class Type {
         Identifier, String, Number, Error, Eof
     };
-    Type  type;
-    Slice slice; // May be invalidated by resizing of buffer!
-    int   line;
+
+    using Data = String*;
+
+    Type type;
+    Data data;
+    int  line;
 };
 
 struct Lexer {
