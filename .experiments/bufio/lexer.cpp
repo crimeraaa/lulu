@@ -5,6 +5,29 @@
 
 using Type = Token::Type;
 
+static bool is_eof(Lexer *ls)
+{
+    return ls->current == '\0';
+}
+
+static bool check_char(Lexer *ls, char ch)
+{
+    return ls->current == ch;
+}
+
+static char peek_current(Lexer *ls)
+{
+    return ls->current;
+}
+
+// static char peek_next(Lexer *ls)
+// {
+//     if (is_eof(ls))
+//         return '\0';
+//     // Similar to instruction pointer, this points to 1 past the current.
+//     return ls->stream->position[0];
+// }
+
 // https://www.lua.org/source/5.1/llex.c.html#save
 static void save_char(Lexer *ls, char ch)
 {
@@ -19,28 +42,39 @@ static void save_char(Lexer *ls, char ch)
 }
 
 // Advances our string view, but does not save it to the buffer.
-static char next_char(Lexer *ls)
+// llex.c:next
+static char skip_char(Lexer *ls)
 {
     ls->current = getc_stream(ls->stream);
     return ls->current;
 }
 
-// Advances string view AND appends it to the buffer.
-// llex.c:save_and_next(ls)
+// Advance our string view if it matches, but do not modify the buffer at all.
+static bool skip_char_if(Lexer *ls, char ch)
+{
+    if (check_char(ls, ch)) {
+        skip_char(ls);
+        return true;
+    }
+    return false;
+}
+
+// Advances string view AND appends it to the buffer. Returns newly read char.
+// llex.c:save_and_next()
 static char consume_char(Lexer *ls)
 {
     save_char(ls, ls->current);
-    return next_char(ls);
+    return skip_char(ls);
 }
 
+// If matches, we consume the character. This affects the stream and buffer.
 static bool match_char(Lexer *ls, char ch)
 {
-    if (ls->current == ch) {
-        // consume_char(ls);
+    if (check_char(ls, ch)) {
+        consume_char(ls);
         return true;
-    } else {
-        return false;
     }
+    return false;
 }
 
 void init_lexer(Lexer *ls, Global *g, Stream *z, Buffer *b)
@@ -50,7 +84,7 @@ void init_lexer(Lexer *ls, Global *g, Stream *z, Buffer *b)
     ls->buffer = b;
     ls->line   = 1;
     resize_buffer(ls->global, ls->buffer, MIN_BUFFER);
-    next_char(ls); // Read first char
+    skip_char(ls); // Read first char
 }
 
 static Token make_token(Lexer *ls, Type type)
@@ -71,13 +105,12 @@ static Token error_token(Lexer *ls)
 static void skip_whitespace(Lexer *ls)
 {
     for (;;) {
-        // Do NOT call peek_char here, we might end up with a bad string view.
-        switch (ls->current) {
+        switch (peek_current(ls)) {
         case '\n': ls->line++; // fall through
         case '\r':
         case '\t':
         case ' ': 
-            next_char(ls);
+            skip_char(ls);
             break;
         default:
             return;
@@ -85,10 +118,87 @@ static void skip_whitespace(Lexer *ls)
     }
 }
 
+// Creates a token including the currently viewing character.
 static Token consume_token(Lexer *ls, Token::Type t)
 {
     consume_char(ls);
     return make_token(ls, t);
+}
+
+static Token string_token(Lexer *ls, char q)
+{
+    // Skip opening quote.
+    skip_char(ls);
+    while (!check_char(ls, q)) {
+        if (check_char(ls, '\n') || is_eof(ls))
+            goto Error;
+        consume_char(ls);
+    }
+    // Is closed off properly? Skip (not consume!) the closing quote.
+    if (skip_char_if(ls, q))
+        return make_token(ls, Type::String);
+Error:
+    return error_token(ls);
+}
+
+static void decimal_token(Lexer *ls)
+{
+Decimal:
+    do {
+        consume_char(ls);
+    } while (isdigit(peek_current(ls)));
+    
+    // Have an exponent?
+    if (match_char(ls, 'e')) {
+        char ch = peek_current(ls);
+        // Have explicit signedness?
+        if (ch == '+' || ch == '-')
+            consume_char(ls);
+        goto Decimal;
+    }
+    
+    // Have a decimal point?
+    if (match_char(ls, '.'))
+        goto Decimal;
+}
+
+static Token number_token(Lexer *ls)
+{
+    decimal_token(ls);
+    return make_token(ls, Type::Number);
+}
+
+static Token identifier_token(Lexer *ls)
+{
+    // Consume first letter until we hit a non-identifier.
+    do {
+        consume_char(ls);
+    } while (isalnum(peek_current(ls)) || peek_current(ls) == '_');
+    return make_token(ls, Type::Identifier);
+}
+
+static Token make_token_if(Lexer *ls, char ch, Token::Type y, Token::Type n)
+{
+    return make_token(ls, match_char(ls, ch) ? y : n);
+}
+
+static Token equals_token(Lexer *ls, Token::Type y, Token::Type n = Type::Error)
+{
+    // Consume the angle bracket or first equals sign.
+    consume_char(ls);
+    return make_token_if(ls, '=', y, n);
+}
+
+static Token dots_token(Lexer *ls)
+{
+    // Consume and save the first dot.
+    consume_char(ls);
+
+    // We have another dot?
+    if (match_char(ls, '.'))
+        return make_token_if(ls, '.', Type::Dot3, Type::Dot2);
+    else
+        return make_token(ls, Type::Dot1);
 }
 
 Token scan_token(Lexer *ls)
@@ -96,16 +206,15 @@ Token scan_token(Lexer *ls)
     reset_buffer(ls->buffer);
     skip_whitespace(ls);
     
-    char ch = ls->current;
-    if (ch == '\0')
+    if (is_eof(ls))
         return make_token(ls, Type::Eof);
     
-    if (isalnum(ch) || ch == '_') {
-        do {
-            consume_char(ls);
-        } while (isalnum(ls->current) || ls->current == '_');
-        return make_token(ls, Type::Identifier);
-    }
+    // Save now as ls->current will likely get updated as we move along.
+    char ch = peek_current(ls);
+    if (isdigit(ch))
+        return number_token(ls);
+    if (isalpha(ch) || ch == '_')
+        return identifier_token(ls);
 
     // Single char tokens
     switch (ch) {
@@ -118,13 +227,15 @@ Token scan_token(Lexer *ls)
     case '}': return consume_token(ls, Type::RCurly);
     
     // Relational Operators
-    case '<': return consume_token(ls, Type::LAngle);
-    case '>': return consume_token(ls, Type::RAngle);
-    case '=': return consume_token(ls, Type::Equal1);
+    // case '<': return consume_token(ls, Type::LAngle);
+    case '<': return equals_token(ls, Type::LAngleEq, Type::LAngle);
+    case '>': return equals_token(ls, Type::RAngleEq, Type::RAngle);
+    case '=': return equals_token(ls, Type::Equal2,   Type::Equal1);
+    case '~': return equals_token(ls, Type::TildeEq);
               
     // Punctuation
     case ',': return consume_token(ls, Type::Comma);
-    case '.': return consume_token(ls, Type::Dot1);
+    case '.': return dots_token(ls);
     case ':': return consume_token(ls, Type::Colon);
     case ';': return consume_token(ls, Type::Semicolon);
 
@@ -138,16 +249,7 @@ Token scan_token(Lexer *ls)
               
     case '\'':
     case '\"':
-        // Skip the quote.
-        next_char(ls);
-        while (!match_char(ls, ch) && !match_char(ls, '\0')) {
-            consume_char(ls);
-        }
-        // Is closed off properly?
-        if (match_char(ls, ch)) {
-            next_char(ls);
-            return make_token(ls, Type::String);
-        }
+        return string_token(ls, ch);
     }
     return error_token(ls);
 }
@@ -187,6 +289,7 @@ static constexpr auto TOKEN_TO_STRING = []() constexpr
     t[T::LAngle]   = {"LAngle",   "<"},  t[T::RAngle]   = {"RAngle",   ">"},
     t[T::LAngleEq] = {"LAngleEq", "<="}, t[T::RAngleEq] = {"RAngleEq", ">="},
     t[T::Equal1]   = {"Equal1",   "="},  t[T::Equal2]   = {"Equal2",   "=="},
+    t[T::TildeEq]  = {"TildeEq",  "~"},
 
     // Punctuation
     t[T::Dot1]     = {"Dot1", "."},   t[T::Dot2] = {"Dot2", ".."}, 

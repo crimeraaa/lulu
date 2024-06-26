@@ -10,9 +10,12 @@ struct Token {
         LParen,   RParen,    // ( )
         LSquare,  RSquare,   // [ ]
         LCurly,   RCurly,    // { }
+
         LAngle,   RAngle,    // < >
         LAngleEq, RAngleEq,  // <= >=
         Equal1,   Equal2,    // = ==
+        TildeEq,             // ~=
+
         Dot1,     Dot2,      // . ..
         Dot3,     Comma,     // ... ,
         Colon,    Semicolon, // : ;
