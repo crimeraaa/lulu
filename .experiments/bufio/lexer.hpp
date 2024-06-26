@@ -30,11 +30,14 @@ struct Token {
         Eof,
     };
 
-    using Data = String*;
+    union Data {
+        Number  number;
+        String *string;
+    };
 
-    Type type;
-    Data data;
-    int  line;
+    Type  type;
+    Data  data;
+    int   line;
 };
 
 struct Lexer {

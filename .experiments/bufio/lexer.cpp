@@ -10,23 +10,10 @@ static bool is_eof(Lexer *ls)
     return ls->current == '\0';
 }
 
-static bool check_char(Lexer *ls, char ch)
-{
-    return ls->current == ch;
-}
-
 static char peek_current(Lexer *ls)
 {
     return ls->current;
 }
-
-// static char peek_next(Lexer *ls)
-// {
-//     if (is_eof(ls))
-//         return '\0';
-//     // Similar to instruction pointer, this points to 1 past the current.
-//     return ls->stream->position[0];
-// }
 
 // https://www.lua.org/source/5.1/llex.c.html#save
 static void save_char(Lexer *ls, char ch)
@@ -49,16 +36,6 @@ static char skip_char(Lexer *ls)
     return ls->current;
 }
 
-// Advance our string view if it matches, but do not modify the buffer at all.
-static bool skip_char_if(Lexer *ls, char ch)
-{
-    if (check_char(ls, ch)) {
-        skip_char(ls);
-        return true;
-    }
-    return false;
-}
-
 // Advances string view AND appends it to the buffer. Returns newly read char.
 // llex.c:save_and_next()
 static char consume_char(Lexer *ls)
@@ -70,11 +47,28 @@ static char consume_char(Lexer *ls)
 // If matches, we consume the character. This affects the stream and buffer.
 static bool match_char(Lexer *ls, char ch)
 {
-    if (check_char(ls, ch)) {
+    if (ls->current == ch) {
         consume_char(ls);
         return true;
     }
     return false;
+}
+
+static bool check_char_in(Lexer *ls, const char *set)
+{
+    // Get pointer to first occurence of `ls->currrent` in `set`.
+    // If not found we get `NULL`.
+    if (std::strchr(set, ls->current))
+        return true;
+    return false;
+}
+
+static bool match_char_in(Lexer *ls, const char *set)
+{
+    bool found = check_char_in(ls, set);
+    if (found)
+        consume_char(ls);
+    return found;
 }
 
 void init_lexer(Lexer *ls, Global *g, Stream *z, Buffer *b)
@@ -89,17 +83,25 @@ void init_lexer(Lexer *ls, Global *g, Stream *z, Buffer *b)
 
 static Token make_token(Lexer *ls, Type type)
 {
-    Buffer *b = ls->buffer;
-    Token   t;
-    t.type = type;    
-    t.data = copy_string(ls->global, b->buffer, b->length);
+    Token t;
+    t.type = type;
     t.line = ls->line;
     return t;
 }
 
+static String *buffer_to_string(Lexer *ls, int bufpad = 0, int lenpad = 0)
+{
+    Global *g = ls->global; 
+    Buffer *b = ls->buffer;
+    return copy_string(g, view_buffer(b, bufpad), length_buffer(b) + lenpad);
+}
+
 static Token error_token(Lexer *ls)
 {
-    return make_token(ls, Type::Error);
+    Token   t = make_token(ls, Type::Error);
+    String *s = buffer_to_string(ls); // TODO: Remove newlines beforehand
+    t.data.string = s;
+    return t;
 }
 
 static void skip_whitespace(Lexer *ls)
@@ -127,45 +129,52 @@ static Token consume_token(Lexer *ls, Token::Type t)
 
 static Token string_token(Lexer *ls, char q)
 {
-    // Skip opening quote.
-    skip_char(ls);
-    while (!check_char(ls, q)) {
-        if (check_char(ls, '\n') || is_eof(ls))
-            goto Error;
+    do {
         consume_char(ls);
-    }
-    // Is closed off properly? Skip (not consume!) the closing quote.
-    if (skip_char_if(ls, q))
-        return make_token(ls, Type::String);
-Error:
-    return error_token(ls);
+        if (ls->current == '\n' || is_eof(ls))
+            return error_token(ls);
+    } while (!match_char(ls, q));
+    Token t = make_token(ls, Type::String);
+    t.data.string = buffer_to_string(ls, 1, -2);
+    return t;
 }
 
 static void decimal_token(Lexer *ls)
 {
-Decimal:
-    do {
-        consume_char(ls);
-    } while (isdigit(peek_current(ls)));
-    
-    // Have an exponent?
-    if (match_char(ls, 'e')) {
-        char ch = peek_current(ls);
-        // Have explicit signedness?
-        if (ch == '+' || ch == '-')
+    for (;;) {
+        do {
             consume_char(ls);
-        goto Decimal;
+        } while (isdigit(peek_current(ls)));
+        
+        // Have an exponent?
+        if (match_char_in(ls, "Ee")) {
+            // Have explicit signedness?
+            match_char_in(ls, "+-");
+            continue;
+        }
+        // Have a decimal point?
+        if (match_char(ls, '.')) {
+            continue;
+        }
+        // None of the above conditions passed so break out of here.
+        break;
     }
-    
-    // Have a decimal point?
-    if (match_char(ls, '.'))
-        goto Decimal;
 }
 
 static Token number_token(Lexer *ls)
 {
     decimal_token(ls);
-    return make_token(ls, Type::Number);
+    while (isalnum(peek_current(ls))) {
+        consume_char(ls);
+    }
+    Token   t = make_token(ls, Type::Number);
+    String *s = buffer_to_string(ls); // intern string representation already.
+    char   *end;
+    Number  n = std::strtod(s->data, &end);
+    if (end != (s->data + s->length))
+        return error_token(ls);
+    t.data.number = n;
+    return t;
 }
 
 static Token identifier_token(Lexer *ls)
@@ -174,7 +183,10 @@ static Token identifier_token(Lexer *ls)
     do {
         consume_char(ls);
     } while (isalnum(peek_current(ls)) || peek_current(ls) == '_');
-    return make_token(ls, Type::Identifier);
+    
+    Token t = make_token(ls, Type::Identifier);
+    t.data.string = buffer_to_string(ls);
+    return t;
 }
 
 static Token make_token_if(Lexer *ls, char ch, Token::Type y, Token::Type n)
@@ -292,8 +304,8 @@ static constexpr auto TOKEN_TO_STRING = []() constexpr
     t[T::TildeEq]  = {"TildeEq",  "~"},
 
     // Punctuation
-    t[T::Dot1]     = {"Dot1", "."},   t[T::Dot2] = {"Dot2", ".."}, 
-    t[T::Dot3]     = {"Dot3", "..."}, t[T::Comma] = {"Comma", ","},
+    t[T::Dot1]     = {"Dot1", "."},   t[T::Dot2]      = {"Dot2", ".."}, 
+    t[T::Dot3]     = {"Dot3", "..."}, t[T::Comma]     = {"Comma", ","},
     t[T::Colon]    = {"Colon", ":"},  t[T::Semicolon] = {"Semicolon", ";"},
 
     // Arithmetic Operators

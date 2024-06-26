@@ -14,6 +14,24 @@ void init_buffer(Buffer *b)
     b->capacity = 0;
 }
 
+const char *view_buffer(Buffer *b, int offset)
+{
+    if (offset < 0)
+        return (b->buffer + b->length) - offset;
+    else
+        return b->buffer + offset;
+}
+
+size_t size_buffer(Buffer *b)
+{
+    return b->capacity;    
+}
+
+size_t length_buffer(Buffer *b)
+{
+    return b->length;
+}
+
 void reset_buffer(Buffer *b)
 {
     b->length = 0;
@@ -61,15 +79,19 @@ char getc_stream(Stream *z)
         return fill_stream(z);
 }
 
+void ungetc_stream(Stream *z)
+{
+    z->unread   += 1;
+    z->position -= 1;
+}
+
 char peek_stream(Stream *z)
 {
     if (z->unread == 0) {
-        if (fill_stream(z) == '\0') {
+        if (fill_stream(z) == '\0')
             return '\0';
-        } else {
-            z->unread   += 1; // fill_stream removed first byte, put it back.
-            z->position -= 1;
-        }
+        else
+            ungetc_stream(z); // fill_stream removed first byte, put it back.
     }
     return z->position[0];
 }

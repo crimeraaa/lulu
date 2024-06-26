@@ -9,22 +9,36 @@ static void parse(Global *g, Stream *z, Buffer *b, const char *name)
 {
     Lexer ls;
     init_lexer(&ls, g, z, b);
+    unused(name);
     int line = -1;
     for (;;) {
         Token t = scan_token(&ls);
-        Slice s{t.data->data, t.data->length};
         if (t.line != line) {
             std::printf("%4i ", t.line);
             line = t.line;
         } else {
-            printf("   | ");
+            std::printf("   | ");
         }
-        printf("%-12s %.*s\n", name_token(t.type), cast_int(s.length), s.string);
+        
+        std::printf("%-12s ", name_token(t.type));
+        switch (t.type) {
+        case Token::Type::Identifier:
+        case Token::Type::String:
+        case Token::Type::Error:
+            std::printf("%s", t.data.string->data);
+            break;
+        case Token::Type::Number:
+            std::printf("%.14g", t.data.number);
+            break;
+        default:
+            std::printf("%s", display_token(t.type));
+            break;
+        }
+        std::printf("\n");
 
         if (t.type == Token::Type::Eof)
             break;
     }
-    unused(name);
 }
 
 static void load(Global *g, Reader *rd, const char *name)
