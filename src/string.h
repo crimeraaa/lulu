@@ -5,17 +5,15 @@
 
 #define luluStr_size(len)       (sizeof(String) + array_size(char, len))
 
-// Will not hash any escape sequences at all. Hence 'r' for "raw".
-uint32_t luluStr_hash_raw(View sv);
+uint32_t luluStr_hash(View sv);
 
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
-String *luluStr_new(lulu_VM *vm, size_t len, uint32_t hash);
+String *luluStr_new(lulu_VM *vm, const char *cs, size_t len, uint32_t hash);
 void    luluStr_free(lulu_VM *vm, String *s);
 
 // Global functions that deal with strings need the VM to check for interned.
 String *luluStr_copy(lulu_VM *vm, View sv);
-String *luluStr_copy_raw(lulu_VM *vm, View sv);
 #define luluStr_copy_lit(vm, s)  luluStr_copy((vm), view_from_lit(s))
 
 // Assumes all arguments we already verified to be `String*`.

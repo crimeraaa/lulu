@@ -20,8 +20,12 @@ static void *stdc_allocator(void *ptr, size_t oldsz, size_t newsz, void *ctx)
 
 lulu_VM *lulu_open(void)
 {
-    static lulu_VM state = {0}; // lol
-    return luluVM_init(&state, &stdc_allocator, NULL) ? &state : NULL;
+    static lulu_VM vm = {0}; // lol
+    // Initialization (especially allocations) successful?
+    if (luluVM_init(&vm, &stdc_allocator, NULL))
+        return &vm;
+    else
+        return NULL;
 }
 
 void lulu_close(lulu_VM *vm)
@@ -39,8 +43,9 @@ static StackID poke_at_offset(lulu_VM *vm, int offset)
 }
 
 typedef struct {
+    Stream     *stream;
+    Buffer     *buffer;
     Chunk      *chunk;
-    const char *input;
     const char *name;
 } Runner;
 
@@ -53,7 +58,8 @@ static void run_input(lulu_VM *vm, void *ctx)
     vm->name = luluStr_copy(vm, view_from_len(r->name, strlen(r->name)));
     luluFun_init_chunk(r->chunk, vm->name);
     luluCpl_init_compiler(&cpl, vm);
-    luluCpl_compile(&cpl, &ls, r->input, r->chunk);
+    luluLex_init(vm, &ls, r->stream, r->buffer);
+    luluCpl_compile(&cpl, &ls, r->chunk);
 
     // Prep the VM.
     vm->chunk = r->chunk;
@@ -61,18 +67,40 @@ static void run_input(lulu_VM *vm, void *ctx)
     luluVM_execute(vm);
 }
 
+static const char *read_string(lulu_VM *vm, size_t *out, void *ctx)
+{
+    View  *v = ctx;
+    size_t n = view_len(*v);
+    unused2(vm, ctx);
+    // Was already read before?
+    if (n == 0)
+        return NULL;
+    // Mark as read.
+    *out   = n;
+    v->end = v->begin;
+    return v->begin;
+}
+
 lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
 {
+    static Stream z;
+    static Buffer b;
     static Chunk  c;
     static Runner r;
     lulu_Status   e;
-    r.chunk = &c;
-    r.input = input;
-    r.name  = name;
+    r.stream = &z;
+    r.buffer = &b;
+    r.chunk  = &c;
+    r.name   = name;
+    View v   = view_from_len(input, strlen(input)); // Context for `r.stream`.
+
+    luluZIO_init_buffer(r.buffer);
+    luluZIO_init_stream(vm, r.stream, &read_string, &v);
 
     // We only have error handlers inside of `run_protected`.
     e = luluVM_run_protected(vm, &run_input, &r);
-    luluFun_free_chunk(vm, &c);
+    luluFun_free_chunk(vm, r.chunk);
+    luluZIO_free_buffer(vm, r.buffer);
     return e;
 }
 

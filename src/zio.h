@@ -4,7 +4,8 @@
 #include "lulu.h"
 
 // Very not robust but should work for simple text inputs and files.
-#define LULU_ZIO_EOF    '\0'
+#define LULU_ZIO_EOF                '\0'
+#define LULU_ZIO_MINIMUM_BUFFER     32
 
 // Some heap allocated 1D `char` array. Used for building strings.
 typedef struct lulu_Buffer {

@@ -7,8 +7,6 @@
 #include "table.h"
 #include "vm.h"
 
-#define isident(ch)     (isalnum(ch) || (ch) == '_')
-
 static const View LULU_TKINFO[] = {
     [TK_AND]      = view_from_lit("and"),
     [TK_BREAK]    = view_from_lit("break"),
@@ -67,7 +65,7 @@ static const View LULU_TKINFO[] = {
     [TK_EOF]      = view_from_lit("<eof>"),
 };
 
-const char *luluLex_token_to_string(TkType type)
+static const char *token_to_string(TkType type)
 {
     return LULU_TKINFO[type].begin;
 }
@@ -80,62 +78,73 @@ void luluLex_intern_tokens(lulu_VM *vm)
     }
 }
 
-static void init_view(View *sv, const char *src)
-{
-    sv->begin = src;
-    sv->end   = src;
-}
-
-static void init_token(Token *tk)
-{
-    tk->line = 0;
-    tk->type = TK_EOF;
-    tk->data.string = NULL;
-}
-
-void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm)
-{
-    ls->stream = NULL;
-    ls->buffer = NULL;
-    init_token(&ls->lookahead);
-    init_token(&ls->consumed);
-    init_view(&ls->lexeme, input);
-    ls->vm   = vm;
-    ls->line = 1;
-}
-
 // HELPERS ---------------------------------------------------------------- {{{1
 
-static bool is_at_end(const Lexer *ls)
+// Analogous to `scanner.c:advance()` in the book.
+// Returns the character being pointed to before the advancement.
+static char next_char(Lexer *ls)
 {
-    return ls->lexeme.end[0] == '\0';
+    ls->current = luluZIO_getc_stream(ls->stream);
+    return ls->current;
+}
+
+static bool is_eof(const Lexer *ls)
+{
+    return ls->current == '\0';
+}
+
+static bool is_ident(const Lexer *ls)
+{
+    return isalnum(ls->current) || ls->current == '_';
 }
 
 static char current_char(const Lexer *ls)
 {
-    return ls->lexeme.end[0];
+    return ls->current;
 }
 
 static char lookahead_char(const Lexer *ls)
 {
-    return ls->lexeme.end[1];
+    return luluZIO_lookahead_stream(ls->stream);
 }
 
-// Analogous to `scanner.c:advance()` in the book.
-static char next_char(Lexer *ls)
+// Append `ch` to the buffer.
+static void save_char(Lexer *ls, char ch)
 {
-    ls->lexeme.end += 1;
-    return ls->lexeme.end[-1];
+    Buffer *b = ls->buffer;
+    if (b->length + 1 > b->capacity)
+        luluZIO_resize_buffer(ls->vm, b, luluMem_grow_capacity(b->capacity));
+    b->buffer[b->length] = ch;
+    b->length += 1;
 }
 
+// Save `ls->current` to the buffer then advance, returning the newly read character.
+static char save_and_next(Lexer *ls)
+{
+    save_char(ls, ls->current);
+    return next_char(ls);
+}
+
+static bool check_char(Lexer *ls, char ch)
+{
+    return !is_eof(ls) && current_char(ls) == ch;
+}
+
+// If matches, save `ls->current` to the buffer and advance.
 static bool match_char(Lexer *ls, char ch)
 {
-    if (is_at_end(ls) || current_char(ls) != ch) {
-        return false;
-    } else {
+    bool found = check_char(ls, ch);
+    if (found)
+        save_and_next(ls);
+    return found;
+}
+
+static bool skip_char_if(Lexer *ls, char ch)
+{
+    bool found = check_char(ls, ch);
+    if (found)
         next_char(ls);
-        return true;
-    }
+    return found;
 }
 
 static bool check_char_any(Lexer *ls, const char *set)
@@ -147,15 +156,13 @@ static bool match_char_any(Lexer *ls, const char *set)
 {
     bool found = check_char_any(ls, set);
     if (found)
-        next_char(ls);
+        save_and_next(ls);
     return found;
 }
 
-static void singleline(Lexer *ls)
+static bool is_newline(Lexer *ls)
 {
-    while (current_char(ls) != '\n' && !is_at_end(ls)) {
-        next_char(ls);
-    }
+    return check_char_any(ls, "\r\n");
 }
 
 // Assuming we've consumed a `"[["`, check its bracket nesting level.
@@ -178,13 +185,14 @@ static void multiline(Lexer *ls, int lvl)
                 return;
         }
         // Above call may have fallen through to here as well.
-        if (is_at_end(ls)) {
+        if (is_eof(ls)) {
             luluLex_error_middle(ls, "Unfinished multiline sequence");
             return;
         }
         // Think of this as the iterator increment.
-        if (next_char(ls) == '\n')
+        if (is_newline(ls))
             ls->line += 1;
+        save_and_next(ls);
     }
 }
 
@@ -195,14 +203,39 @@ static void skip_comment(Lexer *ls)
         int lvl = get_nesting(ls);
         if (match_char(ls, '[')) {
             multiline(ls, lvl);
+            luluZIO_reset_buffer(ls->buffer);
             return;
         }
+        // Undo buffer writes because scan_token() still has work to do.
+        luluZIO_reset_buffer(ls->buffer);
     }
     // Didn't match 2 '['. Fall through case.
-    singleline(ls);
+    while (!is_eof(ls) && !is_newline(ls)) {
+        next_char(ls);
+    }
 }
 
 // 1}}} ------------------------------------------------------------------------
+
+static void init_token(Token *tk)
+{
+    tk->line = 0;
+    tk->type = TK_EOF;
+    tk->data.string = NULL;
+}
+
+void luluLex_init(lulu_VM *vm, Lexer *ls, Stream *z, Buffer *b)
+{
+    init_token(&ls->lookahead);
+    init_token(&ls->consumed);
+    ls->vm     = vm;
+    ls->line   = 1;
+    ls->stream = z;
+    ls->buffer = b;
+    luluZIO_resize_buffer(ls->vm, b, LULU_ZIO_MINIMUM_BUFFER);
+    next_char(ls);
+}
+
 
 // TOKENIZER -------------------------------------------------------------- {{{1
 
@@ -216,13 +249,17 @@ static Token make_token(Lexer *ls, TkType type)
 
 static Token error_token(Lexer *ls)
 {
-    // For error tokens, report only the first line if this is a multiline.
-    const char *endl = memchr(ls->lexeme.begin, '\n', view_len(ls->lexeme));
-    if (endl != NULL)
-        ls->lexeme.end = endl;
+    Buffer *b = ls->buffer;
 
+    // For error tokens, report only the first line if this is a multiline.
+    const char *end   = b->buffer + b->length;
+    const char *newl  = memchr(b->buffer, '\n', b->length);
+    if (newl != NULL)
+        end = newl;
+
+    View  v = view_from_end(b->buffer, end);
     Token t = make_token(ls, TK_ERROR);
-    t.data.string = luluStr_copy(ls->vm, ls->lexeme);
+    t.data.string = luluStr_copy(ls->vm, v);
     return t;
 }
 
@@ -261,8 +298,9 @@ static TkType check_keyword(TkType type, View word)
 
 static TkType get_identifier_type(const Lexer *ls)
 {
-    View   word = ls->lexeme;
-    size_t len  = view_len(word);
+    Buffer *b     = ls->buffer;
+    size_t  len   = b->length;
+    View    word  = view_from_len(b->buffer, b->length);
     switch (word.begin[0]) {
     case 'a': return check_keyword(TK_AND, word);
     case 'b': return check_keyword(TK_BREAK, word);
@@ -321,11 +359,13 @@ static TkType get_identifier_type(const Lexer *ls)
 
 static Token identifier_token(Lexer *ls)
 {
-    while (isident(current_char(ls))) {
-        next_char(ls);
+    while (is_ident(ls)) {
+        save_and_next(ls);
     }
-    Token t = make_token(ls, get_identifier_type(ls));
-    t.data.string = luluStr_copy(ls->vm, ls->lexeme);
+    Buffer *b = ls->buffer;
+    Token   t = make_token(ls, get_identifier_type(ls));
+    View    v = view_from_len(b->buffer, b->length);
+    t.data.string = luluStr_copy(ls->vm, v);
     return t;
 }
 
@@ -347,11 +387,11 @@ static Token identifier_token(Lexer *ls)
  *          3. Multiple periods     := 1.2.3.4
  *          4. Python/JS separators := 1_000_000, 4_294_967_295
  */
-static void decimal_sequence(Lexer *ls)
+static void consume_number(Lexer *ls)
 {
     for (;;) {
         while (isdigit(current_char(ls))) {
-            next_char(ls);
+            save_and_next(ls);
         }
 
         // Have an exponent? It CANNOT come after the decimal point.
@@ -374,69 +414,90 @@ static void decimal_sequence(Lexer *ls)
  */
 static Token number_token(Lexer *ls)
 {
-    // Does not verify if we had a `0` character before, but whatever
-    if (match_char(ls, 'x')) {
-        while (isxdigit(current_char(ls))) {
-            next_char(ls);
-        }
-    } else {
-        decimal_sequence(ls);
+    consume_number(ls);
+    while (is_ident(ls)) {
+        save_and_next(ls);
     }
-    // Consume any trailing characters for error handling later on.
-    while (isident(current_char(ls))) {
-        next_char(ls);
-    }
-    char  *end = NULL;
-    Token  tk  = make_token(ls, TK_NUMBER);
-    Number n   = cstr_tonumber(ls->lexeme.begin, &end);
+    Token   t   = make_token(ls, TK_NUMBER);
+    Buffer *b   = ls->buffer;
+    View    v   = view_from_len(b->buffer, b->length);
+    String *s   = luluStr_copy(ls->vm, v);
+    char   *end = NULL;
 
-    // Intern string representation, used when reporting errors.
-    tk.data.string = luluStr_copy(ls->vm, ls->lexeme);
+    // Pass `s->data` not `v.begin`, because `strtod` may read out of bounds.
+    Number n = cstr_tonumber(s->data, &end);
+
     // Failed to convert entire lexeme? (see `man strtod` if using that)
-    if (end != ls->lexeme.end)
+    t.data.string = s;
+    if (end != s->data + s->len)
         luluLex_error_middle(ls, "Malformed number");
 
-    tk.data.number = n;
-    return tk;
+    t.data.number = n;
+    return t;
 }
 
-static Token copy_string(Lexer *ls, int offset, bool is_raw)
+static Token copy_string(Lexer *ls, int offset)
 {
-    const char *begin = ls->lexeme.begin + offset;
-    const char *end   = ls->lexeme.end - offset;
-    lulu_VM    *vm    = ls->vm;
+    Buffer     *b     = ls->buffer;
+    const char *begin = b->buffer + offset;
+    const char *end   = b->buffer + b->length - offset;
 
-    View  sv = view_from_end(begin, end);
-    Token tk = make_token(ls, TK_STRING);
-    tk.data.string = (is_raw) ? luluStr_copy_raw(vm, sv) : luluStr_copy(vm, sv);
-    return tk;
+    View  v = view_from_end(begin, end);
+    Token t = make_token(ls, TK_STRING);
+    t.data.string = luluStr_copy(ls->vm, v);
+    return t;
 }
 
 static Token string_token(Lexer *ls, char quote)
 {
-    while (current_char(ls) != quote) {
-        if (current_char(ls) == '\n' || is_at_end(ls))
+    // Keep going until closing quote has been consumed.
+    while (!match_char(ls, quote)) {
+        if (current_char(ls) == '\\') {
+            char ch = '\0';
+            // Skip slash w/o saving to buffer.
+            switch (next_char(ls)) {
+            case '0': ch = '\0'; break;
+            case 'a': ch = '\a'; break;
+            case 'b': ch = '\b'; break;
+            case 'f': ch = '\f'; break;
+            case 'n': ch = '\n'; break;
+            case 'r': ch = '\r'; break;
+            case 't': ch = '\t'; break;
+            case 'v': ch = '\v'; break;
+            default:
+                if (check_char_any(ls, "\?\'\"\\")) {
+                    ch = current_char(ls);
+                    break;
+                }
+                // Since we skipped the slash need to explicitly prepend it.
+                luluZIO_reset_buffer(ls->buffer);
+                save_char(ls, '\\');
+                save_and_next(ls);
+                luluLex_error_middle(ls, "Unsupported escape sequence");
+                break;
+            }
+            save_char(ls, ch);
+            next_char(ls);
+        } else if (match_char_any(ls, "\r\n") || is_eof(ls)) {
             luluLex_error_middle(ls, "Unterminated string");
-        next_char(ls);
+        } else {
+            save_and_next(ls);
+        }
     }
-
-    // Consume closing quote.
-    next_char(ls);
-
     // +1 offset to skip both quotes.
-    return copy_string(ls, +1, false);
+    return copy_string(ls, +1);
 }
 
-static Token rstring_token(Lexer *ls, int lvl)
+static Token long_string_token(Lexer *ls, int lvl)
 {
-    bool open = match_char(ls, '\n');
-    if (open) {
+    // Opening newlines shouldn't be counted in the buffer.
+    bool open = skip_char_if(ls, '\n');
+    if (open)
         ls->line++;
-    }
     multiline(ls, lvl);
 
     int mark = lvl + open + 2; // Skip [[ and opening nesting.
-    return copy_string(ls, mark, true);
+    return copy_string(ls, mark);
 }
 
 static Token make_token_ifelse(Lexer *ls, char expected, TkType y, TkType n)
@@ -446,24 +507,26 @@ static Token make_token_ifelse(Lexer *ls, char expected, TkType y, TkType n)
 
 Token luluLex_scan_token(Lexer *ls)
 {
+    // Always start with index 0 for a new token.
+    luluZIO_reset_buffer(ls->buffer);
     skip_whitespace(ls);
-    init_view(&ls->lexeme, ls->lexeme.end);
-    if (is_at_end(ls))
+    if (is_eof(ls))
         return make_token(ls, TK_EOF);
 
-    char ch = next_char(ls);
+    char ch = current_char(ls);
     if (isdigit(ch))
         return number_token(ls);
     if (isalpha(ch) || ch == '_')
         return identifier_token(ls);
 
+    save_and_next(ls);
     switch (ch) {
     case '(': return make_token(ls, TK_LPAREN);
     case ')': return make_token(ls, TK_RPAREN);
     case '[': {
         int lvl = get_nesting(ls);
         if (match_char(ls, '['))
-            return rstring_token(ls, lvl);
+            return long_string_token(ls, lvl);
         return make_token(ls, TK_LBRACKET);
     }
     case ']': return make_token(ls, TK_RBRACKET);
@@ -497,8 +560,8 @@ Token luluLex_scan_token(Lexer *ls)
     case '>': return make_token_ifelse(ls, '=', TK_GE, TK_GT);
     case '<': return make_token_ifelse(ls, '=', TK_LE, TK_LT);
 
-    case '\"': return string_token(ls, '\"');
-    case '\'': return string_token(ls, '\'');
+    case '\"':
+    case '\'': return string_token(ls, ch);
     default:   return error_token(ls);
     }
 }
@@ -507,34 +570,8 @@ void luluLex_next_token(Lexer *ls)
 {
     ls->consumed  = ls->lookahead;
     ls->lookahead = luluLex_scan_token(ls);
-    if (ls->lookahead.type == TK_ERROR) {
+    if (ls->lookahead.type == TK_ERROR)
         luluLex_error_lookahead(ls, "Unexpected symbol");
-    }
-}
-
-typedef struct {
-    char  buffer[256];
-    char *end;         // +1 past the last written character.
-    int   left;        // How many free slots we can still write in.
-    int   writes;      // How many slots we have written to so far.
-} Builder;
-
-static void init_builder(Builder *sb)
-{
-    sb->end    = sb->buffer;
-    sb->left   = sizeof(sb->buffer);
-    sb->writes = 0;
-}
-
-static void append_builder(Builder *sb, const char *fmt, ...)
-{
-    va_list argp;
-    va_start(argp, fmt);
-    sb->writes = vsnprintf(sb->end, sb->left, fmt, argp);
-    sb->end   += sb->writes;
-    sb->left  -= sb->writes;
-    *sb->end   = '\0';
-    va_end(argp);
 }
 
 void luluLex_expect_token(Lexer *ls, TkType type, const char *info)
@@ -543,12 +580,14 @@ void luluLex_expect_token(Lexer *ls, TkType type, const char *info)
         luluLex_next_token(ls);
         return;
     }
-    Builder sb;
-    init_builder(&sb);
-    append_builder(&sb, "Expected '%s'", luluLex_token_to_string(type));
-    if (info != NULL)
-        append_builder(&sb, " %s", info);
-    luluLex_error_lookahead(ls, sb.buffer);
+    lulu_VM    *vm  = ls->vm;
+    const char *msg = lulu_push_fstring(vm, "Expected '%s'", token_to_string(type));
+    if (info != NULL) {
+        lulu_push_fstring(vm, " %s", info);
+        msg = lulu_concat(vm, 2);
+    }
+    lulu_pop(vm, 1);
+    luluLex_error_lookahead(ls, msg);
 }
 
 bool luluLex_check_token(Lexer *ls, TkType type)
@@ -574,12 +613,9 @@ void luluLex_error_at(Lexer *ls, const Token *tk, const char *info)
 {
     lulu_VM *vm = ls->vm;
     switch (tk->type) {
-    case TK_EOF:
-        lulu_push_literal(vm, "at <eof>");
-        break;
     case TK_IDENT:
     case TK_STRING:
-    case TK_NUMBER: // When errors thrown, data.string is active.
+    case TK_NUMBER: // When conversion errors thrown, data.string is active.
     case TK_ERROR:
         lulu_push_fstring(vm, "near \'%s\'", tk->data.string->data);
         break;

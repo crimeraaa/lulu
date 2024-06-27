@@ -8,6 +8,7 @@
 void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
 {
     void *res = vm->allocator(ptr, oldsz, newsz, vm->context);
+    // Non-zero allocation request failed? (Freeing uses `newsz` of 0).
     if (res == NULL && newsz > 0)
         lulu_alloc_error(vm);
     return res;

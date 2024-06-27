@@ -60,7 +60,7 @@ char luluZIO_lookahead_stream(Stream *z)
     if (z->unread == 0) {
         if (luluZIO_fill_stream(z) == LULU_ZIO_EOF)
             return LULU_ZIO_EOF;
-    } 
-    return z->position[1];
+    }
+    return z->position[0];
 }
 

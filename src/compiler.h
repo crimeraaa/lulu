@@ -41,7 +41,7 @@ typedef struct {
 
 void luluCpl_init_compiler(Compiler *cpl, lulu_VM *vm);
 void luluCpl_end_compiler(Compiler *cpl);
-void luluCpl_compile(Compiler *cpl, Lexer *ls, const char *input, Chunk *chunk);
+void luluCpl_compile(Compiler *cpl, Lexer *ls, Chunk *chunk);
 
 void luluCpl_emit_opcode(Compiler *cpl, OpCode op);
 void luluCpl_emit_oparg1(Compiler *cpl, OpCode op, Byte arg);

@@ -8,46 +8,7 @@
 #define FNV1A_PRIME64   0x00000100000001B3
 #define FNV1A_OFFSET64  0xcbf29ce484222325
 
-static char get_escape(char ch)
-{
-    switch (ch) {
-    case '\\':  return '\\';
-    case '\'':  return '\'';
-    case '\"':  return '\"';
-
-    case '0':   return '\0';
-    case 'a':   return '\a';
-    case 'b':   return '\b';
-    case 'f':   return '\f';
-    case 'n':   return '\n';
-    case 'r':   return '\r';
-    case 't':   return '\t';
-    case 'v':   return '\v';
-
-    default:    return ch;   // TODO: Warn user? Throw error?
-    }
-}
-
-// Note that we need to hash escapes correctly too.
-static uint32_t hash_string(View sv)
-{
-    uint32_t hash = FNV1A_OFFSET32;
-    char     prev = 0;
-    for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
-        char ch = *ptr;
-        if (ch == '\\' && prev != '\\') {
-            prev = ch;
-            continue;
-        }
-        hash ^= cast_byte((prev == '\\') ? get_escape(ch) : ch);
-        hash *= FNV1A_PRIME32;
-        if (prev == '\\')
-            prev = 0;
-    }
-    return hash;
-}
-
-uint32_t luluStr_hash_raw(View sv)
+uint32_t luluStr_hash(View sv)
 {
     uint32_t hash = FNV1A_OFFSET32;
     for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
@@ -57,12 +18,15 @@ uint32_t luluStr_hash_raw(View sv)
     return hash;
 }
 
-String *luluStr_new(lulu_VM *vm, size_t len, uint32_t hash)
+String *luluStr_new(lulu_VM *vm, const char *cs, size_t len, uint32_t hash)
 {
     // Note how we add 1 for the nul char.
     String *s = cast(String*, luluObj_new(vm, luluStr_size(len + 1), TYPE_STRING));
     s->len    = len;
     s->hash   = hash;
+    if (cs != NULL)
+        memcpy(s->data, cs, len);
+    s->data[len] = '\0';
     return s;
 }
 
@@ -70,38 +34,6 @@ String *luluStr_new(lulu_VM *vm, size_t len, uint32_t hash)
 void luluStr_free(lulu_VM *vm, String *s)
 {
     luluMem_free_pointer(vm, luluObj_unlink(vm, &s->object), luluStr_size(s->len + 1));
-}
-
-static void build_string(String *s, View sv)
-{
-    char *end   = s->data; // For loop counter may skip.
-    int   skips = 0;       // Number escape characters emitted.
-    char  prev  = 0;
-
-    for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
-        char ch = *ptr;
-        // Handle `"\\"` appropriately.
-        if (ch == '\\' && prev != '\\') {
-            skips++;
-            prev = ch;
-            continue;
-        }
-        // TODO: 3-digit number literals (0-prefixed), 2-digit ASCII codes
-        if (prev == '\\') {
-            *end = get_escape(ch);
-            prev = 0;
-        } else {
-            *end = ch;
-        }
-        end++;
-    }
-    *end   = '\0';
-    s->len = view_len(sv) - skips;
-}
-
-static void end_string(String *s)
-{
-    s->data[s->len] = '\0';
 }
 
 static String *find_if_interned(lulu_VM *vm, String *s)
@@ -116,21 +48,15 @@ static String *find_if_interned(lulu_VM *vm, String *s)
     return s;
 }
 
-static String *copy_string(lulu_VM *vm, View sv, bool israw)
+String *luluStr_copy(lulu_VM *vm, View sv)
 {
-    uint32_t hash  = (israw) ? luluStr_hash_raw(sv) : hash_string(sv);
+    uint32_t hash  = luluStr_hash(sv);
     String  *found = luluStr_find_interned(vm, sv, hash);
     size_t   len   = view_len(sv);
     if (found != NULL)
         return found;
 
-    String *s = luluStr_new(vm, len, hash);
-    if (israw)
-        memcpy(s->data, sv.begin, len);
-    else
-        build_string(s, sv);
-    end_string(s);
-
+    String *s = luluStr_new(vm, sv.begin, len, hash);
     // If we have escapes, are we really REALLY sure this isn't found?
     if (s->len != len)
         return find_if_interned(vm, s);
@@ -138,19 +64,9 @@ static String *copy_string(lulu_VM *vm, View sv, bool israw)
     return s;
 }
 
-String *luluStr_copy_raw(lulu_VM *vm, View sv)
-{
-    return copy_string(vm, sv, true);
-}
-
-String *luluStr_copy(lulu_VM *vm, View sv)
-{
-    return copy_string(vm, sv, false);
-}
-
 String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len)
 {
-    String *s      = luluStr_new(vm, len, 0);
+    String *s      = luluStr_new(vm, NULL, len, 0);
     View    v      = view_from_len(s->data, s->len);
     size_t  offset = 0;
 
@@ -160,8 +76,7 @@ String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len)
         memcpy(&s->data[offset], arg->data, arg->len);
         offset += arg->len;
     }
-    s->hash = hash_string(v);
-    end_string(s);
+    s->hash = luluStr_hash(v);
     return find_if_interned(vm, s);
 }
 

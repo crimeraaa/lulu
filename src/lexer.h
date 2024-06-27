@@ -82,15 +82,14 @@ typedef struct {
     Buffer  *buffer;    // Buffer to store string representation of some tokens.
     Token    lookahead; // analogous to `Parser::current` in the book.
     Token    consumed;  // analogous to `Parser::previous` in the book.
-    View     lexeme;    // Holds pointers to 1st and current of lexeme.
     lulu_VM *vm;        // Private to implementation. Has our `jmp_buf`.
     int      line;      // Current line number we're on.
+    char     current;   // Currently character stream is pointing to.
 } Lexer;
 
-const char *luluLex_token_to_string(TkType type);
-void        luluLex_intern_tokens(lulu_VM *vm);
+void luluLex_intern_tokens(lulu_VM *vm);
 
-void  luluLex_init(Lexer *ls, const char *input, lulu_VM *vm);
+void  luluLex_init(lulu_VM *vm, Lexer *ls, Stream *z, Buffer *b);
 Token luluLex_scan_token(Lexer *ls);
 
 // Analogous to `compiler.c:advance()` in the book. May call `lexerror_*`.

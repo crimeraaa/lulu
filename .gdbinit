@@ -5,7 +5,8 @@
 file ./bin/lulu
 set print pretty on
 
-break parser.c:concat
+break api.c:lulu_interpret
+break lexer.c:number_token
 layout src
 
 run

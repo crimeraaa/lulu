@@ -304,11 +304,10 @@ void luluCpl_end_scope(Compiler *cpl)
         luluCpl_emit_oparg1(cpl, OP_POP, popped);
 }
 
-void luluCpl_compile(Compiler *cpl, Lexer *ls, const char *input, Chunk *chunk)
+void luluCpl_compile(Compiler *cpl, Lexer *ls, Chunk *chunk)
 {
     cpl->lexer = ls;
     cpl->chunk = chunk;
-    luluLex_init(ls, input, cpl->vm);
     luluLex_next_token(ls);
 
     luluCpl_begin_scope(cpl); // Script/REPL can pop its own top-level locals
