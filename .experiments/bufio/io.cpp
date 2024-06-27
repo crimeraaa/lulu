@@ -70,7 +70,7 @@ char fill_stream(Stream *z)
     return *z->position++;
 }
 
-char getc_stream(Stream *z)
+char read_stream(Stream *z)
 {
     // Still have more to read?
     if (z->unread-- > 0)
@@ -79,19 +79,19 @@ char getc_stream(Stream *z)
         return fill_stream(z);
 }
 
-void ungetc_stream(Stream *z)
+void unread_stream(Stream *z)
 {
     z->unread   += 1;
     z->position -= 1;
 }
 
-char peek_stream(Stream *z)
+char lookahead_stream(Stream *z)
 {
     if (z->unread == 0) {
         if (fill_stream(z) == '\0')
             return '\0';
         else
-            ungetc_stream(z); // fill_stream removed first byte, put it back.
+            unread_stream(z); // fill_stream removed first byte, put it back.
     }
     return z->position[0];
 }

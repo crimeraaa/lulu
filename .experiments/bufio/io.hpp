@@ -59,9 +59,9 @@ char fill_stream(Stream *z);
 
 // Returns currently viewed character and advances the internal view if possible.
 // lzio.h:zgetc
-char getc_stream(Stream *z);
-void ungetc_stream(Stream *z);
+char read_stream(Stream *z);
+void unread_stream(Stream *z);
 
 // Retrieves lookahead character if there is one.
 // lzio.c:luaZ_lookahead
-char peek_stream(Stream *z);
+char lookahead_stream(Stream *z);

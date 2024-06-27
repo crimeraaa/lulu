@@ -7,27 +7,14 @@
 
 struct Token {
     enum class Type {
-        LParen,   RParen,    // ( )
-        LSquare,  RSquare,   // [ ]
-        LCurly,   RCurly,    // { }
-
-        LAngle,   RAngle,    // < >
-        LAngleEq, RAngleEq,  // <= >=
-        Equal1,   Equal2,    // = ==
-        TildeEq,             // ~=
-
-        Dot1,     Dot2,      // . ..
-        Dot3,     Comma,     // ... ,
-        Colon,    Semicolon, // : ;
-        Plus,     Dash,      // + -
-        Star,     Slash,     // * /
-        Percent,  Caret,     // % ^
-
-        Identifier,
-        String,
-        Number,
-        Error,
-        Eof,
+        // Keywords: https://www.lua.org/manual/5.1/manual.html#2.1
+        And, Break, Do, Else, ElseIf, End, False, For, Function, If, In, Local,
+        Nil, Not, Or, Repeat, Return, Then, True, Until, While,
+        LParen, RParen, LSquare, RSquare, LCurly, RCurly, 
+        LAngle, RAngle, LAngleEq, RAngleEq, Equal1, Equal2, TildeEq,
+        Dot1, Dot2, Dot3, Comma, Colon, Semicolon,
+        Plus, Dash, Star, Slash, Percent, Caret,
+        Identifier, String, Number, Error, Eof,
     };
 
     union Data {
@@ -35,9 +22,9 @@ struct Token {
         String *string;
     };
 
-    Type  type;
-    Data  data;
-    int   line;
+    Type type;
+    Data data;
+    int  line;
 };
 
 struct Lexer {
