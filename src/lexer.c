@@ -109,12 +109,12 @@ static bool is_at_end(const Lexer *ls)
     return ls->lexeme.end[0] == '\0';
 }
 
-static char peek_current_char(const Lexer *ls)
+static char current_char(const Lexer *ls)
 {
     return ls->lexeme.end[0];
 }
 
-static char peek_next_char(const Lexer *ls)
+static char lookahead_char(const Lexer *ls)
 {
     return ls->lexeme.end[1];
 }
@@ -128,7 +128,7 @@ static char next_char(Lexer *ls)
 
 static bool match_char(Lexer *ls, char ch)
 {
-    if (is_at_end(ls) || peek_current_char(ls) != ch) {
+    if (is_at_end(ls) || current_char(ls) != ch) {
         return false;
     } else {
         next_char(ls);
@@ -136,9 +136,22 @@ static bool match_char(Lexer *ls, char ch)
     }
 }
 
+static bool check_char_any(Lexer *ls, const char *set)
+{
+    return strchr(set, current_char(ls)) != NULL;
+}
+
+static bool match_char_any(Lexer *ls, const char *set)
+{
+    bool found = check_char_any(ls, set);
+    if (found)
+        next_char(ls);
+    return found;
+}
+
 static void singleline(Lexer *ls)
 {
-    while (peek_current_char(ls) != '\n' && !is_at_end(ls)) {
+    while (current_char(ls) != '\n' && !is_at_end(ls)) {
         next_char(ls);
     }
 }
@@ -194,7 +207,6 @@ static void skip_comment(Lexer *ls)
 static Token make_token(Lexer *ls, TkType type)
 {
     Token tk;
-    tk.data.string = luluStr_copy(ls->vm, ls->lexeme);
     tk.type = type;
     tk.line = ls->line;
     return tk;
@@ -206,20 +218,23 @@ static Token error_token(Lexer *ls)
     const char *endl = memchr(ls->lexeme.begin, '\n', view_len(ls->lexeme));
     if (endl != NULL)
         ls->lexeme.end = endl;
-    return make_token(ls, TK_ERROR);
+
+    Token t = make_token(ls, TK_ERROR);
+    t.data.string = luluStr_copy(ls->vm, ls->lexeme);
+    return t;
 }
 
 static void skip_whitespace(Lexer *ls)
 {
     for (;;) {
-        char ch = peek_current_char(ls);
+        char ch = current_char(ls);
         switch (ch) {
         case '\n': ls->line += 1; // fall through
         case ' ':
         case '\r':
         case '\t': next_char(ls); break;
         case '-':
-            if (peek_next_char(ls) != '-')
+            if (lookahead_char(ls) != '-')
                 return;
             // Skip the 2 '-' characters so we are at the comment's contents.
             next_char(ls);
@@ -234,9 +249,9 @@ static void skip_whitespace(Lexer *ls)
 
 static TkType check_keyword(TkType type, View word)
 {
-    View kw = LULU_TKINFO[type];
-    size_t     l1  = view_len(kw);
-    size_t     l2  = view_len(word);
+    View   kw = LULU_TKINFO[type];
+    size_t l1 = view_len(kw);
+    size_t l2 = view_len(word);
     if (l1 == l2 && cstr_eq(kw.begin, word.begin, l2))
         return type;
     return TK_IDENT;
@@ -244,8 +259,8 @@ static TkType check_keyword(TkType type, View word)
 
 static TkType get_identifier_type(const Lexer *ls)
 {
-    View word = ls->lexeme;
-    size_t     len  = view_len(word);
+    View   word = ls->lexeme;
+    size_t len  = view_len(word);
     switch (word.begin[0]) {
     case 'a': return check_keyword(TK_AND, word);
     case 'b': return check_keyword(TK_BREAK, word);
@@ -270,7 +285,7 @@ static TkType get_identifier_type(const Lexer *ls)
         }
         break;
     case 'i':
-        if (len > 1) {
+        if (len == cstr_len("if")) {
             switch (word.begin[1]) {
             case 'f': return check_keyword(TK_IF, word);
             case 'n': return check_keyword(TK_IN, word);
@@ -279,7 +294,7 @@ static TkType get_identifier_type(const Lexer *ls)
         break;
     case 'l': return check_keyword(TK_LOCAL, word);
     case 'n':
-        if (len > 1) {
+        if (len == cstr_len("nil")) {
             switch (word.begin[1]) {
             case 'i': return check_keyword(TK_NIL, word);
             case 'o': return check_keyword(TK_NOT, word);
@@ -290,7 +305,7 @@ static TkType get_identifier_type(const Lexer *ls)
     case 'p': return check_keyword(TK_PRINT, word);
     case 'r': return check_keyword(TK_RETURN, word);
     case 't':
-        if (len > 1) {
+        if (len == cstr_len("true")) {
             switch (word.begin[1]) {
             case 'h': return check_keyword(TK_THEN, word);
             case 'r': return check_keyword(TK_TRUE, word);
@@ -304,10 +319,12 @@ static TkType get_identifier_type(const Lexer *ls)
 
 static Token identifier_token(Lexer *ls)
 {
-    while (isident(peek_current_char(ls))) {
+    while (isident(current_char(ls))) {
         next_char(ls);
     }
-    return make_token(ls, get_identifier_type(ls));
+    Token t = make_token(ls, get_identifier_type(ls));
+    t.data.string = luluStr_copy(ls->vm, ls->lexeme);
+    return t;
 }
 
 /**
@@ -330,26 +347,22 @@ static Token identifier_token(Lexer *ls)
  */
 static void decimal_sequence(Lexer *ls)
 {
-    while (isdigit(peek_current_char(ls))) {
-        next_char(ls);
-    }
-
-    // Have an exponent? It CANNOT come after the decimal point.
-    if (match_char(ls, 'e')) {
-        char ch = peek_current_char(ls);
-        // Explicit signedness is optional.
-        if (ch == '+' || ch == '-') {
+    for (;;) {
+        while (isdigit(current_char(ls))) {
             next_char(ls);
         }
-        // Must have at least 1 digit but that's a problem for later.
-        decimal_sequence(ls);
-        return;
-    }
 
-    // Have a fraction? This sequence of digits can also have an exponent.
-    if (match_char(ls, '.')) {
-        decimal_sequence(ls);
-        return;
+        // Have an exponent? It CANNOT come after the decimal point.
+        if (match_char_any(ls, "Ee")) {
+            match_char_any(ls, "+-"); // Explicit signedness is optional.
+            continue;
+        }
+
+        // Have a fraction? This sequence of digits can also have an exponent.
+        if (match_char(ls, '.')) {
+            continue;
+        }
+        break;
     }
 }
 
@@ -361,23 +374,26 @@ static Token number_token(Lexer *ls)
 {
     // Does not verify if we had a `0` character before, but whatever
     if (match_char(ls, 'x')) {
-        while (isxdigit(peek_current_char(ls))) {
+        while (isxdigit(current_char(ls))) {
             next_char(ls);
         }
     } else {
         decimal_sequence(ls);
     }
     // Consume any trailing characters for error handling later on.
-    while (isident(peek_current_char(ls))) {
+    while (isident(current_char(ls))) {
         next_char(ls);
     }
     char  *end = NULL;
+    Token  tk  = make_token(ls, TK_NUMBER);
     Number n   = cstr_tonumber(ls->lexeme.begin, &end);
+
+    // Intern string representation, used when reporting errors.
+    tk.data.string = luluStr_copy(ls->vm, ls->lexeme);
     // Failed to convert entire lexeme? (see `man strtod` if using that)
     if (end != ls->lexeme.end)
         luluLex_error_middle(ls, "Malformed number");
 
-    Token tk = make_token(ls, TK_NUMBER);
     tk.data.number = n;
     return tk;
 }
@@ -389,25 +405,17 @@ static Token copy_string(Lexer *ls, int offset, bool is_raw)
     lulu_VM    *vm    = ls->vm;
 
     View  sv = view_from_end(begin, end);
-    Token tk;
-    tk.type = TK_STRING;
-    tk.line = ls->line;
+    Token tk = make_token(ls, TK_STRING);
     tk.data.string = (is_raw) ? luluStr_copy_raw(vm, sv) : luluStr_copy(vm, sv);
     return tk;
 }
 
 static Token string_token(Lexer *ls, char quote)
 {
-    while (peek_current_char(ls) != quote && !is_at_end(ls)) {
-        if (peek_current_char(ls) == '\n')
-            goto bad_string;
+    while (current_char(ls) != quote) {
+        if (current_char(ls) == '\n' || is_at_end(ls))
+            luluLex_error_middle(ls, "Unterminated string");
         next_char(ls);
-    }
-
-    // The label isn't actually in its own block scope.
-    if (is_at_end(ls)) {
-bad_string:
-        luluLex_error_middle(ls, "Unterminated string");
     }
 
     // Consume closing quote.
@@ -465,7 +473,7 @@ Token luluLex_scan_token(Lexer *ls)
     case '.':
         if (match_char(ls, '.'))
             return make_token_ifelse(ls, '.', TK_VARARG, TK_CONCAT);
-        else if (isdigit(peek_current_char(ls)))
+        else if (isdigit(current_char(ls)))
             return number_token(ls); // Decimal literal, no leading digits
         else
             return make_token(ls, TK_PERIOD);
@@ -563,11 +571,19 @@ bool luluLex_match_token(Lexer *ls, TkType type)
 void luluLex_error_at(Lexer *ls, const Token *tk, const char *info)
 {
     lulu_VM *vm = ls->vm;
-    if (tk->type == TK_EOF) {
+    switch (tk->type) {
+    case TK_EOF:
         lulu_push_literal(vm, "at <eof>");
-    } else {
-        String *s = tk->data.string;
-        lulu_push_fstring(vm, "near \'%s\'", s->data);
+        break;
+    case TK_IDENT:
+    case TK_STRING:
+    case TK_NUMBER: // When errors thrown, data.string is active.
+    case TK_ERROR:
+        lulu_push_fstring(vm, "near \'%s\'", tk->data.string->data);
+        break;
+    default:
+        lulu_push_fstring(vm, "near \'%s\'", LULU_TKINFO[tk->type].begin);
+        break;
     }
     lulu_comptime_error(vm, ls->line, info, lulu_to_cstring(vm, -1));
 }

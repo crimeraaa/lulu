@@ -87,7 +87,12 @@ typedef LULU_SBYTE3 SByte3;
 #define bit_count(N)        ((N) * BITS_PER_BYTE)
 #define bit_size(T)         bit_count(sizeof(T))
 
+#ifdef __cplusplus
+#define cast(T, expr)       static_cast<T>(expr)
+#else /* __cplusplus not defined. */
 #define cast(T, expr)       ((T)(expr))
+#endif /* __cplusplus */
+
 #define cast_int(expr)      cast(int, expr)
 #define cast_num(expr)      cast(lulu_Number, expr)
 #define cast_byte(expr)     cast(Byte, expr)

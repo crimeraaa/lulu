@@ -7,11 +7,21 @@
 #include "compiler.h"
 #include "table.h"
 
+// Simple allocation wrapper using the C standard library.
+static void *stdc_allocator(void *ptr, size_t oldsz, size_t newsz, void *ctx)
+{
+    unused2(oldsz, ctx);
+    if (newsz == 0) {
+        free(ptr);
+        return NULL;
+    }
+    return realloc(ptr, newsz);
+}
+
 lulu_VM *lulu_open(void)
 {
     static lulu_VM state = {0}; // lol
-    luluVM_init(&state);
-    return &state;
+    return luluVM_init(&state, &stdc_allocator, NULL) ? &state : NULL;
 }
 
 void lulu_close(lulu_VM *vm)
@@ -28,34 +38,44 @@ static StackID poke_at_offset(lulu_VM *vm, int offset)
         return poke_top(vm, offset);
 }
 
-lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
+typedef struct {
+    Chunk      *chunk;
+    const char *input;
+    const char *name;
+} Runner;
+
+static void run_input(lulu_VM *vm, void *ctx)
 {
-    static Chunk    ck;
+    Runner         *r = ctx;
     static Lexer    ls;
     static Compiler cpl;
-    lulu_Status     res = setjmp(vm->errorjmp);
 
-    vm->name = luluStr_copy(vm, view_from_len(name, strlen(name)));
-    switch (res) {
-    case LULU_OK:
-        luluFun_init_chunk(&ck, vm->name);
-        luluCpl_init_compiler(&cpl, vm);
-        luluCpl_compile(&cpl, &ls, input, &ck);
-        break;
-    case LULU_ERROR_RUNTIME:
-    case LULU_ERROR_COMPTIME:
-    case LULU_ERROR_ALLOC:
-        // For the default case, please ensure all calls of `longjmp` ONLY
-        // ever pass an `lulu_Status` member.
-        luluFun_free_chunk(vm, &ck);
-        return res;
-    }
-    // Prep the VM
-    vm->chunk = &ck;
-    vm->ip    = ck.code;
-    res       = luluVM_execute(vm);
-    luluFun_free_chunk(vm, &ck);
-    return res;
+    vm->name = luluStr_copy(vm, view_from_len(r->name, strlen(r->name)));
+    luluFun_init_chunk(r->chunk, vm->name);
+    luluCpl_init_compiler(&cpl, vm);
+    luluCpl_compile(&cpl, &ls, r->input, r->chunk);
+
+    // Prep the VM.
+    vm->chunk = r->chunk;
+    vm->ip    = r->chunk->code;
+
+    // Inside of `luluVM_run_protered` we should have an error handler.
+    vm->errors->status = luluVM_execute(vm);
+}
+
+lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
+{
+    static Chunk  c;
+    static Runner r;
+    lulu_Status   e;
+    r.chunk = &c;
+    r.input = input;
+    r.name  = name;
+
+    // We only have error handlers inside of `run_protected`.
+    e = luluVM_run_protected(vm, &run_input, &r);
+    luluFun_free_chunk(vm, &c);
+    return e;
 }
 
 void lulu_set_top(lulu_VM *vm, int offset)
@@ -377,8 +397,10 @@ static int get_current_line(const lulu_VM *vm)
 
 void lulu_comptime_error(lulu_VM *vm, int line, const char *what, const char *where)
 {
-    lulu_push_error_fstring(vm, line, "%s %s\n", what, where);
-    longjmp(vm->errorjmp, LULU_ERROR_COMPTIME);
+    lulu_push_error_fstring(vm, line, "%s %s", what, where);
+    Error *e = vm->errors;
+    e->status = LULU_ERROR_COMPTIME;
+    longjmp(e->buffer, 1);
 }
 
 void lulu_runtime_error(lulu_VM *vm, const char *fmt, ...)
@@ -391,13 +413,22 @@ void lulu_runtime_error(lulu_VM *vm, const char *fmt, ...)
     lulu_pop(vm, 1);
     va_end(args);
 
-    lulu_push_error_fstring(vm, line, "%s\n", msg);
-    longjmp(vm->errorjmp, LULU_ERROR_RUNTIME);
+    lulu_push_error_fstring(vm, line, "%s", msg);
+
+    Error *e = vm->errors;
+    e->status = LULU_ERROR_RUNTIME;
+    longjmp(e->buffer, 1);
 }
 
 void lulu_alloc_error(lulu_VM *vm)
 {
-    longjmp(vm->errorjmp, LULU_ERROR_ALLOC);
+    Error *e = vm->errors;
+    e->status = LULU_ERROR_ALLOC;
+
+    // Should have been interned on initialization. And if initialization failed,
+    // we should have exited as soon as possible.
+    lulu_push_cstring(vm, MEMORY_ERROR_MESSAGE);
+    longjmp(e->buffer, 1);
 }
 
 void lulu_type_error(lulu_VM *vm, const char *act, const char *type)

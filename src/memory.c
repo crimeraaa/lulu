@@ -5,15 +5,9 @@
 #include "vm.h"
 #include "api.h"
 
-void luluMem_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx)
-{
-    vm->allocator.allocate = fn;
-    vm->allocator.context  = ctx;
-}
-
 void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
 {
-    void *res = vm->allocator.allocate(ptr, oldsz, newsz, vm->allocator.context);
+    void *res = vm->allocator(ptr, oldsz, newsz, vm->context);
     if (res == NULL && newsz > 0)
         lulu_alloc_error(vm);
     return res;
@@ -43,10 +37,10 @@ static void free_object(lulu_VM *vm, Object *obj)
 {
     switch (obj->tag) {
     case TYPE_STRING:
-        luluStr_free(vm, cast(String*, obj));
+        luluStr_free(vm, cast_string(obj));
         break;
     case TYPE_TABLE:
-        luluTbl_free(vm, cast(Table*, obj));
+        luluTbl_free(vm, cast_table(obj));
         luluMem_free_pointer(vm, obj, sizeof(Table));
         break;
     default:

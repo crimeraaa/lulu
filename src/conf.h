@@ -95,6 +95,7 @@
 
 // 1}}} ------------------------------------------------------------------------
 
+
 // C99-style compound literals have very different semantics in C++.
 #ifdef __cplusplus
 #define lulu_compound_lit(T, ...)   {__VA_ARGS__}

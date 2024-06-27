@@ -13,16 +13,16 @@ static int repl(lulu_VM *vm)
             fputc('\n', stdout);
             break;
         }
-        switch (lulu_interpret(vm, "stdin", line)) {
-        case LULU_OK:     break;
-        case LULU_ERROR_COMPTIME: // Fall through.
-        case LULU_ERROR_RUNTIME:  printf("%s", lulu_to_cstring(vm, -1));
-                                  lulu_pop(vm, 1);
-                                  break;
-        case LULU_ERROR_ALLOC:    return 1;
+        lulu_Status err = lulu_interpret(vm, "=stdin", line);
+        if (err != LULU_OK) {
+            printf("%s\n", lulu_to_cstring(vm, -1));
+            lulu_pop(vm, 1);
         }
+        // Allocation failures are unrecoverable.
+        if (err == LULU_ERROR_ALLOC)
+            return EXIT_FAILURE;
     }
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 static char *read_file(const char *file_name)
@@ -69,21 +69,22 @@ static int run_file(lulu_VM *vm, const char *file_name)
     }
     lulu_Status res = lulu_interpret(vm, file_name, input);
     free(input);
+    if (res == LULU_OK)
+        return EXIT_SUCCESS;
 
-    switch (res) {
-    case LULU_OK:    return 0;
-    case LULU_ERROR_COMPTIME: // fall through
-    case LULU_ERROR_RUNTIME: printf("%s", lulu_to_cstring(vm, -1));
-                             lulu_pop(vm, 1);
-    case LULU_ERROR_ALLOC:   return EX_SOFTWARE;
-    }
-    return EXIT_FAILURE; // Should be unreachable.
+    printf("%s", lulu_to_cstring(vm, -1));
+    lulu_pop(vm, 1);
+    return EX_SOFTWARE;
 }
 
 int main(int argc, const char *argv[])
 {
-    lulu_VM *vm = lulu_open();
-    int err = 0;
+    lulu_VM *vm  = lulu_open();
+    int      err = 0;
+    if (vm == NULL) {
+        eprintln("Failed to open lulu");
+        return EXIT_FAILURE;
+    }
     if (argc == 1) {
         err = repl(vm);
     } else if (argc == 2) {

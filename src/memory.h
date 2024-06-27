@@ -7,14 +7,10 @@
 
 #define luluMem_grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
-// A general purpose allocation wrapper that carries some context around.
-// See: https://nullprogram.com/blog/2023/12/17/
-typedef struct lulu_Allocator {
-    lulu_AllocFn allocate;
-    void        *context;
-} Allocator;
+#define MEMORY_ERROR_MESSAGE        "Fatal: out of memory"
 
-void  luluMem_set_allocator(lulu_VM *vm, lulu_AllocFn fn, void *ctx);
+typedef lulu_Allocator Allocator;
+
 void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz);
 
 Object *luluObj_new(lulu_VM *vm, size_t size, VType tag);

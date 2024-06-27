@@ -16,6 +16,7 @@ void    luluStr_free(lulu_VM *vm, String *s);
 // Global functions that deal with strings need the VM to check for interned.
 String *luluStr_copy(lulu_VM *vm, View sv);
 String *luluStr_copy_raw(lulu_VM *vm, View sv);
+#define luluStr_copy_lit(vm, s)  luluStr_copy((vm), view_from_lit(s))
 
 // Assumes all arguments we already verified to be `String*`.
 String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len);

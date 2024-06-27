@@ -7,27 +7,21 @@
 #include "string.h"
 #include "table.h"
 
-// Simple allocation wrapper using the C standard library.
-static void *stdc_allocator(void *ptr, size_t oldsz, size_t newsz, void *ctx)
-{
-    unused2(oldsz, ctx);
-    if (newsz == 0) {
-        free(ptr);
-        return NULL;
-    }
-    return realloc(ptr, newsz);
-}
-
 static void reset_stack(lulu_VM *vm)
 {
     vm->top  = vm->stack;
     vm->base = vm->stack;
 }
 
-static void init_builtin(lulu_VM *vm)
+// This must occur AFTER the strings table and objects list are initialized.
+static void set_builtins(lulu_VM *vm, void *ctx)
 {
+    unused(ctx);
+    luluVal_intern_typenames(vm);
+    luluLex_intern_tokens(vm);
     lulu_push_table(vm, &vm->globals);
     lulu_set_global(vm, "_G");
+    luluStr_copy_lit(vm, MEMORY_ERROR_MESSAGE);
 }
 
 // Silly but need this as stack-allocated tables don't init their objects.
@@ -38,18 +32,35 @@ static void _init_table(Table *t)
     luluTbl_init(t);
 }
 
-void luluVM_init(lulu_VM *vm)
+bool luluVM_init(lulu_VM *vm, lulu_Allocator fn, void *ctx)
 {
     reset_stack(vm);
-    luluMem_set_allocator(vm, &stdc_allocator, NULL);
+    vm->allocator = fn;
+    vm->context   = ctx;
+    vm->objects   = NULL;  // Start with no objects.
+    vm->errors    = NULL;  // When initializing, we cannot throw properly.
+
     _init_table(&vm->globals);
     _init_table(&vm->strings);
-    vm->objects = NULL;
+    if (luluVM_run_protected(vm, &set_builtins, NULL) != LULU_OK) {
+        lulu_close(vm);
+        return false;
+    }
+    return true;
+}
 
-    // This must occur AFTER the strings table and objects list are initialized.
-    luluVal_intern_typenames(vm);
-    luluLex_intern_tokens(vm);
-    init_builtin(vm);
+lulu_Status luluVM_run_protected(lulu_VM *vm, ProtectedFn fn, void *ctx)
+{
+    // New error handler for this particular run.
+    Error e;
+    e.status   = LULU_OK;
+    e.prev     = vm->errors;
+    vm->errors = &e;
+    if (setjmp(e.buffer) == 0) {
+        fn(vm, ctx);
+    }
+    vm->errors = e.prev;
+    return e.status;
 }
 
 void luluVM_free(lulu_VM *vm)

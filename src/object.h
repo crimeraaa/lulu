@@ -74,9 +74,20 @@ typedef struct lulu_Table {
 #define as_boolean(v)       ((v)->as.boolean)
 #define as_number(v)        ((v)->as.number)
 #define as_object(v)        ((v)->as.object)
-#define as_pointer(v)       cast(void*,   as_object(v))
-#define as_string(v)        cast(String*, as_object(v))
-#define as_table(v)         cast(Table*,  as_object(v))
+
+#ifdef __cplusplus
+#define cast_pointer(expr)  reinterpret_cast<void*>(expr)
+#define cast_string(expr)   reinterpret_cast<String*>(expr)
+#define cast_table(expr)    reinterpret_cast<Table*>(expr)
+#else /* __cplusplus not defined. */
+#define cast_pointer(expr)  cast(void*,   expr)
+#define cast_string(expr)   cast(String*, expr)
+#define cast_table(expr)    cast(Table*,  expr)
+#endif /* __cplusplus */
+
+#define as_pointer(v)       cast_pointer(as_object(v))
+#define as_string(v)        cast_string(as_object(v))
+#define as_table(v)         cast_table(as_object(v))
 #define as_cstring(v)       (as_string(v)->data)
 
 #define make_nil()          (Value){TYPE_NIL,     {.number  = 0}}
