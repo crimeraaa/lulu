@@ -13,7 +13,7 @@ static int repl(lulu_VM *vm)
             fputc('\n', stdout);
             break;
         }
-        lulu_Status err = lulu_interpret(vm, "=stdin", line);
+        lulu_Status err = lulu_interpret(vm, "stdin", line);
         if (err != LULU_OK) {
             printf("%s\n", lulu_to_cstring(vm, -1));
             lulu_pop(vm, 1);

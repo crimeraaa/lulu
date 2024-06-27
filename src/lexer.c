@@ -95,6 +95,8 @@ static void init_token(Token *tk)
 
 void luluLex_init(Lexer *ls, const char *input, lulu_VM *vm)
 {
+    ls->stream = NULL;
+    ls->buffer = NULL;
     init_token(&ls->lookahead);
     init_token(&ls->consumed);
     init_view(&ls->lexeme, input);

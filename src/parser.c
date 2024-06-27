@@ -164,7 +164,6 @@ static void logic_and(Compiler *cpl, Lexer *ls)
 {
     // If LHS is truthy, skip the jump. If falsy, pop LHS then push RHS.
     int end_jump = luluCpl_emit_if_jump(cpl, CAN_POP);
-    end_jump = luluCpl_emit_if_jump(cpl, CAN_POP);
     parse_precedence(cpl, ls, PREC_AND);
     luluCpl_patch_jump(cpl, end_jump);
 }

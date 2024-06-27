@@ -11,12 +11,6 @@ typedef void (*ProtectedFn)(lulu_VM *vm, void *ctx);
 
 typedef struct lulu_Error Error;
 
-struct lulu_Error {
-    struct lulu_Error   *prev;
-    jmp_buf              buffer;
-    volatile lulu_Status status; // Volatile as it can be changed outside caller.
-};
-
 struct lulu_VM {
     Value     stack[LULU_MAX_STACK + LULU_STACK_RESERVED];
     Allocator allocator; // Desired allocation function.
@@ -41,9 +35,10 @@ struct lulu_VM {
 // May return `false` if initial allocations failed!
 bool luluVM_init(lulu_VM *vm, lulu_Allocator fn, void *ctx);
 void luluVM_free(lulu_VM *vm);
-lulu_Status luluVM_execute(lulu_VM *vm);
+void luluVM_execute(lulu_VM *vm);
 
 // https://www.lua.org/source/5.1/ldo.c.html#luaD_rawrunprotected
 lulu_Status luluVM_run_protected(lulu_VM *vm, ProtectedFn fn, void *ctx);
+void luluVM_throw_error(lulu_VM *vm, lulu_Status code);
 
 #endif /* LULU_VIRTUAL_MACHINE_H */

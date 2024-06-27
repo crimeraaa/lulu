@@ -57,11 +57,12 @@ uint32_t luluStr_hash_raw(View sv)
     return hash;
 }
 
-String *luluStr_new(lulu_VM *vm, size_t len)
+String *luluStr_new(lulu_VM *vm, size_t len, uint32_t hash)
 {
     // Note how we add 1 for the nul char.
     String *s = cast(String*, luluObj_new(vm, luluStr_size(len + 1), TYPE_STRING));
     s->len    = len;
+    s->hash   = hash;
     return s;
 }
 
@@ -98,10 +99,21 @@ static void build_string(String *s, View sv)
     s->len = view_len(sv) - skips;
 }
 
-static void end_string(String *s, uint32_t hash)
+static void end_string(String *s)
 {
     s->data[s->len] = '\0';
-    s->hash         = hash;
+}
+
+static String *find_if_interned(lulu_VM *vm, String *s)
+{
+    View    view  = view_from_len(s->data, s->len);
+    String *found = luluStr_find_interned(vm, view, s->hash);
+    if (found != NULL) {
+        luluStr_free(vm, s);
+        return found;
+    }
+    luluStr_set_interned(vm, s);
+    return s;
 }
 
 static String *copy_string(lulu_VM *vm, View sv, bool israw)
@@ -112,21 +124,16 @@ static String *copy_string(lulu_VM *vm, View sv, bool israw)
     if (found != NULL)
         return found;
 
-    String *s = luluStr_new(vm, len);
+    String *s = luluStr_new(vm, len, hash);
     if (israw)
         memcpy(s->data, sv.begin, len);
     else
         build_string(s, sv);
-    end_string(s, hash);
+    end_string(s);
 
     // If we have escapes, are we really REALLY sure this isn't found?
-    if (s->len != len) {
-        found = luluStr_find_interned(vm, view_from_len(s->data, s->len), hash);
-        if (found != NULL) {
-            luluStr_free(vm, s);
-            return found;
-        }
-    }
+    if (s->len != len)
+        return find_if_interned(vm, s);
     luluStr_set_interned(vm, s);
     return s;
 }
@@ -143,8 +150,8 @@ String *luluStr_copy(lulu_VM *vm, View sv)
 
 String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len)
 {
-    String *s      = luluStr_new(vm, len);
-    View    sv     = view_from_len(s->data, s->len);
+    String *s      = luluStr_new(vm, len, 0);
+    View    v      = view_from_len(s->data, s->len);
     size_t  offset = 0;
 
     // We already built each individual string so no need to interpret escapes.
@@ -153,14 +160,9 @@ String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len)
         memcpy(&s->data[offset], arg->data, arg->len);
         offset += arg->len;
     }
-    end_string(s, hash_string(sv));
-    String *found = luluStr_find_interned(vm, sv, s->hash);
-    if (found != NULL) {
-        luluStr_free(vm, s);
-        return found;
-    }
-    luluStr_set_interned(vm, s);
-    return s;
+    s->hash = hash_string(v);
+    end_string(s);
+    return find_if_interned(vm, s);
 }
 
 void luluStr_set_interned(lulu_VM *vm, const String *s)

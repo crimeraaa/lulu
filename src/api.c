@@ -58,9 +58,7 @@ static void run_input(lulu_VM *vm, void *ctx)
     // Prep the VM.
     vm->chunk = r->chunk;
     vm->ip    = r->chunk->code;
-
-    // Inside of `luluVM_run_protered` we should have an error handler.
-    vm->errors->status = luluVM_execute(vm);
+    luluVM_execute(vm);
 }
 
 lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
@@ -387,26 +385,28 @@ void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
     lulu_set_global_from_string(vm, luluStr_copy(vm, sv));
 }
 
-static int get_current_line(const lulu_VM *vm)
+static Chunk *current_chunk(lulu_VM *vm)
+{
+    return vm->chunk;
+}
+
+static int current_line(lulu_VM *vm)
 {
     // Current instruction is also the index into the lines array.
-    size_t inst = vm->ip - vm->chunk->code - 1;
-    int    line = vm->chunk->lines[inst];
-    return line;
+    size_t i = vm->ip - current_chunk(vm)->code - 1;
+    return current_chunk(vm)->lines[i];
 }
 
 void lulu_comptime_error(lulu_VM *vm, int line, const char *what, const char *where)
 {
     lulu_push_error_fstring(vm, line, "%s %s", what, where);
-    Error *e = vm->errors;
-    e->status = LULU_ERROR_COMPTIME;
-    longjmp(e->buffer, 1);
+    luluVM_throw_error(vm, LULU_ERROR_COMPTIME);
 }
 
 void lulu_runtime_error(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
-    int     line = get_current_line(vm);
+    int     line = current_line(vm);
 
     va_start(args, fmt);
     const char *msg = lulu_push_vfstring(vm, fmt, args);
@@ -414,21 +414,15 @@ void lulu_runtime_error(lulu_VM *vm, const char *fmt, ...)
     va_end(args);
 
     lulu_push_error_fstring(vm, line, "%s", msg);
-
-    Error *e = vm->errors;
-    e->status = LULU_ERROR_RUNTIME;
-    longjmp(e->buffer, 1);
+    luluVM_throw_error(vm, LULU_ERROR_RUNTIME);
 }
 
 void lulu_alloc_error(lulu_VM *vm)
 {
-    Error *e = vm->errors;
-    e->status = LULU_ERROR_ALLOC;
-
     // Should have been interned on initialization. And if initialization failed,
     // we should have exited as soon as possible.
     lulu_push_cstring(vm, MEMORY_ERROR_MESSAGE);
-    longjmp(e->buffer, 1);
+    luluVM_throw_error(vm, LULU_ERROR_ALLOC);
 }
 
 void lulu_type_error(lulu_VM *vm, const char *act, const char *type)

@@ -4,6 +4,7 @@
 #include "lulu.h"
 #include "limits.h"
 #include "object.h"
+#include "zio.h"
 
 typedef enum {
     // --- RESERVED WORDS ------------------------------------------------- {{{1
@@ -77,6 +78,8 @@ typedef struct {
 } Token;
 
 typedef struct {
+    Stream  *stream;
+    Buffer  *buffer;    // Buffer to store string representation of some tokens.
     Token    lookahead; // analogous to `Parser::current` in the book.
     Token    consumed;  // analogous to `Parser::previous` in the book.
     View     lexeme;    // Holds pointers to 1st and current of lexeme.

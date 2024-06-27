@@ -10,7 +10,7 @@ uint32_t luluStr_hash_raw(View sv);
 
 // NOTE: For `concat_string` we do not know the correct hash yet.
 // Analogous to `allocateString()` in the book.
-String *luluStr_new(lulu_VM *vm, size_t len);
+String *luluStr_new(lulu_VM *vm, size_t len, uint32_t hash);
 void    luluStr_free(lulu_VM *vm, String *s);
 
 // Global functions that deal with strings need the VM to check for interned.

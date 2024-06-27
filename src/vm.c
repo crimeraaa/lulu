@@ -49,6 +49,12 @@ bool luluVM_init(lulu_VM *vm, lulu_Allocator fn, void *ctx)
     return true;
 }
 
+struct lulu_Error {
+    struct lulu_Error   *prev;
+    jmp_buf              buffer;
+    volatile lulu_Status status; // Volatile as it can be changed outside caller.
+};
+
 lulu_Status luluVM_run_protected(lulu_VM *vm, ProtectedFn fn, void *ctx)
 {
     // New error handler for this particular run.
@@ -61,6 +67,13 @@ lulu_Status luluVM_run_protected(lulu_VM *vm, ProtectedFn fn, void *ctx)
     }
     vm->errors = e.prev;
     return e.status;
+}
+
+void luluVM_throw_error(lulu_VM *vm, lulu_Status code)
+{
+    Error *e  = vm->errors;
+    e->status = code;
+    longjmp(e->buffer, 1);
 }
 
 void luluVM_free(lulu_VM *vm)
@@ -122,7 +135,7 @@ static bool to_number(StackID id)
     return conv.ok;
 }
 
-lulu_Status luluVM_execute(lulu_VM *vm)
+void luluVM_execute(lulu_VM *vm)
 {
     Chunk *ck  = vm->chunk;
     Value *kst = ck->constants.values;
@@ -324,7 +337,7 @@ lulu_Status luluVM_execute(lulu_VM *vm)
             break;
         }
         case OP_RETURN:
-            return LULU_OK;
+            return;
         }
     }
 

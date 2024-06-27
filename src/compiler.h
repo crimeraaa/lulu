@@ -30,11 +30,6 @@ typedef enum {
 } JumpType;
 
 typedef struct {
-    int if_true;  // Bytecode index of OP_JUMP when truthy.
-    int if_false; // Bytecode index of OP_JUMP when falsy.
-} Jump;
-
-typedef struct {
     Scope    scope;
     Lexer   *lexer;       // Shared across multiple Compiler instances.
     lulu_VM *vm;          // Track and modify parent VM state as needed.
