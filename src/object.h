@@ -128,7 +128,7 @@ ToNumber luluVal_to_number(const Value *val);
 
 // Assumes `buf` is a fixed-size array of length `MAX_TOSTRING`.
 // May return pointer to heap-allocated memory or read-only memory.
-const char *luluVal_to_cstring(const Value *val, char *buf);
+const char *luluVal_to_string(const Value *val, char *buf);
 
 // We cannot use `memcmp` due to struct padding.
 bool luluVal_equal(const Value *a, const Value *b);

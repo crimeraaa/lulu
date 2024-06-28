@@ -47,11 +47,10 @@ bool lulu_is_table(lulu_VM *vm, int offset);
 void    lulu_push_nil(lulu_VM *vm, int count);
 void    lulu_push_boolean(lulu_VM *vm, bool b);
 void    lulu_push_number(lulu_VM *vm, lulu_Number n);
-void    lulu_push_string(lulu_VM *vm, lulu_String *s);
-void    lulu_push_cstring(lulu_VM *vm, const char *s);
-void    lulu_push_lcstring(lulu_VM *vm, const char *s, size_t len);
+void    lulu_push_string(lulu_VM *vm, const char *s);
+void    lulu_push_lstring(lulu_VM *vm, const char *s, size_t len);
 void    lulu_push_table(lulu_VM *vm, lulu_Table *t);
-#define lulu_push_literal(vm, s) lulu_push_lcstring((vm), (s), lulu_cstr_len(s))
+#define lulu_push_literal(vm, s) lulu_push_lstring((vm), (s), lulu_cstr_len(s))
 
 /**
  * @brief   Internal use for writing simple formatted messages.
@@ -72,32 +71,13 @@ const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
 // In-place conversions to some fundamental datatypes.
 bool         lulu_to_boolean(lulu_VM *vm, int offset);
 lulu_Number  lulu_to_number(lulu_VM *vm, int offset);
-lulu_String *lulu_to_string(lulu_VM *vm, int offset);
-const char  *lulu_to_cstring(lulu_VM *vm, int offset);
+const char  *lulu_to_string(lulu_VM *vm, int offset);
 const char  *lulu_concat(lulu_VM *vm, int count);
 
 void lulu_get_table(lulu_VM *vm, int t_offset, int k_offset);
 void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop);
-
-void lulu_get_global_from_string(lulu_VM *vm, lulu_String *s);
-void lulu_get_global_from_cstring(lulu_VM *vm, const char *s);
-void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, size_t len);
-
-#define lulu_get_global(vm, s) \
-_Generic((s), \
-         lulu_String*: lulu_get_global_from_string, \
-         default:      lulu_get_global_from_cstring \
-         )(vm, s)
-
-void lulu_set_global_from_string(lulu_VM *vm, lulu_String *s);
-void lulu_set_global_from_cstring(lulu_VM *vm, const char *s);
-void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, size_t len);
-
-#define lulu_set_global(vm, s) \
-_Generic((s), \
-         lulu_String*: lulu_set_global_from_string, \
-         default:      lulu_set_global_from_cstring \
-         )(vm, s)
+void lulu_get_global(lulu_VM *vm, const char *s);
+void lulu_set_global(lulu_VM *vm, const char *s);
 
 void lulu_comptime_error(lulu_VM *vm, int line, const char *what, const char *where);
 void lulu_runtime_error(lulu_VM *vm, const char *fmt, ...);

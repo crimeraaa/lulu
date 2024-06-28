@@ -182,8 +182,8 @@ void luluVM_execute(lulu_VM *vm)
                 luluDbg_print_stack(vm);
             luluDbg_disassemble_instruction(ck, cast_int(vm->ip - ck->code));
         }
-        OpCode  op    = read_byte();
-        StackID arg_a = poke_top(vm, -1); // Used a ton here.
+        OpCode  op  = read_byte();
+        StackID top = poke_top(vm, -1); // Used a ton here.
         switch (op) {
         case OP_CONSTANT:
             push_back(vm, read_constant());
@@ -207,17 +207,17 @@ void luluVM_execute(lulu_VM *vm)
             push_back(vm, &vm->base[read_byte()]);
             break;
         case OP_GETGLOBAL:
-            lulu_get_global(vm, read_string());
+            lulu_get_global(vm, read_string()->data);
             break;
         case OP_GETTABLE:
             lulu_get_table(vm, -2, -1);
             break;
         case OP_SETLOCAL:
-            vm->base[read_byte()] = *arg_a;
+            vm->base[read_byte()] = *top;
             lulu_pop(vm, 1);
             break;
         case OP_SETGLOBAL:
-            lulu_set_global(vm, read_string());
+            lulu_set_global(vm, read_string()->data);
             break;
         case OP_SETTABLE: {
             int t_offset = read_byte();
@@ -242,7 +242,7 @@ void luluVM_execute(lulu_VM *vm)
         }
         case OP_EQ: {
             StackID a = poke_top(vm, -2);
-            StackID b = arg_a;
+            StackID b = top;
             setv_boolean(a, luluVal_equal(a, b));
             lulu_pop(vm, 1);
             break;
@@ -260,23 +260,23 @@ void luluVM_execute(lulu_VM *vm)
             lulu_concat(vm, read_byte());
             break;
         case OP_UNM: {
-            if (is_number(arg_a))
-                setv_number(arg_a, lulu_num_unm(as_number(arg_a)));
+            if (is_number(top))
+                setv_number(top, lulu_num_unm(as_number(top)));
             else
-                arith_tm(vm, arg_a, arg_a, TM_UNM);
+                arith_tm(vm, top, top, TM_UNM);
             break;
         }
         case OP_NOT:
-            setv_boolean(arg_a, !lulu_to_boolean(vm, -1));
+            setv_boolean(top, !lulu_to_boolean(vm, -1));
             break;
         case OP_LEN:
             // TODO: Separate array segment from hash segment of tables.
-            if (is_string(arg_a)) {
-                String *s = as_string(arg_a);
-                setv_number(arg_a, cast_num(s->len));
-            } else if (is_table(arg_a)) {
+            if (is_string(top)) {
+                String *s = as_string(top);
+                setv_number(top, cast_num(s->len));
+            } else if (is_table(top)) {
                 // Painfully slow but separating arrays from hashes is tricky.
-                Table *t = as_table(arg_a);
+                Table *t = as_table(top);
                 Number n = 0;
                 // Note how we use `cap` and not `count`.
                 for (int i = 1; i < t->cap; i++) {
@@ -287,9 +287,9 @@ void luluVM_execute(lulu_VM *vm)
                     else
                         break; // No more sequential number indexes?
                 }
-                setv_number(arg_a, n);
+                setv_number(top, n);
             } else {
-                lulu_type_error(vm, "get length of", get_typename(arg_a));
+                lulu_type_error(vm, "get length of", get_typename(top));
             }
             break;
         case OP_PRINT: {
@@ -297,7 +297,7 @@ void luluVM_execute(lulu_VM *vm)
             for (int i = 0; i < argc; i++) {
                 if (i > 0)
                     fputs("\t", stdout);
-                fputs(lulu_to_cstring(vm, i - argc), stdout);
+                fputs(lulu_to_string(vm, i - argc), stdout);
             }
             fputs("\n", stdout);
             lulu_pop(vm, argc);
@@ -306,7 +306,7 @@ void luluVM_execute(lulu_VM *vm)
         case OP_TEST:
             // Don't convert as other opcodes may need the value still.
             // Skip the OP_JUMP if truthy as it's only needed when falsy.
-            if (!is_falsy(arg_a))
+            if (!is_falsy(top))
                 vm->ip += get_opsize(OP_JUMP);
             break;
         case OP_JUMP: {
@@ -321,7 +321,7 @@ void luluVM_execute(lulu_VM *vm)
         case OP_FORPREP: {
             StackID for_index = poke_top(vm, -3);
             StackID for_limit = poke_top(vm, -2);
-            StackID for_step  = arg_a;
+            StackID for_step  = top;
 
             if (!to_number(for_index))
                 lulu_runtime_error(vm, "'for' index must be a number");
@@ -343,12 +343,12 @@ void luluVM_execute(lulu_VM *vm)
         case OP_FORLOOP: {
             Number step  = as_number(poke_top(vm, -2));
             Number limit = as_number(poke_top(vm, -3));
-            Number index = lulu_num_add(as_number(arg_a), step);
+            Number index = lulu_num_add(as_number(top), step);
             bool   pos   = lulu_num_lt(0, step);
 
             // Comparison we use depends on the signedness.
             if (pos ?  lulu_num_le(index, limit) : lulu_num_le(limit, index)) {
-                setv_number(arg_a, index);
+                setv_number(top, index);
                 setv_number(poke_top(vm, -4), index);
             } else {
                 // Skip the backwards jump to loop body.

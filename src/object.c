@@ -42,7 +42,7 @@ ToNumber luluVal_to_number(const Value *val)
     return conv;
 }
 
-const char *luluVal_to_cstring(const Value *val, char *buf)
+const char *luluVal_to_string(const Value *val, char *buf)
 {
     size_t len = 0;
     switch (get_tag(val)) {

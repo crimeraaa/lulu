@@ -177,20 +177,20 @@ void lulu_push_number(lulu_VM *vm, lulu_Number n)
     incr_top(vm);
 }
 
-void lulu_push_string(lulu_VM *vm, lulu_String *s)
+static void push_string(lulu_VM *vm, lulu_String *s)
 {
     setv_string(vm->top, s);
     incr_top(vm);
 }
 
-void lulu_push_cstring(lulu_VM *vm, const char *s)
+void lulu_push_string(lulu_VM *vm, const char *s)
 {
-    lulu_push_lcstring(vm, s, strlen(s));
+    lulu_push_lstring(vm, s, strlen(s));
 }
 
-void lulu_push_lcstring(lulu_VM *vm, const char *s, size_t len)
+void lulu_push_lstring(lulu_VM *vm, const char *s, size_t len)
 {
-    lulu_push_string(vm, luluStr_copy(vm, s, len));
+    push_string(vm, luluStr_copy(vm, s, len));
 }
 
 void lulu_push_table(lulu_VM *vm, lulu_Table *t)
@@ -208,13 +208,13 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
     do {                                                                       \
         char buf[LULU_MAX_TOSTRING];                                           \
         int  len = fn(buf, va_arg(args, T));                                   \
-        lulu_push_lcstring(vm, buf, len);                                      \
+        lulu_push_lstring(vm, buf, len);                                       \
     } while (false)
 
 #define push_character(ch)                                                     \
     do {                                                                       \
         char buf[] = {ch, '\0'};                                               \
-        lulu_push_lcstring(vm, buf, sizeof(buf));                              \
+        lulu_push_lstring(vm, buf, sizeof(buf));                               \
     } while (false);
 
     for (;;) {
@@ -223,7 +223,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
             break;
         // Push the contents of the string before '%' unless '%' is first char.
         if (spec != fmt) {
-            lulu_push_lcstring(vm, iter, spec - iter);
+            lulu_push_lstring(vm, iter, spec - iter);
             argc += 1;
         }
         // Move to character after '%' so we point at the specifier.
@@ -237,7 +237,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
         case 's': {
             const char *s = va_arg(args, char*);
             if (s != nullptr)
-                lulu_push_cstring(vm, s);
+                lulu_push_string(vm, s);
             else
                 lulu_push_literal(vm, "(null)");
             break;
@@ -252,7 +252,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
     }
     // Still have stuff left in the format string?
     if (*iter != '\0') {
-        lulu_push_cstring(vm, iter);
+        lulu_push_string(vm, iter);
         argc += 1;
     }
 
@@ -303,7 +303,7 @@ lulu_Number lulu_to_number(lulu_VM *vm, int offset)
     return 0;
 }
 
-lulu_String *lulu_to_string(lulu_VM *vm, int offset)
+static lulu_String *to_string(lulu_VM *vm, int offset)
 {
     StackID vl = poke_at_offset(vm, offset);
     switch (get_tag(vl)) {
@@ -311,14 +311,13 @@ lulu_String *lulu_to_string(lulu_VM *vm, int offset)
         lulu_push_literal(vm, "nil");
         break;
     case TYPE_BOOLEAN:
-        lulu_push_cstring(vm, as_boolean(vl) ? "true" : "false");
+        lulu_push_string(vm, as_boolean(vl) ? "true" : "false");
         break;
     case TYPE_NUMBER:
         lulu_push_fstring(vm, "%f", as_number(vl));
         break;
     case TYPE_STRING:
-        lulu_push_string(vm, as_string(vl));
-        break;
+        return as_string(vl);
     case TYPE_TABLE:
         lulu_push_fstring(vm, "%s: %p", get_typename(vl), as_pointer(vl));
         break;
@@ -330,9 +329,9 @@ lulu_String *lulu_to_string(lulu_VM *vm, int offset)
     return as_string(vl);
 }
 
-const char *lulu_to_cstring(lulu_VM *vm, int offset)
+const char *lulu_to_string(lulu_VM *vm, int offset)
 {
-    return lulu_to_string(vm, offset)->data;
+    return to_string(vm, offset)->data;
 }
 
 // 2}}} ------------------------------------------------------------------------
@@ -347,7 +346,7 @@ const char *lulu_concat(lulu_VM *vm, int count)
     for (int i = 0; i < count; i++) {
         StackID arg = &argv[i];
         if (is_number(arg))
-            lulu_to_string(vm, i - count);
+            to_string(vm, i - count);
         else if (!is_string(arg))
             lulu_type_error(vm, "concatenate", get_typename(arg));
 
@@ -360,7 +359,7 @@ const char *lulu_concat(lulu_VM *vm, int count)
     }
     String *s = luluStr_copy(vm, b->buffer, b->length);
     lulu_pop(vm, count);
-    lulu_push_string(vm, s);
+    push_string(vm, s);
     return s->data;
 }
 
@@ -377,54 +376,50 @@ void lulu_get_table(lulu_VM *vm, int t_offset, int k_offset)
     push_back(vm, &v);
 }
 
-void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
+static void set_table(lulu_VM *vm, Value *t, Value *k, Value *v)
 {
-    StackID t = poke_at_offset(vm, t_offset);
-    StackID k = poke_at_offset(vm, k_offset);
-    StackID v = poke_at_offset(vm, -1);
     if (!is_table(t))
         lulu_type_error(vm, "index", get_typename(t));
     if (is_nil(k))
         lulu_type_error(vm, "set", "nil index");
     luluTbl_set(vm, as_table(t), k, v);
+}
+
+void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
+{
+    StackID t = poke_at_offset(vm, t_offset);
+    StackID k = poke_at_offset(vm, k_offset);
+    set_table(vm, t, k, poke_at_offset(vm, -1));
     lulu_pop(vm, to_pop);
 }
 
-void lulu_get_global_from_string(lulu_VM *vm, lulu_String *s)
+static Value to_field(lulu_VM *vm, const char *s)
 {
-    Value id = make_string(s);
-    Value out;
-    if (!luluTbl_get(&vm->globals, &id, &out))
-        lulu_runtime_error(vm, "Global variable '%s' is undefined", s->data);
-    push_back(vm, &out);
+    return make_string(luluStr_copy(vm, s, strlen(s)));
 }
 
-void lulu_get_global_from_cstring(lulu_VM *vm, const char *s)
+void lulu_set_field(lulu_VM *vm, int offset, const char *s)
 {
-    lulu_get_global_from_lcstring(vm, s, strlen(s));
-}
-
-void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
-{
-    String *id = luluStr_copy(vm, s, len);
-    lulu_get_global_from_string(vm, id);
-}
-
-void lulu_set_global_from_string(lulu_VM *vm, lulu_String *s)
-{
-    Value id = make_string(s);
-    luluTbl_set(vm, &vm->globals, &id, poke_at_offset(vm, -1));
+    Value k = to_field(vm, s);
+    set_table(vm, poke_at_offset(vm, offset), &k, poke_at_offset(vm, -1));
     lulu_pop(vm, 1);
 }
 
-void lulu_set_global_from_cstring(lulu_VM *vm, const char *s)
+void lulu_set_global(lulu_VM *vm, const char *s)
 {
-    lulu_set_global_from_lcstring(vm, s, strlen(s));
+    Value t = make_table(&vm->globals);
+    Value k = to_field(vm, s);
+    set_table(vm, &t, &k, poke_at_offset(vm, -1));
+    lulu_pop(vm, 1);
 }
 
-void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
+void lulu_get_global(lulu_VM *vm, const char *cs)
 {
-    lulu_set_global_from_string(vm, luluStr_copy(vm, s, len));
+    Value id = to_field(vm, cs);
+    Value out;
+    if (!luluTbl_get(&vm->globals, &id, &out))
+        lulu_runtime_error(vm, "Global '%s' is undefined", as_string(&id)->data);
+    push_back(vm, &out);
 }
 
 static Chunk *current_chunk(lulu_VM *vm)
@@ -463,7 +458,7 @@ void lulu_alloc_error(lulu_VM *vm)
 {
     // Should have been interned on initialization. And if initialization failed,
     // we should have exited as soon as possible.
-    lulu_push_cstring(vm, MEMORY_ERROR_MESSAGE);
+    lulu_push_string(vm, MEMORY_ERROR_MESSAGE);
     luluVM_throw_error(vm, LULU_ERROR_ALLOC);
 }
 

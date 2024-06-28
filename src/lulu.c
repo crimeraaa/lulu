@@ -15,7 +15,7 @@ static int repl(lulu_VM *vm)
         size_t      len = strlen(line);
         lulu_Status err = lulu_load(vm, line, len, "stdin");
         if (err != LULU_OK) {
-            printf("%s\n", lulu_to_cstring(vm, -1));
+            printf("%s\n", lulu_to_string(vm, -1));
             lulu_pop(vm, 1);
         }
         // Allocation failures are unrecoverable.
@@ -70,7 +70,7 @@ static int run_file(lulu_VM *vm, const char *name)
     if (res == LULU_OK)
         return EXIT_SUCCESS;
 
-    printf("%s", lulu_to_cstring(vm, -1));
+    printf("%s", lulu_to_string(vm, -1));
     lulu_pop(vm, 1);
     return EX_SOFTWARE;
 }

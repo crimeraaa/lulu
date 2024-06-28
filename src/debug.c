@@ -33,7 +33,7 @@ void luluDbg_print_value(const Value *v)
         printf("%c%s%c", q, s->data, q);
     } else {
         char buf[LULU_MAX_TOSTRING];
-        printf("%s", luluVal_to_cstring(v, buf));
+        printf("%s", luluVal_to_string(v, buf));
     }
 }
 
