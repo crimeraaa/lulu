@@ -4,14 +4,13 @@
 #include "string.h"
 #include "table.h"
 #include "vm.h"
-#include "api.h"
 
 const LString LULU_TYPENAMES[] = {
-    [TYPE_NIL]     = lstring_from_lit("nil"),
-    [TYPE_BOOLEAN] = lstring_from_lit("boolean"),
-    [TYPE_NUMBER]  = lstring_from_lit("number"),
-    [TYPE_STRING]  = lstring_from_lit("string"),
-    [TYPE_TABLE]   = lstring_from_lit("table"),
+    [TYPE_NIL]     = lstr_from_lit("nil"),
+    [TYPE_BOOLEAN] = lstr_from_lit("boolean"),
+    [TYPE_NUMBER]  = lstr_from_lit("number"),
+    [TYPE_STRING]  = lstr_from_lit("string"),
+    [TYPE_TABLE]   = lstr_from_lit("table"),
 };
 
 void luluVal_intern_typenames(lulu_VM *vm)
@@ -31,8 +30,8 @@ ToNumber luluVal_to_number(const Value *val)
     }
     if (is_string(val)) {
         char   *end;
-        String *s  = as_string(val);
-        Number  n  = cstr_tonumber(s->data, &end);
+        String *s = as_string(val);
+        Number  n = cstr_tonumber(s->data, &end);
         if (end == (s->data + s->len)) {
             conv.number = n;
             conv.ok     = true;

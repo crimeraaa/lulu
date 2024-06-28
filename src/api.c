@@ -1,5 +1,4 @@
 #include <stdarg.h>
-#include "api.h"
 #include "object.h"
 #include "vm.h"
 #include "string.h"
@@ -103,9 +102,9 @@ lulu_Status lulu_load(lulu_VM *vm, const char *input, size_t len, const char *na
     static Chunk c;
     struct Run   r;
     lulu_Status  e;
-    LString      s = lstring_from_len(input, len); // Context for `r.stream`.
+    LString      s = lstr_from_len(input, len); // Context for `r.stream`.
 
-    r.name  = lstring_from_len(name, strlen(name));
+    r.name  = lstr_from_len(name, strlen(name));
     r.chunk = &c;
     luluZIO_init_stream(vm, &r.stream, &read_string, &s);
 

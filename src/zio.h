@@ -18,8 +18,8 @@ typedef struct lulu_Stream {
     lulu_VM    *parent;
     lulu_Reader reader;
     void       *context;  // Context to `reader`.
-    size_t      unread;
-    const char *position;
+    size_t      unread;   // Number of bytes left to read in `context`.
+    const char *position; // Pointer to 1 past the currently read character.
 } Stream;
 
 // lzio.h:luaZ_initbuffer

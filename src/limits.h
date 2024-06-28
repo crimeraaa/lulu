@@ -131,8 +131,8 @@ typedef struct {
     size_t      length; // How many valid characters are being pointed at.
 } LString;
 
-#define lstring_from_len(s, len)    (LString){(s), (len)}
-#define lstring_from_end(s, end)    (LString){(s), (end) - (s)}
-#define lstring_from_lit(s)         (LString){(s), cstr_len(s)}
+#define lstr_from_len(s, len)    (LString){(s), (len)}
+#define lstr_from_end(s, end)    (LString){(s), (end) - (s)}
+#define lstr_from_lit(s)         (LString){(s), cstr_len(s)}
 
 #endif /* LULU_LIMITS_H */

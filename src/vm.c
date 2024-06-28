@@ -1,4 +1,3 @@
-#include "api.h"
 #include "vm.h"
 #include "compiler.h"
 #include "debug.h"

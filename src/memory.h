@@ -6,8 +6,8 @@
 #include "object.h"
 
 #define luluMem_grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
-
 #define MEMORY_ERROR_MESSAGE        "[FATAL ERROR]: out of memory"
+#define MAX_ALLOCATION              (SIZE_MAX >> 2)
 
 typedef lulu_Allocator Allocator;
 

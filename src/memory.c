@@ -3,7 +3,6 @@
 #include "string.h"
 #include "table.h"
 #include "vm.h"
-#include "api.h"
 
 void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
 {

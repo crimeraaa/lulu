@@ -1,6 +1,5 @@
 #include <stdarg.h>
 #include <ctype.h>
-#include "api.h"
 #include "lexer.h"
 #include "limits.h"
 #include "string.h"
@@ -8,61 +7,61 @@
 #include "vm.h"
 
 static const LString LULU_TKINFO[] = {
-    [TK_AND]      = lstring_from_lit("and"),
-    [TK_BREAK]    = lstring_from_lit("break"),
-    [TK_DO]       = lstring_from_lit("do"),
-    [TK_ELSE]     = lstring_from_lit("else"),
-    [TK_ELSEIF]   = lstring_from_lit("elseif"),
-    [TK_END]      = lstring_from_lit("end"),
-    [TK_FALSE]    = lstring_from_lit("false"),
-    [TK_FOR]      = lstring_from_lit("for"),
-    [TK_FUNCTION] = lstring_from_lit("function"),
-    [TK_IF]       = lstring_from_lit("if"),
-    [TK_IN]       = lstring_from_lit("in"),
-    [TK_LOCAL]    = lstring_from_lit("local"),
-    [TK_NIL]      = lstring_from_lit("nil"),
-    [TK_NOT]      = lstring_from_lit("not"),
-    [TK_OR]       = lstring_from_lit("or"),
-    [TK_PRINT]    = lstring_from_lit("print"),
-    [TK_RETURN]   = lstring_from_lit("return"),
-    [TK_THEN]     = lstring_from_lit("then"),
-    [TK_TRUE]     = lstring_from_lit("true"),
-    [TK_WHILE]    = lstring_from_lit("while"),
+    [TK_AND]      = lstr_from_lit("and"),
+    [TK_BREAK]    = lstr_from_lit("break"),
+    [TK_DO]       = lstr_from_lit("do"),
+    [TK_ELSE]     = lstr_from_lit("else"),
+    [TK_ELSEIF]   = lstr_from_lit("elseif"),
+    [TK_END]      = lstr_from_lit("end"),
+    [TK_FALSE]    = lstr_from_lit("false"),
+    [TK_FOR]      = lstr_from_lit("for"),
+    [TK_FUNCTION] = lstr_from_lit("function"),
+    [TK_IF]       = lstr_from_lit("if"),
+    [TK_IN]       = lstr_from_lit("in"),
+    [TK_LOCAL]    = lstr_from_lit("local"),
+    [TK_NIL]      = lstr_from_lit("nil"),
+    [TK_NOT]      = lstr_from_lit("not"),
+    [TK_OR]       = lstr_from_lit("or"),
+    [TK_PRINT]    = lstr_from_lit("print"),
+    [TK_RETURN]   = lstr_from_lit("return"),
+    [TK_THEN]     = lstr_from_lit("then"),
+    [TK_TRUE]     = lstr_from_lit("true"),
+    [TK_WHILE]    = lstr_from_lit("while"),
 
-    [TK_LPAREN]   = lstring_from_lit("("),
-    [TK_RPAREN]   = lstring_from_lit(")"),
-    [TK_LBRACKET] = lstring_from_lit("["),
-    [TK_RBRACKET] = lstring_from_lit("]"),
-    [TK_LCURLY]   = lstring_from_lit("{"),
-    [TK_RCURLY]   = lstring_from_lit("}"),
+    [TK_LPAREN]   = lstr_from_lit("("),
+    [TK_RPAREN]   = lstr_from_lit(")"),
+    [TK_LBRACKET] = lstr_from_lit("["),
+    [TK_RBRACKET] = lstr_from_lit("]"),
+    [TK_LCURLY]   = lstr_from_lit("{"),
+    [TK_RCURLY]   = lstr_from_lit("}"),
 
-    [TK_COMMA]    = lstring_from_lit(","),
-    [TK_SEMICOL]  = lstring_from_lit(";"),
-    [TK_VARARG]   = lstring_from_lit("..."),
-    [TK_CONCAT]   = lstring_from_lit(".."),
-    [TK_PERIOD]   = lstring_from_lit("."),
-    [TK_POUND]    = lstring_from_lit("#"),
+    [TK_COMMA]    = lstr_from_lit(","),
+    [TK_SEMICOL]  = lstr_from_lit(";"),
+    [TK_VARARG]   = lstr_from_lit("..."),
+    [TK_CONCAT]   = lstr_from_lit(".."),
+    [TK_PERIOD]   = lstr_from_lit("."),
+    [TK_POUND]    = lstr_from_lit("#"),
 
-    [TK_PLUS]     = lstring_from_lit("+"),
-    [TK_DASH]     = lstring_from_lit("-"),
-    [TK_STAR]     = lstring_from_lit("*"),
-    [TK_SLASH]    = lstring_from_lit("/"),
-    [TK_PERCENT]  = lstring_from_lit("%"),
-    [TK_CARET]    = lstring_from_lit("^"),
+    [TK_PLUS]     = lstr_from_lit("+"),
+    [TK_DASH]     = lstr_from_lit("-"),
+    [TK_STAR]     = lstr_from_lit("*"),
+    [TK_SLASH]    = lstr_from_lit("/"),
+    [TK_PERCENT]  = lstr_from_lit("%"),
+    [TK_CARET]    = lstr_from_lit("^"),
 
-    [TK_ASSIGN]   = lstring_from_lit("="),
-    [TK_EQ]       = lstring_from_lit("=="),
-    [TK_NEQ]      = lstring_from_lit("~="),
-    [TK_GT]       = lstring_from_lit(">"),
-    [TK_GE]       = lstring_from_lit(">="),
-    [TK_LT]       = lstring_from_lit("<"),
-    [TK_LE]       = lstring_from_lit("<="),
+    [TK_ASSIGN]   = lstr_from_lit("="),
+    [TK_EQ]       = lstr_from_lit("=="),
+    [TK_NEQ]      = lstr_from_lit("~="),
+    [TK_GT]       = lstr_from_lit(">"),
+    [TK_GE]       = lstr_from_lit(">="),
+    [TK_LT]       = lstr_from_lit("<"),
+    [TK_LE]       = lstr_from_lit("<="),
 
-    [TK_IDENT]    = lstring_from_lit("<identifier>"),
-    [TK_STRING]   = lstring_from_lit("<string>"),
-    [TK_NUMBER]   = lstring_from_lit("<number>"),
-    [TK_ERROR]    = lstring_from_lit("<error>"),
-    [TK_EOF]      = lstring_from_lit("<eof>"),
+    [TK_IDENT]    = lstr_from_lit("<identifier>"),
+    [TK_STRING]   = lstr_from_lit("<string>"),
+    [TK_NUMBER]   = lstr_from_lit("<number>"),
+    [TK_ERROR]    = lstr_from_lit("<error>"),
+    [TK_EOF]      = lstr_from_lit("<eof>"),
 };
 
 static const char *to_string(TkType type)
@@ -74,7 +73,7 @@ void luluLex_intern_tokens(lulu_VM *vm)
 {
     for (size_t i = 0; i < array_len(LULU_TKINFO); i++) {
         LString s = LULU_TKINFO[i];
-        luluStr_set_interned(vm, luluStr_copy(vm, s.string, s.length));
+        luluStr_copy(vm, s.string, s.length);
     }
 }
 
@@ -88,16 +87,6 @@ static char next_char(Lexer *ls)
     return ls->current;
 }
 
-static bool is_eof(const Lexer *ls)
-{
-    return ls->current == '\0';
-}
-
-static bool is_ident(const Lexer *ls)
-{
-    return isalnum(ls->current) || ls->current == '_';
-}
-
 static char current_char(const Lexer *ls)
 {
     return ls->current;
@@ -106,6 +95,16 @@ static char current_char(const Lexer *ls)
 static char lookahead_char(const Lexer *ls)
 {
     return luluZIO_lookahead_stream(ls->stream);
+}
+
+static bool is_eof(const Lexer *ls)
+{
+    return current_char(ls) == '\0';
+}
+
+static bool is_ident(const Lexer *ls)
+{
+    return isalnum(current_char(ls)) || current_char(ls) == '_';
 }
 
 // Append `ch` to the buffer.
@@ -586,8 +585,7 @@ void luluLex_expect_token(Lexer *ls, TkType type, const char *info)
 
 bool luluLex_check_token(Lexer *ls, TkType type)
 {
-    TkType actual = ls->lookahead.type;
-    return actual == type;
+    return ls->lookahead.type == type;
 }
 
 bool luluLex_match_token(Lexer *ls, TkType type)
