@@ -66,9 +66,8 @@ lulu_Status luluVM_run_protected(lulu_VM *vm, ProtectedFn fn, void *ctx)
     e.status   = LULU_OK;
     e.prev     = vm->errors;
     vm->errors = &e;
-    if (setjmp(e.buffer) == 0) {
+    if (setjmp(e.buffer) == 0)
         fn(vm, ctx);
-    }
     vm->errors = e.prev;
     return e.status;
 }
@@ -277,6 +276,7 @@ void luluVM_execute(lulu_VM *vm)
                 String *s = as_string(arg_a);
                 setv_number(arg_a, cast_num(s->len));
             } else if (is_table(arg_a)) {
+                // Painfully slow but separating arrays from hashes is tricky.
                 Table *t = as_table(arg_a);
                 Number n = 0;
                 // Note how we use `cap` and not `count`.

@@ -8,11 +8,11 @@
 #define FNV1A_PRIME64   0x00000100000001B3
 #define FNV1A_OFFSET64  0xcbf29ce484222325
 
-uint32_t luluStr_hash(View sv)
+uint32_t luluStr_hash(const char *cs, size_t len)
 {
     uint32_t hash = FNV1A_OFFSET32;
-    for (const char *ptr = sv.begin; ptr < sv.end; ptr++) {
-        hash ^= cast_byte(*ptr);
+    for (size_t i = 0; i < len; i++) {
+        hash ^= cast_byte(cs[i]);
         hash *= FNV1A_PRIME32;
     }
     return hash;
@@ -24,8 +24,7 @@ String *luluStr_new(lulu_VM *vm, const char *cs, size_t len, uint32_t hash)
     String *s = cast_string(luluObj_new(vm, luluStr_size(len + 1), TYPE_STRING));
     s->len    = len;
     s->hash   = hash;
-    if (cs != nullptr)
-        memcpy(s->data, cs, len);
+    memcpy(s->data, cs, len);
     s->data[len] = '\0';
     return s;
 }
@@ -36,30 +35,14 @@ void luluStr_free(lulu_VM *vm, String *s)
     luluMem_free_pointer(vm, luluObj_unlink(vm, &s->object), luluStr_size(s->len + 1));
 }
 
-static String *find_if_interned(lulu_VM *vm, String *s)
+String *luluStr_copy(lulu_VM *vm, const char *cs, size_t len)
 {
-    View    view  = view_from_len(s->data, s->len);
-    String *found = luluStr_find_interned(vm, view, s->hash);
-    if (found != nullptr) {
-        luluStr_free(vm, s);
-        return found;
-    }
-    luluStr_set_interned(vm, s);
-    return s;
-}
-
-String *luluStr_copy(lulu_VM *vm, View sv)
-{
-    uint32_t hash  = luluStr_hash(sv);
-    String  *found = luluStr_find_interned(vm, sv, hash);
-    size_t   len   = view_len(sv);
+    uint32_t hash  = luluStr_hash(cs, len);
+    String  *found = luluStr_find_interned(vm, cs, len, hash);
     if (found != nullptr)
         return found;
 
-    String *s = luluStr_new(vm, sv.begin, len, hash);
-    // If we have escapes, are we really REALLY sure this isn't found?
-    if (s->len != len)
-        return find_if_interned(vm, s);
+    String *s = luluStr_new(vm, cs, len, hash);
     luluStr_set_interned(vm, s);
     return s;
 }
@@ -71,14 +54,13 @@ void luluStr_set_interned(lulu_VM *vm, const String *s)
     luluTbl_set(vm, t, &k, &k);
 }
 
-String *luluStr_find_interned(lulu_VM *vm, View sv, uint32_t hash)
+String *luluStr_find_interned(lulu_VM *vm, const char *cs, size_t len, uint32_t hash)
 {
     Table *t = &vm->strings;
     if (t->count == 0)
         return nullptr;
 
     uint32_t i = hash % t->cap;
-    size_t   n = view_len(sv);
     for (;;) {
         Entry *ent = &t->entries[i];
         // The strings table only ever has completely empty or full entries.
@@ -87,8 +69,8 @@ String *luluStr_find_interned(lulu_VM *vm, View sv, uint32_t hash)
 
         // We assume ALL valid (i.e: non-nil) keys are strings.
         String *s = as_string(&ent->key);
-        if (s->len == n && s->hash == hash) {
-            if (cstr_eq(s->data, sv.begin, n))
+        if (s->len == len && s->hash == hash) {
+            if (cstr_eq(s->data, cs, len))
                 return s;
         }
         i = (i + 1) % t->cap;

@@ -66,8 +66,9 @@ typedef enum {
 #define NUM_KEYWORDS    (TK_WHILE + 1)
 #define NUM_TOKENS      (TK_EOF + 1)
 
-typedef union {
-    String *string; // Used by IDENT, STRING, ERROR and potentially NUMBER.
+// Slight waste of memory but better for error reporting to have both active.
+typedef struct {
+    String *string; // Used by IDENT, STRING, ERROR and NUMBER.
     Number  number; // Used by NUMBER when conversion is successful.
 } TkData;
 
@@ -78,17 +79,18 @@ typedef struct {
 } Token;
 
 typedef struct {
-    Stream  *stream;    // Used for going through input. Lexer does NOT own this.
-    Buffer  *buffer;    // Used for tokens. Lexer does NOT own this.
     Token    lookahead; // analogous to `Parser::current` in the book.
     Token    consumed;  // analogous to `Parser::previous` in the book.
-    lulu_VM *vm;        // Private to implementation. Has our `jmp_buf`.
+    Stream  *stream;    // Used for going through input. Lexer does NOT own this.
+    Buffer  *buffer;    // Used for tokens. Lexer does NOT own this.
+    lulu_VM *vm;        // Private to implementation. Has our error handlers.
     int      line;      // Current line number we're on.
     char     current;   // Currently character stream is pointing to.
 } Lexer;
 
 void luluLex_intern_tokens(lulu_VM *vm);
 
+// Assumes `z` and `b` have been initialized properly.
 void  luluLex_init(lulu_VM *vm, Lexer *ls, Stream *z, Buffer *b);
 Token luluLex_scan_token(Lexer *ls);
 
@@ -106,6 +108,7 @@ bool luluLex_check_token(Lexer *ls, TkType type);
 bool luluLex_match_token(Lexer *ls, TkType type);
 
 // Similar to `luaX_lexerror()`, analogous to `errorAt()` in the book.
+// When throwing, we assume we are in a protected call.
 void luluLex_error_at(Lexer *ls, const Token *tk, const char *info);
 
 // Similar to `luaX_syntaxerror()`, analogous to `errorAtCurrent()` in the book.

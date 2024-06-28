@@ -6,18 +6,18 @@
 #include "vm.h"
 #include "api.h"
 
-const View LULU_TYPENAMES[] = {
-    [TYPE_NIL]     = view_from_lit("nil"),
-    [TYPE_BOOLEAN] = view_from_lit("boolean"),
-    [TYPE_NUMBER]  = view_from_lit("number"),
-    [TYPE_STRING]  = view_from_lit("string"),
-    [TYPE_TABLE]   = view_from_lit("table"),
+const LString LULU_TYPENAMES[] = {
+    [TYPE_NIL]     = lstring_from_lit("nil"),
+    [TYPE_BOOLEAN] = lstring_from_lit("boolean"),
+    [TYPE_NUMBER]  = lstring_from_lit("number"),
+    [TYPE_STRING]  = lstring_from_lit("string"),
+    [TYPE_TABLE]   = lstring_from_lit("table"),
 };
 
 void luluVal_intern_typenames(lulu_VM *vm)
 {
     for (size_t i = 0; i < array_len(LULU_TYPENAMES); i++) {
-        luluStr_copy(vm, LULU_TYPENAMES[i]);
+        luluStr_copy(vm, LULU_TYPENAMES[i].string, LULU_TYPENAMES[i].length);
     }
 }
 
@@ -32,9 +32,8 @@ ToNumber luluVal_to_number(const Value *val)
     if (is_string(val)) {
         char   *end;
         String *s  = as_string(val);
-        View    sv = view_from_len(s->data, s->len);
-        Number  n  = cstr_tonumber(sv.begin, &end);
-        if (end == sv.end) {
+        Number  n  = cstr_tonumber(s->data, &end);
+        if (end == (s->data + s->len)) {
             conv.number = n;
             conv.ok     = true;
             return conv;

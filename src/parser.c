@@ -85,7 +85,7 @@ static OpCode get_binop(TkType type)
 static void binary(Compiler *cpl, Lexer *ls)
 {
     TkType type  = ls->consumed.type;
-    int    assoc = (type != TK_CARET); // True: right associative. False: left.
+    int    assoc = (type != TK_CARET); // True(1): left associative, else right.
 
     parse_precedence(cpl, ls, get_parserule(type)->precedence + assoc);
 
@@ -579,8 +579,7 @@ static void while_loop(Compiler *cpl, Lexer *ls)
 
 static void add_internal_local(Compiler *cpl, const char *name)
 {
-    size_t  len = strlen(name);
-    String *id  = luluStr_copy(cpl->vm, view_from_len(name, len));
+    String *id = luluStr_copy(cpl->vm, name, strlen(name));
     luluCpl_add_local(cpl, id);
     luluCpl_identifier_constant(cpl, id);
 }

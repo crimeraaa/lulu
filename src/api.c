@@ -20,7 +20,7 @@ static void *stdc_allocator(void *ptr, size_t oldsz, size_t newsz, void *ctx)
 
 lulu_VM *lulu_open(void)
 {
-    static lulu_VM vm = {0}; // lol
+    static lulu_VM vm; // lol
     // Initialization (especially allocations) successful?
     if (luluVM_init(&vm, &stdc_allocator, nullptr))
         return &vm;
@@ -43,9 +43,9 @@ static StackID poke_at_offset(lulu_VM *vm, int offset)
 }
 
 struct Run {
-    Stream stream;
-    View   name;
-    Chunk *chunk;
+    Stream  stream;
+    LString name;
+    Chunk  *chunk;
 };
 
 struct Init {
@@ -57,7 +57,8 @@ struct Init {
 static void pre_load(lulu_VM *vm, void *ctx)
 {
     struct Init *i = ctx;
-    vm->name = luluStr_copy(vm, i->runner->name);
+    LString      s = i->runner->name;
+    vm->name = luluStr_copy(vm, s.string, s.length);
     luluFun_init_chunk(i->runner->chunk, vm->name);
     luluCpl_init_compiler(i->compiler, vm);
     luluLex_init(vm, i->lexer, &i->runner->stream, &vm->buffer);
@@ -75,7 +76,7 @@ static void do_load(lulu_VM *vm, void *ctx)
     i.compiler = &cpl;
     // Since we are inside a protected call already, we can afford to throw.
     if (luluVM_run_protected(vm, &pre_load, &i) != LULU_OK)
-        luluVM_throw_error(vm, LULU_ERROR_ALLOC);
+        lulu_alloc_error(vm);
     luluCpl_compile(&cpl, &ls, r->chunk);
 
     // Prep the VM.
@@ -86,16 +87,15 @@ static void do_load(lulu_VM *vm, void *ctx)
 
 static const char *read_string(lulu_VM *vm, size_t *out, void *ctx)
 {
-    View  *v = ctx;
-    size_t n = view_len(*v);
-    unused2(vm, ctx);
+    LString *s = ctx;
+    unused(vm);
     // Was already read before?
-    if (n == 0)
+    if (s->length == 0)
         return nullptr;
     // Mark as read.
-    *out   = n;
-    v->end = v->begin;
-    return v->begin;
+    *out = s->length;
+    s->length = 0;
+    return s->string;
 }
 
 lulu_Status lulu_load(lulu_VM *vm, const char *input, size_t len, const char *name)
@@ -103,11 +103,11 @@ lulu_Status lulu_load(lulu_VM *vm, const char *input, size_t len, const char *na
     static Chunk c;
     struct Run   r;
     lulu_Status  e;
-    View         v = view_from_len(input, len); // Context for `r.stream`.
+    LString      s = lstring_from_len(input, len); // Context for `r.stream`.
 
-    r.name  = view_from_len(name, strlen(name));
+    r.name  = lstring_from_len(name, strlen(name));
     r.chunk = &c;
-    luluZIO_init_stream(vm, &r.stream, &read_string, &v);
+    luluZIO_init_stream(vm, &r.stream, &read_string, &s);
 
     // We only have error handlers inside of `run_protected`.
     e = luluVM_run_protected(vm, &do_load, &r);
@@ -191,8 +191,7 @@ void lulu_push_cstring(lulu_VM *vm, const char *s)
 
 void lulu_push_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
-    View sv = view_from_len(s, len);
-    lulu_push_string(vm, luluStr_copy(vm, sv));
+    lulu_push_string(vm, luluStr_copy(vm, s, len));
 }
 
 void lulu_push_table(lulu_VM *vm, lulu_Table *t)
@@ -360,7 +359,7 @@ const char *lulu_concat(lulu_VM *vm, int count)
         memcpy(&b->buffer[b->length], s->data, s->len);
         b->length += s->len;
     }
-    String *s = luluStr_copy(vm, view_from_len(b->buffer, b->length));
+    String *s = luluStr_copy(vm, b->buffer, b->length);
     lulu_pop(vm, count);
     lulu_push_string(vm, s);
     return s->data;
@@ -408,8 +407,7 @@ void lulu_get_global_from_cstring(lulu_VM *vm, const char *s)
 
 void lulu_get_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
-    View    sv = view_from_len(s, len);
-    String *id = luluStr_copy(vm, sv);
+    String *id = luluStr_copy(vm, s, len);
     lulu_get_global_from_string(vm, id);
 }
 
@@ -427,8 +425,7 @@ void lulu_set_global_from_cstring(lulu_VM *vm, const char *s)
 
 void lulu_set_global_from_lcstring(lulu_VM *vm, const char *s, size_t len)
 {
-    View sv = view_from_len(s, len);
-    lulu_set_global_from_string(vm, luluStr_copy(vm, sv));
+    lulu_set_global_from_string(vm, luluStr_copy(vm, s, len));
 }
 
 static Chunk *current_chunk(lulu_VM *vm)

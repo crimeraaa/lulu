@@ -18,8 +18,7 @@ typedef enum {
 // Please keep this up to date as needed!
 #define NUM_TYPES   (TYPE_TABLE + 1)
 
-// Lookup table that maps `VType` to `View` representing a Lua type name.
-extern const View LULU_TYPENAMES[];
+extern const LString LULU_TYPENAMES[];
 
 typedef struct lulu_Value {
     VType tag;
@@ -62,7 +61,7 @@ typedef struct lulu_Table {
 
 // NOTE: All `get_*`, `is_*`, `as_*` and `set_*` functions expect a pointer.
 #define get_tag(v)          ((v)->tag)
-#define get_typename(v)     LULU_TYPENAMES[get_tag(v)].begin
+#define get_typename(v)     LULU_TYPENAMES[get_tag(v)].string
 
 #define is_nil(v)           (get_tag(v) == TYPE_NIL)
 #define is_boolean(v)       (get_tag(v) == TYPE_BOOLEAN)
