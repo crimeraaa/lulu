@@ -17,9 +17,9 @@ static void init_scope(Scope *scp)
 void luluCpl_init_compiler(Compiler *cpl, lulu_VM *vm)
 {
     init_scope(&cpl->scope);
-    cpl->lexer       = NULL;
+    cpl->lexer       = nullptr;
     cpl->vm          = vm;
-    cpl->chunk       = NULL;
+    cpl->chunk       = nullptr;
     cpl->stack_total = 0;
     cpl->stack_usage = 0;
     cpl->prev_opcode = OP_RETURN;

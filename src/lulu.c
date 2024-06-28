@@ -13,7 +13,8 @@ static int repl(lulu_VM *vm)
             fputc('\n', stdout);
             break;
         }
-        lulu_Status err = lulu_interpret(vm, "stdin", line);
+        size_t      len = strlen(line);
+        lulu_Status err = lulu_load(vm, line, len, "stdin");
         if (err != LULU_OK) {
             printf("%s\n", lulu_to_cstring(vm, -1));
             lulu_pop(vm, 1);
@@ -25,49 +26,47 @@ static int repl(lulu_VM *vm)
     return EXIT_SUCCESS;
 }
 
-static char *read_file(const char *file_name)
+static char *read_file(const char *name, size_t *out)
 {
-    FILE   *handle     = fopen(file_name, "rb");
-    char   *buffer     = NULL;
-    size_t  file_size  = 0;
-    size_t  bytes_read = 0;
-
-    if (handle == NULL) {
-        logprintfln("Failed to open file '%s'.", file_name);
-        return NULL;
+    FILE *f = fopen(name, "rb");
+    if (f == nullptr) {
+        logprintfln("Failed to open file '%s'.", name);
+        return nullptr;
     }
 
-    fseek(handle, 0L, SEEK_END);
-    file_size = ftell(handle);
-    rewind(handle);
+    fseek(f, 0L, SEEK_END);
+    size_t sz = ftell(f);
+    rewind(f);
 
-    buffer = malloc(file_size + 1);
-    if (buffer == NULL) {
-        fclose(handle);
-        logprintfln("Not enough memory to read '%s'.", file_name);
-        return NULL;
+    char *buf = malloc(sz + 1);
+    if (buf == nullptr) {
+        fclose(f);
+        logprintfln("Not enough memory to read '%s'.", name);
+        return nullptr;
     }
 
-    bytes_read = fread(buffer, sizeof(char), file_size, handle);
-    if (bytes_read < file_size) {
-        free(buffer);
-        fclose(handle);
-        logprintfln("Could not read file '%s'.", file_name);
-        return NULL;
+    size_t read = fread(buf, sizeof(char), sz, f);
+    if (read < sz) {
+        free(buf);
+        fclose(f);
+        logprintfln("Could not read file '%s'.", name);
+        return nullptr;
     }
 
-    buffer[bytes_read] = '\0';
-    fclose(handle);
-    return buffer;
+    buf[read] = '\0';
+    *out = read;
+    fclose(f);
+    return buf;
 }
 
-static int run_file(lulu_VM *vm, const char *file_name)
+static int run_file(lulu_VM *vm, const char *name)
 {
-    char *input = read_file(file_name);
-    if (input == NULL) {
+    size_t len;
+    char  *input = read_file(name, &len);
+    if (input == nullptr) {
         return EX_IOERR;
     }
-    lulu_Status res = lulu_interpret(vm, file_name, input);
+    lulu_Status res = lulu_load(vm, input, len, name);
     free(input);
     if (res == LULU_OK)
         return EXIT_SUCCESS;
@@ -80,19 +79,14 @@ static int run_file(lulu_VM *vm, const char *file_name)
 int main(int argc, const char *argv[])
 {
     lulu_VM *vm  = lulu_open();
-    int      err = 0;
-    if (vm == NULL) {
+    if (vm == nullptr) {
         eprintln("Failed to open lulu");
         return EXIT_FAILURE;
-    }
-    if (argc == 1) {
-        err = repl(vm);
-    } else if (argc == 2) {
-        err = run_file(vm, argv[1]);
-    } else {
+    } else if (argc != 1 && argc != 2) {
         eprintfln("Usage: %s [script]", argv[0]);
         return EX_USAGE;
     }
+    int err = (argc == 1) ? repl(vm) : run_file(vm, argv[1]);
     lulu_close(vm);
     return err;
 }

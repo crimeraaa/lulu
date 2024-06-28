@@ -3,7 +3,7 @@
 
 void luluZIO_init_buffer(Buffer *b)
 {
-    b->buffer   = NULL;
+    b->buffer   = nullptr;
     b->capacity = 0;
     luluZIO_reset_buffer(b);
 }
@@ -15,6 +15,9 @@ void luluZIO_reset_buffer(Buffer *b)
 
 void luluZIO_resize_buffer(lulu_VM *vm, Buffer *b, size_t n)
 {
+    // Avoid realloc if no need to do so.
+    if (n == b->capacity)
+        return;
     b->buffer   = luluMem_resize_parray(vm, b->buffer, b->capacity, n);
     b->capacity = n;
 }
@@ -31,7 +34,7 @@ void luluZIO_init_stream(lulu_VM *vm, Stream *z, lulu_Reader r, void *ctx)
     z->reader   = r;
     z->context  = ctx;
     z->unread   = 0;
-    z->position = NULL;
+    z->position = nullptr;
 }
 
 char luluZIO_fill_stream(Stream *z)
@@ -39,7 +42,7 @@ char luluZIO_fill_stream(Stream *z)
     size_t      sz;
     const char *buf = z->reader(z->parent, &sz, z->context);
     // No more to read?
-    if (buf == NULL || sz == 0)
+    if (buf == nullptr || sz == 0)
         return LULU_ZIO_EOF;
     z->unread   = sz;
     z->position = buf;

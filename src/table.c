@@ -42,13 +42,13 @@ static uint32_t get_hash(const Value *t)
 static Entry *find_entry(Entry *entries, int cap, const Value *k)
 {
     uint32_t i    = get_hash(k) % cap;
-    Entry   *tomb = NULL;
+    Entry   *tomb = nullptr;
     for (;;) {
         Entry *ent = &entries[i];
         if (is_nil(&ent->key)) {
             if (is_nil(&ent->value))
-                return (tomb == NULL) ? ent : tomb;
-            if (tomb == NULL)
+                return (tomb == nullptr) ? ent : tomb;
+            if (tomb == nullptr)
                 tomb = ent;
         } else if (luluVal_equal(&ent->key, k)) {
             return ent;
@@ -82,7 +82,7 @@ static void resize_table(lulu_VM *vm, Table *t, int newcap)
 
 Table *luluTbl_new(lulu_VM *vm, int size)
 {
-    Table *t = cast(Table*, luluObj_new(vm, sizeof(*t), TYPE_TABLE));
+    Table *t = cast_table(luluObj_new(vm, sizeof(*t), TYPE_TABLE));
     luluTbl_init(t);
     if (size > 0)
         resize_table(vm, t, size);
@@ -91,7 +91,7 @@ Table *luluTbl_new(lulu_VM *vm, int size)
 
 void luluTbl_init(Table *t)
 {
-    t->entries = NULL;
+    t->entries = nullptr;
     t->count   = 0;
     t->cap     = 0;
 }

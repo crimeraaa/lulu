@@ -76,11 +76,13 @@ typedef struct lulu_Table {
 #define as_object(v)        ((v)->as.object)
 
 #ifdef __cplusplus
-#define cast_pointer(expr)  reinterpret_cast<void*>(expr)
+#define cast_pointer(expr)  static_cast<void*>(expr)
+#define cast_object(expr)   reinterpret_cast<Object*>(expr)
 #define cast_string(expr)   reinterpret_cast<String*>(expr)
 #define cast_table(expr)    reinterpret_cast<Table*>(expr)
 #else /* __cplusplus not defined. */
 #define cast_pointer(expr)  cast(void*,   expr)
+#define cast_object(expr)   cast(Object*, expr)
 #define cast_string(expr)   cast(String*, expr)
 #define cast_table(expr)    cast(Table*,  expr)
 #endif /* __cplusplus */
@@ -93,7 +95,7 @@ typedef struct lulu_Table {
 #define make_nil()          (Value){TYPE_NIL,     {.number  = 0}}
 #define make_boolean(b)     (Value){TYPE_BOOLEAN, {.boolean = (b)}}
 #define make_number(n)      (Value){TYPE_NUMBER,  {.number  = (n)}}
-#define make_object(p, tt)  (Value){tt,           {.object  = cast(Object*,p)}}
+#define make_object(p, tt)  (Value){tt,           {.object  = cast_object(p)}}
 #define make_string(p)      make_object(p, TYPE_STRING)
 #define make_table(p)       make_object(p, TYPE_TABLE)
 
@@ -109,14 +111,12 @@ do {                                                                           \
 #define setv_nil(v)             setv_value(TYPE_NIL,     as_number,  v, 0)
 #define setv_boolean(v, b)      setv_value(TYPE_BOOLEAN, as_boolean, v, b)
 #define setv_number(v, n)       setv_value(TYPE_NUMBER,  as_number,  v, n)
-#define setv_object(T, v, o)    setv_value(T, as_object,  v, cast(Object*, o))
+#define setv_object(T, v, o)    setv_value(T, as_object,  v, cast_object(o))
 #define setv_string(dst, src)   setv_object(TYPE_STRING, dst, src)
 #define setv_table(dst, src)    setv_object(TYPE_TABLE,  dst, src)
 
 #define is_falsy(v)             (is_nil(v) || (is_boolean(v) && !as_boolean(v)))
 
-// Writes string representation of the given value to C `stdout`.
-void luluVal_print_value(const Value *val);
 void luluVal_intern_typenames(lulu_VM *vm);
 
 typedef struct {

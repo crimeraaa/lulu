@@ -149,7 +149,7 @@ static bool skip_char_if(Lexer *ls, char ch)
 
 static bool check_char_any(Lexer *ls, const char *set)
 {
-    return strchr(set, current_char(ls)) != NULL;
+    return strchr(set, current_char(ls)) != nullptr;
 }
 
 static bool match_char_any(Lexer *ls, const char *set)
@@ -160,6 +160,7 @@ static bool match_char_any(Lexer *ls, const char *set)
     return found;
 }
 
+// TODO: Differentiate CR, LF, CRLF?
 static bool is_newline(Lexer *ls)
 {
     return check_char_any(ls, "\r\n");
@@ -221,7 +222,7 @@ static void init_token(Token *tk)
 {
     tk->line = 0;
     tk->type = TK_EOF;
-    tk->data.string = NULL;
+    tk->data.string = nullptr;
 }
 
 void luluLex_init(lulu_VM *vm, Lexer *ls, Stream *z, Buffer *b)
@@ -254,7 +255,7 @@ static Token error_token(Lexer *ls)
     // For error tokens, report only the first line if this is a multiline.
     const char *end   = b->buffer + b->length;
     const char *newl  = memchr(b->buffer, '\n', b->length);
-    if (newl != NULL)
+    if (newl != nullptr)
         end = newl;
 
     View  v = view_from_end(b->buffer, end);
@@ -422,7 +423,7 @@ static Token number_token(Lexer *ls)
     Buffer *b   = ls->buffer;
     View    v   = view_from_len(b->buffer, b->length);
     String *s   = luluStr_copy(ls->vm, v);
-    char   *end = NULL;
+    char   *end = nullptr;
 
     // Pass `s->data` not `v.begin`, because `strtod` may read out of bounds.
     Number n = cstr_tonumber(s->data, &end);
@@ -582,7 +583,7 @@ void luluLex_expect_token(Lexer *ls, TkType type, const char *info)
     }
     lulu_VM    *vm  = ls->vm;
     const char *msg = lulu_push_fstring(vm, "Expected '%s'", token_to_string(type));
-    if (info != NULL) {
+    if (info != nullptr) {
         lulu_push_fstring(vm, " %s", info);
         msg = lulu_concat(vm, 2);
     }

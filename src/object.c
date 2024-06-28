@@ -65,12 +65,6 @@ const char *luluVal_to_cstring(const Value *val, char *buf)
     return buf;
 }
 
-void luluVal_print_value(const Value *val)
-{
-    char buf[LULU_MAX_TOSTRING];
-    printf("%s", luluVal_to_cstring(val, buf));
-}
-
 bool luluVal_equal(const Value *a, const Value *b)
 {
     // Logically, differing types can never be equal.
@@ -87,7 +81,7 @@ bool luluVal_equal(const Value *a, const Value *b)
 
 void luluVal_init_array(Array *arr)
 {
-    arr->values = NULL;
+    arr->values = nullptr;
     arr->len    = 0;
     arr->cap    = 0;
 }

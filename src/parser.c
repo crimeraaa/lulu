@@ -201,7 +201,7 @@ static void grouping(Compiler *cpl, Lexer *ls)
     // See: https://www.lua.org/source/5.1/lparser.c.html#enterlevel
     luluCpl_begin_scope(cpl);
     expression(cpl, ls);
-    luluLex_expect_token(ls, TK_RPAREN, NULL);
+    luluLex_expect_token(ls, TK_RPAREN, nullptr);
     luluCpl_end_scope(cpl);
 }
 
@@ -346,7 +346,7 @@ static int count_assignments(Assignment *list)
 {
     Assignment *node = list;
     int         count = 0;
-    while (node != NULL) {
+    while (node != nullptr) {
         node   = node->prev;
         count += 1;
     }
@@ -355,7 +355,7 @@ static int count_assignments(Assignment *list)
 
 static void emit_assignment_tail(Compiler *cpl, Assignment *list)
 {
-    if (list == NULL)
+    if (list == nullptr)
         return;
 
     switch (list->type) {
@@ -484,7 +484,7 @@ static void print_statement(Compiler *cpl, Lexer *ls)
     bool open = luluLex_match_token(ls, TK_LPAREN);
     int  argc = parse_exprlist(cpl, ls);
     if (open)
-        luluLex_expect_token(ls, TK_RPAREN, NULL);
+        luluLex_expect_token(ls, TK_RPAREN, nullptr);
     luluCpl_emit_oparg1(cpl, OP_PRINT, argc);
 }
 
@@ -616,7 +616,7 @@ static void numeric_for(Compiler *cpl, Lexer *ls, String *id)
     }
 
     // 'do' <block>
-    luluLex_expect_token(ls, TK_DO, NULL);
+    luluLex_expect_token(ls, TK_DO, nullptr);
     luluCpl_emit_opcode(cpl, OP_FORPREP);
     int loop_init  = luluCpl_emit_jump(cpl);
     int loop_start = luluCpl_start_loop(cpl);
@@ -661,7 +661,7 @@ static void statement(Compiler *cpl, Lexer *ls)
     switch (ls->consumed.type) {
     case TK_IDENT: {
         Assignment list;
-        init_assignment(&list, NULL); // Ensure no garbage.
+        init_assignment(&list, nullptr); // Ensure no garbage.
         identifier_statement(cpl, ls, &list);
         break;
     }
@@ -712,7 +712,7 @@ static void declare_locals(Compiler *cpl, Lexer *ls)
     int exprs  = 0;
 
     do {
-        luluLex_expect_token(ls, TK_IDENT, NULL);
+        luluLex_expect_token(ls, TK_IDENT, nullptr);
         emit_local(cpl, ls->consumed.data.string);
         idents += 1;
     } while (luluLex_match_token(ls, TK_COMMA));
@@ -748,7 +748,7 @@ static void parse_precedence(Compiler *cpl, Lexer *ls, Precedence prec)
 {
     ParseRule *pr = get_parserule(ls->lookahead.type);
 
-    if (pr->prefixfn == NULL) {
+    if (pr->prefixfn == nullptr) {
         luluLex_error_consumed(ls, "Expected a prefix expression");
         return;
     }
@@ -769,62 +769,62 @@ static void parse_precedence(Compiler *cpl, Lexer *ls, Precedence prec)
 }
 
 static ParseRule PARSERULES_LOOKUP[] = {
-    // TOKEN           PREFIXFN     INFIXFN     PRECEDENCE
-    [TK_AND]        = {NULL,        &logic_and, PREC_AND},
-    [TK_BREAK]      = {NULL,        NULL,       PREC_NONE},
-    [TK_DO]         = {NULL,        NULL,       PREC_NONE},
-    [TK_ELSE]       = {NULL,        NULL,       PREC_NONE},
-    [TK_ELSEIF]     = {NULL,        NULL,       PREC_NONE},
-    [TK_END]        = {NULL,        NULL,       PREC_NONE},
-    [TK_FALSE]      = {&literal,    NULL,       PREC_NONE},
-    [TK_FOR]        = {NULL,        NULL,       PREC_NONE},
-    [TK_FUNCTION]   = {NULL,        NULL,       PREC_NONE},
-    [TK_IF]         = {NULL,        NULL,       PREC_NONE},
-    [TK_IN]         = {NULL,        NULL,       PREC_NONE},
-    [TK_LOCAL]      = {NULL,        NULL,       PREC_NONE},
-    [TK_NIL]        = {&literal,    NULL,       PREC_NONE},
-    [TK_NOT]        = {&unary,      NULL,       PREC_NONE},
-    [TK_OR]         = {NULL,        &logic_or,  PREC_OR},
-    [TK_PRINT]      = {NULL,        NULL,       PREC_NONE},
-    [TK_RETURN]     = {NULL,        NULL,       PREC_NONE},
-    [TK_THEN]       = {NULL,        NULL,       PREC_NONE},
-    [TK_TRUE]       = {&literal,    NULL,       PREC_NONE},
-    [TK_WHILE]      = {NULL,        NULL,       PREC_NONE},
+    // TOKEN           PREFIXFN         INFIXFN         PRECEDENCE
+    [TK_AND]        = {nullptr,         &logic_and,     PREC_AND},
+    [TK_BREAK]      = {nullptr,         nullptr,        PREC_NONE},
+    [TK_DO]         = {nullptr,         nullptr,        PREC_NONE},
+    [TK_ELSE]       = {nullptr,         nullptr,        PREC_NONE},
+    [TK_ELSEIF]     = {nullptr,         nullptr,        PREC_NONE},
+    [TK_END]        = {nullptr,         nullptr,        PREC_NONE},
+    [TK_FALSE]      = {&literal,        nullptr,        PREC_NONE},
+    [TK_FOR]        = {nullptr,         nullptr,        PREC_NONE},
+    [TK_FUNCTION]   = {nullptr,         nullptr,        PREC_NONE},
+    [TK_IF]         = {nullptr,         nullptr,        PREC_NONE},
+    [TK_IN]         = {nullptr,         nullptr,        PREC_NONE},
+    [TK_LOCAL]      = {nullptr,         nullptr,        PREC_NONE},
+    [TK_NIL]        = {&literal,        nullptr,        PREC_NONE},
+    [TK_NOT]        = {&unary,          nullptr,        PREC_NONE},
+    [TK_OR]         = {nullptr,         &logic_or,      PREC_OR},
+    [TK_PRINT]      = {nullptr,         nullptr,        PREC_NONE},
+    [TK_RETURN]     = {nullptr,         nullptr,        PREC_NONE},
+    [TK_THEN]       = {nullptr,         nullptr,        PREC_NONE},
+    [TK_TRUE]       = {&literal,        nullptr,        PREC_NONE},
+    [TK_WHILE]      = {nullptr,         nullptr,        PREC_NONE},
 
-    [TK_LPAREN]     = {&grouping,   NULL,       PREC_NONE},
-    [TK_RPAREN]     = {NULL,        NULL,       PREC_NONE},
-    [TK_LBRACKET]   = {NULL,        &index,     PREC_CALL},
-    [TK_RBRACKET]   = {NULL,        NULL,       PREC_NONE},
-    [TK_LCURLY]     = {&table,      NULL,       PREC_NONE},
-    [TK_RCURLY]     = {NULL,        NULL,       PREC_NONE},
+    [TK_LPAREN]     = {&grouping,       nullptr,        PREC_NONE},
+    [TK_RPAREN]     = {nullptr,         nullptr,        PREC_NONE},
+    [TK_LBRACKET]   = {nullptr,         &index,         PREC_CALL},
+    [TK_RBRACKET]   = {nullptr,         nullptr,        PREC_NONE},
+    [TK_LCURLY]     = {&table,          nullptr,        PREC_NONE},
+    [TK_RCURLY]     = {nullptr,         nullptr,        PREC_NONE},
 
-    [TK_COMMA]      = {NULL,        NULL,       PREC_NONE},
-    [TK_SEMICOL]    = {NULL,        NULL,       PREC_NONE},
-    [TK_VARARG]     = {NULL,        NULL,       PREC_NONE},
-    [TK_CONCAT]     = {NULL,        &concat,    PREC_CONCAT},
-    [TK_PERIOD]     = {NULL,        &field,     PREC_CALL},
-    [TK_POUND]      = {&unary,      NULL,       PREC_UNARY},
+    [TK_COMMA]      = {nullptr,         nullptr,        PREC_NONE},
+    [TK_SEMICOL]    = {nullptr,         nullptr,        PREC_NONE},
+    [TK_VARARG]     = {nullptr,         nullptr,        PREC_NONE},
+    [TK_CONCAT]     = {nullptr,         &concat,        PREC_CONCAT},
+    [TK_PERIOD]     = {nullptr,         &field,         PREC_CALL},
+    [TK_POUND]      = {&unary,          nullptr,        PREC_UNARY},
 
-    [TK_PLUS]       = {NULL,        &binary,    PREC_TERMINAL},
-    [TK_DASH]       = {&unary,      &binary,    PREC_TERMINAL},
-    [TK_STAR]       = {NULL,        &binary,    PREC_FACTOR},
-    [TK_SLASH]      = {NULL,        &binary,    PREC_FACTOR},
-    [TK_PERCENT]    = {NULL,        &binary,    PREC_FACTOR},
-    [TK_CARET]      = {NULL,        &binary,    PREC_POW},
+    [TK_PLUS]       = {nullptr,         &binary,        PREC_TERMINAL},
+    [TK_DASH]       = {&unary,          &binary,        PREC_TERMINAL},
+    [TK_STAR]       = {nullptr,         &binary,        PREC_FACTOR},
+    [TK_SLASH]      = {nullptr,         &binary,        PREC_FACTOR},
+    [TK_PERCENT]    = {nullptr,         &binary,        PREC_FACTOR},
+    [TK_CARET]      = {nullptr,         &binary,        PREC_POW},
 
-    [TK_ASSIGN]     = {NULL,        NULL,       PREC_NONE},
-    [TK_EQ]         = {NULL,        &binary,    PREC_EQUALITY},
-    [TK_NEQ]        = {NULL,        &binary,    PREC_EQUALITY},
-    [TK_GT]         = {NULL,        &binary,    PREC_COMPARISON},
-    [TK_GE]         = {NULL,        &binary,    PREC_COMPARISON},
-    [TK_LT]         = {NULL,        &binary,    PREC_COMPARISON},
-    [TK_LE]         = {NULL,        &binary,    PREC_COMPARISON},
+    [TK_ASSIGN]     = {nullptr,         nullptr,        PREC_NONE},
+    [TK_EQ]         = {nullptr,         &binary,        PREC_EQUALITY},
+    [TK_NEQ]        = {nullptr,         &binary,        PREC_EQUALITY},
+    [TK_GT]         = {nullptr,         &binary,        PREC_COMPARISON},
+    [TK_GE]         = {nullptr,         &binary,        PREC_COMPARISON},
+    [TK_LT]         = {nullptr,         &binary,        PREC_COMPARISON},
+    [TK_LE]         = {nullptr,         &binary,        PREC_COMPARISON},
 
-    [TK_IDENT]      = {&variable,   NULL,       PREC_NONE},
-    [TK_STRING]     = {&string,     NULL,       PREC_NONE},
-    [TK_NUMBER]     = {&number,     NULL,       PREC_NONE},
-    [TK_ERROR]      = {NULL,        NULL,       PREC_NONE},
-    [TK_EOF]        = {NULL,        NULL,       PREC_NONE},
+    [TK_IDENT]      = {&variable,       nullptr,        PREC_NONE},
+    [TK_STRING]     = {&string,         nullptr,        PREC_NONE},
+    [TK_NUMBER]     = {&number,         nullptr,        PREC_NONE},
+    [TK_ERROR]      = {nullptr,         nullptr,        PREC_NONE},
+    [TK_EOF]        = {nullptr,         nullptr,        PREC_NONE},
 };
 
 static ParseRule *get_parserule(TkType key)

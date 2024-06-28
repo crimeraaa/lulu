@@ -32,7 +32,8 @@ void luluDbg_print_value(const Value *v)
         const char    q = (s->len == 1) ? '\'' : '\"'; // fake char literals
         printf("%c%s%c", q, s->data, q);
     } else {
-        luluVal_print_value(v);
+        char buf[LULU_MAX_TOSTRING];
+        printf("%s", luluVal_to_cstring(v, buf));
     }
 }
 

@@ -5,14 +5,20 @@
 #include "chunk.h"
 #include "object.h"
 #include "memory.h"
+#include "zio.h"
 
-typedef Value *StackID; // Pointer to a Lua stack value.
+// Pointer to a value INSIDE the stack.
+typedef Value *StackID;
+
+// To be run by `luluVM_run_protected`.
 typedef void (*ProtectedFn)(lulu_VM *vm, void *ctx);
 
+// Defined inside `vm.c`.
 typedef struct lulu_Error Error;
 
 struct lulu_VM {
     Value     stack[LULU_MAX_STACK + LULU_STACK_RESERVED];
+    Buffer    buffer;    // Used by Lexer and for concatenating.
     Allocator allocator; // Desired allocation function.
     void     *context;   // Context data-pointer for `allocator`.
     StackID   top;       // Pointer to first free slot in the stack.

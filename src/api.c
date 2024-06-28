@@ -13,7 +13,7 @@ static void *stdc_allocator(void *ptr, size_t oldsz, size_t newsz, void *ctx)
     unused2(oldsz, ctx);
     if (newsz == 0) {
         free(ptr);
-        return NULL;
+        return nullptr;
     }
     return realloc(ptr, newsz);
 }
@@ -22,10 +22,10 @@ lulu_VM *lulu_open(void)
 {
     static lulu_VM vm = {0}; // lol
     // Initialization (especially allocations) successful?
-    if (luluVM_init(&vm, &stdc_allocator, NULL))
+    if (luluVM_init(&vm, &stdc_allocator, nullptr))
         return &vm;
     else
-        return NULL;
+        return nullptr;
 }
 
 void lulu_close(lulu_VM *vm)
@@ -42,23 +42,40 @@ static StackID poke_at_offset(lulu_VM *vm, int offset)
         return poke_top(vm, offset);
 }
 
-typedef struct {
-    Stream     *stream;
-    Buffer     *buffer;
-    Chunk      *chunk;
-    const char *name;
-} Runner;
+struct Run {
+    Stream stream;
+    View   name;
+    Chunk *chunk;
+};
 
-static void run_input(lulu_VM *vm, void *ctx)
+struct Init {
+    struct Run *runner;
+    Lexer      *lexer;
+    Compiler   *compiler;
+};
+
+static void pre_load(lulu_VM *vm, void *ctx)
 {
-    Runner         *r = ctx;
+    struct Init *i = ctx;
+    vm->name = luluStr_copy(vm, i->runner->name);
+    luluFun_init_chunk(i->runner->chunk, vm->name);
+    luluCpl_init_compiler(i->compiler, vm);
+    luluLex_init(vm, i->lexer, &i->runner->stream, &vm->buffer);
+}
+
+static void do_load(lulu_VM *vm, void *ctx)
+{
+    struct Run     *r = ctx;
     static Lexer    ls;
     static Compiler cpl;
+    struct Init     i;
 
-    vm->name = luluStr_copy(vm, view_from_len(r->name, strlen(r->name)));
-    luluFun_init_chunk(r->chunk, vm->name);
-    luluCpl_init_compiler(&cpl, vm);
-    luluLex_init(vm, &ls, r->stream, r->buffer);
+    i.runner   = r;
+    i.lexer    = &ls;
+    i.compiler = &cpl;
+    // Since we are inside a protected call already, we can afford to throw.
+    if (luluVM_run_protected(vm, &pre_load, &i) != LULU_OK)
+        luluVM_throw_error(vm, LULU_ERROR_ALLOC);
     luluCpl_compile(&cpl, &ls, r->chunk);
 
     // Prep the VM.
@@ -74,33 +91,27 @@ static const char *read_string(lulu_VM *vm, size_t *out, void *ctx)
     unused2(vm, ctx);
     // Was already read before?
     if (n == 0)
-        return NULL;
+        return nullptr;
     // Mark as read.
     *out   = n;
     v->end = v->begin;
     return v->begin;
 }
 
-lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input)
+lulu_Status lulu_load(lulu_VM *vm, const char *input, size_t len, const char *name)
 {
-    static Stream z;
-    static Buffer b;
-    static Chunk  c;
-    static Runner r;
-    lulu_Status   e;
-    r.stream = &z;
-    r.buffer = &b;
-    r.chunk  = &c;
-    r.name   = name;
-    View v   = view_from_len(input, strlen(input)); // Context for `r.stream`.
+    static Chunk c;
+    struct Run   r;
+    lulu_Status  e;
+    View         v = view_from_len(input, len); // Context for `r.stream`.
 
-    luluZIO_init_buffer(r.buffer);
-    luluZIO_init_stream(vm, r.stream, &read_string, &v);
+    r.name  = view_from_len(name, strlen(name));
+    r.chunk = &c;
+    luluZIO_init_stream(vm, &r.stream, &read_string, &v);
 
     // We only have error handlers inside of `run_protected`.
-    e = luluVM_run_protected(vm, &run_input, &r);
+    e = luluVM_run_protected(vm, &do_load, &r);
     luluFun_free_chunk(vm, r.chunk);
-    luluZIO_free_buffer(vm, r.buffer);
     return e;
 }
 
@@ -210,7 +221,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 
     for (;;) {
         const char *spec = strchr(iter, '%');
-        if (spec == NULL)
+        if (spec == nullptr)
             break;
         // Push the contents of the string before '%' unless '%' is first char.
         if (spec != fmt) {
@@ -227,7 +238,7 @@ const char *lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
         case 'p': push_numeric(void*,  lulu_ptr_tostring); break;
         case 's': {
             const char *s = va_arg(args, char*);
-            if (s != NULL)
+            if (s != nullptr)
                 lulu_push_cstring(vm, s);
             else
                 lulu_push_literal(vm, "(null)");
@@ -332,17 +343,24 @@ const char *lulu_to_cstring(lulu_VM *vm, int offset)
 
 const char *lulu_concat(lulu_VM *vm, int count)
 {
-    size_t  len  = 0;
+    Buffer *b    = &vm->buffer;
     StackID argv = poke_at_offset(vm, -count);
+    luluZIO_reset_buffer(b);
     for (int i = 0; i < count; i++) {
         StackID arg = &argv[i];
         if (is_number(arg))
             lulu_to_string(vm, i - count);
         else if (!is_string(arg))
             lulu_type_error(vm, "concatenate", get_typename(arg));
-        len += as_string(arg)->len;
+
+        String *s = as_string(arg);
+        size_t  n = b->length + s->len;
+        if (n + 1 > b->capacity)
+            luluZIO_resize_buffer(vm, b, n + 1);
+        memcpy(&b->buffer[b->length], s->data, s->len);
+        b->length += s->len;
     }
-    String *s = luluStr_concat(vm, count, argv, len);
+    String *s = luluStr_copy(vm, view_from_len(b->buffer, b->length));
     lulu_pop(vm, count);
     lulu_push_string(vm, s);
     return s->data;

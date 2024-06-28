@@ -28,6 +28,8 @@ void luluZIO_init_buffer(Buffer *b);
 // lzio.h:luaZ_resetbuffer
 void luluZIO_reset_buffer(Buffer *b);
 
+// It is important we do NOT set `b->length` to 0, especially in the case of
+// concatenating strings.
 // lzio.h:luaZ_resizebuffer
 void luluZIO_resize_buffer(lulu_VM *vm, Buffer *b, size_t n);
 

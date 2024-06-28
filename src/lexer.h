@@ -78,8 +78,8 @@ typedef struct {
 } Token;
 
 typedef struct {
-    Stream  *stream;
-    Buffer  *buffer;    // Buffer to store string representation of some tokens.
+    Stream  *stream;    // Used for going through input. Lexer does NOT own this.
+    Buffer  *buffer;    // Used for tokens. Lexer does NOT own this.
     Token    lookahead; // analogous to `Parser::current` in the book.
     Token    consumed;  // analogous to `Parser::previous` in the book.
     lulu_VM *vm;        // Private to implementation. Has our `jmp_buf`.
@@ -105,13 +105,7 @@ bool luluLex_check_token(Lexer *ls, TkType type);
 // Advance the Lexer if the current token matches else do nothing.
 bool luluLex_match_token(Lexer *ls, TkType type);
 
-/**
- * @brief   Similar to `luaX_lexerror()`, analogout to `errorAt()` in the book.
- *
- * @warning Calls `longjmp`. If used incorrectly you may leak memory, corrupt
- *          the C stack, or just cause undefined behavior all around. By all
- *          means DO NOT call `longjmp` at the same callsite/stackframe twice!
- */
+// Similar to `luaX_lexerror()`, analogous to `errorAt()` in the book.
 void luluLex_error_at(Lexer *ls, const Token *tk, const char *info);
 
 // Similar to `luaX_syntaxerror()`, analogous to `errorAtCurrent()` in the book.

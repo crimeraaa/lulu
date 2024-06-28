@@ -17,10 +17,13 @@ static void reset_stack(lulu_VM *vm)
 static void set_builtins(lulu_VM *vm, void *ctx)
 {
     unused(ctx);
+    luluZIO_resize_buffer(vm, &vm->buffer, LULU_ZIO_MINIMUM_BUFFER);
     luluVal_intern_typenames(vm);
     luluLex_intern_tokens(vm);
     lulu_push_table(vm, &vm->globals);
     lulu_set_global(vm, "_G");
+
+    // If we can't even intern this, we can't push it on later errors!
     luluStr_copy_lit(vm, MEMORY_ERROR_MESSAGE);
 }
 
@@ -28,21 +31,22 @@ static void set_builtins(lulu_VM *vm, void *ctx)
 static void _init_table(Table *t)
 {
     t->object.tag  = TYPE_TABLE;
-    t->object.next = NULL; // impossible to collect stack-allocated object
+    t->object.next = nullptr; // impossible to collect stack-allocated object
     luluTbl_init(t);
 }
 
 bool luluVM_init(lulu_VM *vm, lulu_Allocator fn, void *ctx)
 {
     reset_stack(vm);
+    luluZIO_init_buffer(&vm->buffer);
     vm->allocator = fn;
     vm->context   = ctx;
-    vm->objects   = NULL;  // Start with no objects.
-    vm->errors    = NULL;  // When initializing, we cannot throw properly.
+    vm->objects   = nullptr;  // Start with no objects.
+    vm->errors    = nullptr;  // When initializing, we cannot throw properly.
 
     _init_table(&vm->globals);
     _init_table(&vm->strings);
-    if (luluVM_run_protected(vm, &set_builtins, NULL) != LULU_OK) {
+    if (luluVM_run_protected(vm, &set_builtins, nullptr) != LULU_OK) {
         lulu_close(vm);
         return false;
     }
@@ -78,6 +82,7 @@ void luluVM_throw_error(lulu_VM *vm, lulu_Status code)
 
 void luluVM_free(lulu_VM *vm)
 {
+    luluZIO_free_buffer(vm, &vm->buffer);
     luluTbl_free(vm, &vm->globals);
     luluTbl_free(vm, &vm->strings);
     luluObj_free_all(vm);
@@ -268,9 +273,25 @@ void luluVM_execute(lulu_VM *vm)
             break;
         case OP_LEN:
             // TODO: Separate array segment from hash segment of tables.
-            if (!is_string(arg_a))
+            if (is_string(arg_a)) {
+                String *s = as_string(arg_a);
+                setv_number(arg_a, cast_num(s->len));
+            } else if (is_table(arg_a)) {
+                Table *t = as_table(arg_a);
+                Number n = 0;
+                // Note how we use `cap` and not `count`.
+                for (int i = 1; i < t->cap; i++) {
+                    Value tmp;
+                    Value k = make_number(i);
+                    if (luluTbl_get(t, &k, &tmp))
+                        n += 1;
+                    else
+                        break; // No more sequential number indexes?
+                }
+                setv_number(arg_a, n);
+            } else {
                 lulu_type_error(vm, "get length of", get_typename(arg_a));
-            setv_number(arg_a, as_string(arg_a)->len);
+            }
             break;
         case OP_PRINT: {
             int argc = read_byte();

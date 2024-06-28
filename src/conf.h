@@ -4,7 +4,7 @@
 #include <limits.h>
 #include <math.h>           /* Needed by `num_*` macros. */
 #include <stdbool.h>        /* C99 `_Bool` along with alias `bool` */
-#include <stddef.h>         /* `size_t`, `NULL` */
+#include <stddef.h>         /* `size_t`, `nullptr` */
 #include <stdlib.h>         /* `realloc`, `free` */
 #include <stdio.h>          /* `printf` family, `f*` family (`FILE*`) */
 #include <stdint.h>
@@ -110,5 +110,9 @@
 #define lulu_cstr_tonumber(s, p)    strtod(s, p)
 #define lulu_ptr_tostring(s, p)     sprintf((s), "%p", (p))
 #define lulu_int_tostring(s, i)     sprintf((s), "%i", (i))
+
+#ifndef __cplusplus
+#define nullptr NULL
+#endif /* __cplusplus */
 
 #endif /* LULU_CONFIGURATION_H */

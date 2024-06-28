@@ -9,7 +9,7 @@ void     lulu_set_top(lulu_VM *vm, int offset);
 #define  lulu_pop(vm, n) lulu_set_top((vm), -(n))
 
 // Caller must allocate `input` properly however they need.
-lulu_Status lulu_interpret(lulu_VM *vm, const char *name, const char *input);
+lulu_Status lulu_load(lulu_VM *vm, const char *input, size_t len, const char *name);
 const char *lulu_get_typename(lulu_VM *vm, int offset);
 
 bool lulu_is_nil(lulu_VM *vm, int offset);

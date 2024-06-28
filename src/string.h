@@ -16,9 +16,6 @@ void    luluStr_free(lulu_VM *vm, String *s);
 String *luluStr_copy(lulu_VM *vm, View sv);
 #define luluStr_copy_lit(vm, s)  luluStr_copy((vm), view_from_lit(s))
 
-// Assumes all arguments we already verified to be `String*`.
-String *luluStr_concat(lulu_VM *vm, int argc, const Value argv[], size_t len);
-
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
 void luluStr_set_interned(lulu_VM *vm, const String *s);
 

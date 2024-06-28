@@ -7,7 +7,7 @@
 
 #define luluMem_grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
 
-#define MEMORY_ERROR_MESSAGE        "Fatal: out of memory"
+#define MEMORY_ERROR_MESSAGE        "[FATAL ERROR]: out of memory"
 
 typedef lulu_Allocator Allocator;
 
@@ -19,7 +19,7 @@ Object *luluObj_unlink(lulu_VM *vm, Object *obj);
 void    luluObj_free_all(lulu_VM *vm);
 
 #define luluMem_new_pointer(vm, sz) \
-    luluMem_call_allocator(vm, NULL, 0, sz)
+    luluMem_call_allocator(vm, nullptr, 0, sz)
 
 #define luluMem_resize_pointer(vm, ptr, oldsz, newsz) \
     luluMem_call_allocator(vm, ptr, oldsz, newsz)
