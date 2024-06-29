@@ -1,22 +1,26 @@
+local x = true
 print("if-true:");
-if true then
+if x then
     print("yay");
 end;
 
 print("if-false:")
-if false then
+x = false
+if x then
     print("yay");
 end;
 
 print("if-true-else")
-if true then
+x = true
+if x then
     print("yay");
 else
     print("nay");
 end;
 
 print("if-false-else");
-if false then
+x = false
+if x then
     print("yay");
 else
     print("nay");

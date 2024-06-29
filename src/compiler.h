@@ -37,6 +37,7 @@ typedef struct {
     int      stack_usage; // #stack slots being use currently.
     int      stack_total; // maximum #stack-slots used.
     OpCode   prev_opcode; // Used to fold consecutive similar operations.
+    bool     can_fold;    // Really stupid but need separate POPs for 'if'.
 } Compiler;
 
 void luluCpl_init_compiler(Compiler *cpl, lulu_VM *vm);
@@ -49,6 +50,7 @@ void luluCpl_emit_oparg2(Compiler *cpl, OpCode op, Byte2 arg);
 void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg);
 void luluCpl_emit_return(Compiler *cpl);
 void luluCpl_patch_byte3(Compiler *cpl, int offset, Byte3 arg);
+Byte3 luluCpl_get_byte3(Compiler *cpl, int offset);
 
 // Returns the index of `OP_JUMP` in the bytecode.
 int   luluCpl_emit_jump(Compiler *cpl);

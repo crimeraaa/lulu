@@ -70,7 +70,7 @@ static int run_file(lulu_VM *vm, const char *name)
     if (res == LULU_OK)
         return EXIT_SUCCESS;
 
-    printf("%s", lulu_to_string(vm, -1));
+    printf("%s\n", lulu_to_string(vm, -1));
     lulu_pop(vm, 1);
     return EX_SOFTWARE;
 }

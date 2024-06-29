@@ -35,6 +35,23 @@ static void statement(Compiler *cpl, Lexer *ls);
  */
 static void expression(Compiler *cpl, Lexer *ls);
 
+static void popn(Compiler *cpl, int n)
+{
+    luluCpl_emit_oparg1(cpl, OP_POP, n);
+}
+
+static void pop1(Compiler *cpl)
+{
+    popn(cpl, 1);
+}
+
+// <condition> pushes 1 value but emits 2 POPs, so account for this weirdness.
+static void pop_cond(Compiler *cpl)
+{
+    pop1(cpl);
+    cpl->stack_usage += 1;
+}
+
 static int parse_exprlist(Compiler *cpl, Lexer *ls)
 {
     int exprs = 0;
@@ -524,12 +541,11 @@ Loop:
 static void discharge_jump(Compiler *cpl, int *jump, bool can_pop)
 {
     int prev = *jump;
-    *jump = luluCpl_emit_jump(cpl);
+    *jump    = luluCpl_emit_jump(cpl);
     luluCpl_patch_jump(cpl, prev);
     // pop <condition> when truthy.
     if (can_pop)
-        luluCpl_emit_oparg1(cpl, OP_POP, 1);
-    cpl->stack_usage += 1; // Undo weirdness from POP w/o a corresponding push.
+        pop_cond(cpl);
 }
 
 // <expression> 'then'
@@ -545,21 +561,34 @@ static void condition(Compiler *cpl, Lexer *ls, TkType who)
 // See: https://github.com/crimeraaa/lulu/blob/main/.archive-2024-03-24/compiler.c#L1483
 static void if_statement(Compiler *cpl, Lexer *ls)
 {
+    // <if-cond>
     condition(cpl, ls, TK_THEN);
 
-    // jump over the entire if-block when <condition> is falsy.
-    int if_jump = luluCpl_emit_if_jump(cpl, CAN_POP);
+    // resolves: none
+    // emits:    goto <else-block>
+    int jump = luluCpl_emit_if_jump(cpl, CAN_POP);
+
+    // <if-block>
     if_block(cpl, ls);
 
-    // <if-block> end should jump over everything that follows.
-    discharge_jump(cpl, &if_jump, CAN_POP);
+    // resolves: goto <else-block>
+    // emits:    <else-block>
+    discharge_jump(cpl, &jump, CAN_POP);
+
     if (luluLex_match_token(ls, TK_ELSEIF))
         if_statement(cpl, ls);
     if (luluLex_match_token(ls, TK_ELSE))
         do_block(cpl, ls);
 
-    // For all cases (including recursive), they should jump to the same 'end'.
-    luluCpl_patch_jump(cpl, if_jump);
+    // resolves: <else-block>
+    // emits:    none
+    luluCpl_patch_jump(cpl, jump);
+
+    // Unlike the other 2 POP's, it is possible for this one to be succeeded
+    // by another POP unrelated to the if statement such as popping locals.
+    // This is bad because if local pops are folded into here, they may not be
+    // popped when this jump is not reached.
+    cpl->can_fold = false;
 }
 
 static void while_loop(Compiler *cpl, Lexer *ls)
@@ -573,8 +602,7 @@ static void while_loop(Compiler *cpl, Lexer *ls)
     luluCpl_emit_loop(cpl, loop_start);
 
     luluCpl_patch_jump(cpl, loop_init);
-    luluCpl_emit_oparg1(cpl, OP_POP, 1);
-    cpl->stack_usage += 1; // Weirdness from above POP
+    pop_cond(cpl);
 }
 
 static void add_internal_local(Compiler *cpl, const char *name)
@@ -724,6 +752,9 @@ static void declare_locals(Compiler *cpl, Lexer *ls)
 
 void declaration(Compiler *cpl, Lexer *ls)
 {
+    // Reset as we know foldable opcodes like POP cannot be the first opcode
+    // in a declaration/statment/expression.
+    cpl->can_fold = true;
     luluLex_next_token(ls);
     switch (ls->consumed.type) {
     case TK_LOCAL:

@@ -55,14 +55,14 @@ bool luluVM_init(lulu_VM *vm, lulu_Allocator fn, void *ctx)
 struct lulu_Error {
     struct lulu_Error   *prev;
     jmp_buf              buffer;
-    volatile lulu_Status status; // Volatile as it can be changed outside caller.
+    volatile lulu_Status status;
 };
 
 lulu_Status luluVM_run_protected(lulu_VM *vm, ProtectedFn fn, void *ctx)
 {
     // New error handler for this particular run.
     Error e;
-    e.status   = LULU_OK;
+    e.status   = LULU_OK; // This MUST be volatile, else may be optimized out!
     e.prev     = vm->errors;
     vm->errors = &e;
     if (setjmp(e.buffer) == 0)

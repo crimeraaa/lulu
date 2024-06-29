@@ -23,6 +23,7 @@ void luluCpl_init_compiler(Compiler *cpl, lulu_VM *vm)
     cpl->stack_total = 0;
     cpl->stack_usage = 0;
     cpl->prev_opcode = OP_RETURN;
+    cpl->can_fold    = true;
 }
 
 // Will also set `prev_opcode`. Pass `delta` only when `op` has a variable stack
@@ -86,9 +87,17 @@ static bool optimized_opcode(Compiler *cpl, OpCode op, Byte arg)
     default:
         break;
     }
+
     // This branch is down here in case of POP needing to optimize SETTABLE.
     if (cpl->prev_opcode != op)
         return false;
+
+    // Need to NOT optimize just this once?
+    if (!cpl->can_fold) {
+        cpl->can_fold = true;
+        return false;
+    }
+
     // Adjusting would cause overflow?
     if (cast_int(*ip) + delta > cast_int(MAX_BYTE))
         return false;
@@ -97,6 +106,13 @@ static bool optimized_opcode(Compiler *cpl, OpCode op, Byte arg)
     // Use unadjusted `arg` for stack info.
     adjust_stackinfo(cpl, op, arg);
     return true;
+}
+
+static void emit_oparg1(Compiler *cpl, OpCode op, Byte arg)
+{
+    emit_byte(cpl, op);
+    emit_byte(cpl, arg);
+    adjust_stackinfo(cpl, op, arg);
 }
 
 void luluCpl_emit_oparg1(Compiler *cpl, OpCode op, Byte arg)
@@ -109,9 +125,7 @@ void luluCpl_emit_oparg1(Compiler *cpl, OpCode op, Byte arg)
             return;
         // Fall through
     default:
-        emit_byte(cpl, op);
-        emit_byte(cpl, arg);
-        adjust_stackinfo(cpl, op, arg);
+        emit_oparg1(cpl, op, arg);
         break;
     }
 }
@@ -150,6 +164,12 @@ void luluCpl_emit_oparg3(Compiler *cpl, OpCode op, Byte3 arg)
         adjust_stackinfo(cpl, op, 0);
         break;
     }
+}
+
+Byte3 luluCpl_get_byte3(Compiler *cpl, int offset)
+{
+    Byte *ip = &current_chunk(cpl)->code[offset];
+    return encode_byte3(ip[1], ip[2], ip[3]);
 }
 
 int luluCpl_emit_jump(Compiler *cpl)
