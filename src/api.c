@@ -395,7 +395,9 @@ void lulu_set_table(lulu_VM *vm, int t_offset, int k_offset, int to_pop)
 
 static Value to_field(lulu_VM *vm, const char *s)
 {
-    return make_string(luluStr_copy(vm, s, strlen(s)));
+    Value v;
+    setv_string(&v, luluStr_copy(vm, s, strlen(s)));
+    return v;
 }
 
 void lulu_set_field(lulu_VM *vm, int offset, const char *s)
@@ -407,8 +409,9 @@ void lulu_set_field(lulu_VM *vm, int offset, const char *s)
 
 void lulu_set_global(lulu_VM *vm, const char *s)
 {
-    Value t = make_table(&vm->globals);
+    Value t;
     Value k = to_field(vm, s);
+    setv_table(&t, &vm->globals);
     set_table(vm, &t, &k, poke_at_offset(vm, -1));
     lulu_pop(vm, 1);
 }

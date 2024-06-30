@@ -48,15 +48,15 @@
  */
 #define _is_enabled_c(ignore, val, ...) val
 
-#ifdef DEBUG_USE_ASSERT
+#ifdef LULU_DEBUG_ASSERT
 #include <assert.h>
-#else /* DEBUG_USE_ASSERT not defined. */
+#else /* LULU_DEBUG_ASSERT not defined. */
 
 // Hack because void statements in global scope are disallowed.
 #define assert(expr)                struct _silence_stray_semicolon_warning
 #define static_assert(expr, info)   assert(expr)
 
-#endif /* DEBUG_USE_ASSERT */
+#endif /* LULU_DEBUG_ASSERT */
 
 typedef LULU_BYTE   Byte;
 typedef LULU_BYTE2  Byte2;

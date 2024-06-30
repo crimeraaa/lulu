@@ -4,7 +4,7 @@
 #include "table.h"
 #include "vm.h"
 
-#ifdef DEBUG_PRINT_CODE
+#ifdef LULU_DEBUG_PRINT
 #include "debug.h"
 #endif
 
@@ -180,13 +180,10 @@ int luluCpl_emit_jump(Compiler *cpl)
     return offset;
 }
 
-int luluCpl_emit_if_jump(Compiler *cpl, bool can_pop)
+int luluCpl_emit_if_jump(Compiler *cpl)
 {
     luluCpl_emit_opcode(cpl, OP_TEST);
-    int offset = luluCpl_emit_jump(cpl);
-    if (can_pop)
-        luluCpl_emit_oparg1(cpl, OP_POP, 1);
-    return offset;
+    return luluCpl_emit_jump(cpl);
 }
 
 Byte3 luluCpl_get_jump(Compiler *cpl, int offset, JumpType type)
@@ -282,14 +279,15 @@ void luluCpl_emit_variable(Compiler *cpl, String *id)
 
 int luluCpl_identifier_constant(Compiler *cpl, String *id)
 {
-    Value wrap = make_string(id);
+    Value wrap;
+    setv_string(&wrap, id);
     return luluCpl_make_constant(cpl, &wrap);
 }
 
 void luluCpl_end_compiler(Compiler *cpl)
 {
     luluCpl_emit_return(cpl);
-    if (is_enabled(DEBUG_PRINT_CODE)) {
+    if (is_enabled(LULU_DEBUG_PRINT)) {
         printf("[STACK USAGE]:\n"
                "NET:    %i\n"
                "MOST:   %i\n\n",

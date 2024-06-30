@@ -11,7 +11,6 @@
 #include "lexer.h"
 
 #define CAN_ASSIGN (true)
-#define CAN_POP    (true)
 
 typedef struct {
     String *identifier; // Interned by Lexer.
@@ -54,7 +53,7 @@ Byte3 luluCpl_get_byte3(Compiler *cpl, int offset);
 
 // Returns the index of `OP_JUMP` in the bytecode.
 int   luluCpl_emit_jump(Compiler *cpl);
-int   luluCpl_emit_if_jump(Compiler *cpl, bool can_pop);
+int   luluCpl_emit_if_jump(Compiler *cpl);
 Byte3 luluCpl_get_jump(Compiler *cpl, int offset, JumpType type);
 void  luluCpl_patch_jump(Compiler *cpl, int offset);
 

@@ -8,7 +8,7 @@
             "compilerPath": "/usr/bin/clang",
             "intelliSenseMode": "linux-clang-x64",
             "cStandard": "c11",
-            "defines": ["DEBUG_PRINT_CODE", "DEBUG_TRACE_EXECUTION", "DEBUG_USE_ASSERT"]
+            "defines": ["LULU_DEBUG_PRINT", "LULU_DEBUG_TRACE", "LULU_DEBUG_ASSERT"]
         }
     ],
     "version": 4

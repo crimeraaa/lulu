@@ -9,7 +9,7 @@ CC_FLAGS	:= -std=c11 -Wall -Wextra -Werror -pedantic \
 			-Wno-error=unused-function -Wno-error=unused-parameter \
 			-Wno-error=unused-but-set-variable
 LD_FLAGS	:= -lm
-CC_DBGFLAGS	:= -g -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION -DDEBUG_USE_ASSERT
+CC_DBGFLAGS	:= -g -DLULU_DEBUG_PRINT -DLULU_DEBUG_TRACE -DLULU_DEBUG_ASSERT
 
 CC_EXE		:= $(DIR_BIN)/lulu
 CC_SRC 		:= $(wildcard $(DIR_SRC)/*.c)

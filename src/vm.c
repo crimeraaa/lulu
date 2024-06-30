@@ -1,10 +1,13 @@
 #include "vm.h"
 #include "compiler.h"
-#include "debug.h"
 #include "limits.h"
 #include "memory.h"
 #include "string.h"
 #include "table.h"
+
+#ifdef LULU_DEBUG_TRACE
+#include "debug.h"
+#endif
 
 static void reset_stack(lulu_VM *vm)
 {
@@ -177,7 +180,7 @@ void luluVM_execute(lulu_VM *vm)
 // 1}}} ------------------------------------------------------------------------
 
     for (;;) {
-        if (is_enabled(DEBUG_TRACE_EXECUTION)) {
+        if (is_enabled(LULU_DEBUG_TRACE)) {
             if (vm->top != vm->stack)
                 luluDbg_print_stack(vm);
             luluDbg_disassemble_instruction(ck, cast_int(vm->ip - ck->code));
@@ -233,8 +236,9 @@ void luluVM_execute(lulu_VM *vm)
 
             // Remember: Lua uses 1-based indexing!
             for (int i = 1; i <= count; i++) {
-                Value   k = make_number(i);
+                Value   k;
                 StackID v = poke_base(vm, t_idx + i);
+                setv_number(&k, i);
                 luluTbl_set(vm, t, &k, v);
             }
             lulu_pop(vm, count);
@@ -280,8 +284,8 @@ void luluVM_execute(lulu_VM *vm)
                 Number n = 0;
                 // Note how we use `cap` and not `count`.
                 for (int i = 1; i < t->cap; i++) {
-                    Value tmp;
-                    Value k = make_number(i);
+                    Value tmp, k;
+                    setv_number(&k, i);
                     if (luluTbl_get(t, &k, &tmp))
                         n += 1;
                     else

@@ -69,7 +69,7 @@ static void adjust_exprlist(Compiler *cpl, int idents, int exprs)
 
     // True: Discard extra expressions. False: Assign nils to remaining idents.
     if (exprs > idents)
-        luluCpl_emit_oparg1(cpl, OP_POP, exprs - idents);
+        popn(cpl, exprs - idents);
     else
         luluCpl_emit_oparg1(cpl, OP_NIL, idents - exprs);
 }
@@ -180,17 +180,18 @@ static void field(Compiler *cpl, Lexer *ls)
 static void logic_and(Compiler *cpl, Lexer *ls)
 {
     // If LHS is truthy, skip the jump. If falsy, pop LHS then push RHS.
-    int end_jump = luluCpl_emit_if_jump(cpl, CAN_POP);
+    int end_jump = luluCpl_emit_if_jump(cpl);
+    pop1(cpl);
     parse_precedence(cpl, ls, PREC_AND);
     luluCpl_patch_jump(cpl, end_jump);
 }
 
 static void logic_or(Compiler *cpl, Lexer *ls)
 {
-    int else_jump = luluCpl_emit_if_jump(cpl, !CAN_POP); // Truthy: goto 'end'.
-    int end_jump  = luluCpl_emit_jump(cpl); // Falsy: pop LHS, push RHS.
+    int else_jump = luluCpl_emit_if_jump(cpl); // Truthy: goto 'end'.
+    int end_jump  = luluCpl_emit_jump(cpl);    // Falsy: pop LHS, push RHS.
     luluCpl_patch_jump(cpl, else_jump);
-    luluCpl_emit_oparg1(cpl, OP_POP, 1);
+    pop1(cpl);
     parse_precedence(cpl, ls, PREC_OR);
     luluCpl_patch_jump(cpl, end_jump);
 }
@@ -225,14 +226,16 @@ static void grouping(Compiler *cpl, Lexer *ls)
 // Assumes the lexer successfully consumed and encoded a number literal.
 static void number(Compiler *cpl, Lexer *ls)
 {
-    Value v = make_number(ls->consumed.data.number);
+    Value v;
+    setv_number(&v, ls->consumed.data.number);
     luluCpl_emit_constant(cpl, &v);
 }
 
 // Assumes we consumed a string literal.
 static void string(Compiler *cpl, Lexer *ls)
 {
-    Value v = make_string(ls->consumed.data.string);
+    Value v;
+    setv_string(&v, ls->consumed.data.string);
     luluCpl_emit_constant(cpl, &v);
 }
 
@@ -538,14 +541,12 @@ Loop:
 }
 
 // Patch `jump` then set it to a new OP_JUMP.
-static void discharge_jump(Compiler *cpl, int *jump, bool can_pop)
+static void discharge_jump(Compiler *cpl, int *jump)
 {
     int prev = *jump;
     *jump    = luluCpl_emit_jump(cpl);
     luluCpl_patch_jump(cpl, prev);
-    // pop <condition> when truthy.
-    if (can_pop)
-        pop_cond(cpl);
+    pop_cond(cpl);
 }
 
 // <expression> 'then'
@@ -566,14 +567,15 @@ static void if_statement(Compiler *cpl, Lexer *ls)
 
     // resolves: none
     // emits:    goto <else-block>
-    int jump = luluCpl_emit_if_jump(cpl, CAN_POP);
+    int jump = luluCpl_emit_if_jump(cpl);
+    pop1(cpl);
 
     // <if-block>
     if_block(cpl, ls);
 
     // resolves: goto <else-block>
     // emits:    <else-block>
-    discharge_jump(cpl, &jump, CAN_POP);
+    discharge_jump(cpl, &jump);
 
     if (luluLex_match_token(ls, TK_ELSEIF))
         if_statement(cpl, ls);
@@ -597,7 +599,8 @@ static void while_loop(Compiler *cpl, Lexer *ls)
     condition(cpl, ls, TK_DO);
 
     // Truthy: skip this jump. Falsy: jump over the entire loop body.
-    int loop_init = luluCpl_emit_if_jump(cpl, CAN_POP);
+    int loop_init = luluCpl_emit_if_jump(cpl);
+    pop1(cpl);
     do_block(cpl, ls);
     luluCpl_emit_loop(cpl, loop_start);
 
@@ -638,7 +641,8 @@ static void numeric_for(Compiler *cpl, Lexer *ls, String *id)
     if (luluLex_match_token(ls, TK_COMMA)) {
         expression(cpl, ls);
     } else {
-        static const Value n = make_number(1);
+        static Value n;
+        setv_number(&n, 1);
         luluCpl_emit_constant(cpl, &n);
     }
 

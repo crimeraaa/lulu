@@ -91,13 +91,6 @@ typedef struct lulu_Table {
 #define as_table(v)         cast_table(as_object(v))
 #define as_cstring(v)       (as_string(v)->data)
 
-#define make_nil()          (Value){TYPE_NIL,     {.number  = 0}}
-#define make_boolean(b)     (Value){TYPE_BOOLEAN, {.boolean = (b)}}
-#define make_number(n)      (Value){TYPE_NUMBER,  {.number  = (n)}}
-#define make_object(p, tt)  (Value){tt,           {.object  = cast_object(p)}}
-#define make_string(p)      make_object(p, TYPE_STRING)
-#define make_table(p)       make_object(p, TYPE_TABLE)
-
 // We use a local variable to avoid bugs caused by multiple macro expansion.
 // NOTE: We set the value before the tag type in case `val` evaluates `dst`.
 #define setv_value(tt, as_fn, dst, val)                                        \

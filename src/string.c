@@ -50,7 +50,8 @@ String *luluStr_copy(lulu_VM *vm, const char *cs, size_t len)
 void luluStr_set_interned(lulu_VM *vm, const String *s)
 {
     Table *t = &vm->strings;
-    Value  k = make_string(s);
+    Value  k;
+    setv_string(&k, s);
     luluTbl_set(vm, t, &k, &k);
 }
 
