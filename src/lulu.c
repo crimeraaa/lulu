@@ -1,8 +1,6 @@
 #include "lulu.h"
 #include "limits.h"
 
-#include <sysexits.h>
-
 static int repl(lulu_VM *vm)
 {
     char line[LULU_MAX_LINE];
@@ -12,8 +10,7 @@ static int repl(lulu_VM *vm)
             fputc('\n', stdout);
             break;
         }
-        size_t      len = strlen(line);
-        lulu_Status err = lulu_load(vm, line, len, "stdin");
+        lulu_Status err = lulu_load(vm, line, strlen(line), "stdin");
         if (err != LULU_OK) {
             printf("%s\n", lulu_to_string(vm, -1));
             lulu_pop(vm, 1);
@@ -62,9 +59,8 @@ static int run_file(lulu_VM *vm, const char *name)
 {
     size_t len;
     char  *input = read_file(name, &len);
-    if (input == nullptr) {
-        return EX_IOERR;
-    }
+    if (input == nullptr)
+        return EXIT_FAILURE;
     lulu_Status res = lulu_load(vm, input, len, name);
     free(input);
     if (res == LULU_OK)
@@ -72,7 +68,7 @@ static int run_file(lulu_VM *vm, const char *name)
 
     printf("%s\n", lulu_to_string(vm, -1));
     lulu_pop(vm, 1);
-    return EX_SOFTWARE;
+    return EXIT_FAILURE;
 }
 
 int main(int argc, const char *argv[])
@@ -83,7 +79,7 @@ int main(int argc, const char *argv[])
         return EXIT_FAILURE;
     } else if (argc != 1 && argc != 2) {
         eprintfln("Usage: %s [script]", argv[0]);
-        return EX_USAGE;
+        return EXIT_FAILURE;
     }
     int err = (argc == 1) ? repl(vm) : run_file(vm, argv[1]);
     lulu_close(vm);

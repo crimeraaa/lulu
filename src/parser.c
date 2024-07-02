@@ -35,23 +35,6 @@ static void statement(Compiler *cpl, Lexer *ls);
  */
 static void expression(Compiler *cpl, Lexer *ls);
 
-static void popn(Compiler *cpl, int n)
-{
-    luluCpl_emit_oparg1(cpl, OP_POP, n);
-}
-
-static void pop1(Compiler *cpl)
-{
-    popn(cpl, 1);
-}
-
-// <condition> pushes 1 value but emits 2 POPs, so account for this weirdness.
-static void pop_cond(Compiler *cpl)
-{
-    pop1(cpl);
-    cpl->stack_usage += 1;
-}
-
 static int parse_exprlist(Compiler *cpl, Lexer *ls)
 {
     int exprs = 0;
@@ -60,18 +43,6 @@ static int parse_exprlist(Compiler *cpl, Lexer *ls)
         exprs += 1;
     } while (luluLex_match_token(ls, TK_COMMA));
     return exprs;
-}
-
-static void adjust_exprlist(Compiler *cpl, int idents, int exprs)
-{
-    if (exprs == idents)
-        return;
-
-    // True: Discard extra expressions. False: Assign nils to remaining idents.
-    if (exprs > idents)
-        popn(cpl, exprs - idents);
-    else
-        luluCpl_emit_oparg1(cpl, OP_NIL, idents - exprs);
 }
 
 // EXPRESSIONS ------------------------------------------------------------ {{{1
@@ -181,7 +152,7 @@ static void logic_and(Compiler *cpl, Lexer *ls)
 {
     // If LHS is truthy, skip the jump. If falsy, pop LHS then push RHS.
     int end_jump = luluCpl_emit_if_jump(cpl);
-    pop1(cpl);
+    luluCpl_emit_pop1(cpl);
     parse_precedence(cpl, ls, PREC_AND);
     luluCpl_patch_jump(cpl, end_jump);
 }
@@ -191,7 +162,7 @@ static void logic_or(Compiler *cpl, Lexer *ls)
     int else_jump = luluCpl_emit_if_jump(cpl); // Truthy: goto 'end'.
     int end_jump  = luluCpl_emit_jump(cpl);    // Falsy: pop LHS, push RHS.
     luluCpl_patch_jump(cpl, else_jump);
-    pop1(cpl);
+    luluCpl_emit_pop1(cpl);
     parse_precedence(cpl, ls, PREC_OR);
     luluCpl_patch_jump(cpl, end_jump);
 }
@@ -203,7 +174,7 @@ static void logic_or(Compiler *cpl, Lexer *ls)
 static void literal(Compiler *cpl, Lexer *ls)
 {
     switch (ls->consumed.type) {
-    case TK_NIL:   luluCpl_emit_oparg1(cpl, OP_NIL, 1); break;
+    case TK_NIL:   luluCpl_emit_nils(cpl, 1);           break;
     case TK_TRUE:  luluCpl_emit_opcode(cpl, OP_TRUE);   break;
     case TK_FALSE: luluCpl_emit_opcode(cpl, OP_FALSE);  break;
     default:
@@ -395,14 +366,14 @@ static void emit_assignment_tail(Compiler *cpl, Assignment *list)
     // After recursion, clean up stack if we emitted table fields as they cannot
     // be implicitly popped due to SETTABLE being a VAR_DELTA pop.
     if (list->type == ASSIGN_TABLE)
-        luluCpl_emit_oparg1(cpl, OP_POP, 2);
+        luluCpl_emit_popn(cpl, 2);
 }
 
 static void emit_assignment(Compiler *cpl, Lexer *ls, Assignment *list)
 {
     int idents = count_assignments(list);
     int exprs  = parse_exprlist(cpl, ls);
-    adjust_exprlist(cpl, idents, exprs);
+    luluCpl_adjust_exprlist(cpl, idents, exprs);
     emit_assignment_tail(cpl, list);
 }
 
@@ -546,7 +517,7 @@ static void discharge_jump(Compiler *cpl, int *jump)
     int prev = *jump;
     *jump    = luluCpl_emit_jump(cpl);
     luluCpl_patch_jump(cpl, prev);
-    pop_cond(cpl);
+    luluCpl_pop_cond(cpl);
 }
 
 // <expression> 'then'
@@ -568,7 +539,7 @@ static void if_statement(Compiler *cpl, Lexer *ls)
     // resolves: none
     // emits:    goto <else-block>
     int jump = luluCpl_emit_if_jump(cpl);
-    pop1(cpl);
+    luluCpl_emit_pop1(cpl);
 
     // <if-block>
     if_block(cpl, ls);
@@ -600,36 +571,23 @@ static void while_loop(Compiler *cpl, Lexer *ls)
 
     // Truthy: skip this jump. Falsy: jump over the entire loop body.
     int loop_init = luluCpl_emit_if_jump(cpl);
-    pop1(cpl);
+    luluCpl_emit_pop1(cpl);
     do_block(cpl, ls);
     luluCpl_emit_loop(cpl, loop_start);
 
     luluCpl_patch_jump(cpl, loop_init);
-    pop_cond(cpl);
-}
-
-static void add_internal_local(Compiler *cpl, const char *name)
-{
-    String *id = luluStr_copy(cpl->vm, name, strlen(name));
-    luluCpl_add_local(cpl, id);
-    luluCpl_identifier_constant(cpl, id);
-}
-
-static void emit_local(Compiler *cpl, String *id)
-{
-    luluCpl_init_local(cpl, id);
-    luluCpl_identifier_constant(cpl, id);
+    luluCpl_pop_cond(cpl);
 }
 
 static void numeric_for(Compiler *cpl, Lexer *ls, String *id)
 {
     // Order is important due to VM's assumptions about internal loop state.
-    add_internal_local(cpl, "(for index)");
-    add_internal_local(cpl, "(for limit)");
-    add_internal_local(cpl, "(for step)");
+    luluCpl_internal_local(cpl, "(for index)");
+    luluCpl_internal_local(cpl, "(for limit)");
+    luluCpl_internal_local(cpl, "(for step)");
 
     // <for-index>
-    emit_local(cpl, id);
+    luluCpl_emit_local(cpl, id);
     expression(cpl, ls);
     luluCpl_define_locals(cpl, 4);
 
@@ -692,7 +650,7 @@ static void statement(Compiler *cpl, Lexer *ls)
     switch (ls->consumed.type) {
     case TK_IDENT: {
         Assignment list;
-        init_assignment(&list, nullptr); // Ensure no garbage.
+        init_assignment(&list, nullptr);
         identifier_statement(cpl, ls, &list);
         break;
     }
@@ -744,13 +702,13 @@ static void declare_locals(Compiler *cpl, Lexer *ls)
 
     do {
         luluLex_expect_token(ls, TK_IDENT, nullptr);
-        emit_local(cpl, ls->consumed.data.string);
+        luluCpl_emit_local(cpl, ls->consumed.data.string);
         idents += 1;
     } while (luluLex_match_token(ls, TK_COMMA));
 
     if (luluLex_match_token(ls, TK_ASSIGN))
         exprs = parse_exprlist(cpl, ls);
-    adjust_exprlist(cpl, idents, exprs);
+    luluCpl_adjust_exprlist(cpl, idents, exprs);
     luluCpl_define_locals(cpl, idents);
 }
 

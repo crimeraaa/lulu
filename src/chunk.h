@@ -169,9 +169,9 @@ extern OpInfo LULU_OPINFO[];
 typedef struct {
     Table   mappings; // Map values to indexes into the `constants` array.
     Array   constants;
-    String *name;
+    String *name;     // Provided filename or `"stdin"` if in REPL.
     Byte   *code;
-    int    *lines; // Mirrors the bytecode array.
+    int    *lines;    // Mirrors the bytecode array.
     int     len;
     int     cap;
 } Chunk;

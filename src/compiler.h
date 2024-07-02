@@ -51,6 +51,14 @@ void luluCpl_emit_return(Compiler *cpl);
 void luluCpl_patch_byte3(Compiler *cpl, int offset, Byte3 arg);
 Byte3 luluCpl_get_byte3(Compiler *cpl, int offset);
 
+// Utility functions for common actions.
+void luluCpl_emit_popn(Compiler *cpl, int n);
+void luluCpl_emit_pop1(Compiler *cpl);
+void luluCpl_emit_nils(Compiler *cpl, int n);
+void luluCpl_adjust_exprlist(Compiler *cpl, int idents, int exprs);
+// <condition> pushes 1 value but emits 2 POPs, so account for this weirdness.
+void luluCpl_pop_cond(Compiler *cpl);
+
 // Returns the index of `OP_JUMP` in the bytecode.
 int   luluCpl_emit_jump(Compiler *cpl);
 int   luluCpl_emit_if_jump(Compiler *cpl);
@@ -81,15 +89,9 @@ void luluCpl_end_scope(Compiler *cpl);
 // We considered "defined" local variables to be ready for reading/writing.
 void luluCpl_define_locals(Compiler *cpl, int count);
 
-// Analogous to `declareVariable()` in the book, but only for Lua locals.
-// Assumes we just consumed a local variable identifier token.
-void luluCpl_init_local(Compiler *cpl, String *id);
-
-// Initializes the current top of the locals array.
-// Returns index of newly initialized local into the locals array.
-void luluCpl_add_local(Compiler *cpl, String *id);
-
 // Returns index of a local variable or -1 if assumed to be global.
 int luluCpl_resolve_local(Compiler *cpl, String *id);
+void luluCpl_internal_local(Compiler *cpl, const char *name);
+void luluCpl_emit_local(Compiler *cpl, String *id);
 
 #endif /* LULU_COMPILER_H */

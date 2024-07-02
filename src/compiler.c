@@ -8,10 +8,10 @@
 #include "debug.h"
 #endif
 
-static void init_scope(Scope *scp)
+static void init_scope(Scope *scope)
 {
-    scp->count = 0;
-    scp->depth = 0;
+    scope->count = 0;
+    scope->depth = 0;
 }
 
 void luluCpl_init_compiler(Compiler *cpl, lulu_VM *vm)
@@ -251,6 +251,39 @@ void luluCpl_patch_table(Compiler *cpl, int offset, Byte3 size)
 
 // 1}}} ------------------------------------------------------------------------
 
+void luluCpl_emit_popn(Compiler *cpl, int n)
+{
+    luluCpl_emit_oparg1(cpl, OP_POP, n);
+}
+
+void luluCpl_emit_pop1(Compiler *cpl)
+{
+    luluCpl_emit_popn(cpl, 1);
+}
+
+void luluCpl_pop_cond(Compiler *cpl)
+{
+    luluCpl_emit_pop1(cpl);
+    cpl->stack_usage += 1;
+}
+
+void luluCpl_emit_nils(Compiler *cpl, int n)
+{
+    luluCpl_emit_oparg1(cpl, OP_NIL, n);
+}
+
+void luluCpl_adjust_exprlist(Compiler *cpl, int idents, int exprs)
+{
+    if (exprs == idents)
+        return;
+
+    // True: Discard extra expressions. False: Assign nils to remaining idents.
+    if (exprs > idents)
+        luluCpl_emit_popn(cpl, exprs - idents);
+    else
+        luluCpl_emit_nils(cpl, idents - exprs);
+}
+
 int luluCpl_make_constant(Compiler *cpl, const Value *vl)
 {
     Lexer *ls = cpl->lexer;
@@ -287,14 +320,14 @@ int luluCpl_identifier_constant(Compiler *cpl, String *id)
 void luluCpl_end_compiler(Compiler *cpl)
 {
     luluCpl_emit_return(cpl);
-    if (is_enabled(LULU_DEBUG_PRINT)) {
-        printf("[STACK USAGE]:\n"
-               "NET:    %i\n"
-               "MOST:   %i\n\n",
-               cpl->stack_usage,
-               cpl->stack_total);
-        luluDbg_disassemble_chunk(current_chunk(cpl));
-    }
+#ifdef LULU_DEBUG_PRINT
+    printf("[STACK USAGE]:\n"
+           "NET:    %i\n"
+           "MOST:   %i\n\n",
+           cpl->stack_usage,
+           cpl->stack_total);
+    luluDbg_disassemble_chunk(current_chunk(cpl));
+#endif // LULU_DEBUG_PRINT
 }
 
 void luluCpl_begin_scope(Compiler *cpl)
@@ -319,7 +352,7 @@ void luluCpl_end_scope(Compiler *cpl)
     }
     // Don't waste 2 bytes if nothing to pop
     if (popped > 0)
-        luluCpl_emit_oparg1(cpl, OP_POP, popped);
+        luluCpl_emit_popn(cpl, popped);
 }
 
 void luluCpl_compile(Compiler *cpl, Lexer *ls, Chunk *chunk)
@@ -350,40 +383,56 @@ int luluCpl_resolve_local(Compiler *cpl, String *id)
     return -1;
 }
 
-void luluCpl_add_local(Compiler *cpl, String *id)
+// Initializes the current top of the locals array.
+static void add_local(Compiler *cpl, String *id)
 {
-    Scope *scp = &cpl->scope;
+    Scope *scope = &cpl->scope;
     Lexer *ls  = cpl->lexer;
-    if (scp->count + 1 > LULU_MAX_LOCALS)
+    if (scope->count + 1 > LULU_MAX_LOCALS)
         luluLex_error_consumed(ls, stringify(LULU_MAX_LOCALS) "+ local variables");
-    Local *loc = &scp->locals[scp->count++];
-    loc->identifier = id;
-    loc->depth      = -1;
+    Local *local      = &scope->locals[scope->count++];
+    local->identifier = id;
+    local->depth      = -1;
 }
 
-void luluCpl_init_local(Compiler *cpl, String *id)
+// Analogous to `declareVariable()` in the book, but only for Lua locals.
+// Assumes we just consumed a local variable identifier token.
+static void init_local(Compiler *cpl, String *id)
 {
-    Scope *scp = &cpl->scope;
+    Scope *scope = &cpl->scope;
     Lexer *ls  = cpl->lexer;
 
     // Detect variable shadowing in the same scope_
-    for (int i = scp->count - 1; i >= 0; i--) {
-        const Local *loc = &scp->locals[i];
+    for (int i = scope->count - 1; i >= 0; i--) {
+        const Local *local = &scope->locals[i];
         // Have we hit an outer scope?
-        if (loc->depth != -1 && loc->depth < scp->depth)
+        if (local->depth != -1 && local->depth < scope->depth)
             break;
-        if (id == loc->identifier)
+        if (id == local->identifier)
             luluLex_error_consumed(ls, "Shadowing of local variable");
     }
-    luluCpl_add_local(cpl, id);
+    add_local(cpl, id);
 }
 
 void luluCpl_define_locals(Compiler *cpl, int count)
 {
-    Scope *scp = &cpl->scope;
+    Scope *scope = &cpl->scope;
     for (int i = count; i > 0; i--) {
-        scp->locals[scp->count - i].depth = scp->depth;
+        scope->locals[scope->count - i].depth = scope->depth;
     }
+}
+
+void luluCpl_internal_local(Compiler *cpl, const char *name)
+{
+    String *id = luluStr_copy(cpl->vm, name, strlen(name));
+    add_local(cpl, id);
+    luluCpl_identifier_constant(cpl, id);
+}
+
+void luluCpl_emit_local(Compiler *cpl, String *id)
+{
+    init_local(cpl, id);
+    luluCpl_identifier_constant(cpl, id);
 }
 
 // 1}}} ------------------------------------------------------------------------

@@ -47,40 +47,22 @@ struct Run {
     Chunk  *chunk;
 };
 
-struct Init {
-    struct Run *runner;
-    Lexer      *lexer;
-    Compiler   *compiler;
-};
-
-static void pre_load(lulu_VM *vm, void *ctx)
-{
-    struct Init *i = ctx;
-    LString      s = i->runner->name;
-    vm->name = luluStr_copy(vm, s.string, s.length);
-    luluFun_init_chunk(i->runner->chunk, vm->name);
-    luluCpl_init_compiler(i->compiler, vm);
-    luluLex_init(vm, i->lexer, &i->runner->stream, &vm->buffer);
-}
-
 static void do_load(lulu_VM *vm, void *ctx)
 {
     struct Run     *r = ctx;
     static Lexer    ls;
     static Compiler cpl;
-    struct Init     i;
+    String         *s = luluStr_copy(vm, r->name.string, r->name.length);
 
-    i.runner   = r;
-    i.lexer    = &ls;
-    i.compiler = &cpl;
-    // Since we are inside a protected call already, we can afford to throw.
-    if (luluVM_run_protected(vm, &pre_load, &i) != LULU_OK)
-        lulu_alloc_error(vm);
+    // Assign here so VM has a non-NULL chunk to get filename of when erroring.
+    vm->chunk = r->chunk;
+    luluFun_init_chunk(r->chunk, s);
+    luluCpl_init_compiler(&cpl, vm);
+    luluLex_init(vm, &ls, &r->stream, &vm->buffer);
     luluCpl_compile(&cpl, &ls, r->chunk);
 
-    // Prep the VM.
-    vm->chunk = r->chunk;
-    vm->ip    = r->chunk->code;
+    // Prepare VM for execution.
+    vm->ip = r->chunk->code;
     luluVM_execute(vm);
 }
 
@@ -344,13 +326,13 @@ const char *lulu_concat(lulu_VM *vm, int count)
     StackID argv = poke_at_offset(vm, -count);
     luluZIO_reset_buffer(b);
     for (int i = 0; i < count; i++) {
-        StackID arg = &argv[i];
-        if (is_number(arg))
+        StackID p = &argv[i];
+        if (is_number(p))
             to_string(vm, i - count);
-        else if (!is_string(arg))
-            lulu_type_error(vm, "concatenate", get_typename(arg));
+        else if (!is_string(p))
+            lulu_type_error(vm, "concatenate", get_typename(p));
 
-        String *s = as_string(arg);
+        String *s = as_string(p);
         size_t  n = b->length + s->len;
         if (n + 1 > b->capacity)
             luluZIO_resize_buffer(vm, b, n + 1);
@@ -483,5 +465,5 @@ void lulu_push_error_vfstring(lulu_VM *vm, int line, const char *fmt, va_list ar
     lulu_set_top(vm, 0); // Reset VM stack before pushing the error message.
     const char *msg = lulu_push_vfstring(vm, fmt, args);
     lulu_pop(vm, 1); // push_fstring will push a copy.
-    lulu_push_fstring(vm, "%s:%i: %s", vm->name->data, line, msg);
+    lulu_push_fstring(vm, "%s:%i: %s", current_chunk(vm)->name->data, line, msg);
 }

@@ -117,7 +117,6 @@ static void arith_tm(lulu_VM *vm, StackID a, StackID b, TagMethod tm)
         case TM_UNM: setv_number(a, lulu_num_unm(ca.number));            break;
         default:
             // Should be unreachable.
-            assert(false);
             break;
         }
     } else {
@@ -180,11 +179,11 @@ void luluVM_execute(lulu_VM *vm)
 // 1}}} ------------------------------------------------------------------------
 
     for (;;) {
-        if (is_enabled(LULU_DEBUG_TRACE)) {
-            if (vm->top != vm->stack)
-                luluDbg_print_stack(vm);
-            luluDbg_disassemble_instruction(ck, cast_int(vm->ip - ck->code));
-        }
+#ifdef LULU_DEBUG_TRACE
+        if (vm->top != vm->stack)
+            luluDbg_print_stack(vm);
+        luluDbg_disassemble_instruction(ck, cast_int(vm->ip - ck->code));
+#endif
         OpCode  op  = read_byte();
         StackID top = poke_top(vm, -1); // Used a ton here.
         switch (op) {

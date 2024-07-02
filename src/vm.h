@@ -25,7 +25,6 @@ struct lulu_VM {
     StackID   base;      // Pointer to bottom of current stack frame.
     Chunk    *chunk;     // Bytecode, constants and such.
     Byte     *ip;        // Pointer to next instruction to be executed.
-    String   *name;      // Filename or `"stdin"` if in REPL.
     Table     globals;   // Maps identifiers to Values.
     Table     strings;   // Collection of all interned strings.
     Object   *objects;   // Head of linked list to all allocated objects.
