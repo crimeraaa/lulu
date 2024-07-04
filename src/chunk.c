@@ -39,51 +39,49 @@ OpInfo LULU_OPINFO[] = {
     [OP_RETURN]     = {"RETURN",        0,          0,          0},
 };
 
-static_assert(array_len(LULU_OPINFO) == NUM_OPCODES, "Bad opcode count");
-
-void luluFun_init_chunk(Chunk *ck, String *name)
+void luluFun_init_chunk(Chunk *c, String *name)
 {
-    luluTbl_init(&ck->mappings);
-    luluVal_init_array(&ck->constants);
-    ck->name  = name;
-    ck->code  = nullptr;
-    ck->lines = nullptr;
-    ck->len   = 0;
-    ck->cap   = 0;
+    luluTbl_init(&c->mappings);
+    luluVal_init_array(&c->constants);
+    c->name     = name;
+    c->code     = nullptr;
+    c->lines    = nullptr;
+    c->length   = 0;
+    c->capacity = 0;
 }
 
-void luluFun_free_chunk(lulu_VM *vm, Chunk *ck)
+void luluFun_free_chunk(lulu_VM *vm, Chunk *c)
 {
-    luluTbl_free(vm, &ck->mappings);
-    luluVal_free_array(vm, &ck->constants);
-    luluMem_free_parray(vm, ck->lines, ck->len);
-    luluMem_free_parray(vm, ck->code, ck->len);
-    luluFun_init_chunk(ck, nullptr);
+    luluTbl_free(vm, &c->mappings);
+    luluVal_free_array(vm, &c->constants);
+    luluMem_free_parray(vm, c->lines, c->length);
+    luluMem_free_parray(vm, c->code, c->length);
+    luluFun_init_chunk(c, nullptr);
 }
 
-void luluFun_write_chunk(lulu_VM *vm, Chunk *ck, Byte data, int line)
+void luluFun_write_chunk(lulu_VM *vm, Chunk *c, Byte data, int line)
 {
-    if (ck->len + 1 > ck->cap) {
-        int prev  = ck->cap;
-        int next  = luluMem_grow_capacity(prev);
-        ck->code  = luluMem_resize_parray(vm, ck->code,  prev, next);
-        ck->lines = luluMem_resize_parray(vm, ck->lines, prev, next);
-        ck->cap   = next;
+    if (c->length + 1 > c->capacity) {
+        int prev    = c->capacity;
+        int next    = luluMem_grow_capacity(prev);
+        c->code     = luluMem_resize_parray(vm, c->code,  prev, next);
+        c->lines    = luluMem_resize_parray(vm, c->lines, prev, next);
+        c->capacity = next;
     }
-    ck->code[ck->len]  = data;
-    ck->lines[ck->len] = line;
-    ck->len++;
+    c->code[c->length]  = data;
+    c->lines[c->length] = line;
+    c->length += 1;
 }
 
-int luluFun_add_constant(lulu_VM *vm, Chunk *ck, const Value *val)
+int luluFun_add_constant(lulu_VM *vm, Chunk *c, const Value *val)
 {
     Value  i;
-    Table *t = &ck->mappings;
-    Array *k = &ck->constants;
+    Table *t = &c->mappings;
+    Array *k = &c->constants;
     // Need to create new mapping?
     if (!luluTbl_get(t, val, &i)) {
         luluVal_write_array(vm, k, val);
-        setv_number(&i, k->len - 1); // `int` should fit in `lulu_Number`
+        setv_number(&i, k->length - 1); // `int` should fit in `lulu_Number`
         luluTbl_set(vm, t, val, &i);
     }
     return cast_int(as_number(&i));

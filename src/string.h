@@ -9,7 +9,6 @@ uint32_t luluStr_hash(const char *cs, size_t len);
 
 // Analogous to `allocateString()` in the book.
 String *luluStr_new(lulu_VM *vm, const char *cs, size_t len, uint32_t hash);
-void    luluStr_free(lulu_VM *vm, String *s);
 
 // Global functions that deal with strings need the VM to check for interned.
 String *luluStr_copy(lulu_VM *vm, const char *cs, size_t len);

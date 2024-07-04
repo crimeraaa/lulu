@@ -12,10 +12,25 @@
 #else /* LULU_DEBUG_ASSERT not defined. */
 
 // Hack because void statements in global scope are disallowed.
-#define assert(expr)                struct _silence_stray_semicolon_warning
-#define static_assert(expr, info)   assert(expr)
+#define assert(expr)
+#define static_assert(expr, info)
 
 #endif /* LULU_DEBUG_ASSERT */
+
+/**
+ * @note
+ * See: https://github.com/torvalds/linux/blob/master/include/linux/kconfig.h
+ */
+#define X__ARG_PLACEHOLDER_1                0,
+#define X__FILTER_ARG_2(ignored, val, ...)  val
+
+#define IS_DEFINED(x)  X__IS_DEFINED_1(x)
+
+// Try to token-paste the expansion of `x`, else token-paste it as-is.
+#define X__IS_DEFINED_1(val) X__IS_DEFINED_2(X__ARG_PLACEHOLDER_##val)
+
+// Note the extra 0 since empty varargs in macros are a GNU extension.
+#define X__IS_DEFINED_2(arg1_or_junk)    X__FILTER_ARG_2(arg1_or_junk 1, 0, 0)
 
 typedef LULU_BYTE   Byte;
 typedef LULU_BYTE2  Byte2;
@@ -81,9 +96,6 @@ typedef LULU_SBYTE3 SByte3;
 #define cstr_len(s)         lulu_cstr_len(s)
 #define cstr_eq(a, b, n)    lulu_cstr_eq(a, b, n)
 #define cstr_tonumber(s, p) lulu_cstr_tonumber(s, p)
-
-#define in_incrange(n, lo, hi)      ((n) >= (lo) && (n) <= (hi))
-#define in_excrange(n, lo, hi)      ((n) >= (lo) && (n) < (hi))
 
 typedef struct {
     const char *string; // Pointer to the first character.

@@ -425,7 +425,7 @@ static Token number_token(Lexer *ls)
     t.data.number = n;
 
     // Failed to convert entire lexeme? (see `man strtod` if using that)
-    if (end != s->data + s->len)
+    if (end != s->data + s->length)
         luluLex_error_middle(ls, "Malformed number");
     return t;
 }

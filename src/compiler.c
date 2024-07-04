@@ -1,12 +1,9 @@
 #include "compiler.h"
+#include "debug.h"
 #include "parser.h"
 #include "string.h"
 #include "table.h"
 #include "vm.h"
-
-#ifdef LULU_DEBUG_PRINT
-#include "debug.h"
-#endif
 
 static void init_scope(Scope *scope)
 {
@@ -71,7 +68,7 @@ void luluCpl_emit_opcode(Compiler *cpl, OpCode op)
  */
 static bool optimized_opcode(Compiler *cpl, OpCode op, Byte arg)
 {
-    Byte  *ip    = current_chunk(cpl)->code + (current_chunk(cpl)->len - 1);
+    Byte  *ip    = current_chunk(cpl)->code + (current_chunk(cpl)->length - 1);
     int    delta = arg;
 
     switch (op) {
@@ -174,7 +171,7 @@ Byte3 luluCpl_get_byte3(Compiler *cpl, int offset)
 
 int luluCpl_emit_jump(Compiler *cpl)
 {
-    int offset = current_chunk(cpl)->len;
+    int offset = current_chunk(cpl)->length;
     // TODO: Use as dummy argument to mark the end of a "patch list".
     luluCpl_emit_oparg3(cpl, OP_JUMP, MAX_BYTE3);
     return offset;
@@ -188,7 +185,7 @@ int luluCpl_emit_if_jump(Compiler *cpl)
 
 Byte3 luluCpl_get_jump(Compiler *cpl, int offset, JumpType type)
 {
-    Byte3 jump = current_chunk(cpl)->len - offset;
+    Byte3 jump = current_chunk(cpl)->length - offset;
     switch (type) {
     case JUMP_FORWARD:
         return jump - get_opsize(OP_JUMP); // skip jump operands as well.
@@ -215,7 +212,7 @@ void luluCpl_patch_jump(Compiler *cpl, int offset)
 
 int luluCpl_start_loop(Compiler *cpl)
 {
-    return current_chunk(cpl)->len;
+    return current_chunk(cpl)->length;
 }
 
 void luluCpl_emit_loop(Compiler *cpl, int loop_start)
@@ -239,7 +236,7 @@ void luluCpl_emit_return(Compiler *cpl)
 
 int luluCpl_emit_table(Compiler *cpl)
 {
-    int offset = current_chunk(cpl)->len; // Index about to filled in.
+    int offset = current_chunk(cpl)->length; // Index about to filled in.
     luluCpl_emit_oparg3(cpl, OP_NEWTABLE, 0); // By default we assume an empty table.
     return offset;
 }
@@ -320,14 +317,14 @@ int luluCpl_identifier_constant(Compiler *cpl, String *id)
 void luluCpl_end_compiler(Compiler *cpl)
 {
     luluCpl_emit_return(cpl);
-#ifdef LULU_DEBUG_PRINT
-    printf("[STACK USAGE]:\n"
-           "NET:    %i\n"
-           "MOST:   %i\n\n",
-           cpl->stack_usage,
-           cpl->stack_total);
-    luluDbg_disassemble_chunk(current_chunk(cpl));
-#endif // LULU_DEBUG_PRINT
+    if (IS_DEFINED(LULU_DEBUG_PRINT)) {
+        printf("[STACK USAGE]:\n"
+               "NET:    %i\n"
+               "MOST:   %i\n\n",
+               cpl->stack_usage,
+               cpl->stack_total);
+        luluDbg_disassemble_chunk(current_chunk(cpl));
+    }
 }
 
 void luluCpl_begin_scope(Compiler *cpl)

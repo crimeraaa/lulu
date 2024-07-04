@@ -121,7 +121,6 @@ bool luluTbl_set(lulu_VM *vm, Table *t, const Value *k, const Value *v)
         return false;
     if (t->count + 1 > t->cap * TABLE_MAX_LOAD)
         resize_table(vm, t, luluMem_grow_capacity(t->cap));
-
     Entry *ent      = find_entry(t->entries, t->cap, k);
     bool   isnewkey = is_nil(&ent->key);
     // Don't increase the count for tombstones (nil-key with non-nil value)

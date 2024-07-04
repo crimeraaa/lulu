@@ -36,7 +36,7 @@ struct lulu_Object {
 
 typedef struct lulu_String {
     Object   object; // "Inherited" must come first to allow safe type-punning.
-    size_t   len;    // String length with nul and escapes omitted.
+    size_t   length; // String length with nul and escapes omitted.
     uint32_t hash;   // Used when strings are used as table keys.
     char     data[]; // See: C99 flexible array members, MUST be last member!
 } String;
@@ -48,8 +48,8 @@ typedef struct {
 
 typedef struct {
     Value *values;
-    int    len;
-    int    cap;
+    int    length;
+    int    capacity;
 } Array;
 
 typedef struct lulu_Table {
@@ -126,8 +126,9 @@ const char *luluVal_to_string(const Value *val, char *buf);
 // We cannot use `memcmp` due to struct padding.
 bool luluVal_equal(const Value *a, const Value *b);
 
-void luluVal_init_array(Array *arr);
-void luluVal_free_array(lulu_VM *vm, Array *arr);
-void luluVal_write_array(lulu_VM *vm, Array *arr, const Value *val);
+void luluVal_init_array(Array *v);
+void luluVal_free_array(lulu_VM *vm, Array *a);
+void luluVal_resize_array(lulu_VM *vm, Array *a, int n);
+void luluVal_write_array(lulu_VM *vm, Array *a, const Value *v);
 
 #endif /* LULU_OBJECT_H */

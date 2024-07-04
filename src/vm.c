@@ -1,13 +1,10 @@
 #include "vm.h"
 #include "compiler.h"
+#include "debug.h"
 #include "limits.h"
 #include "memory.h"
 #include "string.h"
 #include "table.h"
-
-#ifdef LULU_DEBUG_TRACE
-#include "debug.h"
-#endif
 
 static void reset_stack(lulu_VM *vm)
 {
@@ -158,15 +155,12 @@ void luluVM_execute(lulu_VM *vm)
 
 #define binary_op_or_tm(set_fn, op_fn, tm_fn, tm)                              \
 {                                                                              \
-    StackID a = poke_top(vm, -2);                                              \
-    StackID b = poke_top(vm, -1);                                              \
-    if (is_number(a) && is_number(b)) {                                        \
-        Number na = as_number(a);                                              \
-        Number nb = as_number(b);                                              \
-        set_fn(a, op_fn(na, nb));                                              \
-    } else {                                                                   \
+    StackID a = top - 1;                                                       \
+    StackID b = top;                                                           \
+    if (is_number(a) && is_number(b))                                          \
+        set_fn(a, op_fn(as_number(a), as_number(b)));                          \
+    else                                                                       \
         tm_fn(vm, a, b, tm);                                                   \
-    }                                                                          \
     lulu_pop(vm, 1);                                                           \
 }
 
@@ -179,11 +173,11 @@ void luluVM_execute(lulu_VM *vm)
 // 1}}} ------------------------------------------------------------------------
 
     for (;;) {
-#ifdef LULU_DEBUG_TRACE
-        if (vm->top != vm->stack)
-            luluDbg_print_stack(vm);
-        luluDbg_disassemble_instruction(ck, cast_int(vm->ip - ck->code));
-#endif
+        if (IS_DEFINED(LULU_DEBUG_TRACE)) {
+            if (vm->top != vm->stack)
+                luluDbg_print_stack(vm);
+            luluDbg_disassemble_instruction(ck, cast_int(vm->ip - ck->code));
+        }
         OpCode  op  = read_byte();
         StackID top = poke_top(vm, -1); // Used a ton here.
         switch (op) {
@@ -244,7 +238,7 @@ void luluVM_execute(lulu_VM *vm)
             break;
         }
         case OP_EQ: {
-            StackID a = poke_top(vm, -2);
+            StackID a = top - 1;
             StackID b = top;
             setv_boolean(a, luluVal_equal(a, b));
             lulu_pop(vm, 1);
@@ -276,7 +270,7 @@ void luluVM_execute(lulu_VM *vm)
             // TODO: Separate array segment from hash segment of tables.
             if (is_string(top)) {
                 String *s = as_string(top);
-                setv_number(top, cast_num(s->len));
+                setv_number(top, cast_num(s->length));
             } else if (is_table(top)) {
                 // Painfully slow but separating arrays from hashes is tricky.
                 Table *t = as_table(top);
@@ -322,8 +316,8 @@ void luluVM_execute(lulu_VM *vm)
             break;
         }
         case OP_FORPREP: {
-            StackID for_index = poke_top(vm, -3);
-            StackID for_limit = poke_top(vm, -2);
+            StackID for_index = top - 2;
+            StackID for_limit = top - 1;
             StackID for_step  = top;
 
             if (!to_number(for_index))
@@ -344,15 +338,15 @@ void luluVM_execute(lulu_VM *vm)
             break; // Implicit OP_JUMP->OP_FORLOOP
         }
         case OP_FORLOOP: {
-            Number step  = as_number(poke_top(vm, -2));
-            Number limit = as_number(poke_top(vm, -3));
+            Number limit = as_number(top - 2);
+            Number step  = as_number(top - 1);
             Number index = lulu_num_add(as_number(top), step);
             bool   pos   = lulu_num_lt(0, step);
 
             // Comparison we use depends on the signedness.
             if (pos ?  lulu_num_le(index, limit) : lulu_num_le(limit, index)) {
                 setv_number(top, index);
-                setv_number(poke_top(vm, -4), index);
+                setv_number(top - 3, index);
             } else {
                 // Skip the backwards jump to loop body.
                 vm->ip += get_opsize(OP_JUMP);

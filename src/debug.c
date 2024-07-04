@@ -2,13 +2,13 @@
 #include "limits.h"
 #include "vm.h"
 
-static void disassemble_constants(const Chunk *ck)
+static void disassemble_constants(const Chunk *c)
 {
-    const Array *kst = &ck->constants;
+    const Array *k = &c->constants;
     printf("[CONSTANTS]:\n");
-    for (int i = 0; i < kst->len; i++) {
+    for (int i = 0; i < k->length; i++) {
         printf("[%i] := ", i);
-        luluDbg_print_value(&kst->values[i]);
+        luluDbg_print_value(&k->values[i]);
         printf("\n");
     }
     printf("\n");
@@ -29,7 +29,7 @@ void luluDbg_print_value(const Value *v)
 {
     if (is_string(v)) {
         const String *s = as_string(v);
-        const char    q = (s->len == 1) ? '\'' : '\"'; // fake char literals
+        const char    q = (s->length == 1) ? '\'' : '\"'; // fake char literals
         printf("%c%s%c", q, s->data, q);
     } else {
         char buf[LULU_MAX_TOSTRING];
@@ -37,12 +37,12 @@ void luluDbg_print_value(const Value *v)
     }
 }
 
-void luluDbg_disassemble_chunk(const Chunk *ck)
+void luluDbg_disassemble_chunk(const Chunk *c)
 {
-    disassemble_constants(ck);
-    printf("[BYTECODE]: '%s'\n", ck->name->data);
-    for (int offset = 0; offset < ck->len; ) {
-        offset = luluDbg_disassemble_instruction(ck, offset);
+    disassemble_constants(c);
+    printf("[BYTECODE]: '%s'\n", c->name->data);
+    for (int offset = 0; offset < c->length; ) {
+        offset = luluDbg_disassemble_instruction(c, offset);
     }
     printf("\n");
 }
@@ -145,14 +145,14 @@ static void for_loop(int offset)
     print_jump(offset + 1, '+', jump, addr);
 }
 
-int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
+int luluDbg_disassemble_instruction(const Chunk *c, int offset)
 {
-    const Byte  *ip = &ck->code[offset];
+    const Byte  *ip = &c->code[offset];
     const OpCode op = read_byte(ip);
-    const int    ln = ck->lines[offset];
+    const int    ln = c->lines[offset];
 
     printf("%04x ", offset);
-    if (offset > 0 && ln == ck->lines[offset - 1])
+    if (offset > 0 && ln == c->lines[offset - 1])
         printf("   | ");
     else
         printf("%4i ", ln);
@@ -161,7 +161,7 @@ int luluDbg_disassemble_instruction(const Chunk *ck, int offset)
     switch (op) {
     case OP_CONSTANT:
     case OP_GETGLOBAL:
-    case OP_SETGLOBAL: constant_op(ck, ip);     break;
+    case OP_SETGLOBAL: constant_op(c, ip);     break;
     case OP_GETLOCAL:
     case OP_SETLOCAL:  local_op(ip);            break;
     case OP_POP:       simple_op("Pop", ip);    break;

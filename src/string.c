@@ -22,17 +22,11 @@ String *luluStr_new(lulu_VM *vm, const char *cs, size_t len, uint32_t hash)
 {
     // Note how we add 1 for the nul char.
     String *s = cast_string(luluObj_new(vm, luluStr_size(len + 1), TYPE_STRING));
-    s->len    = len;
+    s->length = len;
     s->hash   = hash;
     memcpy(s->data, cs, len);
     s->data[len] = '\0';
     return s;
-}
-
-// Note we add 1 to `oldsz` because we previously allocated 1 extra by for nul.
-void luluStr_free(lulu_VM *vm, String *s)
-{
-    luluMem_free_pointer(vm, luluObj_unlink(vm, &s->object), luluStr_size(s->len + 1));
 }
 
 String *luluStr_copy(lulu_VM *vm, const char *cs, size_t len)
@@ -65,12 +59,12 @@ String *luluStr_find_interned(lulu_VM *vm, const char *cs, size_t len, uint32_t 
     for (;;) {
         Entry *ent = &t->entries[i];
         // The strings table only ever has completely empty or full entries.
-        if (is_nil(&ent->key) && is_nil(&ent->value))
+        if (is_nil(&ent->key))
             return nullptr;
 
         // We assume ALL valid (i.e: non-nil) keys are strings.
         String *s = as_string(&ent->key);
-        if (s->len == len && s->hash == hash) {
+        if (s->length == len && s->hash == hash) {
             if (cstr_eq(s->data, cs, len))
                 return s;
         }

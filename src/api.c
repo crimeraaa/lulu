@@ -333,11 +333,11 @@ const char *lulu_concat(lulu_VM *vm, int count)
             lulu_type_error(vm, "concatenate", get_typename(p));
 
         String *s = as_string(p);
-        size_t  n = b->length + s->len;
+        size_t  n = b->length + s->length;
         if (n + 1 > b->capacity)
             luluZIO_resize_buffer(vm, b, n + 1);
-        memcpy(&b->buffer[b->length], s->data, s->len);
-        b->length += s->len;
+        memcpy(&b->buffer[b->length], s->data, s->length);
+        b->length += s->length;
     }
     String *s = luluStr_copy(vm, b->buffer, b->length);
     lulu_pop(vm, count);

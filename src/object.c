@@ -32,7 +32,7 @@ ToNumber luluVal_to_number(const Value *val)
         char   *end;
         String *s = as_string(val);
         Number  n = cstr_tonumber(s->data, &end);
-        if (end == (s->data + s->len)) {
+        if (end == (s->data + s->length)) {
             conv.number = n;
             conv.ok     = true;
             return conv;
@@ -77,27 +77,29 @@ bool luluVal_equal(const Value *a, const Value *b)
     }
 }
 
-void luluVal_init_array(Array *arr)
+void luluVal_init_array(Array *a)
 {
-    arr->values = nullptr;
-    arr->len    = 0;
-    arr->cap    = 0;
+    a->values   = nullptr;
+    a->length   = 0;
+    a->capacity = 0;
 }
 
-void luluVal_free_array(lulu_VM *vm, Array *arr)
+void luluVal_free_array(lulu_VM *vm, Array *a)
 {
-    luluMem_free_parray(vm, arr->values, arr->len);
-    luluVal_init_array(arr);
+    luluMem_free_parray(vm, a->values, a->length);
+    luluVal_init_array(a);
 }
 
-void luluVal_write_array(lulu_VM *vm, Array *arr, const Value *val)
+void luluVal_resize_array(lulu_VM *vm, Array *a, int n)
 {
-    if (arr->len + 1 > arr->cap) {
-        int oldcap  = arr->cap;
-        int newcap  = luluMem_grow_capacity(oldcap);
-        arr->values = luluMem_resize_parray(vm, arr->values, oldcap, newcap);
-        arr->cap    = newcap;
-    }
-    arr->values[arr->len] = *val;
-    arr->len += 1;
+    a->values   = luluMem_resize_parray(vm, a->values, a->capacity, n);
+    a->capacity = n;
+}
+
+void luluVal_write_array(lulu_VM *vm, Array *a, const Value *val)
+{
+    if (a->length + 1 > a->capacity)
+        luluVal_resize_array(vm, a, luluMem_grow_capacity(a->capacity));
+    a->values[a->length] = *val;
+    a->length += 1;
 }

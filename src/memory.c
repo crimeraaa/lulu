@@ -37,7 +37,8 @@ static void free_object(lulu_VM *vm, Object *obj)
 {
     switch (obj->tag) {
     case TYPE_STRING:
-        luluStr_free(vm, cast_string(obj));
+        // Note we add 1 to `oldsz` because we allocated 1 extra by for nul.
+        luluMem_free_pointer(vm, obj, luluStr_size(cast_string(obj)->length + 1));
         break;
     case TYPE_TABLE:
         luluTbl_free(vm, cast_table(obj));
