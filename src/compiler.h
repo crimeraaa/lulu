@@ -75,8 +75,8 @@ void luluCpl_patch_table(Compiler *cpl, int offset, Byte3 size);
 
 // Returns the index of `v` in the constants table.
 // Will throw if our current number of constants exceeds `MAX_CONSTS`.
-int  luluCpl_make_constant(Compiler *cpl, const Value *vl);
-void luluCpl_emit_constant(Compiler *cpl, const Value *vl);
+int  luluCpl_make_constant(Compiler *cpl, const Value *v);
+void luluCpl_emit_constant(Compiler *cpl, const Value *v);
 void luluCpl_emit_variable(Compiler *cpl, String *id);
 void luluCpl_emit_identifier(Compiler *cpl, String *id);
 int  luluCpl_identifier_constant(Compiler *cpl, String *id);

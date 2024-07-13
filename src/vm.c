@@ -94,9 +94,7 @@ typedef enum {
 const char *pick_non_number(StackID a, StackID b)
 {
     // First operand is wrong?
-    if (!luluVal_to_number(a).ok)
-        return get_typename(a);
-    return get_typename(b);
+    return get_typename(!luluVal_to_number(a).ok ? a : b);
 }
 
 static void arith_tm(lulu_VM *vm, StackID a, StackID b, TagMethod tm)
@@ -155,8 +153,8 @@ void luluVM_execute(lulu_VM *vm)
 
 #define binary_op_or_tm(set_fn, op_fn, tm_fn, tm)                              \
 {                                                                              \
-    StackID a = top - 1;                                                       \
-    StackID b = top;                                                           \
+    StackID a = &top[-2];                                                      \
+    StackID b = &top[-1];                                                      \
     if (is_number(a) && is_number(b))                                          \
         set_fn(a, op_fn(as_number(a), as_number(b)));                          \
     else                                                                       \
@@ -179,7 +177,7 @@ void luluVM_execute(lulu_VM *vm)
             luluDbg_disassemble_instruction(ck, cast_int(vm->ip - ck->code));
         }
         OpCode  op  = read_byte();
-        StackID top = poke_top(vm, -1); // Used a ton here.
+        StackID top = vm->top;
         switch (op) {
         case OP_CONSTANT:
             push_back(vm, read_constant());
@@ -209,7 +207,7 @@ void luluVM_execute(lulu_VM *vm)
             lulu_get_table(vm, -2, -1);
             break;
         case OP_SETLOCAL:
-            vm->base[read_byte()] = *top;
+            vm->base[read_byte()] = top[-1];
             lulu_pop(vm, 1);
             break;
         case OP_SETGLOBAL:
@@ -238,8 +236,8 @@ void luluVM_execute(lulu_VM *vm)
             break;
         }
         case OP_EQ: {
-            StackID a = top - 1;
-            StackID b = top;
+            StackID a = &top[-2];
+            StackID b = &top[-1];
             setv_boolean(a, luluVal_equal(a, b));
             lulu_pop(vm, 1);
             break;
@@ -257,23 +255,25 @@ void luluVM_execute(lulu_VM *vm)
             lulu_concat(vm, read_byte());
             break;
         case OP_UNM: {
-            if (is_number(top))
-                setv_number(top, lulu_num_unm(as_number(top)));
+            StackID a = &top[-1];
+            if (is_number(a))
+                setv_number(a, lulu_num_unm(as_number(a)));
             else
-                arith_tm(vm, top, top, TM_UNM);
+                arith_tm(vm, a, a, TM_UNM);
             break;
         }
         case OP_NOT:
-            setv_boolean(top, !lulu_to_boolean(vm, -1));
+            setv_boolean(&top[-1], !lulu_to_boolean(vm, -1));
             break;
-        case OP_LEN:
+        case OP_LEN: {
+            StackID dst = &top[-1];
             // TODO: Separate array segment from hash segment of tables.
-            if (is_string(top)) {
-                String *s = as_string(top);
-                setv_number(top, cast_num(s->length));
-            } else if (is_table(top)) {
+            if (is_string(dst)) {
+                String *s = as_string(dst);
+                setv_number(dst, cast_num(s->length));
+            } else if (is_table(dst)) {
                 // Painfully slow but separating arrays from hashes is tricky.
-                Table *t = as_table(top);
+                Table *t = as_table(dst);
                 Number n = 0;
                 // Note how we use `cap` and not `count`.
                 for (int i = 1; i < t->cap; i++) {
@@ -284,11 +284,12 @@ void luluVM_execute(lulu_VM *vm)
                     else
                         break; // No more sequential number indexes?
                 }
-                setv_number(top, n);
+                setv_number(dst, n);
             } else {
-                lulu_type_error(vm, "get length of", get_typename(top));
+                lulu_type_error(vm, "get length of", get_typename(dst));
             }
             break;
+        }
         case OP_PRINT: {
             int argc = read_byte();
             for (int i = 0; i < argc; i++) {
@@ -303,7 +304,7 @@ void luluVM_execute(lulu_VM *vm)
         case OP_TEST:
             // Don't convert as other opcodes may need the value still.
             // Skip the OP_JUMP if truthy as it's only needed when falsy.
-            if (!is_falsy(top))
+            if (!is_falsy(&top[-1]))
                 vm->ip += get_opsize(OP_JUMP);
             break;
         case OP_JUMP: {
@@ -316,9 +317,9 @@ void luluVM_execute(lulu_VM *vm)
             break;
         }
         case OP_FORPREP: {
-            StackID for_index = top - 2;
-            StackID for_limit = top - 1;
-            StackID for_step  = top;
+            StackID for_index = &top[-3];
+            StackID for_limit = &top[-2];
+            StackID for_step  = &top[-1];
 
             if (!to_number(for_index))
                 lulu_runtime_error(vm, "'for' index must be a number");
@@ -338,15 +339,15 @@ void luluVM_execute(lulu_VM *vm)
             break; // Implicit OP_JUMP->OP_FORLOOP
         }
         case OP_FORLOOP: {
-            Number limit = as_number(top - 2);
-            Number step  = as_number(top - 1);
-            Number index = lulu_num_add(as_number(top), step);
+            Number limit = as_number(&top[-3]);
+            Number step  = as_number(&top[-2]);
+            Number index = lulu_num_add(as_number(&top[-1]), step);
             bool   pos   = lulu_num_lt(0, step);
 
             // Comparison we use depends on the signedness.
             if (pos ?  lulu_num_le(index, limit) : lulu_num_le(limit, index)) {
-                setv_number(top, index);
-                setv_number(top - 3, index);
+                setv_number(&top[-1], index);
+                setv_number(&top[-4], index);
             } else {
                 // Skip the backwards jump to loop body.
                 vm->ip += get_opsize(OP_JUMP);

@@ -281,18 +281,18 @@ void luluCpl_adjust_exprlist(Compiler *cpl, int idents, int exprs)
         luluCpl_emit_nils(cpl, idents - exprs);
 }
 
-int luluCpl_make_constant(Compiler *cpl, const Value *vl)
+int luluCpl_make_constant(Compiler *cpl, const Value *v)
 {
     Lexer *ls = cpl->lexer;
-    int    i  = luluFun_add_constant(cpl->vm, current_chunk(cpl), vl);
+    int    i  = luluFun_add_constant(cpl->vm, current_chunk(cpl), v);
     if (i + 1 > LULU_MAX_CONSTS)
         luluLex_error_consumed(ls, stringify(LULU_MAX_CONSTS) "+ constants in current chunk");
     return i;
 }
 
-void luluCpl_emit_constant(Compiler *cpl, const Value *vl)
+void luluCpl_emit_constant(Compiler *cpl, const Value *v)
 {
-    luluCpl_emit_oparg3(cpl, OP_CONSTANT, luluCpl_make_constant(cpl, vl));
+    luluCpl_emit_oparg3(cpl, OP_CONSTANT, luluCpl_make_constant(cpl, v));
 }
 
 void luluCpl_emit_variable(Compiler *cpl, String *id)

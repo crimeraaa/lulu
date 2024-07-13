@@ -15,7 +15,7 @@ String *luluStr_copy(lulu_VM *vm, const char *cs, size_t len);
 #define luluStr_copy_lit(vm, s)  luluStr_copy((vm), s, cstr_len(s))
 
 // Mutates the `vm->strings` table. Maps strings to non-nil values.
-void luluStr_set_interned(lulu_VM *vm, const String *s);
+String *luluStr_set_interned(lulu_VM *vm, String *s);
 
 // Searches for interned strings. Analogous to `tableFindString()` in the book.
 String *luluStr_find_interned(lulu_VM *vm, const char *cs, size_t len, uint32_t hash);

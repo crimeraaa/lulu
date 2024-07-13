@@ -96,10 +96,10 @@ void luluVal_resize_array(lulu_VM *vm, Array *a, int n)
     a->capacity = n;
 }
 
-void luluVal_write_array(lulu_VM *vm, Array *a, const Value *val)
+void luluVal_write_array(lulu_VM *vm, Array *a, const Value *v)
 {
     if (a->length + 1 > a->capacity)
         luluVal_resize_array(vm, a, luluMem_grow_capacity(a->capacity));
-    a->values[a->length] = *val;
+    a->values[a->length] = *v;
     a->length += 1;
 }

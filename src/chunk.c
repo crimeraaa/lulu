@@ -73,16 +73,16 @@ void luluFun_write_chunk(lulu_VM *vm, Chunk *c, Byte data, int line)
     c->length += 1;
 }
 
-int luluFun_add_constant(lulu_VM *vm, Chunk *c, const Value *val)
+int luluFun_add_constant(lulu_VM *vm, Chunk *c, const Value *v)
 {
     Value  i;
     Table *t = &c->mappings;
     Array *k = &c->constants;
     // Need to create new mapping?
-    if (!luluTbl_get(t, val, &i)) {
-        luluVal_write_array(vm, k, val);
+    if (!luluTbl_get(t, v, &i)) {
+        luluVal_write_array(vm, k, v);
         setv_number(&i, k->length - 1); // `int` should fit in `lulu_Number`
-        luluTbl_set(vm, t, val, &i);
+        luluTbl_set(vm, t, v, &i);
     }
     return cast_int(as_number(&i));
 }

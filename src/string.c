@@ -35,18 +35,17 @@ String *luluStr_copy(lulu_VM *vm, const char *cs, size_t len)
     String  *found = luluStr_find_interned(vm, cs, len, hash);
     if (found != nullptr)
         return found;
-
-    String *s = luluStr_new(vm, cs, len, hash);
-    luluStr_set_interned(vm, s);
-    return s;
+    else
+        return luluStr_set_interned(vm, luluStr_new(vm, cs, len, hash));
 }
 
-void luluStr_set_interned(lulu_VM *vm, const String *s)
+String *luluStr_set_interned(lulu_VM *vm, String *s)
 {
     Table *t = &vm->strings;
     Value  k;
     setv_string(&k, s);
     luluTbl_set(vm, t, &k, &k);
+    return s;
 }
 
 String *luluStr_find_interned(lulu_VM *vm, const char *cs, size_t len, uint32_t hash)

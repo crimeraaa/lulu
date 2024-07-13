@@ -265,20 +265,20 @@ const char *lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
 
 bool lulu_to_boolean(lulu_VM *vm, int offset)
 {
-    StackID v = poke_at_offset(vm, offset);
-    bool    b = !is_falsy(v);
-    setv_boolean(v, b);
+    StackID dst = poke_at_offset(vm, offset);
+    bool    b = !is_falsy(dst);
+    setv_boolean(dst, b);
     return b;
 }
 
 lulu_Number lulu_to_number(lulu_VM *vm, int offset)
 {
-    StackID  v    = poke_at_offset(vm, offset);
-    ToNumber conv = luluVal_to_number(v);
+    StackID  dst  = poke_at_offset(vm, offset);
+    ToNumber conv = luluVal_to_number(dst);
 
     // As is, `luluVal_to_number` does not do any error handling.
     if (conv.ok) {
-        setv_number(v, conv.number);
+        setv_number(dst, conv.number);
         return conv.number;
     }
     // Don't silently set `v` to nil if the user didn't ask for it.
@@ -287,28 +287,28 @@ lulu_Number lulu_to_number(lulu_VM *vm, int offset)
 
 static lulu_String *to_string(lulu_VM *vm, int offset)
 {
-    StackID vl = poke_at_offset(vm, offset);
-    switch (get_tag(vl)) {
+    StackID dst = poke_at_offset(vm, offset);
+    switch (get_tag(dst)) {
     case TYPE_NIL:
         lulu_push_literal(vm, "nil");
         break;
     case TYPE_BOOLEAN:
-        lulu_push_string(vm, as_boolean(vl) ? "true" : "false");
+        lulu_push_string(vm, as_boolean(dst) ? "true" : "false");
         break;
     case TYPE_NUMBER:
-        lulu_push_fstring(vm, "%f", as_number(vl));
+        lulu_push_fstring(vm, "%f", as_number(dst));
         break;
     case TYPE_STRING:
-        return as_string(vl);
+        return as_string(dst);
     case TYPE_TABLE:
-        lulu_push_fstring(vm, "%s: %p", get_typename(vl), as_pointer(vl));
+        lulu_push_fstring(vm, "%s: %p", get_typename(dst), as_pointer(dst));
         break;
     }
     // Do an in-place conversion based on the temporary string we just pushed.
     String *s = as_string(poke_at_offset(vm, -1));
-    setv_string(vl, s);
+    setv_string(dst, s);
     lulu_pop(vm, 1);
-    return as_string(vl);
+    return as_string(dst);
 }
 
 const char *lulu_to_string(lulu_VM *vm, int offset)
@@ -323,16 +323,16 @@ const char *lulu_to_string(lulu_VM *vm, int offset)
 const char *lulu_concat(lulu_VM *vm, int count)
 {
     Buffer *b    = &vm->buffer;
-    StackID argv = poke_at_offset(vm, -count);
+    StackID args = poke_at_offset(vm, -count);
     luluZIO_reset_buffer(b);
     for (int i = 0; i < count; i++) {
-        StackID p = &argv[i];
-        if (is_number(p))
+        StackID dst = &args[i];
+        if (is_number(dst))
             to_string(vm, i - count);
-        else if (!is_string(p))
-            lulu_type_error(vm, "concatenate", get_typename(p));
+        else if (!is_string(dst))
+            lulu_type_error(vm, "concatenate", get_typename(dst));
 
-        String *s = as_string(p);
+        String *s = as_string(dst);
         size_t  n = b->length + s->length;
         if (n + 1 > b->capacity)
             luluZIO_resize_buffer(vm, b, n + 1);
