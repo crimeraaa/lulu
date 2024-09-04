@@ -4,7 +4,16 @@
 #include "lulu.h"
 #include "memory.h"
 
+#include <math.h>
+
 typedef double lulu_Number;
+
+#define lulu_Number_add(x, y)   ((x) + (y))
+#define lulu_Number_sub(x, y)   ((x) - (y))
+#define lulu_Number_mul(x, y)   ((x) * (y))
+#define lulu_Number_div(x, y)   ((x) / (y))
+#define lulu_Number_mod(x, y)   fmod((x), (y))
+#define lulu_Number_pow(x, y)   pow((x), (y))
 
 typedef enum {
     LULU_VALUE_TYPE_NIL,
@@ -21,7 +30,7 @@ typedef struct {
 } lulu_Value;
 
 typedef struct {
-    lulu_Allocator allocator;
+    const lulu_Allocator *allocator;
     lulu_Value *values;
     isize       len;
     isize       cap;

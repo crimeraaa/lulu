@@ -57,4 +57,6 @@ typedef struct {
     isize       len;
 } String;
 
+typedef struct lulu_VM lulu_VM;
+
 #endif // LULU_H

@@ -44,6 +44,10 @@ env:
     {{else}}
     {{fail "[COMPILER_FLAGS]: MODE must be one of `debug release`"}}
     {{end}}
+    
+  # Need for math.h
+  LINKER_FLAGS: >-
+    -lm
 
 tasks:
   default:
@@ -74,7 +78,7 @@ tasks:
         sh: ls -1 {{.DIR_SRC}} | grep "{{.EXT_SOURCE}}$" | awk '{print "{{.DIR_SRC}}/" $0}'
       SOURCES: '{{._SOURCES | catLines}}'
     cmds:
-      - '{{.COMPILER}} {{.COMPILER_FLAGS}} -o {{.OUT_EXE}} {{.SOURCES}}'
+      - '{{.COMPILER}} {{.COMPILER_FLAGS}} -o {{.OUT_EXE}} {{.SOURCES}} {{.LINKER_FLAGS}}'
       # https://taskfile.dev/usage/#looping-over-your-tasks-sources
       # - for: sources
       #   cmd: echo '{{.ITEM}}'

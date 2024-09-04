@@ -4,11 +4,15 @@
 
 void lulu_Debug_disasssemble_chunk(const lulu_Chunk *self, cstring name)
 {
-    printf("=== %s ===\n", name);
+    printf("=== DISASSEMBLY: BEGIN ===\n");
+    printf(".name \'%s\'\n", name);
+    printf(".code\n");
     
     for (isize index = 0; index < self->len;) {
         index = lulu_Debug_disassemble_instruction(self, index);
     }
+    
+    printf("=== DISASSEMBLY: END ===\n\n");
 }
 
 static void print_arg_size_0(cstring name)
@@ -48,16 +52,24 @@ isize lulu_Debug_disassemble_instruction(const lulu_Chunk *self, isize index)
     }
     
     byte inst = self->code[index];
+    if (inst >= LULU_OPCODE_COUNT) {
+        printf("Unknown opcode %i.\n", inst);
+        return index + 1;
+    }
     switch (inst) {
     case OP_CONSTANT:
         print_constant(LULU_OPCODE_INFO[inst].name, self, index);
         break;
+    case OP_ADD:
+    case OP_SUB:
+    case OP_MUL:
+    case OP_DIV:
+    case OP_MOD:
+    case OP_POW:
+    case OP_NEGATE:
     case OP_RETURN:
         print_arg_size_0(LULU_OPCODE_INFO[inst].name);
         break;
-    default:
-        printf("Unknown opcode %i.\n", inst);
-        return index + 1;
     }
     return index + 1 + LULU_OPCODE_INFO[inst].arg_size;
 }

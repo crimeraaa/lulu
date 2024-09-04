@@ -3,6 +3,13 @@
 const lulu_OpCode_Info LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     // lulu_OpCode     name: cstring    argsize: i8
     [OP_CONSTANT]   = {"CONSTANT",      3},
+    [OP_ADD]        = {"ADD",           0},
+    [OP_SUB]        = {"SUB",           0},
+    [OP_MUL]        = {"MUL",           0},
+    [OP_DIV]        = {"DIV",           0},
+    [OP_MOD]        = {"MOD",           0},
+    [OP_POW]        = {"POW",           0},
+    [OP_NEGATE]     = {"NEGATE",        0},
     [OP_RETURN]     = {"RETURN",        0},
 };
 
@@ -28,7 +35,7 @@ void lulu_Chunk_write(lulu_Chunk *self, byte inst, int line)
 
 void lulu_Chunk_reserve(lulu_Chunk *self, isize new_cap)
 {
-    const lulu_Allocator *allocator = &self->constants.allocator;
+    const lulu_Allocator *allocator = self->constants.allocator;
     isize old_cap = self->cap;
     // Nothing to do?
     if (new_cap <= old_cap) {
@@ -77,7 +84,7 @@ void lulu_Chunk_write_bytes(lulu_Chunk *self, Byte_Slice bytes, int line)
 
 void lulu_Chunk_free(lulu_Chunk *self)
 {
-    const lulu_Allocator *allocator = &self->constants.allocator;
+    const lulu_Allocator *allocator = self->constants.allocator;
     lulu_Value_Array_free(&self->constants);
     /**
      * @warning 2024-09-04

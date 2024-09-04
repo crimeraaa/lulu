@@ -24,19 +24,6 @@ typedef struct {
     void               *data;
 } lulu_Allocator;
 
-#ifndef LULU_NOSTDLIB
-
-/**
- * @brief
- *      A simple allocator that wraps the C standard `malloc` family.
- *      
- * @warning 2024-09-04
- *      This will call `abort()` on allocation failure!
- */
-extern const lulu_Allocator lulu_heap_allocator;
-
-#endif // LULU_NOSTDLIB
-
 void *lulu_Allocator_alloc(const lulu_Allocator *self, isize new_size, isize align);
 void *lulu_Allocator_resize(const lulu_Allocator *self, void *old_ptr, isize old_size, isize new_size, isize align);
 void lulu_Allocator_free(const lulu_Allocator *self, void *old_ptr, isize old_size);

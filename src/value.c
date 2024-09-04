@@ -2,7 +2,7 @@
 
 void lulu_Value_Array_init(lulu_Value_Array *self, const lulu_Allocator *allocator)
 {
-    self->allocator = *allocator;
+    self->allocator = allocator;
     self->values = NULL;
     self->len    = 0;
     self->cap    = 0;
@@ -18,7 +18,7 @@ void lulu_Value_Array_write(lulu_Value_Array *self, const lulu_Value *v)
 
 void lulu_Value_Array_reserve(lulu_Value_Array *self, isize new_cap)
 {
-    const lulu_Allocator *allocator = &self->allocator;
+    const lulu_Allocator *allocator = self->allocator;
     isize old_cap = self->cap;
     // Nothing to do?
     if (new_cap <= old_cap) {
@@ -31,7 +31,7 @@ void lulu_Value_Array_reserve(lulu_Value_Array *self, isize new_cap)
 
 void lulu_Value_Array_free(lulu_Value_Array *self)
 {
-    const lulu_Allocator *allocator = &self->allocator;
+    const lulu_Allocator *allocator = self->allocator;
     /**
      * @warning 2024-09-04
      *      Please ensure the type is correct!

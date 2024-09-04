@@ -7,6 +7,13 @@
 
 typedef enum {
     OP_CONSTANT,
+    OP_ADD,
+    OP_SUB,
+    OP_MUL,
+    OP_DIV,
+    OP_MOD,
+    OP_POW,
+    OP_NEGATE,
     OP_RETURN,
 } lulu_OpCode;
 
