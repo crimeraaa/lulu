@@ -1,62 +1,69 @@
 #include "memory.h"
-#include "object.h"
-#include "string.h"
-#include "table.h"
-#include "vm.h"
 
-void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz)
-{
-    void *res = vm->allocator(ptr, oldsz, newsz, vm->context);
-    // Non-zero allocation request failed? (Freeing uses `newsz` of 0).
-    if (res == nullptr && newsz > 0)
-        lulu_alloc_error(vm);
-    return res;
-}
+#ifndef LULU_NOSTDLIB
 
-Object *luluObj_new(lulu_VM *vm, size_t size, VType tag)
-{
-    Object *obj = luluMem_new_pointer(vm, size);
-    obj->tag    = tag;
-    return luluObj_link(vm, obj);
-}
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
-Object *luluObj_link(lulu_VM *vm, Object *obj)
+static void *lulu_heap_allocator_proc(
+    void *              allocator_data,
+    lulu_Allocator_Mode mode,
+    isize               new_size,
+    isize               align,
+    void *              old_ptr,
+    isize               old_size)
 {
-    obj->next   = vm->objects;
-    vm->objects = obj;
-    return obj;
-}
+    void *new_ptr = NULL;
+    isize add_len = new_size - old_size;
 
-Object *luluObj_unlink(lulu_VM *vm, Object *obj)
-{
-    vm->objects = obj->next;
-    return obj;
-}
+    unused(allocator_data);
+    unused(align);
 
-static void free_object(lulu_VM *vm, Object *obj)
-{
-    switch (obj->tag) {
-    case TYPE_STRING:
-        // Note we add 1 to `oldsz` because we allocated 1 extra by for nul.
-        luluMem_free_pointer(vm, obj, luluStr_size(cast_string(obj)->length + 1));
+    switch (mode) {
+    case LULU_ALLOCATOR_MODE_ALLOC: // fall through
+    case LULU_ALLOCATOR_MODE_RESIZE:
+        new_ptr = realloc(old_ptr, new_size);
+        if (!new_ptr) {
+            fprintf(stderr, "[FATAL]: %s\n", "[Re]allocation failure!");
+            fflush(stderr);
+            abort();
+        }
+        // We extended the allocation? Note that immediately loading a possibly
+        // invalid pointer is not a safe assumption for 100% of architectures.
+        if (add_len > 0) {
+            byte *add_ptr = cast(byte *)new_ptr + old_size;
+            memset(add_ptr, 0, add_len);
+        }
         break;
-    case TYPE_TABLE:
-        luluTbl_free(vm, cast_table(obj));
-        luluMem_free_pointer(vm, obj, sizeof(Table));
-        break;
-    default:
-        eprintfln("[FATAL ERROR]:\nAttempt to free a %s", get_typename(obj));
-        assert(false);
+    case LULU_ALLOCATOR_MODE_FREE:
+        free(old_ptr);
         break;
     }
+    return new_ptr;
 }
 
-void luluObj_free_all(lulu_VM *vm)
+const lulu_Allocator lulu_heap_allocator = {
+    &lulu_heap_allocator_proc,
+    NULL,
+};
+
+#endif // LULU_NOSTDLIB
+
+void *lulu_Allocator_alloc(const lulu_Allocator *self, isize new_size, isize align)
 {
-    Object *head = vm->objects;
-    while (head != nullptr) {
-        Object *next = head->next;
-        free_object(vm, head);
-        head = next;
-    }
+    return self->procedure(self->data,
+        LULU_ALLOCATOR_MODE_ALLOC, new_size, align, NULL, 0); 
+}
+
+void *lulu_Allocator_resize(const lulu_Allocator *self, void *old_ptr, isize old_size, isize new_size, isize align)
+{
+    return self->procedure(self->data,
+        LULU_ALLOCATOR_MODE_RESIZE, new_size, align, old_ptr, old_size);
+}
+
+void lulu_Allocator_free(const lulu_Allocator *self, void *old_ptr, isize old_size)
+{
+    self->procedure(self->data,
+        LULU_ALLOCATOR_MODE_FREE, 0, 0, old_ptr, old_size);
 }

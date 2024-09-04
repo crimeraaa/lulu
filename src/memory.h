@@ -2,38 +2,74 @@
 #define LULU_MEMORY_H
 
 #include "lulu.h"
-#include "limits.h"
-#include "object.h"
 
-#define luluMem_grow_capacity(N)    ((N) < 8 ? 8 : (N) * 2)
-#define MEMORY_ERROR_MESSAGE        "[FATAL ERROR]: out of memory"
-#define MAX_ALLOCATION              (SIZE_MAX >> 2)
+#define GROW_CAPACITY(cap)  ((cap) < 8 ? 8 : (cap) * 2)
 
-typedef lulu_Allocator Allocator;
+typedef enum {
+    LULU_ALLOCATOR_MODE_ALLOC,
+    LULU_ALLOCATOR_MODE_RESIZE,
+    LULU_ALLOCATOR_MODE_FREE,
+} lulu_Allocator_Mode;
 
-void *luluMem_call_allocator(lulu_VM *vm, void *ptr, size_t oldsz, size_t newsz);
+typedef void *(*lulu_Allocator_Proc)(
+    void *              allocator_data,
+    lulu_Allocator_Mode mode,
+    isize               new_size,
+    isize               align,
+    void *              old_ptr,
+    isize               old_size);
 
-Object *luluObj_new(lulu_VM *vm, size_t size, VType tag);
-Object *luluObj_link(lulu_VM *vm, Object *obj);
-Object *luluObj_unlink(lulu_VM *vm, Object *obj);
-void    luluObj_free_all(lulu_VM *vm);
+typedef struct {
+    lulu_Allocator_Proc procedure;
+    void               *data;
+} lulu_Allocator;
 
-#define luluMem_new_pointer(vm, sz) \
-    luluMem_call_allocator(vm, nullptr, 0, sz)
+#ifndef LULU_NOSTDLIB
 
-#define luluMem_resize_pointer(vm, ptr, oldsz, newsz) \
-    luluMem_call_allocator(vm, ptr, oldsz, newsz)
+/**
+ * @brief
+ *      A simple allocator that wraps the C standard `malloc` family.
+ *      
+ * @warning 2024-09-04
+ *      This will call `abort()` on allocation failure!
+ */
+extern const lulu_Allocator lulu_heap_allocator;
 
-#define luluMem_free_pointer(vm, ptr, sz) \
-    luluMem_call_allocator(vm, ptr, sz, 0)
+#endif // LULU_NOSTDLIB
 
-#define luluMem_new_parray(vm, ptr, len) \
-    luluMem_new_pointer(vm, parray_size(ptr, len))
+void *lulu_Allocator_alloc(const lulu_Allocator *self, isize new_size, isize align);
+void *lulu_Allocator_resize(const lulu_Allocator *self, void *old_ptr, isize old_size, isize new_size, isize align);
+void lulu_Allocator_free(const lulu_Allocator *self, void *old_ptr, isize old_size);
 
-#define luluMem_resize_parray(vm, ptr, oldcap, newcap) \
-    luluMem_resize_pointer(vm, ptr, parray_size(ptr, oldcap), parray_size(ptr, newcap))
+#define rawptr_new(Type, allocator)                                            \
+    cast(Type *)lulu_Allocator_alloc(                                          \
+        allocator,                                                             \
+        size_of(Type),                                                         \
+        align_of(Type))
 
-#define luluMem_free_parray(vm, ptr, len) \
-    luluMem_free_pointer(vm, ptr, parray_size(ptr, len))
+#define rawptr_free(Type, ptr, allocator)                                      \
+    lulu_Allocator_free(                                                       \
+        allocator,                                                             \
+        ptr,                                                                   \
+        size_of(Type))
 
-#endif /* LULU_MEMORY_H */
+#define rawarray_new(Type, count, allocator)                                   \
+    cast(Type *)lulu_Allocator_alloc(                                          \
+        allocator,                                                             \
+        size_of(Type) * (count),                                               \
+        align_of(Type))
+
+#define rawarray_resize(Type, old_ptr, old_count, new_count, allocator)        \
+    cast(Type *)lulu_Allocator_resize(                                         \
+        allocator,                                                             \
+        old_ptr,                                                               \
+        size_of(Type) * (old_count),                                           \
+        size_of(Type) * (new_count),                                           \
+        align_of(Type))
+
+#define rawarray_free(Type, old_ptr, old_count, allocator)                     \
+    lulu_Allocator_free(allocator,                                             \
+        old_ptr,                                                               \
+        size_of(Type) * (old_count))
+
+#endif // LULU_MEMORY_H

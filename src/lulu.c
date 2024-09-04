@@ -1,87 +1,31 @@
 #include "lulu.h"
-#include "limits.h"
+#include "chunk.h"
+#include "debug.h"
+#include "value.h"
 
-static int repl(lulu_VM *vm)
+#include <stdio.h>
+
+int main(int argc, cstring argv[])
 {
-    char line[LULU_MAX_LINE];
-    for (;;) {
-        fputs(LULU_PROMPT, stdout);
-        if (!fgets(line, sizeof(line), stdin)) {
-            fputc('\n', stdout);
-            break;
-        }
-        lulu_Status err = lulu_load(vm, line, strlen(line), "stdin");
-        if (err != LULU_OK) {
-            printf("%s\n", lulu_to_string(vm, -1));
-            lulu_pop(vm, 1);
-        }
-        // Allocation failures are unrecoverable.
-        if (err == LULU_ERROR_ALLOC)
-            return EXIT_FAILURE;
-    }
-    return EXIT_SUCCESS;
-}
+    const lulu_Allocator *allocator = &lulu_heap_allocator;
+    lulu_Chunk chunk;
+    lulu_Value value;
+    
+    unused(argc);
+    unused(argv);
+    
+    lulu_Value_set_nil(&value);
+    lulu_Chunk_init(&chunk);
+    
+    // TODO(2024-09-04): use multi-byte arguments
+    lulu_Value_set_number(&value, 1.2);
+    isize index = lulu_Chunk_add_constant(&chunk, &value, allocator);
+    lulu_Chunk_write(&chunk, OP_CONSTANT, 123, allocator);
+    lulu_Chunk_write(&chunk, cast(byte)index, 123, allocator);
+    
 
-static char *read_file(const char *name, size_t *out)
-{
-    FILE *f = fopen(name, "rb");
-    if (f == nullptr) {
-        logprintfln("Failed to open file '%s'.", name);
-        return nullptr;
-    }
-
-    fseek(f, 0L, SEEK_END);
-    size_t sz = ftell(f);
-    rewind(f);
-
-    char *buf = malloc(sz + 1);
-    if (buf == nullptr) {
-        fclose(f);
-        logprintfln("Not enough memory to read '%s'.", name);
-        return nullptr;
-    }
-
-    size_t read = fread(buf, sizeof(char), sz, f);
-    if (read < sz) {
-        free(buf);
-        fclose(f);
-        logprintfln("Could not read file '%s'.", name);
-        return nullptr;
-    }
-
-    buf[read] = '\0';
-    *out = read;
-    fclose(f);
-    return buf;
-}
-
-static int run_file(lulu_VM *vm, const char *name)
-{
-    size_t len;
-    char  *input = read_file(name, &len);
-    if (input == nullptr)
-        return EXIT_FAILURE;
-    lulu_Status res = lulu_load(vm, input, len, name);
-    free(input);
-    if (res == LULU_OK)
-        return EXIT_SUCCESS;
-
-    printf("%s\n", lulu_to_string(vm, -1));
-    lulu_pop(vm, 1);
-    return EXIT_FAILURE;
-}
-
-int main(int argc, const char *argv[])
-{
-    lulu_VM *vm  = lulu_open();
-    if (vm == nullptr) {
-        eprintln("Failed to open lulu");
-        return EXIT_FAILURE;
-    } else if (argc != 1 && argc != 2) {
-        eprintfln("Usage: %s [script]", argv[0]);
-        return EXIT_FAILURE;
-    }
-    int err = (argc == 1) ? repl(vm) : run_file(vm, argv[1]);
-    lulu_close(vm);
-    return err;
+    lulu_Chunk_write(&chunk, OP_RETURN, 123, allocator);
+    lulu_Debug_disasssemble_chunk(&chunk, "test chunk");
+    lulu_Chunk_free(&chunk, allocator);    
+    return 0;
 }

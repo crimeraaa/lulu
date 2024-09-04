@@ -1,0 +1,96 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  DIR_SRC: src
+  DIR_OBJ: obj
+  DIR_BIN: bin
+  OUT_EXE: '{{.DIR_BIN}}/lulu{{exeExt}}'
+  
+env:
+  LANG: c
+  MODE: debug
+  EXT_SOURCE: c
+  EXT_HEADER: h
+  COMPILER: clang
+  STANDARD: c11
+
+  COMMON_FLAGS: >-
+    -std={{.STANDARD}}
+    -Wall
+    -Wextra
+    -Werror
+    -pedantic
+    -fdiagnostics-color=always
+    -Wno-error=unused-variable
+    -Wno-error=unused-function
+    -Wno-error=unused-parameter
+    -Wno-error=unused-but-set-variable
+
+  DEBUG_FLAGS: >-
+    -g
+    -DLULU_DEBUG_PRINT
+    -DLULU_DEBUG_TRACE
+    -DLULU_DEBUG_ASSERT
+
+  RELEASE_FLAGS: >-
+    -O1
+    -s
+
+  COMPILER_FLAGS: >-
+    {{.COMMON_FLAGS}}
+    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{else if eq .MODE "release"}}{{.RELEASE_FLAGS}}
+    {{else}}
+    {{fail "[COMPILER_FLAGS]: MODE must be one of `debug release`"}}
+    {{end}}
+
+tasks:
+  default:
+    cmds:
+      - echo DIR_SRC='{{.DIR_SRC}}', DIR_OBJ='{{.DIR_OBJ}}', DIR_BIN='{{.DIR_BIN}}'
+      - echo OUT_EXE='{{.OUT_EXE}}'
+      - echo LANG='{{.LANG}}', MODE='{{.MODE}}'
+      - echo EXT_SOURCE='{{.EXT_SOURCE}}', EXT_HEADER='{{.EXT_HEADER}}'
+      - echo COMPILER='{{.COMPILER}}'
+      - echo COMPILER_FLAGS='{{.COMPILER_FLAGS}}'
+    silent: true
+  
+  check-directories:
+    internal: true
+    cmds:
+      - mkdir -p '{{.DIR_OBJ}}' '{{.DIR_BIN}}'
+    # silent: true
+    # Test existence of directories
+    status:
+      - test -d '{{.DIR_OBJ}}'
+      - test -d '{{.DIR_BIN}}'
+  
+  build:
+    desc: Build the C executable.
+    deps: [check-directories]
+    vars:
+      _SOURCES:
+        sh: ls -1 {{.DIR_SRC}} | grep "{{.EXT_SOURCE}}$" | awk '{print "{{.DIR_SRC}}/" $0}'
+      SOURCES: '{{._SOURCES | catLines}}'
+    cmds:
+      - '{{.COMPILER}} {{.COMPILER_FLAGS}} -o {{.OUT_EXE}} {{.SOURCES}}'
+      # https://taskfile.dev/usage/#looping-over-your-tasks-sources
+      # - for: sources
+      #   cmd: echo '{{.ITEM}}'
+    sources:
+      - '{{.DIR_SRC}}/*.{{.EXT_SOURCE}}'
+      - '{{.DIR_SRC}}/*.{{.EXT_HEADER}}'
+    generates:
+      - '{{.OUT_EXE}}'
+    
+  run:
+    desc: Build the C executable if needed then run it.
+    deps: [build]
+    cmds:
+      - '{{.OUT_EXE}}'
+    # interactive: true
+  
+  clean:
+    cmds:
+      - rm -f '{{.DIR_OBJ}}/*.o' '{{.DIR_BIN}}/*'
