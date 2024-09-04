@@ -45,4 +45,16 @@ typedef ptrdiff_t isize;
  */
 typedef const char *cstring;
 
+/**
+ * @brief
+ *      A read-only view into some characters.
+ * 
+ * @note 2024-09-04
+ *      The underlying buffer may not necessarily be nul terminated!
+ */
+typedef struct {
+    const char *data;
+    isize       len;
+} String;
+
 #endif // LULU_H

@@ -1,2 +1,7 @@
-# Local stuff
+# Local only
 .gdb_history
+.task/
+
+# Build directories
+bin/
+obj/

@@ -21,6 +21,7 @@ typedef struct {
 } lulu_Value;
 
 typedef struct {
+    lulu_Allocator allocator;
     lulu_Value *values;
     isize       len;
     isize       cap;
@@ -47,8 +48,9 @@ do {                                                                           \
     _dst->number     = (n);                                                    \
 } while (0)
 
-void lulu_Value_Array_init(lulu_Value_Array *self);
-void lulu_Value_Array_write(lulu_Value_Array *self, const lulu_Value *v, const lulu_Allocator *a);
-void lulu_Value_Array_free(lulu_Value_Array *self, const lulu_Allocator *a);
+void lulu_Value_Array_init(lulu_Value_Array *self, const lulu_Allocator *allocator);
+void lulu_Value_Array_write(lulu_Value_Array *self, const lulu_Value *v);
+void lulu_Value_Array_free(lulu_Value_Array *self);
+void lulu_Value_Array_reserve(lulu_Value_Array *self, isize new_cap);
 
 #endif // LULU_VALUE_H
