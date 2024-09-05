@@ -5,13 +5,13 @@
 void lulu_Debug_print_value(const lulu_Value *value)
 {
     switch (value->type) {
-    case LULU_VALUE_TYPE_NIL:
+    case LULU_VALUE_NIL:
         printf("nil");
         break;
-    case LULU_VALUE_TYPE_BOOLEAN:
+    case LULU_VALUE_BOOLEAN:
         printf("%s", value->boolean ? "true" : "false");
         break;
-    case LULU_VALUE_TYPE_NUMBER:
+    case LULU_VALUE_NUMBER:
         printf("%g", value->number);
         break;
     }

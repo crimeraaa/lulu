@@ -30,7 +30,7 @@ struct lulu_VM {
 
 void lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data);
 void lulu_VM_free(lulu_VM *self);
-lulu_Status lulu_VM_interpret(lulu_VM *self, lulu_Chunk *chunk);
+lulu_Status lulu_VM_interpret(lulu_VM *self, cstring input);
 
 void lulu_VM_push(lulu_VM *self, const lulu_Value *value);
 lulu_Value lulu_VM_pop(lulu_VM *self);

@@ -1,10 +1,12 @@
 #include "vm.h"
 #include "debug.h"
+#include "compiler.h"
+#include "lexer.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 
-static void lulu_VM_Stack_init(lulu_VM_Stack *self)
+static void stack_init(lulu_VM_Stack *self)
 {
     self->base = &self->values[0];
     self->top  = self->base;
@@ -14,7 +16,7 @@ static void lulu_VM_Stack_init(lulu_VM_Stack *self)
 
 void lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
-    lulu_VM_Stack_init(&self->stack);
+    stack_init(&self->stack);
     self->allocator      = allocator;
     self->allocator_data = allocator_data;
     self->chunk          = NULL;
@@ -25,7 +27,7 @@ void lulu_VM_free(lulu_VM *self)
     unused(self);
 }
 
-static lulu_Status lulu_VM_execute(lulu_VM *self)
+static lulu_Status vm_execute(lulu_VM *self)
 {
 
 #define READ_BYTE()     (*self->ip++)
@@ -91,11 +93,13 @@ do {                                                                           \
 
 }
 
-lulu_Status lulu_VM_interpret(lulu_VM *self, lulu_Chunk *chunk)
+lulu_Status lulu_VM_interpret(lulu_VM *self, cstring input)
 {
-    self->chunk = chunk;
-    self->ip    = chunk->code;
-    return lulu_VM_execute(self);
+    lulu_Compiler compiler;
+    lulu_Lexer    lexer;
+    unused(self);
+    lulu_Compiler_compile(&compiler, &lexer, input);
+    return LULU_OK;
 }
 
 void lulu_VM_push(lulu_VM *self, const lulu_Value *value)

@@ -7,12 +7,12 @@ void lulu_Value_Array_init(lulu_Value_Array *self)
     self->cap    = 0;
 }
 
-void lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *v)
+void lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *value)
 {
     if (self->len >= self->cap) {
         lulu_Value_Array_reserve(vm, self, GROW_CAPACITY(self->cap));
     }
-    self->values[self->len++] = *v;
+    self->values[self->len++] = *value;
 }
 
 void lulu_Value_Array_reserve(lulu_VM *vm, lulu_Value_Array *self, isize new_cap)

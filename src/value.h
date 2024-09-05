@@ -17,9 +17,9 @@ typedef double lulu_Number;
 #define lulu_Number_unm(x)      (-(x))
 
 typedef enum {
-    LULU_VALUE_TYPE_NIL,
-    LULU_VALUE_TYPE_BOOLEAN,
-    LULU_VALUE_TYPE_NUMBER,
+    LULU_VALUE_NIL,
+    LULU_VALUE_BOOLEAN,
+    LULU_VALUE_NUMBER,
 } lulu_Value_Type;
 
 typedef struct {
@@ -36,33 +36,33 @@ typedef struct {
     isize       cap;
 } lulu_Value_Array;
 
-#define lulu_Value_is_nil(self)         ((self)->type == LULU_VALUE_TYPE_NIL)
-#define lulu_Value_is_boolean(self)     ((self)->type == LULU_VALUE_TYPE_BOOLEAN)
-#define lulu_Value_is_number(self)      ((self)->type == LULU_VALUE_TYPE_NUMBER)
+#define lulu_Value_is_nil(self)         ((self)->type == LULU_VALUE_NIL)
+#define lulu_Value_is_boolean(self)     ((self)->type == LULU_VALUE_BOOLEAN)
+#define lulu_Value_is_number(self)      ((self)->type == LULU_VALUE_NUMBER)
 
 #define lulu_Value_set_nil(self)                                               \
 do {                                                                           \
     lulu_Value *_dst = (self);                                                 \
-    _dst->type       = LULU_VALUE_TYPE_NIL;                                    \
+    _dst->type       = LULU_VALUE_NIL;                                         \
     _dst->number     = 0;                                                      \
 } while (0)
 
 #define lulu_Value_set_boolean(self, b)                                        \
 do {                                                                           \
     lulu_Value *_dst = (self);                                                 \
-    _dst->type       = LULU_VALUE_TYPE_BOOLEAN;                                \
+    _dst->type       = LULU_VALUE_BOOLEAN;                                     \
     _dst->boolean    = (b);                                                    \
 } while (0)
 
 #define lulu_Value_set_number(self, n)                                         \
 do {                                                                           \
     lulu_Value *_dst = (self);                                                 \
-    _dst->type       = LULU_VALUE_TYPE_NUMBER;                                 \
+    _dst->type       = LULU_VALUE_NUMBER;                                      \
     _dst->number     = (n);                                                    \
 } while (0)
 
 void lulu_Value_Array_init(lulu_Value_Array *self);
-void lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *v);
+void lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *value);
 void lulu_Value_Array_free(lulu_VM *vm, lulu_Value_Array *self);
 void lulu_Value_Array_reserve(lulu_VM *vm, lulu_Value_Array *self, isize new_cap);
 
