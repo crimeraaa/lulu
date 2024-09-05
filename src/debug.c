@@ -2,14 +2,29 @@
 
 #include <stdio.h>
 
-void lulu_Debug_disasssemble_chunk(const lulu_Chunk *self, cstring name)
+void lulu_Debug_print_value(const lulu_Value *value)
+{
+    switch (value->type) {
+    case LULU_VALUE_TYPE_NIL:
+        printf("nil");
+        break;
+    case LULU_VALUE_TYPE_BOOLEAN:
+        printf("%s", value->boolean ? "true" : "false");
+        break;
+    case LULU_VALUE_TYPE_NUMBER:
+        printf("%g", value->number);
+        break;
+    }
+}
+
+void lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name)
 {
     printf("=== DISASSEMBLY: BEGIN ===\n");
     printf(".name \'%s\'\n", name);
     printf(".code\n");
     
-    for (isize index = 0; index < self->len;) {
-        index = lulu_Debug_disassemble_instruction(self, index);
+    for (isize index = 0; index < chunk->len;) {
+        index = lulu_Debug_disassemble_instruction(chunk, index);
     }
     
     printf("=== DISASSEMBLY: END ===\n\n");
@@ -30,35 +45,34 @@ static void print_arg_size_0(cstring name)
 
 static void print_constant(cstring name, const lulu_Chunk *chunk, isize index)
 {
-    Byte3 args;
-    args[0] = chunk->code[index + 1];
-    args[1] = chunk->code[index + 2];
-    args[2] = chunk->code[index + 3];
+    byte lsb = chunk->code[index + 1];
+    byte mid = chunk->code[index + 2];
+    byte msb = chunk->code[index + 3];
     
-    usize arg = (cast(usize)args[2] << 16) | (cast(usize)args[1] << 8) | cast(usize)args[0];
+    usize arg = lsb | (mid << 8) | (msb << 16);
     printf("%-16s %4zu \'", name, arg);
     lulu_Debug_print_value(&chunk->constants.values[arg]);
     printf("\'\n");
 }
 
-isize lulu_Debug_disassemble_instruction(const lulu_Chunk *self, isize index)
+isize lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
 {
     printf("%04ti ", index);
     
-    if (index > 0 && self->lines[index] == self->lines[index - 1]) {
+    if (index > 0 && chunk->lines[index] == chunk->lines[index - 1]) {
         printf("   | ");        
     } else {
-        printf("%4i ", self->lines[index]);
+        printf("%4i ", chunk->lines[index]);
     }
     
-    byte inst = self->code[index];
+    byte inst = chunk->code[index];
     if (inst >= LULU_OPCODE_COUNT) {
         printf("Unknown opcode %i.\n", inst);
         return index + 1;
     }
     switch (inst) {
     case OP_CONSTANT:
-        print_constant(LULU_OPCODE_INFO[inst].name, self, index);
+        print_constant(LULU_OPCODE_INFO[inst].name, chunk, index);
         break;
     case OP_ADD:
     case OP_SUB:
@@ -72,19 +86,4 @@ isize lulu_Debug_disassemble_instruction(const lulu_Chunk *self, isize index)
         break;
     }
     return index + 1 + LULU_OPCODE_INFO[inst].arg_size;
-}
-
-void lulu_Debug_print_value(const lulu_Value *self)
-{
-    switch (self->type) {
-    case LULU_VALUE_TYPE_NIL:
-        printf("nil");
-        break;
-    case LULU_VALUE_TYPE_BOOLEAN:
-        printf("%s", self->boolean ? "true" : "false");
-        break;
-    case LULU_VALUE_TYPE_NUMBER:
-        printf("%g", self->number);
-        break;
-    }
 }

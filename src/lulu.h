@@ -12,14 +12,6 @@
 #define cast(Type)              (Type)
 #define unused(Expr)            cast(void)(Expr)
 #define size_of(Expr)           cast(isize)(sizeof(Expr))
-#define offset_of(Type, Memb)   cast(isize)(offsetof(Type, Memb))
-
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
-#include <stdalign.h>
-#define align_of(Type) cast(isize)(alignof(Type))
-#else
-#error align_of cannot be defined
-#endif
 
 typedef   uint8_t u8;
 typedef  uint16_t u16;

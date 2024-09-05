@@ -26,11 +26,10 @@ typedef struct {
     union {
         bool        boolean;
         lulu_Number number;
-    };
+    }; // Anonymous unions (C11) bring members into the enclosing scope.
 } lulu_Value;
 
 typedef struct {
-    const lulu_Allocator *allocator;
     lulu_Value *values;
     isize       len;
     isize       cap;
@@ -57,9 +56,9 @@ do {                                                                           \
     _dst->number     = (n);                                                    \
 } while (0)
 
-void lulu_Value_Array_init(lulu_Value_Array *self, const lulu_Allocator *allocator);
-void lulu_Value_Array_write(lulu_Value_Array *self, const lulu_Value *v);
-void lulu_Value_Array_free(lulu_Value_Array *self);
-void lulu_Value_Array_reserve(lulu_Value_Array *self, isize new_cap);
+void lulu_Value_Array_init(lulu_Value_Array *self);
+void lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *v);
+void lulu_Value_Array_free(lulu_VM *vm, lulu_Value_Array *self);
+void lulu_Value_Array_reserve(lulu_VM *vm, lulu_Value_Array *self, isize new_cap);
 
 #endif // LULU_VALUE_H

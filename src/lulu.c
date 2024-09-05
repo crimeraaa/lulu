@@ -17,12 +17,12 @@
  *      This will call `abort()` on allocation failure!
  */
 static void *heap_allocator_proc(
-    void *              allocator_data,
+    void *allocator_data,
     lulu_Allocator_Mode mode,
-    isize               new_size,
-    isize               align,
-    void *              old_ptr,
-    isize               old_size)
+    isize new_size,
+    isize align,
+    void *old_ptr,
+    isize old_size)
 {
     void *new_ptr = NULL;
     isize add_len = new_size - old_size;
@@ -53,43 +53,47 @@ static void *heap_allocator_proc(
     return new_ptr;
 }
 
+static lulu_Chunk global_chunk;
+static lulu_Value global_value;
+static lulu_VM    global_vm;
+
 int main(int argc, cstring argv[])
 {
-    lulu_Chunk chunk;
-    lulu_Value value;
-    lulu_VM    vm;
+    lulu_Chunk *chunk = &global_chunk;
+    lulu_Value *value = &global_value;
+    lulu_VM *   vm    = &global_vm;
     
     unused(argc);
     unused(argv);
     
-    lulu_Value_set_nil(&value);
-    lulu_VM_init(&vm, heap_allocator_proc, NULL);
-    lulu_Chunk_init(&chunk, &vm.allocator);
+    lulu_Value_set_nil(value);
+    lulu_VM_init(vm, heap_allocator_proc, NULL);
+    lulu_Chunk_init(chunk);
     
-    lulu_Value_set_number(&value, 1.2);
-    isize index = lulu_Chunk_add_constant(&chunk, &value);
-    lulu_Chunk_write(&chunk, OP_CONSTANT, 123);
-    lulu_Chunk_write_byte3(&chunk, cast(usize)index, 123);
+    lulu_Value_set_number(value, 1.2);
+    isize index = lulu_Chunk_add_constant(vm, chunk, value);
+    lulu_Chunk_write(vm, chunk, OP_CONSTANT, 123);
+    lulu_Chunk_write_byte3(vm, chunk, cast(usize)index, 123);
     
-    lulu_Value_set_number(&value, 3.4);
-    index = lulu_Chunk_add_constant(&chunk, &value);
-    lulu_Chunk_write(&chunk, OP_CONSTANT, 123);
-    lulu_Chunk_write_byte3(&chunk, cast(usize)index, 123);
+    lulu_Value_set_number(value, 3.4);
+    index = lulu_Chunk_add_constant(vm, chunk, value);
+    lulu_Chunk_write(vm, chunk, OP_CONSTANT, 123);
+    lulu_Chunk_write_byte3(vm, chunk, cast(usize)index, 123);
 
-    lulu_Chunk_write(&chunk, OP_ADD, 123);
+    lulu_Chunk_write(vm, chunk, OP_ADD, 123);
 
-    lulu_Value_set_number(&value, 5.6);
-    index = lulu_Chunk_add_constant(&chunk, &value);
-    lulu_Chunk_write(&chunk, OP_CONSTANT, 123);
-    lulu_Chunk_write_byte3(&chunk, index, 123);
+    lulu_Value_set_number(value, 5.6);
+    index = lulu_Chunk_add_constant(vm, chunk, value);
+    lulu_Chunk_write(vm, chunk, OP_CONSTANT, 123);
+    lulu_Chunk_write_byte3(vm, chunk, index, 123);
     
-    lulu_Chunk_write(&chunk, OP_DIV, 123);
-    lulu_Chunk_write(&chunk, OP_NEGATE, 123);
-    lulu_Chunk_write(&chunk, OP_RETURN, 123);
-    lulu_Debug_disasssemble_chunk(&chunk, "test chunk");
+    lulu_Chunk_write(vm, chunk, OP_DIV, 123);
+    lulu_Chunk_write(vm, chunk, OP_NEGATE, 123);
+    lulu_Chunk_write(vm, chunk, OP_RETURN, 123);
+    lulu_Debug_disasssemble_chunk(chunk, "test chunk");
     
-    lulu_VM_interpret(&vm, &chunk);
-    lulu_VM_free(&vm);
-    lulu_Chunk_free(&chunk);
+    lulu_VM_interpret(vm, chunk);
+    lulu_Chunk_free(vm, chunk);
+    lulu_VM_free(vm);
     return 0;
 }

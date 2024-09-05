@@ -8,12 +8,12 @@ static void lulu_VM_reset_stack(lulu_VM *self)
     self->stack_top = self->stack;
 }
 
-void lulu_VM_init(lulu_VM *self, lulu_Allocator_Proc proc, void *allocator_data)
+void lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
+    self->allocator      = allocator;
+    self->allocator_data = allocator_data;
+    self->chunk          = NULL;
     lulu_VM_reset_stack(self);
-    self->allocator.procedure = proc;
-    self->allocator.data      = allocator_data;
-    self->chunk               = NULL;
 }
 
 void lulu_VM_free(lulu_VM *self)
@@ -24,11 +24,9 @@ void lulu_VM_free(lulu_VM *self)
 static lulu_Status lulu_VM_execute(lulu_VM *self)
 {
 
-#define READ_BYTE()         (*self->ip++)
-#define READ_BYTE3()        READ_BYTE() | (READ_BYTE() << 8) | (READ_BYTE() << 16)
-#define READ_CONSTANT()    (self->chunk->constants.values[READ_BYTE3()])
-    
-#define DECODE_BYTE3(msb, mid, lsb) ((msb) << 16) | ((mid) << 8) | (lsb)
+#define READ_BYTE()     (*self->ip++)
+#define READ_BYTE3()    READ_BYTE() | (READ_BYTE() << 8) | (READ_BYTE() << 16)
+#define READ_CONSTANT() (self->chunk->constants.values[READ_BYTE3()])
 
 #define BINARY_OP(lulu_Number_fn)                                              \
 do {                                                                           \
@@ -80,7 +78,6 @@ do {                                                                           \
     }
     
 #undef BINARY_OP
-#undef DECODE_BYTE3
 #undef READ_BYTE
 #undef READ_BYTE3
 #undef READ_CONSTANT

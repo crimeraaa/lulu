@@ -4,6 +4,9 @@
 heavily inspired by [Crafting Interpreters](https://craftinginterpreters.com/) by
 Robert Nystrom [(munificent)](https://github.com/munificent/craftinginterpreters).
 
+This is mainly a hobby project with an emphasis on developing my understanding.
+Although there are parts concerned with performance, my main goal is documenting the process and insights.
+
 # Note
 
 This is just a fun little project where I retrace my steps from the Lox interpreter
