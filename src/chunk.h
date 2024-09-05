@@ -13,7 +13,7 @@ typedef enum {
     OP_DIV,
     OP_MOD,
     OP_POW,
-    OP_NEGATE,
+    OP_UNM,
     OP_RETURN,
 } lulu_OpCode;
 
@@ -21,7 +21,9 @@ typedef enum {
 
 typedef struct {
     cstring name;
-    i8      arg_size;
+    i8      arg_size;   // Number of bytes used for the argument.
+    i8      push_count; // Number values pushed from stack. -1 indicates unknown.
+    i8      pop_count;  // Number values popped from stack. -1 indicates unknown.
 } lulu_OpCode_Info;
 
 extern const lulu_OpCode_Info LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
@@ -37,7 +39,7 @@ extern const lulu_OpCode_Info LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 typedef struct {
     lulu_Value_Array constants;
     byte *code;  // 1D array of bytecode.
-    int * lines; // Line numbers per bytecode.
+    int  *lines; // Line numbers per bytecode.
     isize len;   // Current number of actively used bytes in `code`.
     isize cap;   // Total number of bytes that `code` points to.
 } lulu_Chunk;

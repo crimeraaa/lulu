@@ -1,16 +1,16 @@
 #include "chunk.h"
 
 const lulu_OpCode_Info LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
-    //                name: cstring     arg_size: i8
-    [OP_CONSTANT]   = {"CONSTANT",      3},
-    [OP_ADD]        = {"ADD",           0},
-    [OP_SUB]        = {"SUB",           0},
-    [OP_MUL]        = {"MUL",           0},
-    [OP_DIV]        = {"DIV",           0},
-    [OP_MOD]        = {"MOD",           0},
-    [OP_POW]        = {"POW",           0},
-    [OP_NEGATE]     = {"NEGATE",        0},
-    [OP_RETURN]     = {"RETURN",        0},
+    //                name: cstring     arg_size, push_count, pop_count: i8
+    [OP_CONSTANT]   = {"CONSTANT",      3,        1,          0},
+    [OP_ADD]        = {"ADD",           0,        1,          2},
+    [OP_SUB]        = {"SUB",           0,        1,          2},
+    [OP_MUL]        = {"MUL",           0,        1,          2},
+    [OP_DIV]        = {"DIV",           0,        1,          2},
+    [OP_MOD]        = {"MOD",           0,        1,          2},
+    [OP_POW]        = {"POW",           0,        1,          2},
+    [OP_UNM]        = {"UNM",           0,        1,          1},
+    [OP_RETURN]     = {"RETURN",        0,        0,          1},
 };
 
 void lulu_Chunk_init(lulu_Chunk *self)

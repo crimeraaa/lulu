@@ -2,18 +2,22 @@
 #include "debug.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
-static void lulu_VM_reset_stack(lulu_VM *self)
+static void lulu_VM_Stack_init(lulu_VM_Stack *self)
 {
-    self->stack_top = self->stack;
+    self->base = &self->values[0];
+    self->top  = self->base;
+    self->end  = self->base + LULU_VM_STACK_MAX;
 }
+
 
 void lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
+    lulu_VM_Stack_init(&self->stack);
     self->allocator      = allocator;
     self->allocator_data = allocator_data;
     self->chunk          = NULL;
-    lulu_VM_reset_stack(self);
 }
 
 void lulu_VM_free(lulu_VM *self)
@@ -39,8 +43,9 @@ do {                                                                           \
     
     for (;;) {
 #ifdef LULU_DEBUG_TRACE
+        const lulu_VM_Stack *stack = &self->stack;
         printf("        ");
-        for (const lulu_Value *slot = self->stack; slot < self->stack_top; slot++) {
+        for (const lulu_Value *slot = stack->base; slot < stack->top; slot++) {
             printf("[ ");
             lulu_Debug_print_value(slot);
             printf(" ]");
@@ -61,10 +66,9 @@ do {                                                                           \
         case OP_DIV: BINARY_OP(lulu_Number_div); break;
         case OP_MOD: BINARY_OP(lulu_Number_mod); break;
         case OP_POW: BINARY_OP(lulu_Number_pow); break;
-        
-        case OP_NEGATE: {
+        case OP_UNM: {
             lulu_Value value = lulu_VM_pop(self);
-            lulu_Value_set_number(&value, -value.number);
+            lulu_Value_set_number(&value, lulu_Number_unm(value.number));
             lulu_VM_push(self, &value);
             break;
         }
@@ -76,6 +80,9 @@ do {                                                                           \
         }
         }
     }
+
+    // Unreachable but maybe we have corrupt data!
+    return LULU_ERR_RUNTIME;
     
 #undef BINARY_OP
 #undef READ_BYTE
@@ -93,12 +100,16 @@ lulu_Status lulu_VM_interpret(lulu_VM *self, lulu_Chunk *chunk)
 
 void lulu_VM_push(lulu_VM *self, const lulu_Value *value)
 {
-    *self->stack_top = *value;
-    self->stack_top++;
+    lulu_VM_Stack *stack = &self->stack;
+    lulu_Debug_assert(stack->top < stack->end, "VM stack overflow");
+    *stack->top = *value;
+    stack->top++;
 }
 
 lulu_Value lulu_VM_pop(lulu_VM *self)
 {
-    self->stack_top--;
-    return *self->stack_top;
+    lulu_VM_Stack *stack = &self->stack;
+    lulu_Debug_assert(stack->top > stack->base, "VM stack underflow");
+    stack->top--;
+    return *stack->top;
 }

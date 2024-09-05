@@ -80,7 +80,7 @@ isize lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_DIV:
     case OP_MOD:
     case OP_POW:
-    case OP_NEGATE:
+    case OP_UNM:
     case OP_RETURN:
         print_arg_size_0(LULU_OPCODE_INFO[inst].name);
         break;

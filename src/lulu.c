@@ -34,11 +34,7 @@ static void *heap_allocator_proc(
     case LULU_ALLOCATOR_MODE_ALLOC: // fall through
     case LULU_ALLOCATOR_MODE_RESIZE:
         new_ptr = realloc(old_ptr, new_size);
-        if (!new_ptr) {
-            fprintf(stderr, "[FATAL]: %s\n", "[Re]allocation failure!");
-            fflush(stderr);
-            abort();
-        }
+        lulu_Debug_assert(new_ptr != NULL, "[Re]allocation failure");
         // We extended the allocation? Note that immediately loading a possibly
         // invalid pointer is not a safe assumption for 100% of architectures.
         if (add_len > 0) {
@@ -88,7 +84,7 @@ int main(int argc, cstring argv[])
     lulu_Chunk_write_byte3(vm, chunk, index, 123);
     
     lulu_Chunk_write(vm, chunk, OP_DIV, 123);
-    lulu_Chunk_write(vm, chunk, OP_NEGATE, 123);
+    lulu_Chunk_write(vm, chunk, OP_UNM, 123);
     lulu_Chunk_write(vm, chunk, OP_RETURN, 123);
     lulu_Debug_disasssemble_chunk(chunk, "test chunk");
     

@@ -14,6 +14,7 @@ typedef double lulu_Number;
 #define lulu_Number_div(x, y)   ((x) / (y))
 #define lulu_Number_mod(x, y)   fmod((x), (y))
 #define lulu_Number_pow(x, y)   pow((x), (y))
+#define lulu_Number_unm(x)      (-(x))
 
 typedef enum {
     LULU_VALUE_TYPE_NIL,
@@ -34,6 +35,10 @@ typedef struct {
     isize       len;
     isize       cap;
 } lulu_Value_Array;
+
+#define lulu_Value_is_nil(self)         ((self)->type == LULU_VALUE_TYPE_NIL)
+#define lulu_Value_is_boolean(self)     ((self)->type == LULU_VALUE_TYPE_BOOLEAN)
+#define lulu_Value_is_number(self)      ((self)->type == LULU_VALUE_TYPE_NUMBER)
 
 #define lulu_Value_set_nil(self)                                               \
 do {                                                                           \
