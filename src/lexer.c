@@ -1,17 +1,19 @@
 #include "lexer.h"
+#include "vm.h"
 
 #include <ctype.h>
 #include <string.h>
 #include <stdio.h>
 
-void lulu_Lexer_init(lulu_Lexer *self, cstring input)
+void lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring input)
 {
+    self->vm      = vm;
     self->start   = input;
     self->current = input;
     self->line    = 1;
 }
 
-static bool lexer_is_at_end(const lulu_Lexer *self)
+static bool is_at_end(const lulu_Lexer *self)
 {
     return self->current[0] == '\0';
 }
@@ -24,20 +26,20 @@ static bool lexer_is_at_end(const lulu_Lexer *self)
  * @note 2024-09-05
  *      Analogous to the book's `scanner.c:advance()`.
  */
-static char lexer_consume_char(lulu_Lexer *self)
+static char consume_char(lulu_Lexer *self)
 {
     return *self->current++;
 }
 
-static char lexer_peek_char(const lulu_Lexer *self)
+static char peek_char(const lulu_Lexer *self)
 {
     return self->current[0];
 }
 
-static char lexer_peek_next_char(const lulu_Lexer *self)
+static char peek_next_char(const lulu_Lexer *self)
 {
     // Dereferencing 1 past current may be illegal?
-    if (lexer_is_at_end(self)) {
+    if (is_at_end(self)) {
         return '\0';
     } 
     return self->current[1];
@@ -48,25 +50,25 @@ static char lexer_peek_next_char(const lulu_Lexer *self)
  *      If the current character being pointed to matches `expected`, advance
  *      and return true. Otherwise return do nothing and false.
  */
-static bool lexer_match_char(lulu_Lexer *self, char expected)
+static bool match_char(lulu_Lexer *self, char expected)
 {
-    if (!lexer_is_at_end(self) && *self->current == expected) {
+    if (!is_at_end(self) && *self->current == expected) {
         self->current++;
         return true;
     }
     return false;
 }
 
-static bool lexer_match_char_any(lulu_Lexer *self, cstring charset)
+static bool match_char_any(lulu_Lexer *self, cstring charset)
 {
-    if (strchr(charset, lexer_peek_char(self))) {
+    if (strchr(charset, peek_char(self))) {
         self->current++;
         return true;
     }
     return false;
 }
 
-static lulu_Token lexer_make_token(const lulu_Lexer *self, lulu_Token_Type type)
+static lulu_Token make_token(const lulu_Lexer *self, lulu_Token_Type type)
 {
     lulu_Token token;
     token.type        = type;
@@ -76,7 +78,7 @@ static lulu_Token lexer_make_token(const lulu_Lexer *self, lulu_Token_Type type)
     return token;
 }
 
-static lulu_Token lexer_error_token(const lulu_Lexer *self, cstring msg)
+static lulu_Token error_token(const lulu_Lexer *self, cstring msg)
 {
     lulu_Token token;
     token.type        = TOKEN_ERROR;
@@ -86,15 +88,15 @@ static lulu_Token lexer_error_token(const lulu_Lexer *self, cstring msg)
     return token;    
 }
 
-static void lexer_skip_multiline(lulu_Lexer *self, int opening)
+static void skip_multiline(lulu_Lexer *self, int opening)
 {
     for (;;) {
-        if (lexer_match_char(self, ']')) {
+        if (match_char(self, ']')) {
             int closing = 0;
-            while (lexer_match_char(self, '=')) {
+            while (match_char(self, '=')) {
                 closing++;
             }
-            if (closing == opening && lexer_match_char(self, ']')) {
+            if (closing == opening && match_char(self, ']')) {
                 return;
             }
         }
@@ -105,13 +107,13 @@ static void lexer_skip_multiline(lulu_Lexer *self, int opening)
          * @todo 2024-09-05
          *      Throw error if at EOF!
          */
-        if (lexer_is_at_end(self)) {
+        if (is_at_end(self)) {
             return;
         }
-        if (lexer_peek_char(self) == '\n') {
+        if (peek_char(self) == '\n') {
             self->line++;
         }
-        lexer_consume_char(self);
+        consume_char(self);
     }
 }
 
@@ -120,44 +122,44 @@ static void lexer_skip_multiline(lulu_Lexer *self, int opening)
  *      Assumed we already consumed 2 consecutive '-' characters and we're
  *      pointing at the first character in the comment body, or a '['.
  */
-static void lexer_skip_comment(lulu_Lexer *self)
+static void skip_comment(lulu_Lexer *self)
 {
-    if (lexer_match_char(self, '[')) {
+    if (match_char(self, '[')) {
         int opening = 0;
-        while (lexer_match_char(self, '=')) {
+        while (match_char(self, '=')) {
             opening++;
         }
-        if (lexer_match_char(self, '[')) {
-            lexer_skip_multiline(self, opening);
+        if (match_char(self, '[')) {
+            skip_multiline(self, opening);
             return;
         }
     }
     // Skip a single line comment.
-    while (lexer_peek_char(self) != '\n' && !lexer_is_at_end(self)) {
-        lexer_consume_char(self);
+    while (peek_char(self) != '\n' && !is_at_end(self)) {
+        consume_char(self);
     }
 }
 
-static void lexer_skip_whitespace(lulu_Lexer *self)
+static void skip_whitespace(lulu_Lexer *self)
 {
     for (;;) {
-        char ch = lexer_peek_char(self);
+        char ch = peek_char(self);
         switch (ch) {
         case '\n': self->line++; // fall through
         case ' ':
         case '\r':
         case '\t':
-            lexer_consume_char(self);
+            consume_char(self);
             break;
         case '-':
             // Don't have 2 '-' consecutively?
-            if (lexer_peek_next_char(self) != '-') {
+            if (peek_next_char(self) != '-') {
                 return;
             }
             // Skip the 2 dashes.
-            lexer_consume_char(self);
-            lexer_consume_char(self);
-            lexer_skip_comment(self);
+            consume_char(self);
+            consume_char(self);
+            skip_comment(self);
             break;
         default:
             return;
@@ -204,7 +206,7 @@ static lulu_Token_Type keyword_check_type(String current, lulu_Token_Type type)
     return TOKEN_IDENTIFIER;
 }
 
-static lulu_Token_Type lexer_get_identifier_type(lulu_Lexer *self)
+static lulu_Token_Type get_identifier_type(lulu_Lexer *self)
 {
     String current = {self->start, self->current - self->start};
     switch (current.data[0]) {
@@ -262,139 +264,136 @@ static lulu_Token_Type lexer_get_identifier_type(lulu_Lexer *self)
     return TOKEN_IDENTIFIER;
 }
 
-static lulu_Token lexer_consume_identifier(lulu_Lexer *self)
+static lulu_Token consume_identifier(lulu_Lexer *self)
 {
-    while (isalnum(lexer_peek_char(self)) || lexer_peek_char(self) == '_') {
-        lexer_consume_char(self);
+    while (isalnum(peek_char(self)) || peek_char(self) == '_') {
+        consume_char(self);
     }
-    return lexer_make_token(self, lexer_get_identifier_type(self));
+    return make_token(self, get_identifier_type(self));
 }
 
-static void lexer_consume_base10(lulu_Lexer *self)
+static void consume_base10(lulu_Lexer *self)
 {
-    while (isdigit(lexer_peek_char(self))) {
-        lexer_consume_char(self);
-    }
-}
-
-static void lexer_consume_base16(lulu_Lexer *self)
-{
-    while (isxdigit(lexer_peek_char(self))) {
-        lexer_consume_char(self);
+    while (isdigit(peek_char(self))) {
+        consume_char(self);
     }
 }
 
-static lulu_Token lexer_consume_number(lulu_Lexer *self)
+static void consume_base16(lulu_Lexer *self)
 {
-    if (lexer_match_char(self, '0')) {
-        if (lexer_match_char_any(self, "xX")) {
-            lexer_consume_base16(self);
+    while (isxdigit(peek_char(self))) {
+        consume_char(self);
+    }
+}
+
+static lulu_Token consume_number(lulu_Lexer *self)
+{
+    if (match_char(self, '0')) {
+        if (match_char_any(self, "xX")) {
+            consume_base16(self);
         }
     }
-    lexer_consume_base10(self);
+    consume_base10(self);
     
     // Consume fractional segment with 0 or more digits.
-    if (lexer_match_char(self, '.')) {
-        lexer_consume_base10(self);
+    if (match_char(self, '.')) {
+        consume_base10(self);
     }
     
     // Consume exponent segment with optional sign and 1 or more digits.
-    if (lexer_match_char_any(self, "eE")) {
-        lexer_match_char_any(self, "+-");
-        lexer_consume_base10(self);
+    if (match_char_any(self, "eE")) {
+        match_char_any(self, "+-");
+        consume_base10(self);
     }
     
     // Error handling will be done later.
-    while (isalnum(lexer_peek_char(self)) || lexer_peek_char(self) == '_') {
-        lexer_consume_char(self);
+    while (isalnum(peek_char(self)) || peek_char(self) == '_') {
+        consume_char(self);
     }
 
-    return lexer_make_token(self, TOKEN_NUMBER_LIT);
+    return make_token(self, TOKEN_NUMBER_LIT);
 }
 
-static lulu_Token lexer_consume_string(lulu_Lexer *self, char quote)
+static lulu_Token consume_string(lulu_Lexer *self, char quote)
 {
-    while (lexer_peek_char(self) != quote && !lexer_is_at_end(self)) {
-        if (lexer_peek_char(self) == '\n') {
+    while (peek_char(self) != quote && !is_at_end(self)) {
+        if (peek_char(self) == '\n') {
             goto unterminated_string;
         }
-        lexer_consume_char(self);
+        consume_char(self);
     }
     
-    if (lexer_is_at_end(self)) {
+    if (is_at_end(self)) {
 unterminated_string: 
-        return lexer_error_token(self, "Unterminated string");
+        return error_token(self, "Unterminated string");
     }
     
     // Consume closing quote.
-    lexer_consume_char(self);
-    return lexer_make_token(self, TOKEN_STRING_LIT);
+    consume_char(self);
+    return make_token(self, TOKEN_STRING_LIT);
 }
 
 lulu_Token lulu_Lexer_scan_token(lulu_Lexer *self)
 {
-    lexer_skip_whitespace(self);
+    skip_whitespace(self);
     self->start = self->current;
     
-    if (lexer_is_at_end(self)) {
-        return lexer_make_token(self, TOKEN_EOF);
+    if (is_at_end(self)) {
+        return make_token(self, TOKEN_EOF);
     }
     
-    char ch = lexer_consume_char(self);
+    char ch = consume_char(self);
     if (isdigit(ch)) {
-        return lexer_consume_number(self);
+        return consume_number(self);
     }
     if (isalpha(ch) || ch == '_') {
-        return lexer_consume_identifier(self);
+        return consume_identifier(self);
     }
 
     switch (ch) {
-    case '(': return lexer_make_token(self, TOKEN_PAREN_L);
-    case ')': return lexer_make_token(self, TOKEN_PAREN_R);
-    case '{': return lexer_make_token(self, TOKEN_CURLY_L);
-    case '}': return lexer_make_token(self, TOKEN_CURLY_R);
-    case '[': return lexer_make_token(self, TOKEN_BRACKET_L);
-    case ']': return lexer_make_token(self, TOKEN_BRACKET_R);
+    case '(': return make_token(self, TOKEN_PAREN_L);
+    case ')': return make_token(self, TOKEN_PAREN_R);
+    case '{': return make_token(self, TOKEN_CURLY_L);
+    case '}': return make_token(self, TOKEN_CURLY_R);
+    case '[': return make_token(self, TOKEN_BRACKET_L);
+    case ']': return make_token(self, TOKEN_BRACKET_R);
 
-    case ',': return lexer_make_token(self, TOKEN_COMMA);
-    case ':': return lexer_make_token(self, TOKEN_COLON);
-    case ';': return lexer_make_token(self, TOKEN_SEMICOLON);
+    case ',': return make_token(self, TOKEN_COMMA);
+    case ':': return make_token(self, TOKEN_COLON);
+    case ';': return make_token(self, TOKEN_SEMICOLON);
     case '.':
-        if (lexer_match_char(self, '.')) {
-            if (lexer_match_char(self, '.')) {
-                return lexer_make_token(self, TOKEN_ELLIPSIS_3);
+        if (match_char(self, '.')) {
+            if (match_char(self, '.')) {
+                return make_token(self, TOKEN_ELLIPSIS_3);
             }
-            return lexer_make_token(self, TOKEN_ELLIPSIS_2);
+            return make_token(self, TOKEN_ELLIPSIS_2);
         }
-        return lexer_make_token(self, TOKEN_PERIOD);
-    case '#': return lexer_make_token(self, TOKEN_HASH);
+        return make_token(self, TOKEN_PERIOD);
+    case '#': return make_token(self, TOKEN_HASH);
 
-    case '+': return lexer_make_token(self, TOKEN_PLUS);
-    case '-': return lexer_make_token(self, TOKEN_DASH);
-    case '*': return lexer_make_token(self, TOKEN_ASTERISK);
-    case '/': return lexer_make_token(self, TOKEN_SLASH);
+    case '+': return make_token(self, TOKEN_PLUS);
+    case '-': return make_token(self, TOKEN_DASH);
+    case '*': return make_token(self, TOKEN_ASTERISK);
+    case '/': return make_token(self, TOKEN_SLASH);
     
     case '~':
-        if (lexer_match_char(self, '=')) {
-            return lexer_make_token(self, TOKEN_TILDE_EQUAL);
+        if (match_char(self, '=')) {
+            return make_token(self, TOKEN_TILDE_EQUAL);
         }
-        return lexer_error_token(self, "Expected '=' after '~'");
+        return error_token(self, "Expected '=' after '~'");
     case '=':
-        return lexer_make_token(
-            self,
-            lexer_match_char(self, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
+        return make_token(
+            self, match_char(self, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
     case '<':
-        return lexer_make_token(
-            self,
-            lexer_match_char(self, '=') ? TOKEN_ANGLE_EQUAL_L : TOKEN_ANGLE_L);
+        return make_token(
+            self, match_char(self, '=') ? TOKEN_ANGLE_EQUAL_L : TOKEN_ANGLE_L);
     case '>':
-        return lexer_make_token(
-            self,
-            lexer_match_char(self, '=') ? TOKEN_ANGLE_EQUAL_R : TOKEN_ANGLE_R);
+        return make_token(
+            self, match_char(self, '=') ? TOKEN_ANGLE_EQUAL_R : TOKEN_ANGLE_R);
     
     case '\'':
-    case '\"': return lexer_consume_string(self, ch);
+    case '\"': return consume_string(self, ch);
     }
 
-    return lexer_error_token(self, "Unexpected character.");
+    return error_token(self, "Unexpected character.");
 }

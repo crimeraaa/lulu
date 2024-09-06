@@ -94,7 +94,7 @@ tasks:
     cmds:
       - '{{.OUT_EXE}}'
     # interactive: true
-  
+
   clean:
     cmds:
       - rm -f '{{.DIR_OBJ}}/*.o' '{{.DIR_BIN}}/*'

@@ -20,6 +20,7 @@ void lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
     self->allocator      = allocator;
     self->allocator_data = allocator_data;
     self->chunk          = NULL;
+    self->handlers     = NULL;
 }
 
 void lulu_VM_free(lulu_VM *self)
@@ -84,7 +85,7 @@ do {                                                                           \
     }
 
     // Unreachable but maybe we have corrupt data!
-    return LULU_ERR_RUNTIME;
+    return LULU_ERROR_RUNTIME;
     
 #undef BINARY_OP
 #undef READ_BYTE
@@ -93,13 +94,18 @@ do {                                                                           \
 
 }
 
-lulu_Status lulu_VM_interpret(lulu_VM *self, cstring input)
+static void compile_only(lulu_VM *self, void *userdata)
 {
+    cstring       input = cast(cstring)userdata;
     lulu_Compiler compiler;
     lulu_Lexer    lexer;
-    unused(self);
-    lulu_Compiler_compile(&compiler, &lexer, input);
-    return LULU_OK;
+    lulu_Compiler_init(self, &compiler, &lexer);
+    lulu_Compiler_compile(&compiler, input);
+}
+
+lulu_Status lulu_VM_interpret(lulu_VM *self, cstring input)
+{
+    return lulu_VM_run_protected(self, &compile_only, cast(void *)input);
 }
 
 void lulu_VM_push(lulu_VM *self, const lulu_Value *value)
@@ -116,4 +122,34 @@ lulu_Value lulu_VM_pop(lulu_VM *self)
     lulu_Debug_assert(stack->top > stack->base, "VM stack underflow");
     stack->top--;
     return *stack->top;
+}
+
+lulu_Status lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
+{
+    lulu_Handler handler;
+    handler.status = LULU_OK;
+    handler.prev   = self->handlers; // Chain new error handler
+    self->handlers = &handler;
+    
+    // setjmp only returns 0 on the very first try, any call to longjmp will
+    // bring you back here with a nonzero return value.
+    if (setjmp(handler.jump) == 0) {
+        fn(self, userdata);
+    }
+
+    self->handlers = handler.prev; // Restore old error handler
+    return handler.status;
+}
+
+void lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
+{
+    lulu_Handler *handler = self->handlers;
+    if (handler) {
+        handler->status = status;
+        longjmp(handler->jump, 1);
+    } else {
+        fprintf(stderr, "[FATAL]: %s\n", "Unprotected error. Aborting.");
+        fflush(stderr);
+        exit(EXIT_FAILURE);
+    }
 }

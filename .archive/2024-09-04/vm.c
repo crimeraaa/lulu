@@ -52,8 +52,8 @@ bool luluVM_init(lulu_VM *vm, lulu_Allocator fn, void *ctx)
     return true;
 }
 
-struct lulu_Error {
-    struct lulu_Error   *prev;
+struct lulu_Handler {
+    struct lulu_Handler   *prev;
     jmp_buf              buffer;
     volatile lulu_Status status;
 };

@@ -14,7 +14,7 @@ typedef Value *StackID;
 typedef void (*ProtectedFn)(lulu_VM *vm, void *ctx);
 
 // Defined inside `vm.c`.
-typedef struct lulu_Error Error;
+typedef struct lulu_Handler Error;
 
 struct lulu_VM {
     Value     stack[LULU_MAX_STACK + LULU_STACK_RESERVED];

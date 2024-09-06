@@ -11,7 +11,8 @@
 #define lulu_Debug_assert(cond, msg)                                           \
 do {                                                                           \
     if (!(cond)) {                                                             \
-        fprintf(stderr, "[FATAL] %s:%i: %s\n", __FILE__, __LINE__, msg);       \
+        fprintf(stderr, "[FATAL] %s:%i: assertion '%s' failed: %s\n",          \
+                __FILE__, __LINE__, #cond, msg);                               \
         fflush(stderr);                                                        \
         __builtin_trap();                                                      \
     }                                                                          \

@@ -124,8 +124,8 @@ static int run_file(cstring path)
     switch (status) {
     case LULU_OK:
         return 0;
-    case LULU_ERR_COMPTIME:
-    case LULU_ERR_RUNTIME:
+    case LULU_ERROR_COMPTIME:
+    case LULU_ERROR_RUNTIME:
         return 1;
     }
     return 2;
