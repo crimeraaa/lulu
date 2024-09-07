@@ -13,15 +13,17 @@
  * @brief
  *      A simple allocator that wraps the C standard `malloc` family.
  *      
- * @warning 2024-09-04
- *      This will call `abort()` on allocation failure!
+ * @note 2024-09-07
+ *      This function does not throw errors by itself. Rather, calling
+ *      `lulu_VM_run_protected()` will wrap most other calls with an error
+ *      handler which will in turn catch errors such as out of memory.
  */
-static void *heap_allocator_proc(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size)
+static void *alloc_fn(void *userdata, isize new_size, isize align, void *old_ptr, isize old_size)
 {
     void *new_ptr = NULL;
     isize add_len = new_size - old_size;
 
-    unused(allocator_data);
+    unused(userdata);
     unused(align);
 
     // Trying to free some existing memory?
@@ -129,7 +131,7 @@ static int run_file(cstring path)
 int main(int argc, cstring argv[])
 {
     int err = 0;
-    lulu_VM_init(vm, heap_allocator_proc, NULL);
+    lulu_VM_init(vm, alloc_fn, NULL);
     if (argc == 1) {
         repl();
     } else if (argc == 2) {

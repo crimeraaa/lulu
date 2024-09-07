@@ -49,14 +49,23 @@ void lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token
     lulu_Parse_error_current(lexer->vm, parser, msg);
 }
 
+static void wrap_error(lulu_VM *vm, const lulu_Token *token, cstring msg)
+{
+    String where = token->lexeme;
+    if (token->type == TOKEN_EOF) {
+        where = String_literal("<eof>");
+    }
+    lulu_VM_comptime_error(vm, token->line, msg, where);
+}
+
 void lulu_Parse_error_current(lulu_VM *vm, lulu_Parser *parser, cstring msg)
 {
-    lulu_VM_comptime_error(vm, &parser->current, msg);
+    wrap_error(vm, &parser->current, msg);
 }
 
 void lulu_Parse_error_consumed(lulu_VM *vm, lulu_Parser *parser, cstring msg)
 {
-    lulu_VM_comptime_error(vm, &parser->consumed, msg);
+    wrap_error(vm, &parser->consumed, msg);
 }
 
 static void binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)

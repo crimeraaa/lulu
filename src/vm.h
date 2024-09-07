@@ -4,7 +4,6 @@
 #include "lulu.h"
 #include "memory.h"
 #include "chunk.h"
-#include "lexer.h"
 
 /**
  * @todo 2024-09-06
@@ -69,6 +68,6 @@ lulu_Value lulu_VM_pop(lulu_VM *self);
  */
 lulu_Status lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata);
 void lulu_VM_throw_error(lulu_VM *self, lulu_Status status);
-void lulu_VM_comptime_error(lulu_VM *self, const lulu_Token *token, cstring msg);
+void lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where);
 
 #endif // LULU_VM_H

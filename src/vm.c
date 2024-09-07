@@ -193,14 +193,8 @@ void lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
     }
 }
 
-void lulu_VM_comptime_error(lulu_VM *self, const lulu_Token *token, cstring msg)
+void lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where)
 {
-    String where = token->lexeme;
-    fprintf(stderr, "line %i: %s at ", token->line, msg);
-    if (token->type == TOKEN_EOF) {
-        fprintf(stderr, "<eof>\n");
-    } else {
-        fprintf(stderr, "'%.*s'\n", cast(int)where.len, where.data);
-    }
+    fprintf(stderr, "line %i: %s at '%.*s'\n", line, msg, cast(int)where.len, where.data);
     lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);
 }

@@ -85,7 +85,8 @@ static lulu_Token make_token(const lulu_Lexer *self, lulu_Token_Type type)
 static lulu_Token error_token(const lulu_Lexer *self, cstring msg)
 {
     lulu_Token token = make_token(self, TOKEN_ERROR);
-    lulu_VM_comptime_error(self->vm, &token, msg);
+    // lulu_VM_comptime_error(self->vm, &token, msg);
+    lulu_VM_comptime_error(self->vm, token.line, msg, token.lexeme);
     return token;
 }
 
@@ -166,7 +167,7 @@ static void skip_whitespace(lulu_Lexer *self)
     }
 }
 
-#define str_lit(cstr) {(cstr), size_of(cstr) - 1}
+#define str_lit String_literal
 
 const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
     [TOKEN_AND]         = str_lit("and"),
