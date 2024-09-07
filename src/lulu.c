@@ -16,13 +16,7 @@
  * @warning 2024-09-04
  *      This will call `abort()` on allocation failure!
  */
-static void *heap_allocator_proc(
-    void *allocator_data,
-    lulu_Allocator_Mode mode,
-    isize new_size,
-    isize align,
-    void *old_ptr,
-    isize old_size)
+static void *heap_allocator_proc(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size)
 {
     void *new_ptr = NULL;
     isize add_len = new_size - old_size;
@@ -30,21 +24,20 @@ static void *heap_allocator_proc(
     unused(allocator_data);
     unused(align);
 
-    switch (mode) {
-    case LULU_ALLOCATOR_MODE_ALLOC: // fall through
-    case LULU_ALLOCATOR_MODE_RESIZE:
-        new_ptr = realloc(old_ptr, new_size);
-        lulu_Debug_assert(new_ptr != NULL, "[Re]allocation failure");
-        // We extended the allocation? Note that immediately loading a possibly
-        // invalid pointer is not a safe assumption for 100% of architectures.
-        if (add_len > 0) {
-            byte *add_ptr = cast(byte *)new_ptr + old_size;
-            memset(add_ptr, 0, add_len);
-        }
-        break;
-    case LULU_ALLOCATOR_MODE_FREE:
+    // Trying to free some existing memory?
+    if (new_size == 0 && old_size != 0) {
         free(old_ptr);
-        break;
+        return NULL;
+    }
+
+    // Otherwise, we're trying to [re]allocate some memory.
+    new_ptr = realloc(old_ptr, new_size);
+
+    // We extended the allocation? Note that immediately loading a possibly
+    // invalid pointer is not a safe assumption for 100% of architectures.
+    if (add_len > 0) {
+        byte *add_ptr = cast(byte *)new_ptr + old_size;
+        memset(add_ptr, 0, add_len);
     }
     return new_ptr;
 }
@@ -127,6 +120,8 @@ static int run_file(cstring path)
     case LULU_ERROR_COMPTIME:
     case LULU_ERROR_RUNTIME:
         return 1;
+    case LULU_ERROR_MEMORY:
+        return 2;
     }
     return 2;
 }

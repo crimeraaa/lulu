@@ -18,19 +18,7 @@ typedef union {
 
 #define LULU_ALLOCATOR_ALIGNMENT sizeof(lulu_Allocator_Alignment)
 
-typedef enum {
-    LULU_ALLOCATOR_MODE_ALLOC,
-    LULU_ALLOCATOR_MODE_RESIZE,
-    LULU_ALLOCATOR_MODE_FREE,
-} lulu_Allocator_Mode;
-
-typedef void *(*lulu_Allocator)(
-    void *allocator_data,
-    lulu_Allocator_Mode mode,
-    isize new_size,
-    isize align,
-    void *old_ptr,
-    isize old_size);
+typedef void *(*lulu_Allocator)(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size);
 
 void *lulu_Allocator_alloc(lulu_VM *vm, isize new_size);
 void *lulu_Allocator_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size);

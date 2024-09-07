@@ -18,6 +18,7 @@ typedef enum {
     LULU_OK,
     LULU_ERROR_COMPTIME,
     LULU_ERROR_RUNTIME,
+    LULU_ERROR_MEMORY,
 } lulu_Status;
 
 typedef struct {
