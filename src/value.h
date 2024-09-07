@@ -8,6 +8,7 @@
 
 typedef double lulu_Number;
 
+#define LULU_NUMBER_FMT         "%.14g"
 #define lulu_Number_add(x, y)   ((x) + (y))
 #define lulu_Number_sub(x, y)   ((x) - (y))
 #define lulu_Number_mul(x, y)   ((x) * (y))

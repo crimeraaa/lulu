@@ -49,6 +49,7 @@ void lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token
     lulu_Parse_error_current(lexer->vm, parser, msg);
 }
 
+noreturn
 static void wrap_error(lulu_VM *vm, const lulu_Token *token, cstring msg)
 {
     String where = token->lexeme;
@@ -110,7 +111,7 @@ static void number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *pars
 {
     char       *end;
     String      lexeme = parser->consumed.lexeme;
-    lulu_Number value = strtod(lexeme.data, &end);
+    lulu_Number value  = strtod(lexeme.data, &end);
     lulu_Value  tmp;
     unused(lexer);
     // We failed to convert the entire lexeme?

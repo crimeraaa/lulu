@@ -32,9 +32,9 @@ void lulu_Compiler_emit_bytes(lulu_Compiler *self, lulu_Parser *parser, byte ins
     lulu_Compiler_emit_byte(self, parser, inst2);
 }
 
-void lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_Parser *parser, usize byte3)
+void lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_Parser *parser, byte3 inst)
 {
-    lulu_Chunk_write_byte3(self->vm, current_chunk(self), byte3, parser->consumed.line);
+    lulu_Chunk_write_byte3(self->vm, current_chunk(self), inst, parser->consumed.line);
 }
 
 void lulu_Compiler_emit_return(lulu_Compiler *self, lulu_Parser *parser)
@@ -56,7 +56,7 @@ void lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Parser *parser, const
 {
     isize index = make_constant(self, parser, value);
     lulu_Compiler_emit_byte(self, parser, OP_CONSTANT);
-    lulu_Compiler_emit_byte3(self, parser, index);
+    lulu_Compiler_emit_byte3(self, parser, cast(byte3)index);
 }
 
 void lulu_Compiler_end(lulu_Compiler *self, lulu_Parser *parser)

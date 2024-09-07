@@ -18,30 +18,17 @@ typedef union {
 
 #define LULU_ALLOCATOR_ALIGNMENT sizeof(lulu_Allocator_Alignment)
 
-typedef void *(*lulu_Allocator)(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size);
-
-void *lulu_Allocator_alloc(lulu_VM *vm, isize new_size);
-void *lulu_Allocator_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size);
-void lulu_Allocator_free(lulu_VM *vm, void *old_ptr, isize old_size);
-
-#define rawptr_new(Type, vm)                                                   \
-    cast(Type *)lulu_Allocator_alloc(                                          \
-        vm,                                                                    \
-        size_of(Type))
-
-#define rawptr_free(Type, vm, ptr)                                             \
-    lulu_Allocator_free(                                                       \
-        vm,                                                                    \
-        ptr,                                                                   \
-        size_of(Type))
+void *lulu_Memory_alloc(lulu_VM *vm, isize new_size);
+void *lulu_Memory_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size);
+void lulu_Memory_free(lulu_VM *vm, void *old_ptr, isize old_size);
 
 #define rawarray_new(Type, vm, count)                                          \
-    cast(Type *)lulu_Allocator_alloc(                                          \
+    cast(Type *)lulu_Memory_alloc(                                             \
         vm,                                                                    \
         size_of(Type) * (count))
 
 #define rawarray_resize(Type, vm, old_ptr, old_count, new_count)               \
-    cast(Type *)lulu_Allocator_resize(                                         \
+    cast(Type *)lulu_Memory_resize(                                            \
         vm,                                                                    \
         old_ptr,                                                               \
         size_of((old_ptr)[0]) * (old_count),                                   \
@@ -53,7 +40,7 @@ void lulu_Allocator_free(lulu_VM *vm, void *old_ptr, isize old_size);
  *      `ptr`. However for uniformity we keep it around.
  */
 #define rawarray_free(Type, vm, ptr, count)                                    \
-    lulu_Allocator_free(                                                       \
+    lulu_Memory_free(                                                          \
         vm,                                                                    \
         ptr,                                                                   \
         size_of((ptr)[0]) * (count))

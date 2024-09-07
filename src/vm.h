@@ -4,21 +4,16 @@
 #include "lulu.h"
 #include "memory.h"
 #include "chunk.h"
+#include "string.h"
 
 /**
  * @todo 2024-09-06
  *      Change to be configurable. In C++ for example setjmp is a TERRIBLE idea!
  */
 #include <setjmp.h>
+#include <stdnoreturn.h>
 
 #define LULU_VM_STACK_MAX   256
-
-typedef enum {
-    LULU_OK,
-    LULU_ERROR_COMPTIME,
-    LULU_ERROR_RUNTIME,
-    LULU_ERROR_MEMORY,
-} lulu_Status;
 
 typedef struct {
     lulu_Value  values[LULU_VM_STACK_MAX];
@@ -67,7 +62,11 @@ lulu_Value lulu_VM_pop(lulu_VM *self);
  *      https://www.lua.org/source/5.1/ldo.c.html#luaD_pcall
  */
 lulu_Status lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata);
+
+noreturn
 void lulu_VM_throw_error(lulu_VM *self, lulu_Status status);
+
+noreturn
 void lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where);
 
 #endif // LULU_VM_H

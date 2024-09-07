@@ -4,16 +4,19 @@
 #include "lulu.h"
 #include "chunk.h"
 
-#ifdef LULU_DEBUG_ASSERT
+int lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
+__attribute__((format (printf, 4, 5)));
 
-#include <stdio.h>
+#define lulu_Debug_writef(level, fmt, ...)  lulu_Debug_writef(level, __FILE__, __LINE__, fmt "\n", __VA_ARGS__)
+#define lulu_Debug_fatalf(fmt, ...)         lulu_Debug_writef("FATAL", fmt, __VA_ARGS__)
+#define lulu_Debug_fatal(msg)               lulu_Debug_fatalf("%s", msg)
+
+#ifdef LULU_DEBUG_ASSERT
 
 #define lulu_Debug_assert(cond, msg)                                           \
 do {                                                                           \
     if (!(cond)) {                                                             \
-        fprintf(stderr, "[FATAL] %s:%i: assertion '%s' failed: %s\n",          \
-                __FILE__, __LINE__, #cond, msg);                               \
-        fflush(stderr);                                                        \
+        lulu_Debug_fatalf("assertion '%s' failed: %s", #cond, msg);            \
         __builtin_trap();                                                      \
     }                                                                          \
 } while (0)

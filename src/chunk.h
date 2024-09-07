@@ -44,11 +44,6 @@ typedef struct {
     isize cap;   // Total number of bytes that `code` points to.
 } lulu_Chunk;
 
-typedef struct {
-    byte *bytes;
-    isize len;
-} Byte_Slice;
-
 void lulu_Chunk_init(lulu_Chunk *self);
 void lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, byte inst, int line);
 void lulu_Chunk_free(lulu_VM *vm, lulu_Chunk *self);
@@ -61,8 +56,8 @@ void lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap);
  * @note 2024-09-04
  *      We encode in little endian fashion: LSB first and MSB last.
  */
-void lulu_Chunk_write_byte3(lulu_VM *vm, lulu_Chunk *self, usize inst, int line);
-void lulu_Chunk_write_bytes(lulu_VM *vm, lulu_Chunk *self, Byte_Slice bytes, int line);
+void lulu_Chunk_write_byte3(lulu_VM *vm, lulu_Chunk *self, byte3 inst, int line);
+void lulu_Chunk_write_bytes(lulu_VM *vm, lulu_Chunk *self, const byte *bytes, isize count, int line);
 
 /**
  * @brief

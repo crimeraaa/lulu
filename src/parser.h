@@ -5,6 +5,8 @@
 #include "compiler.h"
 #include "lexer.h"
 
+#include <stdnoreturn.h>
+
 typedef enum {
     PREC_NONE,
     PREC_ASSIGNMENT,    // =
@@ -21,6 +23,10 @@ typedef enum {
     PREC_PRIMARY,
 } lulu_Precedence;
 
+/**
+ * @note 2024-09-07
+ *      Forward declared in "compiler.h".
+ */
 struct lulu_Parser {
     lulu_Token current;  // Also our "lookahead" token.
     lulu_Token consumed; // Analogous to the book's `compiler.c:Parser::previous`.
@@ -51,12 +57,14 @@ void lulu_Parse_expression(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *
  * @note 2024-09-07
  *      Analogous to the book's `compiler.c:errorCurrent()`.
  */
+noreturn
 void lulu_Parse_error_current(lulu_VM *vm, lulu_Parser *parser, cstring msg);
 
 /**
  * @note 2024-09-07
  *      Analogous to the book's `compiler.c:error()`.
  */
+noreturn
 void lulu_Parse_error_consumed(lulu_VM *vm, lulu_Parser *parser, cstring msg);
 
 #endif // LULU_PARSER_H

@@ -26,7 +26,7 @@ static bool is_at_end(const lulu_Lexer *self)
  * @note 2024-09-05
  *      Analogous to the book's `scanner.c:advance()`.
  */
-static char consume_char(lulu_Lexer *self)
+static char advance_char(lulu_Lexer *self)
 {
     return *self->current++;
 }
@@ -82,12 +82,11 @@ static lulu_Token make_token(const lulu_Lexer *self, lulu_Token_Type type)
  * @warning 2024-09-07
  *      Actually since this function throws an error, it does not return!
  */
-static lulu_Token error_token(const lulu_Lexer *self, cstring msg)
+noreturn
+static void error_token(const lulu_Lexer *self, cstring msg)
 {
     lulu_Token token = make_token(self, TOKEN_ERROR);
-    // lulu_VM_comptime_error(self->vm, &token, msg);
     lulu_VM_comptime_error(self->vm, token.line, msg, token.lexeme);
-    return token;
 }
 
 static void skip_multiline(lulu_Lexer *self, int opening)
@@ -113,7 +112,7 @@ static void skip_multiline(lulu_Lexer *self, int opening)
         if (peek_char(self) == '\n') {
             self->line++;
         }
-        consume_char(self);
+        advance_char(self);
     }
 }
 
@@ -136,7 +135,7 @@ static void skip_comment(lulu_Lexer *self)
     }
     // Skip a single line comment.
     while (peek_char(self) != '\n' && !is_at_end(self)) {
-        consume_char(self);
+        advance_char(self);
     }
 }
 
@@ -149,7 +148,7 @@ static void skip_whitespace(lulu_Lexer *self)
         case ' ':
         case '\r':
         case '\t':
-            consume_char(self);
+            advance_char(self);
             break;
         case '-':
             // Don't have 2 '-' consecutively?
@@ -157,8 +156,8 @@ static void skip_whitespace(lulu_Lexer *self)
                 return;
             }
             // Skip the 2 dashes.
-            consume_char(self);
-            consume_char(self);
+            advance_char(self);
+            advance_char(self);
             skip_comment(self);
             break;
         default:
@@ -277,7 +276,7 @@ static lulu_Token_Type get_identifier_type(lulu_Lexer *self)
 static lulu_Token consume_identifier(lulu_Lexer *self)
 {
     while (isalnum(peek_char(self)) || peek_char(self) == '_') {
-        consume_char(self);
+        advance_char(self);
     }
     return make_token(self, get_identifier_type(self));
 }
@@ -285,14 +284,14 @@ static lulu_Token consume_identifier(lulu_Lexer *self)
 static void consume_base10(lulu_Lexer *self)
 {
     while (isdigit(peek_char(self))) {
-        consume_char(self);
+        advance_char(self);
     }
 }
 
 static void consume_base16(lulu_Lexer *self)
 {
     while (isxdigit(peek_char(self))) {
-        consume_char(self);
+        advance_char(self);
     }
 }
 
@@ -320,7 +319,7 @@ static lulu_Token consume_number(lulu_Lexer *self)
     // Error handling will be done later.
 trailing_characters:
     while (isalnum(peek_char(self)) || peek_char(self) == '_') {
-        consume_char(self);
+        advance_char(self);
     }
 
     return make_token(self, TOKEN_NUMBER_LIT);
@@ -332,16 +331,16 @@ static lulu_Token consume_string(lulu_Lexer *self, char quote)
         if (peek_char(self) == '\n') {
             goto unterminated_string;
         }
-        consume_char(self);
+        advance_char(self);
     }
     
     if (is_at_end(self)) {
 unterminated_string: 
-        return error_token(self, "Unterminated string");
+        error_token(self, "Unterminated string");
     }
     
     // Consume closing quote.
-    consume_char(self);
+    advance_char(self);
     return make_token(self, TOKEN_STRING_LIT);
 }
 
@@ -354,7 +353,7 @@ lulu_Token lulu_Lexer_scan_token(lulu_Lexer *self)
         return make_token(self, TOKEN_EOF);
     }
     
-    char ch = consume_char(self);
+    char ch = advance_char(self);
     if (isdigit(ch)) {
         return consume_number(self);
     }
@@ -394,7 +393,7 @@ lulu_Token lulu_Lexer_scan_token(lulu_Lexer *self)
         if (match_char(self, '=')) {
             return make_token(self, TOKEN_TILDE_EQUAL);
         }
-        return error_token(self, "Expected '=' after '~'");
+        error_token(self, "Expected '=' after '~'");
     case '=':
         return make_token(
             self, match_char(self, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
@@ -409,5 +408,5 @@ lulu_Token lulu_Lexer_scan_token(lulu_Lexer *self)
     case '\"': return consume_string(self, ch);
     }
 
-    return error_token(self, "Unexpected character");
+    error_token(self, "Unexpected character");
 }

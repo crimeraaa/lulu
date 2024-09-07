@@ -46,21 +46,19 @@ void lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap)
     self->cap   = new_cap;
 }
 
-void lulu_Chunk_write_byte3(lulu_VM *vm, lulu_Chunk *self, usize inst, int line)
+void lulu_Chunk_write_byte3(lulu_VM *vm, lulu_Chunk *self, byte3 inst, int line)
 {
     byte lsb = inst & 0xff;         // bits 0..7
     byte mid = (inst >> 8)  & 0xff; // bits 8..15
     byte msb = (inst >> 16) & 0xff; // bits 16..23
-    
-    byte _buf[] = {lsb, mid, msb};
-    Byte_Slice args = {_buf, size_of(_buf)};
-    lulu_Chunk_write_bytes(vm, self, args, line);
+    byte buf[] = {lsb, mid, msb};
+    lulu_Chunk_write_bytes(vm, self, buf, size_of(buf), line);
 }
 
-void lulu_Chunk_write_bytes(lulu_VM *vm, lulu_Chunk *self, Byte_Slice bytes, int line)
+void lulu_Chunk_write_bytes(lulu_VM *vm, lulu_Chunk *self, const byte *bytes, isize count, int line)
 {
     isize old_len = self->len;
-    isize new_len = old_len + bytes.len;
+    isize new_len = old_len + count;
     if (new_len > self->cap) {
         // Grow to the next power of 2
         isize new_cap = 1;
@@ -69,8 +67,8 @@ void lulu_Chunk_write_bytes(lulu_VM *vm, lulu_Chunk *self, Byte_Slice bytes, int
         }
         lulu_Chunk_reserve(vm, self, new_cap);
     }
-    for (isize i = 0; i < bytes.len; i++) {
-        self->code[old_len + i]  = bytes.bytes[i];
+    for (isize i = 0; i < count; i++) {
+        self->code[old_len + i]  = bytes[i];
         self->lines[old_len + i] = line;
     }
     self->len = new_len;

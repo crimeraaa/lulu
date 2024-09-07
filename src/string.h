@@ -5,6 +5,33 @@
 
 /**
  * @brief
+ *      A read-only view into some characters.
+ * 
+ * @note 2024-09-04
+ *      The underlying buffer may not necessarily be nul terminated!
+ */
+typedef struct {
+    const char *data;
+    isize       len;
+} String;
+
+/**
+ * @brief
+ *      Construct a String from a C-string literal. This is designed to work for
+ *      both post-declaration assignment.
+ * 
+ * @warning 2024-09-07
+ *      C99-style compound literals have very different semantics in C++.
+ *      "Struct literals" are valid (in C++) due to implicit copy constructors.
+ */
+#ifdef __cplusplus
+#define String_literal(cstr) {(cstr), size_of(cstr) - 1}
+#else // !__cplusplus
+#define String_literal(cstr) cast(String){(cstr), size_of(cstr) - 1}
+#endif // __cplusplus
+
+/**
+ * @brief
  *      1D heap-allocated dynamic array of `char`.
  *
  * @note

@@ -24,6 +24,7 @@ typedef   int32_t i32;
 typedef   int64_t i64;
 
 typedef        u8 byte;  // Smallest addressable unit.
+typedef       u32 byte3; // Use only 24 bits.
 typedef    size_t usize;
 typedef ptrdiff_t isize;
 
@@ -37,33 +38,15 @@ typedef ptrdiff_t isize;
  */
 typedef const char *cstring;
 
-/**
- * @brief
- *      A read-only view into some characters.
- * 
- * @note 2024-09-04
- *      The underlying buffer may not necessarily be nul terminated!
- */
-typedef struct {
-    const char *data;
-    isize       len;
-} String;
-
-/**
- * @brief
- *      Construct a String from a C-string literal. This is designed to work for
- *      both post-declaration assignment.
- * 
- * @warning 2024-09-07
- *      C99-style compound literals have very different semantics in C++.
- *      "Struct literals" are valid (in C++) due to implicit copy constructors.
- */
-#ifdef __cplusplus
-#define String_literal(cstr) {(cstr), size_of(cstr) - 1}
-#else // !__cplusplus
-#define String_literal(cstr) cast(String){(cstr), size_of(cstr) - 1}
-#endif // __cplusplus
-
 typedef struct lulu_VM lulu_VM;
+
+typedef void *(*lulu_Allocator)(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size);
+
+typedef enum {
+    LULU_OK,
+    LULU_ERROR_COMPTIME,
+    LULU_ERROR_RUNTIME,
+    LULU_ERROR_MEMORY,
+} lulu_Status;
 
 #endif // LULU_H

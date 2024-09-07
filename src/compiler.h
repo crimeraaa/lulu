@@ -11,6 +11,10 @@
  */
 #define LULU_MAX_CONSTANTS  ((1 << 24) - 1)
 
+/**
+ * @note 2024-09-07
+ *      Defined in "parser.h".
+ */
 typedef struct lulu_Parser lulu_Parser;
 typedef struct {
     lulu_VM    *vm;    // Enclosing/parent state.
@@ -24,7 +28,7 @@ void lulu_Compiler_end(lulu_Compiler *self, lulu_Parser *parser);
 
 void lulu_Compiler_emit_byte(lulu_Compiler *self, lulu_Parser *parser, byte inst);
 void lulu_Compiler_emit_bytes(lulu_Compiler *self, lulu_Parser *parser, byte inst1, byte inst2);
-void lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_Parser *parser, usize byte3);
+void lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_Parser *parser, byte3 inst);
 void lulu_Compiler_emit_return(lulu_Compiler *self, lulu_Parser *parser);
 
 void lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Parser *parser, const lulu_Value *value);

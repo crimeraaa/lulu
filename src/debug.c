@@ -1,6 +1,20 @@
 #include "debug.h"
 
+#include <stdarg.h>
 #include <stdio.h>
+
+#undef lulu_Debug_writef
+int lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
+{
+    va_list argp;
+    int writes = 0;
+    va_start(argp, fmt);
+    writes += fprintf(stderr, "[%s] %s:%i: ", level, file, line);
+    writes += vfprintf(stderr, fmt, argp);
+    fflush(stderr);
+    va_end(argp);
+    return writes;
+}
 
 void lulu_Debug_print_value(const lulu_Value *value)
 {
@@ -12,7 +26,7 @@ void lulu_Debug_print_value(const lulu_Value *value)
         printf("%s", value->boolean ? "true" : "false");
         break;
     case LULU_VALUE_NUMBER:
-        printf("%g", value->number);
+        printf(LULU_NUMBER_FMT, value->number);
         break;
     }
 }
@@ -20,7 +34,7 @@ void lulu_Debug_print_value(const lulu_Value *value)
 void lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name)
 {
     printf("=== DISASSEMBLY: BEGIN ===\n");
-    printf(".name \'%s\'\n", name);
+    printf(".name '%s'\n", name);
     printf(".code\n");
     
     for (isize index = 0; index < chunk->len;) {
@@ -35,24 +49,17 @@ static void print_arg_size_0(cstring name)
     printf("%s\n", name);
 }
 
-// static void print_arg_size_1(cstring name, const lulu_Chunk *chunk, isize index)
-// {
-//     byte arg = chunk->code[index + 1];
-//     printf("%-16s %i \'", name, arg);
-//     lulu_Debug_print_value(&chunk->constants.values[arg]);
-//     printf("\'\n");
-// }
-
+/**
+ * @note 2024-09-07
+ *      Remember that for a 3-byte argument, the LSB is stored first.
+ */
 static void print_constant(cstring name, const lulu_Chunk *chunk, isize index)
 {
-    byte lsb = chunk->code[index + 1];
-    byte mid = chunk->code[index + 2];
-    byte msb = chunk->code[index + 3];
-    
-    usize arg = lsb | (mid << 8) | (msb << 16);
-    printf("%-16s %4zu \'", name, arg);
+    const byte *ip  = &chunk->code[index];
+    const usize arg = ip[1] | (ip[2] << 8) | (ip[3] << 16);
+    printf("%-16s %4zu '", name, arg);
     lulu_Debug_print_value(&chunk->constants.values[arg]);
-    printf("\'\n");
+    printf("'\n");
 }
 
 isize lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
