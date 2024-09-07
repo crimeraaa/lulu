@@ -104,11 +104,9 @@ static void skip_multiline(lulu_Lexer *self, int opening)
         /**
          * @brief
          *      Above call may have fallen through to here as well.
-         *
-         * @todo 2024-09-05
-         *      Throw error if at EOF!
          */
         if (is_at_end(self)) {
+            error_token(self, "Unterminated multiline comment");
             return;
         }
         if (peek_char(self) == '\n') {
@@ -170,7 +168,7 @@ static void skip_whitespace(lulu_Lexer *self)
 
 #define str_lit(cstr) {(cstr), size_of(cstr) - 1}
 
-const String LULU_TOKENS[LULU_TOKEN_COUNT] = {
+const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
     [TOKEN_AND]         = str_lit("and"),
     [TOKEN_BREAK]       = str_lit("break"),
     [TOKEN_DO]          = str_lit("do"),
@@ -199,7 +197,7 @@ const String LULU_TOKENS[LULU_TOKEN_COUNT] = {
 
 static lulu_Token_Type check_keyword(String current, lulu_Token_Type type)
 {
-    const String keyword = LULU_TOKENS[type];
+    const String keyword = LULU_KEYWORDS[type];
     if (keyword.len == current.len) {
         if (memcmp(keyword.data, current.data, keyword.len) == 0) {
             return type;
@@ -302,6 +300,7 @@ static lulu_Token consume_number(lulu_Lexer *self)
     if (match_char(self, '0')) {
         if (match_char_any(self, "xX")) {
             consume_base16(self);
+            goto trailing_characters;
         }
     }
     consume_base10(self);
@@ -318,6 +317,7 @@ static lulu_Token consume_number(lulu_Lexer *self)
     }
     
     // Error handling will be done later.
+trailing_characters:
     while (isalnum(peek_char(self)) || peek_char(self) == '_') {
         consume_char(self);
     }
