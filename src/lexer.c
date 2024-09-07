@@ -72,20 +72,21 @@ static lulu_Token make_token(const lulu_Lexer *self, lulu_Token_Type type)
 {
     lulu_Token token;
     token.type        = type;
-    token.string.data = self->start;
-    token.string.len  = self->current - self->start;
+    token.lexeme.data = self->start;
+    token.lexeme.len  = self->current - self->start;
     token.line        = self->line;
     return token;
 }
 
+/**
+ * @warning 2024-09-07
+ *      Actually since this function throws an error, it does not return!
+ */
 static lulu_Token error_token(const lulu_Lexer *self, cstring msg)
 {
-    lulu_Token token;
-    token.type        = TOKEN_ERROR;
-    token.string.data = msg;
-    token.string.len  = cast(isize)strlen(msg);
-    token.line        = self->line;
-    return token;    
+    lulu_Token token = make_token(self, TOKEN_ERROR);
+    lulu_VM_comptime_error(self->vm, &token, msg);
+    return token;
 }
 
 static void skip_multiline(lulu_Lexer *self, int opening)
@@ -167,9 +168,9 @@ static void skip_whitespace(lulu_Lexer *self)
     }
 }
 
-#define str_lit(c_str) {(c_str), size_of(c_str) - 1}
+#define str_lit(cstr) {(cstr), size_of(cstr) - 1}
 
-const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
+const String LULU_TOKENS[LULU_TOKEN_COUNT] = {
     [TOKEN_AND]         = str_lit("and"),
     [TOKEN_BREAK]       = str_lit("break"),
     [TOKEN_DO]          = str_lit("do"),
@@ -186,17 +187,19 @@ const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
     [TOKEN_NOT]         = str_lit("not"),
     [TOKEN_OR]          = str_lit("or"),
     [TOKEN_PRINT]       = str_lit("print"),
+    [TOKEN_REPEAT]      = str_lit("repeat"),
     [TOKEN_RETURN]      = str_lit("return"),
     [TOKEN_THEN]        = str_lit("then"),
     [TOKEN_TRUE]        = str_lit("true"),
+    [TOKEN_UNTIL]       = str_lit("until"),
     [TOKEN_WHILE]       = str_lit("while"),
 };
 
 #undef str_lit
 
-static lulu_Token_Type keyword_check_type(String current, lulu_Token_Type type)
+static lulu_Token_Type check_keyword(String current, lulu_Token_Type type)
 {
-    const String keyword = LULU_KEYWORDS[type];
+    const String keyword = LULU_TOKENS[type];
     if (keyword.len == current.len) {
         if (memcmp(keyword.data, current.data, keyword.len) == 0) {
             return type;
@@ -210,14 +213,14 @@ static lulu_Token_Type get_identifier_type(lulu_Lexer *self)
 {
     String current = {self->start, self->current - self->start};
     switch (current.data[0]) {
-    case 'a': return keyword_check_type(current, TOKEN_AND);
-    case 'b': return keyword_check_type(current, TOKEN_BREAK);
-    case 'd': return keyword_check_type(current, TOKEN_DO);
+    case 'a': return check_keyword(current, TOKEN_AND);
+    case 'b': return check_keyword(current, TOKEN_BREAK);
+    case 'd': return check_keyword(current, TOKEN_DO);
     case 'e':
         switch (current.len) {
-        case 3: return keyword_check_type(current, TOKEN_END);
-        case 4: return keyword_check_type(current, TOKEN_ELSE);
-        case 6: return keyword_check_type(current, TOKEN_ELSEIF);
+        case 3: return check_keyword(current, TOKEN_END);
+        case 4: return check_keyword(current, TOKEN_ELSE);
+        case 6: return check_keyword(current, TOKEN_ELSEIF);
         }
         break;
     case 'f':
@@ -225,8 +228,8 @@ static lulu_Token_Type get_identifier_type(lulu_Lexer *self)
             break;
         }
         switch (current.data[1]) {
-        case 'o': return keyword_check_type(current, TOKEN_FOR);
-        case 'u': return keyword_check_type(current, TOKEN_FUNCTION);
+        case 'o': return check_keyword(current, TOKEN_FOR);
+        case 'u': return check_keyword(current, TOKEN_FUNCTION);
         }
         break;
     case 'i':
@@ -234,32 +237,40 @@ static lulu_Token_Type get_identifier_type(lulu_Lexer *self)
             break;
         }
         switch (current.data[1]) {
-        case 'f': return keyword_check_type(current, TOKEN_IF);
-        case 'i': return keyword_check_type(current, TOKEN_IN);
+        case 'f': return check_keyword(current, TOKEN_IF);
+        case 'i': return check_keyword(current, TOKEN_IN);
         }
         break;
-    case 'l': return keyword_check_type(current, TOKEN_LOCAL);
+    case 'l': return check_keyword(current, TOKEN_LOCAL);
     case 'n':
         if (current.len != 3) {
             break;
         }
         switch (current.data[1]) {
-        case 'i': return keyword_check_type(current, TOKEN_NIL);
-        case 'o': return keyword_check_type(current, TOKEN_NOT);
+        case 'i': return check_keyword(current, TOKEN_NIL);
+        case 'o': return check_keyword(current, TOKEN_NOT);
         }
         break;
-    case 'o': return keyword_check_type(current, TOKEN_OR);
-    case 'r': return keyword_check_type(current, TOKEN_RETURN);
+    case 'o': return check_keyword(current, TOKEN_OR);
+    case 'r': 
+        if (current.len < 3) {
+            break;
+        }
+        switch (current.data[2]) {
+        case 'p': return check_keyword(current, TOKEN_REPEAT);
+        case 't': return check_keyword(current, TOKEN_RETURN);
+        }
     case 't':
         if (current.len != 4) {
             break;
         }
         switch (current.data[1]) {
-        case 'h': return keyword_check_type(current, TOKEN_THEN);
-        case 'r': return keyword_check_type(current, TOKEN_TRUE);
+        case 'h': return check_keyword(current, TOKEN_THEN);
+        case 'r': return check_keyword(current, TOKEN_TRUE);
         }
         break;
-    case 'w': return keyword_check_type(current, TOKEN_WHILE);        
+    case 'u': return check_keyword(current, TOKEN_UNTIL);
+    case 'w': return check_keyword(current, TOKEN_WHILE);        
     }
     return TOKEN_IDENTIFIER;
 }
@@ -375,6 +386,8 @@ lulu_Token lulu_Lexer_scan_token(lulu_Lexer *self)
     case '-': return make_token(self, TOKEN_DASH);
     case '*': return make_token(self, TOKEN_ASTERISK);
     case '/': return make_token(self, TOKEN_SLASH);
+    case '%': return make_token(self, TOKEN_PERCENT);
+    case '^': return make_token(self, TOKEN_CARET);
     
     case '~':
         if (match_char(self, '=')) {
@@ -395,5 +408,5 @@ lulu_Token lulu_Lexer_scan_token(lulu_Lexer *self)
     case '\"': return consume_string(self, ch);
     }
 
-    return error_token(self, "Unexpected character.");
+    return error_token(self, "Unexpected character");
 }

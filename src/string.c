@@ -53,8 +53,8 @@ void String_Builder_write_string(String_Builder *self, String str)
     self->len = new_len;
 }
 
-void String_Builder_write_cstring(String_Builder *self, cstring c_str)
+void String_Builder_write_cstring(String_Builder *self, cstring cstr)
 {
-    String str = {c_str, cast(isize)strlen(c_str)};
+    String str = {cstr, cast(isize)strlen(cstr)};
     String_Builder_write_string(self, str);
 }

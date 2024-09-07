@@ -20,8 +20,9 @@ TOKEN_LOCAL,
 TOKEN_NIL,     TOKEN_NOT,
 TOKEN_OR,
 TOKEN_PRINT,   // This is temporary!!!
-TOKEN_RETURN,
+TOKEN_REPEAT,  TOKEN_RETURN,
 TOKEN_THEN,    TOKEN_TRUE,
+TOKEN_UNTIL,
 TOKEN_WHILE,
 
 ///--- 1}}} --------------------------------------------------------------------
@@ -66,17 +67,17 @@ TOKEN_EOF,
 } lulu_Token_Type;
 
 #define LULU_KEYWORD_COUNT  (TOKEN_WHILE + 1)
+#define LULU_TOKEN_COUNT    (TOKEN_EOF + 1)
 
 /**
  * @brief
- *      Map a `lulu_Token_Type`, if it's a keyword, to the string representation
- *      thereof.
+ *      Map a `lulu_Token_Type`, to the string representation thereof.
  */
-extern const String LULU_KEYWORDS[LULU_KEYWORD_COUNT];
+extern const String LULU_TOKENS[LULU_TOKEN_COUNT];
 
 typedef struct {
     lulu_Token_Type type;
-    String string;
+    String lexeme;
     int    line;
 } lulu_Token;
 
