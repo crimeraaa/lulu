@@ -7,7 +7,7 @@
 static void
 parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence);
 
-static const lulu_Parse_Rule *
+static lulu_Parse_Rule *
 get_rule(lulu_Token_Type type);
 
 __attribute__((__unused__)) static void
@@ -91,12 +91,12 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     }
 
     switch (type) {
-    case TOKEN_PLUS:        lulu_Compiler_emit_byte(compiler, parser, OP_ADD); break;
-    case TOKEN_DASH:        lulu_Compiler_emit_byte(compiler, parser, OP_SUB); break;
-    case TOKEN_ASTERISK:    lulu_Compiler_emit_byte(compiler, parser, OP_MUL); break;
-    case TOKEN_SLASH:       lulu_Compiler_emit_byte(compiler, parser, OP_DIV); break;
-    case TOKEN_PERCENT:     lulu_Compiler_emit_byte(compiler, parser, OP_MOD); break;
-    case TOKEN_CARET:       lulu_Compiler_emit_byte(compiler, parser, OP_POW); break;
+    case TOKEN_PLUS:        lulu_Compiler_emit_opcode(compiler, parser, OP_ADD); break;
+    case TOKEN_DASH:        lulu_Compiler_emit_opcode(compiler, parser, OP_SUB); break;
+    case TOKEN_ASTERISK:    lulu_Compiler_emit_opcode(compiler, parser, OP_MUL); break;
+    case TOKEN_SLASH:       lulu_Compiler_emit_opcode(compiler, parser, OP_DIV); break;
+    case TOKEN_PERCENT:     lulu_Compiler_emit_opcode(compiler, parser, OP_MOD); break;
+    case TOKEN_CARET:       lulu_Compiler_emit_opcode(compiler, parser, OP_POW); break;
     default:
         return; // Unreachable!
     }
@@ -148,14 +148,14 @@ unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     parse_precedence(compiler, lexer, parser, PREC_UNARY);
 
     switch (type) {
-    case TOKEN_DASH: lulu_Compiler_emit_byte(compiler, parser, OP_UNM); break;
+    case TOKEN_DASH: lulu_Compiler_emit_opcode(compiler, parser, OP_UNM); break;
     default:
         return; // Unreachable!
     }
 }
 
 
-static const lulu_Parse_Rule
+static lulu_Parse_Rule
 LULU_PARSE_RULES[] = {
 ///--- RESERVED WORDS ----------------------------------------------------- {{{1
 
@@ -262,7 +262,7 @@ parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser
     parse_infix(compiler, lexer, parser, precedence);
 }
 
-static const lulu_Parse_Rule *
+static lulu_Parse_Rule *
 get_rule(lulu_Token_Type type)
 {
     return &LULU_PARSE_RULES[type];

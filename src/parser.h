@@ -26,7 +26,7 @@ typedef enum {
 typedef void
 (*lulu_ParseFn)(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser);
 
-typedef struct {
+typedef const struct {
     lulu_ParseFn    prefix_fn;
     lulu_ParseFn    infix_fn;
     lulu_Precedence precedence;

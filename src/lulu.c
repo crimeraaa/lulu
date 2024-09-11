@@ -56,7 +56,7 @@ repl(void)
             break;
         }
         
-        lulu_VM_interpret(global_vm, line);
+        lulu_VM_interpret(global_vm, "stdin", line);
     }
 }
 
@@ -113,7 +113,7 @@ run_file(cstring path)
     if (!source) {
         return 2;
     }
-    status = lulu_VM_interpret(global_vm, source);
+    status = lulu_VM_interpret(global_vm, path, source);
     rawarray_free(char, global_vm, source, len);
 
     switch (status) {

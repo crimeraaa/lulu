@@ -31,13 +31,16 @@ lulu_VM_free(lulu_VM *self)
     unused(self);
 }
 
+static lulu_Chunk *
+current_chunk(lulu_VM *self)
+{
+    return self->chunk;
+}
+
 static lulu_Status
 execute_bytecode(lulu_VM *self)
 {
-
-#define READ_BYTE()     (*self->ip++)
-#define READ_BYTE3()    READ_BYTE() | (READ_BYTE() << 8) | (READ_BYTE() << 16)
-#define READ_CONSTANT() (self->chunk->constants.values[READ_BYTE3()])
+    lulu_Chunk *chunk = current_chunk(self);
 
 #define BINARY_OP(lulu_Number_fn)                                              \
 do {                                                                           \
@@ -48,6 +51,7 @@ do {                                                                           \
 } while (0)
     
     for (;;) {
+        lulu_Instruction inst;
 #ifdef LULU_DEBUG_TRACE
         const lulu_VM_Stack *stack = &self->stack;
         printf("        ");
@@ -57,12 +61,13 @@ do {                                                                           \
             printf(" ]");
         }
         printf("\n");
-        lulu_Debug_disassemble_instruction(self->chunk, self->ip - self->chunk->code);
+        lulu_Debug_disassemble_instruction(chunk, self->ip - chunk->code);
 #endif
-        byte inst = READ_BYTE();
-        switch (inst) {
+        inst = *self->ip++;
+        switch (lulu_Instruction_get_opcode(inst)) {
         case OP_CONSTANT: {
-            lulu_Value value = READ_CONSTANT();
+            byte3      index = lulu_Instruction_get_byte3(inst);
+            lulu_Value value = chunk->constants.values[index];
             lulu_VM_push(self, &value);
             break;
         }
@@ -90,9 +95,6 @@ do {                                                                           \
     return LULU_ERROR_RUNTIME;
     
 #undef BINARY_OP
-#undef READ_BYTE
-#undef READ_BYTE3
-#undef READ_CONSTANT
 
 }
 
@@ -100,6 +102,7 @@ typedef struct {
     lulu_Compiler compiler;
     lulu_Lexer    lexer;
     lulu_Chunk    chunk;
+    cstring       name;
     cstring       input;
 } Comptime;
 
@@ -107,7 +110,8 @@ static void
 compile_only(lulu_VM *self, void *userdata)
 {
     Comptime *ud = cast(Comptime *)userdata;
-    lulu_Chunk_init(&ud->chunk);
+    self->chunk  = &ud->chunk;
+    lulu_Chunk_init(&ud->chunk, ud->name);
     lulu_Compiler_init(self, &ud->compiler, &ud->lexer);
     lulu_Compiler_compile(&ud->compiler, ud->input, &ud->chunk);
 }
@@ -115,15 +119,12 @@ compile_only(lulu_VM *self, void *userdata)
 static void
 compile_and_run(lulu_VM *self, void *userdata)
 {
-    lulu_Status status;
-    Comptime   *ud = cast(Comptime *)userdata;
-
-    status = lulu_VM_run_protected(self, &compile_only, ud);
+    Comptime   *ud     = cast(Comptime *)userdata;
+    lulu_Status status = lulu_VM_run_protected(self, &compile_only, ud);
 
     // Only execute if we're certain the chunk is valid.
     if (status == LULU_OK) {
-        self->chunk = &ud->chunk;
-        self->ip    = self->chunk->code;
+        self->ip = self->chunk->code;
         
         /**
          * @todo 2024-09-06
@@ -144,9 +145,10 @@ compile_and_run(lulu_VM *self, void *userdata)
 }
 
 lulu_Status
-lulu_VM_interpret(lulu_VM *self, cstring input)
+lulu_VM_interpret(lulu_VM *self, cstring name, cstring input)
 {
     Comptime ud;
+    ud.name  = name;
     ud.input = input;
     return lulu_VM_run_protected(self, &compile_and_run, &ud);
 }
@@ -203,6 +205,7 @@ lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
 void
 lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where)
 {
-    fprintf(stderr, "<main>:%i: %s at '%.*s'\n", line, msg, cast(int)where.len, where.data);
+    cstring name = current_chunk(self)->name;
+    fprintf(stderr, "%s:%i: %s at '%.*s'\n", name, line, msg, cast(int)where.len, where.data);
     lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);
 }

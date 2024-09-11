@@ -30,6 +30,70 @@ extern const lulu_OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 
 /**
+ * @brief Layout:
+ *      [ byte 1 ] [ byte 2 ] [ byte 3 ] [ opcode ]
+ *      [ 31..24 ] [ 23..16 ] [ 15..08 ] [ 07..00 ]
+ *
+ * @details Example:
+ *      opcode  =   OP_NIL =                              00000001
+ *      byte1   =        3 =   00000011
+ *      byte2   =        0 =            00000000
+ *      byte3   =        0 =                     00000000
+ *      inst    = 50331649 = 0b00000011_00000000_00000000_00000001
+ */
+typedef u32 lulu_Instruction;
+
+static inline lulu_Instruction
+lulu_Instruction_arg3(lulu_OpCode opcode, byte arg1, byte arg2, byte arg3)
+{
+    lulu_Instruction inst = 0;
+    inst |= cast(lulu_Instruction)opcode;
+    inst |= cast(lulu_Instruction)arg1 << 24;
+    inst |= cast(lulu_Instruction)arg2 << 16;
+    inst |= cast(lulu_Instruction)arg3 << 8;
+    return inst;
+}
+
+static inline lulu_Instruction
+lulu_Instruction_byte3(lulu_OpCode opcode, byte3 arg)
+{
+    byte msb = (arg >> 16) & 0xff;
+    byte mid = (arg >>  8) & 0xff;
+    byte lsb = (arg >>  0) & 0xff;
+    return lulu_Instruction_arg3(opcode, msb, mid, lsb);
+}
+
+static inline lulu_Instruction
+lulu_Instruction_arg1(lulu_OpCode opcode, byte arg)
+{
+    return lulu_Instruction_arg3(opcode, arg, 0, 0);
+}
+
+static inline lulu_Instruction
+lulu_Instruction_none(lulu_OpCode opcode)
+{
+    return lulu_Instruction_arg3(opcode, 0, 0, 0);
+}
+
+static inline lulu_OpCode
+lulu_Instruction_get_opcode(lulu_Instruction inst)
+{
+    return cast(lulu_OpCode)(inst & 0xff);
+}
+
+static inline byte
+lulu_Instruction_get_byte1(lulu_Instruction inst)
+{
+    return inst >> 24;
+}
+
+static inline byte3
+lulu_Instruction_get_byte3(lulu_Instruction inst)
+{
+    return inst >> 8;
+}
+
+/**
  * @brief
  *      Contains the bytecode, line information and constant values.
  *
@@ -38,34 +102,25 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
  *      `lulu_VM *`.
  */
 typedef struct {
-    lulu_Value_Array constants;
-    byte *code;  // 1D array of bytecode.
-    int  *lines; // Line numbers per bytecode.
-    isize len;   // Current number of actively used bytes in `code`.
-    isize cap;   // Total number of bytes that `code` points to.
+    lulu_Value_Array  constants;
+    lulu_Instruction *code;  // 1D array of bytecode.
+    int    *lines; // Line numbers per bytecode.
+    cstring name;  // Filename.
+    isize   len;   // Current number of actively used bytes in `code`.
+    isize   cap;   // Total number of bytes that `code` points to.
 } lulu_Chunk;
 
 void
-lulu_Chunk_init(lulu_Chunk *self);
+lulu_Chunk_init(lulu_Chunk *self, cstring name);
 
 void
-lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, byte inst, int line);
+lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, lulu_Instruction inst, int line);
 
 void
 lulu_Chunk_free(lulu_VM *vm, lulu_Chunk *self);
 
 void
 lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap);
-
-/**
- * @brief
- *      Using bit manipulation, encode `inst` into 3 separate bytes.
- * 
- * @note 2024-09-04
- *      We encode in little endian fashion: LSB first and MSB last.
- */
-void
-lulu_Chunk_write_byte3(lulu_VM *vm, lulu_Chunk *self, byte3 inst, int line);
 
 /**
  * @brief

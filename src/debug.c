@@ -59,11 +59,10 @@ print_arg_size_0(cstring name)
  *      Remember that for a 3-byte argument, the LSB is stored first.
  */
 static void
-print_constant(cstring name, const lulu_Chunk *chunk, isize index)
+print_constant(cstring name, const lulu_Chunk *chunk, lulu_Instruction inst)
 {
-    const byte *ip  = &chunk->code[index];
-    const usize arg = ip[1] | (ip[2] << 8) | (ip[3] << 16);
-    printf("%-16s %4zu '", name, arg);
+    isize arg = lulu_Instruction_get_byte3(inst);
+    printf("%-16s %4ti '", name, arg);
     lulu_Debug_print_value(&chunk->constants.values[arg]);
     printf("'\n");
 }
@@ -79,14 +78,15 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
         printf("%4i ", chunk->lines[index]);
     }
     
-    byte inst = chunk->code[index];
-    if (inst >= LULU_OPCODE_COUNT) {
-        printf("Unknown opcode %i.\n", inst);
+    lulu_Instruction inst   = chunk->code[index];
+    lulu_OpCode      opcode = lulu_Instruction_get_opcode(inst);
+    if (opcode >= LULU_OPCODE_COUNT) {
+        printf("Unknown opcode %i.\n", opcode);
         return index + 1;
     }
-    switch (inst) {
+    switch (opcode) {
     case OP_CONSTANT:
-        print_constant(LULU_OPCODE_INFO[inst].name, chunk, index);
+        print_constant(LULU_OPCODE_INFO[opcode].name, chunk, inst);
         break;
     case OP_ADD:
     case OP_SUB:
@@ -96,8 +96,8 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_POW:
     case OP_UNM:
     case OP_RETURN:
-        print_arg_size_0(LULU_OPCODE_INFO[inst].name);
+        print_arg_size_0(LULU_OPCODE_INFO[opcode].name);
         break;
     }
-    return index + 1 + LULU_OPCODE_INFO[inst].arg_size;
+    return index + 1;
 }

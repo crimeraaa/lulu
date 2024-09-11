@@ -23,8 +23,8 @@ current_chunk(lulu_Compiler *self)
     return self->chunk;
 }
 
-void
-lulu_Compiler_emit_byte(lulu_Compiler *self, lulu_Parser *parser, byte inst)
+static void
+emit_instruction(lulu_Compiler *self, lulu_Parser *parser, lulu_Instruction inst)
 {
     lulu_VM *vm   = self->vm;
     int      line = parser->consumed.line;
@@ -32,44 +32,35 @@ lulu_Compiler_emit_byte(lulu_Compiler *self, lulu_Parser *parser, byte inst)
 }
 
 void
-lulu_Compiler_emit_bytes(lulu_Compiler *self, lulu_Parser *parser, byte inst1, byte inst2)
+lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode opcode)
 {
-    lulu_Compiler_emit_byte(self, parser, inst1);
-    lulu_Compiler_emit_byte(self, parser, inst2);
-}
-
-void
-lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_Parser *parser, byte3 inst)
-{
-    lulu_VM *vm   = self->vm;
-    int      line = parser->consumed.line;
-    lulu_Chunk_write_byte3(vm, current_chunk(self), inst, line);
+    emit_instruction(self, parser, lulu_Instruction_none(opcode));
 }
 
 void
 lulu_Compiler_emit_return(lulu_Compiler *self, lulu_Parser *parser)
 {
-    lulu_Compiler_emit_byte(self, parser, OP_RETURN);
+    lulu_Compiler_emit_opcode(self, parser, OP_RETURN);
 }
 
-static isize
+static byte3
 make_constant(lulu_Compiler *self, lulu_Parser *parser, const lulu_Value *value)
 {
-    lulu_VM *vm = self->vm;
+    lulu_VM *vm    = self->vm;
     isize    index = lulu_Chunk_add_constant(vm, current_chunk(self), value);
     if (index > LULU_MAX_CONSTANTS) {
         lulu_Parse_error_consumed(vm, parser, "Too many constants in one chunk.");
         return 0;
     }
-    return index;
+    return cast(byte3)index;
 }
 
 void
 lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Parser *parser, const lulu_Value *value)
 {
-    isize index = make_constant(self, parser, value);
-    lulu_Compiler_emit_byte(self, parser, OP_CONSTANT);
-    lulu_Compiler_emit_byte3(self, parser, cast(byte3)index);
+    const byte3      index = make_constant(self, parser, value);
+    lulu_Instruction inst  = lulu_Instruction_byte3(OP_CONSTANT, index);
+    emit_instruction(self, parser, inst);
 }
 
 void
