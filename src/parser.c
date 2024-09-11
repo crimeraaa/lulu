@@ -38,7 +38,7 @@ lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser)
     
     // Should be normally impossible, but just in case
     if (token.type == TOKEN_ERROR) {
-        lulu_Parse_error_current(lexer->vm, parser, "Unhandled error token");
+        lulu_Parse_error_current(lexer, parser, "Unhandled error token");
     }
     parser->consumed = parser->current;
     parser->current  = token;
@@ -52,29 +52,29 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
         lulu_Parse_advance_token(lexer, parser);
         return;
     }
-    lulu_Parse_error_current(lexer->vm, parser, msg);
+    lulu_Parse_error_current(lexer, parser, msg);
 }
 
 noreturn static void
-wrap_error(lulu_VM *vm, const lulu_Token *token, cstring msg)
+wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 {
     String where = token->lexeme;
     if (token->type == TOKEN_EOF) {
         where = String_literal("<eof>");
     }
-    lulu_VM_comptime_error(vm, token->line, msg, where);
+    lulu_VM_comptime_error(vm, filename, token->line, msg, where);
 }
 
 void
-lulu_Parse_error_current(lulu_VM *vm, lulu_Parser *parser, cstring msg)
+lulu_Parse_error_current(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg)
 {
-    wrap_error(vm, &parser->current, msg);
+    wrap_error(lexer->vm, lexer->filename, &parser->current, msg);
 }
 
 void
-lulu_Parse_error_consumed(lulu_VM *vm, lulu_Parser *parser, cstring msg)
+lulu_Parse_error_consumed(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg)
 {
-    wrap_error(vm, &parser->consumed, msg);
+    wrap_error(lexer->vm, lexer->filename, &parser->consumed, msg);
 }
 
 static void
@@ -127,7 +127,7 @@ number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     unused(lexer);
     // We failed to convert the entire lexeme?
     if (end != (lexeme.data + lexeme.len)) {
-        lulu_Parse_error_consumed(compiler->vm, parser, "Malformed number");
+        lulu_Parse_error_consumed(lexer, parser, "Malformed number");
         return;
     }
     lulu_Value_set_number(&tmp, value);
@@ -237,7 +237,7 @@ parse_prefix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_ParseFn prefix_rule = get_rule(parser->consumed.type)->prefix_fn;
     if (!prefix_rule) {
-        lulu_Parse_error_consumed(compiler->vm, parser, "Expected prefix expression");
+        lulu_Parse_error_consumed(lexer, parser, "Expected prefix expression");
         return;
     }
     prefix_rule(compiler, lexer, parser);

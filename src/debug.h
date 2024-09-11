@@ -31,7 +31,7 @@ void
 lulu_Debug_print_value(const lulu_Value *value);
 
 void
-lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name);
+lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk);
 
 isize
 lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index);

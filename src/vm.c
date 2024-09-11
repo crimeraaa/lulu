@@ -1,7 +1,6 @@
 #include "vm.h"
 #include "debug.h"
 #include "compiler.h"
-#include "lexer.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -100,7 +99,6 @@ do {                                                                           \
 
 typedef struct {
     lulu_Compiler compiler;
-    lulu_Lexer    lexer;
     lulu_Chunk    chunk;
     cstring       name;
     cstring       input;
@@ -110,9 +108,8 @@ static void
 compile_only(lulu_VM *self, void *userdata)
 {
     Comptime *ud = cast(Comptime *)userdata;
-    self->chunk  = &ud->chunk;
     lulu_Chunk_init(&ud->chunk, ud->name);
-    lulu_Compiler_init(self, &ud->compiler, &ud->lexer);
+    lulu_Compiler_init(self, &ud->compiler);
     lulu_Compiler_compile(&ud->compiler, ud->input, &ud->chunk);
 }
 
@@ -124,7 +121,8 @@ compile_and_run(lulu_VM *self, void *userdata)
 
     // Only execute if we're certain the chunk is valid.
     if (status == LULU_OK) {
-        self->ip = self->chunk->code;
+        self->chunk = &ud->chunk;
+        self->ip    = self->chunk->code;
         
         /**
          * @todo 2024-09-06
@@ -203,9 +201,8 @@ lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
 }
 
 void
-lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where)
+lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, String where)
 {
-    cstring name = current_chunk(self)->name;
-    fprintf(stderr, "%s:%i: %s at '%.*s'\n", name, line, msg, cast(int)where.len, where.data);
+    fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, cast(int)where.len, where.data);
     lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);
 }

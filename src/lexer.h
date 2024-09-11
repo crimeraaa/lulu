@@ -84,14 +84,15 @@ typedef struct {
 } lulu_Token;
 
 typedef struct {
-    lulu_VM    *vm;      // Pointer to parent/enclosing state. Has allocator.
+    lulu_VM    *vm;       // Pointer to parent/enclosing state. Has allocator.
+    cstring     filename; // Name of current file being lexed.
     const char *start;
     const char *current;
     int         line;
 } lulu_Lexer;
 
 void
-lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring input);
+lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input);
 
 lulu_Token
 lulu_Lexer_scan_token(lulu_Lexer *self);

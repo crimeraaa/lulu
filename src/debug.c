@@ -35,10 +35,10 @@ lulu_Debug_print_value(const lulu_Value *value)
 }
 
 void
-lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name)
+lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
 {
     printf("=== DISASSEMBLY: BEGIN ===\n");
-    printf(".name '%s'\n", name);
+    printf(".name '%s'\n", chunk->filename);
     printf(".code\n");
     
     for (isize index = 0; index < chunk->len;) {

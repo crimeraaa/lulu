@@ -23,7 +23,7 @@ typedef struct {
 } lulu_Compiler;
 
 void
-lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self, lulu_Lexer *lexer);
+lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self);
 
 void
 lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk);

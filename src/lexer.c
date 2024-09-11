@@ -6,12 +6,13 @@
 #include <stdio.h>
 
 void
-lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring input)
+lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input)
 {
-    self->vm      = vm;
-    self->start   = input;
-    self->current = input;
-    self->line    = 1;
+    self->vm       = vm;
+    self->filename = filename;
+    self->start    = input;
+    self->current  = input;
+    self->line     = 1;
 }
 
 static bool
@@ -94,7 +95,7 @@ noreturn static void
 error_token(const lulu_Lexer *self, cstring msg)
 {
     lulu_Token token = make_token(self, TOKEN_ERROR);
-    lulu_VM_comptime_error(self->vm, token.line, msg, token.lexeme);
+    lulu_VM_comptime_error(self->vm, self->filename, token.line, msg, token.lexeme);
 }
 
 static void

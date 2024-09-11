@@ -15,14 +15,14 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
 };
 
 void
-lulu_Chunk_init(lulu_Chunk *self, cstring name)
+lulu_Chunk_init(lulu_Chunk *self, cstring filename)
 {
     lulu_Value_Array_init(&self->constants);
-    self->code  = NULL;
-    self->lines = NULL;
-    self->name  = name;
-    self->len   = 0;
-    self->cap   = 0;
+    self->code     = NULL;
+    self->lines    = NULL;
+    self->filename = filename;
+    self->len      = 0;
+    self->cap      = 0;
 }
 
 void
@@ -57,7 +57,7 @@ lulu_Chunk_free(lulu_VM *vm, lulu_Chunk *self)
     lulu_Value_Array_free(vm, &self->constants);
     rawarray_free(lulu_Instruction, vm, self->code, self->cap);
     rawarray_free(int, vm, self->lines, self->cap);
-    lulu_Chunk_init(self, self->name);
+    lulu_Chunk_init(self, "(freed chunk)");
 }
 
 isize

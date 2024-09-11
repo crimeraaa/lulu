@@ -77,6 +77,6 @@ noreturn void
 lulu_VM_throw_error(lulu_VM *self, lulu_Status status);
 
 noreturn void
-lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where);
+lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, String where);
 
 #endif // LULU_VM_H

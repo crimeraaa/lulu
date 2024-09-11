@@ -54,13 +54,13 @@ lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *p
  *      Analogous to the book's `compiler.c:errorCurrent()`.
  */
 noreturn void
-lulu_Parse_error_current(lulu_VM *vm, lulu_Parser *parser, cstring msg);
+lulu_Parse_error_current(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg);
 
 /**
  * @note 2024-09-07
  *      Analogous to the book's `compiler.c:error()`.
  */
 noreturn void
-lulu_Parse_error_consumed(lulu_VM *vm, lulu_Parser *parser, cstring msg);
+lulu_Parse_error_consumed(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg);
 
 #endif // LULU_PARSER_H

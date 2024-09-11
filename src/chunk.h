@@ -105,13 +105,13 @@ typedef struct {
     lulu_Value_Array  constants;
     lulu_Instruction *code;  // 1D array of bytecode.
     int    *lines; // Line numbers per bytecode.
-    cstring name;  // Filename.
+    cstring filename;
     isize   len;   // Current number of actively used bytes in `code`.
     isize   cap;   // Total number of bytes that `code` points to.
 } lulu_Chunk;
 
 void
-lulu_Chunk_init(lulu_Chunk *self, cstring name);
+lulu_Chunk_init(lulu_Chunk *self, cstring filename);
 
 void
 lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, lulu_Instruction inst, int line);
