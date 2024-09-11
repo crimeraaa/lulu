@@ -9,9 +9,9 @@
  * @note 2024-09-04
  *      Easier to grep.
  */
-#define cast(Type)              (Type)
-#define unused(Expr)            cast(void)(Expr)
-#define size_of(Expr)           cast(isize)(sizeof(Expr))
+#define cast(Type)      (Type)
+#define unused(Expr)    cast(void)(Expr)
+#define size_of(Expr)   cast(isize)(sizeof(Expr))
 
 typedef   uint8_t u8;
 typedef  uint16_t u16;
@@ -40,7 +40,8 @@ typedef const char *cstring;
 
 typedef struct lulu_VM lulu_VM;
 
-typedef void *(*lulu_Allocator)(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size);
+typedef void *
+(*lulu_Allocator)(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size);
 
 typedef enum {
     LULU_OK,

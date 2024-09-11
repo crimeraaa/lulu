@@ -6,7 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static void stack_init(lulu_VM_Stack *self)
+static void
+stack_init(lulu_VM_Stack *self)
 {
     self->base = &self->values[0];
     self->top  = self->base;
@@ -14,7 +15,8 @@ static void stack_init(lulu_VM_Stack *self)
 }
 
 
-void lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
+void
+lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
     stack_init(&self->stack);
     self->allocator      = allocator;
@@ -23,12 +25,14 @@ void lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
     self->handlers       = NULL;
 }
 
-void lulu_VM_free(lulu_VM *self)
+void
+lulu_VM_free(lulu_VM *self)
 {
     unused(self);
 }
 
-static lulu_Status execute_bytecode(lulu_VM *self)
+static lulu_Status
+execute_bytecode(lulu_VM *self)
 {
 
 #define READ_BYTE()     (*self->ip++)
@@ -37,11 +41,10 @@ static lulu_Status execute_bytecode(lulu_VM *self)
 
 #define BINARY_OP(lulu_Number_fn)                                              \
 do {                                                                           \
-    lulu_Value rhs = lulu_VM_pop(self);                                        \
-    lulu_Value lhs = lulu_VM_pop(self);                                        \
-    lulu_Value result;                                                         \
-    lulu_Value_set_number(&result, lulu_Number_fn(lhs.number, rhs.number));    \
-    lulu_VM_push(self, &result);                                               \
+    lulu_Value *rhs = &self->stack.top[-1];                                    \
+    lulu_Value *lhs = &self->stack.top[-2];                                    \
+    lulu_Value_set_number(lhs, lulu_Number_fn(lhs->number, rhs->number));      \
+    lulu_VM_pop(self);                                                         \
 } while (0)
     
     for (;;) {
@@ -70,9 +73,8 @@ do {                                                                           \
         case OP_MOD: BINARY_OP(lulu_Number_mod); break;
         case OP_POW: BINARY_OP(lulu_Number_pow); break;
         case OP_UNM: {
-            lulu_Value value = lulu_VM_pop(self);
-            lulu_Value_set_number(&value, lulu_Number_unm(value.number));
-            lulu_VM_push(self, &value);
+            lulu_Value *value = &self->stack.top[-1];
+            lulu_Value_set_number(value, lulu_Number_unm(value->number));
             break;
         }
         case OP_RETURN: {
@@ -101,7 +103,8 @@ typedef struct {
     cstring       input;
 } Comptime;
 
-static void compile_only(lulu_VM *self, void *userdata)
+static void
+compile_only(lulu_VM *self, void *userdata)
 {
     Comptime *ud = cast(Comptime *)userdata;
     lulu_Chunk_init(&ud->chunk);
@@ -109,7 +112,8 @@ static void compile_only(lulu_VM *self, void *userdata)
     lulu_Compiler_compile(&ud->compiler, ud->input, &ud->chunk);
 }
 
-static void compile_and_run(lulu_VM *self, void *userdata)
+static void
+compile_and_run(lulu_VM *self, void *userdata)
 {
     lulu_Status status;
     Comptime   *ud = cast(Comptime *)userdata;
@@ -139,14 +143,16 @@ static void compile_and_run(lulu_VM *self, void *userdata)
     }
 }
 
-lulu_Status lulu_VM_interpret(lulu_VM *self, cstring input)
+lulu_Status
+lulu_VM_interpret(lulu_VM *self, cstring input)
 {
     Comptime ud;
     ud.input = input;
     return lulu_VM_run_protected(self, &compile_and_run, &ud);
 }
 
-void lulu_VM_push(lulu_VM *self, const lulu_Value *value)
+void
+lulu_VM_push(lulu_VM *self, const lulu_Value *value)
 {
     lulu_VM_Stack *stack = &self->stack;
     lulu_Debug_assert(stack->top < stack->end, "VM stack overflow");
@@ -154,7 +160,8 @@ void lulu_VM_push(lulu_VM *self, const lulu_Value *value)
     stack->top++;
 }
 
-lulu_Value lulu_VM_pop(lulu_VM *self)
+lulu_Value
+lulu_VM_pop(lulu_VM *self)
 {
     lulu_VM_Stack *stack = &self->stack;
     lulu_Debug_assert(stack->top > stack->base, "VM stack underflow");
@@ -162,7 +169,8 @@ lulu_Value lulu_VM_pop(lulu_VM *self)
     return *stack->top;
 }
 
-lulu_Status lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
+lulu_Status
+lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
 {
     lulu_Handler handler;
     handler.status = LULU_OK;
@@ -179,7 +187,8 @@ lulu_Status lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *user
     return handler.status;
 }
 
-void lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
+void
+lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
 {
     lulu_Handler *handler = self->handlers;
     if (handler) {
@@ -191,7 +200,8 @@ void lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
     }
 }
 
-void lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where)
+void
+lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where)
 {
     fprintf(stderr, "<main>:%i: %s at '%.*s'\n", line, msg, cast(int)where.len, where.data);
     lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);

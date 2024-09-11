@@ -3,7 +3,8 @@
 
 #include <string.h>
 
-void String_Builder_init(lulu_VM *vm, String_Builder *self)
+void
+String_Builder_init(lulu_VM *vm, String_Builder *self)
 {
     self->vm     = vm;
     self->buffer = NULL;
@@ -11,7 +12,8 @@ void String_Builder_init(lulu_VM *vm, String_Builder *self)
     self->cap    = 0;
 }
 
-void String_Builder_reserve(String_Builder *self, isize new_cap)
+void
+String_Builder_reserve(String_Builder *self, isize new_cap)
 {
     isize old_cap = self->cap;
     if (new_cap <= old_cap) {
@@ -22,12 +24,14 @@ void String_Builder_reserve(String_Builder *self, isize new_cap)
     self->cap    = new_cap;
 }
 
-void String_Builder_free(String_Builder *self)
+void
+String_Builder_free(String_Builder *self)
 {
     rawarray_free(char, self->vm, self->buffer, self->cap);
 }
 
-void String_Builder_write_char(String_Builder *self, char ch)
+void
+String_Builder_write_char(String_Builder *self, char ch)
 {
     if (self->len >= self->cap) {
         String_Builder_reserve(self, GROW_CAPACITY(self->cap));
@@ -35,7 +39,8 @@ void String_Builder_write_char(String_Builder *self, char ch)
     self->buffer[self->len++] = ch;
 }
 
-void String_Builder_write_string(String_Builder *self, String str)
+void
+String_Builder_write_string(String_Builder *self, String str)
 {
     isize old_len = self->len;
     isize new_len = old_len + str.len;
@@ -53,7 +58,8 @@ void String_Builder_write_string(String_Builder *self, String str)
     self->len = new_len;
 }
 
-void String_Builder_write_cstring(String_Builder *self, cstring cstr)
+void
+String_Builder_write_cstring(String_Builder *self, cstring cstr)
 {
     String str = {cstr, cast(isize)strlen(cstr)};
     String_Builder_write_string(self, str);

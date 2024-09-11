@@ -5,7 +5,8 @@
 #include <string.h>
 #include <stdio.h>
 
-void lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring input)
+void
+lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring input)
 {
     self->vm      = vm;
     self->start   = input;
@@ -13,7 +14,8 @@ void lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring input)
     self->line    = 1;
 }
 
-static bool is_at_end(const lulu_Lexer *self)
+static bool
+is_at_end(const lulu_Lexer *self)
 {
     return self->current[0] == '\0';
 }
@@ -26,17 +28,20 @@ static bool is_at_end(const lulu_Lexer *self)
  * @note 2024-09-05
  *      Analogous to the book's `scanner.c:advance()`.
  */
-static char advance_char(lulu_Lexer *self)
+static char
+advance_char(lulu_Lexer *self)
 {
     return *self->current++;
 }
 
-static char peek_char(const lulu_Lexer *self)
+static char
+peek_char(const lulu_Lexer *self)
 {
     return self->current[0];
 }
 
-static char peek_next_char(const lulu_Lexer *self)
+static char
+peek_next_char(const lulu_Lexer *self)
 {
     // Dereferencing 1 past current may be illegal?
     if (is_at_end(self)) {
@@ -50,7 +55,8 @@ static char peek_next_char(const lulu_Lexer *self)
  *      If the current character being pointed to matches `expected`, advance
  *      and return true. Otherwise return do nothing and false.
  */
-static bool match_char(lulu_Lexer *self, char expected)
+static bool
+match_char(lulu_Lexer *self, char expected)
 {
     if (!is_at_end(self) && *self->current == expected) {
         self->current++;
@@ -59,7 +65,8 @@ static bool match_char(lulu_Lexer *self, char expected)
     return false;
 }
 
-static bool match_char_any(lulu_Lexer *self, cstring charset)
+static bool
+match_char_any(lulu_Lexer *self, cstring charset)
 {
     if (strchr(charset, peek_char(self))) {
         self->current++;
@@ -68,7 +75,8 @@ static bool match_char_any(lulu_Lexer *self, cstring charset)
     return false;
 }
 
-static lulu_Token make_token(const lulu_Lexer *self, lulu_Token_Type type)
+static lulu_Token
+make_token(const lulu_Lexer *self, lulu_Token_Type type)
 {
     lulu_Token token;
     token.type        = type;
@@ -82,14 +90,15 @@ static lulu_Token make_token(const lulu_Lexer *self, lulu_Token_Type type)
  * @warning 2024-09-07
  *      Actually since this function throws an error, it does not return!
  */
-noreturn
-static void error_token(const lulu_Lexer *self, cstring msg)
+noreturn static void
+error_token(const lulu_Lexer *self, cstring msg)
 {
     lulu_Token token = make_token(self, TOKEN_ERROR);
     lulu_VM_comptime_error(self->vm, token.line, msg, token.lexeme);
 }
 
-static void skip_multiline(lulu_Lexer *self, int opening)
+static void
+skip_multiline(lulu_Lexer *self, int opening)
 {
     for (;;) {
         if (match_char(self, ']')) {
@@ -121,7 +130,8 @@ static void skip_multiline(lulu_Lexer *self, int opening)
  *      Assumed we already consumed 2 consecutive '-' characters and we're
  *      pointing at the first character in the comment body, or a '['.
  */
-static void skip_comment(lulu_Lexer *self)
+static void
+skip_comment(lulu_Lexer *self)
 {
     if (match_char(self, '[')) {
         int opening = 0;
@@ -139,7 +149,8 @@ static void skip_comment(lulu_Lexer *self)
     }
 }
 
-static void skip_whitespace(lulu_Lexer *self)
+static void
+skip_whitespace(lulu_Lexer *self)
 {
     for (;;) {
         char ch = peek_char(self);
@@ -195,7 +206,8 @@ const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
 
 #undef str_lit
 
-static lulu_Token_Type check_keyword(String current, lulu_Token_Type type)
+static lulu_Token_Type
+check_keyword(String current, lulu_Token_Type type)
 {
     const String keyword = LULU_KEYWORDS[type];
     if (keyword.len == current.len) {
@@ -207,7 +219,8 @@ static lulu_Token_Type check_keyword(String current, lulu_Token_Type type)
     return TOKEN_IDENTIFIER;
 }
 
-static lulu_Token_Type get_identifier_type(lulu_Lexer *self)
+static lulu_Token_Type
+get_identifier_type(lulu_Lexer *self)
 {
     String current = {self->start, self->current - self->start};
     switch (current.data[0]) {
@@ -273,7 +286,8 @@ static lulu_Token_Type get_identifier_type(lulu_Lexer *self)
     return TOKEN_IDENTIFIER;
 }
 
-static lulu_Token consume_identifier(lulu_Lexer *self)
+static lulu_Token
+consume_identifier(lulu_Lexer *self)
 {
     while (isalnum(peek_char(self)) || peek_char(self) == '_') {
         advance_char(self);
@@ -281,21 +295,24 @@ static lulu_Token consume_identifier(lulu_Lexer *self)
     return make_token(self, get_identifier_type(self));
 }
 
-static void consume_base10(lulu_Lexer *self)
+static void
+consume_base10(lulu_Lexer *self)
 {
     while (isdigit(peek_char(self))) {
         advance_char(self);
     }
 }
 
-static void consume_base16(lulu_Lexer *self)
+static void
+consume_base16(lulu_Lexer *self)
 {
     while (isxdigit(peek_char(self))) {
         advance_char(self);
     }
 }
 
-static lulu_Token consume_number(lulu_Lexer *self)
+static lulu_Token
+consume_number(lulu_Lexer *self)
 {
     if (match_char(self, '0')) {
         if (match_char_any(self, "xX")) {
@@ -325,7 +342,8 @@ trailing_characters:
     return make_token(self, TOKEN_NUMBER_LIT);
 }
 
-static lulu_Token consume_string(lulu_Lexer *self, char quote)
+static lulu_Token
+consume_string(lulu_Lexer *self, char quote)
 {
     while (peek_char(self) != quote && !is_at_end(self)) {
         if (peek_char(self) == '\n') {
@@ -344,7 +362,8 @@ unterminated_string:
     return make_token(self, TOKEN_STRING_LIT);
 }
 
-lulu_Token lulu_Lexer_scan_token(lulu_Lexer *self)
+lulu_Token
+lulu_Lexer_scan_token(lulu_Lexer *self)
 {
     skip_whitespace(self);
     self->start = self->current;

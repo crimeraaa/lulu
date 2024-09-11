@@ -4,7 +4,9 @@
 #include <stdio.h>
 
 #undef lulu_Debug_writef
-int lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
+
+int
+lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
 {
     va_list argp;
     int writes = 0;
@@ -16,7 +18,8 @@ int lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
     return writes;
 }
 
-void lulu_Debug_print_value(const lulu_Value *value)
+void
+lulu_Debug_print_value(const lulu_Value *value)
 {
     switch (value->type) {
     case LULU_VALUE_NIL:
@@ -31,7 +34,8 @@ void lulu_Debug_print_value(const lulu_Value *value)
     }
 }
 
-void lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name)
+void
+lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name)
 {
     printf("=== DISASSEMBLY: BEGIN ===\n");
     printf(".name '%s'\n", name);
@@ -44,7 +48,8 @@ void lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name)
     printf("=== DISASSEMBLY: END ===\n\n");
 }
 
-static void print_arg_size_0(cstring name)
+static void
+print_arg_size_0(cstring name)
 {
     printf("%s\n", name);
 }
@@ -53,7 +58,8 @@ static void print_arg_size_0(cstring name)
  * @note 2024-09-07
  *      Remember that for a 3-byte argument, the LSB is stored first.
  */
-static void print_constant(cstring name, const lulu_Chunk *chunk, isize index)
+static void
+print_constant(cstring name, const lulu_Chunk *chunk, isize index)
 {
     const byte *ip  = &chunk->code[index];
     const usize arg = ip[1] | (ip[2] << 8) | (ip[3] << 16);
@@ -62,7 +68,8 @@ static void print_constant(cstring name, const lulu_Chunk *chunk, isize index)
     printf("'\n");
 }
 
-isize lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
+isize
+lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
 {
     printf("%04ti ", index);
     

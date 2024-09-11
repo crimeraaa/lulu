@@ -4,8 +4,8 @@
 #include "lulu.h"
 #include "chunk.h"
 
-int lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
-__attribute__((format (printf, 4, 5)));
+__attribute__(( __format__ (__printf__, 4, 5) )) int
+lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...);
 
 #define lulu_Debug_writef(level, fmt, ...)  lulu_Debug_writef(level, __FILE__, __LINE__, fmt "\n", __VA_ARGS__)
 #define lulu_Debug_fatalf(fmt, ...)         lulu_Debug_writef("FATAL", fmt, __VA_ARGS__)
@@ -27,9 +27,13 @@ do {                                                                           \
 
 #endif // LULU_DEBUG_ASSERT
 
+void
+lulu_Debug_print_value(const lulu_Value *value);
 
-void lulu_Debug_print_value(const lulu_Value *value);
-void lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name);
-isize lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index);
+void
+lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk, cstring name);
+
+isize
+lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index);
 
 #endif // LULU_DEBUG_H

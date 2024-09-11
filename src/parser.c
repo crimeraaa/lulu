@@ -4,30 +4,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static void parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence);
-static lulu_Parse_Rule *get_rule(lulu_Token_Type type);
+static void
+parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence);
 
-// static void print_token(const lulu_Token *token, cstring name)
-// {
-//     const String lexeme = token->lexeme;
-//     printf(
-//         "%s{type=%i, lexeme={\"%.*s\"},line=%i}",
-//         name,
-//         cast(int)token->type,
-//         cast(int)lexeme.len,
-//         lexeme.data,
-//         token->line);
-// }
+static const lulu_Parse_Rule *
+get_rule(lulu_Token_Type type);
 
-// static void print_parser(const lulu_Parser *self)
-// {
-//     print_token(&self->consumed, "consumed");
-//     printf("\t");
-//     print_token(&self->current, "current");
-//     printf("\n");
-// }
+__attribute__((__unused__)) static void
+print_token(const lulu_Token *token, cstring name)
+{
+    const String lexeme = token->lexeme;
+    printf("%s{type=%i, lexeme={\"%.*s\"},line=%i}",
+        name,
+        cast(int)token->type,
+        cast(int)lexeme.len,
+        lexeme.data,
+        token->line);
+}
 
-void lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser)
+__attribute__((__unused__)) static void
+print_parser(const lulu_Parser *self)
+{
+    print_token(&self->consumed, "consumed");
+    printf("\t");
+    print_token(&self->current, "current");
+    printf("\n");
+}
+
+void
+lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_Token token = lulu_Lexer_scan_token(lexer);
     
@@ -40,7 +45,8 @@ void lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser)
     // print_parser(parser); //!DEBUG
 }
 
-void lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type, cstring msg)
+void
+lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type, cstring msg)
 {
     if (parser->current.type == type) {
         lulu_Parse_advance_token(lexer, parser);
@@ -49,8 +55,8 @@ void lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token
     lulu_Parse_error_current(lexer->vm, parser, msg);
 }
 
-noreturn
-static void wrap_error(lulu_VM *vm, const lulu_Token *token, cstring msg)
+noreturn static void
+wrap_error(lulu_VM *vm, const lulu_Token *token, cstring msg)
 {
     String where = token->lexeme;
     if (token->type == TOKEN_EOF) {
@@ -59,17 +65,20 @@ static void wrap_error(lulu_VM *vm, const lulu_Token *token, cstring msg)
     lulu_VM_comptime_error(vm, token->line, msg, where);
 }
 
-void lulu_Parse_error_current(lulu_VM *vm, lulu_Parser *parser, cstring msg)
+void
+lulu_Parse_error_current(lulu_VM *vm, lulu_Parser *parser, cstring msg)
 {
     wrap_error(vm, &parser->current, msg);
 }
 
-void lulu_Parse_error_consumed(lulu_VM *vm, lulu_Parser *parser, cstring msg)
+void
+lulu_Parse_error_consumed(lulu_VM *vm, lulu_Parser *parser, cstring msg)
 {
     wrap_error(vm, &parser->consumed, msg);
 }
 
-static void binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+static void
+binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_Token_Type type = parser->consumed.type;
     lulu_Precedence prec = get_rule(type)->precedence;
@@ -101,13 +110,15 @@ static void binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *pars
  * @note 2024-09-07
  *      Assumes we just consumed a ')' character.
  */
-static void grouping(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+static void
+grouping(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_Parse_expression(compiler, lexer, parser);
     lulu_Parse_consume_token(lexer, parser, TOKEN_PAREN_R, "Expected ')' after expression");
 }
 
-static void number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+static void
+number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     char       *end;
     String      lexeme = parser->consumed.lexeme;
@@ -127,7 +138,8 @@ static void number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *pars
  * @note 2024-09-07
  *      Assumes we just consumed some unary operator, like '-' or '#'.
  */
-static void unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+static void
+unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     // Saved in stack frame memory as recursion will update `parser->consumed`.
     lulu_Token_Type type = parser->consumed.type;
@@ -143,7 +155,8 @@ static void unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parse
 }
 
 
-lulu_Parse_Rule LULU_PARSE_RULES[] = {
+static const lulu_Parse_Rule
+LULU_PARSE_RULES[] = {
 ///--- RESERVED WORDS ----------------------------------------------------- {{{1
 
 // key                  :  prefix_fn    infix_fn    precedence
@@ -213,12 +226,14 @@ lulu_Parse_Rule LULU_PARSE_RULES[] = {
 
 };
 
-void lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+void
+lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     parse_precedence(compiler, lexer, parser, PREC_ASSIGNMENT + 1);
 }
 
-static void parse_prefix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+static void
+parse_prefix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_ParseFn prefix_rule = get_rule(parser->consumed.type)->prefix_fn;
     if (!prefix_rule) {
@@ -228,24 +243,27 @@ static void parse_prefix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser
     prefix_rule(compiler, lexer, parser);
 }
 
-static void parse_infix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence)
+static void
+parse_infix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence)
 {
+    lulu_ParseFn infix_rule;
     while (precedence <= get_rule(parser->current.type)->precedence) {
-        lulu_ParseFn infix_rule;
         lulu_Parse_advance_token(lexer, parser);
         infix_rule = get_rule(parser->consumed.type)->infix_fn;
         infix_rule(compiler, lexer, parser);
     }
 }
 
-static void parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence)
+static void
+parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence)
 {
     lulu_Parse_advance_token(lexer, parser);
     parse_prefix(compiler, lexer, parser);
     parse_infix(compiler, lexer, parser, precedence);
 }
 
-static lulu_Parse_Rule *get_rule(lulu_Token_Type type)
+static const lulu_Parse_Rule *
+get_rule(lulu_Token_Type type)
 {
     return &LULU_PARSE_RULES[type];
 }

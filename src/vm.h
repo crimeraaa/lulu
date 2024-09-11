@@ -35,7 +35,8 @@ typedef struct lulu_Handler {
  * @link
  *      https://www.lua.org/source/5.1/ldo.h.html#Pfunc
  */
-typedef void (*lulu_ProtectedFn)(lulu_VM *vm, void *userdata);
+typedef void
+(*lulu_ProtectedFn)(lulu_VM *vm, void *userdata);
 
 struct lulu_VM {
     lulu_VM_Stack  stack;
@@ -46,12 +47,20 @@ struct lulu_VM {
     lulu_Handler  *handlers; // Currently active error handler.
 };
 
-void lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data);
-void lulu_VM_free(lulu_VM *self);
-lulu_Status lulu_VM_interpret(lulu_VM *self, cstring input);
+void
+lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data);
 
-void lulu_VM_push(lulu_VM *self, const lulu_Value *value);
-lulu_Value lulu_VM_pop(lulu_VM *self);
+void
+lulu_VM_free(lulu_VM *self);
+
+lulu_Status
+lulu_VM_interpret(lulu_VM *self, cstring input);
+
+void
+lulu_VM_push(lulu_VM *self, const lulu_Value *value);
+
+lulu_Value
+lulu_VM_pop(lulu_VM *self);
 
 /**
  * @brief
@@ -61,12 +70,13 @@ lulu_Value lulu_VM_pop(lulu_VM *self);
  * @link
  *      https://www.lua.org/source/5.1/ldo.c.html#luaD_pcall
  */
-lulu_Status lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata);
+lulu_Status
+lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata);
 
-noreturn
-void lulu_VM_throw_error(lulu_VM *self, lulu_Status status);
+noreturn void
+lulu_VM_throw_error(lulu_VM *self, lulu_Status status);
 
-noreturn
-void lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where);
+noreturn void
+lulu_VM_comptime_error(lulu_VM *self, int line, cstring msg, String where);
 
 #endif // LULU_VM_H

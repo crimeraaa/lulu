@@ -74,7 +74,8 @@ TOKEN_EOF,
  * @brief
  *      Map a `lulu_Token_Type`, to the string representation thereof.
  */
-extern const String LULU_KEYWORDS[LULU_KEYWORD_COUNT];
+extern const String
+LULU_KEYWORDS[LULU_KEYWORD_COUNT];
 
 typedef struct {
     lulu_Token_Type type;
@@ -89,7 +90,10 @@ typedef struct {
     int         line;
 } lulu_Lexer;
 
-void lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring input);
-lulu_Token lulu_Lexer_scan_token(lulu_Lexer *self);
+void
+lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring input);
+
+lulu_Token
+lulu_Lexer_scan_token(lulu_Lexer *self);
 
 #endif // LULU_LEXER_H

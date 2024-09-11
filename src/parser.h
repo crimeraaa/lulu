@@ -23,18 +23,10 @@ typedef enum {
     PREC_PRIMARY,
 } lulu_Precedence;
 
-/**
- * @note 2024-09-07
- *      Forward declared in "compiler.h".
- */
-struct lulu_Parser {
-    lulu_Token current;  // Also our "lookahead" token.
-    lulu_Token consumed; // Analogous to the book's `compiler.c:Parser::previous`.
-};
+typedef void
+(*lulu_ParseFn)(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser);
 
-typedef void (*lulu_ParseFn)(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser);
-
-typedef const struct {
+typedef struct {
     lulu_ParseFn    prefix_fn;
     lulu_ParseFn    infix_fn;
     lulu_Precedence precedence;
@@ -44,27 +36,31 @@ typedef const struct {
  * @note 2024-09-06
  *      Analogous to the book's `compiler.c:advance()`.
  */
-void lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser);
+void
+lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser);
 
 /**
  * @note 2024-09-07
  *      Analogous to the book's `compiler.c:consume()`.
  */
-void lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type, cstring msg);
-void lulu_Parse_expression(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser);
+void
+lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type, cstring msg);
+
+void
+lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser);
 
 /**
  * @note 2024-09-07
  *      Analogous to the book's `compiler.c:errorCurrent()`.
  */
-noreturn
-void lulu_Parse_error_current(lulu_VM *vm, lulu_Parser *parser, cstring msg);
+noreturn void
+lulu_Parse_error_current(lulu_VM *vm, lulu_Parser *parser, cstring msg);
 
 /**
  * @note 2024-09-07
  *      Analogous to the book's `compiler.c:error()`.
  */
-noreturn
-void lulu_Parse_error_consumed(lulu_VM *vm, lulu_Parser *parser, cstring msg);
+noreturn void
+lulu_Parse_error_consumed(lulu_VM *vm, lulu_Parser *parser, cstring msg);
 
 #endif // LULU_PARSER_H

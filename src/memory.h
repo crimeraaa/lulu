@@ -18,9 +18,14 @@ typedef union {
 
 #define LULU_ALLOCATOR_ALIGNMENT sizeof(lulu_Allocator_Alignment)
 
-void *lulu_Memory_alloc(lulu_VM *vm, isize new_size);
-void *lulu_Memory_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size);
-void lulu_Memory_free(lulu_VM *vm, void *old_ptr, isize old_size);
+void *
+lulu_Memory_alloc(lulu_VM *vm, isize new_size);
+
+void *
+lulu_Memory_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size);
+
+void
+lulu_Memory_free(lulu_VM *vm, void *old_ptr, isize old_size);
 
 #define rawarray_new(Type, vm, count)                                          \
     cast(Type *)lulu_Memory_alloc(                                             \

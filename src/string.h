@@ -50,12 +50,23 @@ typedef struct {
     isize    cap;    // Number of allocated elements.
 } String_Builder;
 
-void String_Builder_init(lulu_VM *vm, String_Builder *self);
-void String_Builder_reserve(String_Builder *self, isize new_cap);
-void String_Builder_free(String_Builder *self);
-void String_Builder_write_char(String_Builder *self, char ch);
-void String_Builder_write_string(String_Builder *self, String str);
-void String_Builder_write_cstring(String_Builder *self, cstring cstr);
+void
+String_Builder_init(lulu_VM *vm, String_Builder *self);
+
+void
+String_Builder_reserve(String_Builder *self, isize new_cap);
+
+void
+String_Builder_free(String_Builder *self);
+
+void
+String_Builder_write_char(String_Builder *self, char ch);
+
+void
+String_Builder_write_string(String_Builder *self, String str);
+
+void
+String_Builder_write_cstring(String_Builder *self, cstring cstr);
 
 
 #endif // LULU_STRING_H

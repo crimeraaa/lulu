@@ -17,7 +17,7 @@ typedef enum {
     OP_RETURN,
 } lulu_OpCode;
 
-#define LULU_OPCODE_COUNT   (OP_RETURN + 1)
+#define LULU_OPCODE_COUNT (OP_RETURN + 1)
 
 typedef struct {
     cstring name;
@@ -26,7 +26,8 @@ typedef struct {
     i8      pop_count;  // Number values popped from stack. -1 indicates unknown.
 } lulu_OpCode_Info;
 
-extern const lulu_OpCode_Info LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
+extern const lulu_OpCode_Info
+LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 
 /**
  * @brief
@@ -44,10 +45,17 @@ typedef struct {
     isize cap;   // Total number of bytes that `code` points to.
 } lulu_Chunk;
 
-void lulu_Chunk_init(lulu_Chunk *self);
-void lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, byte inst, int line);
-void lulu_Chunk_free(lulu_VM *vm, lulu_Chunk *self);
-void lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap);
+void
+lulu_Chunk_init(lulu_Chunk *self);
+
+void
+lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, byte inst, int line);
+
+void
+lulu_Chunk_free(lulu_VM *vm, lulu_Chunk *self);
+
+void
+lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap);
 
 /**
  * @brief
@@ -56,14 +64,15 @@ void lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap);
  * @note 2024-09-04
  *      We encode in little endian fashion: LSB first and MSB last.
  */
-void lulu_Chunk_write_byte3(lulu_VM *vm, lulu_Chunk *self, byte3 inst, int line);
-void lulu_Chunk_write_bytes(lulu_VM *vm, lulu_Chunk *self, const byte *bytes, isize count, int line);
+void
+lulu_Chunk_write_byte3(lulu_VM *vm, lulu_Chunk *self, byte3 inst, int line);
 
 /**
  * @brief
  *      Writes to the `self->constants` array and returns the index of the said
  *      value. This is so you can locate the constant later.
  */
-isize lulu_Chunk_add_constant(lulu_VM *vm, lulu_Chunk *self, const lulu_Value *value);
+isize
+lulu_Chunk_add_constant(lulu_VM *vm, lulu_Chunk *self, const lulu_Value *value);
 
 #endif // LULU_CHUNK_H

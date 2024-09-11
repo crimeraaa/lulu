@@ -41,30 +41,37 @@ typedef struct {
 #define lulu_Value_is_boolean(self)     ((self)->type == LULU_VALUE_BOOLEAN)
 #define lulu_Value_is_number(self)      ((self)->type == LULU_VALUE_NUMBER)
 
-#define lulu_Value_set_nil(self)                                               \
-do {                                                                           \
-    lulu_Value *_dst = (self);                                                 \
-    _dst->type       = LULU_VALUE_NIL;                                         \
-    _dst->number     = 0;                                                      \
-} while (0)
+static inline void
+lulu_Value_set_nil(lulu_Value *dst)
+{
+    dst->type   = LULU_VALUE_NIL;
+    dst->number = 0;
+}
 
-#define lulu_Value_set_boolean(self, b)                                        \
-do {                                                                           \
-    lulu_Value *_dst = (self);                                                 \
-    _dst->type       = LULU_VALUE_BOOLEAN;                                     \
-    _dst->boolean    = (b);                                                    \
-} while (0)
+static inline void
+lulu_Value_set_boolean(lulu_Value *dst, bool b)
+{
+    dst->type    = LULU_VALUE_BOOLEAN;
+    dst->boolean = b;
+}
 
-#define lulu_Value_set_number(self, n)                                         \
-do {                                                                           \
-    lulu_Value *_dst = (self);                                                 \
-    _dst->type       = LULU_VALUE_NUMBER;                                      \
-    _dst->number     = (n);                                                    \
-} while (0)
+static inline void
+lulu_Value_set_number(lulu_Value *dst, lulu_Number n)
+{
+    dst->type   = LULU_VALUE_NUMBER;
+    dst->number = n;
+}
 
-void lulu_Value_Array_init(lulu_Value_Array *self);
-void lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *value);
-void lulu_Value_Array_free(lulu_VM *vm, lulu_Value_Array *self);
-void lulu_Value_Array_reserve(lulu_VM *vm, lulu_Value_Array *self, isize new_cap);
+void
+lulu_Value_Array_init(lulu_Value_Array *self);
+
+void
+lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *value);
+
+void
+lulu_Value_Array_free(lulu_VM *vm, lulu_Value_Array *self);
+
+void
+lulu_Value_Array_reserve(lulu_VM *vm, lulu_Value_Array *self, isize new_cap);
 
 #endif // LULU_VALUE_H
