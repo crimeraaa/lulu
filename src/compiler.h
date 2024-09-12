@@ -18,7 +18,6 @@ typedef struct {
 
 typedef struct {
     lulu_VM    *vm;    // Enclosing/parent state.
-    lulu_Lexer *lexer; // To be shared across all nested compilers.
     lulu_Chunk *chunk; // Destination for bytecode and constants.
 } lulu_Compiler;
 
@@ -38,6 +37,6 @@ void
 lulu_Compiler_emit_return(lulu_Compiler *self, lulu_Parser *parser);
 
 void
-lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Parser *parser, const lulu_Value *value);
+lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value);
 
 #endif // LULU_COMPILER_H

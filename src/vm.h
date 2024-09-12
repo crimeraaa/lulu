@@ -39,12 +39,12 @@ typedef void
 (*lulu_ProtectedFn)(lulu_VM *vm, void *userdata);
 
 struct lulu_VM {
-    lulu_VM_Stack      stack;
-    lulu_Allocator     allocator;
-    void              *allocator_data;
-    lulu_Chunk        *chunk;
-    lulu_Instruction  *ip;       // Points to next instruction to be executed.
-    lulu_Handler      *handlers; // Currently active error handler.
+    lulu_VM_Stack     stack;
+    lulu_Allocator    allocator;
+    void             *allocator_data;
+    lulu_Chunk       *chunk;
+    lulu_Instruction *ip;       // Points to next instruction to be executed.
+    lulu_Handler     *handlers; // Currently active error handler.
 };
 
 void

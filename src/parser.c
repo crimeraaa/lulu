@@ -124,14 +124,13 @@ number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     String      lexeme = parser->consumed.lexeme;
     lulu_Number value  = strtod(lexeme.data, &end);
     lulu_Value  tmp;
-    unused(lexer);
     // We failed to convert the entire lexeme?
     if (end != (lexeme.data + lexeme.len)) {
         lulu_Parse_error_consumed(lexer, parser, "Malformed number");
         return;
     }
     lulu_Value_set_number(&tmp, value);
-    lulu_Compiler_emit_constant(compiler, parser, &tmp);
+    lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
 }
 
 /**

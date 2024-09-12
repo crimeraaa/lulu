@@ -10,7 +10,6 @@ void
 lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self)
 {
     self->vm    = vm;
-    self->lexer = NULL;
     self->chunk = NULL;
 }
 
@@ -45,11 +44,10 @@ lulu_Compiler_emit_return(lulu_Compiler *self, lulu_Parser *parser)
 }
 
 static byte3
-make_constant(lulu_Compiler *self, lulu_Parser *parser, const lulu_Value *value)
+make_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value)
 {
-    lulu_VM    *vm    = self->vm;
-    lulu_Lexer *lexer = self->lexer;
-    isize       index = lulu_Chunk_add_constant(vm, current_chunk(self), value);
+    lulu_VM *vm    = self->vm;
+    isize    index = lulu_Chunk_add_constant(vm, current_chunk(self), value);
     if (index > LULU_MAX_CONSTANTS) {
         lulu_Parse_error_consumed(lexer, parser, "Too many constants in one chunk.");
         return 0;
@@ -58,9 +56,9 @@ make_constant(lulu_Compiler *self, lulu_Parser *parser, const lulu_Value *value)
 }
 
 void
-lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Parser *parser, const lulu_Value *value)
+lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value)
 {
-    byte3 index = make_constant(self, parser, value);
+    byte3 index = make_constant(self, lexer, parser, value);
     emit_instruction(self, parser, lulu_Instruction_byte3(OP_CONSTANT, index));
 }
 
@@ -78,7 +76,6 @@ lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk)
 {
     lulu_Lexer  lexer  = {0};
     lulu_Parser parser = {0};
-    self->lexer = &lexer;
     self->chunk = chunk;
     lulu_Lexer_init(self->vm, &lexer, chunk->filename, input);
     lulu_Parse_advance_token(&lexer, &parser);
