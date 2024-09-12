@@ -1,5 +1,12 @@
 #include "value.h"
 
+const cstring
+LULU_TYPENAMES[LULU_TYPE_COUNT] = {
+    [LULU_TYPE_NIL]     = "nil",
+    [LULU_TYPE_BOOLEAN] = "boolean",
+    [LULU_TYPE_NUMBER]  = "number",
+};
+
 void
 lulu_Value_Array_init(lulu_Value_Array *self)
 {

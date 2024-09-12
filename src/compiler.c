@@ -11,6 +11,7 @@ lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self)
 {
     self->vm    = vm;
     self->chunk = NULL;
+    self->prev_opcode = OP_RETURN; // Can't optimize RETURN no matter what!
 }
 
 /**
@@ -29,6 +30,7 @@ emit_instruction(lulu_Compiler *self, lulu_Parser *parser, lulu_Instruction inst
     lulu_VM *vm   = self->vm;
     int      line = parser->consumed.line;
     lulu_Chunk_write(vm, current_chunk(self), inst, line);
+    self->prev_opcode = lulu_Instruction_get_opcode(inst);
 }
 
 void

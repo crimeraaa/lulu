@@ -240,6 +240,7 @@ get_identifier_type(lulu_Lexer *self)
             break;
         }
         switch (current.data[1]) {
+        case 'a': return check_keyword(current, TOKEN_FALSE);
         case 'o': return check_keyword(current, TOKEN_FOR);
         case 'u': return check_keyword(current, TOKEN_FUNCTION);
         }

@@ -22,13 +22,13 @@ void
 lulu_Debug_print_value(const lulu_Value *value)
 {
     switch (value->type) {
-    case LULU_VALUE_NIL:
+    case LULU_TYPE_NIL:
         printf("nil");
         break;
-    case LULU_VALUE_BOOLEAN:
+    case LULU_TYPE_BOOLEAN:
         printf("%s", value->boolean ? "true" : "false");
         break;
-    case LULU_VALUE_NUMBER:
+    case LULU_TYPE_NUMBER:
         printf(LULU_NUMBER_FMT, value->number);
         break;
     }
@@ -88,6 +88,9 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONSTANT:
         print_constant(LULU_OPCODE_INFO[opcode].name, chunk, inst);
         break;
+    case OP_NIL:
+    case OP_TRUE:
+    case OP_FALSE:
     case OP_ADD:
     case OP_SUB:
     case OP_MUL:

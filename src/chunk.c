@@ -3,15 +3,18 @@
 const lulu_OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     //                name: cstring     arg_size,   push_count, pop_count: i8
-    [OP_CONSTANT]   = {"CONSTANT",      3,          1,          0},
-    [OP_ADD]        = {"ADD",           0,          0,          1},
-    [OP_SUB]        = {"SUB",           0,          0,          1},
-    [OP_MUL]        = {"MUL",           0,          0,          1},
-    [OP_DIV]        = {"DIV",           0,          0,          1},
-    [OP_MOD]        = {"MOD",           0,          0,          1},
-    [OP_POW]        = {"POW",           0,          0,          1},
-    [OP_UNM]        = {"UNM",           0,          0,          0},
-    [OP_RETURN]     = {"RETURN",        0,          0,          1},
+    [OP_CONSTANT]   = {"CONSTANT",      3,           1,          0},
+    [OP_NIL]        = {"NIL",           0,           1,          0},
+    [OP_TRUE]       = {"TRUE",          0,           1,          0},
+    [OP_FALSE]      = {"FALSE",         0,           1,          0},
+    [OP_ADD]        = {"ADD",           0,           0,          1},
+    [OP_SUB]        = {"SUB",           0,           0,          1},
+    [OP_MUL]        = {"MUL",           0,           0,          1},
+    [OP_DIV]        = {"DIV",           0,           0,          1},
+    [OP_MOD]        = {"MOD",           0,           0,          1},
+    [OP_POW]        = {"POW",           0,           0,          1},
+    [OP_UNM]        = {"UNM",           0,           0,          0},
+    [OP_RETURN]     = {"RETURN",        0,           0,          1},
 };
 
 void

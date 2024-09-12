@@ -18,10 +18,15 @@ typedef double lulu_Number;
 #define lulu_Number_unm(x)      (-(x))
 
 typedef enum {
-    LULU_VALUE_NIL,
-    LULU_VALUE_BOOLEAN,
-    LULU_VALUE_NUMBER,
+    LULU_TYPE_NIL,
+    LULU_TYPE_BOOLEAN,
+    LULU_TYPE_NUMBER,
 } lulu_Value_Type;
+
+#define LULU_TYPE_COUNT (LULU_TYPE_NUMBER + 1)
+
+extern const cstring
+LULU_TYPENAMES[LULU_TYPE_COUNT];
 
 typedef struct {
     lulu_Value_Type type;
@@ -37,28 +42,30 @@ typedef struct {
     isize       cap;
 } lulu_Value_Array;
 
-#define lulu_Value_is_nil(self)         ((self)->type == LULU_VALUE_NIL)
-#define lulu_Value_is_boolean(self)     ((self)->type == LULU_VALUE_BOOLEAN)
-#define lulu_Value_is_number(self)      ((self)->type == LULU_VALUE_NUMBER)
+#define lulu_Value_typename(self)       LULU_TYPENAMES[(self)->type]
+
+#define lulu_Value_is_nil(self)         ((self)->type == LULU_TYPE_NIL)
+#define lulu_Value_is_boolean(self)     ((self)->type == LULU_TYPE_BOOLEAN)
+#define lulu_Value_is_number(self)      ((self)->type == LULU_TYPE_NUMBER)
 
 static inline void
 lulu_Value_set_nil(lulu_Value *dst)
 {
-    dst->type   = LULU_VALUE_NIL;
+    dst->type   = LULU_TYPE_NIL;
     dst->number = 0;
 }
 
 static inline void
 lulu_Value_set_boolean(lulu_Value *dst, bool b)
 {
-    dst->type    = LULU_VALUE_BOOLEAN;
+    dst->type    = LULU_TYPE_BOOLEAN;
     dst->boolean = b;
 }
 
 static inline void
 lulu_Value_set_number(lulu_Value *dst, lulu_Number n)
 {
-    dst->type   = LULU_VALUE_NUMBER;
+    dst->type   = LULU_TYPE_NUMBER;
     dst->number = n;
 }
 

@@ -2,6 +2,7 @@
 #include "debug.h"
 #include "compiler.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -36,18 +37,32 @@ current_chunk(lulu_VM *self)
     return self->chunk;
 }
 
+static void
+check_arith(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
+{
+    if (lulu_Value_is_number(lhs) && lulu_Value_is_number(rhs)) {
+        return;
+    }
+    lulu_VM_runtime_error(vm, "Attempt to perform arithmetic on %s with %s",
+        lulu_Value_typename(lhs), lulu_Value_typename(rhs));
+}
+
 static lulu_Status
 execute_bytecode(lulu_VM *self)
 {
     lulu_Chunk *chunk = current_chunk(self);
 
-#define BINARY_OP(lulu_Number_fn)                                              \
+#define BINARY_OP(lulu_Value_set_fn, lulu_Number_fn, check_fn)                 \
 do {                                                                           \
     lulu_Value *rhs = &self->stack.top[-1];                                    \
     lulu_Value *lhs = &self->stack.top[-2];                                    \
-    lulu_Value_set_number(lhs, lulu_Number_fn(lhs->number, rhs->number));      \
+    check_fn(self, lhs, rhs);                                                  \
+    lulu_Value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));          \
     lulu_VM_pop(self);                                                         \
 } while (0)
+    
+#define ARITH_OP(lulu_Number_fn)    BINARY_OP(lulu_Value_set_number,  lulu_Number_fn, check_arith)
+#define COMPARE_OP(lulu_Number_fn)  BINARY_OP(lulu_Value_set_boolean, lulu_Number_fn, check_arith)
     
     for (;;) {
         lulu_Instruction inst;
@@ -70,12 +85,30 @@ do {                                                                           \
             lulu_VM_push(self, &value);
             break;
         }
-        case OP_ADD: BINARY_OP(lulu_Number_add); break;
-        case OP_SUB: BINARY_OP(lulu_Number_sub); break;
-        case OP_MUL: BINARY_OP(lulu_Number_mul); break;
-        case OP_DIV: BINARY_OP(lulu_Number_div); break;
-        case OP_MOD: BINARY_OP(lulu_Number_mod); break;
-        case OP_POW: BINARY_OP(lulu_Number_pow); break;
+        case OP_NIL: {
+            lulu_Value value;
+            lulu_Value_set_nil(&value);
+            lulu_VM_push(self, &value);
+            break;
+        }
+        case OP_TRUE: {
+            lulu_Value value;
+            lulu_Value_set_boolean(&value, true);
+            lulu_VM_push(self, &value);
+            break;
+        }
+        case OP_FALSE: {
+            lulu_Value value;
+            lulu_Value_set_boolean(&value, false);
+            lulu_VM_push(self, &value);
+            break;
+        }
+        case OP_ADD: ARITH_OP(lulu_Number_add); break;
+        case OP_SUB: ARITH_OP(lulu_Number_sub); break;
+        case OP_MUL: ARITH_OP(lulu_Number_mul); break;
+        case OP_DIV: ARITH_OP(lulu_Number_div); break;
+        case OP_MOD: ARITH_OP(lulu_Number_mod); break;
+        case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_UNM: {
             lulu_Value *value = &self->stack.top[-1];
             lulu_Value_set_number(value, lulu_Number_unm(value->number));
@@ -93,6 +126,8 @@ do {                                                                           \
     // Unreachable but maybe we have corrupt data!
     return LULU_ERROR_RUNTIME;
     
+#undef COMPARE_OP
+#undef ARITH_OP
 #undef BINARY_OP
 
 }
@@ -205,4 +240,21 @@ lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, Strin
 {
     fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, cast(int)where.len, where.data);
     lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);
+}
+
+void
+lulu_VM_runtime_error(lulu_VM *self, cstring fmt, ...)
+{
+    va_list args;
+    cstring file = self->chunk->filename;
+    int     line = self->chunk->lines[self->ip - self->chunk->code - 1];
+    va_start(args, fmt);
+    fprintf(stderr, "%s:%i: ", file, line);
+    vfprintf(stderr, fmt, args);
+    fputc('\n', stderr);
+    va_end(args);
+    
+    // Ensure stack is valid for the next run.
+    stack_init(&self->stack);
+    lulu_VM_throw_error(self, LULU_ERROR_RUNTIME);
 }

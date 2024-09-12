@@ -102,6 +102,19 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     }
 }
 
+static void
+literal(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+{
+    unused(lexer);
+    switch (parser->consumed.type) {
+    case TOKEN_FALSE: lulu_Compiler_emit_opcode(compiler, parser, OP_FALSE); break;
+    case TOKEN_NIL:   lulu_Compiler_emit_opcode(compiler, parser, OP_NIL);   break;
+    case TOKEN_TRUE:  lulu_Compiler_emit_opcode(compiler, parser, OP_TRUE);  break;
+    default:
+        return; // Unreachable!
+    }
+}
+
 /**
  * @brief
  *      Recursively compiles any and all nested expressions in order to emit the
@@ -165,20 +178,20 @@ LULU_PARSE_RULES[] = {
 [TOKEN_ELSE]            = {NULL,        NULL,       PREC_NONE},
 [TOKEN_ELSEIF]          = {NULL,        NULL,       PREC_NONE},
 [TOKEN_END]             = {NULL,        NULL,       PREC_NONE},
-[TOKEN_FALSE]           = {NULL,        NULL,       PREC_NONE},
+[TOKEN_FALSE]           = {&literal,    NULL,       PREC_NONE},
 [TOKEN_FOR]             = {NULL,        NULL,       PREC_NONE},
 [TOKEN_FUNCTION]        = {NULL,        NULL,       PREC_NONE},
 [TOKEN_IF]              = {NULL,        NULL,       PREC_NONE},
 [TOKEN_IN]              = {NULL,        NULL,       PREC_NONE},
 [TOKEN_LOCAL]           = {NULL,        NULL,       PREC_NONE},
-[TOKEN_NIL]             = {NULL,        NULL,       PREC_NONE},
+[TOKEN_NIL]             = {&literal,    NULL,       PREC_NONE},
 [TOKEN_NOT]             = {NULL,        NULL,       PREC_NONE},
 [TOKEN_OR]              = {NULL,        NULL,       PREC_NONE},
 [TOKEN_PRINT]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_REPEAT]          = {NULL,        NULL,       PREC_NONE},
 [TOKEN_RETURN]          = {NULL,        NULL,       PREC_NONE},
 [TOKEN_THEN]            = {NULL,        NULL,       PREC_NONE},
-[TOKEN_TRUE]            = {NULL,        NULL,       PREC_NONE},
+[TOKEN_TRUE]            = {&literal,    NULL,       PREC_NONE},
 [TOKEN_UNTIL]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_WHILE]           = {NULL,        NULL,       PREC_NONE},
 

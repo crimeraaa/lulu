@@ -19,6 +19,7 @@ typedef struct {
 typedef struct {
     lulu_VM    *vm;    // Enclosing/parent state.
     lulu_Chunk *chunk; // Destination for bytecode and constants.
+    lulu_OpCode prev_opcode; // Used for single-pass (simple) optimization.
 } lulu_Compiler;
 
 void
