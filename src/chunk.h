@@ -28,7 +28,7 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 
 /**
  * @brief Layout:
- *      [ byte 1 ] [ byte 2 ] [ byte 3 ] [ opcode ]
+ *      [ arg A  ] [ arg B  ] [ arg C  ] [ opcode ]
  *      [ 31..24 ] [ 23..16 ] [ 15..08 ] [ 07..00 ]
  *
  * @details Example:
@@ -41,13 +41,13 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 typedef u32 lulu_Instruction;
 
 static inline lulu_Instruction
-lulu_Instruction_arg3(lulu_OpCode opcode, byte arg1, byte arg2, byte arg3)
+lulu_Instruction_ABC(lulu_OpCode opcode, byte a, byte b, byte c)
 {
     lulu_Instruction inst = 0;
     inst |= cast(lulu_Instruction)opcode;
-    inst |= cast(lulu_Instruction)arg1 << 24;
-    inst |= cast(lulu_Instruction)arg2 << 16;
-    inst |= cast(lulu_Instruction)arg3 << 8;
+    inst |= cast(lulu_Instruction)a << 24;
+    inst |= cast(lulu_Instruction)b << 16;
+    inst |= cast(lulu_Instruction)c << 8;
     return inst;
 }
 
@@ -57,19 +57,19 @@ lulu_Instruction_byte3(lulu_OpCode opcode, byte3 arg)
     byte msb = (arg >> 16) & 0xff;
     byte mid = (arg >>  8) & 0xff;
     byte lsb = (arg >>  0) & 0xff;
-    return lulu_Instruction_arg3(opcode, msb, mid, lsb);
+    return lulu_Instruction_ABC(opcode, msb, mid, lsb);
 }
 
 static inline lulu_Instruction
-lulu_Instruction_arg1(lulu_OpCode opcode, byte arg)
+lulu_Instruction_byte1(lulu_OpCode opcode, byte arg)
 {
-    return lulu_Instruction_arg3(opcode, arg, 0, 0);
+    return lulu_Instruction_ABC(opcode, arg, 0, 0);
 }
 
 static inline lulu_Instruction
 lulu_Instruction_none(lulu_OpCode opcode)
 {
-    return lulu_Instruction_arg3(opcode, 0, 0, 0);
+    return lulu_Instruction_ABC(opcode, 0, 0, 0);
 }
 
 static inline lulu_OpCode

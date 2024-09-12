@@ -34,9 +34,9 @@ emit_instruction(lulu_Compiler *self, lulu_Parser *parser, lulu_Instruction inst
 }
 
 void
-lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode opcode)
+lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op)
 {
-    emit_instruction(self, parser, lulu_Instruction_none(opcode));
+    emit_instruction(self, parser, lulu_Instruction_none(op));
 }
 
 void
@@ -62,6 +62,22 @@ lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser 
 {
     byte3 index = make_constant(self, lexer, parser, value);
     emit_instruction(self, parser, lulu_Instruction_byte3(OP_CONSTANT, index));
+}
+
+void
+lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte a)
+{
+    if (op == OP_NIL && self->prev_opcode == OP_NIL) {
+        lulu_Chunk       *chunk   = current_chunk(self);
+        lulu_Instruction *inst    = &chunk->code[chunk->len - 1];
+        const int         new_arg = lulu_Instruction_get_byte1(*inst) + 1;
+        
+        if (0 < new_arg && new_arg < (cast(byte)-1)) {
+            *inst = lulu_Instruction_byte1(op, cast(byte)new_arg);
+            return;
+        }
+    }
+    emit_instruction(self, parser, lulu_Instruction_byte1(op, a));
 }
 
 void

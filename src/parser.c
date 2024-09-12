@@ -135,7 +135,7 @@ literal(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     unused(lexer);
     switch (parser->consumed.type) {
     case TOKEN_FALSE: lulu_Compiler_emit_opcode(compiler, parser, OP_FALSE); break;
-    case TOKEN_NIL:   lulu_Compiler_emit_opcode(compiler, parser, OP_NIL);   break;
+    case TOKEN_NIL:   lulu_Compiler_emit_byte1(compiler, parser, OP_NIL, 1); break;
     case TOKEN_TRUE:  lulu_Compiler_emit_opcode(compiler, parser, OP_TRUE);  break;
     default:
         return; // Unreachable!

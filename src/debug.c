@@ -48,12 +48,6 @@ lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
     printf("=== DISASSEMBLY: END ===\n\n");
 }
 
-static void
-print_arg_size_0(cstring name)
-{
-    printf("%s\n", name);
-}
-
 /**
  * @note 2024-09-07
  *      Remember that for a 3-byte argument, the LSB is stored first.
@@ -70,30 +64,39 @@ print_constant(cstring name, const lulu_Chunk *chunk, lulu_Instruction inst)
 isize
 lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
 {
+    lulu_Instruction inst;
+    lulu_OpCode      op;
+    cstring          name;
+
     printf("%04tx ", index);
-    
     if (index > 0 && chunk->lines[index] == chunk->lines[index - 1]) {
         printf("   | ");        
     } else {
         printf("%4i ", chunk->lines[index]);
     }
     
-    lulu_Instruction inst   = chunk->code[index];
-    lulu_OpCode      opcode = lulu_Instruction_get_opcode(inst);
-    if (opcode >= LULU_OPCODE_COUNT) {
-        printf("Unknown opcode %i.\n", opcode);
+    inst = chunk->code[index];
+    op   = lulu_Instruction_get_opcode(inst);
+    if (op >= LULU_OPCODE_COUNT) {
+        printf("Unknown opcode %i.\n", op);
         return index + 1;
     }
-    switch (opcode) {
+    name = LULU_OPCODE_INFO[op].name;
+    switch (op) {
     case OP_CONSTANT:
-        print_constant(LULU_OPCODE_INFO[opcode].name, chunk, inst);
+        print_constant(name, chunk, inst);
         break;
-    case OP_NIL: case OP_TRUE: case OP_FALSE:
+    case OP_NIL: {
+        byte arg = lulu_Instruction_get_byte1(inst);
+        printf("%s %4i\n", name, arg);
+        break;
+    }
+    case OP_TRUE: case OP_FALSE:
     case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV: case OP_MOD: case OP_POW:
     case OP_UNM:
     case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:
-        print_arg_size_0(LULU_OPCODE_INFO[opcode].name);
+        printf("%s\n", name);
         break;
     }
     return index + 1;

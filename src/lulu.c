@@ -24,7 +24,8 @@ alloc_fn(void *allocator_data, isize new_size, isize align, void *old_ptr, isize
     unused(align);
 
     // Trying to free some existing memory?
-    if (new_size == 0 && old_size != 0) {
+    // NOTE: old_size can be 0 in this case.
+    if (new_size == 0) {
         free(old_ptr);
         return NULL;
     }
@@ -41,11 +42,8 @@ alloc_fn(void *allocator_data, isize new_size, isize align, void *old_ptr, isize
     return new_ptr;
 }
 
-static lulu_VM _global_vm;
-static lulu_VM *global_vm = &_global_vm;
-
 static void
-repl(void)
+repl(lulu_VM *vm)
 {
     char line[512];
     for (;;) {
@@ -56,12 +54,12 @@ repl(void)
             break;
         }
         
-        lulu_VM_interpret(global_vm, "stdin", line);
+        lulu_VM_interpret(vm, "stdin", line);
     }
 }
 
 static char *
-read_file(cstring path, usize *out_size)
+read_file(lulu_VM *vm, cstring path, usize *out_size)
 {
     FILE *file_ptr   = fopen(path, "rb");
     usize file_size  = 0;
@@ -83,7 +81,7 @@ read_file(cstring path, usize *out_size)
         *out_size = buf_size;
     }
 
-    buf_ptr = rawarray_new(char, global_vm, buf_size);
+    buf_ptr = rawarray_new(char, vm, buf_size);
     if (!buf_ptr) {
         fprintf(stderr, "Not enough memory to read file '%s'.\n", path);
         goto cleanup;
@@ -92,7 +90,7 @@ read_file(cstring path, usize *out_size)
     bytes_read = fread(buf_ptr, sizeof(buf_ptr[0]), file_size, file_ptr);
     if (bytes_read < file_size) {
         fprintf(stderr, "Could not read file '%s'.\n", path);
-        rawarray_free(char, global_vm, buf_ptr, buf_size);
+        rawarray_free(char, vm, buf_ptr, buf_size);
         goto cleanup;
     }
 
@@ -104,17 +102,17 @@ cleanup:
 }
 
 static int
-run_file(cstring path)
+run_file(lulu_VM *vm, cstring path)
 {
     usize       len    = 0;
-    char       *source = read_file(path, &len);
+    char       *source = read_file(vm, path, &len);
     lulu_Status status;
 
     if (!source) {
         return 2;
     }
-    status = lulu_VM_interpret(global_vm, path, source);
-    rawarray_free(char, global_vm, source, len);
+    status = lulu_VM_interpret(vm, path, source);
+    rawarray_free(char, vm, source, len);
 
     switch (status) {
     case LULU_OK:
@@ -131,17 +129,18 @@ run_file(cstring path)
 int
 main(int argc, cstring argv[])
 {
-    int err = 0;
-    lulu_VM_init(global_vm, alloc_fn, NULL);
+    lulu_VM vm;
+    int     err = 0;
+    lulu_VM_init(&vm, alloc_fn, NULL);
     if (argc == 1) {
-        repl();
+        repl(&vm);
     } else if (argc == 2) {
-        err = run_file(argv[1]);
+        err = run_file(&vm, argv[1]);
     } else {
         fprintf(stderr, "Usage: %s [script]\n", argv[0]);
         fflush(stderr);
         return 1;
     }
-    lulu_VM_free(global_vm);
+    lulu_VM_free(&vm);
     return err;
 }

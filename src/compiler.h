@@ -32,12 +32,15 @@ void
 lulu_Compiler_end(lulu_Compiler *self, lulu_Parser *parser);
 
 void
-lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode opcode);
+lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op);
 
 void
 lulu_Compiler_emit_return(lulu_Compiler *self, lulu_Parser *parser);
 
 void
 lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value);
+
+void
+lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte a);
 
 #endif // LULU_COMPILER_H

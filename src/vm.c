@@ -103,8 +103,12 @@ do {                                                                           \
         }
         case OP_NIL: {
             lulu_Value value;
+            const int  count = lulu_Instruction_get_byte1(inst);
+
             lulu_Value_set_nil(&value);
-            lulu_VM_push(self, &value);
+            for (int i = 0; i < count; i++) {
+                lulu_VM_push(self, &value);
+            }
             break;
         }
         case OP_TRUE: {
