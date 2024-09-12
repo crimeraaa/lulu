@@ -70,7 +70,7 @@ print_constant(cstring name, const lulu_Chunk *chunk, lulu_Instruction inst)
 isize
 lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
 {
-    printf("%04ti ", index);
+    printf("%04tx ", index);
     
     if (index > 0 && chunk->lines[index] == chunk->lines[index - 1]) {
         printf("   | ");        
@@ -88,16 +88,10 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONSTANT:
         print_constant(LULU_OPCODE_INFO[opcode].name, chunk, inst);
         break;
-    case OP_NIL:
-    case OP_TRUE:
-    case OP_FALSE:
-    case OP_ADD:
-    case OP_SUB:
-    case OP_MUL:
-    case OP_DIV:
-    case OP_MOD:
-    case OP_POW:
+    case OP_NIL: case OP_TRUE: case OP_FALSE:
+    case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV: case OP_MOD: case OP_POW:
     case OP_UNM:
+    case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:
         print_arg_size_0(LULU_OPCODE_INFO[opcode].name);
         break;

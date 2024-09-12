@@ -16,6 +16,9 @@ typedef double lulu_Number;
 #define lulu_Number_mod(x, y)   fmod((x), (y))
 #define lulu_Number_pow(x, y)   pow((x), (y))
 #define lulu_Number_unm(x)      (-(x))
+#define lulu_Number_eq(x, y)    ((x) == (y))
+#define lulu_Number_lt(x, y)    ((x) < (y))
+#define lulu_Number_leq(x, y)   ((x) <= (y))
 
 typedef enum {
     LULU_TYPE_NIL,
@@ -23,7 +26,7 @@ typedef enum {
     LULU_TYPE_NUMBER,
 } lulu_Value_Type;
 
-#define LULU_TYPE_COUNT (LULU_TYPE_NUMBER + 1)
+#define LULU_TYPE_COUNT     (LULU_TYPE_NUMBER + 1)
 
 extern const cstring
 LULU_TYPENAMES[LULU_TYPE_COUNT];
@@ -48,6 +51,12 @@ typedef struct {
 #define lulu_Value_is_boolean(self)     ((self)->type == LULU_TYPE_BOOLEAN)
 #define lulu_Value_is_number(self)      ((self)->type == LULU_TYPE_NUMBER)
 
+static inline bool
+lulu_Value_is_falsy(const lulu_Value *value)
+{
+    return lulu_Value_is_nil(value) || (lulu_Value_is_boolean(value) && !value->boolean);
+}
+
 static inline void
 lulu_Value_set_nil(lulu_Value *dst)
 {
@@ -68,6 +77,9 @@ lulu_Value_set_number(lulu_Value *dst, lulu_Number n)
     dst->type   = LULU_TYPE_NUMBER;
     dst->number = n;
 }
+
+bool
+lulu_Value_eq(const lulu_Value *a, const lulu_Value *b);
 
 void
 lulu_Value_Array_init(lulu_Value_Array *self);

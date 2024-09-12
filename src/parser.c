@@ -77,11 +77,35 @@ lulu_Parse_error_consumed(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg)
     wrap_error(lexer->vm, lexer->filename, &parser->consumed, msg);
 }
 
+static lulu_OpCode
+get_binary_op(lulu_Token_Type type)
+{
+    switch (type) {
+    case TOKEN_PLUS:            return OP_ADD;
+    case TOKEN_DASH:            return OP_SUB;
+    case TOKEN_ASTERISK:        return OP_MUL;
+    case TOKEN_SLASH:           return OP_DIV;
+    case TOKEN_PERCENT:         return OP_MOD;
+    case TOKEN_CARET:           return OP_POW;
+        
+    case TOKEN_TILDE_EQUAL:
+    case TOKEN_EQUAL_EQUAL:     return OP_EQ;
+    case TOKEN_ANGLE_R_EQUAL:
+    case TOKEN_ANGLE_L:         return OP_LT;
+    case TOKEN_ANGLE_R:
+    case TOKEN_ANGLE_L_EQUAL:   return OP_LEQ;
+
+    default:
+        return OP_RETURN; // Unreachable!
+    }
+}
+
 static void
 binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_Token_Type type = parser->consumed.type;
     lulu_Precedence prec = get_rule(type)->precedence;
+    lulu_OpCode     op;
     
     // For exponentiation, enforce right associativity.
     if (prec == PREC_POW) {
@@ -89,17 +113,20 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     } else {
         parse_precedence(compiler, lexer, parser, prec + 1);
     }
+    
+    op = get_binary_op(type);
+    lulu_Compiler_emit_opcode(compiler, parser, op);
 
     switch (type) {
-    case TOKEN_PLUS:        lulu_Compiler_emit_opcode(compiler, parser, OP_ADD); break;
-    case TOKEN_DASH:        lulu_Compiler_emit_opcode(compiler, parser, OP_SUB); break;
-    case TOKEN_ASTERISK:    lulu_Compiler_emit_opcode(compiler, parser, OP_MUL); break;
-    case TOKEN_SLASH:       lulu_Compiler_emit_opcode(compiler, parser, OP_DIV); break;
-    case TOKEN_PERCENT:     lulu_Compiler_emit_opcode(compiler, parser, OP_MOD); break;
-    case TOKEN_CARET:       lulu_Compiler_emit_opcode(compiler, parser, OP_POW); break;
+    case TOKEN_TILDE_EQUAL:
+    case TOKEN_ANGLE_R:
+    case TOKEN_ANGLE_R_EQUAL: 
+        lulu_Compiler_emit_opcode(compiler, parser, OP_NOT);
+        break;
     default:
-        return; // Unreachable!
+        break;
     }
+
 }
 
 static void
@@ -161,6 +188,7 @@ unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 
     switch (type) {
     case TOKEN_DASH: lulu_Compiler_emit_opcode(compiler, parser, OP_UNM); break;
+    case TOKEN_NOT:  lulu_Compiler_emit_opcode(compiler, parser, OP_NOT); break;
     default:
         return; // Unreachable!
     }
@@ -185,7 +213,7 @@ LULU_PARSE_RULES[] = {
 [TOKEN_IN]              = {NULL,        NULL,       PREC_NONE},
 [TOKEN_LOCAL]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_NIL]             = {&literal,    NULL,       PREC_NONE},
-[TOKEN_NOT]             = {NULL,        NULL,       PREC_NONE},
+[TOKEN_NOT]             = {&unary,      NULL,       PREC_NONE},
 [TOKEN_OR]              = {NULL,        NULL,       PREC_NONE},
 [TOKEN_PRINT]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_REPEAT]          = {NULL,        NULL,       PREC_NONE},
@@ -223,13 +251,13 @@ LULU_PARSE_RULES[] = {
 ///--- 1}}} --------------------------------------------------------------------
 
 // key                  :  prefix_fn    infix_fn    precedence
-[TOKEN_EQUAL]           = {NULL,        NULL,       PREC_NONE},
-[TOKEN_EQUAL_EQUAL]     = {NULL,        NULL,       PREC_NONE},
-[TOKEN_TILDE_EQUAL]     = {NULL,        NULL,       PREC_NONE},
-[TOKEN_ANGLE_L]         = {NULL,        NULL,       PREC_NONE},
-[TOKEN_ANGLE_EQUAL_L]   = {NULL,        NULL,       PREC_NONE},
-[TOKEN_ANGLE_R]         = {NULL,        NULL,       PREC_NONE},
-[TOKEN_ANGLE_EQUAL_R]   = {NULL,        NULL,       PREC_NONE},
+[TOKEN_EQUAL]           = {NULL,        &binary,    PREC_EQUALITY},
+[TOKEN_EQUAL_EQUAL]     = {NULL,        &binary,    PREC_EQUALITY},
+[TOKEN_TILDE_EQUAL]     = {NULL,        &binary,    PREC_COMPARISON},
+[TOKEN_ANGLE_L]         = {NULL,        &binary,    PREC_COMPARISON},
+[TOKEN_ANGLE_L_EQUAL]   = {NULL,        &binary,    PREC_COMPARISON},
+[TOKEN_ANGLE_R]         = {NULL,        &binary,    PREC_COMPARISON},
+[TOKEN_ANGLE_R_EQUAL]   = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_IDENTIFIER]      = {NULL,        NULL,       PREC_NONE},
 [TOKEN_STRING_LIT]      = {NULL,        NULL,       PREC_NONE},
 [TOKEN_NUMBER_LIT]      = {&number,     NULL,       PREC_NONE},

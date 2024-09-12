@@ -55,8 +55,8 @@ TOKEN_CARET,        // ^ := exponentiation
 
 TOKEN_EQUAL,
 TOKEN_EQUAL_EQUAL, TOKEN_TILDE_EQUAL,   // ==, ~=
-TOKEN_ANGLE_L,     TOKEN_ANGLE_EQUAL_L, // <,  <=
-TOKEN_ANGLE_R,     TOKEN_ANGLE_EQUAL_R, // >,  >=
+TOKEN_ANGLE_L,     TOKEN_ANGLE_L_EQUAL, // <,  <=
+TOKEN_ANGLE_R,     TOKEN_ANGLE_R_EQUAL, // >,  >=
 
 ///--- 1}}} --------------------------------------------------------------------
 

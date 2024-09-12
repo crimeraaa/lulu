@@ -7,6 +7,21 @@ LULU_TYPENAMES[LULU_TYPE_COUNT] = {
     [LULU_TYPE_NUMBER]  = "number",
 };
 
+bool
+lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
+{
+    if (a->type != b->type) {
+        return false;
+    }
+    
+    switch (a->type) {
+    case LULU_TYPE_NIL:     return true;
+    case LULU_TYPE_BOOLEAN: return a->boolean == b->boolean;
+    case LULU_TYPE_NUMBER:  return a->number == b->number;
+    }
+    return false;
+}
+
 void
 lulu_Value_Array_init(lulu_Value_Array *self)
 {

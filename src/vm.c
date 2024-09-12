@@ -37,6 +37,12 @@ current_chunk(lulu_VM *self)
     return self->chunk;
 }
 
+static lulu_Value *
+poke_top(lulu_VM *vm, int offset)
+{
+    return &vm->stack.top[offset];
+}
+
 static void
 check_arith(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
 {
@@ -47,6 +53,16 @@ check_arith(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
         lulu_Value_typename(lhs), lulu_Value_typename(rhs));
 }
 
+static void
+check_compare(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
+{
+    if (lulu_Value_is_number(lhs) && lulu_Value_is_number(rhs)) {
+        return;
+    }
+    lulu_VM_runtime_error(vm, "Attempt to compare %s with %s",
+        lulu_Value_typename(lhs), lulu_Value_typename(rhs));
+}
+
 static lulu_Status
 execute_bytecode(lulu_VM *self)
 {
@@ -54,15 +70,15 @@ execute_bytecode(lulu_VM *self)
 
 #define BINARY_OP(lulu_Value_set_fn, lulu_Number_fn, check_fn)                 \
 do {                                                                           \
-    lulu_Value *rhs = &self->stack.top[-1];                                    \
-    lulu_Value *lhs = &self->stack.top[-2];                                    \
+    lulu_Value *rhs = poke_top(self, -1);                                      \
+    lulu_Value *lhs = poke_top(self, -2);                                      \
     check_fn(self, lhs, rhs);                                                  \
     lulu_Value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));          \
     lulu_VM_pop(self);                                                         \
 } while (0)
     
 #define ARITH_OP(lulu_Number_fn)    BINARY_OP(lulu_Value_set_number,  lulu_Number_fn, check_arith)
-#define COMPARE_OP(lulu_Number_fn)  BINARY_OP(lulu_Value_set_boolean, lulu_Number_fn, check_arith)
+#define COMPARE_OP(lulu_Number_fn)  BINARY_OP(lulu_Value_set_boolean, lulu_Number_fn, check_compare)
     
     for (;;) {
         lulu_Instruction inst;
@@ -110,8 +126,23 @@ do {                                                                           \
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_UNM: {
-            lulu_Value *value = &self->stack.top[-1];
+            lulu_Value *value = poke_top(self, -1);
             lulu_Value_set_number(value, lulu_Number_unm(value->number));
+            break;
+        }
+        case OP_EQ: {
+            lulu_Value *rhs = poke_top(self, -1);
+            lulu_Value *lhs = poke_top(self, -2);
+            lulu_Value_set_boolean(lhs, lulu_Value_eq(lhs, rhs));
+            lulu_VM_pop(self);
+            break;
+        }
+        case OP_LT:  COMPARE_OP(lulu_Number_lt);  break;
+        case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
+        
+        case OP_NOT: {
+            lulu_Value *value = poke_top(self, -1);
+            lulu_Value_set_boolean(value, lulu_Value_is_falsy(value));
             break;
         }
         case OP_RETURN: {
@@ -245,9 +276,10 @@ lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, Strin
 void
 lulu_VM_runtime_error(lulu_VM *self, cstring fmt, ...)
 {
-    va_list args;
-    cstring file = self->chunk->filename;
-    int     line = self->chunk->lines[self->ip - self->chunk->code - 1];
+    va_list     args;
+    lulu_Chunk *chunk = current_chunk(self);
+    cstring     file  = chunk->filename;
+    int         line  = chunk->lines[self->ip - chunk->code - 1];
     va_start(args, fmt);
     fprintf(stderr, "%s:%i: ", file, line);
     vfprintf(stderr, fmt, args);
