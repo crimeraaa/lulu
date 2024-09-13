@@ -51,10 +51,15 @@ typedef struct {
 #define lulu_Value_is_boolean(self)     ((self)->type == LULU_TYPE_BOOLEAN)
 #define lulu_Value_is_number(self)      ((self)->type == LULU_TYPE_NUMBER)
 
+extern const lulu_Value LULU_VALUE_NIL;
+extern const lulu_Value LULU_VALUE_TRUE;
+extern const lulu_Value LULU_VALUE_FALSE;
+
 static inline bool
 lulu_Value_is_falsy(const lulu_Value *value)
 {
-    return lulu_Value_is_nil(value) || (lulu_Value_is_boolean(value) && !value->boolean);
+    return lulu_Value_is_nil(value)
+        || (lulu_Value_is_boolean(value) && !value->boolean);
 }
 
 static inline void

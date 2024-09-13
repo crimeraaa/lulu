@@ -1,4 +1,7 @@
 # Local only
+.archive/
+.perl/
+.vscode/
 .gdb_history
 .task/
 

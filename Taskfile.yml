@@ -33,6 +33,7 @@ env:
     -DLULU_DEBUG_PRINT
     -DLULU_DEBUG_TRACE
     -DLULU_DEBUG_ASSERT
+    -fsanitize=address,undefined
 
   RELEASE_FLAGS: >-
     -O1

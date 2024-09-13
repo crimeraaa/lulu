@@ -41,35 +41,35 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 typedef u32 lulu_Instruction;
 
 static inline lulu_Instruction
-lulu_Instruction_ABC(lulu_OpCode opcode, byte a, byte b, byte c)
+lulu_Instruction_ABC(lulu_OpCode op, byte a, byte b, byte c)
 {
     lulu_Instruction inst = 0;
-    inst |= cast(lulu_Instruction)opcode;
     inst |= cast(lulu_Instruction)a << 24;
     inst |= cast(lulu_Instruction)b << 16;
     inst |= cast(lulu_Instruction)c << 8;
+    inst |= cast(lulu_Instruction)op;
     return inst;
 }
 
 static inline lulu_Instruction
-lulu_Instruction_byte3(lulu_OpCode opcode, byte3 arg)
+lulu_Instruction_byte3(lulu_OpCode op, byte3 arg)
 {
     byte msb = (arg >> 16) & 0xff;
     byte mid = (arg >>  8) & 0xff;
     byte lsb = (arg >>  0) & 0xff;
-    return lulu_Instruction_ABC(opcode, msb, mid, lsb);
+    return lulu_Instruction_ABC(op, msb, mid, lsb);
 }
 
 static inline lulu_Instruction
-lulu_Instruction_byte1(lulu_OpCode opcode, byte arg)
+lulu_Instruction_byte1(lulu_OpCode op, byte arg)
 {
-    return lulu_Instruction_ABC(opcode, arg, 0, 0);
+    return lulu_Instruction_ABC(op, arg, 0, 0);
 }
 
 static inline lulu_Instruction
-lulu_Instruction_none(lulu_OpCode opcode)
+lulu_Instruction_none(lulu_OpCode op)
 {
-    return lulu_Instruction_ABC(opcode, 0, 0, 0);
+    return lulu_Instruction_ABC(op, 0, 0, 0);
 }
 
 static inline lulu_OpCode

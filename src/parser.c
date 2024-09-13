@@ -10,7 +10,8 @@ parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser
 static lulu_Parse_Rule *
 get_rule(lulu_Token_Type type);
 
-__attribute__((__unused__)) static void
+__attribute__((__unused__))
+static void
 print_token(const lulu_Token *token, cstring name)
 {
     const String lexeme = token->lexeme;
@@ -22,7 +23,8 @@ print_token(const lulu_Token *token, cstring name)
         token->line);
 }
 
-__attribute__((__unused__)) static void
+__attribute__((__unused__))
+static void
 print_parser(const lulu_Parser *self)
 {
     print_token(&self->consumed, "consumed");

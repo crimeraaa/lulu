@@ -44,23 +44,25 @@ poke_top(lulu_VM *vm, int offset)
 }
 
 static void
-check_arith(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
+check_numeric(lulu_VM *vm, cstring act, const lulu_Value *lhs, const lulu_Value *rhs)
 {
     if (lulu_Value_is_number(lhs) && lulu_Value_is_number(rhs)) {
         return;
     }
-    lulu_VM_runtime_error(vm, "Attempt to perform arithmetic on %s with %s",
-        lulu_Value_typename(lhs), lulu_Value_typename(rhs));
+    lulu_VM_runtime_error(vm, "Attempt to %s %s with %s",
+        act, lulu_Value_typename(lhs), lulu_Value_typename(rhs));
+}
+
+static void
+check_arith(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
+{
+    check_numeric(vm, "perform arithmetic on", lhs, rhs);
 }
 
 static void
 check_compare(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
 {
-    if (lulu_Value_is_number(lhs) && lulu_Value_is_number(rhs)) {
-        return;
-    }
-    lulu_VM_runtime_error(vm, "Attempt to compare %s with %s",
-        lulu_Value_typename(lhs), lulu_Value_typename(rhs));
+    check_numeric(vm, "compare", lhs, rhs);
 }
 
 static lulu_Status
@@ -102,27 +104,14 @@ do {                                                                           \
             break;
         }
         case OP_NIL: {
-            lulu_Value value;
-            const int  count = lulu_Instruction_get_byte1(inst);
-
-            lulu_Value_set_nil(&value);
+            int count = lulu_Instruction_get_byte1(inst);
             for (int i = 0; i < count; i++) {
-                lulu_VM_push(self, &value);
+                lulu_VM_push(self, &LULU_VALUE_NIL);
             }
             break;
         }
-        case OP_TRUE: {
-            lulu_Value value;
-            lulu_Value_set_boolean(&value, true);
-            lulu_VM_push(self, &value);
-            break;
-        }
-        case OP_FALSE: {
-            lulu_Value value;
-            lulu_Value_set_boolean(&value, false);
-            lulu_VM_push(self, &value);
-            break;
-        }
+        case OP_TRUE:  lulu_VM_push(self, &LULU_VALUE_TRUE);  break;
+        case OP_FALSE: lulu_VM_push(self, &LULU_VALUE_FALSE); break;
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
         case OP_SUB: ARITH_OP(lulu_Number_sub); break;
         case OP_MUL: ARITH_OP(lulu_Number_mul); break;
@@ -131,6 +120,10 @@ do {                                                                           \
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_UNM: {
             lulu_Value *value = poke_top(self, -1);
+            if (!lulu_Value_is_number(value)) {
+                lulu_VM_runtime_error(self,
+                    "Attempt to negate a %s value", lulu_Value_typename(value));
+            }
             lulu_Value_set_number(value, lulu_Number_unm(value->number));
             break;
         }
@@ -170,55 +163,31 @@ do {                                                                           \
 typedef struct {
     lulu_Compiler compiler;
     lulu_Chunk    chunk;
-    cstring       name;
     cstring       input;
 } Comptime;
 
 static void
-compile_only(lulu_VM *self, void *userdata)
-{
-    Comptime *ud = cast(Comptime *)userdata;
-    lulu_Chunk_init(&ud->chunk, ud->name);
-    lulu_Compiler_init(self, &ud->compiler);
-    lulu_Compiler_compile(&ud->compiler, ud->input, &ud->chunk);
-}
-
-static void
 compile_and_run(lulu_VM *self, void *userdata)
 {
-    Comptime   *ud     = cast(Comptime *)userdata;
-    lulu_Status status = lulu_VM_run_protected(self, &compile_only, ud);
+    Comptime *ud = cast(Comptime *)userdata;
+    lulu_Compiler_init(self, &ud->compiler);
+    lulu_Compiler_compile(&ud->compiler, ud->input, &ud->chunk);
 
-    // Only execute if we're certain the chunk is valid.
-    if (status == LULU_OK) {
-        self->chunk = &ud->chunk;
-        self->ip    = self->chunk->code;
-        
-        /**
-         * @todo 2024-09-06
-         *      We can just raise errors from execute_bytecode() directly.
-         *      If there are no errors, lulu_VM_run_protected() defaults to
-         *      LULU_OK.
-         */
-        status = execute_bytecode(self);
-    }
-
-    // This must always be run even when an error is thrown.
-    lulu_Chunk_free(self, &ud->chunk);
-
-    // Indirectly set the return value of lulu_VM_run_protected().
-    if (status != LULU_OK) {
-        lulu_VM_throw_error(self, status);
-    }
+    self->chunk = &ud->chunk;
+    self->ip    = self->chunk->code;
+    execute_bytecode(self);
 }
 
 lulu_Status
 lulu_VM_interpret(lulu_VM *self, cstring name, cstring input)
 {
-    Comptime ud;
-    ud.name  = name;
+    Comptime    ud;
+    lulu_Status status;
     ud.input = input;
-    return lulu_VM_run_protected(self, &compile_and_run, &ud);
+    lulu_Chunk_init(&ud.chunk, name);
+    status = lulu_VM_run_protected(self, &compile_and_run, &ud);
+    lulu_Chunk_free(self, &ud.chunk);
+    return status;
 }
 
 void

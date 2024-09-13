@@ -4,7 +4,8 @@
 #include "lulu.h"
 #include "chunk.h"
 
-__attribute__(( __format__ (__printf__, 4, 5) )) int
+__attribute__(( __format__ (__printf__, 4, 5) ))
+int
 lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...);
 
 #define lulu_Debug_writef(level, fmt, ...)  lulu_Debug_writef(level, __FILE__, __LINE__, fmt "\n", __VA_ARGS__)
