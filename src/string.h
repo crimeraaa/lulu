@@ -18,7 +18,7 @@ typedef struct {
 /**
  * @brief
  *      Construct a String from a C-string literal. This is designed to work for
- *      both post-declaration assignment.
+ *      both declaration + assignment and post-declaration assignment.
  * 
  * @warning 2024-09-07
  *      C99-style compound literals have very different semantics in C++.

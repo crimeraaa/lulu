@@ -11,9 +11,9 @@
  *      16-byte alignment.
  */
 typedef union {
-    void  *p;
-    double d;
-    long   l;
+    void  *pointer;
+    double number;
+    long   integer;
 } lulu_Allocator_Alignment;
 
 #define LULU_ALLOCATOR_ALIGNMENT sizeof(lulu_Allocator_Alignment)

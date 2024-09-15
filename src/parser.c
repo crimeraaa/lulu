@@ -42,6 +42,7 @@ lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser)
     if (token.type == TOKEN_ERROR) {
         lulu_Parse_error_current(lexer, parser, "Unhandled error token");
     }
+
     parser->consumed = parser->current;
     parser->current  = token;
     // print_parser(parser); //!DEBUG
@@ -60,10 +61,9 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
 noreturn static void
 wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 {
-    String where = token->lexeme;
-    if (token->type == TOKEN_EOF) {
-        where = String_literal("<eof>");
-    }
+    static const String STRING_EOF = String_literal("<eof>");
+
+    String where = (token->type == TOKEN_EOF) ? STRING_EOF : token->lexeme;
     lulu_VM_comptime_error(vm, filename, token->line, msg, where);
 }
 
@@ -98,7 +98,7 @@ get_binary_op(lulu_Token_Type type)
     case TOKEN_ANGLE_L_EQUAL:   return OP_LEQ;
 
     default:
-        return OP_RETURN; // Unreachable!
+        __builtin_unreachable();
     }
 }
 
@@ -107,8 +107,6 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_Token_Type type = parser->consumed.type;
     lulu_Precedence prec = get_rule(type)->precedence;
-    lulu_OpCode     op;
-    
     // For exponentiation, enforce right associativity.
     if (prec == PREC_POW) {
         parse_precedence(compiler, lexer, parser, prec);
@@ -116,9 +114,10 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
         parse_precedence(compiler, lexer, parser, prec + 1);
     }
     
-    op = get_binary_op(type);
+    lulu_OpCode op = get_binary_op(type);
     lulu_Compiler_emit_opcode(compiler, parser, op);
 
+    // NOT, GT and GEQ are implemented as complements of EQ, LEQ and LT.
     switch (type) {
     case TOKEN_TILDE_EQUAL:
     case TOKEN_ANGLE_R:
@@ -140,7 +139,7 @@ literal(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     case TOKEN_NIL:   lulu_Compiler_emit_byte1(compiler, parser, OP_NIL, 1); break;
     case TOKEN_TRUE:  lulu_Compiler_emit_opcode(compiler, parser, OP_TRUE);  break;
     default:
-        return; // Unreachable!
+        __builtin_unreachable();
     }
 }
 
@@ -165,14 +164,25 @@ number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     char       *end;
     String      lexeme = parser->consumed.lexeme;
     lulu_Number value  = strtod(lexeme.data, &end);
-    lulu_Value  tmp;
     // We failed to convert the entire lexeme?
     if (end != (lexeme.data + lexeme.len)) {
         lulu_Parse_error_consumed(lexer, parser, "Malformed number");
         return;
     }
+    lulu_Value tmp;
     lulu_Value_set_number(&tmp, value);
     lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
+}
+
+static lulu_OpCode
+get_unary_opcode(lulu_Token_Type type)
+{
+    switch (type) {
+    case TOKEN_DASH: return OP_UNM;
+    case TOKEN_NOT:  return OP_NOT;
+    default:
+        __builtin_unreachable();
+    }
 }
 
 /**
@@ -187,13 +197,7 @@ unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     
     // Compile the operand.
     parse_precedence(compiler, lexer, parser, PREC_UNARY);
-
-    switch (type) {
-    case TOKEN_DASH: lulu_Compiler_emit_opcode(compiler, parser, OP_UNM); break;
-    case TOKEN_NOT:  lulu_Compiler_emit_opcode(compiler, parser, OP_NOT); break;
-    default:
-        return; // Unreachable!
-    }
+    lulu_Compiler_emit_opcode(compiler, parser, get_unary_opcode(type));
 }
 
 
@@ -275,23 +279,11 @@ lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *p
 }
 
 static void
-parse_prefix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
-{
-    lulu_ParseFn prefix_rule = get_rule(parser->consumed.type)->prefix_fn;
-    if (!prefix_rule) {
-        lulu_Parse_error_consumed(lexer, parser, "Expected prefix expression");
-        return;
-    }
-    prefix_rule(compiler, lexer, parser);
-}
-
-static void
 parse_infix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence)
 {
-    lulu_ParseFn infix_rule;
     while (precedence <= get_rule(parser->current.type)->precedence) {
         lulu_Parse_advance_token(lexer, parser);
-        infix_rule = get_rule(parser->consumed.type)->infix_fn;
+        lulu_ParseFn infix_rule = get_rule(parser->consumed.type)->infix_fn;
         infix_rule(compiler, lexer, parser);
     }
 }
@@ -300,7 +292,12 @@ static void
 parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence)
 {
     lulu_Parse_advance_token(lexer, parser);
-    parse_prefix(compiler, lexer, parser);
+    lulu_ParseFn prefix_rule = get_rule(parser->consumed.type)->prefix_fn;
+    if (!prefix_rule) {
+        lulu_Parse_error_consumed(lexer, parser, "Expected prefix expression");
+        return;
+    }
+    prefix_rule(compiler, lexer, parser);
     parse_infix(compiler, lexer, parser, precedence);
 }
 

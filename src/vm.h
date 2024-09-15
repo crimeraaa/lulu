@@ -19,8 +19,8 @@ typedef struct {
     lulu_Value  values[LULU_VM_STACK_MAX];
     lulu_Value *base;  // Points to index 0 of `values`.
     lulu_Value *top;   // Points to 1 past the most recently written stack slot.
-    const lulu_Value *end; // Points to 1 past the last valid stack slot.
-} lulu_VM_Stack;
+    lulu_Value *end;   // Points to 1 past the last valid stack slot.
+} lulu_Stack;
 
 typedef struct lulu_Handler {
     volatile lulu_Status status;
@@ -39,7 +39,7 @@ typedef void
 (*lulu_ProtectedFn)(lulu_VM *vm, void *userdata);
 
 struct lulu_VM {
-    lulu_VM_Stack     stack;
+    lulu_Stack        stack;
     lulu_Allocator    allocator;
     void             *allocator_data;
     lulu_Chunk       *chunk;

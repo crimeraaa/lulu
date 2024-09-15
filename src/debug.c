@@ -38,13 +38,21 @@ void
 lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
 {
     printf("=== DISASSEMBLY: BEGIN ===\n");
-    printf(".name '%s'\n", chunk->filename);
+    printf(".name \"%s\"\n", chunk->filename);
+
+    printf(".const\n");
+    const lulu_Value_Array *constants = &chunk->constants;
+    for (isize index = 0; index < constants->len; index++) {
+        const lulu_Value *value = &constants->values[index];
+        printf("%04tx\t", index);
+        lulu_Debug_print_value(value);
+        printf(" ; %s\n", lulu_Value_typename(value));
+    }
+
     printf(".code\n");
-    
     for (isize index = 0; index < chunk->len;) {
         index = lulu_Debug_disassemble_instruction(chunk, index);
     }
-    
     printf("=== DISASSEMBLY: END ===\n\n");
 }
 

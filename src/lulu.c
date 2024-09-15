@@ -17,9 +17,6 @@
 static void *
 alloc_fn(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size)
 {
-    void *new_ptr = NULL;
-    isize add_len = new_size - old_size;
-
     unused(allocator_data);
     unused(align);
 
@@ -31,10 +28,11 @@ alloc_fn(void *allocator_data, isize new_size, isize align, void *old_ptr, isize
     }
 
     // Otherwise, we're trying to [re]allocate some memory.
-    new_ptr = realloc(old_ptr, new_size);
+    void *new_ptr = realloc(old_ptr, new_size);
 
     // We extended the allocation? Note that immediately loading a possibly
     // invalid pointer is not a safe assumption for 100% of architectures.
+    isize add_len = new_size - old_size;
     if (add_len > 0) {
         byte *add_ptr = cast(byte *)new_ptr + old_size;
         memset(add_ptr, 0, add_len);
@@ -48,12 +46,10 @@ repl(lulu_VM *vm)
     char line[512];
     for (;;) {
         printf(">>> ");
-        
         if (!fgets(line, size_of(line), stdin)) {
             printf("\n");
             break;
         }
-        
         lulu_VM_interpret(vm, "stdin", line);
     }
 }

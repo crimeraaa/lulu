@@ -1,5 +1,6 @@
 # Local only
 .archive/
+.experiments/
 .perl/
 .vscode/
 .gdb_history

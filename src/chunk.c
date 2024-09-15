@@ -70,6 +70,12 @@ lulu_Chunk_free(lulu_VM *vm, lulu_Chunk *self)
 isize
 lulu_Chunk_add_constant(lulu_VM *vm, lulu_Chunk *self, const lulu_Value *value)
 {
-    lulu_Value_Array_write(vm, &self->constants, value);
-    return self->constants.len - 1;
+    lulu_Value_Array *constants = &self->constants;
+    for (isize i = 0; i < constants->len; i++) {
+        if (lulu_Value_eq(value, &constants->values[i])) {
+            return i;
+        }
+    }
+    lulu_Value_Array_write(vm, constants, value);
+    return constants->len - 1;
 }

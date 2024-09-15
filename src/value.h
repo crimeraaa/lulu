@@ -8,17 +8,17 @@
 
 typedef double lulu_Number;
 
-#define LULU_NUMBER_FMT         "%.14g"
-#define lulu_Number_add(x, y)   ((x) + (y))
-#define lulu_Number_sub(x, y)   ((x) - (y))
-#define lulu_Number_mul(x, y)   ((x) * (y))
-#define lulu_Number_div(x, y)   ((x) / (y))
-#define lulu_Number_mod(x, y)   fmod((x), (y))
-#define lulu_Number_pow(x, y)   pow((x), (y))
-#define lulu_Number_unm(x)      (-(x))
-#define lulu_Number_eq(x, y)    ((x) == (y))
-#define lulu_Number_lt(x, y)    ((x) < (y))
-#define lulu_Number_leq(x, y)   ((x) <= (y))
+#define LULU_NUMBER_FMT             "%.14g"
+#define lulu_Number_add(lhs, rhs)   ((lhs) + (rhs))
+#define lulu_Number_sub(lhs, rhs)   ((lhs) - (rhs))
+#define lulu_Number_mul(lhs, rhs)   ((lhs) * (rhs))
+#define lulu_Number_div(lhs, rhs)   ((lhs) / (rhs))
+#define lulu_Number_mod(lhs, rhs)   fmod((lhs), (rhs))
+#define lulu_Number_pow(lhs, rhs)   pow((lhs), (rhs))
+#define lulu_Number_unm(rhs)        (-(rhs))
+#define lulu_Number_eq(lhs, rhs)    ((lhs) == (rhs))
+#define lulu_Number_lt(lhs, rhs)    ((lhs) < (rhs))
+#define lulu_Number_leq(lhs, rhs)   ((lhs) <= (rhs))
 
 typedef enum {
     LULU_TYPE_NIL,

@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 static void
-stack_init(lulu_VM_Stack *self)
+stack_init(lulu_Stack *self)
 {
     self->base = &self->values[0];
     self->top  = self->base;
@@ -85,7 +85,7 @@ do {                                                                           \
     for (;;) {
         lulu_Instruction inst;
 #ifdef LULU_DEBUG_TRACE
-        const lulu_VM_Stack *stack = &self->stack;
+        const lulu_Stack *stack = &self->stack;
         printf("        ");
         for (const lulu_Value *slot = stack->base; slot < stack->top; slot++) {
             printf("[ ");
@@ -148,11 +148,10 @@ do {                                                                           \
             printf("\n");
             return LULU_OK;
         }
+        default:
+            __builtin_unreachable();
         }
     }
-
-    // Unreachable but maybe we have corrupt data!
-    return LULU_ERROR_RUNTIME;
     
 #undef COMPARE_OP
 #undef ARITH_OP
@@ -193,7 +192,7 @@ lulu_VM_interpret(lulu_VM *self, cstring name, cstring input)
 void
 lulu_VM_push(lulu_VM *self, const lulu_Value *value)
 {
-    lulu_VM_Stack *stack = &self->stack;
+    lulu_Stack *stack = &self->stack;
     lulu_Debug_assert(stack->top < stack->end, "VM stack overflow");
     *stack->top = *value;
     stack->top++;
@@ -202,7 +201,7 @@ lulu_VM_push(lulu_VM *self, const lulu_Value *value)
 lulu_Value
 lulu_VM_pop(lulu_VM *self)
 {
-    lulu_VM_Stack *stack = &self->stack;
+    lulu_Stack *stack = &self->stack;
     lulu_Debug_assert(stack->top > stack->base, "VM stack underflow");
     stack->top--;
     return *stack->top;
