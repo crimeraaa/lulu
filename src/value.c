@@ -1,14 +1,13 @@
 #include "value.h"
 #include "string.h"
 
-#include <string.h>
-
 const cstring
 LULU_TYPENAMES[LULU_TYPE_COUNT] = {
     [LULU_TYPE_NIL]     = "nil",
     [LULU_TYPE_BOOLEAN] = "boolean",
     [LULU_TYPE_NUMBER]  = "number",
     [LULU_TYPE_STRING]  = "string",
+    [LULU_TYPE_TABLE]   = "table",
 };
 
 /**
@@ -19,8 +18,6 @@ LULU_TYPENAMES[LULU_TYPE_COUNT] = {
 const lulu_Value LULU_VALUE_NIL   = {LULU_TYPE_NIL,     {0}};
 const lulu_Value LULU_VALUE_TRUE  = {LULU_TYPE_BOOLEAN, {true}};
 const lulu_Value LULU_VALUE_FALSE = {LULU_TYPE_BOOLEAN, {false}};
-
-#include <stdio.h>
 
 bool
 lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
@@ -33,12 +30,8 @@ lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
     case LULU_TYPE_NIL:     return true;
     case LULU_TYPE_BOOLEAN: return a->boolean == b->boolean;
     case LULU_TYPE_NUMBER:  return a->number == b->number;
-    case LULU_TYPE_STRING: {
-        const lulu_String *str_a = a->string;
-        const lulu_String *str_b = b->string;
-        return str_a->len == str_b->len
-            && memcmp(str_a->data, str_b->data, str_a->len) == 0;
-    }
+    case LULU_TYPE_STRING:  return a->string == b->string;
+    case LULU_TYPE_TABLE:   return a->table == b->table;
     }
     return false;
 }

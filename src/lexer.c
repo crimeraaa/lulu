@@ -1,9 +1,31 @@
 #include "lexer.h"
 #include "vm.h"
 
-#include <ctype.h>
 #include <string.h>
-#include <stdio.h>
+
+static bool
+is_ascii_digit(char ch)
+{
+    return '0' <= ch && ch <= '9';
+}
+
+static bool
+is_ascii_hexdigit(char ch)
+{
+    return is_ascii_digit(ch) || ('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F');
+}
+
+static bool
+is_ascii_alpha(char ch)
+{
+    return ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z') || ch == '_';
+}
+
+static bool
+is_ascii_alnum(char ch)
+{
+    return is_ascii_alpha(ch) || is_ascii_digit(ch);
+}
 
 void
 lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input)
@@ -290,7 +312,7 @@ get_identifier_type(lulu_Lexer *self)
 static lulu_Token
 consume_identifier(lulu_Lexer *self)
 {
-    while (isalnum(peek_char(self)) || peek_char(self) == '_') {
+    while (is_ascii_alnum(peek_char(self)) || peek_char(self) == '_') {
         advance_char(self);
     }
     return make_token(self, get_identifier_type(self));
@@ -299,7 +321,7 @@ consume_identifier(lulu_Lexer *self)
 static void
 consume_base10(lulu_Lexer *self)
 {
-    while (isdigit(peek_char(self))) {
+    while (is_ascii_digit(peek_char(self))) {
         advance_char(self);
     }
 }
@@ -307,7 +329,7 @@ consume_base10(lulu_Lexer *self)
 static void
 consume_base16(lulu_Lexer *self)
 {
-    while (isxdigit(peek_char(self))) {
+    while (is_ascii_hexdigit(peek_char(self))) {
         advance_char(self);
     }
 }
@@ -336,7 +358,7 @@ consume_number(lulu_Lexer *self)
     
     // Error handling will be done later.
 trailing_characters:
-    while (isalnum(peek_char(self)) || peek_char(self) == '_') {
+    while (is_ascii_alnum(peek_char(self)) || peek_char(self) == '_') {
         advance_char(self);
     }
 
@@ -374,10 +396,10 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
     }
     
     char ch = advance_char(self);
-    if (isdigit(ch)) {
+    if (is_ascii_digit(ch)) {
         return consume_number(self);
     }
-    if (isalpha(ch) || ch == '_') {
+    if (is_ascii_alpha(ch) || ch == '_') {
         return consume_identifier(self);
     }
 

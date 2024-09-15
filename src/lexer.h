@@ -1,7 +1,6 @@
 #ifndef LULU_LEXER_H
 #define LULU_LEXER_H
 
-#include "lulu.h"
 #include "string.h"
 
 /**

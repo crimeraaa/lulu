@@ -1,7 +1,6 @@
 #ifndef LULU_DEBUG_H
 #define LULU_DEBUG_H
 
-#include "lulu.h"
 #include "chunk.h"
 
 __attribute__(( __format__ (__printf__, 4, 5) ))

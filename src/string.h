@@ -1,7 +1,6 @@
 #ifndef LULU_STRING_H
 #define LULU_STRING_H
 
-#include "lulu.h"
 #include "object.h"
 
 /**
@@ -30,17 +29,26 @@ typedef struct {
 struct lulu_String {
     lulu_Object base;
     isize       len;    // Number of non-nul characters.
+    u32         hash;
     char        data[]; // Guaranteed to be nul terminated.
 };
 
+void
+lulu_String_init(lulu_String *self, isize len, u32 hash);
+
+// Analogous to the book's object.c:allocateString().
 lulu_String *
 lulu_String_new(lulu_VM *vm, String src);
 
+// Since self is a variable length structure pointer, we free it here.
 void
 lulu_String_free(lulu_VM *vm, lulu_String *self);
 
 lulu_String *
 lulu_String_concat(lulu_VM *vm, lulu_String *a, lulu_String *b);
+
+u32
+lulu_String_hash(String string);
 
 /**
  * @brief

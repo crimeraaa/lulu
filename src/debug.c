@@ -35,6 +35,10 @@ lulu_Debug_print_value(const lulu_Value *value)
         break;
     case LULU_TYPE_STRING:
         printf("%s", value->string->data);
+        break;
+    case LULU_TYPE_TABLE:
+        printf("%s: %p", lulu_Value_typename(value), cast(void *)value->table);
+        break;
     }
 }
 

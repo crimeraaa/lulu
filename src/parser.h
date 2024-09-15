@@ -1,7 +1,6 @@
 #ifndef LULU_PARSER_H
 #define LULU_PARSER_H
 
-#include "lulu.h"
 #include "compiler.h"
 #include "lexer.h"
 

@@ -7,18 +7,27 @@
 #include <stdlib.h>
 
 static void
-stack_init(lulu_Stack *self)
+reset_stack(lulu_Stack *stack)
 {
-    self->base = &self->values[0];
-    self->top  = self->base;
-    self->end  = self->base + LULU_VM_STACK_MAX;
+    stack->base = &stack->values[0];
+    stack->top  = stack->base;
+    stack->end  = stack->base + LULU_VM_STACK_MAX;
 }
 
+static void
+init_table(lulu_Table *table)
+{
+    lulu_Table_init(table);
+    lulu_Object *base = &table->base;
+    base->type = LULU_TYPE_TABLE;
+    base->next = NULL;
+}
 
 void
 lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
-    stack_init(&self->stack);
+    reset_stack(&self->stack);
+    init_table(&self->strings);
     self->allocator      = allocator;
     self->allocator_data = allocator_data;
     self->chunk          = NULL;
@@ -29,6 +38,8 @@ lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 void
 lulu_VM_free(lulu_VM *self)
 {
+    lulu_Table_free(self, &self->strings);
+
     lulu_Object *object = self->objects;
     while (object) {
         lulu_Object *next = object->next;
@@ -89,7 +100,6 @@ do {                                                                           \
 #define COMPARE_OP(lulu_Number_fn)  BINARY_OP(lulu_Value_set_boolean, lulu_Number_fn, check_compare)
     
     for (;;) {
-        lulu_Instruction inst;
 #ifdef LULU_DEBUG_TRACE
         const lulu_Stack *stack = &self->stack;
         printf("        ");
@@ -101,7 +111,7 @@ do {                                                                           \
         printf("\n");
         lulu_Debug_disassemble_instruction(chunk, self->ip - chunk->code);
 #endif
-        inst = *self->ip++;
+        lulu_Instruction inst = *self->ip++;
         switch (lulu_Instruction_get_opcode(inst)) {
         case OP_CONSTANT: {
             byte3      index = lulu_Instruction_get_byte3(inst);
@@ -279,6 +289,6 @@ lulu_VM_runtime_error(lulu_VM *self, cstring fmt, ...)
     va_end(args);
     
     // Ensure stack is valid for the next run.
-    stack_init(&self->stack);
+    reset_stack(&self->stack);
     lulu_VM_throw_error(self, LULU_ERROR_RUNTIME);
 }

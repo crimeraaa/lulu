@@ -1,11 +1,8 @@
 #ifndef LULU_VM_H
 #define LULU_VM_H
 
-#include "lulu.h"
-#include "memory.h"
 #include "chunk.h"
-#include "object.h"
-#include "string.h"
+#include "table.h"
 
 /**
  * @todo 2024-09-06
@@ -41,6 +38,7 @@ typedef void
 
 struct lulu_VM {
     lulu_Stack        stack;
+    lulu_Table        strings;  // Interned strings.
     lulu_Allocator    allocator;
     void             *allocator_data;
     lulu_Chunk       *chunk;

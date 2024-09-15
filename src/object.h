@@ -1,7 +1,6 @@
 #ifndef LULU_OBJECT_H
 #define LULU_OBJECT_H
 
-#include "lulu.h"
 #include "value.h"
 
 struct lulu_Object {

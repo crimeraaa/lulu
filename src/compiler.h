@@ -1,7 +1,6 @@
 #ifndef LULU_COMPILER_H
 #define LULU_COMPILER_H
 
-#include "lulu.h"
 #include "lexer.h"
 #include "chunk.h"
 

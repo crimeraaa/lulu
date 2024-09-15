@@ -48,4 +48,7 @@ do {                                                                           \
     lulu_Memory_free(vm, ptr, size_of((ptr)[0]) * (count));                    \
 } while (0)
 
+#define rawptr_new(Type, vm)        rawarray_new(Type, vm, 1)
+#define rawptr_free(Type, vm, ptr)  rawarray_free(Type, vm, ptr, 1)
+
 #endif // LULU_MEMORY_H

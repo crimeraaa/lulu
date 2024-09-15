@@ -1,8 +1,6 @@
 #ifndef LULU_CHUNK_H
 #define LULU_CHUNK_H
 
-#include "lulu.h"
-#include "memory.h"
 #include "value.h"
 
 typedef enum {
