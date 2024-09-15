@@ -26,24 +26,3 @@ lulu_Object_free(lulu_VM *vm, lulu_Object *self)
         __builtin_unreachable();
     }
 }
-
-lulu_String *
-lulu_String_new(lulu_VM *vm, lulu_String_View src)
-{
-    isize        vla_size = size_of(src.data[0]) * (src.len + 1);
-    lulu_String *string   = cast(lulu_String *)lulu_Object_new(vm, LULU_TYPE_STRING,
-        size_of(lulu_String) + vla_size);
-
-    string->len = src.len;
-    string->data[src.len] = '\0';
-    memcpy(string->data, src.data, src.len);
-    return string;
-
-}
-
-void
-lulu_String_free(lulu_VM *vm, lulu_String *self)
-{
-    isize vla_size = size_of(self->data[0]) * (self->len + 1);
-    lulu_Memory_free(vm, self, size_of(*self) + vla_size);
-}

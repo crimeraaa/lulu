@@ -3,8 +3,28 @@
 
 #include <string.h>
 
+lulu_String *
+lulu_String_new(lulu_VM *vm, String src)
+{
+    isize        vla_size = size_of(src.data[0]) * (src.len + 1);
+    lulu_String *string   = cast(lulu_String *)lulu_Object_new(vm,
+        LULU_TYPE_STRING, size_of(*string) + vla_size);
+
+    string->len = src.len;
+    string->data[src.len] = '\0';
+    memcpy(string->data, src.data, src.len);
+    return string;
+}
+
 void
-lulu_String_Builder_init(lulu_VM *vm, lulu_String_Builder *self)
+lulu_String_free(lulu_VM *vm, lulu_String *self)
+{
+    isize vla_size = size_of(self->data[0]) * (self->len + 1);
+    lulu_Memory_free(vm, self, size_of(*self) + vla_size);
+}
+
+void
+String_Builder_init(lulu_VM *vm, String_Builder *self)
 {
     self->vm     = vm;
     self->buffer = NULL;
@@ -13,7 +33,7 @@ lulu_String_Builder_init(lulu_VM *vm, lulu_String_Builder *self)
 }
 
 void
-lulu_String_Builder_reserve(lulu_String_Builder *self, isize new_cap)
+String_Builder_reserve(String_Builder *self, isize new_cap)
 {
     isize old_cap = self->cap;
     if (new_cap <= old_cap) {
@@ -25,22 +45,22 @@ lulu_String_Builder_reserve(lulu_String_Builder *self, isize new_cap)
 }
 
 void
-lulu_String_Builder_free(lulu_String_Builder *self)
+String_Builder_free(String_Builder *self)
 {
     rawarray_free(char, self->vm, self->buffer, self->cap);
 }
 
 void
-lulu_String_Builder_write_char(lulu_String_Builder *self, char ch)
+String_Builder_write_char(String_Builder *self, char ch)
 {
     if (self->len >= self->cap) {
-        lulu_String_Builder_reserve(self, GROW_CAPACITY(self->cap));
+        String_Builder_reserve(self, GROW_CAPACITY(self->cap));
     }
     self->buffer[self->len++] = ch;
 }
 
 void
-lulu_String_Builder_write_string(lulu_String_Builder *self, lulu_String_View str)
+String_Builder_write_string(String_Builder *self, String str)
 {
     isize old_len = self->len;
     isize new_len = old_len + str.len;
@@ -50,7 +70,7 @@ lulu_String_Builder_write_string(lulu_String_Builder *self, lulu_String_View str
         while (new_cap < new_len) {
             new_cap *= 2;
         }
-        lulu_String_Builder_reserve(self, new_cap);
+        String_Builder_reserve(self, new_cap);
     }
     for (isize i = 0; i < str.len; i++) {
         self->buffer[old_len + i] = str.data[i];
@@ -59,8 +79,8 @@ lulu_String_Builder_write_string(lulu_String_Builder *self, lulu_String_View str
 }
 
 void
-lulu_String_Builder_write_cstring(lulu_String_Builder *self, cstring cstr)
+String_Builder_write_cstring(String_Builder *self, cstring cstr)
 {
-    lulu_String_View str = {cstr, cast(isize)strlen(cstr)};
-    lulu_String_Builder_write_string(self, str);
+    String str = {cstr, cast(isize)strlen(cstr)};
+    String_Builder_write_string(self, str);
 }

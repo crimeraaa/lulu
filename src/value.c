@@ -1,5 +1,5 @@
 #include "value.h"
-#include "object.h"
+#include "string.h"
 
 #include <string.h>
 
@@ -41,9 +41,10 @@ lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
     case LULU_TYPE_BOOLEAN: return a->boolean == b->boolean;
     case LULU_TYPE_NUMBER:  return a->number == b->number;
     case LULU_TYPE_STRING: {
-        const lulu_String *str_a = lulu_Value_cast_string(a);
-        const lulu_String *str_b = lulu_Value_cast_string(b);
-        return str_a->len == str_b->len && memcmp(str_a->data, str_b->data, str_a->len) == 0;
+        const lulu_String *str_a = a->string;
+        const lulu_String *str_b = b->string;
+        return str_a->len == str_b->len
+            && memcmp(str_a->data, str_b->data, str_a->len) == 0;
     }
     }
     return false;

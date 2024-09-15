@@ -178,39 +178,39 @@ skip_whitespace(lulu_Lexer *self)
     }
 }
 
-#define str_lit lulu_String_View_literal
+#define lit String_literal
 
-const lulu_String_View LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
-    [TOKEN_AND]         = str_lit("and"),
-    [TOKEN_BREAK]       = str_lit("break"),
-    [TOKEN_DO]          = str_lit("do"),
-    [TOKEN_ELSE]        = str_lit("else"),
-    [TOKEN_ELSEIF]      = str_lit("elseif"),
-    [TOKEN_END]         = str_lit("end"),
-    [TOKEN_FALSE]       = str_lit("false"),
-    [TOKEN_FOR]         = str_lit("for"),
-    [TOKEN_FUNCTION]    = str_lit("function"),
-    [TOKEN_IF]          = str_lit("if"),
-    [TOKEN_IN]          = str_lit("in"),
-    [TOKEN_LOCAL]       = str_lit("local"),
-    [TOKEN_NIL]         = str_lit("nil"),
-    [TOKEN_NOT]         = str_lit("not"),
-    [TOKEN_OR]          = str_lit("or"),
-    [TOKEN_PRINT]       = str_lit("print"),
-    [TOKEN_REPEAT]      = str_lit("repeat"),
-    [TOKEN_RETURN]      = str_lit("return"),
-    [TOKEN_THEN]        = str_lit("then"),
-    [TOKEN_TRUE]        = str_lit("true"),
-    [TOKEN_UNTIL]       = str_lit("until"),
-    [TOKEN_WHILE]       = str_lit("while"),
+const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
+    [TOKEN_AND]         = lit("and"),
+    [TOKEN_BREAK]       = lit("break"),
+    [TOKEN_DO]          = lit("do"),
+    [TOKEN_ELSE]        = lit("else"),
+    [TOKEN_ELSEIF]      = lit("elseif"),
+    [TOKEN_END]         = lit("end"),
+    [TOKEN_FALSE]       = lit("false"),
+    [TOKEN_FOR]         = lit("for"),
+    [TOKEN_FUNCTION]    = lit("function"),
+    [TOKEN_IF]          = lit("if"),
+    [TOKEN_IN]          = lit("in"),
+    [TOKEN_LOCAL]       = lit("local"),
+    [TOKEN_NIL]         = lit("nil"),
+    [TOKEN_NOT]         = lit("not"),
+    [TOKEN_OR]          = lit("or"),
+    [TOKEN_PRINT]       = lit("print"),
+    [TOKEN_REPEAT]      = lit("repeat"),
+    [TOKEN_RETURN]      = lit("return"),
+    [TOKEN_THEN]        = lit("then"),
+    [TOKEN_TRUE]        = lit("true"),
+    [TOKEN_UNTIL]       = lit("until"),
+    [TOKEN_WHILE]       = lit("while"),
 };
 
-#undef str_lit
+#undef lit
 
 static lulu_Token_Type
-check_keyword(lulu_String_View current, lulu_Token_Type type)
+check_keyword(String current, lulu_Token_Type type)
 {
-    const lulu_String_View keyword = LULU_KEYWORDS[type];
+    const String keyword = LULU_KEYWORDS[type];
     if (keyword.len == current.len) {
         if (memcmp(keyword.data, current.data, keyword.len) == 0) {
             return type;
@@ -223,7 +223,7 @@ check_keyword(lulu_String_View current, lulu_Token_Type type)
 static lulu_Token_Type
 get_identifier_type(lulu_Lexer *self)
 {
-    lulu_String_View current = {self->start, self->current - self->start};
+    String current = {self->start, self->current - self->start};
     switch (current.data[0]) {
     case 'a': return check_keyword(current, TOKEN_AND);
     case 'b': return check_keyword(current, TOKEN_BREAK);

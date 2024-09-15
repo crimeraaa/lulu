@@ -32,15 +32,6 @@ typedef enum {
 extern const cstring
 LULU_TYPENAMES[LULU_TYPE_COUNT];
 
-/**
- * @brief
- *      The "base class" for all heap-allocated objects: strings, tables, etc.
- *      We use the fact that casting a pointer-to-struct to a pointer to the
- *      first member is valid in C.
- *
- * @note 2024-09-15
- *      Such type punning is dangerous if done incorrectly!
- */
 typedef struct lulu_Object lulu_Object;
 typedef struct lulu_String lulu_String;
 typedef struct {
@@ -49,6 +40,7 @@ typedef struct {
         bool         boolean;
         lulu_Number  number;
         lulu_Object *object;
+        lulu_String *string;
     }; // Anonymous unions (C11) bring members into the enclosing scope.
 } lulu_Value;
 
@@ -58,14 +50,13 @@ typedef struct {
     isize       cap;
 } lulu_Value_Array;
 
-#define lulu_Value_typename(self)       LULU_TYPENAMES[(self)->type]
+#define lulu_Value_typename(value)      LULU_TYPENAMES[(value)->type]
 
-#define lulu_Value_is_nil(self)         ((self)->type == LULU_TYPE_NIL)
-#define lulu_Value_is_boolean(self)     ((self)->type == LULU_TYPE_BOOLEAN)
-#define lulu_Value_is_number(self)      ((self)->type == LULU_TYPE_NUMBER)
-#define lulu_Value_is_object(self)      ((self)->type >= LULU_TYPE_STRING)
-#define lulu_Value_is_string(self)      ((self)->type == LULU_TYPE_STRING)
-
+#define lulu_Value_is_nil(value)        ((value)->type == LULU_TYPE_NIL)
+#define lulu_Value_is_boolean(value)    ((value)->type == LULU_TYPE_BOOLEAN)
+#define lulu_Value_is_number(value)     ((value)->type == LULU_TYPE_NUMBER)
+#define lulu_Value_is_object(value)     ((value)->type >= LULU_TYPE_STRING)
+#define lulu_Value_is_string(value)     ((value)->type == LULU_TYPE_STRING)
 
 extern const lulu_Value LULU_VALUE_NIL;
 extern const lulu_Value LULU_VALUE_TRUE;

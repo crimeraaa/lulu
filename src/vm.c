@@ -186,11 +186,10 @@ compile_and_run(lulu_VM *self, void *userdata)
 lulu_Status
 lulu_VM_interpret(lulu_VM *self, cstring name, cstring input)
 {
-    Comptime    ud;
-    lulu_Status status;
+    Comptime ud;
     ud.input = input;
     lulu_Chunk_init(&ud.chunk, name);
-    status = lulu_VM_run_protected(self, &compile_and_run, &ud);
+    lulu_Status status = lulu_VM_run_protected(self, &compile_and_run, &ud);
     lulu_Chunk_free(self, &ud.chunk);
     return status;
 }
@@ -245,7 +244,7 @@ lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
 }
 
 void
-lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, lulu_String_View where)
+lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, String where)
 {
     fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, cast(int)where.len, where.data);
     lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);

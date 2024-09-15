@@ -2,6 +2,7 @@
 #define LULU_STRING_H
 
 #include "lulu.h"
+#include "object.h"
 
 /**
  * @brief
@@ -13,7 +14,7 @@
 typedef struct {
     const char *data;
     isize       len;
-} lulu_String_View;
+} String;
 
 /**
  * @brief
@@ -24,7 +25,19 @@ typedef struct {
  *      C99-style compound literals have very different semantics in C++.
  *      "Struct literals" are valid (in C++) due to implicit copy constructors.
  */
-#define lulu_String_View_literal(cstr) {(cstr), size_of(cstr) - 1}
+#define String_literal(cstr) {(cstr), size_of(cstr) - 1}
+
+struct lulu_String {
+    lulu_Object base;
+    isize       len;    // Number of non-nul characters.
+    char        data[]; // Guaranteed to be nul terminated.
+};
+
+lulu_String *
+lulu_String_new(lulu_VM *vm, String src);
+
+void
+lulu_String_free(lulu_VM *vm, lulu_String *self);
 
 /**
  * @brief
@@ -40,25 +53,25 @@ typedef struct {
     char    *buffer; // Dynamically growable array.
     isize    len;    // Number of currently active elements.
     isize    cap;    // Number of allocated elements.
-} lulu_String_Builder;
+} String_Builder;
 
 void
-lulu_String_Builder_init(lulu_VM *vm, lulu_String_Builder *self);
+String_Builder_init(lulu_VM *vm, String_Builder *self);
 
 void
-lulu_String_Builder_reserve(lulu_String_Builder *self, isize new_cap);
+String_Builder_reserve(String_Builder *self, isize new_cap);
 
 void
-lulu_String_Builder_free(lulu_String_Builder *self);
+String_Builder_free(String_Builder *self);
 
 void
-lulu_String_Builder_write_char(lulu_String_Builder *self, char ch);
+String_Builder_write_char(String_Builder *self, char ch);
 
 void
-lulu_String_Builder_write_string(lulu_String_Builder *self, lulu_String_View str);
+String_Builder_write_string(String_Builder *self, String str);
 
 void
-lulu_String_Builder_write_cstring(lulu_String_Builder *self, cstring cstr);
+String_Builder_write_cstring(String_Builder *self, cstring cstr);
 
 
 #endif // LULU_STRING_H

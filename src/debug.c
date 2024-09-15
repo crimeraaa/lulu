@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "object.h"
+#include "string.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -10,7 +11,7 @@ int
 lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
 {
     va_list argp;
-    int writes = 0;
+    int     writes = 0;
     va_start(argp, fmt);
     writes += fprintf(stderr, "[%s] %s:%i: ", level, file, line);
     writes += vfprintf(stderr, fmt, argp);
@@ -33,7 +34,7 @@ lulu_Debug_print_value(const lulu_Value *value)
         printf(LULU_NUMBER_FMT, value->number);
         break;
     case LULU_TYPE_STRING:
-        printf("%s", lulu_Value_cast_string(value)->data);
+        printf("%s", value->string->data);
     }
 }
 

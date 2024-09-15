@@ -15,7 +15,7 @@ __attribute__((__unused__))
 static void
 print_token(const lulu_Token *token, cstring name)
 {
-    lulu_String_View lexeme = token->lexeme;
+    String lexeme = token->lexeme;
     printf("%s{type=%i, lexeme={\"%.*s\"},line=%i}",
         name,
         cast(int)token->type,
@@ -62,9 +62,9 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
 noreturn static void
 wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 {
-    static const lulu_String_View STRING_EOF = lulu_String_View_literal("<eof>");
+    static const String STRING_EOF = String_literal("<eof>");
 
-    lulu_String_View where = (token->type == TOKEN_EOF) ? STRING_EOF : token->lexeme;
+    String where = (token->type == TOKEN_EOF) ? STRING_EOF : token->lexeme;
     lulu_VM_comptime_error(vm, filename, token->line, msg, where);
 }
 
@@ -163,7 +163,7 @@ static void
 number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     char            *end;
-    lulu_String_View lexeme = parser->consumed.lexeme;
+    String lexeme = parser->consumed.lexeme;
     lulu_Number      value  = strtod(lexeme.data, &end);
     // We failed to convert the entire lexeme?
     if (end != (lexeme.data + lexeme.len)) {
@@ -178,7 +178,7 @@ number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 static void
 string(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
-    lulu_String_View lexeme = parser->consumed.lexeme;
+    String lexeme = parser->consumed.lexeme;
     
     // Don't include the quotes in the view.
     lexeme.data++;
