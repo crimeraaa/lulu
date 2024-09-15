@@ -178,9 +178,9 @@ skip_whitespace(lulu_Lexer *self)
     }
 }
 
-#define str_lit String_literal
+#define str_lit lulu_String_View_literal
 
-const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
+const lulu_String_View LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
     [TOKEN_AND]         = str_lit("and"),
     [TOKEN_BREAK]       = str_lit("break"),
     [TOKEN_DO]          = str_lit("do"),
@@ -208,9 +208,9 @@ const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
 #undef str_lit
 
 static lulu_Token_Type
-check_keyword(String current, lulu_Token_Type type)
+check_keyword(lulu_String_View current, lulu_Token_Type type)
 {
-    const String keyword = LULU_KEYWORDS[type];
+    const lulu_String_View keyword = LULU_KEYWORDS[type];
     if (keyword.len == current.len) {
         if (memcmp(keyword.data, current.data, keyword.len) == 0) {
             return type;
@@ -223,7 +223,7 @@ check_keyword(String current, lulu_Token_Type type)
 static lulu_Token_Type
 get_identifier_type(lulu_Lexer *self)
 {
-    String current = {self->start, self->current - self->start};
+    lulu_String_View current = {self->start, self->current - self->start};
     switch (current.data[0]) {
     case 'a': return check_keyword(current, TOKEN_AND);
     case 'b': return check_keyword(current, TOKEN_BREAK);

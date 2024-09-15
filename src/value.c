@@ -1,10 +1,14 @@
 #include "value.h"
+#include "object.h"
+
+#include <string.h>
 
 const cstring
 LULU_TYPENAMES[LULU_TYPE_COUNT] = {
     [LULU_TYPE_NIL]     = "nil",
     [LULU_TYPE_BOOLEAN] = "boolean",
     [LULU_TYPE_NUMBER]  = "number",
+    [LULU_TYPE_STRING]  = "string",
 };
 
 /**
@@ -15,6 +19,15 @@ LULU_TYPENAMES[LULU_TYPE_COUNT] = {
 const lulu_Value LULU_VALUE_NIL   = {LULU_TYPE_NIL,     {0}};
 const lulu_Value LULU_VALUE_TRUE  = {LULU_TYPE_BOOLEAN, {true}};
 const lulu_Value LULU_VALUE_FALSE = {LULU_TYPE_BOOLEAN, {false}};
+
+void
+lulu_Value_set_object(lulu_Value *dst, lulu_Object *object)
+{
+    dst->type   = object->type;
+    dst->object = object;
+}
+
+#include <stdio.h>
 
 bool
 lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
@@ -27,6 +40,11 @@ lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
     case LULU_TYPE_NIL:     return true;
     case LULU_TYPE_BOOLEAN: return a->boolean == b->boolean;
     case LULU_TYPE_NUMBER:  return a->number == b->number;
+    case LULU_TYPE_STRING: {
+        const lulu_String *str_a = lulu_Value_cast_string(a);
+        const lulu_String *str_b = lulu_Value_cast_string(b);
+        return str_a->len == str_b->len && memcmp(str_a->data, str_b->data, str_a->len) == 0;
+    }
     }
     return false;
 }

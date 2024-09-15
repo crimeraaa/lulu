@@ -74,13 +74,13 @@ TOKEN_EOF,
  * @brief
  *      Map a `lulu_Token_Type`, to the string representation thereof.
  */
-extern const String
+extern const lulu_String_View
 LULU_KEYWORDS[LULU_KEYWORD_COUNT];
 
 typedef struct {
-    lulu_Token_Type type;
-    String lexeme;
-    int    line;
+    lulu_Token_Type  type;
+    lulu_String_View lexeme;
+    int line;
 } lulu_Token;
 
 typedef struct {

@@ -3,6 +3,8 @@
 
 #include "lulu.h"
 
+#include <assert.h>
+
 #define GROW_CAPACITY(cap)  ((cap) < 8 ? 8 : (cap) * 2)
 
 /**
@@ -39,15 +41,11 @@ lulu_Memory_free(lulu_VM *vm, void *old_ptr, isize old_size);
         size_of((old_ptr)[0]) * (old_count),                                   \
         size_of((old_ptr)[0]) * (new_count))
 
-/**
- * @note 2024-09-05
- *      We don't need to use `Type` for anything since we can infer the size from
- *      `ptr`. However for uniformity we keep it around.
- */
+// The sizeof check isn't foolproof but it should help somewhat.
 #define rawarray_free(Type, vm, ptr, count)                                    \
-    lulu_Memory_free(                                                          \
-        vm,                                                                    \
-        ptr,                                                                   \
-        size_of((ptr)[0]) * (count))
+do {                                                                           \
+    static_assert(size_of(Type) == size_of((ptr)[0]), "Invalid type!");        \
+    lulu_Memory_free(vm, ptr, size_of((ptr)[0]) * (count));                    \
+} while (0)
 
 #endif // LULU_MEMORY_H

@@ -4,7 +4,7 @@
 #include <string.h>
 
 void
-String_Builder_init(lulu_VM *vm, String_Builder *self)
+lulu_String_Builder_init(lulu_VM *vm, lulu_String_Builder *self)
 {
     self->vm     = vm;
     self->buffer = NULL;
@@ -13,7 +13,7 @@ String_Builder_init(lulu_VM *vm, String_Builder *self)
 }
 
 void
-String_Builder_reserve(String_Builder *self, isize new_cap)
+lulu_String_Builder_reserve(lulu_String_Builder *self, isize new_cap)
 {
     isize old_cap = self->cap;
     if (new_cap <= old_cap) {
@@ -25,22 +25,22 @@ String_Builder_reserve(String_Builder *self, isize new_cap)
 }
 
 void
-String_Builder_free(String_Builder *self)
+lulu_String_Builder_free(lulu_String_Builder *self)
 {
     rawarray_free(char, self->vm, self->buffer, self->cap);
 }
 
 void
-String_Builder_write_char(String_Builder *self, char ch)
+lulu_String_Builder_write_char(lulu_String_Builder *self, char ch)
 {
     if (self->len >= self->cap) {
-        String_Builder_reserve(self, GROW_CAPACITY(self->cap));
+        lulu_String_Builder_reserve(self, GROW_CAPACITY(self->cap));
     }
     self->buffer[self->len++] = ch;
 }
 
 void
-String_Builder_write_string(String_Builder *self, String str)
+lulu_String_Builder_write_string(lulu_String_Builder *self, lulu_String_View str)
 {
     isize old_len = self->len;
     isize new_len = old_len + str.len;
@@ -50,7 +50,7 @@ String_Builder_write_string(String_Builder *self, String str)
         while (new_cap < new_len) {
             new_cap *= 2;
         }
-        String_Builder_reserve(self, new_cap);
+        lulu_String_Builder_reserve(self, new_cap);
     }
     for (isize i = 0; i < str.len; i++) {
         self->buffer[old_len + i] = str.data[i];
@@ -59,8 +59,8 @@ String_Builder_write_string(String_Builder *self, String str)
 }
 
 void
-String_Builder_write_cstring(String_Builder *self, cstring cstr)
+lulu_String_Builder_write_cstring(lulu_String_Builder *self, cstring cstr)
 {
-    String str = {cstr, cast(isize)strlen(cstr)};
-    String_Builder_write_string(self, str);
+    lulu_String_View str = {cstr, cast(isize)strlen(cstr)};
+    lulu_String_Builder_write_string(self, str);
 }

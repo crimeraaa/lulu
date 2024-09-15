@@ -1,4 +1,5 @@
 #include "debug.h"
+#include "object.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -31,6 +32,8 @@ lulu_Debug_print_value(const lulu_Value *value)
     case LULU_TYPE_NUMBER:
         printf(LULU_NUMBER_FMT, value->number);
         break;
+    case LULU_TYPE_STRING:
+        printf("%s", lulu_Value_cast_string(value)->data);
     }
 }
 

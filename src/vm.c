@@ -22,13 +22,19 @@ lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
     self->allocator      = allocator;
     self->allocator_data = allocator_data;
     self->chunk          = NULL;
+    self->objects        = NULL;
     self->handlers       = NULL;
 }
 
 void
 lulu_VM_free(lulu_VM *self)
 {
-    unused(self);
+    lulu_Object *object = self->objects;
+    while (object) {
+        lulu_Object *next = object->next;
+        lulu_Object_free(self, object);
+        object = next;
+    }
 }
 
 static lulu_Chunk *
@@ -239,7 +245,7 @@ lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
 }
 
 void
-lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, String where)
+lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, lulu_String_View where)
 {
     fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, cast(int)where.len, where.data);
     lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);

@@ -24,18 +24,31 @@ typedef enum {
     LULU_TYPE_NIL,
     LULU_TYPE_BOOLEAN,
     LULU_TYPE_NUMBER,
+    LULU_TYPE_STRING,
 } lulu_Value_Type;
 
-#define LULU_TYPE_COUNT     (LULU_TYPE_NUMBER + 1)
+#define LULU_TYPE_COUNT     (LULU_TYPE_STRING + 1)
 
 extern const cstring
 LULU_TYPENAMES[LULU_TYPE_COUNT];
 
+/**
+ * @brief
+ *      The "base class" for all heap-allocated objects: strings, tables, etc.
+ *      We use the fact that casting a pointer-to-struct to a pointer to the
+ *      first member is valid in C.
+ *
+ * @note 2024-09-15
+ *      Such type punning is dangerous if done incorrectly!
+ */
+typedef struct lulu_Object lulu_Object;
+typedef struct lulu_String lulu_String;
 typedef struct {
     lulu_Value_Type type;
     union {
-        bool        boolean;
-        lulu_Number number;
+        bool         boolean;
+        lulu_Number  number;
+        lulu_Object *object;
     }; // Anonymous unions (C11) bring members into the enclosing scope.
 } lulu_Value;
 
@@ -50,6 +63,9 @@ typedef struct {
 #define lulu_Value_is_nil(self)         ((self)->type == LULU_TYPE_NIL)
 #define lulu_Value_is_boolean(self)     ((self)->type == LULU_TYPE_BOOLEAN)
 #define lulu_Value_is_number(self)      ((self)->type == LULU_TYPE_NUMBER)
+#define lulu_Value_is_object(self)      ((self)->type >= LULU_TYPE_STRING)
+#define lulu_Value_is_string(self)      ((self)->type == LULU_TYPE_STRING)
+
 
 extern const lulu_Value LULU_VALUE_NIL;
 extern const lulu_Value LULU_VALUE_TRUE;
@@ -82,6 +98,14 @@ lulu_Value_set_number(lulu_Value *dst, lulu_Number n)
     dst->type   = LULU_TYPE_NUMBER;
     dst->number = n;
 }
+
+/**
+ * @note 2024-09-15
+ *      Can't make this inline because we need full definition of lulu_Object,
+ *      which in turn would cause the headers to recursively include.
+ */
+void
+lulu_Value_set_object(lulu_Value *dst, lulu_Object *object);
 
 bool
 lulu_Value_eq(const lulu_Value *a, const lulu_Value *b);

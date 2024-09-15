@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "vm.h"
+#include "object.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,7 +15,7 @@ __attribute__((__unused__))
 static void
 print_token(const lulu_Token *token, cstring name)
 {
-    const String lexeme = token->lexeme;
+    lulu_String_View lexeme = token->lexeme;
     printf("%s{type=%i, lexeme={\"%.*s\"},line=%i}",
         name,
         cast(int)token->type,
@@ -61,9 +62,9 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
 noreturn static void
 wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 {
-    static const String STRING_EOF = String_literal("<eof>");
+    static const lulu_String_View STRING_EOF = lulu_String_View_literal("<eof>");
 
-    String where = (token->type == TOKEN_EOF) ? STRING_EOF : token->lexeme;
+    lulu_String_View where = (token->type == TOKEN_EOF) ? STRING_EOF : token->lexeme;
     lulu_VM_comptime_error(vm, filename, token->line, msg, where);
 }
 
@@ -161,9 +162,9 @@ grouping(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 static void
 number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
-    char       *end;
-    String      lexeme = parser->consumed.lexeme;
-    lulu_Number value  = strtod(lexeme.data, &end);
+    char            *end;
+    lulu_String_View lexeme = parser->consumed.lexeme;
+    lulu_Number      value  = strtod(lexeme.data, &end);
     // We failed to convert the entire lexeme?
     if (end != (lexeme.data + lexeme.len)) {
         lulu_Parse_error_consumed(lexer, parser, "Malformed number");
@@ -171,6 +172,20 @@ number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     }
     lulu_Value tmp;
     lulu_Value_set_number(&tmp, value);
+    lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
+}
+
+static void
+string(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+{
+    lulu_String_View lexeme = parser->consumed.lexeme;
+    
+    // Don't include the quotes in the view.
+    lexeme.data++;
+    lexeme.len -= 2;
+
+    lulu_Value tmp;
+    lulu_Value_set_object(&tmp, cast(lulu_Object *)lulu_String_new(compiler->vm, lexeme));
     lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
 }
 
@@ -265,7 +280,7 @@ LULU_PARSE_RULES[] = {
 [TOKEN_ANGLE_R]         = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_ANGLE_R_EQUAL]   = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_IDENTIFIER]      = {NULL,        NULL,       PREC_NONE},
-[TOKEN_STRING_LIT]      = {NULL,        NULL,       PREC_NONE},
+[TOKEN_STRING_LIT]      = {&string,     NULL,       PREC_NONE},
 [TOKEN_NUMBER_LIT]      = {&number,     NULL,       PREC_NONE},
 [TOKEN_ERROR]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_EOF]             = {NULL,        NULL,       PREC_NONE},

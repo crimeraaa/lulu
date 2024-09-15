@@ -4,6 +4,7 @@
 #include "lulu.h"
 #include "memory.h"
 #include "chunk.h"
+#include "object.h"
 #include "string.h"
 
 /**
@@ -44,6 +45,7 @@ struct lulu_VM {
     void             *allocator_data;
     lulu_Chunk       *chunk;
     lulu_Instruction *ip;       // Points to next instruction to be executed.
+    lulu_Object      *objects;  // Intrusive linked list of objects.
     lulu_Handler     *handlers; // Currently active error handler.
 };
 
@@ -77,7 +79,7 @@ noreturn void
 lulu_VM_throw_error(lulu_VM *self, lulu_Status status);
 
 noreturn void
-lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, String where);
+lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, lulu_String_View where);
 
 __attribute__((__format__ (__printf__, 2, 3)))
 noreturn void
