@@ -124,13 +124,28 @@ do {                                                                           \
         case OP_DIV: ARITH_OP(lulu_Number_div); break;
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
+        case OP_CONCAT: {
+            lulu_Value rhs = lulu_VM_pop(self);
+            lulu_Value lhs = lulu_VM_pop(self);
+            if (lulu_Value_is_string(&lhs) && lulu_Value_is_string(&rhs)) {
+                lulu_String *result = lulu_String_concat(self, lhs.string, rhs.string);
+                lulu_Value   tmp;
+                lulu_Value_set_string(&tmp, result);
+                lulu_VM_push(self, &tmp);
+            } else {
+                lulu_VM_runtime_error(self, "Attempt to concatenate %s with %s",
+                    lulu_Value_typename(&lhs), lulu_Value_typename(&rhs));
+            }
+            break;
+        }
         case OP_UNM: {
             lulu_Value *value = poke_top(self, -1);
-            if (!lulu_Value_is_number(value)) {
+            if (lulu_Value_is_number(value)) {
+                lulu_Value_set_number(value, lulu_Number_unm(value->number));
+            } else {
                 lulu_VM_runtime_error(self,
                     "Attempt to negate a %s value", lulu_Value_typename(value));
             }
-            lulu_Value_set_number(value, lulu_Number_unm(value->number));
             break;
         }
         case OP_EQ: {

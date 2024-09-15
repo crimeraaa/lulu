@@ -39,7 +39,6 @@ typedef struct {
     union {
         bool         boolean;
         lulu_Number  number;
-        lulu_Object *object;
         lulu_String *string;
     }; // Anonymous unions (C11) bring members into the enclosing scope.
 } lulu_Value;
@@ -55,7 +54,6 @@ typedef struct {
 #define lulu_Value_is_nil(value)        ((value)->type == LULU_TYPE_NIL)
 #define lulu_Value_is_boolean(value)    ((value)->type == LULU_TYPE_BOOLEAN)
 #define lulu_Value_is_number(value)     ((value)->type == LULU_TYPE_NUMBER)
-#define lulu_Value_is_object(value)     ((value)->type >= LULU_TYPE_STRING)
 #define lulu_Value_is_string(value)     ((value)->type == LULU_TYPE_STRING)
 
 extern const lulu_Value LULU_VALUE_NIL;
@@ -90,13 +88,12 @@ lulu_Value_set_number(lulu_Value *dst, lulu_Number n)
     dst->number = n;
 }
 
-/**
- * @note 2024-09-15
- *      Can't make this inline because we need full definition of lulu_Object,
- *      which in turn would cause the headers to recursively include.
- */
-void
-lulu_Value_set_object(lulu_Value *dst, lulu_Object *object);
+static inline void
+lulu_Value_set_string(lulu_Value *dst, lulu_String *string)
+{
+    dst->type   = LULU_TYPE_STRING;
+    dst->string = string;
+}
 
 bool
 lulu_Value_eq(const lulu_Value *a, const lulu_Value *b);

@@ -76,10 +76,6 @@ print_constant(cstring name, const lulu_Chunk *chunk, lulu_Instruction inst)
 isize
 lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
 {
-    lulu_Instruction inst;
-    lulu_OpCode      op;
-    cstring          name;
-
     printf("%04tx ", index);
     if (index > 0 && chunk->lines[index] == chunk->lines[index - 1]) {
         printf("   | ");        
@@ -87,13 +83,9 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
         printf("%4i ", chunk->lines[index]);
     }
     
-    inst = chunk->code[index];
-    op   = lulu_Instruction_get_opcode(inst);
-    if (op >= LULU_OPCODE_COUNT) {
-        printf("Unknown opcode %i.\n", op);
-        return index + 1;
-    }
-    name = LULU_OPCODE_INFO[op].name;
+    lulu_Instruction inst = chunk->code[index];
+    lulu_OpCode      op   = lulu_Instruction_get_opcode(inst);
+    cstring          name = LULU_OPCODE_INFO[op].name;
     switch (op) {
     case OP_CONSTANT:
         print_constant(name, chunk, inst);
@@ -105,6 +97,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     }
     case OP_TRUE: case OP_FALSE:
     case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV: case OP_MOD: case OP_POW:
+    case OP_CONCAT:
     case OP_UNM:
     case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:

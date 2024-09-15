@@ -64,20 +64,36 @@ lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser 
     emit_instruction(self, parser, lulu_Instruction_byte3(OP_CONSTANT, index));
 }
 
+static bool
+opcode_folded(lulu_Compiler *self, lulu_OpCode op)
+{
+    if (self->prev_opcode != op) {
+        return false;
+    }
+    
+    lulu_Chunk       *chunk = current_chunk(self);
+    lulu_Instruction *ip    = &chunk->code[chunk->len - 1];
+    switch (op) {
+    case OP_NIL: {
+        int new_arg = lulu_Instruction_get_byte1(*ip) + 1;
+        if (0 < new_arg && new_arg < (cast(byte)-1)) {
+            *ip = lulu_Instruction_byte1(op, cast(byte)new_arg);
+            return true;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return false;
+}
+
 void
 lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte a)
 {
-    if (op == OP_NIL && self->prev_opcode == OP_NIL) {
-        lulu_Chunk       *chunk   = current_chunk(self);
-        lulu_Instruction *inst    = &chunk->code[chunk->len - 1];
-        const int         new_arg = lulu_Instruction_get_byte1(*inst) + 1;
-        
-        if (0 < new_arg && new_arg < (cast(byte)-1)) {
-            *inst = lulu_Instruction_byte1(op, cast(byte)new_arg);
-            return;
-        }
+    if (!opcode_folded(self, op)) {
+        emit_instruction(self, parser, lulu_Instruction_byte1(op, a));
     }
-    emit_instruction(self, parser, lulu_Instruction_byte1(op, a));
 }
 
 void

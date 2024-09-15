@@ -216,7 +216,6 @@ check_keyword(String current, lulu_Token_Type type)
             return type;
         }
     }
-    
     return TOKEN_IDENTIFIER;
 }
 
@@ -416,14 +415,11 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
         }
         error_token(self, "Expected '=' after '~'");
     case '=':
-        return make_token(
-            self, match_char(self, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
+        return make_token(self, match_char(self, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
     case '<':
-        return make_token(
-            self, match_char(self, '=') ? TOKEN_ANGLE_L_EQUAL : TOKEN_ANGLE_L);
+        return make_token(self, match_char(self, '=') ? TOKEN_ANGLE_L_EQUAL : TOKEN_ANGLE_L);
     case '>':
-        return make_token(
-            self, match_char(self, '=') ? TOKEN_ANGLE_R_EQUAL : TOKEN_ANGLE_R);
+        return make_token(self, match_char(self, '=') ? TOKEN_ANGLE_R_EQUAL : TOKEN_ANGLE_R);
     
     case '\'':
     case '\"': return consume_string(self, ch);

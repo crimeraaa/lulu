@@ -104,6 +104,14 @@ get_binary_op(lulu_Token_Type type)
 }
 
 static void
+concat(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+{
+    // Enforce right associativity.
+    parse_precedence(compiler, lexer, parser, PREC_CONCAT);
+    lulu_Compiler_emit_opcode(compiler, parser, OP_CONCAT);
+}
+
+static void
 binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_Token_Type type = parser->consumed.type;
@@ -162,9 +170,9 @@ grouping(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 static void
 number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
-    char            *end;
-    String lexeme = parser->consumed.lexeme;
-    lulu_Number      value  = strtod(lexeme.data, &end);
+    char       *end;
+    String      lexeme = parser->consumed.lexeme;
+    lulu_Number value  = strtod(lexeme.data, &end);
     // We failed to convert the entire lexeme?
     if (end != (lexeme.data + lexeme.len)) {
         lulu_Parse_error_consumed(lexer, parser, "Malformed number");
@@ -185,7 +193,7 @@ string(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     lexeme.len -= 2;
 
     lulu_Value tmp;
-    lulu_Value_set_object(&tmp, cast(lulu_Object *)lulu_String_new(compiler->vm, lexeme));
+    lulu_Value_set_string(&tmp, lulu_String_new(compiler->vm, lexeme));
     lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
 }
 
@@ -259,7 +267,7 @@ LULU_PARSE_RULES[] = {
 [TOKEN_COLON]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_SEMICOLON]       = {NULL,        NULL,       PREC_NONE},
 [TOKEN_ELLIPSIS_3]      = {NULL,        NULL,       PREC_NONE},
-[TOKEN_ELLIPSIS_2]      = {NULL,        NULL,       PREC_NONE},
+[TOKEN_ELLIPSIS_2]      = {NULL,        &concat,    PREC_CONCAT},
 [TOKEN_PERIOD]          = {NULL,        NULL,       PREC_NONE},
 [TOKEN_HASH]            = {NULL,        NULL,       PREC_NONE},
 [TOKEN_PLUS]            = {NULL,        &binary,    PREC_TERM},

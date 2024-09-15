@@ -20,13 +20,6 @@ const lulu_Value LULU_VALUE_NIL   = {LULU_TYPE_NIL,     {0}};
 const lulu_Value LULU_VALUE_TRUE  = {LULU_TYPE_BOOLEAN, {true}};
 const lulu_Value LULU_VALUE_FALSE = {LULU_TYPE_BOOLEAN, {false}};
 
-void
-lulu_Value_set_object(lulu_Value *dst, lulu_Object *object)
-{
-    dst->type   = object->type;
-    dst->object = object;
-}
-
 #include <stdio.h>
 
 bool

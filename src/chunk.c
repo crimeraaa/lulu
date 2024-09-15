@@ -13,6 +13,7 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_DIV]        = {"DIV",           0,           0,          1},
     [OP_MOD]        = {"MOD",           0,           0,          1},
     [OP_POW]        = {"POW",           0,           0,          1},
+    [OP_CONCAT]     = {"CONCAT",        0,           1,          2},
     [OP_UNM]        = {"UNM",           0,           0,          0},
     [OP_EQ]         = {"EQ",            0,           0,          1},
     [OP_LT]         = {"LT",            0,           0,          1},

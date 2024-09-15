@@ -39,6 +39,9 @@ lulu_String_new(lulu_VM *vm, String src);
 void
 lulu_String_free(lulu_VM *vm, lulu_String *self);
 
+lulu_String *
+lulu_String_concat(lulu_VM *vm, lulu_String *a, lulu_String *b);
+
 /**
  * @brief
  *      1D heap-allocated dynamic array of `char`.

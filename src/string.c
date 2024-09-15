@@ -3,15 +3,22 @@
 
 #include <string.h>
 
+#define string_size_of(len)     (size_of(lulu_String) + size_of(char) * (len + 1))
+#define string_alloc(vm, len)   cast(lulu_String *)lulu_Object_new(vm, LULU_TYPE_STRING, string_size_of(len))
+
+static void
+string_init(lulu_String *self, isize len)
+{
+    self->len       = len;
+    self->data[len] = '\0';
+}
+
+
 lulu_String *
 lulu_String_new(lulu_VM *vm, String src)
 {
-    isize        vla_size = size_of(src.data[0]) * (src.len + 1);
-    lulu_String *string   = cast(lulu_String *)lulu_Object_new(vm,
-        LULU_TYPE_STRING, size_of(*string) + vla_size);
-
-    string->len = src.len;
-    string->data[src.len] = '\0';
+    lulu_String *string = string_alloc(vm, src.len);
+    string_init(string, src.len);
     memcpy(string->data, src.data, src.len);
     return string;
 }
@@ -19,8 +26,18 @@ lulu_String_new(lulu_VM *vm, String src)
 void
 lulu_String_free(lulu_VM *vm, lulu_String *self)
 {
-    isize vla_size = size_of(self->data[0]) * (self->len + 1);
-    lulu_Memory_free(vm, self, size_of(*self) + vla_size);
+    lulu_Memory_free(vm, self, string_size_of(self->len));
+}
+
+lulu_String *
+lulu_String_concat(lulu_VM *vm, lulu_String *a, lulu_String *b)
+{
+    isize        len    = a->len + b->len;
+    lulu_String *string = string_alloc(vm, len);
+    string_init(string, len);
+    memcpy(string->data,          a->data, a->len);
+    memcpy(&string->data[a->len], b->data, b->len);
+    return string;
 }
 
 void

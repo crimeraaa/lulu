@@ -80,7 +80,7 @@ LULU_KEYWORDS[LULU_KEYWORD_COUNT];
 typedef struct {
     lulu_Token_Type type;
     String lexeme;
-    int line;
+    int    line;
 } lulu_Token;
 
 typedef struct {
