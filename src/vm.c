@@ -28,6 +28,7 @@ lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
     reset_stack(&self->stack);
     init_table(&self->strings);
+    lulu_String_Builder_init(self, &self->builder);
     self->allocator      = allocator;
     self->allocator_data = allocator_data;
     self->chunk          = NULL;
@@ -39,6 +40,7 @@ void
 lulu_VM_free(lulu_VM *self)
 {
     lulu_Table_free(self, &self->strings);
+    lulu_String_Builder_free(&self->builder);
 
     lulu_Object *object = self->objects;
     while (object) {

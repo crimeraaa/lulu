@@ -37,14 +37,15 @@ typedef void
 (*lulu_ProtectedFn)(lulu_VM *vm, void *userdata);
 
 struct lulu_VM {
-    lulu_Stack        stack;
-    lulu_Table        strings;  // Interned strings.
-    lulu_Allocator    allocator;
-    void             *allocator_data;
-    lulu_Chunk       *chunk;
-    lulu_Instruction *ip;       // Points to next instruction to be executed.
-    lulu_Object      *objects;  // Intrusive linked list of objects.
-    lulu_Handler     *handlers; // Currently active error handler.
+    lulu_Stack          stack;
+    lulu_Table          strings;  // Hashtable for interned strings.
+    lulu_String_Builder builder;
+    lulu_Allocator      allocator;
+    void               *allocator_data;
+    lulu_Chunk         *chunk;
+    lulu_Instruction   *ip;       // Points to next instruction to be executed.
+    lulu_Object        *objects;  // Intrusive linked list of objects.
+    lulu_Handler       *handlers; // Currently active error handler.
 };
 
 void

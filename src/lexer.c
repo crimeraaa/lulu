@@ -32,15 +32,16 @@ lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input)
 {
     self->vm       = vm;
     self->filename = filename;
+    self->string   = NULL;
     self->start    = input;
     self->current  = input;
     self->line     = 1;
 }
 
 static bool
-is_at_end(const lulu_Lexer *self)
+is_at_end(const lulu_Lexer *lexer)
 {
-    return self->current[0] == '\0';
+    return lexer->current[0] == '\0';
 }
 
 /**
@@ -52,25 +53,25 @@ is_at_end(const lulu_Lexer *self)
  *      Analogous to the book's `scanner.c:advance()`.
  */
 static char
-advance_char(lulu_Lexer *self)
+advance_char(lulu_Lexer *lexer)
 {
-    return *self->current++;
+    return *lexer->current++;
 }
 
 static char
-peek_char(const lulu_Lexer *self)
+peek_char(const lulu_Lexer *lexer)
 {
-    return self->current[0];
+    return lexer->current[0];
 }
 
 static char
-peek_next_char(const lulu_Lexer *self)
+peek_next_char(const lulu_Lexer *lexer)
 {
     // Dereferencing 1 past current may be illegal?
-    if (is_at_end(self)) {
+    if (is_at_end(lexer)) {
         return '\0';
     } 
-    return self->current[1];
+    return lexer->current[1];
 }
 
 /**
@@ -79,33 +80,33 @@ peek_next_char(const lulu_Lexer *self)
  *      and return true. Otherwise return do nothing and false.
  */
 static bool
-match_char(lulu_Lexer *self, char expected)
+match_char(lulu_Lexer *lexer, char expected)
 {
-    if (!is_at_end(self) && *self->current == expected) {
-        self->current++;
+    if (!is_at_end(lexer) && *lexer->current == expected) {
+        lexer->current++;
         return true;
     }
     return false;
 }
 
 static bool
-match_char_any(lulu_Lexer *self, cstring charset)
+match_char_any(lulu_Lexer *lexer, cstring charset)
 {
-    if (strchr(charset, peek_char(self))) {
-        self->current++;
+    if (strchr(charset, peek_char(lexer))) {
+        lexer->current++;
         return true;
     }
     return false;
 }
 
 static lulu_Token
-make_token(const lulu_Lexer *self, lulu_Token_Type type)
+make_token(const lulu_Lexer *lexer, lulu_Token_Type type)
 {
     lulu_Token token;
     token.type        = type;
-    token.lexeme.data = self->start;
-    token.lexeme.len  = self->current - self->start;
-    token.line        = self->line;
+    token.lexeme.data = lexer->start;
+    token.lexeme.len  = lexer->current - lexer->start;
+    token.line        = lexer->line;
     return token;
 }
 
@@ -114,22 +115,22 @@ make_token(const lulu_Lexer *self, lulu_Token_Type type)
  *      Actually since this function throws an error, it does not return!
  */
 noreturn static void
-error_token(const lulu_Lexer *self, cstring msg)
+error_token(const lulu_Lexer *lexer, cstring msg)
 {
-    lulu_Token token = make_token(self, TOKEN_ERROR);
-    lulu_VM_comptime_error(self->vm, self->filename, token.line, msg, token.lexeme);
+    lulu_Token token = make_token(lexer, TOKEN_ERROR);
+    lulu_VM_comptime_error(lexer->vm, lexer->filename, token.line, msg, token.lexeme);
 }
 
 static void
-skip_multiline(lulu_Lexer *self, int opening)
+skip_multiline(lulu_Lexer *lexer, int opening)
 {
     for (;;) {
-        if (match_char(self, ']')) {
+        if (match_char(lexer, ']')) {
             int closing = 0;
-            while (match_char(self, '=')) {
+            while (match_char(lexer, '=')) {
                 closing++;
             }
-            if (closing == opening && match_char(self, ']')) {
+            if (closing == opening && match_char(lexer, ']')) {
                 return;
             }
         }
@@ -137,14 +138,14 @@ skip_multiline(lulu_Lexer *self, int opening)
          * @brief
          *      Above call may have fallen through to here as well.
          */
-        if (is_at_end(self)) {
-            error_token(self, "Unterminated multiline comment");
+        if (is_at_end(lexer)) {
+            error_token(lexer, "Unterminated multiline comment");
             return;
         }
-        if (peek_char(self) == '\n') {
-            self->line++;
+        if (peek_char(lexer) == '\n') {
+            lexer->line++;
         }
-        advance_char(self);
+        advance_char(lexer);
     }
 }
 
@@ -154,45 +155,45 @@ skip_multiline(lulu_Lexer *self, int opening)
  *      pointing at the first character in the comment body, or a '['.
  */
 static void
-skip_comment(lulu_Lexer *self)
+skip_comment(lulu_Lexer *lexer)
 {
-    if (match_char(self, '[')) {
+    if (match_char(lexer, '[')) {
         int opening = 0;
-        while (match_char(self, '=')) {
+        while (match_char(lexer, '=')) {
             opening++;
         }
-        if (match_char(self, '[')) {
-            skip_multiline(self, opening);
+        if (match_char(lexer, '[')) {
+            skip_multiline(lexer, opening);
             return;
         }
     }
     // Skip a single line comment.
-    while (peek_char(self) != '\n' && !is_at_end(self)) {
-        advance_char(self);
+    while (peek_char(lexer) != '\n' && !is_at_end(lexer)) {
+        advance_char(lexer);
     }
 }
 
 static void
-skip_whitespace(lulu_Lexer *self)
+skip_whitespace(lulu_Lexer *lexer)
 {
     for (;;) {
-        char ch = peek_char(self);
+        char ch = peek_char(lexer);
         switch (ch) {
-        case '\n': self->line++; // fall through
+        case '\n': lexer->line++; // fall through
         case ' ':
         case '\r':
         case '\t':
-            advance_char(self);
+            advance_char(lexer);
             break;
         case '-':
             // Don't have 2 '-' consecutively?
-            if (peek_next_char(self) != '-') {
+            if (peek_next_char(lexer) != '-') {
                 return;
             }
             // Skip the 2 dashes.
-            advance_char(self);
-            advance_char(self);
-            skip_comment(self);
+            advance_char(lexer);
+            advance_char(lexer);
+            skip_comment(lexer);
             break;
         default:
             return;
@@ -242,9 +243,9 @@ check_keyword(String current, lulu_Token_Type type)
 }
 
 static lulu_Token_Type
-get_identifier_type(lulu_Lexer *self)
+get_identifier_type(lulu_Lexer *lexer)
 {
-    String current = {self->start, self->current - self->start};
+    String current = {lexer->start, lexer->current - lexer->start};
     switch (current.data[0]) {
     case 'a': return check_keyword(current, TOKEN_AND);
     case 'b': return check_keyword(current, TOKEN_BREAK);
@@ -310,79 +311,118 @@ get_identifier_type(lulu_Lexer *self)
 }
 
 static lulu_Token
-consume_identifier(lulu_Lexer *self)
+consume_identifier(lulu_Lexer *lexer)
 {
-    while (is_ascii_alnum(peek_char(self)) || peek_char(self) == '_') {
-        advance_char(self);
+    while (is_ascii_alnum(peek_char(lexer)) || peek_char(lexer) == '_') {
+        advance_char(lexer);
     }
-    return make_token(self, get_identifier_type(self));
+    return make_token(lexer, get_identifier_type(lexer));
 }
 
 static void
-consume_base10(lulu_Lexer *self)
+consume_base10(lulu_Lexer *lexer)
 {
-    while (is_ascii_digit(peek_char(self))) {
-        advance_char(self);
+    while (is_ascii_digit(peek_char(lexer))) {
+        advance_char(lexer);
     }
 }
 
 static void
-consume_base16(lulu_Lexer *self)
+consume_base16(lulu_Lexer *lexer)
 {
-    while (is_ascii_hexdigit(peek_char(self))) {
-        advance_char(self);
+    while (is_ascii_hexdigit(peek_char(lexer))) {
+        advance_char(lexer);
     }
 }
 
 static lulu_Token
-consume_number(lulu_Lexer *self)
+consume_number(lulu_Lexer *lexer)
 {
-    if (match_char(self, '0')) {
-        if (match_char_any(self, "xX")) {
-            consume_base16(self);
+    if (match_char(lexer, '0')) {
+        if (match_char_any(lexer, "xX")) {
+            consume_base16(lexer);
             goto trailing_characters;
         }
     }
-    consume_base10(self);
+    consume_base10(lexer);
     
     // Consume fractional segment with 0 or more digits.
-    if (match_char(self, '.')) {
-        consume_base10(self);
+    if (match_char(lexer, '.')) {
+        consume_base10(lexer);
     }
     
     // Consume exponent segment with optional sign and 1 or more digits.
-    if (match_char_any(self, "eE")) {
-        match_char_any(self, "+-");
-        consume_base10(self);
+    if (match_char_any(lexer, "eE")) {
+        match_char_any(lexer, "+-");
+        consume_base10(lexer);
     }
     
     // Error handling will be done later.
 trailing_characters:
-    while (is_ascii_alnum(peek_char(self)) || peek_char(self) == '_') {
-        advance_char(self);
+    while (is_ascii_alnum(peek_char(lexer)) || peek_char(lexer) == '_') {
+        advance_char(lexer);
     }
 
-    return make_token(self, TOKEN_NUMBER_LIT);
+    return make_token(lexer, TOKEN_NUMBER_LIT);
+}
+
+static int
+get_escape_char(char ch)
+{
+    switch (ch) {
+    case '0':  return '\0';
+    case 'a':  return '\a';
+    case 'b':  return '\b';
+    case 't':  return '\t';
+    case 'n':  return '\n';
+    case 'v':  return '\v';
+    case 'f':  return '\f';
+    case 'r':  return '\r';
+              
+    case '\"': return '\"';
+    case '\'': return '\'';
+    case '\\': return '\\';
+
+    default:   return -1;
+    }
 }
 
 static lulu_Token
-consume_string(lulu_Lexer *self, char quote)
+consume_string(lulu_Lexer *lexer, char quote)
 {
-    while (peek_char(self) != quote && !is_at_end(self)) {
-        if (peek_char(self) == '\n') {
+    lulu_String_Builder *builder = &lexer->vm->builder;
+    lulu_String_Builder_reset(builder);
+    for (;;) {
+        char ch = peek_char(lexer);
+        if (ch == quote || is_at_end(lexer)) {
+            break;
+        }
+
+        if (ch == '\n') {
             goto unterminated_string;
         }
-        advance_char(self);
+
+        if (ch == '\\') {
+            int esc = get_escape_char(peek_next_char(lexer));
+            if (esc == -1) {
+                error_token(lexer, "Invalid escape character");
+            }
+            ch = cast(char)esc;
+            advance_char(lexer);
+        }
+        lulu_String_Builder_write_char(builder, ch);
+        advance_char(lexer);
     }
     
-    if (is_at_end(self)) {
+    if (is_at_end(lexer)) {
 unterminated_string: 
-        error_token(self, "Unterminated string");
+        error_token(lexer, "Unterminated string");
     }
     
     // Consume closing quote.
-    advance_char(self);
-    return make_token(self, TOKEN_STRING_LIT);
+    advance_char(lexer);
+    lexer->string = lulu_String_Builder_to_string(builder);
+    return make_token(lexer, TOKEN_STRING_LIT);
 }
 
 lulu_Token

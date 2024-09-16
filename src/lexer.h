@@ -77,17 +77,18 @@ extern const String
 LULU_KEYWORDS[LULU_KEYWORD_COUNT];
 
 typedef struct {
+    String          lexeme;
     lulu_Token_Type type;
-    String lexeme;
-    int    line;
+    int             line;
 } lulu_Token;
 
 typedef struct {
-    lulu_VM    *vm;       // Pointer to parent/enclosing state. Has allocator.
-    cstring     filename; // Name of current file being lexed.
-    const char *start;
-    const char *current;
-    int         line;
+    lulu_VM     *vm;       // Pointer to parent/enclosing state. Has allocator.
+    cstring      filename; // Name of current file being lexed.
+    lulu_String *string;   // Interned string literal if we currently have one.
+    const char  *start;
+    const char  *current;
+    int          line;
 } lulu_Lexer;
 
 void

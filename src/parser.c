@@ -186,14 +186,8 @@ number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 static void
 string(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
-    String lexeme = parser->consumed.lexeme;
-    
-    // Don't include the quotes in the view.
-    lexeme.data++;
-    lexeme.len -= 2;
-
     lulu_Value tmp;
-    lulu_Value_set_string(&tmp, lulu_String_new(compiler->vm, lexeme));
+    lulu_Value_set_string(&tmp, lexer->string);
     lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
 }
 
