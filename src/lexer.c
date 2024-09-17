@@ -1,6 +1,7 @@
 #include "lexer.h"
 #include "vm.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static bool
@@ -121,15 +122,29 @@ error_token(const lulu_Lexer *lexer, cstring msg)
     lulu_VM_comptime_error(lexer->vm, lexer->filename, token.line, msg, token.lexeme);
 }
 
+/**
+ * @brief
+ *      Count the number of consecutive '=' immediately following a '['.
+ *      
+ * @note 2024-09-17
+ *      Assumes we just consumed a '[' character.
+ */
+static int
+get_nesting(lulu_Lexer *lexer)
+{
+    int nesting = 0;
+    while (match_char(lexer, '=')) {
+        nesting++;
+    }
+    return nesting;
+}
+
 static void
 skip_multiline(lulu_Lexer *lexer, int opening)
 {
     for (;;) {
         if (match_char(lexer, ']')) {
-            int closing = 0;
-            while (match_char(lexer, '=')) {
-                closing++;
-            }
+            int closing = get_nesting(lexer);
             if (closing == opening && match_char(lexer, ']')) {
                 return;
             }
@@ -158,10 +173,7 @@ static void
 skip_comment(lulu_Lexer *lexer)
 {
     if (match_char(lexer, '[')) {
-        int opening = 0;
-        while (match_char(lexer, '=')) {
-            opening++;
-        }
+        int opening = get_nesting(lexer);
         if (match_char(lexer, '[')) {
             skip_multiline(lexer, opening);
             return;
@@ -363,7 +375,16 @@ trailing_characters:
         advance_char(lexer);
     }
 
-    return make_token(lexer, TOKEN_NUMBER_LIT);
+    lulu_Token  token  = make_token(lexer, TOKEN_NUMBER_LIT);
+    char       *end_ptr;
+    String      lexeme = token.lexeme;
+    lulu_Number number = strtod(lexeme.data, &end_ptr);
+    // We failed to convert the entire lexeme?
+    if (end_ptr != (lexeme.data + lexeme.len)) {
+        error_token(lexer, "Malformed number");
+    }
+    lexer->number = number;
+    return token;
 }
 
 static int
@@ -448,7 +469,21 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
     case ')': return make_token(self, TOKEN_PAREN_R);
     case '{': return make_token(self, TOKEN_CURLY_L);
     case '}': return make_token(self, TOKEN_CURLY_R);
-    case '[': return make_token(self, TOKEN_BRACKET_L);
+    case '[': {
+        int opening = get_nesting(self);
+        if (match_char(self, '[')) {
+            skip_multiline(self, opening);
+            lulu_Token token = make_token(self, TOKEN_STRING_LIT);
+            String     mstr  = token.lexeme;
+            int        skip  = opening + 2; // Both '[' or ']' with 1/+ '='
+
+            mstr.data += skip;     // Skip opening
+            mstr.len  -= skip * 2; // Remove BOTH ends from viewed length
+            self->string = lulu_String_new(self->vm, mstr);
+            return token;
+        }
+        return make_token(self, TOKEN_BRACKET_L);
+    }
     case ']': return make_token(self, TOKEN_BRACKET_R);
 
     case ',': return make_token(self, TOKEN_COMMA);

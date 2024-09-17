@@ -122,9 +122,7 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     } else {
         parse_precedence(compiler, lexer, parser, prec + 1);
     }
-    
-    lulu_OpCode op = get_binary_op(type);
-    lulu_Compiler_emit_opcode(compiler, parser, op);
+    lulu_Compiler_emit_opcode(compiler, parser, get_binary_op(type));
 
     // NOT, GT and GEQ are implemented as complements of EQ, LEQ and LT.
     switch (type) {
@@ -142,11 +140,25 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 static void
 literal(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
-    unused(lexer);
+    lulu_Value tmp;
     switch (parser->consumed.type) {
-    case TOKEN_FALSE: lulu_Compiler_emit_opcode(compiler, parser, OP_FALSE); break;
-    case TOKEN_NIL:   lulu_Compiler_emit_byte1(compiler, parser, OP_NIL, 1); break;
-    case TOKEN_TRUE:  lulu_Compiler_emit_opcode(compiler, parser, OP_TRUE);  break;
+    case TOKEN_FALSE:
+        lulu_Compiler_emit_opcode(compiler, parser, OP_FALSE);
+        break;
+    case TOKEN_NIL:
+        lulu_Compiler_emit_byte1(compiler, parser, OP_NIL, 1);
+        break;
+    case TOKEN_TRUE:
+        lulu_Compiler_emit_opcode(compiler, parser, OP_TRUE);
+        break;
+    case TOKEN_STRING_LIT:
+        lulu_Value_set_string(&tmp, lexer->string);
+        lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
+        break;
+    case TOKEN_NUMBER_LIT:
+        lulu_Value_set_number(&tmp, lexer->number);
+        lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
+        break;
     default:
         __builtin_unreachable();
     }
@@ -165,30 +177,6 @@ grouping(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_Parse_expression(compiler, lexer, parser);
     lulu_Parse_consume_token(lexer, parser, TOKEN_PAREN_R, "Expected ')' after expression");
-}
-
-static void
-number(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
-{
-    char       *end;
-    String      lexeme = parser->consumed.lexeme;
-    lulu_Number value  = strtod(lexeme.data, &end);
-    // We failed to convert the entire lexeme?
-    if (end != (lexeme.data + lexeme.len)) {
-        lulu_Parse_error_consumed(lexer, parser, "Malformed number");
-        return;
-    }
-    lulu_Value tmp;
-    lulu_Value_set_number(&tmp, value);
-    lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
-}
-
-static void
-string(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
-{
-    lulu_Value tmp;
-    lulu_Value_set_string(&tmp, lexer->string);
-    lulu_Compiler_emit_constant(compiler, lexer, parser, &tmp);
 }
 
 static lulu_OpCode
@@ -282,8 +270,8 @@ LULU_PARSE_RULES[] = {
 [TOKEN_ANGLE_R]         = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_ANGLE_R_EQUAL]   = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_IDENTIFIER]      = {NULL,        NULL,       PREC_NONE},
-[TOKEN_STRING_LIT]      = {&string,     NULL,       PREC_NONE},
-[TOKEN_NUMBER_LIT]      = {&number,     NULL,       PREC_NONE},
+[TOKEN_STRING_LIT]      = {&literal,    NULL,       PREC_NONE},
+[TOKEN_NUMBER_LIT]      = {&literal,    NULL,       PREC_NONE},
 [TOKEN_ERROR]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_EOF]             = {NULL,        NULL,       PREC_NONE},
 

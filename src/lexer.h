@@ -86,6 +86,7 @@ typedef struct {
     lulu_VM     *vm;       // Pointer to parent/enclosing state. Has allocator.
     cstring      filename; // Name of current file being lexed.
     lulu_String *string;   // Interned string literal if we currently have one.
+    lulu_Number  number;   // Number literal if we currently have one.
     const char  *start;
     const char  *current;
     int          line;
