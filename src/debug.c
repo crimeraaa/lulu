@@ -82,11 +82,11 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
 {
     printf("%04tx ", index);
     if (index > 0 && chunk->lines[index] == chunk->lines[index - 1]) {
-        printf("   | ");        
+        printf("   | ");
     } else {
         printf("%4i ", chunk->lines[index]);
     }
-    
+
     lulu_Instruction inst = chunk->code[index];
     lulu_OpCode      op   = lulu_Instruction_get_opcode(inst);
     cstring          name = LULU_OPCODE_INFO[op].name;

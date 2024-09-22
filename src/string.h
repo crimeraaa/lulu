@@ -3,16 +3,10 @@
 
 #include "object.h"
 
-/**
- * @brief
- *      Construct a String from a C-string literal. This is designed to work for
- *      both declaration + assignment and post-declaration assignment.
- * 
- * @warning 2024-09-07
- *      C99-style compound literals have very different semantics in C++.
- *      "Struct literals" are valid (in C++) due to implicit copy constructors.
- */
-// #define String_literal(cstr) {(cstr), size_of(cstr) - 1}
+#if defined __GNUC__
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wc99-extensions"
+#endif
 
 struct lulu_String {
     lulu_Object base;
@@ -20,6 +14,10 @@ struct lulu_String {
     u32         hash;
     char        data[]; // Guaranteed to be nul terminated.
 };
+
+#if defined __GNUC__
+    #pragma GCC diagnostic pop
+#endif
 
 void
 lulu_String_init(lulu_String *self, isize len, u32 hash);

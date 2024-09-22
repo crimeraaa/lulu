@@ -87,7 +87,7 @@ adjust_capacity(lulu_VM *vm, lulu_Table *table, isize new_cap)
         lulu_Value_set_nil(&new_pairs[i].key);
         lulu_Value_set_nil(&new_pairs[i].value);
     }
-    
+
     lulu_Table_Pair *old_pairs = table->pairs;
     const isize      old_cap   = table->cap;
     table->count = 0;
@@ -175,7 +175,7 @@ lulu_Table_unset(lulu_Table *self, const lulu_Value *key)
     if (self->count == 0 || lulu_Value_is_nil(key)) {
         return false;
     }
-    
+
     lulu_Table_Pair *pair = find_pair(self->pairs, self->cap, key);
 
     // Already an empty key?

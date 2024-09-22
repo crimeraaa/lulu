@@ -8,7 +8,7 @@
 /**
  * @brief
  *      A simple allocator that wraps the C standard `malloc` family.
- *      
+ *
  * @note 2024-09-07
  *      This function does not throw errors by itself. Rather, calling
  *      `lulu_VM_run_protected()` will wrap most other calls with an error
@@ -62,12 +62,12 @@ read_file(lulu_VM *vm, cstring path, usize *out_size)
     usize bytes_read = 0;
     usize buf_size   = 0;
     char *buf_ptr    = NULL;
-    
+
     if (!file_ptr) {
         fprintf(stderr, "Failed to open file '%s'.\n", path);
         return NULL;
     }
-    
+
     fseek(file_ptr, 0L, SEEK_END);
     file_size = ftell(file_ptr);
     rewind(file_ptr);

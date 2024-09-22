@@ -49,7 +49,7 @@ is_at_end(const lulu_Lexer *lexer)
  * @brief
  *      Retrieve the current character being pointed to then advance the
  *      `current` pointer.
- *      
+ *
  * @note 2024-09-05
  *      Analogous to the book's `scanner.c:advance()`.
  */
@@ -71,7 +71,7 @@ peek_next_char(const lulu_Lexer *lexer)
     // Dereferencing 1 past current may be illegal?
     if (is_at_end(lexer)) {
         return '\0';
-    } 
+    }
     return lexer->current[1];
 }
 
@@ -111,11 +111,7 @@ make_token(const lulu_Lexer *lexer, lulu_Token_Type type)
     return token;
 }
 
-/**
- * @warning 2024-09-07
- *      Actually since this function throws an error, it does not return!
- */
-noreturn static void
+LULU_ATTR_NORETURN static void
 error_token(const lulu_Lexer *lexer, cstring msg)
 {
     lulu_Token token = make_token(lexer, TOKEN_ERROR);
@@ -125,7 +121,7 @@ error_token(const lulu_Lexer *lexer, cstring msg)
 /**
  * @brief
  *      Count the number of consecutive '=' immediately following a '['.
- *      
+ *
  * @note 2024-09-17
  *      Assumes we just consumed a '[' character.
  */
@@ -215,6 +211,12 @@ skip_whitespace(lulu_Lexer *lexer)
 
 #define lit(cstr)   {cstr, size_of(cstr) - 1}
 
+// @todo 2024-09-22: Just remove the designated initializers entirely!
+#if defined __GNUC__
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wc99-designator"
+#endif
+
 /**
  * @brief
  *      Map a `lulu_Token_Type`, to the string representation thereof.
@@ -246,6 +248,10 @@ static const struct {
     [TOKEN_UNTIL]       = lit("until"),
     [TOKEN_WHILE]       = lit("while"),
 };
+
+#if defined __GNUC__
+    #pragma GCC diagnostic pop
+#endif
 
 #undef lit
 
@@ -306,7 +312,7 @@ get_identifier_type(lulu_Lexer *lexer)
         }
         break;
     case 'o': return check_keyword(current, len, TOKEN_OR);
-    case 'r': 
+    case 'r':
         if (len < 3) {
             break;
         }
@@ -324,7 +330,7 @@ get_identifier_type(lulu_Lexer *lexer)
         }
         break;
     case 'u': return check_keyword(current, len, TOKEN_UNTIL);
-    case 'w': return check_keyword(current, len, TOKEN_WHILE);        
+    case 'w': return check_keyword(current, len, TOKEN_WHILE);
     }
     return TOKEN_IDENTIFIER;
 }
@@ -364,18 +370,18 @@ consume_number(lulu_Lexer *lexer)
         }
     }
     consume_base10(lexer);
-    
+
     // Consume fractional segment with 0 or more digits.
     if (match_char(lexer, '.')) {
         consume_base10(lexer);
     }
-    
+
     // Consume exponent segment with optional sign and 1 or more digits.
     if (match_char_any(lexer, "eE")) {
         match_char_any(lexer, "+-");
         consume_base10(lexer);
     }
-    
+
     // Error handling will be done later.
 trailing_characters:
     while (is_ascii_alnum(peek_char(lexer)) || peek_char(lexer) == '_') {
@@ -405,7 +411,7 @@ get_escape_char(char ch)
     case 'v':  return '\v';
     case 'f':  return '\f';
     case 'r':  return '\r';
-              
+
     case '\"': return '\"';
     case '\'': return '\'';
     case '\\': return '\\';
@@ -440,12 +446,12 @@ consume_string(lulu_Lexer *lexer, char quote)
         lulu_String_Builder_write_char(builder, ch);
         advance_char(lexer);
     }
-    
+
     if (is_at_end(lexer)) {
-unterminated_string: 
+unterminated_string:
         error_token(lexer, "Unterminated string");
     }
-    
+
     // Consume closing quote.
     advance_char(lexer);
     lexer->string = lulu_String_Builder_to_string(builder);
@@ -457,11 +463,11 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
 {
     skip_whitespace(self);
     self->start = self->current;
-    
+
     if (is_at_end(self)) {
         return make_token(self, TOKEN_EOF);
     }
-    
+
     char ch = advance_char(self);
     if (is_ascii_digit(ch)) {
         return consume_number(self);
@@ -509,7 +515,7 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
     case '/': return make_token(self, TOKEN_SLASH);
     case '%': return make_token(self, TOKEN_PERCENT);
     case '^': return make_token(self, TOKEN_CARET);
-    
+
     case '~':
         if (match_char(self, '=')) {
             return make_token(self, TOKEN_TILDE_EQUAL);
@@ -521,7 +527,7 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
         return make_token(self, match_char(self, '=') ? TOKEN_ANGLE_L_EQUAL : TOKEN_ANGLE_L);
     case '>':
         return make_token(self, match_char(self, '=') ? TOKEN_ANGLE_R_EQUAL : TOKEN_ANGLE_R);
-    
+
     case '\'':
     case '\"': return consume_string(self, ch);
     }

@@ -5,6 +5,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/**
+ * Because C++ is an annoying little s@%!, we have to explicitly define operations
+ * even for basic enum types, even if they're contiguous.
+ */
+#if defined __cplusplus
+
+static lulu_Precedence
+operator+(lulu_Precedence prec, int addend)
+{
+    int result = cast(int)prec + addend;
+    return cast(lulu_Precedence)result;
+}
+
+static lulu_Precedence
+operator++(lulu_Precedence &prec, int)
+{
+    prec = operator+(prec, 1);
+    return prec;
+}
+
+#endif // __cplusplus
+
 static void
 parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence);
 
@@ -37,7 +59,7 @@ void
 lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser)
 {
     lulu_Token token = lulu_Lexer_scan_token(lexer);
-    
+
     // Should be normally impossible, but just in case
     if (token.type == TOKEN_ERROR) {
         lulu_Parse_error_current(lexer, parser, "Unhandled error token");
@@ -60,7 +82,7 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
 
 #define CSTRING_EOF     "<eof>"
 
-noreturn static void
+LULU_ATTR_NORETURN static void
 wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 {
     const char *where = (token->type == TOKEN_EOF) ? CSTRING_EOF : token->start;
@@ -90,7 +112,7 @@ get_binary_op(lulu_Token_Type type)
     case TOKEN_SLASH:           return OP_DIV;
     case TOKEN_PERCENT:         return OP_MOD;
     case TOKEN_CARET:           return OP_POW;
-        
+
     case TOKEN_TILDE_EQUAL:
     case TOKEN_EQUAL_EQUAL:     return OP_EQ;
     case TOKEN_ANGLE_R_EQUAL:
@@ -117,18 +139,17 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     lulu_Token_Type type = parser->consumed.type;
     lulu_Precedence prec = get_rule(type)->precedence;
     // For exponentiation, enforce right associativity.
-    if (prec == PREC_POW) {
-        parse_precedence(compiler, lexer, parser, prec);
-    } else {
-        parse_precedence(compiler, lexer, parser, prec + 1);
+    if (prec != PREC_POW) {
+        prec++;
     }
+    parse_precedence(compiler, lexer, parser, prec);
     lulu_Compiler_emit_opcode(compiler, parser, get_binary_op(type));
 
     // NOT, GT and GEQ are implemented as complements of EQ, LEQ and LT.
     switch (type) {
     case TOKEN_TILDE_EQUAL:
     case TOKEN_ANGLE_R:
-    case TOKEN_ANGLE_R_EQUAL: 
+    case TOKEN_ANGLE_R_EQUAL:
         lulu_Compiler_emit_opcode(compiler, parser, OP_NOT);
         break;
     default:
@@ -199,16 +220,21 @@ unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
     // Saved in stack frame memory as recursion will update `parser->consumed`.
     lulu_Token_Type type = parser->consumed.type;
-    
+
     // Compile the operand.
     parse_precedence(compiler, lexer, parser, PREC_UNARY);
     lulu_Compiler_emit_opcode(compiler, parser, get_unary_opcode(type));
 }
 
+// @todo 2024-09-22 Just remove the designated initializers entirely!
+#if defined __GNUC__
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wc99-designator"
+#endif
 
 static lulu_Parse_Rule
 LULU_PARSE_RULES[] = {
-///--- RESERVED WORDS ----------------------------------------------------- {{{1
+///=== RESERVED WORDS ==========================================================
 
 // key                  :  prefix_fn    infix_fn    precedence
 [TOKEN_AND]             = {NULL,        NULL,       PREC_NONE},
@@ -234,9 +260,9 @@ LULU_PARSE_RULES[] = {
 [TOKEN_UNTIL]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_WHILE]           = {NULL,        NULL,       PREC_NONE},
 
-///--- 1}}} --------------------------------------------------------------------
+///=============================================================================
 
-///--- SINGLE-CHARACTER TOKENS -------------------------------------------- {{{1
+///=== SINGLE=CHARACTER TOKENS =================================================
 
 // key                  :  prefix_fn    infix_fn    precedence
 [TOKEN_PAREN_L]         = {&grouping,   NULL,       PREC_NONE},
@@ -259,7 +285,7 @@ LULU_PARSE_RULES[] = {
 [TOKEN_PERCENT]         = {NULL,        &binary,    PREC_FACTOR},
 [TOKEN_CARET]           = {NULL,        &binary,    PREC_POW},
 
-///--- 1}}} --------------------------------------------------------------------
+///=============================================================================
 
 // key                  :  prefix_fn    infix_fn    precedence
 [TOKEN_EQUAL]           = {NULL,        &binary,    PREC_EQUALITY},
@@ -276,6 +302,10 @@ LULU_PARSE_RULES[] = {
 [TOKEN_EOF]             = {NULL,        NULL,       PREC_NONE},
 
 };
+
+#if defined __GNUC__
+    #pragma GCC diagnostic pop
+#endif
 
 void
 lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)

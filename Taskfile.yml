@@ -7,17 +7,18 @@ vars:
   DIR_OBJ: obj
   DIR_BIN: bin
   OUT_EXE: '{{.DIR_BIN}}/lulu{{exeExt}}'
-  
+
 env:
   LANG: c
   MODE: debug
   EXT_SOURCE: c
   EXT_HEADER: h
   COMPILER: clang
-  STANDARD: c11
+  STANDARD: '{{.LANG}}11'
 
   COMMON_FLAGS: >-
     -std={{.STANDARD}}
+    {{if eq .LANG "c++"}}{{"-xc++"}}{{end}}
     -Wall
     -Wextra
     -Werror
@@ -45,7 +46,7 @@ env:
     {{else}}
     {{fail "[COMPILER_FLAGS]: MODE must be one of `debug release`"}}
     {{end}}
-    
+
   # Need for math.h
   LINKER_FLAGS: >-
     -lm
@@ -61,6 +62,54 @@ tasks:
       - echo COMPILER_FLAGS='{{.COMPILER_FLAGS}}'
     silent: true
   
+  find-whitespace:
+    desc: Checks all files in the source directory for trailing whitespace.
+    deps:
+      - task: find-pattern
+        vars:
+          GREP_PATTERN: '\s+$'
+    
+  find-pattern:
+    desc: Prints all matches in all files in '{{.DIR_SRC}}/'. Uses Perl syntax.
+    vars:
+      GREP: rg
+      GREP_FLAGS: >-
+        --heading
+        --line-number
+        --with-filename
+    cmds:
+      - '{{.GREP}} {{.GREP_FLAGS}} "{{.GREP_PATTERN}}" {{.DIR_SRC}}'
+    requires:
+      vars: [GREP_PATTERN]
+    preconditions:
+      - sh: command -v {{.GREP}}
+    ignore_error: true
+    
+  fix-whitespace:
+    desc: Remove trailing whitespace from all files in the source directory.
+    deps:
+      - task: find-and-replace
+        vars:
+          VIM_PATTERN: '\s\+$'
+          VIM_REPLACE: ''
+    
+  find-and-replace:
+    desc: Replace a pattern in all files in '{{.DIR_SRC}}/'. Uses Vim syntax.
+    vars:
+      VIM: vim
+      VIM_FLAGS: >-
+        -e
+        -u NONE
+        -c ':bufdo! %s/{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
+        -c ':xa'
+    prompt: This command will potentially modify all files in '{{.DIR_SRC}}/'. Continue?
+    cmds:
+      - '{{.VIM}} {{.VIM_FLAGS}} {{.DIR_SRC}}/*'
+    requires:
+      vars: [VIM_PATTERN, VIM_REPLACE]
+    preconditions:
+      - sh: command -v {{.VIM}}
+
   check-directories:
     internal: true
     cmds:
@@ -70,7 +119,7 @@ tasks:
     status:
       - test -d '{{.DIR_OBJ}}'
       - test -d '{{.DIR_BIN}}'
-  
+
   build:
     desc: Build the C executable.
     deps: [check-directories]
@@ -88,7 +137,7 @@ tasks:
       - '{{.DIR_SRC}}/*.{{.EXT_HEADER}}'
     generates:
       - '{{.OUT_EXE}}'
-    
+
   run:
     desc: Build the C executable if needed then run it.
     deps: [build]

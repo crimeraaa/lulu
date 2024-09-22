@@ -70,7 +70,7 @@ opcode_folded(lulu_Compiler *self, lulu_OpCode op)
     if (self->prev_opcode != op) {
         return false;
     }
-    
+
     lulu_Chunk       *chunk = current_chunk(self);
     lulu_Instruction *ip    = &chunk->code[chunk->len - 1];
     switch (op) {
@@ -108,8 +108,8 @@ lulu_Compiler_end(lulu_Compiler *self, lulu_Parser *parser)
 void
 lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk)
 {
-    lulu_Lexer  lexer  = {0};
-    lulu_Parser parser = {0};
+    lulu_Lexer  lexer;
+    lulu_Parser parser;
     self->chunk = chunk;
     lulu_Lexer_init(self->vm, &lexer, chunk->filename, input);
     lulu_Parse_advance_token(&lexer, &parser);

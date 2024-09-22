@@ -7,19 +7,6 @@
 
 #define GROW_CAPACITY(cap)  ((cap) < 8 ? 8 : (cap) * 2)
 
-/**
- * @brief
- *      The default alignment. x86 normally has 8-byte alignment and x86-64 has
- *      16-byte alignment.
- */
-typedef union {
-    void  *pointer;
-    double number;
-    long   integer;
-} lulu_Allocator_Alignment;
-
-#define LULU_ALLOCATOR_ALIGNMENT sizeof(lulu_Allocator_Alignment)
-
 void *
 lulu_Memory_alloc(lulu_VM *vm, isize new_size);
 

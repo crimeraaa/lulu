@@ -3,7 +3,7 @@
 
 #include "chunk.h"
 
-__attribute__(( __format__ (__printf__, 4, 5) ))
+LULU_ATTR_PRINTF(4, 5)
 int
 lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...);
 

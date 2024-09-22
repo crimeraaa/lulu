@@ -8,7 +8,7 @@
  *      https://github.com/crimeraaa/lulu/blob/main/.archive/2024-09-04/lexer.h
  */
 typedef enum {
-///--- RESERVED WORDS ----------------------------------------------------- {{{1
+///=== RESERVED WORDS ==========================================================
 
 TOKEN_AND,
 TOKEN_BREAK,
@@ -25,9 +25,9 @@ TOKEN_THEN,    TOKEN_TRUE,
 TOKEN_UNTIL,
 TOKEN_WHILE,
 
-///--- 1}}} --------------------------------------------------------------------
+///=============================================================================
 
-///--- SINGLE-CHARACTER TOKENS -------------------------------------------- {{{1
+///=== SINGLE=CHARACTER TOKENS =================================================
 
 TOKEN_PAREN_L,   TOKEN_PAREN_R,   // ( ) := function calls, groupings
 TOKEN_BRACKET_L, TOKEN_BRACKET_R, // [ ] := table index/field access
@@ -48,16 +48,16 @@ TOKEN_SLASH,        // / := division
 TOKEN_PERCENT,      // % := modulo
 TOKEN_CARET,        // ^ := exponentiation
 
-///--- 1}}} --------------------------------------------------------------------
+///=============================================================================
 
-///--- MULTI-CHARACTER TOKENS --------------------------------------------- {{{1
+///=== MULTI=CHARACTER TOKENS ==================================================
 
 TOKEN_EQUAL,
 TOKEN_EQUAL_EQUAL, TOKEN_TILDE_EQUAL,   // ==, ~=
 TOKEN_ANGLE_L,     TOKEN_ANGLE_L_EQUAL, // <,  <=
 TOKEN_ANGLE_R,     TOKEN_ANGLE_R_EQUAL, // >,  >=
 
-///--- 1}}} --------------------------------------------------------------------
+///=============================================================================
 
 TOKEN_IDENTIFIER, //  [a-zA-Z_][a-zA-Z0-9_]+  := variable name/identifier
 TOKEN_STRING_LIT, //  ".*" or '.*'  := string literal

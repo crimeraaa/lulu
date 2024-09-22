@@ -1,6 +1,12 @@
 #include "value.h"
 #include "string.h"
 
+// @todo 2024-09-22 Just remove the designated initializers entirely!
+#if defined __GNUC__
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wc99-designator"
+#endif
+
 const cstring
 LULU_TYPENAMES[LULU_TYPE_COUNT] = {
     [LULU_TYPE_NIL]     = "nil",
@@ -9,6 +15,10 @@ LULU_TYPENAMES[LULU_TYPE_COUNT] = {
     [LULU_TYPE_STRING]  = "string",
     [LULU_TYPE_TABLE]   = "table",
 };
+
+#if defined __GNUC__
+    #pragma GCC diagnostic pop
+#endif
 
 /**
  * @note 2024-09-13
@@ -25,7 +35,7 @@ lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
     if (a->type != b->type) {
         return false;
     }
-    
+
     switch (a->type) {
     case LULU_TYPE_NIL:     return true;
     case LULU_TYPE_BOOLEAN: return a->boolean == b->boolean;
@@ -61,7 +71,7 @@ lulu_Value_Array_reserve(lulu_VM *vm, lulu_Value_Array *self, isize new_cap)
     if (new_cap <= old_cap) {
         return;
     }
-    
+
     self->values = rawarray_resize(lulu_Value, vm, self->values, old_cap, new_cap);
     self->cap    = new_cap;
 }

@@ -1,5 +1,11 @@
 #include "chunk.h"
 
+// @todo 2024-09-22 Just remove the designated initializers entirely!
+#if defined __GNUC__
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wc99-designator"
+#endif
+
 const lulu_OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     //                name: cstring     arg_size,   push_count, pop_count: i8
@@ -21,6 +27,10 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_NOT]        = {"NOT",           0,           0,          0},
     [OP_RETURN]     = {"RETURN",        0,           0,          1},
 };
+
+#if defined __GNUC__
+    #pragma GCC diagnostic pop
+#endif
 
 void
 lulu_Chunk_init(lulu_Chunk *self, cstring filename)

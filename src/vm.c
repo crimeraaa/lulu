@@ -97,10 +97,10 @@ do {                                                                           \
     lulu_Value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));          \
     lulu_VM_pop(self);                                                         \
 } while (0)
-    
+
 #define ARITH_OP(lulu_Number_fn)    BINARY_OP(lulu_Value_set_number,  lulu_Number_fn, check_arith)
 #define COMPARE_OP(lulu_Number_fn)  BINARY_OP(lulu_Value_set_boolean, lulu_Number_fn, check_compare)
-    
+
     for (;;) {
 #ifdef LULU_DEBUG_TRACE
         const lulu_Stack *stack = &self->stack;
@@ -169,7 +169,7 @@ do {                                                                           \
         }
         case OP_LT:  COMPARE_OP(lulu_Number_lt);  break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
-        
+
         case OP_NOT: {
             lulu_Value *value = poke_top(self, -1);
             lulu_Value_set_boolean(value, lulu_Value_is_falsy(value));
@@ -185,7 +185,7 @@ do {                                                                           \
             __builtin_unreachable();
         }
     }
-    
+
 #undef COMPARE_OP
 #undef ARITH_OP
 #undef BINARY_OP
@@ -242,16 +242,14 @@ lulu_VM_pop(lulu_VM *self)
 lulu_Status
 lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
 {
-    lulu_Handler handler;
+    lulu_Error_Handler handler;
     handler.status = LULU_OK;
     handler.prev   = self->handlers; // Chain new error handler
     self->handlers = &handler;
-    
-    // setjmp only returns 0 on the very first try, any call to longjmp will
-    // bring you back here with a nonzero return value.
-    if (setjmp(handler.jump) == 0) {
+
+    LULU_TRY(&handler) {
         fn(self, userdata);
-    }
+    } LULU_CATCH(&handler);
 
     self->handlers = handler.prev; // Restore old error handler
     return handler.status;
@@ -260,10 +258,10 @@ lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
 void
 lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
 {
-    lulu_Handler *handler = self->handlers;
+    lulu_Error_Handler *handler = self->handlers;
     if (handler) {
         handler->status = status;
-        longjmp(handler->jump, 1);
+        LULU_THROW(handler, status);
     } else {
         lulu_Debug_fatal("Unexpected error. Aborting.");
         exit(EXIT_FAILURE);
@@ -289,7 +287,7 @@ lulu_VM_runtime_error(lulu_VM *self, cstring fmt, ...)
     vfprintf(stderr, fmt, args);
     fputc('\n', stderr);
     va_end(args);
-    
+
     // Ensure stack is valid for the next run.
     reset_stack(&self->stack);
     lulu_VM_throw_error(self, LULU_ERROR_RUNTIME);

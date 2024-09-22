@@ -43,7 +43,7 @@ lulu_String_concat(lulu_VM *vm, lulu_String *a, lulu_String *b)
     lulu_String_init(string, len, 0);
     memcpy(string->data,          a->data, a->len);
     memcpy(&string->data[a->len], b->data, b->len);
-    
+
     const char *data = string->data;
     string->hash = lulu_String_hash(data, len);
 
@@ -88,7 +88,7 @@ lulu_String_Builder_reserve(lulu_String_Builder *self, isize new_cap)
     if (new_cap <= old_cap) {
         return;
     }
-    
+
     self->buffer = rawarray_resize(char, self->vm, self->buffer, old_cap, new_cap);
     self->cap    = new_cap;
 }
