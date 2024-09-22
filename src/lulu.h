@@ -44,14 +44,14 @@ union lulu_User_Alignment {
         #define LULU_ATTR_UNUSED [[maybe_unused]]
     #endif
 
-    #define LULU_TRY(handler)   try
-    #define LULU_CATCH(handler)                                                \
+    #define LULU_IMPL_TRY(handler)   try
+    #define LULU_IMPL_CATCH(handler)                                           \
         catch(lulu_Status status) {                                            \
             if ((handler)->status == LULU_OK) {                                \
                 (handler)->status = status;                                    \
             }                                                                  \
         }
-    #define LULU_THROW(handler, status) throw(status)
+    #define LULU_IMPL_THROW(handler, status) throw(status)
 
     typedef int lulu_Jump_Buffer; // Dummy, we don't need this for anything.
 
@@ -63,9 +63,9 @@ union lulu_User_Alignment {
         #define LULU_ATTR_NORETURN      noreturn
     #endif
 
-    #define LULU_TRY(handler)           if (setjmp((handler)->buffer) == 0)
-    #define LULU_CATCH(handler)         else
-    #define LULU_THROW(handler, status) longjmp((handler)->buffer, 1)
+    #define LULU_IMPL_TRY(handler)           if (setjmp((handler)->buffer) == 0)
+    #define LULU_IMPL_CATCH(handler)         else
+    #define LULU_IMPL_THROW(handler, status) longjmp((handler)->buffer, 1)
 
     typedef jmp_buf lulu_Jump_Buffer;
 

@@ -247,9 +247,9 @@ lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
     handler.prev   = self->handlers; // Chain new error handler
     self->handlers = &handler;
 
-    LULU_TRY(&handler) {
+    LULU_IMPL_TRY(&handler) {
         fn(self, userdata);
-    } LULU_CATCH(&handler);
+    } LULU_IMPL_CATCH(&handler);
 
     self->handlers = handler.prev; // Restore old error handler
     return handler.status;
@@ -261,7 +261,7 @@ lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
     lulu_Error_Handler *handler = self->handlers;
     if (handler) {
         handler->status = status;
-        LULU_THROW(handler, status);
+        LULU_IMPL_THROW(handler, status);
     } else {
         lulu_Debug_fatal("Unexpected error. Aborting.");
         exit(EXIT_FAILURE);
