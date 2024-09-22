@@ -16,16 +16,16 @@ lulu_String_init(lulu_String *self, isize len, u32 hash)
 }
 
 lulu_String *
-lulu_String_new(lulu_VM *vm, String src)
+lulu_String_new(lulu_VM *vm, const char *data, isize len)
 {
-    const u32    hash     = lulu_String_hash(src);
-    lulu_String *interned = lulu_Table_find_string(&vm->strings, src, hash);
+    const u32    hash     = lulu_String_hash(data, len);
+    lulu_String *interned = lulu_Table_find_string(&vm->strings, data, len, hash);
     if (interned) {
         return interned;
     }
-    lulu_String *string = alloc_string(vm, src.len);
-    lulu_String_init(string, src.len, hash);
-    memcpy(string->data, src.data, src.len);
+    lulu_String *string = alloc_string(vm, len);
+    lulu_String_init(string, len, hash);
+    memcpy(string->data, data, len);
     return lulu_Table_intern_string(vm, &vm->strings, string);
 }
 
@@ -43,11 +43,11 @@ lulu_String_concat(lulu_VM *vm, lulu_String *a, lulu_String *b)
     lulu_String_init(string, len, 0);
     memcpy(string->data,          a->data, a->len);
     memcpy(&string->data[a->len], b->data, b->len);
-
-    String tmp   = {string->data, string->len};
-    string->hash = lulu_String_hash(tmp);
     
-    lulu_String *interned = lulu_Table_find_string(&vm->strings, tmp, string->hash);
+    const char *data = string->data;
+    string->hash = lulu_String_hash(data, len);
+
+    lulu_String *interned = lulu_Table_find_string(&vm->strings, data, len, string->hash);
     if (interned) {
         vm->objects = string->base.next;
         lulu_String_free(vm, string);
@@ -62,11 +62,11 @@ lulu_String_concat(lulu_VM *vm, lulu_String *a, lulu_String *b)
 #define FNV1A_OFFSET_32 2166136261
 
 u32
-lulu_String_hash(String string)
+lulu_String_hash(const char *data, isize len)
 {
     u32 hash = FNV1A_OFFSET_32;
-    for (isize i = 0; i < string.len; i++) {
-        hash ^= cast(byte)string.data[i];
+    for (isize i = 0; i < len; i++) {
+        hash ^= cast(byte)data[i];
         hash *= FNV1A_PRIME_32;
     }
     return hash;
@@ -115,10 +115,10 @@ lulu_String_Builder_write_char(lulu_String_Builder *self, char ch)
 }
 
 void
-lulu_String_Builder_write_string(lulu_String_Builder *self, String str)
+lulu_String_Builder_write_string(lulu_String_Builder *self, const char *data, isize len)
 {
     isize old_len = self->len;
-    isize new_len = old_len + str.len;
+    isize new_len = old_len + len;
     if (new_len > self->cap) {
         // Next power of 2
         isize new_cap = 1;
@@ -127,8 +127,8 @@ lulu_String_Builder_write_string(lulu_String_Builder *self, String str)
         }
         lulu_String_Builder_reserve(self, new_cap);
     }
-    for (isize i = 0; i < str.len; i++) {
-        self->buffer[old_len + i] = str.data[i];
+    for (isize i = 0; i < len; i++) {
+        self->buffer[old_len + i] = data[i];
     }
     self->len = new_len;
 }
@@ -136,13 +136,11 @@ lulu_String_Builder_write_string(lulu_String_Builder *self, String str)
 void
 lulu_String_Builder_write_cstring(lulu_String_Builder *self, cstring cstr)
 {
-    String str = {cstr, cast(isize)strlen(cstr)};
-    lulu_String_Builder_write_string(self, str);
+    lulu_String_Builder_write_string(self, cstr, cast(isize)strlen(cstr));
 }
 
 lulu_String *
 lulu_String_Builder_to_string(lulu_String_Builder *self)
 {
-    String str = {self->buffer, self->len};
-    return lulu_String_new(self->vm, str);
+    return lulu_String_new(self->vm, self->buffer, self->len);
 }

@@ -15,12 +15,11 @@ __attribute__((__unused__))
 static void
 print_token(const lulu_Token *token, cstring name)
 {
-    String lexeme = token->lexeme;
     printf("%s{type=%i, lexeme={\"%.*s\"},line=%i}",
         name,
         cast(int)token->type,
-        cast(int)lexeme.len,
-        lexeme.data,
+        cast(int)token->len,
+        token->start,
         token->line);
 }
 
@@ -59,13 +58,14 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
     lulu_Parse_error_current(lexer, parser, msg);
 }
 
+#define CSTRING_EOF     "<eof>"
+
 noreturn static void
 wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 {
-    static const String STRING_EOF = String_literal("<eof>");
-
-    String where = (token->type == TOKEN_EOF) ? STRING_EOF : token->lexeme;
-    lulu_VM_comptime_error(vm, filename, token->line, msg, where);
+    const char *where = (token->type == TOKEN_EOF) ? CSTRING_EOF : token->start;
+    isize       len   = (token->type == TOKEN_EOF) ? size_of(CSTRING_EOF) - 1 : token->len;
+    lulu_VM_comptime_error(vm, filename, token->line, msg, where, len);
 }
 
 void

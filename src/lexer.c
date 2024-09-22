@@ -104,10 +104,10 @@ static lulu_Token
 make_token(const lulu_Lexer *lexer, lulu_Token_Type type)
 {
     lulu_Token token;
-    token.type        = type;
-    token.lexeme.data = lexer->start;
-    token.lexeme.len  = lexer->current - lexer->start;
-    token.line        = lexer->line;
+    token.type  = type;
+    token.start = lexer->start;
+    token.len   = lexer->current - lexer->start;
+    token.line  = lexer->line;
     return token;
 }
 
@@ -119,7 +119,7 @@ noreturn static void
 error_token(const lulu_Lexer *lexer, cstring msg)
 {
     lulu_Token token = make_token(lexer, TOKEN_ERROR);
-    lulu_VM_comptime_error(lexer->vm, lexer->filename, token.line, msg, token.lexeme);
+    lulu_VM_comptime_error(lexer->vm, lexer->filename, token.line, msg, token.start, token.len);
 }
 
 /**
@@ -213,9 +213,16 @@ skip_whitespace(lulu_Lexer *lexer)
     }
 }
 
-#define lit String_literal
+#define lit(cstr)   {cstr, size_of(cstr) - 1}
 
-const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
+/**
+ * @brief
+ *      Map a `lulu_Token_Type`, to the string representation thereof.
+ */
+static const struct {
+    const char *data;
+    isize       len;
+} LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
     [TOKEN_AND]         = lit("and"),
     [TOKEN_BREAK]       = lit("break"),
     [TOKEN_DO]          = lit("do"),
@@ -243,11 +250,10 @@ const String LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
 #undef lit
 
 static lulu_Token_Type
-check_keyword(String current, lulu_Token_Type type)
+check_keyword(const char *current, isize len, lulu_Token_Type type)
 {
-    const String keyword = LULU_KEYWORDS[type];
-    if (keyword.len == current.len) {
-        if (memcmp(keyword.data, current.data, keyword.len) == 0) {
+    if (LULU_KEYWORDS[type].len == len) {
+        if (memcmp(LULU_KEYWORDS[type].data, current, len) == 0) {
             return type;
         }
     }
@@ -257,67 +263,68 @@ check_keyword(String current, lulu_Token_Type type)
 static lulu_Token_Type
 get_identifier_type(lulu_Lexer *lexer)
 {
-    String current = {lexer->start, lexer->current - lexer->start};
-    switch (current.data[0]) {
-    case 'a': return check_keyword(current, TOKEN_AND);
-    case 'b': return check_keyword(current, TOKEN_BREAK);
-    case 'd': return check_keyword(current, TOKEN_DO);
+    const char *current = lexer->start;
+    isize       len     = lexer->current - lexer->start;
+    switch (current[0]) {
+    case 'a': return check_keyword(current, len, TOKEN_AND);
+    case 'b': return check_keyword(current, len, TOKEN_BREAK);
+    case 'd': return check_keyword(current, len, TOKEN_DO);
     case 'e':
-        switch (current.len) {
-        case 3: return check_keyword(current, TOKEN_END);
-        case 4: return check_keyword(current, TOKEN_ELSE);
-        case 6: return check_keyword(current, TOKEN_ELSEIF);
+        switch (len) {
+        case 3: return check_keyword(current, len, TOKEN_END);
+        case 4: return check_keyword(current, len, TOKEN_ELSE);
+        case 6: return check_keyword(current, len, TOKEN_ELSEIF);
         }
         break;
     case 'f':
-        if (current.len < 3) {
+        if (len < 3) {
             break;
         }
-        switch (current.data[1]) {
-        case 'a': return check_keyword(current, TOKEN_FALSE);
-        case 'o': return check_keyword(current, TOKEN_FOR);
-        case 'u': return check_keyword(current, TOKEN_FUNCTION);
+        switch (current[1]) {
+        case 'a': return check_keyword(current, len, TOKEN_FALSE);
+        case 'o': return check_keyword(current, len, TOKEN_FOR);
+        case 'u': return check_keyword(current, len, TOKEN_FUNCTION);
         }
         break;
     case 'i':
-        if (current.len != 2) {
+        if (len != 2) {
             break;
         }
-        switch (current.data[1]) {
-        case 'f': return check_keyword(current, TOKEN_IF);
-        case 'i': return check_keyword(current, TOKEN_IN);
+        switch (current[1]) {
+        case 'f': return check_keyword(current, len, TOKEN_IF);
+        case 'i': return check_keyword(current, len, TOKEN_IN);
         }
         break;
-    case 'l': return check_keyword(current, TOKEN_LOCAL);
+    case 'l': return check_keyword(current, len, TOKEN_LOCAL);
     case 'n':
-        if (current.len != 3) {
+        if (len != 3) {
             break;
         }
-        switch (current.data[1]) {
-        case 'i': return check_keyword(current, TOKEN_NIL);
-        case 'o': return check_keyword(current, TOKEN_NOT);
+        switch (current[1]) {
+        case 'i': return check_keyword(current, len, TOKEN_NIL);
+        case 'o': return check_keyword(current, len, TOKEN_NOT);
         }
         break;
-    case 'o': return check_keyword(current, TOKEN_OR);
+    case 'o': return check_keyword(current, len, TOKEN_OR);
     case 'r': 
-        if (current.len < 3) {
+        if (len < 3) {
             break;
         }
-        switch (current.data[2]) {
-        case 'p': return check_keyword(current, TOKEN_REPEAT);
-        case 't': return check_keyword(current, TOKEN_RETURN);
+        switch (current[2]) {
+        case 'p': return check_keyword(current, len, TOKEN_REPEAT);
+        case 't': return check_keyword(current, len, TOKEN_RETURN);
         }
     case 't':
-        if (current.len != 4) {
+        if (len != 4) {
             break;
         }
-        switch (current.data[1]) {
-        case 'h': return check_keyword(current, TOKEN_THEN);
-        case 'r': return check_keyword(current, TOKEN_TRUE);
+        switch (current[1]) {
+        case 'h': return check_keyword(current, len, TOKEN_THEN);
+        case 'r': return check_keyword(current, len, TOKEN_TRUE);
         }
         break;
-    case 'u': return check_keyword(current, TOKEN_UNTIL);
-    case 'w': return check_keyword(current, TOKEN_WHILE);        
+    case 'u': return check_keyword(current, len, TOKEN_UNTIL);
+    case 'w': return check_keyword(current, len, TOKEN_WHILE);        
     }
     return TOKEN_IDENTIFIER;
 }
@@ -377,10 +384,9 @@ trailing_characters:
 
     lulu_Token  token  = make_token(lexer, TOKEN_NUMBER_LIT);
     char       *end_ptr;
-    String      lexeme = token.lexeme;
-    lulu_Number number = strtod(lexeme.data, &end_ptr);
+    lulu_Number number = strtod(token.start, &end_ptr);
     // We failed to convert the entire lexeme?
-    if (end_ptr != (lexeme.data + lexeme.len)) {
+    if (end_ptr != (token.start + token.len)) {
         error_token(lexer, "Malformed number");
     }
     lexer->number = number;
@@ -473,13 +479,11 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
         int opening = get_nesting(self);
         if (match_char(self, '[')) {
             skip_multiline(self, opening);
-            lulu_Token token = make_token(self, TOKEN_STRING_LIT);
-            String     mstr  = token.lexeme;
-            int        skip  = opening + 2; // Both '[' or ']' with 1/+ '='
-
-            mstr.data += skip;     // Skip opening
-            mstr.len  -= skip * 2; // Remove BOTH ends from viewed length
-            self->string = lulu_String_new(self->vm, mstr);
+            lulu_Token token  = make_token(self, TOKEN_STRING_LIT);
+            int        skip   = opening + 2; // Both '[' or ']' with 1/+ '='
+            const char *start = token.start + skip; // Skip opening
+            isize       len   = token.len - (skip * 2); // Discard BOTH ends from view length
+            self->string = lulu_String_new(self->vm, start, len);
             return token;
         }
         return make_token(self, TOKEN_BRACKET_L);

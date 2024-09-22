@@ -271,9 +271,9 @@ lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
 }
 
 void
-lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, String where)
+lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len)
 {
-    fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, cast(int)where.len, where.data);
+    fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, cast(int)len, where);
     lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);
 }
 

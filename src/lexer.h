@@ -69,16 +69,10 @@ TOKEN_EOF,
 #define LULU_KEYWORD_COUNT  (TOKEN_WHILE + 1)
 #define LULU_TOKEN_COUNT    (TOKEN_EOF + 1)
 
-/**
- * @brief
- *      Map a `lulu_Token_Type`, to the string representation thereof.
- */
-extern const String
-LULU_KEYWORDS[LULU_KEYWORD_COUNT];
-
 typedef struct {
-    String          lexeme;
     lulu_Token_Type type;
+    const char     *start;
+    isize           len;
     int             line;
 } lulu_Token;
 

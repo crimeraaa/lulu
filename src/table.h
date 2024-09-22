@@ -34,7 +34,7 @@ lulu_String *
 lulu_Table_intern_string(lulu_VM *vm, lulu_Table *self, lulu_String *string);
 
 lulu_String *
-lulu_Table_find_string(lulu_Table *self, String string, u32 hash);
+lulu_Table_find_string(lulu_Table *self, const char *data, isize len, u32 hash);
 
 bool
 lulu_Table_set(lulu_VM *vm, lulu_Table *self, const lulu_Value *key, const lulu_Value *value);

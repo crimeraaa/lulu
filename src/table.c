@@ -30,8 +30,7 @@ hash_number(lulu_Number number)
 {
     char buf[size_of(number)];
     memcpy(buf, &number, size_of(number));
-    String string = {buf, size_of(buf)};
-    return lulu_String_hash(string);
+    return lulu_String_hash(buf, size_of(buf));
 }
 
 static u32
@@ -39,8 +38,7 @@ hash_pointer(const void *pointer)
 {
     char buf[size_of(pointer)];
     memcpy(buf, &pointer, size_of(pointer));
-    String string = {buf, size_of(buf)};
-    return lulu_String_hash(string);
+    return lulu_String_hash(buf, size_of(buf));
 }
 
 static u32
@@ -128,7 +126,7 @@ lulu_Table_intern_string(lulu_VM *vm, lulu_Table *self, lulu_String *string)
 }
 
 lulu_String *
-lulu_Table_find_string(lulu_Table *self, String string, u32 hash)
+lulu_Table_find_string(lulu_Table *self, const char *data, isize len, u32 hash)
 {
     if (self->count == 0) {
         return NULL;
@@ -144,8 +142,8 @@ lulu_Table_find_string(lulu_Table *self, String string, u32 hash)
             }
         } else if (lulu_Value_is_string(key)) {
             lulu_String *src = key->string;
-            if (src->hash == hash && src->len == string.len) {
-                if (memcmp(src->data, string.data, string.len) == 0) {
+            if (src->hash == hash && src->len == len) {
+                if (memcmp(src->data, data, len) == 0) {
                     return src;
                 }
             }

@@ -78,7 +78,7 @@ noreturn void
 lulu_VM_throw_error(lulu_VM *self, lulu_Status status);
 
 noreturn void
-lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, String where);
+lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len);
 
 __attribute__((__format__ (__printf__, 2, 3)))
 noreturn void
