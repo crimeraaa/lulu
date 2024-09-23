@@ -5,7 +5,11 @@
 
 #include <assert.h>
 
-#define GROW_CAPACITY(cap)  ((cap) < 8 ? 8 : (cap) * 2)
+static inline isize
+lulu_Memory_grow_capacity(isize cap)
+{
+    return (cap < 8) ? 8 : (cap * 2);
+}
 
 void *
 lulu_Memory_alloc(lulu_VM *vm, isize new_size);

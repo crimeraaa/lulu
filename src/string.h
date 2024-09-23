@@ -6,6 +6,9 @@
 #if defined __GNUC__
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wc99-extensions"
+#elif defined _MSC_VER
+    #pragma warning(push)
+    #pragma warning(disable : 4200)
 #endif
 
 struct lulu_String {
@@ -17,6 +20,8 @@ struct lulu_String {
 
 #if defined __GNUC__
     #pragma GCC diagnostic pop
+#elif defined _MSC_VER
+    #pragma warning(pop)
 #endif
 
 void
@@ -34,41 +39,6 @@ lulu_String *
 lulu_String_concat(lulu_VM *vm, lulu_String *a, lulu_String *b);
 
 u32
-lulu_String_hash(const char *src, isize len);
-
-/**
- * @brief
- *      1D heap-allocated dynamic array of `char`.
- */
-typedef struct {
-    lulu_VM *vm;     // Parent/enclosing state which contains our allocator.
-    char    *buffer; // Dynamically growable array.
-    isize    len;    // Number of currently active elements.
-    isize    cap;    // Number of allocated elements.
-} lulu_String_Builder;
-
-void
-lulu_String_Builder_init(lulu_VM *vm, lulu_String_Builder *self);
-
-void
-lulu_String_Builder_reserve(lulu_String_Builder *self, isize new_cap);
-
-void
-lulu_String_Builder_free(lulu_String_Builder *self);
-
-void
-lulu_String_Builder_reset(lulu_String_Builder *self);
-
-void
-lulu_String_Builder_write_char(lulu_String_Builder *self, char ch);
-
-void
-lulu_String_Builder_write_string(lulu_String_Builder *self, const char *data, isize len);
-
-void
-lulu_String_Builder_write_cstring(lulu_String_Builder *self, cstring cstr);
-
-lulu_String *
-lulu_String_Builder_to_string(lulu_String_Builder *self);
+lulu_String_hash(const char *data, isize len);
 
 #endif // LULU_STRING_H

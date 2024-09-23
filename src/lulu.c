@@ -1,9 +1,11 @@
+/// local
 #include "lulu.h"
 #include "vm.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+/// standard
+#include <stdio.h>      // FILE, printf()
+#include <stdlib.h>     // {m,re}alloc(), free()
+#include <string.h>     // memset()
 
 /**
  * @brief

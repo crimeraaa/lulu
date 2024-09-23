@@ -97,6 +97,11 @@ tasks:
     desc: Replace a pattern in all files in '{{.DIR_SRC}}/'. Uses Vim syntax.
     vars:
       VIM: vim
+      # Dissection:
+      #   -e              Ex mode, used mainly for non-interactive file editing.
+      #   -u NONE         Do not load '.vimrc' or 'init.vim' of any kind.
+      #   -c <command>    Execute <command> after entering.
+      #   -- <...>        Positional arguments: file names or globs thereof.
       VIM_FLAGS: >-
         -e
         -u NONE

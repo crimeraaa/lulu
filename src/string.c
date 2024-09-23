@@ -1,8 +1,10 @@
+/// local
 #include "string.h"
 #include "table.h"
 #include "vm.h"
 
-#include <string.h>
+/// standard
+#include <string.h> // memcpy, memset
 
 #define size_of_string(len)     (size_of(lulu_String) + size_of(char) * ((len) + 1))
 #define alloc_string(vm, len)   cast(lulu_String *)lulu_Object_new(vm, LULU_TYPE_STRING, size_of_string(len))
@@ -70,77 +72,4 @@ lulu_String_hash(const char *data, isize len)
         hash *= FNV1A_PRIME_32;
     }
     return hash;
-}
-
-void
-lulu_String_Builder_init(lulu_VM *vm, lulu_String_Builder *self)
-{
-    self->vm     = vm;
-    self->buffer = NULL;
-    self->len    = 0;
-    self->cap    = 0;
-}
-
-void
-lulu_String_Builder_reserve(lulu_String_Builder *self, isize new_cap)
-{
-    isize old_cap = self->cap;
-    if (new_cap <= old_cap) {
-        return;
-    }
-
-    self->buffer = rawarray_resize(char, self->vm, self->buffer, old_cap, new_cap);
-    self->cap    = new_cap;
-}
-
-void
-lulu_String_Builder_free(lulu_String_Builder *self)
-{
-    rawarray_free(char, self->vm, self->buffer, self->cap);
-}
-
-void
-lulu_String_Builder_reset(lulu_String_Builder *self)
-{
-    self->len = 0;
-}
-
-void
-lulu_String_Builder_write_char(lulu_String_Builder *self, char ch)
-{
-    if (self->len >= self->cap) {
-        lulu_String_Builder_reserve(self, GROW_CAPACITY(self->cap));
-    }
-    self->buffer[self->len++] = ch;
-}
-
-void
-lulu_String_Builder_write_string(lulu_String_Builder *self, const char *data, isize len)
-{
-    isize old_len = self->len;
-    isize new_len = old_len + len;
-    if (new_len > self->cap) {
-        // Next power of 2
-        isize new_cap = 1;
-        while (new_cap < new_len) {
-            new_cap *= 2;
-        }
-        lulu_String_Builder_reserve(self, new_cap);
-    }
-    for (isize i = 0; i < len; i++) {
-        self->buffer[old_len + i] = data[i];
-    }
-    self->len = new_len;
-}
-
-void
-lulu_String_Builder_write_cstring(lulu_String_Builder *self, cstring cstr)
-{
-    lulu_String_Builder_write_string(self, cstr, cast(isize)strlen(cstr));
-}
-
-lulu_String *
-lulu_String_Builder_to_string(lulu_String_Builder *self)
-{
-    return lulu_String_new(self->vm, self->buffer, self->len);
 }

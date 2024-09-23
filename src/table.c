@@ -156,7 +156,7 @@ bool
 lulu_Table_set(lulu_VM *vm, lulu_Table *self, const lulu_Value *key, const lulu_Value *value)
 {
     if (self->count >= self->cap * LULU_TABLE_MAX_LOAD) {
-        adjust_capacity(vm, self, GROW_CAPACITY(self->cap));
+        adjust_capacity(vm, self, lulu_Memory_grow_capacity(self->cap));
     }
     lulu_Table_Pair *pair = find_pair(self->pairs, self->cap, key);
 

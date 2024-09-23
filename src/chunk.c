@@ -49,7 +49,7 @@ lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, lulu_Instruction inst, int line)
     // Appending to this index would cause a buffer overrun?
     isize index = self->len++;
     if (index >= self->cap) {
-        lulu_Chunk_reserve(vm, self, GROW_CAPACITY(self->cap));
+        lulu_Chunk_reserve(vm, self, lulu_Memory_grow_capacity(self->cap));
     }
     self->code[index]  = inst;
     self->lines[index] = line;

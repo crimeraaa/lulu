@@ -1,9 +1,10 @@
+/// local
 #include "parser.h"
 #include "vm.h"
 #include "object.h"
 
-#include <stdio.h>
-#include <stdlib.h>
+/// standard
+#include <stdio.h>      // printf
 
 /**
  * Because C++ is an annoying little s@%!, we have to explicitly define operations
@@ -18,6 +19,7 @@ operator+(lulu_Precedence prec, int addend)
     return cast(lulu_Precedence)result;
 }
 
+// unused 'int' argument indicates this is postfix
 static lulu_Precedence
 operator++(lulu_Precedence &prec, int)
 {
@@ -33,7 +35,7 @@ parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser
 static lulu_Parse_Rule *
 get_rule(lulu_Token_Type type);
 
-__attribute__((__unused__))
+LULU_ATTR_UNUSED
 static void
 print_token(const lulu_Token *token, cstring name)
 {
@@ -45,7 +47,7 @@ print_token(const lulu_Token *token, cstring name)
         token->line);
 }
 
-__attribute__((__unused__))
+LULU_ATTR_UNUSED
 static void
 print_parser(const lulu_Parser *self)
 {
@@ -80,9 +82,10 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
     lulu_Parse_error_current(lexer, parser, msg);
 }
 
-#define CSTRING_EOF     "<eof>"
+#define CSTRING_EOF "<eof>"
 
-LULU_ATTR_NORETURN static void
+LULU_ATTR_NORETURN
+static void
 wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 {
     const char *where = (token->type == TOKEN_EOF) ? CSTRING_EOF : token->start;
@@ -226,14 +229,20 @@ unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     lulu_Compiler_emit_opcode(compiler, parser, get_unary_opcode(type));
 }
 
+///=== PARSER RULES ========================================================={{{
+
 // @todo 2024-09-22 Just remove the designated initializers entirely!
 #if defined __GNUC__
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wc99-designator"
+#elif defined _MSC_VER
+    #pragma warning(push)
+    #pragma warning(disable: 7555)
 #endif
 
 static lulu_Parse_Rule
 LULU_PARSE_RULES[] = {
+
 ///=== RESERVED WORDS ==========================================================
 
 // key                  :  prefix_fn    infix_fn    precedence
@@ -305,7 +314,11 @@ LULU_PARSE_RULES[] = {
 
 #if defined __GNUC__
     #pragma GCC diagnostic pop
+#elif defined _MSC_VER
+    #pragma warning(pop)
 #endif
+
+/// }}}=========================================================================
 
 void
 lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)

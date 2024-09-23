@@ -58,7 +58,7 @@ void
 lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *value)
 {
     if (self->len >= self->cap) {
-        lulu_Value_Array_reserve(vm, self, GROW_CAPACITY(self->cap));
+        lulu_Value_Array_reserve(vm, self, lulu_Memory_grow_capacity(self->cap));
     }
     self->values[self->len++] = *value;
 }

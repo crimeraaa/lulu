@@ -3,6 +3,7 @@
 
 #include "chunk.h"
 #include "table.h"
+#include "builder.h"
 
 #define LULU_VM_STACK_MAX   256
 
@@ -34,7 +35,7 @@ typedef void
 struct lulu_VM {
     lulu_Stack          stack;
     lulu_Table          strings;  // Hashtable for interned strings.
-    lulu_String_Builder builder;
+    lulu_Builder        builder;
     lulu_Allocator      allocator;
     void               *allocator_data;
     lulu_Chunk         *chunk;
@@ -69,13 +70,16 @@ lulu_VM_pop(lulu_VM *self);
 lulu_Status
 lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata);
 
-LULU_ATTR_NORETURN void
+LULU_ATTR_NORETURN
+void
 lulu_VM_throw_error(lulu_VM *self, lulu_Status status);
 
-LULU_ATTR_NORETURN void
+LULU_ATTR_NORETURN
+void
 lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len);
 
-LULU_ATTR_NORETURN LULU_ATTR_PRINTF(2, 3) void
+LULU_ATTR_NORETURN LULU_ATTR_PRINTF(2, 3)
+void
 lulu_VM_runtime_error(lulu_VM *self, cstring fmt, ...);
 
 #endif // LULU_VM_H

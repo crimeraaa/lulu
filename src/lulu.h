@@ -1,15 +1,13 @@
 #ifndef LULU_H
 #define LULU_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include <stddef.h>     // size_t, ptrdiff_t
+#include <stdint.h>     // [u]int8_t, [u]int16_t, [u]int32_t, [u]int64_t
 
-/**
- * In C++, 'bool' is keyword so including this header (if it exists) is redundant.
- */
+// In C++, 'bool' is keyword so including this header (if it exists) is redundant.
 #ifndef __cplusplus
-#include <stdbool.h>
-#endif // __cplusplus
+#include <stdbool.h>    // bool
+#endif
 
 ///=== CONFIGURATION ========================================================{{{
 
@@ -31,14 +29,20 @@ union lulu_User_Alignment {
 
 #define LULU_USER_ALIGNMENT sizeof(union lulu_User_Alignment)
 
+#define LULU_IMPL_ERROR_HANDLING_EXCEPTION   1
+#define LULU_IMPL_ERROR_HANDLING_LONGJMP     2
+
 // Determine the language-specific error handling we should use.
 #if defined __cplusplus
+
+    #define LULU_IMPL_ERROR_HANDLING    LULU_IMPL_ERROR_HANDLING_EXCEPTION
 
     // C++11
     #if __cplusplus >= 201103L
         #define LULU_ATTR_NORETURN      [[noreturn]]
         #define LULU_ATTR_DEPRECATED    [[deprecated]]
     #endif
+
     // C++17
     #if __cplusplus >= 201703L
         #define LULU_ATTR_UNUSED [[maybe_unused]]
@@ -46,7 +50,7 @@ union lulu_User_Alignment {
 
     #define LULU_IMPL_TRY(handler)   try
     #define LULU_IMPL_CATCH(handler)                                           \
-        catch(lulu_Status status) {                                            \
+        catch (lulu_Status status) {                                           \
             if ((handler)->status == LULU_OK) {                                \
                 (handler)->status = status;                                    \
             }                                                                  \
@@ -58,9 +62,12 @@ union lulu_User_Alignment {
 #else // __cplusplus not defined.
 
     #include <setjmp.h>
+    
+    #define LULU_IMPL_ERROR_HANDLING        LULU_IMPL_ERROR_HANDLING_LONGJMP
+
     #if defined __STDC__ && __STDC_VERSION__ >= 201112L
         #include <stdnoreturn.h>
-        #define LULU_ATTR_NORETURN      noreturn
+        #define LULU_ATTR_NORETURN          noreturn
     #endif
 
     #define LULU_IMPL_TRY(handler)           if (setjmp((handler)->buffer) == 0)
@@ -109,7 +116,7 @@ union lulu_User_Alignment {
 #else
     #define LULU_ATTR_PRINTF(fmt, args)
 #endif
-
+    
 /// }}}=========================================================================
 
 /// }}}=========================================================================

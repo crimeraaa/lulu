@@ -111,7 +111,8 @@ make_token(const lulu_Lexer *lexer, lulu_Token_Type type)
     return token;
 }
 
-LULU_ATTR_NORETURN static void
+LULU_ATTR_NORETURN
+static void
 error_token(const lulu_Lexer *lexer, cstring msg)
 {
     lulu_Token token = make_token(lexer, TOKEN_ERROR);
@@ -423,8 +424,8 @@ get_escape_char(char ch)
 static lulu_Token
 consume_string(lulu_Lexer *lexer, char quote)
 {
-    lulu_String_Builder *builder = &lexer->vm->builder;
-    lulu_String_Builder_reset(builder);
+    lulu_Builder *builder = &lexer->vm->builder;
+    lulu_Builder_reset(builder);
     for (;;) {
         char ch = peek_char(lexer);
         if (ch == quote || is_at_end(lexer)) {
@@ -443,7 +444,7 @@ consume_string(lulu_Lexer *lexer, char quote)
             ch = cast(char)esc;
             advance_char(lexer);
         }
-        lulu_String_Builder_write_char(builder, ch);
+        lulu_Builder_write_char(builder, ch);
         advance_char(lexer);
     }
 
@@ -454,7 +455,10 @@ unterminated_string:
 
     // Consume closing quote.
     advance_char(lexer);
-    lexer->string = lulu_String_Builder_to_string(builder);
+
+    isize       len;
+    const char *data = lulu_Builder_to_string(builder, &len);
+    lexer->string = lulu_String_new(lexer->vm, data, len);
     return make_token(lexer, TOKEN_STRING_LIT);
 }
 
@@ -485,11 +489,12 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
         int opening = get_nesting(self);
         if (match_char(self, '[')) {
             skip_multiline(self, opening);
-            lulu_Token token  = make_token(self, TOKEN_STRING_LIT);
-            int        skip   = opening + 2; // Both '[' or ']' with 1/+ '='
-            const char *start = token.start + skip; // Skip opening
-            isize       len   = token.len - (skip * 2); // Discard BOTH ends from view length
-            self->string = lulu_String_new(self->vm, start, len);
+            lulu_Token  token = make_token(self, TOKEN_STRING_LIT);
+            int         skip  = opening + 2; // Both '[' or ']' with 1/+ '='
+
+            token.start += skip;      // Skip opening
+            token.len   -= (skip * 2);// Discard BOTH ends from view length
+            self->string = lulu_String_new(self->vm, token.start, token.len);
             return token;
         }
         return make_token(self, TOKEN_BRACKET_L);

@@ -1,10 +1,7 @@
 #include "compiler.h"
 #include "vm.h"
 #include "parser.h"
-
-#ifdef LULU_DEBUG_PRINT
 #include "debug.h"
-#endif
 
 void
 lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self)
