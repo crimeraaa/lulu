@@ -94,6 +94,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONSTANT:
         print_constant(name, chunk, inst);
         break;
+    case OP_CONCAT:
     case OP_NIL: {
         byte arg = lulu_Instruction_get_byte1(inst);
         printf("%s %4i\n", name, arg);
@@ -101,7 +102,6 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     }
     case OP_TRUE: case OP_FALSE:
     case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV: case OP_MOD: case OP_POW:
-    case OP_CONCAT:
     case OP_UNM:
     case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:

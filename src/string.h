@@ -35,9 +35,6 @@ lulu_String_new(lulu_VM *vm, const char *data, isize len);
 void
 lulu_String_free(lulu_VM *vm, lulu_String *self);
 
-lulu_String *
-lulu_String_concat(lulu_VM *vm, lulu_String *a, lulu_String *b);
-
 u32
 lulu_String_hash(const char *data, isize len);
 

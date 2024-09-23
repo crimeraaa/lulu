@@ -62,19 +62,26 @@ lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser 
 }
 
 static bool
-opcode_folded(lulu_Compiler *self, lulu_OpCode op)
+folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
 {
+    lulu_OpCode op = lulu_Instruction_get_opcode(inst);
     if (self->prev_opcode != op) {
         return false;
     }
 
     lulu_Chunk       *chunk = current_chunk(self);
     lulu_Instruction *ip    = &chunk->code[chunk->len - 1];
+    
+    // e.g. folded CONCATs always requires 1 less actual intermediate.
+    int offset = 0;
     switch (op) {
+    case OP_CONCAT: offset = -1;
     case OP_NIL: {
-        int new_arg = lulu_Instruction_get_byte1(*ip) + 1;
-        if (0 < new_arg && new_arg < (cast(byte)-1)) {
-            *ip = lulu_Instruction_byte1(op, cast(byte)new_arg);
+        int old_arg  = cast(int)lulu_Instruction_get_byte1(*ip);
+        int new_arg  = cast(int)lulu_Instruction_get_byte1(inst);
+        int adjusted = old_arg + new_arg + offset;
+        if (0 < adjusted && adjusted < cast(int)MAX_BYTE) {
+            *ip = lulu_Instruction_byte1(op, cast(byte)adjusted);
             return true;
         }
         break;
@@ -88,8 +95,9 @@ opcode_folded(lulu_Compiler *self, lulu_OpCode op)
 void
 lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte a)
 {
-    if (!opcode_folded(self, op)) {
-        emit_instruction(self, parser, lulu_Instruction_byte1(op, a));
+    lulu_Instruction inst = lulu_Instruction_byte1(op, a);
+    if (!folded_instruction(self, inst)) {
+        emit_instruction(self, parser, inst);
     }
 }
 

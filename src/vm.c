@@ -86,6 +86,32 @@ check_compare(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
     check_numeric(vm, "compare", lhs, rhs);
 }
 
+static void
+concat(lulu_VM *vm, int count)
+{
+    lulu_Value   *args    = &vm->stack.top[-count];
+    lulu_Builder *builder = &vm->builder;
+    
+    lulu_Builder_reset(builder);
+    for (int i = 0; i < count; i++) {
+        lulu_Value *value = &args[i];
+        if (!lulu_Value_is_string(value)) {
+            lulu_VM_runtime_error(vm, "Attempt to concatenate a %s value",
+                lulu_Value_typename(value));
+        }
+        lulu_Builder_write_string(builder, value->string->data, value->string->len);
+    }
+    
+    isize        len    = 0;
+    const char  *data   = lulu_Builder_to_string(builder, &len);
+    lulu_String *string = lulu_String_new(vm, data, len);
+    lulu_Value   value;
+
+    lulu_Value_set_string(&value, string);
+    lulu_VM_popn(vm, count);
+    lulu_VM_push(vm, &value);
+}
+
 static lulu_Status
 execute_bytecode(lulu_VM *self)
 {
@@ -97,7 +123,7 @@ do {                                                                           \
     lulu_Value *lhs = poke_top(self, -2);                                      \
     check_fn(self, lhs, rhs);                                                  \
     lulu_Value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));          \
-    lulu_VM_pop(self);                                                         \
+    lulu_VM_popn(self, 1);                                                     \
 } while (0)
 
 #define ARITH_OP(lulu_Number_fn)    BINARY_OP(lulu_Value_set_number,  lulu_Number_fn, check_arith)
@@ -139,17 +165,8 @@ do {                                                                           \
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_CONCAT: {
-            lulu_Value rhs = lulu_VM_pop(self);
-            lulu_Value lhs = lulu_VM_pop(self);
-            if (lulu_Value_is_string(&lhs) && lulu_Value_is_string(&rhs)) {
-                lulu_String *result = lulu_String_concat(self, lhs.string, rhs.string);
-                lulu_Value   tmp;
-                lulu_Value_set_string(&tmp, result);
-                lulu_VM_push(self, &tmp);
-            } else {
-                lulu_VM_runtime_error(self, "Attempt to concatenate %s with %s",
-                    lulu_Value_typename(&lhs), lulu_Value_typename(&rhs));
-            }
+            int count = lulu_Instruction_get_byte1(inst);
+            concat(self, count);
             break;
         }
         case OP_UNM: {
@@ -166,7 +183,7 @@ do {                                                                           \
             lulu_Value *rhs = poke_top(self, -1);
             lulu_Value *lhs = poke_top(self, -2);
             lulu_Value_set_boolean(lhs, lulu_Value_eq(lhs, rhs));
-            lulu_VM_pop(self);
+            lulu_VM_popn(self, 1);
             break;
         }
         case OP_LT:  COMPARE_OP(lulu_Number_lt);  break;
@@ -178,8 +195,8 @@ do {                                                                           \
             break;
         }
         case OP_RETURN: {
-            lulu_Value value = lulu_VM_pop(self);
-            lulu_Debug_print_value(&value);
+            lulu_Debug_print_value(poke_top(self, -1));
+            lulu_VM_popn(self, 1);
             printf("\n");
             return LULU_OK;
         }
@@ -232,13 +249,12 @@ lulu_VM_push(lulu_VM *self, const lulu_Value *value)
     stack->top++;
 }
 
-lulu_Value
-lulu_VM_pop(lulu_VM *self)
+void
+lulu_VM_popn(lulu_VM *self, int count)
 {
     lulu_Stack *stack = &self->stack;
-    lulu_Debug_assert(stack->top > stack->base, "VM stack underflow");
-    stack->top--;
-    return *stack->top;
+    stack->top -= count;
+    lulu_Debug_assert(stack->top >= stack->base, "VM stack underflow");
 }
 
 lulu_Status

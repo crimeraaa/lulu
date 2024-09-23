@@ -43,6 +43,14 @@ lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser);
 void
 lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type, cstring msg);
 
+/**
+ * @brief
+ *      If the current (a.k.a. 'lookahead') token matches, consume it.
+ *      Otherwise, do nothing.
+ */
+bool
+lulu_Parse_match_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type);
+
 void
 lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser);
 

@@ -56,8 +56,8 @@ lulu_VM_interpret(lulu_VM *self, cstring name, cstring input);
 void
 lulu_VM_push(lulu_VM *self, const lulu_Value *value);
 
-lulu_Value
-lulu_VM_pop(lulu_VM *self);
+void
+lulu_VM_popn(lulu_VM *self, int count);
 
 /**
  * @brief

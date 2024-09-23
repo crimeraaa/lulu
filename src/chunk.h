@@ -3,6 +3,9 @@
 
 #include "value.h"
 
+#define MAX_BYTE    (cast(byte)-1)
+#define MAX_BYTE3   (cast(byte3)((1 << 24) - 1))
+
 typedef enum {
     OP_CONSTANT,
     OP_NIL, OP_TRUE, OP_FALSE,
@@ -31,10 +34,10 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
  *      [ 31..24 ] [ 23..16 ] [ 15..08 ] [ 07..00 ]
  *
  * @details Example:
+ *      arg A   =        3 =   00000011
+ *      arg B   =        0 =            00000000
+ *      arg C   =        0 =                     00000000
  *      opcode  =   OP_NIL =                              00000001
- *      byte1   =        3 =   00000011
- *      byte2   =        0 =            00000000
- *      byte3   =        0 =                     00000000
  *      inst    = 50331649 = 0b00000011_00000000_00000000_00000001
  */
 typedef u32 lulu_Instruction;

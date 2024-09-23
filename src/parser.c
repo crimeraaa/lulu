@@ -82,6 +82,16 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
     lulu_Parse_error_current(lexer, parser, msg);
 }
 
+bool
+lulu_Parse_match_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type)
+{
+    if (parser->current.type == type) {
+        lulu_Parse_advance_token(lexer, parser);
+        return true;
+    }
+    return false;
+}
+
 #define CSTRING_EOF "<eof>"
 
 LULU_ATTR_NORETURN
@@ -128,12 +138,29 @@ get_binary_op(lulu_Token_Type type)
     }
 }
 
+// Assumes we just consumed a '..' token.
 static void
 concat(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 {
-    // Enforce right associativity.
-    parse_precedence(compiler, lexer, parser, PREC_CONCAT);
-    lulu_Compiler_emit_opcode(compiler, parser, OP_CONCAT);
+    int argc = 1;
+    for (;;) {
+        if (argc >= cast(int)MAX_BYTE) {
+            lulu_Parse_error_consumed(lexer, parser, "Too many consecutive concatenations");
+        }
+        parse_precedence(compiler, lexer, parser, PREC_CONCAT + 1);
+        argc++;
+        if (!lulu_Parse_match_token(lexer, parser, TOKEN_ELLIPSIS_2)) {
+            break;
+        }
+    };
+
+    lulu_Compiler_emit_byte1(compiler, parser, OP_CONCAT, argc);
+
+    // // Enforce right associativity.
+    // while (get_rule(parser->consumed.type)->precedence <= PREC_CONCAT) {
+    //     parse_precedence(compiler, lexer, parser, PREC_CONCAT);
+    // }
+    // lulu_Compiler_emit_opcode(compiler, parser, OP_CONCAT);
 }
 
 static void
