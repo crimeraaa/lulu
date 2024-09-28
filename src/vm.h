@@ -36,10 +36,13 @@ struct lulu_VM {
     lulu_Stack          stack;
     lulu_Table          strings;  // Hashtable for interned strings.
     lulu_Builder        builder;
+
     lulu_Allocator      allocator;
     void               *allocator_data;
+
     lulu_Chunk         *chunk;
     lulu_Instruction   *ip;       // Points to next instruction to be executed.
+
     lulu_Object        *objects;  // Intrusive linked list of objects.
     lulu_Error_Handler *handlers; // Currently active error handler.
 };
@@ -55,9 +58,6 @@ lulu_VM_interpret(lulu_VM *self, cstring name, cstring input);
 
 void
 lulu_VM_push(lulu_VM *self, const lulu_Value *value);
-
-void
-lulu_VM_popn(lulu_VM *self, int count);
 
 /**
  * @brief

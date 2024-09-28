@@ -30,7 +30,7 @@ operator++(lulu_Precedence &prec, int)
 #endif // __cplusplus
 
 static void
-parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence);
+parse_precedence(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler, lulu_Precedence precedence);
 
 static lulu_Parse_Rule *
 get_rule(lulu_Token_Type type);
@@ -58,13 +58,13 @@ print_parser(const lulu_Parser *self)
 }
 
 void
-lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser)
+lulu_Parse_advance_token(lulu_Parser *parser, lulu_Lexer *lexer)
 {
     lulu_Token token = lulu_Lexer_scan_token(lexer);
 
     // Should be normally impossible, but just in case
     if (token.type == TOKEN_ERROR) {
-        lulu_Parse_error_current(lexer, parser, "Unhandled error token");
+        lulu_Parse_error_current(parser, lexer, "Unhandled error token");
     }
 
     parser->consumed = parser->current;
@@ -73,20 +73,20 @@ lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser)
 }
 
 void
-lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type, cstring msg)
+lulu_Parse_consume_token(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Token_Type type, cstring msg)
 {
     if (parser->current.type == type) {
-        lulu_Parse_advance_token(lexer, parser);
+        lulu_Parse_advance_token(parser, lexer);
         return;
     }
-    lulu_Parse_error_current(lexer, parser, msg);
+    lulu_Parse_error_current(parser, lexer, msg);
 }
 
 bool
-lulu_Parse_match_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type)
+lulu_Parse_match_token(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Token_Type type)
 {
     if (parser->current.type == type) {
-        lulu_Parse_advance_token(lexer, parser);
+        lulu_Parse_advance_token(parser, lexer);
         return true;
     }
     return false;
@@ -104,13 +104,13 @@ wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 }
 
 void
-lulu_Parse_error_current(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg)
+lulu_Parse_error_current(lulu_Parser *parser, lulu_Lexer *lexer, cstring msg)
 {
     wrap_error(lexer->vm, lexer->filename, &parser->current, msg);
 }
 
 void
-lulu_Parse_error_consumed(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg)
+lulu_Parse_error_consumed(lulu_Parser *parser, lulu_Lexer *lexer, cstring msg)
 {
     wrap_error(lexer->vm, lexer->filename, &parser->consumed, msg);
 }
@@ -140,31 +140,24 @@ get_binary_op(lulu_Token_Type type)
 
 // Assumes we just consumed a '..' token.
 static void
-concat(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+concat(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
     int argc = 1;
     for (;;) {
         if (argc >= cast(int)MAX_BYTE) {
-            lulu_Parse_error_consumed(lexer, parser, "Too many consecutive concatenations");
+            lulu_Parse_error_consumed(parser, lexer, "Too many consecutive concatenations");
         }
-        parse_precedence(compiler, lexer, parser, PREC_CONCAT + 1);
+        parse_precedence(parser, lexer, compiler, PREC_CONCAT + 1);
         argc++;
-        if (!lulu_Parse_match_token(lexer, parser, TOKEN_ELLIPSIS_2)) {
+        if (!lulu_Parse_match_token(parser, lexer, TOKEN_ELLIPSIS_2)) {
             break;
         }
-    };
-
+    }
     lulu_Compiler_emit_byte1(compiler, parser, OP_CONCAT, argc);
-
-    // // Enforce right associativity.
-    // while (get_rule(parser->consumed.type)->precedence <= PREC_CONCAT) {
-    //     parse_precedence(compiler, lexer, parser, PREC_CONCAT);
-    // }
-    // lulu_Compiler_emit_opcode(compiler, parser, OP_CONCAT);
 }
 
 static void
-binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+binary(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
     lulu_Token_Type type = parser->consumed.type;
     lulu_Precedence prec = get_rule(type)->precedence;
@@ -172,7 +165,7 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
     if (prec != PREC_POW) {
         prec++;
     }
-    parse_precedence(compiler, lexer, parser, prec);
+    parse_precedence(parser, lexer, compiler, prec);
     lulu_Compiler_emit_opcode(compiler, parser, get_binary_op(type));
 
     // NOT, GT and GEQ are implemented as complements of EQ, LEQ and LT.
@@ -189,7 +182,7 @@ binary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
 }
 
 static void
-literal(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+literal(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
     lulu_Value tmp;
     switch (parser->consumed.type) {
@@ -224,10 +217,10 @@ literal(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
  *      Assumes we just consumed a ')' character.
  */
 static void
-grouping(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+grouping(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
-    lulu_Parse_expression(compiler, lexer, parser);
-    lulu_Parse_consume_token(lexer, parser, TOKEN_PAREN_R, "Expected ')' after expression");
+    lulu_Parse_expression(parser, lexer, compiler);
+    lulu_Parse_consume_token(parser, lexer, TOKEN_PAREN_R, "Expected ')' after expression");
 }
 
 static lulu_OpCode
@@ -246,13 +239,13 @@ get_unary_opcode(lulu_Token_Type type)
  *      Assumes we just consumed some unary operator, like '-' or '#'.
  */
 static void
-unary(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+unary(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
     // Saved in stack frame memory as recursion will update `parser->consumed`.
     lulu_Token_Type type = parser->consumed.type;
 
     // Compile the operand.
-    parse_precedence(compiler, lexer, parser, PREC_UNARY);
+    parse_precedence(parser, lexer, compiler, PREC_UNARY);
     lulu_Compiler_emit_opcode(compiler, parser, get_unary_opcode(type));
 }
 
@@ -348,32 +341,32 @@ LULU_PARSE_RULES[] = {
 /// }}}=========================================================================
 
 void
-lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser)
+lulu_Parse_expression(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
-    parse_precedence(compiler, lexer, parser, PREC_ASSIGNMENT + 1);
+    parse_precedence(parser, lexer, compiler, PREC_ASSIGNMENT + 1);
 }
 
 static void
-parse_infix(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence)
+parse_infix(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler, lulu_Precedence precedence)
 {
     while (precedence <= get_rule(parser->current.type)->precedence) {
-        lulu_Parse_advance_token(lexer, parser);
+        lulu_Parse_advance_token(parser, lexer);
         lulu_ParseFn infix_rule = get_rule(parser->consumed.type)->infix_fn;
-        infix_rule(compiler, lexer, parser);
+        infix_rule(parser, lexer, compiler);
     }
 }
 
 static void
-parse_precedence(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser, lulu_Precedence precedence)
+parse_precedence(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler, lulu_Precedence precedence)
 {
-    lulu_Parse_advance_token(lexer, parser);
+    lulu_Parse_advance_token(parser, lexer);
     lulu_ParseFn prefix_rule = get_rule(parser->consumed.type)->prefix_fn;
     if (!prefix_rule) {
-        lulu_Parse_error_consumed(lexer, parser, "Expected prefix expression");
+        lulu_Parse_error_consumed(parser, lexer, "Expected prefix expression");
         return;
     }
-    prefix_rule(compiler, lexer, parser);
-    parse_infix(compiler, lexer, parser, precedence);
+    prefix_rule(parser, lexer, compiler);
+    parse_infix(parser, lexer, compiler, precedence);
 }
 
 static lulu_Parse_Rule *

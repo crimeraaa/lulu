@@ -65,25 +65,25 @@ poke_top(lulu_VM *vm, int offset)
 }
 
 static void
-check_numeric(lulu_VM *vm, cstring act, const lulu_Value *lhs, const lulu_Value *rhs)
+check_numeric(lulu_VM *vm, cstring act, int lhs_offset, int rhs_offset)
 {
-    if (lulu_Value_is_number(lhs) && lulu_Value_is_number(rhs)) {
+    if (lulu_is_number(vm, lhs_offset) && lulu_is_number(vm, rhs_offset)) {
         return;
     }
     lulu_VM_runtime_error(vm, "Attempt to %s %s with %s",
-        act, lulu_Value_typename(lhs), lulu_Value_typename(rhs));
+        act, lulu_typename(vm, lhs_offset), lulu_typename(vm, rhs_offset));
 }
 
 static void
-check_arith(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
+check_arith(lulu_VM *vm, int lhs_offset, int rhs_offset)
 {
-    check_numeric(vm, "perform arithmetic on", lhs, rhs);
+    check_numeric(vm, "perform arithmetic on", lhs_offset, rhs_offset);
 }
 
 static void
-check_compare(lulu_VM *vm, const lulu_Value *lhs, const lulu_Value *rhs)
+check_compare(lulu_VM *vm, int lhs_offset, int rhs_offset)
 {
-    check_numeric(vm, "compare", lhs, rhs);
+    check_numeric(vm, "compare", lhs_offset, rhs_offset);
 }
 
 static void
@@ -104,26 +104,23 @@ concat(lulu_VM *vm, int count)
     
     isize        len    = 0;
     const char  *data   = lulu_Builder_to_string(builder, &len);
-    lulu_String *string = lulu_String_new(vm, data, len);
-    lulu_Value   value;
-
-    lulu_Value_set_string(&value, string);
-    lulu_VM_popn(vm, count);
-    lulu_VM_push(vm, &value);
+    lulu_popn(vm, count);
+    lulu_push_string(vm, data, len);
 }
 
 static lulu_Status
 execute_bytecode(lulu_VM *self)
 {
-    lulu_Chunk *chunk = current_chunk(self);
+    lulu_Chunk       *chunk     = current_chunk(self);
+    lulu_Value_Array *constants = &chunk->constants;
 
 #define BINARY_OP(lulu_Value_set_fn, lulu_Number_fn, check_fn)                 \
 do {                                                                           \
-    lulu_Value *rhs = poke_top(self, -1);                                      \
+    check_fn(self, -2, -1);                                                    \
     lulu_Value *lhs = poke_top(self, -2);                                      \
-    check_fn(self, lhs, rhs);                                                  \
+    lulu_Value *rhs = poke_top(self, -1);                                      \
     lulu_Value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));          \
-    lulu_VM_popn(self, 1);                                                     \
+    lulu_pop(self);                                                            \
 } while (0)
 
 #define ARITH_OP(lulu_Number_fn)    BINARY_OP(lulu_Value_set_number,  lulu_Number_fn, check_arith)
@@ -144,20 +141,17 @@ do {                                                                           \
         lulu_Instruction inst = *self->ip++;
         switch (lulu_Instruction_get_opcode(inst)) {
         case OP_CONSTANT: {
-            byte3      index = lulu_Instruction_get_byte3(inst);
-            lulu_Value value = chunk->constants.values[index];
-            lulu_VM_push(self, &value);
+            byte3 index = lulu_Instruction_get_byte3(inst);
+            lulu_VM_push(self, &constants->values[index]);
             break;
         }
         case OP_NIL: {
             int count = lulu_Instruction_get_byte1(inst);
-            for (int i = 0; i < count; i++) {
-                lulu_VM_push(self, &LULU_VALUE_NIL);
-            }
+            lulu_push_nil(self, count);
             break;
         }
-        case OP_TRUE:  lulu_VM_push(self, &LULU_VALUE_TRUE);  break;
-        case OP_FALSE: lulu_VM_push(self, &LULU_VALUE_FALSE); break;
+        case OP_TRUE:  lulu_push_boolean(self, true);  break;
+        case OP_FALSE: lulu_push_boolean(self, false); break;
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
         case OP_SUB: ARITH_OP(lulu_Number_sub); break;
         case OP_MUL: ARITH_OP(lulu_Number_mul); break;
@@ -170,12 +164,12 @@ do {                                                                           \
             break;
         }
         case OP_UNM: {
-            lulu_Value *value = poke_top(self, -1);
-            if (lulu_Value_is_number(value)) {
+            if (lulu_is_number(self, -1)) {
+                lulu_Value *value = poke_top(self, -1);
                 lulu_Value_set_number(value, lulu_Number_unm(value->number));
             } else {
-                lulu_VM_runtime_error(self,
-                    "Attempt to negate a %s value", lulu_Value_typename(value));
+                lulu_VM_runtime_error(self, "Attempt to negate a %s value",
+                    lulu_typename(self, -1));
             }
             break;
         }
@@ -183,12 +177,11 @@ do {                                                                           \
             lulu_Value *rhs = poke_top(self, -1);
             lulu_Value *lhs = poke_top(self, -2);
             lulu_Value_set_boolean(lhs, lulu_Value_eq(lhs, rhs));
-            lulu_VM_popn(self, 1);
+            lulu_pop(self);
             break;
         }
         case OP_LT:  COMPARE_OP(lulu_Number_lt);  break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
-
         case OP_NOT: {
             lulu_Value *value = poke_top(self, -1);
             lulu_Value_set_boolean(value, lulu_Value_is_falsy(value));
@@ -196,7 +189,7 @@ do {                                                                           \
         }
         case OP_RETURN: {
             lulu_Debug_print_value(poke_top(self, -1));
-            lulu_VM_popn(self, 1);
+            lulu_pop(self);
             printf("\n");
             return LULU_OK;
         }
@@ -247,14 +240,6 @@ lulu_VM_push(lulu_VM *self, const lulu_Value *value)
     lulu_Debug_assert(stack->top < stack->end, "VM stack overflow");
     *stack->top = *value;
     stack->top++;
-}
-
-void
-lulu_VM_popn(lulu_VM *self, int count)
-{
-    lulu_Stack *stack = &self->stack;
-    stack->top -= count;
-    lulu_Debug_assert(stack->top >= stack->base, "VM stack underflow");
 }
 
 lulu_Status

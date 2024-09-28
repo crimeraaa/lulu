@@ -21,7 +21,7 @@ typedef enum {
 } lulu_Precedence;
 
 typedef void
-(*lulu_ParseFn)(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser);
+(*lulu_ParseFn)(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler);
 
 typedef const struct {
     lulu_ParseFn    prefix_fn;
@@ -34,14 +34,14 @@ typedef const struct {
  *      Analogous to the book's `compiler.c:advance()`.
  */
 void
-lulu_Parse_advance_token(lulu_Lexer *lexer, lulu_Parser *parser);
+lulu_Parse_advance_token(lulu_Parser *parser, lulu_Lexer *lexer);
 
 /**
  * @note 2024-09-07
  *      Analogous to the book's `compiler.c:consume()`.
  */
 void
-lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type, cstring msg);
+lulu_Parse_consume_token(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Token_Type type, cstring msg);
 
 /**
  * @brief
@@ -49,10 +49,10 @@ lulu_Parse_consume_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type
  *      Otherwise, do nothing.
  */
 bool
-lulu_Parse_match_token(lulu_Lexer *lexer, lulu_Parser *parser, lulu_Token_Type type);
+lulu_Parse_match_token(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Token_Type type);
 
 void
-lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *parser);
+lulu_Parse_expression(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler);
 
 /**
  * @note 2024-09-07
@@ -60,7 +60,7 @@ lulu_Parse_expression(lulu_Compiler *compiler, lulu_Lexer *lexer, lulu_Parser *p
  */
 LULU_ATTR_NORETURN
 void
-lulu_Parse_error_current(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg);
+lulu_Parse_error_current(lulu_Parser *parser, lulu_Lexer *lexer, cstring msg);
 
 /**
  * @note 2024-09-07
@@ -68,6 +68,6 @@ lulu_Parse_error_current(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg);
  */
 LULU_ATTR_NORETURN
 void
-lulu_Parse_error_consumed(lulu_Lexer *lexer, lulu_Parser *parser, cstring msg);
+lulu_Parse_error_consumed(lulu_Parser *parser, lulu_Lexer *lexer, cstring msg);
 
 #endif // LULU_PARSER_H

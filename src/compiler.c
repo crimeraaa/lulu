@@ -48,7 +48,7 @@ make_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const
     lulu_VM *vm    = self->vm;
     isize    index = lulu_Chunk_add_constant(vm, current_chunk(self), value);
     if (index > LULU_MAX_CONSTANTS) {
-        lulu_Parse_error_consumed(lexer, parser, "Too many constants in one chunk.");
+        lulu_Parse_error_consumed(parser, lexer, "Too many constants in one chunk.");
         return 0;
     }
     return cast(byte3)index;
@@ -80,7 +80,7 @@ folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
         int old_arg  = cast(int)lulu_Instruction_get_byte1(*ip);
         int new_arg  = cast(int)lulu_Instruction_get_byte1(inst);
         int adjusted = old_arg + new_arg + offset;
-        if (0 < adjusted && adjusted < cast(int)MAX_BYTE) {
+        if (0 < adjusted && adjusted <= cast(int)MAX_BYTE) {
             *ip = lulu_Instruction_byte1(op, cast(byte)adjusted);
             return true;
         }
@@ -117,8 +117,8 @@ lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk)
     lulu_Parser parser;
     self->chunk = chunk;
     lulu_Lexer_init(self->vm, &lexer, chunk->filename, input);
-    lulu_Parse_advance_token(&lexer, &parser);
-    lulu_Parse_expression(self, &lexer, &parser);
-    lulu_Parse_consume_token(&lexer, &parser, TOKEN_EOF, "Expected end of expression");
+    lulu_Parse_advance_token(&parser, &lexer);
+    lulu_Parse_expression(&parser, &lexer, self);
+    lulu_Parse_consume_token(&parser, &lexer, TOKEN_EOF, "Expected end of expression");
     lulu_Compiler_end(self, &parser);
 }

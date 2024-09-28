@@ -33,7 +33,7 @@ union lulu_User_Alignment {
 #define LULU_IMPL_ERROR_HANDLING_LONGJMP     2
 
 // Determine the language-specific error handling we should use.
-#if defined __cplusplus
+#if defined(__cplusplus)
 
     #define LULU_IMPL_ERROR_HANDLING    LULU_IMPL_ERROR_HANDLING_EXCEPTION
 
@@ -155,6 +155,7 @@ typedef ptrdiff_t isize;
 typedef const char *cstring;
 
 typedef struct lulu_VM lulu_VM;
+typedef double lulu_Number;
 
 typedef void *
 (*lulu_Allocator)(void *allocator_data, isize new_size, isize align, void *old_ptr, isize old_size);
@@ -165,5 +166,48 @@ typedef enum {
     LULU_ERROR_RUNTIME,
     LULU_ERROR_MEMORY,
 } lulu_Status;
+
+///=== TYPE QUERY FUNCTIONS ====================================================
+
+cstring
+lulu_typename(lulu_VM *vm, int offset);
+
+bool
+lulu_is_nil(lulu_VM *vm, int offset);
+
+bool
+lulu_is_boolean(lulu_VM *vm, int offset);
+
+bool
+lulu_is_number(lulu_VM *vm, int offset);
+
+bool
+lulu_is_string(lulu_VM *vm, int offset);
+
+///=============================================================================
+
+///=== STACK MANIPULATION FUNCTIONS ============================================
+
+#define lulu_pop(vm)    lulu_popn(vm, 1)
+
+void
+lulu_popn(lulu_VM *vm, int count);
+
+void
+lulu_push_nil(lulu_VM *vm, int count);
+
+void
+lulu_push_boolean(lulu_VM *vm, bool boolean);
+
+void
+lulu_push_number(lulu_VM *vm, lulu_Number number);
+
+void
+lulu_push_cstring(lulu_VM *vm, cstring cstr);
+
+void
+lulu_push_string(lulu_VM *vm, const char *data, isize len);
+
+///=============================================================================
 
 #endif // LULU_H

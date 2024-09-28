@@ -5,7 +5,7 @@
 lulu_Table *
 lulu_Table_new(lulu_VM *vm)
 {
-    lulu_Table *table = cast(lulu_Table *)lulu_Object_new(vm, LULU_TYPE_TABLE, size_of(lulu_Table));
+    lulu_Table *table = cast(lulu_Table *)lulu_Object_new(vm, LULU_TYPE_TABLE, size_of(*table));
     lulu_Table_init(table);
     return table;
 }
@@ -67,7 +67,7 @@ find_pair(lulu_Table_Pair *pairs, isize cap, const lulu_Value *key)
             if (lulu_Value_is_nil(&pair->value)) {
                 return (tombstone) ? tombstone : pair;
             }
-            // Check if can reuse a tombstone.
+            // Check if we can reuse a tombstone.
             if (!tombstone) {
                 tombstone = pair;
             }
@@ -107,13 +107,13 @@ adjust_capacity(lulu_VM *vm, lulu_Table *table, isize new_cap)
     table->cap   = new_cap;
 }
 
-lulu_Value
+const lulu_Value *
 lulu_Table_get(lulu_Table *self, const lulu_Value *key)
 {
     if (self->count == 0 || lulu_Value_is_nil(key)) {
-        return LULU_VALUE_NIL;
+        return NULL;
     }
-    return find_pair(self->pairs, self->cap, key)->value;
+    return &find_pair(self->pairs, self->cap, key)->value;
 }
 
 lulu_String *
@@ -155,11 +155,14 @@ lulu_Table_find_string(lulu_Table *self, const char *data, isize len, u32 hash)
 bool
 lulu_Table_set(lulu_VM *vm, lulu_Table *self, const lulu_Value *key, const lulu_Value *value)
 {
+    if (lulu_Value_is_nil(key)) {
+        return false;
+    }
     if (self->count >= self->cap * LULU_TABLE_MAX_LOAD) {
         adjust_capacity(vm, self, lulu_Memory_grow_capacity(self->cap));
     }
-    lulu_Table_Pair *pair = find_pair(self->pairs, self->cap, key);
 
+    lulu_Table_Pair *pair = find_pair(self->pairs, self->cap, key);
     bool is_new_key = lulu_Value_is_nil(&pair->key);
     if (is_new_key && lulu_Value_is_nil(&pair->value)) {
         self->count++;

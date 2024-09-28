@@ -500,7 +500,6 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
         return make_token(self, TOKEN_BRACKET_L);
     }
     case ']': return make_token(self, TOKEN_BRACKET_R);
-
     case ',': return make_token(self, TOKEN_COMMA);
     case ':': return make_token(self, TOKEN_COLON);
     case ';': return make_token(self, TOKEN_SEMICOLON);

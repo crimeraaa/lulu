@@ -5,8 +5,6 @@
 
 #include <math.h>
 
-typedef double lulu_Number;
-
 #define LULU_NUMBER_FMT             "%.14g"
 #define lulu_Number_add(lhs, rhs)   ((lhs) + (rhs))
 #define lulu_Number_sub(lhs, rhs)   ((lhs) - (rhs))

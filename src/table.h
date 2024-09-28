@@ -3,7 +3,7 @@
 
 #include "string.h"
 
-#define LULU_TABLE_MAX_LOAD     (0.75)
+#define LULU_TABLE_MAX_LOAD     0.75
 
 typedef struct {
     lulu_Value key;
@@ -27,7 +27,12 @@ lulu_Table_init(lulu_Table *self);
 void
 lulu_Table_free(lulu_VM *vm, lulu_Table *self);
 
-lulu_Value
+/**
+ * @warning 2024-09-29
+ *      If 'key' does not exist in the table, we return 'NULL'.
+ *      This is to differentiate valid keys from invalid ones.
+ */
+const lulu_Value *
 lulu_Table_get(lulu_Table *self, const lulu_Value *key);
 
 lulu_String *
