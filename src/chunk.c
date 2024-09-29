@@ -1,7 +1,7 @@
 #include "chunk.h"
 
 // @todo 2024-09-22 Just remove the designated initializers entirely!
-#if defined __GNUC__
+#if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wc99-designator"
 #endif
@@ -28,7 +28,7 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_RETURN]     = {"RETURN",        0,           0,          1},
 };
 
-#if defined __GNUC__
+#if defined(__GNUC__)
     #pragma GCC diagnostic pop
 #endif
 

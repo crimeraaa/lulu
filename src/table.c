@@ -1,6 +1,6 @@
 #include "table.h"
 
-#include <string.h>
+#include <string.h>     // memcpy, memcmp
 
 lulu_Table *
 lulu_Table_new(lulu_VM *vm)

@@ -9,11 +9,11 @@
 #include <stdlib.h>     // exit()
 
 static void
-reset_stack(lulu_Stack *stack)
+reset_stack(lulu_VM *vm)
 {
-    stack->base = &stack->values[0];
-    stack->top  = stack->base;
-    stack->end  = stack->base + LULU_VM_STACK_MAX;
+    vm->base = &vm->values[0];
+    vm->top  = vm->base;
+    vm->end  = vm->base + LULU_VM_STACK_MAX;
 }
 
 static void
@@ -28,7 +28,7 @@ init_table(lulu_Table *table)
 void
 lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
-    reset_stack(&self->stack);
+    reset_stack(self);
     init_table(&self->strings);
     lulu_Builder_init(self, &self->builder);
     self->allocator      = allocator;
@@ -61,7 +61,7 @@ current_chunk(lulu_VM *self)
 static lulu_Value *
 poke_top(lulu_VM *vm, int offset)
 {
-    return &vm->stack.top[offset];
+    return &vm->top[offset];
 }
 
 static void
@@ -89,7 +89,7 @@ check_compare(lulu_VM *vm, int lhs_offset, int rhs_offset)
 static void
 concat(lulu_VM *vm, int count)
 {
-    lulu_Value   *args    = &vm->stack.top[-count];
+    lulu_Value   *args    = &vm->top[-count];
     lulu_Builder *builder = &vm->builder;
     
     lulu_Builder_reset(builder);
@@ -128,9 +128,8 @@ do {                                                                           \
 
     for (;;) {
 #ifdef LULU_DEBUG_TRACE
-        const lulu_Stack *stack = &self->stack;
         printf("        ");
-        for (const lulu_Value *slot = stack->base; slot < stack->top; slot++) {
+        for (const lulu_Value *slot = self->base; slot < self->top; slot++) {
             printf("[ ");
             lulu_Debug_print_value(slot);
             printf(" ]");
@@ -236,25 +235,27 @@ lulu_VM_interpret(lulu_VM *self, cstring name, cstring input)
 void
 lulu_VM_push(lulu_VM *self, const lulu_Value *value)
 {
-    lulu_Stack *stack = &self->stack;
-    lulu_Debug_assert(stack->top < stack->end, "VM stack overflow");
-    *stack->top = *value;
-    stack->top++;
+    lulu_Debug_assert(self->top < self->end, "VM self overflow");
+    *self->top = *value;
+    self->top++;
 }
 
 lulu_Status
 lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
 {
     lulu_Error_Handler handler;
+
+    // Chain new error handler
     handler.status = LULU_OK;
-    handler.prev   = self->handlers; // Chain new error handler
+    handler.prev   = self->handlers;
     self->handlers = &handler;
 
     LULU_IMPL_TRY(&handler) {
         fn(self, userdata);
     } LULU_IMPL_CATCH(&handler);
 
-    self->handlers = handler.prev; // Restore old error handler
+    // Restore old error handler
+    self->handlers = handler.prev;
     return handler.status;
 }
 
@@ -292,6 +293,6 @@ lulu_VM_runtime_error(lulu_VM *self, cstring fmt, ...)
     va_end(args);
 
     // Ensure stack is valid for the next run.
-    reset_stack(&self->stack);
+    reset_stack(self);
     lulu_VM_throw_error(self, LULU_ERROR_RUNTIME);
 }

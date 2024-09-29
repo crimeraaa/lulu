@@ -8,7 +8,7 @@
 /**
  * @brief
  *      Given the relative index 'offset' (positive or negative), load the
- *      appropriate 'lulu_Value' pointer from the stack.
+ *      appropriate 'lulu_Value' pointer from the 
  * 
  * @warning 2024-09-29
  *      May load a potentially invalid address!
@@ -20,9 +20,9 @@ static lulu_Value *
 offset_to_address(lulu_VM *vm, int offset)
 {
     if (offset >= 0) {
-        return vm->stack.base + offset;
+        return vm->base + offset;
     } else {
-        return vm->stack.top + offset;
+        return vm->top + offset;
     }
 }
 
@@ -36,11 +36,10 @@ offset_to_address(lulu_VM *vm, int offset)
 static void
 check_stack(lulu_VM *vm, int count)
 {
-    const lulu_Stack *stack = &vm->stack;
     // Loaded potentially invalid pointers is not standard, so this will have
     // to do instead.
-    isize cur_index = stack->top - stack->base;
-    isize end_index = stack->end - stack->base;
+    isize cur_index = vm->top - vm->base;
+    isize end_index = vm->end - vm->base;
     isize new_index = cur_index + count;
     
     if (0 <= new_index && new_index < end_index) {
@@ -53,8 +52,8 @@ static void
 push_safe(lulu_VM *vm, const lulu_Value *value)
 {
     check_stack(vm, 1);
-    vm->stack.top[0] = *value;
-    vm->stack.top++;
+    vm->top[0] = *value;
+    vm->top++;
 }
 
 ///=== TYPE QUERY FUNCTIONS ====================================================
@@ -96,7 +95,7 @@ lulu_is_string(lulu_VM *vm, int offset)
 void
 lulu_popn(lulu_VM *vm, int count)
 {
-    vm->stack.top -= count;
+    vm->top -= count;
 }
 
 void
@@ -104,9 +103,9 @@ lulu_push_nil(lulu_VM *vm, int count)
 {
     check_stack(vm, count);
     for (int i = 0; i < count; i++) {
-        vm->stack.top[i] = LULU_VALUE_NIL;
+        vm->top[i] = LULU_VALUE_NIL;
     }
-    vm->stack.top += count;
+    vm->top += count;
 }
 
 void

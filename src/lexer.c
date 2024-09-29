@@ -13,13 +13,17 @@ is_ascii_digit(char ch)
 static bool
 is_ascii_hexdigit(char ch)
 {
-    return is_ascii_digit(ch) || ('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F');
+    return is_ascii_digit(ch)
+        || ('a' <= ch && ch <= 'f')
+        || ('A' <= ch && ch <= 'F');
 }
 
 static bool
 is_ascii_alpha(char ch)
 {
-    return ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z') || ch == '_';
+    return ('a' <= ch && ch <= 'z')
+        || ('A' <= ch && ch <= 'Z')
+        || ch == '_';
 }
 
 static bool
@@ -104,9 +108,9 @@ static lulu_Token
 make_token(const lulu_Lexer *lexer, lulu_Token_Type type)
 {
     lulu_Token token;
-    token.type  = type;
     token.start = lexer->start;
     token.len   = lexer->current - lexer->start;
+    token.type  = type;
     token.line  = lexer->line;
     return token;
 }
@@ -213,7 +217,7 @@ skip_whitespace(lulu_Lexer *lexer)
 #define lit(cstr)   {cstr, size_of(cstr) - 1}
 
 // @todo 2024-09-22: Just remove the designated initializers entirely!
-#if defined __GNUC__
+#if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wc99-designator"
 #endif
@@ -250,7 +254,7 @@ static const struct {
     [TOKEN_WHILE]       = lit("while"),
 };
 
-#if defined __GNUC__
+#if defined(__GNUC__)
     #pragma GCC diagnostic pop
 #endif
 
@@ -490,7 +494,7 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
         if (match_char(self, '[')) {
             skip_multiline(self, opening);
             lulu_Token  token = make_token(self, TOKEN_STRING_LIT);
-            int         skip  = opening + 2; // Both '[' or ']' with 1/+ '='
+            int         skip  = opening + 2; // Both [ or ] with 1+ =
 
             token.start += skip;      // Skip opening
             token.len   -= (skip * 2);// Discard BOTH ends from view length
@@ -512,10 +516,9 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
         }
         return make_token(self, TOKEN_PERIOD);
     case '#': return make_token(self, TOKEN_HASH);
-
     case '+': return make_token(self, TOKEN_PLUS);
     case '-': return make_token(self, TOKEN_DASH);
-    case '*': return make_token(self, TOKEN_ASTERISK);
+    case '*': return make_token(self, TOKEN_STAR);
     case '/': return make_token(self, TOKEN_SLASH);
     case '%': return make_token(self, TOKEN_PERCENT);
     case '^': return make_token(self, TOKEN_CARET);

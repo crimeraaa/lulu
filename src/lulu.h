@@ -65,7 +65,7 @@ union lulu_User_Alignment {
     
     #define LULU_IMPL_ERROR_HANDLING        LULU_IMPL_ERROR_HANDLING_LONGJMP
 
-    #if defined __STDC__ && __STDC_VERSION__ >= 201112L
+    #if defined(__STDC__) && __STDC_VERSION__ >= 201112L
         #include <stdnoreturn.h>
         #define LULU_ATTR_NORETURN          noreturn
     #endif
@@ -82,7 +82,7 @@ union lulu_User_Alignment {
 
 // @note 2024-09-22: This is the only 'required' attribute.
 #if !defined LULU_ATTR_NORETURN
-    #if defined __GNUC__
+    #if defined(__GNUC__)
         #define LULU_ATTR_NORETURN  __attribute__((__noreturn__))
     #elif defined _MSC_VER
         // @warning: Untested!
@@ -93,7 +93,7 @@ union lulu_User_Alignment {
 #endif
 
 #if !defined LULU_ATTR_DEPRECATED
-    #if defined __GNUC__
+    #if defined(__GNUC__)
         #define LULU_ATTR_DEPRECATED    __attribute__((__deprecated__))
     #elif defined _MSC_VER
         #define LULU_ATTR_DEPRECATED    __declspec(deprecated)
@@ -103,7 +103,7 @@ union lulu_User_Alignment {
 #endif
 
 #if !defined LULU_ATTR_UNUSED
-    #if defined __GNUC__
+    #if defined(__GNUC__)
         #define LULU_ATTR_UNUSED        __attribute__((__unused__))
     #else
         #define LULU_ATTR_UNUSED

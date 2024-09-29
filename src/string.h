@@ -3,7 +3,7 @@
 
 #include "object.h"
 
-#if defined __GNUC__
+#if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wc99-extensions"
 #elif defined _MSC_VER
@@ -18,7 +18,7 @@ struct lulu_String {
     char        data[]; // Guaranteed to be nul terminated.
 };
 
-#if defined __GNUC__
+#if defined(__GNUC__)
     #pragma GCC diagnostic pop
 #elif defined _MSC_VER
     #pragma warning(pop)

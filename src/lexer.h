@@ -43,7 +43,7 @@ TOKEN_HASH,         // #   := table/string length unary operator.
 
 TOKEN_PLUS,         // + := addition
 TOKEN_DASH,         // - := subtraction, Lua-style comment (single/multi-line)
-TOKEN_ASTERISK,     // * := multiplication
+TOKEN_STAR,         // * := multiplication
 TOKEN_SLASH,        // / := division
 TOKEN_PERCENT,      // % := modulo
 TOKEN_CARET,        // ^ := exponentiation
@@ -53,9 +53,9 @@ TOKEN_CARET,        // ^ := exponentiation
 ///=== MULTI=CHARACTER TOKENS ==================================================
 
 TOKEN_EQUAL,
-TOKEN_EQUAL_EQUAL, TOKEN_TILDE_EQUAL,   // ==, ~=
-TOKEN_ANGLE_L,     TOKEN_ANGLE_L_EQUAL, // <,  <=
-TOKEN_ANGLE_R,     TOKEN_ANGLE_R_EQUAL, // >,  >=
+TOKEN_EQUAL_EQUAL, TOKEN_TILDE_EQUAL,   // == ~=
+TOKEN_ANGLE_L,     TOKEN_ANGLE_L_EQUAL, // <  <=
+TOKEN_ANGLE_R,     TOKEN_ANGLE_R_EQUAL, // >  >=
 
 ///=============================================================================
 
@@ -70,9 +70,9 @@ TOKEN_EOF,
 #define LULU_TOKEN_COUNT    (TOKEN_EOF + 1)
 
 typedef struct {
-    lulu_Token_Type type;
     const char     *start;
     isize           len;
+    lulu_Token_Type type;  // Placed as 3rd member due to padding of above.
     int             line;
 } lulu_Token;
 

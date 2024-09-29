@@ -7,13 +7,6 @@
 
 #define LULU_VM_STACK_MAX   256
 
-typedef struct {
-    lulu_Value  values[LULU_VM_STACK_MAX];
-    lulu_Value *base;  // Points to index 0 of `values`.
-    lulu_Value *top;   // Points to 1 past the most recently written stack slot.
-    lulu_Value *end;   // Points to 1 past the last valid stack slot.
-} lulu_Stack;
-
 typedef struct lulu_Error_Handler lulu_Error_Handler;
 
 struct lulu_Error_Handler {
@@ -33,7 +26,11 @@ typedef void
 (*lulu_ProtectedFn)(lulu_VM *vm, void *userdata);
 
 struct lulu_VM {
-    lulu_Stack          stack;
+    lulu_Value          values[LULU_VM_STACK_MAX];
+    lulu_Value         *base;  // Points to index 0 of `values`.
+    lulu_Value         *top;   // Points to 1 past the most recently written stack slot.
+    lulu_Value         *end;   // Points to 1 past the last valid stack slot.
+
     lulu_Table          strings;  // Hashtable for interned strings.
     lulu_Builder        builder;
 

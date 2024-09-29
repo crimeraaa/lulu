@@ -2,7 +2,7 @@
 #include "string.h"
 
 // @todo 2024-09-22 Just remove the designated initializers entirely!
-#if defined __GNUC__
+#if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wc99-designator"
 #endif
@@ -16,7 +16,7 @@ LULU_TYPENAMES[LULU_TYPE_COUNT] = {
     [LULU_TYPE_TABLE]   = "table",
 };
 
-#if defined __GNUC__
+#if defined(__GNUC__)
     #pragma GCC diagnostic pop
 #endif
 
@@ -39,7 +39,7 @@ lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
     switch (a->type) {
     case LULU_TYPE_NIL:     return true;
     case LULU_TYPE_BOOLEAN: return a->boolean == b->boolean;
-    case LULU_TYPE_NUMBER:  return a->number == b->number;
+    case LULU_TYPE_NUMBER:  return lulu_Number_eq(a->number, b->number);
     case LULU_TYPE_STRING:  return a->string == b->string;
     case LULU_TYPE_TABLE:   return a->table == b->table;
     }
