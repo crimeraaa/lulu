@@ -235,7 +235,7 @@ lulu_VM_interpret(lulu_VM *self, cstring name, cstring input)
 void
 lulu_VM_push(lulu_VM *self, const lulu_Value *value)
 {
-    lulu_Debug_assert(self->top < self->end, "VM self overflow");
+    lulu_check_stack(self, 1);
     *self->top = *value;
     self->top++;
 }

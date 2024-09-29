@@ -26,15 +26,16 @@ offset_to_address(lulu_VM *vm, int offset)
     }
 }
 
-/**
- * @brief
- *      Check if the stack can accomodate 'count' more elements pushed.
- * 
- * @todo 2024-09-29
- *      Realloc the stack as needed?
- */
 static void
-check_stack(lulu_VM *vm, int count)
+push_safe(lulu_VM *vm, const lulu_Value *value)
+{
+    lulu_check_stack(vm, 1);
+    vm->top[0] = *value;
+    vm->top++;
+}
+
+void
+lulu_check_stack(lulu_VM *vm, int count)
 {
     // Loaded potentially invalid pointers is not standard, so this will have
     // to do instead.
@@ -42,18 +43,10 @@ check_stack(lulu_VM *vm, int count)
     isize end_index = vm->end - vm->base;
     isize new_index = cur_index + count;
     
-    if (0 <= new_index && new_index < end_index) {
+    if (0 <= new_index && new_index <= end_index) {
         return;
     }
-    lulu_VM_runtime_error(vm, "Stack %sflow", (new_index < 0) ? "under" : "over");
-}
-
-static void
-push_safe(lulu_VM *vm, const lulu_Value *value)
-{
-    check_stack(vm, 1);
-    vm->top[0] = *value;
-    vm->top++;
+    lulu_VM_runtime_error(vm, "Stack %s", (new_index >= 0) ? "overflow" : "underflow");
 }
 
 ///=== TYPE QUERY FUNCTIONS ====================================================
@@ -101,7 +94,7 @@ lulu_popn(lulu_VM *vm, int count)
 void
 lulu_push_nil(lulu_VM *vm, int count)
 {
-    check_stack(vm, count);
+    lulu_check_stack(vm, count);
     for (int i = 0; i < count; i++) {
         vm->top[i] = LULU_VALUE_NIL;
     }

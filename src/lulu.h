@@ -169,6 +169,17 @@ typedef enum {
     LULU_ERROR_MEMORY,
 } lulu_Status;
 
+/**
+ * @brief
+ *      Check if the stack can accomodate 'count' extra elements.
+ *      Throws a runtime error if we cannot.
+ * 
+ * @todo 2024-09-29
+ *      Realloc the stack as needed?
+ */
+void
+lulu_check_stack(lulu_VM *vm, int count);
+
 ///=== TYPE QUERY FUNCTIONS ====================================================
 
 cstring
