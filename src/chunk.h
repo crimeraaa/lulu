@@ -3,8 +3,8 @@
 
 #include "value.h"
 
-#define MAX_BYTE    (cast(byte)-1)
-#define MAX_BYTE3   (cast(byte3)((1 << 24) - 1))
+#define LULU_MAX_BYTE   (cast(byte)-1)
+#define LULU_MAX_BYTE3  (cast(byte3)((1 << 24) - 1))
 
 typedef enum {
     OP_CONSTANT,
@@ -28,6 +28,11 @@ typedef struct {
 extern const lulu_OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 
+#define LULU_INSTRUCTION_OFFSET_A   24
+#define LULU_INSTRUCTION_OFFSET_B   16
+#define LULU_INSTRUCTION_OFFSET_C   8
+#define LULU_INSTRUCTION_OFFSET_OP  0
+
 /**
  * @brief Layout:
  *      [ arg A  ] [ arg B  ] [ arg C  ] [ opcode ]
@@ -43,53 +48,52 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 typedef u32 lulu_Instruction;
 
 static inline lulu_Instruction
-lulu_Instruction_ABC(lulu_OpCode op, byte a, byte b, byte c)
+lulu_Instruction_make(lulu_OpCode op, byte a, byte b, byte c)
 {
-    lulu_Instruction inst = 0;
-    inst |= cast(lulu_Instruction)a << 24;
-    inst |= cast(lulu_Instruction)b << 16;
-    inst |= cast(lulu_Instruction)c << 8;
-    inst |= cast(lulu_Instruction)op;
-    return inst;
+    return cast(lulu_Instruction)a << LULU_INSTRUCTION_OFFSET_A
+        | cast(lulu_Instruction)b  << LULU_INSTRUCTION_OFFSET_B
+        | cast(lulu_Instruction)c  << LULU_INSTRUCTION_OFFSET_C
+        | cast(lulu_Instruction)op << LULU_INSTRUCTION_OFFSET_OP;
 }
 
 static inline lulu_Instruction
-lulu_Instruction_byte3(lulu_OpCode op, byte3 arg)
+lulu_Instruction_set_byte3(lulu_OpCode op, byte3 arg)
 {
-    byte msb = (arg >> 16) & 0xff;
-    byte mid = (arg >>  8) & 0xff;
-    byte lsb = (arg >>  0) & 0xff;
-    return lulu_Instruction_ABC(op, msb, mid, lsb);
+    // Note how we use msb w/ OFFSET_B, not OFFSET_A since we're masking bits.
+    byte msb = (arg >> LULU_INSTRUCTION_OFFSET_B)  & LULU_MAX_BYTE;
+    byte mid = (arg >> LULU_INSTRUCTION_OFFSET_C)  & LULU_MAX_BYTE;
+    byte lsb = (arg >> LULU_INSTRUCTION_OFFSET_OP) & LULU_MAX_BYTE;
+    return lulu_Instruction_make(op, msb, mid, lsb);
 }
 
 static inline lulu_Instruction
-lulu_Instruction_byte1(lulu_OpCode op, byte arg)
+lulu_Instruction_set_byte1(lulu_OpCode op, byte arg)
 {
-    return lulu_Instruction_ABC(op, arg, 0, 0);
+    return lulu_Instruction_make(op, arg, 0, 0);
 }
 
 static inline lulu_Instruction
-lulu_Instruction_none(lulu_OpCode op)
+lulu_Instruction_set_none(lulu_OpCode op)
 {
-    return lulu_Instruction_ABC(op, 0, 0, 0);
+    return lulu_Instruction_make(op, 0, 0, 0);
 }
 
 static inline lulu_OpCode
 lulu_Instruction_get_opcode(lulu_Instruction inst)
 {
-    return cast(lulu_OpCode)(inst & 0xff);
+    return cast(lulu_OpCode)(inst & LULU_MAX_BYTE);
 }
 
 static inline byte
 lulu_Instruction_get_byte1(lulu_Instruction inst)
 {
-    return inst >> 24;
+    return inst >> LULU_INSTRUCTION_OFFSET_A;
 }
 
 static inline byte3
 lulu_Instruction_get_byte3(lulu_Instruction inst)
 {
-    return inst >> 8;
+    return inst >> LULU_INSTRUCTION_OFFSET_C;
 }
 
 /**

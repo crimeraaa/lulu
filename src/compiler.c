@@ -33,7 +33,7 @@ emit_instruction(lulu_Compiler *self, lulu_Parser *parser, lulu_Instruction inst
 void
 lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op)
 {
-    emit_instruction(self, parser, lulu_Instruction_none(op));
+    emit_instruction(self, parser, lulu_Instruction_set_none(op));
 }
 
 void
@@ -58,7 +58,7 @@ void
 lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value)
 {
     byte3 index = make_constant(self, lexer, parser, value);
-    emit_instruction(self, parser, lulu_Instruction_byte3(OP_CONSTANT, index));
+    emit_instruction(self, parser, lulu_Instruction_set_byte3(OP_CONSTANT, index));
 }
 
 static bool
@@ -80,8 +80,8 @@ folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
         int old_arg  = cast(int)lulu_Instruction_get_byte1(*ip);
         int new_arg  = cast(int)lulu_Instruction_get_byte1(inst);
         int adjusted = old_arg + new_arg + offset;
-        if (0 < adjusted && adjusted <= cast(int)MAX_BYTE) {
-            *ip = lulu_Instruction_byte1(op, cast(byte)adjusted);
+        if (0 < adjusted && adjusted <= cast(int)LULU_MAX_BYTE) {
+            *ip = lulu_Instruction_set_byte1(op, cast(byte)adjusted);
             return true;
         }
         break;
@@ -95,7 +95,7 @@ folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
 void
 lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte a)
 {
-    lulu_Instruction inst = lulu_Instruction_byte1(op, a);
+    lulu_Instruction inst = lulu_Instruction_set_byte1(op, a);
     if (!folded_instruction(self, inst)) {
         emit_instruction(self, parser, inst);
     }

@@ -144,7 +144,7 @@ concat(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
     int argc = 1;
     for (;;) {
-        if (argc >= cast(int)MAX_BYTE) {
+        if (argc >= cast(int)LULU_MAX_BYTE) {
             lulu_Parser_error_consumed(parser, lexer, "Too many consecutive concatenations");
         }
         parse_precedence(parser, lexer, compiler, PREC_CONCAT + 1);

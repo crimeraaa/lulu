@@ -27,19 +27,18 @@ typedef void
 
 struct lulu_VM {
     lulu_Value          values[LULU_VM_STACK_MAX];
-    lulu_Value         *base;  // Points to index 0 of `values`.
-    lulu_Value         *top;   // Points to 1 past the most recently written stack slot.
-    lulu_Value         *end;   // Points to 1 past the last valid stack slot.
+    lulu_Value         *base; // Points to index 0 of `values`.
+    lulu_Value         *top;  // Points to 1 past the most recently written stack slot.
+    lulu_Value         *end;  // Points to 1 past the last valid stack slot.
 
     lulu_Table          strings;  // Hashtable for interned strings.
-    lulu_Builder        builder;
+    lulu_Builder        builder;  // Buffer for string literals and concatenations.
 
     lulu_Allocator      allocator;
     void               *allocator_data;
 
     lulu_Chunk         *chunk;
-    lulu_Instruction   *ip;       // Points to next instruction to be executed.
-
+    lulu_Instruction   *ip;    // Points to next instruction to be executed.
     lulu_Object        *objects;  // Intrusive linked list of objects.
     lulu_Error_Handler *handlers; // Currently active error handler.
 };

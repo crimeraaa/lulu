@@ -48,14 +48,16 @@ union lulu_User_Alignment {
         #define LULU_ATTR_UNUSED [[maybe_unused]]
     #endif
 
-    #define LULU_IMPL_TRY(handler)   try
-    #define LULU_IMPL_CATCH(handler)                                           \
-        catch (lulu_Status status) {                                           \
-            if ((handler)->status == LULU_OK) {                                \
-                (handler)->status = status;                                    \
-            }                                                                  \
-        }
-    #define LULU_IMPL_THROW(handler, status) throw(status)
+    /**
+     * @note 2024-09-29
+     *      'catch' doesn't do anything, it's only present because C++ requires
+     *      all 'try' to have a corresponding 'catch' (and rightfully so!).
+     * 
+     *      We already set 'handler->status' in 'lulu_VM_run_protected()'.
+     */
+    #define LULU_IMPL_TRY(handler)      try
+    #define LULU_IMPL_CATCH(handler)    catch (...)
+    #define LULU_IMPL_THROW(handler)    throw (handler)
 
     typedef int lulu_Jump_Buffer; // Dummy, we don't need this for anything.
 
@@ -63,16 +65,16 @@ union lulu_User_Alignment {
 
     #include <setjmp.h>
     
-    #define LULU_IMPL_ERROR_HANDLING        LULU_IMPL_ERROR_HANDLING_LONGJMP
+    #define LULU_IMPL_ERROR_HANDLING    LULU_IMPL_ERROR_HANDLING_LONGJMP
 
-    #if defined(__STDC__) && __STDC_VERSION__ >= 201112L
+    #if defined(__STDC__) && (__STDC_VERSION__ >= 201112L)
         #include <stdnoreturn.h>
-        #define LULU_ATTR_NORETURN          noreturn
+        #define LULU_ATTR_NORETURN      noreturn
     #endif
 
-    #define LULU_IMPL_TRY(handler)           if (setjmp((handler)->buffer) == 0)
-    #define LULU_IMPL_CATCH(handler)         else
-    #define LULU_IMPL_THROW(handler, status) longjmp((handler)->buffer, 1)
+    #define LULU_IMPL_TRY(handler)      if (setjmp((handler)->buffer) == 0)
+    #define LULU_IMPL_CATCH(handler)    else
+    #define LULU_IMPL_THROW(handler)    longjmp((handler)->buffer, 1)
 
     typedef jmp_buf lulu_Jump_Buffer;
 
@@ -88,7 +90,7 @@ union lulu_User_Alignment {
         // @warning: Untested!
         #define LULU_ATTR_NORETURN  __declspec(noreturn)
     #else
-        #error Please define 'LULU_ATTR_NORETURN' a compiler-specific attribute.
+        #error Please define 'LULU_ATTR_NORETURN' to a compiler-specific attribute.
     #endif
 #endif
 
