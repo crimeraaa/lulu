@@ -61,14 +61,14 @@ tasks:
       - echo COMPILER='{{.COMPILER}}'
       - echo COMPILER_FLAGS='{{.COMPILER_FLAGS}}'
     silent: true
-  
+
   find-whitespace:
     desc: Checks all files in the source directory for trailing whitespace.
     deps:
       - task: find-pattern
         vars:
           GREP_PATTERN: '\s+$'
-    
+
   find-pattern:
     desc: Prints all matches in all files in '{{.DIR_SRC}}/'. Uses Perl syntax.
     vars:
@@ -84,7 +84,7 @@ tasks:
     preconditions:
       - sh: command -v {{.GREP}}
     ignore_error: true
-    
+
   fix-whitespace:
     desc: Remove trailing whitespace from all files in the source directory.
     deps:
@@ -92,7 +92,7 @@ tasks:
         vars:
           VIM_PATTERN: '\s\+$'
           VIM_REPLACE: ''
-    
+
   find-and-replace:
     desc: Replace a pattern in all files in '{{.DIR_SRC}}/'. Uses Vim syntax.
     vars:

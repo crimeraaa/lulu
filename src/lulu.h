@@ -52,7 +52,7 @@ union lulu_User_Alignment {
      * @note 2024-09-29
      *      'catch' doesn't do anything, it's only present because C++ requires
      *      all 'try' to have a corresponding 'catch' (and rightfully so!).
-     * 
+     *
      *      We already set 'handler->status' in 'lulu_VM_run_protected()'.
      */
     #define LULU_IMPL_TRY(handler)      try
@@ -64,7 +64,7 @@ union lulu_User_Alignment {
 #else // __cplusplus not defined.
 
     #include <setjmp.h>
-    
+
     #define LULU_IMPL_ERROR_HANDLING    LULU_IMPL_ERROR_HANDLING_LONGJMP
 
     #if defined(__STDC__) && (__STDC_VERSION__ >= 201112L)
@@ -118,7 +118,7 @@ union lulu_User_Alignment {
 #else
     #define LULU_ATTR_PRINTF(fmt, args)
 #endif
-    
+
 /// }}}=========================================================================
 
 /// }}}=========================================================================
@@ -173,7 +173,7 @@ typedef enum {
  * @brief
  *      Check if the stack can accomodate 'count' extra elements.
  *      Throws a runtime error if we cannot.
- * 
+ *
  * @todo 2024-09-29
  *      Realloc the stack as needed?
  */

@@ -66,35 +66,11 @@ lulu_Instruction_set_byte3(lulu_OpCode op, byte3 arg)
     return lulu_Instruction_make(op, msb, mid, lsb);
 }
 
-static inline lulu_Instruction
-lulu_Instruction_set_byte1(lulu_OpCode op, byte arg)
-{
-    return lulu_Instruction_make(op, arg, 0, 0);
-}
-
-static inline lulu_Instruction
-lulu_Instruction_set_none(lulu_OpCode op)
-{
-    return lulu_Instruction_make(op, 0, 0, 0);
-}
-
-static inline lulu_OpCode
-lulu_Instruction_get_opcode(lulu_Instruction inst)
-{
-    return cast(lulu_OpCode)(inst & LULU_MAX_BYTE);
-}
-
-static inline byte
-lulu_Instruction_get_byte1(lulu_Instruction inst)
-{
-    return inst >> LULU_INSTRUCTION_OFFSET_A;
-}
-
-static inline byte3
-lulu_Instruction_get_byte3(lulu_Instruction inst)
-{
-    return inst >> LULU_INSTRUCTION_OFFSET_C;
-}
+#define lulu_Instruction_set_byte1(op, arg) lulu_Instruction_make(op, arg, 0, 0)
+#define lulu_Instruction_set_none(op)       lulu_Instruction_make(op, 0, 0, 0)
+#define lulu_Instruction_get_opcode(inst)   cast(lulu_OpCode)((inst) & LULU_MAX_BYTE)
+#define lulu_Instruction_get_byte1(inst)    ((inst) >> LULU_INSTRUCTION_OFFSET_A)
+#define lulu_Instruction_get_byte3(inst)    ((inst) >> LULU_INSTRUCTION_OFFSET_C)
 
 /**
  * @brief

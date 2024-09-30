@@ -8,7 +8,6 @@ lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self)
 {
     self->vm    = vm;
     self->chunk = NULL;
-    self->prev_opcode = OP_RETURN; // Can't optimize RETURN no matter what!
 }
 
 /**
@@ -27,7 +26,6 @@ emit_instruction(lulu_Compiler *self, lulu_Parser *parser, lulu_Instruction inst
     lulu_VM *vm   = self->vm;
     int      line = parser->consumed.line;
     lulu_Chunk_write(vm, current_chunk(self), inst, line);
-    self->prev_opcode = lulu_Instruction_get_opcode(inst);
 }
 
 void
@@ -64,24 +62,28 @@ lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser 
 static bool
 folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
 {
-    lulu_OpCode op = lulu_Instruction_get_opcode(inst);
-    if (self->prev_opcode != op) {
+    lulu_OpCode  op    = lulu_Instruction_get_opcode(inst);
+    lulu_Chunk  *chunk = current_chunk(self);
+    // Can't possibly have a previous opcode?
+    if (chunk->len <= 1) {
         return false;
     }
 
-    lulu_Chunk       *chunk = current_chunk(self);
-    lulu_Instruction *ip    = &chunk->code[chunk->len - 1];
-    
+    lulu_Instruction *ip = &chunk->code[chunk->len - 1];
+    if (lulu_Instruction_get_opcode(*ip) != op) {
+        return false;
+    }
+
     // e.g. folded CONCATs always requires 1 less actual intermediate.
     int offset = 0;
     switch (op) {
     case OP_CONCAT: offset = -1;
     case OP_NIL: {
-        int old_arg  = cast(int)lulu_Instruction_get_byte1(*ip);
-        int new_arg  = cast(int)lulu_Instruction_get_byte1(inst);
-        int adjusted = old_arg + new_arg + offset;
-        if (0 < adjusted && adjusted <= cast(int)LULU_MAX_BYTE) {
-            *ip = lulu_Instruction_set_byte1(op, cast(byte)adjusted);
+        int prev_arg = cast(int)lulu_Instruction_get_byte1(*ip);
+        int cur_arg  = cast(int)lulu_Instruction_get_byte1(inst);
+        int new_arg  = prev_arg + cur_arg + offset;
+        if (0 < new_arg && new_arg <= cast(int)LULU_MAX_BYTE) {
+            *ip = lulu_Instruction_set_byte1(op, cast(byte)new_arg);
             return true;
         }
         break;

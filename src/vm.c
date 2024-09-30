@@ -91,7 +91,7 @@ concat(lulu_VM *vm, int count)
 {
     lulu_Value   *args    = &vm->top[-count];
     lulu_Builder *builder = &vm->builder;
-    
+
     lulu_Builder_reset(builder);
     for (int i = 0; i < count; i++) {
         lulu_Value *value = &args[i];
@@ -101,9 +101,9 @@ concat(lulu_VM *vm, int count)
         }
         lulu_Builder_write_string(builder, value->string->data, value->string->len);
     }
-    
-    isize        len    = 0;
-    const char  *data   = lulu_Builder_to_string(builder, &len);
+
+    isize        len;
+    const char  *data = lulu_Builder_to_string(builder, &len);
     lulu_popn(vm, count);
     lulu_push_string(vm, data, len);
 }

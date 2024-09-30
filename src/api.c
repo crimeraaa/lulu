@@ -8,11 +8,11 @@
 /**
  * @brief
  *      Given the relative index 'offset' (positive or negative), load the
- *      appropriate 'lulu_Value' pointer from the 
- * 
+ *      appropriate 'lulu_Value' pointer from the
+ *
  * @warning 2024-09-29
  *      May load a potentially invalid address!
- * 
+ *
  * @link
  *      https://www.lua.org/source/5.1/lapi.c.html#index2adr
  */
@@ -42,7 +42,7 @@ lulu_check_stack(lulu_VM *vm, int count)
     isize cur_index = vm->top - vm->base;
     isize end_index = vm->end - vm->base;
     isize new_index = cur_index + count;
-    
+
     if (0 <= new_index && new_index <= end_index) {
         return;
     }
