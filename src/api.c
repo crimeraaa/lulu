@@ -19,11 +19,8 @@
 static lulu_Value *
 offset_to_address(lulu_VM *vm, int offset)
 {
-    if (offset >= 0) {
-        return vm->base + offset;
-    } else {
-        return vm->top + offset;
-    }
+    lulu_Value *start = (offset >= 0) ? vm->base : vm->top;
+    return start + offset;
 }
 
 static void
@@ -86,7 +83,7 @@ lulu_is_string(lulu_VM *vm, int offset)
 ///=== STACK MANIPULATION FUNCTIONS ============================================
 
 void
-lulu_popn(lulu_VM *vm, int count)
+lulu_pop(lulu_VM *vm, int count)
 {
     vm->top -= count;
 }

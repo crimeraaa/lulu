@@ -201,10 +201,8 @@ lulu_is_string(lulu_VM *vm, int offset);
 
 ///=== STACK MANIPULATION FUNCTIONS ============================================
 
-#define lulu_pop(vm)    lulu_popn(vm, 1)
-
 void
-lulu_popn(lulu_VM *vm, int count);
+lulu_pop(lulu_VM *vm, int count);
 
 void
 lulu_push_nil(lulu_VM *vm, int count);
@@ -220,6 +218,8 @@ lulu_push_cstring(lulu_VM *vm, cstring cstr);
 
 void
 lulu_push_string(lulu_VM *vm, const char *data, isize len);
+
+#define lulu_push_literal(vm, cstr)  lulu_push_string(vm, cstr, size_of(cstr) - 1)
 
 ///=============================================================================
 

@@ -64,11 +64,13 @@ folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
 {
     lulu_OpCode  op    = lulu_Instruction_get_opcode(inst);
     lulu_Chunk  *chunk = current_chunk(self);
+
     // Can't possibly have a previous opcode?
-    if (chunk->len <= 1) {
+    if (chunk->len <= 0) {
         return false;
     }
 
+    // Poke at the most recently (i.e: previous) written opcode.
     lulu_Instruction *ip = &chunk->code[chunk->len - 1];
     if (lulu_Instruction_get_opcode(*ip) != op) {
         return false;

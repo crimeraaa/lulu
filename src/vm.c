@@ -104,7 +104,7 @@ concat(lulu_VM *vm, int count)
 
     isize        len;
     const char  *data = lulu_Builder_to_string(builder, &len);
-    lulu_popn(vm, count);
+    lulu_pop(vm, count);
     lulu_push_string(vm, data, len);
 }
 
@@ -120,7 +120,7 @@ do {                                                                           \
     lulu_Value *lhs = poke_top(self, -2);                                      \
     lulu_Value *rhs = poke_top(self, -1);                                      \
     lulu_Value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));          \
-    lulu_pop(self);                                                            \
+    lulu_pop(self, 1);                                                         \
 } while (0)
 
 #define ARITH_OP(lulu_Number_fn)    BINARY_OP(lulu_Value_set_number,  lulu_Number_fn, check_arith)
@@ -176,7 +176,7 @@ do {                                                                           \
             lulu_Value *rhs = poke_top(self, -1);
             lulu_Value *lhs = poke_top(self, -2);
             lulu_Value_set_boolean(lhs, lulu_Value_eq(lhs, rhs));
-            lulu_pop(self);
+            lulu_pop(self, 1);
             break;
         }
         case OP_LT:  COMPARE_OP(lulu_Number_lt);  break;
@@ -188,7 +188,7 @@ do {                                                                           \
         }
         case OP_RETURN: {
             lulu_Debug_print_value(poke_top(self, -1));
-            lulu_pop(self);
+            lulu_pop(self, 1);
             printf("\n");
             return LULU_OK;
         }
