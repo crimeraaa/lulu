@@ -23,22 +23,14 @@ lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
 void
 lulu_Debug_print_value(const lulu_Value *value)
 {
-    switch (value->type) {
-    case LULU_TYPE_NIL:
-        printf("nil");
-        break;
-    case LULU_TYPE_BOOLEAN:
-        printf("%s", value->boolean ? "true" : "false");
-        break;
-    case LULU_TYPE_NUMBER:
-        printf(LULU_NUMBER_FMT, value->number);
-        break;
-    case LULU_TYPE_STRING:
-        printf("%s", value->string->data);
-        break;
-    case LULU_TYPE_TABLE:
-        printf("%s: %p", lulu_Value_typename(value), cast(void *)value->table);
-        break;
+    bool is_string = lulu_Value_is_string(value);
+    char quote     = (is_string && value->string->len == 1) ? '\'' : '\"';
+    if (is_string) {
+        printf("%c", quote);
+    }
+    lulu_Value_print(value);
+    if (is_string) {
+        printf("%c", quote);
     }
 }
 
@@ -48,16 +40,16 @@ lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
     printf("=== DISASSEMBLY: BEGIN ===\n");
     printf(".name \"%s\"\n", chunk->filename);
 
-    printf(".const\n");
+    printf("\n.const\n");
     const lulu_Value_Array *constants = &chunk->constants;
     for (isize index = 0; index < constants->len; index++) {
         const lulu_Value *value = &constants->values[index];
-        printf("%04tx\t", index);
+        printf("%04tx\t%s: ", index, lulu_Value_typename(value));
         lulu_Debug_print_value(value);
-        printf(" ; %s\n", lulu_Value_typename(value));
+        printf("\n");
     }
 
-    printf(".code\n");
+    printf("\n.code\n");
     for (isize index = 0; index < chunk->len;) {
         index = lulu_Debug_disassemble_instruction(chunk, index);
     }
@@ -71,10 +63,11 @@ lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
 static void
 print_constant(cstring name, const lulu_Chunk *chunk, lulu_Instruction inst)
 {
-    isize arg = lulu_Instruction_get_byte3(inst);
-    printf("%-16s %4ti '", name, arg);
-    lulu_Debug_print_value(&chunk->constants.values[arg]);
-    printf("'\n");
+    isize             arg   = lulu_Instruction_get_byte3(inst);
+    const lulu_Value *value = &chunk->constants.values[arg];
+    printf("%-16s %4ti\t# %s: ", name, arg, lulu_Value_typename(value));
+    lulu_Debug_print_value(value);
+    printf("\n");
 }
 
 isize
@@ -94,6 +87,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONSTANT:
         print_constant(name, chunk, inst);
         break;
+    case OP_PRINT:
     case OP_CONCAT:
     case OP_NIL: {
         byte arg = lulu_Instruction_get_byte1(inst);

@@ -52,7 +52,7 @@ bool
 lulu_Parser_match_token(lulu_Parser *self, lulu_Lexer *lexer, lulu_Token_Type type);
 
 void
-lulu_Parser_expression(lulu_Parser *self, lulu_Lexer *lexer, lulu_Compiler *compiler);
+lulu_Parser_declaration(lulu_Parser *self, lulu_Lexer *lexer, lulu_Compiler *compiler);
 
 /**
  * @note 2024-09-07

@@ -13,6 +13,7 @@ typedef enum {
     OP_CONCAT,
     OP_UNM,
     OP_EQ, OP_LT, OP_LEQ, OP_NOT,
+    OP_PRINT, // @note 2024-10-1: Temporary!
     OP_RETURN,
 } lulu_OpCode;
 

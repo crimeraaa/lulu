@@ -103,6 +103,9 @@ lulu_Value_set_table(lulu_Value *dst, lulu_Table *table)
     dst->table  = table;
 }
 
+void
+lulu_Value_print(const lulu_Value *value);
+
 bool
 lulu_Value_eq(const lulu_Value *a, const lulu_Value *b);
 

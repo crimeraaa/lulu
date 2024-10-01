@@ -30,6 +30,12 @@ operator++(lulu_Precedence &prec, int)
 #endif // __cplusplus
 
 static void
+expression(lulu_Parser *self, lulu_Lexer *lexer, lulu_Compiler *compiler);
+
+static void
+statement(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler);
+
+static void
 parse_precedence(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler, lulu_Precedence precedence);
 
 static lulu_Parser_Rule *
@@ -82,10 +88,16 @@ lulu_Parser_consume_token(lulu_Parser *self, lulu_Lexer *lexer, lulu_Token_Type 
     lulu_Parser_error_current(self, lexer, msg);
 }
 
+static bool
+check_token(lulu_Parser *parser, lulu_Token_Type type)
+{
+    return parser->current.type == type;
+}
+
 bool
 lulu_Parser_match_token(lulu_Parser *self, lulu_Lexer *lexer, lulu_Token_Type type)
 {
-    if (self->current.type == type) {
+    if (check_token(self, type)) {
         lulu_Parser_advance_token(self, lexer);
         return true;
     }
@@ -219,7 +231,7 @@ literal(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 static void
 grouping(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
-    lulu_Parser_expression(parser, lexer, compiler);
+    expression(parser, lexer, compiler);
     lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_R, "Expected ')' after expression");
 }
 
@@ -340,10 +352,43 @@ LULU_PARSE_RULES[] = {
 
 /// }}}=========================================================================
 
-void
-lulu_Parser_expression(lulu_Parser *self, lulu_Lexer *lexer, lulu_Compiler *compiler)
+static void
+expression(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
-    parse_precedence(self, lexer, compiler, PREC_ASSIGNMENT + 1);
+    parse_precedence(parser, lexer, compiler, PREC_ASSIGNMENT + 1);
+}
+
+static void
+print_statement(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
+{
+    int argc = 0;
+    lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_L, "Expected '(' after 'print'");
+    // Potentially have at least 1 argument?
+    if (!lulu_Parser_match_token(parser, lexer, TOKEN_PAREN_R)) {
+        do {
+            expression(parser, lexer, compiler);
+            argc++;
+        } while (lulu_Parser_match_token(parser, lexer, TOKEN_COMMA));
+        lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_R, "Expected closing ')'");
+    }
+    lulu_Compiler_emit_byte1(compiler, parser, OP_PRINT, argc);
+}
+
+static void
+statement(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
+{
+    if (lulu_Parser_match_token(parser, lexer, TOKEN_PRINT)) {
+        print_statement(parser, lexer, compiler);
+    } else {
+        lulu_Parser_error_current(parser, lexer, "Expected an expression");
+    }
+    lulu_Parser_match_token(parser, lexer, TOKEN_SEMICOLON);
+}
+
+void
+lulu_Parser_declaration(lulu_Parser *self, lulu_Lexer *lexer, lulu_Compiler *compiler)
+{
+    statement(self, lexer, compiler);
 }
 
 static void

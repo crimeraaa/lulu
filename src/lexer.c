@@ -317,6 +317,7 @@ get_identifier_type(lulu_Lexer *lexer)
         }
         break;
     case 'o': return check_keyword(current, len, TOKEN_OR);
+    case 'p': return check_keyword(current, len, TOKEN_PRINT);
     case 'r':
         if (len < 3) {
             break;

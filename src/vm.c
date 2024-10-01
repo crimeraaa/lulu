@@ -186,10 +186,16 @@ do {                                                                           \
             lulu_Value_set_boolean(value, lulu_Value_is_falsy(value));
             break;
         }
-        case OP_RETURN: {
-            lulu_Debug_print_value(poke_top(self, -1));
-            lulu_pop(self, 1);
+        case OP_PRINT: {
+            int count = lulu_Instruction_get_byte1(inst);
+            for (int i = 0; i < count; i++) {
+                lulu_Value_print(poke_top(self, -count + i));
+            }
+            lulu_pop(self, count);
             printf("\n");
+            break;
+        }
+        case OP_RETURN: {
             return LULU_OK;
         }
         default:

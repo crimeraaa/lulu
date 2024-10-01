@@ -25,6 +25,7 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_LT]         = {"LT",            0,           0,          1},
     [OP_LEQ]        = {"LEQ",           0,           0,          1},
     [OP_NOT]        = {"NOT",           0,           0,          0},
+    [OP_PRINT]      = {"PRINT",         1,           0,         -1},
     [OP_RETURN]     = {"RETURN",        0,           0,          1},
 };
 

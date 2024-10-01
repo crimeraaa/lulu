@@ -1,6 +1,8 @@
 #include "value.h"
 #include "string.h"
 
+#include <stdio.h>
+
 // @todo 2024-09-22 Just remove the designated initializers entirely!
 #if defined(__GNUC__)
     #pragma GCC diagnostic push
@@ -29,6 +31,27 @@ const lulu_Value LULU_VALUE_NIL   = {LULU_TYPE_NIL,     {0}};
 const lulu_Value LULU_VALUE_TRUE  = {LULU_TYPE_BOOLEAN, {true}};
 const lulu_Value LULU_VALUE_FALSE = {LULU_TYPE_BOOLEAN, {false}};
 
+void
+lulu_Value_print(const lulu_Value *value)
+{
+    switch (value->type) {
+    case LULU_TYPE_NIL:
+        printf("nil");
+        break;
+    case LULU_TYPE_BOOLEAN:
+        printf("%s", value->boolean ? "true" : "false");
+        break;
+    case LULU_TYPE_NUMBER:
+        printf(LULU_NUMBER_FMT, value->number);
+        break;
+    case LULU_TYPE_STRING:
+        printf("%s", value->string->data);
+        break;
+    case LULU_TYPE_TABLE:
+        printf("%s: %p", lulu_Value_typename(value), cast(void *)value->table);
+        break;
+    }
+}
 bool
 lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
 {

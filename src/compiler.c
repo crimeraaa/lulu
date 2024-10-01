@@ -118,11 +118,12 @@ void
 lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk)
 {
     lulu_Lexer  lexer;
-    lulu_Parser parser;
+    lulu_Parser parser = {{NULL, 0, 0, 0}, {NULL, 0, 0, 0}};
     self->chunk = chunk;
     lulu_Lexer_init(self->vm, &lexer, chunk->filename, input);
     lulu_Parser_advance_token(&parser, &lexer);
-    lulu_Parser_expression(&parser, &lexer, self);
-    lulu_Parser_consume_token(&parser, &lexer, TOKEN_EOF, "Expected end of expression");
+    while (!lulu_Parser_match_token(&parser, &lexer, TOKEN_EOF)) {
+        lulu_Parser_declaration(&parser, &lexer, self);
+    }
     lulu_Compiler_end(self, &parser);
 }
