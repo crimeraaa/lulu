@@ -222,36 +222,66 @@ skip_whitespace(lulu_Lexer *lexer)
     #pragma GCC diagnostic ignored "-Wc99-designator"
 #endif
 
-/**
- * @brief
- *      Map a `lulu_Token_Type`, to the string representation thereof.
- */
-static const struct {
-    const char *data;
-    isize       len;
-} LULU_KEYWORDS[LULU_KEYWORD_COUNT] = {
-    [TOKEN_AND]         = lit("and"),
-    [TOKEN_BREAK]       = lit("break"),
-    [TOKEN_DO]          = lit("do"),
-    [TOKEN_ELSE]        = lit("else"),
-    [TOKEN_ELSEIF]      = lit("elseif"),
-    [TOKEN_END]         = lit("end"),
-    [TOKEN_FALSE]       = lit("false"),
-    [TOKEN_FOR]         = lit("for"),
-    [TOKEN_FUNCTION]    = lit("function"),
-    [TOKEN_IF]          = lit("if"),
-    [TOKEN_IN]          = lit("in"),
-    [TOKEN_LOCAL]       = lit("local"),
-    [TOKEN_NIL]         = lit("nil"),
-    [TOKEN_NOT]         = lit("not"),
-    [TOKEN_OR]          = lit("or"),
-    [TOKEN_PRINT]       = lit("print"),
-    [TOKEN_REPEAT]      = lit("repeat"),
-    [TOKEN_RETURN]      = lit("return"),
-    [TOKEN_THEN]        = lit("then"),
-    [TOKEN_TRUE]        = lit("true"),
-    [TOKEN_UNTIL]       = lit("until"),
-    [TOKEN_WHILE]       = lit("while"),
+const Char_Slice
+LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT] = {
+    [TOKEN_AND]           = lit("and"),
+    [TOKEN_BREAK]         = lit("break"),
+    [TOKEN_DO]            = lit("do"),
+    [TOKEN_ELSE]          = lit("else"),
+    [TOKEN_ELSEIF]        = lit("elseif"),
+    [TOKEN_END]           = lit("end"),
+    [TOKEN_FALSE]         = lit("false"),
+    [TOKEN_FOR]           = lit("for"),
+    [TOKEN_FUNCTION]      = lit("function"),
+    [TOKEN_IF]            = lit("if"),
+    [TOKEN_IN]            = lit("in"),
+    [TOKEN_LOCAL]         = lit("local"),
+    [TOKEN_NIL]           = lit("nil"),
+    [TOKEN_NOT]           = lit("not"),
+    [TOKEN_OR]            = lit("or"),
+    [TOKEN_PRINT]         = lit("print"),
+    [TOKEN_REPEAT]        = lit("repeat"),
+    [TOKEN_RETURN]        = lit("return"),
+    [TOKEN_THEN]          = lit("then"),
+    [TOKEN_TRUE]          = lit("true"),
+    [TOKEN_UNTIL]         = lit("until"),
+    [TOKEN_WHILE]         = lit("while"),
+
+    [TOKEN_PAREN_L]       = lit("("),
+    [TOKEN_PAREN_R]       = lit(")"),
+    [TOKEN_BRACKET_L]     = lit("["),
+    [TOKEN_BRACKET_R]     = lit("]"),
+    [TOKEN_CURLY_L]       = lit("{"),
+    [TOKEN_CURLY_R]       = lit("}"),
+
+    [TOKEN_COMMA]         = lit(","),
+    [TOKEN_COLON]         = lit(":"),
+    [TOKEN_SEMICOLON]     = lit(";"),
+    [TOKEN_ELLIPSIS_3]    = lit("..."),
+    [TOKEN_ELLIPSIS_2]    = lit(".."),
+    [TOKEN_PERIOD]        = lit("."),
+    [TOKEN_HASH]          = lit("#"),
+
+    [TOKEN_PLUS]          = lit("+"),
+    [TOKEN_DASH]          = lit("-"),
+    [TOKEN_STAR]          = lit("*"),
+    [TOKEN_SLASH]         = lit("/"),
+    [TOKEN_PERCENT]       = lit("%"),
+    [TOKEN_CARET]         = lit("^"),
+
+    [TOKEN_EQUAL]         = lit("="),
+    [TOKEN_EQUAL_EQUAL]   = lit("=="),
+    [TOKEN_TILDE_EQUAL]   = lit("~="),
+    [TOKEN_ANGLE_L]       = lit("<"),
+    [TOKEN_ANGLE_L_EQUAL] = lit("<="),
+    [TOKEN_ANGLE_R]       = lit(">"),
+    [TOKEN_ANGLE_R_EQUAL] = lit(">="),
+
+    [TOKEN_IDENTIFIER]    = lit("<identifier>"),
+    [TOKEN_STRING_LIT]    = lit("<string>"),
+    [TOKEN_NUMBER_LIT]    = lit("<number>"),
+    [TOKEN_ERROR]         = lit("<error>"),
+    [TOKEN_EOF]           = lit("<eof>"),
 };
 
 #if defined(__GNUC__)
@@ -263,10 +293,9 @@ static const struct {
 static lulu_Token_Type
 check_keyword(const char *current, isize len, lulu_Token_Type type)
 {
-    if (LULU_KEYWORDS[type].len == len) {
-        if (memcmp(LULU_KEYWORDS[type].data, current, len) == 0) {
-            return type;
-        }
+    const Char_Slice str = LULU_TOKEN_STRINGS[type];
+    if (str.len == len && memcmp(str.data, current, len) == 0) {
+        return type;
     }
     return TOKEN_IDENTIFIER;
 }
@@ -497,8 +526,8 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
             lulu_Token  token = make_token(self, TOKEN_STRING_LIT);
             int         skip  = opening + 2; // Both [ or ] with 1+ =
 
-            token.start += skip;      // Skip opening
-            token.len   -= (skip * 2);// Discard BOTH ends from view length
+            token.start += skip;       // Skip opening
+            token.len   -= (skip * 2); // Discard BOTH ends from view length
             self->string = lulu_String_new(self->vm, token.start, token.len);
             return token;
         }
@@ -516,6 +545,7 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
             return make_token(self, TOKEN_ELLIPSIS_2);
         }
         return make_token(self, TOKEN_PERIOD);
+
     case '#': return make_token(self, TOKEN_HASH);
     case '+': return make_token(self, TOKEN_PLUS);
     case '-': return make_token(self, TOKEN_DASH);
@@ -529,12 +559,10 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
             return make_token(self, TOKEN_TILDE_EQUAL);
         }
         error_token(self, "Expected '=' after '~'");
-    case '=':
-        return make_token(self, match_char(self, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
-    case '<':
-        return make_token(self, match_char(self, '=') ? TOKEN_ANGLE_L_EQUAL : TOKEN_ANGLE_L);
-    case '>':
-        return make_token(self, match_char(self, '=') ? TOKEN_ANGLE_R_EQUAL : TOKEN_ANGLE_R);
+        break;
+    case '=': return make_token(self, match_char(self, '=') ? TOKEN_EQUAL_EQUAL   : TOKEN_EQUAL);
+    case '<': return make_token(self, match_char(self, '=') ? TOKEN_ANGLE_L_EQUAL : TOKEN_ANGLE_L);
+    case '>': return make_token(self, match_char(self, '=') ? TOKEN_ANGLE_R_EQUAL : TOKEN_ANGLE_R);
 
     case '\'':
     case '\"': return consume_string(self, ch);

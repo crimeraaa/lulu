@@ -91,7 +91,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONCAT:
     case OP_NIL: {
         byte arg = lulu_Instruction_get_byte1(inst);
-        printf("%s %4i\n", name, arg);
+        printf("%-16s %4i\n", name, arg);
         break;
     }
     case OP_TRUE: case OP_FALSE:
@@ -99,7 +99,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_UNM:
     case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:
-        printf("%s\n", name);
+        printf("%-16s\n", name);
         break;
     }
     return index + 1;

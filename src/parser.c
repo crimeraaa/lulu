@@ -78,20 +78,24 @@ lulu_Parser_advance_token(lulu_Parser *self, lulu_Lexer *lexer)
     // print_parser(parser); //!DEBUG
 }
 
-void
-lulu_Parser_consume_token(lulu_Parser *self, lulu_Lexer *lexer, lulu_Token_Type type, cstring msg)
-{
-    if (self->current.type == type) {
-        lulu_Parser_advance_token(self, lexer);
-        return;
-    }
-    lulu_Parser_error_current(self, lexer, msg);
-}
-
 static bool
 check_token(lulu_Parser *parser, lulu_Token_Type type)
 {
     return parser->current.type == type;
+}
+
+void
+lulu_Parser_consume_token(lulu_Parser *self, lulu_Lexer *lexer, lulu_Token_Type type, cstring msg)
+{
+    if (check_token(self, type)) {
+        lulu_Parser_advance_token(self, lexer);
+        return;
+    }
+    char buf[256];
+    int  len = snprintf(buf, size_of(buf), "Expected '%s' %s",
+        LULU_TOKEN_STRINGS[type].data, msg);
+    buf[len] = '\0';
+    lulu_Parser_error_current(self, lexer, buf);
 }
 
 bool
@@ -104,14 +108,17 @@ lulu_Parser_match_token(lulu_Parser *self, lulu_Lexer *lexer, lulu_Token_Type ty
     return false;
 }
 
-#define CSTRING_EOF "<eof>"
-
 LULU_ATTR_NORETURN
 static void
 wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 {
-    const char *where = (token->type == TOKEN_EOF) ? CSTRING_EOF : token->start;
-    isize       len   = (token->type == TOKEN_EOF) ? size_of(CSTRING_EOF) - 1 : token->len;
+    const char *where = token->start;
+    isize       len   = token->len;
+    if (token->type == TOKEN_EOF) {
+        const Char_Slice str = LULU_TOKEN_STRINGS[TOKEN_EOF];
+        where = str.data;
+        len   = str.len;
+    }
     lulu_VM_comptime_error(vm, filename, token->line, msg, where, len);
 }
 
@@ -232,7 +239,7 @@ static void
 grouping(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
     expression(parser, lexer, compiler);
-    lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_R, "Expected ')' after expression");
+    lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_R, "after expression");
 }
 
 static lulu_OpCode
@@ -362,14 +369,14 @@ static void
 print_statement(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
     int argc = 0;
-    lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_L, "Expected '(' after 'print'");
+    lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_L, "after 'print'");
     // Potentially have at least 1 argument?
     if (!lulu_Parser_match_token(parser, lexer, TOKEN_PAREN_R)) {
         do {
             expression(parser, lexer, compiler);
             argc++;
         } while (lulu_Parser_match_token(parser, lexer, TOKEN_COMMA));
-        lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_R, "Expected closing ')'");
+        lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_R, "to close call");
     }
     lulu_Compiler_emit_byte1(compiler, parser, OP_PRINT, argc);
 }

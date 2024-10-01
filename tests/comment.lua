@@ -6,4 +6,4 @@ print("Welcome")
 print("Bye") -- wow!
 -- print(--[[ hehe ]]) -- This won't work for now as it treats parens as grouping
 
-print --[[ hello ]] "hi"
+print(--[[ hello ]] "hi")

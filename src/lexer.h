@@ -86,6 +86,18 @@ typedef struct {
     int          line;
 } lulu_Lexer;
 
+typedef struct {
+    const char *data;
+    isize       len;
+} Char_Slice;
+
+/**
+ * @brief
+ *      Map a `lulu_Token_Type`, to the string representation thereof.
+ */
+extern const Char_Slice
+LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT];
+
 void
 lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input);
 

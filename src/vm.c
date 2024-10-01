@@ -190,6 +190,7 @@ do {                                                                           \
             int count = lulu_Instruction_get_byte1(inst);
             for (int i = 0; i < count; i++) {
                 lulu_Value_print(poke_top(self, -count + i));
+                printf("\t");
             }
             lulu_pop(self, count);
             printf("\n");
