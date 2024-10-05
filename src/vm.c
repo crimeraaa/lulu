@@ -30,6 +30,7 @@ lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
     reset_stack(self);
     init_table(&self->strings);
+    init_table(&self->globals);
     lulu_Builder_init(self, &self->builder);
     self->allocator      = allocator;
     self->allocator_data = allocator_data;
@@ -42,6 +43,7 @@ void
 lulu_VM_free(lulu_VM *self)
 {
     lulu_Table_free(self, &self->strings);
+    lulu_Table_free(self, &self->globals);
     lulu_Builder_free(&self->builder);
 
     lulu_Object *object = self->objects;
@@ -142,6 +144,20 @@ do {                                                                           \
         case OP_CONSTANT: {
             byte3 index = lulu_Instruction_get_byte3(inst);
             lulu_VM_push(self, &constants->values[index]);
+            break;
+        }
+        case OP_GETGLOBAL: {
+            byte3             index = lulu_Instruction_get_byte3(inst);
+            const lulu_Value *key   = &constants->values[index];
+            const lulu_Value *value = lulu_Table_get(&self->globals, key);
+            lulu_VM_push(self, (value) ? value : &LULU_VALUE_NIL);
+            break;
+        }
+        case OP_SETGLOBAL: {
+            byte3             index = lulu_Instruction_get_byte3(inst);
+            const lulu_Value *ident = &constants->values[index];
+            lulu_Table_set(self, &self->globals, ident, poke_top(self, -1));
+            lulu_pop(self, 1);
             break;
         }
         case OP_NIL: {

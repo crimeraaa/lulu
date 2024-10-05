@@ -3,6 +3,11 @@
 
 #include "object.h"
 
+typedef struct {
+    const char *data;
+    isize       len;
+} Char_Slice;
+
 #if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wc99-extensions"

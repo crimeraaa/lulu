@@ -86,11 +86,6 @@ typedef struct {
     int          line;
 } lulu_Lexer;
 
-typedef struct {
-    const char *data;
-    isize       len;
-} Char_Slice;
-
 /**
  * @brief
  *      Map a `lulu_Token_Type`, to the string representation thereof.

@@ -41,6 +41,14 @@ parse_precedence(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler
 static lulu_Parser_Rule *
 get_rule(lulu_Token_Type type);
 
+static byte3
+identifier_constant(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler, lulu_Token *token)
+{
+    lulu_Value tmp;
+    lulu_Value_set_string(&tmp, lulu_String_new(compiler->vm, token->start, token->len));
+    return lulu_Compiler_make_constant(compiler, lexer, parser, &tmp);
+}
+
 LULU_ATTR_UNUSED
 static void
 print_token(const lulu_Token *token, cstring name)
@@ -227,6 +235,19 @@ literal(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
     }
 }
 
+static void
+named_variable(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler, lulu_Token *ident)
+{
+    byte3 arg = identifier_constant(parser, lexer, compiler, ident);
+    lulu_Compiler_emit_byte3(compiler, parser, OP_GETGLOBAL, arg);
+}
+
+static void
+identifier(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
+{
+    named_variable(parser, lexer, compiler, &parser->consumed);
+}
+
 /**
  * @brief
  *      Recursively compiles any and all nested expressions in order to emit the
@@ -336,14 +357,14 @@ LULU_PARSE_RULES[] = {
 ///=============================================================================
 
 // key                  :  prefix_fn    infix_fn    precedence
-[TOKEN_EQUAL]           = {NULL,        &binary,    PREC_EQUALITY},
+[TOKEN_EQUAL]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_EQUAL_EQUAL]     = {NULL,        &binary,    PREC_EQUALITY},
 [TOKEN_TILDE_EQUAL]     = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_ANGLE_L]         = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_ANGLE_L_EQUAL]   = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_ANGLE_R]         = {NULL,        &binary,    PREC_COMPARISON},
 [TOKEN_ANGLE_R_EQUAL]   = {NULL,        &binary,    PREC_COMPARISON},
-[TOKEN_IDENTIFIER]      = {NULL,        NULL,       PREC_NONE},
+[TOKEN_IDENTIFIER]      = {&identifier, NULL,       PREC_NONE},
 [TOKEN_STRING_LIT]      = {&literal,    NULL,       PREC_NONE},
 [TOKEN_NUMBER_LIT]      = {&literal,    NULL,       PREC_NONE},
 [TOKEN_ERROR]           = {NULL,        NULL,       PREC_NONE},
@@ -392,10 +413,45 @@ statement(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
     lulu_Parser_match_token(parser, lexer, TOKEN_SEMICOLON);
 }
 
+/**
+ * @note 2024-10-05
+ *      Analogous to 'compiler.c:parseVariable()' in the book.
+ */
+static byte3
+parse_identifier(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
+{
+    return identifier_constant(parser, lexer, compiler, &parser->consumed);
+}
+
+static void
+define_variable(lulu_Parser *parser, lulu_Compiler *compiler, byte3 index)
+{
+    lulu_Compiler_emit_byte3(compiler, parser, OP_SETGLOBAL, index);
+}
+
+/**
+ * @note 2024-10-05
+ *      Analogous to 'compiler.c:varDeclaration()' in the book.
+ *      Assumes we just consumed an identifier.
+ */
+static void
+assignment(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
+{
+    byte3 identifier_index = parse_identifier(parser, lexer, compiler);
+    lulu_Parser_consume_token(parser, lexer, TOKEN_EQUAL, "after variable name");
+    expression(parser, lexer, compiler);
+    define_variable(parser, compiler, identifier_index);
+    lulu_Parser_match_token(parser, lexer, TOKEN_SEMICOLON);
+}
+
 void
 lulu_Parser_declaration(lulu_Parser *self, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
-    statement(self, lexer, compiler);
+    if (lulu_Parser_match_token(self, lexer, TOKEN_IDENTIFIER)) {
+        assignment(self, lexer, compiler);
+    } else {
+        statement(self, lexer, compiler);
+    }
 }
 
 static void

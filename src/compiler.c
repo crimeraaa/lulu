@@ -31,7 +31,7 @@ emit_instruction(lulu_Compiler *self, lulu_Parser *parser, lulu_Instruction inst
 void
 lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op)
 {
-    emit_instruction(self, parser, lulu_Instruction_set_none(op));
+    emit_instruction(self, parser, lulu_Instruction_make_none(op));
 }
 
 void
@@ -40,8 +40,8 @@ lulu_Compiler_emit_return(lulu_Compiler *self, lulu_Parser *parser)
     lulu_Compiler_emit_opcode(self, parser, OP_RETURN);
 }
 
-static byte3
-make_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value)
+byte3
+lulu_Compiler_make_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value)
 {
     lulu_VM *vm    = self->vm;
     isize    index = lulu_Chunk_add_constant(vm, current_chunk(self), value);
@@ -55,8 +55,8 @@ make_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const
 void
 lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value)
 {
-    byte3 index = make_constant(self, lexer, parser, value);
-    emit_instruction(self, parser, lulu_Instruction_set_byte3(OP_CONSTANT, index));
+    byte3 index = lulu_Compiler_make_constant(self, lexer, parser, value);
+    emit_instruction(self, parser, lulu_Instruction_make_byte3(OP_CONSTANT, index));
 }
 
 static bool
@@ -85,7 +85,7 @@ folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
         int cur_arg  = cast(int)lulu_Instruction_get_byte1(inst);
         int new_arg  = prev_arg + cur_arg + offset;
         if (0 < new_arg && new_arg <= cast(int)LULU_MAX_BYTE) {
-            *ip = lulu_Instruction_set_byte1(op, cast(byte)new_arg);
+            *ip = lulu_Instruction_make_byte1(op, cast(byte)new_arg);
             return true;
         }
         break;
@@ -99,10 +99,16 @@ folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
 void
 lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte a)
 {
-    lulu_Instruction inst = lulu_Instruction_set_byte1(op, a);
+    lulu_Instruction inst = lulu_Instruction_make_byte1(op, a);
     if (!folded_instruction(self, inst)) {
         emit_instruction(self, parser, inst);
     }
+}
+
+void
+lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte3 arg)
+{
+    emit_instruction(self, parser, lulu_Instruction_make_byte3(op, arg));
 }
 
 void

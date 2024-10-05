@@ -32,6 +32,7 @@ struct lulu_VM {
     lulu_Value         *end;  // Points to 1 past the last valid stack slot.
 
     lulu_Table          strings;  // Hashtable for interned strings.
+    lulu_Table          globals;  // Map global variable names to values.
     lulu_Builder        builder;  // Buffer for string literals and concatenations.
 
     lulu_Allocator      allocator;

@@ -80,13 +80,20 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
         printf("%4i ", chunk->lines[index]);
     }
 
-    lulu_Instruction inst = chunk->code[index];
-    lulu_OpCode      op   = lulu_Instruction_get_opcode(inst);
-    cstring          name = LULU_OPCODE_INFO[op].name;
+    const lulu_Value *constants = chunk->constants.values;
+    lulu_Instruction  inst = chunk->code[index];
+    lulu_OpCode       op   = lulu_Instruction_get_opcode(inst);
+    cstring           name = LULU_OPCODE_INFO[op].name;
     switch (op) {
     case OP_CONSTANT:
         print_constant(name, chunk, inst);
         break;
+    case OP_GETGLOBAL:
+    case OP_SETGLOBAL: {
+        byte3 arg = lulu_Instruction_get_byte3(inst);
+        printf("%-16s %4i\t# %s\n", name, arg, constants[arg].string->data);
+        break;
+    }
     case OP_PRINT:
     case OP_CONCAT:
     case OP_NIL: {

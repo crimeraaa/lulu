@@ -8,6 +8,8 @@
 
 typedef enum {
     OP_CONSTANT,
+    OP_GETGLOBAL,
+    OP_SETGLOBAL,
     OP_NIL, OP_TRUE, OP_FALSE,
     OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_POW,
     OP_CONCAT,
@@ -58,7 +60,7 @@ lulu_Instruction_make(lulu_OpCode op, byte a, byte b, byte c)
 }
 
 static inline lulu_Instruction
-lulu_Instruction_set_byte3(lulu_OpCode op, byte3 arg)
+lulu_Instruction_make_byte3(lulu_OpCode op, byte3 arg)
 {
     // Note how we use msb w/ OFFSET_B, not OFFSET_A since we're masking bits.
     byte msb = (arg >> LULU_INSTRUCTION_OFFSET_B)  & LULU_MAX_BYTE;
@@ -67,11 +69,11 @@ lulu_Instruction_set_byte3(lulu_OpCode op, byte3 arg)
     return lulu_Instruction_make(op, msb, mid, lsb);
 }
 
-#define lulu_Instruction_set_byte1(op, arg) lulu_Instruction_make(op, arg, 0, 0)
-#define lulu_Instruction_set_none(op)       lulu_Instruction_make(op, 0, 0, 0)
-#define lulu_Instruction_get_opcode(inst)   cast(lulu_OpCode)((inst) & LULU_MAX_BYTE)
-#define lulu_Instruction_get_byte1(inst)    ((inst) >> LULU_INSTRUCTION_OFFSET_A)
-#define lulu_Instruction_get_byte3(inst)    ((inst) >> LULU_INSTRUCTION_OFFSET_C)
+#define lulu_Instruction_make_byte1(op, arg)    lulu_Instruction_make(op, arg, 0, 0)
+#define lulu_Instruction_make_none(op)          lulu_Instruction_make(op, 0, 0, 0)
+#define lulu_Instruction_get_opcode(inst)       ((inst) & LULU_MAX_BYTE)
+#define lulu_Instruction_get_byte1(inst)        ((inst) >> LULU_INSTRUCTION_OFFSET_A)
+#define lulu_Instruction_get_byte3(inst)        ((inst) >> LULU_INSTRUCTION_OFFSET_C)
 
 /**
  * @brief
