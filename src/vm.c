@@ -150,7 +150,10 @@ do {                                                                           \
             byte3             index = lulu_Instruction_get_byte3(inst);
             const lulu_Value *key   = &constants->values[index];
             const lulu_Value *value = lulu_Table_get(&self->globals, key);
-            lulu_VM_push(self, (value) ? value : &LULU_VALUE_NIL);
+            if (!value) {
+                lulu_VM_runtime_error(self, "Undefined global '%s'", key->string->data);
+            }
+            lulu_VM_push(self, value);
             break;
         }
         case OP_SETGLOBAL: {
@@ -210,6 +213,11 @@ do {                                                                           \
             }
             lulu_pop(self, count);
             printf("\n");
+            break;
+        }
+        case OP_POP: {
+            int count = lulu_Instruction_get_byte1(inst);
+            lulu_pop(self, count);
             break;
         }
         case OP_RETURN: {

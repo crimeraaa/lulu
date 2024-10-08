@@ -41,6 +41,17 @@ parse_precedence(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler
 static lulu_Parser_Rule *
 get_rule(lulu_Token_Type type);
 
+static int
+parse_expression_list(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
+{
+    int count = 0;
+    do {
+        expression(parser, lexer, compiler);
+        count++;
+    } while (lulu_Parser_match_token(parser, lexer, TOKEN_COMMA));
+    return count;
+}
+
 static byte3
 identifier_constant(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler, lulu_Token *token)
 {
@@ -83,7 +94,7 @@ lulu_Parser_advance_token(lulu_Parser *self, lulu_Lexer *lexer)
 
     self->consumed = self->current;
     self->current  = token;
-    // print_parser(parser); //!DEBUG
+    // print_parser(parser); //! DEBUG
 }
 
 static bool
@@ -393,10 +404,7 @@ print_statement(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
     lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_L, "after 'print'");
     // Potentially have at least 1 argument?
     if (!lulu_Parser_match_token(parser, lexer, TOKEN_PAREN_R)) {
-        do {
-            expression(parser, lexer, compiler);
-            argc++;
-        } while (lulu_Parser_match_token(parser, lexer, TOKEN_COMMA));
+        argc = parse_expression_list(parser, lexer, compiler);
         lulu_Parser_consume_token(parser, lexer, TOKEN_PAREN_R, "to close call");
     }
     lulu_Compiler_emit_byte1(compiler, parser, OP_PRINT, argc);
@@ -413,20 +421,16 @@ statement(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
     lulu_Parser_match_token(parser, lexer, TOKEN_SEMICOLON);
 }
 
-/**
- * @note 2024-10-05
- *      Analogous to 'compiler.c:parseVariable()' in the book.
- */
-static byte3
-parse_identifier(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
+static int
+count_assignment_targets(lulu_Assign *last)
 {
-    return identifier_constant(parser, lexer, compiler, &parser->consumed);
-}
-
-static void
-define_variable(lulu_Parser *parser, lulu_Compiler *compiler, byte3 index)
-{
-    lulu_Compiler_emit_byte3(compiler, parser, OP_SETGLOBAL, index);
+    lulu_Assign *iter = last;
+    int          count = 0;
+    while (iter) {
+        iter = iter->prev;
+        count++;
+    }
+    return count;
 }
 
 /**
@@ -437,16 +441,62 @@ define_variable(lulu_Parser *parser, lulu_Compiler *compiler, byte3 index)
 static void
 assignment(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
-    byte3 identifier_index = parse_identifier(parser, lexer, compiler);
-    lulu_Parser_consume_token(parser, lexer, TOKEN_EQUAL, "after variable name");
-    expression(parser, lexer, compiler);
-    define_variable(parser, compiler, identifier_index);
-    lulu_Parser_match_token(parser, lexer, TOKEN_SEMICOLON);
+    lulu_Assign lvalue;
+    lvalue.prev  = parser->assignments;
+    lvalue.op    = OP_SETGLOBAL;
+    lvalue.index = identifier_constant(parser, lexer, compiler, &parser->consumed);
+
+    /**
+     * If we have a multiple assignment, resolve all the assignment targets and
+     * store them in a linked list which is 'allocated' using recursive stack
+     * frames.
+     */
+    if (lulu_Parser_match_token(parser, lexer, TOKEN_COMMA)) {
+        lulu_Parser_consume_token(parser, lexer, TOKEN_IDENTIFIER, "after ','");
+        parser->assignments = &lvalue;
+        assignment(parser, lexer, compiler);
+    }
+
+    /**
+     * For multiple assignment this should only pass true for the deepest
+     * recursive call.
+     *
+     * That is, 'lvalue' is currently the rightmost (and last) assignment target.
+     */
+    if (lulu_Parser_match_token(parser, lexer, TOKEN_EQUAL)) {
+        int assigns = count_assignment_targets(&lvalue);
+        int exprs   = parse_expression_list(parser, lexer, compiler);
+
+        /**
+         * @details assigns > exprs
+         *      a, b, c = 1, 2
+         *
+         * @details assigns < exprs
+         *      a, b    = 1, 2, 3
+         */
+        if (assigns > exprs) {
+            int nil_count = assigns - exprs;
+            lulu_Compiler_emit_byte1(compiler, parser, OP_NIL, nil_count);
+        } else if (assigns < exprs) {
+            int pop_count = exprs - assigns;
+            lulu_Compiler_emit_byte1(compiler, parser, OP_POP, pop_count);
+        }
+
+        lulu_Assign *iter = &lvalue;
+        while (iter) {
+            // printf("lvalue{prev=%p, index=%u}\n", cast(void *)iter->prev, iter->index); //! DEBUG
+            lulu_Compiler_emit_byte3(compiler, parser, iter->op, iter->index);
+            iter = iter->prev;
+        }
+
+        lulu_Parser_match_token(parser, lexer, TOKEN_SEMICOLON);
+    }
 }
 
 void
 lulu_Parser_declaration(lulu_Parser *self, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
+    self->assignments = NULL;
     if (lulu_Parser_match_token(self, lexer, TOKEN_IDENTIFIER)) {
         assignment(self, lexer, compiler);
     } else {

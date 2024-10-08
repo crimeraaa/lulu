@@ -16,6 +16,7 @@ typedef enum {
     OP_UNM,
     OP_EQ, OP_LT, OP_LEQ, OP_NOT,
     OP_PRINT, // @note 2024-10-1: Temporary!
+    OP_POP,
     OP_RETURN,
 } lulu_OpCode;
 
@@ -86,10 +87,10 @@ lulu_Instruction_make_byte3(lulu_OpCode op, byte3 arg)
 typedef struct {
     lulu_Value_Array  constants;
     lulu_Instruction *code;  // 1D array of bytecode.
-    int    *lines; // Line numbers per bytecode.
-    cstring filename;
-    isize   len;   // Current number of actively used bytes in `code`.
-    isize   cap;   // Total number of bytes that `code` points to.
+    int    *lines;    // Line numbers per bytecode.
+    cstring filename; // Filename of where this chunk originated from.
+    isize   len;      // Current number of actively used bytes in `code`.
+    isize   cap;      // Total number of bytes that `code` points to.
 } lulu_Chunk;
 
 void

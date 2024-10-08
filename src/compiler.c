@@ -124,7 +124,7 @@ void
 lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk)
 {
     lulu_Lexer  lexer;
-    lulu_Parser parser = {{NULL, 0, 0, 0}, {NULL, 0, 0, 0}};
+    lulu_Parser parser = {{NULL, 0, 0, 0}, {NULL, 0, 0, 0}, NULL};
     self->chunk = chunk;
     lulu_Lexer_init(self->vm, &lexer, chunk->filename, input);
     lulu_Parser_advance_token(&parser, &lexer);

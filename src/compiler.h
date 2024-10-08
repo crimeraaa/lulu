@@ -10,14 +10,26 @@
  */
 #define LULU_MAX_CONSTANTS  ((1 << 24) - 1)
 
+/**
+ * @brief
+ *      An assignable value, sometimes called an 'L-value'.
+ */
+typedef struct lulu_Assign lulu_Assign;
+struct lulu_Assign {
+    lulu_Assign *prev;  // Use recursion to chain multiple assignments.
+    lulu_OpCode  op;    // GETGLOBAL, GETLOCAL, or GETTABLE.
+    byte3        index; // Argument to 'op'.
+};
+
 typedef struct {
-    lulu_Token current;  // Also our "lookahead" token.
-    lulu_Token consumed; // Analogous to the book's `compiler.c:Parser::previous`.
+    lulu_Token   current;  // Also our "lookahead" token.
+    lulu_Token   consumed; // Analogous to the book's `compiler.c:Parser::previous`.
+    lulu_Assign *assignments; // A linked list of assignment targets.
 } lulu_Parser;
 
 typedef struct {
-    lulu_VM    *vm;    // Enclosing/parent state.
-    lulu_Chunk *chunk; // Destination for bytecode and constants.
+    lulu_VM     *vm;    // Enclosing/parent state.
+    lulu_Chunk  *chunk; // Destination for bytecode and constants.
 } lulu_Compiler;
 
 void

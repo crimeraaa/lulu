@@ -95,6 +95,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
         break;
     }
     case OP_PRINT:
+    case OP_POP:
     case OP_CONCAT:
     case OP_NIL: {
         byte arg = lulu_Instruction_get_byte1(inst);
