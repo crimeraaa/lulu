@@ -94,6 +94,12 @@ extern const Char_Slice
 LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT];
 
 void
+lulu_Token_init(lulu_Token *self, const char *start, isize len, lulu_Token_Type type, int line);
+
+void
+lulu_Token_init_empty(lulu_Token *self);
+
+void
 lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input);
 
 lulu_Token

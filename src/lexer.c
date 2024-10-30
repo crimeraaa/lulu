@@ -33,6 +33,21 @@ is_ascii_alnum(char ch)
 }
 
 void
+lulu_Token_init(lulu_Token *self, const char *start, isize len, lulu_Token_Type type, int line)
+{
+    self->start = start;
+    self->len   = len;
+    self->type  = type;
+    self->line  = line;
+}
+
+void
+lulu_Token_init_empty(lulu_Token *self)
+{
+    lulu_Token_init(self, NULL, 0, 0, 0);
+}
+
+void
 lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input)
 {
     self->vm       = vm;
@@ -107,11 +122,10 @@ match_char_any(lulu_Lexer *lexer, cstring charset)
 static lulu_Token
 make_token(const lulu_Lexer *lexer, lulu_Token_Type type)
 {
-    lulu_Token token;
-    token.start = lexer->start;
-    token.len   = lexer->current - lexer->start;
-    token.type  = type;
-    token.line  = lexer->line;
+    lulu_Token  token;
+    const char *start  = lexer->start;
+    isize       len    = lexer->current - lexer->start;
+    lulu_Token_init(&token, start, len, type, lexer->line);
     return token;
 }
 

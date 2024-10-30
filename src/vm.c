@@ -2,6 +2,7 @@
 #include "vm.h"
 #include "debug.h"
 #include "compiler.h"
+#include "parser.h"
 
 /// standard
 #include <stdarg.h>     // va_list
@@ -235,17 +236,18 @@ do {                                                                           \
 }
 
 typedef struct {
-    lulu_Compiler compiler;
-    lulu_Chunk    chunk;
-    cstring       input;
+    lulu_Chunk chunk;
+    cstring    input;
 } Comptime;
 
 static void
 compile_and_run(lulu_VM *self, void *userdata)
 {
-    Comptime *ud = cast(Comptime *)userdata;
-    lulu_Compiler_init(self, &ud->compiler);
-    lulu_Compiler_compile(&ud->compiler, ud->input, &ud->chunk);
+    lulu_Compiler compiler;
+    Comptime     *ud = cast(Comptime *)userdata;
+
+    lulu_Compiler_init(self, &compiler);
+    lulu_Compiler_compile(&compiler, ud->input, &ud->chunk);
 
     self->chunk = &ud->chunk;
     self->ip    = self->chunk->code;

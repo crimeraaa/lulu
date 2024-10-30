@@ -6,8 +6,10 @@
 void
 lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self)
 {
-    self->vm    = vm;
-    self->chunk = NULL;
+    self->vm     = vm;
+    self->chunk  = NULL;
+    self->parser = NULL;
+    self->lexer  = NULL;
 }
 
 /**
@@ -21,42 +23,42 @@ current_chunk(lulu_Compiler *self)
 }
 
 static void
-emit_instruction(lulu_Compiler *self, lulu_Parser *parser, lulu_Instruction inst)
+emit_instruction(lulu_Compiler *self, lulu_Instruction inst)
 {
     lulu_VM *vm   = self->vm;
-    int      line = parser->consumed.line;
+    int      line = self->parser->consumed.line;
     lulu_Chunk_write(vm, current_chunk(self), inst, line);
 }
 
 void
-lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op)
+lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_OpCode op)
 {
-    emit_instruction(self, parser, lulu_Instruction_make_none(op));
+    emit_instruction(self, lulu_Instruction_make_none(op));
 }
 
 void
-lulu_Compiler_emit_return(lulu_Compiler *self, lulu_Parser *parser)
+lulu_Compiler_emit_return(lulu_Compiler *self)
 {
-    lulu_Compiler_emit_opcode(self, parser, OP_RETURN);
+    lulu_Compiler_emit_opcode(self, OP_RETURN);
 }
 
 byte3
-lulu_Compiler_make_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value)
+lulu_Compiler_make_constant(lulu_Compiler *self, const lulu_Value *value)
 {
     lulu_VM *vm    = self->vm;
     isize    index = lulu_Chunk_add_constant(vm, current_chunk(self), value);
     if (index > LULU_MAX_CONSTANTS) {
-        lulu_Parser_error_consumed(parser, lexer, "Too many constants in one chunk.");
+        lulu_Parser_error_consumed(self->parser, "Too many constants in one chunk.");
         return 0;
     }
     return cast(byte3)index;
 }
 
 void
-lulu_Compiler_emit_constant(lulu_Compiler *self, lulu_Lexer *lexer, lulu_Parser *parser, const lulu_Value *value)
+lulu_Compiler_emit_constant(lulu_Compiler *self, const lulu_Value *value)
 {
-    byte3 index = lulu_Compiler_make_constant(self, lexer, parser, value);
-    emit_instruction(self, parser, lulu_Instruction_make_byte3(OP_CONSTANT, index));
+    byte3 index = lulu_Compiler_make_constant(self, value);
+    emit_instruction(self, lulu_Instruction_make_byte3(OP_CONSTANT, index));
 }
 
 static bool
@@ -97,24 +99,24 @@ folded_instruction(lulu_Compiler *self, lulu_Instruction inst)
 }
 
 void
-lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte a)
+lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_OpCode op, byte a)
 {
     lulu_Instruction inst = lulu_Instruction_make_byte1(op, a);
     if (!folded_instruction(self, inst)) {
-        emit_instruction(self, parser, inst);
+        emit_instruction(self, inst);
     }
 }
 
 void
-lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_Parser *parser, lulu_OpCode op, byte3 arg)
+lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_OpCode op, byte3 arg)
 {
-    emit_instruction(self, parser, lulu_Instruction_make_byte3(op, arg));
+    emit_instruction(self, lulu_Instruction_make_byte3(op, arg));
 }
 
 void
-lulu_Compiler_end(lulu_Compiler *self, lulu_Parser *parser)
+lulu_Compiler_end(lulu_Compiler *self)
 {
-    lulu_Compiler_emit_return(self, parser);
+    lulu_Compiler_emit_return(self);
 #ifdef LULU_DEBUG_PRINT
     lulu_Debug_disasssemble_chunk(current_chunk(self));
 #endif
@@ -124,12 +126,21 @@ void
 lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk)
 {
     lulu_Lexer  lexer;
-    lulu_Parser parser = {{NULL, 0, 0, 0}, {NULL, 0, 0, 0}, NULL};
-    self->chunk = chunk;
+    lulu_Parser parser;
+
+    /**
+     * @note 2024-10-30
+     *      Could be in 'lulu_Compiler_init()'...
+     */
+    self->chunk  = chunk;
+    self->lexer  = &lexer;
+    self->parser = &parser;
+    lulu_Parser_init(&parser, self);
     lulu_Lexer_init(self->vm, &lexer, chunk->filename, input);
-    lulu_Parser_advance_token(&parser, &lexer);
-    while (!lulu_Parser_match_token(&parser, &lexer, TOKEN_EOF)) {
-        lulu_Parser_declaration(&parser, &lexer, self);
+
+    lulu_Parser_advance_token(&parser);
+    while (!lulu_Parser_match_token(&parser, TOKEN_EOF)) {
+        lulu_Parser_declaration(&parser);
     }
-    lulu_Compiler_end(self, &parser);
+    lulu_Compiler_end(self);
 }
