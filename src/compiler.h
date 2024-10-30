@@ -21,16 +21,22 @@ struct lulu_Assign {
     byte3        index; // Argument to 'op'.
 };
 
-typedef struct {
-    lulu_Token   current;  // Also our "lookahead" token.
-    lulu_Token   consumed; // Analogous to the book's `compiler.c:Parser::previous`.
-    lulu_Assign *assignments; // A linked list of assignment targets.
-} lulu_Parser;
+typedef struct lulu_Parser lulu_Parser;
+typedef struct lulu_Compiler lulu_Compiler;
 
-typedef struct {
+struct lulu_Parser {
+    lulu_Token     current;  // Also our "lookahead" token.
+    lulu_Token     consumed; // Analogous to the book's `compiler.c:Parser::previous`.
+    lulu_Assign   *assignments; // Must be valid only once per assignment call.
+    // lulu_Compiler *compiler;
+};
+
+struct lulu_Compiler {
     lulu_VM     *vm;    // Enclosing/parent state.
     lulu_Chunk  *chunk; // Destination for bytecode and constants.
-} lulu_Compiler;
+    // lulu_Lexer  *lexer;
+    // lulu_Parser *parser;
+};
 
 void
 lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self);

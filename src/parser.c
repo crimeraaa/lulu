@@ -433,6 +433,38 @@ count_assignment_targets(lulu_Assign *last)
     return count;
 }
 
+static void
+emit_assignment_targets(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler, lulu_Assign *head)
+{
+    int assigns = count_assignment_targets(head);
+    int exprs   = parse_expression_list(parser, lexer, compiler);
+
+    /**
+     * @details assigns > exprs
+     *      a, b, c = 1, 2
+     *
+     * @details assigns < exprs
+     *      a, b    = 1, 2, 3
+     */
+    if (assigns > exprs) {
+        int nil_count = assigns - exprs;
+        lulu_Compiler_emit_byte1(compiler, parser, OP_NIL, nil_count);
+    } else if (assigns < exprs) {
+        int pop_count = exprs - assigns;
+        lulu_Compiler_emit_byte1(compiler, parser, OP_POP, pop_count);
+    }
+
+    lulu_Assign *iter = head;
+    while (iter) {
+        // printf("lvalue{prev=%p, index=%u}\n", cast(void *)iter->prev, iter->index); //! DEBUG
+        lulu_Compiler_emit_byte3(compiler, parser, iter->op, iter->index);
+        iter = iter->prev;
+    }
+
+    lulu_Parser_match_token(parser, lexer, TOKEN_SEMICOLON);
+    parser->assignments = NULL;
+}
+
 /**
  * @note 2024-10-05
  *      Analogous to 'compiler.c:varDeclaration()' in the book.
@@ -445,6 +477,7 @@ assignment(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
     lvalue.prev  = parser->assignments;
     lvalue.op    = OP_SETGLOBAL;
     lvalue.index = identifier_constant(parser, lexer, compiler, &parser->consumed);
+    parser->assignments = &lvalue; // Should end at the deepest recursive call.
 
     /**
      * If we have a multiple assignment, resolve all the assignment targets and
@@ -453,50 +486,31 @@ assignment(lulu_Parser *parser, lulu_Lexer *lexer, lulu_Compiler *compiler)
      */
     if (lulu_Parser_match_token(parser, lexer, TOKEN_COMMA)) {
         lulu_Parser_consume_token(parser, lexer, TOKEN_IDENTIFIER, "after ','");
-        parser->assignments = &lvalue;
         assignment(parser, lexer, compiler);
     }
 
-    /**
-     * For multiple assignment this should only pass true for the deepest
-     * recursive call.
-     *
-     * That is, 'lvalue' is currently the rightmost (and last) assignment target.
-     */
-    if (lulu_Parser_match_token(parser, lexer, TOKEN_EQUAL)) {
-        int assigns = count_assignment_targets(&lvalue);
-        int exprs   = parse_expression_list(parser, lexer, compiler);
-
+    if (check_token(parser, TOKEN_EQUAL)) {
         /**
-         * @details assigns > exprs
-         *      a, b, c = 1, 2
+         * Account for bad statements when walking up the recursive call stack,
+         * like in 'a, b = 5, 4, c = 13'
          *
-         * @details assigns < exprs
-         *      a, b    = 1, 2, 3
+         * @warning 2024-10-29
+         *
+         * We assume that after the first valid '=' assignment, we already set
+         * this pointer to 'NULL'.
          */
-        if (assigns > exprs) {
-            int nil_count = assigns - exprs;
-            lulu_Compiler_emit_byte1(compiler, parser, OP_NIL, nil_count);
-        } else if (assigns < exprs) {
-            int pop_count = exprs - assigns;
-            lulu_Compiler_emit_byte1(compiler, parser, OP_POP, pop_count);
+        if (!parser->assignments) {
+            lulu_Parser_error_consumed(parser, lexer, "Nested assignments");
+            return;
         }
-
-        lulu_Assign *iter = &lvalue;
-        while (iter) {
-            // printf("lvalue{prev=%p, index=%u}\n", cast(void *)iter->prev, iter->index); //! DEBUG
-            lulu_Compiler_emit_byte3(compiler, parser, iter->op, iter->index);
-            iter = iter->prev;
-        }
-
-        lulu_Parser_match_token(parser, lexer, TOKEN_SEMICOLON);
+        lulu_Parser_advance_token(parser, lexer);
+        emit_assignment_targets(parser, lexer, compiler, &lvalue);
     }
 }
 
 void
 lulu_Parser_declaration(lulu_Parser *self, lulu_Lexer *lexer, lulu_Compiler *compiler)
 {
-    self->assignments = NULL;
     if (lulu_Parser_match_token(self, lexer, TOKEN_IDENTIFIER)) {
         assignment(self, lexer, compiler);
     } else {

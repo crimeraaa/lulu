@@ -27,9 +27,10 @@ LULU_TYPENAMES[LULU_TYPE_COUNT] = {
  *      Requires boolean as first member of the union in order for this to work.
  *      Otherwise, you'll need to rely on designated initializers.
  */
-const lulu_Value LULU_VALUE_NIL   = {LULU_TYPE_NIL,     {0}};
-const lulu_Value LULU_VALUE_TRUE  = {LULU_TYPE_BOOLEAN, {true}};
-const lulu_Value LULU_VALUE_FALSE = {LULU_TYPE_BOOLEAN, {false}};
+const lulu_Value
+LULU_VALUE_NIL   = {LULU_TYPE_NIL,     {0}},
+LULU_VALUE_TRUE  = {LULU_TYPE_BOOLEAN, {true}},
+LULU_VALUE_FALSE = {LULU_TYPE_BOOLEAN, {false}};
 
 void
 lulu_Value_print(const lulu_Value *value)

@@ -8,7 +8,8 @@
 /**
  * @brief
  *      Given the relative index 'offset' (positive or negative), load the
- *      appropriate 'lulu_Value' pointer from the
+ *      appropriate 'lulu_Value' pointer from either the top or the bottom
+ *      of the stack.
  *
  * @warning 2024-09-29
  *      May load a potentially invalid address!

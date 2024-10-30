@@ -57,9 +57,10 @@ typedef struct {
 #define lulu_Value_is_string(value)     ((value)->type == LULU_TYPE_STRING)
 #define lulu_Value_is_table(value)      ((value)->type == LULU_TYPE_TABLE)
 
-extern const lulu_Value LULU_VALUE_NIL;
-extern const lulu_Value LULU_VALUE_TRUE;
-extern const lulu_Value LULU_VALUE_FALSE;
+extern const lulu_Value
+LULU_VALUE_NIL,
+LULU_VALUE_TRUE,
+LULU_VALUE_FALSE;
 
 static inline bool
 lulu_Value_is_falsy(const lulu_Value *value)
