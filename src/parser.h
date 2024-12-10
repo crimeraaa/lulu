@@ -30,7 +30,7 @@ typedef const struct {
 } lulu_Parser_Rule;
 
 void
-lulu_Parser_init(lulu_Parser *self, lulu_Compiler *compiler);
+lulu_Parser_init(lulu_Parser *self, lulu_Compiler *compiler, lulu_Lexer *lexer);
 
 /**
  * @note 2024-09-06

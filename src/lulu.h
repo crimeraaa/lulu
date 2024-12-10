@@ -219,7 +219,11 @@ lulu_push_cstring(lulu_VM *vm, cstring cstr);
 void
 lulu_push_string(lulu_VM *vm, const char *data, isize len);
 
-#define lulu_push_literal(vm, cstr)  lulu_push_string(vm, cstr, size_of(cstr) - 1)
+void
+lulu_push_table(lulu_VM *vm, isize count);
+
+#define lulu_push_empty_table(vm)   lulu_push_table(vm, 0)
+#define lulu_push_literal(vm, cstr) lulu_push_string(vm, cstr, size_of(cstr) - 1)
 
 ///=============================================================================
 

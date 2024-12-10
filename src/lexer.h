@@ -90,7 +90,7 @@ typedef struct {
  * @brief
  *      Map a `lulu_Token_Type`, to the string representation thereof.
  */
-extern const Char_Slice
+extern const LString
 LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT];
 
 void

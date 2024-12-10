@@ -18,7 +18,7 @@ struct lulu_Table {
 };
 
 lulu_Table *
-lulu_Table_new(lulu_VM *vm);
+lulu_Table_new(lulu_VM *vm, isize count);
 
 void
 lulu_Table_init(lulu_Table *self);

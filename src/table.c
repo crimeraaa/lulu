@@ -2,29 +2,6 @@
 
 #include <string.h>     // memcpy, memcmp
 
-lulu_Table *
-lulu_Table_new(lulu_VM *vm)
-{
-    lulu_Table *table = cast(lulu_Table *)lulu_Object_new(vm, LULU_TYPE_TABLE, size_of(*table));
-    lulu_Table_init(table);
-    return table;
-}
-
-void
-lulu_Table_init(lulu_Table *self)
-{
-    self->pairs = NULL;
-    self->count = 0;
-    self->cap   = 0;
-}
-
-void
-lulu_Table_free(lulu_VM *vm, lulu_Table *self)
-{
-    rawarray_free(lulu_Table_Pair, vm, self->pairs, self->cap);
-    lulu_Table_init(self);
-}
-
 static u32
 hash_number(lulu_Number number)
 {
@@ -105,6 +82,32 @@ adjust_capacity(lulu_VM *vm, lulu_Table *table, isize new_cap)
     rawarray_free(lulu_Table_Pair, vm, old_pairs, old_cap);
     table->pairs = new_pairs;
     table->cap   = new_cap;
+}
+
+lulu_Table *
+lulu_Table_new(lulu_VM *vm, isize count)
+{
+    lulu_Table *table = cast(lulu_Table *)lulu_Object_new(vm, LULU_TYPE_TABLE, size_of(*table));
+    lulu_Table_init(table);
+    if (count > 0) {
+        adjust_capacity(vm, table, count);
+    }
+    return table;
+}
+
+void
+lulu_Table_init(lulu_Table *self)
+{
+    self->pairs = NULL;
+    self->count = 0;
+    self->cap   = 0;
+}
+
+void
+lulu_Table_free(lulu_VM *vm, lulu_Table *self)
+{
+    rawarray_free(lulu_Table_Pair, vm, self->pairs, self->cap);
+    lulu_Table_init(self);
 }
 
 const lulu_Value *

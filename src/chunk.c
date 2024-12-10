@@ -12,6 +12,9 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_CONSTANT]   = {"CONSTANT",      3,           1,          0},
     [OP_GETGLOBAL]  = {"GETGLOBAL",     3,           1,          0},
     [OP_SETGLOBAL]  = {"SETGLOBAL",     3,           0,          1},
+    [OP_NEWTABLE]   = {"NEWTABLE",      3,           1,          0},
+    [OP_GETTABLE]   = {"GETTABLE",      3,           1,          0}, // @todo 2024-10-12 Revisit old implementation!
+    [OP_SETTABLE]   = {"SETTABLE",      3,           0,          1}, // @todo 2024-10-12 See above
     [OP_NIL]        = {"NIL",           1,          -1,          0},
     [OP_TRUE]       = {"TRUE",          0,           1,          0},
     [OP_FALSE]      = {"FALSE",         0,           1,          0},
@@ -86,6 +89,11 @@ isize
 lulu_Chunk_add_constant(lulu_VM *vm, lulu_Chunk *self, const lulu_Value *value)
 {
     lulu_Value_Array *constants = &self->constants;
+
+    /**
+     * @note    2024-12-10 Theoretically VERY inefficient, but works for the
+     *          general case where there are not THAT many constants.
+     */
     for (isize i = 0; i < constants->len; i++) {
         if (lulu_Value_eq(value, &constants->values[i])) {
             return i;

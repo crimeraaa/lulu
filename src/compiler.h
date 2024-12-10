@@ -29,6 +29,7 @@ struct lulu_Parser {
     lulu_Token     consumed; // Analogous to the book's `compiler.c:Parser::previous`.
     lulu_Assign   *assignments; // Must be valid only once per assignment call.
     lulu_Compiler *compiler;
+    lulu_Lexer    *lexer;
 };
 
 struct lulu_Compiler {

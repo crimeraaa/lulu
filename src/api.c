@@ -127,4 +127,12 @@ lulu_push_string(lulu_VM *vm, const char *data, isize len)
     push_safe(vm, &tmp);
 }
 
+void
+lulu_push_table(lulu_VM *vm, isize count)
+{
+    lulu_Value tmp;
+    lulu_Value_set_table(&tmp, lulu_Table_new(vm, count));
+    push_safe(vm, &tmp);
+}
+
 ///=============================================================================

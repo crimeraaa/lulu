@@ -164,6 +164,14 @@ do {                                                                           \
             lulu_pop(self, 1);
             break;
         }
+        case OP_NEWTABLE: {
+            lulu_push_table(self, lulu_Instruction_get_byte1(inst));
+            break;
+        }
+        case OP_GETTABLE:
+        case OP_SETTABLE: {
+            break;
+        }
         case OP_NIL: {
             int count = lulu_Instruction_get_byte1(inst);
             lulu_push_nil(self, count);

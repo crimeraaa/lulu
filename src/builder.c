@@ -75,6 +75,8 @@ lulu_Builder_write_cstring(lulu_Builder *self, cstring cstr)
 const char *
 lulu_Builder_to_string(lulu_Builder *self, isize *out_len)
 {
-    *out_len = self->len;
+    if (out_len) {
+        *out_len = self->len;
+    }
     return self->buffer;
 }

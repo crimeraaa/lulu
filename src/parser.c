@@ -84,19 +84,19 @@ print_parser(const lulu_Parser *parser)
 }
 
 void
-lulu_Parser_init(lulu_Parser *self, lulu_Compiler *compiler)
+lulu_Parser_init(lulu_Parser *self, lulu_Compiler *compiler, lulu_Lexer *lexer)
 {
     lulu_Token_init_empty(&self->consumed);
     lulu_Token_init_empty(&self->current);
     self->assignments = NULL;
     self->compiler    = compiler;
+    self->lexer       = lexer;
 }
 
 void
 lulu_Parser_advance_token(lulu_Parser *self)
 {
-    lulu_Compiler *compiler = self->compiler;
-    lulu_Lexer    *lexer    = compiler->lexer;
+    lulu_Lexer    *lexer    = self->lexer;
     lulu_Token     token    = lulu_Lexer_scan_token(lexer);
 
     // Should be normally impossible, but just in case
@@ -146,7 +146,7 @@ wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
     const char *where = token->start;
     isize       len   = token->len;
     if (token->type == TOKEN_EOF) {
-        const Char_Slice str = LULU_TOKEN_STRINGS[TOKEN_EOF];
+        const LString str = LULU_TOKEN_STRINGS[TOKEN_EOF];
         where = str.data;
         len   = str.len;
     }
@@ -156,16 +156,14 @@ wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
 void
 lulu_Parser_error_current(lulu_Parser *self, cstring msg)
 {
-    lulu_Compiler *compiler = self->compiler;
-    lulu_Lexer    *lexer    = compiler->lexer;
+    lulu_Lexer *lexer = self->lexer;
     wrap_error(lexer->vm, lexer->filename, &self->current, msg);
 }
 
 void
 lulu_Parser_error_consumed(lulu_Parser *self, cstring msg)
 {
-    lulu_Compiler *compiler = self->compiler;
-    lulu_Lexer    *lexer    = compiler->lexer;
+    lulu_Lexer *lexer = self->lexer;
     wrap_error(lexer->vm, lexer->filename, &self->consumed, msg);
 }
 
@@ -241,7 +239,7 @@ static void
 literal(lulu_Parser *parser)
 {
     lulu_Compiler *compiler = parser->compiler;
-    lulu_Lexer    *lexer    = compiler->lexer;
+    lulu_Lexer    *lexer    = parser->lexer;
     switch (parser->consumed.type) {
     case TOKEN_FALSE:
         lulu_Compiler_emit_opcode(compiler, OP_FALSE);
@@ -325,6 +323,20 @@ unary(lulu_Parser *parser)
     lulu_Compiler_emit_opcode(compiler, get_unary_opcode(type));
 }
 
+/**
+ * @note 2024-12-10
+ *      Assumes we just consumed a '{'.
+ */
+static void
+table(lulu_Parser *parser)
+{
+    isize          nfields  = 0;
+    lulu_Compiler *compiler = parser->compiler;
+
+    lulu_Parser_consume_token(parser, TOKEN_CURLY_R, "to close table constructor");
+    lulu_Compiler_emit_byte3(compiler, OP_NEWTABLE, nfields);
+}
+
 ///=== PARSER RULES ========================================================={{{
 
 // @todo 2024-09-22 Just remove the designated initializers entirely!
@@ -374,7 +386,7 @@ LULU_PARSE_RULES[] = {
 [TOKEN_PAREN_R]         = {NULL,        NULL,       PREC_NONE},
 [TOKEN_BRACKET_L]       = {NULL,        NULL,       PREC_NONE},
 [TOKEN_BRACKET_R]       = {NULL,        NULL,       PREC_NONE},
-[TOKEN_CURLY_L]         = {NULL,        NULL,       PREC_NONE},
+[TOKEN_CURLY_L]         = {&table,      NULL,       PREC_NONE},
 [TOKEN_CURLY_R]         = {NULL,        NULL,       PREC_NONE},
 [TOKEN_COMMA]           = {NULL,        NULL,       PREC_NONE},
 [TOKEN_COLON]           = {NULL,        NULL,       PREC_NONE},
@@ -565,6 +577,11 @@ parse_precedence(lulu_Parser *parser, lulu_Precedence precedence)
     }
     prefix_rule(parser);
     parse_infix(parser, precedence);
+
+    // Don't consume as we want to report the left hand side of the '='.
+    if (check_token(parser, TOKEN_EQUAL)) {
+        lulu_Parser_error_consumed(parser, "Invalid assignment target");
+    }
 }
 
 static lulu_Parser_Rule *

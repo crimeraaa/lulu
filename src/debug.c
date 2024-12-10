@@ -61,11 +61,11 @@ lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
  *      Remember that for a 3-byte argument, the LSB is stored first.
  */
 static void
-print_constant(cstring name, const lulu_Chunk *chunk, lulu_Instruction inst)
+print_constant(const lulu_Chunk *chunk, lulu_Instruction inst)
 {
     isize             arg   = lulu_Instruction_get_byte3(inst);
     const lulu_Value *value = &chunk->constants.values[arg];
-    printf("%-16s %4ti\t# %s: ", name, arg, lulu_Value_typename(value));
+    printf("%4ti\t# %s: ", arg, lulu_Value_typename(value));
     lulu_Debug_print_value(value);
     printf("\n");
 }
@@ -83,15 +83,21 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     const lulu_Value *constants = chunk->constants.values;
     lulu_Instruction  inst = chunk->code[index];
     lulu_OpCode       op   = lulu_Instruction_get_opcode(inst);
-    cstring           name = LULU_OPCODE_INFO[op].name;
+
+    printf("%-16s ", LULU_OPCODE_INFO[op].name);
     switch (op) {
     case OP_CONSTANT:
-        print_constant(name, chunk, inst);
+        print_constant(chunk, inst);
         break;
     case OP_GETGLOBAL:
     case OP_SETGLOBAL: {
         byte3 arg = lulu_Instruction_get_byte3(inst);
-        printf("%-16s %4i\t# %s\n", name, arg, constants[arg].string->data);
+        printf("%4i\t# %s\n", arg, constants[arg].string->data);
+        break;
+    }
+    case OP_NEWTABLE: {
+        byte3 arg = lulu_Instruction_get_byte3(inst);
+        printf("%4i\n", arg);
         break;
     }
     case OP_PRINT:
@@ -99,7 +105,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONCAT:
     case OP_NIL: {
         byte arg = lulu_Instruction_get_byte1(inst);
-        printf("%-16s %4i\n", name, arg);
+        printf("%4i\n", arg);
         break;
     }
     case OP_TRUE: case OP_FALSE:
@@ -107,7 +113,8 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_UNM:
     case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:
-        printf("%-16s\n", name);
+    case OP_GETTABLE: case OP_SETTABLE:
+        printf("\n");
         break;
     }
     return index + 1;

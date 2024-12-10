@@ -3,11 +3,21 @@
 
 #include "object.h"
 
+/**
+ * @brief   A string of known length. Not necessarily nul-terminated.
+ *
+ * @note    This is mainly for the `LULU_TOKEN_STRINGS` as we would rather
+ *          not need to constantly use `strlen` at runtime. Otherwise, you should
+ *          prefer to just track the `data` and `len` pairs yourself.
+ */
 typedef struct {
     const char *data;
     isize       len;
-} Char_Slice;
+} LString;
 
+/**
+ * @warning 2024-12-10 Rely on extensions here!
+ */
 #if defined(__GNUC__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wc99-extensions"
