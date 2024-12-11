@@ -100,6 +100,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
         printf("%4i\n", arg);
         break;
     }
+    case OP_GETLOCAL: case OP_SETLOCAL:
     case OP_PRINT:
     case OP_POP:
     case OP_CONCAT:

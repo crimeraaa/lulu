@@ -164,6 +164,16 @@ do {                                                                           \
             lulu_pop(self, 1);
             break;
         }
+        case OP_GETLOCAL: {
+            byte index = lulu_Instruction_get_byte1(inst);
+            lulu_VM_push(self, &self->values[index]);
+            break;
+        }
+        case OP_SETLOCAL: {
+            byte index = lulu_Instruction_get_byte1(inst);
+            self->values[index] = *poke_top(self, -1);
+            break;
+        }
         case OP_NEWTABLE: {
             lulu_push_table(self, lulu_Instruction_get_byte1(inst));
             break;

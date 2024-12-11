@@ -54,6 +54,10 @@ lulu_Parser_consume_token(lulu_Parser *self, lulu_Token_Type type, cstring msg);
 bool
 lulu_Parser_match_token(lulu_Parser *self, lulu_Token_Type type);
 
+/**
+ * @note 2024-12-10
+ *      Analogous to `compiler.c:declaration()` in the book.
+ */
 void
 lulu_Parser_declaration(lulu_Parser *self);
 

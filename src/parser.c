@@ -53,11 +53,15 @@ parse_expression_list(lulu_Parser *parser)
 }
 
 static byte3
-identifier_constant(lulu_Parser *parser, lulu_Token *token)
+identifier_constant(lulu_Parser *parser, lulu_Token *token, lulu_String **out_str)
 {
     lulu_Compiler *compiler = parser->compiler;
     lulu_Value     tmp;
-    lulu_Value_set_string(&tmp, lulu_String_new(compiler->vm, token->start, token->len));
+    lulu_String   *string = lulu_String_new(compiler->vm, token->start, token->len);
+    if (out_str) {
+        *out_str = string;
+    }
+    lulu_Value_set_string(&tmp, string);
     return lulu_Compiler_make_constant(compiler, &tmp);
 }
 
@@ -118,8 +122,7 @@ check_token(lulu_Parser *parser, lulu_Token_Type type)
 void
 lulu_Parser_consume_token(lulu_Parser *self, lulu_Token_Type type, cstring msg)
 {
-    if (check_token(self, type)) {
-        lulu_Parser_advance_token(self);
+    if (lulu_Parser_match_token(self, type)) {
         return;
     }
     char buf[256];
@@ -267,12 +270,24 @@ literal(lulu_Parser *parser)
     }
 }
 
+/**
+ * @note 2024-12-10
+ *      Analogous to `compiler.c:namedVariable()` in the book.
+ */
 static void
 named_variable(lulu_Parser *parser, lulu_Token *ident)
 {
     lulu_Compiler *compiler = parser->compiler;
-    const byte3    arg      = identifier_constant(parser, ident);
-    lulu_Compiler_emit_byte3(compiler, OP_GETGLOBAL, arg);
+    lulu_String   *string;
+    byte3          index    = identifier_constant(parser, ident, &string);
+    isize          arg      = lulu_Compiler_resolve_local(compiler, string);
+    bool           is_local = (arg != -1);
+
+    if (is_local) {
+        lulu_Compiler_emit_byte1(compiler, OP_GETLOCAL, arg);
+    } else {
+        lulu_Compiler_emit_byte3(compiler, OP_GETGLOBAL, index);
+    }
 }
 
 static void
@@ -435,6 +450,15 @@ expression(lulu_Parser *parser)
 }
 
 static void
+block(lulu_Parser *parser)
+{
+    while (!check_token(parser, TOKEN_END) && !check_token(parser, TOKEN_EOF)) {
+        lulu_Parser_declaration(parser);
+    }
+    lulu_Parser_consume_token(parser, TOKEN_END, "to close 'do' block");
+}
+
+static void
 print_statement(lulu_Parser *parser)
 {
     lulu_Compiler *compiler = parser->compiler;
@@ -453,6 +477,11 @@ statement(lulu_Parser *parser)
 {
     if (lulu_Parser_match_token(parser, TOKEN_PRINT)) {
         print_statement(parser);
+    } else if (lulu_Parser_match_token(parser, TOKEN_DO)) {
+        lulu_Compiler *compiler = parser->compiler;
+        lulu_Compiler_begin_scope(compiler);
+        block(parser);
+        lulu_Compiler_end_scope(compiler);
     } else {
         lulu_Parser_error_current(parser, "Expected an expression");
     }
@@ -471,6 +500,10 @@ count_assignment_targets(lulu_Assign *last)
     return count;
 }
 
+/**
+ * @note 2024-12-10
+ *      (Somewhat) Analogous to the book's `compiler.c:defineVariable()`.
+ */
 static void
 emit_assignment_targets(lulu_Parser *parser, lulu_Assign *head)
 {
@@ -496,7 +529,12 @@ emit_assignment_targets(lulu_Parser *parser, lulu_Assign *head)
     lulu_Assign *iter = head;
     while (iter) {
         // printf("lvalue{prev=%p, index=%u}\n", cast(void *)iter->prev, iter->index); //! DEBUG
-        lulu_Compiler_emit_byte3(compiler, iter->op, iter->index);
+        lulu_OpCode op = iter->op;
+        if (op == OP_SETLOCAL) {
+            lulu_Compiler_emit_byte1(compiler, op, iter->index);
+        } else if (op == OP_SETGLOBAL) {
+            lulu_Compiler_emit_byte3(compiler, op, iter->index);
+        }
         iter = iter->prev;
     }
 
@@ -507,17 +545,38 @@ emit_assignment_targets(lulu_Parser *parser, lulu_Assign *head)
 /**
  * @note 2024-10-05
  *      Analogous to 'compiler.c:varDeclaration()' in the book.
- *      Assumes we just consumed an identifier.
+ *      
+ * @note 2024-12-10
+ *      Assumes we just consumed an identifier. We add it to the constants table
+ *      hereh, so we have no equivalent of `compiler.c:parseVariable()`.
  */
 static void
-assignment(lulu_Parser *parser)
+assignment(lulu_Parser *parser, lulu_OpCode set_op)
 {
-    lulu_Assign lvalue;
-    lvalue.prev  = parser->assignments;
-    lvalue.op    = OP_SETGLOBAL;
-    lvalue.index = identifier_constant(parser, &parser->consumed);
-    parser->assignments = &lvalue; // Should end at the deepest recursive call.
+    lulu_Assign    lvalue;
+    lulu_String   *ident;
+    lulu_Compiler *compiler = parser->compiler;
+    byte3          index    = identifier_constant(parser, &parser->consumed, &ident);
+    int            local;
+    
+    // Were we called after 'local'?
+    if (set_op == OP_SETLOCAL) {
+        lulu_Compiler_add_local(compiler, ident);
+    }
+    // Otherwise, resolve each one individually.
+    local = lulu_Compiler_resolve_local(compiler, ident);
 
+    // @todo 2024-12-11: When *declaring* locals, don't emit OP_SETLOCAL.
+    if (local != -1) {
+        lvalue.op    = OP_SETLOCAL;
+        lvalue.index = local;
+    } else {
+        lvalue.op    = OP_SETGLOBAL;
+        lvalue.index = index;
+    }
+    lvalue.prev  = parser->assignments;
+    parser->assignments = &lvalue; // Should end at the deepest recursive call.
+    
     /**
      * If we have a multiple assignment, resolve all the assignment targets and
      * store them in a linked list which is 'allocated' using recursive stack
@@ -525,7 +584,7 @@ assignment(lulu_Parser *parser)
      */
     if (lulu_Parser_match_token(parser, TOKEN_COMMA)) {
         lulu_Parser_consume_token(parser, TOKEN_IDENTIFIER, "after ','");
-        assignment(parser);
+        assignment(parser, set_op);
     }
 
     if (check_token(parser, TOKEN_EQUAL)) {
@@ -550,8 +609,11 @@ assignment(lulu_Parser *parser)
 void
 lulu_Parser_declaration(lulu_Parser *self)
 {
-    if (lulu_Parser_match_token(self, TOKEN_IDENTIFIER)) {
-        assignment(self);
+    if (lulu_Parser_match_token(self, TOKEN_LOCAL)) {
+        lulu_Parser_consume_token(self, TOKEN_IDENTIFIER, "after 'local'");
+        assignment(self, OP_SETLOCAL);
+    } else if (lulu_Parser_match_token(self, TOKEN_IDENTIFIER)) {
+        assignment(self, OP_SETGLOBAL);
     } else {
         statement(self);
     }

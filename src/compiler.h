@@ -32,11 +32,19 @@ struct lulu_Parser {
     lulu_Lexer    *lexer;
 };
 
+typedef struct {
+    lulu_String *name;
+    int          depth;
+} lulu_Local;
+
 struct lulu_Compiler {
     lulu_VM     *vm;    // Enclosing/parent state.
     lulu_Chunk  *chunk; // Destination for bytecode and constants.
     lulu_Parser *parser;
     lulu_Lexer  *lexer;
+    lulu_Local   locals[LULU_MAX_BYTE];
+    int          local_count; 
+    int          scope_depth; // 0 isn't really used but is distinct from -1.
 };
 
 void
@@ -69,5 +77,26 @@ lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_OpCode op, byte a);
 
 void
 lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_OpCode op, byte3 arg);
+
+void
+lulu_Compiler_begin_scope(lulu_Compiler *self);
+
+void
+lulu_Compiler_end_scope(lulu_Compiler *self);
+
+/**
+ * @note 2024-12-10
+ *      (Somewhat) Analogous to `compiler.c:declareVariable()` in the book.
+ *      Combines functionality of that and `compiler.c:addLocal()`.
+ */
+void
+lulu_Compiler_add_local(lulu_Compiler *self, lulu_String *ident);
+
+/**
+ * @note 2024-12-10
+ *      Analogous to `compiler.c:resolveLocla()` in the book.
+ */
+int
+lulu_Compiler_resolve_local(lulu_Compiler *self, const lulu_String *ident);
 
 #endif // LULU_COMPILER_H
