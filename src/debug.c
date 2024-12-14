@@ -89,22 +89,24 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONSTANT:
         print_constant(chunk, inst);
         break;
-    case OP_GETGLOBAL:
-    case OP_SETGLOBAL: {
+    case OP_GETGLOBAL: case OP_SETGLOBAL:
+    {
         byte3 arg = lulu_Instruction_get_byte3(inst);
         printf("%4i\t# %s\n", arg, constants[arg].string->data);
         break;
     }
-    case OP_NEWTABLE: {
+    case OP_NEWTABLE:
+    {
         byte3 arg = lulu_Instruction_get_byte3(inst);
         printf("%4i\n", arg);
         break;
     }
-    case OP_GETLOCAL: case OP_SETLOCAL:
+    case OP_SETLOCAL: case OP_GETLOCAL:
     case OP_PRINT:
     case OP_POP:
     case OP_CONCAT:
-    case OP_NIL: {
+    case OP_NIL:
+    {
         byte arg = lulu_Instruction_get_byte1(inst);
         printf("%4i\n", arg);
         break;

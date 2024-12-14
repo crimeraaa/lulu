@@ -93,8 +93,9 @@ lulu_Chunk_add_constant(lulu_VM *vm, lulu_Chunk *self, const lulu_Value *value)
     lulu_Value_Array *constants = &self->constants;
 
     /**
-     * @note    2024-12-10 Theoretically VERY inefficient, but works for the
-     *          general case where there are not THAT many constants.
+     * @note 2024-12-10
+     *      Theoretically VERY inefficient, but works for the general case where
+     *      there are not that many constants.
      */
     for (isize i = 0; i < constants->len; i++) {
         if (lulu_Value_eq(value, &constants->values[i])) {

@@ -41,6 +41,10 @@ parse_precedence(lulu_Parser *parser, lulu_Precedence precedence);
 static lulu_Parser_Rule *
 get_rule(lulu_Token_Type type);
 
+/**
+ * @note 2024-12-13
+ *      Assumes we just consumed a '=' token.
+ */
 static int
 parse_expression_list(lulu_Parser *parser)
 {
@@ -53,14 +57,11 @@ parse_expression_list(lulu_Parser *parser)
 }
 
 static byte3
-identifier_constant(lulu_Parser *parser, lulu_Token *token, lulu_String **out_str)
+identifier_constant(lulu_Parser *parser, lulu_Token *token)
 {
     lulu_Compiler *compiler = parser->compiler;
     lulu_Value     tmp;
     lulu_String   *string = lulu_String_new(compiler->vm, token->start, token->len);
-    if (out_str) {
-        *out_str = string;
-    }
     lulu_Value_set_string(&tmp, string);
     return lulu_Compiler_make_constant(compiler, &tmp);
 }
@@ -278,15 +279,13 @@ static void
 named_variable(lulu_Parser *parser, lulu_Token *ident)
 {
     lulu_Compiler *compiler = parser->compiler;
-    lulu_String   *string;
-    byte3          index    = identifier_constant(parser, ident, &string);
-    isize          arg      = lulu_Compiler_resolve_local(compiler, string);
-    bool           is_local = (arg != -1);
+    const isize    local    = lulu_Compiler_resolve_local(compiler, &parser->consumed);
 
-    if (is_local) {
-        lulu_Compiler_emit_byte1(compiler, OP_GETLOCAL, arg);
+    if (local == UNRESOLVED_LOCAL) {
+        byte3 global = identifier_constant(parser, ident);
+        lulu_Compiler_emit_byte3(compiler, OP_GETGLOBAL, global);
     } else {
-        lulu_Compiler_emit_byte3(compiler, OP_GETGLOBAL, index);
+        lulu_Compiler_emit_byte1(compiler, OP_GETLOCAL, local);
     }
 }
 
@@ -462,7 +461,7 @@ static void
 print_statement(lulu_Parser *parser)
 {
     lulu_Compiler *compiler = parser->compiler;
-    int            argc = 0;
+    int            argc     = 0;
     lulu_Parser_consume_token(parser, TOKEN_PAREN_L, "after 'print'");
     // Potentially have at least 1 argument?
     if (!lulu_Parser_match_token(parser, TOKEN_PAREN_R)) {
@@ -501,6 +500,26 @@ count_assignment_targets(lulu_Assign *last)
 }
 
 /**
+ * @details assigns > exprs
+ *      a, b, c = 1, 2
+ *
+ * @details assigns < exprs
+ *      a, b    = 1, 2, 3
+ */
+static void
+adjust_assignment_list(lulu_Parser *parser, int assigns, int exprs)
+{
+    lulu_Compiler *compiler = parser->compiler;
+    if (assigns > exprs) {
+        int nil_count = assigns - exprs;
+        lulu_Compiler_emit_byte1(compiler, OP_NIL, nil_count);
+    } else if (assigns < exprs) {
+        int pop_count = exprs - assigns;
+        lulu_Compiler_emit_byte1(compiler, OP_POP, pop_count);
+    }
+}
+
+/**
  * @note 2024-12-10
  *      (Somewhat) Analogous to the book's `compiler.c:defineVariable()`.
  */
@@ -511,24 +530,10 @@ emit_assignment_targets(lulu_Parser *parser, lulu_Assign *head)
     const int      assigns  = count_assignment_targets(head);
     const int      exprs    = parse_expression_list(parser);
 
-    /**
-     * @details assigns > exprs
-     *      a, b, c = 1, 2
-     *
-     * @details assigns < exprs
-     *      a, b    = 1, 2, 3
-     */
-    if (assigns > exprs) {
-        int nil_count = assigns - exprs;
-        lulu_Compiler_emit_byte1(compiler, OP_NIL, nil_count);
-    } else if (assigns < exprs) {
-        int pop_count = exprs - assigns;
-        lulu_Compiler_emit_byte1(compiler, OP_POP, pop_count);
-    }
+    adjust_assignment_list(parser, assigns, exprs);
 
-    lulu_Assign *iter = head;
+    lulu_Assign *iter   = head;
     while (iter) {
-        // printf("lvalue{prev=%p, index=%u}\n", cast(void *)iter->prev, iter->index); //! DEBUG
         lulu_OpCode op = iter->op;
         if (op == OP_SETLOCAL) {
             lulu_Compiler_emit_byte1(compiler, op, iter->index);
@@ -545,38 +550,29 @@ emit_assignment_targets(lulu_Parser *parser, lulu_Assign *head)
 /**
  * @note 2024-10-05
  *      Analogous to 'compiler.c:varDeclaration()' in the book.
- *      
+ *
  * @note 2024-12-10
  *      Assumes we just consumed an identifier. We add it to the constants table
  *      hereh, so we have no equivalent of `compiler.c:parseVariable()`.
  */
 static void
-assignment(lulu_Parser *parser, lulu_OpCode set_op)
+assignment(lulu_Parser *parser)
 {
     lulu_Assign    lvalue;
-    lulu_String   *ident;
     lulu_Compiler *compiler = parser->compiler;
-    byte3          index    = identifier_constant(parser, &parser->consumed, &ident);
-    int            local;
-    
-    // Were we called after 'local'?
-    if (set_op == OP_SETLOCAL) {
-        lulu_Compiler_add_local(compiler, ident);
-    }
-    // Otherwise, resolve each one individually.
-    local = lulu_Compiler_resolve_local(compiler, ident);
+    int            local    = lulu_Compiler_resolve_local(compiler, &parser->consumed);
 
-    // @todo 2024-12-11: When *declaring* locals, don't emit OP_SETLOCAL.
-    if (local != -1) {
+    if (local == UNRESOLVED_LOCAL) {
+        lvalue.op    = OP_SETGLOBAL;
+        lvalue.index = identifier_constant(parser, &parser->consumed);
+    } else {
         lvalue.op    = OP_SETLOCAL;
         lvalue.index = local;
-    } else {
-        lvalue.op    = OP_SETGLOBAL;
-        lvalue.index = index;
     }
+
     lvalue.prev  = parser->assignments;
     parser->assignments = &lvalue; // Should end at the deepest recursive call.
-    
+
     /**
      * If we have a multiple assignment, resolve all the assignment targets and
      * store them in a linked list which is 'allocated' using recursive stack
@@ -584,7 +580,7 @@ assignment(lulu_Parser *parser, lulu_OpCode set_op)
      */
     if (lulu_Parser_match_token(parser, TOKEN_COMMA)) {
         lulu_Parser_consume_token(parser, TOKEN_IDENTIFIER, "after ','");
-        assignment(parser, set_op);
+        assignment(parser);
     }
 
     if (check_token(parser, TOKEN_EQUAL)) {
@@ -609,11 +605,26 @@ assignment(lulu_Parser *parser, lulu_OpCode set_op)
 void
 lulu_Parser_declaration(lulu_Parser *self)
 {
+    lulu_Compiler *compiler = self->compiler;
+
     if (lulu_Parser_match_token(self, TOKEN_LOCAL)) {
-        lulu_Parser_consume_token(self, TOKEN_IDENTIFIER, "after 'local'");
-        assignment(self, OP_SETLOCAL);
+        int      assigns = 0;
+        int      exprs   = 0;
+
+        do {
+            lulu_Parser_consume_token(self, TOKEN_IDENTIFIER, "after 'local'");
+            lulu_Compiler_add_local(compiler, &self->consumed);
+            assigns++;
+        } while (lulu_Parser_match_token(self, TOKEN_COMMA));
+
+        if (lulu_Parser_match_token(self, TOKEN_EQUAL)) {
+            exprs = parse_expression_list(self);
+        }
+
+        adjust_assignment_list(self, assigns, exprs);
+        lulu_Parser_match_token(self, TOKEN_SEMICOLON);
     } else if (lulu_Parser_match_token(self, TOKEN_IDENTIFIER)) {
-        assignment(self, OP_SETGLOBAL);
+        assignment(self);
     } else {
         statement(self);
     }

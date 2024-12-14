@@ -1,7 +1,11 @@
+/// local
 #include "compiler.h"
 #include "vm.h"
 #include "parser.h"
 #include "debug.h"
+
+/// standard
+#include <string.h>
 
 void
 lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self)
@@ -10,7 +14,7 @@ lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self)
     self->chunk  = NULL;
     self->parser = NULL;
     self->lexer  = NULL;
-    
+
     self->local_count = 0;
     self->scope_depth = 0;
 }
@@ -143,7 +147,7 @@ lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk)
     lulu_Lexer_init(self->vm, &lexer, chunk->filename, input);
 
     lulu_Parser_advance_token(&parser);
-    
+
     lulu_Compiler_begin_scope(self);
     while (!lulu_Parser_match_token(&parser, TOKEN_EOF)) {
         lulu_Parser_declaration(&parser);
@@ -162,7 +166,7 @@ void
 lulu_Compiler_end_scope(lulu_Compiler *self)
 {
     self->scope_depth--;
-    
+
     // Remove this scope's local variables.
     while (self->local_count > 0 && self->locals[self->local_count -1].depth > self->scope_depth) {
         lulu_Compiler_emit_byte1(self, OP_POP, 1);
@@ -170,8 +174,17 @@ lulu_Compiler_end_scope(lulu_Compiler *self)
     }
 }
 
+static bool
+identifiers_equal(const lulu_String *string, const lulu_Token *token)
+{
+    if (string->len != token->len) {
+        return false;
+    }
+    return memcmp(string->data, token->start, string->len) == 0;
+}
+
 void
-lulu_Compiler_add_local(lulu_Compiler *self, lulu_String *ident)
+lulu_Compiler_add_local(lulu_Compiler *self, const lulu_Token *ident)
 {
     if (self->local_count >= cast(int)LULU_MAX_BYTE) {
         lulu_Parser_error_consumed(self->parser, "Too many local variables in function");
@@ -185,25 +198,24 @@ lulu_Compiler_add_local(lulu_Compiler *self, lulu_String *ident)
         if (local->depth != -1 && local->depth < self->scope_depth) {
             break;
         }
-        if (local->name == ident) {
+        if (identifiers_equal(local->name, ident)) {
             lulu_Parser_error_consumed(self->parser, "Shadowing of local variable");
             return;
         }
     }
 
     lulu_Local *local = &self->locals[self->local_count++];
-    local->name  = ident;
+    local->name  = lulu_String_new(self->vm, ident->start, ident->len);
     local->depth = self->scope_depth;
 }
 
 int
-lulu_Compiler_resolve_local(lulu_Compiler *self, const lulu_String *ident)
+lulu_Compiler_resolve_local(lulu_Compiler *self, const lulu_Token *ident)
 {
     for (int i = self->local_count - 1; i >= 0; i--) {
-        const lulu_Local *local = &self->locals[i];
-        if (local->name == ident) {
+        if (identifiers_equal(self->locals[i].name, ident)) {
             return i;
         }
     }
-    return -1;
+    return UNRESOLVED_LOCAL;
 }

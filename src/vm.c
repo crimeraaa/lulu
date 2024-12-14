@@ -142,12 +142,14 @@ do {                                                                           \
 #endif
         lulu_Instruction inst = *self->ip++;
         switch (lulu_Instruction_get_opcode(inst)) {
-        case OP_CONSTANT: {
+        case OP_CONSTANT:
+        {
             byte3 index = lulu_Instruction_get_byte3(inst);
             lulu_VM_push(self, &constants->values[index]);
             break;
         }
-        case OP_GETGLOBAL: {
+        case OP_GETGLOBAL:
+        {
             byte3             index = lulu_Instruction_get_byte3(inst);
             const lulu_Value *key   = &constants->values[index];
             const lulu_Value *value = lulu_Table_get(&self->globals, key);
@@ -157,32 +159,39 @@ do {                                                                           \
             lulu_VM_push(self, value);
             break;
         }
-        case OP_SETGLOBAL: {
-            byte3             index = lulu_Instruction_get_byte3(inst);
+        case OP_SETGLOBAL:
+        {
+            const byte3       index = lulu_Instruction_get_byte3(inst);
             const lulu_Value *ident = &constants->values[index];
             lulu_Table_set(self, &self->globals, ident, poke_top(self, -1));
             lulu_pop(self, 1);
             break;
         }
-        case OP_GETLOCAL: {
+        case OP_GETLOCAL:
+        {
             byte index = lulu_Instruction_get_byte1(inst);
             lulu_VM_push(self, &self->values[index]);
             break;
         }
-        case OP_SETLOCAL: {
+        case OP_SETLOCAL:
+        {
             byte index = lulu_Instruction_get_byte1(inst);
             self->values[index] = *poke_top(self, -1);
+            lulu_pop(self, 1);
             break;
         }
-        case OP_NEWTABLE: {
+        case OP_NEWTABLE:
+        {
             lulu_push_table(self, lulu_Instruction_get_byte1(inst));
             break;
         }
         case OP_GETTABLE:
-        case OP_SETTABLE: {
+        case OP_SETTABLE:
+        {
             break;
         }
-        case OP_NIL: {
+        case OP_NIL:
+        {
             int count = lulu_Instruction_get_byte1(inst);
             lulu_push_nil(self, count);
             break;
