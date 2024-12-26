@@ -36,11 +36,11 @@ adjust_stack_usage(lulu_Compiler *self, lulu_Instruction inst)
 {
     lulu_OpCode      op   = lulu_Instruction_get_opcode(inst);
     lulu_OpCode_Info info = LULU_OPCODE_INFO[op];
-    
+
     // We assume that variable delta instructions are affected by argument A.
     int n_push = (info.push_count == -1) ? lulu_Instruction_get_A(inst) : info.push_count;
     int n_pop  = (info.pop_count  == -1) ? lulu_Instruction_get_A(inst) : info.pop_count;
-    
+
     /**
      * @note 2024-12-27
      *      This is ugly but I cannot be bothered to change all the instructions
@@ -49,7 +49,7 @@ adjust_stack_usage(lulu_Compiler *self, lulu_Instruction inst)
     if (op == OP_SETTABLE) {
         n_pop = lulu_Instruction_get_C(inst);
     }
-    
+
     printf("%-12s: push %i, pop %i\n", info.name, n_push, n_pop);
     self->stack_usage += n_push;
     self->stack_usage -= n_pop;

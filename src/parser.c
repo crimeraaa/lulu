@@ -288,7 +288,7 @@ named_variable(lulu_Parser *parser, lulu_Token *ident)
     } else {
         lulu_Compiler_emit_byte1(compiler, OP_GETLOCAL, local);
     }
-    
+
     for (;;) {
         if (lulu_Parser_match_token(parser, TOKEN_PERIOD)) {
             lulu_Parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
@@ -361,7 +361,7 @@ table(lulu_Parser *parser)
 {
     isize          n_fields = 0;
     lulu_Compiler *compiler = parser->compiler;
-    
+
     int i_table = compiler->stack_usage;
     int n_array = 0;
 
@@ -641,7 +641,7 @@ assignment(lulu_Parser *parser)
         lulu_Parser_consume_token(parser, TOKEN_IDENTIFIER, "after ','");
         assignment(parser);
     }
-    
+
     if (parser->assignments) {
         lulu_Parser_consume_token(parser, TOKEN_EQUAL, "in assignment");
         emit_assignment_targets(parser, &lvalue);

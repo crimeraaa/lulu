@@ -11,17 +11,22 @@
  *      appropriate 'lulu_Value' pointer from either the top or the bottom
  *      of the stack.
  *
- * @warning 2024-09-29
- *      May load a potentially invalid address!
- *
  * @link
  *      https://www.lua.org/source/5.1/lapi.c.html#index2adr
  */
 static lulu_Value *
 offset_to_address(lulu_VM *vm, int offset)
 {
-    lulu_Value *start = (offset >= 0) ? vm->base : vm->top;
-    return start + offset;
+    isize start     = (offset >= 0) ? 0 : (vm->top - vm->base);
+    isize abs_index = start + offset;
+    isize end_index = vm->end - vm->base;
+
+    // Abs. index is in range?
+    if (0 <= abs_index && abs_index < end_index) {
+        return &vm->values[abs_index];
+    }
+    lulu_VM_runtime_error(vm, "Out of bounds stack index %ti", abs_index);
+    return NULL;
 }
 
 static void

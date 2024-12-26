@@ -50,7 +50,7 @@ lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
     self->chunk          = NULL;
     self->objects        = NULL;
     self->handlers       = NULL;
-    
+
     return lulu_VM_run_protected(self, &init_alloc, NULL) == LULU_OK;
 }
 
@@ -199,7 +199,7 @@ do {                                                                           \
                 lulu_VM_runtime_error(self, "Attempt to get field of a %s value",
                     lulu_typename(self, -2));
             }
-            
+
             const lulu_Value *v = lulu_Table_get(self->top[-2].table, &self->top[-1]);
             if (!v) {
                 v = &LULU_VALUE_NIL;
@@ -220,7 +220,7 @@ do {                                                                           \
                     lulu_typename(self, i_table));
             }
             lulu_Table_set(self, self->values[i_table].table, &self->values[i_key], &self->top[-1]);
-            
+
             if (n_pop > 0) {
                 lulu_pop(self, n_pop);
             }
