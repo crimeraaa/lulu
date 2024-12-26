@@ -79,6 +79,12 @@ lulu_is_string(lulu_VM *vm, int offset)
     return lulu_Value_is_string(offset_to_address(vm, offset));
 }
 
+bool
+lulu_is_table(lulu_VM *vm, int offset)
+{
+    return lulu_Value_is_table(offset_to_address(vm, offset));
+}
+
 ///=============================================================================
 
 ///=== STACK MANIPULATION FUNCTIONS ============================================
@@ -133,6 +139,12 @@ lulu_push_table(lulu_VM *vm, isize count)
     lulu_Value tmp;
     lulu_Value_set_table(&tmp, lulu_Table_new(vm, count));
     push_safe(vm, &tmp);
+}
+
+void
+lulu_push_value(lulu_VM *vm, int stack_index)
+{
+    push_safe(vm, offset_to_address(vm, stack_index));
 }
 
 ///=============================================================================

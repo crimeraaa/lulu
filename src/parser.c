@@ -38,6 +38,9 @@ statement(lulu_Parser *parser);
 static void
 parse_precedence(lulu_Parser *parser, lulu_Precedence precedence);
 
+static void
+parse_infix(lulu_Parser *parser, lulu_Precedence precedence);
+
 static lulu_Parser_Rule *
 get_rule(lulu_Token_Type type);
 
@@ -150,7 +153,7 @@ wrap_error(lulu_VM *vm, cstring filename, const lulu_Token *token, cstring msg)
     const char *where = token->start;
     isize       len   = token->len;
     if (token->type == TOKEN_EOF) {
-        const LString str = LULU_TOKEN_STRINGS[TOKEN_EOF];
+        const lulu_Token_String str = LULU_TOKEN_STRINGS[TOKEN_EOF];
         where = str.data;
         len   = str.len;
     }
@@ -261,9 +264,7 @@ literal(lulu_Parser *parser)
         break;
     }
     case TOKEN_NUMBER_LIT: {
-        lulu_Value tmp;
-        lulu_Value_set_number(&tmp, lexer->number);
-        lulu_Compiler_emit_constant(compiler, &tmp);
+        lulu_Compiler_emit_number(compiler, lexer->number);
         break;
     }
     default:
@@ -286,6 +287,20 @@ named_variable(lulu_Parser *parser, lulu_Token *ident)
         lulu_Compiler_emit_byte3(compiler, OP_GETGLOBAL, global);
     } else {
         lulu_Compiler_emit_byte1(compiler, OP_GETLOCAL, local);
+    }
+    
+    for (;;) {
+        if (lulu_Parser_match_token(parser, TOKEN_PERIOD)) {
+            lulu_Parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
+            lulu_Compiler_emit_string(compiler, &parser->consumed);
+            lulu_Compiler_emit_opcode(compiler, OP_GETTABLE);
+        } else if (lulu_Parser_match_token(parser, TOKEN_BRACKET_L)) {
+            expression(parser);
+            lulu_Compiler_emit_opcode(compiler, OP_GETTABLE);
+            lulu_Parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
+        } else {
+            break;
+        }
     }
 }
 
@@ -344,11 +359,51 @@ unary(lulu_Parser *parser)
 static void
 table(lulu_Parser *parser)
 {
-    isize          nfields  = 0;
+    isize          n_fields = 0;
     lulu_Compiler *compiler = parser->compiler;
+    
+    int i_table = compiler->stack_usage;
+    int n_array = 0;
 
+    isize i_code = lulu_Compiler_new_table(compiler);
+    // Have 1 or more fields to deal with?
+    while (!check_token(parser, TOKEN_CURLY_R)) {
+        int i_key = compiler->stack_usage;
+        if (lulu_Parser_match_token(parser, TOKEN_BRACKET_L)) {
+            expression(parser);
+
+            lulu_Parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
+            lulu_Parser_consume_token(parser, TOKEN_EQUAL, "in field assignment");
+            expression(parser);
+        } else if (lulu_Parser_match_token(parser, TOKEN_IDENTIFIER)) {
+            // The data would otherwise be lost if we do match a '='.
+            lulu_Token ident = parser->consumed;
+
+            // Assigning a named field?
+            if (lulu_Parser_match_token(parser, TOKEN_EQUAL)) {
+                lulu_Compiler_emit_string(compiler, &ident);
+                expression(parser);
+            } else {
+                n_array++;
+                lulu_Compiler_emit_number(compiler, cast(lulu_Number)n_array);
+                // We already consumed the prefix portion of the expression
+                parse_infix(parser, PREC_NONE);
+            }
+        } else {
+            n_array++;
+            lulu_Compiler_emit_number(compiler, cast(lulu_Number)n_array);
+            // Unlike the above branch we haven't consumed the prefix portion.
+            expression(parser);
+        }
+        lulu_Compiler_set_table(compiler, i_table, i_key, 2);
+        n_fields++;
+        if (!lulu_Parser_match_token(parser, TOKEN_COMMA)) {
+            break;
+        }
+    }
+
+    lulu_Compiler_adjust_table(compiler, i_code, n_fields);
     lulu_Parser_consume_token(parser, TOKEN_CURLY_R, "to close table constructor");
-    lulu_Compiler_emit_byte3(compiler, OP_NEWTABLE, nfields);
 }
 
 ///=== PARSER RULES ========================================================={{{
@@ -532,7 +587,7 @@ emit_assignment_targets(lulu_Parser *parser, lulu_Assign *head)
 
     adjust_assignment_list(parser, assigns, exprs);
 
-    lulu_Assign *iter   = head;
+    lulu_Assign *iter = head;
     while (iter) {
         lulu_OpCode op = iter->op;
         if (op == OP_SETLOCAL) {
@@ -570,8 +625,12 @@ assignment(lulu_Parser *parser)
         lvalue.index = local;
     }
 
-    lvalue.prev  = parser->assignments;
+    lvalue.prev = parser->assignments;
     parser->assignments = &lvalue; // Should end at the deepest recursive call.
+
+    if (lulu_Parser_match_token(parser, TOKEN_PERIOD) || lulu_Parser_match_token(parser, TOKEN_BRACKET_L)) {
+        lulu_Parser_error_consumed(parser, "table assignment statements not yet implemented");
+    }
 
     /**
      * If we have a multiple assignment, resolve all the assignment targets and
@@ -582,22 +641,9 @@ assignment(lulu_Parser *parser)
         lulu_Parser_consume_token(parser, TOKEN_IDENTIFIER, "after ','");
         assignment(parser);
     }
-
-    if (check_token(parser, TOKEN_EQUAL)) {
-        /**
-         * Account for bad statements when walking up the recursive call stack,
-         * like in 'a, b = 5, 4, c = 13'
-         *
-         * @warning 2024-10-29
-         *
-         * We assume that after the first valid '=' assignment, we already set
-         * this pointer to 'NULL'.
-         */
-        if (!parser->assignments) {
-            lulu_Parser_error_consumed(parser, "Nested assignments");
-            return;
-        }
-        lulu_Parser_advance_token(parser);
+    
+    if (parser->assignments) {
+        lulu_Parser_consume_token(parser, TOKEN_EQUAL, "in assignment");
         emit_assignment_targets(parser, &lvalue);
     }
 }

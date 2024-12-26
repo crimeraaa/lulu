@@ -74,8 +74,12 @@ lulu_Instruction_make_byte3(lulu_OpCode op, byte3 arg)
 #define lulu_Instruction_make_byte1(op, arg)    lulu_Instruction_make(op, arg, 0, 0)
 #define lulu_Instruction_make_none(op)          lulu_Instruction_make(op, 0, 0, 0)
 #define lulu_Instruction_get_opcode(inst)       ((inst) & LULU_MAX_BYTE)
-#define lulu_Instruction_get_byte1(inst)        ((inst) >> LULU_INSTRUCTION_OFFSET_A)
-#define lulu_Instruction_get_byte3(inst)        ((inst) >> LULU_INSTRUCTION_OFFSET_C)
+
+// When shifted, argument A has no extra upper bits.
+#define lulu_Instruction_get_A(inst)    ((inst) >> LULU_INSTRUCTION_OFFSET_A)
+#define lulu_Instruction_get_B(inst)    (((inst) >> LULU_INSTRUCTION_OFFSET_B) & LULU_MAX_BYTE)
+#define lulu_Instruction_get_C(inst)    (((inst) >> LULU_INSTRUCTION_OFFSET_C) & LULU_MAX_BYTE)
+#define lulu_Instruction_get_ABC(inst)  ((inst) >> LULU_INSTRUCTION_OFFSET_C)
 
 /**
  * @brief

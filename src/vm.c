@@ -26,7 +26,19 @@ init_table(lulu_Table *table)
     base->next = NULL;
 }
 
-void
+static void
+init_alloc(lulu_VM *self, void *userdata)
+{
+    lulu_Value value;
+    unused(userdata);
+    lulu_Value_set_table(&value, &self->globals);
+    lulu_push_literal(self, "_G");
+    // Will most likely realloc the globals table!
+    lulu_Table_set(self, &self->globals, &self->top[-1], &value);
+    lulu_pop(self, 1); // We only pushed "_G" so pop it.
+}
+
+bool
 lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
     reset_stack(self);
@@ -38,6 +50,8 @@ lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
     self->chunk          = NULL;
     self->objects        = NULL;
     self->handlers       = NULL;
+    
+    return lulu_VM_run_protected(self, &init_alloc, NULL) == LULU_OK;
 }
 
 void
@@ -59,12 +73,6 @@ static lulu_Chunk *
 current_chunk(lulu_VM *self)
 {
     return self->chunk;
-}
-
-static lulu_Value *
-poke_top(lulu_VM *vm, int offset)
-{
-    return &vm->top[offset];
 }
 
 static void
@@ -120,8 +128,8 @@ execute_bytecode(lulu_VM *self)
 #define BINARY_OP(lulu_Value_set_fn, lulu_Number_fn, check_fn)                 \
 do {                                                                           \
     check_fn(self, -2, -1);                                                    \
-    lulu_Value *lhs = poke_top(self, -2);                                      \
-    lulu_Value *rhs = poke_top(self, -1);                                      \
+    lulu_Value *lhs = &self->top[-2];                                          \
+    lulu_Value *rhs = &self->top[-1];                                          \
     lulu_Value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));          \
     lulu_pop(self, 1);                                                         \
 } while (0)
@@ -144,13 +152,13 @@ do {                                                                           \
         switch (lulu_Instruction_get_opcode(inst)) {
         case OP_CONSTANT:
         {
-            byte3 index = lulu_Instruction_get_byte3(inst);
+            byte3 index = lulu_Instruction_get_ABC(inst);
             lulu_VM_push(self, &constants->values[index]);
             break;
         }
         case OP_GETGLOBAL:
         {
-            byte3             index = lulu_Instruction_get_byte3(inst);
+            const byte3       index = lulu_Instruction_get_ABC(inst);
             const lulu_Value *key   = &constants->values[index];
             const lulu_Value *value = lulu_Table_get(&self->globals, key);
             if (!value) {
@@ -161,39 +169,67 @@ do {                                                                           \
         }
         case OP_SETGLOBAL:
         {
-            const byte3       index = lulu_Instruction_get_byte3(inst);
+            const byte3       index = lulu_Instruction_get_ABC(inst);
             const lulu_Value *ident = &constants->values[index];
-            lulu_Table_set(self, &self->globals, ident, poke_top(self, -1));
+            lulu_Table_set(self, &self->globals, ident, &self->top[-1]);
             lulu_pop(self, 1);
             break;
         }
         case OP_GETLOCAL:
         {
-            byte index = lulu_Instruction_get_byte1(inst);
+            byte index = lulu_Instruction_get_A(inst);
             lulu_VM_push(self, &self->values[index]);
             break;
         }
         case OP_SETLOCAL:
         {
-            byte index = lulu_Instruction_get_byte1(inst);
-            self->values[index] = *poke_top(self, -1);
+            byte index = lulu_Instruction_get_A(inst);
+            self->values[index] = self->top[-1];
             lulu_pop(self, 1);
             break;
         }
         case OP_NEWTABLE:
         {
-            lulu_push_table(self, lulu_Instruction_get_byte1(inst));
+            lulu_push_table(self, lulu_Instruction_get_ABC(inst));
             break;
         }
         case OP_GETTABLE:
+        {
+            if (!lulu_is_table(self, -2)) {
+                lulu_VM_runtime_error(self, "Attempt to get field of a %s value",
+                    lulu_typename(self, -2));
+            }
+            
+            const lulu_Value *v = lulu_Table_get(self->top[-2].table, &self->top[-1]);
+            if (!v) {
+                v = &LULU_VALUE_NIL;
+            }
+            lulu_pop(self, 2);      // pop table and key
+            lulu_VM_push(self, v);  // then push value to top
+            break;
+        }
         case OP_SETTABLE:
         {
+            int i_table = lulu_Instruction_get_A(inst);
+            int i_key   = lulu_Instruction_get_B(inst);
+            int n_pop   = lulu_Instruction_get_C(inst);
+
+            if (!lulu_is_table(self, i_table)) {
+                lulu_VM_runtime_error(self,
+                    "Attempt to set field of a %s value",
+                    lulu_typename(self, i_table));
+            }
+            lulu_Table_set(self, self->values[i_table].table, &self->values[i_key], &self->top[-1]);
+            
+            if (n_pop > 0) {
+                lulu_pop(self, n_pop);
+            }
             break;
         }
         case OP_NIL:
         {
-            int count = lulu_Instruction_get_byte1(inst);
-            lulu_push_nil(self, count);
+            int n_nils = lulu_Instruction_get_A(inst);
+            lulu_push_nil(self, n_nils);
             break;
         }
         case OP_TRUE:  lulu_push_boolean(self, true);  break;
@@ -205,13 +241,13 @@ do {                                                                           \
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_CONCAT: {
-            int count = lulu_Instruction_get_byte1(inst);
+            int count = lulu_Instruction_get_A(inst);
             concat(self, count);
             break;
         }
         case OP_UNM: {
             if (lulu_is_number(self, -1)) {
-                lulu_Value *value = poke_top(self, -1);
+                lulu_Value *value = &self->top[-1];
                 lulu_Value_set_number(value, lulu_Number_unm(value->number));
             } else {
                 lulu_VM_runtime_error(self, "Attempt to negate a %s value",
@@ -220,8 +256,8 @@ do {                                                                           \
             break;
         }
         case OP_EQ: {
-            lulu_Value *rhs = poke_top(self, -1);
-            lulu_Value *lhs = poke_top(self, -2);
+            lulu_Value *rhs = &self->top[-1];
+            lulu_Value *lhs = &self->top[-2];
             lulu_Value_set_boolean(lhs, lulu_Value_eq(lhs, rhs));
             lulu_pop(self, 1);
             break;
@@ -229,14 +265,14 @@ do {                                                                           \
         case OP_LT:  COMPARE_OP(lulu_Number_lt);  break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
         case OP_NOT: {
-            lulu_Value *value = poke_top(self, -1);
+            lulu_Value *value = &self->top[-1];
             lulu_Value_set_boolean(value, lulu_Value_is_falsy(value));
             break;
         }
         case OP_PRINT: {
-            int count = lulu_Instruction_get_byte1(inst);
+            int count = lulu_Instruction_get_A(inst);
             for (int i = 0; i < count; i++) {
-                lulu_Value_print(poke_top(self, -count + i));
+                lulu_Value_print(&self->top[-count + i]);
                 printf("\t");
             }
             lulu_pop(self, count);
@@ -244,7 +280,7 @@ do {                                                                           \
             break;
         }
         case OP_POP: {
-            int count = lulu_Instruction_get_byte1(inst);
+            int count = lulu_Instruction_get_A(inst);
             lulu_pop(self, count);
             break;
         }

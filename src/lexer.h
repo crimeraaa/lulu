@@ -86,11 +86,24 @@ typedef struct {
     int          line;
 } lulu_Lexer;
 
+
+/**
+ * @brief   A string of known length. Not necessarily nul-terminated.
+ *
+ * @note    This is mainly for the `LULU_TOKEN_STRINGS` as we would rather
+ *          not need to constantly use `strlen` at runtime. Otherwise, you should
+ *          prefer to just track the `data` and `len` pairs yourself.
+ */
+typedef struct {
+    const char *data;
+    isize       len;
+} lulu_Token_String;
+
 /**
  * @brief
  *      Map a `lulu_Token_Type`, to the string representation thereof.
  */
-extern const LString
+extern const lulu_Token_String
 LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT];
 
 void

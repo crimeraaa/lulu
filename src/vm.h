@@ -44,7 +44,7 @@ struct lulu_VM {
     lulu_Error_Handler *handlers; // Currently active error handler.
 };
 
-void
+bool
 lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data);
 
 void

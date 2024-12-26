@@ -129,7 +129,9 @@ main(int argc, cstring argv[])
 {
     lulu_VM vm;
     int     err = 0;
-    lulu_VM_init(&vm, alloc_fn, NULL);
+    if (!lulu_VM_init(&vm, alloc_fn, NULL)) {
+        return 1;
+    }
     if (argc == 1) {
         repl(&vm);
     } else if (argc == 2) {

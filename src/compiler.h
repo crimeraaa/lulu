@@ -47,8 +47,9 @@ struct lulu_Compiler {
     lulu_Parser *parser;
     lulu_Lexer  *lexer;
     lulu_Local   locals[LULU_MAX_LOCALS];
-    int          local_count;
+    int          n_locals;
     int          scope_depth; // 0 isn't really used but is distinct from -1.
+    int          stack_usage;
 };
 
 void
@@ -75,6 +76,12 @@ lulu_Compiler_make_constant(lulu_Compiler *self, const lulu_Value *value);
 
 void
 lulu_Compiler_emit_constant(lulu_Compiler *self, const lulu_Value *value);
+
+void
+lulu_Compiler_emit_string(lulu_Compiler *self, const lulu_Token *token);
+
+void
+lulu_Compiler_emit_number(lulu_Compiler *self, lulu_Number n);
 
 void
 lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_OpCode op, byte a);
@@ -116,5 +123,14 @@ lulu_Compiler_initialize_locals(lulu_Compiler *self);
  */
 int
 lulu_Compiler_resolve_local(lulu_Compiler *self, const lulu_Token *ident);
+
+isize
+lulu_Compiler_new_table(lulu_Compiler *self);
+
+void
+lulu_Compiler_adjust_table(lulu_Compiler *self, isize i_code, isize n_fields);
+
+void
+lulu_Compiler_set_table(lulu_Compiler *self, int i_table, int i_key, int n_pop);
 
 #endif // LULU_COMPILER_H

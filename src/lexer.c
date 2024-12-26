@@ -236,7 +236,7 @@ skip_whitespace(lulu_Lexer *lexer)
     #pragma GCC diagnostic ignored "-Wc99-designator"
 #endif
 
-const LString
+const lulu_Token_String
 LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT] = {
     [TOKEN_AND]           = lit("and"),
     [TOKEN_BREAK]         = lit("break"),
@@ -307,7 +307,7 @@ LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT] = {
 static lulu_Token_Type
 check_keyword(const char *current, isize len, lulu_Token_Type type)
 {
-    const LString str = LULU_TOKEN_STRINGS[type];
+    const lulu_Token_String str = LULU_TOKEN_STRINGS[type];
     if (str.len == len && memcmp(str.data, current, len) == 0) {
         return type;
     }

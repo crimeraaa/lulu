@@ -15,8 +15,8 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_GETLOCAL]   = {"GETLOCAL",      1,           1,          0},
     [OP_SETLOCAL]   = {"SETLOCAL",      1,           0,          0},
     [OP_NEWTABLE]   = {"NEWTABLE",      3,           1,          0},
-    [OP_GETTABLE]   = {"GETTABLE",      3,           1,          0}, // @todo 2024-10-12 Revisit old implementation!
-    [OP_SETTABLE]   = {"SETTABLE",      3,           0,          1}, // @todo 2024-10-12 See above
+    [OP_GETTABLE]   = {"GETTABLE",      0,           1,          2}, // @todo 2024-10-12 Revisit old implementation!
+    [OP_SETTABLE]   = {"SETTABLE",      3,           0,         -1}, // @todo 2024-10-12 See above
     [OP_NIL]        = {"NIL",           1,          -1,          0},
     [OP_TRUE]       = {"TRUE",          0,           1,          0},
     [OP_FALSE]      = {"FALSE",         0,           1,          0},
@@ -34,7 +34,7 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_NOT]        = {"NOT",           0,           0,          0},
     [OP_PRINT]      = {"PRINT",         1,           0,         -1},
     [OP_POP]        = {"POP",           1,           0,         -1},
-    [OP_RETURN]     = {"RETURN",        0,           0,          1},
+    [OP_RETURN]     = {"RETURN",        0,           0,          0},
 };
 
 #if defined(__GNUC__)

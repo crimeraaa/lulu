@@ -63,7 +63,7 @@ lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
 static void
 print_constant(const lulu_Chunk *chunk, lulu_Instruction inst)
 {
-    isize             arg   = lulu_Instruction_get_byte3(inst);
+    const isize       arg   = lulu_Instruction_get_ABC(inst);
     const lulu_Value *value = &chunk->constants.values[arg];
     printf("%4ti\t# %s: ", arg, lulu_Value_typename(value));
     lulu_Debug_print_value(value);
@@ -91,14 +91,22 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
         break;
     case OP_GETGLOBAL: case OP_SETGLOBAL:
     {
-        byte3 arg = lulu_Instruction_get_byte3(inst);
+        byte3 arg = lulu_Instruction_get_ABC(inst);
         printf("%4i\t# %s\n", arg, constants[arg].string->data);
         break;
     }
     case OP_NEWTABLE:
     {
-        byte3 arg = lulu_Instruction_get_byte3(inst);
+        byte3 arg = lulu_Instruction_get_ABC(inst);
         printf("%4i\n", arg);
+        break;
+    }
+    case OP_SETTABLE:
+    {
+        int i_table = lulu_Instruction_get_A(inst);
+        int i_key   = lulu_Instruction_get_B(inst);
+        int n_pop   = lulu_Instruction_get_C(inst);
+        printf("%4i (table), %i (key), pop %i\n", i_table, i_key, n_pop);
         break;
     }
     case OP_SETLOCAL: case OP_GETLOCAL:
@@ -107,7 +115,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONCAT:
     case OP_NIL:
     {
-        byte arg = lulu_Instruction_get_byte1(inst);
+        byte arg = lulu_Instruction_get_A(inst);
         printf("%4i\n", arg);
         break;
     }
@@ -116,7 +124,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_UNM:
     case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:
-    case OP_GETTABLE: case OP_SETTABLE:
+    case OP_GETTABLE:
         printf("\n");
         break;
     }

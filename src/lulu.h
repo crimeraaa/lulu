@@ -197,6 +197,9 @@ lulu_is_number(lulu_VM *vm, int offset);
 bool
 lulu_is_string(lulu_VM *vm, int offset);
 
+bool
+lulu_is_table(lulu_VM *vm, int offset);
+
 ///=============================================================================
 
 ///=== STACK MANIPULATION FUNCTIONS ============================================
@@ -218,6 +221,9 @@ lulu_push_cstring(lulu_VM *vm, cstring cstr);
 
 void
 lulu_push_string(lulu_VM *vm, const char *data, isize len);
+
+void
+lulu_push_value(lulu_VM *vm, int stack_index);
 
 void
 lulu_push_table(lulu_VM *vm, isize count);
