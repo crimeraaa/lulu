@@ -194,7 +194,7 @@ lulu_Compiler_add_local(lulu_Compiler *self, const lulu_Token *ident)
     // Are we shadowing?
     for (int i = self->local_count - 1; i >= 0; i--) {
         lulu_Local *local = &self->locals[i];
-        // Not yet defined or already checking an enclosing scope?
+        // Checking an already defined variable of an enclosing scope?
         if (local->depth != -1 && local->depth < self->scope_depth) {
             break;
         }
@@ -206,14 +206,27 @@ lulu_Compiler_add_local(lulu_Compiler *self, const lulu_Token *ident)
 
     lulu_Local *local = &self->locals[self->local_count++];
     local->name  = lulu_String_new(self->vm, ident->start, ident->len);
-    local->depth = self->scope_depth;
+    local->depth = UNINITIALIZED_LOCAL;
+}
+
+void
+lulu_Compiler_initialize_locals(lulu_Compiler *self)
+{
+    for (int i = self->local_count - 1; i >= 0; i--) {
+        lulu_Local *local = &self->locals[i];
+        if (local->depth != UNINITIALIZED_LOCAL) {
+            break;
+        }
+        local->depth = self->scope_depth;
+    }
 }
 
 int
 lulu_Compiler_resolve_local(lulu_Compiler *self, const lulu_Token *ident)
 {
     for (int i = self->local_count - 1; i >= 0; i--) {
-        if (identifiers_equal(self->locals[i].name, ident)) {
+        const lulu_Local *local = &self->locals[i];
+        if (local->depth != UNINITIALIZED_LOCAL && identifiers_equal(local->name, ident)) {
             return i;
         }
     }

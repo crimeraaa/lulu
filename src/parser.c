@@ -560,7 +560,7 @@ assignment(lulu_Parser *parser)
 {
     lulu_Assign    lvalue;
     lulu_Compiler *compiler = parser->compiler;
-    int            local    = lulu_Compiler_resolve_local(compiler, &parser->consumed);
+    const int      local    = lulu_Compiler_resolve_local(compiler, &parser->consumed);
 
     if (local == UNRESOLVED_LOCAL) {
         lvalue.op    = OP_SETGLOBAL;
@@ -608,8 +608,8 @@ lulu_Parser_declaration(lulu_Parser *self)
     lulu_Compiler *compiler = self->compiler;
 
     if (lulu_Parser_match_token(self, TOKEN_LOCAL)) {
-        int      assigns = 0;
-        int      exprs   = 0;
+        int assigns = 0;
+        int exprs   = 0;
 
         do {
             lulu_Parser_consume_token(self, TOKEN_IDENTIFIER, "after 'local'");
@@ -622,6 +622,7 @@ lulu_Parser_declaration(lulu_Parser *self)
         }
 
         adjust_assignment_list(self, assigns, exprs);
+        lulu_Compiler_initialize_locals(self->compiler);
         lulu_Parser_match_token(self, TOKEN_SEMICOLON);
     } else if (lulu_Parser_match_token(self, TOKEN_IDENTIFIER)) {
         assignment(self);

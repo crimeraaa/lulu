@@ -4,13 +4,15 @@
 #include "lexer.h"
 #include "chunk.h"
 
-#define UNRESOLVED_LOCAL   (-1)
+#define UNRESOLVED_LOCAL    (-1)
+#define UNINITIALIZED_LOCAL (-1)
 
 /**
  * @brief
  *      (2 ** 24) - 1 = 0b11111111_11111111_11111111
  */
 #define LULU_MAX_CONSTANTS  ((1 << 24) - 1)
+#define LULU_MAX_LOCALS     LULU_MAX_BYTE
 
 /**
  * @brief
@@ -44,7 +46,7 @@ struct lulu_Compiler {
     lulu_Chunk  *chunk; // Destination for bytecode and constants.
     lulu_Parser *parser;
     lulu_Lexer  *lexer;
-    lulu_Local   locals[LULU_MAX_BYTE];
+    lulu_Local   locals[LULU_MAX_LOCALS];
     int          local_count;
     int          scope_depth; // 0 isn't really used but is distinct from -1.
 };
@@ -93,6 +95,20 @@ lulu_Compiler_end_scope(lulu_Compiler *self);
  */
 void
 lulu_Compiler_add_local(lulu_Compiler *self, const lulu_Token *ident);
+
+/**
+ * @note 2024-12-26
+ *      Marks all current locals as 'initialized', that is they are now able to
+ *      be referenced in their current scope. This was done to allow code like:
+ *
+ *      x = 10
+ *      do
+ *          local x = x + 1
+ *          -- do stuff with local 'x'
+ *      end
+ */
+void
+lulu_Compiler_initialize_locals(lulu_Compiler *self);
 
 /**
  * @note 2024-12-10
