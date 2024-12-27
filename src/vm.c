@@ -210,9 +210,9 @@ do {                                                                           \
         }
         case OP_SETTABLE:
         {
-            int i_table = instr_get_A(inst);
-            int i_key   = instr_get_B(inst);
-            int n_pop   = instr_get_C(inst);
+            int n_pop   = instr_get_A(inst);
+            int i_table = instr_get_B(inst);
+            int i_key   = instr_get_C(inst);
 
             if (!lulu_is_table(self, i_table)) {
                 vm_runtime_error(self,

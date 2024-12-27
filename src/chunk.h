@@ -68,7 +68,7 @@ instr_make(OpCode op, byte a, byte b, byte c)
 }
 
 static inline Instruction
-instr_make_byte3(OpCode op, byte3 arg)
+instr_make_ABC(OpCode op, byte3 arg)
 {
     // Note how we use msb w/ OFFSET_B, not OFFSET_A since we're masking bits.
     byte msb = (arg >> INSTR_OFFSET_B)  & LULU_MAX_BYTE;
@@ -93,7 +93,7 @@ instr_set_A(Instruction *self, byte a)
 }
 
 static inline void
-instr_set_byte3(Instruction *self, byte3 arg)
+instr_set_ABC(Instruction *self, byte3 arg)
 {
     *self &= ~INSTR_MASK_ABC;
     *self |= cast(Instruction)arg << INSTR_OFFSET_C;

@@ -79,7 +79,7 @@ read_file(lulu_VM *vm, cstring path, usize *out_size)
         *out_size = buf_size;
     }
 
-    buf_ptr = rawarray_new(char, vm, buf_size);
+    buf_ptr = array_new(char, vm, buf_size);
     if (!buf_ptr) {
         fprintf(stderr, "Not enough memory to read file '%s'.\n", path);
         goto cleanup;
@@ -88,7 +88,7 @@ read_file(lulu_VM *vm, cstring path, usize *out_size)
     bytes_read = fread(buf_ptr, sizeof(buf_ptr[0]), file_size, file_ptr);
     if (bytes_read < file_size) {
         fprintf(stderr, "Could not read file '%s'.\n", path);
-        rawarray_free(char, vm, buf_ptr, buf_size);
+        array_free(char, vm, buf_ptr, buf_size);
         goto cleanup;
     }
 
@@ -110,7 +110,7 @@ run_file(lulu_VM *vm, cstring path)
         return 2;
     }
     status = vm_interpret(vm, path, source);
-    rawarray_free(char, vm, source, len);
+    array_free(char, vm, source, len);
 
     switch (status) {
     case LULU_OK:

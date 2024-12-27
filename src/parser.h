@@ -11,7 +11,7 @@ struct LValue {
         struct { byte i_table, i_key, n_pop; };
         byte3 global;
         byte  local;
-    };
+    }; // Arguments to the various opcodes.
 };
 
 typedef enum {

@@ -22,7 +22,7 @@ object_free(lulu_VM *vm, Object *self)
     case LULU_TYPE_TABLE: {
         Table *table = cast(Table *)self;
         table_free(vm, table);
-        rawptr_free(Table, vm, table);
+        ptr_free(Table, vm, table);
         break;
     }
     default:

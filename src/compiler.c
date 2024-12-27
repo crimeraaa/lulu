@@ -37,20 +37,11 @@ adjust_stack_usage(Compiler *self, Instruction inst)
     OpCode      op   = instr_get_op(inst);
     OpCode_Info info = LULU_OPCODE_INFO[op];
 
-    // We assume that variable delta instructions are affected by argument A.
+    // We assume that variable delta instructions only occur on argument A.
     int n_push = (info.push_count == -1) ? instr_get_A(inst) : info.push_count;
     int n_pop  = (info.pop_count  == -1) ? instr_get_A(inst) : info.pop_count;
 
-    /**
-     * @note 2024-12-27
-     *      This is ugly but I cannot be bothered to change all the instructions
-     *      to somehow have a uniform argument for variable deltas.
-     */
-    if (op == OP_SETTABLE) {
-        n_pop = instr_get_C(inst);
-    }
-
-    printf("%-12s: push %i, pop %i\n", info.name, n_push, n_pop);
+    printf("%-12s: push %i, pop %i\n", info.name, n_push, n_pop); //! DEBUG
     self->stack_usage += n_push;
     self->stack_usage -= n_pop;
 }
@@ -65,7 +56,7 @@ emit_instruction(Compiler *self, Instruction inst)
 }
 
 void
-compiler_emit_opcode(Compiler *self, OpCode op)
+compiler_emit_op(Compiler *self, OpCode op)
 {
     emit_instruction(self, instr_make(op, 0, 0, 0));
 }
@@ -73,7 +64,7 @@ compiler_emit_opcode(Compiler *self, OpCode op)
 void
 compiler_emit_return(Compiler *self)
 {
-    compiler_emit_opcode(self, OP_RETURN);
+    compiler_emit_op(self, OP_RETURN);
 }
 
 byte3
@@ -92,7 +83,7 @@ void
 compiler_emit_constant(Compiler *self, const Value *value)
 {
     byte3 index = compiler_make_constant(self, value);
-    emit_instruction(self, instr_make_byte3(OP_CONSTANT, index));
+    emit_instruction(self, instr_make_ABC(OP_CONSTANT, index));
 }
 
 void
@@ -104,7 +95,7 @@ compiler_emit_string(Compiler *self, const Token *token)
 }
 
 void
-compiler_emit_number(Compiler *self, lulu_Number n)
+compiler_emit_number(Compiler *self, Number n)
 {
     Value tmp;
     value_set_number(&tmp, n);
@@ -112,14 +103,15 @@ compiler_emit_number(Compiler *self, lulu_Number n)
 }
 
 /**
- * @todo 2024-12-27
- *      Optimize POP when we just emitted SETTABLE.
+ * @todo 2024-12-27:
+ *      When folding overflows the previous argument A, can we split the difference
+ *      and write that into `inst` for the caller to see?
  */
 static bool
 folded_instruction(Compiler *self, Instruction inst)
 {
-    OpCode  op    = instr_get_op(inst);
-    Chunk  *chunk = current_chunk(self);
+    OpCode  cur_op = instr_get_op(inst);
+    Chunk  *chunk  = current_chunk(self);
 
     // Can't possibly have a previous opcode?
     if (chunk->len <= 0) {
@@ -127,14 +119,18 @@ folded_instruction(Compiler *self, Instruction inst)
     }
 
     // Poke at the most recently (i.e: previous) written opcode.
-    Instruction *ip = &chunk->code[chunk->len - 1];
-    if (instr_get_op(*ip) != op) {
-        return false;
+    Instruction *ip      = &chunk->code[chunk->len - 1];
+    OpCode       prev_op = instr_get_op(*ip);
+    if (prev_op != cur_op) {
+        // Account for special case
+        if (!(prev_op == OP_SETTABLE && cur_op == OP_POP)) {
+            return false;
+        }
     }
 
     // e.g. folded CONCATs always requires 1 less actual intermediate.
     int offset = 0;
-    switch (op) {
+    switch (cur_op) {
     case OP_CONCAT: offset = -1;
     case OP_POP:
     case OP_NIL: {
@@ -166,9 +162,74 @@ compiler_emit_A(Compiler *self, OpCode op, byte a)
 }
 
 void
-compiler_emit_byte3(Compiler *self, OpCode op, byte3 arg)
+compiler_emit_ABC(Compiler *self, OpCode op, byte3 arg)
 {
-    emit_instruction(self, instr_make_byte3(op, arg));
+    emit_instruction(self, instr_make_ABC(op, arg));
+}
+
+void
+compiler_emit_nil(Compiler *self, int n_nil)
+{
+    compiler_emit_A(self, OP_NIL, cast(byte)n_nil);
+}
+
+// @todo 2024-12-27: Check for overflow before casting to `byte`?
+void
+compiler_emit_pop(Compiler *self, int n_pop)
+{
+    compiler_emit_A(self, OP_POP, cast(byte)n_pop);
+}
+
+void
+compiler_emit_lvalues(Compiler *self, LValue *last)
+{
+    LValue *iter      = last;
+    int     n_cleanup = 0;    // How many table/key pairs to pop at the end?
+    while (iter) {
+        OpCode op = iter->op;
+        switch (op) {
+        case OP_SETGLOBAL:
+            compiler_emit_ABC(self, op, iter->global);
+            break;
+        case OP_SETLOCAL:
+            compiler_emit_A(self, op, iter->local);
+            break;
+        case OP_SETTABLE:
+            compiler_set_table(self, iter->i_table, iter->i_key, iter->n_pop);
+            n_cleanup += 2; // Get rid of remaining table and key
+            break;
+        default:
+            __builtin_unreachable();
+            break;
+        }
+        iter = iter->prev;
+    }
+
+    if (n_cleanup > 0) {
+        compiler_emit_pop(self, n_cleanup);
+    }
+}
+
+void
+compiler_emit_lvalue_parent(Compiler *self, LValue *lvalue)
+{
+    // SET(GLOBAL|LOCAL) only apply to the primary (parent) table. Everything
+    // else is guaranteed to be a field of this table or its subtables.
+    switch (lvalue->op) {
+    case OP_SETGLOBAL:
+        compiler_emit_ABC(self, OP_GETGLOBAL, lvalue->global);
+        break;
+    case OP_SETLOCAL:
+        compiler_emit_A(self, OP_GETLOCAL, lvalue->local);
+        break;
+    case OP_SETTABLE:
+        // For this case, a table and a key have been emitted right before.
+        compiler_emit_op(self, OP_GETTABLE);
+        break;
+    default:
+        __builtin_unreachable();
+        break;
+    }
 }
 
 void
@@ -223,13 +284,13 @@ compiler_end_scope(Compiler *self)
 
     // Remove this scope's local variables.
     int n_pop = 0;
-    while (self->n_locals > 0 && self->locals[self->n_locals -1].depth > self->scope_depth) {
+    while (self->n_locals > 0 && self->locals[self->n_locals - 1].depth > self->scope_depth) {
         self->n_locals--;
         n_pop++;
     }
 
     if (n_pop > 0) {
-        compiler_emit_A(self, OP_POP, n_pop);
+        compiler_emit_pop(self, n_pop);
     }
 }
 
@@ -239,7 +300,7 @@ identifiers_equal(const OString *string, const Token *token)
     if (string->len != token->len) {
         return false;
     }
-    return memcmp(string->data, token->start, string->len) == 0;
+    return memcmp(string->data, token->start, token->len) == 0;
 }
 
 void
@@ -296,7 +357,7 @@ isize
 compiler_new_table(Compiler *self)
 {
     isize index = current_chunk(self)->len;
-    compiler_emit_opcode(self, OP_NEWTABLE);
+    compiler_emit_op(self, OP_NEWTABLE);
     return index;
 }
 
@@ -307,11 +368,11 @@ compiler_adjust_table(Compiler *self, isize i_code, isize n_fields)
     if (n_fields == 0) {
         return;
     }
-    instr_set_byte3(ip, n_fields);
+    instr_set_ABC(ip, n_fields);
 }
 
 void
 compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop)
 {
-    emit_instruction(self, instr_make(OP_SETTABLE, i_table, i_key, n_pop));
+    emit_instruction(self, instr_make(OP_SETTABLE, n_pop, i_table, i_key));
 }

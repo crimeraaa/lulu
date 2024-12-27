@@ -3,7 +3,7 @@
 #include <string.h>     // memcpy, memcmp
 
 static u32
-hash_number(lulu_Number number)
+hash_number(Number number)
 {
     char buf[size_of(number)];
     memcpy(buf, &number, size_of(number));
@@ -59,7 +59,7 @@ find_pair(Pair *pairs, isize cap, const Value *key)
 static void
 adjust_capacity(lulu_VM *vm, Table *table, isize new_cap)
 {
-    Pair *new_pairs = rawarray_new(Pair, vm, new_cap);
+    Pair *new_pairs = array_new(Pair, vm, new_cap);
     for (isize i = 0; i < new_cap; i++) {
         value_set_nil(&new_pairs[i].key);
         value_set_nil(&new_pairs[i].value);
@@ -79,7 +79,7 @@ adjust_capacity(lulu_VM *vm, Table *table, isize new_cap)
         table->count++;
     }
 
-    rawarray_free(Pair, vm, old_pairs, old_cap);
+    array_free(Pair, vm, old_pairs, old_cap);
     table->pairs = new_pairs;
     table->cap   = new_cap;
 }
@@ -106,7 +106,7 @@ table_init(Table *self)
 void
 table_free(lulu_VM *vm, Table *self)
 {
-    rawarray_free(Pair, vm, self->pairs, self->cap);
+    array_free(Pair, vm, self->pairs, self->cap);
     table_init(self);
 }
 

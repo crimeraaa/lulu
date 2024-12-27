@@ -103,9 +103,9 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
     }
     case OP_SETTABLE:
     {
-        int i_table = instr_get_A(inst);
-        int i_key   = instr_get_B(inst);
-        int n_pop   = instr_get_C(inst);
+        int n_pop   = instr_get_A(inst);
+        int i_table = instr_get_B(inst);
+        int i_key   = instr_get_C(inst);
         printf("%4i (table), %i (key), pop %i\n", i_table, i_key, n_pop);
         break;
     }

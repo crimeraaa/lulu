@@ -229,14 +229,14 @@ binary(Parser *parser)
         prec++;
     }
     parse_precedence(parser, prec);
-    compiler_emit_opcode(compiler, get_binary_op(type));
+    compiler_emit_op(compiler, get_binary_op(type));
 
     // NOT, GT and GEQ are implemented as complements of EQ, LEQ and LT.
     switch (type) {
     case TOKEN_TILDE_EQUAL:
     case TOKEN_ANGLE_R:
     case TOKEN_ANGLE_R_EQUAL:
-        compiler_emit_opcode(compiler, OP_NOT);
+        compiler_emit_op(compiler, OP_NOT);
         break;
     default:
         break;
@@ -251,13 +251,13 @@ literal(Parser *parser)
     Lexer    *lexer    = parser->lexer;
     switch (parser->consumed.type) {
     case TOKEN_FALSE:
-        compiler_emit_opcode(compiler, OP_FALSE);
+        compiler_emit_op(compiler, OP_FALSE);
         break;
     case TOKEN_NIL:
-        compiler_emit_A(compiler, OP_NIL, 1);
+        compiler_emit_nil(compiler, 1);
         break;
     case TOKEN_TRUE:
-        compiler_emit_opcode(compiler, OP_TRUE);
+        compiler_emit_op(compiler, OP_TRUE);
         break;
     case TOKEN_STRING_LIT: {
         Value tmp;
@@ -286,7 +286,7 @@ named_variable(Parser *parser, Token *ident)
 
     if (local == UNRESOLVED_LOCAL) {
         byte3 global = identifier_constant(parser, ident);
-        compiler_emit_byte3(compiler, OP_GETGLOBAL, global);
+        compiler_emit_ABC(compiler, OP_GETGLOBAL, global);
     } else {
         compiler_emit_A(compiler, OP_GETLOCAL, local);
     }
@@ -295,10 +295,10 @@ named_variable(Parser *parser, Token *ident)
         if (parser_match_token(parser, TOKEN_PERIOD)) {
             parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
             compiler_emit_string(compiler, &parser->consumed);
-            compiler_emit_opcode(compiler, OP_GETTABLE);
+            compiler_emit_op(compiler, OP_GETTABLE);
         } else if (parser_match_token(parser, TOKEN_BRACKET_L)) {
             expression(parser);
-            compiler_emit_opcode(compiler, OP_GETTABLE);
+            compiler_emit_op(compiler, OP_GETTABLE);
             parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
         } else {
             break;
@@ -351,7 +351,7 @@ unary(Parser *parser)
 
     // Compile the operand.
     parse_precedence(parser, PREC_UNARY);
-    compiler_emit_opcode(compiler, get_unary_opcode(type));
+    compiler_emit_op(compiler, get_unary_opcode(type));
 }
 
 /**
@@ -387,14 +387,14 @@ table(Parser *parser)
                 expression(parser);
             } else {
                 n_array++;
-                compiler_emit_number(compiler, cast(lulu_Number)n_array);
+                compiler_emit_number(compiler, cast(Number)n_array);
                 // Prefix portion was consumed so we can't include it in 'expression()'.
                 named_variable(parser, &ident);
                 mid_expression(parser);
             }
         } else {
             n_array++;
-            compiler_emit_number(compiler, cast(lulu_Number)n_array);
+            compiler_emit_number(compiler, cast(Number)n_array);
             // Unlike the above branch we haven't consumed the prefix portion.
             expression(parser);
         }
@@ -569,11 +569,9 @@ adjust_assignment_list(Parser *parser, int assigns, int exprs)
 {
     Compiler *compiler = parser->compiler;
     if (assigns > exprs) {
-        int nil_count = assigns - exprs;
-        compiler_emit_A(compiler, OP_NIL, nil_count);
+        compiler_emit_nil(compiler, assigns - exprs);
     } else if (assigns < exprs) {
-        int pop_count = exprs - assigns;
-        compiler_emit_A(compiler, OP_POP, pop_count);
+        compiler_emit_pop(compiler, exprs - assigns);
     }
 }
 
@@ -582,65 +580,14 @@ adjust_assignment_list(Parser *parser, int assigns, int exprs)
  *      (Somewhat) Analogous to the book's `compiler.c:defineVariable()`.
  */
 static void
-emit_assignment_targets(Parser *parser, LValue *head)
+assign_lvalues(Parser *parser, LValue *last)
 {
-    Compiler *compiler = parser->compiler;
-    const int assigns  = count_assignment_targets(head);
+    const int assigns  = count_assignment_targets(last);
     const int exprs    = parse_expression_list(parser);
 
     adjust_assignment_list(parser, assigns, exprs);
-
-    LValue *iter      = head;
-    int     n_cleanup = 0;    // How many table/key pairs to pop at the end?
-    while (iter) {
-        OpCode op = iter->op;
-        switch (op) {
-        case OP_SETGLOBAL:
-            compiler_emit_byte3(compiler, op, iter->global);
-            break;
-        case OP_SETLOCAL:
-            compiler_emit_A(compiler, op, iter->local);
-            break;
-        case OP_SETTABLE:
-            compiler_set_table(compiler, iter->i_table, iter->i_key, iter->n_pop);
-            n_cleanup += 2; // Get rid of remaining table and key
-            break;
-        default:
-            __builtin_unreachable();
-            break;
-        }
-        iter = iter->prev;
-    }
-
-    if (n_cleanup > 0) {
-        compiler_emit_A(compiler, OP_POP, cast(byte)n_cleanup);
-    }
-
+    compiler_emit_lvalues(parser->compiler, last);
     parser_match_token(parser, TOKEN_SEMICOLON);
-    parser->lvalues = NULL; // We can only emit assignment list once per statement.
-}
-
-static void
-emit_lvalue_parent(Parser *parser, LValue *lvalue)
-{
-    Compiler *compiler = parser->compiler;
-    // SET(GLOBAL|LOCAL) only apply to the primary (parent) table. Everything
-    // else is guaranteed to be a field of this table or its subtables.
-    switch (lvalue->op) {
-    case OP_SETGLOBAL:
-        compiler_emit_byte3(compiler, OP_GETGLOBAL, lvalue->global);
-        break;
-    case OP_SETLOCAL:
-        compiler_emit_A(compiler, OP_GETLOCAL, lvalue->local);
-        break;
-    case OP_SETTABLE:
-        // For this case, a table and a key have been emitted right before.
-        compiler_emit_opcode(compiler, OP_GETTABLE);
-        break;
-    default:
-        __builtin_unreachable();
-        break;
-    }
 }
 
 static bool
@@ -649,10 +596,10 @@ resolve_lvalue_field(Parser *parser, LValue *lvalue, int i_table)
     Compiler *compiler = parser->compiler;
     if (parser_match_token(parser, TOKEN_PERIOD)) {
         parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
-        emit_lvalue_parent(parser, lvalue);
+        compiler_emit_lvalue_parent(compiler, lvalue);
         compiler_emit_string(compiler, &parser->consumed);
     } else if (parser_match_token(parser, TOKEN_BRACKET_L)) {
-        emit_lvalue_parent(parser, lvalue);
+        compiler_emit_lvalue_parent(compiler, lvalue);
         expression(parser);
         parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
     } else {
@@ -679,20 +626,20 @@ assignment(Parser *parser)
     Compiler *compiler = parser->compiler;
     const int local    = compiler_resolve_local(compiler, &parser->consumed);
 
-    LValue lvalue;
-    lvalue.prev     = parser->lvalues;
-    parser->lvalues = &lvalue; // Should end at the deepest recursive call.
+    LValue last;
+    last.prev       = parser->lvalues;
+    parser->lvalues = &last; // Should end at the deepest recursive call.
     if (local == UNRESOLVED_LOCAL) {
-        lvalue.op     = OP_SETGLOBAL;
-        lvalue.global = identifier_constant(parser, &parser->consumed);
+        last.op     = OP_SETGLOBAL;
+        last.global = identifier_constant(parser, &parser->consumed);
     } else {
-        lvalue.op     = OP_SETLOCAL;
-        lvalue.local  = local;
+        last.op     = OP_SETLOCAL;
+        last.local  = local;
     }
 
     // Must be consistent. Concept check: `t.k.v = 10`
-    int i_table = compiler->stack_usage;
-    while (resolve_lvalue_field(parser, &lvalue, i_table));
+    const int i_table = compiler->stack_usage;
+    while (resolve_lvalue_field(parser, &last, i_table));
 
 
     /**
@@ -707,7 +654,8 @@ assignment(Parser *parser)
 
     if (parser->lvalues) {
         parser_consume_token(parser, TOKEN_EQUAL, "in assignment");
-        emit_assignment_targets(parser, &lvalue);
+        assign_lvalues(parser, &last);
+        parser->lvalues = NULL;
     }
 }
 

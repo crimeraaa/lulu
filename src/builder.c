@@ -22,14 +22,14 @@ builder_reserve(Builder *self, isize new_cap)
         return;
     }
 
-    self->buffer = rawarray_resize(char, self->vm, self->buffer, old_cap, new_cap);
+    self->buffer = array_resize(char, self->vm, self->buffer, old_cap, new_cap);
     self->cap    = new_cap;
 }
 
 void
 builder_free(Builder *self)
 {
-    rawarray_free(char, self->vm, self->buffer, self->cap);
+    array_free(char, self->vm, self->buffer, self->cap);
 }
 
 void

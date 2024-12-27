@@ -13,9 +13,9 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_GETGLOBAL]  = {"GETGLOBAL",     3,           1,          0},
     [OP_SETGLOBAL]  = {"SETGLOBAL",     3,           0,          1},
     [OP_GETLOCAL]   = {"GETLOCAL",      1,           1,          0},
-    [OP_SETLOCAL]   = {"SETLOCAL",      1,           0,          1}, // @todo 2024-12-27: Add argument for pop?
+    [OP_SETLOCAL]   = {"SETLOCAL",      1,           0,          1},
     [OP_NEWTABLE]   = {"NEWTABLE",      3,           1,          0},
-    [OP_GETTABLE]   = {"GETTABLE",      0,           1,          2},
+    [OP_GETTABLE]   = {"GETTABLE",      0,           1,          2}, // @todo 2024-12-27: Add argument for pop?
     [OP_SETTABLE]   = {"SETTABLE",      3,           0,         -1},
     [OP_NIL]        = {"NIL",           1,          -1,          0},
     [OP_TRUE]       = {"TRUE",          0,           1,          0},
@@ -73,8 +73,8 @@ chunk_reserve(lulu_VM *vm, Chunk *self, isize new_cap)
         return;
     }
 
-    self->code  = rawarray_resize(Instruction, vm, self->code, old_cap, new_cap);
-    self->lines = rawarray_resize(int, vm, self->lines, old_cap, new_cap);
+    self->code  = array_resize(Instruction, vm, self->code, old_cap, new_cap);
+    self->lines = array_resize(int, vm, self->lines, old_cap, new_cap);
     self->cap   = new_cap;
 }
 
@@ -82,8 +82,8 @@ void
 chunk_free(lulu_VM *vm, Chunk *self)
 {
     varray_free(vm, &self->constants);
-    rawarray_free(Instruction, vm, self->code, self->cap);
-    rawarray_free(int, vm, self->lines, self->cap);
+    array_free(Instruction, vm, self->code, self->cap);
+    array_free(int, vm, self->lines, self->cap);
     chunk_init(self, "(freed chunk)");
 }
 

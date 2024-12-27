@@ -91,13 +91,13 @@ varray_reserve(lulu_VM *vm, VArray *self, isize new_cap)
         return;
     }
 
-    self->values = rawarray_resize(Value, vm, self->values, old_cap, new_cap);
+    self->values = array_resize(Value, vm, self->values, old_cap, new_cap);
     self->cap    = new_cap;
 }
 
 void
 varray_free(lulu_VM *vm, VArray *self)
 {
-    rawarray_free(Value, vm, self->values, self->cap);
+    array_free(Value, vm, self->values, self->cap);
     varray_init(self);
 }
