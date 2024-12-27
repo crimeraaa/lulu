@@ -19,7 +19,7 @@ typedef enum {
     OP_PRINT, // @note 2024-10-1: Temporary!
     OP_POP,
     OP_RETURN,
-} lulu_OpCode;
+} OpCode;
 
 #define LULU_OPCODE_COUNT (OP_RETURN + 1)
 
@@ -28,9 +28,9 @@ typedef struct {
     i8      arg_size;   // Number of bytes used for the argument.
     i8      push_count; // Number values pushed from stack. -1 indicates unknown.
     i8      pop_count;  // Number values popped from stack. -1 indicates unknown.
-} lulu_OpCode_Info;
+} OpCode_Info;
 
-extern const lulu_OpCode_Info
+extern const OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 
 #define LULU_INSTRUCTION_OFFSET_A   24
@@ -50,36 +50,36 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
  *      opcode  =   OP_NIL =                              00000001
  *      inst    = 50331649 = 0b00000011_00000000_00000000_00000001
  */
-typedef u32 lulu_Instruction;
+typedef u32 Instruction;
 
-static inline lulu_Instruction
-lulu_Instruction_make(lulu_OpCode op, byte a, byte b, byte c)
+static inline Instruction
+instruction_make(OpCode op, byte a, byte b, byte c)
 {
-    return cast(lulu_Instruction)a << LULU_INSTRUCTION_OFFSET_A
-        | cast(lulu_Instruction)b  << LULU_INSTRUCTION_OFFSET_B
-        | cast(lulu_Instruction)c  << LULU_INSTRUCTION_OFFSET_C
-        | cast(lulu_Instruction)op << LULU_INSTRUCTION_OFFSET_OP;
+    return cast(Instruction)a << LULU_INSTRUCTION_OFFSET_A
+        | cast(Instruction)b  << LULU_INSTRUCTION_OFFSET_B
+        | cast(Instruction)c  << LULU_INSTRUCTION_OFFSET_C
+        | cast(Instruction)op << LULU_INSTRUCTION_OFFSET_OP;
 }
 
-static inline lulu_Instruction
-lulu_Instruction_make_byte3(lulu_OpCode op, byte3 arg)
+static inline Instruction
+instruction_make_byte3(OpCode op, byte3 arg)
 {
     // Note how we use msb w/ OFFSET_B, not OFFSET_A since we're masking bits.
     byte msb = (arg >> LULU_INSTRUCTION_OFFSET_B)  & LULU_MAX_BYTE;
     byte mid = (arg >> LULU_INSTRUCTION_OFFSET_C)  & LULU_MAX_BYTE;
     byte lsb = (arg >> LULU_INSTRUCTION_OFFSET_OP) & LULU_MAX_BYTE;
-    return lulu_Instruction_make(op, msb, mid, lsb);
+    return instruction_make(op, msb, mid, lsb);
 }
 
-#define lulu_Instruction_make_byte1(op, arg)    lulu_Instruction_make(op, arg, 0, 0)
-#define lulu_Instruction_make_none(op)          lulu_Instruction_make(op, 0, 0, 0)
-#define lulu_Instruction_get_opcode(inst)       ((inst) & LULU_MAX_BYTE)
+#define instruction_make_byte1(op, arg)    instruction_make(op, arg, 0, 0)
+#define instruction_make_none(op)          instruction_make(op, 0, 0, 0)
+#define instruction_get_opcode(inst)       ((inst) & LULU_MAX_BYTE)
 
 // When shifted, argument A has no extra upper bits.
-#define lulu_Instruction_get_A(inst)    ((inst) >> LULU_INSTRUCTION_OFFSET_A)
-#define lulu_Instruction_get_B(inst)    (((inst) >> LULU_INSTRUCTION_OFFSET_B) & LULU_MAX_BYTE)
-#define lulu_Instruction_get_C(inst)    (((inst) >> LULU_INSTRUCTION_OFFSET_C) & LULU_MAX_BYTE)
-#define lulu_Instruction_get_ABC(inst)  ((inst) >> LULU_INSTRUCTION_OFFSET_C)
+#define instruction_get_A(inst)    ((inst) >> LULU_INSTRUCTION_OFFSET_A)
+#define instruction_get_B(inst)    (((inst) >> LULU_INSTRUCTION_OFFSET_B) & LULU_MAX_BYTE)
+#define instruction_get_C(inst)    (((inst) >> LULU_INSTRUCTION_OFFSET_C) & LULU_MAX_BYTE)
+#define instruction_get_ABC(inst)  ((inst) >> LULU_INSTRUCTION_OFFSET_C)
 
 /**
  * @brief
@@ -90,25 +90,25 @@ lulu_Instruction_make_byte3(lulu_OpCode op, byte3 arg)
  *      `lulu_VM *`.
  */
 typedef struct {
-    lulu_Value_Array  constants;
-    lulu_Instruction *code;  // 1D array of bytecode.
-    int    *lines;    // Line numbers per bytecode.
-    cstring filename; // Filename of where this chunk originated from.
-    isize   len;      // Current number of actively used bytes in `code`.
-    isize   cap;      // Total number of bytes that `code` points to.
-} lulu_Chunk;
+    VArray       constants;
+    Instruction *code;     // 1D array of bytecode.
+    int         *lines;    // Line numbers per bytecode.
+    cstring      filename; // Filename of where this chunk originated from.
+    isize        len;      // Current number of actively used bytes in `code`.
+    isize        cap;      // Total number of bytes that `code` points to.
+} Chunk;
 
 void
-lulu_Chunk_init(lulu_Chunk *self, cstring filename);
+chunk_init(Chunk *self, cstring filename);
 
 void
-lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, lulu_Instruction inst, int line);
+chunk_write(lulu_VM *vm, Chunk *self, Instruction inst, int line);
 
 void
-lulu_Chunk_free(lulu_VM *vm, lulu_Chunk *self);
+chunk_free(lulu_VM *vm, Chunk *self);
 
 void
-lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap);
+chunk_reserve(lulu_VM *vm, Chunk *self, isize new_cap);
 
 /**
  * @brief
@@ -116,6 +116,6 @@ lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap);
  *      value. This is so you can locate the constant later.
  */
 isize
-lulu_Chunk_add_constant(lulu_VM *vm, lulu_Chunk *self, const lulu_Value *value);
+chunk_add_constant(lulu_VM *vm, Chunk *self, const Value *value);
 
 #endif // LULU_CHUNK_H

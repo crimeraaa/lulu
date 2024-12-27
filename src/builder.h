@@ -1,5 +1,5 @@
-#ifndef LULU_BUFFER_H
-#define LULU_BUFFER_H
+#ifndef LULU_BUILDER_H
+#define LULU_BUILDER_H
 
 #include "lulu.h"
 #include "string.h"
@@ -13,30 +13,30 @@ typedef struct {
     char    *buffer; // Dynamically growable array.
     isize    len;    // Number of currently active elements.
     isize    cap;    // Number of allocated elements.
-} lulu_Builder;
+} Builder;
 
 void
-lulu_Builder_init(lulu_VM *vm, lulu_Builder *self);
+builder_init(lulu_VM *vm, Builder *self);
 
 void
-lulu_Builder_reserve(lulu_Builder *self, isize new_cap);
+builder_reserve(Builder *self, isize new_cap);
 
 void
-lulu_Builder_free(lulu_Builder *self);
+builder_free(Builder *self);
 
 void
-lulu_Builder_reset(lulu_Builder *self);
+builder_reset(Builder *self);
 
 void
-lulu_Builder_write_char(lulu_Builder *self, char ch);
+builder_write_char(Builder *self, char ch);
 
 void
-lulu_Builder_write_string(lulu_Builder *self, const char *data, isize len);
+builder_write_string(Builder *self, const char *data, isize len);
 
 void
-lulu_Builder_write_cstring(lulu_Builder *self, cstring cstr);
+builder_write_cstring(Builder *self, cstring cstr);
 
 const char *
-lulu_Builder_to_string(lulu_Builder *self, isize *out_len);
+builder_to_string(Builder *self, isize *out_len);
 
-#endif // LULU_BUFFER_H
+#endif // LULU_BUILDER_H

@@ -2,10 +2,10 @@
 #include "table.h"
 #include "vm.h"
 
-lulu_Object *
-lulu_Object_new(lulu_VM *vm, lulu_Value_Type type, isize size)
+Object *
+object_new(lulu_VM *vm, Value_Type type, isize size)
 {
-    lulu_Object *object = cast(lulu_Object *)lulu_Memory_alloc(vm, size);
+    Object *object = cast(Object *)mem_alloc(vm, size);
     object->type = type;
     object->next = vm->objects;
     vm->objects  = object;
@@ -13,20 +13,20 @@ lulu_Object_new(lulu_VM *vm, lulu_Value_Type type, isize size)
 }
 
 void
-lulu_Object_free(lulu_VM *vm, lulu_Object *self)
+object_free(lulu_VM *vm, Object *self)
 {
     switch (self->type) {
     case LULU_TYPE_STRING:
-        lulu_String_free(vm, cast(lulu_String *)self);
+        ostring_free(vm, cast(OString *)self);
         break;
     case LULU_TYPE_TABLE: {
-        lulu_Table *table = cast(lulu_Table *)self;
-        lulu_Table_free(vm, table);
-        rawptr_free(lulu_Table, vm, table);
+        Table *table = cast(Table *)self;
+        table_free(vm, table);
+        rawptr_free(Table, vm, table);
         break;
     }
     default:
-        lulu_Debug_fatalf("Attempt to free a %s value", LULU_TYPENAMES[self->type]);
+        debug_fatalf("Attempt to free a %s value", LULU_TYPENAMES[self->type]);
         __builtin_unreachable();
     }
 }

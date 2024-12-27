@@ -6,7 +6,7 @@
     #pragma GCC diagnostic ignored "-Wc99-designator"
 #endif
 
-const lulu_OpCode_Info
+const OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     //                name: cstring     arg_size,   push_count, pop_count: i8
     [OP_CONSTANT]   = {"CONSTANT",      3,           1,          0},
@@ -42,9 +42,9 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
 #endif
 
 void
-lulu_Chunk_init(lulu_Chunk *self, cstring filename)
+chunk_init(Chunk *self, cstring filename)
 {
-    lulu_Value_Array_init(&self->constants);
+    varray_init(&self->constants);
     self->code     = NULL;
     self->lines    = NULL;
     self->filename = filename;
@@ -53,19 +53,19 @@ lulu_Chunk_init(lulu_Chunk *self, cstring filename)
 }
 
 void
-lulu_Chunk_write(lulu_VM *vm, lulu_Chunk *self, lulu_Instruction inst, int line)
+chunk_write(lulu_VM *vm, Chunk *self, Instruction inst, int line)
 {
     // Appending to this index would cause a buffer overrun?
     isize index = self->len++;
     if (index >= self->cap) {
-        lulu_Chunk_reserve(vm, self, lulu_Memory_grow_capacity(self->cap));
+        chunk_reserve(vm, self, mem_grow_capacity(self->cap));
     }
     self->code[index]  = inst;
     self->lines[index] = line;
 }
 
 void
-lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap)
+chunk_reserve(lulu_VM *vm, Chunk *self, isize new_cap)
 {
     isize old_cap = self->cap;
     // Nothing to do?
@@ -73,24 +73,24 @@ lulu_Chunk_reserve(lulu_VM *vm, lulu_Chunk *self, isize new_cap)
         return;
     }
 
-    self->code  = rawarray_resize(lulu_Instruction, vm, self->code, old_cap, new_cap);
+    self->code  = rawarray_resize(Instruction, vm, self->code, old_cap, new_cap);
     self->lines = rawarray_resize(int, vm, self->lines, old_cap, new_cap);
     self->cap   = new_cap;
 }
 
 void
-lulu_Chunk_free(lulu_VM *vm, lulu_Chunk *self)
+chunk_free(lulu_VM *vm, Chunk *self)
 {
-    lulu_Value_Array_free(vm, &self->constants);
-    rawarray_free(lulu_Instruction, vm, self->code, self->cap);
+    varray_free(vm, &self->constants);
+    rawarray_free(Instruction, vm, self->code, self->cap);
     rawarray_free(int, vm, self->lines, self->cap);
-    lulu_Chunk_init(self, "(freed chunk)");
+    chunk_init(self, "(freed chunk)");
 }
 
 isize
-lulu_Chunk_add_constant(lulu_VM *vm, lulu_Chunk *self, const lulu_Value *value)
+chunk_add_constant(lulu_VM *vm, Chunk *self, const Value *value)
 {
-    lulu_Value_Array *constants = &self->constants;
+    VArray *constants = &self->constants;
 
     /**
      * @note 2024-12-10
@@ -98,10 +98,10 @@ lulu_Chunk_add_constant(lulu_VM *vm, lulu_Chunk *self, const lulu_Value *value)
      *      there are not that many constants.
      */
     for (isize i = 0; i < constants->len; i++) {
-        if (lulu_Value_eq(value, &constants->values[i])) {
+        if (value_eq(value, &constants->values[i])) {
             return i;
         }
     }
-    lulu_Value_Array_write(vm, constants, value);
+    varray_write(vm, constants, value);
     return constants->len - 1;
 }

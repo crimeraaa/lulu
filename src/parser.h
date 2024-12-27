@@ -18,33 +18,33 @@ typedef enum {
     PREC_POW,           // ^
     PREC_CALL,          // . ()
     PREC_PRIMARY,
-} lulu_Precedence;
+} Precedence;
 
 typedef void
-(*lulu_ParseFn)(lulu_Parser *parser);
+(*Parse_Fn)(Parser *parser);
 
 typedef const struct {
-    lulu_ParseFn    prefix_fn;
-    lulu_ParseFn    infix_fn;
-    lulu_Precedence precedence;
-} lulu_Parser_Rule;
+    Parse_Fn   prefix_fn;
+    Parse_Fn   infix_fn;
+    Precedence precedence;
+} Parse_Rule;
 
 void
-lulu_Parser_init(lulu_Parser *self, lulu_Compiler *compiler, lulu_Lexer *lexer);
+parser_init(Parser *self, Compiler *compiler, Lexer *lexer);
 
 /**
  * @note 2024-09-06
  *      Analogous to the book's `compiler.c:advance()`.
  */
 void
-lulu_Parser_advance_token(lulu_Parser *self);
+parser_advance_token(Parser *self);
 
 /**
  * @note 2024-09-07
  *      Analogous to the book's `compiler.c:consume()`.
  */
 void
-lulu_Parser_consume_token(lulu_Parser *self, lulu_Token_Type type, cstring msg);
+parser_consume_token(Parser *self, Token_Type type, cstring msg);
 
 /**
  * @brief
@@ -52,14 +52,14 @@ lulu_Parser_consume_token(lulu_Parser *self, lulu_Token_Type type, cstring msg);
  *      Otherwise, do nothing.
  */
 bool
-lulu_Parser_match_token(lulu_Parser *self, lulu_Token_Type type);
+parser_match_token(Parser *self, Token_Type type);
 
 /**
  * @note 2024-12-10
  *      Analogous to `compiler.c:declaration()` in the book.
  */
 void
-lulu_Parser_declaration(lulu_Parser *self);
+parser_declaration(Parser *self);
 
 /**
  * @note 2024-09-07
@@ -67,7 +67,7 @@ lulu_Parser_declaration(lulu_Parser *self);
  */
 LULU_ATTR_NORETURN
 void
-lulu_Parser_error_current(lulu_Parser *self, cstring msg);
+parser_error_current(Parser *self, cstring msg);
 
 /**
  * @note 2024-09-07
@@ -75,6 +75,6 @@ lulu_Parser_error_current(lulu_Parser *self, cstring msg);
  */
 LULU_ATTR_NORETURN
 void
-lulu_Parser_error_consumed(lulu_Parser *self, cstring msg);
+parser_error_consumed(Parser *self, cstring msg);
 
 #endif // LULU_PARSER_H

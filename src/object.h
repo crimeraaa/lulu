@@ -3,15 +3,15 @@
 
 #include "value.h"
 
-struct lulu_Object {
-    lulu_Value_Type type;
-    lulu_Object    *next;
+struct Object {
+    Value_Type type;
+    Object    *next;
 };
 
-lulu_Object *
-lulu_Object_new(lulu_VM *vm, lulu_Value_Type type, isize size);
+Object *
+object_new(lulu_VM *vm, Value_Type type, isize size);
 
 void
-lulu_Object_free(lulu_VM *vm, lulu_Object *self);
+object_free(lulu_VM *vm, Object *self);
 
 #endif // LULU_OBJECT_H

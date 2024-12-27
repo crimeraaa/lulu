@@ -22,18 +22,13 @@ LULU_TYPENAMES[LULU_TYPE_COUNT] = {
     #pragma GCC diagnostic pop
 #endif
 
-/**
- * @note 2024-09-13
- *      Requires boolean as first member of the union in order for this to work.
- *      Otherwise, you'll need to rely on designated initializers.
- */
-const lulu_Value
-LULU_VALUE_NIL   = {LULU_TYPE_NIL,     {0}},
-LULU_VALUE_TRUE  = {LULU_TYPE_BOOLEAN, {true}},
-LULU_VALUE_FALSE = {LULU_TYPE_BOOLEAN, {false}};
+const Value
+LULU_VALUE_NIL   = {.type = LULU_TYPE_NIL,     .number = 0},
+LULU_VALUE_TRUE  = {.type = LULU_TYPE_BOOLEAN, .boolean = true},
+LULU_VALUE_FALSE = {.type = LULU_TYPE_BOOLEAN, .boolean = false};
 
 void
-lulu_Value_print(const lulu_Value *value)
+value_print(const Value *value)
 {
     switch (value->type) {
     case LULU_TYPE_NIL:
@@ -49,12 +44,12 @@ lulu_Value_print(const lulu_Value *value)
         printf("%s", value->string->data);
         break;
     case LULU_TYPE_TABLE:
-        printf("%s: %p", lulu_Value_typename(value), cast(void *)value->table);
+        printf("%s: %p", value_typename(value), cast(void *)value->table);
         break;
     }
 }
 bool
-lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
+value_eq(const Value *a, const Value *b)
 {
     if (a->type != b->type) {
         return false;
@@ -71,7 +66,7 @@ lulu_Value_eq(const lulu_Value *a, const lulu_Value *b)
 }
 
 void
-lulu_Value_Array_init(lulu_Value_Array *self)
+varray_init(VArray *self)
 {
     self->values = NULL;
     self->len    = 0;
@@ -79,16 +74,16 @@ lulu_Value_Array_init(lulu_Value_Array *self)
 }
 
 void
-lulu_Value_Array_write(lulu_VM *vm, lulu_Value_Array *self, const lulu_Value *value)
+varray_write(lulu_VM *vm, VArray *self, const Value *value)
 {
     if (self->len >= self->cap) {
-        lulu_Value_Array_reserve(vm, self, lulu_Memory_grow_capacity(self->cap));
+        varray_reserve(vm, self, mem_grow_capacity(self->cap));
     }
     self->values[self->len++] = *value;
 }
 
 void
-lulu_Value_Array_reserve(lulu_VM *vm, lulu_Value_Array *self, isize new_cap)
+varray_reserve(lulu_VM *vm, VArray *self, isize new_cap)
 {
     isize old_cap = self->cap;
     // Nothing to do?
@@ -96,13 +91,13 @@ lulu_Value_Array_reserve(lulu_VM *vm, lulu_Value_Array *self, isize new_cap)
         return;
     }
 
-    self->values = rawarray_resize(lulu_Value, vm, self->values, old_cap, new_cap);
+    self->values = rawarray_resize(Value, vm, self->values, old_cap, new_cap);
     self->cap    = new_cap;
 }
 
 void
-lulu_Value_Array_free(lulu_VM *vm, lulu_Value_Array *self)
+varray_free(lulu_VM *vm, VArray *self)
 {
-    rawarray_free(lulu_Value, vm, self->values, self->cap);
-    lulu_Value_Array_init(self);
+    rawarray_free(Value, vm, self->values, self->cap);
+    varray_init(self);
 }

@@ -18,10 +18,10 @@ reset_stack(lulu_VM *vm)
 }
 
 static void
-init_table(lulu_Table *table)
+init_table(Table *table)
 {
-    lulu_Table_init(table);
-    lulu_Object *base = &table->base;
+    table_init(table);
+    Object *base = &table->base;
     base->type = LULU_TYPE_TABLE;
     base->next = NULL;
 }
@@ -29,47 +29,47 @@ init_table(lulu_Table *table)
 static void
 init_alloc(lulu_VM *self, void *userdata)
 {
-    lulu_Value value;
+    Value value;
     unused(userdata);
-    lulu_Value_set_table(&value, &self->globals);
+    value_set_table(&value, &self->globals);
     lulu_push_literal(self, "_G");
     // Will most likely realloc the globals table!
-    lulu_Table_set(self, &self->globals, &self->top[-1], &value);
+    table_set(self, &self->globals, &self->top[-1], &value);
     lulu_pop(self, 1); // We only pushed "_G" so pop it.
 }
 
 bool
-lulu_VM_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
+vm_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
 {
     reset_stack(self);
     init_table(&self->strings);
     init_table(&self->globals);
-    lulu_Builder_init(self, &self->builder);
+    builder_init(self, &self->builder);
     self->allocator      = allocator;
     self->allocator_data = allocator_data;
     self->chunk          = NULL;
     self->objects        = NULL;
     self->handlers       = NULL;
 
-    return lulu_VM_run_protected(self, &init_alloc, NULL) == LULU_OK;
+    return vm_run_protected(self, &init_alloc, NULL) == LULU_OK;
 }
 
 void
-lulu_VM_free(lulu_VM *self)
+vm_free(lulu_VM *self)
 {
-    lulu_Table_free(self, &self->strings);
-    lulu_Table_free(self, &self->globals);
-    lulu_Builder_free(&self->builder);
+    table_free(self, &self->strings);
+    table_free(self, &self->globals);
+    builder_free(&self->builder);
 
-    lulu_Object *object = self->objects;
+    Object *object = self->objects;
     while (object) {
-        lulu_Object *next = object->next;
-        lulu_Object_free(self, object);
+        Object *next = object->next;
+        object_free(self, object);
         object = next;
     }
 }
 
-static lulu_Chunk *
+static Chunk *
 current_chunk(lulu_VM *self)
 {
     return self->chunk;
@@ -81,7 +81,7 @@ check_numeric(lulu_VM *vm, cstring act, int lhs_offset, int rhs_offset)
     if (lulu_is_number(vm, lhs_offset) && lulu_is_number(vm, rhs_offset)) {
         return;
     }
-    lulu_VM_runtime_error(vm, "Attempt to %s %s with %s",
+    vm_runtime_error(vm, "Attempt to %s %s with %s",
         act, lulu_typename(vm, lhs_offset), lulu_typename(vm, rhs_offset));
 }
 
@@ -100,21 +100,21 @@ check_compare(lulu_VM *vm, int lhs_offset, int rhs_offset)
 static void
 concat(lulu_VM *vm, int count)
 {
-    lulu_Value   *args    = &vm->top[-count];
-    lulu_Builder *builder = &vm->builder;
+    Value   *args    = &vm->top[-count];
+    Builder *builder = &vm->builder;
 
-    lulu_Builder_reset(builder);
+    builder_reset(builder);
     for (int i = 0; i < count; i++) {
-        lulu_Value *value = &args[i];
-        if (!lulu_Value_is_string(value)) {
-            lulu_VM_runtime_error(vm, "Attempt to concatenate a %s value",
-                lulu_Value_typename(value));
+        Value *value = &args[i];
+        if (!value_is_string(value)) {
+            vm_runtime_error(vm, "Attempt to concatenate a %s value",
+                value_typename(value));
         }
-        lulu_Builder_write_string(builder, value->string->data, value->string->len);
+        builder_write_string(builder, value->string->data, value->string->len);
     }
 
     isize        len;
-    const char  *data = lulu_Builder_to_string(builder, &len);
+    const char  *data = builder_to_string(builder, &len);
     lulu_pop(vm, count);
     lulu_push_string(vm, data, len);
 }
@@ -122,104 +122,104 @@ concat(lulu_VM *vm, int count)
 static lulu_Status
 execute_bytecode(lulu_VM *self)
 {
-    lulu_Chunk       *chunk     = current_chunk(self);
-    lulu_Value_Array *constants = &chunk->constants;
+    Chunk  *chunk     = current_chunk(self);
+    VArray *constants = &chunk->constants;
 
-#define BINARY_OP(lulu_Value_set_fn, lulu_Number_fn, check_fn)                 \
+#define BINARY_OP(value_set_fn, lulu_Number_fn, check_fn)                      \
 do {                                                                           \
     check_fn(self, -2, -1);                                                    \
-    lulu_Value *lhs = &self->top[-2];                                          \
-    lulu_Value *rhs = &self->top[-1];                                          \
-    lulu_Value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));          \
+    Value *lhs = &self->top[-2];                                               \
+    Value *rhs = &self->top[-1];                                               \
+    value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));               \
     lulu_pop(self, 1);                                                         \
 } while (0)
 
-#define ARITH_OP(lulu_Number_fn)    BINARY_OP(lulu_Value_set_number,  lulu_Number_fn, check_arith)
-#define COMPARE_OP(lulu_Number_fn)  BINARY_OP(lulu_Value_set_boolean, lulu_Number_fn, check_compare)
+#define ARITH_OP(lulu_Number_fn)    BINARY_OP(value_set_number,  lulu_Number_fn, check_arith)
+#define COMPARE_OP(lulu_Number_fn)  BINARY_OP(value_set_boolean, lulu_Number_fn, check_compare)
 
     for (;;) {
 #ifdef LULU_DEBUG_TRACE
         printf("        ");
-        for (const lulu_Value *slot = self->base; slot < self->top; slot++) {
+        for (const Value *slot = self->base; slot < self->top; slot++) {
             printf("[ ");
-            lulu_Debug_print_value(slot);
+            debug_print_value(slot);
             printf(" ]");
         }
         printf("\n");
-        lulu_Debug_disassemble_instruction(chunk, self->ip - chunk->code);
+        debug_disassemble_instruction(chunk, self->ip - chunk->code);
 #endif
-        lulu_Instruction inst = *self->ip++;
-        switch (lulu_Instruction_get_opcode(inst)) {
+        Instruction inst = *self->ip++;
+        switch (instruction_get_opcode(inst)) {
         case OP_CONSTANT:
         {
-            byte3 index = lulu_Instruction_get_ABC(inst);
-            lulu_VM_push(self, &constants->values[index]);
+            byte3 index = instruction_get_ABC(inst);
+            vm_push(self, &constants->values[index]);
             break;
         }
         case OP_GETGLOBAL:
         {
-            const byte3       index = lulu_Instruction_get_ABC(inst);
-            const lulu_Value *key   = &constants->values[index];
-            const lulu_Value *value = lulu_Table_get(&self->globals, key);
+            const byte3  index = instruction_get_ABC(inst);
+            const Value *key   = &constants->values[index];
+            const Value *value = table_get(&self->globals, key);
             if (!value) {
-                lulu_VM_runtime_error(self, "Undefined global '%s'", key->string->data);
+                vm_runtime_error(self, "Undefined global '%s'", key->string->data);
             }
-            lulu_VM_push(self, value);
+            vm_push(self, value);
             break;
         }
         case OP_SETGLOBAL:
         {
-            const byte3       index = lulu_Instruction_get_ABC(inst);
-            const lulu_Value *ident = &constants->values[index];
-            lulu_Table_set(self, &self->globals, ident, &self->top[-1]);
+            const byte3  index = instruction_get_ABC(inst);
+            const Value *ident = &constants->values[index];
+            table_set(self, &self->globals, ident, &self->top[-1]);
             lulu_pop(self, 1);
             break;
         }
         case OP_GETLOCAL:
         {
-            byte index = lulu_Instruction_get_A(inst);
-            lulu_VM_push(self, &self->values[index]);
+            byte index = instruction_get_A(inst);
+            vm_push(self, &self->values[index]);
             break;
         }
         case OP_SETLOCAL:
         {
-            byte index = lulu_Instruction_get_A(inst);
+            byte index = instruction_get_A(inst);
             self->values[index] = self->top[-1];
             lulu_pop(self, 1);
             break;
         }
         case OP_NEWTABLE:
         {
-            lulu_push_table(self, lulu_Instruction_get_ABC(inst));
+            lulu_push_table(self, instruction_get_ABC(inst));
             break;
         }
         case OP_GETTABLE:
         {
             if (!lulu_is_table(self, -2)) {
-                lulu_VM_runtime_error(self, "Attempt to get field of a %s value",
+                vm_runtime_error(self, "Attempt to get field of a %s value",
                     lulu_typename(self, -2));
             }
 
-            const lulu_Value *v = lulu_Table_get(self->top[-2].table, &self->top[-1]);
+            const Value *v = table_get(self->top[-2].table, &self->top[-1]);
             if (!v) {
                 v = &LULU_VALUE_NIL;
             }
-            lulu_pop(self, 2);      // pop table and key
-            lulu_VM_push(self, v);  // then push value to top
+            lulu_pop(self, 2); // pop table and key
+            vm_push(self, v);  // then push value to top
             break;
         }
         case OP_SETTABLE:
         {
-            int i_table = lulu_Instruction_get_A(inst);
-            int i_key   = lulu_Instruction_get_B(inst);
-            int n_pop   = lulu_Instruction_get_C(inst);
+            int i_table = instruction_get_A(inst);
+            int i_key   = instruction_get_B(inst);
+            int n_pop   = instruction_get_C(inst);
 
             if (!lulu_is_table(self, i_table)) {
-                lulu_VM_runtime_error(self,
+                vm_runtime_error(self,
                     "Attempt to set field of a %s value",
                     lulu_typename(self, i_table));
             }
-            lulu_Table_set(self, self->values[i_table].table, &self->values[i_key], &self->top[-1]);
+            table_set(self, self->values[i_table].table, &self->values[i_key], &self->top[-1]);
 
             if (n_pop > 0) {
                 lulu_pop(self, n_pop);
@@ -228,7 +228,7 @@ do {                                                                           \
         }
         case OP_NIL:
         {
-            int n_nils = lulu_Instruction_get_A(inst);
+            int n_nils = instruction_get_A(inst);
             lulu_push_nil(self, n_nils);
             break;
         }
@@ -241,38 +241,38 @@ do {                                                                           \
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_CONCAT: {
-            int count = lulu_Instruction_get_A(inst);
+            int count = instruction_get_A(inst);
             concat(self, count);
             break;
         }
         case OP_UNM: {
             if (lulu_is_number(self, -1)) {
-                lulu_Value *value = &self->top[-1];
-                lulu_Value_set_number(value, lulu_Number_unm(value->number));
+                Value *value = &self->top[-1];
+                value_set_number(value, lulu_Number_unm(value->number));
             } else {
-                lulu_VM_runtime_error(self, "Attempt to negate a %s value",
+                vm_runtime_error(self, "Attempt to negate a %s value",
                     lulu_typename(self, -1));
             }
             break;
         }
         case OP_EQ: {
-            lulu_Value *rhs = &self->top[-1];
-            lulu_Value *lhs = &self->top[-2];
-            lulu_Value_set_boolean(lhs, lulu_Value_eq(lhs, rhs));
+            Value *rhs = &self->top[-1];
+            Value *lhs = &self->top[-2];
+            value_set_boolean(lhs, value_eq(lhs, rhs));
             lulu_pop(self, 1);
             break;
         }
         case OP_LT:  COMPARE_OP(lulu_Number_lt);  break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
         case OP_NOT: {
-            lulu_Value *value = &self->top[-1];
-            lulu_Value_set_boolean(value, lulu_Value_is_falsy(value));
+            Value *value = &self->top[-1];
+            value_set_boolean(value, value_is_falsy(value));
             break;
         }
         case OP_PRINT: {
-            int count = lulu_Instruction_get_A(inst);
+            int count = instruction_get_A(inst);
             for (int i = 0; i < count; i++) {
-                lulu_Value_print(&self->top[-count + i]);
+                value_print(&self->top[-count + i]);
                 printf("\t");
             }
             lulu_pop(self, count);
@@ -280,7 +280,7 @@ do {                                                                           \
             break;
         }
         case OP_POP: {
-            int count = lulu_Instruction_get_A(inst);
+            int count = instruction_get_A(inst);
             lulu_pop(self, count);
             break;
         }
@@ -299,18 +299,18 @@ do {                                                                           \
 }
 
 typedef struct {
-    lulu_Chunk chunk;
-    cstring    input;
+    Chunk   chunk;
+    cstring input;
 } Comptime;
 
 static void
 compile_and_run(lulu_VM *self, void *userdata)
 {
-    lulu_Compiler compiler;
-    Comptime     *ud = cast(Comptime *)userdata;
+    Compiler  compiler;
+    Comptime *ud = cast(Comptime *)userdata;
 
-    lulu_Compiler_init(self, &compiler);
-    lulu_Compiler_compile(&compiler, ud->input, &ud->chunk);
+    compiler_init(self, &compiler);
+    compiler_compile(&compiler, ud->input, &ud->chunk);
 
     self->chunk = &ud->chunk;
     self->ip    = self->chunk->code;
@@ -318,18 +318,18 @@ compile_and_run(lulu_VM *self, void *userdata)
 }
 
 lulu_Status
-lulu_VM_interpret(lulu_VM *self, cstring name, cstring input)
+vm_interpret(lulu_VM *self, cstring name, cstring input)
 {
     Comptime ud;
     ud.input = input;
-    lulu_Chunk_init(&ud.chunk, name);
-    lulu_Status status = lulu_VM_run_protected(self, &compile_and_run, &ud);
-    lulu_Chunk_free(self, &ud.chunk);
+    chunk_init(&ud.chunk, name);
+    lulu_Status status = vm_run_protected(self, &compile_and_run, &ud);
+    chunk_free(self, &ud.chunk);
     return status;
 }
 
 void
-lulu_VM_push(lulu_VM *self, const lulu_Value *value)
+vm_push(lulu_VM *self, const Value *value)
 {
     lulu_check_stack(self, 1);
     *self->top = *value;
@@ -337,9 +337,9 @@ lulu_VM_push(lulu_VM *self, const lulu_Value *value)
 }
 
 lulu_Status
-lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
+vm_run_protected(lulu_VM *self, Protected_Fn fn, void *userdata)
 {
-    lulu_Error_Handler handler;
+    Error_Handler handler;
 
     // Chain new error handler
     handler.status = LULU_OK;
@@ -358,30 +358,30 @@ lulu_VM_run_protected(lulu_VM *self, lulu_ProtectedFn fn, void *userdata)
 }
 
 void
-lulu_VM_throw_error(lulu_VM *self, lulu_Status status)
+vm_throw_error(lulu_VM *self, lulu_Status status)
 {
-    lulu_Error_Handler *handler = self->handlers;
+    Error_Handler *handler = self->handlers;
     if (handler) {
         handler->status = status;
         LULU_IMPL_THROW(handler);
     } else {
-        lulu_Debug_fatal("Unexpected error. Aborting.");
+        debug_fatal("Unexpected error. Aborting.");
         exit(EXIT_FAILURE);
     }
 }
 
 void
-lulu_VM_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len)
+vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len)
 {
     fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, cast(int)len, where);
-    lulu_VM_throw_error(self, LULU_ERROR_COMPTIME);
+    vm_throw_error(self, LULU_ERROR_COMPTIME);
 }
 
 void
-lulu_VM_runtime_error(lulu_VM *self, cstring fmt, ...)
+vm_runtime_error(lulu_VM *self, cstring fmt, ...)
 {
     va_list     args;
-    lulu_Chunk *chunk = current_chunk(self);
+    Chunk *chunk = current_chunk(self);
     cstring     file  = chunk->filename;
     int         line  = chunk->lines[self->ip - chunk->code - 1];
     va_start(args, fmt);
@@ -392,5 +392,5 @@ lulu_VM_runtime_error(lulu_VM *self, cstring fmt, ...)
 
     // Ensure stack is valid for the next run.
     reset_stack(self);
-    lulu_VM_throw_error(self, LULU_ERROR_RUNTIME);
+    vm_throw_error(self, LULU_ERROR_RUNTIME);
 }

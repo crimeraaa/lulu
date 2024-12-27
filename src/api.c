@@ -8,13 +8,13 @@
 /**
  * @brief
  *      Given the relative index 'offset' (positive or negative), load the
- *      appropriate 'lulu_Value' pointer from either the top or the bottom
+ *      appropriate 'Value' pointer from either the top or the bottom
  *      of the stack.
  *
  * @link
  *      https://www.lua.org/source/5.1/lapi.c.html#index2adr
  */
-static lulu_Value *
+static Value *
 offset_to_address(lulu_VM *vm, int offset)
 {
     isize start     = (offset >= 0) ? 0 : (vm->top - vm->base);
@@ -25,12 +25,12 @@ offset_to_address(lulu_VM *vm, int offset)
     if (0 <= abs_index && abs_index < end_index) {
         return &vm->values[abs_index];
     }
-    lulu_VM_runtime_error(vm, "Out of bounds stack index %ti", abs_index);
+    vm_runtime_error(vm, "Out of bounds stack index %ti", abs_index);
     return NULL;
 }
 
 static void
-push_safe(lulu_VM *vm, const lulu_Value *value)
+push_safe(lulu_VM *vm, const Value *value)
 {
     lulu_check_stack(vm, 1);
     vm->top[0] = *value;
@@ -49,7 +49,7 @@ lulu_check_stack(lulu_VM *vm, int count)
     if (0 <= new_index && new_index <= end_index) {
         return;
     }
-    lulu_VM_runtime_error(vm, "Stack %s", (new_index >= 0) ? "overflow" : "underflow");
+    vm_runtime_error(vm, "Stack %s", (new_index >= 0) ? "overflow" : "underflow");
 }
 
 ///=== TYPE QUERY FUNCTIONS ====================================================
@@ -57,37 +57,37 @@ lulu_check_stack(lulu_VM *vm, int count)
 cstring
 lulu_typename(lulu_VM *vm, int offset)
 {
-    return lulu_Value_typename(offset_to_address(vm, offset));
+    return value_typename(offset_to_address(vm, offset));
 }
 
 bool
 lulu_is_nil(lulu_VM *vm, int offset)
 {
-    return lulu_Value_is_nil(offset_to_address(vm, offset));
+    return value_is_nil(offset_to_address(vm, offset));
 }
 
 bool
 lulu_is_boolean(lulu_VM *vm, int offset)
 {
-    return lulu_Value_is_boolean(offset_to_address(vm, offset));
+    return value_is_boolean(offset_to_address(vm, offset));
 }
 
 bool
 lulu_is_number(lulu_VM *vm, int offset)
 {
-    return lulu_Value_is_number(offset_to_address(vm, offset));
+    return value_is_number(offset_to_address(vm, offset));
 }
 
 bool
 lulu_is_string(lulu_VM *vm, int offset)
 {
-    return lulu_Value_is_string(offset_to_address(vm, offset));
+    return value_is_string(offset_to_address(vm, offset));
 }
 
 bool
 lulu_is_table(lulu_VM *vm, int offset)
 {
-    return lulu_Value_is_table(offset_to_address(vm, offset));
+    return value_is_table(offset_to_address(vm, offset));
 }
 
 ///=============================================================================
@@ -119,8 +119,8 @@ lulu_push_boolean(lulu_VM *vm, bool boolean)
 void
 lulu_push_number(lulu_VM *vm, lulu_Number number)
 {
-    lulu_Value tmp;
-    lulu_Value_set_number(&tmp, number);
+    Value tmp;
+    value_set_number(&tmp, number);
     push_safe(vm, &tmp);
 }
 
@@ -133,16 +133,16 @@ lulu_push_cstring(lulu_VM *vm, cstring cstr)
 void
 lulu_push_string(lulu_VM *vm, const char *data, isize len)
 {
-    lulu_Value tmp;
-    lulu_Value_set_string(&tmp, lulu_String_new(vm, data, len));
+    Value tmp;
+    value_set_string(&tmp, ostring_new(vm, data, len));
     push_safe(vm, &tmp);
 }
 
 void
 lulu_push_table(lulu_VM *vm, isize count)
 {
-    lulu_Value tmp;
-    lulu_Value_set_table(&tmp, lulu_Table_new(vm, count));
+    Value tmp;
+    value_set_table(&tmp, table_new(vm, count));
     push_safe(vm, &tmp);
 }
 

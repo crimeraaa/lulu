@@ -6,7 +6,7 @@
 #include <string.h>
 
 void
-lulu_Builder_init(lulu_VM *vm, lulu_Builder *self)
+builder_init(lulu_VM *vm, Builder *self)
 {
     self->vm     = vm;
     self->buffer = NULL;
@@ -15,7 +15,7 @@ lulu_Builder_init(lulu_VM *vm, lulu_Builder *self)
 }
 
 void
-lulu_Builder_reserve(lulu_Builder *self, isize new_cap)
+builder_reserve(Builder *self, isize new_cap)
 {
     isize old_cap = self->cap;
     if (new_cap <= old_cap) {
@@ -27,28 +27,28 @@ lulu_Builder_reserve(lulu_Builder *self, isize new_cap)
 }
 
 void
-lulu_Builder_free(lulu_Builder *self)
+builder_free(Builder *self)
 {
     rawarray_free(char, self->vm, self->buffer, self->cap);
 }
 
 void
-lulu_Builder_reset(lulu_Builder *self)
+builder_reset(Builder *self)
 {
     self->len = 0;
 }
 
 void
-lulu_Builder_write_char(lulu_Builder *self, char ch)
+builder_write_char(Builder *self, char ch)
 {
     if (self->len >= self->cap) {
-        lulu_Builder_reserve(self, lulu_Memory_grow_capacity(self->cap));
+        builder_reserve(self, mem_grow_capacity(self->cap));
     }
     self->buffer[self->len++] = ch;
 }
 
 void
-lulu_Builder_write_string(lulu_Builder *self, const char *data, isize len)
+builder_write_string(Builder *self, const char *data, isize len)
 {
     isize old_len = self->len;
     isize new_len = old_len + len;
@@ -58,7 +58,7 @@ lulu_Builder_write_string(lulu_Builder *self, const char *data, isize len)
         while (new_cap < new_len) {
             new_cap *= 2;
         }
-        lulu_Builder_reserve(self, new_cap);
+        builder_reserve(self, new_cap);
     }
     for (isize i = 0; i < len; i++) {
         self->buffer[old_len + i] = data[i];
@@ -67,13 +67,13 @@ lulu_Builder_write_string(lulu_Builder *self, const char *data, isize len)
 }
 
 void
-lulu_Builder_write_cstring(lulu_Builder *self, cstring cstr)
+builder_write_cstring(Builder *self, cstring cstr)
 {
-    lulu_Builder_write_string(self, cstr, cast(isize)strlen(cstr));
+    builder_write_string(self, cstr, cast(isize)strlen(cstr));
 }
 
 const char *
-lulu_Builder_to_string(lulu_Builder *self, isize *out_len)
+builder_to_string(Builder *self, isize *out_len)
 {
     if (out_len) {
         *out_len = self->len;

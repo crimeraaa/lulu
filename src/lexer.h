@@ -64,58 +64,45 @@ TOKEN_STRING_LIT, //  ".*" or '.*'  := string literal
 TOKEN_NUMBER_LIT, //  [0-9]+(\.[0-9]+)? or  0x[a-fA-F0-9]+  := number literal
 TOKEN_ERROR,
 TOKEN_EOF,
-} lulu_Token_Type;
+} Token_Type;
 
 #define LULU_KEYWORD_COUNT  (TOKEN_WHILE + 1)
 #define LULU_TOKEN_COUNT    (TOKEN_EOF + 1)
 
 typedef struct {
-    const char     *start;
-    isize           len;
-    lulu_Token_Type type;  // Placed as 3rd member due to padding of above.
-    int             line;
-} lulu_Token;
+    const char *start;
+    isize       len;
+    Token_Type  type;  // Placed as 3rd member due to padding of above.
+    int         line;
+} Token;
 
 typedef struct {
     lulu_VM     *vm;       // Pointer to parent/enclosing state. Has allocator.
     cstring      filename; // Name of current file being lexed.
-    lulu_String *string;   // Interned string literal if we currently have one.
-    lulu_Number  number;   // Number literal if we currently have one.
+    OString     *string;   // Interned string literal if we currently have one.
+    Number       number;   // Number literal if we currently have one.
     const char  *start;
     const char  *current;
     int          line;
-} lulu_Lexer;
-
-
-/**
- * @brief   A string of known length. Not necessarily nul-terminated.
- *
- * @note    This is mainly for the `LULU_TOKEN_STRINGS` as we would rather
- *          not need to constantly use `strlen` at runtime. Otherwise, you should
- *          prefer to just track the `data` and `len` pairs yourself.
- */
-typedef struct {
-    const char *data;
-    isize       len;
-} lulu_Token_String;
+} Lexer;
 
 /**
  * @brief
- *      Map a `lulu_Token_Type`, to the string representation thereof.
+ *      Map a `Token_Type`, to the string representation thereof.
  */
-extern const lulu_Token_String
+extern const LString
 LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT];
 
 void
-lulu_Token_init(lulu_Token *self, const char *start, isize len, lulu_Token_Type type, int line);
+token_init(Token *self, const char *start, isize len, Token_Type type, int line);
 
 void
-lulu_Token_init_empty(lulu_Token *self);
+token_init_empty(Token *self);
 
 void
-lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input);
+lexer_init(lulu_VM *vm, Lexer *self, cstring filename, cstring input);
 
-lulu_Token
-lulu_Lexer_scan_token(lulu_Lexer *self);
+Token
+lexer_scan_token(Lexer *self);
 
 #endif // LULU_LEXER_H

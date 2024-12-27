@@ -5,35 +5,35 @@
 
 LULU_ATTR_PRINTF(4, 5)
 int
-lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...);
+debug_writef(cstring level, cstring file, int line, cstring fmt, ...);
 
-#define lulu_Debug_writef(level, fmt, ...)  lulu_Debug_writef(level, __FILE__, __LINE__, fmt "\n", __VA_ARGS__)
-#define lulu_Debug_fatalf(fmt, ...)         lulu_Debug_writef("FATAL", fmt, __VA_ARGS__)
-#define lulu_Debug_fatal(msg)               lulu_Debug_fatalf("%s", msg)
+#define debug_writef(level, fmt, ...)  debug_writef(level, __FILE__, __LINE__, fmt "\n", __VA_ARGS__)
+#define debug_fatalf(fmt, ...)         debug_writef("FATAL", fmt, __VA_ARGS__)
+#define debug_fatal(msg)               debug_fatalf("%s", msg)
 
 #ifdef LULU_DEBUG_ASSERT
 
-#define lulu_Debug_assert(cond, msg)                                           \
+#define debug_assert(cond, msg)                                                \
 do {                                                                           \
     if (!(cond)) {                                                             \
-        lulu_Debug_fatalf("assertion '%s' failed: %s", #cond, msg);            \
+        debug_fatalf("assertion '%s' failed: %s", #cond, msg);                 \
         __builtin_trap();                                                      \
     }                                                                          \
 } while (0)
 
 #else // !LULU_DEBUG_ASSERT
 
-#define lulu_Debug_assert(cond, msg)
+#define debug_assert(cond, msg)
 
 #endif // LULU_DEBUG_ASSERT
 
 void
-lulu_Debug_print_value(const lulu_Value *value);
+debug_print_value(const Value *value);
 
 void
-lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk);
+debug_disasssemble_chunk(const Chunk *chunk);
 
 isize
-lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index);
+debug_disassemble_instruction(const Chunk *chunk, isize index);
 
 #endif // LULU_DEBUG_H

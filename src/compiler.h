@@ -18,82 +18,82 @@
  * @brief
  *      An assignable value, sometimes called an 'L-value'.
  */
-typedef struct lulu_Assign lulu_Assign;
-struct lulu_Assign {
-    lulu_Assign *prev;  // Use recursion to chain multiple assignments.
-    lulu_OpCode  op;    // GETGLOBAL, GETLOCAL, or GETTABLE.
-    byte3        index; // Argument to 'op'.
+typedef struct LValue LValue;
+struct LValue {
+    LValue *prev;  // Use recursion to chain multiple assignments.
+    OpCode  op;    // GETGLOBAL, GETLOCAL, or GETTABLE.
+    byte3   index; // Argument to 'op'.
 };
 
-typedef struct lulu_Parser lulu_Parser;
-typedef struct lulu_Compiler lulu_Compiler;
+typedef struct Parser Parser;
+typedef struct Compiler Compiler;
 
-struct lulu_Parser {
-    lulu_Token     current;  // Also our "lookahead" token.
-    lulu_Token     consumed; // Analogous to the book's `compiler.c:Parser::previous`.
-    lulu_Assign   *assignments; // Must be valid only once per assignment call.
-    lulu_Compiler *compiler;
-    lulu_Lexer    *lexer;
+struct Parser {
+    Token     current;  // Also our "lookahead" token.
+    Token     consumed; // Analogous to the book's `compiler.c:Parser::previous`.
+    LValue   *assignments; // Must be valid only once per assignment call.
+    Compiler *compiler;
+    Lexer    *lexer;
 };
 
 typedef struct {
-    lulu_String *name;
-    int          depth;
-} lulu_Local;
+    OString *name;
+    int      depth;
+} Local;
 
-struct lulu_Compiler {
-    lulu_VM     *vm;    // Enclosing/parent state.
-    lulu_Chunk  *chunk; // Destination for bytecode and constants.
-    lulu_Parser *parser;
-    lulu_Lexer  *lexer;
-    lulu_Local   locals[LULU_MAX_LOCALS];
-    int          n_locals;
-    int          scope_depth; // 0 isn't really used but is distinct from -1.
-    int          stack_usage;
+struct Compiler {
+    lulu_VM *vm;    // Enclosing/parent state.
+    Chunk   *chunk; // Destination for bytecode and constants.
+    Parser  *parser;
+    Lexer   *lexer;
+    Local    locals[LULU_MAX_LOCALS];
+    int      n_locals;
+    int      scope_depth; // 0 isn't really used but is distinct from -1.
+    int      stack_usage;
 };
 
 void
-lulu_Compiler_init(lulu_VM *vm, lulu_Compiler *self);
+compiler_init(lulu_VM *vm, Compiler *self);
 
 /**
  * @note 2024-10-30
  *      Assumes 'self' has been initialized properly.
  */
 void
-lulu_Compiler_compile(lulu_Compiler *self, cstring input, lulu_Chunk *chunk);
+compiler_compile(Compiler *self, cstring input, Chunk *chunk);
 
 void
-lulu_Compiler_end(lulu_Compiler *self);
+compiler_end(Compiler *self);
 
 void
-lulu_Compiler_emit_opcode(lulu_Compiler *self, lulu_OpCode op);
+compiler_emit_opcode(Compiler *self, OpCode op);
 
 void
-lulu_Compiler_emit_return(lulu_Compiler *self);
+compiler_emit_return(Compiler *self);
 
 byte3
-lulu_Compiler_make_constant(lulu_Compiler *self, const lulu_Value *value);
+compiler_make_constant(Compiler *self, const Value *value);
 
 void
-lulu_Compiler_emit_constant(lulu_Compiler *self, const lulu_Value *value);
+compiler_emit_constant(Compiler *self, const Value *value);
 
 void
-lulu_Compiler_emit_string(lulu_Compiler *self, const lulu_Token *token);
+compiler_emit_string(Compiler *self, const Token *token);
 
 void
-lulu_Compiler_emit_number(lulu_Compiler *self, lulu_Number n);
+compiler_emit_number(Compiler *self, lulu_Number n);
 
 void
-lulu_Compiler_emit_byte1(lulu_Compiler *self, lulu_OpCode op, byte a);
+compiler_emit_byte1(Compiler *self, OpCode op, byte a);
 
 void
-lulu_Compiler_emit_byte3(lulu_Compiler *self, lulu_OpCode op, byte3 arg);
+compiler_emit_byte3(Compiler *self, OpCode op, byte3 arg);
 
 void
-lulu_Compiler_begin_scope(lulu_Compiler *self);
+compiler_begin_scope(Compiler *self);
 
 void
-lulu_Compiler_end_scope(lulu_Compiler *self);
+compiler_end_scope(Compiler *self);
 
 /**
  * @note 2024-12-10
@@ -101,7 +101,7 @@ lulu_Compiler_end_scope(lulu_Compiler *self);
  *      Combines functionality of that and `compiler.c:addLocal()`.
  */
 void
-lulu_Compiler_add_local(lulu_Compiler *self, const lulu_Token *ident);
+compiler_add_local(Compiler *self, const Token *ident);
 
 /**
  * @note 2024-12-26
@@ -115,22 +115,22 @@ lulu_Compiler_add_local(lulu_Compiler *self, const lulu_Token *ident);
  *      end
  */
 void
-lulu_Compiler_initialize_locals(lulu_Compiler *self);
+compiler_initialize_locals(Compiler *self);
 
 /**
  * @note 2024-12-10
  *      Analogous to `compiler.c:resolveLocal()` in the book.
  */
 int
-lulu_Compiler_resolve_local(lulu_Compiler *self, const lulu_Token *ident);
+compiler_resolve_local(Compiler *self, const Token *ident);
 
 isize
-lulu_Compiler_new_table(lulu_Compiler *self);
+compiler_new_table(Compiler *self);
 
 void
-lulu_Compiler_adjust_table(lulu_Compiler *self, isize i_code, isize n_fields);
+compiler_adjust_table(Compiler *self, isize i_code, isize n_fields);
 
 void
-lulu_Compiler_set_table(lulu_Compiler *self, int i_table, int i_key, int n_pop);
+compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop);
 
 #endif // LULU_COMPILER_H

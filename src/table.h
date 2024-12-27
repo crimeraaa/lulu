@@ -6,45 +6,45 @@
 #define LULU_TABLE_MAX_LOAD     0.75
 
 typedef struct {
-    lulu_Value key;
-    lulu_Value value;
-} lulu_Table_Pair;
+    Value key;
+    Value value;
+} Pair;
 
-struct lulu_Table {
-    lulu_Object      base;
-    lulu_Table_Pair *pairs;
-    isize count; // Number of active pairs.
-    isize cap;   // Number of total allocated pairs.
+struct Table {
+    Object  base;
+    Pair   *pairs;
+    isize   count; // Number of active pairs.
+    isize   cap;   // Number of total allocated pairs.
 };
 
-lulu_Table *
-lulu_Table_new(lulu_VM *vm, isize count);
+Table *
+table_new(lulu_VM *vm, isize count);
 
 void
-lulu_Table_init(lulu_Table *self);
+table_init(Table *self);
 
 // If self is itself a heap-allocated pointer, we won't free it here.
 void
-lulu_Table_free(lulu_VM *vm, lulu_Table *self);
+table_free(lulu_VM *vm, Table *self);
 
 /**
  * @warning 2024-09-29
  *      If 'key' does not exist in the table, we return 'NULL'.
  *      This is to differentiate valid keys from invalid ones.
  */
-const lulu_Value *
-lulu_Table_get(lulu_Table *self, const lulu_Value *key);
+const Value *
+table_get(Table *self, const Value *key);
 
-lulu_String *
-lulu_Table_intern_string(lulu_VM *vm, lulu_Table *self, lulu_String *string);
+OString *
+table_intern_string(lulu_VM *vm, Table *self, OString *string);
 
-lulu_String *
-lulu_Table_find_string(lulu_Table *self, const char *data, isize len, u32 hash);
-
-bool
-lulu_Table_set(lulu_VM *vm, lulu_Table *self, const lulu_Value *key, const lulu_Value *value);
+OString *
+table_find_string(Table *self, const char *data, isize len, u32 hash);
 
 bool
-lulu_Table_unset(lulu_Table *self, const lulu_Value *key);
+table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value);
+
+bool
+table_unset(Table *self, const Value *key);
 
 #endif // LULU_TABLE_H

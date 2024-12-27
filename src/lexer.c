@@ -33,7 +33,7 @@ is_ascii_alnum(char ch)
 }
 
 void
-lulu_Token_init(lulu_Token *self, const char *start, isize len, lulu_Token_Type type, int line)
+token_init(Token *self, const char *start, isize len, Token_Type type, int line)
 {
     self->start = start;
     self->len   = len;
@@ -42,13 +42,13 @@ lulu_Token_init(lulu_Token *self, const char *start, isize len, lulu_Token_Type 
 }
 
 void
-lulu_Token_init_empty(lulu_Token *self)
+token_init_empty(Token *self)
 {
-    lulu_Token_init(self, NULL, 0, 0, 0);
+    token_init(self, NULL, 0, 0, 0);
 }
 
 void
-lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input)
+lexer_init(lulu_VM *vm, Lexer *self, cstring filename, cstring input)
 {
     self->vm       = vm;
     self->filename = filename;
@@ -59,7 +59,7 @@ lulu_Lexer_init(lulu_VM *vm, lulu_Lexer *self, cstring filename, cstring input)
 }
 
 static bool
-is_at_end(const lulu_Lexer *lexer)
+is_at_end(const Lexer *lexer)
 {
     return lexer->current[0] == '\0';
 }
@@ -73,19 +73,19 @@ is_at_end(const lulu_Lexer *lexer)
  *      Analogous to the book's `scanner.c:advance()`.
  */
 static char
-advance_char(lulu_Lexer *lexer)
+advance_char(Lexer *lexer)
 {
     return *lexer->current++;
 }
 
 static char
-peek_char(const lulu_Lexer *lexer)
+peek_char(const Lexer *lexer)
 {
     return lexer->current[0];
 }
 
 static char
-peek_next_char(const lulu_Lexer *lexer)
+peek_next_char(const Lexer *lexer)
 {
     // Dereferencing 1 past current may be illegal?
     if (is_at_end(lexer)) {
@@ -100,7 +100,7 @@ peek_next_char(const lulu_Lexer *lexer)
  *      and return true. Otherwise return do nothing and false.
  */
 static bool
-match_char(lulu_Lexer *lexer, char expected)
+match_char(Lexer *lexer, char expected)
 {
     if (!is_at_end(lexer) && *lexer->current == expected) {
         lexer->current++;
@@ -110,7 +110,7 @@ match_char(lulu_Lexer *lexer, char expected)
 }
 
 static bool
-match_char_any(lulu_Lexer *lexer, cstring charset)
+match_char_any(Lexer *lexer, cstring charset)
 {
     if (strchr(charset, peek_char(lexer))) {
         lexer->current++;
@@ -119,22 +119,22 @@ match_char_any(lulu_Lexer *lexer, cstring charset)
     return false;
 }
 
-static lulu_Token
-make_token(const lulu_Lexer *lexer, lulu_Token_Type type)
+static Token
+make_token(const Lexer *lexer, Token_Type type)
 {
-    lulu_Token  token;
+    Token       token;
     const char *start  = lexer->start;
     isize       len    = lexer->current - lexer->start;
-    lulu_Token_init(&token, start, len, type, lexer->line);
+    token_init(&token, start, len, type, lexer->line);
     return token;
 }
 
 LULU_ATTR_NORETURN
 static void
-error_token(const lulu_Lexer *lexer, cstring msg)
+error_token(const Lexer *lexer, cstring msg)
 {
-    lulu_Token token = make_token(lexer, TOKEN_ERROR);
-    lulu_VM_comptime_error(lexer->vm, lexer->filename, token.line, msg, token.start, token.len);
+    Token token = make_token(lexer, TOKEN_ERROR);
+    vm_comptime_error(lexer->vm, lexer->filename, token.line, msg, token.start, token.len);
 }
 
 /**
@@ -145,7 +145,7 @@ error_token(const lulu_Lexer *lexer, cstring msg)
  *      Assumes we just consumed a '[' character.
  */
 static int
-get_nesting(lulu_Lexer *lexer)
+get_nesting(Lexer *lexer)
 {
     int nesting = 0;
     while (match_char(lexer, '=')) {
@@ -155,7 +155,7 @@ get_nesting(lulu_Lexer *lexer)
 }
 
 static void
-skip_multiline(lulu_Lexer *lexer, int opening)
+skip_multiline(Lexer *lexer, int opening)
 {
     for (;;) {
         if (match_char(lexer, ']')) {
@@ -185,7 +185,7 @@ skip_multiline(lulu_Lexer *lexer, int opening)
  *      pointing at the first character in the comment body, or a '['.
  */
 static void
-skip_comment(lulu_Lexer *lexer)
+skip_comment(Lexer *lexer)
 {
     if (match_char(lexer, '[')) {
         int opening = get_nesting(lexer);
@@ -201,7 +201,7 @@ skip_comment(lulu_Lexer *lexer)
 }
 
 static void
-skip_whitespace(lulu_Lexer *lexer)
+skip_whitespace(Lexer *lexer)
 {
     for (;;) {
         char ch = peek_char(lexer);
@@ -236,7 +236,7 @@ skip_whitespace(lulu_Lexer *lexer)
     #pragma GCC diagnostic ignored "-Wc99-designator"
 #endif
 
-const lulu_Token_String
+const LString
 LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT] = {
     [TOKEN_AND]           = lit("and"),
     [TOKEN_BREAK]         = lit("break"),
@@ -304,18 +304,18 @@ LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT] = {
 
 #undef lit
 
-static lulu_Token_Type
-check_keyword(const char *current, isize len, lulu_Token_Type type)
+static Token_Type
+check_keyword(const char *current, isize len, Token_Type type)
 {
-    const lulu_Token_String str = LULU_TOKEN_STRINGS[type];
+    const LString str = LULU_TOKEN_STRINGS[type];
     if (str.len == len && memcmp(str.data, current, len) == 0) {
         return type;
     }
     return TOKEN_IDENTIFIER;
 }
 
-static lulu_Token_Type
-get_identifier_type(lulu_Lexer *lexer)
+static Token_Type
+get_identifier_type(Lexer *lexer)
 {
     const char *current = lexer->start;
     isize       len     = lexer->current - lexer->start;
@@ -384,8 +384,8 @@ get_identifier_type(lulu_Lexer *lexer)
     return TOKEN_IDENTIFIER;
 }
 
-static lulu_Token
-consume_identifier(lulu_Lexer *lexer)
+static Token
+consume_identifier(Lexer *lexer)
 {
     while (is_ascii_alnum(peek_char(lexer)) || peek_char(lexer) == '_') {
         advance_char(lexer);
@@ -394,7 +394,7 @@ consume_identifier(lulu_Lexer *lexer)
 }
 
 static void
-consume_base10(lulu_Lexer *lexer)
+consume_base10(Lexer *lexer)
 {
     while (is_ascii_digit(peek_char(lexer))) {
         advance_char(lexer);
@@ -402,15 +402,15 @@ consume_base10(lulu_Lexer *lexer)
 }
 
 static void
-consume_base16(lulu_Lexer *lexer)
+consume_base16(Lexer *lexer)
 {
     while (is_ascii_hexdigit(peek_char(lexer))) {
         advance_char(lexer);
     }
 }
 
-static lulu_Token
-consume_number(lulu_Lexer *lexer)
+static Token
+consume_number(Lexer *lexer)
 {
     if (match_char(lexer, '0')) {
         if (match_char_any(lexer, "xX")) {
@@ -437,9 +437,9 @@ trailing_characters:
         advance_char(lexer);
     }
 
-    lulu_Token  token  = make_token(lexer, TOKEN_NUMBER_LIT);
-    char       *end_ptr;
-    lulu_Number number = strtod(token.start, &end_ptr);
+    Token  token  = make_token(lexer, TOKEN_NUMBER_LIT);
+    char  *end_ptr;
+    Number number = strtod(token.start, &end_ptr);
     // We failed to convert the entire lexeme?
     if (end_ptr != (token.start + token.len)) {
         error_token(lexer, "Malformed number");
@@ -469,11 +469,11 @@ get_escape_char(char ch)
     }
 }
 
-static lulu_Token
-consume_string(lulu_Lexer *lexer, char quote)
+static Token
+consume_string(Lexer *lexer, char quote)
 {
-    lulu_Builder *builder = &lexer->vm->builder;
-    lulu_Builder_reset(builder);
+    Builder *builder = &lexer->vm->builder;
+    builder_reset(builder);
     for (;;) {
         char ch = peek_char(lexer);
         if (ch == quote || is_at_end(lexer)) {
@@ -492,7 +492,7 @@ consume_string(lulu_Lexer *lexer, char quote)
             ch = cast(char)esc;
             advance_char(lexer);
         }
-        lulu_Builder_write_char(builder, ch);
+        builder_write_char(builder, ch);
         advance_char(lexer);
     }
 
@@ -505,13 +505,13 @@ unterminated_string:
     advance_char(lexer);
 
     isize       len;
-    const char *data = lulu_Builder_to_string(builder, &len);
-    lexer->string = lulu_String_new(lexer->vm, data, len);
+    const char *data = builder_to_string(builder, &len);
+    lexer->string = ostring_new(lexer->vm, data, len);
     return make_token(lexer, TOKEN_STRING_LIT);
 }
 
-lulu_Token
-lulu_Lexer_scan_token(lulu_Lexer *self)
+Token
+lexer_scan_token(Lexer *self)
 {
     skip_whitespace(self);
     self->start = self->current;
@@ -537,12 +537,12 @@ lulu_Lexer_scan_token(lulu_Lexer *self)
         int opening = get_nesting(self);
         if (match_char(self, '[')) {
             skip_multiline(self, opening);
-            lulu_Token  token = make_token(self, TOKEN_STRING_LIT);
-            int         skip  = opening + 2; // Both [ or ] with 1+ =
+            Token token = make_token(self, TOKEN_STRING_LIT);
+            int   skip  = opening + 2; // Both [ or ] with 1+ =
 
             token.start += skip;       // Skip opening
             token.len   -= (skip * 2); // Discard BOTH ends from view length
-            self->string = lulu_String_new(self->vm, token.start, token.len);
+            self->string = ostring_new(self->vm, token.start, token.len);
             return token;
         }
         return make_token(self, TOKEN_BRACKET_L);

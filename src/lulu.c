@@ -13,7 +13,7 @@
  *
  * @note 2024-09-07
  *      This function does not throw errors by itself. Rather, calling
- *      `lulu_VM_run_protected()` will wrap most other calls with an error
+ *      `vm_run_protected()` will wrap most other calls with an error
  *      handler which will in turn catch errors such as out of memory.
  */
 static void *
@@ -52,7 +52,7 @@ repl(lulu_VM *vm)
             printf("\n");
             break;
         }
-        lulu_VM_interpret(vm, "stdin", line);
+        vm_interpret(vm, "stdin", line);
     }
 }
 
@@ -109,7 +109,7 @@ run_file(lulu_VM *vm, cstring path)
     if (!source) {
         return 2;
     }
-    status = lulu_VM_interpret(vm, path, source);
+    status = vm_interpret(vm, path, source);
     rawarray_free(char, vm, source, len);
 
     switch (status) {
@@ -129,7 +129,7 @@ main(int argc, cstring argv[])
 {
     lulu_VM vm;
     int     err = 0;
-    if (!lulu_VM_init(&vm, alloc_fn, NULL)) {
+    if (!vm_init(&vm, alloc_fn, NULL)) {
         return 1;
     }
     if (argc == 1) {
@@ -141,6 +141,6 @@ main(int argc, cstring argv[])
         fflush(stderr);
         return 1;
     }
-    lulu_VM_free(&vm);
+    vm_free(&vm);
     return err;
 }

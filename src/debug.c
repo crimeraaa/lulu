@@ -5,10 +5,10 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#undef lulu_Debug_writef
+#undef debug_writef
 
 int
-lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
+debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
 {
     va_list argp;
     int     writes = 0;
@@ -21,37 +21,37 @@ lulu_Debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
 }
 
 void
-lulu_Debug_print_value(const lulu_Value *value)
+debug_print_value(const Value *value)
 {
-    bool is_string = lulu_Value_is_string(value);
+    bool is_string = value_is_string(value);
     char quote     = (is_string && value->string->len == 1) ? '\'' : '\"';
     if (is_string) {
         printf("%c", quote);
     }
-    lulu_Value_print(value);
+    value_print(value);
     if (is_string) {
         printf("%c", quote);
     }
 }
 
 void
-lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
+debug_disasssemble_chunk(const Chunk *chunk)
 {
     printf("=== DISASSEMBLY: BEGIN ===\n");
     printf(".name \"%s\"\n", chunk->filename);
 
     printf("\n.const\n");
-    const lulu_Value_Array *constants = &chunk->constants;
+    const VArray *constants = &chunk->constants;
     for (isize index = 0; index < constants->len; index++) {
-        const lulu_Value *value = &constants->values[index];
-        printf("%04tx\t%s: ", index, lulu_Value_typename(value));
-        lulu_Debug_print_value(value);
+        const Value *value = &constants->values[index];
+        printf("%04tx\t%s: ", index, value_typename(value));
+        debug_print_value(value);
         printf("\n");
     }
 
     printf("\n.code\n");
     for (isize index = 0; index < chunk->len;) {
-        index = lulu_Debug_disassemble_instruction(chunk, index);
+        index = debug_disassemble_instruction(chunk, index);
     }
     printf("=== DISASSEMBLY: END ===\n\n");
 }
@@ -61,17 +61,17 @@ lulu_Debug_disasssemble_chunk(const lulu_Chunk *chunk)
  *      Remember that for a 3-byte argument, the LSB is stored first.
  */
 static void
-print_constant(const lulu_Chunk *chunk, lulu_Instruction inst)
+print_constant(const Chunk *chunk, Instruction inst)
 {
-    const isize       arg   = lulu_Instruction_get_ABC(inst);
-    const lulu_Value *value = &chunk->constants.values[arg];
-    printf("%4ti\t# %s: ", arg, lulu_Value_typename(value));
-    lulu_Debug_print_value(value);
+    const isize       arg   = instruction_get_ABC(inst);
+    const Value *value = &chunk->constants.values[arg];
+    printf("%4ti\t# %s: ", arg, value_typename(value));
+    debug_print_value(value);
     printf("\n");
 }
 
 isize
-lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
+debug_disassemble_instruction(const Chunk *chunk, isize index)
 {
     printf("%04tx ", index);
     if (index > 0 && chunk->lines[index] == chunk->lines[index - 1]) {
@@ -80,9 +80,9 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
         printf("%4i ", chunk->lines[index]);
     }
 
-    const lulu_Value *constants = chunk->constants.values;
-    lulu_Instruction  inst = chunk->code[index];
-    lulu_OpCode       op   = lulu_Instruction_get_opcode(inst);
+    const Value *constants = chunk->constants.values;
+    Instruction  inst = chunk->code[index];
+    OpCode       op   = instruction_get_opcode(inst);
 
     printf("%-16s ", LULU_OPCODE_INFO[op].name);
     switch (op) {
@@ -91,21 +91,21 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
         break;
     case OP_GETGLOBAL: case OP_SETGLOBAL:
     {
-        byte3 arg = lulu_Instruction_get_ABC(inst);
+        byte3 arg = instruction_get_ABC(inst);
         printf("%4i\t# %s\n", arg, constants[arg].string->data);
         break;
     }
     case OP_NEWTABLE:
     {
-        byte3 arg = lulu_Instruction_get_ABC(inst);
+        byte3 arg = instruction_get_ABC(inst);
         printf("%4i\n", arg);
         break;
     }
     case OP_SETTABLE:
     {
-        int i_table = lulu_Instruction_get_A(inst);
-        int i_key   = lulu_Instruction_get_B(inst);
-        int n_pop   = lulu_Instruction_get_C(inst);
+        int i_table = instruction_get_A(inst);
+        int i_key   = instruction_get_B(inst);
+        int n_pop   = instruction_get_C(inst);
         printf("%4i (table), %i (key), pop %i\n", i_table, i_key, n_pop);
         break;
     }
@@ -115,7 +115,7 @@ lulu_Debug_disassemble_instruction(const lulu_Chunk *chunk, isize index)
     case OP_CONCAT:
     case OP_NIL:
     {
-        byte arg = lulu_Instruction_get_A(inst);
+        byte arg = instruction_get_A(inst);
         printf("%4i\n", arg);
         break;
     }

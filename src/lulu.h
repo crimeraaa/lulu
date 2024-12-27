@@ -53,7 +53,7 @@ union lulu_User_Alignment {
      *      'catch' doesn't do anything, it's only present because C++ requires
      *      all 'try' to have a corresponding 'catch' (and rightfully so!).
      *
-     *      We already set 'handler->status' in 'lulu_VM_run_protected()'.
+     *      We already set 'handler->status' in 'vm_run_protected()'.
      */
     #define LULU_IMPL_TRY(handler)      try
     #define LULU_IMPL_CATCH(handler)    catch (...)
@@ -168,6 +168,16 @@ typedef enum {
     LULU_ERROR_RUNTIME,
     LULU_ERROR_MEMORY,
 } lulu_Status;
+
+typedef enum {
+    LULU_TYPE_NIL,
+    LULU_TYPE_BOOLEAN,
+    LULU_TYPE_NUMBER,
+    LULU_TYPE_STRING,
+    LULU_TYPE_TABLE,
+} lulu_Value_Type;
+
+#define LULU_TYPE_COUNT     (LULU_TYPE_TABLE + 1)
 
 /**
  * @brief
