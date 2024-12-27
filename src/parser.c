@@ -32,14 +32,16 @@ operator++(Precedence &prec, int)
 static void
 expression(Parser *self);
 
+// We consumed a prefix expression token but didn't actually parse it, so now we
+// have an incomplete expression that would cause 'expression()' to error out.
+static void
+mid_expression(Parser *self);
+
 static void
 statement(Parser *parser);
 
 static void
 parse_precedence(Parser *parser, Precedence precedence);
-
-static void
-parse_infix(Parser *parser, Precedence precedence);
 
 static Parse_Rule *
 get_rule(Token_Type type);
@@ -386,8 +388,9 @@ table(Parser *parser)
             } else {
                 n_array++;
                 compiler_emit_number(compiler, cast(lulu_Number)n_array);
-                // We already consumed the prefix portion of the expression
-                parse_infix(parser, PREC_NONE);
+                // Prefix portion was consumed so we can't include it in 'expression()'.
+                named_variable(parser, &ident);
+                mid_expression(parser);
             }
         } else {
             n_array++;
@@ -587,19 +590,79 @@ emit_assignment_targets(Parser *parser, LValue *head)
 
     adjust_assignment_list(parser, assigns, exprs);
 
-    LValue *iter = head;
+    LValue *iter      = head;
+    int     n_cleanup = 0;    // How many table/key pairs to pop at the end?
     while (iter) {
         OpCode op = iter->op;
-        if (op == OP_SETLOCAL) {
-            compiler_emit_A(compiler, op, iter->index);
-        } else if (op == OP_SETGLOBAL) {
-            compiler_emit_byte3(compiler, op, iter->index);
+        switch (op) {
+        case OP_SETGLOBAL:
+            compiler_emit_byte3(compiler, op, iter->global);
+            break;
+        case OP_SETLOCAL:
+            compiler_emit_A(compiler, op, iter->local);
+            break;
+        case OP_SETTABLE:
+            compiler_set_table(compiler, iter->i_table, iter->i_key, iter->n_pop);
+            n_cleanup += 2; // Get rid of remaining table and key
+            break;
+        default:
+            __builtin_unreachable();
+            break;
         }
         iter = iter->prev;
     }
 
+    if (n_cleanup > 0) {
+        compiler_emit_A(compiler, OP_POP, cast(byte)n_cleanup);
+    }
+
     parser_match_token(parser, TOKEN_SEMICOLON);
     parser->lvalues = NULL; // We can only emit assignment list once per statement.
+}
+
+static void
+emit_lvalue_parent(Parser *parser, LValue *lvalue)
+{
+    Compiler *compiler = parser->compiler;
+    // SET(GLOBAL|LOCAL) only apply to the primary (parent) table. Everything
+    // else is guaranteed to be a field of this table or its subtables.
+    switch (lvalue->op) {
+    case OP_SETGLOBAL:
+        compiler_emit_byte3(compiler, OP_GETGLOBAL, lvalue->global);
+        break;
+    case OP_SETLOCAL:
+        compiler_emit_A(compiler, OP_GETLOCAL, lvalue->local);
+        break;
+    case OP_SETTABLE:
+        // For this case, a table and a key have been emitted right before.
+        compiler_emit_opcode(compiler, OP_GETTABLE);
+        break;
+    default:
+        __builtin_unreachable();
+        break;
+    }
+}
+
+static bool
+resolve_lvalue_field(Parser *parser, LValue *lvalue, int i_table)
+{
+    Compiler *compiler = parser->compiler;
+    if (parser_match_token(parser, TOKEN_PERIOD)) {
+        parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
+        emit_lvalue_parent(parser, lvalue);
+        compiler_emit_string(compiler, &parser->consumed);
+    } else if (parser_match_token(parser, TOKEN_BRACKET_L)) {
+        emit_lvalue_parent(parser, lvalue);
+        expression(parser);
+        parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
+    } else {
+        return false;
+    }
+    lvalue->op      = OP_SETTABLE;
+    lvalue->i_table = i_table;
+    lvalue->i_key   = compiler->stack_usage - 1;
+    lvalue->n_pop   = 1; // Pop value only. We'll clean up later.
+    return true;
 }
 
 /**
@@ -620,16 +683,17 @@ assignment(Parser *parser)
     lvalue.prev     = parser->lvalues;
     parser->lvalues = &lvalue; // Should end at the deepest recursive call.
     if (local == UNRESOLVED_LOCAL) {
-        lvalue.op    = OP_SETGLOBAL;
-        lvalue.index = identifier_constant(parser, &parser->consumed);
+        lvalue.op     = OP_SETGLOBAL;
+        lvalue.global = identifier_constant(parser, &parser->consumed);
     } else {
-        lvalue.op    = OP_SETLOCAL;
-        lvalue.index = local;
+        lvalue.op     = OP_SETLOCAL;
+        lvalue.local  = local;
     }
 
-    if (parser_match_token(parser, TOKEN_PERIOD) || parser_match_token(parser, TOKEN_BRACKET_L)) {
-        parser_error_consumed(parser, "table assignment statements not yet implemented");
-    }
+    // Must be consistent. Concept check: `t.k.v = 10`
+    int i_table = compiler->stack_usage;
+    while (resolve_lvalue_field(parser, &lvalue, i_table));
+
 
     /**
      * If we have a multiple assignment, resolve all the assignment targets and
@@ -683,6 +747,12 @@ parse_infix(Parser *parser, Precedence precedence)
         parser_advance_token(parser);
         get_rule(parser->consumed.type)->infix_fn(parser);
     }
+}
+
+static void
+mid_expression(Parser *parser)
+{
+    parse_infix(parser, PREC_ASSIGNMENT + 1);
 }
 
 static void

@@ -111,6 +111,10 @@ compiler_emit_number(Compiler *self, lulu_Number n)
     compiler_emit_constant(self, &tmp);
 }
 
+/**
+ * @todo 2024-12-27
+ *      Optimize POP when we just emitted SETTABLE.
+ */
 static bool
 folded_instruction(Compiler *self, Instruction inst)
 {
@@ -223,7 +227,7 @@ compiler_end_scope(Compiler *self)
         self->n_locals--;
         n_pop++;
     }
-    
+
     if (n_pop > 0) {
         compiler_emit_A(self, OP_POP, n_pop);
     }

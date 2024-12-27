@@ -6,8 +6,12 @@
 
 struct LValue {
     LValue *prev;  // Use recursion to chain multiple assignments.
-    OpCode  op;    // SETSLOBAL, SETLOCAL, or SETTABLE.
-    byte3   index; // Argument to 'op'.
+    OpCode  op;    // SETGLOBAL, SETLOCAL, or SETTABLE.
+    union {
+        struct { byte i_table, i_key, n_pop; };
+        byte3 global;
+        byte  local;
+    };
 };
 
 typedef enum {
