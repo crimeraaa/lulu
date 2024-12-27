@@ -4,6 +4,12 @@
 #include "compiler.h"
 #include "lexer.h"
 
+struct LValue {
+    LValue *prev;  // Use recursion to chain multiple assignments.
+    OpCode  op;    // SETSLOBAL, SETLOCAL, or SETTABLE.
+    byte3   index; // Argument to 'op'.
+};
+
 typedef enum {
     PREC_NONE,
     PREC_ASSIGNMENT,    // =

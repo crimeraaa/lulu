@@ -213,7 +213,7 @@ concat(Parser *parser)
             break;
         }
     }
-    compiler_emit_byte1(compiler, OP_CONCAT, argc);
+    compiler_emit_A(compiler, OP_CONCAT, argc);
 }
 
 static void
@@ -252,7 +252,7 @@ literal(Parser *parser)
         compiler_emit_opcode(compiler, OP_FALSE);
         break;
     case TOKEN_NIL:
-        compiler_emit_byte1(compiler, OP_NIL, 1);
+        compiler_emit_A(compiler, OP_NIL, 1);
         break;
     case TOKEN_TRUE:
         compiler_emit_opcode(compiler, OP_TRUE);
@@ -286,7 +286,7 @@ named_variable(Parser *parser, Token *ident)
         byte3 global = identifier_constant(parser, ident);
         compiler_emit_byte3(compiler, OP_GETGLOBAL, global);
     } else {
-        compiler_emit_byte1(compiler, OP_GETLOCAL, local);
+        compiler_emit_A(compiler, OP_GETLOCAL, local);
     }
 
     for (;;) {
@@ -359,7 +359,7 @@ unary(Parser *parser)
 static void
 table(Parser *parser)
 {
-    isize          n_fields = 0;
+    isize     n_fields = 0;
     Compiler *compiler = parser->compiler;
 
     int i_table = compiler->stack_usage;
@@ -523,7 +523,7 @@ print_statement(Parser *parser)
         argc = parse_expression_list(parser);
         parser_consume_token(parser, TOKEN_PAREN_R, "to close call");
     }
-    compiler_emit_byte1(compiler, OP_PRINT, argc);
+    compiler_emit_A(compiler, OP_PRINT, argc);
 }
 
 static void
@@ -567,10 +567,10 @@ adjust_assignment_list(Parser *parser, int assigns, int exprs)
     Compiler *compiler = parser->compiler;
     if (assigns > exprs) {
         int nil_count = assigns - exprs;
-        compiler_emit_byte1(compiler, OP_NIL, nil_count);
+        compiler_emit_A(compiler, OP_NIL, nil_count);
     } else if (assigns < exprs) {
         int pop_count = exprs - assigns;
-        compiler_emit_byte1(compiler, OP_POP, pop_count);
+        compiler_emit_A(compiler, OP_POP, pop_count);
     }
 }
 
@@ -591,7 +591,7 @@ emit_assignment_targets(Parser *parser, LValue *head)
     while (iter) {
         OpCode op = iter->op;
         if (op == OP_SETLOCAL) {
-            compiler_emit_byte1(compiler, op, iter->index);
+            compiler_emit_A(compiler, op, iter->index);
         } else if (op == OP_SETGLOBAL) {
             compiler_emit_byte3(compiler, op, iter->index);
         }

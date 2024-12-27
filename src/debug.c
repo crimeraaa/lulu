@@ -63,7 +63,7 @@ debug_disasssemble_chunk(const Chunk *chunk)
 static void
 print_constant(const Chunk *chunk, Instruction inst)
 {
-    const isize       arg   = instruction_get_ABC(inst);
+    const isize       arg   = instr_get_ABC(inst);
     const Value *value = &chunk->constants.values[arg];
     printf("%4ti\t# %s: ", arg, value_typename(value));
     debug_print_value(value);
@@ -82,7 +82,7 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
 
     const Value *constants = chunk->constants.values;
     Instruction  inst = chunk->code[index];
-    OpCode       op   = instruction_get_opcode(inst);
+    OpCode       op   = instr_get_op(inst);
 
     printf("%-16s ", LULU_OPCODE_INFO[op].name);
     switch (op) {
@@ -91,21 +91,21 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
         break;
     case OP_GETGLOBAL: case OP_SETGLOBAL:
     {
-        byte3 arg = instruction_get_ABC(inst);
+        byte3 arg = instr_get_ABC(inst);
         printf("%4i\t# %s\n", arg, constants[arg].string->data);
         break;
     }
     case OP_NEWTABLE:
     {
-        byte3 arg = instruction_get_ABC(inst);
+        byte3 arg = instr_get_ABC(inst);
         printf("%4i\n", arg);
         break;
     }
     case OP_SETTABLE:
     {
-        int i_table = instruction_get_A(inst);
-        int i_key   = instruction_get_B(inst);
-        int n_pop   = instruction_get_C(inst);
+        int i_table = instr_get_A(inst);
+        int i_key   = instr_get_B(inst);
+        int n_pop   = instr_get_C(inst);
         printf("%4i (table), %i (key), pop %i\n", i_table, i_key, n_pop);
         break;
     }
@@ -115,7 +115,7 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
     case OP_CONCAT:
     case OP_NIL:
     {
-        byte arg = instruction_get_A(inst);
+        byte arg = instr_get_A(inst);
         printf("%4i\n", arg);
         break;
     }

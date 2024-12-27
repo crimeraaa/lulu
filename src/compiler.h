@@ -14,18 +14,8 @@
 #define LULU_MAX_CONSTANTS  ((1 << 24) - 1)
 #define LULU_MAX_LOCALS     LULU_MAX_BYTE
 
-/**
- * @brief
- *      An assignable value, sometimes called an 'L-value'.
- */
-typedef struct LValue LValue;
-struct LValue {
-    LValue *prev;  // Use recursion to chain multiple assignments.
-    OpCode  op;    // GETGLOBAL, GETLOCAL, or GETTABLE.
-    byte3   index; // Argument to 'op'.
-};
-
-typedef struct Parser Parser;
+typedef struct LValue   LValue;
+typedef struct Parser   Parser;
 typedef struct Compiler Compiler;
 
 struct Parser {
@@ -84,7 +74,7 @@ void
 compiler_emit_number(Compiler *self, lulu_Number n);
 
 void
-compiler_emit_byte1(Compiler *self, OpCode op, byte a);
+compiler_emit_A(Compiler *self, OpCode op, byte a);
 
 void
 compiler_emit_byte3(Compiler *self, OpCode op, byte3 arg);

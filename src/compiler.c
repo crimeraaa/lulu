@@ -34,12 +34,12 @@ current_chunk(Compiler *self)
 static void
 adjust_stack_usage(Compiler *self, Instruction inst)
 {
-    OpCode      op   = instruction_get_opcode(inst);
+    OpCode      op   = instr_get_op(inst);
     OpCode_Info info = LULU_OPCODE_INFO[op];
 
     // We assume that variable delta instructions are affected by argument A.
-    int n_push = (info.push_count == -1) ? instruction_get_A(inst) : info.push_count;
-    int n_pop  = (info.pop_count  == -1) ? instruction_get_A(inst) : info.pop_count;
+    int n_push = (info.push_count == -1) ? instr_get_A(inst) : info.push_count;
+    int n_pop  = (info.pop_count  == -1) ? instr_get_A(inst) : info.pop_count;
 
     /**
      * @note 2024-12-27
@@ -47,7 +47,7 @@ adjust_stack_usage(Compiler *self, Instruction inst)
      *      to somehow have a uniform argument for variable deltas.
      */
     if (op == OP_SETTABLE) {
-        n_pop = instruction_get_C(inst);
+        n_pop = instr_get_C(inst);
     }
 
     printf("%-12s: push %i, pop %i\n", info.name, n_push, n_pop);
@@ -67,7 +67,7 @@ emit_instruction(Compiler *self, Instruction inst)
 void
 compiler_emit_opcode(Compiler *self, OpCode op)
 {
-    emit_instruction(self, instruction_make_none(op));
+    emit_instruction(self, instr_make(op, 0, 0, 0));
 }
 
 void
@@ -92,7 +92,7 @@ void
 compiler_emit_constant(Compiler *self, const Value *value)
 {
     byte3 index = compiler_make_constant(self, value);
-    emit_instruction(self, instruction_make_byte3(OP_CONSTANT, index));
+    emit_instruction(self, instr_make_byte3(OP_CONSTANT, index));
 }
 
 void
@@ -114,7 +114,7 @@ compiler_emit_number(Compiler *self, lulu_Number n)
 static bool
 folded_instruction(Compiler *self, Instruction inst)
 {
-    OpCode  op    = instruction_get_opcode(inst);
+    OpCode  op    = instr_get_op(inst);
     Chunk  *chunk = current_chunk(self);
 
     // Can't possibly have a previous opcode?
@@ -124,7 +124,7 @@ folded_instruction(Compiler *self, Instruction inst)
 
     // Poke at the most recently (i.e: previous) written opcode.
     Instruction *ip = &chunk->code[chunk->len - 1];
-    if (instruction_get_opcode(*ip) != op) {
+    if (instr_get_op(*ip) != op) {
         return false;
     }
 
@@ -134,11 +134,11 @@ folded_instruction(Compiler *self, Instruction inst)
     case OP_CONCAT: offset = -1;
     case OP_POP:
     case OP_NIL: {
-        int prev_arg = cast(int)instruction_get_A(*ip);
-        int cur_arg  = cast(int)instruction_get_A(inst);
+        int prev_arg = cast(int)instr_get_A(*ip);
+        int cur_arg  = cast(int)instr_get_A(inst);
         int new_arg  = prev_arg + cur_arg + offset;
         if (0 < new_arg && new_arg <= cast(int)LULU_MAX_BYTE) {
-            *ip = instruction_make_byte1(op, cast(byte)new_arg);
+            instr_set_A(ip, cast(byte)new_arg);
             // We assume that multiple of the same instruction evaluates to the
             // same net stack usage.
             adjust_stack_usage(self, inst);
@@ -153,9 +153,9 @@ folded_instruction(Compiler *self, Instruction inst)
 }
 
 void
-compiler_emit_byte1(Compiler *self, OpCode op, byte a)
+compiler_emit_A(Compiler *self, OpCode op, byte a)
 {
-    Instruction inst = instruction_make_byte1(op, a);
+    Instruction inst = instr_make_A(op, a);
     if (!folded_instruction(self, inst)) {
         emit_instruction(self, inst);
     }
@@ -164,7 +164,7 @@ compiler_emit_byte1(Compiler *self, OpCode op, byte a)
 void
 compiler_emit_byte3(Compiler *self, OpCode op, byte3 arg)
 {
-    emit_instruction(self, instruction_make_byte3(op, arg));
+    emit_instruction(self, instr_make_byte3(op, arg));
 }
 
 void
@@ -218,9 +218,14 @@ compiler_end_scope(Compiler *self)
     self->scope_depth--;
 
     // Remove this scope's local variables.
+    int n_pop = 0;
     while (self->n_locals > 0 && self->locals[self->n_locals -1].depth > self->scope_depth) {
-        compiler_emit_byte1(self, OP_POP, 1);
         self->n_locals--;
+        n_pop++;
+    }
+    
+    if (n_pop > 0) {
+        compiler_emit_A(self, OP_POP, n_pop);
     }
 }
 
@@ -298,11 +303,11 @@ compiler_adjust_table(Compiler *self, isize i_code, isize n_fields)
     if (n_fields == 0) {
         return;
     }
-    *ip = instruction_make_byte3(OP_NEWTABLE, n_fields);
+    instr_set_byte3(ip, n_fields);
 }
 
 void
 compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop)
 {
-    emit_instruction(self, instruction_make(OP_SETTABLE, i_table, i_key, n_pop));
+    emit_instruction(self, instr_make(OP_SETTABLE, i_table, i_key, n_pop));
 }

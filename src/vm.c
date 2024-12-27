@@ -149,16 +149,16 @@ do {                                                                           \
         debug_disassemble_instruction(chunk, self->ip - chunk->code);
 #endif
         Instruction inst = *self->ip++;
-        switch (instruction_get_opcode(inst)) {
+        switch (instr_get_op(inst)) {
         case OP_CONSTANT:
         {
-            byte3 index = instruction_get_ABC(inst);
+            byte3 index = instr_get_ABC(inst);
             vm_push(self, &constants->values[index]);
             break;
         }
         case OP_GETGLOBAL:
         {
-            const byte3  index = instruction_get_ABC(inst);
+            const byte3  index = instr_get_ABC(inst);
             const Value *key   = &constants->values[index];
             const Value *value = table_get(&self->globals, key);
             if (!value) {
@@ -169,7 +169,7 @@ do {                                                                           \
         }
         case OP_SETGLOBAL:
         {
-            const byte3  index = instruction_get_ABC(inst);
+            const byte3  index = instr_get_ABC(inst);
             const Value *ident = &constants->values[index];
             table_set(self, &self->globals, ident, &self->top[-1]);
             lulu_pop(self, 1);
@@ -177,20 +177,20 @@ do {                                                                           \
         }
         case OP_GETLOCAL:
         {
-            byte index = instruction_get_A(inst);
+            byte index = instr_get_A(inst);
             vm_push(self, &self->values[index]);
             break;
         }
         case OP_SETLOCAL:
         {
-            byte index = instruction_get_A(inst);
+            byte index = instr_get_A(inst);
             self->values[index] = self->top[-1];
             lulu_pop(self, 1);
             break;
         }
         case OP_NEWTABLE:
         {
-            lulu_push_table(self, instruction_get_ABC(inst));
+            lulu_push_table(self, instr_get_ABC(inst));
             break;
         }
         case OP_GETTABLE:
@@ -210,9 +210,9 @@ do {                                                                           \
         }
         case OP_SETTABLE:
         {
-            int i_table = instruction_get_A(inst);
-            int i_key   = instruction_get_B(inst);
-            int n_pop   = instruction_get_C(inst);
+            int i_table = instr_get_A(inst);
+            int i_key   = instr_get_B(inst);
+            int n_pop   = instr_get_C(inst);
 
             if (!lulu_is_table(self, i_table)) {
                 vm_runtime_error(self,
@@ -228,7 +228,7 @@ do {                                                                           \
         }
         case OP_NIL:
         {
-            int n_nils = instruction_get_A(inst);
+            int n_nils = instr_get_A(inst);
             lulu_push_nil(self, n_nils);
             break;
         }
@@ -241,7 +241,7 @@ do {                                                                           \
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_CONCAT: {
-            int count = instruction_get_A(inst);
+            int count = instr_get_A(inst);
             concat(self, count);
             break;
         }
@@ -270,7 +270,7 @@ do {                                                                           \
             break;
         }
         case OP_PRINT: {
-            int count = instruction_get_A(inst);
+            int count = instr_get_A(inst);
             for (int i = 0; i < count; i++) {
                 value_print(&self->top[-count + i]);
                 printf("\t");
@@ -280,7 +280,7 @@ do {                                                                           \
             break;
         }
         case OP_POP: {
-            int count = instruction_get_A(inst);
+            int count = instr_get_A(inst);
             lulu_pop(self, count);
             break;
         }

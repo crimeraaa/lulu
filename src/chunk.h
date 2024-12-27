@@ -33,10 +33,16 @@ typedef struct {
 extern const OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 
-#define LULU_INSTRUCTION_OFFSET_A   24
-#define LULU_INSTRUCTION_OFFSET_B   16
-#define LULU_INSTRUCTION_OFFSET_C   8
-#define LULU_INSTRUCTION_OFFSET_OP  0
+#define INSTR_OFFSET_A   24
+#define INSTR_OFFSET_B   16
+#define INSTR_OFFSET_C   8
+#define INSTR_OFFSET_OP  0
+
+#define INSTR_MASK_A     0xFF000000
+#define INSTR_MASK_B     0x00FF0000
+#define INSTR_MASK_C     0x0000FF00
+#define INSTR_MASK_OP    0x000000FF
+#define INSTR_MASK_ABC   0xFFFFFF00
 
 /**
  * @brief Layout:
@@ -53,33 +59,45 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
 typedef u32 Instruction;
 
 static inline Instruction
-instruction_make(OpCode op, byte a, byte b, byte c)
+instr_make(OpCode op, byte a, byte b, byte c)
 {
-    return cast(Instruction)a << LULU_INSTRUCTION_OFFSET_A
-        | cast(Instruction)b  << LULU_INSTRUCTION_OFFSET_B
-        | cast(Instruction)c  << LULU_INSTRUCTION_OFFSET_C
-        | cast(Instruction)op << LULU_INSTRUCTION_OFFSET_OP;
+    return cast(Instruction)a << INSTR_OFFSET_A
+        | cast(Instruction)b  << INSTR_OFFSET_B
+        | cast(Instruction)c  << INSTR_OFFSET_C
+        | cast(Instruction)op << INSTR_OFFSET_OP;
 }
 
 static inline Instruction
-instruction_make_byte3(OpCode op, byte3 arg)
+instr_make_byte3(OpCode op, byte3 arg)
 {
     // Note how we use msb w/ OFFSET_B, not OFFSET_A since we're masking bits.
-    byte msb = (arg >> LULU_INSTRUCTION_OFFSET_B)  & LULU_MAX_BYTE;
-    byte mid = (arg >> LULU_INSTRUCTION_OFFSET_C)  & LULU_MAX_BYTE;
-    byte lsb = (arg >> LULU_INSTRUCTION_OFFSET_OP) & LULU_MAX_BYTE;
-    return instruction_make(op, msb, mid, lsb);
+    byte msb = (arg >> INSTR_OFFSET_B)  & LULU_MAX_BYTE;
+    byte mid = (arg >> INSTR_OFFSET_C)  & LULU_MAX_BYTE;
+    byte lsb = (arg >> INSTR_OFFSET_OP) & LULU_MAX_BYTE;
+    return instr_make(op, msb, mid, lsb);
 }
 
-#define instruction_make_byte1(op, arg)    instruction_make(op, arg, 0, 0)
-#define instruction_make_none(op)          instruction_make(op, 0, 0, 0)
-#define instruction_get_opcode(inst)       ((inst) & LULU_MAX_BYTE)
+#define instr_make_A(op, arg)   instr_make(op, arg, 0, 0)
 
-// When shifted, argument A has no extra upper bits.
-#define instruction_get_A(inst)    ((inst) >> LULU_INSTRUCTION_OFFSET_A)
-#define instruction_get_B(inst)    (((inst) >> LULU_INSTRUCTION_OFFSET_B) & LULU_MAX_BYTE)
-#define instruction_get_C(inst)    (((inst) >> LULU_INSTRUCTION_OFFSET_C) & LULU_MAX_BYTE)
-#define instruction_get_ABC(inst)  ((inst) >> LULU_INSTRUCTION_OFFSET_C)
+#define instr_get_op(inst)      (((inst) >> INSTR_OFFSET_OP) & LULU_MAX_BYTE)
+#define instr_get_A(inst)       (((inst) >> INSTR_OFFSET_A)  & LULU_MAX_BYTE)
+#define instr_get_B(inst)       (((inst) >> INSTR_OFFSET_B)  & LULU_MAX_BYTE)
+#define instr_get_C(inst)       (((inst) >> INSTR_OFFSET_C)  & LULU_MAX_BYTE)
+#define instr_get_ABC(inst)     ( (inst) >> INSTR_OFFSET_C)
+
+static inline void
+instr_set_A(Instruction *self, byte a)
+{
+    *self &= ~INSTR_MASK_A;
+    *self |= cast(Instruction)a << INSTR_OFFSET_A;
+}
+
+static inline void
+instr_set_byte3(Instruction *self, byte3 arg)
+{
+    *self &= ~INSTR_MASK_ABC;
+    *self |= cast(Instruction)arg << INSTR_OFFSET_C;
+}
 
 /**
  * @brief
