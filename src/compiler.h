@@ -31,7 +31,7 @@ typedef struct Compiler Compiler;
 struct Parser {
     Token     current;  // Also our "lookahead" token.
     Token     consumed; // Analogous to the book's `compiler.c:Parser::previous`.
-    LValue   *assignments; // Must be valid only once per assignment call.
+    LValue   *lvalues;  // Must be valid only once per assignment call.
     Compiler *compiler;
     Lexer    *lexer;
 };

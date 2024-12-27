@@ -34,7 +34,7 @@ get_hash(const Value *key)
 static Pair *
 find_pair(Pair *pairs, isize cap, const Value *key)
 {
-    u32 index = get_hash(key) % cap;
+    u32   index     = get_hash(key) % cap;
     Pair *tombstone = NULL;
     for (;;) {
         Pair *pair = &pairs[index];
@@ -116,7 +116,8 @@ table_get(Table *self, const Value *key)
     if (self->count == 0 || value_is_nil(key)) {
         return NULL;
     }
-    return &find_pair(self->pairs, self->cap, key)->value;
+    Pair *pair = find_pair(self->pairs, self->cap, key);
+    return value_is_nil(&pair->key) ? NULL : &pair->value;
 }
 
 OString *
@@ -136,8 +137,8 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
     }
     u32 index = hash % self->cap;
     for (;;) {
-        Pair *pair = &self->pairs[index];
-        Value      *key  = &pair->key;
+        Pair  *pair = &self->pairs[index];
+        Value *key  = &pair->key;
         if (value_is_nil(key)) {
             // Stop if we find an empty non-tombstone entry.
             if (value_is_nil(&pair->value)) {

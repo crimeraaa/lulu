@@ -200,12 +200,12 @@ do {                                                                           \
                     lulu_typename(self, -2));
             }
 
-            const Value *v = table_get(self->top[-2].table, &self->top[-1]);
-            if (!v) {
-                v = &LULU_VALUE_NIL;
+            const Value *value = table_get(self->top[-2].table, &self->top[-1]);
+            if (!value) {
+                value = &LULU_VALUE_NIL;
             }
-            lulu_pop(self, 2); // pop table and key
-            vm_push(self, v);  // then push value to top
+            lulu_pop(self, 2);    // pop table and key
+            vm_push(self, value); // then push value to top
             break;
         }
         case OP_SETTABLE:

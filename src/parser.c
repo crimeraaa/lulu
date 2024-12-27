@@ -63,7 +63,7 @@ static byte3
 identifier_constant(Parser *parser, Token *token)
 {
     Compiler *compiler = parser->compiler;
-    OString  *string = ostring_new(compiler->vm, token->start, token->len);
+    OString  *string   = ostring_new(compiler->vm, token->start, token->len);
     Value     tmp;
     value_set_string(&tmp, string);
     return compiler_make_constant(compiler, &tmp);
@@ -96,9 +96,9 @@ parser_init(Parser *self, Compiler *compiler, Lexer *lexer)
 {
     token_init_empty(&self->consumed);
     token_init_empty(&self->current);
-    self->assignments = NULL;
-    self->compiler    = compiler;
-    self->lexer       = lexer;
+    self->lvalues  = NULL;
+    self->compiler = compiler;
+    self->lexer    = lexer;
 }
 
 void
@@ -599,7 +599,7 @@ emit_assignment_targets(Parser *parser, LValue *head)
     }
 
     parser_match_token(parser, TOKEN_SEMICOLON);
-    parser->assignments = NULL;
+    parser->lvalues = NULL; // We can only emit assignment list once per statement.
 }
 
 /**
@@ -613,10 +613,12 @@ emit_assignment_targets(Parser *parser, LValue *head)
 static void
 assignment(Parser *parser)
 {
-    LValue    lvalue;
     Compiler *compiler = parser->compiler;
     const int local    = compiler_resolve_local(compiler, &parser->consumed);
 
+    LValue lvalue;
+    lvalue.prev     = parser->lvalues;
+    parser->lvalues = &lvalue; // Should end at the deepest recursive call.
     if (local == UNRESOLVED_LOCAL) {
         lvalue.op    = OP_SETGLOBAL;
         lvalue.index = identifier_constant(parser, &parser->consumed);
@@ -624,9 +626,6 @@ assignment(Parser *parser)
         lvalue.op    = OP_SETLOCAL;
         lvalue.index = local;
     }
-
-    lvalue.prev = parser->assignments;
-    parser->assignments = &lvalue; // Should end at the deepest recursive call.
 
     if (parser_match_token(parser, TOKEN_PERIOD) || parser_match_token(parser, TOKEN_BRACKET_L)) {
         parser_error_consumed(parser, "table assignment statements not yet implemented");
@@ -642,7 +641,7 @@ assignment(Parser *parser)
         assignment(parser);
     }
 
-    if (parser->assignments) {
+    if (parser->lvalues) {
         parser_consume_token(parser, TOKEN_EQUAL, "in assignment");
         emit_assignment_targets(parser, &lvalue);
     }
