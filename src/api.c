@@ -3,7 +3,7 @@
 #include "vm.h"
 
 /// standard
-#include <string.h>
+#include <string.h> // strlen
 
 /**
  * @brief
@@ -46,7 +46,7 @@ lulu_check_stack(lulu_VM *vm, int count)
     isize end_index = vm->end - vm->base;
     isize new_index = cur_index + count;
 
-    if (0 <= new_index && new_index <= end_index) {
+    if (0 <= new_index && new_index < end_index) {
         return;
     }
     vm_runtime_error(vm, "Stack %s", (new_index >= 0) ? "overflow" : "underflow");

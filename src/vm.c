@@ -5,9 +5,9 @@
 #include "parser.h"
 
 /// standard
-#include <stdarg.h>     // va_list
-#include <stdio.h>      // [vf]printf()
-#include <stdlib.h>     // exit()
+#include <stdarg.h> // va_list
+#include <stdio.h>  // [vf]printf, fputc
+#include <stdlib.h> // exit
 
 static void
 reset_stack(lulu_VM *vm)
@@ -380,10 +380,10 @@ vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char
 void
 vm_runtime_error(lulu_VM *self, cstring fmt, ...)
 {
-    va_list     args;
-    Chunk *chunk = current_chunk(self);
-    cstring     file  = chunk->filename;
-    int         line  = chunk->lines[self->ip - chunk->code - 1];
+    va_list args;
+    Chunk  *chunk = current_chunk(self);
+    cstring file  = chunk->filename;
+    int     line  = chunk->lines[self->ip - chunk->code - 1];
     va_start(args, fmt);
     fprintf(stderr, "%s:%i: ", file, line);
     vfprintf(stderr, fmt, args);

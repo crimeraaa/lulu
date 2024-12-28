@@ -1,35 +1,45 @@
+/// local
 #include "lexer.h"
 #include "vm.h"
 
-#include <stdlib.h>
-#include <string.h>
+/// standard
+#include <stdlib.h> // strtod
+#include <string.h> // strchr, memcmp
 
 static bool
-is_ascii_digit(char ch)
+is_digit(char ch)
 {
     return '0' <= ch && ch <= '9';
 }
 
 static bool
-is_ascii_hexdigit(char ch)
+is_lower(char ch)
 {
-    return is_ascii_digit(ch)
-        || ('a' <= ch && ch <= 'f')
-        || ('A' <= ch && ch <= 'F');
+    return 'a' <= ch && ch <= 'z';
 }
 
 static bool
-is_ascii_alpha(char ch)
+is_upper(char ch)
 {
-    return ('a' <= ch && ch <= 'z')
-        || ('A' <= ch && ch <= 'Z')
-        || ch == '_';
+    return 'A' <= ch && ch <= 'Z';
 }
 
 static bool
-is_ascii_alnum(char ch)
+is_hexdigit(char ch)
 {
-    return is_ascii_alpha(ch) || is_ascii_digit(ch);
+    return is_digit(ch) || ('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F');
+}
+
+static bool
+is_alpha(char ch)
+{
+    return is_upper(ch) || is_lower(ch) || ch == '_';
+}
+
+static bool
+is_alnum(char ch)
+{
+    return is_alpha(ch) || is_digit(ch);
 }
 
 void
@@ -387,7 +397,7 @@ get_identifier_type(Lexer *lexer)
 static Token
 consume_identifier(Lexer *lexer)
 {
-    while (is_ascii_alnum(peek_char(lexer)) || peek_char(lexer) == '_') {
+    while (is_alnum(peek_char(lexer)) || peek_char(lexer) == '_') {
         advance_char(lexer);
     }
     return make_token(lexer, get_identifier_type(lexer));
@@ -396,7 +406,7 @@ consume_identifier(Lexer *lexer)
 static void
 consume_base10(Lexer *lexer)
 {
-    while (is_ascii_digit(peek_char(lexer))) {
+    while (is_digit(peek_char(lexer))) {
         advance_char(lexer);
     }
 }
@@ -404,7 +414,7 @@ consume_base10(Lexer *lexer)
 static void
 consume_base16(Lexer *lexer)
 {
-    while (is_ascii_hexdigit(peek_char(lexer))) {
+    while (is_hexdigit(peek_char(lexer))) {
         advance_char(lexer);
     }
 }
@@ -433,7 +443,7 @@ consume_number(Lexer *lexer)
 
     // Error handling will be done later.
 trailing_characters:
-    while (is_ascii_alnum(peek_char(lexer)) || peek_char(lexer) == '_') {
+    while (is_alnum(peek_char(lexer)) || peek_char(lexer) == '_') {
         advance_char(lexer);
     }
 
@@ -521,10 +531,10 @@ lexer_scan_token(Lexer *self)
     }
 
     char ch = advance_char(self);
-    if (is_ascii_digit(ch)) {
+    if (is_digit(ch)) {
         return consume_number(self);
     }
-    if (is_ascii_alpha(ch) || ch == '_') {
+    if (is_alpha(ch)) {
         return consume_identifier(self);
     }
 

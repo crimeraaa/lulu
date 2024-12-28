@@ -1,7 +1,9 @@
+/// local
 #include "value.h"
 #include "string.h"
 
-#include <stdio.h>
+/// standard
+#include <stdio.h> // printf
 
 // @todo 2024-09-22 Just remove the designated initializers entirely!
 #if defined(__GNUC__)

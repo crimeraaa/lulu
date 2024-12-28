@@ -5,8 +5,8 @@
 #include "debug.h"
 
 /// standard
-#include <stdio.h>
-#include <string.h>
+#include <stdio.h>  // printf
+#include <string.h> // memcmp
 
 void
 compiler_init(lulu_VM *vm, Compiler *self)

@@ -3,9 +3,9 @@
 #include "vm.h"
 
 /// standard
-#include <stdio.h>      // FILE, printf()
-#include <stdlib.h>     // {m,re}alloc(), free()
-#include <string.h>     // memset()
+#include <stdio.h>  // FILE, printf
+#include <stdlib.h> // {m,re}alloc, free
+#include <string.h> // memset
 
 /**
  * @brief

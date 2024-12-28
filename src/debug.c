@@ -1,9 +1,11 @@
+/// local
 #include "debug.h"
 #include "object.h"
 #include "string.h"
 
-#include <stdarg.h>
-#include <stdio.h>
+/// standard
+#include <stdarg.h> // va_list, va_start, va_end
+#include <stdio.h>  // [vf]printf
 
 #undef debug_writef
 

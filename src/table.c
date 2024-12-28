@@ -1,6 +1,8 @@
+/// local
 #include "table.h"
 
-#include <string.h>     // memcpy, memcmp
+/// standard
+#include <string.h> // memcpy, memcmp
 
 static u32
 hash_number(Number number)
