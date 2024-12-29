@@ -69,7 +69,7 @@ adjust_capacity(lulu_VM *vm, Table *table, isize new_cap)
 
     Pair *old_pairs = table->pairs;
     const isize      old_cap   = table->cap;
-    table->count = 0;
+    table->n_pairs = 0;
     for (isize i = 0; i < old_cap; i++) {
         Pair *src = &old_pairs[i];
         if (value_is_nil(&src->key)) {
@@ -78,7 +78,7 @@ adjust_capacity(lulu_VM *vm, Table *table, isize new_cap)
         Pair *dst = find_pair(new_pairs, new_cap, &src->key);
         dst->key   = src->key;
         dst->value = src->value;
-        table->count++;
+        table->n_pairs++;
     }
 
     array_free(Pair, vm, old_pairs, old_cap);
@@ -91,8 +91,9 @@ table_new(lulu_VM *vm, isize count)
 {
     Table *table = cast(Table *)object_new(vm, LULU_TYPE_TABLE, size_of(*table));
     table_init(table);
+    // Clamp cap to a power of 2 so that we never modulo by 0 or 1.
     if (count > 0) {
-        adjust_capacity(vm, table, count);
+        adjust_capacity(vm, table, mem_grow_capacity(mem_next_pow2(count)));
     }
     return table;
 }
@@ -100,26 +101,43 @@ table_new(lulu_VM *vm, isize count)
 void
 table_init(Table *self)
 {
-    self->pairs = NULL;
-    self->count = 0;
-    self->cap   = 0;
+    varray_init(&self->array);
+    self->pairs   = NULL;
+    self->n_pairs = 0;
+    self->cap     = 0;
 }
 
 void
 table_free(lulu_VM *vm, Table *self)
 {
+    varray_free(vm, &self->array);
     array_free(Pair, vm, self->pairs, self->cap);
     table_init(self);
+}
+
+static const Value *
+table_get_hash(Table *self, const Value *key)
+{
+    if (self->n_pairs == 0 || value_is_nil(key)) {
+        return NULL;
+    }
+    Pair *pair = find_pair(self->pairs, self->cap, key);
+    return value_is_nil(&pair->key) ? NULL : &pair->value;
 }
 
 const Value *
 table_get(Table *self, const Value *key)
 {
-    if (self->count == 0 || value_is_nil(key)) {
-        return NULL;
+    // Try array segment
+    isize index;
+    if (value_number_is_integer(key, &index)) {
+        VArray *varray = &self->array;
+        if (1 <= index && index <= varray->len) {
+            return &varray->values[index - 1];
+        }
+        // Try hash segment
     }
-    Pair *pair = find_pair(self->pairs, self->cap, key);
-    return value_is_nil(&pair->key) ? NULL : &pair->value;
+    return table_get_hash(self, key);
 }
 
 OString *
@@ -134,7 +152,7 @@ table_intern_string(lulu_VM *vm, Table *self, OString *string)
 OString *
 table_find_string(Table *self, const char *data, isize len, u32 hash)
 {
-    if (self->count == 0) {
+    if (self->n_pairs == 0) {
         return NULL;
     }
     u32 index = hash % self->cap;
@@ -158,20 +176,64 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
     }
 }
 
+static void
+move_hash_to_array(lulu_VM *vm, Table *table, isize start, isize range)
+{
+    VArray *array = &table->array;
+    // 'stop' is exclusive.
+    for (isize i = start, stop = start + range; i < stop; i++) {
+        Value key;
+        value_set_number(&key, cast(Number)i);
+        const Value *value = table_get_hash(table, &key);
+        if (!value || value_is_nil(value)) {
+            break;
+        }
+        varray_write_at(vm, array, i - 1, value); // Lua index to C index
+        table_unset(table, &key);
+    }
+}
+
 bool
 table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
 {
+    isize index;
     if (value_is_nil(key)) {
         return false;
+    } else if (value_number_is_integer(key, &index)) {
+        VArray *array     = &self->array;
+        bool    is_append = false;
+
+        /**
+         * We can directly write/append to the array segment.
+         * Index 1 will ALWAYS go to the array segment.
+         */
+        if (1 <= index && index <= array->len + 1) {
+            varray_write_at(vm, array, index - 1, value);
+            is_append = true;
+        }
+
+        /**
+         * Given:  hash  = {[2] = 'b'}
+         *         index, value = 1, 'a'
+         *         n_prev, n_next = 0, 1
+         *
+         * Result: array = {'a', 'b'}
+         *         hash  = {};
+         */
+        if (is_append) {
+            move_hash_to_array(vm, self, index + 1, self->cap);
+            return true;
+        }
     }
-    if (self->count >= self->cap * LULU_TABLE_MAX_LOAD) {
+
+    if (self->n_pairs >= self->cap * LULU_TABLE_MAX_LOAD) {
         adjust_capacity(vm, self, mem_grow_capacity(self->cap));
     }
 
     Pair *pair = find_pair(self->pairs, self->cap, key);
     bool is_new_key = value_is_nil(&pair->key);
     if (is_new_key && value_is_nil(&pair->value)) {
-        self->count++;
+        self->n_pairs++;
     }
     pair->key   = *key;
     pair->value = *value;
@@ -181,7 +243,7 @@ table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
 bool
 table_unset(Table *self, const Value *key)
 {
-    if (self->count == 0 || value_is_nil(key)) {
+    if (self->n_pairs == 0 || value_is_nil(key)) {
         return false;
     }
 

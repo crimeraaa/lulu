@@ -39,7 +39,7 @@ TOKEN_SEMICOLON,    // ;   := optional statement ending
 TOKEN_ELLIPSIS_3,   // ... := variadic argument list, only useable in functions
 TOKEN_ELLIPSIS_2,   // ..  := string concatenation
 TOKEN_PERIOD,       // .   := table field access, separate from .. and ...
-TOKEN_HASH,         // #   := table/string length unary operator.
+TOKEN_POUND,        // #   := table/string length unary operator.
 
 TOKEN_PLUS,         // + := addition
 TOKEN_DASH,         // - := subtraction, Lua-style comment (single/multi-line)

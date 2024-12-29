@@ -226,6 +226,20 @@ do {                                                                           \
             }
             break;
         }
+        case OP_LEN:
+        {
+            isize  n_len = 0;
+            Value *value = &self->top[-1];
+            switch (value->type) {
+            case LULU_TYPE_TABLE:  n_len = value->table->array.len; break;
+            case LULU_TYPE_STRING: n_len = value->string->len;      break;
+            default:
+                vm_runtime_error(self, "Attempt to get length of a %s value",
+                    value_typename(value));
+            }
+            value_set_number(value, n_len);
+            break;
+        }
         case OP_NIL:
         {
             int n_nils = instr_get_A(inst);

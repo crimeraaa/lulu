@@ -284,7 +284,7 @@ LULU_TOKEN_STRINGS[LULU_TOKEN_COUNT] = {
     [TOKEN_ELLIPSIS_3]    = lit("..."),
     [TOKEN_ELLIPSIS_2]    = lit(".."),
     [TOKEN_PERIOD]        = lit("."),
-    [TOKEN_HASH]          = lit("#"),
+    [TOKEN_POUND]         = lit("#"),
 
     [TOKEN_PLUS]          = lit("+"),
     [TOKEN_DASH]          = lit("-"),
@@ -570,7 +570,7 @@ lexer_scan_token(Lexer *self)
         }
         return make_token(self, TOKEN_PERIOD);
 
-    case '#': return make_token(self, TOKEN_HASH);
+    case '#': return make_token(self, TOKEN_POUND);
     case '+': return make_token(self, TOKEN_PLUS);
     case '-': return make_token(self, TOKEN_DASH);
     case '*': return make_token(self, TOKEN_STAR);

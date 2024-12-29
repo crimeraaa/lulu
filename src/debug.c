@@ -127,6 +127,7 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
     case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:
     case OP_GETTABLE:
+    case OP_LEN:
         printf("\n");
         break;
     }

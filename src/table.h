@@ -12,8 +12,9 @@ typedef struct {
 
 struct Table {
     Object  base;
+    VArray  array;
     Pair   *pairs;
-    isize   count; // Number of active pairs.
+    isize   n_pairs; // Number of active pairs.
     isize   cap;   // Number of total allocated pairs.
 };
 

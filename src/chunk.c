@@ -17,6 +17,7 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
     [OP_NEWTABLE]   = {"NEWTABLE",      3,           1,          0},
     [OP_GETTABLE]   = {"GETTABLE",      0,           1,          2}, // @todo 2024-12-27: Add argument for pop?
     [OP_SETTABLE]   = {"SETTABLE",      3,           0,         -1},
+    [OP_LEN]        = {"LEN",           0,           0,          0},
     [OP_NIL]        = {"NIL",           1,          -1,          0},
     [OP_TRUE]       = {"TRUE",          0,           1,          0},
     [OP_FALSE]      = {"FALSE",         0,           1,          0},
@@ -102,6 +103,6 @@ chunk_add_constant(lulu_VM *vm, Chunk *self, const Value *value)
             return i;
         }
     }
-    varray_write(vm, constants, value);
+    varray_append(vm, constants, value);
     return constants->len - 1;
 }

@@ -41,7 +41,7 @@ adjust_stack_usage(Compiler *self, Instruction inst)
     int n_push = (info.push_count == -1) ? instr_get_A(inst) : info.push_count;
     int n_pop  = (info.pop_count  == -1) ? instr_get_A(inst) : info.pop_count;
 
-    printf("%-12s: push %i, pop %i\n", info.name, n_push, n_pop); //! DEBUG
+    // printf("%-12s: push %i, pop %i\n", info.name, n_push, n_pop); //! DEBUG
     self->stack_usage += n_push;
     self->stack_usage -= n_pop;
 }

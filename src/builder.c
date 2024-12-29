@@ -53,12 +53,7 @@ builder_write_string(Builder *self, const char *data, isize len)
     isize old_len = self->len;
     isize new_len = old_len + len;
     if (new_len > self->cap) {
-        // Next power of 2
-        isize new_cap = 1;
-        while (new_cap < new_len) {
-            new_cap *= 2;
-        }
-        builder_reserve(self, new_cap);
+        builder_reserve(self, mem_next_pow2(new_len));
     }
     for (isize i = 0; i < len; i++) {
         self->buffer[old_len + i] = data[i];

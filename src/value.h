@@ -43,13 +43,12 @@ typedef struct {
     isize  cap;
 } VArray;
 
-#define value_typename(value)      LULU_TYPENAMES[(value)->type]
-
-#define value_is_nil(value)        ((value)->type == LULU_TYPE_NIL)
-#define value_is_boolean(value)    ((value)->type == LULU_TYPE_BOOLEAN)
-#define value_is_number(value)     ((value)->type == LULU_TYPE_NUMBER)
-#define value_is_string(value)     ((value)->type == LULU_TYPE_STRING)
-#define value_is_table(value)      ((value)->type == LULU_TYPE_TABLE)
+#define value_typename(value)   LULU_TYPENAMES[(value)->type]
+#define value_is_nil(value)     ((value)->type == LULU_TYPE_NIL)
+#define value_is_boolean(value) ((value)->type == LULU_TYPE_BOOLEAN)
+#define value_is_number(value)  ((value)->type == LULU_TYPE_NUMBER)
+#define value_is_string(value)  ((value)->type == LULU_TYPE_STRING)
+#define value_is_table(value)   ((value)->type == LULU_TYPE_TABLE)
 
 extern const Value
 LULU_VALUE_NIL,
@@ -59,9 +58,15 @@ LULU_VALUE_FALSE;
 static inline bool
 value_is_falsy(const Value *value)
 {
-    return value_is_nil(value)
-        || (value_is_boolean(value) && !value->boolean);
+    return value_is_nil(value) || (value_is_boolean(value) && !value->boolean);
 }
+
+/**
+ * @note 2024-12-28:
+ *      Direct floating point to integer conversion are computationally expensive!
+ */
+bool
+value_number_is_integer(const Value *value, isize *out);
 
 static inline void
 value_set_nil(Value *dst)
@@ -108,11 +113,15 @@ void
 varray_init(VArray *self);
 
 void
-varray_write(lulu_VM *vm, VArray *self, const Value *value);
+varray_append(lulu_VM *vm, VArray *self, const Value *value);
+
+void
+varray_write_at(lulu_VM *vm, VArray *self, isize index, const Value *value);
 
 void
 varray_free(lulu_VM *vm, VArray *self);
 
+// Sets cap only.
 void
 varray_reserve(lulu_VM *vm, VArray *self, isize new_cap);
 

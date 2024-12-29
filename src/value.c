@@ -29,6 +29,20 @@ LULU_VALUE_NIL   = {.type = LULU_TYPE_NIL,     .number = 0},
 LULU_VALUE_TRUE  = {.type = LULU_TYPE_BOOLEAN, .boolean = true},
 LULU_VALUE_FALSE = {.type = LULU_TYPE_BOOLEAN, .boolean = false};
 
+bool
+value_number_is_integer(const Value *value, isize *out_integer)
+{
+    if (!value_is_number(value)) {
+        return false;
+    }
+    isize  converted = value->number;
+    Number truncated = converted;
+    if (out_integer) {
+        *out_integer = converted;
+    }
+    return value->number == truncated;
+}
+
 void
 value_print(const Value *value)
 {
@@ -76,12 +90,23 @@ varray_init(VArray *self)
 }
 
 void
-varray_write(lulu_VM *vm, VArray *self, const Value *value)
+varray_append(lulu_VM *vm, VArray *self, const Value *value)
 {
     if (self->len >= self->cap) {
         varray_reserve(vm, self, mem_grow_capacity(self->cap));
     }
     self->values[self->len++] = *value;
+}
+
+void
+varray_write_at(lulu_VM *vm, VArray *self, isize index, const Value *value)
+{
+    // Writing to index would cause a buffer overflow?
+    if (index >= self->cap) {
+        varray_reserve(vm, self, mem_next_pow2(index));
+        self->len = index + 1;
+    }
+    self->values[index] = *value;
 }
 
 void

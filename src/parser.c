@@ -331,8 +331,9 @@ static OpCode
 get_unary_opcode(Token_Type type)
 {
     switch (type) {
-    case TOKEN_DASH: return OP_UNM;
-    case TOKEN_NOT:  return OP_NOT;
+    case TOKEN_POUND: return OP_LEN;
+    case TOKEN_DASH:  return OP_UNM;
+    case TOKEN_NOT:   return OP_NOT;
     default:
         __builtin_unreachable();
     }
@@ -466,7 +467,7 @@ LULU_PARSE_RULES[] = {
 [TOKEN_ELLIPSIS_3]      = {NULL,        NULL,       PREC_NONE},
 [TOKEN_ELLIPSIS_2]      = {NULL,        &concat,    PREC_CONCAT},
 [TOKEN_PERIOD]          = {NULL,        NULL,       PREC_NONE},
-[TOKEN_HASH]            = {NULL,        NULL,       PREC_NONE},
+[TOKEN_POUND]           = {&unary,      NULL,       PREC_NONE},
 [TOKEN_PLUS]            = {NULL,        &binary,    PREC_TERM},
 [TOKEN_DASH]            = {&unary,      &binary,    PREC_TERM},
 [TOKEN_STAR]            = {NULL,        &binary,    PREC_FACTOR},

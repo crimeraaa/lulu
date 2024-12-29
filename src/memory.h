@@ -11,6 +11,16 @@ mem_grow_capacity(isize cap)
     return (cap < 8) ? 8 : (cap * 2);
 }
 
+static inline isize
+mem_next_pow2(isize n)
+{
+    isize next_pow2 = 1;
+    while (next_pow2 <= n) {
+        next_pow2 *= 2;
+    }
+    return next_pow2;
+}
+
 void *
 mem_alloc(lulu_VM *vm, isize new_size);
 
