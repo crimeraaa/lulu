@@ -3,6 +3,16 @@
 #include "vm.h"
 #include "debug.h"
 
+isize
+mem_grow_capacity(isize cap)
+{
+    isize tmp = 8;
+    while (tmp <= cap) {
+        tmp *= 2;
+    }
+    return tmp;
+}
+
 static void *
 wrap_alloc(lulu_VM *vm, void *new_ptr, isize new_size)
 {

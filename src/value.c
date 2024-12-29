@@ -101,9 +101,12 @@ varray_append(lulu_VM *vm, VArray *self, const Value *value)
 void
 varray_write_at(lulu_VM *vm, VArray *self, isize index, const Value *value)
 {
+    // printf("%s:index = %ti\n", __func__, index);
     // Writing to index would cause a buffer overflow?
     if (index >= self->cap) {
-        varray_reserve(vm, self, mem_next_pow2(index));
+        varray_reserve(vm, self, mem_grow_capacity(index));
+    }
+    if (index >= self->len) {
         self->len = index + 1;
     }
     self->values[index] = *value;

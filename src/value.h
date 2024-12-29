@@ -66,7 +66,7 @@ value_is_falsy(const Value *value)
  *      Direct floating point to integer conversion are computationally expensive!
  */
 bool
-value_number_is_integer(const Value *value, isize *out);
+value_number_is_integer(const Value *value, isize *out_integer);
 
 static inline void
 value_set_nil(Value *dst)

@@ -93,7 +93,7 @@ table_new(lulu_VM *vm, isize count)
     table_init(table);
     // Clamp cap to a power of 2 so that we never modulo by 0 or 1.
     if (count > 0) {
-        adjust_capacity(vm, table, mem_grow_capacity(mem_next_pow2(count)));
+        adjust_capacity(vm, table, mem_grow_capacity(count));
     }
     return table;
 }
@@ -177,17 +177,17 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
 }
 
 static void
-move_hash_to_array(lulu_VM *vm, Table *table, isize start, isize range)
+move_hash_to_array(lulu_VM *vm, Table *table, isize start)
 {
     VArray *array = &table->array;
-    // 'stop' is exclusive.
-    for (isize i = start, stop = start + range; i < stop; i++) {
+    for (isize i = start; /* empty */; i++) {
         Value key;
         value_set_number(&key, cast(Number)i);
         const Value *value = table_get_hash(table, &key);
         if (!value || value_is_nil(value)) {
             break;
         }
+
         varray_write_at(vm, array, i - 1, value); // Lua index to C index
         table_unset(table, &key);
     }
@@ -200,28 +200,28 @@ table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
     if (value_is_nil(key)) {
         return false;
     } else if (value_number_is_integer(key, &index)) {
-        VArray *array     = &self->array;
-        bool    is_append = false;
+        VArray *array = &self->array;
 
         /**
          * We can directly write/append to the array segment.
          * Index 1 will ALWAYS go to the array segment.
+         *
+         * @todo 2024-12-29:
+         *      When 'value' is 'nil' and this check passes, this likely
+         *      indicates we are going to put a hole in the array.
          */
         if (1 <= index && index <= array->len + 1) {
             varray_write_at(vm, array, index - 1, value);
-            is_append = true;
-        }
 
-        /**
-         * Given:  hash  = {[2] = 'b'}
-         *         index, value = 1, 'a'
-         *         n_prev, n_next = 0, 1
-         *
-         * Result: array = {'a', 'b'}
-         *         hash  = {};
-         */
-        if (is_append) {
-            move_hash_to_array(vm, self, index + 1, self->cap);
+            /**
+             * Given:  hash  = {[2] = 'b'}
+             *         index, value = 1, 'a'
+             *         n_prev, n_next = 0, 1
+             *
+             * Result: array = {'a', 'b'}
+             *         hash  = {};
+             */
+            move_hash_to_array(vm, self, index + 1);
             return true;
         }
     }

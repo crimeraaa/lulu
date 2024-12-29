@@ -1,6 +1,15 @@
 do
-    local t = {'a', 'b', 'c'}
-    print(t, "Expected:", 3, "Got:", #t)
+    local t = {'a', 'b', 'c', 'd'}
+    print(t, "Expected:", 4, "Got:", #t)
+end
+
+do
+    local t = {}
+    t[1] = 'a'
+    t[2] = 'b'
+    t[3] = 'c'
+    t[4] = 'd'
+    print("Expected:", 4, "Got:", #t)
 end
 
 do
@@ -14,9 +23,18 @@ end
 
 do
     local t = {'a'}
-    print(t, "Expected:", 1, #t)
+    print("Expected:", 1, "Got:", #t)
     t[3] = 'c'
-    print(t, "Expected:", 1, #t)
+    print("Expected:", 1, "Got:", #t)
     t[2] = 'b'
-    print(t, "Expected:", 3, #t)
+    print("Expected:", 3, "Got:", #t)
+end
+
+do
+    local t = {}
+    t[1] = 'a'
+    t[2] = 'b'
+    t[3] = 'c'
+    t[4] = 'd'
+    print("Expected:", 4, "Got:", #t)
 end
