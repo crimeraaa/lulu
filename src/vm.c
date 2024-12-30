@@ -122,8 +122,9 @@ concat(lulu_VM *vm, int count)
 static lulu_Status
 execute_bytecode(lulu_VM *self)
 {
-    Chunk  *chunk     = current_chunk(self);
-    VArray *constants = &chunk->constants;
+    const Chunk *chunk     = current_chunk(self);
+    const Value *constants = chunk->constants.values; // Sync with 'chunk'!
+    Table *const globals   = &self->globals;
 
 #define BINARY_OP(value_set_fn, lulu_Number_fn, check_fn)                      \
 do {                                                                           \
@@ -153,47 +154,47 @@ do {                                                                           \
         case OP_CONSTANT:
         {
             byte3 index = instr_get_ABC(inst);
-            vm_push(self, &constants->values[index]);
+            vm_push(self, &constants[index]);
             break;
         }
-        case OP_GETGLOBAL:
+        case OP_GET_GLOBAL:
         {
             const byte3  index = instr_get_ABC(inst);
-            const Value *key   = &constants->values[index];
-            const Value *value = table_get(&self->globals, key);
+            const Value *key   = &constants[index];
+            const Value *value = table_get(globals, key);
             if (!value) {
                 vm_runtime_error(self, "Undefined global '%s'", key->string->data);
             }
             vm_push(self, value);
             break;
         }
-        case OP_SETGLOBAL:
+        case OP_SET_GLOBAL:
         {
             const byte3  index = instr_get_ABC(inst);
-            const Value *ident = &constants->values[index];
-            table_set(self, &self->globals, ident, &self->top[-1]);
+            const Value *ident = &constants[index];
+            table_set(self, globals, ident, &self->top[-1]);
             lulu_pop(self, 1);
             break;
         }
-        case OP_GETLOCAL:
+        case OP_GET_LOCAL:
         {
             byte index = instr_get_A(inst);
             vm_push(self, &self->values[index]);
             break;
         }
-        case OP_SETLOCAL:
+        case OP_SET_LOCAL:
         {
             byte index = instr_get_A(inst);
             self->values[index] = self->top[-1];
             lulu_pop(self, 1);
             break;
         }
-        case OP_NEWTABLE:
+        case OP_NEW_TABLE:
         {
             lulu_push_table(self, instr_get_ABC(inst));
             break;
         }
-        case OP_GETTABLE:
+        case OP_GET_TABLE:
         {
             if (!lulu_is_table(self, -2)) {
                 vm_runtime_error(self, "Attempt to get field of a %s value",
@@ -208,7 +209,7 @@ do {                                                                           \
             vm_push(self, value); // then push value to top
             break;
         }
-        case OP_SETTABLE:
+        case OP_SET_TABLE:
         {
             int n_pop   = instr_get_A(inst);
             int i_table = instr_get_B(inst);
@@ -237,7 +238,7 @@ do {                                                                           \
                 vm_runtime_error(self, "Attempt to get length of a %s value",
                     value_typename(value));
             }
-            value_set_number(value, n_len);
+            value_set_number(value, n_len); // @warning implicit cast: integer-to-float
             break;
         }
         case OP_NIL:
@@ -260,12 +261,12 @@ do {                                                                           \
             break;
         }
         case OP_UNM: {
-            if (lulu_is_number(self, -1)) {
-                Value *value = &self->top[-1];
+            Value *value = &self->top[-1];
+            if (value_is_number(value)) {
                 value_set_number(value, lulu_Number_unm(value->number));
             } else {
                 vm_runtime_error(self, "Attempt to negate a %s value",
-                    lulu_typename(self, -1));
+                    value_typename(value));
             }
             break;
         }

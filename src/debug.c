@@ -91,19 +91,19 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
     case OP_CONSTANT:
         print_constant(chunk, inst);
         break;
-    case OP_GETGLOBAL: case OP_SETGLOBAL:
+    case OP_GET_GLOBAL: case OP_SET_GLOBAL:
     {
         byte3 arg = instr_get_ABC(inst);
         printf("%4i\t# %s\n", arg, constants[arg].string->data);
         break;
     }
-    case OP_NEWTABLE:
+    case OP_NEW_TABLE:
     {
         byte3 arg = instr_get_ABC(inst);
         printf("%4i\n", arg);
         break;
     }
-    case OP_SETTABLE:
+    case OP_SET_TABLE:
     {
         int n_pop   = instr_get_A(inst);
         int i_table = instr_get_B(inst);
@@ -111,7 +111,7 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
         printf("%4i (table), %i (key), pop %i\n", i_table, i_key, n_pop);
         break;
     }
-    case OP_SETLOCAL: case OP_GETLOCAL:
+    case OP_SET_LOCAL: case OP_GET_LOCAL:
     case OP_PRINT:
     case OP_POP:
     case OP_CONCAT:
@@ -126,7 +126,7 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
     case OP_UNM:
     case OP_EQ: case OP_LT: case OP_LEQ: case OP_NOT:
     case OP_RETURN:
-    case OP_GETTABLE:
+    case OP_GET_TABLE:
     case OP_LEN:
         printf("\n");
         break;

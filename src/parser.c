@@ -286,19 +286,19 @@ named_variable(Parser *parser, Token *ident)
 
     if (local == UNRESOLVED_LOCAL) {
         byte3 global = identifier_constant(parser, ident);
-        compiler_emit_ABC(compiler, OP_GETGLOBAL, global);
+        compiler_emit_ABC(compiler, OP_GET_GLOBAL, global);
     } else {
-        compiler_emit_A(compiler, OP_GETLOCAL, local);
+        compiler_emit_A(compiler, OP_GET_LOCAL, local);
     }
 
     for (;;) {
         if (parser_match_token(parser, TOKEN_PERIOD)) {
             parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
             compiler_emit_string(compiler, &parser->consumed);
-            compiler_emit_op(compiler, OP_GETTABLE);
+            compiler_emit_op(compiler, OP_GET_TABLE);
         } else if (parser_match_token(parser, TOKEN_BRACKET_L)) {
             expression(parser);
-            compiler_emit_op(compiler, OP_GETTABLE);
+            compiler_emit_op(compiler, OP_GET_TABLE);
             parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
         } else {
             break;
@@ -606,7 +606,7 @@ resolve_lvalue_field(Parser *parser, LValue *lvalue, int i_table)
     } else {
         return false;
     }
-    lvalue->op      = OP_SETTABLE;
+    lvalue->op      = OP_SET_TABLE;
     lvalue->i_table = i_table;
     lvalue->i_key   = compiler->stack_usage - 1;
     lvalue->n_pop   = 1; // Pop value only. We'll clean up later.
@@ -631,10 +631,10 @@ assignment(Parser *parser)
     last.prev       = parser->lvalues;
     parser->lvalues = &last; // Should end at the deepest recursive call.
     if (local == UNRESOLVED_LOCAL) {
-        last.op     = OP_SETGLOBAL;
+        last.op     = OP_SET_GLOBAL;
         last.global = identifier_constant(parser, &parser->consumed);
     } else {
-        last.op     = OP_SETLOCAL;
+        last.op     = OP_SET_LOCAL;
         last.local  = local;
     }
 

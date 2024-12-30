@@ -21,7 +21,7 @@ hash_pointer(const void *pointer)
 }
 
 static u32
-get_hash(const Value *key)
+hash_value(const Value *key)
 {
     switch (key->type) {
     case LULU_TYPE_NIL:     return 0; // Should not happen!
@@ -36,7 +36,7 @@ get_hash(const Value *key)
 static Pair *
 find_pair(Pair *pairs, isize cap, const Value *key)
 {
-    u32   index     = get_hash(key) % cap;
+    u32   index     = hash_value(key) % cap;
     Pair *tombstone = NULL;
     for (;;) {
         Pair *pair = &pairs[index];
@@ -68,7 +68,7 @@ adjust_capacity(lulu_VM *vm, Table *table, isize new_cap)
     }
 
     Pair *old_pairs = table->pairs;
-    const isize      old_cap   = table->cap;
+    isize old_cap   = table->cap;
     table->n_pairs = 0;
     for (isize i = 0; i < old_cap; i++) {
         Pair *src = &old_pairs[i];
@@ -176,13 +176,29 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
     }
 }
 
-static void
-move_hash_to_array(lulu_VM *vm, Table *table, isize start)
+static bool
+table_set_hash(lulu_VM *vm, Table *self, const Value *key, const Value *value)
 {
-    VArray *array = &table->array;
+    if (self->n_pairs >= self->cap * LULU_TABLE_MAX_LOAD) {
+        adjust_capacity(vm, self, mem_grow_capacity(self->cap));
+    }
+
+    Pair *pair = find_pair(self->pairs, self->cap, key);
+    bool is_new_key = value_is_nil(&pair->key);
+    if (is_new_key && value_is_nil(&pair->value)) {
+        self->n_pairs++;
+    }
+    pair->key   = *key;
+    pair->value = *value;
+    return is_new_key;
+}
+
+static void
+move_hash_to_array(lulu_VM *vm, Table *table, VArray *array, isize start)
+{
     for (isize i = start; /* empty */; i++) {
         Value key;
-        value_set_number(&key, cast(Number)i);
+        value_set_number(&key, i); // @warning implicit cast: integer-to-float
         const Value *value = table_get_hash(table, &key);
         if (!value || value_is_nil(value)) {
             break;
@@ -190,6 +206,43 @@ move_hash_to_array(lulu_VM *vm, Table *table, isize start)
 
         varray_write_at(vm, array, i - 1, value); // Lua index to C index
         table_unset(table, &key);
+    }
+}
+
+static void
+move_array_to_hash(lulu_VM *vm, VArray *array, Table *table, isize start)
+{
+    for (isize i = start, stop = array->len; i <= stop; i++) {
+        Value key;
+        value_set_number(&key, i); // @warning implicit cast: integer-to-float
+        const Value *value = &array->values[i - 1];
+        table_set_hash(vm, table, &key, value);
+        array->len--;
+    }
+}
+
+static void
+table_set_array(lulu_VM *vm, Table *table, VArray *array, isize index, const Value *value)
+{
+    varray_write_at(vm, array, index - 1, value);
+    if (value_is_nil(value)) {
+        /**
+         * @note 2024-12-30:
+         *      In this branch, we are likely putting a hole in the array.
+         *      This will force us to move any affected elements (including the
+         *      one we just wrote) to the hash segment.
+         */
+        move_array_to_hash(vm, array, table, index);
+    } else {
+        /**
+         * Given:  hash  = {[2] = 'b'}
+         *         index, value = 1, 'a'
+         *         n_prev, n_next = 0, 1
+         *
+         * Result: array = {'a', 'b'}
+         *         hash  = {};
+         */
+        move_hash_to_array(vm, table, array, index + 1);
     }
 }
 
@@ -205,39 +258,13 @@ table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
         /**
          * We can directly write/append to the array segment.
          * Index 1 will ALWAYS go to the array segment.
-         *
-         * @todo 2024-12-29:
-         *      When 'value' is 'nil' and this check passes, this likely
-         *      indicates we are going to put a hole in the array.
          */
         if (1 <= index && index <= array->len + 1) {
-            varray_write_at(vm, array, index - 1, value);
-
-            /**
-             * Given:  hash  = {[2] = 'b'}
-             *         index, value = 1, 'a'
-             *         n_prev, n_next = 0, 1
-             *
-             * Result: array = {'a', 'b'}
-             *         hash  = {};
-             */
-            move_hash_to_array(vm, self, index + 1);
+            table_set_array(vm, self, array, index, value);
             return true;
         }
     }
-
-    if (self->n_pairs >= self->cap * LULU_TABLE_MAX_LOAD) {
-        adjust_capacity(vm, self, mem_grow_capacity(self->cap));
-    }
-
-    Pair *pair = find_pair(self->pairs, self->cap, key);
-    bool is_new_key = value_is_nil(&pair->key);
-    if (is_new_key && value_is_nil(&pair->value)) {
-        self->n_pairs++;
-    }
-    pair->key   = *key;
-    pair->value = *value;
-    return is_new_key;
+    return table_set_hash(vm, self, key, value);
 }
 
 bool

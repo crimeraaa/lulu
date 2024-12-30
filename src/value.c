@@ -35,10 +35,9 @@ value_number_is_integer(const Value *value, isize *out_integer)
     if (!value_is_number(value)) {
         return false;
     }
-    isize  converted = value->number;
-    Number truncated = converted;
+    Number truncated = cast(Number)(cast(isize)value->number);
     if (out_integer) {
-        *out_integer = converted;
+        *out_integer = value->number; // @warning implicit cast: float-to-integer
     }
     return value->number == truncated;
 }

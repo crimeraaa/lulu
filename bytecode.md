@@ -52,7 +52,7 @@ Lulu bytecode:
 .code
     [0x0000]    1   OP_CONSTANT     1       ; '10'
 .if_cond:
-    [0x0004]    2   OP_GETLOCAL     0       ; local x
+    [0x0004]    2   OP_GET_LOCAL    0       ; local x
     [0x0006]    |   OP_TRUE
     [0x0007]    |   OP_EQ
     [0x0008]    |   OP_TEST                 ; if Top[-1] goto <if_block>
@@ -64,7 +64,7 @@ Lulu bytecode:
     [0x0015]    |   OP_JUMP         0xffff  ; [PATCH WHEN TRUE] goto <end>
 .elseif_cond:
     [0x0019]    4   OP_POP          1       ; pop <if_cond> when falsy
-    [0x001b]    |   OP_GETLOCAL     0       ; local x
+    [0x001b]    |   OP_GET_LOCAL    0       ; local x
     [0x001d]    |   OP_FALSE
     [0x001e]    |   OP_EQ
     [0x001f]    |   OP_TEST                 ; if Top[-1] goto <elseif_block>

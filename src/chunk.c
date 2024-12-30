@@ -8,15 +8,15 @@
 
 const OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
-    //                name: cstring     arg_size,   push_count, pop_count: i8
+    //                name: cstring     sz_arg,     n_push,     n_pop: i8
     [OP_CONSTANT]   = {"CONSTANT",      3,           1,          0},
-    [OP_GETGLOBAL]  = {"GETGLOBAL",     3,           1,          0},
-    [OP_SETGLOBAL]  = {"SETGLOBAL",     3,           0,          1},
-    [OP_GETLOCAL]   = {"GETLOCAL",      1,           1,          0},
-    [OP_SETLOCAL]   = {"SETLOCAL",      1,           0,          1},
-    [OP_NEWTABLE]   = {"NEWTABLE",      3,           1,          0},
-    [OP_GETTABLE]   = {"GETTABLE",      0,           1,          2}, // @todo 2024-12-27: Add argument for pop?
-    [OP_SETTABLE]   = {"SETTABLE",      3,           0,         -1},
+    [OP_GET_GLOBAL] = {"GETGLOBAL",     3,           1,          0},
+    [OP_SET_GLOBAL] = {"SETGLOBAL",     3,           0,          1},
+    [OP_GET_LOCAL]  = {"GETLOCAL",      1,           1,          0},
+    [OP_SET_LOCAL]  = {"SETLOCAL",      1,           0,          1},
+    [OP_NEW_TABLE]  = {"NEWTABLE",      3,           1,          0},
+    [OP_GET_TABLE]  = {"GETTABLE",      0,           1,          2}, // @todo 2024-12-27: Add argument for pop?
+    [OP_SET_TABLE]  = {"SETTABLE",      3,           0,         -1},
     [OP_LEN]        = {"LEN",           0,           0,          0},
     [OP_NIL]        = {"NIL",           1,          -1,          0},
     [OP_TRUE]       = {"TRUE",          0,           1,          0},

@@ -38,12 +38,11 @@ adjust_stack_usage(Compiler *self, Instruction inst)
     OpCode_Info info = LULU_OPCODE_INFO[op];
 
     // We assume that variable delta instructions only occur on argument A.
-    int n_push = (info.push_count == -1) ? instr_get_A(inst) : info.push_count;
-    int n_pop  = (info.pop_count  == -1) ? instr_get_A(inst) : info.pop_count;
+    int n_push = (info.n_push == -1) ? instr_get_A(inst) : info.n_push;
+    int n_pop  = (info.n_pop  == -1) ? instr_get_A(inst) : info.n_pop;
 
     // printf("%-12s: push %i, pop %i\n", info.name, n_push, n_pop); //! DEBUG
-    self->stack_usage += n_push;
-    self->stack_usage -= n_pop;
+    self->stack_usage += n_push - n_pop;
 }
 
 static void
@@ -123,7 +122,7 @@ folded_instruction(Compiler *self, Instruction inst)
     OpCode       prev_op = instr_get_op(*ip);
     if (prev_op != cur_op) {
         // Account for special case
-        if (!(prev_op == OP_SETTABLE && cur_op == OP_POP)) {
+        if (!(prev_op == OP_SET_TABLE && cur_op == OP_POP)) {
             return false;
         }
     }
@@ -188,13 +187,13 @@ compiler_emit_lvalues(Compiler *self, LValue *last)
     while (iter) {
         OpCode op = iter->op;
         switch (op) {
-        case OP_SETGLOBAL:
+        case OP_SET_GLOBAL:
             compiler_emit_ABC(self, op, iter->global);
             break;
-        case OP_SETLOCAL:
+        case OP_SET_LOCAL:
             compiler_emit_A(self, op, iter->local);
             break;
-        case OP_SETTABLE:
+        case OP_SET_TABLE:
             compiler_set_table(self, iter->i_table, iter->i_key, iter->n_pop);
             n_cleanup += 2; // Get rid of remaining table and key
             break;
@@ -216,15 +215,15 @@ compiler_emit_lvalue_parent(Compiler *self, LValue *lvalue)
     // SET(GLOBAL|LOCAL) only apply to the primary (parent) table. Everything
     // else is guaranteed to be a field of this table or its subtables.
     switch (lvalue->op) {
-    case OP_SETGLOBAL:
-        compiler_emit_ABC(self, OP_GETGLOBAL, lvalue->global);
+    case OP_SET_GLOBAL:
+        compiler_emit_ABC(self, OP_GET_GLOBAL, lvalue->global);
         break;
-    case OP_SETLOCAL:
-        compiler_emit_A(self, OP_GETLOCAL, lvalue->local);
+    case OP_SET_LOCAL:
+        compiler_emit_A(self, OP_GET_LOCAL, lvalue->local);
         break;
-    case OP_SETTABLE:
+    case OP_SET_TABLE:
         // For this case, a table and a key have been emitted right before.
-        compiler_emit_op(self, OP_GETTABLE);
+        compiler_emit_op(self, OP_GET_TABLE);
         break;
     default:
         __builtin_unreachable();
@@ -357,7 +356,7 @@ isize
 compiler_new_table(Compiler *self)
 {
     isize index = current_chunk(self)->len;
-    compiler_emit_op(self, OP_NEWTABLE);
+    compiler_emit_op(self, OP_NEW_TABLE);
     return index;
 }
 
@@ -374,5 +373,5 @@ compiler_adjust_table(Compiler *self, isize i_code, isize n_fields)
 void
 compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop)
 {
-    emit_instruction(self, instr_make(OP_SETTABLE, n_pop, i_table, i_key));
+    emit_instruction(self, instr_make(OP_SET_TABLE, n_pop, i_table, i_key));
 }

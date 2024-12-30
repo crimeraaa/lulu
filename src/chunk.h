@@ -8,9 +8,9 @@
 
 typedef enum {
     OP_CONSTANT,
-    OP_GETGLOBAL, OP_SETGLOBAL,
-    OP_GETLOCAL, OP_SETLOCAL,
-    OP_NEWTABLE, OP_GETTABLE, OP_SETTABLE,
+    OP_GET_GLOBAL, OP_SET_GLOBAL,
+    OP_GET_LOCAL, OP_SET_LOCAL,
+    OP_NEW_TABLE, OP_GET_TABLE, OP_SET_TABLE,
     OP_LEN,
     OP_NIL, OP_TRUE, OP_FALSE,
     OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_POW,
@@ -22,13 +22,13 @@ typedef enum {
     OP_RETURN,
 } OpCode;
 
-#define LULU_OPCODE_COUNT (OP_RETURN + 1)
+#define LULU_OPCODE_COUNT   (OP_RETURN + 1)
 
 typedef struct {
     cstring name;
-    i8      arg_size;   // Number of bytes used for the argument.
-    i8      push_count; // Number values pushed from stack. -1 indicates unknown.
-    i8      pop_count;  // Number values popped from stack. -1 indicates unknown.
+    i8      sz_arg; // Number of bytes used for the argument.
+    i8      n_push; // Number values pushed from stack. -1 indicates unknown.
+    i8      n_pop;  // Number values popped from stack. -1 indicates unknown.
 } OpCode_Info;
 
 extern const OpCode_Info
