@@ -33,7 +33,7 @@ debug_print_value(const Value *value);
 void
 debug_disasssemble_chunk(const Chunk *chunk);
 
-isize
-debug_disassemble_instruction(const Chunk *chunk, isize index);
+int
+debug_disassemble_instruction(const Chunk *chunk, int index);
 
 #endif // LULU_DEBUG_H

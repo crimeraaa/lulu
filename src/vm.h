@@ -72,7 +72,7 @@ vm_throw_error(lulu_VM *self, lulu_Status status);
 
 LULU_ATTR_NORETURN
 void
-vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len);
+vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, int len);
 
 LULU_ATTR_NORETURN LULU_ATTR_PRINTF(2, 3)
 void

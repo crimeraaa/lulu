@@ -139,10 +139,10 @@ lulu_push_string(lulu_VM *vm, const char *data, isize len)
 }
 
 void
-lulu_push_table(lulu_VM *vm, isize count)
+lulu_push_table(lulu_VM *vm, int n_hash, int n_array)
 {
     Value tmp;
-    value_set_table(&tmp, table_new(vm, count));
+    value_set_table(&tmp, table_new(vm, n_hash, n_array));
     push_safe(vm, &tmp);
 }
 

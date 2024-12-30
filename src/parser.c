@@ -159,6 +159,7 @@ wrap_error(lulu_VM *vm, cstring filename, const Token *token, cstring msg)
         where = str.data;
         len   = str.len;
     }
+    // @warning implicit cast: differently-sized-integers
     vm_comptime_error(vm, filename, token->line, msg, where, len);
 }
 
@@ -362,17 +363,17 @@ unary(Parser *parser)
 static void
 table(Parser *parser)
 {
-    isize     n_fields = 0;
     Compiler *compiler = parser->compiler;
 
     int i_table = compiler->stack_usage;
+    int n_hash  = 0;
     int n_array = 0;
-
-    isize i_code = compiler_new_table(compiler);
+    int i_code  = compiler_new_table(compiler);
     // Have 1 or more fields to deal with?
     while (!check_token(parser, TOKEN_CURLY_R)) {
         int i_key = compiler->stack_usage;
         if (parser_match_token(parser, TOKEN_BRACKET_L)) {
+            n_hash++;
             expression(parser);
 
             parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
@@ -384,6 +385,7 @@ table(Parser *parser)
 
             // Assigning a named field?
             if (parser_match_token(parser, TOKEN_EQUAL)) {
+                n_hash++;
                 compiler_emit_string(compiler, &ident);
                 expression(parser);
             } else {
@@ -400,13 +402,12 @@ table(Parser *parser)
             expression(parser);
         }
         compiler_set_table(compiler, i_table, i_key, 2);
-        n_fields++;
         if (!parser_match_token(parser, TOKEN_COMMA)) {
             break;
         }
     }
 
-    compiler_adjust_table(compiler, i_code, n_fields);
+    compiler_adjust_table(compiler, i_code, n_hash, n_array);
     parser_consume_token(parser, TOKEN_CURLY_R, "to close table constructor");
 }
 

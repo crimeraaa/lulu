@@ -126,11 +126,11 @@ compiler_initialize_locals(Compiler *self);
 int
 compiler_resolve_local(Compiler *self, const Token *ident);
 
-isize
+int
 compiler_new_table(Compiler *self);
 
 void
-compiler_adjust_table(Compiler *self, isize i_code, isize n_fields);
+compiler_adjust_table(Compiler *self, int i_code, int n_hash, int n_array);
 
 void
 compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop);

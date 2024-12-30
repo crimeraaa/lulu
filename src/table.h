@@ -14,12 +14,12 @@ struct Table {
     Object  base;
     VArray  array;
     Pair   *pairs;
-    isize   n_pairs; // Number of active pairs.
-    isize   cap;   // Number of total allocated pairs.
+    int     n_pairs; // Number of active pairs.
+    int     cap;   // Number of total allocated pairs.
 };
 
 Table *
-table_new(lulu_VM *vm, isize count);
+table_new(lulu_VM *vm, int n_hash, int n_array);
 
 void
 table_init(Table *self);
@@ -44,6 +44,12 @@ table_find_string(Table *self, const char *data, isize len, u32 hash);
 
 bool
 table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value);
+
+bool
+table_set_hash(lulu_VM *vm, Table *self, const Value *key, const Value *value);
+
+void
+table_set_array(lulu_VM *vm, Table *table, VArray *array, int index, const Value *value);
 
 bool
 table_unset(Table *self, const Value *key);

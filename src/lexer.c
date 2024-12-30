@@ -144,6 +144,7 @@ static void
 error_token(const Lexer *lexer, cstring msg)
 {
     Token token = make_token(lexer, TOKEN_ERROR);
+    // @warning implicit cast: differently-sized integers
     vm_comptime_error(lexer->vm, lexer->filename, token.line, msg, token.start, token.len);
 }
 

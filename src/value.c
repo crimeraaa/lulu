@@ -30,12 +30,12 @@ LULU_VALUE_TRUE  = {.type = LULU_TYPE_BOOLEAN, .boolean = true},
 LULU_VALUE_FALSE = {.type = LULU_TYPE_BOOLEAN, .boolean = false};
 
 bool
-value_number_is_integer(const Value *value, isize *out_integer)
+value_number_is_integer(const Value *value, int *out_integer)
 {
     if (!value_is_number(value)) {
         return false;
     }
-    Number truncated = cast(Number)(cast(isize)value->number);
+    Number truncated = cast(Number)(cast(int)value->number);
     if (out_integer) {
         *out_integer = value->number; // @warning implicit cast: float-to-integer
     }
@@ -98,7 +98,7 @@ varray_append(lulu_VM *vm, VArray *self, const Value *value)
 }
 
 void
-varray_write_at(lulu_VM *vm, VArray *self, isize index, const Value *value)
+varray_write_at(lulu_VM *vm, VArray *self, int index, const Value *value)
 {
     // printf("%s:index = %ti\n", __func__, index);
     // Writing to index would cause a buffer overflow?
@@ -112,9 +112,9 @@ varray_write_at(lulu_VM *vm, VArray *self, isize index, const Value *value)
 }
 
 void
-varray_reserve(lulu_VM *vm, VArray *self, isize new_cap)
+varray_reserve(lulu_VM *vm, VArray *self, int new_cap)
 {
-    isize old_cap = self->cap;
+    int old_cap = self->cap;
     // Nothing to do?
     if (new_cap <= old_cap) {
         return;

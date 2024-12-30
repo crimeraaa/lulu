@@ -57,7 +57,7 @@ void
 chunk_write(lulu_VM *vm, Chunk *self, Instruction inst, int line)
 {
     // Appending to this index would cause a buffer overrun?
-    isize index = self->len++;
+    int index = self->len++;
     if (index >= self->cap) {
         chunk_reserve(vm, self, mem_grow_capacity(self->cap));
     }
@@ -66,9 +66,9 @@ chunk_write(lulu_VM *vm, Chunk *self, Instruction inst, int line)
 }
 
 void
-chunk_reserve(lulu_VM *vm, Chunk *self, isize new_cap)
+chunk_reserve(lulu_VM *vm, Chunk *self, int new_cap)
 {
-    isize old_cap = self->cap;
+    int old_cap = self->cap;
     // Nothing to do?
     if (new_cap <= old_cap) {
         return;
@@ -88,7 +88,7 @@ chunk_free(lulu_VM *vm, Chunk *self)
     chunk_init(self, "(freed chunk)");
 }
 
-isize
+int
 chunk_add_constant(lulu_VM *vm, Chunk *self, const Value *value)
 {
     VArray *constants = &self->constants;
@@ -98,7 +98,7 @@ chunk_add_constant(lulu_VM *vm, Chunk *self, const Value *value)
      *      Theoretically VERY inefficient, but works for the general case where
      *      there are not that many constants.
      */
-    for (isize i = 0; i < constants->len; i++) {
+    for (int i = 0; i < constants->len; i++) {
         if (value_eq(value, &constants->values[i])) {
             return i;
         }

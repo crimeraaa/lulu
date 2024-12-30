@@ -70,8 +70,8 @@ byte3
 compiler_make_constant(Compiler *self, const Value *value)
 {
     lulu_VM *vm    = self->vm;
-    isize    index = chunk_add_constant(vm, current_chunk(self), value);
-    if (index > LULU_MAX_CONSTANTS) {
+    int      index = chunk_add_constant(vm, current_chunk(self), value);
+    if (index > cast(int)LULU_MAX_CONSTANTS) {
         parser_error_consumed(self->parser, "Too many constants in one chunk.");
         return 0;
     }
@@ -137,7 +137,10 @@ folded_instruction(Compiler *self, Instruction inst)
         int cur_arg  = cast(int)instr_get_A(inst);
         int new_arg  = prev_arg + cur_arg + offset;
         if (0 < new_arg && new_arg <= cast(int)LULU_MAX_BYTE) {
-            instr_set_A(ip, cast(byte)new_arg);
+            // @warning implicit cast: differently sized integers
+            // However, we did do the above check to ensure 'new_arg' fits.
+            instr_set_A(ip, new_arg);
+
             // We assume that multiple of the same instruction evaluates to the
             // same net stack usage.
             adjust_stack_usage(self, inst);
@@ -314,7 +317,7 @@ compiler_add_local(Compiler *self, const Token *ident)
     for (int i = self->n_locals - 1; i >= 0; i--) {
         Local *local = &self->locals[i];
         // Checking an already defined variable of an enclosing scope?
-        if (local->depth != -1 && local->depth < self->scope_depth) {
+        if (local->depth != UNINITIALIZED_LOCAL && local->depth < self->scope_depth) {
             break;
         }
         if (identifiers_equal(local->name, ident)) {
@@ -352,22 +355,21 @@ compiler_resolve_local(Compiler *self, const Token *ident)
     return UNRESOLVED_LOCAL;
 }
 
-isize
+int
 compiler_new_table(Compiler *self)
 {
-    isize index = current_chunk(self)->len;
+    int index = current_chunk(self)->len;
     compiler_emit_op(self, OP_NEW_TABLE);
     return index;
 }
 
 void
-compiler_adjust_table(Compiler *self, isize i_code, isize n_fields)
+compiler_adjust_table(Compiler *self, int i_code, int n_hash, int n_array)
 {
     Instruction *ip = &current_chunk(self)->code[i_code];
-    if (n_fields == 0) {
-        return;
-    }
-    instr_set_ABC(ip, n_fields);
+    instr_set_A(ip, n_hash);
+    instr_set_B(ip, n_array);
+    // instr_set_ABC(ip, n_fields);
 }
 
 void

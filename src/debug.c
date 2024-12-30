@@ -44,15 +44,15 @@ debug_disasssemble_chunk(const Chunk *chunk)
 
     printf("\n.const\n");
     const VArray *constants = &chunk->constants;
-    for (isize index = 0; index < constants->len; index++) {
+    for (int index = 0; index < constants->len; index++) {
         const Value *value = &constants->values[index];
-        printf("%04tx\t%s: ", index, value_typename(value));
+        printf("%04i\t%s: ", index, value_typename(value));
         debug_print_value(value);
         printf("\n");
     }
 
     printf("\n.code\n");
-    for (isize index = 0; index < chunk->len;) {
+    for (int index = 0; index < chunk->len; /* empty */) {
         index = debug_disassemble_instruction(chunk, index);
     }
     printf("=== DISASSEMBLY: END ===\n\n");
@@ -65,17 +65,17 @@ debug_disasssemble_chunk(const Chunk *chunk)
 static void
 print_constant(const Chunk *chunk, Instruction inst)
 {
-    const isize       arg   = instr_get_ABC(inst);
+    const int    arg   = instr_get_ABC(inst);
     const Value *value = &chunk->constants.values[arg];
-    printf("%4ti\t# %s: ", arg, value_typename(value));
+    printf("%4i\t# %s: ", arg, value_typename(value));
     debug_print_value(value);
     printf("\n");
 }
 
-isize
-debug_disassemble_instruction(const Chunk *chunk, isize index)
+int
+debug_disassemble_instruction(const Chunk *chunk, int index)
 {
-    printf("%04tx ", index);
+    printf("%04i ", index);
     if (index > 0 && chunk->lines[index] == chunk->lines[index - 1]) {
         printf("   | ");
     } else {
@@ -83,8 +83,8 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
     }
 
     const Value *constants = chunk->constants.values;
-    Instruction  inst = chunk->code[index];
-    OpCode       op   = instr_get_op(inst);
+    Instruction  inst      = chunk->code[index];
+    OpCode       op        = instr_get_op(inst);
 
     printf("%-16s ", LULU_OPCODE_INFO[op].name);
     switch (op) {
@@ -93,14 +93,15 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
         break;
     case OP_GET_GLOBAL: case OP_SET_GLOBAL:
     {
-        byte3 arg = instr_get_ABC(inst);
+        int arg = instr_get_ABC(inst);
         printf("%4i\t# %s\n", arg, constants[arg].string->data);
         break;
     }
     case OP_NEW_TABLE:
     {
-        byte3 arg = instr_get_ABC(inst);
-        printf("%4i\n", arg);
+        int n_hash = instr_get_A(inst);
+        int n_array = instr_get_B(inst);
+        printf("%4i, %i # #hash, #array\n", n_hash, n_array);
         break;
     }
     case OP_SET_TABLE:
@@ -108,7 +109,7 @@ debug_disassemble_instruction(const Chunk *chunk, isize index)
         int n_pop   = instr_get_A(inst);
         int i_table = instr_get_B(inst);
         int i_key   = instr_get_C(inst);
-        printf("%4i (table), %i (key), pop %i\n", i_table, i_key, n_pop);
+        printf("%4i, %i, %i # table, key, pop\n", i_table, i_key, n_pop);
         break;
     }
     case OP_SET_LOCAL: case OP_GET_LOCAL:

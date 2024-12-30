@@ -28,9 +28,9 @@ typedef struct {
 
 struct OString {
     Object base;
-    isize       len;    // Number of non-nul characters.
-    u32         hash;
-    char        data[]; // Guaranteed to be nul terminated.
+    isize  len;     // Number of non-nul characters.
+    u32    hash;
+    char   data[];  // Guaranteed to be nul terminated.
 };
 
 #if defined(__GNUC__)

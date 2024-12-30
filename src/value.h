@@ -39,8 +39,8 @@ typedef struct {
 
 typedef struct {
     Value *values;
-    isize  len;
-    isize  cap;
+    int    len;
+    int    cap;
 } VArray;
 
 #define value_typename(value)   LULU_TYPENAMES[(value)->type]
@@ -66,7 +66,7 @@ value_is_falsy(const Value *value)
  *      Direct floating point to integer conversion are computationally expensive!
  */
 bool
-value_number_is_integer(const Value *value, isize *out_integer);
+value_number_is_integer(const Value *value, int *out_integer);
 
 static inline void
 value_set_nil(Value *dst)
@@ -116,13 +116,13 @@ void
 varray_append(lulu_VM *vm, VArray *self, const Value *value);
 
 void
-varray_write_at(lulu_VM *vm, VArray *self, isize index, const Value *value);
+varray_write_at(lulu_VM *vm, VArray *self, int index, const Value *value);
 
 void
 varray_free(lulu_VM *vm, VArray *self);
 
 // Sets cap only.
 void
-varray_reserve(lulu_VM *vm, VArray *self, isize new_cap);
+varray_reserve(lulu_VM *vm, VArray *self, int new_cap);
 
 #endif // LULU_VALUE_H

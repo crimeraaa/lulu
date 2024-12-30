@@ -191,7 +191,9 @@ do {                                                                           \
         }
         case OP_NEW_TABLE:
         {
-            lulu_push_table(self, instr_get_ABC(inst));
+            int n_hash  = instr_get_A(inst);
+            int n_array = instr_get_B(inst);
+            lulu_push_table(self, n_hash, n_array);
             break;
         }
         case OP_GET_TABLE:
@@ -386,9 +388,9 @@ vm_throw_error(lulu_VM *self, lulu_Status status)
 }
 
 void
-vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len)
+vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, int len)
 {
-    fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, cast(int)len, where);
+    fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, len, where);
     vm_throw_error(self, LULU_ERROR_COMPTIME);
 }
 

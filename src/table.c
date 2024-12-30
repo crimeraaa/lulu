@@ -34,7 +34,7 @@ hash_value(const Value *key)
 
 // Find the pair referred to be key or the first empty pair.
 static Pair *
-find_pair(Pair *pairs, isize cap, const Value *key)
+find_pair(Pair *pairs, int cap, const Value *key)
 {
     u32   index     = hash_value(key) % cap;
     Pair *tombstone = NULL;
@@ -59,18 +59,18 @@ find_pair(Pair *pairs, isize cap, const Value *key)
 }
 
 static void
-adjust_capacity(lulu_VM *vm, Table *table, isize new_cap)
+adjust_capacity(lulu_VM *vm, Table *table, int new_cap)
 {
     Pair *new_pairs = array_new(Pair, vm, new_cap);
-    for (isize i = 0; i < new_cap; i++) {
+    for (int i = 0; i < new_cap; i++) {
         value_set_nil(&new_pairs[i].key);
         value_set_nil(&new_pairs[i].value);
     }
 
     Pair *old_pairs = table->pairs;
-    isize old_cap   = table->cap;
+    int   old_cap   = table->cap;
     table->n_pairs = 0;
-    for (isize i = 0; i < old_cap; i++) {
+    for (int i = 0; i < old_cap; i++) {
         Pair *src = &old_pairs[i];
         if (value_is_nil(&src->key)) {
             continue;
@@ -87,13 +87,16 @@ adjust_capacity(lulu_VM *vm, Table *table, isize new_cap)
 }
 
 Table *
-table_new(lulu_VM *vm, isize count)
+table_new(lulu_VM *vm, int n_hash, int n_array)
 {
     Table *table = cast(Table *)object_new(vm, LULU_TYPE_TABLE, size_of(*table));
     table_init(table);
     // Clamp cap to a power of 2 so that we never modulo by 0 or 1.
-    if (count > 0) {
-        adjust_capacity(vm, table, mem_grow_capacity(count));
+    if (n_hash > 0) {
+        adjust_capacity(vm, table, mem_grow_capacity(n_hash));
+    }
+    if (n_array > 0) {
+        varray_reserve(vm, &table->array, mem_grow_capacity(n_array));
     }
     return table;
 }
@@ -129,7 +132,7 @@ const Value *
 table_get(Table *self, const Value *key)
 {
     // Try array segment
-    isize index;
+    int index;
     if (value_number_is_integer(key, &index)) {
         VArray *varray = &self->array;
         if (1 <= index && index <= varray->len) {
@@ -155,6 +158,7 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
     if (self->n_pairs == 0) {
         return NULL;
     }
+    // @warning implicit cast: signed-to-unsigned ('self->cap')
     u32 index = hash % self->cap;
     for (;;) {
         Pair  *pair = &self->pairs[index];
@@ -176,7 +180,7 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
     }
 }
 
-static bool
+bool
 table_set_hash(lulu_VM *vm, Table *self, const Value *key, const Value *value)
 {
     if (self->n_pairs >= self->cap * LULU_TABLE_MAX_LOAD) {
@@ -194,9 +198,9 @@ table_set_hash(lulu_VM *vm, Table *self, const Value *key, const Value *value)
 }
 
 static void
-move_hash_to_array(lulu_VM *vm, Table *table, VArray *array, isize start)
+move_hash_to_array(lulu_VM *vm, Table *table, VArray *array, int start)
 {
-    for (isize i = start; /* empty */; i++) {
+    for (int i = start; /* empty */; i++) {
         Value key;
         value_set_number(&key, i); // @warning implicit cast: integer-to-float
         const Value *value = table_get_hash(table, &key);
@@ -210,9 +214,9 @@ move_hash_to_array(lulu_VM *vm, Table *table, VArray *array, isize start)
 }
 
 static void
-move_array_to_hash(lulu_VM *vm, VArray *array, Table *table, isize start)
+move_array_to_hash(lulu_VM *vm, VArray *array, Table *table, int start)
 {
-    for (isize i = start, stop = array->len; i <= stop; i++) {
+    for (int i = start, stop = array->len; i <= stop; i++) {
         Value key;
         value_set_number(&key, i); // @warning implicit cast: integer-to-float
         const Value *value = &array->values[i - 1];
@@ -221,8 +225,8 @@ move_array_to_hash(lulu_VM *vm, VArray *array, Table *table, isize start)
     }
 }
 
-static void
-table_set_array(lulu_VM *vm, Table *table, VArray *array, isize index, const Value *value)
+void
+table_set_array(lulu_VM *vm, Table *table, VArray *array, int index, const Value *value)
 {
     varray_write_at(vm, array, index - 1, value);
     if (value_is_nil(value)) {
@@ -249,7 +253,7 @@ table_set_array(lulu_VM *vm, Table *table, VArray *array, isize index, const Val
 bool
 table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
 {
-    isize index;
+    int index;
     if (value_is_nil(key)) {
         return false;
     } else if (value_number_is_integer(key, &index)) {

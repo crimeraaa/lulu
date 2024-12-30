@@ -94,6 +94,13 @@ instr_set_A(Instruction *self, byte a)
 }
 
 static inline void
+instr_set_B(Instruction *self, byte b)
+{
+    *self &= ~INSTR_MASK_B;
+    *self |= cast(Instruction)b << INSTR_OFFSET_B;
+}
+
+static inline void
 instr_set_ABC(Instruction *self, byte3 arg)
 {
     *self &= ~INSTR_MASK_ABC;
@@ -113,8 +120,8 @@ typedef struct {
     Instruction *code;     // 1D array of bytecode.
     int         *lines;    // Line numbers per bytecode.
     cstring      filename; // Filename of where this chunk originated from.
-    isize        len;      // Current number of actively used bytes in `code`.
-    isize        cap;      // Total number of bytes that `code` points to.
+    int          len;      // Current number of actively used bytes in `code`.
+    int          cap;      // Total number of bytes that `code` points to.
 } Chunk;
 
 void
@@ -127,14 +134,14 @@ void
 chunk_free(lulu_VM *vm, Chunk *self);
 
 void
-chunk_reserve(lulu_VM *vm, Chunk *self, isize new_cap);
+chunk_reserve(lulu_VM *vm, Chunk *self, int new_cap);
 
 /**
  * @brief
  *      Writes to the `self->constants` array and returns the index of the said
  *      value. This is so you can locate the constant later.
  */
-isize
+int
 chunk_add_constant(lulu_VM *vm, Chunk *self, const Value *value);
 
 #endif // LULU_CHUNK_H

@@ -236,7 +236,7 @@ void
 lulu_push_value(lulu_VM *vm, int stack_index);
 
 void
-lulu_push_table(lulu_VM *vm, isize count);
+lulu_push_table(lulu_VM *vm, int n_hash, int n_array);
 
 #define lulu_push_empty_table(vm)   lulu_push_table(vm, 0)
 #define lulu_push_literal(vm, cstr) lulu_push_string(vm, cstr, size_of(cstr) - 1)
