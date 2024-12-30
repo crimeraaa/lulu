@@ -97,6 +97,33 @@ check_compare(lulu_VM *vm, int lhs_offset, int rhs_offset)
     check_numeric(vm, "compare", lhs_offset, rhs_offset);
 }
 
+static Number
+ensure_number(lulu_VM *vm, const Value *value, cstring action)
+{
+    if (!value_is_number(value)) {
+        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
+    }
+    return value->number;
+}
+
+static OString *
+ensure_string(lulu_VM *vm, const Value *value, cstring action)
+{
+    if (!value_is_string(value)) {
+        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
+    }
+    return value->string;
+}
+
+static Table *
+ensure_table(lulu_VM *vm, const Value *value, cstring action)
+{
+    if (!value_is_table(value)) {
+        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
+    }
+    return value->table;
+}
+
 static void
 concat(lulu_VM *vm, int count)
 {
@@ -105,12 +132,8 @@ concat(lulu_VM *vm, int count)
 
     builder_reset(builder);
     for (int i = 0; i < count; i++) {
-        Value *value = &args[i];
-        if (!value_is_string(value)) {
-            vm_runtime_error(vm, "Attempt to concatenate a %s value",
-                value_typename(value));
-        }
-        builder_write_string(builder, value->string->data, value->string->len);
+        OString *string = ensure_string(vm, &args[i], "concatenate");
+        builder_write_string(builder, string->data, string->len);
     }
 
     isize        len;
@@ -120,7 +143,7 @@ concat(lulu_VM *vm, int count)
 }
 
 static lulu_Status
-execute_bytecode(lulu_VM *self)
+vm_execute(lulu_VM *self)
 {
     const Chunk *chunk     = current_chunk(self);
     const Value *constants = chunk->constants.values; // Sync with 'chunk'!
@@ -129,8 +152,8 @@ execute_bytecode(lulu_VM *self)
 #define BINARY_OP(value_set_fn, lulu_Number_fn, check_fn)                      \
 do {                                                                           \
     check_fn(self, -2, -1);                                                    \
-    Value *lhs = &self->top[-2];                                               \
-    Value *rhs = &self->top[-1];                                               \
+    Value *lhs = &top[-2];                                                     \
+    Value *rhs = &top[-1];                                                     \
     value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));               \
     lulu_pop(self, 1);                                                         \
 } while (0)
@@ -139,9 +162,12 @@ do {                                                                           \
 #define COMPARE_OP(lulu_Number_fn)  BINARY_OP(value_set_boolean, lulu_Number_fn, check_compare)
 
     for (;;) {
+        // Reload these each iteration in case they were updated by the API.
+        Value *base = self->base;
+        Value *top  = self->top;
 #ifdef LULU_DEBUG_TRACE
         printf("        ");
-        for (const Value *slot = self->base; slot < self->top; slot++) {
+        for (const Value *slot = base; slot < top; slot++) {
             printf("[ ");
             debug_print_value(slot);
             printf(" ]");
@@ -172,20 +198,20 @@ do {                                                                           \
         {
             const byte3  index = instr_get_ABC(inst);
             const Value *ident = &constants[index];
-            table_set(self, globals, ident, &self->top[-1]);
+            table_set(self, globals, ident, &top[-1]);
             lulu_pop(self, 1);
             break;
         }
         case OP_GET_LOCAL:
         {
             byte index = instr_get_A(inst);
-            vm_push(self, &self->values[index]);
+            vm_push(self, &base[index]);
             break;
         }
         case OP_SET_LOCAL:
         {
             byte index = instr_get_A(inst);
-            self->values[index] = self->top[-1];
+            base[index] = top[-1];
             lulu_pop(self, 1);
             break;
         }
@@ -198,17 +224,14 @@ do {                                                                           \
         }
         case OP_GET_TABLE:
         {
-            if (!lulu_is_table(self, -2)) {
-                vm_runtime_error(self, "Attempt to get field of a %s value",
-                    lulu_typename(self, -2));
-            }
-
-            const Value *value = table_get(self->top[-2].table, &self->top[-1]);
+            Table       *table = ensure_table(self, &top[-2], "get field");
+            const Value *key   = &top[-1];
+            const Value *value = table_get(table, key);
             if (!value) {
                 value = &LULU_VALUE_NIL;
             }
-            lulu_pop(self, 2);    // pop table and key
-            vm_push(self, value); // then push value to top
+            lulu_pop(self, 2);  // pop table and key
+            vm_push(self, value);   // then push value to top
             break;
         }
         case OP_SET_TABLE:
@@ -217,22 +240,35 @@ do {                                                                           \
             int i_table = instr_get_B(inst);
             int i_key   = instr_get_C(inst);
 
-            if (!lulu_is_table(self, i_table)) {
-                vm_runtime_error(self,
-                    "Attempt to set field of a %s value",
-                    lulu_typename(self, i_table));
-            }
-            table_set(self, self->values[i_table].table, &self->values[i_key], &self->top[-1]);
+            // 'i_table' is always positive.
+            Table       *table = ensure_table(self, &base[i_table], "get field");
+            const Value *key   = &base[i_key];
+            const Value *value = &top[-1];
+            table_set(self, table, key, value);
 
             if (n_pop > 0) {
                 lulu_pop(self, n_pop);
             }
             break;
         }
+        case OP_SET_ARRAY:
+        {
+            int n_array = instr_get_A(inst);
+            int i_table = instr_get_B(inst);
+
+            // 'i_table' is always positive.
+            Table  *table = base[i_table].table;
+            VArray *array = &table->array;
+            for (int i = 0; i < n_array; i++) {
+                table_set_array(self, table, array, i + 1, &top[-n_array + i]);
+            }
+            lulu_pop(self, n_array);
+            break;
+        }
         case OP_LEN:
         {
             isize  n_len = 0;
-            Value *value = &self->top[-1];
+            Value *value = &top[-1];
             switch (value->type) {
             case LULU_TYPE_TABLE:  n_len = value->table->array.len; break;
             case LULU_TYPE_STRING: n_len = value->string->len;      break;
@@ -263,18 +299,14 @@ do {                                                                           \
             break;
         }
         case OP_UNM: {
-            Value *value = &self->top[-1];
-            if (value_is_number(value)) {
-                value_set_number(value, lulu_Number_unm(value->number));
-            } else {
-                vm_runtime_error(self, "Attempt to negate a %s value",
-                    value_typename(value));
-            }
+            Value *value  = &top[-1];
+            Number number = ensure_number(self, value, "negate");
+            value_set_number(value, lulu_Number_unm(number));
             break;
         }
         case OP_EQ: {
-            Value *rhs = &self->top[-1];
-            Value *lhs = &self->top[-2];
+            Value *rhs = &top[-1];
+            Value *lhs = &top[-2];
             value_set_boolean(lhs, value_eq(lhs, rhs));
             lulu_pop(self, 1);
             break;
@@ -282,23 +314,23 @@ do {                                                                           \
         case OP_LT:  COMPARE_OP(lulu_Number_lt);  break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
         case OP_NOT: {
-            Value *value = &self->top[-1];
+            Value *value = &top[-1];
             value_set_boolean(value, value_is_falsy(value));
             break;
         }
         case OP_PRINT: {
-            int count = instr_get_A(inst);
-            for (int i = 0; i < count; i++) {
-                value_print(&self->top[-count + i]);
+            int n_args = instr_get_A(inst);
+            for (int i = 0; i < n_args; i++) {
+                value_print(&top[-n_args + i]);
                 printf("\t");
             }
-            lulu_pop(self, count);
+            lulu_pop(self, n_args);
             printf("\n");
             break;
         }
         case OP_POP: {
-            int count = instr_get_A(inst);
-            lulu_pop(self, count);
+            int n_pop = instr_get_A(inst);
+            lulu_pop(self, n_pop);
             break;
         }
         case OP_RETURN: {
@@ -331,7 +363,7 @@ compile_and_run(lulu_VM *self, void *userdata)
 
     self->chunk = &ud->chunk;
     self->ip    = self->chunk->code;
-    execute_bytecode(self);
+    vm_execute(self);
 }
 
 lulu_Status
@@ -394,6 +426,11 @@ vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char
     vm_throw_error(self, LULU_ERROR_COMPTIME);
 }
 
+/**
+ * @note 2024-12-30:
+ *      This requires 'self->ip' to be correct, hence we cannot extract it into
+ *      a local within 'vm_execute()'.
+ */
 void
 vm_runtime_error(lulu_VM *self, cstring fmt, ...)
 {

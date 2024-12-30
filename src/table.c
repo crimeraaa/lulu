@@ -216,10 +216,11 @@ move_hash_to_array(lulu_VM *vm, Table *table, VArray *array, int start)
 static void
 move_array_to_hash(lulu_VM *vm, VArray *array, Table *table, int start)
 {
+    const Value *values = array->values;
     for (int i = start, stop = array->len; i <= stop; i++) {
         Value key;
         value_set_number(&key, i); // @warning implicit cast: integer-to-float
-        const Value *value = &array->values[i - 1];
+        const Value *value = &values[i - 1];
         table_set_hash(vm, table, &key, value);
         array->len--;
     }

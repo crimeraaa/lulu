@@ -9,13 +9,13 @@ while True:
         print()
         break
     print(line)
-    
+
     try:
         f = c.c_float(float(line))
         bits = f"{c.c_uint32.from_buffer(f).value:b}"[:]
         for i in range(len(bits)):
             print(f"{i:>04}: {bits[i]}")
-        
+
         print(bits)
     except ValueError as err:
         print(err)

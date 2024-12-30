@@ -372,6 +372,7 @@ table(Parser *parser)
     // Have 1 or more fields to deal with?
     while (!check_token(parser, TOKEN_CURLY_R)) {
         int i_key = compiler->stack_usage;
+
         if (parser_match_token(parser, TOKEN_BRACKET_L)) {
             n_hash++;
             expression(parser);
@@ -379,29 +380,27 @@ table(Parser *parser)
             parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
             parser_consume_token(parser, TOKEN_EQUAL, "in field assignment");
             expression(parser);
+            compiler_set_table(compiler, i_table, i_key, 2);
         } else if (parser_match_token(parser, TOKEN_IDENTIFIER)) {
-            // The data would otherwise be lost if we do match a '='.
-            Token ident = parser->consumed;
-
             // Assigning a named field?
-            if (parser_match_token(parser, TOKEN_EQUAL)) {
+            Token *ident = &parser->consumed;
+            if (check_token(parser, TOKEN_EQUAL)) {
                 n_hash++;
-                compiler_emit_string(compiler, &ident);
+                compiler_emit_string(compiler, ident);
+                parser_advance_token(parser);
                 expression(parser);
+                compiler_set_table(compiler, i_table, i_key, 2);
             } else {
                 n_array++;
-                compiler_emit_number(compiler, cast(Number)n_array);
                 // Prefix portion was consumed so we can't include it in 'expression()'.
-                named_variable(parser, &ident);
+                named_variable(parser, ident);
                 mid_expression(parser);
             }
         } else {
             n_array++;
-            compiler_emit_number(compiler, cast(Number)n_array);
             // Unlike the above branch we haven't consumed the prefix portion.
             expression(parser);
         }
-        compiler_set_table(compiler, i_table, i_key, 2);
         if (!parser_match_token(parser, TOKEN_COMMA)) {
             break;
         }
@@ -607,7 +606,7 @@ resolve_lvalue_field(Parser *parser, LValue *lvalue, int i_table)
     } else {
         return false;
     }
-    lvalue->op      = OP_SET_TABLE;
+    lvalue->type    = LVALUE_TABLE;
     lvalue->i_table = i_table;
     lvalue->i_key   = compiler->stack_usage - 1;
     lvalue->n_pop   = 1; // Pop value only. We'll clean up later.
@@ -632,10 +631,10 @@ assignment(Parser *parser)
     last.prev       = parser->lvalues;
     parser->lvalues = &last; // Should end at the deepest recursive call.
     if (local == UNRESOLVED_LOCAL) {
-        last.op     = OP_SET_GLOBAL;
+        last.type   = LVALUE_GLOBAL;
         last.global = identifier_constant(parser, &parser->consumed);
     } else {
-        last.op     = OP_SET_LOCAL;
+        last.type   = LVALUE_LOCAL;
         last.local  = local;
     }
 

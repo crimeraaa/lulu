@@ -4,9 +4,15 @@
 #include "compiler.h"
 #include "lexer.h"
 
+typedef enum {
+    LVALUE_GLOBAL,
+    LVALUE_LOCAL,
+    LVALUE_TABLE,
+} LValue_Type;
+
 struct LValue {
-    LValue *prev;  // Use recursion to chain multiple assignments.
-    OpCode  op;    // SETGLOBAL, SETLOCAL, or SETTABLE.
+    LValue     *prev; // Use recursion to chain multiple assignments.
+    LValue_Type type; // Determines what opcode we will use.
     union {
         struct { byte i_table, i_key, n_pop; };
         byte3 global;

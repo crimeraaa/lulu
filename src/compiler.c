@@ -46,7 +46,7 @@ adjust_stack_usage(Compiler *self, Instruction inst)
 }
 
 static void
-emit_instruction(Compiler *self, Instruction inst)
+compiler_emit_instruction(Compiler *self, Instruction inst)
 {
     lulu_VM *vm   = self->vm;
     int      line = self->parser->consumed.line;
@@ -57,7 +57,7 @@ emit_instruction(Compiler *self, Instruction inst)
 void
 compiler_emit_op(Compiler *self, OpCode op)
 {
-    emit_instruction(self, instr_make(op, 0, 0, 0));
+    compiler_emit_instruction(self, instr_make(op, 0, 0, 0));
 }
 
 void
@@ -82,7 +82,7 @@ void
 compiler_emit_constant(Compiler *self, const Value *value)
 {
     byte3 index = compiler_make_constant(self, value);
-    emit_instruction(self, instr_make_ABC(OP_CONSTANT, index));
+    compiler_emit_instruction(self, instr_make_ABC(OP_CONSTANT, index));
 }
 
 void
@@ -159,14 +159,14 @@ compiler_emit_A(Compiler *self, OpCode op, byte a)
 {
     Instruction inst = instr_make_A(op, a);
     if (!folded_instruction(self, inst)) {
-        emit_instruction(self, inst);
+        compiler_emit_instruction(self, inst);
     }
 }
 
 void
 compiler_emit_ABC(Compiler *self, OpCode op, byte3 arg)
 {
-    emit_instruction(self, instr_make_ABC(op, arg));
+    compiler_emit_instruction(self, instr_make_ABC(op, arg));
 }
 
 void
@@ -188,20 +188,16 @@ compiler_emit_lvalues(Compiler *self, LValue *last)
     LValue *iter      = last;
     int     n_cleanup = 0;    // How many table/key pairs to pop at the end?
     while (iter) {
-        OpCode op = iter->op;
-        switch (op) {
-        case OP_SET_GLOBAL:
-            compiler_emit_ABC(self, op, iter->global);
+        switch (iter->type) {
+        case LVALUE_GLOBAL:
+            compiler_emit_ABC(self, OP_SET_GLOBAL, iter->global);
             break;
-        case OP_SET_LOCAL:
-            compiler_emit_A(self, op, iter->local);
+        case LVALUE_LOCAL:
+            compiler_emit_A(self, OP_SET_LOCAL, iter->local);
             break;
-        case OP_SET_TABLE:
+        case LVALUE_TABLE:
             compiler_set_table(self, iter->i_table, iter->i_key, iter->n_pop);
             n_cleanup += 2; // Get rid of remaining table and key
-            break;
-        default:
-            __builtin_unreachable();
             break;
         }
         iter = iter->prev;
@@ -217,19 +213,16 @@ compiler_emit_lvalue_parent(Compiler *self, LValue *lvalue)
 {
     // SET(GLOBAL|LOCAL) only apply to the primary (parent) table. Everything
     // else is guaranteed to be a field of this table or its subtables.
-    switch (lvalue->op) {
-    case OP_SET_GLOBAL:
+    switch (lvalue->type) {
+    case LVALUE_GLOBAL:
         compiler_emit_ABC(self, OP_GET_GLOBAL, lvalue->global);
         break;
-    case OP_SET_LOCAL:
+    case LVALUE_LOCAL:
         compiler_emit_A(self, OP_GET_LOCAL, lvalue->local);
         break;
-    case OP_SET_TABLE:
+    case LVALUE_TABLE:
         // For this case, a table and a key have been emitted right before.
         compiler_emit_op(self, OP_GET_TABLE);
-        break;
-    default:
-        __builtin_unreachable();
         break;
     }
 }
@@ -314,8 +307,9 @@ compiler_add_local(Compiler *self, const Token *ident)
     }
 
     // Are we shadowing?
+    Local *locals = self->locals;
     for (int i = self->n_locals - 1; i >= 0; i--) {
-        Local *local = &self->locals[i];
+        Local *local = &locals[i];
         // Checking an already defined variable of an enclosing scope?
         if (local->depth != UNINITIALIZED_LOCAL && local->depth < self->scope_depth) {
             break;
@@ -326,7 +320,7 @@ compiler_add_local(Compiler *self, const Token *ident)
         }
     }
 
-    Local *local = &self->locals[self->n_locals++];
+    Local *local = &locals[self->n_locals++];
     local->name  = ostring_new(self->vm, ident->start, ident->len);
     local->depth = UNINITIALIZED_LOCAL;
 }
@@ -334,8 +328,9 @@ compiler_add_local(Compiler *self, const Token *ident)
 void
 compiler_initialize_locals(Compiler *self)
 {
+    Local *locals = self->locals;
     for (int i = self->n_locals - 1; i >= 0; i--) {
-        Local *local = &self->locals[i];
+        Local *local = &locals[i];
         if (local->depth != UNINITIALIZED_LOCAL) {
             break;
         }
@@ -346,8 +341,9 @@ compiler_initialize_locals(Compiler *self)
 int
 compiler_resolve_local(Compiler *self, const Token *ident)
 {
+    Local *locals = self->locals;
     for (int i = self->n_locals - 1; i >= 0; i--) {
-        const Local *local = &self->locals[i];
+        const Local *local = &locals[i];
         if (local->depth != UNINITIALIZED_LOCAL && identifiers_equal(local->name, ident)) {
             return i;
         }
@@ -369,11 +365,14 @@ compiler_adjust_table(Compiler *self, int i_code, int n_hash, int n_array)
     Instruction *ip = &current_chunk(self)->code[i_code];
     instr_set_A(ip, n_hash);
     instr_set_B(ip, n_array);
-    // instr_set_ABC(ip, n_fields);
+
+    if (n_array > 0) {
+        compiler_emit_instruction(self, instr_make(OP_SET_ARRAY, n_array, i_code, 0));
+    }
 }
 
 void
 compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop)
 {
-    emit_instruction(self, instr_make(OP_SET_TABLE, n_pop, i_table, i_key));
+    compiler_emit_instruction(self, instr_make(OP_SET_TABLE, n_pop, i_table, i_key));
 }

@@ -43,16 +43,16 @@ debug_disasssemble_chunk(const Chunk *chunk)
     printf(".name \"%s\"\n", chunk->filename);
 
     printf("\n.const\n");
-    const VArray *constants = &chunk->constants;
-    for (int index = 0; index < constants->len; index++) {
-        const Value *value = &constants->values[index];
+    const Value *constants = chunk->constants.values;
+    for (int index = 0, stop = chunk->constants.len; index < stop; index++) {
+        const Value *value = &constants[index];
         printf("%04i\t%s: ", index, value_typename(value));
         debug_print_value(value);
         printf("\n");
     }
 
     printf("\n.code\n");
-    for (int index = 0; index < chunk->len; /* empty */) {
+    for (int index = 0, stop = chunk->len; index < stop; /* empty */) {
         index = debug_disassemble_instruction(chunk, index);
     }
     printf("=== DISASSEMBLY: END ===\n\n");
@@ -110,6 +110,13 @@ debug_disassemble_instruction(const Chunk *chunk, int index)
         int i_table = instr_get_B(inst);
         int i_key   = instr_get_C(inst);
         printf("%4i, %i, %i # table, key, pop\n", i_table, i_key, n_pop);
+        break;
+    }
+    case OP_SET_ARRAY:
+    {
+        int n_pop   = instr_get_A(inst);
+        int i_table = instr_get_B(inst);
+        printf("%4i, %i # table, n_array\n", i_table, n_pop);
         break;
     }
     case OP_SET_LOCAL: case OP_GET_LOCAL:
