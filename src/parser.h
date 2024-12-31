@@ -10,6 +10,15 @@ typedef enum {
     LVALUE_TABLE,
 } LValue_Type;
 
+#if defined(__GNUC__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wgnu-anonymous-struct"
+    #pragma GCC diagnostic ignored "-Wnested-anon-types"
+#elif defined(_MSC_VER)
+    #pragma warning(push)
+    #pragma warning(disable : 4201)
+#endif
+
 struct LValue {
     LValue     *prev; // Use recursion to chain multiple assignments.
     LValue_Type type; // Determines what opcode we will use.
@@ -19,6 +28,12 @@ struct LValue {
         byte  local;
     }; // Arguments to the various opcodes.
 };
+
+#if defined(__GNUC__)
+    #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+    #pragma warning(pop)
+#endif
 
 typedef enum {
     PREC_NONE,

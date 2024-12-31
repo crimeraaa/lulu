@@ -76,25 +76,25 @@ current_chunk(lulu_VM *self)
 }
 
 static void
-check_numeric(lulu_VM *vm, cstring act, int lhs_offset, int rhs_offset)
+check_numeric(lulu_VM *vm, cstring act, const Value *lhs, const Value *rhs)
 {
-    if (lulu_is_number(vm, lhs_offset) && lulu_is_number(vm, rhs_offset)) {
+    if (value_is_number(lhs) && value_is_number(rhs)) {
         return;
     }
     vm_runtime_error(vm, "Attempt to %s %s with %s",
-        act, lulu_typename(vm, lhs_offset), lulu_typename(vm, rhs_offset));
+        act, value_typename(lhs), value_typename(rhs));
 }
 
 static void
-check_arith(lulu_VM *vm, int lhs_offset, int rhs_offset)
+check_arith(lulu_VM *vm, const Value *lhs, const Value *rhs)
 {
-    check_numeric(vm, "perform arithmetic on", lhs_offset, rhs_offset);
+    check_numeric(vm, "perform arithmetic on", lhs, rhs);
 }
 
 static void
-check_compare(lulu_VM *vm, int lhs_offset, int rhs_offset)
+check_compare(lulu_VM *vm, const Value *lhs, const Value *rhs)
 {
-    check_numeric(vm, "compare", lhs_offset, rhs_offset);
+    check_numeric(vm, "compare", lhs, rhs);
 }
 
 static Number
@@ -151,9 +151,9 @@ vm_execute(lulu_VM *self)
 
 #define BINARY_OP(value_set_fn, lulu_Number_fn, check_fn)                      \
 do {                                                                           \
-    check_fn(self, -2, -1);                                                    \
     Value *lhs = &top[-2];                                                     \
     Value *rhs = &top[-1];                                                     \
+    check_fn(self, lhs, rhs);                                                  \
     value_set_fn(lhs, lulu_Number_fn(lhs->number, rhs->number));               \
     lulu_pop(self, 1);                                                         \
 } while (0)
@@ -230,8 +230,8 @@ do {                                                                           \
             if (!value) {
                 value = &LULU_VALUE_NIL;
             }
-            lulu_pop(self, 2);  // pop table and key
-            vm_push(self, value);   // then push value to top
+            lulu_pop(self, 2);    // pop table and key
+            vm_push(self, value); // then push value to top
             break;
         }
         case OP_SET_TABLE:
@@ -395,11 +395,9 @@ vm_run_protected(lulu_VM *self, Protected_Fn fn, void *userdata)
     handler.prev   = self->handlers;
     self->handlers = &handler;
 
-    LULU_IMPL_TRY(&handler) {
+    LULU_IMPL_TRY(&handler, {
         fn(self, userdata);
-    } LULU_IMPL_CATCH(&handler) {
-        // empty but braces required in case of C++ 'catch'
-    }
+    });
 
     // Restore old error handler
     self->handlers = handler.prev;

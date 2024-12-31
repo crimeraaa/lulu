@@ -54,7 +54,7 @@ token_init(Token *self, const char *start, isize len, Token_Type type, int line)
 void
 token_init_empty(Token *self)
 {
-    token_init(self, NULL, 0, 0, 0);
+    token_init(self, NULL, 0, cast(Token_Type)0, 0);
 }
 
 void
@@ -144,7 +144,7 @@ static void
 error_token(const Lexer *lexer, cstring msg)
 {
     Token token = make_token(lexer, TOKEN_ERROR);
-    // @warning implicit cast: differently-sized integers
+    // @warning implicit cast: differently-sized integers ('token.len': isize => int)
     vm_comptime_error(lexer->vm, lexer->filename, token.line, msg, token.start, token.len);
 }
 

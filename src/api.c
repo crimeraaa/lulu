@@ -54,6 +54,12 @@ lulu_check_stack(lulu_VM *vm, int count)
 
 ///=== TYPE QUERY FUNCTIONS ====================================================
 
+lulu_Value_Type
+lulu_type(lulu_VM *vm, int offset)
+{
+    return offset_to_address(vm, offset)->type;
+}
+
 cstring
 lulu_typename(lulu_VM *vm, int offset)
 {

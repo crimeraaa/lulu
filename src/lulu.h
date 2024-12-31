@@ -55,9 +55,8 @@ union lulu_User_Alignment {
      *
      *      We already set 'handler->status' in 'vm_run_protected()'.
      */
-    #define LULU_IMPL_TRY(handler)      try
-    #define LULU_IMPL_CATCH(handler)    catch (...)
-    #define LULU_IMPL_THROW(handler)    throw (handler)
+    #define LULU_IMPL_TRY(handler, block)   try {block} catch (...) {}
+    #define LULU_IMPL_THROW(handler)        throw (handler)
 
     typedef int lulu_Jump_Buffer; // Dummy, we don't need this for anything.
 
@@ -72,9 +71,8 @@ union lulu_User_Alignment {
         #define LULU_ATTR_NORETURN      noreturn
     #endif
 
-    #define LULU_IMPL_TRY(handler)      if (setjmp((handler)->buffer) == 0)
-    #define LULU_IMPL_CATCH(handler)    else
-    #define LULU_IMPL_THROW(handler)    longjmp((handler)->buffer, 1)
+    #define LULU_IMPL_TRY(handler, block)   if (setjmp((handler)->buffer) == 0) {block}
+    #define LULU_IMPL_THROW(handler)        longjmp((handler)->buffer, 1)
 
     typedef jmp_buf lulu_Jump_Buffer;
 
@@ -191,6 +189,9 @@ void
 lulu_check_stack(lulu_VM *vm, int count);
 
 ///=== TYPE QUERY FUNCTIONS ====================================================
+
+lulu_Value_Type
+lulu_type(lulu_VM *vm, int offset);
 
 cstring
 lulu_typename(lulu_VM *vm, int offset);

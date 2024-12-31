@@ -81,7 +81,7 @@ instr_make_ABC(OpCode op, byte3 arg)
 
 #define instr_make_A(op, arg)   instr_make(op, arg, 0, 0)
 
-#define instr_get_op(inst)      (((inst) >> INSTR_OFFSET_OP) & LULU_MAX_BYTE)
+#define instr_get_op(inst)      cast(OpCode)(((inst) >> INSTR_OFFSET_OP) & LULU_MAX_BYTE)
 #define instr_get_A(inst)       (((inst) >> INSTR_OFFSET_A)  & LULU_MAX_BYTE)
 #define instr_get_B(inst)       (((inst) >> INSTR_OFFSET_B)  & LULU_MAX_BYTE)
 #define instr_get_C(inst)       (((inst) >> INSTR_OFFSET_C)  & LULU_MAX_BYTE)

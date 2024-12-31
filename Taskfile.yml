@@ -11,7 +11,8 @@ vars:
   MODE: debug
   EXT_SOURCE: c
   EXT_HEADER: h
-  COMPILER: clang
+  # clang++ needed to link properly when compiling as C++
+  COMPILER: '{{if eq .LANG "c"}}{{"clang"}}{{else}}{{"clang++"}}{{end}}'
   STANDARD: '{{.LANG}}11'
 
   COMMON_FLAGS: >-

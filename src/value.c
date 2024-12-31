@@ -25,9 +25,9 @@ LULU_TYPENAMES[LULU_TYPE_COUNT] = {
 #endif
 
 const Value
-LULU_VALUE_NIL   = {.type = LULU_TYPE_NIL,     .number = 0},
-LULU_VALUE_TRUE  = {.type = LULU_TYPE_BOOLEAN, .boolean = true},
-LULU_VALUE_FALSE = {.type = LULU_TYPE_BOOLEAN, .boolean = false};
+LULU_VALUE_NIL   = {LULU_TYPE_NIL,     {0}},
+LULU_VALUE_TRUE  = {LULU_TYPE_BOOLEAN, {true}},
+LULU_VALUE_FALSE = {LULU_TYPE_BOOLEAN, {false}};
 
 bool
 value_number_is_integer(const Value *value, int *out_integer)
@@ -123,7 +123,7 @@ varray_reserve(lulu_VM *vm, VArray *self, int new_cap)
     self->values = array_resize(Value, vm, self->values, old_cap, new_cap);
     self->cap    = new_cap;
 
-    // Zero out the new region.
+    // Zero out the new region so that we can safely access all elements.
     Value *values = self->values;
     for (int i = old_cap; i < new_cap; i++) {
         value_set_nil(&values[i]);

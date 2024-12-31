@@ -29,12 +29,8 @@ mem_free(lulu_VM *vm, void *old_ptr, isize old_size);
         size_of((old_ptr)[0]) * (old_count),                                   \
         size_of((old_ptr)[0]) * (new_count))
 
-// The sizeof check isn't foolproof but it should help somewhat.
 #define array_free(Type, vm, ptr, count)                                       \
-do {                                                                           \
-    static_assert(size_of(Type) == size_of((ptr)[0]), "Invalid type!");        \
     mem_free(vm, ptr, size_of((ptr)[0]) * (count));                            \
-} while (0)
 
 #define ptr_new(Type, vm)        array_new(Type, vm, 1)
 #define ptr_free(Type, vm, ptr)  array_free(Type, vm, ptr, 1)
