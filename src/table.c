@@ -67,9 +67,9 @@ adjust_capacity(lulu_VM *vm, Table *table, int new_cap)
         value_set_nil(&new_pairs[i].value);
     }
 
-    Pair *old_pairs = table->pairs;
-    int   old_cap   = table->cap;
-    table->n_pairs = 0;
+    Pair *old_pairs   = table->pairs;
+    int   new_n_pairs = 0;
+    int   old_cap     = table->cap;
     for (int i = 0; i < old_cap; i++) {
         Pair *src = &old_pairs[i];
         if (value_is_nil(&src->key)) {
@@ -78,12 +78,13 @@ adjust_capacity(lulu_VM *vm, Table *table, int new_cap)
         Pair *dst = find_pair(new_pairs, new_cap, &src->key);
         dst->key   = src->key;
         dst->value = src->value;
-        table->n_pairs++;
+        new_n_pairs++;
     }
 
     array_free(Pair, vm, old_pairs, old_cap);
-    table->pairs = new_pairs;
-    table->cap   = new_cap;
+    table->pairs   = new_pairs;
+    table->n_pairs = new_n_pairs;
+    table->cap     = new_cap;
 }
 
 Table *
@@ -135,7 +136,8 @@ table_get(Table *self, const Value *key)
     int index;
     if (value_number_is_integer(key, &index)) {
         VArray *varray = &self->array;
-        if (1 <= index && index <= varray->len) {
+        // Guaranteed to be zeroed out (i.e: all nils).
+        if (1 <= index && index <= varray->cap) {
             return &varray->values[index - 1];
         }
         // Try hash segment
@@ -213,42 +215,33 @@ move_hash_to_array(lulu_VM *vm, Table *table, VArray *array, int start)
     }
 }
 
-static void
-move_array_to_hash(lulu_VM *vm, VArray *array, Table *table, int start)
-{
-    const Value *values = array->values;
-    for (int i = start, stop = array->len; i <= stop; i++) {
-        Value key;
-        value_set_number(&key, i); // @warning implicit cast: integer-to-float
-        const Value *value = &values[i - 1];
-        table_set_hash(vm, table, &key, value);
-        array->len--;
-    }
-}
-
 void
 table_set_array(lulu_VM *vm, Table *table, VArray *array, int index, const Value *value)
 {
     varray_write_at(vm, array, index - 1, value);
+
+    /**
+     * @note 2024-12-31:
+     *      When inserting holes in the array, we actually keep it (the
+     *      array) intact.
+     *
+     *      The only difference is that the 'len' is updated to reflect this
+     *      change. This mainly applies when using the '#' operator.
+     */
     if (value_is_nil(value)) {
-        /**
-         * @note 2024-12-30:
-         *      In this branch, we are likely putting a hole in the array.
-         *      This will force us to move any affected elements (including the
-         *      one we just wrote) to the hash segment.
-         */
-        move_array_to_hash(vm, array, table, index);
-    } else {
-        /**
-         * Given:  hash  = {[2] = 'b'}
-         *         index, value = 1, 'a'
-         *         n_prev, n_next = 0, 1
-         *
-         * Result: array = {'a', 'b'}
-         *         hash  = {};
-         */
-        move_hash_to_array(vm, table, array, index + 1);
+        array->len = index - 1;
+        return;
     }
+
+    /**
+     * Given:  hash  = {[2] = 'b'}
+     *         index, value = 1, 'a'
+     *         n_prev, n_next = 0, 1
+     *
+     * Result: array = {'a', 'b'}
+     *         hash  = {};
+     */
+    move_hash_to_array(vm, table, array, index + 1);
 }
 
 bool
@@ -263,8 +256,11 @@ table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
         /**
          * We can directly write/append to the array segment.
          * Index 1 will ALWAYS go to the array segment.
+         *
+         * @note 2024-12-31:
+         *      See: 'table_set_array' for why we use 'cap'.
          */
-        if (1 <= index && index <= array->len + 1) {
+        if (1 <= index && index <= array->cap) {
             table_set_array(vm, self, array, index, value);
             return true;
         }
