@@ -283,7 +283,7 @@ table_unset(Table *self, const Value *key)
     }
 
     // Place a tombstone here.
-    pair->key   = LULU_VALUE_NIL;
-    pair->value = LULU_VALUE_TRUE;
+    value_set_nil(&pair->key);
+    value_set_boolean(&pair->value, true);
     return true;
 }

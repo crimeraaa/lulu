@@ -7,6 +7,7 @@
 /// standard
 #include <stdio.h>  // printf
 #include <string.h> // memcmp
+#include <time.h>
 
 void
 compiler_init(lulu_VM *vm, Compiler *self)
@@ -253,6 +254,7 @@ void
 compiler_compile(Compiler *self, const char *input, isize len, Chunk *chunk)
 {
     Parser parser;
+    clock_t begin = clock();
 
     /**
      * @note 2024-10-30
@@ -269,6 +271,14 @@ compiler_compile(Compiler *self, const char *input, isize len, Chunk *chunk)
         parser_declaration(&parser, self);
     }
     compiler_end_scope(self);
+
+    clock_t     elapsed = clock() - begin;
+    long double n_sec   = cast(long double)elapsed / CLOCKS_PER_SEC;
+    printf(
+        "=== COMPILATION TIME ===\n"
+        "Elapsed: %Lf seconds\n"
+        "\n",
+        n_sec);
     compiler_end(self);
 }
 

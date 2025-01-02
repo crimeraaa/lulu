@@ -112,7 +112,7 @@ lulu_push_nil(lulu_VM *vm, int count)
     lulu_check_stack(vm, count);
     Value *stack = vm->top;
     for (int i = 0; i < count; i++) {
-        stack[i] = LULU_VALUE_NIL;
+        value_set_nil(&stack[i]);
     }
     vm->top += count;
 }

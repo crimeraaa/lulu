@@ -1,6 +1,11 @@
 local pi, g = 3.14, -9.81
 
-local t = {'a', gravity = g, pi, ["zero"] = 0}
+local t = {
+    'a',
+    gravity = g,
+    pi,
+    ["zero"] = 0,
+}
 
 print("Expected:", "table: 0x...", "Actual:", t)
 print("Expected:", 2, "Actual:", #t)

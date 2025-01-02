@@ -382,7 +382,7 @@ static void
 table(Parser *parser, Compiler *compiler)
 {
     int i_code  = compiler_new_table(compiler);
-    int i_table = compiler->stack_usage;
+    int i_table = compiler->stack_usage - 1;
     int n_hash  = 0;
     int n_array = 0;
     // Have 1 or more fields to deal with?
@@ -394,6 +394,7 @@ table(Parser *parser, Compiler *compiler)
     }
 
     compiler_adjust_table(compiler, i_code, i_table, n_hash, n_array);
+    // print_parser(parser);
     parser_consume_token(parser, TOKEN_CURLY_R, "to close table constructor");
 }
 

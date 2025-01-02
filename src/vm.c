@@ -101,7 +101,7 @@ static Number
 ensure_number(lulu_VM *vm, const Value *value, cstring action)
 {
     if (!value_is_number(value)) {
-        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
+        vm_runtime_error(vm, "Attempt to %s a (%s value)", action, value_typename(value));
     }
     return value->number;
 }
@@ -110,7 +110,7 @@ static OString *
 ensure_string(lulu_VM *vm, const Value *value, cstring action)
 {
     if (!value_is_string(value)) {
-        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
+        vm_runtime_error(vm, "Attempt to %s a (%s value)", action, value_typename(value));
     }
     return value->string;
 }
@@ -119,7 +119,7 @@ static Table *
 ensure_table(lulu_VM *vm, const Value *value, cstring action)
 {
     if (!value_is_table(value)) {
-        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
+        vm_runtime_error(vm, "Attempt to %s (a %s value)", action, value_typename(value));
     }
     return value->table;
 }
@@ -351,18 +351,18 @@ typedef struct {
     Chunk       chunk;
     const char *input;
     isize       len;
-} Comptime;
+} Compiler_Context;
 
 static void
 compile_and_run(lulu_VM *self, void *userdata)
 {
-    Compiler  compiler;
-    Comptime *ud = cast(Comptime *)userdata;
+    Compiler          compiler;
+    Compiler_Context *context = cast(Compiler_Context *)userdata;
 
     compiler_init(self, &compiler);
-    compiler_compile(&compiler, ud->input, ud->len, &ud->chunk);
+    compiler_compile(&compiler, context->input, context->len, &context->chunk);
 
-    self->chunk = &ud->chunk;
+    self->chunk = &context->chunk;
     self->ip    = self->chunk->code;
     vm_execute(self);
 }
@@ -370,12 +370,12 @@ compile_and_run(lulu_VM *self, void *userdata)
 lulu_Status
 vm_interpret(lulu_VM *self, const char *input, isize len, cstring chunk_name)
 {
-    Comptime ud;
-    chunk_init(&ud.chunk, chunk_name);
-    ud.input = input;
-    ud.len   = len;
-    lulu_Status status = vm_run_protected(self, &compile_and_run, &ud);
-    chunk_free(self, &ud.chunk);
+    Compiler_Context context;
+    chunk_init(&context.chunk, chunk_name);
+    context.input = input;
+    context.len   = len;
+    lulu_Status status = vm_run_protected(self, &compile_and_run, &context);
+    chunk_free(self, &context.chunk);
     return status;
 }
 
