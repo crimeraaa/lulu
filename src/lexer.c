@@ -58,20 +58,22 @@ token_init_empty(Token *self)
 }
 
 void
-lexer_init(lulu_VM *vm, Lexer *self, cstring filename, cstring input)
+lexer_init(lulu_VM *vm, Lexer *self, cstring filename, const char *input, isize len)
 {
     self->vm       = vm;
     self->filename = filename;
     self->string   = NULL;
     self->start    = input;
     self->current  = input;
+    self->input    = input;
+    self->len      = len;
     self->line     = 1;
 }
 
 static bool
 is_at_end(const Lexer *lexer)
 {
-    return lexer->current[0] == '\0';
+    return lexer->current >= (lexer->input + lexer->len);
 }
 
 /**
@@ -423,11 +425,9 @@ consume_base16(Lexer *lexer)
 static Token
 consume_number(Lexer *lexer)
 {
-    if (match_char(lexer, '0')) {
-        if (match_char_any(lexer, "xX")) {
-            consume_base16(lexer);
-            goto trailing_characters;
-        }
+    if (match_char(lexer, '0') && match_char_any(lexer, "xX")) {
+        consume_base16(lexer);
+        goto trailing_characters;
     }
     consume_base10(lexer);
 
@@ -507,8 +507,7 @@ consume_string(Lexer *lexer, char quote)
         advance_char(lexer);
     }
 
-    if (is_at_end(lexer)) {
-unterminated_string:
+    if (is_at_end(lexer)) unterminated_string: {
         error_token(lexer, "Unterminated string");
     }
 
@@ -526,7 +525,6 @@ lexer_scan_token(Lexer *self)
 {
     skip_whitespace(self);
     self->start = self->current;
-
     if (is_at_end(self)) {
         return make_token(self, TOKEN_EOF);
     }
@@ -592,6 +590,13 @@ lexer_scan_token(Lexer *self)
     case '\'':
     case '\"': return consume_string(self, ch);
     }
-
     error_token(self, "Unexpected character");
+}
+
+void
+lexer_unscan_token(Lexer *self, const Token *token)
+{
+    self->start   = token->start - token->len;
+    self->current = token->start;
+    self->line    = token->line;
 }

@@ -61,6 +61,9 @@ value_is_falsy(const Value *value)
     return value_is_nil(value) || (value_is_boolean(value) && !value->boolean);
 }
 
+bool
+number_to_integer(Number number, int *out_integer);
+
 /**
  * @note 2024-12-28:
  *      Direct floating point to integer conversion are computationally expensive!

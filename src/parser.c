@@ -4,7 +4,7 @@
 #include "object.h"
 
 /// standard
-#include <stdio.h>      // printf
+#include <stdio.h> // printf
 
 /**
  * Because C++ is an annoying little s@%!, we have to explicitly define operations
@@ -30,18 +30,13 @@ operator++(Precedence &prec, int)
 #endif // __cplusplus
 
 static void
-expression(Parser *self);
-
-// We consumed a prefix expression token but didn't actually parse it, so now we
-// have an incomplete expression that would cause 'expression()' to error out.
-static void
-mid_expression(Parser *self);
+expression(Parser *self, Compiler *compiler);
 
 static void
-statement(Parser *parser);
+statement(Parser *parser, Compiler *compiler);
 
 static void
-parse_precedence(Parser *parser, Precedence precedence);
+parse_precedence(Parser *parser, Compiler *compiler, Precedence precedence);
 
 static Parse_Rule *
 get_rule(Token_Type type);
@@ -51,24 +46,14 @@ get_rule(Token_Type type);
  *      Assumes we just consumed a '=' token.
  */
 static int
-parse_expression_list(Parser *parser)
+parse_expression_list(Parser *parser, Compiler *compiler)
 {
     int count = 0;
     do {
-        expression(parser);
+        expression(parser, compiler);
         count++;
     } while (parser_match_token(parser, TOKEN_COMMA));
     return count;
-}
-
-static byte3
-identifier_constant(Parser *parser, Token *token)
-{
-    Compiler *compiler = parser->compiler;
-    OString  *string   = ostring_new(compiler->vm, token->start, token->len);
-    Value     tmp;
-    value_set_string(&tmp, string);
-    return compiler_make_constant(compiler, &tmp);
 }
 
 LULU_ATTR_UNUSED
@@ -89,24 +74,24 @@ print_parser(const Parser *parser)
 {
     print_token(&parser->consumed, "consumed");
     printf("\t");
-    print_token(&parser->current, "current");
+    print_token(&parser->lookahead, "lookahead");
     printf("\n");
 }
 
 void
-parser_init(Parser *self, Compiler *compiler, Lexer *lexer)
+parser_init(lulu_VM *vm, Parser *self, Compiler *compiler, cstring filename, const char *input, isize len)
 {
+    lexer_init(vm, &self->lexer, filename, input, len);
     token_init_empty(&self->consumed);
-    token_init_empty(&self->current);
+    token_init_empty(&self->lookahead);
     self->lvalues  = NULL;
     self->compiler = compiler;
-    self->lexer    = lexer;
 }
 
 void
 parser_advance_token(Parser *self)
 {
-    Lexer *lexer = self->lexer;
+    Lexer *lexer = &self->lexer;
     Token  token = lexer_scan_token(lexer);
 
     // Should be normally impossible, but just in case
@@ -114,15 +99,15 @@ parser_advance_token(Parser *self)
         parser_error_current(self, "Unhandled error token");
     }
 
-    self->consumed = self->current;
-    self->current  = token;
+    self->consumed = self->lookahead;
+    self->lookahead  = token;
     // print_parser(parser); //! DEBUG
 }
 
 static bool
 check_token(Parser *parser, Token_Type type)
 {
-    return parser->current.type == type;
+    return parser->lookahead.type == type;
 }
 
 void
@@ -166,14 +151,14 @@ wrap_error(lulu_VM *vm, cstring filename, const Token *token, cstring msg)
 void
 parser_error_current(Parser *self, cstring msg)
 {
-    Lexer *lexer = self->lexer;
-    wrap_error(lexer->vm, lexer->filename, &self->current, msg);
+    Lexer *lexer = &self->lexer;
+    wrap_error(lexer->vm, lexer->filename, &self->lookahead, msg);
 }
 
 void
 parser_error_consumed(Parser *self, cstring msg)
 {
-    Lexer *lexer = self->lexer;
+    Lexer *lexer = &self->lexer;
     wrap_error(lexer->vm, lexer->filename, &self->consumed, msg);
 }
 
@@ -202,15 +187,14 @@ get_binary_op(Token_Type type)
 
 // Assumes we just consumed a '..' token.
 static void
-concat(Parser *parser)
+concat(Parser *parser, Compiler *compiler)
 {
-    Compiler *compiler = parser->compiler;
-    int       argc     = 1;
+    int argc = 1;
     for (;;) {
         if (argc >= cast(int)LULU_MAX_BYTE) {
             parser_error_consumed(parser, "Too many consecutive concatenations");
         }
-        parse_precedence(parser, PREC_CONCAT + 1);
+        parse_precedence(parser, compiler, PREC_CONCAT + 1);
         argc++;
         if (!parser_match_token(parser, TOKEN_ELLIPSIS_2)) {
             break;
@@ -220,16 +204,15 @@ concat(Parser *parser)
 }
 
 static void
-binary(Parser *parser)
+binary(Parser *parser, Compiler *compiler)
 {
-    Compiler  *compiler = parser->compiler;
-    Token_Type type     = parser->consumed.type;
-    Precedence prec     = get_rule(type)->precedence;
+    Token_Type type = parser->consumed.type;
+    Precedence prec = get_rule(type)->precedence;
     // For exponentiation, enforce right associativity.
     if (prec != PREC_POW) {
         prec++;
     }
-    parse_precedence(parser, prec);
+    parse_precedence(parser, compiler, prec);
     compiler_emit_op(compiler, get_binary_op(type));
 
     // NOT, GT and GEQ are implemented as complements of EQ, LEQ and LT.
@@ -246,10 +229,9 @@ binary(Parser *parser)
 }
 
 static void
-literal(Parser *parser)
+literal(Parser *parser, Compiler *compiler)
 {
-    Compiler *compiler = parser->compiler;
-    Lexer    *lexer    = parser->lexer;
+    Lexer *lexer = &parser->lexer;
     switch (parser->consumed.type) {
     case TOKEN_FALSE:
         compiler_emit_op(compiler, OP_FALSE);
@@ -280,13 +262,11 @@ literal(Parser *parser)
  *      Analogous to `compiler.c:namedVariable()` in the book.
  */
 static void
-named_variable(Parser *parser, Token *ident)
+named_variable(Parser *parser, Compiler *compiler, Token *ident)
 {
-    Compiler *compiler = parser->compiler;
-    int       local    = compiler_resolve_local(compiler, &parser->consumed);
-
+    int local = compiler_resolve_local(compiler, &parser->consumed);
     if (local == UNRESOLVED_LOCAL) {
-        byte3 global = identifier_constant(parser, ident);
+        byte3 global = compiler_identifier_constant(compiler, ident);
         compiler_emit_ABC(compiler, OP_GET_GLOBAL, global);
     } else {
         compiler_emit_A(compiler, OP_GET_LOCAL, local);
@@ -298,7 +278,7 @@ named_variable(Parser *parser, Token *ident)
             compiler_emit_string(compiler, &parser->consumed);
             compiler_emit_op(compiler, OP_GET_TABLE);
         } else if (parser_match_token(parser, TOKEN_BRACKET_L)) {
-            expression(parser);
+            expression(parser, compiler);
             compiler_emit_op(compiler, OP_GET_TABLE);
             parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
         } else {
@@ -308,9 +288,9 @@ named_variable(Parser *parser, Token *ident)
 }
 
 static void
-identifier(Parser *parser)
+identifier(Parser *parser, Compiler *compiler)
 {
-    named_variable(parser, &parser->consumed);
+    named_variable(parser, compiler, &parser->consumed);
 }
 
 /**
@@ -322,9 +302,9 @@ identifier(Parser *parser)
  *      Assumes we just consumed a ')' character.
  */
 static void
-grouping(Parser *parser)
+grouping(Parser *parser, Compiler *compiler)
 {
-    expression(parser);
+    expression(parser, compiler);
     parser_consume_token(parser, TOKEN_PAREN_R, "after expression");
 }
 
@@ -345,15 +325,53 @@ get_unary_opcode(Token_Type type)
  *      Assumes we just consumed some unary operator, like '-' or '#'.
  */
 static void
-unary(Parser *parser)
+unary(Parser *parser, Compiler *compiler)
 {
     // Saved in stack frame memory as recursion will update parser->consumed.
-    Token_Type type     = parser->consumed.type;
-    Compiler  *compiler = parser->compiler;
+    Token_Type type = parser->consumed.type;
 
     // Compile the operand.
-    parse_precedence(parser, PREC_UNARY);
+    parse_precedence(parser, compiler, PREC_UNARY);
     compiler_emit_op(compiler, get_unary_opcode(type));
+}
+
+static void
+parser_unget_token(Parser *parser, const Token *prev_consumed)
+{
+    lexer_unscan_token(&parser->lexer, &parser->lookahead);
+    parser->lookahead = parser->consumed;
+    parser->consumed  = *prev_consumed;
+}
+
+static void
+assign_field_or_index(Parser *parser, Compiler *compiler, int i_table, int *n_hash, int *n_array)
+{
+    int   i_key = compiler->stack_usage;
+    Token prev  = parser->consumed;
+    if (parser_match_token(parser, TOKEN_BRACKET_L)) {
+        expression(parser, compiler);
+        parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
+        parser_consume_token(parser, TOKEN_EQUAL, "in field assignment");
+        goto field_value;
+    } else if (parser_match_token(parser, TOKEN_IDENTIFIER)) {
+        // Assigning a named field?
+        Token ident = parser->consumed;
+        if (parser_match_token(parser, TOKEN_EQUAL)) {
+            compiler_emit_string(compiler, &ident);
+
+field_value:
+            *n_hash += 1;
+            expression(parser, compiler);
+            compiler_set_table(compiler, i_table, i_key, 2);
+        } else {
+            // Reset token stream so we can consume the full expression properly.
+            parser_unget_token(parser, &prev);
+            goto indexed;
+        }
+    } else indexed: {
+        *n_array += 1;
+        expression(parser, compiler);
+    }
 }
 
 /**
@@ -361,52 +379,21 @@ unary(Parser *parser)
  *      Assumes we just consumed a '{'.
  */
 static void
-table(Parser *parser)
+table(Parser *parser, Compiler *compiler)
 {
-    Compiler *compiler = parser->compiler;
-
+    int i_code  = compiler_new_table(compiler);
     int i_table = compiler->stack_usage;
     int n_hash  = 0;
     int n_array = 0;
-    int i_code  = compiler_new_table(compiler);
     // Have 1 or more fields to deal with?
     while (!check_token(parser, TOKEN_CURLY_R)) {
-        int i_key = compiler->stack_usage;
-
-        if (parser_match_token(parser, TOKEN_BRACKET_L)) {
-            n_hash++;
-            expression(parser);
-
-            parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
-            parser_consume_token(parser, TOKEN_EQUAL, "in field assignment");
-            expression(parser);
-            compiler_set_table(compiler, i_table, i_key, 2);
-        } else if (parser_match_token(parser, TOKEN_IDENTIFIER)) {
-            // Assigning a named field?
-            Token *ident = &parser->consumed;
-            if (check_token(parser, TOKEN_EQUAL)) {
-                n_hash++;
-                compiler_emit_string(compiler, ident);
-                parser_advance_token(parser);
-                expression(parser);
-                compiler_set_table(compiler, i_table, i_key, 2);
-            } else {
-                n_array++;
-                // Prefix portion was consumed so we can't include it in 'expression()'.
-                named_variable(parser, ident);
-                mid_expression(parser);
-            }
-        } else {
-            n_array++;
-            // Unlike the above branch we haven't consumed the prefix portion.
-            expression(parser);
-        }
+        assign_field_or_index(parser, compiler, i_table, &n_hash, &n_array);
         if (!parser_match_token(parser, TOKEN_COMMA)) {
             break;
         }
     }
 
-    compiler_adjust_table(compiler, i_code, n_hash, n_array);
+    compiler_adjust_table(compiler, i_code, i_table, n_hash, n_array);
     parser_consume_token(parser, TOKEN_CURLY_R, "to close table constructor");
 }
 
@@ -502,43 +489,41 @@ LULU_PARSE_RULES[] = {
 /// }}}=========================================================================
 
 static void
-expression(Parser *parser)
+expression(Parser *parser, Compiler *compiler)
 {
-    parse_precedence(parser, PREC_ASSIGNMENT + 1);
+    parse_precedence(parser, compiler, PREC_ASSIGNMENT + 1);
 }
 
 static void
-block(Parser *parser)
+block(Parser *parser, Compiler *compiler)
 {
     while (!check_token(parser, TOKEN_END) && !check_token(parser, TOKEN_EOF)) {
-        parser_declaration(parser);
+        parser_declaration(parser, compiler);
     }
     parser_consume_token(parser, TOKEN_END, "to close 'do' block");
 }
 
 static void
-print_statement(Parser *parser)
+print_statement(Parser *parser, Compiler *compiler)
 {
-    Compiler *compiler = parser->compiler;
-    int       argc     = 0;
+    int argc = 0;
     parser_consume_token(parser, TOKEN_PAREN_L, "after 'print'");
     // Potentially have at least 1 argument?
     if (!parser_match_token(parser, TOKEN_PAREN_R)) {
-        argc = parse_expression_list(parser);
+        argc = parse_expression_list(parser, compiler);
         parser_consume_token(parser, TOKEN_PAREN_R, "to close call");
     }
     compiler_emit_A(compiler, OP_PRINT, argc);
 }
 
 static void
-statement(Parser *parser)
+statement(Parser *parser, Compiler *compiler)
 {
     if (parser_match_token(parser, TOKEN_PRINT)) {
-        print_statement(parser);
+        print_statement(parser, compiler);
     } else if (parser_match_token(parser, TOKEN_DO)) {
-        Compiler *compiler = parser->compiler;
         compiler_begin_scope(compiler);
-        block(parser);
+        block(parser, compiler);
         compiler_end_scope(compiler);
     } else {
         parser_error_current(parser, "Expected an expression");
@@ -581,27 +566,26 @@ adjust_assignment_list(Parser *parser, int assigns, int exprs)
  *      (Somewhat) Analogous to the book's `compiler.c:defineVariable()`.
  */
 static void
-assign_lvalues(Parser *parser, LValue *last)
+assign_lvalues(Parser *parser, Compiler *compiler, LValue *last)
 {
     const int assigns  = count_assignment_targets(last);
-    const int exprs    = parse_expression_list(parser);
+    const int exprs    = parse_expression_list(parser, compiler);
 
     adjust_assignment_list(parser, assigns, exprs);
-    compiler_emit_lvalues(parser->compiler, last);
+    compiler_emit_lvalues(compiler, last);
     parser_match_token(parser, TOKEN_SEMICOLON);
 }
 
 static bool
-resolve_lvalue_field(Parser *parser, LValue *lvalue, int i_table)
+resolve_lvalue_field(Parser *parser, Compiler *compiler, LValue *lvalue, int i_table)
 {
-    Compiler *compiler = parser->compiler;
     if (parser_match_token(parser, TOKEN_PERIOD)) {
         parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
         compiler_emit_lvalue_parent(compiler, lvalue);
         compiler_emit_string(compiler, &parser->consumed);
     } else if (parser_match_token(parser, TOKEN_BRACKET_L)) {
         compiler_emit_lvalue_parent(compiler, lvalue);
-        expression(parser);
+        expression(parser, compiler);
         parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
     } else {
         return false;
@@ -622,17 +606,16 @@ resolve_lvalue_field(Parser *parser, LValue *lvalue, int i_table)
  *      hereh, so we have no equivalent of `compiler.c:parseVariable()`.
  */
 static void
-assignment(Parser *parser)
+assignment(Parser *parser, Compiler *compiler)
 {
-    Compiler *compiler = parser->compiler;
-    const int local    = compiler_resolve_local(compiler, &parser->consumed);
+    const int local = compiler_resolve_local(compiler, &parser->consumed);
 
     LValue last;
     last.prev       = parser->lvalues;
     parser->lvalues = &last; // Should end at the deepest recursive call.
     if (local == UNRESOLVED_LOCAL) {
         last.type   = LVALUE_GLOBAL;
-        last.global = identifier_constant(parser, &parser->consumed);
+        last.global = compiler_identifier_constant(compiler, &parser->consumed);
     } else {
         last.type   = LVALUE_LOCAL;
         last.local  = local;
@@ -640,7 +623,7 @@ assignment(Parser *parser)
 
     // Must be consistent. Concept check: `t.k.v = 10`
     const int i_table = compiler->stack_usage;
-    while (resolve_lvalue_field(parser, &last, i_table));
+    while (resolve_lvalue_field(parser, compiler, &last, i_table));
 
 
     /**
@@ -650,21 +633,19 @@ assignment(Parser *parser)
      */
     if (parser_match_token(parser, TOKEN_COMMA)) {
         parser_consume_token(parser, TOKEN_IDENTIFIER, "after ','");
-        assignment(parser);
+        assignment(parser, compiler);
     }
 
     if (parser->lvalues) {
         parser_consume_token(parser, TOKEN_EQUAL, "in assignment");
-        assign_lvalues(parser, &last);
+        assign_lvalues(parser, compiler, &last);
         parser->lvalues = NULL;
     }
 }
 
 void
-parser_declaration(Parser *self)
+parser_declaration(Parser *self, Compiler *compiler)
 {
-    Compiler *compiler = self->compiler;
-
     if (parser_match_token(self, TOKEN_LOCAL)) {
         int assigns = 0;
         int exprs   = 0;
@@ -676,36 +657,30 @@ parser_declaration(Parser *self)
         } while (parser_match_token(self, TOKEN_COMMA));
 
         if (parser_match_token(self, TOKEN_EQUAL)) {
-            exprs = parse_expression_list(self);
+            exprs = parse_expression_list(self, compiler);
         }
 
         adjust_assignment_list(self, assigns, exprs);
         compiler_initialize_locals(self->compiler);
         parser_match_token(self, TOKEN_SEMICOLON);
     } else if (parser_match_token(self, TOKEN_IDENTIFIER)) {
-        assignment(self);
+        assignment(self, compiler);
     } else {
-        statement(self);
+        statement(self, compiler);
     }
 }
 
 static void
-parse_infix(Parser *parser, Precedence precedence)
+parse_infix(Parser *parser, Compiler *compiler, Precedence precedence)
 {
-    while (precedence <= get_rule(parser->current.type)->precedence) {
+    while (precedence <= get_rule(parser->lookahead.type)->precedence) {
         parser_advance_token(parser);
-        get_rule(parser->consumed.type)->infix_fn(parser);
+        get_rule(parser->consumed.type)->infix_fn(parser, compiler);
     }
 }
 
 static void
-mid_expression(Parser *parser)
-{
-    parse_infix(parser, PREC_ASSIGNMENT + 1);
-}
-
-static void
-parse_precedence(Parser *parser, Precedence precedence)
+parse_precedence(Parser *parser, Compiler *compiler, Precedence precedence)
 {
     parser_advance_token(parser);
     Parse_Fn prefix_rule = get_rule(parser->consumed.type)->prefix_fn;
@@ -713,8 +688,8 @@ parse_precedence(Parser *parser, Precedence precedence)
         parser_error_consumed(parser, "Expected prefix expression");
         return;
     }
-    prefix_rule(parser);
-    parse_infix(parser, precedence);
+    prefix_rule(parser, compiler);
+    parse_infix(parser, compiler, precedence);
 
     // Don't consume as we want to report the left hand side of the '='.
     if (check_token(parser, TOKEN_EQUAL)) {

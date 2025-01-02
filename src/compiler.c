@@ -85,6 +85,15 @@ compiler_emit_constant(Compiler *self, const Value *value)
     compiler_emit_instruction(self, instr_make_ABC(OP_CONSTANT, index));
 }
 
+byte3
+compiler_identifier_constant(Compiler *self, const Token *ident)
+{
+    OString *string = ostring_new(self->vm, ident->start, ident->len);
+    Value    tmp;
+    value_set_string(&tmp, string);
+    return compiler_make_constant(self, &tmp);
+}
+
 void
 compiler_emit_string(Compiler *self, const Token *token)
 {
@@ -241,9 +250,8 @@ compiler_end(Compiler *self)
 }
 
 void
-compiler_compile(Compiler *self, cstring input, Chunk *chunk)
+compiler_compile(Compiler *self, const char *input, isize len, Chunk *chunk)
 {
-    Lexer  lexer;
     Parser parser;
 
     /**
@@ -251,16 +259,14 @@ compiler_compile(Compiler *self, cstring input, Chunk *chunk)
      *      Could be in 'compiler_init()'...
      */
     self->chunk  = chunk;
-    self->lexer  = &lexer;
+    self->lexer  = &parser.lexer;
     self->parser = &parser;
-    parser_init(&parser, self, &lexer);
-    lexer_init(self->vm, &lexer, chunk->filename, input);
+    parser_init(self->vm, &parser, self, chunk->filename, input, len);
 
     parser_advance_token(&parser);
-
     compiler_begin_scope(self);
     while (!parser_match_token(&parser, TOKEN_EOF)) {
-        parser_declaration(&parser);
+        parser_declaration(&parser, self);
     }
     compiler_end_scope(self);
     compiler_end(self);
@@ -275,14 +281,17 @@ compiler_begin_scope(Compiler *self)
 void
 compiler_end_scope(Compiler *self)
 {
-    self->scope_depth--;
+    Local *locals = self->locals;
+    int    depth  = self->scope_depth--;
+    int    index  = self->n_locals;
+    int    n_pop  = 0;
 
-    // Remove this scope's local variables.
-    int n_pop = 0;
-    while (self->n_locals > 0 && self->locals[self->n_locals - 1].depth > self->scope_depth) {
-        self->n_locals--;
-        n_pop++;
+    // Iterate over the locals in the scope we just popped.
+    while (index > 0 && locals[index - 1].depth >= depth) {
+        index -= 1;
+        n_pop += 1;
     }
+    self->n_locals = index;
 
     if (n_pop > 0) {
         compiler_emit_pop(self, n_pop);
@@ -301,21 +310,23 @@ identifiers_equal(const OString *string, const Token *token)
 void
 compiler_add_local(Compiler *self, const Token *ident)
 {
+    Parser *parser = self->parser;
     if (self->n_locals >= cast(int)LULU_MAX_BYTE) {
-        parser_error_consumed(self->parser, "Too many local variables in function");
+        parser_error_consumed(parser, "Too many local variables in function");
         return;
     }
 
     // Are we shadowing?
-    Local *locals = self->locals;
+    Local *locals      = self->locals;
+    int    scope_depth = self->scope_depth;
     for (int i = self->n_locals - 1; i >= 0; i--) {
         Local *local = &locals[i];
         // Checking an already defined variable of an enclosing scope?
-        if (local->depth != UNINITIALIZED_LOCAL && local->depth < self->scope_depth) {
+        if (local->depth != UNINITIALIZED_LOCAL && local->depth < scope_depth) {
             break;
         }
         if (identifiers_equal(local->name, ident)) {
-            parser_error_consumed(self->parser, "Shadowing of local variable");
+            parser_error_consumed(parser, "Shadowing of local variable");
             return;
         }
     }
@@ -360,14 +371,14 @@ compiler_new_table(Compiler *self)
 }
 
 void
-compiler_adjust_table(Compiler *self, int i_code, int n_hash, int n_array)
+compiler_adjust_table(Compiler *self, int i_code, int i_table, int n_hash, int n_array)
 {
     Instruction *ip = &current_chunk(self)->code[i_code];
     instr_set_A(ip, n_hash);
     instr_set_B(ip, n_array);
 
     if (n_array > 0) {
-        compiler_emit_instruction(self, instr_make(OP_SET_ARRAY, n_array, i_code, 0));
+        compiler_emit_instruction(self, instr_make(OP_SET_ARRAY, n_array, i_table, 0));
     }
 }
 

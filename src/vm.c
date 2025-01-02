@@ -348,8 +348,9 @@ do {                                                                           \
 }
 
 typedef struct {
-    Chunk   chunk;
-    cstring input;
+    Chunk       chunk;
+    const char *input;
+    isize       len;
 } Comptime;
 
 static void
@@ -359,7 +360,7 @@ compile_and_run(lulu_VM *self, void *userdata)
     Comptime *ud = cast(Comptime *)userdata;
 
     compiler_init(self, &compiler);
-    compiler_compile(&compiler, ud->input, &ud->chunk);
+    compiler_compile(&compiler, ud->input, ud->len, &ud->chunk);
 
     self->chunk = &ud->chunk;
     self->ip    = self->chunk->code;
@@ -367,11 +368,12 @@ compile_and_run(lulu_VM *self, void *userdata)
 }
 
 lulu_Status
-vm_interpret(lulu_VM *self, cstring name, cstring input)
+vm_interpret(lulu_VM *self, const char *input, isize len, cstring chunk_name)
 {
     Comptime ud;
+    chunk_init(&ud.chunk, chunk_name);
     ud.input = input;
-    chunk_init(&ud.chunk, name);
+    ud.len   = len;
     lulu_Status status = vm_run_protected(self, &compile_and_run, &ud);
     chunk_free(self, &ud.chunk);
     return status;

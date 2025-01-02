@@ -19,11 +19,11 @@ typedef struct Parser   Parser;
 typedef struct Compiler Compiler;
 
 struct Parser {
-    Token     current;  // Also our "lookahead" token.
+    Lexer     lexer;
+    Token     lookahead;
     Token     consumed; // Analogous to the book's `compiler.c:Parser::previous`.
     LValue   *lvalues;  // Must be valid only once per assignment call.
     Compiler *compiler;
-    Lexer    *lexer;
 };
 
 typedef struct {
@@ -50,7 +50,7 @@ compiler_init(lulu_VM *vm, Compiler *self);
  *      Assumes 'self' has been initialized properly.
  */
 void
-compiler_compile(Compiler *self, cstring input, Chunk *chunk);
+compiler_compile(Compiler *self, const char *input, isize len, Chunk *chunk);
 
 void
 compiler_end(Compiler *self);
@@ -66,6 +66,9 @@ compiler_make_constant(Compiler *self, const Value *value);
 
 void
 compiler_emit_constant(Compiler *self, const Value *value);
+
+byte3
+compiler_identifier_constant(Compiler *self, const Token *ident);
 
 void
 compiler_emit_string(Compiler *self, const Token *token);
@@ -130,7 +133,7 @@ int
 compiler_new_table(Compiler *self);
 
 void
-compiler_adjust_table(Compiler *self, int i_code, int n_hash, int n_array);
+compiler_adjust_table(Compiler *self, int i_code, int i_table, int n_hash, int n_array);
 
 void
 compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop);

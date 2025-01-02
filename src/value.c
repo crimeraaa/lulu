@@ -35,11 +35,18 @@ value_number_is_integer(const Value *value, int *out_integer)
     if (!value_is_number(value)) {
         return false;
     }
-    Number truncated = cast(Number)(cast(int)value->number);
+    return number_to_integer(value->number, out_integer);
+}
+
+bool
+number_to_integer(Number number, int *out_integer)
+{
+    int    converted = cast(int)number;
+    Number truncated = cast(Number)converted;
     if (out_integer) {
-        *out_integer = value->number; // @warning implicit cast: float-to-integer
+        *out_integer = converted; // @warning implicit cast: float-to-integer
     }
-    return value->number == truncated;
+    return number == truncated;
 }
 
 void

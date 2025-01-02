@@ -52,7 +52,7 @@ typedef enum {
 } Precedence;
 
 typedef void
-(*Parse_Fn)(Parser *parser);
+(*Parse_Fn)(Parser *parser, Compiler *compiler);
 
 typedef const struct {
     Parse_Fn   prefix_fn;
@@ -61,7 +61,7 @@ typedef const struct {
 } Parse_Rule;
 
 void
-parser_init(Parser *self, Compiler *compiler, Lexer *lexer);
+parser_init(lulu_VM *vm, Parser *self, Compiler *compiler, cstring filename, const char *input, isize len);
 
 /**
  * @note 2024-09-06
@@ -90,7 +90,7 @@ parser_match_token(Parser *self, Token_Type type);
  *      Analogous to `compiler.c:declaration()` in the book.
  */
 void
-parser_declaration(Parser *self);
+parser_declaration(Parser *self, Compiler *compiler);
 
 /**
  * @note 2024-09-07

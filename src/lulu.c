@@ -5,7 +5,7 @@
 /// standard
 #include <stdio.h>  // FILE, printf
 #include <stdlib.h> // {m,re}alloc, free
-#include <string.h> // memset
+#include <string.h> // memset, strcspn
 
 /**
  * @brief
@@ -21,6 +21,7 @@ alloc_fn(void *allocator_data, isize new_size, isize align, void *old_ptr, isize
 {
     unused(allocator_data);
     unused(align);
+    unused(old_size);
 
     // Trying to free some existing memory?
     // NOTE: old_size can be 0 in this case.
@@ -34,11 +35,11 @@ alloc_fn(void *allocator_data, isize new_size, isize align, void *old_ptr, isize
 
     // We extended the allocation? Note that immediately loading a possibly
     // invalid pointer is not a safe assumption for 100% of architectures.
-    isize add_len = new_size - old_size;
-    if (add_len > 0) {
-        byte *add_ptr = cast(byte *)new_ptr + old_size;
-        memset(add_ptr, 0, add_len);
-    }
+    // isize add_len = new_size - old_size;
+    // if (add_len > 0) {
+    //     byte *add_ptr = cast(byte *)new_ptr + old_size;
+    //     memset(add_ptr, 0, add_len);
+    // }
     return new_ptr;
 }
 
@@ -52,12 +53,13 @@ repl(lulu_VM *vm)
             printf("\n");
             break;
         }
-        vm_interpret(vm, "stdin", line);
+        // @warning implicit cast: size_t to ptrdiff_t
+        vm_interpret(vm, line, strcspn(line, "\n"), "stdin");
     }
 }
 
 static char *
-read_file(lulu_VM *vm, cstring path, usize *out_size)
+read_file(lulu_VM *vm, cstring path, usize *out_len)
 {
     FILE *file_ptr   = fopen(path, "rb");
     usize file_size  = 0;
@@ -73,12 +75,11 @@ read_file(lulu_VM *vm, cstring path, usize *out_size)
     fseek(file_ptr, 0L, SEEK_END);
     file_size = ftell(file_ptr);
     rewind(file_ptr);
-
-    buf_size = file_size + 1;
-    if (out_size) {
-        *out_size = buf_size;
+    if (out_len) {
+        *out_len = file_size;
     }
 
+    buf_size = file_size + 1;
     buf_ptr = array_new(char, vm, buf_size);
     if (!buf_ptr) {
         fprintf(stderr, "Not enough memory to read file '%s'.\n", path);
@@ -91,7 +92,6 @@ read_file(lulu_VM *vm, cstring path, usize *out_size)
         array_free(char, vm, buf_ptr, buf_size);
         goto cleanup;
     }
-
     buf_ptr[bytes_read] = '\0';
 
 cleanup:
@@ -109,8 +109,8 @@ run_file(lulu_VM *vm, cstring path)
     if (!source) {
         return 2;
     }
-    status = vm_interpret(vm, path, source);
-    array_free(char, vm, source, len);
+    status = vm_interpret(vm, source, len, path);
+    array_free(char, vm, source, len + 1);
 
     switch (status) {
     case LULU_OK:

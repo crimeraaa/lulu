@@ -83,6 +83,8 @@ typedef struct {
     Number       number;   // Number literal if we currently have one.
     const char  *start;
     const char  *current;
+    const char  *input;
+    isize        len;
     int          line;
 } Lexer;
 
@@ -100,9 +102,12 @@ void
 token_init_empty(Token *self);
 
 void
-lexer_init(lulu_VM *vm, Lexer *self, cstring filename, cstring input);
+lexer_init(lulu_VM *vm, Lexer *self, cstring filename, const char *input, isize len);
 
 Token
 lexer_scan_token(Lexer *self);
+
+void
+lexer_unscan_token(Lexer *self, const Token *token);
 
 #endif // LULU_LEXER_H

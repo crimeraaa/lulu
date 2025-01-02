@@ -15,7 +15,7 @@ struct Table {
     VArray  array;
     Pair   *pairs;
     int     n_pairs; // Number of active pairs.
-    int     cap;   // Number of total allocated pairs.
+    int     cap;     // Number of total allocated pairs.
 };
 
 Table *

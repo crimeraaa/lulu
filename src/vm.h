@@ -50,7 +50,7 @@ void
 vm_free(lulu_VM *self);
 
 lulu_Status
-vm_interpret(lulu_VM *self, cstring name, cstring input);
+vm_interpret(lulu_VM *self, const char *input, isize len, cstring chunk_name);
 
 void
 vm_push(lulu_VM *self, const Value *value);

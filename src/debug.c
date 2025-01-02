@@ -99,9 +99,9 @@ debug_disassemble_instruction(const Chunk *chunk, int index)
     }
     case OP_NEW_TABLE:
     {
-        int n_hash = instr_get_A(inst);
+        int n_hash  = instr_get_A(inst);
         int n_array = instr_get_B(inst);
-        printf("%4i, %i # #hash, #array\n", n_hash, n_array);
+        printf("%4i, %i # hash=%i, array=%i\n", n_hash, n_array, n_hash, n_array);
         break;
     }
     case OP_SET_TABLE:
