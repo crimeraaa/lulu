@@ -6,37 +6,37 @@
 #include <stdlib.h> // strtod
 #include <string.h> // strchr, memcmp
 
-static bool
+static inline bool
 is_digit(char ch)
 {
     return '0' <= ch && ch <= '9';
 }
 
-static bool
+static inline bool
 is_lower(char ch)
 {
     return 'a' <= ch && ch <= 'z';
 }
 
-static bool
+static inline bool
 is_upper(char ch)
 {
     return 'A' <= ch && ch <= 'Z';
 }
 
-static bool
+static inline bool
 is_hexdigit(char ch)
 {
     return is_digit(ch) || ('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F');
 }
 
-static bool
+static inline bool
 is_alpha(char ch)
 {
     return is_upper(ch) || is_lower(ch) || ch == '_';
 }
 
-static bool
+static inline bool
 is_alnum(char ch)
 {
     return is_alpha(ch) || is_digit(ch);
@@ -65,15 +65,14 @@ lexer_init(lulu_VM *vm, Lexer *self, cstring filename, const char *input, isize 
     self->string   = NULL;
     self->start    = input;
     self->current  = input;
-    self->input    = input;
-    self->len      = len;
+    self->end      = input + len;
     self->line     = 1;
 }
 
-static bool
+static inline bool
 is_at_end(const Lexer *lexer)
 {
-    return lexer->current >= (lexer->input + lexer->len);
+    return lexer->current >= lexer->end;
 }
 
 /**
@@ -84,13 +83,13 @@ is_at_end(const Lexer *lexer)
  * @note 2024-09-05
  *      Analogous to the book's `scanner.c:advance()`.
  */
-static char
+static inline char
 advance_char(Lexer *lexer)
 {
     return *lexer->current++;
 }
 
-static char
+static inline char
 peek_char(const Lexer *lexer)
 {
     return lexer->current[0];
@@ -496,6 +495,7 @@ consume_string(Lexer *lexer, char quote)
         }
 
         if (ch == '\\') {
+            // @todo 2025-01-03: Allow for escaped hex literals? e.g. "\x27"
             int esc = get_escape_char(peek_next_char(lexer));
             if (esc == -1) {
                 error_token(lexer, "Invalid escape character");

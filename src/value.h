@@ -43,12 +43,41 @@ typedef struct {
     int    cap;
 } VArray;
 
-#define value_typename(value)   LULU_TYPENAMES[(value)->type]
-#define value_is_nil(value)     ((value)->type == LULU_TYPE_NIL)
-#define value_is_boolean(value) ((value)->type == LULU_TYPE_BOOLEAN)
-#define value_is_number(value)  ((value)->type == LULU_TYPE_NUMBER)
-#define value_is_string(value)  ((value)->type == LULU_TYPE_STRING)
-#define value_is_table(value)   ((value)->type == LULU_TYPE_TABLE)
+static inline cstring
+value_typename(const Value *value)
+{
+    return LULU_TYPENAMES[value->type];
+}
+
+static inline bool
+value_is_nil(const Value *value)
+{
+    return value->type == LULU_TYPE_NIL;
+}
+
+static inline bool
+value_is_boolean(const Value *value)
+{
+    return value->type == LULU_TYPE_BOOLEAN;
+}
+
+static inline bool
+value_is_number(const Value *value)
+{
+    return value->type == LULU_TYPE_NUMBER;
+}
+
+static inline bool
+value_is_string(const Value *value)
+{
+    return value->type == LULU_TYPE_STRING;
+}
+
+static inline bool
+value_is_table(const Value *value)
+{
+    return value->type == LULU_TYPE_TABLE;
+}
 
 extern const Value
 LULU_VALUE_NIL,

@@ -83,8 +83,7 @@ typedef struct {
     Number       number;   // Number literal if we currently have one.
     const char  *start;
     const char  *current;
-    const char  *input;
-    isize        len;
+    const char  *end;
     int          line;
 } Lexer;
 

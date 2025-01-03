@@ -35,7 +35,13 @@ init_alloc(lulu_VM *self, void *userdata)
     lulu_push_literal(self, "_G");
     // Will most likely realloc the globals table!
     table_set(self, &self->globals, &self->top[-1], &value);
-    lulu_pop(self, 1); // We only pushed "_G" so pop it.
+
+    // Ensure all keywords are interned.
+    for (int i = 0; i < LULU_KEYWORD_COUNT; i++) {
+        const LString keyword = LULU_TOKEN_STRINGS[i];
+        lulu_push_string(self, keyword.data, keyword.len);
+    }
+    lulu_pop(self, LULU_KEYWORD_COUNT + 1); // Pop "_G" and all interned keywords
 }
 
 bool

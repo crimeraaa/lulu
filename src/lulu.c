@@ -48,9 +48,9 @@ repl(lulu_VM *vm)
 {
     char line[512];
     for (;;) {
-        printf(">>> ");
+        fputs(">>> ", stdout);
         if (!fgets(line, size_of(line), stdin)) {
-            printf("\n");
+            fputc('\n', stdout);
             break;
         }
         // @warning implicit cast: size_t to ptrdiff_t

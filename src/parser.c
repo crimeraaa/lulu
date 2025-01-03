@@ -104,7 +104,7 @@ parser_advance_token(Parser *self)
     // print_parser(parser); //! DEBUG
 }
 
-static bool
+static inline bool
 check_token(Parser *parser, Token_Type type)
 {
     return parser->lookahead.type == type;
@@ -335,43 +335,12 @@ unary(Parser *parser, Compiler *compiler)
     compiler_emit_op(compiler, get_unary_opcode(type));
 }
 
-static void
-parser_unget_token(Parser *parser, const Token *prev_consumed)
+static inline void
+parser_unscan_token(Parser *parser, const Token *prev_consumed)
 {
     lexer_unscan_token(&parser->lexer, &parser->lookahead);
     parser->lookahead = parser->consumed;
     parser->consumed  = *prev_consumed;
-}
-
-static void
-assign_field_or_index(Parser *parser, Compiler *compiler, int i_table, int *n_hash, int *n_array)
-{
-    int   i_key = compiler->stack_usage;
-    Token prev  = parser->consumed;
-    if (parser_match_token(parser, TOKEN_BRACKET_L)) {
-        expression(parser, compiler);
-        parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
-        parser_consume_token(parser, TOKEN_EQUAL, "in field assignment");
-        goto field_value;
-    } else if (parser_match_token(parser, TOKEN_IDENTIFIER)) {
-        // Assigning a named field?
-        Token ident = parser->consumed;
-        if (parser_match_token(parser, TOKEN_EQUAL)) {
-            compiler_emit_string(compiler, &ident);
-
-field_value:
-            *n_hash += 1;
-            expression(parser, compiler);
-            compiler_set_table(compiler, i_table, i_key, 2);
-        } else {
-            // Reset token stream so we can consume the full expression properly.
-            parser_unget_token(parser, &prev);
-            goto indexed;
-        }
-    } else indexed: {
-        *n_array += 1;
-        expression(parser, compiler);
-    }
 }
 
 /**
@@ -387,7 +356,32 @@ table(Parser *parser, Compiler *compiler)
     int n_array = 0;
     // Have 1 or more fields to deal with?
     while (!check_token(parser, TOKEN_CURLY_R)) {
-        assign_field_or_index(parser, compiler, i_table, &n_hash, &n_array);
+        int   i_key = compiler->stack_usage;
+        Token prev  = parser->consumed;
+        if (parser_match_token(parser, TOKEN_BRACKET_L)) {
+            expression(parser, compiler);
+            parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
+            parser_consume_token(parser, TOKEN_EQUAL, "in field assignment");
+            goto field_value;
+        } else if (parser_match_token(parser, TOKEN_IDENTIFIER)) {
+            // Assigning a named field?
+            Token ident = parser->consumed;
+            if (parser_match_token(parser, TOKEN_EQUAL)) {
+                compiler_emit_string(compiler, &ident);
+
+            field_value:
+                n_hash += 1;
+                expression(parser, compiler);
+                compiler_set_table(compiler, i_table, i_key, 2);
+            } else {
+                // Reset token stream so we can consume the full expression properly.
+                parser_unscan_token(parser, &prev);
+                goto indexed;
+            }
+        } else indexed: {
+            n_array += 1;
+            expression(parser, compiler);
+        }
         if (!parser_match_token(parser, TOKEN_COMMA)) {
             break;
         }
@@ -545,16 +539,12 @@ count_assignment_targets(LValue *last)
 }
 
 /**
- * @details assigns > exprs
- *      a, b, c = 1, 2
- *
- * @details assigns < exprs
- *      a, b    = 1, 2, 3
+ * @details assigns > exprs: a, b, c = 1, 2
+ * @details assigns < exprs: a, b    = 1, 2, 3
  */
 static void
-adjust_assignment_list(Parser *parser, int assigns, int exprs)
+adjust_assignment_list(Compiler *compiler, int assigns, int exprs)
 {
-    Compiler *compiler = parser->compiler;
     if (assigns > exprs) {
         compiler_emit_nil(compiler, assigns - exprs);
     } else if (assigns < exprs) {
@@ -572,7 +562,7 @@ assign_lvalues(Parser *parser, Compiler *compiler, LValue *last)
     const int assigns  = count_assignment_targets(last);
     const int exprs    = parse_expression_list(parser, compiler);
 
-    adjust_assignment_list(parser, assigns, exprs);
+    adjust_assignment_list(compiler, assigns, exprs);
     compiler_emit_lvalues(compiler, last);
     parser_match_token(parser, TOKEN_SEMICOLON);
 }
@@ -661,7 +651,7 @@ parser_declaration(Parser *self, Compiler *compiler)
             exprs = parse_expression_list(self, compiler);
         }
 
-        adjust_assignment_list(self, assigns, exprs);
+        adjust_assignment_list(compiler, assigns, exprs);
         compiler_initialize_locals(self->compiler);
         parser_match_token(self, TOKEN_SEMICOLON);
     } else if (parser_match_token(self, TOKEN_IDENTIFIER)) {

@@ -5,8 +5,15 @@
 
 #include <assert.h>
 
-isize
-mem_grow_capacity(isize cap);
+static inline isize
+mem_grow_capacity(isize cap)
+{
+    isize tmp = 8;
+    while (tmp <= cap) {
+        tmp *= 2;
+    }
+    return tmp;
+}
 
 void *
 mem_alloc(lulu_VM *vm, isize new_size);
@@ -18,14 +25,10 @@ void
 mem_free(lulu_VM *vm, void *old_ptr, isize old_size);
 
 #define array_new(Type, vm, count)                                             \
-    cast(Type *)mem_alloc(                                                     \
-        vm,                                                                    \
-        size_of(Type) * (count))
+    cast(Type *)mem_alloc(vm, size_of(Type) * (count))
 
 #define array_resize(Type, vm, old_ptr, old_count, new_count)                  \
-    cast(Type *)mem_resize(                                                    \
-        vm,                                                                    \
-        old_ptr,                                                               \
+    cast(Type *)mem_resize(vm, old_ptr,                                        \
         size_of((old_ptr)[0]) * (old_count),                                   \
         size_of((old_ptr)[0]) * (new_count))
 
