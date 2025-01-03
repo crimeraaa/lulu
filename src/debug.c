@@ -67,7 +67,6 @@ print_constant(const Chunk *chunk, Instruction inst)
 {
     const int    arg   = instr_get_ABC(inst);
     const Value *value = &chunk->constants.values[arg];
-    printf("%4i\t# %s: ", arg, value_typename(value));
     debug_print_value(value);
     printf("\n");
 }
@@ -125,7 +124,7 @@ debug_disassemble_instruction(const Chunk *chunk, int index)
     case OP_CONCAT:
     case OP_NIL:
     {
-        byte arg = instr_get_A(inst);
+        int arg = instr_get_A(inst);
         printf("%4i\n", arg);
         break;
     }

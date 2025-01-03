@@ -266,7 +266,7 @@ named_variable(Parser *parser, Compiler *compiler, Token *ident)
 {
     int local = compiler_resolve_local(compiler, &parser->consumed);
     if (local == UNRESOLVED_LOCAL) {
-        byte3 global = compiler_identifier_constant(compiler, ident);
+        u32 global = compiler_identifier_constant(compiler, ident);
         compiler_emit_ABC(compiler, OP_GET_GLOBAL, global);
     } else {
         compiler_emit_A(compiler, OP_GET_LOCAL, local);
@@ -512,10 +512,19 @@ print_statement(Parser *parser, Compiler *compiler)
 }
 
 static void
+if_statement(Parser *parser, Compiler *compiler)
+{
+    expression(parser, compiler);
+    parser_consume_token(parser, TOKEN_THEN, "after 'if' condition");
+}
+
+static void
 statement(Parser *parser, Compiler *compiler)
 {
     if (parser_match_token(parser, TOKEN_PRINT)) {
         print_statement(parser, compiler);
+    } else if (parser_match_token(parser, TOKEN_IF)) {
+        if_statement(parser, compiler);
     } else if (parser_match_token(parser, TOKEN_DO)) {
         compiler_begin_scope(compiler);
         block(parser, compiler);

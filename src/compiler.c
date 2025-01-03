@@ -67,26 +67,26 @@ compiler_emit_return(Compiler *self)
     compiler_emit_op(self, OP_RETURN);
 }
 
-byte3
+u32
 compiler_make_constant(Compiler *self, const Value *value)
 {
     lulu_VM *vm    = self->vm;
     int      index = chunk_add_constant(vm, current_chunk(self), value);
-    if (index > cast(int)LULU_MAX_CONSTANTS) {
+    if (index > LULU_MAX_CONSTANTS) {
         parser_error_consumed(self->parser, "Too many constants in one chunk.");
         return 0;
     }
-    return cast(byte3)index;
+    return index;
 }
 
 void
 compiler_emit_constant(Compiler *self, const Value *value)
 {
-    byte3 index = compiler_make_constant(self, value);
+    u32 index = compiler_make_constant(self, value);
     compiler_emit_instruction(self, instr_make_ABC(OP_CONSTANT, index));
 }
 
-byte3
+u32
 compiler_identifier_constant(Compiler *self, const Token *ident)
 {
     OString *string = ostring_new(self->vm, ident->start, ident->len);
@@ -165,7 +165,7 @@ folded_instruction(Compiler *self, Instruction inst)
 }
 
 void
-compiler_emit_A(Compiler *self, OpCode op, byte a)
+compiler_emit_A(Compiler *self, OpCode op, u16 a)
 {
     Instruction inst = instr_make_A(op, a);
     if (!folded_instruction(self, inst)) {
@@ -174,7 +174,7 @@ compiler_emit_A(Compiler *self, OpCode op, byte a)
 }
 
 void
-compiler_emit_ABC(Compiler *self, OpCode op, byte3 arg)
+compiler_emit_ABC(Compiler *self, OpCode op, u32 arg)
 {
     compiler_emit_instruction(self, instr_make_ABC(op, arg));
 }
@@ -182,14 +182,14 @@ compiler_emit_ABC(Compiler *self, OpCode op, byte3 arg)
 void
 compiler_emit_nil(Compiler *self, int n_nil)
 {
-    compiler_emit_A(self, OP_NIL, cast(byte)n_nil);
+    compiler_emit_A(self, OP_NIL, n_nil);
 }
 
 // @todo 2024-12-27: Check for overflow before casting to `byte`?
 void
 compiler_emit_pop(Compiler *self, int n_pop)
 {
-    compiler_emit_A(self, OP_POP, cast(byte)n_pop);
+    compiler_emit_A(self, OP_POP, n_pop);
 }
 
 void

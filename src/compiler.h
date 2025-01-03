@@ -11,7 +11,7 @@
  * @brief
  *      (2 ** 24) - 1 = 0b11111111_11111111_11111111
  */
-#define LULU_MAX_CONSTANTS  LULU_MAX_BYTE3
+#define LULU_MAX_CONSTANTS  INSTR_MAX_ABC
 #define LULU_MAX_LOCALS     LULU_MAX_BYTE
 
 typedef struct LValue   LValue;
@@ -61,13 +61,13 @@ compiler_emit_op(Compiler *self, OpCode op);
 void
 compiler_emit_return(Compiler *self);
 
-byte3
+u32
 compiler_make_constant(Compiler *self, const Value *value);
 
 void
 compiler_emit_constant(Compiler *self, const Value *value);
 
-byte3
+u32
 compiler_identifier_constant(Compiler *self, const Token *ident);
 
 void
@@ -77,10 +77,10 @@ void
 compiler_emit_number(Compiler *self, Number n);
 
 void
-compiler_emit_A(Compiler *self, OpCode op, byte a);
+compiler_emit_A(Compiler *self, OpCode op, u16 a);
 
 void
-compiler_emit_ABC(Compiler *self, OpCode op, byte3 arg);
+compiler_emit_ABC(Compiler *self, OpCode op, u32 arg);
 
 void
 compiler_emit_pop(Compiler *self, int n_pop);

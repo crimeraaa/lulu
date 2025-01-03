@@ -140,7 +140,6 @@ typedef   int32_t i32;
 typedef   int64_t i64;
 
 typedef        u8 byte;  // Smallest addressable unit.
-typedef       u32 byte3; // Use only 24 bits.
 typedef    size_t usize;
 typedef ptrdiff_t isize;
 

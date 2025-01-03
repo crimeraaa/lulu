@@ -185,13 +185,13 @@ do {                                                                           \
         switch (instr_get_op(inst)) {
         case OP_CONSTANT:
         {
-            byte3 index = instr_get_ABC(inst);
+            u32 index = instr_get_ABC(inst);
             vm_push(self, &constants[index]);
             break;
         }
         case OP_GET_GLOBAL:
         {
-            const byte3  index = instr_get_ABC(inst);
+            const u32    index = instr_get_ABC(inst);
             const Value *key   = &constants[index];
             const Value *value = table_get(globals, key);
             if (!value) {
@@ -202,7 +202,7 @@ do {                                                                           \
         }
         case OP_SET_GLOBAL:
         {
-            const byte3  index = instr_get_ABC(inst);
+            const u32    index = instr_get_ABC(inst);
             const Value *ident = &constants[index];
             table_set(self, globals, ident, &top[-1]);
             lulu_pop(self, 1);
@@ -210,13 +210,13 @@ do {                                                                           \
         }
         case OP_GET_LOCAL:
         {
-            byte index = instr_get_A(inst);
+            unsigned int index = instr_get_A(inst);
             vm_push(self, &base[index]);
             break;
         }
         case OP_SET_LOCAL:
         {
-            byte index = instr_get_A(inst);
+            unsigned int index = instr_get_A(inst);
             base[index] = top[-1];
             lulu_pop(self, 1);
             break;
