@@ -112,12 +112,7 @@ instr_make(OpCode op, u16 a, u16 b, u16 c)
 static inline Instruction
 instr_make_ABC(OpCode op, u32 abc)
 {
-    // Note how we use OFFSET_B, not OFFSET_A since the 0th bit of 'abc'
-    // is the start of 'c'.
-    u16 a = (abc >> INSTR_OFFSET_B)  & INSTR_MAX_A;
-    u16 b = (abc >> INSTR_OFFSET_C)  & INSTR_MAX_B;
-    u16 c = (abc >> INSTR_OFFSET_OP) & INSTR_MAX_C;
-    return instr_make(op, a, b, c);
+    return (abc << INSTR_OFFSET_C) | (cast(Instruction)op << INSTR_OFFSET_OP);
 }
 
 #define instr_make_A(op, abc)   instr_make(op, abc, 0, 0)
