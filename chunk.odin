@@ -20,7 +20,7 @@ chunk_append :: proc(chunk: ^Chunk, inst: Instruction, line: int) {
     append(&chunk.line, line)
 }
 
-/* 
+/*
 Note:
  -  The index will be needed later on for opcodes to access the value in the
     constants table.

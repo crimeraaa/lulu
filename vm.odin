@@ -30,10 +30,12 @@ vm_destroy :: proc(vm: ^VM) {
     vm.ip    = nil
 }
 
-vm_interpret :: proc(vm: ^VM, chunk: ^Chunk) -> (status: Status) {
-    vm.chunk = chunk
-    vm.ip    = raw_data(chunk.code)
-    return vm_execute(vm)
+vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
+    // vm.chunk = chunk
+    // vm.ip    = raw_data(chunk.code)
+    // return vm_execute(vm)
+    compiler_compile(vm, input, name)
+    return .Ok
 }
 
 vm_execute :: proc(vm: ^VM) -> (status: Status) {
@@ -54,7 +56,7 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
             fmt.println()
             debug_disasm_inst(chunk^, inst, ptr_sub(ip, raw_data(code)))
         }
-        
+
         switch (inst.op) {
         case .Constant:
             a  := inst.a
