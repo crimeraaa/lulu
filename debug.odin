@@ -41,8 +41,10 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Div: binary("/", inst)
     case .Unm: unary("-", inst)
     case .Return:
+        a := inst.a
+        b := inst.b
         print_args2(inst)
-        fmt.printfln("return reg[%i]..=reg[%v]", inst.a, inst.b)
+        fmt.printfln("return reg[%i]..<reg[%v]", a, u16(a) + b)
     }
 }
 

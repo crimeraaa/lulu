@@ -5,13 +5,8 @@
 file ./bin/lulu
 set print pretty on
 
-break lulu.c:main
-break vm.c:compile_and_run
-break vm.c:compile_only
+break lulu.odin:main
 
-# break api.c:lulu_load
-# break lexer.c:number_token
-# break string.c:luluStr_concat
 layout src
 
 run

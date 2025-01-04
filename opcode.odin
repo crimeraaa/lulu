@@ -47,7 +47,7 @@ Sub,        // A, B, C  |   Reg[A] := Reg[B] - Reg[C]
 Mul,        // A, B, C  |   Reg[A] := Reg[B] * Reg[C]
 Div,        // A, B, C  |   Reg[A] := Reg[B] / Reg[C]
 Unm,        // A, B     |   Reg[A] := -Reg[B]
-Return,     // A, B     |   return Reg[A], ... Reg[A + B - 2]
+Return,     // A, B     |   return Reg[A], ... Reg[A + B - 1]
 }
 
 /* =============================================================================
@@ -63,15 +63,15 @@ BIT_RK :: 1 << (SIZE_B - 1)
 
 import "core:fmt"
 
-rk_is_k :: proc(b_or_c: u16) -> bool {
+rk_is_k :: #force_inline proc "contextless" (#any_int b_or_c: u16) -> bool {
     return (b_or_c & BIT_RK) != 0
 }
 
-rk_get_k :: proc(b_or_c: u16) -> u16 {
+rk_get_k :: #force_inline proc "contextless" (#any_int b_or_c: u16) -> u16 {
     return (b_or_c & ~cast(u16)BIT_RK)
 }
 
-rk_as_k :: proc(b_or_c: u8) -> u16 {
+rk_as_k :: #force_inline proc "contextless" (#any_int b_or_c: u8) -> u16 {
     return cast(u16)b_or_c | BIT_RK
 }
 

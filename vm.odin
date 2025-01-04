@@ -47,7 +47,7 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
         defer ip = ptr_add(ip, 1)
 
         when LULU_DEBUG {
-            fmt.printf("       ")
+            fmt.printf("      ")
             for value in vm.stack[:ptr_sub(vm.sp, vm.bp)] {
                 value_print(value, .Stack)
             }
@@ -68,15 +68,16 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
         case .Unm: vm.bp[inst.a] = -vm.bp[inst.b]
         case .Return:
             a := inst.a
-            b := inst.b if inst.b != 0 else cast(u16)ptr_sub(vm.sp, vm.bp)
-            for i in u16(a)..=b {
+            b := inst.b
+            n_results := int(a) + int(b)
+            for i in int(a)..<n_results {
                 value_print(vm.bp[i])
             }
-            // How to set stack and base pointers here?
+            // How to properly set stack and base pointers here?
+            vm.sp = vm.bp
             return .Ok
         }
     }
-    unreachable()
 }
 
 @(private="file")
@@ -112,7 +113,7 @@ reset_stack :: proc(vm: ^VM) {
 }
 
 @(private="file")
-ptr_add :: proc "contextless" (a: ^$T, offset: int) -> ^T {
+ptr_add :: proc "contextless" (a: ^$T, #any_int offset: int) -> ^T {
     return cast(^T)(uintptr(a) + uintptr(offset*size_of(T)))
 }
 
@@ -129,6 +130,6 @@ ptr_sub_ptr :: proc "contextless" (a, b: ^$T) -> int {
 }
 
 @(private="file")
-ptr_sub_int :: proc "contextless" (a: ^$T, offset: int) -> ^T {
+ptr_sub_int :: proc "contextless" (a: ^$T, #any_int offset: int) -> ^T {
     return cast(^T)(uintptr(a) - uintptr(offset*size_of(T)))
 }
