@@ -2,6 +2,7 @@
 package lulu
 
 import "core:fmt"
+import "core:mem"
 
 STACK_MAX :: 256
 
@@ -31,13 +32,19 @@ vm_destroy :: proc(vm: ^VM) {
 }
 
 vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
-    // vm.chunk = chunk
-    // vm.ip    = raw_data(chunk.code)
-    // return vm_execute(vm)
-    compiler_compile(vm, input, name)
-    return .Ok
+    chunk := &Chunk{}
+    chunk_init(chunk, name)
+    defer chunk_destroy(chunk)
+
+    if !compiler_compile(chunk, name) {
+        return .Compile_Error
+    }
+    vm.chunk = chunk
+    vm.ip    = raw_data(chunk.code)
+    return vm_execute(vm)
 }
 
+// Analogous to 'vm.c:run()' in the book.
 vm_execute :: proc(vm: ^VM) -> (status: Status) {
     chunk     := vm.chunk
     code      := chunk.code[:]

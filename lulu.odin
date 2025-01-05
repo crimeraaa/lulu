@@ -115,11 +115,11 @@ expr1 :: proc(vm: ^VM, chunk: ^Chunk) {
         // 5c.) Emit bytecode for 5a.).
         //      reg[1] := -reg[1]
         //             := -5.6
-        chunk_append(chunk, inst_create(.Unm, free_reg - 1, cast(u16)free_reg - 1, 0), line)
+        chunk_append(chunk, inst_create(.Unm, free_reg - 1, free_reg - 1, 0), line)
     }
 
     // 4c.) Emit bytecode for 4a.)
-    chunk_append(chunk, inst_create(.Div, free_reg - 2, cast(u16)free_reg - 2, cast(u16)free_reg - 1), line)
+    chunk_append(chunk, inst_create(.Div, free_reg - 2, free_reg - 2, free_reg - 1), line)
     emit_return(chunk, free_reg - 2, 1, line)
 }
 
@@ -189,7 +189,7 @@ expr3 :: proc(vm: ^VM, chunk: ^Chunk) {
         //      reg[0] := .const[0] + reg[0]
         //             := 1.0 + 6.0
         //             := 7.0
-        chunk_append(chunk, inst_create(.Add, free_reg - 1, rk_as_k(c0), cast(u16)free_reg - 1), line)
+        chunk_append(chunk, inst_create(.Add, free_reg - 1, rk_as_k(c0), free_reg - 1), line)
     }
 
     // return reg[0]..<reg[1]
@@ -240,7 +240,7 @@ expr4 :: proc(vm: ^VM, chunk: ^Chunk) {
         //      reg[0] := reg[0] - .const[2]
         //             := 1.0  - 1.0
         //             := 0.0
-        chunk_append(chunk, inst_create(.Sub, free_reg - 1, cast(u16)free_reg - 1, rk_as_k(c2)), line)
+        chunk_append(chunk, inst_create(.Sub, free_reg - 1, free_reg - 1, rk_as_k(c2)), line)
     }
 
     emit_return(chunk, 0, 1, line)
@@ -317,25 +317,25 @@ expr5 :: proc(vm: ^VM, chunk: ^Chunk) {
 
             // Emit bytecode for 5.)
             //      reg[1] := -reg[1]
-            chunk_append(chunk, inst_create(.Unm, free_reg - 1, cast(u16)free_reg - 1, 0), line)
+            chunk_append(chunk, inst_create(.Unm, free_reg - 1, free_reg - 1, 0), line)
         }
 
         // 5e.) Emit bytecode for 4.)
         //      reg[1] := .const[3] / reg[1]
         //  => 4 / -5
         //  => -0.8
-        chunk_append(chunk, inst_create(.Div, free_reg - 1, rk_as_k(c3), cast(u16)free_reg - 1), line)
+        chunk_append(chunk, inst_create(.Div, free_reg - 1, rk_as_k(c3), free_reg - 1), line)
     }
 
     // 4c.) Emit the last bytecode.
     //  reg[1] := reg[0] - reg[1]
     //  => 7 - -0.8
     //  => 7.8
-    chunk_append(chunk, inst_create(.Sub, free_reg - 2, cast(u16)free_reg - 2, cast(u16)free_reg - 1), line)
+    chunk_append(chunk, inst_create(.Sub, free_reg - 2, free_reg - 2, free_reg - 1), line)
     emit_return(chunk, free_reg - 2, 1, line)
 }
 
 @(private="file")
 emit_return :: proc(chunk: ^Chunk, #any_int i_reg, n_ret: u16, line: int) {
-    chunk_append(chunk, inst_create(.Return, i_reg, n_ret, 0), line)
+    chunk_append(chunk, inst_create_AB(.Return, i_reg, n_ret), line)
 }

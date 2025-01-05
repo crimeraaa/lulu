@@ -56,6 +56,36 @@ Unm,        // A, B     |   Reg[A] := -Reg[B]
 Return,     // A, B     |   return Reg[A], ... Reg[A + B - 1]
 }
 
+OpCode_Arg_Type :: enum u8 {
+    Unused = 0,
+    Used   = 1, // Argument is used but is not a register, constant or jump offset.
+    Register,   // Or a jump offset?
+    Constant,   // Or a register/constant?
+}
+
+// How should we interpret the arguments?
+OpCode_Format :: enum u8 {
+    Separate,    // A, B and C are all separate.
+    Unsigned_BC, // B and C are combined into an unsigned 18-bit integer.
+    Signed_BC,   // B and C are combined into a signed 18-bit integer.
+}
+
+// https://www.lua.org/source/5.1/lopcodes.h.html#OpArgMask
+OpCode_Info :: bit_field u8 {
+    type:   OpCode_Format   | 2,
+    b:      OpCode_Arg_Type | 2,
+    c:      OpCode_Arg_Type | 2,
+    a:      OpCode_Arg_Type | 1, // Arg A can never be an RK. Just check if it's used.
+}
+
+// See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
+opcode_info := [OpCode]OpCode_Info {
+.Constant   = {type = .Unsigned_BC, a = .Used, b = .Constant, c = .Unused},
+.Add..=.Pow = {type = .Separate,    a = .Used, b = .Constant, c = .Constant},
+.Unm        = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
+.Return     = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
+}
+
 /* =============================================================================
 Notes:
 (*) Return:
@@ -84,6 +114,13 @@ inst_create :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
     inst.b  = b
     inst.c  = c
     inst.a  = a
+    inst.op = op
+    return inst
+}
+
+inst_create_AB :: proc(op: OpCode, a, b: u16) -> (inst: Instruction) {
+    inst.b = b
+    inst.a = a
     inst.op = op
     return inst
 }
