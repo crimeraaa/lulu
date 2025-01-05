@@ -24,7 +24,7 @@ OFFSET_OP   :: 0
 Instruction :: bit_field u32 {
     b:  u16    | SIZE_B, // 9th bit is sign or flag
     c:  u16    | SIZE_C, // 9th bit is sign, or flag, or combined into B
-    a:  u8     | SIZE_A, // Always unsigned
+    a:  u16    | SIZE_A, // Always unsigned
     op: OpCode | SIZE_OP  `fmt:"s"`,
 }
 
@@ -39,13 +39,19 @@ Note on shorthand:
     - Constants Table
     - From current Chunk
     - Requires absolute index
+(*) RK:
+    - Register or Constants Table
+    - If argument B or C is >= 256, meaning bit 9 is toggled, then it is an index
+      into Kst. Otherwise, it is a Reg.
 ============================================================================= */
 //          Args        | Description
 Constant,   // A, uBC   |   Reg[A] := Kst[uBC]
-Add,        // A, B, C  |   Reg[A] := Reg[B] + Reg[C]
-Sub,        // A, B, C  |   Reg[A] := Reg[B] - Reg[C]
-Mul,        // A, B, C  |   Reg[A] := Reg[B] * Reg[C]
-Div,        // A, B, C  |   Reg[A] := Reg[B] / Reg[C]
+Add,        // A, B, C  |   Reg[A] := RK[B] + RK[C]
+Sub,        // A, B, C  |   Reg[A] := RK[B] - RK[C]
+Mul,        // A, B, C  |   Reg[A] := RK[B] * RK[C]
+Div,        // A, B, C  |   Reg[A] := RK[B] / RK[C]
+Mod,        // A, B, C  |   Reg[A] := RK[B] % RK[C]
+Pow,        // A, B, C  |   Reg[A] := RK[B} ^ RK[C]
 Unm,        // A, B     |   Reg[A] := -Reg[B]
 Return,     // A, B     |   return Reg[A], ... Reg[A + B - 1]
 }
@@ -61,22 +67,20 @@ Notes:
 // If 0, it is a register. If 1, it is an index into the constants table.
 BIT_RK :: 1 << (SIZE_B - 1)
 
-import "core:fmt"
-
-rk_is_k :: #force_inline proc "contextless" (#any_int b_or_c: u16) -> bool {
+rk_is_k :: proc(#any_int b_or_c: u16) -> bool {
     return (b_or_c & BIT_RK) != 0
 }
 
-rk_get_k :: #force_inline proc "contextless" (#any_int b_or_c: u16) -> u16 {
+rk_get_k :: proc(#any_int b_or_c: u16) -> u16 {
     return (b_or_c & ~cast(u16)BIT_RK)
 }
 
-rk_as_k :: #force_inline proc "contextless" (#any_int b_or_c: u8) -> u16 {
-    return cast(u16)b_or_c | BIT_RK
+rk_as_k :: proc(#any_int b_or_c: u16) -> u16 {
+    return b_or_c | BIT_RK
 }
 
 // This is kinda stupid
-inst_create :: proc(op: OpCode, a: u8, b, c: u16) -> (inst: Instruction) {
+inst_create :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
     inst.b  = b
     inst.c  = c
     inst.a  = a
@@ -84,7 +88,7 @@ inst_create :: proc(op: OpCode, a: u8, b, c: u16) -> (inst: Instruction) {
     return inst
 }
 
-inst_create_AuBC :: proc(op: OpCode, a: u8, bc: u32) -> (inst: Instruction) {
+inst_create_AuBC :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
     inst.b  = cast(u16)(bc >> SIZE_C) // shift out 'c' bits
     inst.c  = cast(u16)(bc & MAX_C)   // remove 'b' bits
     inst.a  = a

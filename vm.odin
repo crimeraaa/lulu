@@ -6,10 +6,10 @@ import "core:fmt"
 STACK_MAX :: 256
 
 VM :: struct {
-    stack:  [STACK_MAX]Value,
-    sp, bp: [^]Value,
-    chunk:  ^Chunk,
-    ip:     ^Instruction,
+    stack:      [STACK_MAX]Value,
+    top, base:  [^]Value,   // 'top' always points to the first free slot.
+    chunk:      ^Chunk,
+    ip:         ^Instruction,
 }
 
 Status :: enum u8 {
@@ -50,7 +50,7 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
 
         when LULU_DEBUG {
             fmt.printf("      ")
-            for value in vm.stack[:ptr_sub(vm.sp, vm.bp)] {
+            for value in vm.stack[:ptr_sub(vm.top, vm.base)] {
                 value_print(value, .Stack)
             }
             fmt.println()
@@ -61,77 +61,63 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
         case .Constant:
             a  := inst.a
             bc := inst_get_uBC(inst)
-            vm.bp[a] = constants[bc]
-            vm.sp = ptr_add(vm.sp, 1)
-        case .Add: binary_op(vm, '+', inst, constants)
-        case .Sub: binary_op(vm, '-', inst, constants)
-        case .Mul: binary_op(vm, '*', inst, constants)
-        case .Div: binary_op(vm, '/', inst, constants)
-        case .Unm: vm.bp[inst.a] = -vm.bp[inst.b]
+            vm.base[a] = constants[bc]
+            vm.top = ptr_add(vm.top, 1)
+        case .Add: binary_op(vm, value_add, inst, constants)
+        case .Sub: binary_op(vm, value_sub, inst, constants)
+        case .Mul: binary_op(vm, value_mul, inst, constants)
+        case .Div: binary_op(vm, value_div, inst, constants)
+        case .Mod: binary_op(vm, value_mod, inst, constants)
+        case .Pow: binary_op(vm, value_pow, inst, constants)
+        case .Unm: vm.base[inst.a] = -vm.base[inst.b]
         case .Return:
             a := inst.a
             b := inst.b
             n_results := int(a) + int(b)
             for i in int(a)..<n_results {
-                value_print(vm.bp[i])
+                value_print(vm.base[i])
             }
             // How to properly set stack and base pointers here?
-            vm.sp = vm.bp
+            vm.top = vm.base
             return .Ok
         }
     }
 }
 
 @(private="file")
-binary_op :: proc(vm: ^VM, $op: rune, inst: Instruction, kst: []Value) {
-    if cast(int)inst.a == ptr_sub(vm.sp, vm.bp) {
-        vm.sp = ptr_add(vm.sp, 1)
+binary_op :: proc(vm: ^VM, $op: proc(x, y: Value) -> Value, inst: Instruction, kst: []Value) {
+    if cast(int)inst.a == ptr_sub(vm.top, vm.base) {
+        vm.top = ptr_add(vm.top, 1)
     }
-    x, y := get_rkb(vm, inst, kst), get_rkc(vm, inst, kst)
-    switch op {
-    case '+': vm.bp[inst.a] = x + y
-    case '-': vm.bp[inst.a] = x - y
-    case '*': vm.bp[inst.a] = x * y
-    case '/': vm.bp[inst.a] = x / y
-    case:
-        unreachable()
-    }
+    x, y := get_RK(vm, inst.b, kst), get_RK(vm, inst.c, kst)
+    vm.base[inst.a] = op(x, y)
 }
 
 @(private="file")
-get_rkb :: #force_inline proc(vm: ^VM, inst: Instruction, constants: []Value)-> Value {
-    return constants[rk_get_k(inst.b)] if rk_is_k(inst.b) else vm.bp[inst.b]
-}
-
-@(private="file")
-get_rkc :: #force_inline proc(vm: ^VM, inst: Instruction, constants: []Value) -> Value {
-    return constants[rk_get_k(inst.c)] if rk_is_k(inst.c) else vm.bp[inst.c]
+get_RK :: proc(vm: ^VM, b_or_c: u16, constants: []Value) -> Value {
+    return constants[rk_get_k(b_or_c)] if rk_is_k(b_or_c) else vm.base[b_or_c]
 }
 
 @(private="file")
 reset_stack :: proc(vm: ^VM) {
-    vm.bp = &vm.stack[0]
-    vm.sp = vm.bp
+    vm.base = &vm.stack[0]
+    vm.top = vm.base
 }
 
-@(private="file")
-ptr_add :: proc "contextless" (a: ^$T, #any_int offset: int) -> ^T {
+ptr_add :: proc(a: ^$T, #any_int offset: int) -> ^T {
     return cast(^T)(uintptr(a) + uintptr(offset*size_of(T)))
 }
 
-@(private="file")
 ptr_sub :: proc {
     ptr_sub_ptr,
     ptr_sub_int,
 }
 
 // 'mem.ptr_sub' seems to give the wrong result...
-@(private="file")
-ptr_sub_ptr :: proc "contextless" (a, b: ^$T) -> int {
+ptr_sub_ptr :: proc(a, b: ^$T) -> int {
     return int(uintptr(a) - uintptr(b)) / size_of(T)
 }
 
-@(private="file")
-ptr_sub_int :: proc "contextless" (a: ^$T, #any_int offset: int) -> ^T {
+ptr_sub_int :: proc(a: ^$T, #any_int offset: int) -> ^T {
     return cast(^T)(uintptr(a) - uintptr(offset*size_of(T)))
 }

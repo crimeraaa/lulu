@@ -9,22 +9,21 @@ import "core:unicode"
 import "core:unicode/utf8"
 
 Lexer :: struct {
-    input:  string,         // File data as text.
-    source: string,         // File name where 'input' originated from.
-    number: f64,
-    start, current:  int,   // Current lexeme iterators.
-    line:            int,   // Current line number.
+    input, source:  string, // File data as text and its name.
+    number:         f64,    // Number literal, if we had any.
+    start, current: int,    // Current lexeme iterators.
+    line:           int,    // Current line number.
 }
 
 Lexer_Error :: enum {
     None,
-    Bad_Rune,           // Some utf8.* proc returned RUNE_ERROR?
+    Bad_Rune,               // Some utf8.* proc returned RUNE_ERROR?
     Unexpected_Character,
-    Malformed_Number,   // Unable to convert lexeme to f64?
-    Missing_Equals,     // For ~= specifically as it's the only token like this.
+    Malformed_Number,       // Unable to convert lexeme to f64?
+    Missing_Equals,         // For ~= specifically as it's the only token like this.
     Unterminated_String,
     Unterminated_Multiline,
-    Eof = -1,           // Expected/normal
+    Eof = -1,               // Expected/normal
 }
 
 Token :: struct {
@@ -96,26 +95,27 @@ token_type_strings := [Token_Type]string {
 lexer_create :: proc(input: string, name: string) -> (lexer: Lexer) {
     lexer.input  = input
     lexer.source = name
-    lexer.start  = 0
     lexer.line   = 1
     return lexer
 }
 
 @(require_results)
 lexer_scan_token :: proc(lexer: ^Lexer) -> (token: Token, error: Lexer_Error) {
-    switch {
-    case !skip_whitespace(lexer): return create_token(lexer, .Error), .Unterminated_Multiline
-    case is_at_end(lexer^):       return create_token(lexer, .Eof), .Eof
+    if error = lexer_skip_whitespace(lexer); error != nil {
+        return lexer_create_token(lexer, .Error), error
+    }
+    if lexer_is_at_end(lexer^) {
+        return lexer_create_token(lexer, .Eof), .Eof
     }
 
-    r, ok := advance(lexer)
-    if !ok {
-        return create_token(lexer, .Error), .Bad_Rune
+    r, err := lexer_advance(lexer)
+    if err != nil {
+        return lexer_create_token(lexer, .Error), err
     }
 
     switch {
-    case is_alpha(r):       return create_keyword_or_identifier_token(lexer), nil
-    case match.is_digit(r): return create_number_token(lexer, r)
+    case is_alpha(r):       return lexer_create_keyword_identifier_token(lexer)
+    case match.is_digit(r): return lexer_create_number_token(lexer, r)
     }
 
     type := Token_Type.Error
@@ -127,20 +127,20 @@ lexer_scan_token :: proc(lexer: ^Lexer) -> (token: Token, error: Lexer_Error) {
     case ']': type = .Right_Bracket
     case '{': type = .Left_Curly
     case '}': type = .Right_Curly
-    case '<': type = .Left_Angle_Eq  if matched(lexer, '=') else .Left_Angle
-    case '>': type = .Right_Angle_Eq if matched(lexer, '=') else .Right_Angle
+    case '<': type = .Left_Angle_Eq  if lexer_match(lexer, '=') else .Left_Angle
+    case '>': type = .Right_Angle_Eq if lexer_match(lexer, '=') else .Right_Angle
     case '~': type = .Tilde_Eq
-        // Assign 'type' before checking to differentiate from unexpected.
-        if !matched(lexer, '=') {
+        // Assign 'error' to differentiate from .Unexpected_Character
+        if !lexer_match(lexer, '=') {
             error = .Missing_Equals
         }
-    case '=': type = .Equals_2 if matched(lexer, '=') else .Equals
+    case '=': type = .Equals_2 if lexer_match(lexer, '=') else .Equals
     case '.':
-        if matched(lexer, '.') {
-            type = .Ellipsis_3 if matched(lexer, '.') else .Ellipsis_2
+        if lexer_match(lexer, '.') {
+            type = .Ellipsis_3 if lexer_match(lexer, '.') else .Ellipsis_2
         } else {
-            if rr := peek(lexer^); match.is_digit(rr) {
-                return create_number_token(lexer, rr)
+            if rr := lexer_peek(lexer^); match.is_digit(rr) {
+                return lexer_create_number_token(lexer, rr)
             }
             type = .Period
         }
@@ -157,17 +157,13 @@ lexer_scan_token :: proc(lexer: ^Lexer) -> (token: Token, error: Lexer_Error) {
     case '^': type = .Caret
 
     case '\'': fallthrough
-    case '\"': return create_string_token(lexer, r)
+    case '\"': return lexer_create_string_token(lexer, r)
     }
-
-    if type == .Error {
-        error = .Unexpected_Character
-    }
-    return create_token(lexer, type), error
+    return lexer_create_token(lexer, type), .Unexpected_Character if type == .Error else nil
 }
 
-@(private="file", require_results)
-create_token :: proc(lexer: ^Lexer, type: Token_Type) -> (token: Token) {
+@(require_results)
+lexer_create_token :: proc(lexer: ^Lexer, type: Token_Type) -> (token: Token) {
     token.lexeme = lexer.input[lexer.start:lexer.current]
     token.line   = lexer.line
     token.type   = type
@@ -175,16 +171,22 @@ create_token :: proc(lexer: ^Lexer, type: Token_Type) -> (token: Token) {
     return token
 }
 
-@(private="file", require_results)
-create_keyword_or_identifier_token :: proc(lexer: ^Lexer) -> (token: Token) {
-    consume_sequence(lexer, is_alnum)
-    token = create_token(lexer, .Identifier)
+@(require_results)
+lexer_create_keyword_identifier_token :: proc(lexer: ^Lexer) -> (token: Token, error: Lexer_Error) {
+    error = lexer_consume_sequence(lexer, is_alnum)
+    token = lexer_create_token(lexer, .Identifier)
 
+    if error != nil {
+        return token, error
+    }
+
+    @(require_results)
     check_type :: proc(token: Token, $type: Token_Type) -> Token_Type where type <= .While {
         return type if token.lexeme == token_type_strings[type] else .Identifier
     }
 
     // Assumes all keywords are ASCII
+    @(require_results)
     get_type :: proc(token: Token) -> Token_Type {
         switch token.lexeme[0] {
         case 'a': return check_type(token, .And)
@@ -244,53 +246,60 @@ create_keyword_or_identifier_token :: proc(lexer: ^Lexer) -> (token: Token) {
     }
 
     token.type = get_type(token)
-    return token
+    return token, error
 }
 
 
-@(private="file", require_results)
-create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token, error: Lexer_Error) {
-    consume_number :: proc(lexer: ^Lexer, prev: rune) {
-        if prev == '0' && matched(lexer, "xX") {
-            consume_sequence(lexer, match.is_xdigit)
-            consume_sequence(lexer, is_alnum)
-            return
+@(require_results)
+lexer_create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token, error: Lexer_Error) {
+    @(require_results)
+    consume_number :: proc(lexer: ^Lexer, prev: rune = 0) -> (error: Lexer_Error) {
+        if prev == '0' && lexer_match(lexer, "xX") {
+            lexer_consume_sequence(lexer, match.is_xdigit) or_return
+            lexer_consume_sequence(lexer, is_alnum)        or_return
+            return nil
         }
         // Consume integer portion.
-        consume_sequence(lexer, match.is_digit)
+        lexer_consume_sequence(lexer, match.is_digit) or_return
 
         // Have decimal?
-        if matched(lexer, '.') {
-            consume_sequence(lexer, match.is_digit)
+        if lexer_match(lexer, '.') {
+            lexer_consume_sequence(lexer, match.is_digit) or_return
+            // Recursively parse in case of invalid, e.g: "1.2.3".
+            consume_number(lexer) or_return
         }
 
         // Have exponent form?
-        if matched(lexer, "eE") {
-            matched(lexer, "+-")
-            consume_sequence(lexer, match.is_digit)
+        if lexer_match(lexer, "eE") {
+            lexer_match(lexer, "+-")
+            lexer_consume_sequence(lexer, match.is_digit) or_return
         }
         // Consume trailing characters so we can tell if this is a bad number.
-        consume_sequence(lexer, is_alnum)
-        return
+        return lexer_consume_sequence(lexer, is_alnum)
     }
 
-    consume_number(lexer, prev)
-    token       = create_token(lexer, .Number)
-    number, ok := strconv.parse_f64(token.lexeme)
-    lexer.number = number
+    if error = consume_number(lexer, prev); error != nil{
+        return lexer_create_token(lexer, .Error), error
+    }
+    token = lexer_create_token(lexer, .Number)
+    ok: bool
+    lexer.number, ok = strconv.parse_f64(token.lexeme)
     return token, nil if ok else .Malformed_Number
 }
 
-@(private="file", require_results)
-create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token, error: Lexer_Error) {
-    for !is_at_end(lexer^) && !matched(lexer, quote) {
-        if peek(lexer^) == '\n' {
+@(require_results)
+lexer_create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token, error: Lexer_Error) {
+    for !lexer_is_at_end(lexer^) && lexer_peek(lexer^) != quote {
+        if lexer_peek(lexer^) == '\n' {
             error = .Unterminated_String
             break
         }
-        advance(lexer)
+        lexer_advance(lexer)
     }
-    return create_token(lexer, .String), .Unterminated_String if is_at_end(lexer^) else nil
+    if lexer_is_at_end(lexer^) || !lexer_match(lexer, quote){
+        error = .Unterminated_String
+    }
+    return lexer_create_token(lexer, .String), error
 }
 
 @(private="file")
@@ -303,140 +312,136 @@ is_alnum :: proc(r: rune) -> bool {
     return match.is_digit(r) || is_alpha(r)
 }
 
-@(private="file")
-consume_sequence :: proc(lexer: ^Lexer, $callback: proc(r: rune) -> bool) {
+@(require_results)
+lexer_consume_sequence :: proc(lexer: ^Lexer, $callback: proc(r: rune) -> bool) -> (error: Lexer_Error) {
     // The 'is_at_end' check is VERY important in case we hit <EOF> here!
-    for !is_at_end(lexer^) && callback(peek(lexer^)) {
-        advance(lexer)
+    for !lexer_is_at_end(lexer^) && callback(lexer_peek(lexer^)) {
+        lexer_advance(lexer) or_return
     }
+    return nil
 }
 
 
-@(private="file", require_results)
-skip_whitespace :: proc(lexer: ^Lexer) -> (success: bool) {
+@(require_results)
+lexer_skip_whitespace :: proc(lexer: ^Lexer) -> (error: Lexer_Error) {
 
     @(require_results)
-    start_multiline :: proc(lexer: ^Lexer) -> (opening: int, is_multiline: bool) {
-        if !matched(lexer, '[') {
+    check_multiline :: proc(lexer: ^Lexer) -> (opening: int, is_multiline: bool) {
+        if !lexer_match(lexer, '[') {
             return 0, false
         }
-        opening      = get_nesting(lexer)
-        is_multiline = matched(lexer, '[')
+        opening      = lexer_get_nesting(lexer)
+        is_multiline = lexer_match(lexer, '[')
         return opening, is_multiline
     }
 
+    @(require_results)
+    skip_comment :: proc(lexer: ^Lexer) -> (error: Lexer_Error) {
+        // Skip the 2 '-'.
+        lexer_advance(lexer)
+        lexer_advance(lexer)
+        if opening, is_multiline := check_multiline(lexer); is_multiline {
+            // Don't return yet if successful; may still have newlines.
+            lexer_consume_multiline(lexer, opening, is_comment = true) or_return
+        } else {
+            lexer_consume_sequence(lexer, proc(r: rune) -> bool { return r != '\n' }) or_return
+        }
+        return nil
+    }
+
     for {
-        switch peek(lexer^) {
+        switch lexer_peek(lexer^) {
         case '\n': lexer.line += 1; fallthrough
         case ' ':  fallthrough
         case '\r': fallthrough
         case '\t':
             // Ensure start points to the first actual character in the lexeme.
             lexer.start += 1
-            advance(lexer)
+            lexer_advance(lexer)
         case '-':
-            if peek_next(lexer^) != '-' {
-                return true
+            if lexer_peek_next(lexer^) != '-' {
+                return nil
             }
-            // Skip the 2 '-'.
-            advance(lexer)
-            advance(lexer)
-            if opening, is_multiline := start_multiline(lexer); is_multiline {
-                // Don't return yet if successful; may still have newlines.
-                if !consume_multiline(lexer, opening, is_comment = true) {
-                    return false
-                }
-            } else {
-                consume_sequence(lexer, proc(r: rune) -> bool {
-                    return r != '\n'
-                })
-            }
+            skip_comment(lexer) or_return
         case:
-            return true
+            return nil
         }
     }
 }
 
-@(private="file", require_results)
-consume_multiline :: proc(lexer: ^Lexer, opening: int, $is_comment: bool) -> (completed: bool) {
+@(require_results)
+lexer_consume_multiline :: proc(lexer: ^Lexer, opening: int, $is_comment: bool) -> (error: Lexer_Error) {
     defer if is_comment {
         lexer.start = lexer.current
     }
-    for {
-        if matched(lexer, ']') {
-            closing := get_nesting(lexer)
-            if closing == opening && matched(lexer, ']') {
-                return true
+
+    consume_loop: for {
+        if lexer_match(lexer, ']') {
+            closing := lexer_get_nesting(lexer)
+            if closing == opening && lexer_match(lexer, ']') {
+                break consume_loop
             }
         }
 
-        if is_at_end(lexer^) {
-            return false
+        if lexer_is_at_end(lexer^) {
+            return .Unterminated_Multiline
         }
 
-        if peek(lexer^) == '\n' {
+        if lexer_peek(lexer^) == '\n' {
             lexer.line += 1
         }
-        advance(lexer)
+        lexer_advance(lexer) or_return
     }
-    return false
+    return nil
 }
 
-@(private="file", require_results)
-get_nesting :: proc(lexer: ^Lexer) -> (count: int) {
-    for matched(lexer, '=') {
+@(require_results)
+lexer_get_nesting :: proc(lexer: ^Lexer) -> (count: int) {
+    for lexer_match(lexer, '=') {
         count += 1
     }
     return count
 }
 
 
-@(private="file")
-advance :: proc(lexer: ^Lexer) -> (r: rune, ok: bool) {
+lexer_advance :: proc(lexer: ^Lexer) -> (r: rune, error: Lexer_Error) {
     rr, size := utf8.decode_rune(lexer.input[lexer.current:])
     lexer.current += size
-    return rr, rr != utf8.RUNE_ERROR
+    return rr, .Bad_Rune if rr == utf8.RUNE_ERROR else nil
 }
 
-// Can't use 'match' as that's the package name. I can't think of a good alias!
-@(private="file")
-matched :: proc {
-    match_single,
-    match_multi,
+lexer_match :: proc {
+    lexer_match_rune,
+    lexer_match_any,
 }
 
-@(private="file")
-match_single :: proc(lexer: ^Lexer, want: rune) -> (found: bool) {
-    found = peek(lexer^) == want
+lexer_match_rune :: proc(lexer: ^Lexer, want: rune) -> (found: bool) {
+    found = lexer_peek(lexer^) == want
     if found {
-        advance(lexer)
+        lexer_advance(lexer)
     }
     return found
 }
 
-@(private="file")
-match_multi :: proc(lexer: ^Lexer, want: string) -> (found: bool) {
-    found = strings.index_rune(want, peek(lexer^)) != -1
+lexer_match_any :: proc(lexer: ^Lexer, want: string) -> (found: bool) {
+    found = strings.index_rune(want, lexer_peek(lexer^)) != -1
     if found {
-        advance(lexer)
+        lexer_advance(lexer)
     }
     return found
 }
 
-@(private="file")
-peek :: proc(lexer: Lexer) -> (r: rune) {
+lexer_peek :: proc(lexer: Lexer) -> (r: rune) {
     return utf8.rune_at(lexer.input, lexer.current)
 }
 
-@(private="file")
-peek_next :: proc(lexer: Lexer) -> (r: rune) {
-    if is_at_end(lexer) {
+lexer_peek_next :: proc(lexer: Lexer) -> (r: rune) {
+    if lexer_is_at_end(lexer) {
         return utf8.RUNE_ERROR
     }
     return utf8.rune_at(lexer.input, lexer.current + 1)
 }
 
-@(private="file")
-is_at_end :: proc(lexer: Lexer) -> bool {
+lexer_is_at_end :: proc(lexer: Lexer) -> bool {
     return lexer.current >= len(lexer.input)
 }

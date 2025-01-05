@@ -1,6 +1,7 @@
 package lulu
 
 import "core:fmt"
+import "core:math"
 
 Value :: f64
 
@@ -8,6 +9,30 @@ Value_Print_Mode :: enum u8 {
     Normal, // Prints the value as-is and prints a newline.
     Debug,  // Same as .Normal, but surrounds strings with quotes.
     Stack,  // Prints the value surrounded by square brackets. No newline.
+}
+
+value_add :: proc(a, b: Value) -> Value {
+    return a + b
+}
+
+value_sub :: proc (a, b: Value) -> Value {
+    return a - b
+}
+
+value_mul :: proc(a, b: Value) -> Value {
+    return a * b
+}
+
+value_div :: proc(a, b: Value) -> Value {
+    return a / b
+}
+
+value_mod :: proc(a, b: Value) -> Value {
+    return math.mod(a, b)
+}
+
+value_pow :: proc(a, b: Value) -> Value {
+    return math.pow(a, b)
 }
 
 value_eq :: proc(a, b: Value) -> bool {

@@ -65,7 +65,7 @@ expr1 :: proc(vm: ^VM, chunk: ^Chunk) {
         chunk_destroy(chunk)
     }
 
-    free_reg: u8
+    free_reg: u16
 
     // 1a.) Prefix: Consume '('.
     // 1b.) Compile all nested expressions. (recursive)
@@ -155,7 +155,7 @@ expr3 :: proc(vm: ^VM, chunk: ^Chunk) {
         chunk_destroy(chunk)
     }
     line := 1
-    free_reg := u8(0)
+    free_reg: u16
 
     // 1a.) Prefix(1): Consume <number-literal>.
     c0 := chunk_add_constant(chunk, 1.0)
@@ -205,7 +205,7 @@ expr4 :: proc(vm: ^VM, chunk: ^Chunk) {
         chunk_destroy(chunk)
     }
     line := 1
-    free_reg := u8(0)
+    free_reg: u16
 
     // 1a.) Prefix(1): Consume <number-literal>.
     k0 := chunk_add_constant(chunk, 3.0)
@@ -262,7 +262,7 @@ expr5 :: proc(vm: ^VM, chunk: ^Chunk) {
     line := 1
     // 1a) Prefix: Consume <number-literal>
     c0 := chunk_add_constant(chunk, 1.0)
-    free_reg: u8 = 0
+    free_reg: u16
 
     // 1b.) Infix: Consume '+'
     // 1c.) Compile higher-precedence expressions to right (recursive)
@@ -336,6 +336,6 @@ expr5 :: proc(vm: ^VM, chunk: ^Chunk) {
 }
 
 @(private="file")
-emit_return :: proc(chunk: ^Chunk, #any_int i_reg, n_ret, line: int) {
-    chunk_append(chunk, inst_create(.Return, cast(u8)i_reg, cast(u16)n_ret, 0), line)
+emit_return :: proc(chunk: ^Chunk, #any_int i_reg, n_ret: u16, line: int) {
+    chunk_append(chunk, inst_create(.Return, i_reg, n_ret, 0), line)
 }

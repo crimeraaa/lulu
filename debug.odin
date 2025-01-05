@@ -68,6 +68,8 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Sub: binary("-", inst)
     case .Mul: binary("*", inst)
     case .Div: binary("/", inst)
+    case .Mod: binary("%", inst)
+    case .Pow: binary("^", inst)
     case .Unm: unary("-", inst)
     case .Return:
         a := inst.a
