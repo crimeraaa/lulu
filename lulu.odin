@@ -1,15 +1,25 @@
 package lulu
 
 import "core:fmt"
-import "core:os"
 import "core:io"
+import "core:log"
+import "core:os"
 
-LULU_DEBUG :: #config(LULU_DEBUG, true)
+LULU_DEBUG         :: #config(LULU_DEBUG, ODIN_DEBUG)
+DEBUG_TRACE_EXEC   :: LULU_DEBUG
+DEBUG_PRINT_CODE   :: LULU_DEBUG
 
 @(private="file")
 g_vm := &VM{}
 
 main :: proc() {
+    when LULU_DEBUG {
+        logger_opts := log.Options{.Procedure, .Terminal_Color}
+        logger := log.create_console_logger(opt = logger_opts)
+        context.logger = logger
+        defer log.destroy_console_logger(logger)
+    }
+
     vm_init(g_vm)
     defer vm_destroy(g_vm)
 

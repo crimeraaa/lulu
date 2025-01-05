@@ -2,6 +2,7 @@
 package lulu
 
 import "core:fmt"
+import "core:log"
 
 Parser :: struct {
     lexer: Lexer,
@@ -31,27 +32,27 @@ Precedence :: enum u8 {
 
 Expr :: struct {
     prev:   ^Expr,
-    value:  Expr_Value,
-    data:   u32,    // Index of literal in constants table.
+    value:  Value,  // Number literal.
+    index:  u32,    // Index into constants table if applicable.
     type:   Expr_Type,
 }
 
-Expr_Value :: union {
-    f64,
-}
-
 Expr_Type :: enum u8 {
+    Reusable,   // This ^Expr was previously used but is now available!
     Literal,
 }
 
 // Analogous to 'compiler.c:advance()' in the book.
-parser_advance :: proc(parser: ^Parser) {
+parser_advance :: proc(parser: ^Parser) -> (ok: bool) {
     token, error := lexer_scan_token(&parser.lexer)
-    if error != nil {
+    ok = error == nil || error == .Eof
+    if !ok {
+        log.errorf("Error: %v", error)
         error_at(parser, token, lexer_error_strings[error])
-        return
+    } else {
+        parser.consumed, parser.lookahead = parser.lookahead, token
     }
-    parser.consumed, parser.lookahead = parser.lookahead, token
+    return ok
 }
 
 // Analogous to 'compiler.c:consume()' in the book.
@@ -73,12 +74,15 @@ parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Exp
 
 @(private="file")
 parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence) {
-    parser_advance(parser)
+    if !parser_advance(parser) {
+        return
+    }
     prefix := get_rule(parser.consumed.type).prefix
     if prefix == nil {
         parser_error_consumed(parser, "Expected an expression")
         return
     }
+    log.debugf("Calling prefix: %v", prefix)
     prefix(parser, compiler, expr)
 
     for {
@@ -86,7 +90,32 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         if prec > rule.prec {
             break
         }
+        if !parser_advance(parser) {
+            return
+        }
+        log.debugf("Calling infix: %v", rule.infix)
         rule.infix(parser, compiler, expr)
+    }
+
+    defer log.debug("expr:", expr)
+
+    // Discharge expression
+    switch expr.type {
+    case .Literal:
+        // Not the last literal in the chain if folded?
+        if expr.prev != nil {
+            break
+        }
+        defer {
+            compiler.free_reg += 1
+            expr.type = .Reusable
+        }
+        a := compiler.free_reg
+        index := compiler_add_constant(compiler, expr.value)
+        inst  := inst_create_AuBC(.Constant, cast(u16)a, index)
+        compiler_emit_instruction(compiler, parser, inst)
+    case .Reusable:
+        // Nothing to do
     }
 }
 
@@ -116,51 +145,77 @@ error_at :: proc(parser: ^Parser, token: Token, msg: string) {
 
 @(private="file")
 grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    log.debug("Recursing...")
     parser_parse_expression(parser, compiler, expr)
     parser_consume(parser, .Right_Paren)
 }
 
 @(private="file")
 number :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    n := parser.lexer.number
-    expr.type  = .Literal
-    expr.value = n
-    expr.data  = compiler_add_constant(compiler, n)
+    defer log.debug("expr:", expr)
+    expr.type   = .Literal
+    expr.value  = parser.lexer.number
 }
 
 @(private="file")
 unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    get_op :: proc(type: Token_Type) -> (op: OpCode) {
+        #partial switch type {
+        case .Dash: return .Unm
+        case:       log.panicf("Got type: %v", type)
+    }
+}
     type := parser.consumed.type
+    op   := get_op(type)
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
     parse_precedence(parser, compiler, expr, .Unary)
-
-    op: OpCode
-    #partial switch type {
-    case .Dash: op = .Unm
-    case:       unreachable()
-    }
 }
 
 /// INFIX EXPRESSIONS
 
 @(private="file")
 binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    type := parser.consumed.type
-    rule := get_rule(type)
-    next := &Expr{prev = expr}
-    parse_precedence(parser, compiler, next, rule.prec + Precedence(1))
+    get_op :: proc(type: Token_Type) -> (op: OpCode) {
+        #partial switch type {
+        case .Plus:     return .Add
+        case .Dash:     return .Sub
+        case .Star:     return .Mul
+        case .Slash:    return .Div
+        case .Percent:  return .Mod
+        case .Caret:    return .Pow
+        case:           log.panicf("Got type: %v", type)
+        }
+    }
+    type  := parser.consumed.type
+    left  := expr
+    right := &Expr{prev = left}
+    op    := get_op(type)
 
-    op: OpCode
-    #partial switch type {
-    case .Plus:     op = .Add
-    case .Dash:     op = .Sub
-    case .Star:     op = .Mul
-    case .Slash:    op = .Div
-    case .Percent:  op = .Mod
-    case .Caret:    op = .Pow
-    case:
-        unreachable()
+    // Compile the right-hand-side operand, filling in the details for 'right'.
+    log.debug("Recursing...")
+    parse_precedence(parser, compiler, right, get_rule(type).prec + Precedence(1))
+    log.debug("left:",  left)
+    log.debug("right:", right)
+    // Can do constant folding?
+    if (left.type == .Literal) && right.type == .Literal {
+        Value_Proc :: #type proc(a, b: Value) -> Value
+        dispatch   :: proc(op: OpCode) -> Value_Proc {
+            #partial switch op {
+            case .Add:  return value_add
+            case .Sub:  return value_sub
+            case .Mul:  return value_mul
+            case .Div:  return value_div
+            case .Mod:  return value_mod
+            case .Pow:  return value_pow
+            case:       log.panicf("Got op: %v", op)
+            }
+        }
+
+        // 'left' is the same as 'expr', which the caller can sees.
+        n := dispatch(op)(left.value, right.value)
+        left.value = n
+        log.debug("left:", left)
     }
 }
 

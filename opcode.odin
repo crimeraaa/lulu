@@ -76,6 +76,7 @@ OpCode_Info :: bit_field u8 {
     b:      OpCode_Arg_Type | 2,
     c:      OpCode_Arg_Type | 2,
     a:      OpCode_Arg_Type | 1, // Arg A can never be an RK. Just check if it's used.
+    is_test:           bool | 1,
 }
 
 // See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes

@@ -36,7 +36,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     chunk_init(chunk, name)
     defer chunk_destroy(chunk)
 
-    if !compiler_compile(chunk, name) {
+    if !compiler_compile(chunk, input) {
         return .Compile_Error
     }
     vm.chunk = chunk
@@ -55,7 +55,7 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
         inst := ip^
         defer ip = ptr_add(ip, 1)
 
-        when LULU_DEBUG {
+        when DEBUG_TRACE_EXEC {
             fmt.printf("      ")
             for value in vm.stack[:ptr_sub(vm.top, vm.base)] {
                 value_print(value, .Stack)

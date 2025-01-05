@@ -1,3 +1,4 @@
+#+private
 package lulu
 
 import "core:fmt"

@@ -40,7 +40,7 @@ lexer_error_strings := [Lexer_Error]string {
 
 Token :: struct {
     lexeme: string,
-    line:   int,
+    line:   int         `fmt:"-"`,
     type:   Token_Type  `fmt:"s"`,
 }
 
