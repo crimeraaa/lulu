@@ -97,7 +97,8 @@ Notes:
 
 // Bit 9 for arguments B and C indicates how to interpret them.
 // If 0, it is a register. If 1, it is an index into the constants table.
-BIT_RK :: 1 << (SIZE_B - 1)
+BIT_RK  :: 1 << (SIZE_B - 1)
+MAX_RK  :: BIT_RK - 1
 
 rk_is_k :: proc(#any_int b_or_c: u16) -> bool {
     return (b_or_c & BIT_RK) != 0
@@ -139,9 +140,4 @@ inst_get_Bx :: proc(inst: Instruction) -> (bc: u32) {
     bc |= cast(u32)inst.b << OFFSET_B
     bc |= cast(u32)inst.c
     return bc
-}
-
-inst_make_op :: proc(op: OpCode) -> (inst: Instruction) {
-    inst.op = op
-    return inst
 }

@@ -12,20 +12,20 @@ Compiler :: struct {
     free_reg: u16,      // Index of the first free register.
 }
 
-compiler_compile :: proc(chunk: ^Chunk, input: string) -> bool {
+compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) -> (ok: bool) {
     parser   := &Parser{lexer = lexer_create(input, chunk.source)}
     compiler := &Compiler{parser = parser, chunk = chunk}
     expr     := &Expr{}
-    parser_advance(parser)
-    parser_parse_expression(parser, compiler, expr)
-    parser_consume(parser, .Eof)
+    // defer log.debug("expr: ", expr)
+    parser_advance(parser) or_return
+    parser_parse_expression(parser, compiler, expr) or_return
+    parser_consume(parser, .Eof) or_return
 
     // For now we assume 'expression()' results in exactly one constant value
     reg := compiler_emit_expr_to_any_register(compiler, expr)
     compiler_emit_return(compiler, cast(u16)reg, 1)
-    // log.debug("expr: ", expr)
-
     compiler_end(compiler)
+    vm.top = ptr_add(vm.base, compiler.free_reg)
     return !parser.panicking
 }
 
@@ -58,9 +58,9 @@ compiler_emit_expr_to_next_register :: proc(compiler: ^Compiler, expr: ^Expr) {
 
 // Analogous to `lcode.c:luaK_reserveregs(FuncState *fs, int reg)` in Lua 5.1.
 // See: https://www.lua.org/source/5.1/lcode.c.html#luaK_reserveregs
-compiler_reserve_registers :: proc(compiler: ^Compiler, #any_int n: int) {
+compiler_reserve_registers :: proc(compiler: ^Compiler, #any_int count: int) {
     // @todo 2025-01-06: Check the VM's available stack size?
-    compiler.free_reg += auto_cast n
+    compiler.free_reg += cast(u16)count
 }
 
 // Analogous to `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.
@@ -90,8 +90,10 @@ discharge_expr_to_register :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
 
 // Analogous to `compiler.c:emitReturn()` in the book.
 // Similar to Lua, all functions have this return even if they have explicit returns.
-compiler_emit_return :: proc(compiler: ^Compiler, reg, n_ret: u16) {
-    inst := inst_create_AB(.Return, reg, n_ret + 1)
+compiler_emit_return :: proc(compiler: ^Compiler, reg, n_results: u16) {
+    // Add 1 because we want to differentiate from arg B == 0 indicating to return
+    // up to top.
+    inst := inst_create_AB(.Return, reg, n_results + 1)
     compiler_emit_instruction(compiler, inst)
 }
 
@@ -101,9 +103,6 @@ compiler_emit_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32)
     inst := inst_create_ABx(op, reg, index)
     compiler_emit_instruction(compiler, inst)
 }
-
-// compiler_emit_constant :: proc(compiler: ^Compiler, constant: Value) {
-// }
 
 // Analogous to 'compiler.c:makeConstant()' in the book.
 compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u32) {
@@ -116,6 +115,7 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
 }
 
 // Analogous to 'compiler.c:emitByte()' and 'compiler.c:emitBytes()' in the book.
+// @todo 2025-01-07: Fix the line counter!
 compiler_emit_instruction :: proc(compiler: ^Compiler, inst: Instruction) {
     chunk_append(current_chunk(compiler), inst, compiler.parser.consumed.line)
 }

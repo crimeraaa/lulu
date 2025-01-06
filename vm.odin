@@ -36,7 +36,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     chunk_init(chunk, name)
     defer chunk_destroy(chunk)
 
-    if !compiler_compile(chunk, input) {
+    if !compiler_compile(vm, chunk, input) {
         return .Compile_Error
     }
     vm.chunk = chunk
@@ -69,7 +69,6 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
             a  := inst.a
             bc := inst_get_Bx(inst)
             vm.base[a] = constants[bc]
-            vm.top = ptr_add(vm.top, 1)
         case .Add: binary_op(vm, number_add, inst, constants)
         case .Sub: binary_op(vm, number_sub, inst, constants)
         case .Mul: binary_op(vm, number_mul, inst, constants)
@@ -88,8 +87,6 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
             for i in int(a)..<n_results {
                 value_print(vm.base[i])
             }
-            // @warning 2025-01-06: This doesn't seem right!
-            vm.top = ptr_sub(vm.top, n_results)
             return .Ok
         }
     }
@@ -97,9 +94,6 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
 
 @(private="file")
 binary_op :: proc(vm: ^VM, $op: proc(x, y: Value) -> Value, inst: Instruction, kst: []Value) {
-    if cast(int)inst.a == ptr_sub(vm.top, vm.base) {
-        vm.top = ptr_add(vm.top, 1)
-    }
     x, y := get_RK(vm, inst.b, kst), get_RK(vm, inst.c, kst)
     vm.base[inst.a] = op(x, y)
 }

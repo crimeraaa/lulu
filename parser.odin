@@ -33,7 +33,6 @@ Precedence :: enum u8 {
 }
 
 Expr :: struct {
-    prev:   ^Expr,
     value:  Value,  // Number literal.
     info:   int,    // May refer to a register or constants table index.
     type:   Expr_Type,
@@ -70,33 +69,31 @@ parser_advance :: proc(parser: ^Parser) -> (ok: bool) {
 }
 
 // Analogous to 'compiler.c:consume()' in the book.
-parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
+parser_consume :: proc(parser: ^Parser, expected: Token_Type) -> (ok: bool) {
     if parser.lookahead.type == expected {
-        parser_advance(parser)
-        return
+        return parser_advance(parser)
     }
     // @warning 2025-01-05: We assume this is enough!
     buf: [64]byte
     s := fmt.bprintf(buf[:], "Expected '%s'", token_type_strings[expected])
     parser_error_lookahead(parser, s)
+    return false
 }
 
 // Analogous to 'compiler.c:expression()' in the book.
-parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
+parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (ok: bool) {
+    return parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
 }
 
 @(private="file")
-parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) {
+parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) -> (ok: bool) {
     recurse_begin(parser, location)
     defer recurse_end(parser, location)
-    if !parser_advance(parser) {
-        return
-    }
+    parser_advance(parser) or_return
     prefix := get_rule(parser.consumed.type).prefix
     if prefix == nil {
         parser_error_consumed(parser, "Expected an expression")
-        return
+        return false
     }
     // log.debugf("Calling prefix: %v", prefix)
     prefix(parser, compiler, expr)
@@ -106,12 +103,12 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         if prec > rule.prec {
             break
         }
-        if !parser_advance(parser) {
-            return
-        }
+        parser_advance(parser) or_return
         // log.debugf("Calling infix: %v", rule.infix)
         rule.infix(parser, compiler, expr)
     }
+
+    return true
 }
 
 // Analogous to 'compiler.c:errorAtCurrent()' in the book.
@@ -127,11 +124,13 @@ parser_error_consumed :: proc(parser: ^Parser, msg: string) {
 // Analogous to 'compiler.c:errorAt()' in the book.
 @(private="file")
 error_at :: proc(parser: ^Parser, token: Token, msg: string) {
+    // Avoid cascading error messages (looking at you, C++)...
     if parser.panicking {
         return
     }
     parser.panicking = true
 
+    // .Eof token: don't use lexeme as it'll just be an empty string.
     location := token.lexeme if token.type != .Eof else token_type_strings[.Eof]
     fmt.eprintfln("%s:%i: %s at '%s'", parser.lexer.source, token.line, msg, location)
 }
@@ -207,7 +206,7 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         }
     }
     type  := parser.consumed.type
-    right := &Expr{prev = expr}
+    right := &Expr{}
     op    := get_op(type)
     // log.debug("left: ", expr)
 
