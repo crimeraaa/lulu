@@ -48,7 +48,7 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     }
 
     print_AuBC :: proc(inst: Instruction) {
-        fmt.printf("% 8i % 4i % 4s ; ", inst.a, inst_get_uBC(inst), " ")
+        fmt.printf("% 8i % 4i % 4s ; ", inst.a, inst_get_Bx(inst), " ")
     }
 
     print_args3 :: proc(inst: Instruction) {
@@ -64,7 +64,7 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     fmt.printf("%v.%-8v ", typeid_of(type_of(inst.op)), inst.op)
     switch (inst.op) {
     case .Constant:
-        a, bc := inst.a, inst_get_uBC(inst)
+        a, bc := inst.a, inst_get_Bx(inst)
         print_AuBC(inst)
         fmt.printf("reg[%i] := .const[%i] => ", a, bc)
         value_print(chunk.constants[bc])
@@ -77,8 +77,8 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Unm: unary("-", inst)
     case .Return:
         a := inst.a
-        b := inst.b
+        b := inst.b - 1 if inst.b != 0 else a
         print_args2(inst)
-        fmt.printfln("return reg[%i]..<reg[%v]", a, u16(a) + b)
+        fmt.printfln("return reg[%i]..<reg[%v]", a, b)
     }
 }

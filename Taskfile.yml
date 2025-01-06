@@ -1,0 +1,27 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  MODE: '{{default "debug"}}'
+  ODIN: odin
+  DEBUG_FLAGS: >-
+    -debug
+    -sanitize:address
+  RELEASE_FLAGS: >-
+    -vet
+  ODIN_FLAGS: >-
+    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
+
+tasks:
+  build:
+    cmds:
+      - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:bin/lulu'
+    sources:
+      - ./*.odin
+
+  run:
+    cmds:
+      - task: build
+      - bin/lulu
+    interactive: true

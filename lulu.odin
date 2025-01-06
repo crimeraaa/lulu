@@ -14,7 +14,7 @@ g_vm := &VM{}
 
 main :: proc() {
     when LULU_DEBUG {
-        logger_opts := log.Options{.Procedure, .Terminal_Color}
+        logger_opts := log.Options{.Level, .Short_File_Path, .Line, .Procedure, .Terminal_Color}
         logger := log.create_console_logger(opt = logger_opts)
         context.logger = logger
         defer log.destroy_console_logger(logger)
@@ -120,7 +120,7 @@ expr1 :: proc(vm: ^VM, chunk: ^Chunk) {
             // 6c.) Emit bytecode for 5a.)
             //      reg[1] := .const[2]
             //             := 5.6
-            chunk_append(chunk, inst_create_AuBC(.Constant, free_reg - 1, k2), line)
+            chunk_append(chunk, inst_create_ABx(.Constant, free_reg - 1, k2), line)
         }
         // 5c.) Emit bytecode for 5a.).
         //      reg[1] := -reg[1]
@@ -322,7 +322,7 @@ expr5 :: proc(vm: ^VM, chunk: ^Chunk) {
                 c4 := chunk_add_constant(chunk, 5.0)
 
                 // reg[1] := .const[4] => 5
-                chunk_append(chunk, inst_create_AuBC(.Constant, free_reg - 1, c4), line)
+                chunk_append(chunk, inst_create_ABx(.Constant, free_reg - 1, c4), line)
             }
 
             // Emit bytecode for 5.)

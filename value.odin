@@ -4,7 +4,8 @@ package lulu
 import "core:fmt"
 import "core:math"
 
-Value :: f64
+Value  :: f64
+Number :: f64
 
 Value_Print_Mode :: enum u8 {
     Normal, // Prints the value as-is and prints a newline.
@@ -12,33 +13,42 @@ Value_Print_Mode :: enum u8 {
     Stack,  // Prints the value surrounded by square brackets. No newline.
 }
 
-value_add :: proc(a, b: Value) -> Value {
+// Used for callbacks/dispatches
+Number_Proc :: #type proc(a, b: Number) -> Number
+
+number_add :: proc(a, b: Number) -> Number {
     return a + b
 }
 
-value_sub :: proc (a, b: Value) -> Value {
+number_sub :: proc (a, b: Number) -> Number {
     return a - b
 }
 
-value_mul :: proc(a, b: Value) -> Value {
+number_mul :: proc(a, b: Number) -> Number {
     return a * b
 }
 
-value_div :: proc(a, b: Value) -> Value {
+number_div :: proc(a, b: Number) -> Number {
     return a / b
 }
 
-value_mod :: proc(a, b: Value) -> Value {
+number_mod :: proc(a, b: Number) -> Number {
     return math.mod(a, b)
 }
 
-value_pow :: proc(a, b: Value) -> Value {
+number_pow :: proc(a, b: Number) -> Number {
     return math.pow(a, b)
+}
+
+number_unm :: proc(a: Number) -> Number {
+    return -a
 }
 
 value_eq :: proc(a, b: Value) -> bool {
     return a == b
 }
+
+number_is_nan :: math.is_nan
 
 value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
     // We assume this is valid for numbers, booleans and pointers.

@@ -67,25 +67,29 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
         switch (inst.op) {
         case .Constant:
             a  := inst.a
-            bc := inst_get_uBC(inst)
+            bc := inst_get_Bx(inst)
             vm.base[a] = constants[bc]
             vm.top = ptr_add(vm.top, 1)
-        case .Add: binary_op(vm, value_add, inst, constants)
-        case .Sub: binary_op(vm, value_sub, inst, constants)
-        case .Mul: binary_op(vm, value_mul, inst, constants)
-        case .Div: binary_op(vm, value_div, inst, constants)
-        case .Mod: binary_op(vm, value_mod, inst, constants)
-        case .Pow: binary_op(vm, value_pow, inst, constants)
+        case .Add: binary_op(vm, number_add, inst, constants)
+        case .Sub: binary_op(vm, number_sub, inst, constants)
+        case .Mul: binary_op(vm, number_mul, inst, constants)
+        case .Div: binary_op(vm, number_div, inst, constants)
+        case .Mod: binary_op(vm, number_mod, inst, constants)
+        case .Pow: binary_op(vm, number_pow, inst, constants)
         case .Unm: vm.base[inst.a] = -vm.base[inst.b]
         case .Return:
-            a := inst.a
-            b := inst.b
-            n_results := int(a) + int(b)
+            a := inst.a // Location of register A
+            b := inst.b // #results
+            if b != 0 {
+                vm.top = ptr_add(&vm.base[a], b - 1)
+            }
+            // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
+            n_results := int(b) - 1 if b != 0 else ptr_sub(vm.top, vm.base)
             for i in int(a)..<n_results {
                 value_print(vm.base[i])
             }
-            // How to properly set stack and base pointers here?
-            vm.top = vm.base
+            // @warning 2025-01-06: This doesn't seem right!
+            vm.top = ptr_sub(vm.top, n_results)
             return .Ok
         }
     }
@@ -108,7 +112,7 @@ get_RK :: proc(vm: ^VM, b_or_c: u16, constants: []Value) -> Value {
 @(private="file")
 reset_stack :: proc(vm: ^VM) {
     vm.base = &vm.stack[0]
-    vm.top = vm.base
+    vm.top  = vm.base
 }
 
 ptr_add :: proc(a: ^$T, #any_int offset: int) -> ^T {

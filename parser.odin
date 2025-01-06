@@ -3,11 +3,13 @@ package lulu
 
 import "core:fmt"
 import "core:log"
+import "core:encoding/ansi"
 
 Parser :: struct {
-    lexer: Lexer,
+    lexer:               Lexer,
     consumed, lookahead: Token,
-    panicking: bool,
+    panicking:           bool,
+    recurse:             int,
 }
 
 Parse_Rule :: struct {
@@ -33,20 +35,32 @@ Precedence :: enum u8 {
 Expr :: struct {
     prev:   ^Expr,
     value:  Value,  // Number literal.
-    index:  u32,    // Index into constants table if applicable.
+    info:   int,    // May refer to a register or constants table index.
     type:   Expr_Type,
 }
 
 Expr_Type :: enum u8 {
-    Reusable,   // This ^Expr was previously used but is now available!
-    Literal,
+    Discharged, // This ^Expr was emitted. It is now conceptually read-only.
+    Number,     // A number literal.
+}
+
+// Intended to be easier to grep
+// Inspired by: https://www.lua.org/source/5.1/lparser.c.html#simpleexp
+expr_init :: proc(expr: ^Expr, type: Expr_Type, info: int) {
+    expr.type = type
+    expr.info = info
+}
+
+// NOTE: In the future, may need to check for jump lists!
+// See: https://www.lua.org/source/5.1/lcode.c.html#isnumeral
+expr_is_number :: proc(expr: ^Expr) -> bool {
+    return expr.type == .Number
 }
 
 // Analogous to 'compiler.c:advance()' in the book.
 parser_advance :: proc(parser: ^Parser) -> (ok: bool) {
     token, error := lexer_scan_token(&parser.lexer)
-    ok = error == nil || error == .Eof
-    if !ok {
+    if ok = (error == nil) || (error == .Eof); !ok {
         log.errorf("Error: %v", error)
         error_at(parser, token, lexer_error_strings[error])
     } else {
@@ -63,8 +77,8 @@ parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
     }
     // @warning 2025-01-05: We assume this is enough!
     buf: [64]byte
-    fmt.bprintf(buf[:], "Expected '%s'", token_type_strings[expected])
-    parser_error_lookahead(parser, string(buf[:]))
+    s := fmt.bprintf(buf[:], "Expected '%s'", token_type_strings[expected])
+    parser_error_lookahead(parser, s)
 }
 
 // Analogous to 'compiler.c:expression()' in the book.
@@ -73,7 +87,9 @@ parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Exp
 }
 
 @(private="file")
-parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence) {
+parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) {
+    recurse_begin(parser, location)
+    defer recurse_end(parser, location)
     if !parser_advance(parser) {
         return
     }
@@ -82,7 +98,7 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         parser_error_consumed(parser, "Expected an expression")
         return
     }
-    log.debugf("Calling prefix: %v", prefix)
+    // log.debugf("Calling prefix: %v", prefix)
     prefix(parser, compiler, expr)
 
     for {
@@ -93,29 +109,8 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         if !parser_advance(parser) {
             return
         }
-        log.debugf("Calling infix: %v", rule.infix)
+        // log.debugf("Calling infix: %v", rule.infix)
         rule.infix(parser, compiler, expr)
-    }
-
-    defer log.debug("expr:", expr)
-
-    // Discharge expression
-    switch expr.type {
-    case .Literal:
-        // Not the last literal in the chain if folded?
-        if expr.prev != nil {
-            break
-        }
-        defer {
-            compiler.free_reg += 1
-            expr.type = .Reusable
-        }
-        a := compiler.free_reg
-        index := compiler_add_constant(compiler, expr.value)
-        inst  := inst_create_AuBC(.Constant, cast(u16)a, index)
-        compiler_emit_instruction(compiler, parser, inst)
-    case .Reusable:
-        // Nothing to do
     }
 }
 
@@ -145,16 +140,39 @@ error_at :: proc(parser: ^Parser, token: Token, msg: string) {
 
 @(private="file")
 grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    log.debug("Recursing...")
     parser_parse_expression(parser, compiler, expr)
     parser_consume(parser, .Right_Paren)
 }
 
 @(private="file")
+recurse_begin :: proc(parser: ^Parser, location := #caller_location) {
+    defer parser.recurse += 1
+    if parser.recurse == 0 { return }
+    // log.debugf(purple("BEGIN RECURSE(%i)"), parser.recurse, location = location)
+}
+
+@(private="file")
+recurse_end :: proc(parser: ^Parser, location := #caller_location) {
+    parser.recurse -= 1
+    if parser.recurse == 0 { return }
+    // log.debugf(purple("END RECURSE(%i)"), parser.recurse, location = location)
+}
+
+@(private="file")
+purple :: proc($msg: string) -> string {
+    return set_color(msg, ansi.FG_MAGENTA)
+}
+
+@(private="file")
+set_color :: proc($msg, $color: string) -> string {
+    return ansi.CSI + color + ansi.SGR + msg + ansi.CSI + ansi.RESET + ansi.SGR
+}
+
+@(private="file")
 number :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    defer log.debug("expr:", expr)
-    expr.type   = .Literal
-    expr.value  = parser.lexer.number
+    // defer log.debug("expr:", expr)
+    expr_init(expr, .Number, 0)
+    expr.value = parser.lexer.number
 }
 
 @(private="file")
@@ -163,13 +181,14 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         #partial switch type {
         case .Dash: return .Unm
         case:       log.panicf("Got type: %v", type)
+        }
     }
-}
     type := parser.consumed.type
     op   := get_op(type)
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
     parse_precedence(parser, compiler, expr, .Unary)
+    compiler_emit_prefix(compiler, op, expr)
 }
 
 /// INFIX EXPRESSIONS
@@ -188,35 +207,22 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         }
     }
     type  := parser.consumed.type
-    left  := expr
-    right := &Expr{prev = left}
+    right := &Expr{prev = expr}
     op    := get_op(type)
+    // log.debug("left: ", expr)
+
+    // Notice how we call this before filling in 'right'
+    compiler_emit_infix(compiler, op, expr)
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
-    log.debug("Recursing...")
+    recurse_begin(parser)
     parse_precedence(parser, compiler, right, get_rule(type).prec + Precedence(1))
-    log.debug("left:",  left)
-    log.debug("right:", right)
-    // Can do constant folding?
-    if (left.type == .Literal) && right.type == .Literal {
-        Value_Proc :: #type proc(a, b: Value) -> Value
-        dispatch   :: proc(op: OpCode) -> Value_Proc {
-            #partial switch op {
-            case .Add:  return value_add
-            case .Sub:  return value_sub
-            case .Mul:  return value_mul
-            case .Div:  return value_div
-            case .Mod:  return value_mod
-            case .Pow:  return value_pow
-            case:       log.panicf("Got op: %v", op)
-            }
-        }
+    recurse_end(parser)
 
-        // 'left' is the same as 'expr', which the caller can sees.
-        n := dispatch(op)(left.value, right.value)
-        left.value = n
-        log.debug("left:", left)
-    }
+    // log.debug("left: ",  expr)
+    // log.debug("right:", right)
+
+    compiler_emit_postfix(compiler, op, expr, right)
 }
 
 /// PRATT PARSER

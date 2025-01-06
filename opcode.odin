@@ -66,25 +66,26 @@ OpCode_Arg_Type :: enum u8 {
 // How should we interpret the arguments?
 OpCode_Format :: enum u8 {
     Separate,    // A, B and C are all separate.
-    Unsigned_BC, // B and C are combined into an unsigned 18-bit integer.
-    Signed_BC,   // B and C are combined into a signed 18-bit integer.
+    Unsigned_Bx, // B is extended into an unsigned 18-bit integer.
+    Signed_Bx,   // B is extended into a signed 18-bit integer.
 }
 
 // https://www.lua.org/source/5.1/lopcodes.h.html#OpArgMask
-OpCode_Info :: bit_field u8 {
-    type:   OpCode_Format   | 2,
-    b:      OpCode_Arg_Type | 2,
-    c:      OpCode_Arg_Type | 2,
-    a:      OpCode_Arg_Type | 1, // Arg A can never be an RK. Just check if it's used.
-    is_test:           bool | 1,
+OpCode_Info :: struct {
+    type:   OpCode_Format,
+    b:      OpCode_Arg_Type,
+    c:      OpCode_Arg_Type,
+    a:      OpCode_Arg_Type, // Arg A can never be an RK. Just check if it's used.
+    is_test: bool,
 }
 
 // See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
+@(rodata)
 opcode_info := [OpCode]OpCode_Info {
-.Constant   = {type = .Unsigned_BC, a = .Used, b = .Constant, c = .Unused},
-.Add..=.Pow = {type = .Separate,    a = .Used, b = .Constant, c = .Constant},
-.Unm        = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
-.Return     = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
+.Constant       = {type = .Unsigned_Bx, a = .Used, b = .Constant, c = .Unused},
+.Add ..= .Pow   = {type = .Separate,    a = .Used, b = .Constant, c = .Constant},
+.Unm            = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
+.Return         = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
 }
 
 /* =============================================================================
@@ -120,13 +121,13 @@ inst_create :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
 }
 
 inst_create_AB :: proc(op: OpCode, a, b: u16) -> (inst: Instruction) {
-    inst.b = b
-    inst.a = a
+    inst.b  = b
+    inst.a  = a
     inst.op = op
     return inst
 }
 
-inst_create_AuBC :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
+inst_create_ABx :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
     inst.b  = cast(u16)(bc >> SIZE_C) // shift out 'c' bits
     inst.c  = cast(u16)(bc & MAX_C)   // remove 'b' bits
     inst.a  = a
@@ -134,7 +135,7 @@ inst_create_AuBC :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
     return inst
 }
 
-inst_get_uBC :: proc(inst: Instruction) -> (bc: u32) {
+inst_get_Bx :: proc(inst: Instruction) -> (bc: u32) {
     bc |= cast(u32)inst.b << OFFSET_B
     bc |= cast(u32)inst.c
     return bc
