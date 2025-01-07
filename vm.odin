@@ -10,7 +10,7 @@ VM :: struct {
     stack:      [STACK_MAX]Value,
     top, base:  [^]Value,   // 'top' always points to the first free slot.
     chunk:      ^Chunk,
-    ip:         ^Instruction,
+    pc:         int, // Index of the next instruction to be executed.
 }
 
 Status :: enum u8 {
@@ -22,13 +22,11 @@ Status :: enum u8 {
 vm_init :: proc(vm: ^VM) {
     reset_stack(vm)
     vm.chunk = nil
-    vm.ip    = nil
+    vm.pc    = 0
 }
 
 vm_destroy :: proc(vm: ^VM) {
-    reset_stack(vm)
-    vm.chunk = nil
-    vm.ip    = nil
+    vm_init(vm)
 }
 
 vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
@@ -40,28 +38,37 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
         return .Compile_Error
     }
     vm.chunk = chunk
-    vm.ip    = raw_data(chunk.code)
-    return vm_execute(vm)
+    vm.pc    = 0
+    if !vm_execute(vm) {
+        line := chunk.line[vm.pc]
+        fmt.eprintfln("%s:%i: %s", chunk.source, line, "Bad expression somewhere!")
+        reset_stack(vm)
+        return .Runtime_Error
+    }
+    return .Ok
 }
 
 // Analogous to 'vm.c:run()' in the book.
-vm_execute :: proc(vm: ^VM) -> (status: Status) {
+vm_execute :: proc(vm: ^VM) -> (ok: bool) {
     chunk     := vm.chunk
     code      := chunk.code[:]
     constants := chunk.constants[:]
-    ip        := vm.ip
+    pc        := vm.pc
+    
+    // Needed for error reporting where local 'pc' is long out of scope
+    defer vm.pc = pc
 
     for {
-        inst := ip^
-        defer ip = ptr_add(ip, 1)
+        inst := code[pc]
+        defer pc += 1
 
         when DEBUG_TRACE_EXEC {
             fmt.printf("      ")
-            for value in vm.stack[:ptr_sub(vm.top, vm.base)] {
-                value_print(value, .Stack)
+            for value := vm.base; value < vm.top; value = &value[1] {
+                value_print(value[0], .Stack)
             }
-            fmt.println()
-            debug_disasm_inst(chunk^, inst, ptr_sub(ip, raw_data(code)))
+            fmt.println("; pc :=", pc)
+            debug_disasm_inst(chunk^, inst, pc)
         }
 
         switch (inst.op) {
@@ -69,33 +76,49 @@ vm_execute :: proc(vm: ^VM) -> (status: Status) {
             a  := inst.a
             bc := inst_get_Bx(inst)
             vm.base[a] = constants[bc]
-        case .Add: binary_op(vm, number_add, inst, constants)
-        case .Sub: binary_op(vm, number_sub, inst, constants)
-        case .Mul: binary_op(vm, number_mul, inst, constants)
-        case .Div: binary_op(vm, number_div, inst, constants)
-        case .Mod: binary_op(vm, number_mod, inst, constants)
-        case .Pow: binary_op(vm, number_pow, inst, constants)
-        case .Unm: vm.base[inst.a] = -vm.base[inst.b]
+        case .Nil:
+            a, b := inst.a, inst.b
+            for i in a..=b {
+                value_set_nil(&vm.base[i])
+            }
+        case .Boolean:
+            value_set_boolean(&vm.base[inst.a], inst.b == 1)
+        case .Add: binary_op(vm, number_add, inst, constants) or_return
+        case .Sub: binary_op(vm, number_sub, inst, constants) or_return
+        case .Mul: binary_op(vm, number_mul, inst, constants) or_return
+        case .Div: binary_op(vm, number_div, inst, constants) or_return
+        case .Mod: binary_op(vm, number_mod, inst, constants) or_return
+        case .Pow: binary_op(vm, number_pow, inst, constants) or_return
+        case .Unm:
+            a, b := inst.a, inst.b
+            if !value_is_number(vm.base[b]) {
+                return false
+            }
+            vm.base[inst.a].data.number = number_unm(vm.base[b].data.number)
         case .Return:
             a := inst.a // Location of register A
             b := inst.b // #results
             if b != 0 {
-                vm.top = ptr_add(&vm.base[a], b - 1)
+                vm.top = &vm.base[a + b - 1]
             }
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
-            n_results := int(b) - 1 if b != 0 else ptr_sub(vm.top, vm.base)
+            n_results := int(b) - 1 if b != 0 else mem.ptr_sub(vm.top, vm.base)
             for i in int(a)..<n_results {
                 value_print(vm.base[i])
             }
-            return .Ok
+            return true
         }
     }
 }
 
 @(private="file")
-binary_op :: proc(vm: ^VM, $op: proc(x, y: Value) -> Value, inst: Instruction, kst: []Value) {
+binary_op :: proc(vm: ^VM, $op: proc(x, y: f64) -> f64, inst: Instruction, kst: []Value) -> (ok: bool) {
     x, y := get_RK(vm, inst.b, kst), get_RK(vm, inst.c, kst)
-    vm.base[inst.a] = op(x, y)
+    if !value_is_number(x) || !value_is_number(y) {
+        return false
+    }
+    value_set_number(&vm.base[inst.a], op(x.data.number, y.data.number))
+    return true
 }
 
 @(private="file")
@@ -107,22 +130,4 @@ get_RK :: proc(vm: ^VM, b_or_c: u16, constants: []Value) -> Value {
 reset_stack :: proc(vm: ^VM) {
     vm.base = &vm.stack[0]
     vm.top  = vm.base
-}
-
-ptr_add :: proc(a: ^$T, #any_int offset: int) -> ^T {
-    return cast(^T)(uintptr(a) + uintptr(offset*size_of(T)))
-}
-
-ptr_sub :: proc {
-    ptr_sub_ptr,
-    ptr_sub_int,
-}
-
-// 'mem.ptr_sub' seems to give the wrong result...
-ptr_sub_ptr :: proc(a, b: ^$T) -> int {
-    return int(uintptr(a) - uintptr(b)) / size_of(T)
-}
-
-ptr_sub_int :: proc(a: ^$T, #any_int offset: int) -> ^T {
-    return cast(^T)(uintptr(a) - uintptr(offset*size_of(T)))
 }

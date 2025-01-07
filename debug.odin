@@ -12,7 +12,8 @@ debug_disasm_chunk :: proc(chunk: Chunk) {
     fmt.printfln("\n.name\n%q", chunk.source)
     fmt.println("\n.const:")
     for constant, index in chunk.constants {
-        fmt.printfln("[%04i] %v", index, constant)
+        fmt.printf("[%04i] ", index)
+        value_print(constant, .Debug)
     }
 
     fmt.println("\n.code")
@@ -25,7 +26,7 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     // unary negation, not and length never operate on constant indexes.
     unary :: proc($op: string, inst: Instruction) {
         print_args2(inst)
-        fmt.printfln("reg[%i] := reg%s[%i]", inst.a, op, inst.b)
+        fmt.printfln("reg[%i] := %sreg[%i]", inst.a, op, inst.b)
     }
 
     binary :: proc($op: string, inst: Instruction) {
@@ -68,6 +69,17 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
         print_AuBC(inst)
         fmt.printf("reg[%i] := .const[%i] => ", a, bc)
         value_print(chunk.constants[bc])
+    case .Nil:
+        print_args2(inst)
+        fmt.printfln("reg[%i]..<reg[%v] := nil", inst.a, inst.a + inst.b - 1)
+    case .Boolean:
+        print_args3(inst)
+        fmt.printf("reg[%i] := %s", inst.a, "true" if inst.b == 1 else "false")
+        if inst.c == 1 {
+            fmt.println("; ip++")
+        } else {
+            fmt.println()
+        }
     case .Add: binary("+", inst)
     case .Sub: binary("-", inst)
     case .Mul: binary("*", inst)

@@ -13,7 +13,7 @@ Parser :: struct {
 }
 
 Parse_Rule :: struct {
-    prefix, infix:  #type proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr),
+    prefix, infix:  proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr),
     prec:           Precedence,
 }
 
@@ -33,21 +33,36 @@ Precedence :: enum u8 {
 }
 
 Expr :: struct {
-    value:  Value,  // Number literal.
-    info:   int,    // May refer to a register or constants table index.
-    type:   Expr_Type,
+    info: Expr_Info,
+    type: Expr_Type,
+    line: int,
 }
 
+Expr_Info :: struct #raw_union {
+    number: f64, // Used when type is .Number
+    reg:    u16, // .Discharged
+    index:  u32, // .Constant
+}
+
+// See: https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
 Expr_Type :: enum u8 {
     Discharged, // This ^Expr was emitted. It is now conceptually read-only.
     Number,     // A number literal.
+    Nil,
+    True,
+    False,
 }
 
 // Intended to be easier to grep
 // Inspired by: https://www.lua.org/source/5.1/lparser.c.html#simpleexp
 expr_init :: proc(expr: ^Expr, type: Expr_Type, info: int) {
-    expr.type = type
-    expr.info = info
+    expr.type        = type
+    expr.info.number = 0
+}
+
+expr_set_number :: proc(expr: ^Expr, n: f64) {
+    expr.type        = .Number
+    expr.info.number = n
 }
 
 // NOTE: In the future, may need to check for jump lists!
@@ -85,17 +100,19 @@ parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Exp
     return parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
 }
 
+// Analogous to 'lparser.c:subexpr(LexState *ls, expdesc *v, int limit)' in Lua 5.1.
+// See: https://www.lua.org/source/5.1/lparser.c.html#subexpr
 @(private="file")
 parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) -> (ok: bool) {
     recurse_begin(parser, location)
     defer recurse_end(parser, location)
+
     parser_advance(parser) or_return
     prefix := get_rule(parser.consumed.type).prefix
     if prefix == nil {
         parser_error_consumed(parser, "Expected an expression")
         return false
     }
-    // log.debugf("Calling prefix: %v", prefix)
     prefix(parser, compiler, expr)
 
     for {
@@ -104,7 +121,6 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
             break
         }
         parser_advance(parser) or_return
-        // log.debugf("Calling infix: %v", rule.infix)
         rule.infix(parser, compiler, expr)
     }
 
@@ -146,14 +162,14 @@ grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 @(private="file")
 recurse_begin :: proc(parser: ^Parser, location := #caller_location) {
     defer parser.recurse += 1
-    if parser.recurse == 0 { return }
+    // if parser.recurse == 0 { return }
     // log.debugf(purple("BEGIN RECURSE(%i)"), parser.recurse, location = location)
 }
 
 @(private="file")
 recurse_end :: proc(parser: ^Parser, location := #caller_location) {
     parser.recurse -= 1
-    if parser.recurse == 0 { return }
+    // if parser.recurse == 0 { return }
     // log.debugf(purple("END RECURSE(%i)"), parser.recurse, location = location)
 }
 
@@ -168,10 +184,14 @@ set_color :: proc($msg, $color: string) -> string {
 }
 
 @(private="file")
-number :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    // defer log.debug("expr:", expr)
-    expr_init(expr, .Number, 0)
-    expr.value = parser.lexer.number
+literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    #partial switch type := parser.consumed.type; type {
+    case .Nil:      expr_init(expr, .Nil, 0)
+    case .True:     expr_init(expr, .True, 1)
+    case .False:    expr_init(expr, .False, 0)
+    case .Number:   expr_set_number(expr, parser.lexer.number)
+    case:           log.panicf("Cannot parse '%v' as a literal", type)
+    }
 }
 
 @(private="file")
@@ -208,9 +228,8 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     type  := parser.consumed.type
     right := &Expr{}
     op    := get_op(type)
-    // log.debug("left: ", expr)
-
-    // Notice how we call this before filling in 'right'
+    
+    // Emit nonconstant intermediates, if any.
     compiler_emit_infix(compiler, op, expr)
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
@@ -218,10 +237,7 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     parse_precedence(parser, compiler, right, get_rule(type).prec + Precedence(1))
     recurse_end(parser)
 
-    // log.debug("left: ",  expr)
-    // log.debug("right:", right)
-
-    compiler_emit_postfix(compiler, op, expr, right)
+    compiler_fix_infix(compiler, op, expr, right)
 }
 
 /// PRATT PARSER
@@ -229,6 +245,9 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
     @(static, rodata)
     rules := #partial [Token_Type]Parse_Rule {
+        .Nil        = {prefix = literal},
+        .True       = {prefix = literal},
+        .False      = {prefix = literal},
         .Left_Paren = {prefix = grouping},
         .Dash       = {prefix = unary,      infix = binary,     prec = .Terminal},
         .Plus       = {                     infix = binary,     prec = .Terminal},
@@ -236,7 +255,7 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Slash      = {                     infix = binary,     prec = .Factor},
         .Percent    = {                     infix = binary,     prec = .Factor},
         .Caret      = {                     infix = binary,     prec = .Exponent},
-        .Number     = {prefix = number},
+        .Number     = {prefix = literal},
     }
     return rules[type]
 }

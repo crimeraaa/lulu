@@ -46,6 +46,8 @@ Note on shorthand:
 ============================================================================= */
 //          Args        | Description
 Constant,   // A, uBC   |   Reg[A] := Kst[uBC]
+Nil,        // A, B     |   Reg[A]..=Reg[A+B-1] := nil
+Boolean,    // A, B, C  |   Reg[1] := (Bool)B; if ((Bool)C) ip++
 Add,        // A, B, C  |   Reg[A] := RK[B] + RK[C]
 Sub,        // A, B, C  |   Reg[A] := RK[B] - RK[C]
 Mul,        // A, B, C  |   Reg[A] := RK[B] * RK[C]
@@ -83,6 +85,8 @@ OpCode_Info :: struct {
 @(rodata)
 opcode_info := [OpCode]OpCode_Info {
 .Constant       = {type = .Unsigned_Bx, a = .Used, b = .Constant, c = .Unused},
+.Boolean        = {type = .Separate,    a = .Used, b = .Used,     c = .Used},
+.Nil            = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
 .Add ..= .Pow   = {type = .Separate,    a = .Used, b = .Constant, c = .Constant},
 .Unm            = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
 .Return         = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
