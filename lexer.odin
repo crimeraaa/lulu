@@ -1,7 +1,6 @@
 #+private
 package lulu
 
-import "core:io"
 import "core:strconv"
 import "core:strings"
 import "core:text/match"

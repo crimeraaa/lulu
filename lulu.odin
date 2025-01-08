@@ -5,6 +5,8 @@ import "core:io"
 import "core:log"
 import "core:os"
 
+_ :: log
+
 LULU_DEBUG         :: #config(LULU_DEBUG, ODIN_DEBUG)
 DEBUG_TRACE_EXEC   :: LULU_DEBUG
 DEBUG_PRINT_CODE   :: LULU_DEBUG

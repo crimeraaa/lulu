@@ -4,6 +4,9 @@ package lulu
 import "core:fmt"
 import "core:log"
 import "core:encoding/ansi"
+import "core:strings"
+
+_ :: ansi
 
 Parser :: struct {
     lexer:               Lexer,
@@ -17,6 +20,11 @@ Parse_Rule :: struct {
     prec:           Precedence,
 }
 
+/* 
+Links:
+-   https://www.lua.org/pil/3.5.html
+-   https://www.lua.org/manual/5.1/manual.html#2.5.6
+ */
 Precedence :: enum u8 {
     None,
     Assignment, // =
@@ -26,8 +34,8 @@ Precedence :: enum u8 {
     Comparison, // < > <= >=
     Terminal,   // + -
     Factor,     // * / %
-    Exponent,   // ^
     Unary,      // - # not
+    Exponent,   // ^
     Call,       // . ()
     Primary,
 }
@@ -39,23 +47,29 @@ Expr :: struct {
 }
 
 Expr_Info :: struct #raw_union {
-    number: f64, // Used when type is .Number
+    number: f64, // .Number
     reg:    u16, // .Discharged
     index:  u32, // .Constant
+    pc:     int, // .Need_Register
 }
 
-// See: https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
+/* 
+Links:
+-   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions 
+ */
 Expr_Type :: enum u8 {
-    Discharged, // This ^Expr was emitted. It is now conceptually read-only.
-    Number,     // A number literal.
+    Discharged,     // This ^Expr was emitted to a register. Similar to 'VNONRELOC'.
+    Need_Register,  // This ^Expr needs to be assigned to a register. Similar to 'VRELOCABLE'.
     Nil,
     True,
     False,
+    Number,
+    Constant,
 }
 
 // Intended to be easier to grep
 // Inspired by: https://www.lua.org/source/5.1/lparser.c.html#simpleexp
-expr_init :: proc(expr: ^Expr, type: Expr_Type, info: int) {
+expr_init :: proc(expr: ^Expr, type: Expr_Type) {
     expr.type        = type
     expr.info.number = 0
 }
@@ -71,7 +85,28 @@ expr_is_number :: proc(expr: ^Expr) -> bool {
     return expr.type == .Number
 }
 
+// The returned string will not last the next call to this!
+expr_to_string :: proc(expr: ^Expr) -> string {
+    @(static)
+    buf: [64]byte
+
+    builder := strings.builder_from_bytes(buf[:])
+    fmt.sbprint(&builder, "{info = {")
+    switch expr.type {
+    case .Nil:              break
+    case .True:             break
+    case .False:            break
+    case .Number:           fmt.sbprintf(&builder, "%f", expr.info.number)
+    case .Need_Register:    fmt.sbprintf(&builder, "pc = %i", expr.info.pc)
+    case .Discharged:       fmt.sbprintf(&builder, "reg = %i", expr.info.reg)
+    case .Constant:         fmt.sbprintf(&builder, "index = %i", expr.info.index)
+    }
+    fmt.sbprintf(&builder, "}, type = %s}", expr.type)
+    return strings.to_string(builder)
+}
+
 // Analogous to 'compiler.c:advance()' in the book.
+@(require_results)
 parser_advance :: proc(parser: ^Parser) -> (ok: bool) {
     token, error := lexer_scan_token(&parser.lexer)
     if ok = (error == nil) || (error == .Eof); !ok {
@@ -102,7 +137,7 @@ parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Exp
 
 // Analogous to 'lparser.c:subexpr(LexState *ls, expdesc *v, int limit)' in Lua 5.1.
 // See: https://www.lua.org/source/5.1/lparser.c.html#subexpr
-@(private="file")
+@(private="file", require_results)
 parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) -> (ok: bool) {
     recurse_begin(parser, location)
     defer recurse_end(parser, location)
@@ -123,8 +158,9 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         parser_advance(parser) or_return
         rule.infix(parser, compiler, expr)
     }
-
-    return true
+    
+    // Could have been set from one of prefix/infix functions
+    return !parser.panicking
 }
 
 // Analogous to 'compiler.c:errorAtCurrent()' in the book.
@@ -186,9 +222,9 @@ set_color :: proc($msg, $color: string) -> string {
 @(private="file")
 literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     #partial switch type := parser.consumed.type; type {
-    case .Nil:      expr_init(expr, .Nil, 0)
-    case .True:     expr_init(expr, .True, 1)
-    case .False:    expr_init(expr, .False, 0)
+    case .Nil:      expr_init(expr, .Nil)
+    case .True:     expr_init(expr, .True)
+    case .False:    expr_init(expr, .False)
     case .Number:   expr_set_number(expr, parser.lexer.number)
     case:           log.panicf("Cannot parse '%v' as a literal", type)
     }
@@ -206,7 +242,9 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     op   := get_op(type)
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
-    parse_precedence(parser, compiler, expr, .Unary)
+    if !parse_precedence(parser, compiler, expr, .Unary) {
+        return
+    }
     compiler_emit_prefix(compiler, op, expr)
 }
 
@@ -234,7 +272,11 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
     recurse_begin(parser)
-    parse_precedence(parser, compiler, right, get_rule(type).prec + Precedence(1))
+    prec := get_rule(type).prec
+    prec += Precedence(1) if prec != .Exponent else Precedence(0)
+    if !parse_precedence(parser, compiler, right, prec) {
+        return
+    }
     recurse_end(parser)
 
     compiler_fix_infix(compiler, op, expr, right)

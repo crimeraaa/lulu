@@ -25,8 +25,9 @@ debug_disasm_chunk :: proc(chunk: Chunk) {
 debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     // unary negation, not and length never operate on constant indexes.
     unary :: proc($op: string, inst: Instruction) {
+        b_where, b_index := get_rk(inst.b)
         print_args2(inst)
-        fmt.printfln("reg[%i] := %sreg[%i]", inst.a, op, inst.b)
+        fmt.printfln("reg[%i] := %s%s[%i]", inst.a, op, b_where, b_index)
     }
 
     binary :: proc($op: string, inst: Instruction) {

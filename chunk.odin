@@ -15,9 +15,10 @@ chunk_init :: proc(chunk: ^Chunk, source: string, allocator := context.allocator
     chunk.line      = make([dynamic]int, allocator)
 }
 
-chunk_append :: proc(chunk: ^Chunk, inst: Instruction, line: int) {
+chunk_append :: proc(chunk: ^Chunk, inst: Instruction, line: int) -> (pc: int) {
     append(&chunk.code, inst)
     append(&chunk.line, line)
+    return len(chunk.code) - 1
 }
 
 /*

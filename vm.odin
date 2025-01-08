@@ -67,7 +67,7 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
             for value := vm.base; value < vm.top; value = &value[1] {
                 value_print(value[0], .Stack)
             }
-            fmt.println("; pc :=", pc)
+            fmt.println()
             debug_disasm_inst(chunk^, inst, pc)
         }
 
@@ -90,11 +90,11 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
         case .Mod: binary_op(vm, number_mod, inst, constants) or_return
         case .Pow: binary_op(vm, number_pow, inst, constants) or_return
         case .Unm:
-            a, b := inst.a, inst.b
-            if !value_is_number(vm.base[b]) {
+            operand := get_RK(vm, inst.b, constants)
+            if !value_is_number(operand) {
                 return false
             }
-            vm.base[inst.a].data.number = number_unm(vm.base[b].data.number)
+            value_set_number(&vm.base[inst.a], number_unm(operand.data.number))
         case .Return:
             a := inst.a // Location of register A
             b := inst.b // #results
