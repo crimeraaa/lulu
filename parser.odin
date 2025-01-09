@@ -20,7 +20,7 @@ Parse_Rule :: struct {
     prec:           Precedence,
 }
 
-/* 
+/*
 Links:
 -   https://www.lua.org/pil/3.5.html
 -   https://www.lua.org/manual/5.1/manual.html#2.5.6
@@ -53,9 +53,9 @@ Expr_Info :: struct #raw_union {
     pc:     int, // .Need_Register
 }
 
-/* 
+/*
 Links:
--   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions 
+-   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
  */
 Expr_Type :: enum u8 {
     Discharged,     // This ^Expr was emitted to a register. Similar to 'VNONRELOC'.
@@ -132,15 +132,15 @@ parser_consume :: proc(parser: ^Parser, expected: Token_Type) -> (ok: bool) {
 
 // Analogous to 'compiler.c:expression()' in the book.
 parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (ok: bool) {
-    return parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
+    return parser_parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
 }
 
 // Analogous to 'lparser.c:subexpr(LexState *ls, expdesc *v, int limit)' in Lua 5.1.
 // See: https://www.lua.org/source/5.1/lparser.c.html#subexpr
-@(private="file", require_results)
-parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) -> (ok: bool) {
-    recurse_begin(parser, location)
-    defer recurse_end(parser, location)
+@(require_results)
+parser_parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) -> (ok: bool) {
+    parser_recurse_begin(parser, location)
+    defer parser_recurse_end(parser, location)
 
     parser_advance(parser) or_return
     prefix := get_rule(parser.consumed.type).prefix
@@ -155,10 +155,12 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         if prec > rule.prec {
             break
         }
+        // Can occur when we hardcode low precedence recursion in high precedence calls
+        assert(rule.infix != nil)
         parser_advance(parser) or_return
         rule.infix(parser, compiler, expr)
     }
-    
+
     // Could have been set from one of prefix/infix functions
     return !parser.panicking
 }
@@ -195,15 +197,13 @@ grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     parser_consume(parser, .Right_Paren)
 }
 
-@(private="file")
-recurse_begin :: proc(parser: ^Parser, location := #caller_location) {
+parser_recurse_begin :: proc(parser: ^Parser, location := #caller_location) {
     defer parser.recurse += 1
     // if parser.recurse == 0 { return }
     // log.debugf(purple("BEGIN RECURSE(%i)"), parser.recurse, location = location)
 }
 
-@(private="file")
-recurse_end :: proc(parser: ^Parser, location := #caller_location) {
+parser_recurse_end :: proc(parser: ^Parser, location := #caller_location) {
     parser.recurse -= 1
     // if parser.recurse == 0 { return }
     // log.debugf(purple("END RECURSE(%i)"), parser.recurse, location = location)
@@ -226,60 +226,102 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .True:     expr_init(expr, .True)
     case .False:    expr_init(expr, .False)
     case .Number:   expr_set_number(expr, parser.lexer.number)
-    case:           log.panicf("Cannot parse '%v' as a literal", type)
+    case:           unreachable()
     }
 }
 
 @(private="file")
 unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    get_op :: proc(type: Token_Type) -> (op: OpCode) {
-        #partial switch type {
-        case .Dash: return .Unm
-        case:       log.panicf("Got type: %v", type)
-        }
-    }
     type := parser.consumed.type
-    op   := get_op(type)
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
-    if !parse_precedence(parser, compiler, expr, .Unary) {
+    if !parser_parse_precedence(parser, compiler, expr, .Unary) {
         return
     }
-    compiler_emit_prefix(compiler, op, expr)
+
+    /*
+    Note:
+    -   Inline implementation of the only relevant lines from `lcode.c:luaK_prefix()`.
+
+    Links:
+    -   https://www.lua.org/source/5.1/lcode.c.html#luaK_prefix
+    -   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
+     */
+    #partial switch type {
+    case .Dash:
+        log.debug(expr_to_string(expr))
+        // Push the operand before OpCode.Unm.
+        if !expr_is_number(expr) {
+            compiler_expr_any_reg(compiler, expr)
+        }
+
+        // Since .Discharged is the zero value, change it! Else we call
+        // 'compiler_free_expr()' on a non-existent expression.
+        dummy := &Expr{}
+        expr_set_number(dummy, 0)
+        compiler_emit_arith(compiler, .Unm, expr, dummy)
+    case: unreachable()
+    }
 }
 
 /// INFIX EXPRESSIONS
 
 @(private="file")
 binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    get_op :: proc(type: Token_Type) -> (op: OpCode) {
-        #partial switch type {
-        case .Plus:     return .Add
-        case .Dash:     return .Sub
-        case .Star:     return .Mul
-        case .Slash:    return .Div
-        case .Percent:  return .Mod
-        case .Caret:    return .Pow
-        case:           log.panicf("Got type: %v", type)
-        }
-    }
     type  := parser.consumed.type
-    right := &Expr{}
-    op    := get_op(type)
-    
-    // Emit nonconstant intermediates, if any.
-    compiler_emit_infix(compiler, op, expr)
+    op: OpCode
+    #partial switch type {
+    case .Plus:    op = .Add
+    case .Dash:    op = .Sub
+    case .Star:    op = .Mul
+    case .Slash:   op = .Div
+    case .Percent: op = .Mod
+    case .Caret:   op = .Pow
+    case: unreachable()
+    }
+
+    /*
+    Brief:
+    -   Emits the left hand side.
+    -   'expr' could be a number literal or the literals nil, true or false.
+    -   It will be then be transformed to represent a constant index or a register.
+
+    Note:
+    -   This is effectively the inline implementation of the only relevant line
+        from 'lcode.c:luaK_infix()'.
+
+    Links:
+    -   https://www.lua.org/source/5.1/lcode.c.html#luaK_infix
+     */
+    compiler_expr_to_regconst(compiler, expr)
+
+    parser_recurse_begin(parser)
+    prec := get_rule(type).prec
+
+    // By not adding 1 for exponentiation we enforce right-associativity since we
+    // keep emitting the ones to the right first
+    if prec != .Exponent {
+        prec += Precedence(1)
+    }
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
-    recurse_begin(parser)
-    prec := get_rule(type).prec
-    prec += Precedence(1) if prec != .Exponent else Precedence(0)
-    if !parse_precedence(parser, compiler, right, prec) {
+    right := &Expr{}
+    if !parser_parse_precedence(parser, compiler, right, prec) {
         return
     }
-    recurse_end(parser)
+    parser_recurse_end(parser)
 
-    compiler_fix_infix(compiler, op, expr, right)
+    /*
+    Note:
+    -   This is effectively the inline implementation of the only relevant line/s
+        from 'lcode.c:luaK_posfix()'.
+    -   We will have to adjust this line when comparison operators are added.
+
+    Links:
+    -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
+     */
+    compiler_emit_arith(compiler, op, expr, right)
+    return
 }
 
 /// PRATT PARSER

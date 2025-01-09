@@ -28,6 +28,11 @@ Instruction :: bit_field u32 {
     op: OpCode | SIZE_OP  `fmt:"s"`,
 }
 
+/*
+Links:
+-   https://www.lua.org/source/5.1/lopcodes.h.html
+-   https://stevedonovan.github.io/lua-5.1.4/lopcodes.h.html
+ */
 OpCode :: enum u8 {
 /* =============================================================================
 Note on shorthand:
@@ -41,22 +46,29 @@ Note on shorthand:
     - Requires absolute index
 (*) RK:
     - Register or Constants Table
-    - If argument B or C is >= 256, meaning bit 9 is toggled, then it is an index
+    - If argument B or C is >= 0x100, meaning bit 9 is toggled, then it is an index
       into Kst. Otherwise, it is a Reg.
 ============================================================================= */
-//          Args        | Description
-Constant,   // A, uBC   |   Reg[A] := Kst[uBC]
-Nil,        // A, B     |   Reg[A]..=Reg[A+B-1] := nil
-Boolean,    // A, B, C  |   Reg[1] := (Bool)B; if ((Bool)C) ip++
-Add,        // A, B, C  |   Reg[A] := RK[B] + RK[C]
-Sub,        // A, B, C  |   Reg[A] := RK[B] - RK[C]
-Mul,        // A, B, C  |   Reg[A] := RK[B] * RK[C]
-Div,        // A, B, C  |   Reg[A] := RK[B] / RK[C]
-Mod,        // A, B, C  |   Reg[A] := RK[B] % RK[C]
-Pow,        // A, B, C  |   Reg[A] := RK[B} ^ RK[C]
-Unm,        // A, B     |   Reg[A] := -Reg[B]
-Return,     // A, B     |   return Reg[A], ... Reg[A + B - 1]
+//                Args  | Description
+Load_Constant, // A uBC | Reg[A] := Kst[uBC]
+Load_Nil,      // A B   | Reg[A]..=Reg[B] := nil
+Load_Boolean,  // A B C | Reg[1] := (Bool)B; if ((Bool)C) ip++
+Add,           // A B C | Reg[A] := RK[B] + RK[C]
+Sub,           // A B C | Reg[A] := RK[B] - RK[C]
+Mul,           // A B C | Reg[A] := RK[B] * RK[C]
+Div,           // A B C | Reg[A] := RK[B] / RK[C]
+Mod,           // A B C | Reg[A] := RK[B] % RK[C]
+Pow,           // A B C | Reg[A] := RK[B} ^ RK[C]
+Unm,           // A B   | Reg[A] := -Reg[B]
+Return,        // A B   | return Reg[A], ... Reg[A + B - 1]
 }
+
+/* =============================================================================
+Notes:
+(*) Return:
+    - If B == 0, then return up to the current stack top (exclusive).
+============================================================================= */
+
 
 OpCode_Arg_Type :: enum u8 {
     Unused = 0,
@@ -67,36 +79,29 @@ OpCode_Arg_Type :: enum u8 {
 
 // How should we interpret the arguments?
 OpCode_Format :: enum u8 {
-    Separate,    // A, B and C are all separate.
-    Unsigned_Bx, // B is extended into an unsigned 18-bit integer.
-    Signed_Bx,   // B is extended into a signed 18-bit integer.
+    Separate,    // A, B and C are all treated separately.
+    Unsigned_Bx, // B is combined with C to form an unsigned 18-bit integer.
+    Signed_Bx,   // B is combined with C to form a signed 18-bit integer.
 }
 
 // https://www.lua.org/source/5.1/lopcodes.h.html#OpArgMask
-OpCode_Info :: struct {
-    type:   OpCode_Format,
-    b:      OpCode_Arg_Type,
-    c:      OpCode_Arg_Type,
-    a:      OpCode_Arg_Type, // Arg A can never be an RK. Just check if it's used.
-    is_test: bool,
+OpCode_Info :: bit_field u8 {
+    type:    OpCode_Format   | 2,
+    b:       OpCode_Arg_Type | 2,
+    c:       OpCode_Arg_Type | 2,
+    a:       bool            | 1, // Is argument A used or not?
+    is_test: bool            | 1,
 }
 
 // See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
-@(rodata)
 opcode_info := [OpCode]OpCode_Info {
-.Constant       = {type = .Unsigned_Bx, a = .Used, b = .Constant, c = .Unused},
-.Boolean        = {type = .Separate,    a = .Used, b = .Used,     c = .Used},
-.Nil            = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
-.Add ..= .Pow   = {type = .Separate,    a = .Used, b = .Constant, c = .Constant},
-.Unm            = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
-.Return         = {type = .Separate,    a = .Used, b = .Register, c = .Unused},
+.Load_Constant  = {type = .Unsigned_Bx, a = true, b = .Constant, c = .Unused},
+.Load_Boolean   = {type = .Separate,    a = true, b = .Used,     c = .Used},
+.Load_Nil       = {type = .Separate,    a = true, b = .Register, c = .Unused},
+.Add ..= .Pow   = {type = .Separate,    a = true, b = .Constant, c = .Constant},
+.Unm            = {type = .Separate,    a = true, b = .Register, c = .Unused},
+.Return         = {type = .Separate,    a = true, b = .Register, c = .Unused},
 }
-
-/* =============================================================================
-Notes:
-(*) Return:
-    - If B == 0, then return up to the current stack top (exclusive).
-============================================================================= */
 
 
 // Bit 9 for arguments B and C indicates how to interpret them.

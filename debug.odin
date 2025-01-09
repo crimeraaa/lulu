@@ -3,7 +3,7 @@ package lulu
 
 import "core:fmt"
 
-debug_disasm_chunk :: proc(chunk: Chunk) {
+debug_dump_chunk :: proc(chunk: Chunk) {
     fmt.println("=== DISASSEMBLY: BEGIN ===")
     defer {
         fmt.println("\n=== DISASSEMBLY: END ===")
@@ -18,11 +18,11 @@ debug_disasm_chunk :: proc(chunk: Chunk) {
 
     fmt.println("\n.code")
     for inst, index in chunk.code {
-        debug_disasm_inst(chunk, inst, index)
+        debug_dump_instruction(chunk, inst, index)
     }
 }
 
-debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
+debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     // unary negation, not and length never operate on constant indexes.
     unary :: proc($op: string, inst: Instruction) {
         b_where, b_index := get_rk(inst.b)
@@ -63,17 +63,17 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     } else {
         fmt.printf("% 4i ", chunk.line[index])
     }
-    fmt.printf("%v.%-8v ", typeid_of(type_of(inst.op)), inst.op)
+    fmt.printf("%-16v ", inst.op)
     switch (inst.op) {
-    case .Constant:
+    case .Load_Constant:
         a, bc := inst.a, inst_get_Bx(inst)
         print_AuBC(inst)
         fmt.printf("reg[%i] := .const[%i] => ", a, bc)
         value_print(chunk.constants[bc])
-    case .Nil:
+    case .Load_Nil:
         print_args2(inst)
-        fmt.printfln("reg[%i]..<reg[%v] := nil", inst.a, inst.a + inst.b - 1)
-    case .Boolean:
+        fmt.printfln("reg[%i]..=reg[%v] := nil", inst.a, inst.b)
+    case .Load_Boolean:
         print_args3(inst)
         fmt.printf("reg[%i] := %s", inst.a, "true" if inst.b == 1 else "false")
         if inst.c == 1 {
@@ -89,9 +89,9 @@ debug_disasm_inst :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Pow: binary("^", inst)
     case .Unm: unary("-", inst)
     case .Return:
-        a := inst.a
-        b := inst.b - 1 if inst.b != 0 else a
+        start := inst.a
+        stop  := inst.b - 1 if inst.b != 0 else start
         print_args2(inst)
-        fmt.printfln("return reg[%i]..<reg[%v]", a, b)
+        fmt.printfln("return reg[%i]..<reg[%v]", start, stop)
     }
 }

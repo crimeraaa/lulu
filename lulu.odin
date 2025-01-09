@@ -1,5 +1,6 @@
 package lulu
 
+import "base:runtime"
 import "core:fmt"
 import "core:io"
 import "core:log"
@@ -7,27 +8,28 @@ import "core:os"
 
 _ :: log
 
-LULU_DEBUG         :: #config(LULU_DEBUG, ODIN_DEBUG)
-DEBUG_TRACE_EXEC   :: LULU_DEBUG
-DEBUG_PRINT_CODE   :: LULU_DEBUG
+LULU_DEBUG                  :: #config(LULU_DEBUG, ODIN_DEBUG)
+DEBUG_TRACE_EXEC            :: LULU_DEBUG
+DEBUG_PRINT_CODE            :: LULU_DEBUG
+CONSTANT_FOLDING_ENABLED    :: #config(CONSTANT_FOLDING_ENABLED, !LULU_DEBUG)
 
 @(private="file")
-g_vm := &VM{}
+global_vm := &VM{}
 
 main :: proc() {
     when LULU_DEBUG {
         logger_opts := log.Options{.Level, .Short_File_Path, .Line, .Procedure, .Terminal_Color}
         logger := log.create_console_logger(opt = logger_opts)
-        context.logger = logger
         defer log.destroy_console_logger(logger)
+        context.logger = logger
     }
 
-    vm_init(g_vm)
-    defer vm_destroy(g_vm)
+    vm_init(global_vm)
+    defer vm_destroy(global_vm)
 
     switch len(os.args) {
-    case 1: repl(g_vm)
-    case 2: run_file(g_vm, os.args[1])
+    case 1: repl(global_vm)
+    case 2: run_file(global_vm, os.args[1])
     case:   fmt.eprintfln("Usage: %s [script]", os.args[0])
     }
 }

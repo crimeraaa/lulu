@@ -52,8 +52,12 @@ number_div :: proc(a, b: f64) -> f64 {
     return a / b
 }
 
+/* 
+Links:
+-   https://www.lua.org/source/5.1/luaconf.h.html#luai_nummod
+ */
 number_mod :: proc(a, b: f64) -> f64 {
-    return math.mod(a, b)
+    return a - math.floor(a / b)*b
 }
 
 number_pow :: proc(a, b: f64) -> f64 {
