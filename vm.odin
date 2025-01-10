@@ -54,6 +54,7 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
     code      := chunk.code[:]
     constants := chunk.constants[:]
     ip        := vm.ip
+    ra: ^Value
 
     // Needed for error reporting where local 'ip' is long out of scope
     defer vm.ip = ip
@@ -70,40 +71,51 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
             fmt.println()
             debug_dump_instruction(chunk^, inst, ptr_sub(ip, raw_data(chunk.code)))
         }
+        
+        // Most instructions use this!
+        ra = &vm.base[inst.a]
 
         switch (inst.op) {
         case .Load_Constant:
-            a  := inst.a
             bc := inst_get_Bx(inst)
-            vm.base[a] = constants[bc]
+            ra^ = constants[bc]
         case .Load_Nil:
             // Add 1 because we want to include Reg[B]
             for &value in vm.base[inst.a:inst.b + 1] {
                 value_set_nil(&value)
             }
-        case .Load_Boolean:
-            value_set_boolean(&vm.base[inst.a], inst.b == 1)
-        case .Add: binary_op(vm, number_add, inst, constants) or_return
-        case .Sub: binary_op(vm, number_sub, inst, constants) or_return
-        case .Mul: binary_op(vm, number_mul, inst, constants) or_return
-        case .Div: binary_op(vm, number_div, inst, constants) or_return
-        case .Mod: binary_op(vm, number_mod, inst, constants) or_return
-        case .Pow: binary_op(vm, number_pow, inst, constants) or_return
+        case .Load_Boolean: value_set_boolean(ra, inst.b == 1)
+        case .Add: arith_op(vm, number_add, ra, inst, constants) or_return
+        case .Sub: arith_op(vm, number_sub, ra, inst, constants) or_return
+        case .Mul: arith_op(vm, number_mul, ra, inst, constants) or_return
+        case .Div: arith_op(vm, number_div, ra, inst, constants) or_return
+        case .Mod: arith_op(vm, number_mod, ra, inst, constants) or_return
+        case .Pow: arith_op(vm, number_pow, ra, inst, constants) or_return
         case .Unm:
-            operand := get_RK(vm, inst.b, constants)
-            if !value_is_number(operand) {
+            rb := vm.base[inst.b]
+            if !value_is_number(rb) {
                 return false
             }
-            value_set_number(&vm.base[inst.a], number_unm(operand.data.number))
+            value_set_number(ra, number_unm(rb.data.number))
+        case .Eq, .Neq:
+            rb, rc := get_RK(vm, inst.b, constants), get_RK(vm, inst.c, constants)
+            b := value_eq(rb, rc)
+            value_set_boolean(ra, b if inst.op == .Eq else !b)
+        case .Lt:   compare_op(vm, number_lt, ra, inst, constants) or_return
+        case .Gt:   compare_op(vm, number_gt, ra, inst, constants) or_return
+        case .Leq:  compare_op(vm, number_leq, ra, inst, constants) or_return
+        case .Geq:  compare_op(vm, number_geq, ra, inst, constants) or_return
+        case .Not:
+            x := get_RK(vm, inst.b, constants)
+            value_set_boolean(ra, value_is_falsy(x))
         case .Return:
-            start  := inst.a
-            n_args := inst.b
-            if n_args != 0 {
-                vm.top = &vm.base[start + n_args - 1]
+            start := inst.a
+            // If vararg, keep top as-is
+            if n_results := inst.b; n_results != 0 {
+                vm.top = mem.ptr_offset(ra, n_results - 1)
             }
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
-            stop := int(n_args) - 1 if n_args != 0 else ptr_sub(vm.top, vm.base)
-            for arg in vm.base[start:stop] {
+            for arg in vm.base[start:ptr_sub(vm.top, vm.base)] {
                 value_print(arg)
             }
             return true
@@ -111,18 +123,29 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
     }
 }
 
+// Rough analog to C macro
 @(private="file")
-binary_op :: proc(vm: ^VM, $op: proc(x, y: f64) -> f64, inst: Instruction, kst: []Value) -> (ok: bool) {
-    x, y := get_RK(vm, inst.b, kst), get_RK(vm, inst.c, kst)
+arith_op :: #force_inline proc(vm: ^VM, $op: proc(x, y: f64) -> f64, ra: ^Value, inst: Instruction, constants: []Value) -> (ok: bool) {
+    x, y := get_RK(vm, inst.b, constants), get_RK(vm, inst.c, constants)
     if !value_is_number(x) || !value_is_number(y) {
         return false
     }
-    value_set_number(&vm.base[inst.a], op(x.data.number, y.data.number))
+    value_set_number(ra, op(x.data.number, y.data.number))
     return true
 }
 
 @(private="file")
-get_RK :: proc(vm: ^VM, b_or_c: u16, constants: []Value) -> Value {
+compare_op :: #force_inline proc(vm: ^VM, $op: proc(x, y: f64) -> bool, ra: ^Value, inst: Instruction, constants: []Value) -> (ok: bool) {
+    x, y := get_RK(vm, inst.b, constants), get_RK(vm, inst.c, constants)
+    if !value_is_number(x) || !value_is_number(y) {
+        return false
+    }
+    value_set_boolean(ra, op(x.data.number, y.data.number))
+    return true
+}
+
+@(private="file")
+get_RK :: #force_inline proc(vm: ^VM, b_or_c: u16, constants: []Value) -> Value {
     return constants[rk_get_k(b_or_c)] if rk_is_k(b_or_c) else vm.base[b_or_c]
 }
 

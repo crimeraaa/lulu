@@ -79,10 +79,11 @@ Links
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2anyreg
 
 Note:
--   `expr` will be mutated if it is not already discharged.
+-   `expr` ALWAYS transition to `.Discharged` if it is not already so.
+-   Use the `.info.reg` field to access which register it is currently in.
 
 Returns
--   A register.
+-   The register we stored `expr` in.
  */
 compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     // @todo 2025-01-06: Call `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e, int reg)` here
@@ -125,8 +126,28 @@ compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
     // @todo 2025-01-06: Implement the rest as needed...
 }
 
-// Analogous to `lcode.c:discharge2reg(FuncState *fs, expdesc *e, int reg)`
-// See: https://www.lua.org/source/5.1/lcode.c.html#discharge2reg
+/* 
+Notes:
+-   Transforms `expr` into `.Discharged`, if it is not one already.
+ */
+compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
+    if expr.type != .Discharged {
+        compiler_reserve_reg(compiler, 1)
+        compiler_discharge_expr_to_reg(compiler, expr, compiler.free_reg - 1)
+    }
+}
+
+/* 
+Brief:
+-   Transforms `expr` to `.Discharged`.
+-   Use `expr.info.reg` to get the register it resides in.
+
+Analogous to:
+-    `lcode.c:discharge2reg(FuncState *fs, expdesc *e, int reg)`
+
+Links:
+-   https://www.lua.org/source/5.1/lcode.c.html#discharge2reg
+ */
 compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
     // @todo 2025-01-06: Call `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e, int reg)` here
     #partial switch expr.type {
@@ -141,10 +162,10 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
     case .Need_Register:
         compiler.chunk.code[expr.info.pc].a = reg
     case .Discharged:
-        // Nothing to do
+        // TODO(2025-01-10): Nothing to do here until OP_MOVE analog is implemented
         return
     case:
-        unreachable()
+        assert(expr.type == .Empty)
     }
     expr.type     = .Discharged
     expr.info.reg = reg
@@ -157,13 +178,10 @@ Analogous to:
 Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2RK
  */
-compiler_expr_to_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
+compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     // @todo 2025-01-07: call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)'
     #partial switch type := expr.type; type {
-    case .Nil:      fallthrough
-    case .True:     fallthrough
-    case .False:    fallthrough
-    case .Number:
+    case .Nil, .True, .False, .Number:
         chunk := compiler.chunk
         index: u32
         // Constant can fit in RK operand?
@@ -232,11 +250,11 @@ compiler_emit_ABC :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> int 
     return compiler_emit_instruction(compiler, inst_create(op, a, b, c))
 }
 
-compiler_emit_AB :: proc(compiler: ^Compiler, op: OpCode, a, b: u16) {
+compiler_emit_AB :: proc(compiler: ^Compiler, op: OpCode, a, b: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
     assert(opcode_info[op].a)
     assert(opcode_info[op].b != .Unused)
-    compiler_emit_instruction(compiler, inst_create(op, a, b, 0))
+    return compiler_emit_instruction(compiler, inst_create(op, a, b, 0))
 }
 
 compiler_emit_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32) {
@@ -270,20 +288,63 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
     return index
 }
 
-// https://www.lua.org/source/5.1/lcode.c.html#codearith
-compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
+/* 
+Notes:
+-   Assumes the target operand was just consumed and now resides in `Expr`.
+ */
+compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
+    // luaK_dischargevars(fs, e)
+
+    /* 
+    Details:
+    -   In the call to `parser.odin:unary()`, we should have consumed the
+        target operand beforehand.
+    -   Thus, it should be able to be discharged (if it is not already!)
+    -   This means we should be able to pop it as well.
+     */
     when CONSTANT_FOLDING_ENABLED {
-        if compiler_fold_constants(op, left, right) {
+        #partial switch expr.type {
+        case .Nil, .False:
+            expr.type = .True
+            return
+        case .True, .Number, .Constant:
+            expr.type = .False
+            return
+        case .Discharged, .Need_Register:
+            break
+        case: unreachable()
+        }
+    }
+    compiler_discharge_expr_any_reg(compiler, expr)
+    compiler_free_expr(compiler, expr)
+    expr.info.pc = compiler_emit_AB(compiler, .Not, 0, expr.info.reg)
+    expr.type    = .Need_Register
+}
+
+/* 
+Notes:
+-   when `!CONSTANT_FOLDING_ENABLED`, we expect that if `left` was a literal then
+    we called `compiler_expr_regconst()` beforehand.
+-   Otherwise, the order of arguments will be reversed!
+
+Links:
+-   https://www.lua.org/source/5.1/lcode.c.html#codearith
+ */
+compiler_emit_arith_or_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
+    assert(.Add <= op && op <= .Unm)
+    when CONSTANT_FOLDING_ENABLED {
+        if compiler_fold_constant_arith(op, left, right) {
             return
         }
     }
 
     // When OpCode.Unm, right is unused.
-    rk_b := compiler_expr_to_regconst(compiler, right) if op != .Unm else 0
-    rk_a := compiler_expr_to_regconst(compiler, left)
+    rk_c := compiler_expr_regconst(compiler, right) if op != .Unm else 0
+    rk_b := compiler_expr_regconst(compiler, left)
 
-    // I'm unsure WHY this is needed.
-    if rk_a > rk_b {
+    // In the event BOTH are .Discharged, we want to pop them in the correct
+    // order! Otherwise the assert in `compiler_free_reg()` will fail.
+    if rk_b > rk_c {
         compiler_free_expr(compiler, left)
         compiler_free_expr(compiler, right)
     } else {
@@ -292,7 +353,25 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     }
 
     // Argument A will be fixed down the line.
-    left.info.pc = compiler_emit_ABC(compiler, op, 0, rk_a, rk_b)
+    left.info.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
+    left.type    = .Need_Register
+}
+
+compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
+    assert(.Eq <= op && op <= .Geq)
+
+    rk_b := compiler_expr_regconst(compiler, left)
+    rk_c := compiler_expr_regconst(compiler, right)
+
+    if rk_b > rk_c {
+        compiler_free_expr(compiler, left)
+        compiler_free_expr(compiler, right)
+    } else {
+        compiler_free_expr(compiler, right)
+        compiler_free_expr(compiler, left)
+    }
+    
+    left.info.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
     left.type    = .Need_Register
 }
 
@@ -304,10 +383,10 @@ compiler_free_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
 }
 
 // See: https://www.lua.org/source/5.1/lcode.c.html#constfolding
-compiler_fold_constants :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
+compiler_fold_constant_arith :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     // Can't fold two non-number-literals!
     if !expr_is_number(left) || !expr_is_number(right) {
-        log.debug("Cannot do constant-folding")
+        log.debug("Failed to contant-fold")
         return false
     }
     x, y, result: f64 = left.info.number, right.info.number, 0
@@ -325,7 +404,7 @@ compiler_fold_constants :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
         result = number_mod(x, y)
     case .Pow:  result = number_pow(x, y)
     case .Unm:  result = number_unm(x)
-    case:       unreachable()
+    case: unreachable()
     }
     if number_is_nan(result) {
         return false

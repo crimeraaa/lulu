@@ -3,10 +3,7 @@ package lulu
 
 import "core:fmt"
 import "core:log"
-import "core:encoding/ansi"
 import "core:strings"
-
-_ :: ansi
 
 Parser :: struct {
     lexer:               Lexer,
@@ -58,8 +55,9 @@ Links:
 -   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
  */
 Expr_Type :: enum u8 {
-    Discharged,     // This ^Expr was emitted to a register. Similar to 'VNONRELOC'.
-    Need_Register,  // This ^Expr needs to be assigned to a register. Similar to 'VRELOCABLE'.
+    Empty,          // Only used as zero-value. Similar to `VVOID`.
+    Discharged,     // This ^Expr was emitted to a register. Similar to `VNONRELOC`.
+    Need_Register,  // This ^Expr needs to be assigned to a register. Similar to `VRELOCABLE`.
     Nil,
     True,
     False,
@@ -79,6 +77,11 @@ expr_set_number :: proc(expr: ^Expr, n: f64) {
     expr.info.number = n
 }
 
+expr_set_boolean :: proc(expr: ^Expr, b: bool) {
+    expr.type        = .True if b else .False
+    expr.info.number = 1 if b else 0
+}
+
 // NOTE: In the future, may need to check for jump lists!
 // See: https://www.lua.org/source/5.1/lcode.c.html#isnumeral
 expr_is_number :: proc(expr: ^Expr) -> bool {
@@ -92,7 +95,7 @@ expr_to_string :: proc(expr: ^Expr) -> string {
 
     builder := strings.builder_from_bytes(buf[:])
     fmt.sbprint(&builder, "{info = {")
-    switch expr.type {
+    #partial switch expr.type {
     case .Nil:              break
     case .True:             break
     case .False:            break
@@ -100,6 +103,7 @@ expr_to_string :: proc(expr: ^Expr) -> string {
     case .Need_Register:    fmt.sbprintf(&builder, "pc = %i", expr.info.pc)
     case .Discharged:       fmt.sbprintf(&builder, "reg = %i", expr.info.reg)
     case .Constant:         fmt.sbprintf(&builder, "index = %i", expr.info.index)
+    case:                   unreachable()
     }
     fmt.sbprintf(&builder, "}, type = %s}", expr.type)
     return strings.to_string(builder)
@@ -199,24 +203,10 @@ grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
 parser_recurse_begin :: proc(parser: ^Parser, location := #caller_location) {
     defer parser.recurse += 1
-    // if parser.recurse == 0 { return }
-    // log.debugf(purple("BEGIN RECURSE(%i)"), parser.recurse, location = location)
 }
 
 parser_recurse_end :: proc(parser: ^Parser, location := #caller_location) {
     parser.recurse -= 1
-    // if parser.recurse == 0 { return }
-    // log.debugf(purple("END RECURSE(%i)"), parser.recurse, location = location)
-}
-
-@(private="file")
-purple :: proc($msg: string) -> string {
-    return set_color(msg, ansi.FG_MAGENTA)
-}
-
-@(private="file")
-set_color :: proc($msg, $color: string) -> string {
-    return ansi.CSI + color + ansi.SGR + msg + ansi.CSI + ansi.RESET + ansi.SGR
 }
 
 @(private="file")
@@ -246,20 +236,25 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     Links:
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_prefix
     -   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
+
+    Notes:
+    -   Ensure the zero-value for `Expr_Type` is anything BUT `.Discharged`.
+    -   Otherwise, calls to `compiler_free_expr()` will push through and mess up
+        the free registers counter.
      */
-    #partial switch type {
-    case .Dash:
-        log.debug(expr_to_string(expr))
-        // Push the operand before OpCode.Unm.
-        if !expr_is_number(expr) {
+    when CONSTANT_FOLDING_ENABLED {
+        if !(.Nil <= expr.type && expr.type <= .Number) {
             compiler_expr_any_reg(compiler, expr)
         }
-
-        // Since .Discharged is the zero value, change it! Else we call
-        // 'compiler_free_expr()' on a non-existent expression.
+    } else {
+        compiler_expr_any_reg(compiler, expr)
+    }
+    #partial switch type {
+    case .Dash:
         dummy := &Expr{}
         expr_set_number(dummy, 0)
-        compiler_emit_arith(compiler, .Unm, expr, dummy)
+        compiler_emit_arith_or_compare(compiler, .Unm, expr, dummy)
+    case .Not:  compiler_emit_not(compiler, expr)
     case: unreachable()
     }
 }
@@ -267,33 +262,18 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 /// INFIX EXPRESSIONS
 
 @(private="file")
-binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    type  := parser.consumed.type
+arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    type := parser.consumed.type
     op: OpCode
     #partial switch type {
-    case .Plus:    op = .Add
-    case .Dash:    op = .Sub
-    case .Star:    op = .Mul
-    case .Slash:   op = .Div
-    case .Percent: op = .Mod
-    case .Caret:   op = .Pow
+    case .Plus:     op = .Add
+    case .Dash:     op = .Sub
+    case .Star:     op = .Mul
+    case .Slash:    op = .Div
+    case .Percent:  op = .Mod
+    case .Caret:    op = .Pow
     case: unreachable()
     }
-
-    /*
-    Brief:
-    -   Emits the left hand side.
-    -   'expr' could be a number literal or the literals nil, true or false.
-    -   It will be then be transformed to represent a constant index or a register.
-
-    Note:
-    -   This is effectively the inline implementation of the only relevant line
-        from 'lcode.c:luaK_infix()'.
-
-    Links:
-    -   https://www.lua.org/source/5.1/lcode.c.html#luaK_infix
-     */
-    compiler_expr_to_regconst(compiler, expr)
 
     parser_recurse_begin(parser)
     prec := get_rule(type).prec
@@ -311,17 +291,52 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     }
     parser_recurse_end(parser)
 
+    /* 
+    Notes:
+    -   When `!CONSTANT_FOLDING_ENABLED`, this is needed in order to emit the
+        arguments in the correct order.
+    -   Otherwise, without this, they will be reversed!
+     */
+    if CONSTANT_FOLDING_ENABLED {
+        if !expr_is_number(expr) {
+            compiler_expr_regconst(compiler, expr)
+        }
+    } else {
+        compiler_expr_regconst(compiler, expr)
+    }
+
     /*
     Note:
     -   This is effectively the inline implementation of the only relevant line/s
         from 'lcode.c:luaK_posfix()'.
-    -   We will have to adjust this line when comparison operators are added.
 
     Links:
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
      */
-    compiler_emit_arith(compiler, op, expr, right)
-    return
+    compiler_emit_arith_or_compare(compiler, op, expr, right)
+}
+
+compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    type := parser.consumed.type
+    op: OpCode
+    #partial switch type {
+    case .Equals_2:         op = .Eq
+    case .Tilde_Eq:         op = .Neq
+    case .Left_Angle:       op = .Lt
+    case .Right_Angle:      op = .Gt
+    case .Left_Angle_Eq:    op = .Leq
+    case .Right_Angle_Eq:   op = .Geq
+    case:                   unreachable()
+    }
+    
+    parser_recurse_begin(parser)
+    prec := get_rule(type).prec
+    right := &Expr{}
+    if !parser_parse_precedence(parser, compiler, right, prec + Precedence(1)) {
+        return
+    }
+    parser_recurse_end(parser)
+    compiler_emit_compare(compiler, op, expr, right)
 }
 
 /// PRATT PARSER
@@ -333,12 +348,15 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .True       = {prefix = literal},
         .False      = {prefix = literal},
         .Left_Paren = {prefix = grouping},
-        .Dash       = {prefix = unary,      infix = binary,     prec = .Terminal},
-        .Plus       = {                     infix = binary,     prec = .Terminal},
-        .Star       = {                     infix = binary,     prec = .Factor},
-        .Slash      = {                     infix = binary,     prec = .Factor},
-        .Percent    = {                     infix = binary,     prec = .Factor},
-        .Caret      = {                     infix = binary,     prec = .Exponent},
+        .Dash       = {prefix = unary,      infix = arith,     prec = .Terminal},
+        .Plus       = {                     infix = arith,     prec = .Terminal},
+        .Star       = {                     infix = arith,     prec = .Factor},
+        .Slash      = {                     infix = arith,     prec = .Factor},
+        .Percent    = {                     infix = arith,     prec = .Factor},
+        .Caret      = {                     infix = arith,     prec = .Exponent},
+        .Equals_2 ..= .Tilde_Eq = {         infix = compare,   prec = .Equality},
+        .Left_Angle ..= .Right_Angle_Eq = { infix = compare,   prec = .Comparison},
+        .Not        = {prefix = unary},
         .Number     = {prefix = literal},
     }
     return rules[type]

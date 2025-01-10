@@ -64,6 +64,10 @@ number_pow :: proc(a, b: f64) -> f64 {
     return math.pow(a, b)
 }
 
+number_eq :: proc(a, b: f64) -> bool {
+    return a == b
+}
+
 number_lt :: proc(a, b: f64) -> bool {
     return a < b
 }
@@ -119,12 +123,24 @@ value_is_boolean :: proc(a: Value) -> bool {
     return a.type == .Boolean
 }
 
+value_is_falsy :: proc(a: Value) -> bool {
+    return a.type == .Nil || (a.type == .Boolean && !a.data.boolean)
+}
+
 value_is_number :: proc(a: Value) -> bool {
     return a.type == .Number
 }
 
 value_eq :: proc(a, b: Value) -> bool {
-    return a == b
+    if a.type != b.type {
+        return false
+    }
+    switch a.type {
+    case .Nil:      return true
+    case .Boolean:  return a.data.boolean == b.data.boolean
+    case .Number:   return number_eq(a.data.number, b.data.number)
+    }
+    unreachable()
 }
 
 number_is_nan :: math.is_nan

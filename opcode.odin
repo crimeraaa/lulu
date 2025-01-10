@@ -60,6 +60,13 @@ Div,           // A B C | Reg[A] := RK[B] / RK[C]
 Mod,           // A B C | Reg[A] := RK[B] % RK[C]
 Pow,           // A B C | Reg[A] := RK[B} ^ RK[C]
 Unm,           // A B   | Reg[A] := -Reg[B]
+Eq,            // A B C | Reg[A] := RK[B] == RK[C]
+Neq,           // A B C | Reg[A] := RK[B] ~= RK[C]
+Lt,            // A B C | Reg[A] := RK[B] <  RK[C]
+Gt,            // A B C | Reg[A] := RK[B] >  RK[C]
+Leq,           // A B C | Reg[A] := RK[B] <= RK[C]
+Geq,           // A B C | Reg[A] := RK[B] >= RK[C]
+Not,           // A B   | Reg[A] := not RK[B]
 Return,        // A B   | return Reg[A], ... Reg[A + B - 1]
 }
 
@@ -72,9 +79,9 @@ Notes:
 
 OpCode_Arg_Type :: enum u8 {
     Unused = 0,
-    Used   = 1, // Argument is used but is not a register, constant or jump offset.
-    Register,   // Or a jump offset?
-    Constant,   // Or a register/constant?
+    Used,       // Argument is used but is not a register, constant or jump offset.
+    Reg_Jump,   // Argument is either a register OR a jump offset?
+    Reg_Const,  // Argument is either a register OR a constants table index?
 }
 
 // How should we interpret the arguments?
@@ -95,12 +102,14 @@ OpCode_Info :: bit_field u8 {
 
 // See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
 opcode_info := [OpCode]OpCode_Info {
-.Load_Constant  = {type = .Unsigned_Bx, a = true, b = .Constant, c = .Unused},
-.Load_Boolean   = {type = .Separate,    a = true, b = .Used,     c = .Used},
-.Load_Nil       = {type = .Separate,    a = true, b = .Register, c = .Unused},
-.Add ..= .Pow   = {type = .Separate,    a = true, b = .Constant, c = .Constant},
-.Unm            = {type = .Separate,    a = true, b = .Register, c = .Unused},
-.Return         = {type = .Separate,    a = true, b = .Register, c = .Unused},
+.Load_Constant  = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
+.Load_Boolean   = {type = .Separate,    a = true, b = .Used,      c = .Used},
+.Load_Nil       = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Add ..= .Pow   = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
+.Unm            = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Eq ..= .Geq    = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
+.Not            = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Return         = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
 }
 
 
@@ -109,15 +118,15 @@ opcode_info := [OpCode]OpCode_Info {
 BIT_RK       :: 1 << (SIZE_B - 1)
 MAX_INDEX_RK :: BIT_RK - 1
 
-rk_is_k :: proc(#any_int b_or_c: u16) -> bool {
+rk_is_k :: proc(b_or_c: u16) -> bool {
     return (b_or_c & BIT_RK) != 0
 }
 
-rk_get_k :: proc(#any_int b_or_c: u16) -> u16 {
+rk_get_k :: proc(b_or_c: u16) -> u16 {
     return (b_or_c & ~cast(u16)BIT_RK)
 }
 
-rk_as_k :: proc(#any_int b_or_c: u16) -> u16 {
+rk_as_k :: proc(b_or_c: u16) -> u16 {
     return b_or_c | BIT_RK
 }
 

@@ -362,10 +362,10 @@ consume_whitespace :: proc(lexer: ^Lexer) -> (error: Lexer_Error) {
 
     for {
         switch peek(lexer^) {
-        case '\n': lexer.line += 1; fallthrough
-        case ' ':  fallthrough
-        case '\r': fallthrough
-        case '\t':
+        case '\n':
+            lexer.line += 1;
+            fallthrough
+        case ' ', '\r', '\t':
             // Ensure start points to the first actual character in the lexeme.
             lexer.start += 1
             advance(lexer)

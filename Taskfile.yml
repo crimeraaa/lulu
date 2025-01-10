@@ -5,9 +5,11 @@ version: '3'
 vars:
   MODE: '{{default "debug"}}'
   ODIN: odin
+  CONSTANT_FOLDING_ENABLED: '{{default true}}'
   DEBUG_FLAGS: >-
     -debug
     -sanitize:address
+    -define:CONSTANT_FOLDING_ENABLED={{.CONSTANT_FOLDING_ENABLED}}
   RELEASE_FLAGS: >-
     -vet
   ODIN_FLAGS: >-

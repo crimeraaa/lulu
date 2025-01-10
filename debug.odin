@@ -24,20 +24,20 @@ debug_dump_chunk :: proc(chunk: Chunk) {
 
 debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     // unary negation, not and length never operate on constant indexes.
-    unary :: proc($op: string, inst: Instruction) {
+    unary :: #force_inline proc($op: string, inst: Instruction) {
         b_where, b_index := get_rk(inst.b)
         print_args2(inst)
         fmt.printfln("reg[%i] := %s%s[%i]", inst.a, op, b_where, b_index)
     }
 
-    binary :: proc($op: string, inst: Instruction) {
+    binary :: #force_inline proc($op: string, inst: Instruction) {
         b_where, b_index := get_rk(inst.b)
         c_where, c_index := get_rk(inst.c)
         print_args3(inst)
         fmt.printfln("reg[%i] := %s[%i] %s %s[%i]", inst.a, b_where, b_index, op, c_where, c_index)
     }
 
-    get_rk :: proc(b_or_c: u16) -> (location: string, index: int) {
+    get_rk :: #force_inline proc(b_or_c: u16) -> (location: string, index: int) {
         is_k := rk_is_k(b_or_c)
 
         location = ".const" if is_k else "reg"
@@ -88,6 +88,13 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Mod: binary("%", inst)
     case .Pow: binary("^", inst)
     case .Unm: unary("-", inst)
+    case .Eq:  binary("==", inst)
+    case .Neq: binary("~=", inst)
+    case .Lt:  binary("<", inst)
+    case .Gt:  binary(">", inst)
+    case .Leq: binary("<=", inst)
+    case .Geq: binary(">=", inst)
+    case .Not: unary("not ", inst)
     case .Return:
         start := inst.a
         stop  := inst.b - 1 if inst.b != 0 else start
