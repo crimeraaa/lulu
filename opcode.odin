@@ -53,6 +53,7 @@ Note on shorthand:
 Load_Constant, // A uBC | Reg[A] := Kst[uBC]
 Load_Nil,      // A B   | Reg[A]..=Reg[B] := nil
 Load_Boolean,  // A B C | Reg[1] := (Bool)B; if ((Bool)C) ip++
+Print,         // A B   | print(Reg[A]..=Reg[B])
 Add,           // A B C | Reg[A] := RK[B] + RK[C]
 Sub,           // A B C | Reg[A] := RK[B] - RK[C]
 Mul,           // A B C | Reg[A] := RK[B] * RK[C]
@@ -107,6 +108,7 @@ opcode_info := [OpCode]OpCode_Info {
 .Load_Constant  = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
 .Load_Boolean   = {type = .Separate,    a = true, b = .Used,      c = .Used},
 .Load_Nil       = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Print          = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Add ..= .Pow   = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
 .Unm            = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Eq ..= .Geq    = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},

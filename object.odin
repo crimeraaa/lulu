@@ -10,12 +10,6 @@ Object_Header :: struct {
     prev    : ^Object_Header,
 }
 
-OString :: struct {
-    using header: Object_Header,
-    len         : int,
-    data        : [0]byte,
-}
-
 object_new :: proc($T: typeid, vm: ^VM, extra := 0) -> (typed_object: ^T)
 where intrinsics.type_is_subtype_of(T, Object_Header) {
 
@@ -23,12 +17,18 @@ where intrinsics.type_is_subtype_of(T, Object_Header) {
     header := cast(^Object_Header)ptr
     when T == OString {
         header.type = .String
+    } else when T == Table {
+        header.type = .Table
     } else {
         #panic("Invalid type!")
     }
     header.prev = vm.objects
     vm.objects  = header
     return cast(^T)header
+}
+
+object_unlink :: proc(vm: ^VM, object: ^Object_Header) {
+    vm.objects = object.prev
 }
 
 object_free_all :: proc(vm: ^VM) {
@@ -38,37 +38,4 @@ object_free_all :: proc(vm: ^VM) {
         case:           fmt.panicf("Cannot free a %v value!\n", type)
         }
     }
-}
-
-/*
-Notes:
--   These strings are not compatible with C-style strings.
- */
-ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
-    if prev, ok := vm.interned[input]; ok {
-        return prev
-    }
-    n  := len(input)
-    str = object_new(OString, vm, n + 1)
-    defer vm.interned[input] = str
-
-    str.len = n
-    #no_bounds_check {
-        copy(str.data[:n], input)
-        str.data[n] = 0
-    }
-    return str
-}
-
-ostring_free :: proc(vm: ^VM, str: ^OString) {
-    mem.free_with_size(str, size_of(str^) + str.len + 1, vm.allocator)
-}
-
-ostring_to_string :: proc(str: ^OString) -> string #no_bounds_check {
-    return string(str.data[:str.len])
-}
-
-ostring_to_cstring :: proc(str: ^OString) -> cstring #no_bounds_check {
-    assert(str.data[str.len] == 0)
-    return cstring(cast([^]byte)&str.data)
 }

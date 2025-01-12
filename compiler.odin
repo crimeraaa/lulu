@@ -17,15 +17,11 @@ Compiler :: struct {
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) -> (ok: bool) {
     parser   := &Parser{lexer = lexer_create(vm, input, chunk.source)}
     compiler := &Compiler{parser = parser, chunk = chunk}
-    expr     := &Expr{}
-
     parser_advance(parser) or_return
-    parser_parse_expression(parser, compiler, expr) or_return
+    for !parser_match(parser, .Eof) && !parser.panicking {
+        parser_parse_declaration(parser, compiler)
+    }
     parser_consume(parser, .Eof) or_return
-
-    // For now we assume 'expression()' results in exactly one constant value
-    reg := compiler_expr_any_reg(compiler, expr)
-    compiler_emit_return(compiler, reg, 1)
     compiler_end(compiler)
     vm.top = &vm.base[compiler.stack_usage]
     return !parser.panicking

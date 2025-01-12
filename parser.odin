@@ -142,6 +142,49 @@ parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
     return found
 }
 
+parser_check :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
+    found = parser.lookahead.type == expected
+    return found
+}
+
+parser_parse_declaration :: proc(parser: ^Parser, compiler: ^Compiler) {
+    parser_parse_statement(parser, compiler)
+    // Optional
+    parser_match(parser, .Semicolon)
+}
+
+/*
+Analogous to:
+-   `compiler.c:statement()` in the book.
+-   `lparser.c:statement(LexState *ls)` in Lua 5.1.
+
+Links:
+-   https://www.lua.org/source/5.1/lparser.c.html#statement
+ */
+parser_parse_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
+    // line := parser.lookahead.line
+    if parser_match(parser, .Print) {
+        print_statement(parser, compiler)
+    } else {
+        error_at(parser, parser.lookahead, "Expected an expression")
+    }
+}
+
+@(private="file")
+print_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
+    if !parser_consume(parser, .Left_Paren) { return }
+
+    first := compiler.free_reg
+    expr  := &Expr{}
+    for {
+        if !parser_parse_expression(parser, compiler, expr) { return }
+        compiler_expr_next_reg(compiler, expr)
+        parser_match(parser, .Comma) or_break
+    }
+    if !parser_consume(parser, .Right_Paren) { return }
+    compiler_emit_AB(compiler, .Print, first, expr.info.reg)
+}
+
 // Analogous to 'compiler.c:expression()' in the book.
 parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (ok: bool) {
     return parser_parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
@@ -370,8 +413,6 @@ concat :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         parser_match(parser, .Ellipsis_2) or_break
     }
 }
-
-/// PRATT PARSER
 
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
     @(static, rodata)

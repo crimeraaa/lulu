@@ -124,6 +124,11 @@ vm_execute :: proc(vm: ^VM) -> (error: Runtime_Error_Type) {
                 value_set_nil(&value)
             }
         case .Load_Boolean: value_set_boolean(ra, inst.b == 1)
+        case .Print:
+            for arg in vm.base[inst.a:inst.b + 1] {
+                value_print(arg, .Print)
+            }
+            fmt.println()
         case .Add: arith_op(vm, number_add, ra, inst, constants) or_return
         case .Sub: arith_op(vm, number_sub, ra, inst, constants) or_return
         case .Mul: arith_op(vm, number_mul, ra, inst, constants) or_return

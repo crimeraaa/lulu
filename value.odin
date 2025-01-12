@@ -13,6 +13,7 @@ Value_Data :: struct #raw_union {
     number  :  f64,
     boolean :  bool,
     ostring : ^OString,
+    table   : ^Table,
 }
 
 Value_Type :: enum {
@@ -20,12 +21,14 @@ Value_Type :: enum {
     Number,
     Boolean,
     String,
+    Table,
 }
 
 Value_Print_Mode :: enum u8 {
     Normal, // Prints the value as-is and prints a newline.
     Debug,  // Same as .Normal, but surrounds strings with quotes.
     Stack,  // Prints the value surrounded by square brackets. No newline.
+    Print,  // Don't print a newline. Prints a tab character after.
 }
 
 @(rodata)
@@ -34,6 +37,7 @@ value_type_strings := [Value_Type]string {
     .Boolean = "boolean",
     .Number  = "number",
     .String  = "string",
+    .Table   = "table",
 }
 
 // Used for callbacks/dispatches
@@ -160,6 +164,7 @@ value_eq :: proc(a, b: Value) -> bool {
     case .Boolean:  return a.boolean == b.boolean
     case .Number:   return number_eq(a.number, b.number)
     case .String:   return a.ostring == b.ostring
+    case .Table:    return a.table == b.table
     }
     unreachable()
 }
@@ -181,6 +186,8 @@ value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
         }
     case .Stack:
         fmt.printf("[ %s ]", s)
+    case .Print:
+        fmt.printf("%s\t", s)
     }
 }
 
@@ -190,6 +197,7 @@ value_to_string :: proc(buf: []byte, value: Value) -> string {
     case .Boolean:  return "true" if value.data.boolean else "false"
     case .Number:   return fmt.bprintf(buf, "%.14g", value.data.number)
     case .String:   return ostring_to_string(value.ostring)
+    case .Table:    return fmt.bprintf(buf, "%s: %p", value_type_name(value), cast(rawptr)value.table)
     }
     unreachable()
 }

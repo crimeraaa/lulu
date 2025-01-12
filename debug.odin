@@ -81,6 +81,9 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         } else {
             fmt.println()
         }
+    case .Print:
+        print_args2(inst)
+        fmt.printfln("print(reg[%i]..=reg[%i])", inst.a, inst.b)
     case .Add: binary("+", inst)
     case .Sub: binary("-", inst)
     case .Mul: binary("*", inst)
@@ -97,7 +100,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Not: unary("not ", inst)
     case .Concat:
         print_args3(inst)
-        fmt.printfln("reg[%i] := reg[%i] .. ... .. reg[%i]", inst.a, inst.b, inst.c)
+        fmt.printfln("reg[%i] := reg[%i] .. reg[%i]", inst.a, inst.b, inst.c)
     case .Return:
         start := inst.a
         stop  := inst.b - 1 if inst.b != 0 else start
