@@ -6,15 +6,15 @@ import "core:log"
 import "core:strings"
 
 Parser :: struct {
-    lexer:               Lexer,
-    consumed, lookahead: Token,
-    panicking:           bool,
-    recurse:             int,
+    lexer               : Lexer,
+    consumed, lookahead : Token,
+    panicking           : bool,
+    recurse             : int,
 }
 
 Parse_Rule :: struct {
-    prefix, infix:  proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr),
-    prec:           Precedence,
+    prefix, infix   : proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr),
+    prec            : Precedence,
 }
 
 /*
@@ -29,6 +29,7 @@ Precedence :: enum u8 {
     And,        // and
     Equality,   // == ~=
     Comparison, // < > <= >=
+    Concat,     // ..
     Terminal,   // + -
     Factor,     // * / %
     Unary,      // - # not
@@ -38,16 +39,15 @@ Precedence :: enum u8 {
 }
 
 Expr :: struct {
-    info: Expr_Info,
-    type: Expr_Type,
-    line: int,
+    info    : Expr_Info,
+    type    : Expr_Type,
 }
 
 Expr_Info :: struct #raw_union {
-    number: f64, // .Number
-    reg:    u16, // .Discharged
-    index:  u32, // .Constant
-    pc:     int, // .Need_Register
+    number  : f64, // .Number
+    reg     : u16, // .Discharged
+    index   : u32, // .Constant
+    pc      : int, // .Need_Register
 }
 
 /*
@@ -72,14 +72,14 @@ expr_init :: proc(expr: ^Expr, type: Expr_Type) {
     expr.info.number = 0
 }
 
-expr_set_number :: proc(expr: ^Expr, n: f64) {
-    expr.type        = .Number
-    expr.info.number = n
-}
-
 expr_set_boolean :: proc(expr: ^Expr, b: bool) {
     expr.type        = .True if b else .False
     expr.info.number = 1 if b else 0
+}
+
+expr_set_number :: proc(expr: ^Expr, n: f64) {
+    expr.type        = .Number
+    expr.info.number = n
 }
 
 // NOTE: In the future, may need to check for jump lists!
@@ -132,6 +132,14 @@ parser_consume :: proc(parser: ^Parser, expected: Token_Type) -> (ok: bool) {
     s := fmt.bprintf(buf[:], "Expected '%s'", token_type_strings[expected])
     parser_error_lookahead(parser, s)
     return false
+}
+
+parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
+    found = parser.lookahead.type == expected
+    if found {
+        return parser_advance(parser)
+    }
+    return found
 }
 
 // Analogous to 'compiler.c:expression()' in the book.
@@ -202,7 +210,7 @@ grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 }
 
 parser_recurse_begin :: proc(parser: ^Parser, location := #caller_location) {
-    defer parser.recurse += 1
+    parser.recurse += 1
 }
 
 parser_recurse_end :: proc(parser: ^Parser, location := #caller_location) {
@@ -211,11 +219,15 @@ parser_recurse_end :: proc(parser: ^Parser, location := #caller_location) {
 
 @(private="file")
 literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    line := parser.consumed.line
     #partial switch type := parser.consumed.type; type {
     case .Nil:      expr_init(expr, .Nil)
     case .True:     expr_init(expr, .True)
     case .False:    expr_init(expr, .False)
     case .Number:   expr_set_number(expr, parser.lexer.number)
+    case .String:
+        expr.type       = .Constant
+        expr.info.index = compiler_add_constant(compiler, value_make_string(parser.lexer.str))
     case:           unreachable()
     }
 }
@@ -253,7 +265,7 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .Dash:
         dummy := &Expr{}
         expr_set_number(dummy, 0)
-        compiler_emit_arith_or_compare(compiler, .Unm, expr, dummy)
+        compiler_emit_arith(compiler, .Unm, expr, dummy)
     case .Not:  compiler_emit_not(compiler, expr)
     case: unreachable()
     }
@@ -291,7 +303,7 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     }
     parser_recurse_end(parser)
 
-    /* 
+    /*
     Notes:
     -   When `!CONSTANT_FOLDING_ENABLED`, this is needed in order to emit the
         arguments in the correct order.
@@ -313,9 +325,10 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     Links:
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
      */
-    compiler_emit_arith_or_compare(compiler, op, expr, right)
+    compiler_emit_arith(compiler, op, expr, right)
 }
 
+@(private="file")
 compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     type := parser.consumed.type
     op: OpCode
@@ -328,7 +341,7 @@ compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .Right_Angle_Eq:   op = .Geq
     case:                   unreachable()
     }
-    
+
     parser_recurse_begin(parser)
     prec := get_rule(type).prec
     right := &Expr{}
@@ -337,6 +350,25 @@ compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     }
     parser_recurse_end(parser)
     compiler_emit_compare(compiler, op, expr, right)
+}
+
+/*
+Notes:
+-   Assumes we just consumed `'..'` and the first right-hand-side operand is
+    the lookahead.
+ */
+@(private="file")
+concat :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    // First operand MUST be on the stack
+    compiler_expr_next_reg(compiler, expr)
+    for {
+        next := &Expr{}
+        if !parser_parse_precedence(parser, compiler, next, .Concat) {
+            return
+        }
+        compiler_emit_concat(compiler, expr, next)
+        parser_match(parser, .Ellipsis_2) or_break
+    }
 }
 
 /// PRATT PARSER
@@ -356,8 +388,10 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Caret      = {                     infix = arith,     prec = .Exponent},
         .Equals_2 ..= .Tilde_Eq = {         infix = compare,   prec = .Equality},
         .Left_Angle ..= .Right_Angle_Eq = { infix = compare,   prec = .Comparison},
+        .Ellipsis_2 = {                     infix = concat,    prec = .Concat},
         .Not        = {prefix = unary},
         .Number     = {prefix = literal},
+        .String     = {prefix = literal},
     }
     return rules[type]
 }

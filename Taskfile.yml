@@ -14,16 +14,48 @@ vars:
     -vet
   ODIN_FLAGS: >-
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
+  OUT_EXE: bin/lulu
 
 tasks:
   build:
     cmds:
-      - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:bin/lulu'
+      - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:{{.OUT_EXE}}'
     sources:
       - ./*.odin
 
   run:
     cmds:
       - task: build
-      - bin/lulu
+      - '{{.OUT_EXE}}'
     interactive: true
+  
+  fix-whitespace:
+    desc: Remove trailing whitespace from all *.odin files.
+    deps:
+      - task: find-and-replace
+        vars:
+          VIM_PATTERN: '\s\+$'
+          VIM_REPLACE: ''
+    
+  # https://github.com/crimeraaa/lulu/blob/16cf4f5d187546704e7f66c9c401d85c4a71b68a/Taskfile.yml#L95C8-L95C11
+  find-and-replace:
+    desc: Replace a pattern in all files *.odin files. Uses Vim syntax.
+    vars:
+      VIM: vim
+      # Dissection:
+      #   -e              Ex mode, used mainly for non-interactive file editing.
+      #   -u NONE         Do not load '.vimrc' or 'init.vim' of any kind.
+      #   -c <command>    Execute <command> after entering.
+      #   -- <...>        Positional arguments: file names or globs thereof.
+      VIM_FLAGS: >-
+        -e
+        -u NONE
+        -c ':bufdo! %s/{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
+        -c ':xa'
+    prompt: This command will potentially modify all *.odin files in './'. Continue?
+    cmds:
+      - '{{.VIM}} {{.VIM_FLAGS}} ./*.odin'
+    requires:
+      vars: [VIM_PATTERN, VIM_REPLACE]
+    preconditions:
+      - sh: command -v {{.VIM}}

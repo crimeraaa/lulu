@@ -8,10 +8,12 @@ import "core:unicode"
 import "core:unicode/utf8"
 
 Lexer :: struct {
-    input, source:  string, // File data as text and its name.
-    number:         f64,    // Number literal, if we had any.
-    start, current: int,    // Current lexeme iterators.
-    line:           int,    // Current line number.
+    vm              : ^VM,      // Contains object list and string builder.
+    input, source   :  string,  // File data as text and its name.
+    number          :  f64,     // Number literal, if we had any.
+    str             : ^OString, // String literal, if we had any.
+    start, current  :  int,     // Current lexeme iterators.
+    line            :  int,     // Current line number.
 }
 
 Lexer_Error :: enum {
@@ -38,9 +40,9 @@ lexer_error_strings := [Lexer_Error]string {
 }
 
 Token :: struct {
-    lexeme: string,
-    line:   int         `fmt:"-"`,
-    type:   Token_Type  `fmt:"s"`,
+    lexeme  : string,
+    line    : int         `fmt:"-"`,
+    type    : Token_Type  `fmt:"s"`,
 }
 
 Token_Type :: enum u8 {
@@ -103,10 +105,11 @@ token_type_strings := [Token_Type]string {
 }
 
 @(require_results)
-lexer_create :: proc(input: string, name: string) -> (lexer: Lexer) {
-    lexer.input  = input
-    lexer.source = name
-    lexer.line   = 1
+lexer_create :: proc(vm: ^VM, input: string, name: string) -> (lexer: Lexer) {
+    lexer.vm      = vm
+    lexer.input   = input
+    lexer.source  = name
+    lexer.line    = 1
     return lexer
 }
 
@@ -167,8 +170,7 @@ lexer_scan_token :: proc(lexer: ^Lexer) -> (token: Token, error: Lexer_Error) {
     case '%': type = .Percent
     case '^': type = .Caret
 
-    case '\'': fallthrough
-    case '\"': return create_string_token(lexer, r)
+    case '\'', '\"': return create_string_token(lexer, r)
     }
     return create_token(lexer, type), .Unexpected_Character if type == .Error else nil
 }
@@ -300,16 +302,44 @@ create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token, error: 
 
 @(private="file", require_results)
 create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token, error: Lexer_Error) {
-    for !is_at_end(lexer^) && peek(lexer^) != quote {
-        if peek(lexer^) == '\n' {
+    builder := &lexer.vm.builder
+    strings.builder_reset(builder)
+
+    builder_loop: for !is_at_end(lexer^) && peek(lexer^) != quote {
+        r, read_err := advance(lexer)
+        if read_err != nil {
+            error = read_err
+            break builder_loop
+        } else if r == '\n' {
             error = .Unterminated_String
-            break
+            break builder_loop
         }
-        advance(lexer)
+        // If have escape character, skip it and read the escaped sequence
+        if r == '\\' {
+            r, read_err = advance(lexer)
+            if read_err != nil {
+                error = read_err
+                break builder_loop
+            }
+            switch r {
+            case 'a':   r = '\a'
+            case 'b':   r = '\b'
+            case 'f':   r = '\f'
+            case 'n':   r = '\n'
+            case 'r':   r = '\r'
+            case 't':   r = '\t'
+            case 'v':   r = '\v'
+            case '\\':  r = '\\'
+            case '\'':  r = '\''
+            case '\"':  r = '\"'
+            }
+        }
+        strings.write_rune(builder, r)
     }
     if is_at_end(lexer^) || !matches(lexer, quote){
         error = .Unterminated_String
     }
+    lexer.str = ostring_new(lexer.vm, strings.to_string(builder^))
     return create_token(lexer, .String), error
 }
 
@@ -414,7 +444,10 @@ count_nesting :: proc(lexer: ^Lexer) -> (count: int) {
     return count
 }
 
-
+/*
+Notes:
+    - Returns the CURRENT character but also advances the iterator index.
+*/
 @(private="file")
 advance :: proc(lexer: ^Lexer) -> (r: rune, error: Lexer_Error) {
     rr, size := utf8.decode_rune(lexer.input[lexer.current:])

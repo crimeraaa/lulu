@@ -3,14 +3,19 @@ package lulu
 
 import "core:fmt"
 import "core:mem"
+import "core:strings"
 
 STACK_MAX :: 256
 
 VM :: struct {
-    stack:      [STACK_MAX]Value,
-    top, base:  [^]Value,   // 'top' always points to the first free slot.
-    chunk:      ^Chunk,
-    ip:         [^]Instruction, // Points to next instruction to be executed.
+    stack       : [STACK_MAX]Value,
+    allocator   : mem.Allocator,
+    builder     : strings.Builder,
+    interned    : map[string]^OString,
+    objects     : ^Object_Header,
+    top, base   : [^]Value,   // 'top' always points to the first free slot.
+    chunk       : ^Chunk,
+    ip          : [^]Instruction, // Points to next instruction to be executed.
 }
 
 Status :: enum u8 {
@@ -19,19 +24,45 @@ Status :: enum u8 {
     Runtime_Error,
 }
 
-vm_init :: proc(vm: ^VM) {
+Runtime_Error_Type :: enum {
+    None,
+    Arith,
+    Compare,
+    Concat,
+}
+
+// "Attempt to" ...
+runtime_error_strings := [Runtime_Error_Type]string {
+    .None    = "(empty)",
+    .Arith   = "perform arithmetic on",
+    .Compare = "compare",
+    .Concat  = "concatenate",
+}
+
+vm_init :: proc(vm: ^VM, allocator: mem.Allocator) {
     reset_stack(vm)
-    vm.chunk = nil
-    vm.ip    = nil
+    vm.interned  = make(map[string]^OString, allocator)
+    vm.builder   = strings.builder_make(allocator)
+    vm.allocator = allocator
+    vm.chunk     = nil
+    vm.ip        = nil
 }
 
 vm_destroy :: proc(vm: ^VM) {
-    vm_init(vm)
+    object_free_all(vm)
+
+    reset_stack(vm)
+    delete(vm.interned)
+    strings.builder_destroy(&vm.builder)
+    vm.objects  = nil
+    vm.chunk    = nil
+    vm.ip       = nil
+
 }
 
 vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     chunk := &Chunk{}
-    chunk_init(chunk, name)
+    chunk_init(chunk, name, vm.allocator)
     defer chunk_destroy(chunk)
 
     if !compiler_compile(vm, chunk, input) {
@@ -39,9 +70,17 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     }
     vm.chunk = chunk
     vm.ip    = raw_data(chunk.code)
-    if !vm_execute(vm) {
+    if run_err := vm_execute(vm); run_err != nil {
         line := chunk.line[ptr_sub(vm.ip, raw_data(chunk.code))]
-        fmt.eprintfln("%s:%i: %s", chunk.source, line, "Bad expression somewhere!")
+        fmt.eprintf("%s:%i: Attempt to %s ", chunk.source, line, runtime_error_strings[run_err])
+        switch run_err {
+        case .None:
+            unreachable()
+        case .Arith, .Compare, .Concat:
+            rk_b, rk_c := get_rk_bc(vm, vm.ip[-1], vm.chunk.constants[:])
+            fmt.eprintfln("a %s value and %s",
+                           value_type_name(rk_b), value_type_name(rk_c))
+        }
         reset_stack(vm)
         return .Runtime_Error
     }
@@ -49,7 +88,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
 }
 
 // Analogous to 'vm.c:run()' in the book.
-vm_execute :: proc(vm: ^VM) -> (ok: bool) {
+vm_execute :: proc(vm: ^VM) -> (error: Runtime_Error_Type) {
     chunk     := vm.chunk
     code      := chunk.code[:]
     constants := chunk.constants[:]
@@ -71,7 +110,7 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
             fmt.println()
             debug_dump_instruction(chunk^, inst, ptr_sub(ip, raw_data(chunk.code)))
         }
-        
+
         // Most instructions use this!
         ra = &vm.base[inst.a]
 
@@ -94,11 +133,11 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
         case .Unm:
             rb := vm.base[inst.b]
             if !value_is_number(rb) {
-                return false
+                return .Arith
             }
             value_set_number(ra, number_unm(rb.data.number))
         case .Eq, .Neq:
-            rb, rc := get_RK(vm, inst.b, constants), get_RK(vm, inst.c, constants)
+            rb, rc := get_rk_bc(vm, inst, constants)
             b := value_eq(rb, rc)
             value_set_boolean(ra, b if inst.op == .Eq else !b)
         case .Lt:   compare_op(vm, number_lt, ra, inst, constants) or_return
@@ -106,8 +145,9 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
         case .Leq:  compare_op(vm, number_leq, ra, inst, constants) or_return
         case .Geq:  compare_op(vm, number_geq, ra, inst, constants) or_return
         case .Not:
-            x := get_RK(vm, inst.b, constants)
+            x := get_rk(vm, inst.b, constants)
             value_set_boolean(ra, value_is_falsy(x))
+        case .Concat: concat(vm, ra, inst.b, inst.c) or_return
         case .Return:
             start := inst.a
             // If vararg, keep top as-is
@@ -118,34 +158,55 @@ vm_execute :: proc(vm: ^VM) -> (ok: bool) {
             for arg in vm.base[start:ptr_sub(vm.top, vm.base)] {
                 value_print(arg)
             }
-            return true
+            return nil
         }
     }
 }
 
 // Rough analog to C macro
-@(private="file")
-arith_op :: #force_inline proc(vm: ^VM, $op: proc(x, y: f64) -> f64, ra: ^Value, inst: Instruction, constants: []Value) -> (ok: bool) {
-    x, y := get_RK(vm, inst.b, constants), get_RK(vm, inst.c, constants)
+@(private="file", require_results)
+arith_op :: #force_inline proc(vm: ^VM, $op: proc(x, y: f64) -> f64, ra: ^Value, inst: Instruction, constants: []Value) -> Runtime_Error_Type {
+    x, y := get_rk_bc(vm, inst, constants)
     if !value_is_number(x) || !value_is_number(y) {
-        return false
+        return .Arith
     }
     value_set_number(ra, op(x.data.number, y.data.number))
-    return true
+    return nil
 }
 
-@(private="file")
-compare_op :: #force_inline proc(vm: ^VM, $op: proc(x, y: f64) -> bool, ra: ^Value, inst: Instruction, constants: []Value) -> (ok: bool) {
-    x, y := get_RK(vm, inst.b, constants), get_RK(vm, inst.c, constants)
+@(private="file", require_results)
+compare_op :: #force_inline proc(vm: ^VM, $op: proc(x, y: f64) -> bool, ra: ^Value, inst: Instruction, constants: []Value) -> Runtime_Error_Type {
+    x, y := get_rk_bc(vm, inst, constants)
     if !value_is_number(x) || !value_is_number(y) {
-        return false
+        return .Compare
     }
     value_set_boolean(ra, op(x.data.number, y.data.number))
-    return true
+    return nil
+}
+
+@(private="file", require_results)
+concat :: proc(vm: ^VM, ra: ^Value, b, c: u16) -> Runtime_Error_Type {
+    builder := &vm.builder
+    strings.builder_reset(builder)
+    // Add 1 because we want to include Reg[C]
+    for arg in vm.base[b:c + 1] {
+        if !value_is_string(arg) {
+            return .Concat
+        }
+        strings.write_string(builder, ostring_to_string(arg.ostring))
+    }
+    str := ostring_new(vm, strings.to_string(builder^))
+    value_set_string(ra, str)
+    return nil
 }
 
 @(private="file")
-get_RK :: #force_inline proc(vm: ^VM, b_or_c: u16, constants: []Value) -> Value {
+get_rk_bc :: #force_inline proc(vm: ^VM, inst: Instruction, constants: []Value) -> (rk_b: Value, rk_c: Value) {
+    return get_rk(vm, inst.b, constants), get_rk(vm, inst.c, constants)
+}
+
+@(private="file")
+get_rk :: #force_inline proc(vm: ^VM, b_or_c: u16, constants: []Value) -> Value {
     return constants[rk_get_k(b_or_c)] if rk_is_k(b_or_c) else vm.base[b_or_c]
 }
 

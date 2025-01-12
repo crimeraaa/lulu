@@ -7,15 +7,15 @@ import "core:mem"
 MAX_CONSTANTS :: MAX_uBC
 
 Compiler :: struct {
-    parent: ^Compiler,  // Enclosing state.
-    parser: ^Parser,    // All nested compilers share the same parser.
-    chunk:  ^Chunk,     // Compilers do not own their chunks. They merely fill them.
-    free_reg: u16,      // Index of the first free register.
-    stack_usage: int,
+    parent      : ^Compiler,    // Enclosing state.
+    parser      : ^Parser,      // All nested compilers share the same parser.
+    chunk       : ^Chunk,       // Compilers do not own their chunks. They merely fill them.
+    free_reg    :  u16,         // Index of the first free register.
+    stack_usage :  int,
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) -> (ok: bool) {
-    parser   := &Parser{lexer = lexer_create(input, chunk.source)}
+    parser   := &Parser{lexer = lexer_create(vm, input, chunk.source)}
     compiler := &Compiler{parser = parser, chunk = chunk}
     expr     := &Expr{}
 
@@ -103,12 +103,11 @@ Brief:
 -   Analogous to `lcode.c:luaK_exp2nextreg(FuncState *fs, expdesc *e)` in Lua 5.1.
 
 Note:
--   `expr` will most likely be mutated.
+-   `expr` will most likely be transformed into `.Discharged`.
 
 Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2nextreg
  */
-@(private="file")
 compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
     compiler_reserve_reg(compiler, 1)
     compiler_expr_to_reg(compiler, expr, compiler.free_reg - 1)
@@ -119,14 +118,14 @@ Brief:
 -   Analogous to `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.
 
 Note:
--   `discharge_expr_to_register()` will mutate `expr`.
+-   `expr` will be transformed into `.Discharged`.
  */
 compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
     compiler_discharge_expr_to_reg(compiler, expr, reg)
     // @todo 2025-01-06: Implement the rest as needed...
 }
 
-/* 
+/*
 Notes:
 -   Transforms `expr` into `.Discharged`, if it is not one already.
  */
@@ -137,7 +136,7 @@ compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
     }
 }
 
-/* 
+/*
 Brief:
 -   Transforms `expr` to `.Discharged`.
 -   Use `expr.info.reg` to get the register it resides in.
@@ -179,7 +178,7 @@ Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2RK
  */
 compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
-    // @todo 2025-01-07: call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)'
+    // TODO(2025-01-07): call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)'
     #partial switch type := expr.type; type {
     case .Nil, .True, .False, .Number:
         chunk := compiler.chunk
@@ -288,14 +287,14 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
     return index
 }
 
-/* 
+/*
 Notes:
 -   Assumes the target operand was just consumed and now resides in `Expr`.
  */
 compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     // luaK_dischargevars(fs, e)
 
-    /* 
+    /*
     Details:
     -   In the call to `parser.odin:unary()`, we should have consumed the
         target operand beforehand.
@@ -321,7 +320,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     expr.type    = .Need_Register
 }
 
-/* 
+/*
 Notes:
 -   when `!CONSTANT_FOLDING_ENABLED`, we expect that if `left` was a literal then
     we called `compiler_expr_regconst()` beforehand.
@@ -329,9 +328,10 @@ Notes:
 
 Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#codearith
+-   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
  */
-compiler_emit_arith_or_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
-    assert(.Add <= op && op <= .Unm)
+compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
+    assert(.Add <= op && op <= .Unm || op == .Concat)
     when CONSTANT_FOLDING_ENABLED {
         if compiler_fold_constant_arith(op, left, right) {
             return
@@ -370,9 +370,34 @@ compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Exp
         compiler_free_expr(compiler, right)
         compiler_free_expr(compiler, left)
     }
-    
+
     left.info.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
     left.type    = .Need_Register
+}
+
+/*
+Links:
+-   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
+ */
+compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
+    // TODO(2025-01-12): call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)' here
+
+    chunk := compiler.chunk
+    code  := chunk.code[:]
+
+    // This is past the first consecutive concat, so we can fold them.
+    if right.type == .Need_Register && code[right.info.pc].op == .Concat {
+        instr := &code[right.info.pc]
+        assert(left.info.reg == instr.b - 1)
+        compiler_free_expr(compiler, left)
+        instr.b      = left.info.reg
+        left.type    = .Need_Register
+        left.info.pc = right.info.pc
+        return
+    }
+    // This is the first in a potential chain of concats.
+    compiler_expr_next_reg(compiler, right)
+    compiler_emit_arith(compiler, .Concat, left, right)
 }
 
 compiler_free_expr :: proc(compiler: ^Compiler, expr: ^Expr) {

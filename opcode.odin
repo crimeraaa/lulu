@@ -67,6 +67,7 @@ Gt,            // A B C | Reg[A] := RK[B] >  RK[C]
 Leq,           // A B C | Reg[A] := RK[B] <= RK[C]
 Geq,           // A B C | Reg[A] := RK[B] >= RK[C]
 Not,           // A B   | Reg[A] := not RK[B]
+Concat,        // A B C | Reg[B] .. ... .. Reg[C]
 Return,        // A B   | return Reg[A], ... Reg[A + B - 1]
 }
 
@@ -74,6 +75,7 @@ Return,        // A B   | return Reg[A], ... Reg[A + B - 1]
 Notes:
 (*) Return:
     - If B == 0, then return up to the current stack top (exclusive).
+    - In other words, B == 0 indicates varargs.
 ============================================================================= */
 
 
@@ -109,6 +111,7 @@ opcode_info := [OpCode]OpCode_Info {
 .Unm            = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Eq ..= .Geq    = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
 .Not            = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Concat         = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Reg_Jump},
 .Return         = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
 }
 

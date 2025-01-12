@@ -69,7 +69,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         a, bc := inst.a, inst_get_Bx(inst)
         print_AuBC(inst)
         fmt.printf("reg[%i] := .const[%i] => ", a, bc)
-        value_print(chunk.constants[bc])
+        value_print(chunk.constants[bc], .Debug)
     case .Load_Nil:
         print_args2(inst)
         fmt.printfln("reg[%i]..=reg[%v] := nil", inst.a, inst.b)
@@ -95,6 +95,9 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Leq: binary("<=", inst)
     case .Geq: binary(">=", inst)
     case .Not: unary("not ", inst)
+    case .Concat:
+        print_args3(inst)
+        fmt.printfln("reg[%i] := reg[%i] .. ... .. reg[%i]", inst.a, inst.b, inst.c)
     case .Return:
         start := inst.a
         stop  := inst.b - 1 if inst.b != 0 else start

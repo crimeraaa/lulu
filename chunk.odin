@@ -1,14 +1,16 @@
 #+private
 package lulu
 
+import "core:mem"
+
 Chunk :: struct {
-    source:    string, // Filename where the chunk originated.
-    constants: [dynamic]Value,
-    code:      [dynamic]Instruction,
-    line:      [dynamic]int,
+    source      : string, // Filename where the chunk originated.
+    constants   : [dynamic]Value,
+    code        : [dynamic]Instruction,
+    line        : [dynamic]int,
 }
 
-chunk_init :: proc(chunk: ^Chunk, source: string, allocator := context.allocator) {
+chunk_init :: proc(chunk: ^Chunk, source: string, allocator: mem.Allocator) {
     chunk.source    = source
     chunk.constants = make([dynamic]Value, allocator)
     chunk.code      = make([dynamic]Instruction, allocator)
@@ -27,14 +29,15 @@ Note:
     constants table.
  */
 chunk_add_constant :: proc(chunk: ^Chunk, value: Value) -> u32 {
-    // Linear search is theoretically very slow, but we don't have any other choice!
-    for i in 0..<len(chunk.constants) {
-        if value_eq(chunk.constants[i], value) {
+    constants := &chunk.constants
+    // Linear search is theoretically very slow!
+    for i in 0..<len(constants) {
+        if value_eq(constants[i], value) {
             return u32(i)
         }
     }
-    append(&chunk.constants, value)
-    return cast(u32)len(chunk.constants) - 1
+    append(constants, value)
+    return cast(u32)len(constants) - 1
 }
 
 chunk_destroy :: proc(chunk: ^Chunk) {
