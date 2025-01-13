@@ -50,9 +50,11 @@ Note on shorthand:
       into Kst. Otherwise, it is a Reg.
 ============================================================================= */
 //                Args  | Description
-Load_Constant, // A uBC | Reg[A] := Kst[uBC]
+Load_Constant, // A Bx  | Reg[A] := Kst[Bx]
 Load_Nil,      // A B   | Reg[A]..=Reg[B] := nil
 Load_Boolean,  // A B C | Reg[1] := (Bool)B; if ((Bool)C) ip++
+Get_Global,    // A Bx  | Reg[A] := _G[Kst[Bx]]
+Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg[A]
 Print,         // A B   | print(Reg[A]..=Reg[B])
 Add,           // A B C | Reg[A] := RK[B] + RK[C]
 Sub,           // A B C | Reg[A] := RK[B] - RK[C]
@@ -105,16 +107,17 @@ OpCode_Info :: bit_field u8 {
 
 // See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
 opcode_info := [OpCode]OpCode_Info {
-.Load_Constant  = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
-.Load_Boolean   = {type = .Separate,    a = true, b = .Used,      c = .Used},
-.Load_Nil       = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
-.Print          = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
-.Add ..= .Pow   = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
-.Unm            = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
-.Eq ..= .Geq    = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
-.Not            = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
-.Concat         = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Reg_Jump},
-.Return         = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
+.Load_Constant              = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
+.Load_Boolean               = {type = .Separate,    a = true, b = .Used,      c = .Used},
+.Load_Nil                   = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Get_Global ..= .Set_Global = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
+.Print                      = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Add ..= .Pow               = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
+.Unm                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Eq ..= .Geq                = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
+.Not                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
+.Concat                     = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Reg_Jump},
+.Return                     = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
 }
 
 

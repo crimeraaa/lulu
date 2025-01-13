@@ -49,7 +49,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         fmt.printf("% 8i % 4i % 4s ; ", inst.a, inst.b, " ")
     }
 
-    print_AuBC :: proc(inst: Instruction) {
+    print_ABx :: proc(inst: Instruction) {
         fmt.printf("% 8i % 4i % 4s ; ", inst.a, inst_get_Bx(inst), " ")
     }
 
@@ -67,7 +67,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     switch (inst.op) {
     case .Load_Constant:
         a, bc := inst.a, inst_get_Bx(inst)
-        print_AuBC(inst)
+        print_ABx(inst)
         fmt.printf("reg[%i] := .const[%i] => ", a, bc)
         value_print(chunk.constants[bc], .Debug)
     case .Load_Nil:
@@ -80,6 +80,16 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
             fmt.println("; ip++")
         } else {
             fmt.println()
+        }
+    case .Get_Global, .Set_Global:
+        print_ABx(inst)
+        key := chunk.constants[inst_get_Bx(inst)]
+        assert(value_is_string(key))
+        identifier := ostring_to_string(key.ostring)
+        if inst.op == .Get_Global {
+            fmt.printfln("reg[%i] := _G[%s]", inst.a, identifier)
+        } else {
+            fmt.printfln("_G[%s] := reg[%i]",  identifier, inst.a)
         }
     case .Print:
         print_args2(inst)

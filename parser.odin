@@ -6,6 +6,7 @@ import "core:log"
 import "core:strings"
 
 Parser :: struct {
+    vm                  : ^VM,
     lexer               : Lexer,
     consumed, lookahead : Token,
     panicking           : bool,
@@ -46,7 +47,7 @@ Expr :: struct {
 Expr_Info :: struct #raw_union {
     number  : f64, // .Number
     reg     : u16, // .Discharged
-    index   : u32, // .Constant
+    index   : u32, // .Constant, .Global
     pc      : int, // .Need_Register
 }
 
@@ -63,6 +64,7 @@ Expr_Type :: enum u8 {
     False,
     Number,
     Constant,
+    Global,
 }
 
 // Intended to be easier to grep
@@ -70,11 +72,6 @@ Expr_Type :: enum u8 {
 expr_init :: proc(expr: ^Expr, type: Expr_Type) {
     expr.type        = type
     expr.info.number = 0
-}
-
-expr_set_boolean :: proc(expr: ^Expr, b: bool) {
-    expr.type        = .True if b else .False
-    expr.info.number = 1 if b else 0
 }
 
 expr_set_number :: proc(expr: ^Expr, n: f64) {
@@ -147,10 +144,57 @@ parser_check :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
     return found
 }
 
-parser_parse_declaration :: proc(parser: ^Parser, compiler: ^Compiler) {
-    parser_parse_statement(parser, compiler)
+/*
+Analogous to:
+-   `compiler.c:declaration()` in the book.
+-   `lparser.c:chunk(LexState *ls)` in Lua 5.1.
+
+Links:
+-   https://www.lua.org/source/5.1/lparser.c.html#chunk
+ */
+parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
+    if parser_match(parser, .Identifier) {
+        assignment(parser, compiler)
+    } else {
+        statement(parser, compiler)
+    }
     // Optional
     parser_match(parser, .Semicolon)
+}
+
+/*
+Analogous to:
+-   `compiler.c:varDeclaration()` in the book.
+-   `compiler.c:parseVariable()` (somewhat) in the book.
+
+Links:
+-   https://www.lua.org/source/5.1/lparser.c.html#exprstat
+-   https://www.lua.org/source/5.1/lparser.c.html#prefixexp
+-   https://www.lua.org/source/5.1/lparser.c.html#singlevar
+ */
+@(private="file")
+assignment :: proc(parser: ^Parser, compiler: ^Compiler) {
+    // Inline implementation of `compiler.c:parseVariable()` since we immediately
+    // consumed the '<identifier>'. Lua doesn't have a 'var' keyword.
+    index := identifier_constant(parser, compiler, parser.consumed)
+    parser_consume(parser, .Equals)
+
+    expr := &Expr{}
+    if !expression(parser, compiler, expr) { return }
+    reg := compiler_expr_any_reg(compiler, expr)
+    compiler_emit_ABx(compiler, .Set_Global, reg, index)
+    compiler_free_expr(compiler, expr)
+}
+
+/*
+Analogous to:
+-   `compiler.c:identifierConstant(Token *name)` in the book.
+*/
+@(private="file")
+identifier_constant :: proc(parser: ^Parser, compiler: ^Compiler, token: Token) -> (index: u32) {
+    log.debugf("lexeme := %q", token.lexeme)
+    identifier := ostring_new(parser.vm, token.lexeme)
+    return compiler_add_constant(compiler, value_make_string(identifier))
 }
 
 /*
@@ -161,7 +205,8 @@ Analogous to:
 Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#statement
  */
-parser_parse_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
+@(private="file")
+statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     // line := parser.lookahead.line
     if parser_match(parser, .Print) {
         print_statement(parser, compiler)
@@ -177,16 +222,18 @@ print_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     first := compiler.free_reg
     expr  := &Expr{}
     for {
-        if !parser_parse_expression(parser, compiler, expr) { return }
+        if !expression(parser, compiler, expr) { return }
         compiler_expr_next_reg(compiler, expr)
         parser_match(parser, .Comma) or_break
     }
     if !parser_consume(parser, .Right_Paren) { return }
     compiler_emit_AB(compiler, .Print, first, expr.info.reg)
+    // compiler.free_reg -= expr.info.reg - first
 }
 
 // Analogous to 'compiler.c:expression()' in the book.
-parser_parse_expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (ok: bool) {
+@(private="file")
+expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (ok: bool) {
     return parser_parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
 }
 
@@ -248,7 +295,7 @@ error_at :: proc(parser: ^Parser, token: Token, msg: string) {
 
 @(private="file")
 grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    parser_parse_expression(parser, compiler, expr)
+    expression(parser, compiler, expr)
     parser_consume(parser, .Right_Paren)
 }
 
@@ -273,6 +320,20 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         expr.info.index = compiler_add_constant(compiler, value_make_string(parser.lexer.str))
     case:           unreachable()
     }
+}
+
+/*
+Assumptions:
+-   `parser.consumed` is of type `.Identifier`.
+ */
+@(private="file")
+variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    log.debug("consumed :=", parser.consumed)
+    // Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
+    index := identifier_constant(parser, compiler, parser.consumed)
+    expr_init(expr, .Global)
+    expr.info.index = index
+    compiler_expr_any_reg(compiler, expr)
 }
 
 @(private="file")
@@ -433,6 +494,7 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Not        = {prefix = unary},
         .Number     = {prefix = literal},
         .String     = {prefix = literal},
+        .Identifier = {prefix = variable},
     }
     return rules[type]
 }

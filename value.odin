@@ -163,7 +163,9 @@ value_eq :: proc(a, b: Value) -> bool {
     case .Nil:      return true
     case .Boolean:  return a.boolean == b.boolean
     case .Number:   return number_eq(a.number, b.number)
-    case .String:   return a.ostring == b.ostring
+    case .String:
+        fmt.printfln("%p == %p", a.ostring, b.ostring)
+        return a.ostring == b.ostring
     case .Table:    return a.table == b.table
     }
     unreachable()
@@ -180,7 +182,7 @@ value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
         fmt.println(s)
     case .Debug:
         if value_is_string(value) {
-            fmt.printfln("%q", s)
+            fmt.printfln("%q (%p)", s, cast(rawptr)value.ostring)
         } else {
             fmt.println(s)
         }

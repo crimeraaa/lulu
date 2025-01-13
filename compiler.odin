@@ -15,11 +15,11 @@ Compiler :: struct {
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) -> (ok: bool) {
-    parser   := &Parser{lexer = lexer_create(vm, input, chunk.source)}
+    parser   := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
     compiler := &Compiler{parser = parser, chunk = chunk}
     parser_advance(parser) or_return
     for !parser_match(parser, .Eof) && !parser.panicking {
-        parser_parse_declaration(parser, compiler)
+        parser_parse(parser, compiler)
     }
     parser_consume(parser, .Eof) or_return
     compiler_end(compiler)
@@ -82,7 +82,7 @@ Returns
 -   The register we stored `expr` in.
  */
 compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
-    // @todo 2025-01-06: Call `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e, int reg)` here
+    compiler_discharge_vars(compiler, expr)
 
     // If already in a register don't waste time trying to re-emit it.
     // Doing so will also mess up any calls to 'reg_free()'.
@@ -144,7 +144,7 @@ Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#discharge2reg
  */
 compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
-    // @todo 2025-01-06: Call `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e, int reg)` here
+    compiler_discharge_vars(compiler, expr)
     #partial switch expr.type {
     case .Nil:      compiler_emit_nil(compiler, reg, 1)
     case .True:     compiler_emit_ABC(compiler, .Load_Boolean, reg, 1, 0)
@@ -164,6 +164,21 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
     }
     expr.type     = .Discharged
     expr.info.reg = reg
+}
+
+/*
+Analogous to:
+-   `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e)`
+
+Notes:
+-   May transform `expr` into `.Need_Register`.
+ */
+compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
+    #partial switch type := expr.type; type {
+    case .Global:
+        expr.type    = .Need_Register
+        expr.info.pc = compiler_emit_ABx(compiler, .Get_Global, 0, expr.info.index)
+    }
 }
 
 /*
@@ -252,10 +267,10 @@ compiler_emit_AB :: proc(compiler: ^Compiler, op: OpCode, a, b: u16) -> (pc: int
     return compiler_emit_instruction(compiler, inst_create(op, a, b, 0))
 }
 
-compiler_emit_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32) {
+compiler_emit_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32) -> (pc: int) {
     assert(opcode_info[op].type == .Unsigned_Bx || opcode_info[op].type == .Signed_Bx)
     assert(opcode_info[op].c == .Unused)
-    compiler_emit_instruction(compiler, inst_create_ABx(op, reg, index))
+    return compiler_emit_instruction(compiler, inst_create_ABx(op, reg, index))
 }
 
 /*
@@ -288,7 +303,7 @@ Notes:
 -   Assumes the target operand was just consumed and now resides in `Expr`.
  */
 compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
-    // luaK_dischargevars(fs, e)
+    compiler_discharge_vars(compiler, expr)
 
     /*
     Details:

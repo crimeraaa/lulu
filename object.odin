@@ -34,8 +34,14 @@ object_unlink :: proc(vm: ^VM, object: ^Object_Header) {
 object_free_all :: proc(vm: ^VM) {
     for object := vm.objects; object != nil; object = object.prev {
         #partial switch type := object.type; type {
-        case .String:   ostring_free(vm, cast(^OString)object)
-        case:           fmt.panicf("Cannot free a %v value!\n", type)
+        case .String:
+            object_unlink(vm, object)
+            ostring_free(vm, cast(^OString)object)
+        case .Table:
+            object_unlink(vm, object)
+            table_destroy(cast(^Table)object)
+        case:
+            fmt.panicf("Cannot free a %v value!\n", type)
         }
     }
 }

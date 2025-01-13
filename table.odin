@@ -17,13 +17,16 @@ Table_Entry :: struct {
 }
 
 table_new :: proc(vm: ^VM) -> ^Table {
-    table        := object_new(Table, vm)
-    table.entries = make([dynamic]Table_Entry, vm.allocator)
+    table := object_new(Table, vm)
+    table_init(table, vm.allocator)
     return table
 }
 
-table_destroy :: proc(vm: ^VM, table: ^Table) {
-    object_unlink(vm, &table.base)
+table_init :: proc(table: ^Table, allocator: mem.Allocator) {
+    table.entries = make([dynamic]Table_Entry, allocator)
+}
+
+table_destroy :: proc(table: ^Table) {
     delete(table.entries)
     table.count   = 0
     table.entries = nil
@@ -33,7 +36,7 @@ table_destroy :: proc(vm: ^VM, table: ^Table) {
 Notes:
 -   It is possible for `key` to exist and map to a nil value. This is valid.
 -   But if `key` maps to nothing (that is, entry.key is nil, meaning we haven't
-    yetted mapped this key), then we can say it is invalid.
+    yet mapped this key), then we can say it is invalid.
  */
 table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) {
     if table.count == 0 {
@@ -51,7 +54,7 @@ table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) {
 table_set :: proc(table: ^Table, key, value: Value) {
     // TODO(2025-01-12): Use MAX_LOAD without implicit integer-to-float conversion
     if table.count >= len(table.entries) {
-        new_cap := math.next_power_of_two(table.count)
+        new_cap := max(8, math.next_power_of_two(table.count))
         adjust_capacity(table, new_cap, table.entries.allocator)
     }
 
@@ -92,6 +95,8 @@ table_copy :: proc(dst, src: ^Table) {
         table_set(dst, entry.key, entry.value)
     }
 }
+
+import "core:fmt"
 
 @(private="file")
 find_entry :: proc(entries: []Table_Entry, key: Value) -> (entry: ^Table_Entry) {

@@ -1,7 +1,9 @@
 package lulu
 
 import "base:intrinsics"
+import "core:fmt"
 import "core:mem"
+import "core:strings"
 
 OString :: struct {
     using base  : Object_Header,
@@ -12,12 +14,17 @@ OString :: struct {
 
 /*
 Notes:
--   These strings are not compatible with C-style strings.
+-   These strings are compatible with C-style strings.
+    However, extracting the cstring requires an unsafe cast.
  */
 ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
+    fmt.printf("Processing string %q (len: %i)... ", input, len(input))
+    defer fmt.println(vm.interned)
     if prev, ok := vm.interned[input]; ok {
+        fmt.println("Interned!")
         return prev
     }
+    fmt.println("Interning...")
     n  := len(input)
     str = object_new(OString, vm, n + 1)
     defer vm.interned[input] = str

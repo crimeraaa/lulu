@@ -12,6 +12,7 @@ VM :: struct {
     allocator   : mem.Allocator,
     builder     : strings.Builder,
     interned    : map[string]^OString,
+    globals     : Table,
     objects     : ^Object_Header,
     top, base   : [^]Value,   // 'top' always points to the first free slot.
     chunk       : ^Chunk,
@@ -29,18 +30,26 @@ Runtime_Error_Type :: enum {
     Arith,
     Compare,
     Concat,
+    Undefined_Global,
 }
 
 // "Attempt to" ...
 runtime_error_strings := [Runtime_Error_Type]string {
-    .None    = "(empty)",
-    .Arith   = "perform arithmetic on",
-    .Compare = "compare",
-    .Concat  = "concatenate",
+    .None               = "(empty)",
+    .Arith              = "perform arithmetic on",
+    .Compare            = "compare",
+    .Concat             = "concatenate",
+    .Undefined_Global   = "read undefined global"
 }
 
 vm_init :: proc(vm: ^VM, allocator: mem.Allocator) {
     reset_stack(vm)
+
+    // _G is not part of the collectable objects list.
+    table_init(&vm.globals, allocator)
+    vm.globals.type = .Table
+    vm.globals.prev = nil
+
     vm.interned  = make(map[string]^OString, allocator)
     vm.builder   = strings.builder_make(allocator)
     vm.allocator = allocator
@@ -52,6 +61,7 @@ vm_destroy :: proc(vm: ^VM) {
     object_free_all(vm)
 
     reset_stack(vm)
+    table_destroy(&vm.globals)
     delete(vm.interned)
     strings.builder_destroy(&vm.builder)
     vm.objects  = nil
@@ -80,6 +90,10 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
             rk_b, rk_c := get_rk_bc(vm, vm.ip[-1], vm.chunk.constants[:])
             fmt.eprintfln("a %s value and %s",
                            value_type_name(rk_b), value_type_name(rk_c))
+        case .Undefined_Global:
+            key := chunk.constants[inst_get_Bx(vm.ip[-1])]
+            assert(value_is_string(key))
+            fmt.eprintfln("%q", ostring_to_string(key.ostring))
         }
         reset_stack(vm)
         return .Runtime_Error
@@ -92,6 +106,7 @@ vm_execute :: proc(vm: ^VM) -> (error: Runtime_Error_Type) {
     chunk     := vm.chunk
     code      := chunk.code[:]
     constants := chunk.constants[:]
+    globals   := &vm.globals
     ip        := vm.ip
     ra: ^Value
 
@@ -124,6 +139,16 @@ vm_execute :: proc(vm: ^VM) -> (error: Runtime_Error_Type) {
                 value_set_nil(&value)
             }
         case .Load_Boolean: value_set_boolean(ra, inst.b == 1)
+        case .Get_Global:
+            key := constants[inst_get_Bx(inst)]
+            value, ok := table_get(globals, key)
+            if !ok {
+                return .Undefined_Global
+            }
+            ra^ = value
+        case .Set_Global:
+            key := constants[inst_get_Bx(inst)]
+            table_set(globals, key, ra^)
         case .Print:
             for arg in vm.base[inst.a:inst.b + 1] {
                 value_print(arg, .Print)
@@ -160,9 +185,9 @@ vm_execute :: proc(vm: ^VM) -> (error: Runtime_Error_Type) {
                 vm.top = mem.ptr_offset(ra, n_results - 1)
             }
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
-            for arg in vm.base[start:ptr_sub(vm.top, vm.base)] {
-                value_print(arg)
-            }
+            // for arg in vm.base[start:ptr_sub(vm.top, vm.base)] {
+            //     value_print(arg)
+            // }
             return nil
         }
     }
