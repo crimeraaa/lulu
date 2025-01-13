@@ -192,7 +192,6 @@ Analogous to:
 */
 @(private="file")
 identifier_constant :: proc(parser: ^Parser, compiler: ^Compiler, token: Token) -> (index: u32) {
-    log.debugf("lexeme := %q", token.lexeme)
     identifier := ostring_new(parser.vm, token.lexeme)
     return compiler_add_constant(compiler, value_make_string(identifier))
 }
@@ -217,30 +216,49 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
 
 @(private="file")
 print_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
-    if !parser_consume(parser, .Left_Paren) { return }
-
-    first := compiler.free_reg
-    expr  := &Expr{}
-    for {
-        if !expression(parser, compiler, expr) { return }
-        compiler_expr_next_reg(compiler, expr)
-        parser_match(parser, .Comma) or_break
+    if !parser_consume(parser, .Left_Paren) {
+        return
     }
-    if !parser_consume(parser, .Right_Paren) { return }
-    compiler_emit_AB(compiler, .Print, first, expr.info.reg)
-    // compiler.free_reg -= expr.info.reg - first
+
+    n_args := cast(u16)0
+    if !parser_check(parser, .Right_Paren) {
+        // Push arguments, one at a time, on the stack.
+        for {
+            arg := &Expr{}
+            if !expression(parser, compiler, arg) {
+                return
+            }
+            compiler_expr_next_reg(compiler, arg)
+            n_args += 1
+            parser_match(parser, .Comma) or_break
+        }
+    }
+    if !parser_consume(parser, .Right_Paren) {
+        return
+    }
+    compiler_emit_AB(compiler, .Print, compiler.free_reg - n_args, compiler.free_reg)
+    // This is hacky but it works to allow recycling of registers
+    compiler.free_reg -= n_args
 }
 
-// Analogous to 'compiler.c:expression()' in the book.
+/*
+Analogous to:
+-   `compiler.c:expression()` in the book.
+
+Notes:
+-   Expressions only ever produce 1 net resulting value, which should reside in `expr`.
+-   However, `expr` itself does not reside in a register yet. It is up to you
+    to decide how to allocate that.
+ */
 @(private="file")
 expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (ok: bool) {
-    return parser_parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
+    return parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
 }
 
 // Analogous to 'lparser.c:subexpr(LexState *ls, expdesc *v, int limit)' in Lua 5.1.
 // See: https://www.lua.org/source/5.1/lparser.c.html#subexpr
 @(require_results)
-parser_parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) -> (ok: bool) {
+parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) -> (ok: bool) {
     parser_recurse_begin(parser, location)
     defer parser_recurse_end(parser, location)
 
@@ -328,12 +346,10 @@ Assumptions:
  */
 @(private="file")
 variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    log.debug("consumed :=", parser.consumed)
     // Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
     index := identifier_constant(parser, compiler, parser.consumed)
     expr_init(expr, .Global)
     expr.info.index = index
-    compiler_expr_any_reg(compiler, expr)
 }
 
 @(private="file")
@@ -341,7 +357,7 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     type := parser.consumed.type
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
-    if !parser_parse_precedence(parser, compiler, expr, .Unary) {
+    if !parse_precedence(parser, compiler, expr, .Unary) {
         return
     }
 
@@ -402,7 +418,7 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
     right := &Expr{}
-    if !parser_parse_precedence(parser, compiler, right, prec) {
+    if !parse_precedence(parser, compiler, right, prec) {
         return
     }
     parser_recurse_end(parser)
@@ -449,7 +465,7 @@ compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     parser_recurse_begin(parser)
     prec := get_rule(type).prec
     right := &Expr{}
-    if !parser_parse_precedence(parser, compiler, right, prec + Precedence(1)) {
+    if !parse_precedence(parser, compiler, right, prec + Precedence(1)) {
         return
     }
     parser_recurse_end(parser)
@@ -467,7 +483,7 @@ concat :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     compiler_expr_next_reg(compiler, expr)
     for {
         next := &Expr{}
-        if !parser_parse_precedence(parser, compiler, next, .Concat) {
+        if !parse_precedence(parser, compiler, next, .Concat) {
             return
         }
         compiler_emit_concat(compiler, expr, next)

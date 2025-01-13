@@ -93,7 +93,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         }
     case .Print:
         print_args2(inst)
-        fmt.printfln("print(reg[%i]..=reg[%i])", inst.a, inst.b)
+        fmt.printfln("print(reg[%i]..<reg[%i])", inst.a, inst.b)
     case .Add: binary("+", inst)
     case .Sub: binary("-", inst)
     case .Mul: binary("*", inst)

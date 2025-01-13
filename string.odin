@@ -1,9 +1,6 @@
 package lulu
 
-import "base:intrinsics"
-import "core:fmt"
 import "core:mem"
-import "core:strings"
 
 OString :: struct {
     using base  : Object_Header,
@@ -18,24 +15,55 @@ Notes:
     However, extracting the cstring requires an unsafe cast.
  */
 ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
-    fmt.printf("Processing string %q (len: %i)... ", input, len(input))
-    defer fmt.println(vm.interned)
-    if prev, ok := vm.interned[input]; ok {
-        fmt.println("Interned!")
+    hash := fnv1a_hash_32(input)
+    if prev, ok := find_interned(&vm.interned, input, hash); ok {
         return prev
     }
-    fmt.println("Interning...")
     n  := len(input)
     str = object_new(OString, vm, n + 1)
-    defer vm.interned[input] = str
+    defer set_interned(&vm.interned, str)
 
-    str.hash = fnv1a_hash_32(input)
+    str.hash = hash
     str.len  = n
     #no_bounds_check {
         copy(str.data[:n], input)
         str.data[n] = 0
     }
     return str
+}
+
+@(private="file")
+find_interned :: proc(interned: ^Table, key: string, hash: u32) -> (value: ^OString, found: bool) {
+    if interned.count == 0 {
+        return nil, false
+    }
+    entries := interned.entries[:]
+    wrap    := cast(u32)len(entries)
+    index   := hash % wrap
+    for {
+        entry := entries[index]
+        if value_is_nil(entry.key) {
+            // Stop if we find a non-tombstone entry.
+            if value_is_nil(entry.value) {
+                return nil, false
+            }
+        }
+        assert(value_is_string(entry.key))
+        str := entry.key.ostring
+        #no_bounds_check if str.hash == hash && str.len == len(key) {
+            if ostring_to_string(str) == key {
+                return str, true
+            }
+        }
+
+        index = (index + 1) % wrap
+    }
+}
+
+@(private="file")
+set_interned :: proc(interned: ^Table, key: ^OString) {
+    vkey := value_make_string(key)
+    table_set(interned, vkey, vkey)
 }
 
 ostring_free :: proc(vm: ^VM, str: ^OString) {

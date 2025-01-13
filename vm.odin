@@ -11,7 +11,7 @@ VM :: struct {
     stack       : [STACK_MAX]Value,
     allocator   : mem.Allocator,
     builder     : strings.Builder,
-    interned    : map[string]^OString,
+    interned    : Table,
     globals     : Table,
     objects     : ^Object_Header,
     top, base   : [^]Value,   // 'top' always points to the first free slot.
@@ -45,12 +45,15 @@ runtime_error_strings := [Runtime_Error_Type]string {
 vm_init :: proc(vm: ^VM, allocator: mem.Allocator) {
     reset_stack(vm)
 
+    table_init(&vm.interned, allocator)
+    vm.interned.type = .Table
+    vm.interned.prev = nil
+
     // _G is not part of the collectable objects list.
     table_init(&vm.globals, allocator)
     vm.globals.type = .Table
     vm.globals.prev = nil
 
-    vm.interned  = make(map[string]^OString, allocator)
     vm.builder   = strings.builder_make(allocator)
     vm.allocator = allocator
     vm.chunk     = nil
@@ -61,8 +64,8 @@ vm_destroy :: proc(vm: ^VM) {
     object_free_all(vm)
 
     reset_stack(vm)
+    table_destroy(&vm.interned)
     table_destroy(&vm.globals)
-    delete(vm.interned)
     strings.builder_destroy(&vm.builder)
     vm.objects  = nil
     vm.chunk    = nil
@@ -150,7 +153,7 @@ vm_execute :: proc(vm: ^VM) -> (error: Runtime_Error_Type) {
             key := constants[inst_get_Bx(inst)]
             table_set(globals, key, ra^)
         case .Print:
-            for arg in vm.base[inst.a:inst.b + 1] {
+            for arg in vm.base[inst.a:inst.b] {
                 value_print(arg, .Print)
             }
             fmt.println()

@@ -28,7 +28,7 @@ tasks:
       - task: build
       - '{{.OUT_EXE}}'
     interactive: true
-  
+
   fix-whitespace:
     desc: Remove trailing whitespace from all *.odin files.
     deps:
@@ -36,7 +36,7 @@ tasks:
         vars:
           VIM_PATTERN: '\s\+$'
           VIM_REPLACE: ''
-    
+
   # https://github.com/crimeraaa/lulu/blob/16cf4f5d187546704e7f66c9c401d85c4a71b68a/Taskfile.yml#L95C8-L95C11
   find-and-replace:
     desc: Replace a pattern in all files *.odin files. Uses Vim syntax.
