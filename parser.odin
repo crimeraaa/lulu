@@ -40,8 +40,8 @@ Precedence :: enum u8 {
 }
 
 Expr :: struct {
-    info    : Expr_Info,
-    type    : Expr_Type,
+    using info  : Expr_Info,
+    type        : Expr_Type,
 }
 
 Expr_Info :: struct #raw_union {
@@ -70,13 +70,13 @@ Expr_Type :: enum u8 {
 // Intended to be easier to grep
 // Inspired by: https://www.lua.org/source/5.1/lparser.c.html#simpleexp
 expr_init :: proc(expr: ^Expr, type: Expr_Type) {
-    expr.type        = type
-    expr.info.number = 0
+    expr.type   = type
+    expr.number = 0
 }
 
 expr_set_number :: proc(expr: ^Expr, n: f64) {
-    expr.type        = .Number
-    expr.info.number = n
+    expr.type   = .Number
+    expr.number = n
 }
 
 // NOTE: In the future, may need to check for jump lists!
@@ -93,13 +93,11 @@ expr_to_string :: proc(expr: ^Expr) -> string {
     builder := strings.builder_from_bytes(buf[:])
     fmt.sbprint(&builder, "{info = {")
     #partial switch expr.type {
-    case .Nil:              break
-    case .True:             break
-    case .False:            break
-    case .Number:           fmt.sbprintf(&builder, "%f", expr.info.number)
-    case .Need_Register:    fmt.sbprintf(&builder, "pc = %i", expr.info.pc)
-    case .Discharged:       fmt.sbprintf(&builder, "reg = %i", expr.info.reg)
-    case .Constant:         fmt.sbprintf(&builder, "index = %i", expr.info.index)
+    case .Nil, .True, .False:
+    case .Number:           fmt.sbprintf(&builder, "%f", expr.number)
+    case .Need_Register:    fmt.sbprintf(&builder, "pc = %i", expr.pc)
+    case .Discharged:       fmt.sbprintf(&builder, "reg = %i", expr.reg)
+    case .Constant:         fmt.sbprintf(&builder, "index = %i", expr.index)
     case:                   unreachable()
     }
     fmt.sbprintf(&builder, "}, type = %s}", expr.type)
@@ -144,6 +142,11 @@ parser_check :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
     return found
 }
 
+LValue :: struct {
+    prev:    ^LValue,
+    variable: Expr,
+}
+
 /*
 Analogous to:
 -   `compiler.c:declaration()` in the book.
@@ -154,7 +157,7 @@ Links:
  */
 parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
     if parser_match(parser, .Identifier) {
-        assignment(parser, compiler)
+        assignment(parser, compiler, &LValue{})
     } else {
         statement(parser, compiler)
     }
@@ -173,17 +176,50 @@ Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#singlevar
  */
 @(private="file")
-assignment :: proc(parser: ^Parser, compiler: ^Compiler) {
+assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
     // Inline implementation of `compiler.c:parseVariable()` since we immediately
     // consumed the '<identifier>'. Lua doesn't have a 'var' keyword.
-    index := identifier_constant(parser, compiler, parser.consumed)
+    variable(parser, compiler, &last.variable)
+    if parser_match(parser, .Comma) {
+        next := &LValue{prev = last}
+        if !parser_consume(parser, .Identifier) {
+            return
+        }
+        assignment(parser, compiler, next)
+        return // Prevent recursive calls from consuming '='
+    }
     parser_consume(parser, .Equals)
 
-    expr := &Expr{}
-    if !expression(parser, compiler, expr) { return }
-    reg := compiler_expr_any_reg(compiler, expr)
-    compiler_emit_ABx(compiler, .Set_Global, reg, index)
-    compiler_free_expr(compiler, expr)
+    n_lvalues := count_lvalues(last)
+    n_exprs := expr_list(parser, compiler)
+
+    if n_exprs > n_lvalues {
+        // a, b, c = 1, 2, 3, 4; free_reg = 4; n_lvalues = 3; n_exprs = 4;
+        n_extra := n_exprs - n_lvalues
+        compiler.free_reg -= n_extra
+    } else if n_lvalues > n_exprs {
+        // a, b, c, d = 1, 2, 3; free_reg = 3; n_lvalues = 4; n_exprs = 3;
+        n_nils := n_lvalues - n_exprs
+        compiler_reserve_reg(compiler, n_nils)
+        compiler_emit_nil(compiler, compiler.free_reg, n_nils)
+    }
+
+    // a, b, c = 1, 2, 3; free_reg = 3; n_exprs = 3; reg = 2
+    reg := compiler.free_reg - 1
+    // Assign going downwards
+    for current := last; current != nil; current = current.prev {
+        defer reg -= 1
+        compiler_emit_ABx(compiler, .Set_Global, reg, current.variable.index)
+        compiler_free_reg(compiler, reg)
+    }
+}
+
+@(private="file")
+count_lvalues :: proc(last: ^LValue) -> (count: u16) {
+    for current := last; current != nil; current = current.prev {
+        count += 1
+    }
+    return count
 }
 
 /*
@@ -219,26 +255,30 @@ print_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     if !parser_consume(parser, .Left_Paren) {
         return
     }
-
-    n_args := cast(u16)0
-    if !parser_check(parser, .Right_Paren) {
-        // Push arguments, one at a time, on the stack.
-        for {
-            arg := &Expr{}
-            if !expression(parser, compiler, arg) {
-                return
-            }
-            compiler_expr_next_reg(compiler, arg)
-            n_args += 1
-            parser_match(parser, .Comma) or_break
-        }
-    }
+    n_args := expr_list(parser, compiler)
     if !parser_consume(parser, .Right_Paren) {
         return
     }
     compiler_emit_AB(compiler, .Print, compiler.free_reg - n_args, compiler.free_reg)
     // This is hacky but it works to allow recycling of registers
     compiler.free_reg -= n_args
+}
+
+// Pushes a comma-separated list of expressions onto the stack.
+@(private="file")
+expr_list :: proc(parser: ^Parser, compiler: ^Compiler) -> (count: u16) {
+    for {
+        arg := &Expr{}
+        if !expression(parser, compiler, arg) {
+            return
+        }
+        count += 1
+        compiler_expr_next_reg(compiler, arg)
+        if !parser_match(parser, .Comma) {
+            break
+        }
+    }
+    return count
 }
 
 /*
@@ -280,7 +320,7 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         parser_advance(parser) or_return
         rule.infix(parser, compiler, expr)
     }
-    
+
     // Could have been set from one of prefix/infix functions
     return !parser.panicking
 }
@@ -333,8 +373,8 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .False:    expr_init(expr, .False)
     case .Number:   expr_set_number(expr, parser.lexer.number)
     case .String:
-        expr.type       = .Constant
-        expr.info.index = compiler_add_constant(compiler, value_make_string(parser.lexer.str))
+        expr.type  = .Constant
+        expr.index = compiler_add_constant(compiler, value_make_string(parser.lexer.str))
     case:           unreachable()
     }
 }
@@ -348,7 +388,7 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     // Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
     index := identifier_constant(parser, compiler, parser.consumed)
     expr_init(expr, .Global)
-    expr.info.index = index
+    expr.index = index
 }
 
 @(private="file")

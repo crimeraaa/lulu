@@ -86,9 +86,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     if run_err := vm_execute(vm); run_err != nil {
         line := chunk.line[ptr_sub(vm.ip, raw_data(chunk.code))]
         fmt.eprintf("%s:%i: Attempt to %s ", chunk.source, line, runtime_error_strings[run_err])
-        switch run_err {
-        case .None:
-            unreachable()
+        #partial switch run_err {
         case .Arith, .Compare, .Concat:
             rk_b, rk_c := get_rk_bc(vm, vm.ip[-1], vm.chunk.constants[:])
             fmt.eprintfln("a %s value and %s",
@@ -97,6 +95,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
             key := chunk.constants[inst_get_Bx(vm.ip[-1])]
             assert(value_is_string(key))
             fmt.eprintfln("%q", ostring_to_string(key.ostring))
+        case: unreachable()
         }
         reset_stack(vm)
         return .Runtime_Error

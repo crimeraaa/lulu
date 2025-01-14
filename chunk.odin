@@ -28,7 +28,7 @@ Note:
  -  The index will be needed later on for opcodes to access the value in the
     constants table.
  */
-chunk_add_constant :: proc(chunk: ^Chunk, value: Value) -> u32 {
+chunk_add_constant :: proc(chunk: ^Chunk, value: Value) -> (index: u32) {
     constants := &chunk.constants
     // Linear search is theoretically very slow!
     for constant, index in constants {

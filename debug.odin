@@ -72,7 +72,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         value_print(chunk.constants[bc], .Debug)
     case .Load_Nil:
         print_args2(inst)
-        fmt.printfln("reg[%i]..=reg[%v] := nil", inst.a, inst.b)
+        fmt.printfln("reg[%i..=%i] := nil", inst.a, inst.b)
     case .Load_Boolean:
         print_args3(inst)
         fmt.printf("reg[%i] := %s", inst.a, "true" if inst.b == 1 else "false")
@@ -93,7 +93,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         }
     case .Print:
         print_args2(inst)
-        fmt.printfln("print(reg[%i]..<reg[%i])", inst.a, inst.b)
+        fmt.printfln("print(reg[%i..<%i])", inst.a, inst.b)
     case .Add: binary("+", inst)
     case .Sub: binary("-", inst)
     case .Mul: binary("*", inst)
@@ -110,11 +110,11 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Not: unary("not ", inst)
     case .Concat:
         print_args3(inst)
-        fmt.printfln("reg[%i] := reg[%i] .. reg[%i]", inst.a, inst.b, inst.c)
+        fmt.printfln("reg[%i] := concat(reg[%i..=%i])", inst.a, inst.b, inst.c)
     case .Return:
         start := inst.a
         stop  := inst.b - 1 if inst.b != 0 else start
         print_args2(inst)
-        fmt.printfln("return reg[%i]..<reg[%v]", start, stop)
+        fmt.printfln("return reg[%i..<%i]", start, stop)
     }
 }

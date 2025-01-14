@@ -76,7 +76,7 @@ Links
 
 Note:
 -   `expr` ALWAYS transition to `.Discharged` if it is not already so.
--   Use the `.info.reg` field to access which register it is currently in.
+-   Use the `.reg` field to access which register it is currently in.
 
 Returns
 -   The register we stored `expr` in.
@@ -88,10 +88,10 @@ compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     // Doing so will also mess up any calls to 'reg_free()'.
     if expr.type == .Discharged {
         // TODO(2025-01-08): Check if has jumps then check if non-local.
-        return expr.info.reg
+        return expr.reg
     }
     compiler_expr_next_reg(compiler, expr)
-    return expr.info.reg
+    return expr.reg
 }
 
 /*
@@ -135,7 +135,7 @@ compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
 /*
 Brief:
 -   Transforms `expr` to `.Discharged`.
--   Use `expr.info.reg` to get the register it resides in.
+-   Use `expr.reg` to get the register it resides in.
 
 Analogous to:
 -    `lcode.c:discharge2reg(FuncState *fs, expdesc *e, int reg)`
@@ -150,12 +150,12 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
     case .True:     compiler_emit_ABC(compiler, .Load_Boolean, reg, 1, 0)
     case .False:    compiler_emit_ABC(compiler, .Load_Boolean, reg, 0, 0)
     case .Number:
-        index := compiler_add_constant(compiler, value_make_number(expr.info.number))
+        index := compiler_add_constant(compiler, value_make_number(expr.number))
         compiler_emit_ABx(compiler, .Load_Constant, reg, index)
     case .Constant:
-        compiler_emit_ABx(compiler, .Load_Constant, reg, expr.info.index)
+        compiler_emit_ABx(compiler, .Load_Constant, reg, expr.index)
     case .Need_Register:
-        compiler.chunk.code[expr.info.pc].a = reg
+        compiler.chunk.code[expr.pc].a = reg
     case .Discharged:
         // TODO(2025-01-10): Nothing to do here until OP_MOVE analog is implemented
         return
@@ -163,7 +163,7 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
         assert(expr.type == .Empty)
     }
     expr.type     = .Discharged
-    expr.info.reg = reg
+    expr.reg = reg
 }
 
 /*
@@ -177,7 +177,7 @@ compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
     #partial switch type := expr.type; type {
     case .Global:
         expr.type    = .Need_Register
-        expr.info.pc = compiler_emit_ABx(compiler, .Get_Global, 0, expr.info.index)
+        expr.pc = compiler_emit_ABx(compiler, .Get_Global, 0, expr.index)
     }
 }
 
@@ -200,19 +200,18 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
             case .Nil:      index = chunk_add_constant(chunk, value_make_nil())
             case .True:     index = chunk_add_constant(chunk, value_make_boolean(true))
             case .False:    index = chunk_add_constant(chunk, value_make_boolean(false))
-            case .Number:   index = chunk_add_constant(chunk, value_make_number(expr.info.number))
+            case .Number:   index = chunk_add_constant(chunk, value_make_number(expr.number))
             case:           unreachable() // How?
             }
-            expr.info.index = index
-            expr.type       = .Constant
+            expr.index = index
+            expr.type  = .Constant
             return rk_as_k(cast(u16)index)
         }
     case .Constant:
         // Constant can fit in argument C?
-        if index := expr.info.index; index <= MAX_INDEX_RK {
+        if index := expr.index; index <= MAX_INDEX_RK {
             return rk_as_k(cast(u16)index)
         }
-    case: break
     }
     return compiler_expr_any_reg(compiler, expr)
 }
@@ -327,7 +326,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     }
     compiler_discharge_expr_any_reg(compiler, expr)
     compiler_free_expr(compiler, expr)
-    expr.info.pc = compiler_emit_AB(compiler, .Not, 0, expr.info.reg)
+    expr.pc = compiler_emit_AB(compiler, .Not, 0, expr.reg)
     expr.type    = .Need_Register
 }
 
@@ -364,7 +363,7 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     }
 
     // Argument A will be fixed down the line.
-    left.info.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
+    left.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
     left.type    = .Need_Register
 }
 
@@ -382,7 +381,7 @@ compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Exp
         compiler_free_expr(compiler, left)
     }
 
-    left.info.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
+    left.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
     left.type    = .Need_Register
 }
 
@@ -397,13 +396,13 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     code  := chunk.code[:]
 
     // This is past the first consecutive concat, so we can fold them.
-    if right.type == .Need_Register && code[right.info.pc].op == .Concat {
-        instr := &code[right.info.pc]
-        assert(left.info.reg == instr.b - 1)
+    if right.type == .Need_Register && code[right.pc].op == .Concat {
+        instr := &code[right.pc]
+        assert(left.reg == instr.b - 1)
         compiler_free_expr(compiler, left)
-        instr.b      = left.info.reg
-        left.type    = .Need_Register
-        left.info.pc = right.info.pc
+        instr.b     = left.reg
+        left.type   = .Need_Register
+        left.pc     = right.pc
         return
     }
     // This is the first in a potential chain of concats.
@@ -414,7 +413,7 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
 compiler_free_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
     // if e->k == VNONRELOC
     if expr.type == .Discharged {
-        compiler_free_reg(compiler, expr.info.reg)
+        compiler_free_reg(compiler, expr.reg)
     }
 }
 
@@ -425,7 +424,7 @@ compiler_fold_constant_arith :: proc(op: OpCode, left, right: ^Expr) -> (ok: boo
         log.debug("Failed to contant-fold")
         return false
     }
-    x, y, result: f64 = left.info.number, right.info.number, 0
+    x, y, result: f64 = left.number, right.number, 0
     #partial switch op {
     case .Add:  result = number_add(x, y)
     case .Sub:  result = number_sub(x, y)
