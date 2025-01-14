@@ -31,9 +31,9 @@ Note:
 chunk_add_constant :: proc(chunk: ^Chunk, value: Value) -> u32 {
     constants := &chunk.constants
     // Linear search is theoretically very slow!
-    for i in 0..<len(constants) {
-        if value_eq(constants[i], value) {
-            return u32(i)
+    for constant, index in constants {
+        if value_eq(constant, value) {
+            return u32(index)
         }
     }
     append(constants, value)

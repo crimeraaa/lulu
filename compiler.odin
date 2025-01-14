@@ -1,8 +1,10 @@
 #+private
 package lulu
 
+import "core:fmt"
 import "core:log"
-import "core:mem"
+
+_ :: fmt // needed for when !ODIN_DEBUG
 
 MAX_CONSTANTS :: MAX_uBC
 
@@ -26,8 +28,6 @@ compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) -> (ok: bool) {
     vm.top = &vm.base[compiler.stack_usage]
     return !parser.panicking
 }
-
-import "core:fmt"
 
 compiler_end :: proc(compiler: ^Compiler) {
     compiler_emit_return(compiler, 0, 0)
@@ -236,7 +236,7 @@ compiler_emit_nil :: proc(compiler: ^Compiler, reg, count: u16) {
             break folding
         }
         log.debugf("Folding 'nil': %v => %v", prev.b, prev.b + count)
-        next := cast(u16)(reg + count - 1)
+        next := reg + count - 1
         if next <= prev.b {
             break folding
         }

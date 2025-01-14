@@ -280,7 +280,7 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         parser_advance(parser) or_return
         rule.infix(parser, compiler, expr)
     }
-
+    
     // Could have been set from one of prefix/infix functions
     return !parser.panicking
 }
@@ -327,7 +327,6 @@ parser_recurse_end :: proc(parser: ^Parser, location := #caller_location) {
 
 @(private="file")
 literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    line := parser.consumed.line
     #partial switch type := parser.consumed.type; type {
     case .Nil:      expr_init(expr, .Nil)
     case .True:     expr_init(expr, .True)

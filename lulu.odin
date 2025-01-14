@@ -1,9 +1,7 @@
 package lulu
 
-import "base:runtime"
 import "core:c/libc"
 import "core:fmt"
-import "core:io"
 import "core:log"
 import "core:os"
 import "core:mem"

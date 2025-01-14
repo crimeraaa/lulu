@@ -107,7 +107,6 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
 // Analogous to 'vm.c:run()' in the book.
 vm_execute :: proc(vm: ^VM) -> (error: Runtime_Error_Type) {
     chunk     := vm.chunk
-    code      := chunk.code[:]
     constants := chunk.constants[:]
     globals   := &vm.globals
     ip        := vm.ip
@@ -182,7 +181,6 @@ vm_execute :: proc(vm: ^VM) -> (error: Runtime_Error_Type) {
             value_set_boolean(ra, value_is_falsy(x))
         case .Concat: concat(vm, ra, inst.b, inst.c) or_return
         case .Return:
-            start := inst.a
             // If vararg, keep top as-is
             if n_results := inst.b; n_results != 0 {
                 vm.top = mem.ptr_offset(ra, n_results - 1)

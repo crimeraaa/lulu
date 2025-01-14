@@ -96,10 +96,8 @@ table_copy :: proc(dst, src: ^Table) {
     }
 }
 
-import "core:fmt"
-
 @(private="file")
-find_entry :: proc(entries: []Table_Entry, key: Value) -> (entry: ^Table_Entry) {
+find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
     index := get_hash(key) % cast(u32)len(entries)
     tombstone: ^Table_Entry
     for {
@@ -119,7 +117,7 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> (entry: ^Table_Entry) 
         }
         index = (index + 1) % cast(u32)len(entries)
     }
-    return
+    unreachable()
 }
 
 @(private="file")

@@ -3,7 +3,6 @@ package lulu
 import "base:intrinsics"
 import "core:mem"
 import "core:fmt"
-import "core:strings"
 
 Object_Header :: struct {
     type    :  Value_Type,

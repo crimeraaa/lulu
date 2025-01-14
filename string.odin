@@ -47,15 +47,13 @@ find_interned :: proc(interned: ^Table, key: string, hash: u32) -> (value: ^OStr
             if value_is_nil(entry.value) {
                 return nil, false
             }
-        }
-        assert(value_is_string(entry.key))
-        str := entry.key.ostring
-        #no_bounds_check if str.hash == hash && str.len == len(key) {
-            if ostring_to_string(str) == key {
+        } else {
+            assert(value_is_string(entry.key))
+            str := entry.key.ostring
+            if str.hash == hash && ostring_to_string(str) == key {
                 return str, true
             }
         }
-
         index = (index + 1) % wrap
     }
 }
