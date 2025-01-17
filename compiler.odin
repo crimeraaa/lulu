@@ -16,26 +16,23 @@ Compiler :: struct {
     stack_usage :  int,
 }
 
-compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) -> (ok: bool) {
+compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
     parser   := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
     compiler := &Compiler{parser = parser, chunk = chunk}
-    parser_advance(parser) or_return
-    for !parser_match(parser, .Eof) && !parser.panicking {
+    parser_advance(parser)
+    for !parser_match(parser, .Eof) {
         parser_parse(parser, compiler)
     }
-    parser_consume(parser, .Eof) or_return
+    parser_consume(parser, .Eof)
     compiler_end(compiler)
     vm.top = &vm.base[compiler.stack_usage]
-    return !parser.panicking
 }
 
 compiler_end :: proc(compiler: ^Compiler) {
     compiler_emit_return(compiler, 0, 0)
     when DEBUG_PRINT_CODE {
-        fmt.println("=== STACK USAGE ===\n", compiler.stack_usage)
-        if !compiler.parser.panicking {
-            debug_dump_chunk(compiler.chunk^)
-        }
+        fmt.printfln("=== STACK USAGE ===\n%i", compiler.stack_usage)
+        debug_dump_chunk(compiler.chunk^)
     }
 }
 
@@ -162,7 +159,7 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
     case:
         assert(expr.type == .Empty)
     }
-    expr.type     = .Discharged
+    expr_init(expr, .Discharged)
     expr.reg = reg
 }
 
@@ -176,7 +173,7 @@ Notes:
 compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
     #partial switch type := expr.type; type {
     case .Global:
-        expr.type    = .Need_Register
+        expr_init(expr, .Need_Register)
         expr.pc = compiler_emit_ABx(compiler, .Get_Global, 0, expr.index)
     }
 }
@@ -254,7 +251,7 @@ compiler_emit_return :: proc(compiler: ^Compiler, reg, n_results: u16) {
     compiler_emit_AB(compiler, .Return, reg, n_results + 1)
 }
 
-compiler_emit_ABC :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> int {
+compiler_emit_ABC :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
     return compiler_emit_instruction(compiler, inst_create(op, a, b, c))
 }
@@ -326,8 +323,9 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     }
     compiler_discharge_expr_any_reg(compiler, expr)
     compiler_free_expr(compiler, expr)
+
+    expr_init(expr, .Need_Register)
     expr.pc = compiler_emit_AB(compiler, .Not, 0, expr.reg)
-    expr.type    = .Need_Register
 }
 
 /*
@@ -349,8 +347,13 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     }
 
     // When OpCode.Unm, right is unused.
-    rk_c := compiler_expr_regconst(compiler, right) if op != .Unm else 0
-    rk_b := compiler_expr_regconst(compiler, left)
+    rk_c, rk_b: u16
+    if op == .Unm {
+        rk_b = compiler_expr_any_reg(compiler, left)
+    } else {
+        rk_b = compiler_expr_regconst(compiler, left)
+        rk_c = compiler_expr_regconst(compiler, right)
+    }
 
     // In the event BOTH are .Discharged, we want to pop them in the correct
     // order! Otherwise the assert in `compiler_free_reg()` will fail.
@@ -363,8 +366,8 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     }
 
     // Argument A will be fixed down the line.
+    expr_init(left, .Need_Register)
     left.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
-    left.type    = .Need_Register
 }
 
 compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
@@ -381,8 +384,8 @@ compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Exp
         compiler_free_expr(compiler, left)
     }
 
+    expr_init(left, .Need_Register)
     left.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
-    left.type    = .Need_Register
 }
 
 /*
@@ -400,9 +403,9 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
         instr := &code[right.pc]
         assert(left.reg == instr.b - 1)
         compiler_free_expr(compiler, left)
-        instr.b     = left.reg
-        left.type   = .Need_Register
-        left.pc     = right.pc
+        instr.b = left.reg
+        expr_init(left, .Need_Register)
+        left.pc = right.pc
         return
     }
     // This is the first in a potential chain of concats.

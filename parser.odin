@@ -1,6 +1,7 @@
 #+private
 package lulu
 
+import "core:c/libc"
 import "core:fmt"
 import "core:log"
 import "core:strings"
@@ -9,7 +10,6 @@ Parser :: struct {
     vm                  : ^VM,
     lexer               : Lexer,
     consumed, lookahead : Token,
-    panicking           : bool,
     recurse             : int,
 }
 
@@ -70,8 +70,7 @@ Expr_Type :: enum u8 {
 // Intended to be easier to grep
 // Inspired by: https://www.lua.org/source/5.1/lparser.c.html#simpleexp
 expr_init :: proc(expr: ^Expr, type: Expr_Type) {
-    expr.type   = type
-    expr.number = 0
+    expr.type = type
 }
 
 expr_set_number :: proc(expr: ^Expr, n: f64) {
@@ -105,22 +104,21 @@ expr_to_string :: proc(expr: ^Expr) -> string {
 }
 
 // Analogous to 'compiler.c:advance()' in the book.
-@(require_results)
-parser_advance :: proc(parser: ^Parser) -> (ok: bool) {
+parser_advance :: proc(parser: ^Parser) {
     token, error := lexer_scan_token(&parser.lexer)
-    if ok = (error == nil) || (error == .Eof); !ok {
+    if ok := (error == nil) || (error == .Eof); !ok {
         log.errorf("Error: %v", error)
         error_at(parser, token, lexer_error_strings[error])
     } else {
         parser.consumed, parser.lookahead = parser.lookahead, token
     }
-    return ok
 }
 
 // Analogous to 'compiler.c:consume()' in the book.
 parser_consume :: proc(parser: ^Parser, expected: Token_Type) -> (ok: bool) {
     if parser.lookahead.type == expected {
-        return parser_advance(parser)
+        parser_advance(parser)
+        return true
     }
     // @warning 2025-01-05: We assume this is enough!
     buf: [64]byte
@@ -132,7 +130,7 @@ parser_consume :: proc(parser: ^Parser, expected: Token_Type) -> (ok: bool) {
 parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
     found = parser.lookahead.type == expected
     if found {
-        return parser_advance(parser)
+        parser_advance(parser)
     }
     return found
 }
@@ -269,9 +267,7 @@ print_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
 expr_list :: proc(parser: ^Parser, compiler: ^Compiler) -> (count: u16) {
     for {
         arg := &Expr{}
-        if !expression(parser, compiler, arg) {
-            return
-        }
+        expression(parser, compiler, arg)
         count += 1
         compiler_expr_next_reg(compiler, arg)
         if !parser_match(parser, .Comma) {
@@ -291,22 +287,21 @@ Notes:
     to decide how to allocate that.
  */
 @(private="file")
-expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (ok: bool) {
-    return parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
+expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
 }
 
 // Analogous to 'lparser.c:subexpr(LexState *ls, expdesc *v, int limit)' in Lua 5.1.
 // See: https://www.lua.org/source/5.1/lparser.c.html#subexpr
-@(require_results)
-parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) -> (ok: bool) {
+parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) {
     parser_recurse_begin(parser, location)
     defer parser_recurse_end(parser, location)
 
-    parser_advance(parser) or_return
+    parser_advance(parser)
     prefix := get_rule(parser.consumed.type).prefix
     if prefix == nil {
         parser_error_consumed(parser, "Expected an expression")
-        return false
+        return
     }
     prefix(parser, compiler, expr)
 
@@ -317,12 +312,9 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         }
         // Can occur when we hardcode low precedence recursion in high precedence calls
         assert(rule.infix != nil)
-        parser_advance(parser) or_return
+        parser_advance(parser)
         rule.infix(parser, compiler, expr)
     }
-
-    // Could have been set from one of prefix/infix functions
-    return !parser.panicking
 }
 
 // Analogous to 'compiler.c:errorAtCurrent()' in the book.
@@ -338,15 +330,9 @@ parser_error_consumed :: proc(parser: ^Parser, msg: string) {
 // Analogous to 'compiler.c:errorAt()' in the book.
 @(private="file")
 error_at :: proc(parser: ^Parser, token: Token, msg: string) {
-    // Avoid cascading error messages (looking at you, C++)...
-    if parser.panicking {
-        return
-    }
-    parser.panicking = true
-
     // .Eof token: don't use lexeme as it'll just be an empty string.
     location := token.lexeme if token.type != .Eof else token_type_strings[.Eof]
-    fmt.eprintfln("%s:%i: %s at '%s'", parser.lexer.source, token.line, msg, location)
+    vm_error(parser.vm, .Compile_Error, parser.lexer.source, token.line, "%s at '%s'", msg, location)
 }
 
 /// PREFIX EXPRESSIONS
@@ -373,9 +359,10 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .False:    expr_init(expr, .False)
     case .Number:   expr_set_number(expr, parser.lexer.number)
     case .String:
-        expr.type  = .Constant
-        expr.index = compiler_add_constant(compiler, value_make_string(parser.lexer.str))
-    case:           unreachable()
+        index := compiler_add_constant(compiler, value_make_string(parser.lexer.str))
+        expr_init(expr, .Constant)
+        expr.index = index
+    case: unreachable()
     }
 }
 
@@ -396,9 +383,7 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     type := parser.consumed.type
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
-    if !parse_precedence(parser, compiler, expr, .Unary) {
-        return
-    }
+    parse_precedence(parser, compiler, expr, .Unary)
 
     /*
     Note:
@@ -422,11 +407,12 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     }
     #partial switch type {
     case .Dash:
+        // MUST be set to '.Number' in order to try constant folding.
         dummy := &Expr{}
         expr_set_number(dummy, 0)
         compiler_emit_arith(compiler, .Unm, expr, dummy)
     case .Not:  compiler_emit_not(compiler, expr)
-    case: unreachable()
+    case:       unreachable()
     }
 }
 
@@ -446,7 +432,6 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case: unreachable()
     }
 
-    parser_recurse_begin(parser)
     prec := get_rule(type).prec
 
     // By not adding 1 for exponentiation we enforce right-associativity since we
@@ -457,10 +442,8 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
     right := &Expr{}
-    if !parse_precedence(parser, compiler, right, prec) {
-        return
-    }
-    parser_recurse_end(parser)
+    parse_precedence(parser, compiler, right, prec)
+
 
     /*
     Notes:
@@ -502,11 +485,9 @@ compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     }
 
     parser_recurse_begin(parser)
-    prec := get_rule(type).prec
+    prec  := get_rule(type).prec
     right := &Expr{}
-    if !parse_precedence(parser, compiler, right, prec + Precedence(1)) {
-        return
-    }
+    parse_precedence(parser, compiler, right, prec + Precedence(1))
     parser_recurse_end(parser)
     compiler_emit_compare(compiler, op, expr, right)
 }
@@ -522,9 +503,7 @@ concat :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     compiler_expr_next_reg(compiler, expr)
     for {
         next := &Expr{}
-        if !parse_precedence(parser, compiler, next, .Concat) {
-            return
-        }
+        parse_precedence(parser, compiler, next, .Concat)
         compiler_emit_concat(compiler, expr, next)
         parser_match(parser, .Ellipsis_2) or_break
     }

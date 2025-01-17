@@ -39,8 +39,7 @@ find_interned :: proc(interned: ^Table, key: string, hash: u32) -> (value: ^OStr
     }
     entries := interned.entries[:]
     wrap    := cast(u32)len(entries)
-    index   := hash % wrap
-    for {
+    for index := hash % wrap; /* empty */; index = (index + 1) % wrap {
         entry := entries[index]
         if value_is_nil(entry.key) {
             // Stop if we find a non-tombstone entry.
@@ -54,7 +53,6 @@ find_interned :: proc(interned: ^Table, key: string, hash: u32) -> (value: ^OStr
                 return str, true
             }
         }
-        index = (index + 1) % wrap
     }
 }
 
@@ -65,7 +63,6 @@ set_interned :: proc(interned: ^Table, key: ^OString) {
 }
 
 ostring_free :: proc(vm: ^VM, str: ^OString) {
-    object_unlink(vm, &str.base)
     mem.free_with_size(str, size_of(str^) + str.len + 1, vm.allocator)
 }
 
