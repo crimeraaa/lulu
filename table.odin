@@ -7,13 +7,13 @@ import "core:mem"
 MAX_LOAD :: 0.75
 
 Table :: struct {
-    using base  : Object_Header,
-    count       : int,  // Number of active entries. Not necessarily contiguous!
-    entries     : [dynamic]Table_Entry, // Assume len(entries) == cap(entries)
+    using base: Object_Header,
+    count:      int,  // Number of active entries. Not necessarily contiguous!
+    entries:    [dynamic]Table_Entry, // Assume len(entries) == cap(entries)
 }
 
 Table_Entry :: struct {
-    key, value  : Value,
+    key, value: Value,
 }
 
 table_new :: proc(vm: ^VM) -> ^Table {

@@ -74,9 +74,9 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         fmt.printfln("reg[%i..=%i] := nil", inst.a, inst.b)
     case .Load_Boolean:
         print_args3(inst)
-        fmt.printf("reg[%i] := %s", inst.a, "true" if inst.b == 1 else "false")
+        fmt.printf("reg[%i] := %v", inst.a, inst.b == 1)
         if inst.c == 1 {
-            fmt.println("; ip++")
+            fmt.println("; pc++")
         } else {
             fmt.println()
         }
@@ -86,9 +86,9 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         assert(value_is_string(key))
         identifier := ostring_to_string(key.ostring)
         if inst.op == .Get_Global {
-            fmt.printfln("reg[%i] := _G[%s]", inst.a, identifier)
+            fmt.printfln("reg[%i] := _G[%q]", inst.a, identifier)
         } else {
-            fmt.printfln("_G[%s] := reg[%i]",  identifier, inst.a)
+            fmt.printfln("_G[%q] := reg[%i]",  identifier, inst.a)
         }
     case .Print:
         print_args2(inst)

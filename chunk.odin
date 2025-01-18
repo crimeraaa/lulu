@@ -4,10 +4,10 @@ package lulu
 import "core:mem"
 
 Chunk :: struct {
-    source      : string, // Filename where the chunk originated.
-    constants   : [dynamic]Value,
-    code        : [dynamic]Instruction,
-    line        : [dynamic]int,
+    source:     string, // Filename where the chunk originated.
+    constants: [dynamic]Value,
+    code:      [dynamic]Instruction,
+    line:      [dynamic]int,
 }
 
 chunk_init :: proc(chunk: ^Chunk, source: string, allocator: mem.Allocator) {

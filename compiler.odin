@@ -9,11 +9,11 @@ _ :: fmt // needed for when !ODIN_DEBUG
 MAX_CONSTANTS :: MAX_uBC
 
 Compiler :: struct {
-    parent      : ^Compiler,    // Enclosing state.
-    parser      : ^Parser,      // All nested compilers share the same parser.
-    chunk       : ^Chunk,       // Compilers do not own their chunks. They merely fill them.
-    free_reg    :  u16,         // Index of the first free register.
-    stack_usage :  int,
+    parent:     ^Compiler, // Enclosing state.
+    parser:     ^Parser,   // All nested compilers share the same parser.
+    chunk:      ^Chunk,    // Compilers do not own their chunks. They merely fill them.
+    free_reg:    u16,      // Index of the first free register.
+    stack_usage: int,
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
@@ -25,7 +25,7 @@ compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
     }
     parser_consume(parser, .Eof)
     compiler_end(compiler)
-    vm.top = &vm.base[compiler.stack_usage]
+    vm.top = compiler.stack_usage
 }
 
 compiler_end :: proc(compiler: ^Compiler) {
@@ -47,7 +47,7 @@ Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_reserveregs
  */
 compiler_reserve_reg :: proc(compiler: ^Compiler, #any_int count: int, location := #caller_location) {
-    log.debugf("free_reg := %i + %i", compiler.free_reg, count, location = location)
+    // log.debugf("free_reg := %i + %i", compiler.free_reg, count, location = location)
     // @todo 2025-01-06: Check the VM's available stack size?
     compiler.free_reg += cast(u16)count
     if cast(int)compiler.free_reg > compiler.stack_usage {
@@ -56,7 +56,7 @@ compiler_reserve_reg :: proc(compiler: ^Compiler, #any_int count: int, location 
 }
 
 compiler_free_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_location) {
-    log.debugf("free_reg := %i - 1; reg := %i", compiler.free_reg, reg, location = location)
+    // log.debugf("free_reg := %i - 1; reg := %i", compiler.free_reg, reg, location = location)
     if !rk_is_k(reg) /* && reg >= fs->nactvar */ {
         compiler.free_reg -= 1
         log.assertf(reg == compiler.free_reg, "free_reg := %i but reg := %i",
@@ -289,7 +289,6 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
     index = chunk_add_constant(compiler.chunk, constant)
     if index >= MAX_CONSTANTS {
         parser_error_consumed(compiler.parser, "Function uses too many constants")
-        return 0
     }
     return index
 }
@@ -424,7 +423,6 @@ compiler_free_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
 compiler_fold_constant_arith :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     // Can't fold two non-number-literals!
     if !expr_is_number(left) || !expr_is_number(right) {
-        log.debug("Failed to contant-fold")
         return false
     }
     x, y, result: f64 = left.number, right.number, 0

@@ -1,21 +1,19 @@
 #+private
 package lulu
 
-import "core:c/libc"
 import "core:fmt"
-import "core:log"
 import "core:strings"
 
 Parser :: struct {
-    vm                  : ^VM,
-    lexer               : Lexer,
-    consumed, lookahead : Token,
-    recurse             : int,
+    vm:                 ^VM,
+    lexer:               Lexer,
+    consumed, lookahead: Token,
+    recurse:             int,
 }
 
 Parse_Rule :: struct {
-    prefix, infix   : proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr),
-    prec            : Precedence,
+    prefix, infix: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr),
+    prec:          Precedence,
 }
 
 /*
@@ -40,8 +38,8 @@ Precedence :: enum u8 {
 }
 
 Expr :: struct {
-    using info  : Expr_Info,
-    type        : Expr_Type,
+    using info: Expr_Info,
+    type:       Expr_Type,
 }
 
 Expr_Info :: struct #raw_union {
@@ -105,26 +103,20 @@ expr_to_string :: proc(expr: ^Expr) -> string {
 
 // Analogous to 'compiler.c:advance()' in the book.
 parser_advance :: proc(parser: ^Parser) {
-    token, error := lexer_scan_token(&parser.lexer)
-    if ok := (error == nil) || (error == .Eof); !ok {
-        log.errorf("Error: %v", error)
-        error_at(parser, token, lexer_error_strings[error])
-    } else {
-        parser.consumed, parser.lookahead = parser.lookahead, token
-    }
+    token := lexer_scan_token(&parser.lexer)
+    parser.consumed, parser.lookahead = parser.lookahead, token
 }
 
 // Analogous to 'compiler.c:consume()' in the book.
-parser_consume :: proc(parser: ^Parser, expected: Token_Type) -> (ok: bool) {
+parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
     if parser.lookahead.type == expected {
         parser_advance(parser)
-        return true
+        return
     }
-    // @warning 2025-01-05: We assume this is enough!
+    // WARNING(2025-01-05): We assume this is enough!
     buf: [64]byte
     s := fmt.bprintf(buf[:], "Expected '%s'", token_type_strings[expected])
     parser_error_lookahead(parser, s)
-    return false
 }
 
 parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
@@ -176,20 +168,20 @@ Links:
 @(private="file")
 assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
     // Inline implementation of `compiler.c:parseVariable()` since we immediately
-    // consumed the '<identifier>'. Lua doesn't have a 'var' keyword.
+    // consumed the '<identifier>'. Also, Lua doesn't have a 'var' keyword.
     variable(parser, compiler, &last.variable)
+
+    // Use recursive calls to create a stack-allocated linked list.
     if parser_match(parser, .Comma) {
         next := &LValue{prev = last}
-        if !parser_consume(parser, .Identifier) {
-            return
-        }
+        parser_consume(parser, .Identifier)
         assignment(parser, compiler, next)
-        return // Prevent recursive calls from consuming '='
+        return // Prevent parents of recursive calls from consuming '='
     }
     parser_consume(parser, .Equals)
 
     n_lvalues := count_lvalues(last)
-    n_exprs := expr_list(parser, compiler)
+    n_exprs   := expr_list(parser, compiler)
 
     if n_exprs > n_lvalues {
         // a, b, c = 1, 2, 3, 4; free_reg = 4; n_lvalues = 3; n_exprs = 4;
@@ -204,7 +196,9 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
 
     // a, b, c = 1, 2, 3; free_reg = 3; n_exprs = 3; reg = 2
     reg := compiler.free_reg - 1
-    // Assign going downwards
+
+    // Assign going downwards and free in the correct order so that these
+    // registers can be reused.
     for current := last; current != nil; current = current.prev {
         defer reg -= 1
         compiler_emit_ABx(compiler, .Set_Global, reg, current.variable.index)
@@ -250,13 +244,12 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
 
 @(private="file")
 print_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
-    if !parser_consume(parser, .Left_Paren) {
-        return
+    parser_consume(parser, .Left_Paren)
+    n_args := u16(0)
+    if !parser_check(parser, .Right_Paren) {
+        n_args = expr_list(parser, compiler)
     }
-    n_args := expr_list(parser, compiler)
-    if !parser_consume(parser, .Right_Paren) {
-        return
-    }
+    parser_consume(parser, .Right_Paren)
     compiler_emit_AB(compiler, .Print, compiler.free_reg - n_args, compiler.free_reg)
     // This is hacky but it works to allow recycling of registers
     compiler.free_reg -= n_args
@@ -301,7 +294,6 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
     prefix := get_rule(parser.consumed.type).prefix
     if prefix == nil {
         parser_error_consumed(parser, "Expected an expression")
-        return
     }
     prefix(parser, compiler, expr)
 
@@ -318,21 +310,21 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
 }
 
 // Analogous to 'compiler.c:errorAtCurrent()' in the book.
-parser_error_lookahead :: proc(parser: ^Parser, msg: string) {
+parser_error_lookahead :: proc(parser: ^Parser, msg: string) -> ! {
     error_at(parser, parser.lookahead, msg)
 }
 
 // Analogous to 'compiler.c:error()' in the book.
-parser_error_consumed :: proc(parser: ^Parser, msg: string) {
+parser_error_consumed :: proc(parser: ^Parser, msg: string) -> ! {
     error_at(parser, parser.consumed, msg)
 }
 
 // Analogous to 'compiler.c:errorAt()' in the book.
 @(private="file")
-error_at :: proc(parser: ^Parser, token: Token, msg: string) {
+error_at :: proc(parser: ^Parser, token: Token, msg: string) -> ! {
     // .Eof token: don't use lexeme as it'll just be an empty string.
     location := token.lexeme if token.type != .Eof else token_type_strings[.Eof]
-    vm_error(parser.vm, .Compile_Error, parser.lexer.source, token.line, "%s at '%s'", msg, location)
+    vm_throw(parser.vm, .Compile_Error, parser.lexer.source, token.line, "%s at '%s'", msg, location)
 }
 
 /// PREFIX EXPRESSIONS

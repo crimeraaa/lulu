@@ -5,15 +5,15 @@ import "core:fmt"
 import "core:math"
 
 Value :: struct {
-    type        : Value_Type,
-    using data  : Value_Data,
+    type:       Value_Type,
+    using data: Value_Data,
 }
 
 Value_Data :: struct #raw_union {
-    number  :  f64,
-    boolean :  bool,
-    ostring : ^OString,
-    table   : ^Table,
+    number:   f64,
+    boolean:  bool,
+    ostring: ^OString,
+    table:   ^Table,
 }
 
 Value_Type :: enum {
@@ -41,7 +41,8 @@ value_type_strings := [Value_Type]string {
 }
 
 // Used for callbacks/dispatches
-Number_Proc :: #type proc(a, b: f64) -> f64
+Number_Arith_Proc   :: #type proc(a, b: f64) -> f64
+Number_Compare_Proc :: #type proc(a, b: f64) -> bool
 
 number_add :: proc(a, b: f64) -> f64 {
     return a + b
@@ -63,55 +64,55 @@ number_div :: proc(a, b: f64) -> f64 {
 Links:
 -   https://www.lua.org/source/5.1/luaconf.h.html#luai_nummod
  */
-number_mod :: #force_inline proc(a, b: f64) -> f64 {
+number_mod :: proc(a, b: f64) -> f64 {
     return a - math.floor(a / b)*b
 }
 
-number_pow :: #force_inline proc(a, b: f64) -> f64 {
+number_pow :: proc(a, b: f64) -> f64 {
     return math.pow(a, b)
 }
 
-number_eq :: #force_inline proc(a, b: f64) -> bool {
+number_eq :: proc(a, b: f64) -> bool {
     return a == b
 }
 
-number_lt :: #force_inline proc(a, b: f64) -> bool {
+number_lt :: proc(a, b: f64) -> bool {
     return a < b
 }
 
-number_gt :: #force_inline proc(a, b: f64) -> bool {
+number_gt :: proc(a, b: f64) -> bool {
     return a > b
 }
 
-number_leq :: #force_inline proc(a, b: f64) -> bool {
+number_leq :: proc(a, b: f64) -> bool {
     return a <= b
 }
 
-number_geq :: #force_inline proc(a, b: f64) -> bool {
+number_geq :: proc(a, b: f64) -> bool {
     return a >= b
 }
 
-number_unm :: #force_inline proc(a: f64) -> f64 {
+number_unm :: proc(a: f64) -> f64 {
     return -a
 }
 
-value_type_name :: #force_inline proc(v: Value) -> string {
+value_type_name :: proc(v: Value) -> string {
     return value_type_strings[v.type]
 }
 
-value_make_nil :: #force_inline proc() -> Value {
+value_make_nil :: proc() -> Value {
     return Value{type = .Nil, number = 0}
 }
 
-value_make_boolean :: #force_inline proc(b: bool) -> Value {
+value_make_boolean :: proc(b: bool) -> Value {
     return Value{type = .Boolean, boolean = b}
 }
 
-value_make_number :: #force_inline proc(n: f64) -> Value {
+value_make_number :: proc(n: f64) -> Value {
     return Value{type = .Number, number = n}
 }
 
-value_make_string :: #force_inline proc(str: ^OString) -> Value {
+value_make_string :: proc(str: ^OString) -> Value {
     return Value{type = .String, ostring = str}
 }
 
@@ -169,7 +170,7 @@ value_eq :: proc(a, b: Value) -> bool {
     unreachable()
 }
 
-number_is_nan :: math.is_nan
+number_is_nan :: math.is_nan_f64
 
 value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
     // We assume this is valid for numbers, booleans and pointers.
@@ -185,7 +186,11 @@ value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
             fmt.println(s)
         }
     case .Stack:
-        fmt.printf("[ %s ]", s)
+        if value_is_string(value) {
+            fmt.printf("[ %q ]", s)
+        } else {
+            fmt.printf("[ %s ]", s)
+        }
     case .Print:
         fmt.printf("%s\t", s)
     }

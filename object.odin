@@ -5,8 +5,8 @@ import "core:mem"
 import "core:fmt"
 
 Object_Header :: struct {
-    type    :  Value_Type,
-    prev    : ^Object_Header,
+    type:  Value_Type,
+    prev: ^Object_Header,
 }
 
 object_new :: proc($T: typeid, vm: ^VM, extra := 0) -> (typed_object: ^T)
@@ -26,12 +26,22 @@ where intrinsics.type_is_subtype_of(T, Object_Header) {
     return cast(^T)header
 }
 
+/*
+Notes:
+-   If you're iterating, `object.prev` will be invalidated!
+-   In that case save it beforehand.
+ */
 object_unlink :: proc(vm: ^VM, object: ^Object_Header) {
-    vm.objects = object.prev
+    vm.objects  = object.prev
+    object.prev = nil
 }
 
 object_free_all :: proc(vm: ^VM) {
-    for object := vm.objects; object != nil; object = object.prev {
+    object := vm.objects
+    for object != nil {
+        prev := object.prev
+        defer object = prev
+
         #partial switch type := object.type; type {
         case .String:
             object_unlink(vm, object)
@@ -40,7 +50,7 @@ object_free_all :: proc(vm: ^VM) {
             object_unlink(vm, object)
             table_destroy(cast(^Table)object)
         case:
-            fmt.panicf("Cannot free a %v value!\n", type)
+            fmt.panicf("Cannot free a %v value!", type)
         }
     }
 }

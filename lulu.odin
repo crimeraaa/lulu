@@ -79,7 +79,11 @@ repl :: proc(vm: ^VM) {
             break
         }
         defer libc.free(cast(rawptr)input)
-        add_history(input)
+        // Minor QOL; users rarely want to jump back to empty lines!
+        if input != "" {
+            add_history(input)
+        }
+        // Interpret even if empty, this will return 0 registers.
         vm_interpret(vm, string(input), "stdin")
     }
 }

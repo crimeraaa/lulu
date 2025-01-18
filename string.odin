@@ -3,10 +3,10 @@ package lulu
 import "core:mem"
 
 OString :: struct {
-    using base  : Object_Header,
-    hash        : u32,
-    len         : int,
-    data        : [0]byte,
+    using base: Object_Header,
+    hash:       u32,
+    len:        int, // Length in bytes, not runes.
+    data:    [0]byte,
 }
 
 /*
