@@ -476,11 +476,17 @@ compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case:                   unreachable()
     }
 
-    parser_recurse_begin(parser)
+    /*
+    NOTE(2025-01-19):
+    -   This is necessary when both sides are nonconstant binary expressions!
+        e.g. `'h' .. 'i' == 'h' .. 'i'`
+    -   This is because, by itself, expressions like `concat` result in
+        `.Need_Register`.
+     */
+    compiler_expr_regconst(compiler, expr)
     prec  := get_rule(type).prec
     right := &Expr{}
     parse_precedence(parser, compiler, right, prec + Precedence(1))
-    parser_recurse_end(parser)
     compiler_emit_compare(compiler, op, expr, right)
 }
 

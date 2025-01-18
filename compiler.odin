@@ -350,8 +350,8 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     if op == .Unm {
         rk_b = compiler_expr_any_reg(compiler, left)
     } else {
-        rk_b = compiler_expr_regconst(compiler, left)
         rk_c = compiler_expr_regconst(compiler, right)
+        rk_b = compiler_expr_regconst(compiler, left)
     }
 
     // In the event BOTH are .Discharged, we want to pop them in the correct

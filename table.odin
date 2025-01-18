@@ -52,9 +52,20 @@ table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) {
 }
 
 table_set :: proc(table: ^Table, key, value: Value) {
-    // TODO(2025-01-12): Use MAX_LOAD without implicit integer-to-float conversion
-    if table.count >= len(table.entries) {
-        new_cap := max(8, math.next_power_of_two(table.count))
+    /*
+    Notes:
+    -   This is a safer version of line `table->count > table->capacity > TABLE_MAX_LOAD`
+        in the book.
+    -   Where `TABLE_MAX_LOAD` is a macro that expands to `0.75`.
+    -   Here we aim to reduce error by doing purely integer math.
+    -   n*0.75 == n*(3/4) == (n*3)/4
+     */
+    if n := len(table.entries); table.count >= (n*3) / 4 {
+        /*
+        Notes(2025-01-19):
+        -   We add 1 because if `n` is a power of 2 already, we would return it!
+         */
+        new_cap := max(8, math.next_power_of_two(n + 1))
         adjust_capacity(table, new_cap, table.entries.allocator)
     }
 
@@ -98,7 +109,8 @@ table_copy :: proc(dst, src: ^Table) {
 
 @(private="file")
 find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
-    index := get_hash(key) % cast(u32)len(entries)
+    wrap  := cast(u32)len(entries)
+    index := get_hash(key) % wrap
     tombstone: ^Table_Entry
     for {
         entry := &entries[index]
@@ -115,7 +127,7 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
         } else if value_eq(entry.key, key) {
             return entry
         }
-        index = (index + 1) % cast(u32)len(entries)
+        index = (index + 1) % wrap
     }
     unreachable()
 }
