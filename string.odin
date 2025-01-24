@@ -21,7 +21,7 @@ ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
     }
     n  := len(input)
     str = object_new(OString, vm, n + 1)
-    defer set_interned(&vm.interned, str)
+    defer set_interned(vm, &vm.interned, str)
 
     str.hash = hash
     str.len  = n
@@ -37,8 +37,8 @@ find_interned :: proc(interned: ^Table, key: string, hash: u32) -> (value: ^OStr
     if interned.count == 0 {
         return nil, false
     }
-    entries := interned.entries[:]
-    wrap    := cast(u32)len(entries)
+    entries := interned.entries[:interned.cap]
+    wrap    := cast(u32)interned.cap
     for index := hash % wrap; /* empty */; index = (index + 1) % wrap {
         entry := entries[index]
         if value_is_nil(entry.key) {
@@ -57,9 +57,9 @@ find_interned :: proc(interned: ^Table, key: string, hash: u32) -> (value: ^OStr
 }
 
 @(private="file")
-set_interned :: proc(interned: ^Table, key: ^OString) {
+set_interned :: proc(vm: ^VM, interned: ^Table, key: ^OString) {
     vkey := value_make_string(key)
-    table_set(interned, vkey, vkey)
+    table_set(vm, interned, vkey, vkey)
 }
 
 ostring_free :: proc(vm: ^VM, str: ^OString) {

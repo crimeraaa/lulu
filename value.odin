@@ -136,6 +136,11 @@ value_set_string :: proc(v: ^Value, str: ^OString) {
     v.ostring = str
 }
 
+value_copy :: proc(dst: ^Value, src: Value) {
+    dst.type = src.type
+    dst.data = src.data
+}
+
 value_is_nil :: proc(a: Value) -> bool {
     return a.type == .Nil
 }

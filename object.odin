@@ -54,7 +54,7 @@ object_free_all :: proc(vm: ^VM) {
             ostring_free(vm, cast(^OString)object)
         case .Table:
             object_unlink(vm, object)
-            table_destroy(cast(^Table)object)
+            table_destroy(vm, cast(^Table)object)
         case:
             fmt.panicf("Cannot free a %v value!", type)
         }

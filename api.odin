@@ -15,10 +15,10 @@ concat :: proc(vm: ^VM, count: int) {
     case 0: push_string(vm, ""); return
     case 1: // Would be redundant to pop the one string then re-push it!
     }
-    dst := &Value{}
-    vm_concat(vm, dst, vm.stack[vm.top - count:vm.top])
-    pop(vm, count)
-    push(vm, dst^)
+    // Overwrite the first argument when done and do not pop it.
+    first_arg := vm.top - count
+    vm_concat(vm, &vm.stack[first_arg], vm.stack[first_arg:vm.top])
+    pop(vm, count - 1)
 }
 
 push_string :: proc(vm: ^VM, str: string) -> (result: string) {
@@ -39,7 +39,7 @@ index_to_address :: proc(vm: ^VM, index: int) -> ^Value {
     return &vm.stack[from + index]
 }
 
-@(private="file")
+@(private="package")
 push :: proc(vm: ^VM, value: Value) {
     vm.stack[vm.top] = value
     vm.top += 1

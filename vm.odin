@@ -70,7 +70,6 @@ vm_runtime_error :: proc(vm: ^VM, $format: string, args: ..any) -> ! {
 
 vm_init :: proc(vm: ^VM, allocator: mem.Allocator) {
     _table_init :: proc(table: ^Table, allocator: mem.Allocator) {
-        table_init(table, allocator)
         table.type = .Table
         table.prev = nil
     }
@@ -90,8 +89,8 @@ vm_destroy :: proc(vm: ^VM) {
     object_free_all(vm)
 
     reset_stack(vm)
-    table_destroy(&vm.interned)
-    table_destroy(&vm.globals)
+    table_destroy(vm, &vm.interned)
+    table_destroy(vm, &vm.globals)
     strings.builder_destroy(&vm.builder)
     vm.objects  = nil
     vm.chunk    = nil
@@ -196,7 +195,7 @@ vm_execute :: proc(vm: ^VM) {
             ra^ = value
         case .Set_Global:
             key := constants[inst_get_Bx(inst)]
-            table_set(globals, key, ra^)
+            table_set(vm, globals, key, ra^)
         case .Print:
             for arg in stack[inst.a:inst.b] {
                 value_print(arg, .Print)

@@ -256,7 +256,7 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
 @(private="file")
 print_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     parser_consume(parser, .Left_Paren)
-    n_args := u16(0)
+    n_args: u16
     if !parser_check(parser, .Right_Paren) {
         n_args = expr_list(parser, compiler)
     }
