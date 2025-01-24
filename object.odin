@@ -36,12 +36,18 @@ object_unlink :: proc(vm: ^VM, object: ^Object_Header) {
     object.prev = nil
 }
 
-object_free_all :: proc(vm: ^VM) {
-    object := vm.objects
-    for object != nil {
-        prev := object.prev
-        defer object = prev
+object_iterator :: proc(iter: ^^Object_Header) -> (object: ^Object_Header, ok: bool) {
+    object = iter^
+    if object == nil {
+        return nil, false
+    }
+    iter^ = object.prev
+    return object, true
+}
 
+object_free_all :: proc(vm: ^VM) {
+    iter := vm.objects
+    for object in object_iterator(&iter) {
         #partial switch type := object.type; type {
         case .String:
             object_unlink(vm, object)

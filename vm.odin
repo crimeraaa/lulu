@@ -28,7 +28,7 @@ Error_Handler :: struct {
     status: Status,
 }
 
-Status :: enum u8 {
+Status :: enum {
     Ok,
     Compile_Error,
     Runtime_Error,
@@ -39,23 +39,26 @@ Try_Proc :: #type proc(vm: ^VM, user_data: rawptr)
 /*
 Links:
 -   https://www.lua.org/source/5.1/ldo.c.html#luaD_throw
-
-TODO(2025-01-18):
--   Instead of printing out the error messages, push them onto the VM stack.
--   To do so we will need formatted strings using Odin varargs.
  */
 vm_throw :: proc(vm: ^VM, status: Status, source: string, line: int, format: string, args: ..any) -> ! {
-    fmt.eprintf("%s:%i: ", source, line)
-    fmt.eprintfln(format, ..args)
+    push_fstring(vm, "%s:%i ", source, line)
+    push_fstring(vm, format, ..args)
+    concat(vm, 2)
 
     handler := vm.handlers
     if handler != nil {
-        handler.status = status
+        intrinsics.volatile_store(&handler.status, status)
         libc.longjmp(&handler.buffer, 1)
     } else {
         // Nothing much else can be done in this case.
         libc.exit(libc.EXIT_FAILURE)
     }
+}
+
+vm_get_builder :: proc(vm: ^VM) -> (builder: ^strings.Builder) {
+    builder = &vm.builder
+    strings.builder_reset(builder)
+    return builder
 }
 
 vm_runtime_error :: proc(vm: ^VM, $format: string, args: ..any) -> ! {
@@ -96,7 +99,7 @@ vm_destroy :: proc(vm: ^VM) {
 
 vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     chunk := &Chunk{}
-    chunk_init(chunk, name, vm.allocator)
+    chunk_init(vm, chunk, name)
     defer chunk_destroy(chunk)
 
     Data :: struct {
@@ -159,7 +162,7 @@ vm_execute :: proc(vm: ^VM) {
     ra: ^Value
 
     for {
-        // We cannot extract 'vm.pc' into a local due to `vm_runtime_error`.
+        // We cannot extract 'vm.pc' into a local as it is needed in to `vm_runtime_error`.
         inst := code[vm.pc]
         when DEBUG_TRACE_EXEC {
             fmt.printf("      ")
@@ -223,7 +226,7 @@ vm_execute :: proc(vm: ^VM) {
             x := get_rk(vm, inst.b, stack, constants)
             value_set_boolean(ra, value_is_falsy(x))
         // Add 1 because we want to include Reg[C]
-        case .Concat: concat(vm, ra, stack[inst.b:inst.c + 1])
+        case .Concat: vm_concat(vm, ra, stack[inst.b:inst.c + 1])
         case .Return:
             // If vararg, keep top as-is
             if n_results := inst.b; n_results != 0 {
@@ -231,9 +234,6 @@ vm_execute :: proc(vm: ^VM) {
                 vm.top   = cast(int)new_top
             }
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
-            // for arg in vm.base[start:ptr_sub(vm.top, vm.base)] {
-            //     value_print(arg)
-            // }
             return
         }
     }
@@ -241,7 +241,7 @@ vm_execute :: proc(vm: ^VM) {
 
 // Rough analog to C macro
 @(private="file")
-arith_op :: #force_inline proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
+arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
     x, y := get_rk_bc(vm, inst, stack, constants)
     if !value_is_number(x) || !value_is_number(y) {
         arith_error(vm, x, y)
@@ -256,7 +256,7 @@ arith_error :: proc(vm: ^VM, x, y: Value) {
 }
 
 @(private="file")
-compare_op :: #force_inline proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
+compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
     x, y := get_rk_bc(vm, inst, stack, constants)
     if !value_is_number(x) || !value_is_number(y) {
         compare_error(vm, x, y)
@@ -274,27 +274,25 @@ compare_error :: proc(vm: ^VM, x, y: Value) {
     }
 }
 
-@(private="file")
-concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
-    builder := &vm.builder
-    strings.builder_reset(builder)
+vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
+    builder := vm_get_builder(vm)
     for arg in args {
         if !value_is_string(arg) {
             vm_runtime_error(vm, "concatenate a %s value", value_type_name(arg))
         }
         strings.write_string(builder, ostring_to_string(arg.ostring))
     }
-    str := ostring_new(vm, strings.to_string(builder^))
-    value_set_string(ra, str)
+    s := strings.to_string(builder^)
+    value_set_string(ra, ostring_new(vm, s))
 }
 
 @(private="file")
-get_rk_bc :: #force_inline proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rk_b: Value, rk_c: Value) {
+get_rk_bc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rk_b: Value, rk_c: Value) {
     return get_rk(vm, inst.b, stack, constants), get_rk(vm, inst.c, stack, constants)
 }
 
 @(private="file")
-get_rk :: #force_inline proc(vm: ^VM, b_or_c: u16, stack, constants: []Value) -> Value {
+get_rk :: proc(vm: ^VM, b_or_c: u16, stack, constants: []Value) -> Value {
     return constants[rk_get_k(b_or_c)] if rk_is_k(b_or_c) else stack[b_or_c]
 }
 

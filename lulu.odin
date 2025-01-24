@@ -84,7 +84,7 @@ repl :: proc(vm: ^VM) {
             add_history(input)
         }
         // Interpret even if empty, this will return 0 registers.
-        vm_interpret(vm, string(input), "stdin")
+        run(vm, string(input), "stdin")
     }
 }
 
@@ -96,6 +96,13 @@ run_file :: proc(vm: ^VM, file_name: string) {
         return
     }
     defer delete(data)
-    vm_interpret(vm, string(data[:]), file_name)
+    run(vm, string(data), file_name)
+}
 
+@(private="file")
+run :: proc(vm: ^VM, input, source: string) {
+    if vm_interpret(vm, input, source) != .Ok {
+        err_msg, _ := to_string(vm, -1)
+        fmt.eprintln(err_msg)
+    }
 }

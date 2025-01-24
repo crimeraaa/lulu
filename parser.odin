@@ -91,7 +91,7 @@ expr_to_string :: proc(expr: ^Expr) -> string {
     fmt.sbprint(&builder, "{info = {")
     #partial switch expr.type {
     case .Nil, .True, .False:
-    case .Number:           fmt.sbprintf(&builder, "%f", expr.number)
+    case .Number:           fmt.sbprintf(&builder, "number = %f", expr.number)
     case .Need_Register:    fmt.sbprintf(&builder, "pc = %i", expr.pc)
     case .Discharged:       fmt.sbprintf(&builder, "reg = %i", expr.reg)
     case .Constant:         fmt.sbprintf(&builder, "index = %i", expr.index)
@@ -180,18 +180,19 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
     }
     parser_consume(parser, .Equals)
 
-    n_lvalues := count_lvalues(last)
+    n_lvalues := lvalue_count(last)
     n_exprs   := expr_list(parser, compiler)
 
     if n_exprs > n_lvalues {
         // a, b, c = 1, 2, 3, 4; free_reg = 4; n_lvalues = 3; n_exprs = 4;
-        n_extra := n_exprs - n_lvalues
-        compiler.free_reg -= n_extra
-    } else if n_lvalues > n_exprs {
+        compiler.free_reg -= n_exprs - n_lvalues
+    }
+    if n_lvalues > n_exprs {
         // a, b, c, d = 1, 2, 3; free_reg = 3; n_lvalues = 4; n_exprs = 3;
-        n_nils := n_lvalues - n_exprs
-        compiler_reserve_reg(compiler, n_nils)
-        compiler_emit_nil(compiler, compiler.free_reg, n_nils)
+        n   := n_lvalues - n_exprs
+        reg := compiler.free_reg
+        compiler_reserve_reg(compiler, n)
+        compiler_emit_nil(compiler, reg, n)
     }
 
     // a, b, c = 1, 2, 3; free_reg = 3; n_exprs = 3; reg = 2
@@ -199,19 +200,29 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
 
     // Assign going downwards and free in the correct order so that these
     // registers can be reused.
-    for current := last; current != nil; current = current.prev {
-        defer reg -= 1
+    iter := last
+    for current in lvalue_iterator(&iter) {
         compiler_emit_ABx(compiler, .Set_Global, reg, current.variable.index)
         compiler_free_reg(compiler, reg)
+        reg -= 1
     }
 }
 
-@(private="file")
-count_lvalues :: proc(last: ^LValue) -> (count: u16) {
-    for current := last; current != nil; current = current.prev {
+lvalue_count :: proc(last: ^LValue) -> (count: u16) {
+    iter := last
+    for _ in lvalue_iterator(&iter) {
         count += 1
     }
     return count
+}
+
+lvalue_iterator :: proc(iter: ^^LValue) -> (current: ^LValue, ok: bool) {
+    current = iter^
+    if current == nil {
+        return nil, false
+    }
+    iter^ = current.prev
+    return current, true
 }
 
 /*

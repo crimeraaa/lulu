@@ -119,7 +119,7 @@ lexer_scan_token :: proc(lexer: ^Lexer) -> (token: Token) {
     case '>': type = .Right_Angle_Eq if matches(lexer, '=') else .Right_Angle
     case '~': type = .Tilde_Eq
         if !matches(lexer, '=') {
-            lexer_error(lexer, "Expected '=' after '~'")
+            lexer_error(lexer, "Expected '='")
         }
     case '=': type = .Equals_2 if matches(lexer, '=') else .Equals
     case '.':
@@ -166,7 +166,8 @@ create_keyword_identifier_token :: proc(lexer: ^Lexer) -> (token: Token) {
     token = create_token(lexer, .Identifier)
 
     @(require_results)
-    check_type :: proc(token: Token, $type: Token_Type) -> Token_Type where type <= .While {
+    check_type :: proc(token: Token, type: Token_Type) -> Token_Type {
+        assert(.And <= type && type <= .While)
         return type if token.lexeme == token_type_strings[type] else .Identifier
     }
 
@@ -273,9 +274,7 @@ create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token) {
 
 @(private="file", require_results)
 create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token) {
-    builder := &lexer.vm.builder
-    strings.builder_reset(builder)
-
+    builder := vm_get_builder(lexer.vm)
     for !is_at_end(lexer^) && peek(lexer^) != quote {
         r := advance(lexer)
         if r == '\n' {

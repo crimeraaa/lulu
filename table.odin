@@ -110,9 +110,8 @@ table_copy :: proc(dst, src: ^Table) {
 @(private="file")
 find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
     wrap  := cast(u32)len(entries)
-    index := get_hash(key) % wrap
     tombstone: ^Table_Entry
-    for {
+    for index := get_hash(key) % wrap; /* empty */; index = (index + 1) % wrap {
         entry := &entries[index]
         // Tombstone or empty entry?
         if value_is_nil(entry.key) {
@@ -127,7 +126,6 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
         } else if value_eq(entry.key, key) {
             return entry
         }
-        index = (index + 1) % wrap
     }
     unreachable()
 }
@@ -135,7 +133,7 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
 @(private="file")
 get_hash :: proc(key: Value) -> (hash: u32) {
     switch key.type {
-    case .Nil:      return 0    // Should never happen!
+    case .Nil:      return 0 // Should never happen!
     case .Boolean:  return cast(u32)key.boolean
     case .Number:   return fnv1a_hash_32(key.number)
     case .String:   return key.ostring.hash

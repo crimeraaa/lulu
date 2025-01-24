@@ -1,8 +1,6 @@
 #+private
 package lulu
 
-import "core:mem"
-
 Chunk :: struct {
     source:     string, // Filename where the chunk originated.
     constants: [dynamic]Value,
@@ -10,11 +8,11 @@ Chunk :: struct {
     line:      [dynamic]int,
 }
 
-chunk_init :: proc(chunk: ^Chunk, source: string, allocator: mem.Allocator) {
+chunk_init :: proc(vm: ^VM, chunk: ^Chunk, source: string) {
     chunk.source    = source
-    chunk.constants = make([dynamic]Value, allocator)
-    chunk.code      = make([dynamic]Instruction, allocator)
-    chunk.line      = make([dynamic]int, allocator)
+    chunk.constants = make([dynamic]Value, vm.allocator)
+    chunk.code      = make([dynamic]Instruction, vm.allocator)
+    chunk.line      = make([dynamic]int, vm.allocator)
 }
 
 chunk_append :: proc(chunk: ^Chunk, inst: Instruction, line: int) -> (pc: int) {

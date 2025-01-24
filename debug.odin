@@ -24,19 +24,19 @@ debug_dump_chunk :: proc(chunk: Chunk) {
 
 debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     // unary negation, not and length never operate on constant indexes.
-    unary :: #force_inline proc($op: string, inst: Instruction) {
+    unary :: proc($op: string, inst: Instruction) {
         print_args2(inst)
         fmt.printfln("reg[%i] := %sreg[%i]", inst.a, op, inst.b)
     }
 
-    binary :: #force_inline proc($op: string, inst: Instruction) {
+    binary :: proc($op: string, inst: Instruction) {
         b_where, b_index := get_rk(inst.b)
         c_where, c_index := get_rk(inst.c)
         print_args3(inst)
         fmt.printfln("reg[%i] := %s[%i] %s %s[%i]", inst.a, b_where, b_index, op, c_where, c_index)
     }
 
-    get_rk :: #force_inline proc(b_or_c: u16) -> (location: string, index: int) {
+    get_rk :: proc(b_or_c: u16) -> (location: string, index: int) {
         is_k := rk_is_k(b_or_c)
 
         location = ".const" if is_k else "reg"
