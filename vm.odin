@@ -99,7 +99,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
 
     data := &Data{chunk = &Chunk{}, input = input}
     chunk_init(vm, data.chunk, name)
-    defer chunk_destroy(data.chunk)
+    defer chunk_destroy(vm, data.chunk)
 
     interpret :: proc(vm: ^VM, user_data: rawptr) {
         data := cast(^Data)user_data

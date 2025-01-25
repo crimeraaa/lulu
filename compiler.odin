@@ -9,6 +9,7 @@ _ :: fmt // needed for when !ODIN_DEBUG
 MAX_CONSTANTS :: MAX_uBC
 
 Compiler :: struct {
+    vm:         ^VM,
     parent:     ^Compiler, // Enclosing state.
     parser:     ^Parser,   // All nested compilers share the same parser.
     chunk:      ^Chunk,    // Compilers do not own their chunks. They merely fill them.
@@ -18,7 +19,7 @@ Compiler :: struct {
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
     parser   := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
-    compiler := &Compiler{parser = parser, chunk = chunk}
+    compiler := &Compiler{vm = vm, parser = parser, chunk = chunk}
     parser_advance(parser)
     for !parser_match(parser, .Eof) {
         parser_parse(parser, compiler)
@@ -285,7 +286,9 @@ TODO(2025-01-07):
 -   Fix the line counter for folded constant expressions?
  */
 compiler_emit_instruction :: proc(compiler: ^Compiler, inst: Instruction) -> (pc: int) {
-    return chunk_append(compiler.chunk, inst, compiler.parser.consumed.line)
+    vm    := compiler.vm
+    chunk := compiler.chunk
+    return chunk_append(vm, chunk, inst, compiler.parser.consumed.line)
 }
 
 ///=============================================================================
