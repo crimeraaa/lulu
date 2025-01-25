@@ -15,15 +15,14 @@ Notes:
     However, extracting the cstring requires an unsafe cast.
  */
 ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
-    hash := fnv1a_hash_32(input)
-    if prev, ok := find_interned(&vm.interned, input, hash); ok {
+    if prev, ok := intern_get(&vm.interned, input); ok {
         return prev
     }
     n  := len(input)
     str = object_new(OString, vm, n + 1)
-    defer set_interned(vm, &vm.interned, str)
+    defer intern_set(&vm.interned, str)
 
-    str.hash = hash
+    str.hash = fnv1a_hash_32(input)
     str.len  = n
     #no_bounds_check {
         copy(str.data[:n], input)
@@ -32,37 +31,9 @@ ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
     return str
 }
 
-@(private="file")
-find_interned :: proc(interned: ^Table, key: string, hash: u32) -> (value: ^OString, found: bool) {
-    if interned.count == 0 {
-        return nil, false
-    }
-    wrap := cast(u32)len(interned.entries)
-    for index := hash % wrap; /* empty */; index = (index + 1) % wrap {
-        entry := interned.entries[index]
-        if value_is_nil(entry.key) {
-            // Stop if we find a non-tombstone entry.
-            if value_is_nil(entry.value) {
-                return nil, false
-            }
-        } else {
-            assert(value_is_string(entry.key))
-            str := entry.key.ostring
-            if str.hash == hash && ostring_to_string(str) == key {
-                return str, true
-            }
-        }
-    }
-}
-
-@(private="file")
-set_interned :: proc(vm: ^VM, interned: ^Table, key: ^OString) {
-    vkey := value_make_string(key)
-    table_set(vm, interned, vkey, vkey)
-}
-
-ostring_free :: proc(vm: ^VM, str: ^OString) {
-    mem.free_with_size(str, size_of(str^) + str.len + 1, vm.allocator)
+ostring_free :: proc(vm: ^VM, str: ^OString, location := #caller_location) {
+    // We also allocated memory for the nul char for C compatibility.
+    mem.free_with_size(str, size_of(str^) + str.len + 1, vm.allocator, loc = location)
 }
 
 ostring_to_string :: proc(str: ^OString) -> string #no_bounds_check {

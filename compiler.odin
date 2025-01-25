@@ -46,7 +46,7 @@ Analogous to:
 Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_reserveregs
  */
-compiler_reserve_reg :: proc(compiler: ^Compiler, #any_int count: int, location := #caller_location) {
+compiler_reserve_reg :: proc(compiler: ^Compiler, #any_int count: int) {
     // log.debugf("free_reg := %i + %i", compiler.free_reg, count, location = location)
     // @todo 2025-01-06: Check the VM's available stack size?
     compiler.free_reg += cast(u16)count
@@ -55,7 +55,7 @@ compiler_reserve_reg :: proc(compiler: ^Compiler, #any_int count: int, location 
     }
 }
 
-compiler_free_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_location) {
+compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_location) {
     // log.debugf("free_reg := %i - 1; reg := %i", compiler.free_reg, reg, location = location)
     if !rk_is_k(reg) /* && reg >= fs->nactvar */ {
         compiler.free_reg -= 1
@@ -82,7 +82,7 @@ compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     compiler_discharge_vars(compiler, expr)
 
     // If already in a register don't waste time trying to re-emit it.
-    // Doing so will also mess up any calls to 'reg_free()'.
+    // Doing so will also mess up any calls to 'compiler_pop_reg()'.
     if expr.type == .Discharged {
         // TODO(2025-01-08): Check if has jumps then check if non-local.
         return expr.reg
@@ -362,7 +362,7 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     }
 
     // In the event BOTH are .Discharged, we want to pop them in the correct
-    // order! Otherwise the assert in `compiler_free_reg()` will fail.
+    // order! Otherwise the assert in `compiler_pop_reg()` will fail.
     if rk_b > rk_c {
         compiler_pop_expr(compiler, left)
         compiler_pop_expr(compiler, right)
@@ -428,7 +428,7 @@ Notes:
 compiler_pop_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
     // if e->k == VNONRELOC
     if expr.type == .Discharged {
-        compiler_free_reg(compiler, expr.reg)
+        compiler_pop_reg(compiler, expr.reg)
     }
 }
 

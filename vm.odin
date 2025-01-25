@@ -13,7 +13,7 @@ VM :: struct {
     stack:     [STACK_MAX]Value,
     allocator: mem.Allocator,
     builder:   strings.Builder,
-    interned:  Table,
+    interned:  Intern,
     globals:   Table,
     objects:  ^Object_Header,
     top, base: int, // Absolute indexes of current stack frame window.
@@ -69,16 +69,12 @@ vm_runtime_error :: proc(vm: ^VM, $format: string, args: ..any) -> ! {
 }
 
 vm_init :: proc(vm: ^VM, allocator: mem.Allocator) {
-    _table_init :: proc(table: ^Table, allocator: mem.Allocator) {
-        table.type = .Table
-        table.prev = nil
-    }
-
     reset_stack(vm)
 
     // _G and interned strings are not part of the collectable objects list.
-    _table_init(&vm.interned, allocator)
-    _table_init(&vm.globals, allocator)
+    intern_init(vm, &vm.interned)
+    vm.globals.type = .Table
+    vm.globals.prev = nil
 
     vm.builder   = strings.builder_make(allocator)
     vm.allocator = allocator
@@ -86,11 +82,10 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) {
 }
 
 vm_destroy :: proc(vm: ^VM) {
-    object_free_all(vm)
-
     reset_stack(vm)
-    table_destroy(vm, &vm.interned)
+    intern_destroy(&vm.interned)
     table_destroy(vm, &vm.globals)
+    object_free_all(vm)
     strings.builder_destroy(&vm.builder)
     vm.objects  = nil
     vm.chunk    = nil

@@ -52,6 +52,7 @@ free_line :: proc(line: string) {
 _ :: libc
 _ :: strings
 
+// NOTE(2025-01-25): Not thread-safe!
 read_line :: proc() -> (line: string, ok: bool) {
     @(static)
     buf: [256]byte

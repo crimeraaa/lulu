@@ -203,7 +203,7 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
     iter := last
     for current in lvalue_iterator(&iter) {
         compiler_emit_ABx(compiler, .Set_Global, reg, current.variable.index)
-        compiler_free_reg(compiler, reg)
+        compiler_pop_reg(compiler, reg)
         reg -= 1
     }
 }
@@ -297,9 +297,9 @@ expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
 // Analogous to 'lparser.c:subexpr(LexState *ls, expdesc *v, int limit)' in Lua 5.1.
 // See: https://www.lua.org/source/5.1/lparser.c.html#subexpr
-parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence, location := #caller_location) {
-    parser_recurse_begin(parser, location)
-    defer parser_recurse_end(parser, location)
+parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence) {
+    parser_recurse_begin(parser)
+    defer parser_recurse_end(parser)
 
     parser_advance(parser)
     prefix := get_rule(parser.consumed.type).prefix
@@ -346,11 +346,11 @@ grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     parser_consume(parser, .Right_Paren)
 }
 
-parser_recurse_begin :: proc(parser: ^Parser, location := #caller_location) {
+parser_recurse_begin :: proc(parser: ^Parser) {
     parser.recurse += 1
 }
 
-parser_recurse_end :: proc(parser: ^Parser, location := #caller_location) {
+parser_recurse_end :: proc(parser: ^Parser) {
     parser.recurse -= 1
 }
 
@@ -398,7 +398,7 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     Notes:
     -   Ensure the zero-value for `Expr_Type` is anything BUT `.Discharged`.
-    -   Otherwise, calls to `compiler_free_expr()` will push through and mess up
+    -   Otherwise, calls to `compiler_pop_expr()` will push through and mess up
         the free registers counter.
      */
     when USE_CONSTANT_FOLDING {
