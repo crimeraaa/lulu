@@ -1,6 +1,5 @@
 package lulu
 
-import "core:c/libc"
 import "core:fmt"
 import "core:log"
 import "core:os"
@@ -9,32 +8,20 @@ import "core:mem"
 _ :: log
 _ :: mem
 
-LULU_DEBUG                  :: #config(LULU_DEBUG, ODIN_DEBUG)
-DEBUG_TRACE_EXEC            :: LULU_DEBUG
-DEBUG_PRINT_CODE            :: LULU_DEBUG
-CONSTANT_FOLDING_ENABLED    :: #config(CONSTANT_FOLDING_ENABLED, !LULU_DEBUG)
+DEBUG :: #config(DEBUG, ODIN_DEBUG)
 
-// https://odin-lang.org/docs/overview/#foreign-system
-@(extra_linker_flags="-lreadline")
-foreign import gnu_readline "system:readline"
+// Debug Info
+DEBUG_TRACE_EXEC :: DEBUG
+DEBUG_PRINT_CODE :: DEBUG
 
-@(extra_linker_flags="-lhistory")
-foreign import gnu_history "system:history"
+// Runtime Features
+USE_CONSTANT_FOLDING :: #config(USE_CONSTANT_FOLDING, !DEBUG)
+USE_READLINE :: #config(USE_READLINE, ODIN_OS == .Linux)
 
-// https://www.lua.org/source/5.1/luaconf.h.html#lua_readline
-foreign gnu_readline {
-    readline :: proc "c" (prompt: cstring) -> cstring ---
-}
-
-foreign gnu_history {
-    add_history :: proc "c" (buffer: cstring) ---
-}
-
-@(private="file")
-global_vm := &VM{}
+PROMPT :: ">>> "
 
 main :: proc() {
-    when LULU_DEBUG {
+    when DEBUG {
         logger_opts :: log.Options{.Level, .Short_File_Path, .Line, .Procedure, .Terminal_Color}
         logger := log.create_console_logger(opt = logger_opts)
         defer log.destroy_console_logger(logger)
@@ -61,30 +48,23 @@ main :: proc() {
         }
     }
 
-    vm_init(global_vm, context.allocator)
-    defer vm_destroy(global_vm)
+    vm := open()
+    defer close(vm)
 
     switch len(os.args) {
-    case 1: repl(global_vm)
-    case 2: run_file(global_vm, os.args[1])
+    case 1: run_interactive(vm)
+    case 2: run_file(vm, os.args[1])
     case:   fmt.eprintfln("Usage: %s [script]", os.args[0])
     }
 }
 
 @(private="file")
-repl :: proc(vm: ^VM) {
+run_interactive :: proc(vm: ^VM) {
     for {
-        input := readline(">>> ")
-        if input == nil {
-            break
-        }
-        defer libc.free(cast(rawptr)input)
-        // Minor QOL; users rarely want to jump back to empty lines!
-        if input != "" {
-            add_history(input)
-        }
+        input := read_line() or_break
+        defer free_line(input)
         // Interpret even if empty, this will return 0 registers.
-        run(vm, string(input), "stdin")
+        run_input(vm, input, "stdin")
     }
 }
 
@@ -96,11 +76,11 @@ run_file :: proc(vm: ^VM, file_name: string) {
         return
     }
     defer delete(data)
-    run(vm, string(data), file_name)
+    run_input(vm, string(data), file_name)
 }
 
 @(private="file")
-run :: proc(vm: ^VM, input, source: string) {
+run_input :: proc(vm: ^VM, input, source: string) {
     if vm_interpret(vm, input, source) != .Ok {
         err_msg, _ := to_string(vm, -1)
         fmt.eprintln(err_msg)

@@ -5,15 +5,15 @@ version: '3'
 vars:
   MODE: '{{default "debug"}}'
   ODIN: odin
-  CONSTANT_FOLDING_ENABLED: '{{default true}}'
   DEBUG_FLAGS: >-
     -debug
     -sanitize:address
-    -define:CONSTANT_FOLDING_ENABLED={{.CONSTANT_FOLDING_ENABLED}}
   RELEASE_FLAGS: >-
     -vet
   ODIN_FLAGS: >-
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
+    -define:USE_CONSTANT_FOLDING=true
+    -define:USE_READLINE=true
   OUT_EXE: bin/lulu
 
 tasks:

@@ -401,7 +401,7 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     -   Otherwise, calls to `compiler_free_expr()` will push through and mess up
         the free registers counter.
      */
-    when CONSTANT_FOLDING_ENABLED {
+    when USE_CONSTANT_FOLDING {
         if !(.Nil <= expr.type && expr.type <= .Number) {
             compiler_expr_any_reg(compiler, expr)
         }
@@ -450,11 +450,11 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     /*
     Notes:
-    -   When `!CONSTANT_FOLDING_ENABLED`, this is needed in order to emit the
+    -   When `!USE_CONSTANT_FOLDING`, this is needed in order to emit the
         arguments in the correct order.
     -   Otherwise, without this, they will be reversed!
      */
-    if CONSTANT_FOLDING_ENABLED {
+    if USE_CONSTANT_FOLDING {
         if !expr_is_number(expr) {
             compiler_expr_regconst(compiler, expr)
         }

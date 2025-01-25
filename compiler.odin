@@ -314,7 +314,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     -   Thus, it should be able to be discharged (if it is not already!)
     -   This means we should be able to pop it as well.
      */
-    when CONSTANT_FOLDING_ENABLED {
+    when USE_CONSTANT_FOLDING {
         #partial switch expr.type {
         case .Nil, .False:
             expr.type = .True
@@ -336,7 +336,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
 
 /*
 Notes:
--   when `!CONSTANT_FOLDING_ENABLED`, we expect that if `left` was a literal then
+-   when `!USE_CONSTANT_FOLDING`, we expect that if `left` was a literal then
     we called `compiler_expr_regconst()` beforehand.
 -   Otherwise, the order of arguments will be reversed!
 
@@ -346,7 +346,7 @@ Links:
  */
 compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
     assert(.Add <= op && op <= .Unm || op == .Concat)
-    when CONSTANT_FOLDING_ENABLED {
+    when USE_CONSTANT_FOLDING {
         if compiler_fold_constant_arith(op, left, right) {
             return
         }

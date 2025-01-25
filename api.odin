@@ -2,6 +2,17 @@ package lulu
 
 import "core:fmt"
 
+open :: proc(allocator := context.allocator) -> ^VM {
+    @(static)
+    vm: VM
+    vm_init(&vm, allocator)
+    return &vm
+}
+
+close :: proc(vm: ^VM) {
+    vm_destroy(vm)
+}
+
 to_string :: proc(vm: ^VM, index: int) -> (result: string, ok: bool) {
     value := index_to_address(vm, index)
     if !value_is_string(value^) {
