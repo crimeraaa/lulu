@@ -37,10 +37,9 @@ find_interned :: proc(interned: ^Table, key: string, hash: u32) -> (value: ^OStr
     if interned.count == 0 {
         return nil, false
     }
-    entries := interned.entries[:interned.cap]
-    wrap    := cast(u32)interned.cap
+    wrap := cast(u32)len(interned.entries)
     for index := hash % wrap; /* empty */; index = (index + 1) % wrap {
-        entry := entries[index]
+        entry := interned.entries[index]
         if value_is_nil(entry.key) {
             // Stop if we find a non-tombstone entry.
             if value_is_nil(entry.value) {

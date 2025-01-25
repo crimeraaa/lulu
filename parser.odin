@@ -505,17 +505,22 @@ compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 Notes:
 -   Assumes we just consumed `'..'` and the first right-hand-side operand is
     the lookahead.
+-   Concat is treated as right-associative for optimization via recursive calls.
+-   This is because attempting to optimize within a loop is a lot harder than it
+    seems.
+
+Links:
+-   http://lua-users.org/wiki/AssociativityOfConcatenation
  */
 @(private="file")
 concat :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    // First operand MUST be on the stack
+    // Left-hand operand MUST be on the stack
     compiler_expr_next_reg(compiler, expr)
-    for {
-        next := &Expr{}
-        parse_precedence(parser, compiler, next, .Concat)
-        compiler_emit_concat(compiler, expr, next)
-        parser_match(parser, .Ellipsis_2) or_break
-    }
+
+    // If recursive concat, this will be `.Need_Register` as well.
+    next := &Expr{}
+    parse_precedence(parser, compiler, next, .Concat)
+    compiler_emit_concat(compiler, expr, next)
 }
 
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {

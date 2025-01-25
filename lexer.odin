@@ -239,13 +239,20 @@ create_keyword_identifier_token :: proc(lexer: ^Lexer) -> (token: Token) {
 
 @(private="file", require_results)
 create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token) {
-
-    consume_number :: proc(lexer: ^Lexer, prev: rune = 0) {
-        if prev == '0' && matches(lexer, "xX") {
-            consume_sequence(lexer, match.is_xdigit)
+    consume_number :: proc(lexer: ^Lexer, prev: rune = 0) -> (is_prefixed: bool) {
+        /*
+        Notes:
+        -   0[bB] = binary
+        -   0[oO] = octal
+        -   0[zZ] = duodecimal
+        -   0[xX] = hexadecimal
+        -   Prefixed integers cannot contain a '.', so we do not recurse to consume it.
+         */
+        if prev == '0' && matches(lexer, "bBoOzZxX") {
             consume_sequence(lexer, is_alnum)
-            return
+            return true
         }
+
         // Consume integer portion.
         consume_sequence(lexer, match.is_digit)
 
@@ -258,17 +265,29 @@ create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token) {
 
         // Have exponent form?
         if matches(lexer, "eE") {
+            // WARNING(2025-01-25): Be careful not to introduce ambiguity!
             matches(lexer, "+-")
             consume_sequence(lexer, match.is_digit)
         }
         // Consume trailing characters so we can tell if this is a bad number.
         consume_sequence(lexer, is_alnum)
+        return false
     }
 
-    consume_number(lexer, prev)
+    is_prefixed := consume_number(lexer, prev)
     token = create_token(lexer, .Number)
     ok: bool
-    lexer.number, ok = strconv.parse_f64(token.lexeme)
+    if is_prefixed {
+        i: int
+        // Do NOT shadow `ok`! We rely on it to check for errors.
+        i, ok = strconv.parse_int(token.lexeme)
+        lexer.number = cast(f64)i
+    } else {
+        lexer.number, ok = strconv.parse_f64(token.lexeme)
+    }
+    if !ok {
+        lexer_error(lexer, "Malformed number", token.lexeme)
+    }
     return token
 }
 
@@ -390,9 +409,12 @@ consume_multiline :: proc(lexer: ^Lexer, opening: int, $is_comment: bool) {
     }
 }
 
-lexer_error :: proc(lexer: ^Lexer, msg: string) -> ! {
+lexer_error :: proc(lexer: ^Lexer, msg: string, lexeme := "") -> ! {
     source, line := lexer.source, lexer.line
-    lexeme       := lexer.input[lexer.start:lexer.current]
+    lexeme := lexeme
+    if lexeme == "" {
+        lexeme = lexer.input[lexer.start:lexer.current]
+    }
     vm_throw(lexer.vm, .Compile_Error, source, line, "%s at '%s'", msg, lexeme)
 }
 

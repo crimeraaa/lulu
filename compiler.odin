@@ -186,7 +186,15 @@ Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2RK
  */
 compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
-    // TODO(2025-01-07): call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)'
+    /*
+    TODO(2025-01-07):
+        call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)'
+
+    NOTE(2025-01-25):
+        inline implementation of only relevant line of above.
+     */
+    compiler_discharge_vars(compiler, expr)
+
     #partial switch type := expr.type; type {
     case .Nil, .True, .False, .Number:
         chunk := compiler.chunk
@@ -200,8 +208,8 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
             case .Number:   index = chunk_add_constant(chunk, value_make_number(expr.number))
             case:           unreachable() // How?
             }
+            expr_init(expr, .Constant)
             expr.index = index
-            expr.type  = .Constant
             return rk_as_k(cast(u16)index)
         }
     case .Constant:
@@ -231,7 +239,6 @@ compiler_emit_nil :: proc(compiler: ^Compiler, reg, count: u16) {
         if !(prev.a <= reg && reg <= prev.b + 1) {
             break folding
         }
-        log.debugf("Folding 'nil': %v => %v", prev.b, prev.b + count)
         next := reg + count - 1
         if next <= prev.b {
             break folding
@@ -321,7 +328,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
         }
     }
     compiler_discharge_expr_any_reg(compiler, expr)
-    compiler_free_expr(compiler, expr)
+    compiler_pop_expr(compiler, expr)
 
     expr_init(expr, .Need_Register)
     expr.pc = compiler_emit_AB(compiler, .Not, 0, expr.reg)
@@ -357,11 +364,11 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     // In the event BOTH are .Discharged, we want to pop them in the correct
     // order! Otherwise the assert in `compiler_free_reg()` will fail.
     if rk_b > rk_c {
-        compiler_free_expr(compiler, left)
-        compiler_free_expr(compiler, right)
+        compiler_pop_expr(compiler, left)
+        compiler_pop_expr(compiler, right)
     } else {
-        compiler_free_expr(compiler, right)
-        compiler_free_expr(compiler, left)
+        compiler_pop_expr(compiler, right)
+        compiler_pop_expr(compiler, left)
     }
 
     // Argument A will be fixed down the line.
@@ -376,11 +383,11 @@ compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Exp
     rk_c := compiler_expr_regconst(compiler, right)
 
     if rk_b > rk_c {
-        compiler_free_expr(compiler, left)
-        compiler_free_expr(compiler, right)
+        compiler_pop_expr(compiler, left)
+        compiler_pop_expr(compiler, right)
     } else {
-        compiler_free_expr(compiler, right)
-        compiler_free_expr(compiler, left)
+        compiler_pop_expr(compiler, right)
+        compiler_pop_expr(compiler, left)
     }
 
     expr_init(left, .Need_Register)
@@ -393,6 +400,7 @@ Links:
  */
 compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     // TODO(2025-01-12): call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)' here
+    compiler_discharge_vars(compiler, right)
 
     chunk := compiler.chunk
     code  := chunk.code[:]
@@ -401,7 +409,7 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     if right.type == .Need_Register && code[right.pc].op == .Concat {
         instr := &code[right.pc]
         assert(left.reg == instr.b - 1)
-        compiler_free_expr(compiler, left)
+        compiler_pop_expr(compiler, left)
         instr.b = left.reg
         expr_init(left, .Need_Register)
         left.pc = right.pc
@@ -412,7 +420,12 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     compiler_emit_arith(compiler, .Concat, left, right)
 }
 
-compiler_free_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
+/*
+Notes:
+-   If `expr` is `.Discharged`, it MUST be the most recently discharged register
+    in order to be able to pop it.
+ */
+compiler_pop_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
     // if e->k == VNONRELOC
     if expr.type == .Discharged {
         compiler_free_reg(compiler, expr.reg)

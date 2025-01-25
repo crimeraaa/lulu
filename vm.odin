@@ -97,16 +97,15 @@ vm_destroy :: proc(vm: ^VM) {
 }
 
 vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
-    chunk := &Chunk{}
-    chunk_init(vm, chunk, name)
-    defer chunk_destroy(chunk)
-
     Data :: struct {
         chunk: ^Chunk,
         input: string,
     }
 
-    data := &Data{chunk = chunk, input = input}
+    data := &Data{chunk = &Chunk{}, input = input}
+    chunk_init(vm, data.chunk, name)
+    defer chunk_destroy(data.chunk)
+
     interpret :: proc(vm: ^VM, user_data: rawptr) {
         data := cast(^Data)user_data
         compiler_compile(vm, data.chunk, data.input)
