@@ -179,7 +179,7 @@ do {                                                                           \
             printf(" ]");
         }
         printf("\n");
-        debug_disassemble_instruction(chunk, self->ip - chunk->code);
+        debug_disassemble_instruction(chunk, cast(int)(self->ip - chunk->code));
 #endif
         Instruction inst = *self->ip++;
         switch (instr_get_op(inst)) {
@@ -282,7 +282,7 @@ do {                                                                           \
                 vm_runtime_error(self, "Attempt to get length of a %s value",
                     value_typename(value));
             }
-            value_set_number(value, n_len); // @warning implicit cast: integer-to-float
+            value_set_number(value, cast(Number)n_len);
             break;
         }
         case OP_NIL:

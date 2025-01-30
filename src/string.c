@@ -26,7 +26,7 @@ ostring_new(lulu_VM *vm, const char *data, isize len)
     }
     OString *string = cast(OString *)object_new(vm, LULU_TYPE_STRING, size_of_string(len));
     ostring_init(string, len, hash);
-    memcpy(string->data, data, len);
+    memcpy(string->data, data, cast(usize)len);
     return table_intern_string(vm, &vm->strings, string);
 }
 

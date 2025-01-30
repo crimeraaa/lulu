@@ -76,7 +76,7 @@ compiler_make_constant(Compiler *self, const Value *value)
         parser_error_consumed(self->parser, "Too many constants in one chunk.");
         return 0;
     }
-    return index;
+    return cast(u32)index;
 }
 
 void
@@ -147,9 +147,8 @@ folded_instruction(Compiler *self, Instruction inst)
         int cur_arg  = cast(int)instr_get_A(inst);
         int new_arg  = prev_arg + cur_arg + offset;
         if (0 < new_arg && new_arg <= cast(int)LULU_MAX_BYTE) {
-            // @warning implicit cast: differently sized integers
             // However, we did do the above check to ensure 'new_arg' fits.
-            instr_set_A(ip, new_arg);
+            instr_set_A(ip, cast(u16)new_arg);
 
             // We assume that multiple of the same instruction evaluates to the
             // same net stack usage.
@@ -180,14 +179,14 @@ compiler_emit_ABC(Compiler *self, OpCode op, u32 arg)
 }
 
 void
-compiler_emit_nil(Compiler *self, int n_nil)
+compiler_emit_nil(Compiler *self, u16 n_nil)
 {
     compiler_emit_A(self, OP_NIL, n_nil);
 }
 
 // @todo 2024-12-27: Check for overflow before casting to `byte`?
 void
-compiler_emit_pop(Compiler *self, int n_pop)
+compiler_emit_pop(Compiler *self, u16 n_pop)
 {
     compiler_emit_A(self, OP_POP, n_pop);
 }
@@ -196,7 +195,7 @@ void
 compiler_emit_lvalues(Compiler *self, LValue *last)
 {
     LValue *iter      = last;
-    int     n_cleanup = 0;    // How many table/key pairs to pop at the end?
+    u16     n_cleanup = 0;    // How many table/key pairs to pop at the end?
     while (iter) {
         switch (iter->type) {
         case LVALUE_GLOBAL:
@@ -272,11 +271,11 @@ compiler_compile(Compiler *self, const char *input, isize len, Chunk *chunk)
     }
     compiler_end_scope(self);
 
-    clock_t     elapsed = clock() - begin;
-    long double n_sec   = cast(long double)elapsed / CLOCKS_PER_SEC;
+    clock_t elapsed = clock() - begin;
+    double  n_sec   = cast(double)elapsed / CLOCKS_PER_SEC;
     printf(
         "=== COMPILATION TIME ===\n"
-        "Elapsed: %Lf seconds\n"
+        "Elapsed: %f seconds\n"
         "\n",
         n_sec);
     compiler_end(self);
@@ -294,7 +293,7 @@ compiler_end_scope(Compiler *self)
     Local *locals = self->locals;
     int    depth  = self->scope_depth--;
     int    index  = self->n_locals;
-    int    n_pop  = 0;
+    u16    n_pop  = 0;
 
     // Iterate over the locals in the scope we just popped.
     while (index > 0 && locals[index - 1].depth >= depth) {
@@ -314,7 +313,7 @@ identifiers_equal(const OString *string, const Token *token)
     if (string->len != token->len) {
         return false;
     }
-    return memcmp(string->data, token->start, token->len) == 0;
+    return memcmp(string->data, token->start, cast(usize)token->len) == 0;
 }
 
 void
@@ -381,19 +380,19 @@ compiler_new_table(Compiler *self)
 }
 
 void
-compiler_adjust_table(Compiler *self, int i_code, int i_table, int n_hash, int n_array)
+compiler_adjust_table(Compiler *self, int i_code, u16 i_table, u16 n_hash, u16 n_array)
 {
     Instruction *ip = &current_chunk(self)->code[i_code];
     instr_set_A(ip, n_hash);
     instr_set_B(ip, n_array);
 
     if (n_array > 0) {
-        compiler_emit_instruction(self, instr_make(OP_SET_ARRAY, n_array, i_table, 0));
+        compiler_emit_instruction(self, instr_make(OP_SET_ARRAY, cast(u16)n_array, cast(u16)i_table, 0));
     }
 }
 
 void
-compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop)
+compiler_set_table(Compiler *self, u16 i_table, u16 i_key, u16 n_pop)
 {
     compiler_emit_instruction(self, instr_make(OP_SET_TABLE, n_pop, i_table, i_key));
 }

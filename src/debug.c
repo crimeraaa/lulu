@@ -65,7 +65,7 @@ debug_disasssemble_chunk(const Chunk *chunk)
 static void
 print_constant(const Chunk *chunk, Instruction inst)
 {
-    const int    arg   = instr_get_ABC(inst);
+    const int    arg   = cast(int)instr_get_ABC(inst);
     const Value *value = &chunk->constants.values[arg];
     debug_print_value(value);
     printf("\n");
@@ -92,7 +92,7 @@ debug_disassemble_instruction(const Chunk *chunk, int index)
         break;
     case OP_GET_GLOBAL: case OP_SET_GLOBAL:
     {
-        int arg = instr_get_ABC(inst);
+        int arg = cast(int)instr_get_ABC(inst);
         printf("%4i\t# %s\n", arg, constants[arg].string->data);
         break;
     }

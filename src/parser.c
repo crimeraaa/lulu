@@ -45,10 +45,10 @@ get_rule(Token_Type type);
  * @note 2024-12-13
  *      Assumes we just consumed a '=' token.
  */
-static int
+static u16
 parse_expression_list(Parser *parser, Compiler *compiler)
 {
-    int count = 0;
+    u16 count = 0;
     do {
         expression(parser, compiler);
         count++;
@@ -144,8 +144,7 @@ wrap_error(lulu_VM *vm, cstring filename, const Token *token, cstring msg)
         where = str.data;
         len   = str.len;
     }
-    // @warning implicit cast: differently-sized-integers
-    vm_comptime_error(vm, filename, token->line, msg, where, len);
+    vm_comptime_error(vm, filename, token->line, msg, where, cast(int)len);
 }
 
 void
@@ -189,7 +188,7 @@ get_binary_op(Token_Type type)
 static void
 concat(Parser *parser, Compiler *compiler)
 {
-    int argc = 1;
+    u16 argc = 1;
     for (;;) {
         if (argc >= cast(int)LULU_MAX_BYTE) {
             parser_error_consumed(parser, "Too many consecutive concatenations");
@@ -269,7 +268,7 @@ named_variable(Parser *parser, Compiler *compiler, Token *ident)
         u32 global = compiler_identifier_constant(compiler, ident);
         compiler_emit_ABC(compiler, OP_GET_GLOBAL, global);
     } else {
-        compiler_emit_A(compiler, OP_GET_LOCAL, local);
+        compiler_emit_A(compiler, OP_GET_LOCAL, cast(u16)local);
     }
 
     for (;;) {
@@ -351,12 +350,12 @@ static void
 table(Parser *parser, Compiler *compiler)
 {
     int i_code  = compiler_new_table(compiler);
-    int i_table = compiler->stack_usage - 1;
-    int n_hash  = 0;
-    int n_array = 0;
+    u16 i_table = cast(u16)(compiler->stack_usage - 1);
+    u16 n_hash  = 0;
+    u16 n_array = 0;
     // Have 1 or more fields to deal with?
     while (!check_token(parser, TOKEN_CURLY_R)) {
-        int   i_key = compiler->stack_usage;
+        u16   i_key = cast(u16)compiler->stack_usage;
         Token prev  = parser->consumed;
         if (parser_match_token(parser, TOKEN_BRACKET_L)) {
             expression(parser, compiler);
@@ -501,14 +500,14 @@ block(Parser *parser, Compiler *compiler)
 static void
 print_statement(Parser *parser, Compiler *compiler)
 {
-    int argc = 0;
+    u16 argc = 0;
     parser_consume_token(parser, TOKEN_PAREN_L, "after 'print'");
     // Potentially have at least 1 argument?
     if (!parser_match_token(parser, TOKEN_PAREN_R)) {
         argc = parse_expression_list(parser, compiler);
         parser_consume_token(parser, TOKEN_PAREN_R, "to close call");
     }
-    compiler_emit_A(compiler, OP_PRINT, argc);
+    compiler_emit_A(compiler, OP_PRINT, cast(u16)argc);
 }
 
 static void
@@ -555,9 +554,9 @@ static void
 adjust_assignment_list(Compiler *compiler, int assigns, int exprs)
 {
     if (assigns > exprs) {
-        compiler_emit_nil(compiler, assigns - exprs);
+        compiler_emit_nil(compiler, cast(u16)(assigns - exprs));
     } else if (assigns < exprs) {
-        compiler_emit_pop(compiler, exprs - assigns);
+        compiler_emit_pop(compiler, cast(u16)(exprs - assigns));
     }
 }
 
@@ -577,7 +576,7 @@ assign_lvalues(Parser *parser, Compiler *compiler, LValue *last)
 }
 
 static bool
-resolve_lvalue_field(Parser *parser, Compiler *compiler, LValue *lvalue, int i_table)
+resolve_lvalue_field(Parser *parser, Compiler *compiler, LValue *lvalue, u16 i_table)
 {
     if (parser_match_token(parser, TOKEN_PERIOD)) {
         parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
@@ -592,7 +591,7 @@ resolve_lvalue_field(Parser *parser, Compiler *compiler, LValue *lvalue, int i_t
     }
     lvalue->type    = LVALUE_TABLE;
     lvalue->i_table = i_table;
-    lvalue->i_key   = compiler->stack_usage - 1;
+    lvalue->i_key   = cast(u16)(compiler->stack_usage - 1);
     lvalue->n_pop   = 1; // Pop value only. We'll clean up later.
     return true;
 }
@@ -618,11 +617,11 @@ assignment(Parser *parser, Compiler *compiler)
         last.global = compiler_identifier_constant(compiler, &parser->consumed);
     } else {
         last.type   = LVALUE_LOCAL;
-        last.local  = local;
+        last.local  = cast(byte)local;
     }
 
     // Must be consistent. Concept check: `t.k.v = 10`
-    const int i_table = compiler->stack_usage;
+    const u16 i_table = cast(u16)compiler->stack_usage;
     while (resolve_lvalue_field(parser, compiler, &last, i_table));
 
 

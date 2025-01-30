@@ -83,10 +83,10 @@ void
 compiler_emit_ABC(Compiler *self, OpCode op, u32 arg);
 
 void
-compiler_emit_pop(Compiler *self, int n_pop);
+compiler_emit_pop(Compiler *self, u16 n_pop);
 
 void
-compiler_emit_nil(Compiler *self, int n_nil);
+compiler_emit_nil(Compiler *self, u16 n_nil);
 
 void
 compiler_emit_lvalues(Compiler *self, LValue *last);
@@ -133,9 +133,9 @@ int
 compiler_new_table(Compiler *self);
 
 void
-compiler_adjust_table(Compiler *self, int i_code, int i_table, int n_hash, int n_array);
+compiler_adjust_table(Compiler *self, int i_code, u16 i_table, u16 n_hash, u16 n_array);
 
 void
-compiler_set_table(Compiler *self, int i_table, int i_key, int n_pop);
+compiler_set_table(Compiler *self, u16 i_table, u16 i_key, u16 n_pop);
 
 #endif // LULU_COMPILER_H

@@ -21,6 +21,7 @@ vars:
     -Wall
     -Wextra
     -Werror
+    -Wconversion
     -pedantic
     -fdiagnostics-color=always
     -Wno-error=unused-variable

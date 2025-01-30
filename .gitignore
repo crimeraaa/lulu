@@ -9,3 +9,4 @@
 # Build directories
 bin/
 obj/
+lua-5.1.5/

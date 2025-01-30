@@ -30,16 +30,16 @@ alloc_fn(void *allocator_data, isize new_size, isize align, void *old_ptr, isize
         return NULL;
     }
 
-    // Otherwise, we're trying to [re]allocate some memory.
-    void *new_ptr = realloc(old_ptr, new_size);
-
-    // We extended the allocation? Note that immediately loading a possibly
-    // invalid pointer is not a safe assumption for 100% of architectures.
-    // isize add_len = new_size - old_size;
-    // if (add_len > 0) {
-    //     byte *add_ptr = cast(byte *)new_ptr + old_size;
-    //     memset(add_ptr, 0, add_len);
+    // Test to see if error handling works.
+    // static int counter = 0;
+    // if (counter == 32) {
+    //     return NULL;
+    // } else {
+    //     counter++;
     // }
+
+    // Otherwise, we're trying to [re]allocate some memory.
+    void *new_ptr = realloc(old_ptr, cast(usize)new_size);
     return new_ptr;
 }
 
@@ -53,8 +53,7 @@ repl(lulu_VM *vm)
             fputc('\n', stdout);
             break;
         }
-        // @warning implicit cast: size_t to ptrdiff_t
-        vm_interpret(vm, line, strcspn(line, "\n"), "stdin");
+        vm_interpret(vm, line, cast(isize)strcspn(line, "\n"), "stdin");
     }
 }
 
@@ -73,14 +72,14 @@ read_file(lulu_VM *vm, cstring path, usize *out_len)
     }
 
     fseek(file_ptr, 0L, SEEK_END);
-    file_size = ftell(file_ptr);
+    file_size = cast(usize)ftell(file_ptr);
     rewind(file_ptr);
     if (out_len) {
         *out_len = file_size;
     }
 
     buf_size = file_size + 1;
-    buf_ptr = array_new(char, vm, buf_size);
+    buf_ptr = array_new(char, vm, cast(isize)buf_size);
     if (!buf_ptr) {
         fprintf(stderr, "Not enough memory to read file '%s'.\n", path);
         goto cleanup;
@@ -89,7 +88,7 @@ read_file(lulu_VM *vm, cstring path, usize *out_len)
     bytes_read = fread(buf_ptr, sizeof(buf_ptr[0]), file_size, file_ptr);
     if (bytes_read < file_size) {
         fprintf(stderr, "Could not read file '%s'.\n", path);
-        array_free(char, vm, buf_ptr, buf_size);
+        array_free(char, vm, buf_ptr, cast(isize)buf_size);
         goto cleanup;
     }
     buf_ptr[bytes_read] = '\0';
@@ -105,12 +104,11 @@ run_file(lulu_VM *vm, cstring path)
     usize       len    = 0;
     char       *source = read_file(vm, path, &len);
     lulu_Status status;
-
     if (!source) {
         return 2;
     }
-    status = vm_interpret(vm, source, len, path);
-    array_free(char, vm, source, len + 1);
+    status = vm_interpret(vm, source, cast(isize)len, path);
+    array_free(char, vm, source, cast(isize)(len + 1));
 
     switch (status) {
     case LULU_OK:
@@ -125,11 +123,11 @@ run_file(lulu_VM *vm, cstring path)
 }
 
 int
-main(int argc, cstring argv[])
+main(int argc, char *argv[])
 {
     lulu_VM vm;
     int     err = 0;
-    if (!vm_init(&vm, alloc_fn, NULL)) {
+    if (!vm_init(&vm, &alloc_fn, NULL)) {
         return 1;
     }
     if (argc == 1) {

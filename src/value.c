@@ -44,7 +44,7 @@ number_to_integer(Number number, int *out_integer)
     int    converted = cast(int)number;
     Number truncated = cast(Number)converted;
     if (out_integer) {
-        *out_integer = converted; // @warning implicit cast: float-to-integer
+        *out_integer = converted;
     }
     return number == truncated;
 }

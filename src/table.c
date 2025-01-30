@@ -36,7 +36,8 @@ hash_value(const Value *key)
 static Pair *
 find_pair(Pair *pairs, int cap, const Value *key)
 {
-    u32   index     = hash_value(key) % cap;
+    u32   dcap      = cast(u32)cap; // "dummy" cap for type safety.
+    u32   index     = hash_value(key) % dcap;
     Pair *tombstone = NULL;
     for (;;) {
         Pair *pair = &pairs[index];
@@ -53,7 +54,7 @@ find_pair(Pair *pairs, int cap, const Value *key)
         } else if (value_eq(&pair->key, key)) {
             return pair;
         }
-        index = (index + 1) % cap;
+        index = (index + 1) % dcap;
     }
     __builtin_unreachable();
 }
@@ -160,10 +161,11 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
     if (self->n_pairs == 0) {
         return NULL;
     }
-    // @warning implicit cast: signed-to-unsigned ('self->cap')
-    u32 index = hash % self->cap;
+    u32   cap   = cast(u32)self->cap;
+    u32   index = hash % cap;
+    Pair *pairs = self->pairs;
     for (;;) {
-        Pair  *pair = &self->pairs[index];
+        Pair  *pair = &pairs[index];
         Value *key  = &pair->key;
         if (value_is_nil(key)) {
             // Stop if we find an empty non-tombstone entry.
@@ -173,12 +175,12 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
         } else if (value_is_string(key)) {
             OString *src = key->string;
             if (src->hash == hash && src->len == len) {
-                if (memcmp(src->data, data, len) == 0) {
+                if (memcmp(src->data, data, cast(usize)len) == 0) {
                     return src;
                 }
             }
         }
-        index = (index + 1) % self->cap;
+        index = (index + 1) % cap;
     }
 }
 
@@ -204,7 +206,7 @@ move_hash_to_array(lulu_VM *vm, Table *table, VArray *array, int start)
 {
     for (int i = start; /* empty */; i++) {
         Value key;
-        value_set_number(&key, i); // @warning implicit cast: integer-to-float
+        value_set_number(&key, cast(Number)i);
         const Value *value = table_get_hash(table, &key);
         if (!value || value_is_nil(value)) {
             break;

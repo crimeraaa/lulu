@@ -23,7 +23,7 @@ struct LValue {
     LValue     *prev; // Use recursion to chain multiple assignments.
     LValue_Type type; // Determines what opcode we will use.
     union {
-        struct { byte i_table, i_key, n_pop; };
+        struct { u16 i_table, i_key, n_pop; };
         u32   global;
         byte  local;
     }; // Arguments to the various opcodes.

@@ -33,7 +33,7 @@ union lulu_User_Alignment {
 #define LULU_IMPL_ERROR_HANDLING_LONGJMP     2
 
 // Determine the language-specific error handling we should use.
-#if defined(__cplusplus)
+#ifdef __cplusplus
 
     #define LULU_IMPL_ERROR_HANDLING    LULU_IMPL_ERROR_HANDLING_EXCEPTION
 
@@ -81,8 +81,8 @@ union lulu_User_Alignment {
 ///=== COMPILER-SPECIFIC EXTENSIONS ========================================={{{
 
 // @note 2024-09-22: This is the only 'required' attribute.
-#if !defined LULU_ATTR_NORETURN
-    #if defined(__GNUC__)
+#ifndef LULU_ATTR_NORETURN
+    #ifdef __GNUC__
         #define LULU_ATTR_NORETURN  __attribute__((__noreturn__))
     #elif defined _MSC_VER
         // @warning: Untested!
@@ -92,8 +92,8 @@ union lulu_User_Alignment {
     #endif
 #endif
 
-#if !defined LULU_ATTR_DEPRECATED
-    #if defined(__GNUC__)
+#ifndef LULU_ATTR_DEPRECATED
+    #ifdef __GNUC__
         #define LULU_ATTR_DEPRECATED    __attribute__((__deprecated__))
     #elif defined _MSC_VER
         #define LULU_ATTR_DEPRECATED    __declspec(deprecated)
@@ -102,8 +102,8 @@ union lulu_User_Alignment {
     #endif
 #endif
 
-#if !defined LULU_ATTR_UNUSED
-    #if defined(__GNUC__)
+#ifndef LULU_ATTR_UNUSED
+    #ifdef __GNUC__
         #define LULU_ATTR_UNUSED        __attribute__((__unused__))
     #else
         #define LULU_ATTR_UNUSED
@@ -111,7 +111,7 @@ union lulu_User_Alignment {
 #endif
 
 // printf validation is nice to have for sanity checking, but not required.
-#if defined(__GNUC__)
+#ifdef __GNUC__
     #define LULU_ATTR_PRINTF(fmt, args) __attribute__(( __format__ (__printf__, fmt, args) ))
 #else
     #define LULU_ATTR_PRINTF(fmt, args)
