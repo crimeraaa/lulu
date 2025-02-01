@@ -84,7 +84,6 @@ parser_init(lulu_VM *vm, Parser *self, Compiler *compiler, cstring filename, con
     lexer_init(vm, &self->lexer, filename, input, len);
     token_init_empty(&self->consumed);
     token_init_empty(&self->lookahead);
-    self->lvalues  = NULL;
     self->compiler = compiler;
 }
 
@@ -605,24 +604,24 @@ resolve_lvalue_field(Parser *parser, Compiler *compiler, LValue *lvalue, u16 i_t
  *      hereh, so we have no equivalent of `compiler.c:parseVariable()`.
  */
 static void
-assignment(Parser *parser, Compiler *compiler)
+assignment(Parser *parser, Compiler *compiler, LValue *last)
 {
     const int local = compiler_resolve_local(compiler, &parser->consumed);
 
-    LValue last;
-    last.prev       = parser->lvalues;
-    parser->lvalues = &last; // Should end at the deepest recursive call.
+    LValue next;
+    next.prev = last;
+    // parser->lvalues = &last; // Should end at the deepest recursive call.
     if (local == UNRESOLVED_LOCAL) {
-        last.type   = LVALUE_GLOBAL;
-        last.global = compiler_identifier_constant(compiler, &parser->consumed);
+        next.type   = LVALUE_GLOBAL;
+        next.global = compiler_identifier_constant(compiler, &parser->consumed);
     } else {
-        last.type   = LVALUE_LOCAL;
-        last.local  = cast(byte)local;
+        next.type   = LVALUE_LOCAL;
+        next.local  = cast(byte)local;
     }
 
     // Must be consistent. Concept check: `t.k.v = 10`
     const u16 i_table = cast(u16)compiler->stack_usage;
-    while (resolve_lvalue_field(parser, compiler, &last, i_table));
+    while (resolve_lvalue_field(parser, compiler, &next, i_table));
 
 
     /**
@@ -632,14 +631,11 @@ assignment(Parser *parser, Compiler *compiler)
      */
     if (parser_match_token(parser, TOKEN_COMMA)) {
         parser_consume_token(parser, TOKEN_IDENTIFIER, "after ','");
-        assignment(parser, compiler);
+        assignment(parser, compiler, &next);
+        return; // Prevent recursive calls from consuming `TOKEN_EQUAL`.
     }
-
-    if (parser->lvalues) {
-        parser_consume_token(parser, TOKEN_EQUAL, "in assignment");
-        assign_lvalues(parser, compiler, &last);
-        parser->lvalues = NULL;
-    }
+    parser_consume_token(parser, TOKEN_EQUAL, "in assignment");
+    assign_lvalues(parser, compiler, &next);
 }
 
 void
@@ -663,7 +659,7 @@ parser_declaration(Parser *self, Compiler *compiler)
         compiler_initialize_locals(self->compiler);
         parser_match_token(self, TOKEN_SEMICOLON);
     } else if (parser_match_token(self, TOKEN_IDENTIFIER)) {
-        assignment(self, compiler);
+        assignment(self, compiler, NULL);
     } else {
         statement(self, compiler);
     }

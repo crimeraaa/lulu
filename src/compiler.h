@@ -22,7 +22,7 @@ struct Parser {
     Lexer     lexer;
     Token     lookahead;
     Token     consumed; // Analogous to the book's `compiler.c:Parser::previous`.
-    LValue   *lvalues;  // Must be valid only once per assignment call.
+    // LValue   *lvalues;  // Must be valid only once per assignment call.
     Compiler *compiler;
 };
 
