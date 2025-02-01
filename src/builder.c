@@ -42,7 +42,7 @@ void
 builder_write_char(Builder *self, char ch)
 {
     if (self->len >= self->cap) {
-        builder_reserve(self, mem_grow_capacity(self->cap));
+        builder_reserve(self, mem_grow_capacity(self->len));
     }
     self->buffer[self->len++] = ch;
 }
@@ -55,11 +55,9 @@ builder_write_string(Builder *self, const char *data, isize len)
     if (new_len > self->cap) {
         builder_reserve(self, mem_grow_capacity(new_len));
     }
-
-    char *start = &self->buffer[old_len];
-    for (isize i = 0; i < len; i++) {
-        start[i] = data[i];
-    }
+    // Address of the first element in `buffer` that we want to append to.
+    char *start = self->buffer + old_len;
+    memcpy(start, data, sizeof(data[0]) * cast(usize)len);
     self->len = new_len;
 }
 
@@ -69,9 +67,12 @@ builder_write_cstring(Builder *self, cstring cstr)
     builder_write_string(self, cstr, cast(isize)strlen(cstr));
 }
 
-const char *
+cstring
 builder_to_string(Builder *self, isize *out_len)
 {
+    // Ensure nul termination.
+    builder_write_char(self, '\0');
+    self->len--;
     if (out_len) {
         *out_len = self->len;
     }

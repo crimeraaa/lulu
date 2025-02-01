@@ -3,6 +3,7 @@
 #include "vm.h"
 
 /// standard
+#include <stdio.h> // snprintf
 #include <string.h> // strlen
 
 /**
@@ -98,6 +99,19 @@ lulu_is_table(lulu_VM *vm, int offset)
 
 ///=============================================================================
 
+cstring
+lulu_to_lstring(lulu_VM *vm, int offset, isize *out_len)
+{
+    const Value *value = offset_to_address(vm, offset);
+    if (value_is_string(value)) {
+        if (out_len != NULL) {
+            *out_len = value->string->len;
+        }
+        return value->string->data;
+    }
+    return NULL;
+}
+
 ///=== STACK MANIPULATION FUNCTIONS ============================================
 
 void
@@ -143,6 +157,86 @@ lulu_push_string(lulu_VM *vm, const char *data, isize len)
     Value tmp;
     value_set_string(&tmp, ostring_new(vm, data, len));
     push_safe(vm, &tmp);
+}
+
+void
+lulu_concat(lulu_VM *vm, int count)
+{
+    switch (count) {
+    case 0:
+        lulu_push_literal(vm, "");
+        return;
+    case 1:
+        return; // popping the string then re-emitting it is redundant.
+    default:
+        vm_concat(vm, count);
+    }
+}
+
+cstring
+lulu_push_fstring(lulu_VM *vm, cstring fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    cstring result = lulu_push_vfstring(vm, fmt, args);
+    va_end(args);
+    return result;
+}
+
+cstring
+lulu_push_vfstring(lulu_VM *vm, cstring fmt, va_list args)
+{
+    Builder *builder = &vm->builder;
+    builder_reset(builder);
+
+    const char *nonspec = fmt;
+    for (;;) {
+        const char *spec = strchr(nonspec, '%');
+        // No more '%' found?
+        if (spec == NULL) {
+            break;
+        }
+        // Have characters before the '%'?
+        if (spec != nonspec) {
+            builder_write_string(builder, nonspec, spec - nonspec);
+        }
+        spec += 1; // Point the the actual specifier.
+        nonspec = spec + 1; // Point to the next non-specifier character.
+        char buf[64];
+        int len = 0;
+        switch (*spec) {
+        case 'i':
+        case 'd':
+            len = snprintf(buf, sizeof(buf), "%i", va_arg(args, int));
+            builder_write_string(builder, buf, cast(isize)len);
+            break;
+        case 's':
+            builder_write_cstring(builder, va_arg(args, char *));
+            break;
+        case 'p':
+            len = snprintf(buf, sizeof(buf), "%p", va_arg(args, void *));
+            builder_write_string(builder, buf, cast(isize)len);
+            break;
+        case 'c':
+            builder_write_char(builder, cast(char)va_arg(args, int));
+            break;
+        case '%':
+            builder_write_char(builder, '%');
+            break;
+        default:
+            debug_fatalf("Unsupported format specifier '%c'.", *spec);
+            break;
+        }
+    }
+    // Still have format string remaining after the last specifier?
+    const char *end = fmt + strlen(fmt);
+    if (nonspec < end) {
+        builder_write_string(builder, nonspec, end - nonspec);
+    }
+    isize len;
+    cstring result = builder_to_string(builder, &len);
+    lulu_push_string(vm, result, len);
+    return lulu_to_string(vm, -1);
 }
 
 void

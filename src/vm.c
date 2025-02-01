@@ -26,8 +26,9 @@ init_table(Table *table)
     base->next = NULL;
 }
 
+// These are the bare minimum dynamic allocations required for the VM to function.
 static void
-init_alloc(lulu_VM *self, void *userdata)
+required_allocs(lulu_VM *self, void *userdata)
 {
     Value value;
     unused(userdata);
@@ -35,7 +36,6 @@ init_alloc(lulu_VM *self, void *userdata)
     lulu_push_literal(self, "_G");
     // Will most likely realloc the globals table!
     table_set(self, &self->globals, &self->top[-1], &value);
-
     // Ensure all keywords are interned.
     for (int i = 0; i < LULU_KEYWORD_COUNT; i++) {
         const LString keyword = LULU_TOKEN_STRINGS[i];
@@ -57,7 +57,7 @@ vm_init(lulu_VM *self, lulu_Allocator allocator, void *allocator_data)
     self->objects        = NULL;
     self->handlers       = NULL;
 
-    return vm_run_protected(self, &init_alloc, NULL) == LULU_OK;
+    return vm_run_protected(self, &required_allocs, NULL) == LULU_OK;
 }
 
 void
@@ -107,7 +107,7 @@ static Number
 ensure_number(lulu_VM *vm, const Value *value, cstring action)
 {
     if (!value_is_number(value)) {
-        vm_runtime_error(vm, "Attempt to %s a (%s value)", action, value_typename(value));
+        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
     }
     return value->number;
 }
@@ -116,7 +116,7 @@ static OString *
 ensure_string(lulu_VM *vm, const Value *value, cstring action)
 {
     if (!value_is_string(value)) {
-        vm_runtime_error(vm, "Attempt to %s a (%s value)", action, value_typename(value));
+        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
     }
     return value->string;
 }
@@ -125,13 +125,13 @@ static Table *
 ensure_table(lulu_VM *vm, const Value *value, cstring action)
 {
     if (!value_is_table(value)) {
-        vm_runtime_error(vm, "Attempt to %s (a %s value)", action, value_typename(value));
+        vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
     }
     return value->table;
 }
 
-static void
-concat(lulu_VM *vm, int count)
+void
+vm_concat(lulu_VM *vm, int count)
 {
     Value   *args    = &vm->top[-count];
     Builder *builder = &vm->builder;
@@ -142,8 +142,8 @@ concat(lulu_VM *vm, int count)
         builder_write_string(builder, string->data, string->len);
     }
 
-    isize        len;
-    const char  *data = builder_to_string(builder, &len);
+    isize   len;
+    cstring data = builder_to_string(builder, &len);
     lulu_pop(vm, count);
     lulu_push_string(vm, data, len);
 }
@@ -301,7 +301,7 @@ do {                                                                           \
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_CONCAT: {
             int count = instr_get_A(inst);
-            concat(self, count);
+            vm_concat(self, count);
             break;
         }
         case OP_UNM: {
@@ -370,6 +370,7 @@ compile_and_run(lulu_VM *self, void *userdata)
 
     self->chunk = &context->chunk;
     self->ip    = self->chunk->code;
+    reset_stack(self);
     vm_execute(self);
 }
 
@@ -428,7 +429,8 @@ vm_throw_error(lulu_VM *self, lulu_Status status)
 void
 vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, int len)
 {
-    fprintf(stderr, "%s:%i: %s at '%.*s'\n", file, line, msg, len, where);
+    lulu_push_string(self, where, len);
+    lulu_push_fstring(self, "%s:%i: %s at '%s'", file, line, msg, lulu_to_string(self, -1));
     vm_throw_error(self, LULU_ERROR_COMPTIME);
 }
 
@@ -445,12 +447,10 @@ vm_runtime_error(lulu_VM *self, cstring fmt, ...)
     cstring file  = chunk->filename;
     int     line  = chunk->lines[self->ip - chunk->code - 1];
     va_start(args, fmt);
-    fprintf(stderr, "%s:%i: ", file, line);
-    vfprintf(stderr, fmt, args);
-    fputc('\n', stderr);
+    lulu_push_fstring(self, "%s:%i: ", file, line);
+    lulu_push_vfstring(self, fmt, args);
+    lulu_concat(self, 2);
     va_end(args);
 
-    // Ensure stack is valid for the next run.
-    reset_stack(self);
     vm_throw_error(self, LULU_ERROR_RUNTIME);
 }

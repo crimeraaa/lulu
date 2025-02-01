@@ -55,6 +55,9 @@ vm_interpret(lulu_VM *self, const char *input, isize len, cstring chunk_name);
 void
 vm_push(lulu_VM *self, const Value *value);
 
+void
+vm_concat(lulu_VM *vm, int count);
+
 /**
  * @brief
  *      Internally, creates a new error handler to wrap the call to `fn`. This

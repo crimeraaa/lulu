@@ -1,8 +1,9 @@
 #ifndef LULU_H
 #define LULU_H
 
-#include <stddef.h>     // size_t, ptrdiff_t
-#include <stdint.h>     // [u]int8_t, [u]int16_t, [u]int32_t, [u]int64_t
+#include <stdarg.h> // va_list
+#include <stddef.h> // size_t, ptrdiff_t
+#include <stdint.h> // [u]int8_t, [u]int16_t, [u]int32_t, [u]int64_t
 
 // In C++, 'bool' is keyword so including this header (if it exists) is redundant.
 #ifndef __cplusplus
@@ -212,6 +213,15 @@ lulu_is_table(lulu_VM *vm, int offset);
 
 ///=============================================================================
 
+///=== STACK ACCESS FUNCTIONS ==================================================
+
+cstring
+lulu_to_lstring(lulu_VM *vm, int offset, isize *out_len);
+
+#define lulu_to_string(vm, offset)  lulu_to_lstring(vm, offset, NULL)
+
+///=============================================================================
+
 ///=== STACK MANIPULATION FUNCTIONS ============================================
 
 void
@@ -231,6 +241,16 @@ lulu_push_cstring(lulu_VM *vm, cstring cstr);
 
 void
 lulu_push_string(lulu_VM *vm, const char *data, isize len);
+
+LULU_ATTR_PRINTF(2, 3)
+cstring
+lulu_push_fstring(lulu_VM *vm, cstring fmt, ...);
+
+cstring
+lulu_push_vfstring(lulu_VM *vm, cstring fmt, va_list args);
+
+void
+lulu_concat(lulu_VM *vm, int count);
 
 void
 lulu_push_value(lulu_VM *vm, int stack_index);
