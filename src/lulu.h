@@ -216,9 +216,9 @@ lulu_is_table(lulu_VM *vm, int offset);
 ///=== STACK ACCESS FUNCTIONS ==================================================
 
 cstring
-lulu_to_lstring(lulu_VM *vm, int offset, isize *out_len);
+lulu_to_string(lulu_VM *vm, int offset, isize *out_len);
 
-#define lulu_to_string(vm, offset)  lulu_to_lstring(vm, offset, NULL)
+#define lulu_to_cstring(vm, offset)  lulu_to_string(vm, offset, NULL)
 
 ///=============================================================================
 
@@ -256,7 +256,7 @@ void
 lulu_push_value(lulu_VM *vm, int stack_index);
 
 void
-lulu_push_table(lulu_VM *vm, int n_hash, int n_array);
+lulu_push_table(lulu_VM *vm, int count_hash, int count_array);
 
 #define lulu_push_empty_table(vm)   lulu_push_table(vm, 0)
 #define lulu_push_literal(vm, cstr) lulu_push_string(vm, cstr, size_of(cstr) - 1)

@@ -22,7 +22,7 @@ struct Error_Handler {
  *      https://www.lua.org/source/5.1/ldo.h.html#Pfunc
  */
 typedef void
-(*Protected_Fn)(lulu_VM *vm, void *userdata);
+(*Protected_Fn)(lulu_VM *vm, void *user_ptr);
 
 struct lulu_VM {
     Value  values[LULU_VM_STACK_MAX];
@@ -67,7 +67,7 @@ vm_concat(lulu_VM *vm, int count);
  *      https://www.lua.org/source/5.1/ldo.c.html#luaD_pcall
  */
 lulu_Status
-vm_run_protected(lulu_VM *self, Protected_Fn fn, void *userdata);
+vm_run_protected(lulu_VM *self, Protected_Fn fn, void *user_ptr);
 
 LULU_ATTR_NORETURN
 void
@@ -75,7 +75,7 @@ vm_throw_error(lulu_VM *self, lulu_Status status);
 
 LULU_ATTR_NORETURN
 void
-vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, int len);
+vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len);
 
 LULU_ATTR_NORETURN LULU_ATTR_PRINTF(2, 3)
 void

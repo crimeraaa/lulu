@@ -69,7 +69,7 @@ adjust_capacity(lulu_VM *vm, Table *table, int new_cap)
     }
 
     Pair *old_pairs   = table->pairs;
-    int   new_n_pairs = 0;
+    int   new_count_pairs = 0;
     int   old_cap     = table->cap;
     for (int i = 0; i < old_cap; i++) {
         Pair *src = &old_pairs[i];
@@ -79,26 +79,26 @@ adjust_capacity(lulu_VM *vm, Table *table, int new_cap)
         Pair *dst = find_pair(new_pairs, new_cap, &src->key);
         dst->key   = src->key;
         dst->value = src->value;
-        new_n_pairs++;
+        new_count_pairs++;
     }
 
     array_free(Pair, vm, old_pairs, old_cap);
-    table->pairs   = new_pairs;
-    table->n_pairs = new_n_pairs;
-    table->cap     = new_cap;
+    table->pairs       = new_pairs;
+    table->count_pairs = new_count_pairs;
+    table->cap         = new_cap;
 }
 
 Table *
-table_new(lulu_VM *vm, int n_hash, int n_array)
+table_new(lulu_VM *vm, int count_hash, int count_array)
 {
     Table *table = cast(Table *)object_new(vm, LULU_TYPE_TABLE, size_of(*table));
     table_init(table);
     // Clamp cap to a power of 2 so that we never modulo by 0 or 1.
-    if (n_hash > 0) {
-        adjust_capacity(vm, table, mem_grow_capacity(n_hash));
+    if (count_hash > 0) {
+        adjust_capacity(vm, table, mem_grow_capacity(count_hash));
     }
-    if (n_array > 0) {
-        varray_reserve(vm, &table->array, mem_grow_capacity(n_array));
+    if (count_array > 0) {
+        varray_reserve(vm, &table->array, mem_grow_capacity(count_array));
     }
     return table;
 }
@@ -108,7 +108,7 @@ table_init(Table *self)
 {
     varray_init(&self->array);
     self->pairs   = NULL;
-    self->n_pairs = 0;
+    self->count_pairs = 0;
     self->cap     = 0;
 }
 
@@ -123,7 +123,7 @@ table_free(lulu_VM *vm, Table *self)
 static const Value *
 table_get_hash(Table *self, const Value *key)
 {
-    if (self->n_pairs == 0 || value_is_nil(key)) {
+    if (self->count_pairs == 0 || value_is_nil(key)) {
         return NULL;
     }
     Pair *pair = find_pair(self->pairs, self->cap, key);
@@ -158,7 +158,7 @@ table_intern_string(lulu_VM *vm, Table *self, OString *string)
 OString *
 table_find_string(Table *self, const char *data, isize len, u32 hash)
 {
-    if (self->n_pairs == 0) {
+    if (self->count_pairs == 0) {
         return NULL;
     }
     u32   cap   = cast(u32)self->cap;
@@ -187,14 +187,14 @@ table_find_string(Table *self, const char *data, isize len, u32 hash)
 bool
 table_set_hash(lulu_VM *vm, Table *self, const Value *key, const Value *value)
 {
-    if (self->n_pairs >= self->cap * LULU_TABLE_MAX_LOAD) {
+    if (self->count_pairs >= self->cap * LULU_TABLE_MAX_LOAD) {
         adjust_capacity(vm, self, mem_grow_capacity(self->cap));
     }
 
     Pair *pair = find_pair(self->pairs, self->cap, key);
     bool is_new_key = value_is_nil(&pair->key);
     if (is_new_key && value_is_nil(&pair->value)) {
-        self->n_pairs++;
+        self->count_pairs++;
     }
     pair->key   = *key;
     pair->value = *value;
@@ -218,8 +218,9 @@ move_hash_to_array(lulu_VM *vm, Table *table, VArray *array, int start)
 }
 
 void
-table_set_array(lulu_VM *vm, Table *table, VArray *array, int index, const Value *value)
+table_set_array(lulu_VM *vm, Table *table, int index, const Value *value)
 {
+    VArray *array = &table->array;
     varray_write_at(vm, array, index - 1, value);
 
     /**
@@ -253,8 +254,6 @@ table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
     if (value_is_nil(key)) {
         return false;
     } else if (value_number_is_integer(key, &index)) {
-        VArray *array = &self->array;
-
         /**
          * We can directly write/append to the array segment.
          * Index 1 will ALWAYS go to the array segment.
@@ -262,8 +261,8 @@ table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
          * @note 2024-12-31:
          *      See: 'table_set_array' for why we use 'cap'.
          */
-        if (1 <= index && index <= array->cap) {
-            table_set_array(vm, self, array, index, value);
+        if (1 <= index && index <= self->array.cap) {
+            table_set_array(vm, self, index, value);
             return true;
         }
     }
@@ -273,7 +272,7 @@ table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value)
 bool
 table_unset(Table *self, const Value *key)
 {
-    if (self->n_pairs == 0 || value_is_nil(key)) {
+    if (self->count_pairs == 0 || value_is_nil(key)) {
         return false;
     }
 

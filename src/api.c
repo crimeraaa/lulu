@@ -100,7 +100,7 @@ lulu_is_table(lulu_VM *vm, int offset)
 ///=============================================================================
 
 cstring
-lulu_to_lstring(lulu_VM *vm, int offset, isize *out_len)
+lulu_to_string(lulu_VM *vm, int offset, isize *out_len)
 {
     const Value *value = offset_to_address(vm, offset);
     if (value_is_string(value)) {
@@ -218,6 +218,7 @@ lulu_push_vfstring(lulu_VM *vm, cstring fmt, va_list args)
             builder_write_string(builder, buf, cast(isize)len);
             break;
         case 'c':
+            // `char` is promoted to `int` in a variadic argument list.
             builder_write_char(builder, cast(char)va_arg(args, int));
             break;
         case '%':
@@ -236,14 +237,14 @@ lulu_push_vfstring(lulu_VM *vm, cstring fmt, va_list args)
     isize len;
     cstring result = builder_to_string(builder, &len);
     lulu_push_string(vm, result, len);
-    return lulu_to_string(vm, -1);
+    return lulu_to_cstring(vm, -1);
 }
 
 void
-lulu_push_table(lulu_VM *vm, int n_hash, int n_array)
+lulu_push_table(lulu_VM *vm, int count_hash, int count_array)
 {
     Value tmp;
-    value_set_table(&tmp, table_new(vm, n_hash, n_array));
+    value_set_table(&tmp, table_new(vm, count_hash, count_array));
     push_safe(vm, &tmp);
 }
 

@@ -45,7 +45,7 @@ ostring_hash(const char *data, isize len)
 {
     u32 hash = FNV1A_OFFSET_32;
     for (isize i = 0; i < len; i++) {
-        hash ^= cast(byte)data[i];
+        hash ^= cast(u32)data[i];
         hash *= FNV1A_PRIME_32;
     }
     return hash;

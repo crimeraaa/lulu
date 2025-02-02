@@ -48,7 +48,7 @@ run(lulu_VM *vm, const char *input, isize len, cstring file)
 {
     lulu_Status status = vm_interpret(vm, input, len, file);
     if (status != LULU_OK) {
-        fprintf(stderr, "%s\n", lulu_to_string(vm, -1));
+        fprintf(stderr, "%s\n", lulu_to_cstring(vm, -1));
     }
     return status;
 }

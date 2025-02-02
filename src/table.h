@@ -14,12 +14,12 @@ struct Table {
     Object  base;
     VArray  array;
     Pair   *pairs;
-    int     n_pairs; // Number of active pairs.
-    int     cap;     // Number of total allocated pairs.
+    int     count_pairs; // Number of active pairs.
+    int     cap;         // Number of total allocated pairs.
 };
 
 Table *
-table_new(lulu_VM *vm, int n_hash, int n_array);
+table_new(lulu_VM *vm, int count_hash, int count_array);
 
 void
 table_init(Table *self);
@@ -49,7 +49,7 @@ bool
 table_set_hash(lulu_VM *vm, Table *self, const Value *key, const Value *value);
 
 void
-table_set_array(lulu_VM *vm, Table *table, VArray *array, int index, const Value *value);
+table_set_array(lulu_VM *vm, Table *table, int index, const Value *value);
 
 bool
 table_unset(Table *self, const Value *key);

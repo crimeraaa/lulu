@@ -143,7 +143,7 @@ wrap_error(lulu_VM *vm, cstring filename, const Token *token, cstring msg)
         where = str.data;
         len   = str.len;
     }
-    vm_comptime_error(vm, filename, token->line, msg, where, cast(int)len);
+    vm_comptime_error(vm, filename, token->line, msg, where, len);
 }
 
 void

@@ -28,10 +28,10 @@ init_table(Table *table)
 
 // These are the bare minimum dynamic allocations required for the VM to function.
 static void
-required_allocs(lulu_VM *self, void *userdata)
+required_allocs(lulu_VM *self, void *user_ptr)
 {
     Value value;
-    unused(userdata);
+    unused(user_ptr);
     value_set_table(&value, &self->globals);
     lulu_push_literal(self, "_G");
     // Will most likely realloc the globals table!
@@ -264,9 +264,8 @@ do {                                                                           \
 
             // 'i_table' is always positive.
             Table  *table = base[i_table].table;
-            VArray *array = &table->array;
             for (int i = 0; i < n_array; i++) {
-                table_set_array(self, table, array, i + 1, &top[-n_array + i]);
+                table_set_array(self, table, i + 1, &top[-n_array + i]);
             }
             lulu_pop(self, n_array);
             break;
@@ -360,10 +359,10 @@ typedef struct {
 } Compiler_Context;
 
 static void
-compile_and_run(lulu_VM *self, void *userdata)
+compile_and_run(lulu_VM *self, void *user_ptr)
 {
     Compiler          compiler;
-    Compiler_Context *context = cast(Compiler_Context *)userdata;
+    Compiler_Context *context = cast(Compiler_Context *)user_ptr;
 
     compiler_init(self, &compiler);
     compiler_compile(&compiler, context->input, context->len, &context->chunk);
@@ -395,7 +394,7 @@ vm_push(lulu_VM *self, const Value *value)
 }
 
 lulu_Status
-vm_run_protected(lulu_VM *self, Protected_Fn fn, void *userdata)
+vm_run_protected(lulu_VM *self, Protected_Fn fn, void *user_ptr)
 {
     Error_Handler handler;
 
@@ -405,7 +404,7 @@ vm_run_protected(lulu_VM *self, Protected_Fn fn, void *userdata)
     self->handlers = &handler;
 
     LULU_IMPL_TRY(&handler, {
-        fn(self, userdata);
+        fn(self, user_ptr);
     });
 
     // Restore old error handler
@@ -427,10 +426,10 @@ vm_throw_error(lulu_VM *self, lulu_Status status)
 }
 
 void
-vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, int len)
+vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len)
 {
     lulu_push_string(self, where, len);
-    lulu_push_fstring(self, "%s:%i: %s at '%s'", file, line, msg, lulu_to_string(self, -1));
+    lulu_push_fstring(self, "%s:%i: %s at '%s'", file, line, msg, lulu_to_cstring(self, -1));
     vm_throw_error(self, LULU_ERROR_COMPTIME);
 }
 

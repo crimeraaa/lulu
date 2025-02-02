@@ -24,8 +24,8 @@ struct LValue {
     LValue_Type type; // Determines what opcode we will use.
     union {
         struct { u16 i_table, i_key, n_pop; };
-        u32   global;
-        byte  local;
+        u32 global;
+        u8  local;
     }; // Arguments to the various opcodes.
 };
 

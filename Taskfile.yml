@@ -105,7 +105,7 @@ tasks:
       VIM_FLAGS: >-
         -e
         -u NONE
-        -c ':bufdo! %s/{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
+        -c ':bufdo! %s/\v{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
         -c ':xa'
     prompt: This command will potentially modify all files in '{{.DIR_SRC}}/'. Continue?
     cmds:

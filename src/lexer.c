@@ -146,7 +146,7 @@ error_token(const Lexer *lexer, cstring msg)
 {
     Token       token = make_token(lexer, TOKEN_ERROR);
     const char *where = token.start;
-    int         len   = cast(int)token.len;
+    isize       len   = token.len;
     vm_comptime_error(lexer->vm, lexer->filename, token.line, msg, where, len);
 }
 
