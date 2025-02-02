@@ -23,8 +23,12 @@ to_string :: proc(vm: ^VM, index: int) -> (result: string, ok: bool) {
 
 concat :: proc(vm: ^VM, count: int) {
     switch count {
-    case 0: push_string(vm, ""); return
-    case 1: // Would be redundant to pop the one string then re-push it!
+    case 0:
+        push_string(vm, "")
+        return
+    case 1:
+        // Would be redundant to pop the one string then re-push it!
+        return
     }
     // Overwrite the first argument when done and do not pop it.
     first_arg := vm.top - count
