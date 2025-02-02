@@ -4,6 +4,9 @@ package lulu
 import "core:fmt"
 import "core:strings"
 
+// https://www.lua.org/source/5.1/luaconf.h.html#LUAI_MAXCCALLS
+PARSER_MAX_RECURSE :: 200
+
 Parser :: struct {
     vm:                 ^VM,
     lexer:               Lexer,
@@ -191,7 +194,7 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
         // a, b, c, d = 1, 2, 3; free_reg = 3; n_lvalues = 4; n_exprs = 3;
         n   := n_lvalues - n_exprs
         reg := compiler.free_reg
-        compiler_reserve_reg(compiler, n)
+        compiler_reserve_reg(compiler, cast(int)n)
         compiler_emit_nil(compiler, reg, n)
     }
 
@@ -348,6 +351,9 @@ grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
 parser_recurse_begin :: proc(parser: ^Parser) {
     parser.recurse += 1
+    if parser.recurse >= PARSER_MAX_RECURSE {
+        parser_error_consumed(parser, "Too many syntax levels")
+    }
 }
 
 parser_recurse_end :: proc(parser: ^Parser) {

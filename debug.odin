@@ -17,19 +17,19 @@ debug_dump_chunk :: proc(chunk: Chunk) {
     }
 
     fmt.println("\n.code")
-    for inst, index in chunk.code {
+    for inst, index in chunk.code[:chunk.pc] {
         debug_dump_instruction(chunk, inst, index)
     }
 }
 
 debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     // unary negation, not and length never operate on constant indexes.
-    unary :: proc($op: string, inst: Instruction) {
+    unary :: proc(op: string, inst: Instruction) {
         print_args2(inst)
         fmt.printfln("reg[%i] := %sreg[%i]", inst.a, op, inst.b)
     }
 
-    binary :: proc($op: string, inst: Instruction) {
+    binary :: proc(op: string, inst: Instruction) {
         b_where, b_index := get_rk(inst.b)
         c_where, c_index := get_rk(inst.c)
         print_args3(inst)

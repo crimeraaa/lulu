@@ -47,7 +47,7 @@ Analogous to:
 Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_reserveregs
  */
-compiler_reserve_reg :: proc(compiler: ^Compiler, #any_int count: int) {
+compiler_reserve_reg :: proc(compiler: ^Compiler, count: int) {
     // log.debugf("free_reg := %i + %i", compiler.free_reg, count, location = location)
     // @todo 2025-01-06: Check the VM's available stack size?
     compiler.free_reg += cast(u16)count
