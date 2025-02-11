@@ -4,8 +4,6 @@ package lulu
 import "core:math"
 import "core:mem"
 
-MAX_LOAD :: 0.75
-
 Table :: struct {
     using base: Object_Header,
     entries:    []Table_Entry, // `len(entries)` == allocated capacity.

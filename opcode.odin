@@ -17,7 +17,7 @@ MAX_OP      :: 1<<SIZE_OP - 1       // (1 << 6)  - 1 = 0b0011_1111
 // Starting bit indexes.
 OFFSET_B    :: OFFSET_C  + SIZE_C   // 14 + 9 = 23
 OFFSET_C    :: OFFSET_A  + SIZE_A   // 6  + 8 = 14
-OFFSET_BC   :: OFFSET_C             // = 14
+OFFSET_BC   :: OFFSET_C             //        = 14
 OFFSET_A    :: OFFSET_OP + SIZE_OP  // 0 + 6  = 6
 OFFSET_OP   :: 0
 

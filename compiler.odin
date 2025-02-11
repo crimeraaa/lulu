@@ -7,9 +7,18 @@ import "core:log"
 _ :: fmt // needed for when !ODIN_DEBUG
 
 MAX_CONSTANTS :: MAX_uBC
+MAX_LOCALS    :: cast(int)max(u8) + 1
+
+Local :: struct {
+    ident: ^OString,
+    depth: int,
+}
 
 Compiler :: struct {
     vm:         ^VM,
+    locals:      [MAX_LOCALS]Local,
+    count_local: int,      // How many locals are currently active?
+    scope_depth: int,      // How far down is our current lexical scope?
     parent:     ^Compiler, // Enclosing state.
     parser:     ^Parser,   // All nested compilers share the same parser.
     chunk:      ^Chunk,    // Compilers do not own their chunks. They merely fill them.
@@ -34,6 +43,23 @@ compiler_end :: proc(compiler: ^Compiler) {
     when DEBUG_PRINT_CODE {
         fmt.printfln("=== STACK USAGE ===\n%i", compiler.stack_usage)
         debug_dump_chunk(compiler.chunk^)
+    }
+}
+
+compiler_begin_scope :: proc(compiler: ^Compiler) {
+    compiler.scope_depth += 1
+}
+
+compiler_end_scope :: proc(compiler: ^Compiler) {
+    ndepth  := compiler.scope_depth - 1
+    nlocals := compiler.count_local
+    defer {
+        compiler.scope_depth = ndepth
+        compiler.count_local = nlocals
+    }
+    for nlocals > 0 && compiler.locals[nlocals].depth > ndepth {
+        // emitByte(OP_POP)
+        nlocals -= 1
     }
 }
 
@@ -301,6 +327,37 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
         parser_error_consumed(compiler.parser, "Function uses too many constants")
     }
     return index
+}
+
+UNINITIALIZED_LOCAL :: -1
+
+/* 
+Analogous to:
+-   `compiler.c:addLocal()` in the book.
+-   `lparser.c:registerlocalvar(LexState *ls, TString *varname)` in Lua 5.1.
+
+Links:
+-   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
+ */
+compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (local_index: int) {
+    if compiler.count_local >= MAX_LOCALS {
+        parser_error_consumed(compiler.parser, "Too many local variables")
+    }
+    defer compiler.count_local += 1
+    
+    local := &compiler.locals[compiler.count_local]
+    local.ident = ident
+    local.depth = UNINITIALIZED_LOCAL
+    return compiler.count_local
+}
+
+compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: int, ok: bool) {
+    #reverse for local, index in compiler.locals[:compiler.count_local] {
+        if local.ident == ident {
+            return index, true
+        }
+    }
+    return -1, false
 }
 
 /*

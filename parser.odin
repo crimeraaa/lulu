@@ -46,10 +46,10 @@ Expr :: struct {
 }
 
 Expr_Info :: struct #raw_union {
-    number  : f64, // .Number
-    reg     : u16, // .Discharged
-    index   : u32, // .Constant, .Global
-    pc      : int, // .Need_Register
+    number: f64, // .Number
+    reg:    u16, // .Discharged
+    index:  u32, // .Constant, .Global
+    pc:     int, // .Need_Register
 }
 
 /*
@@ -66,6 +66,7 @@ Expr_Type :: enum u8 {
     Number,
     Constant,
     Global,
+    Local,
 }
 
 // Intended to be easier to grep
@@ -183,22 +184,22 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
     }
     parser_consume(parser, .Equals)
 
-    n_lvalues := lvalue_count(last)
-    n_exprs   := expr_list(parser, compiler)
+    count_lvalues := lvalue_count(last)
+    count_exprs   := expr_list(parser, compiler)
 
-    if n_exprs > n_lvalues {
-        // a, b, c = 1, 2, 3, 4; free_reg = 4; n_lvalues = 3; n_exprs = 4;
-        compiler.free_reg -= n_exprs - n_lvalues
+    if count_exprs > count_lvalues {
+        // a, b, c = 1, 2, 3, 4; free_reg = 4; count_lvalues = 3; count_exprs = 4;
+        compiler.free_reg -= count_exprs - count_lvalues
     }
-    if n_lvalues > n_exprs {
-        // a, b, c, d = 1, 2, 3; free_reg = 3; n_lvalues = 4; n_exprs = 3;
-        n   := n_lvalues - n_exprs
+    if count_lvalues > count_exprs {
+        // a, b, c, d = 1, 2, 3; free_reg = 3; count_lvalues = 4; count_exprs = 3;
+        n   := count_lvalues - count_exprs
         reg := compiler.free_reg
         compiler_reserve_reg(compiler, cast(int)n)
         compiler_emit_nil(compiler, reg, n)
     }
 
-    // a, b, c = 1, 2, 3; free_reg = 3; n_exprs = 3; reg = 2
+    // a, b, c = 1, 2, 3; free_reg = 3; count_exprs = 3; reg = 2
     reg := compiler.free_reg - 1
 
     // Assign going downwards and free in the correct order so that these
@@ -235,7 +236,8 @@ Analogous to:
 @(private="file")
 identifier_constant :: proc(parser: ^Parser, compiler: ^Compiler, token: Token) -> (index: u32) {
     identifier := ostring_new(parser.vm, token.lexeme)
-    return compiler_add_constant(compiler, value_make_string(identifier))
+    value      := value_make_string(identifier)
+    return compiler_add_constant(compiler, value)
 }
 
 /*
@@ -251,9 +253,70 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     // line := parser.lookahead.line
     if parser_match(parser, .Print) {
         print_statement(parser, compiler)
+    } else if parser_match(parser, .Do) {
+        compiler_begin_scope(compiler)
+        block(parser, compiler)
+        compiler_end_scope(compiler)
+    } else if parser_match(parser, .Local) {
+        /*
+        Form:
+        -   'local' <identifier> ['=' <expression>]
+            
+        Notes:
+        -   Due to the differences in Lua and Lox, we cannot combine local variable
+            declarations into our `parseVariable()` analog as we do not have a
+            catch-all `var` keyword.
+        */
+        parser_consume(parser, .Identifier)
+        declare_variable(parser, compiler)
+        
+        expr := &Expr{}
+        if parser_match(parser, .Equals) {
+            expression(parser, compiler, expr)
+        } else {
+            expr_init(expr, .Nil)
+        }
+        /*
+        Normally, we want to ensure zero stack effect. However, in this case,
+        we want the initialization expressions to remain on the stack as they
+        will act as the local variables themselves.
+        */
     } else {
         error_at(parser, parser.lookahead, "Expected an expression")
     }
+}
+
+/* 
+Analogous to:
+-   `compiler.c:declareVariable()` in the book.
+-   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.
+
+Notes:
+-   Assumes a token of type `.Identifier` was just consumed.
+ */
+@(private="file")
+declare_variable :: proc(parser: ^Parser, compiler: ^Compiler) {
+    index := identifier_constant(parser, compiler, parser.consumed)
+    ident := compiler.chunk.constants[index].ostring
+    for local, index in compiler.locals[:compiler.count_local] {
+        // We hit an initialized local in an outer scope?
+        if local.depth != UNINITIALIZED_LOCAL && local.depth < compiler.scope_depth {
+            break
+        }
+        if local.ident == ident {
+            parser_error_consumed(parser, "Shadowing of local variable")
+        }
+    }
+    compiler_add_local(compiler, ident)
+}
+
+@(private="file")
+block :: proc(parser: ^Parser, compiler: ^Compiler) {
+    for !parser_check(parser, .End) && !parser_check(parser, .Eof) {
+        // Analog to `compiler.c:declaration()` in the book.
+        parser_parse(parser, compiler)
+    }
+    parser_consume(parser, .End)
 }
 
 @(private="file")
@@ -383,8 +446,14 @@ Assumptions:
 variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     // Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
     index := identifier_constant(parser, compiler, parser.consumed)
-    expr_init(expr, .Global)
-    expr.index = index
+    ident := compiler.chunk.constants[index].ostring
+    local, ok := compiler_resolve_local(compiler, ident)
+    if ok {
+        expr_init(expr, .Local)
+    } else {
+        expr_init(expr, .Global)
+        expr.index = index
+    }
 }
 
 @(private="file")
