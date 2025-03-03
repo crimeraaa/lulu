@@ -23,9 +23,9 @@ struct LValue {
     LValue     *prev; // Use recursion to chain multiple assignments.
     LValue_Type type; // Determines what opcode we will use.
     union {
-        struct { u16 i_table, i_key, n_pop; };
-        u32 global;
-        u8  local;
+        struct { uint16_t i_table, i_key, n_pop; };
+        uint32_t global;
+        uint8_t  local;
     }; // Arguments to the various opcodes.
 };
 
@@ -61,7 +61,7 @@ typedef const struct {
 } Parse_Rule;
 
 void
-parser_init(lulu_VM *vm, Parser *self, Compiler *compiler, cstring filename, const char *input, isize len);
+parser_init(lulu_VM *vm, Parser *self, Compiler *compiler, const char *filename, const char *input, isize len);
 
 /**
  * @note 2024-09-06
@@ -75,7 +75,7 @@ parser_advance_token(Parser *self);
  *      Analogous to the book's `compiler.c:consume()`.
  */
 void
-parser_consume_token(Parser *self, Token_Type type, cstring msg);
+parser_consume_token(Parser *self, Token_Type type, const char *msg);
 
 /**
  * @brief
@@ -98,7 +98,7 @@ parser_declaration(Parser *self, Compiler *compiler);
  */
 LULU_ATTR_NORETURN
 void
-parser_error_current(Parser *self, cstring msg);
+parser_error_current(Parser *self, const char *msg);
 
 /**
  * @note 2024-09-07
@@ -106,6 +106,6 @@ parser_error_current(Parser *self, cstring msg);
  */
 LULU_ATTR_NORETURN
 void
-parser_error_consumed(Parser *self, cstring msg);
+parser_error_consumed(Parser *self, const char *msg);
 
 #endif // LULU_PARSER_H

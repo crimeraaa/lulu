@@ -4,7 +4,7 @@
 /// standard
 #include <string.h> // memcpy, memcmp
 
-static u32
+static uint32_t
 hash_number(Number number)
 {
     char buf[size_of(number)];
@@ -12,7 +12,7 @@ hash_number(Number number)
     return ostring_hash(buf, size_of(buf));
 }
 
-static u32
+static uint32_t
 hash_pointer(const void *pointer)
 {
     char buf[size_of(pointer)];
@@ -20,12 +20,12 @@ hash_pointer(const void *pointer)
     return ostring_hash(buf, size_of(buf));
 }
 
-static u32
+static uint32_t
 hash_value(const Value *key)
 {
     switch (key->type) {
     case LULU_TYPE_NIL:     return 0; // Should not happen!
-    case LULU_TYPE_BOOLEAN: return cast(u32)key->boolean;
+    case LULU_TYPE_BOOLEAN: return cast(uint32_t)key->boolean;
     case LULU_TYPE_NUMBER:  return hash_number(key->number);
     case LULU_TYPE_STRING:  return key->string->hash;
     case LULU_TYPE_TABLE:   return hash_pointer(key->table);
@@ -36,9 +36,9 @@ hash_value(const Value *key)
 static Pair *
 find_pair(Pair *pairs, int cap, const Value *key)
 {
-    u32   dcap      = cast(u32)cap; // "dummy" cap for type safety.
-    u32   index     = hash_value(key) % dcap;
-    Pair *tombstone = NULL;
+    uint32_t dcap      = cast(uint32_t)cap; // "dummy" cap for type safety.
+    uint32_t index     = hash_value(key) % dcap;
+    Pair    *tombstone = NULL;
     for (;;) {
         Pair *pair = &pairs[index];
         // Empty key or tombstone?
@@ -156,13 +156,13 @@ table_intern_string(lulu_VM *vm, Table *self, OString *string)
 }
 
 OString *
-table_find_string(Table *self, const char *data, isize len, u32 hash)
+table_find_string(Table *self, const char *data, isize len, uint32_t hash)
 {
     if (self->count_pairs == 0) {
         return NULL;
     }
-    u32   cap   = cast(u32)self->cap;
-    u32   index = hash % cap;
+    uint32_t   cap   = cast(uint32_t)self->cap;
+    uint32_t   index = hash % cap;
     Pair *pairs = self->pairs;
     for (;;) {
         Pair  *pair = &pairs[index];

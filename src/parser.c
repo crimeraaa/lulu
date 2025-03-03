@@ -45,10 +45,10 @@ get_rule(Token_Type type);
  * @note 2024-12-13
  *      Assumes we just consumed a '=' token.
  */
-static u16
+static uint16_t
 parse_expression_list(Parser *parser, Compiler *compiler)
 {
-    u16 count = 0;
+    uint16_t count = 0;
     do {
         expression(parser, compiler);
         count++;
@@ -58,7 +58,7 @@ parse_expression_list(Parser *parser, Compiler *compiler)
 
 LULU_ATTR_UNUSED
 static void
-print_token(const Token *token, cstring name)
+print_token(const Token *token, const char *name)
 {
     printf("%s{type=%i, lexeme={\"%.*s\"},line=%i}",
         name,
@@ -79,7 +79,7 @@ print_parser(const Parser *parser)
 }
 
 void
-parser_init(lulu_VM *vm, Parser *self, Compiler *compiler, cstring filename, const char *input, isize len)
+parser_init(lulu_VM *vm, Parser *self, Compiler *compiler, const char *filename, const char *input, isize len)
 {
     lexer_init(vm, &self->lexer, filename, input, len);
     token_init_empty(&self->consumed);
@@ -110,7 +110,7 @@ check_token(Parser *parser, Token_Type type)
 }
 
 void
-parser_consume_token(Parser *self, Token_Type type, cstring msg)
+parser_consume_token(Parser *self, Token_Type type, const char *msg)
 {
     if (parser_match_token(self, type)) {
         return;
@@ -134,7 +134,7 @@ parser_match_token(Parser *self, Token_Type type)
 
 LULU_ATTR_NORETURN
 static void
-wrap_error(lulu_VM *vm, cstring filename, const Token *token, cstring msg)
+wrap_error(lulu_VM *vm, const char *filename, const Token *token, const char *msg)
 {
     const char *where = token->start;
     isize       len   = token->len;
@@ -147,14 +147,14 @@ wrap_error(lulu_VM *vm, cstring filename, const Token *token, cstring msg)
 }
 
 void
-parser_error_current(Parser *self, cstring msg)
+parser_error_current(Parser *self, const char *msg)
 {
     Lexer *lexer = &self->lexer;
     wrap_error(lexer->vm, lexer->filename, &self->lookahead, msg);
 }
 
 void
-parser_error_consumed(Parser *self, cstring msg)
+parser_error_consumed(Parser *self, const char *msg)
 {
     Lexer *lexer = &self->lexer;
     wrap_error(lexer->vm, lexer->filename, &self->consumed, msg);
@@ -187,7 +187,7 @@ get_binary_op(Token_Type type)
 static void
 concat(Parser *parser, Compiler *compiler)
 {
-    u16 argc = 1;
+    uint16_t argc = 1;
     for (;;) {
         if (argc >= cast(int)LULU_MAX_BYTE) {
             parser_error_consumed(parser, "Too many consecutive concatenations");
@@ -264,10 +264,10 @@ named_variable(Parser *parser, Compiler *compiler, Token *ident)
 {
     int local = compiler_resolve_local(compiler, &parser->consumed);
     if (local == UNRESOLVED_LOCAL) {
-        u32 global = compiler_identifier_constant(compiler, ident);
+        uint32_t global = compiler_identifier_constant(compiler, ident);
         compiler_emit_ABC(compiler, OP_GET_GLOBAL, global);
     } else {
-        compiler_emit_A(compiler, OP_GET_LOCAL, cast(u16)local);
+        compiler_emit_A(compiler, OP_GET_LOCAL, cast(uint16_t)local);
     }
 
     for (;;) {
@@ -349,13 +349,13 @@ static void
 table(Parser *parser, Compiler *compiler)
 {
     int i_code  = compiler_new_table(compiler);
-    u16 i_table = cast(u16)(compiler->stack_usage - 1);
-    u16 n_hash  = 0;
-    u16 n_array = 0;
+    uint16_t i_table = cast(uint16_t)(compiler->stack_usage - 1);
+    uint16_t n_hash  = 0;
+    uint16_t n_array = 0;
     // Have 1 or more fields to deal with?
     while (!check_token(parser, TOKEN_CURLY_R)) {
-        u16   i_key = cast(u16)compiler->stack_usage;
-        Token prev  = parser->consumed;
+        uint16_t i_key = cast(uint16_t)compiler->stack_usage;
+        Token    prev  = parser->consumed;
         if (parser_match_token(parser, TOKEN_BRACKET_L)) {
             expression(parser, compiler);
             parser_consume_token(parser, TOKEN_BRACKET_R, "to close '['");
@@ -499,14 +499,14 @@ block(Parser *parser, Compiler *compiler)
 static void
 print_statement(Parser *parser, Compiler *compiler)
 {
-    u16 argc = 0;
+    uint16_t argc = 0;
     parser_consume_token(parser, TOKEN_PAREN_L, "after 'print'");
     // Potentially have at least 1 argument?
     if (!parser_match_token(parser, TOKEN_PAREN_R)) {
         argc = parse_expression_list(parser, compiler);
         parser_consume_token(parser, TOKEN_PAREN_R, "to close call");
     }
-    compiler_emit_A(compiler, OP_PRINT, cast(u16)argc);
+    compiler_emit_A(compiler, OP_PRINT, cast(uint16_t)argc);
 }
 
 static void
@@ -553,9 +553,9 @@ static void
 adjust_assignment_list(Compiler *compiler, int assigns, int exprs)
 {
     if (assigns > exprs) {
-        compiler_emit_nil(compiler, cast(u16)(assigns - exprs));
+        compiler_emit_nil(compiler, cast(uint16_t)(assigns - exprs));
     } else if (assigns < exprs) {
-        compiler_emit_pop(compiler, cast(u16)(exprs - assigns));
+        compiler_emit_pop(compiler, cast(uint16_t)(exprs - assigns));
     }
 }
 
@@ -575,7 +575,7 @@ assign_lvalues(Parser *parser, Compiler *compiler, LValue *last)
 }
 
 static bool
-resolve_lvalue_field(Parser *parser, Compiler *compiler, LValue *lvalue, u16 i_table)
+resolve_lvalue_field(Parser *parser, Compiler *compiler, LValue *lvalue, uint16_t i_table)
 {
     if (parser_match_token(parser, TOKEN_PERIOD)) {
         parser_consume_token(parser, TOKEN_IDENTIFIER, "after '.'");
@@ -590,7 +590,7 @@ resolve_lvalue_field(Parser *parser, Compiler *compiler, LValue *lvalue, u16 i_t
     }
     lvalue->type    = LVALUE_TABLE;
     lvalue->i_table = i_table;
-    lvalue->i_key   = cast(u16)(compiler->stack_usage - 1);
+    lvalue->i_key   = cast(uint16_t)(compiler->stack_usage - 1);
     lvalue->n_pop   = 1; // Pop value only. We'll clean up later.
     return true;
 }
@@ -620,7 +620,7 @@ assignment(Parser *parser, Compiler *compiler, LValue *last)
     }
 
     // Must be consistent. Concept check: `t.k.v = 10`
-    const u16 i_table = cast(u16)compiler->stack_usage;
+    const uint16_t i_table = cast(uint16_t)compiler->stack_usage;
     while (resolve_lvalue_field(parser, compiler, &next, i_table));
 
 

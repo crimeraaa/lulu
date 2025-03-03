@@ -77,14 +77,14 @@ typedef struct {
 } Token;
 
 typedef struct {
-    lulu_VM     *vm;       // Pointer to parent/enclosing state. Has allocator.
-    cstring      filename; // Name of current file being lexed.
-    OString     *string;   // Interned string literal if we currently have one.
-    Number       number;   // Number literal if we currently have one.
-    const char  *start;
-    const char  *current;
-    const char  *end;
-    int          line;
+    lulu_VM    *vm;       // Pointer to parent/enclosing state. Has allocator.
+    const char *filename; // Name of current file being lexed.
+    OString    *string;   // Interned string literal if we currently have one.
+    Number      number;   // Number literal if we currently have one.
+    const char *start;
+    const char *current;
+    const char *end;
+    int         line;
 } Lexer;
 
 /**
@@ -101,7 +101,7 @@ void
 token_init_empty(Token *self);
 
 void
-lexer_init(lulu_VM *vm, Lexer *self, cstring filename, const char *input, isize len);
+lexer_init(lulu_VM *vm, Lexer *self, const char *filename, const char *input, isize len);
 
 Token
 lexer_scan_token(Lexer *self);

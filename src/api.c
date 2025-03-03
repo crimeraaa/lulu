@@ -61,7 +61,7 @@ lulu_type(lulu_VM *vm, int offset)
     return offset_to_address(vm, offset)->type;
 }
 
-cstring
+const char *
 lulu_typename(lulu_VM *vm, int offset)
 {
     return value_typename(offset_to_address(vm, offset));
@@ -99,7 +99,7 @@ lulu_is_table(lulu_VM *vm, int offset)
 
 ///=============================================================================
 
-cstring
+const char *
 lulu_to_string(lulu_VM *vm, int offset, isize *out_len)
 {
     const Value *value = offset_to_address(vm, offset);
@@ -146,7 +146,7 @@ lulu_push_number(lulu_VM *vm, lulu_Number number)
 }
 
 void
-lulu_push_cstring(lulu_VM *vm, cstring cstr)
+lulu_push_cstring(lulu_VM *vm, const char *cstr)
 {
     lulu_push_string(vm, cstr, cast(isize)strlen(cstr));
 }
@@ -173,18 +173,18 @@ lulu_concat(lulu_VM *vm, int count)
     }
 }
 
-cstring
-lulu_push_fstring(lulu_VM *vm, cstring fmt, ...)
+const char *
+lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    cstring result = lulu_push_vfstring(vm, fmt, args);
+    const char *result = lulu_push_vfstring(vm, fmt, args);
     va_end(args);
     return result;
 }
 
-cstring
-lulu_push_vfstring(lulu_VM *vm, cstring fmt, va_list args)
+const char *
+lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 {
     Builder *builder = &vm->builder;
     builder_reset(builder);
@@ -235,7 +235,7 @@ lulu_push_vfstring(lulu_VM *vm, cstring fmt, va_list args)
         builder_write_string(builder, nonspec, end - nonspec);
     }
     isize len;
-    cstring result = builder_to_string(builder, &len);
+    const char *result = builder_to_string(builder, &len);
     lulu_push_string(vm, result, len);
     return lulu_to_cstring(vm, -1);
 }

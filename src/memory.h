@@ -16,13 +16,13 @@ mem_grow_capacity(isize cap)
 }
 
 void *
-mem_alloc(lulu_VM *vm, isize new_size, cstring file, int line);
+mem_alloc(lulu_VM *vm, isize new_size, const char *file, int line);
 
 void *
-mem_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size, cstring file, int line);
+mem_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size, const char *file, int line);
 
 void
-mem_free(lulu_VM *vm, void *old_ptr, isize old_size, cstring file, int line);
+mem_free(lulu_VM *vm, void *old_ptr, isize old_size, const char *file, int line);
 
 #define mem_alloc(vm, new_size) \
     mem_alloc(vm, new_size, __FILE__, __LINE__)

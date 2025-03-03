@@ -130,29 +130,9 @@ union lulu_User_Alignment {
 #define unused(Expr)    cast(void)(Expr)
 #define size_of(Expr)   cast(isize)(sizeof(Expr))
 
-typedef   uint8_t u8;
-typedef  uint16_t u16;
-typedef  uint32_t u32;
-typedef  uint64_t u64;
-
-typedef    int8_t i8;
-typedef   int16_t i16;
-typedef   int32_t i32;
-typedef   int64_t i64;
-
-typedef        u8 byte;  // Smallest addressable unit.
+typedef   uint8_t byte;  // Smallest addressable unit.
 typedef    size_t usize;
 typedef ptrdiff_t isize;
-
-/**
- * @brief
- *      Although a mere typedef, this indicates intention: C strings are, by
- *      definition, a pointer to a nul terminated sequence of `char`.
- *
- * @note 2024-09-04
- *      Generally, typedef'ing pointers is frowned upon...
- */
-typedef const char *cstring;
 
 typedef struct lulu_VM lulu_VM;
 typedef double lulu_Number;
@@ -193,7 +173,7 @@ lulu_check_stack(lulu_VM *vm, int count);
 lulu_Value_Type
 lulu_type(lulu_VM *vm, int offset);
 
-cstring
+const char *
 lulu_typename(lulu_VM *vm, int offset);
 
 bool
@@ -215,7 +195,7 @@ lulu_is_table(lulu_VM *vm, int offset);
 
 ///=== STACK ACCESS FUNCTIONS ==================================================
 
-cstring
+const char *
 lulu_to_string(lulu_VM *vm, int offset, isize *out_len);
 
 #define lulu_to_cstring(vm, offset)  lulu_to_string(vm, offset, NULL)
@@ -237,17 +217,17 @@ void
 lulu_push_number(lulu_VM *vm, lulu_Number number);
 
 void
-lulu_push_cstring(lulu_VM *vm, cstring cstr);
+lulu_push_cstring(lulu_VM *vm, const char *cstr);
 
 void
 lulu_push_string(lulu_VM *vm, const char *data, isize len);
 
 LULU_ATTR_PRINTF(2, 3)
-cstring
-lulu_push_fstring(lulu_VM *vm, cstring fmt, ...);
+const char *
+lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
 
-cstring
-lulu_push_vfstring(lulu_VM *vm, cstring fmt, va_list args);
+const char *
+lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 
 void
 lulu_concat(lulu_VM *vm, int count);

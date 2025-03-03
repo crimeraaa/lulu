@@ -19,7 +19,7 @@
 
 typedef lulu_Value_Type Value_Type;
 
-extern const cstring
+extern const char * const
 LULU_TYPENAMES[LULU_TYPE_COUNT];
 
 typedef lulu_Number    Number;
@@ -43,7 +43,7 @@ typedef struct {
     int    cap;
 } VArray;
 
-static inline cstring
+static inline const char *
 value_typename(const Value *value)
 {
     return LULU_TYPENAMES[value->type];

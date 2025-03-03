@@ -5,7 +5,7 @@
 
 LULU_ATTR_PRINTF(4, 5)
 int
-debug_writef(cstring level, cstring file, int line, cstring fmt, ...);
+debug_writef(const char *level, const char *file, int line, const char *fmt, ...);
 
 #define debug_fatalf(fmt, ...)  debug_writef("FATAL", __FILE__, __LINE__, fmt "\n", __VA_ARGS__)
 #define debug_fatal(msg)        debug_fatalf("%s", msg)

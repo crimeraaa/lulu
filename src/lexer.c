@@ -58,7 +58,7 @@ token_init_empty(Token *self)
 }
 
 void
-lexer_init(lulu_VM *vm, Lexer *self, cstring filename, const char *input, isize len)
+lexer_init(lulu_VM *vm, Lexer *self, const char *filename, const char *input, isize len)
 {
     self->vm       = vm;
     self->filename = filename;
@@ -121,7 +121,7 @@ match_char(Lexer *lexer, char expected)
 }
 
 static bool
-match_char_any(Lexer *lexer, cstring charset)
+match_char_any(Lexer *lexer, const char *charset)
 {
     if (strchr(charset, peek_char(lexer))) {
         lexer->current++;
@@ -142,7 +142,7 @@ make_token(const Lexer *lexer, Token_Type type)
 
 LULU_ATTR_NORETURN
 static void
-error_token(const Lexer *lexer, cstring msg)
+error_token(const Lexer *lexer, const char *msg)
 {
     Token       token = make_token(lexer, TOKEN_ERROR);
     const char *where = token.start;

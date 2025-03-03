@@ -44,7 +44,7 @@ alloc_fn(void *allocator_data, isize new_size, isize align, void *old_ptr, isize
 }
 
 static lulu_Status
-run(lulu_VM *vm, const char *input, isize len, cstring file)
+run(lulu_VM *vm, const char *input, isize len, const char *file)
 {
     lulu_Status status = vm_interpret(vm, input, len, file);
     if (status != LULU_OK) {
@@ -68,7 +68,7 @@ run_interactive(lulu_VM *vm)
 }
 
 static char *
-read_file(lulu_VM *vm, cstring path, isize *out_len)
+read_file(lulu_VM *vm, const char *path, isize *out_len)
 {
     FILE *file_ptr   = fopen(path, "rb");
     isize file_size  = 0;
@@ -109,7 +109,7 @@ cleanup:
 }
 
 static int
-run_file(lulu_VM *vm, cstring path)
+run_file(lulu_VM *vm, const char *path)
 {
     isize  len    = 0;
     char  *source = read_file(vm, path, &len);

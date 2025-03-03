@@ -61,13 +61,13 @@ compiler_emit_op(Compiler *self, OpCode op);
 void
 compiler_emit_return(Compiler *self);
 
-u32
+uint32_t
 compiler_make_constant(Compiler *self, const Value *value);
 
 void
 compiler_emit_constant(Compiler *self, const Value *value);
 
-u32
+uint32_t
 compiler_identifier_constant(Compiler *self, const Token *ident);
 
 void
@@ -77,16 +77,16 @@ void
 compiler_emit_number(Compiler *self, Number n);
 
 void
-compiler_emit_A(Compiler *self, OpCode op, u16 a);
+compiler_emit_A(Compiler *self, OpCode op, uint16_t a);
 
 void
-compiler_emit_ABC(Compiler *self, OpCode op, u32 arg);
+compiler_emit_ABC(Compiler *self, OpCode op, uint32_t arg);
 
 void
-compiler_emit_pop(Compiler *self, u16 n_pop);
+compiler_emit_pop(Compiler *self, uint16_t n_pop);
 
 void
-compiler_emit_nil(Compiler *self, u16 n_nil);
+compiler_emit_nil(Compiler *self, uint16_t n_nil);
 
 void
 compiler_emit_lvalues(Compiler *self, LValue *last);
@@ -133,9 +133,9 @@ int
 compiler_new_table(Compiler *self);
 
 void
-compiler_adjust_table(Compiler *self, int i_code, u16 i_table, u16 n_hash, u16 n_array);
+compiler_adjust_table(Compiler *self, int i_code, uint16_t i_table, uint16_t n_hash, uint16_t n_array);
 
 void
-compiler_set_table(Compiler *self, u16 i_table, u16 i_key, u16 n_pop);
+compiler_set_table(Compiler *self, uint16_t i_table, uint16_t i_key, uint16_t n_pop);
 
 #endif // LULU_COMPILER_H

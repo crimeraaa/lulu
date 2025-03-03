@@ -9,7 +9,7 @@
 #define size_of_string(len)     (size_of(OString) + size_of(char) * ((len) + 1))
 
 void
-ostring_init(OString *self, isize len, u32 hash)
+ostring_init(OString *self, isize len, uint32_t hash)
 {
     self->len       = len;
     self->hash      = hash;
@@ -19,7 +19,7 @@ ostring_init(OString *self, isize len, u32 hash)
 OString *
 ostring_new(lulu_VM *vm, const char *data, isize len)
 {
-    const u32 hash     = ostring_hash(data, len);
+    const uint32_t hash     = ostring_hash(data, len);
     OString  *interned = table_find_string(&vm->strings, data, len, hash);
     if (interned) {
         return interned;
@@ -40,12 +40,12 @@ ostring_free(lulu_VM *vm, OString *self)
 #define FNV1A_PRIME_32  16777619
 #define FNV1A_OFFSET_32 2166136261
 
-u32
+uint32_t
 ostring_hash(const char *data, isize len)
 {
-    u32 hash = FNV1A_OFFSET_32;
+    uint32_t hash = FNV1A_OFFSET_32;
     for (isize i = 0; i < len; i++) {
-        hash ^= cast(u32)data[i];
+        hash ^= cast(uint32_t)data[i];
         hash *= FNV1A_PRIME_32;
     }
     return hash;

@@ -40,7 +40,7 @@ OString *
 table_intern_string(lulu_VM *vm, Table *self, OString *string);
 
 OString *
-table_find_string(Table *self, const char *data, isize len, u32 hash);
+table_find_string(Table *self, const char *data, isize len, uint32_t hash);
 
 bool
 table_set(lulu_VM *vm, Table *self, const Value *key, const Value *value);

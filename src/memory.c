@@ -8,7 +8,7 @@
 #undef mem_free
 
 static void *
-wrap_alloc(lulu_VM *vm, void *new_ptr, isize new_size, cstring file, int line)
+wrap_alloc(lulu_VM *vm, void *new_ptr, isize new_size, const char *file, int line)
 {
     if (!new_ptr) {
         debug_writef("FATAL", file, line, "Out of memory (failed to allocate %ti bytes)\n", new_size);
@@ -18,7 +18,7 @@ wrap_alloc(lulu_VM *vm, void *new_ptr, isize new_size, cstring file, int line)
 }
 
 void *
-mem_alloc(lulu_VM *vm, isize new_size, cstring file, int line)
+mem_alloc(lulu_VM *vm, isize new_size, const char *file, int line)
 {
     void *data    = vm->allocator_data;
     void *new_ptr = vm->allocator(data, new_size, LULU_USER_ALIGNMENT, NULL, 0);
@@ -26,7 +26,7 @@ mem_alloc(lulu_VM *vm, isize new_size, cstring file, int line)
 }
 
 void *
-mem_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size, cstring file, int line)
+mem_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size, const char *file, int line)
 {
     void *data    = vm->allocator_data;
     void *new_ptr = vm->allocator(data, new_size, LULU_USER_ALIGNMENT, old_ptr, old_size);
@@ -34,7 +34,7 @@ mem_resize(lulu_VM *vm, void *old_ptr, isize old_size, isize new_size, cstring f
 }
 
 void
-mem_free(lulu_VM *vm, void *old_ptr, isize old_size, cstring file, int line)
+mem_free(lulu_VM *vm, void *old_ptr, isize old_size, const char *file, int line)
 {
     void *data = vm->allocator_data;
     unused(file);

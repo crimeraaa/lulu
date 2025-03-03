@@ -67,7 +67,7 @@ compiler_emit_return(Compiler *self)
     compiler_emit_op(self, OP_RETURN);
 }
 
-u32
+uint32_t
 compiler_make_constant(Compiler *self, const Value *value)
 {
     lulu_VM *vm    = self->vm;
@@ -76,17 +76,17 @@ compiler_make_constant(Compiler *self, const Value *value)
         parser_error_consumed(self->parser, "Too many constants in one chunk.");
         return 0;
     }
-    return cast(u32)index;
+    return cast(uint32_t)index;
 }
 
 void
 compiler_emit_constant(Compiler *self, const Value *value)
 {
-    u32 index = compiler_make_constant(self, value);
+    uint32_t index = compiler_make_constant(self, value);
     compiler_emit_instruction(self, instr_make_ABC(OP_CONSTANT, index));
 }
 
-u32
+uint32_t
 compiler_identifier_constant(Compiler *self, const Token *ident)
 {
     OString *string = ostring_new(self->vm, ident->start, ident->len);
@@ -148,7 +148,7 @@ folded_instruction(Compiler *self, Instruction inst)
         int new_arg  = prev_arg + cur_arg + offset;
         if (0 < new_arg && new_arg <= cast(int)LULU_MAX_BYTE) {
             // However, we did do the above check to ensure 'new_arg' fits.
-            instr_set_A(ip, cast(u16)new_arg);
+            instr_set_A(ip, cast(uint16_t)new_arg);
 
             // We assume that multiple of the same instruction evaluates to the
             // same net stack usage.
@@ -164,7 +164,7 @@ folded_instruction(Compiler *self, Instruction inst)
 }
 
 void
-compiler_emit_A(Compiler *self, OpCode op, u16 a)
+compiler_emit_A(Compiler *self, OpCode op, uint16_t a)
 {
     Instruction inst = instr_make_A(op, a);
     if (!folded_instruction(self, inst)) {
@@ -173,20 +173,20 @@ compiler_emit_A(Compiler *self, OpCode op, u16 a)
 }
 
 void
-compiler_emit_ABC(Compiler *self, OpCode op, u32 arg)
+compiler_emit_ABC(Compiler *self, OpCode op, uint32_t arg)
 {
     compiler_emit_instruction(self, instr_make_ABC(op, arg));
 }
 
 void
-compiler_emit_nil(Compiler *self, u16 n_nil)
+compiler_emit_nil(Compiler *self, uint16_t n_nil)
 {
     compiler_emit_A(self, OP_NIL, n_nil);
 }
 
 // @todo 2024-12-27: Check for overflow before casting to `byte`?
 void
-compiler_emit_pop(Compiler *self, u16 n_pop)
+compiler_emit_pop(Compiler *self, uint16_t n_pop)
 {
     compiler_emit_A(self, OP_POP, n_pop);
 }
@@ -194,8 +194,8 @@ compiler_emit_pop(Compiler *self, u16 n_pop)
 void
 compiler_emit_lvalues(Compiler *self, LValue *last)
 {
-    LValue *iter      = last;
-    u16     n_cleanup = 0;    // How many table/key pairs to pop at the end?
+    LValue  *iter      = last;
+    uint16_t n_cleanup = 0;    // How many table/key pairs to pop at the end?
     while (iter) {
         switch (iter->type) {
         case LVALUE_GLOBAL:
@@ -290,10 +290,10 @@ compiler_begin_scope(Compiler *self)
 void
 compiler_end_scope(Compiler *self)
 {
-    Local *locals = self->locals;
-    int    depth  = self->scope_depth--;
-    int    index  = self->n_locals;
-    u16    n_pop  = 0;
+    Local   *locals = self->locals;
+    int      depth  = self->scope_depth--;
+    int      index  = self->n_locals;
+    uint16_t n_pop  = 0;
 
     // Iterate over the locals in the scope we just popped.
     while (index > 0 && locals[index - 1].depth >= depth) {
@@ -380,19 +380,19 @@ compiler_new_table(Compiler *self)
 }
 
 void
-compiler_adjust_table(Compiler *self, int i_code, u16 i_table, u16 n_hash, u16 n_array)
+compiler_adjust_table(Compiler *self, int i_code, uint16_t i_table, uint16_t n_hash, uint16_t n_array)
 {
     Instruction *ip = &current_chunk(self)->code[i_code];
     instr_set_A(ip, n_hash);
     instr_set_B(ip, n_array);
 
     if (n_array > 0) {
-        compiler_emit_instruction(self, instr_make(OP_SET_ARRAY, cast(u16)n_array, cast(u16)i_table, 0));
+        compiler_emit_instruction(self, instr_make(OP_SET_ARRAY, cast(uint16_t)n_array, cast(uint16_t)i_table, 0));
     }
 }
 
 void
-compiler_set_table(Compiler *self, u16 i_table, u16 i_key, u16 n_pop)
+compiler_set_table(Compiler *self, uint16_t i_table, uint16_t i_key, uint16_t n_pop)
 {
     compiler_emit_instruction(self, instr_make(OP_SET_TABLE, n_pop, i_table, i_key));
 }

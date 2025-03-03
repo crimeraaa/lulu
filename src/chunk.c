@@ -8,7 +8,7 @@
 
 const OpCode_Info
 LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
-    //                name: cstring     sz_arg,     n_push,     n_pop: i8
+    //                name: cstring     sz_arg,     n_push,     n_pop: int8_t
     [OP_CONSTANT]   = {"CONSTANT",      3,           1,          0},
     [OP_GET_GLOBAL] = {"GETGLOBAL",     3,           1,          0},
     [OP_SET_GLOBAL] = {"SETGLOBAL",     3,           0,          1},
@@ -44,7 +44,7 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT] = {
 #endif
 
 void
-chunk_init(Chunk *self, cstring filename)
+chunk_init(Chunk *self, const char *filename)
 {
     varray_init(&self->constants);
     self->code     = NULL;

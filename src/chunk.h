@@ -4,7 +4,7 @@
 #include "value.h"
 
 #define LULU_MAX_BYTE   (cast(byte)-1)
-#define LULU_MAX_BYTE3  (cast(u32)((1 << 24) - 1))
+#define LULU_MAX_BYTE3  (cast(uint32_t)((1 << 24) - 1))
 
 typedef enum {
     OP_CONSTANT,
@@ -26,10 +26,10 @@ typedef enum {
 #define LULU_OPCODE_COUNT   (OP_RETURN + 1)
 
 typedef struct {
-    cstring name;
-    i8      sz_arg; // Number of bytes used for the argument.
-    i8      n_push; // Number values pushed from stack. -1 indicates unknown.
-    i8      n_pop;  // Number values popped from stack. -1 indicates unknown.
+    const char *name;
+    int8_t      sz_arg; // Number of bytes used for the argument.
+    int8_t      n_push; // Number values pushed from stack. -1 indicates unknown.
+    int8_t      n_pop;  // Number values popped from stack. -1 indicates unknown.
 } OpCode_Info;
 
 extern const OpCode_Info
@@ -98,10 +98,10 @@ LULU_OPCODE_INFO[LULU_OPCODE_COUNT];
  *      opcode  =   OP_NIL =                                      00_0001
  *      inst    = 50331649 = 0_0000_0011  0_0000_0000  0000_0000  00_0001
  */
-typedef u32 Instruction;
+typedef uint32_t Instruction;
 
 static inline Instruction
-instr_make(OpCode op, u16 a, u16 b, u16 c)
+instr_make(OpCode op, uint16_t a, uint16_t b, uint16_t c)
 {
     return cast(Instruction)a << INSTR_OFFSET_A
         | cast(Instruction)b  << INSTR_OFFSET_B
@@ -110,7 +110,7 @@ instr_make(OpCode op, u16 a, u16 b, u16 c)
 }
 
 static inline Instruction
-instr_make_ABC(OpCode op, u32 abc)
+instr_make_ABC(OpCode op, uint32_t abc)
 {
     return (abc << INSTR_OFFSET_C) | (cast(Instruction)op << INSTR_OFFSET_OP);
 }
@@ -123,54 +123,54 @@ instr_get_op(Instruction inst)
     return (inst >> INSTR_OFFSET_OP) & INSTR_MASK1_OP;
 }
 
-static inline u16
+static inline uint16_t
 instr_get_A(Instruction inst)
 {
     return (inst >> INSTR_OFFSET_A) & INSTR_MASK1_A;
 }
 
-static inline u16
+static inline uint16_t
 instr_get_B(Instruction inst)
 {
     return (inst >> INSTR_OFFSET_B) & INSTR_MASK1_B;
 }
 
-static inline u16
+static inline uint16_t
 instr_get_C(Instruction inst)
 {
     return (inst >> INSTR_OFFSET_C) & INSTR_MASK1_C;
 }
 
-static inline u32
+static inline uint32_t
 instr_get_ABC(Instruction inst)
 {
     return inst >> INSTR_OFFSET_C;
 }
 
 static inline void
-instr_set_A(Instruction *self, u16 a)
+instr_set_A(Instruction *self, uint16_t a)
 {
-    // @warning explicit cast: u16=>Instruction to ensure left-shift does not truncate.
+    // @warning explicit cast: uint16_t=>Instruction to ensure left-shift does not truncate.
     *self &= INSTR_MASK0_A;
     *self |= cast(Instruction)a << INSTR_OFFSET_A;
 }
 
 static inline void
-instr_set_B(Instruction *self, u16 b)
+instr_set_B(Instruction *self, uint16_t b)
 {
     *self &= INSTR_MASK0_B;
     *self |= cast(Instruction)b << INSTR_OFFSET_B;
 }
 
 static inline void
-instr_set_C(Instruction *self, u16 c)
+instr_set_C(Instruction *self, uint16_t c)
 {
     *self &= INSTR_MASK0_C;
     *self |= cast(Instruction)c << INSTR_OFFSET_C;
 }
 
 static inline void
-instr_set_ABC(Instruction *self, u32 abc)
+instr_set_ABC(Instruction *self, uint32_t abc)
 {
     *self &= INSTR_MASK0_ABC;
     *self |= cast(Instruction)abc << INSTR_OFFSET_ABC;
@@ -188,13 +188,13 @@ typedef struct {
     VArray       constants;
     Instruction *code;     // 1D array of bytecode.
     int         *lines;    // Line numbers per bytecode.
-    cstring      filename; // Filename of where this chunk originated from.
+    const char  *filename; // Filename of where this chunk originated from.
     int          len;      // Current number of actively used bytes in `code`.
     int          cap;      // Total number of bytes that `code` points to.
 } Chunk;
 
 void
-chunk_init(Chunk *self, cstring filename);
+chunk_init(Chunk *self, const char *filename);
 
 void
 chunk_write(lulu_VM *vm, Chunk *self, Instruction inst, int line);

@@ -50,7 +50,7 @@ void
 vm_free(lulu_VM *self);
 
 lulu_Status
-vm_interpret(lulu_VM *self, const char *input, isize len, cstring chunk_name);
+vm_interpret(lulu_VM *self, const char *input, isize len, const char *chunk_name);
 
 void
 vm_push(lulu_VM *self, const Value *value);
@@ -75,10 +75,10 @@ vm_throw_error(lulu_VM *self, lulu_Status status);
 
 LULU_ATTR_NORETURN
 void
-vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len);
+vm_comptime_error(lulu_VM *self, const char *file, int line, const char *msg, const char *where, isize len);
 
 LULU_ATTR_NORETURN LULU_ATTR_PRINTF(2, 3)
 void
-vm_runtime_error(lulu_VM *self, cstring fmt, ...);
+vm_runtime_error(lulu_VM *self, const char *fmt, ...);
 
 #endif // LULU_VM_H

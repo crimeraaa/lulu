@@ -11,7 +11,7 @@
     #pragma GCC diagnostic ignored "-Wc99-designator"
 #endif
 
-const cstring
+const char *const
 LULU_TYPENAMES[LULU_TYPE_COUNT] = {
     [LULU_TYPE_NIL]     = "nil",
     [LULU_TYPE_BOOLEAN] = "boolean",

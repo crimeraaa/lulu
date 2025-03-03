@@ -27,10 +27,10 @@ typedef struct {
 #endif
 
 struct OString {
-    Object base;
-    isize  len;     // Number of non-nul characters.
-    u32    hash;
-    char   data[];  // Guaranteed to be nul terminated.
+    Object   base;
+    isize    len;     // Number of non-nul characters.
+    uint32_t hash;
+    char     data[];  // Guaranteed to be nul terminated.
 };
 
 #if defined(__GNUC__)
@@ -40,7 +40,7 @@ struct OString {
 #endif
 
 void
-ostring_init(OString *self, isize len, u32 hash);
+ostring_init(OString *self, isize len, uint32_t hash);
 
 // Analogous to the book's object.c:allocateString().
 OString *
@@ -50,7 +50,7 @@ ostring_new(lulu_VM *vm, const char *data, isize len);
 void
 ostring_free(lulu_VM *vm, OString *self);
 
-u32
+uint32_t
 ostring_hash(const char *data, isize len);
 
 #endif // LULU_STRING_H

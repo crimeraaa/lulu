@@ -10,7 +10,7 @@
 #undef debug_writef
 
 int
-debug_writef(cstring level, cstring file, int line, cstring fmt, ...)
+debug_writef(const char *level, const char *file, int line, const char *fmt, ...)
 {
     va_list argp;
     int     writes = 0;

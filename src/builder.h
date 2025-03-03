@@ -34,9 +34,9 @@ void
 builder_write_string(Builder *self, const char *data, isize len);
 
 void
-builder_write_cstring(Builder *self, cstring cstr);
+builder_write_cstring(Builder *self, const char *cstr);
 
-cstring
+const char *
 builder_to_string(Builder *self, isize *out_len);
 
 #endif // LULU_BUILDER_H

@@ -82,7 +82,7 @@ current_chunk(lulu_VM *self)
 }
 
 static void
-check_numeric(lulu_VM *vm, cstring act, const Value *lhs, const Value *rhs)
+check_numeric(lulu_VM *vm, const char *act, const Value *lhs, const Value *rhs)
 {
     if (value_is_number(lhs) && value_is_number(rhs)) {
         return;
@@ -104,7 +104,7 @@ check_compare(lulu_VM *vm, const Value *lhs, const Value *rhs)
 }
 
 static Number
-ensure_number(lulu_VM *vm, const Value *value, cstring action)
+ensure_number(lulu_VM *vm, const Value *value, const char *action)
 {
     if (!value_is_number(value)) {
         vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
@@ -113,7 +113,7 @@ ensure_number(lulu_VM *vm, const Value *value, cstring action)
 }
 
 static OString *
-ensure_string(lulu_VM *vm, const Value *value, cstring action)
+ensure_string(lulu_VM *vm, const Value *value, const char *action)
 {
     if (!value_is_string(value)) {
         vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
@@ -122,7 +122,7 @@ ensure_string(lulu_VM *vm, const Value *value, cstring action)
 }
 
 static Table *
-ensure_table(lulu_VM *vm, const Value *value, cstring action)
+ensure_table(lulu_VM *vm, const Value *value, const char *action)
 {
     if (!value_is_table(value)) {
         vm_runtime_error(vm, "Attempt to %s a %s value", action, value_typename(value));
@@ -142,8 +142,8 @@ vm_concat(lulu_VM *vm, int count)
         builder_write_string(builder, string->data, string->len);
     }
 
-    isize   len;
-    cstring data = builder_to_string(builder, &len);
+    isize       len;
+    const char *data = builder_to_string(builder, &len);
     lulu_pop(vm, count);
     lulu_push_string(vm, data, len);
 }
@@ -185,15 +185,15 @@ do {                                                                           \
         switch (instr_get_op(inst)) {
         case OP_CONSTANT:
         {
-            u32 index = instr_get_ABC(inst);
+            uint32_t index = instr_get_ABC(inst);
             vm_push(self, &constants[index]);
             break;
         }
         case OP_GET_GLOBAL:
         {
-            const u32    index = instr_get_ABC(inst);
-            const Value *key   = &constants[index];
-            const Value *value = table_get(globals, key);
+            const uint32_t index = instr_get_ABC(inst);
+            const Value   *key   = &constants[index];
+            const Value   *value = table_get(globals, key);
             if (!value) {
                 vm_runtime_error(self, "Undefined global '%s'", key->string->data);
             }
@@ -202,8 +202,8 @@ do {                                                                           \
         }
         case OP_SET_GLOBAL:
         {
-            const u32    index = instr_get_ABC(inst);
-            const Value *ident = &constants[index];
+            const uint32_t index = instr_get_ABC(inst);
+            const Value   *ident = &constants[index];
             table_set(self, globals, ident, &top[-1]);
             lulu_pop(self, 1);
             break;
@@ -263,7 +263,7 @@ do {                                                                           \
             int i_table = instr_get_B(inst);
 
             // 'i_table' is always positive.
-            Table  *table = base[i_table].table;
+            Table *table = base[i_table].table;
             for (int i = 0; i < n_array; i++) {
                 table_set_array(self, table, i + 1, &top[-n_array + i]);
             }
@@ -374,7 +374,7 @@ compile_and_run(lulu_VM *self, void *user_ptr)
 }
 
 lulu_Status
-vm_interpret(lulu_VM *self, const char *input, isize len, cstring chunk_name)
+vm_interpret(lulu_VM *self, const char *input, isize len, const char *chunk_name)
 {
     Compiler_Context context;
     chunk_init(&context.chunk, chunk_name);
@@ -426,7 +426,7 @@ vm_throw_error(lulu_VM *self, lulu_Status status)
 }
 
 void
-vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char *where, isize len)
+vm_comptime_error(lulu_VM *self, const char *file, int line, const char *msg, const char *where, isize len)
 {
     lulu_push_string(self, where, len);
     lulu_push_fstring(self, "%s:%i: %s at '%s'", file, line, msg, lulu_to_cstring(self, -1));
@@ -439,12 +439,12 @@ vm_comptime_error(lulu_VM *self, cstring file, int line, cstring msg, const char
  *      a local within 'vm_execute()'.
  */
 void
-vm_runtime_error(lulu_VM *self, cstring fmt, ...)
+vm_runtime_error(lulu_VM *self, const char *fmt, ...)
 {
-    va_list args;
-    Chunk  *chunk = current_chunk(self);
-    cstring file  = chunk->filename;
-    int     line  = chunk->lines[self->ip - chunk->code - 1];
+    va_list     args;
+    Chunk      *chunk = current_chunk(self);
+    const char *file  = chunk->filename;
+    int         line  = chunk->lines[self->ip - chunk->code - 1];
     va_start(args, fmt);
     lulu_push_fstring(self, "%s:%i: ", file, line);
     lulu_push_vfstring(self, fmt, args);
