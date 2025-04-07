@@ -29,6 +29,24 @@ tasks:
       - '{{.OUT_EXE}}'
     interactive: true
 
+  build-lua:
+    cmds:
+      - |
+        cd ./lua
+        make -j8
+        mv ./src/lua ../bin/
+        mv ./src/luac ../bin/
+        cd ..
+  
+  # lol
+  # https://taskfile.dev/styleguide/#prefer-using-external-scripts-instead-of-multi-line-commands
+  clean-lua:
+    cmds:
+      - |
+        cd ./lua
+        make clean
+        cd ..
+  
   fix-whitespace:
     desc: Remove trailing whitespace from all *.odin files.
     deps:

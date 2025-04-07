@@ -331,7 +331,7 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
 
 UNINITIALIZED_LOCAL :: -1
 
-/* 
+/*
 Analogous to:
 -   `compiler.c:addLocal()` in the book.
 -   `lparser.c:registerlocalvar(LexState *ls, TString *varname)` in Lua 5.1.
@@ -347,7 +347,7 @@ compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (local_index
         compiler.count_local += 1
         compiler_reserve_reg(compiler, 1)
     }
-    
+
     local := &compiler.locals[compiler.count_local]
     local.ident = ident
     local.depth = UNINITIALIZED_LOCAL

@@ -261,7 +261,7 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
         /*
         Form:
         -   'local' <identifier> ['=' <expression>]
-            
+
         Notes:
         -   Due to the differences in Lua and Lox, we cannot combine local variable
             declarations into our `parseVariable()` analog as we do not have a
@@ -269,7 +269,7 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
         */
         parser_consume(parser, .Identifier)
         declare_variable(parser, compiler)
-        
+
         expr := &Expr{}
         if parser_match(parser, .Equals) {
             expression(parser, compiler, expr)
@@ -286,7 +286,7 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     }
 }
 
-/* 
+/*
 Analogous to:
 -   `compiler.c:declareVariable()` in the book.
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.
