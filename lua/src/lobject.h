@@ -238,10 +238,10 @@ typedef struct Proto {
   TString **upvalues;  /* upvalue names */
   TString  *source;
   int size_upvalues;
-  int size_constants;  /* size of `constants` */
+  int size_constants;
   int size_code;
   int size_lineinfo;
-  int size_children;  /* size of `p' */
+  int size_children;
   int size_locvars;
   int linedefined;
   int lastlinedefined;

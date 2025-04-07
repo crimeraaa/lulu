@@ -21,21 +21,21 @@
  *  Originally called `ExprKind`.
  */
 typedef enum {
-  VVOID,	/* no value */
-  VNIL,
-  VTRUE,
-  VFALSE,
-  VK,		/* info = index of constant in `k' */
-  VKNUM,	/* nval = numerical value */
-  VLOCAL,	/* info = local register */
-  VUPVAL,       /* info = index of upvalue in `upvalues' */
-  VGLOBAL,	/* info = index of table; aux = index of global name in `k' */
-  VINDEXED,	/* info = table register; aux = index register (or `k') */
-  VJMP,		/* info = instruction pc */
-  VRELOCABLE,	/* info = instruction pc */
-  VNONRELOC,	/* info = result register */
-  VCALL,	/* info = instruction pc */
-  VVARARG	/* info = instruction pc */
+  ExprKind_Void,	/* no value */
+  ExprKind_Nil,
+  ExprKind_True,
+  ExprKind_False,
+  ExprKind_Constant,		/* info = index of constant in `k' */
+  ExprKind_Number,	/* nval = numerical value */
+  ExprKind_Local,	/* info = local register */
+  ExprKind_Upvalue,       /* info = index of upvalue in `upvalues' */
+  ExprKind_Global,	/* info = index of table; aux = index of global name in `k' */
+  ExprKind_Index,	/* info = table register; aux = index register (or `k') */
+  ExprKind_Jump,		/* info = instruction pc */
+  ExprKind_Relocable,	/* info = instruction pc */
+  ExprKind_Nonrelocable,	/* info = result register */
+  ExprKind_Call,	/* info = instruction pc */
+  ExprKind_Vararg	/* info = instruction pc */
 } ExprKind;
 
 /**

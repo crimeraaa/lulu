@@ -27,11 +27,12 @@
 
 
 
-#define hasmultret(k)		((k) == VCALL || (k) == VVARARG)
+#define hasmultret(k)		((k) == ExprKind_Call || (k) == ExprKind_Vararg)
 
-#define getlocvar(fs, i)	((fs)->proto->locvars[(fs)->actvar[i]])
+#define getlocvar(func, i)	((func)->proto->locvars[(func)->actvar[i]])
 
-#define luaY_checklimit(fs,v,l,m)	if ((v)>(l)) errorlimit(fs,l,m)
+#define luaY_checklimit(func, value, limit, what)	\
+  if ((value) > (limit)) errorlimit(func, limit, what)
 
 
 /*
@@ -69,10 +70,10 @@ static void error_expected (LexState *lex, int token) {
 
 
 static void errorlimit (FuncState *func, int limit, const char *what) {
-  const char *msg = (func->proto->linedefined == 0) ?
-    luaO_pushfstring(func->L, "main function has more than %d %s", limit, what) :
-    luaO_pushfstring(func->L, "function at line %d has more than %d %s",
-                            func->proto->linedefined, limit, what);
+  const char *msg = (func->proto->linedefined == 0)
+    ? luaO_pushfstring(func->L, "main function has more than %d %s", limit, what)
+    : luaO_pushfstring(func->L, "function at line %d has more than %d %s",
+                       func->proto->linedefined, limit, what);
   luaX_lexerror(func->lex, msg, 0);
 }
 
@@ -131,7 +132,7 @@ static void init_exp (Expr *e, ExprKind k, int i) {
 
 
 static void codestring (LexState *lex, Expr *e, TString *s) {
-  init_exp(e, VK, luaK_stringK(lex->func, s));
+  init_exp(e, ExprKind_Constant, luaK_stringK(lex->func, s));
 }
 
 
@@ -201,7 +202,7 @@ static int indexupvalue (FuncState *func, TString *name, Expr *v) {
     proto->upvalues[oldsize++] = NULL;
   proto->upvalues[proto->nups] = name;
   luaC_objbarrier(func->L, proto, name);
-  lua_assert(v->kind == VLOCAL || v->kind == VUPVAL);
+  lua_assert(v->kind == ExprKind_Local || v->kind == ExprKind_Upvalue);
   func->upvalues[proto->nups].k = cast_byte(v->kind);
   func->upvalues[proto->nups].info = cast_byte(v->u.s.info);
   return proto->nups++;
@@ -228,23 +229,23 @@ static void markupval (FuncState *func, int level) {
 
 static int singlevaraux (FuncState *func, TString *n, Expr *var, int base) {
   if (func == NULL) {  /* no more levels? */
-    init_exp(var, VGLOBAL, NO_REG);  /* default is global variable */
-    return VGLOBAL;
+    init_exp(var, ExprKind_Global, NO_REG);  /* default is global variable */
+    return ExprKind_Global;
   }
   else {
     int v = searchvar(func, n);  /* look up at current level */
     if (v >= 0) {
-      init_exp(var, VLOCAL, v);
+      init_exp(var, ExprKind_Local, v);
       if (!base)
         markupval(func, v);  /* local will be used as an upval */
-      return VLOCAL;
+      return ExprKind_Local;
     }
     else {  /* not found at current level; try upper one */
-      if (singlevaraux(func->prev, n, var, 0) == VGLOBAL)
-        return VGLOBAL;
+      if (singlevaraux(func->prev, n, var, 0) == ExprKind_Global)
+        return ExprKind_Global;
       var->u.s.info = indexupvalue(func, n, var);  /* else was LOCAL or UPVAL */
-      var->kind = VUPVAL;  /* upvalue in this level */
-      return VUPVAL;
+      var->kind = ExprKind_Upvalue;  /* upvalue in this level */
+      return ExprKind_Upvalue;
     }
   }
 }
@@ -253,7 +254,7 @@ static int singlevaraux (FuncState *func, TString *n, Expr *var, int base) {
 static void singlevar (LexState *lex, Expr *var) {
   TString *varname = str_checkname(lex);
   FuncState *func = lex->func;
-  if (singlevaraux(func, varname, var, 1) == VGLOBAL)
+  if (singlevaraux(func, varname, var, 1) == ExprKind_Global)
     var->u.s.info = luaK_stringK(func, varname);  /* info points to global name */
 }
 
@@ -270,7 +271,7 @@ static void adjust_assign (LexState *lex, int nvars, int nexps, Expr *e) {
       luaK_reserveregs(func, extra-1);
   }
   else {
-    if (e->kind != VVOID)
+    if (e->kind != ExprKind_Void)
       luaK_exp2nextreg(func, e);  /* close last expression */
     if (extra > 0) {
       int reg = func->freereg;
@@ -329,10 +330,10 @@ static void pushclosure (LexState *lex, FuncState *child, Expr *v) {
 
   proto->children[parent->nchildren++] = child->proto;
   luaC_objbarrier(lex->L, proto, child->proto);
-  init_exp(v, VRELOCABLE, luaK_codeABx(parent, OP_CLOSURE, 0, parent->nchildren - 1));
+  init_exp(v, ExprKind_Relocable, luaK_codeABx(parent, OP_CLOSURE, 0, parent->nchildren - 1));
 
   for (i = 0; i < child->proto->nups; i++) {
-    OpCode o = (child->upvalues[i].k == VLOCAL) ? OP_MOVE : OP_GETUPVAL;
+    OpCode o = (child->upvalues[i].k == ExprKind_Local) ? OP_MOVE : OP_GETUPVAL;
     luaK_codeABC(parent, o, 0, child->upvalues[i].info, 0);
   }
 }
@@ -475,9 +476,9 @@ static void recfield (LexState *lex, struct ConsControl *cc) {
 
 
 static void closelistfield (FuncState *func, struct ConsControl *cc) {
-  if (cc->v.kind == VVOID) return;  /* there is no list item */
+  if (cc->v.kind == ExprKind_Void) return;  /* there is no list item */
   luaK_exp2nextreg(func, &cc->v);
-  cc->v.kind = VVOID;
+  cc->v.kind = ExprKind_Void;
   if (cc->tostore == LFIELDS_PER_FLUSH) {
     luaK_setlist(func, cc->t->u.s.info, cc->na, cc->tostore);  /* flush */
     cc->tostore = 0;  /* no more items pending */
@@ -493,7 +494,7 @@ static void lastlistfield (FuncState *func, struct ConsControl *cc) {
     cc->na--;  /* do not count last expression (unknown number of elements) */
   }
   else {
-    if (cc->v.kind != VVOID)
+    if (cc->v.kind != ExprKind_Void)
       luaK_exp2nextreg(func, &cc->v);
     luaK_setlist(func, cc->t->u.s.info, cc->na, cc->tostore);
   }
@@ -516,12 +517,12 @@ static void constructor (LexState *lex, Expr *t) {
   struct ConsControl cc;
   cc.na = cc.nh = cc.tostore = 0;
   cc.t = t;
-  init_exp(t, VRELOCABLE, pc);
-  init_exp(&cc.v, VVOID, 0);  /* no value (yet) */
+  init_exp(t, ExprKind_Relocable, pc);
+  init_exp(&cc.v, ExprKind_Void, 0);  /* no value (yet) */
   luaK_exp2nextreg(lex->func, t);  /* fix it at stack top (for gc) */
   checknext(lex, '{');
   do {
-    lua_assert(cc.v.kind == VVOID || cc.tostore > 0);
+    lua_assert(cc.v.kind == ExprKind_Void || cc.tostore > 0);
     if (lex->current.token == '}') break;
     closelistfield(func, &cc);
     switch(lex->current.token) {
@@ -630,7 +631,7 @@ static void funcargs (LexState *lex, Expr *f) {
         luaX_syntaxerror(lex,"ambiguous syntax (function call x new statement)");
       luaX_next(lex);
       if (lex->current.token == ')')  /* arg list is empty? */
-        args.kind = VVOID;
+        args.kind = ExprKind_Void;
       else {
         explist1(lex, &args);
         luaK_setmultret(func, &args);
@@ -652,16 +653,16 @@ static void funcargs (LexState *lex, Expr *f) {
       return;
     }
   }
-  lua_assert(f->kind == VNONRELOC);
+  lua_assert(f->kind == ExprKind_Nonrelocable);
   base = f->u.s.info;  /* base register for call */
   if (hasmultret(args.kind))
     nparams = LUA_MULTRET;  /* open call */
   else {
-    if (args.kind != VVOID)
+    if (args.kind != ExprKind_Void)
       luaK_exp2nextreg(func, &args);  /* close last argument */
     nparams = func->freereg - (base+1);
   }
-  init_exp(f, VCALL, luaK_codeABC(func, OP_CALL, base, nparams+1, 2));
+  init_exp(f, ExprKind_Call, luaK_codeABC(func, OP_CALL, base, nparams+1, 2));
   luaK_fixline(func, line);
   func->freereg = base+1;  /* call remove function and arguments and leaves
                             (unless changed) one result */
@@ -742,7 +743,7 @@ static void simpleexp (LexState *lex, Expr *v) {
                   constructor | FUNCTION body | primaryexp */
   switch (lex->current.token) {
     case TK_NUMBER: {
-      init_exp(v, VKNUM, 0);
+      init_exp(v, ExprKind_Number, 0);
       v->u.nval = lex->current.seminfo.r;
       break;
     }
@@ -751,15 +752,15 @@ static void simpleexp (LexState *lex, Expr *v) {
       break;
     }
     case TK_NIL: {
-      init_exp(v, VNIL, 0);
+      init_exp(v, ExprKind_Nil, 0);
       break;
     }
     case TK_TRUE: {
-      init_exp(v, VTRUE, 0);
+      init_exp(v, ExprKind_True, 0);
       break;
     }
     case TK_FALSE: {
-      init_exp(v, VFALSE, 0);
+      init_exp(v, ExprKind_False, 0);
       break;
     }
     case TK_DOTS: {  /* vararg */
@@ -767,7 +768,7 @@ static void simpleexp (LexState *lex, Expr *v) {
       check_condition(lex, func->proto->is_vararg,
                       "cannot use " LUA_QL("...") " outside a vararg function");
       func->proto->is_vararg &= ~VARARG_NEEDSARG;  /* don't need 'arg' */
-      init_exp(v, VVARARG, luaK_codeABC(func, OP_VARARG, 0, 1, 0));
+      init_exp(v, ExprKind_Vararg, luaK_codeABC(func, OP_VARARG, 0, 1, 0));
       break;
     }
     case '{': {  /* constructor */
@@ -928,7 +929,7 @@ static void check_conflict (LexState *lex, struct LHS_assign *lh, Expr *v) {
   int extra = func->freereg;  /* eventual position to save local variable */
   int conflict = 0;
   for (; lh; lh = lh->prev) {
-    if (lh->v.kind == VINDEXED) {
+    if (lh->v.kind == ExprKind_Index) {
       if (lh->v.u.s.info == v->u.s.info) {  /* conflict? */
         conflict = 1;
         lh->v.u.s.info = extra;  /* previous assignment will use safe copy */
@@ -948,13 +949,13 @@ static void check_conflict (LexState *lex, struct LHS_assign *lh, Expr *v) {
 
 static void assignment (LexState *lex, struct LHS_assign *lh, int nvars) {
   Expr e;
-  check_condition(lex, VLOCAL <= lh->v.kind && lh->v.kind <= VINDEXED,
+  check_condition(lex, ExprKind_Local <= lh->v.kind && lh->v.kind <= ExprKind_Index,
                       "syntax error");
   if (testnext(lex, ',')) {  /* assignment -> `,' primaryexp assignment */
     struct LHS_assign nv;
     nv.prev = lh;
     primaryexp(lex, &nv.v);
-    if (nv.v.kind == VLOCAL)
+    if (nv.v.kind == ExprKind_Local)
       check_conflict(lex, lh, &nv.v);
     luaY_checklimit(lex->func, nvars, LUAI_MAXCCALLS - lex->L->nCcalls,
                     "variables in assignment");
@@ -975,7 +976,7 @@ static void assignment (LexState *lex, struct LHS_assign *lh, int nvars) {
       return;  /* avoid default */
     }
   }
-  init_exp(&e, VNONRELOC, lex->func->freereg-1);  /* default assignment */
+  init_exp(&e, ExprKind_Nonrelocable, lex->func->freereg-1);  /* default assignment */
   luaK_storevar(lex->func, &lh->v, &e);
 }
 
@@ -984,7 +985,7 @@ static int cond (LexState *lex) {
   /* cond -> exp */
   Expr v;
   expression(lex, &v);  /* read condition */
-  if (v.kind == VNIL) v.kind = VFALSE;  /* `falses' are all equal here */
+  if (v.kind == ExprKind_Nil) v.kind = ExprKind_False;  /* `falses' are all equal here */
   luaK_goiftrue(lex->func, &v);
   return v.f;
 }
@@ -1184,7 +1185,7 @@ static void localfunc (LexState *lex) {
   Expr v, b;
   FuncState *func = lex->func;
   new_localvar(lex, str_checkname(lex), 0);
-  init_exp(&v, VLOCAL, func->freereg);
+  init_exp(&v, ExprKind_Local, func->freereg);
   luaK_reserveregs(func, 1);
   adjustlocalvars(lex, 1);
   body(lex, &b, 0, lex->linenumber);
@@ -1205,7 +1206,7 @@ static void localstat (LexState *lex) {
   if (testnext(lex, '='))
     nexps = explist1(lex, &e);
   else {
-    e.kind = VVOID;
+    e.kind = ExprKind_Void;
     nexps = 0;
   }
   adjust_assign(lex, nvars, nexps, &e);
@@ -1244,7 +1245,7 @@ static void exprstat (LexState *lex) {
   FuncState *func = lex->func;
   struct LHS_assign v;
   primaryexp(lex, &v.v);
-  if (v.v.kind == VCALL)  /* stat -> func */
+  if (v.v.kind == ExprKind_Call)  /* stat -> func */
     SETARG_C(getcode(func, &v.v), 1);  /* call statement uses no results */
   else {  /* stat -> assignment */
     v.prev = NULL;
@@ -1265,7 +1266,7 @@ static void retstat (LexState *lex) {
     nret = explist1(lex, &e);  /* optional return values */
     if (hasmultret(e.kind)) {
       luaK_setmultret(func, &e);
-      if (e.kind == VCALL && nret == 1) {  /* tail call? */
+      if (e.kind == ExprKind_Call && nret == 1) {  /* tail call? */
         SET_OPCODE(getcode(func,&e), OP_TAILCALL);
         lua_assert(GETARG_A(getcode(func,&e)) == func->nactvar);
       }
