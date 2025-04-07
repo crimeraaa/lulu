@@ -91,7 +91,7 @@ static void LoadCode(LoadState* S, Proto* f)
 {
  int n=LoadInt(S);
  f->code=luaM_newvector(S->L,n,Instruction);
- f->sizecode=n;
+ f->size_code=n;
  LoadVector(S,f->code,n,sizeof(Instruction));
 }
 
@@ -101,13 +101,15 @@ static void LoadConstants(LoadState* S, Proto* f)
 {
  int i,n;
  n=LoadInt(S);
- f->k=luaM_newvector(S->L,n,TValue);
- f->sizek=n;
- for (i=0; i<n; i++) setnilvalue(&f->k[i]);
+ f->constants = luaM_newvector(S->L,n,TValue);
+ f->size_constants = n;
+ for (i=0; i<n; i++)
+   setnilvalue(&f->constants[i]);
+
  for (i=0; i<n; i++)
  {
-  TValue* o=&f->k[i];
-  int t=LoadChar(S);
+  TValue *o = &f->constants[i];
+  int t = LoadChar(S);
   switch (t)
   {
    case LUA_TNIL:
@@ -128,10 +130,10 @@ static void LoadConstants(LoadState* S, Proto* f)
   }
  }
  n=LoadInt(S);
- f->p=luaM_newvector(S->L,n,Proto*);
- f->sizep=n;
- for (i=0; i<n; i++) f->p[i]=NULL;
- for (i=0; i<n; i++) f->p[i]=LoadFunction(S,f->source);
+ f->children=luaM_newvector(S->L,n,Proto*);
+ f->size_children=n;
+ for (i=0; i<n; i++) f->children[i]=NULL;
+ for (i=0; i<n; i++) f->children[i]=LoadFunction(S,f->source);
 }
 
 static void LoadDebug(LoadState* S, Proto* f)
@@ -139,11 +141,11 @@ static void LoadDebug(LoadState* S, Proto* f)
  int i,n;
  n=LoadInt(S);
  f->lineinfo=luaM_newvector(S->L,n,int);
- f->sizelineinfo=n;
+ f->size_lineinfo=n;
  LoadVector(S,f->lineinfo,n,sizeof(int));
  n=LoadInt(S);
  f->locvars=luaM_newvector(S->L,n,LocVar);
- f->sizelocvars=n;
+ f->size_locvars=n;
  for (i=0; i<n; i++) f->locvars[i].varname=NULL;
  for (i=0; i<n; i++)
  {
@@ -153,7 +155,7 @@ static void LoadDebug(LoadState* S, Proto* f)
  }
  n=LoadInt(S);
  f->upvalues=luaM_newvector(S->L,n,TString*);
- f->sizeupvalues=n;
+ f->size_upvalues=n;
  for (i=0; i<n; i++) f->upvalues[i]=NULL;
  for (i=0; i<n; i++) f->upvalues[i]=LoadString(S);
 }

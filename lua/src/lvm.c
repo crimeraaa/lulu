@@ -384,7 +384,7 @@ void luaV_execute (lua_State *L, int nexeccalls) {
   pc = L->savedpc;
   cl = &clvalue(L->ci->func)->l;
   base = L->base;
-  k = cl->p->k;
+  k = cl->p->constants;
   /* main loop of interpreter */
   for (;;) {
     const Instruction i = *pc++;
@@ -724,7 +724,7 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         Proto *p;
         Closure *ncl;
         int nup, j;
-        p = cl->p->p[GETARG_Bx(i)];
+        p = cl->p->children[GETARG_Bx(i)];
         nup = p->nups;
         ncl = luaF_newLclosure(L, nup, cl->env);
         ncl->l.p = p;

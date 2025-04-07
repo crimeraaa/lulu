@@ -203,17 +203,18 @@ static int traversetable (global_State *g, Table *h) {
 static void traverseproto (global_State *g, Proto *f) {
   int i;
   if (f->source) stringmark(f->source);
-  for (i=0; i<f->sizek; i++)  /* mark literals */
-    markvalue(g, &f->k[i]);
-  for (i=0; i<f->sizeupvalues; i++) {  /* mark upvalue names */
+  for (i=0; i<f->size_constants; i++)  /* mark literals */
+    markvalue(g, &f->constants[i]);
+
+  for (i=0; i<f->size_upvalues; i++) {  /* mark upvalue names */
     if (f->upvalues[i])
       stringmark(f->upvalues[i]);
   }
-  for (i=0; i<f->sizep; i++) {  /* mark nested protos */
-    if (f->p[i])
-      markobject(g, f->p[i]);
+  for (i=0; i<f->size_children; i++) {  /* mark nested protos */
+    if (f->children[i])
+      markobject(g, f->children[i]);
   }
-  for (i=0; i<f->sizelocvars; i++) {  /* mark local-variable names */
+  for (i=0; i<f->size_locvars; i++) {  /* mark local-variable names */
     if (f->locvars[i].varname)
       stringmark(f->locvars[i].varname);
   }
@@ -308,12 +309,12 @@ static l_mem propagatemark (global_State *g) {
       Proto *p = gco2p(o);
       g->gray = p->gclist;
       traverseproto(g, p);
-      return sizeof(Proto) + sizeof(Instruction) * p->sizecode +
-                             sizeof(Proto *) * p->sizep +
-                             sizeof(TValue) * p->sizek + 
-                             sizeof(int) * p->sizelineinfo +
-                             sizeof(LocVar) * p->sizelocvars +
-                             sizeof(TString *) * p->sizeupvalues;
+      return sizeof(Proto) + sizeof(Instruction) * p->size_code +
+                             sizeof(Proto *) * p->size_children +
+                             sizeof(TValue) * p->size_constants + 
+                             sizeof(int) * p->size_lineinfo +
+                             sizeof(LocVar) * p->size_locvars +
+                             sizeof(TString *) * p->size_upvalues;
     }
     default: lua_assert(0); return 0;
   }

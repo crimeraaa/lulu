@@ -16,6 +16,10 @@
 ** Expression descriptor
 */
 
+/**
+ * @note 2025-04-07:
+ *  Originally called `ExprKind`.
+ */
 typedef enum {
   VVOID,	/* no value */
   VNIL,
@@ -32,23 +36,31 @@ typedef enum {
   VNONRELOC,	/* info = result register */
   VCALL,	/* info = instruction pc */
   VVARARG	/* info = instruction pc */
-} expkind;
+} ExprKind;
 
-typedef struct expdesc {
-  expkind k;
+/**
+ * @note 2025-04-07:
+ *  Originally called `expdesc`.
+ */
+typedef struct Expr {
+  ExprKind kind;
   union {
     struct { int info, aux; } s;
     lua_Number nval;
   } u;
   int t;  /* patch list of `exit when true' */
   int f;  /* patch list of `exit when false' */
-} expdesc;
+} Expr;
 
 
-typedef struct upvaldesc {
+/**
+ * @note 2025-04-07:
+ *  Originally called `upvaldesc`.
+ */
+typedef struct UpValDesc {
   lu_byte k;
   lu_byte info;
-} upvaldesc;
+} UpValDesc;
 
 
 struct BlockCnt;  /* defined in lparser.c */
@@ -56,21 +68,21 @@ struct BlockCnt;  /* defined in lparser.c */
 
 /* state needed to generate code for a given function */
 typedef struct FuncState {
-  Proto *f;  /* current function header */
+  Proto *proto;  /* current function header */
   Table *h;  /* table to find (and reuse) elements in `k' */
   struct FuncState *prev;  /* enclosing function */
-  struct LexState *ls;  /* lexical state */
+  struct LexState *lex;  /* lexical state */
   struct lua_State *L;  /* copy of the Lua state */
   struct BlockCnt *bl;  /* chain of current blocks */
   int pc;  /* next position to code (equivalent to `ncode') */
   int lasttarget;   /* `pc' of last `jump target' */
   int jpc;  /* list of pending jumps to `pc' */
   int freereg;  /* first free register */
-  int nk;  /* number of elements in `k' */
-  int np;  /* number of elements in `p' */
+  int nconstants;  /* number of elements in `proto->constants` */
+  int nchildren;  /* number of elements in `proto->p` */
   short nlocvars;  /* number of elements in `locvars' */
   lu_byte nactvar;  /* number of active local variables */
-  upvaldesc upvalues[LUAI_MAXUPVALUES];  /* upvalues */
+  UpValDesc upvalues[LUAI_MAXUPVALUES];  /* upvalues */
   unsigned short actvar[LUAI_MAXVARS];  /* declared-variable stack */
 } FuncState;
 

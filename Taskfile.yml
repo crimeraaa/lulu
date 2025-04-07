@@ -33,7 +33,7 @@ tasks:
     cmds:
       - |
         cd ./lua
-        make -j8
+        make --always-make --jobs=8
         mv ./src/lua ../bin/
         mv ./src/luac ../bin/
         cd ..

@@ -50,7 +50,7 @@ static void PrintString(const TString* ts)
 
 static void PrintConstant(const Proto* f, int i)
 {
- const TValue* o=&f->k[i];
+ const TValue *o = &f->constants[i];
  switch (ttype(o))
  {
   case LUA_TNIL:
@@ -74,7 +74,7 @@ static void PrintConstant(const Proto* f, int i)
 static void PrintCode(const Proto* f)
 {
  const Instruction* code=f->code;
- int pc,n=f->sizecode;
+ int pc,n=f->size_code;
  for (pc=0; pc<n; pc++)
  {
   Instruction i=code[pc];
@@ -109,11 +109,11 @@ static void PrintCode(const Proto* f)
     break;
    case OP_GETUPVAL:
    case OP_SETUPVAL:
-    printf("\t; %s", (f->sizeupvalues>0) ? getstr(f->upvalues[b]) : "-");
+    printf("\t; %s", (f->size_upvalues>0) ? getstr(f->upvalues[b]) : "-");
     break;
    case OP_GETGLOBAL:
    case OP_SETGLOBAL:
-    printf("\t; %s",svalue(&f->k[bx]));
+    printf("\t; %s",svalue(&f->constants[bx]));
     break;
    case OP_GETTABLE:
    case OP_SELF:
@@ -142,7 +142,7 @@ static void PrintCode(const Proto* f)
     printf("\t; to %d",sbx+pc+2);
     break;
    case OP_CLOSURE:
-    printf("\t; %p",VOID(f->p[bx]));
+    printf("\t; %p",VOID(f->children[bx]));
     break;
    case OP_SETLIST:
     if (c==0) printf("\t; %d",(int)code[++pc]);
@@ -170,17 +170,17 @@ static void PrintHeader(const Proto* f)
  printf("\n%s <%s:%d,%d> (%d instruction%s, %d bytes at %p)\n",
  	(f->linedefined==0)?"main":"function",s,
 	f->linedefined,f->lastlinedefined,
-	S(f->sizecode),f->sizecode*Sizeof(Instruction),VOID(f));
+	S(f->size_code),f->size_code*Sizeof(Instruction),VOID(f));
  printf("%d%s param%s, %d slot%s, %d upvalue%s, ",
 	f->numparams,f->is_vararg?"+":"",SS(f->numparams),
 	S(f->maxstacksize),S(f->nups));
  printf("%d local%s, %d constant%s, %d function%s\n",
-	S(f->sizelocvars),S(f->sizek),S(f->sizep));
+	S(f->size_locvars),S(f->size_constants),S(f->size_children));
 }
 
 static void PrintConstants(const Proto* f)
 {
- int i,n=f->sizek;
+ int i,n=f->size_constants;
  printf("constants (%d) for %p:\n",n,VOID(f));
  for (i=0; i<n; i++)
  {
@@ -192,7 +192,7 @@ static void PrintConstants(const Proto* f)
 
 static void PrintLocals(const Proto* f)
 {
- int i,n=f->sizelocvars;
+ int i,n=f->size_locvars;
  printf("locals (%d) for %p:\n",n,VOID(f));
  for (i=0; i<n; i++)
  {
@@ -203,7 +203,7 @@ static void PrintLocals(const Proto* f)
 
 static void PrintUpvalues(const Proto* f)
 {
- int i,n=f->sizeupvalues;
+ int i,n=f->size_upvalues;
  printf("upvalues (%d) for %p:\n",n,VOID(f));
  if (f->upvalues==NULL) return;
  for (i=0; i<n; i++)
@@ -214,7 +214,7 @@ static void PrintUpvalues(const Proto* f)
 
 void PrintFunction(const Proto* f, int full)
 {
- int i,n=f->sizep;
+ int i,n=f->size_children;
  PrintHeader(f);
  PrintCode(f);
  if (full)
@@ -223,5 +223,5 @@ void PrintFunction(const Proto* f, int full)
   PrintLocals(f);
   PrintUpvalues(f);
  }
- for (i=0; i<n; i++) PrintFunction(f->p[i],full);
+ for (i=0; i<n; i++) PrintFunction(f->children[i],full);
 }

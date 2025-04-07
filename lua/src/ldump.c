@@ -73,17 +73,17 @@ static void DumpString(const TString* s, DumpState* D)
  }
 }
 
-#define DumpCode(f,D)	 DumpVector(f->code,f->sizecode,sizeof(Instruction),D)
+#define DumpCode(f,D)	 DumpVector(f->code,f->size_code,sizeof(Instruction),D)
 
 static void DumpFunction(const Proto* f, const TString* p, DumpState* D);
 
 static void DumpConstants(const Proto* f, DumpState* D)
 {
- int i,n=f->sizek;
+ int i,n=f->size_constants;
  DumpInt(n,D);
  for (i=0; i<n; i++)
  {
-  const TValue* o=&f->k[i];
+  const TValue *o = &f->constants[i];
   DumpChar(ttype(o),D);
   switch (ttype(o))
   {
@@ -103,17 +103,17 @@ static void DumpConstants(const Proto* f, DumpState* D)
 	break;
   }
  }
- n=f->sizep;
+ n=f->size_children;
  DumpInt(n,D);
- for (i=0; i<n; i++) DumpFunction(f->p[i],f->source,D);
+ for (i=0; i<n; i++) DumpFunction(f->children[i],f->source,D);
 }
 
 static void DumpDebug(const Proto* f, DumpState* D)
 {
  int i,n;
- n= (D->strip) ? 0 : f->sizelineinfo;
+ n= (D->strip) ? 0 : f->size_lineinfo;
  DumpVector(f->lineinfo,n,sizeof(int),D);
- n= (D->strip) ? 0 : f->sizelocvars;
+ n= (D->strip) ? 0 : f->size_locvars;
  DumpInt(n,D);
  for (i=0; i<n; i++)
  {
@@ -121,7 +121,7 @@ static void DumpDebug(const Proto* f, DumpState* D)
   DumpInt(f->locvars[i].startpc,D);
   DumpInt(f->locvars[i].endpc,D);
  }
- n= (D->strip) ? 0 : f->sizeupvalues;
+ n= (D->strip) ? 0 : f->size_upvalues;
  DumpInt(n,D);
  for (i=0; i<n; i++) DumpString(f->upvalues[i],D);
 }

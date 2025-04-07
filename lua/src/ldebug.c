@@ -182,7 +182,7 @@ static void collectvalidlines (lua_State *L, Closure *f) {
     Table *t = luaH_new(L, 0, 0);
     int *lineinfo = f->l.p->lineinfo;
     int i;
-    for (i=0; i<f->l.p->sizelineinfo; i++)
+    for (i=0; i<f->l.p->size_lineinfo; i++)
       setbvalue(luaH_setnum(L, t, lineinfo[i]), 1);
     sethvalue(L, L->top, t); 
   }
@@ -278,9 +278,9 @@ static int precheck (const Proto *pt) {
   check(pt->numparams+(pt->is_vararg & VARARG_HASARG) <= pt->maxstacksize);
   check(!(pt->is_vararg & VARARG_NEEDSARG) ||
               (pt->is_vararg & VARARG_HASARG));
-  check(pt->sizeupvalues <= pt->nups);
-  check(pt->sizelineinfo == pt->sizecode || pt->sizelineinfo == 0);
-  check(pt->sizecode > 0 && GET_OPCODE(pt->code[pt->sizecode-1]) == OP_RETURN);
+  check(pt->size_upvalues <= pt->nups);
+  check(pt->size_lineinfo == pt->size_code || pt->size_lineinfo == 0);
+  check(pt->size_code > 0 && GET_OPCODE(pt->code[pt->size_code-1]) == OP_RETURN);
   return 1;
 }
 
@@ -307,7 +307,7 @@ static int checkArgMode (const Proto *pt, int r, enum OpArgMask mode) {
     case OpArgU: break;
     case OpArgR: checkreg(pt, r); break;
     case OpArgK:
-      check(ISK(r) ? INDEXK(r) < pt->sizek : r < pt->maxstacksize);
+      check(ISK(r) ? INDEXK(r) < pt->size_constants : r < pt->maxstacksize);
       break;
   }
   return 1;
@@ -317,7 +317,7 @@ static int checkArgMode (const Proto *pt, int r, enum OpArgMask mode) {
 static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
   int pc;
   int last;  /* stores position of last instruction that changed `reg' */
-  last = pt->sizecode-1;  /* points to final return (a `neutral' instruction) */
+  last = pt->size_code-1;  /* points to final return (a `neutral' instruction) */
   check(precheck(pt));
   for (pc = 0; pc < lastpc; pc++) {
     Instruction i = pt->code[pc];
@@ -337,14 +337,14 @@ static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
       }
       case iABx: {
         b = GETARG_Bx(i);
-        if (getBMode(op) == OpArgK) check(b < pt->sizek);
+        if (getBMode(op) == OpArgK) check(b < pt->size_constants);
         break;
       }
       case iAsBx: {
         b = GETARG_sBx(i);
         if (getBMode(op) == OpArgR) {
           int dest = pc+1+b;
-          check(0 <= dest && dest < pt->sizecode);
+          check(0 <= dest && dest < pt->size_code);
           if (dest > 0) {
             int j;
             /* check that it does not jump to a setlist count; this
@@ -367,13 +367,13 @@ static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
       if (a == reg) last = pc;  /* change register `a' */
     }
     if (testTMode(op)) {
-      check(pc+2 < pt->sizecode);  /* check skip */
+      check(pc+2 < pt->size_code);  /* check skip */
       check(GET_OPCODE(pt->code[pc+1]) == OP_JMP);
     }
     switch (op) {
       case OP_LOADBOOL: {
         if (c == 1) {  /* does it jump? */
-          check(pc+2 < pt->sizecode);  /* check its jump */
+          check(pc+2 < pt->size_code);  /* check its jump */
           check(GET_OPCODE(pt->code[pc+1]) != OP_SETLIST ||
                 GETARG_C(pt->code[pc+1]) != 0);
         }
@@ -391,7 +391,7 @@ static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
       }
       case OP_GETGLOBAL:
       case OP_SETGLOBAL: {
-        check(ttisstring(&pt->k[b]));
+        check(ttisstring(&pt->constants[b]));
         break;
       }
       case OP_SELF: {
@@ -443,15 +443,15 @@ static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
         if (b > 0) checkreg(pt, a + b);
         if (c == 0) {
           pc++;
-          check(pc < pt->sizecode - 1);
+          check(pc < pt->size_code - 1);
         }
         break;
       }
       case OP_CLOSURE: {
         int nup, j;
-        check(b < pt->sizep);
-        nup = pt->p[b]->nups;
-        check(pc + nup < pt->sizecode);
+        check(b < pt->size_children);
+        nup = pt->children[b]->nups;
+        check(pc + nup < pt->size_code);
         for (j = 1; j <= nup; j++) {
           OpCode op1 = GET_OPCODE(pt->code[pc + j]);
           check(op1 == OP_GETUPVAL || op1 == OP_MOVE);
@@ -482,13 +482,13 @@ static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
 
 
 int luaG_checkcode (const Proto *pt) {
-  return (symbexec(pt, pt->sizecode, NO_REG) != 0);
+  return (symbexec(pt, pt->size_code, NO_REG) != 0);
 }
 
 
 static const char *kname (Proto *p, int c) {
-  if (ISK(c) && ttisstring(&p->k[INDEXK(c)]))
-    return svalue(&p->k[INDEXK(c)]);
+  if (ISK(c) && ttisstring(&p->constants[INDEXK(c)]))
+    return svalue(&p->constants[INDEXK(c)]);
   else
     return "?";
 }
@@ -508,8 +508,8 @@ static const char *getobjname (lua_State *L, CallInfo *ci, int stackpos,
     switch (GET_OPCODE(i)) {
       case OP_GETGLOBAL: {
         int g = GETARG_Bx(i);  /* global index */
-        lua_assert(ttisstring(&p->k[g]));
-        *name = svalue(&p->k[g]);
+        lua_assert(ttisstring(&p->constants[g]));
+        *name = svalue(&p->constants[g]);
         return "global";
       }
       case OP_MOVE: {

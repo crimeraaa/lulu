@@ -230,19 +230,19 @@ typedef union Udata {
 */
 typedef struct Proto {
   CommonHeader;
-  TValue *k;  /* constants used by the function */
+  TValue *constants;  /* constants used by the function */
   Instruction *code;
-  struct Proto **p;  /* functions defined inside the function */
+  struct Proto **children;  /* functions defined inside the function */
   int *lineinfo;  /* map from opcodes to source lines */
   struct LocVar *locvars;  /* information about local variables */
   TString **upvalues;  /* upvalue names */
   TString  *source;
-  int sizeupvalues;
-  int sizek;  /* size of `k' */
-  int sizecode;
-  int sizelineinfo;
-  int sizep;  /* size of `p' */
-  int sizelocvars;
+  int size_upvalues;
+  int size_constants;  /* size of `constants` */
+  int size_code;
+  int size_lineinfo;
+  int size_children;  /* size of `p' */
+  int size_locvars;
   int linedefined;
   int lastlinedefined;
   GCObject *gclist;
