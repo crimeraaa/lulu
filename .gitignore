@@ -7,7 +7,7 @@
 .task/
 
 # Lua 5.1.5 (for personal debugging only)
-lua-5.1.5/
+# lua-5.1.5/
 lua-5.1.5.tar.gz
 
 # Build directories

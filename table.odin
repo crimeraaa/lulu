@@ -83,7 +83,7 @@ table_unset :: proc(table: ^Table, key: Value) {
 
     // Tombstones are invalid keys with non-nil values.
     value_set_nil(&entry.key)
-    value_set_boolean(&entry.key, true)
+    value_set_boolean(&entry.value, true)
 }
 
 /*

@@ -16,7 +16,7 @@ Local :: struct {
 
 Compiler :: struct {
     vm:         ^VM,
-    locals:      [MAX_LOCALS]Local,
+    locals:      [MAX_LOCALS]Local, // 'Declared' local variable stack. See `lparser.h:FuncState::actvar[]`.
     count_local: int,      // How many locals are currently active?
     scope_depth: int,      // How far down is our current lexical scope?
     parent:     ^Compiler, // Enclosing state.
@@ -340,10 +340,13 @@ Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
  */
 compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (local_index: int) {
-    if compiler.count_local >= MAX_LOCALS {
+    if compiler.count_local >= len(compiler.locals) {
         parser_error_consumed(compiler.parser, "Too many local variables")
     }
-    defer compiler.count_local += 1
+    defer {
+        compiler.count_local += 1
+        compiler_reserve_reg(compiler, 1)
+    }
     
     local := &compiler.locals[compiler.count_local]
     local.ident = ident
