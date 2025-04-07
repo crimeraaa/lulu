@@ -47,16 +47,16 @@ typedef union {
 
 
 typedef struct Token {
-  int token;
+  int token; /* an ASCII character literal or one of `RESERVED`. */
   SemInfo seminfo;
 } Token;
 
 
 typedef struct LexState {
-  int current;  /* current character (charint) */
+  int character;  /* current character (charint) */
   int linenumber;  /* input line counter */
   int lastline;  /* line of last token `consumed' */
-  Token t;  /* current token */
+  Token current;  /* current token */
   Token lookahead;  /* look ahead token */
   struct FuncState *func;  /* `FuncState' is private to the parser */
   struct lua_State *L;

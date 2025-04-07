@@ -55,8 +55,8 @@ static void expression (LexState *lex, Expr *v);
 
 
 static void anchor_token (LexState *lex) {
-  if (lex->t.token == TK_NAME || lex->t.token == TK_STRING) {
-    TString *ts = lex->t.seminfo.ts;
+  if (lex->current.token == TK_NAME || lex->current.token == TK_STRING) {
+    TString *ts = lex->current.seminfo.ts;
     luaX_newstring(lex, getstr(ts), ts->tsv.len);
   }
 }
@@ -78,7 +78,7 @@ static void errorlimit (FuncState *func, int limit, const char *what) {
 
 
 static int testnext (LexState *lex, int c) {
-  if (lex->t.token == c) {
+  if (lex->current.token == c) {
     luaX_next(lex);
     return 1;
   }
@@ -87,7 +87,7 @@ static int testnext (LexState *lex, int c) {
 
 
 static void check (LexState *lex, int c) {
-  if (lex->t.token != c)
+  if (lex->current.token != c)
     error_expected(lex, c);
 }
 
@@ -117,7 +117,7 @@ static void check_match (LexState *lex, int what, int who, int where) {
 static TString *str_checkname (LexState *lex) {
   TString *ts;
   check(lex, TK_NAME);
-  ts = lex->t.seminfo.ts;
+  ts = lex->current.seminfo.ts;
   luaX_next(lex);
   return ts;
 }
@@ -459,7 +459,7 @@ static void recfield (LexState *lex, struct ConsControl *cc) {
   int reg = lex->func->freereg;
   Expr key, val;
   int rkkey;
-  if (lex->t.token == TK_NAME) {
+  if (lex->current.token == TK_NAME) {
     luaY_checklimit(func, cc->nh, MAX_INT, "items in a constructor");
     checkname(lex, &key);
   }
@@ -522,9 +522,9 @@ static void constructor (LexState *lex, Expr *t) {
   checknext(lex, '{');
   do {
     lua_assert(cc.v.kind == VVOID || cc.tostore > 0);
-    if (lex->t.token == '}') break;
+    if (lex->current.token == '}') break;
     closelistfield(func, &cc);
-    switch(lex->t.token) {
+    switch(lex->current.token) {
       case TK_NAME: {  /* may be listfields or recfields */
         luaX_lookahead(lex);
         if (lex->lookahead.token != '=')  /* expression? */
@@ -559,9 +559,9 @@ static void parlist (LexState *lex) {
   Proto *proto = func->proto;
   int nparams = 0;
   proto->is_vararg = 0;
-  if (lex->t.token != ')') {  /* is `parlist' not empty? */
+  if (lex->current.token != ')') {  /* is `parlist' not empty? */
     do {
-      switch (lex->t.token) {
+      switch (lex->current.token) {
         case TK_NAME: {  /* param -> NAME */
           new_localvar(lex, str_checkname(lex), nparams++);
           break;
@@ -624,12 +624,12 @@ static void funcargs (LexState *lex, Expr *f) {
   Expr args;
   int base, nparams;
   int line = lex->linenumber;
-  switch (lex->t.token) {
+  switch (lex->current.token) {
     case '(': {  /* funcargs -> `(' [ explist1 ] `)' */
       if (line != lex->lastline)
         luaX_syntaxerror(lex,"ambiguous syntax (function call x new statement)");
       luaX_next(lex);
-      if (lex->t.token == ')')  /* arg list is empty? */
+      if (lex->current.token == ')')  /* arg list is empty? */
         args.kind = VVOID;
       else {
         explist1(lex, &args);
@@ -643,7 +643,7 @@ static void funcargs (LexState *lex, Expr *f) {
       break;
     }
     case TK_STRING: {  /* funcargs -> STRING */
-      codestring(lex, &args, lex->t.seminfo.ts);
+      codestring(lex, &args, lex->current.seminfo.ts);
       luaX_next(lex);  /* must use `seminfo' before `next' */
       break;
     }
@@ -679,7 +679,7 @@ static void funcargs (LexState *lex, Expr *f) {
 
 static void prefixexp (LexState *lex, Expr *v) {
   /* prefixexp -> NAME | '(' expr ')' */
-  switch (lex->t.token) {
+  switch (lex->current.token) {
     case '(': {
       int line = lex->linenumber;
       luaX_next(lex);
@@ -706,7 +706,7 @@ static void primaryexp (LexState *lex, Expr *v) {
   FuncState *func = lex->func;
   prefixexp(lex, v);
   for (;;) {
-    switch (lex->t.token) {
+    switch (lex->current.token) {
       case '.': {  /* field */
         field(lex, v);
         break;
@@ -740,14 +740,14 @@ static void primaryexp (LexState *lex, Expr *v) {
 static void simpleexp (LexState *lex, Expr *v) {
   /* simpleexp -> NUMBER | STRING | NIL | true | false | ... |
                   constructor | FUNCTION body | primaryexp */
-  switch (lex->t.token) {
+  switch (lex->current.token) {
     case TK_NUMBER: {
       init_exp(v, VKNUM, 0);
-      v->u.nval = lex->t.seminfo.r;
+      v->u.nval = lex->current.seminfo.r;
       break;
     }
     case TK_STRING: {
-      codestring(lex, v, lex->t.seminfo.ts);
+      codestring(lex, v, lex->current.seminfo.ts);
       break;
     }
     case TK_NIL: {
@@ -842,7 +842,7 @@ static BinOpr subexpr (LexState *lex, Expr *v, unsigned int limit) {
   BinOpr op;
   UnOpr uop;
   enterlevel(lex);
-  uop = getunopr(lex->t.token);
+  uop = getunopr(lex->current.token);
   if (uop != OPR_NOUNOPR) {
     luaX_next(lex);
     subexpr(lex, v, UNARY_PRIORITY);
@@ -850,7 +850,7 @@ static BinOpr subexpr (LexState *lex, Expr *v, unsigned int limit) {
   }
   else simpleexp(lex, v);
   /* expand while operators have priorities higher than `limit' */
-  op = getbinopr(lex->t.token);
+  op = getbinopr(lex->current.token);
   while (op != OPR_NOBINOPR && priority[op].left > limit) {
     Expr v2;
     BinOpr nextop;
@@ -1135,7 +1135,7 @@ static void forstat (LexState *lex, int line) {
   enterblock(func, &bl, 1);  /* scope for loop and control variables */
   luaX_next(lex);  /* skip `for' */
   varname = str_checkname(lex);  /* first variable name */
-  switch (lex->t.token) {
+  switch (lex->current.token) {
     case '=': fornum(lex, varname, line); break;
     case ',': case TK_IN: forlist(lex, varname); break;
     default: luaX_syntaxerror(lex, LUA_QL("=") " or " LUA_QL("in") " expected");
@@ -1162,12 +1162,12 @@ static void ifstat (LexState *lex, int line) {
   int flist;
   int escapelist = NO_JUMP;
   flist = test_then_block(lex);  /* IF cond THEN block */
-  while (lex->t.token == TK_ELSEIF) {
+  while (lex->current.token == TK_ELSEIF) {
     luaK_concat(func, &escapelist, luaK_jump(func));
     luaK_patchtohere(func, flist);
     flist = test_then_block(lex);  /* ELSEIF cond THEN block */
   }
-  if (lex->t.token == TK_ELSE) {
+  if (lex->current.token == TK_ELSE) {
     luaK_concat(func, &escapelist, luaK_jump(func));
     luaK_patchtohere(func, flist);
     luaX_next(lex);  /* skip ELSE (after patch, for correct line info) */
@@ -1217,9 +1217,9 @@ static int funcname (LexState *lex, Expr *v) {
   /* funcname -> NAME {field} [`:' NAME] */
   int needself = 0;
   singlevar(lex, v);
-  while (lex->t.token == '.')
+  while (lex->current.token == '.')
     field(lex, v);
-  if (lex->t.token == ':') {
+  if (lex->current.token == ':') {
     needself = 1;
     field(lex, v);
   }
@@ -1259,7 +1259,7 @@ static void retstat (LexState *lex) {
   Expr e;
   int first, nret;  /* registers with returned values */
   luaX_next(lex);  /* skip RETURN */
-  if (block_follow(lex->t.token) || lex->t.token == ';')
+  if (block_follow(lex->current.token) || lex->current.token == ';')
     first = nret = 0;  /* return no values */
   else {
     nret = explist1(lex, &e);  /* optional return values */
@@ -1289,7 +1289,7 @@ static void retstat (LexState *lex) {
 
 static int statement (LexState *lex) {
   int line = lex->linenumber;  /* may be needed for error messages */
-  switch (lex->t.token) {
+  switch (lex->current.token) {
     case TK_IF: {  /* stat -> ifstat */
       ifstat(lex, line);
       return 0;
@@ -1345,7 +1345,7 @@ static void chunk (LexState *lex) {
   /* chunk -> { stat [`;'] } */
   int islast = 0;
   enterlevel(lex);
-  while (!islast && !block_follow(lex->t.token)) {
+  while (!islast && !block_follow(lex->current.token)) {
     islast = statement(lex);
     testnext(lex, ';');
     lua_assert(lex->func->proto->maxstacksize >= lex->func->freereg
