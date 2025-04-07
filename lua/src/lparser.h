@@ -48,8 +48,8 @@ typedef struct Expr {
     struct { int info, aux; } s;
     lua_Number nval;
   } u;
-  int t;  /* patch list of `exit when true' */
-  int f;  /* patch list of `exit when false' */
+  int t;  /* patch list (pc) of `exit when true' */
+  int f;  /* patch list (pc) of `exit when false' */
 } Expr;
 
 

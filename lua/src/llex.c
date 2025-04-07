@@ -78,8 +78,9 @@ void luaX_init (lua_State *L) {
 const char *luaX_token2str (LexState *lex, int token) {
   if (token < FIRST_RESERVED) {
     lua_assert(token == cast(unsigned char, token));
-    return (iscntrl(token)) ? luaO_pushfstring(lex->L, "char(%d)", token) :
-                              luaO_pushfstring(lex->L, "%c", token);
+    return (iscntrl(token))
+      ? luaO_pushfstring(lex->L, "char(%d)", token)
+      : luaO_pushfstring(lex->L, "%c", token);
   }
   else
     return luaX_tokens[token-FIRST_RESERVED];
@@ -160,11 +161,11 @@ void luaX_setinput (lua_State *L, LexState *lex, ZIO *z, TString *source) {
 
 
 
-static int check_next (LexState *lex, const char *set) {
+static bool check_next (LexState *lex, const char *set) {
   if (!strchr(set, lex->character))
-    return 0;
+    return false;
   save_and_next(lex);
-  return 1;
+  return true;
 }
 
 

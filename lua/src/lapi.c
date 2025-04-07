@@ -972,7 +972,7 @@ LUA_API int lua_error (lua_State *L) {
 
 LUA_API int lua_next (lua_State *L, int idx) {
   StkId t;
-  int more;
+  bool more;
   lua_lock(L);
   t = index2adr(L, idx);
   api_check(L, ttistable(t));

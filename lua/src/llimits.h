@@ -15,6 +15,28 @@
 #include "lua.h"
 
 
+/**
+ * @brief 2025-04-07:
+ *  My addition. Used to differentiate from `int` return values of 0 or 1.
+ */
+#ifndef __cplusplus
+
+/* https://gcc.gnu.org/onlinedocs/cpp/Standard-Predefined-Macros.html */
+#if defined(__STDC__) && __STDC_VERSION__ >= 199901L
+#include <stdbool.h>
+
+#else /* __STDC_VERSION__ < C99 */
+
+/* lol */
+#define bool  int
+#define true  1
+#define false 0
+
+#endif /* __STDC__ */
+
+#endif /* __cplusplus */
+
+
 typedef LUAI_UINT32 lu_int32;
 
 typedef LUAI_UMEM lu_mem;

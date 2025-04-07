@@ -335,14 +335,15 @@ static size_t propagateall (global_State *g) {
 ** other objects: if really collected, cannot keep them; for userdata
 ** being finalized, keep them in keys, but not in values
 */
-static int iscleared (const TValue *o, int iskey) {
-  if (!iscollectable(o)) return 0;
+static bool iscleared (const TValue *o, int iskey) {
+  if (!iscollectable(o))
+    return false;
   if (ttisstring(o)) {
     stringmark(rawtsvalue(o));  /* strings are `values', so are never weak */
-    return 0;
+    return false;
   }
-  return iswhite(gcvalue(o)) ||
-    (ttisuserdata(o) && (!iskey && isfinalized(uvalue(o))));
+  return iswhite(gcvalue(o))
+    || (ttisuserdata(o) && (!iskey && isfinalized(uvalue(o))));
 }
 
 

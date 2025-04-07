@@ -11,7 +11,7 @@ CC= clang
 
 # Use GNU C17 as we are on linux compiling with GCC/Clang
 # This gives us access to `_longjmp`, `mkstemp`, etc.
-CFLAGS= -std=gnu17 -O0 -g -Wall $(MYCFLAGS)
+CFLAGS= -std=gnu17 -O0 -g -Wall -Wextra $(MYCFLAGS)
 AR= ar rcu
 RANLIB= ranlib
 RM= rm -f

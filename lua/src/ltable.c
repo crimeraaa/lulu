@@ -136,7 +136,8 @@ static int arrayindex (const TValue *key) {
 */
 static int findindex (lua_State *L, Table *t, StkId key) {
   int i;
-  if (ttisnil(key)) return -1;  /* first iteration */
+  if (ttisnil(key))
+    return -1;  /* first iteration */
   i = arrayindex(key);
   if (0 < i && i <= t->sizearray)  /* is `key' inside array part? */
     return i-1;  /* yes; that's the index (corrected to C) */
@@ -159,23 +160,23 @@ static int findindex (lua_State *L, Table *t, StkId key) {
 }
 
 
-int luaH_next (lua_State *L, Table *t, StkId key) {
+bool luaH_next (lua_State *L, Table *t, StkId key) {
   int i = findindex(L, t, key);  /* find original element */
   for (i++; i < t->sizearray; i++) {  /* try first array part */
     if (!ttisnil(&t->array[i])) {  /* a non-nil value? */
       setnvalue(key, cast_num(i+1));
       setobj2s(L, key+1, &t->array[i]);
-      return 1;
+      return true;
     }
   }
   for (i -= t->sizearray; i < sizenode(t); i++) {  /* then hash part */
     if (!ttisnil(gval(gnode(t, i)))) {  /* a non-nil value? */
       setobj2s(L, key, key2tval(gnode(t, i)));
       setobj2s(L, key+1, gval(gnode(t, i)));
-      return 1;
+      return true;
     }
   }
-  return 0;  /* no more elements */
+  return false;  /* no more elements */
 }
 
 
@@ -208,14 +209,14 @@ static int computesizes (int nums[], int *narray) {
 }
 
 
-static int countint (const TValue *key, int *nums) {
+static bool countint (const TValue *key, int *nums) {
   int k = arrayindex(key);
   if (0 < k && k <= MAXASIZE) {  /* is `key' an appropriate array index? */
     nums[ceillog2(k)]++;  /* count as such */
-    return 1;
+    return true;
   }
   else
-    return 0;
+    return false;
 }
 
 

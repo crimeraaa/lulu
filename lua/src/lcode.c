@@ -24,10 +24,10 @@
 #include "ltable.h"
 
 
-#define hasjumps(e)	((e)->t != (e)->f)
+#define hasjumps(expr)	((expr)->t != (expr)->f)
 
 
-static int isnumeral(Expr *expr) {
+static bool isnumeral(Expr *expr) {
   return (expr->kind == ExprKind_Number && expr->t == NO_JUMP && expr->f == NO_JUMP);
 }
 
@@ -40,7 +40,7 @@ void luaK_nil (FuncState *func, int from, int n) {
         return;  /* positions are already clean */
     }
     else {
-      previous = &func->proto->code[func->pc-1];
+      previous = &func->proto->code[func->pc - 1];
       if (GET_OPCODE(*previous) == OP_LOADNIL) {
         int pfrom = GETARG_A(*previous);
         int pto = GETARG_B(*previous);
@@ -119,25 +119,26 @@ static Instruction *getjumpcontrol (FuncState *func, int pc) {
 ** check whether list has any jump that do not produce a value
 ** (or produce an inverted value)
 */
-static int need_value (FuncState *func, int list) {
+static bool need_value (FuncState *func, int list) {
   for (; list != NO_JUMP; list = getjump(func, list)) {
     Instruction i = *getjumpcontrol(func, list);
-    if (GET_OPCODE(i) != OP_TESTSET) return 1;
+    if (GET_OPCODE(i) != OP_TESTSET)
+      return true;
   }
-  return 0;  /* not found */
+  return false;  /* not found */
 }
 
 
-static int patchtestreg (FuncState *func, int node, int reg) {
+static bool patchtestreg (FuncState *func, int node, int reg) {
   Instruction *i = getjumpcontrol(func, node);
   if (GET_OPCODE(*i) != OP_TESTSET)
-    return 0;  /* cannot patch other instructions */
+    return false;  /* cannot patch other instructions */
   if (reg != NO_REG && reg != GETARG_B(*i))
     SETARG_A(*i, reg);
   else  /* no register to put value or register already has the value */
     *i = CREATE_ABC(OP_TEST, GETARG_B(*i), 0, GETARG_C(*i));
 
-  return 1;
+  return true;
 }
 
 
@@ -475,26 +476,30 @@ int luaK_exp2RK (FuncState *func, Expr *expr) {
 }
 
 
-void luaK_storevar (FuncState *func, Expr *var, Expr *ex) {
+void luaK_storevar (FuncState *func, Expr *var, Expr *expr) {
   switch (var->kind) {
     case ExprKind_Local: {
-      freeexp(func, ex);
-      exp2reg(func, ex, var->u.s.info);
+      freeexp(func, expr);
+      exp2reg(func, expr, var->u.s.info);
       return;
     }
     case ExprKind_Upvalue: {
-      int expr = luaK_exp2anyreg(func, ex);
-      luaK_codeABC(func, OP_SETUPVAL, expr, var->u.s.info, 0);
+      /**
+       * @note 2025-04-07:
+       *  Originally named `expr`, confusingly enough!
+       */
+      int reg = luaK_exp2anyreg(func, expr);
+      luaK_codeABC(func, OP_SETUPVAL, reg, var->u.s.info, 0);
       break;
     }
     case ExprKind_Global: {
-      int expr = luaK_exp2anyreg(func, ex);
-      luaK_codeABx(func, OP_SETGLOBAL, expr, var->u.s.info);
+      int reg = luaK_exp2anyreg(func, expr);
+      luaK_codeABx(func, OP_SETGLOBAL, reg, var->u.s.info);
       break;
     }
     case ExprKind_Index: {
-      int expr = luaK_exp2RK(func, ex);
-      luaK_codeABC(func, OP_SETTABLE, var->u.s.info, var->u.s.aux, expr);
+      int reg = luaK_exp2RK(func, expr);
+      luaK_codeABC(func, OP_SETTABLE, var->u.s.info, var->u.s.aux, reg);
       break;
     }
     default: {
@@ -502,7 +507,7 @@ void luaK_storevar (FuncState *func, Expr *var, Expr *ex) {
       break;
     }
   }
-  freeexp(func, ex);
+  freeexp(func, expr);
 }
 
 
@@ -628,25 +633,22 @@ static void codenot (FuncState *func, Expr *expr) {
     }
   }
   /* interchange true and false lists */
-  {
-    int temp = expr->f;
-    expr->f = expr->t;
-    expr->t = temp;
-  }
+  { int temp = expr->f; expr->f = expr->t; expr->t = temp; }
   removevalues(func, expr->f);
   removevalues(func, expr->t);
 }
 
 
-void luaK_indexed (FuncState *func, Expr *t, Expr *k) {
-  t->u.s.aux = luaK_exp2RK(func, k);
+void luaK_indexed (FuncState *func, Expr *t, Expr *key) {
+  t->u.s.aux = luaK_exp2RK(func, key);
   t->kind = ExprKind_Index;
 }
 
 
-static int constfolding (OpCode op, Expr *e1, Expr *e2) {
+static bool constfolding (OpCode op, Expr *e1, Expr *e2) {
   lua_Number v1, v2, r;
-  if (!isnumeral(e1) || !isnumeral(e2)) return 0;
+  if (!isnumeral(e1) || !isnumeral(e2))
+    return false;
   v1 = e1->u.nval;
   v2 = e2->u.nval;
   switch (op) {
@@ -654,20 +656,22 @@ static int constfolding (OpCode op, Expr *e1, Expr *e2) {
     case OP_SUB: r = luai_numsub(v1, v2); break;
     case OP_MUL: r = luai_nummul(v1, v2); break;
     case OP_DIV:
-      if (v2 == 0) return 0;  /* do not attempt to divide by 0 */
+      if (v2 == 0)
+        return false;  /* do not attempt to divide by 0 */
       r = luai_numdiv(v1, v2); break;
     case OP_MOD:
-      if (v2 == 0) return 0;  /* do not attempt to divide by 0 */
+      if (v2 == 0)
+        return false;  /* do not attempt to divide by 0 */
       r = luai_nummod(v1, v2); break;
     case OP_POW: r = luai_numpow(v1, v2); break;
     case OP_UNM: r = luai_numunm(v1); break;
-    case OP_LEN: return 0;  /* no constant folding for 'len' */
+    case OP_LEN: return false;  /* no constant folding for 'len' */
     default: lua_assert(0); r = 0; break;
   }
   if (luai_numisnan(r))
-    return 0;  /* do not attempt to produce NaN */
+    return false;  /* do not attempt to produce NaN */
   e1->u.nval = r;
-  return 1;
+  return true;
 }
 
 
@@ -692,8 +696,7 @@ static void codearith (FuncState *func, OpCode op, Expr *e1, Expr *e2) {
 }
 
 
-static void codecomp (FuncState *func, OpCode op, int cond, Expr *e1,
-                                                          Expr *e2) {
+static void codecomp (FuncState *func, OpCode op, int cond, Expr *e1, Expr *e2) {
   int o1 = luaK_exp2RK(func, e1);
   int o2 = luaK_exp2RK(func, e2);
   freeexp(func, e2);
