@@ -69,11 +69,12 @@ int luaO_log2 (unsigned int x) {
 }
 
 
-int luaO_rawequalObj (const TValue *t1, const TValue *t2) {
-  if (ttype(t1) != ttype(t2)) return 0;
+bool luaO_rawequalObj (const TValue *t1, const TValue *t2) {
+  if (ttype(t1) != ttype(t2))
+    return false;
   else switch (ttype(t1)) {
     case LUA_TNIL:
-      return 1;
+      return true;
     case LUA_TNUMBER:
       return luai_numeq(nvalue(t1), nvalue(t2));
     case LUA_TBOOLEAN:

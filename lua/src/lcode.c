@@ -243,8 +243,8 @@ static int addk (FuncState *func, TValue *k, TValue *v) {
   }
   else {  /* constant not found; create a new entry */
     setnvalue(idx, cast_num(func->nconstants));
-    luaM_growvector(L, proto->constants, func->nconstants, proto->size_constants, TValue,
-      MAXARG_Bx, "constant table overflow");
+    luaM_growvector(L, proto->constants, func->nconstants, proto->size_constants,
+                    TValue, MAXARG_Bx, "constant table overflow");
     while (oldsize < proto->size_constants)
       setnilvalue(&proto->constants[oldsize++]);
     setobj(L, &proto->constants[func->nconstants], v);

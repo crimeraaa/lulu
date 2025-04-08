@@ -849,6 +849,35 @@ static const struct {
 
 #define UNARY_PRIORITY	8  /* priority for unary operators */
 
+typedef enum {
+  Prec_None,
+  Prec_Assignment,
+  Prec_Or,          /* logical `or` */
+  Prec_And,         /* logical `and` */
+  Prec_Equality,    /* `==` `~=` */
+  Prec_Comparison,  /* `<` `>` `<=` `>=` */
+  Prec_Terminal,    /* `+` `-` */
+  Prec_Factor,      /* `*` `/` `%` */
+  Prec_Unary,       /* unary `-` `#` logical `not` */
+  Prec_Exponent,    /* `^` `..` */
+} Precedence;
+
+typedef const struct {
+  void (*prefix)(LexState *lex, Expr *expr);
+  void (*infix)(LexState *lex, Expr *var);
+  Precedence prec;
+} ParseRule;
+
+/**
+ * @todo 2025-04-08:
+ *  In order for this to work we need to rework the lexer such that ALL possible
+ *  tokens are included in the `TK_*` enum.
+ */
+/*
+static ParseRule parse_rules[] = {
+  ['+'] = {},
+};
+*/
 
 /*
 ** subexpr -> (simpleexp | unop subexpr) { binop subexpr }

@@ -369,7 +369,12 @@ LUAI_DATA const TValue luaO_nilobject_;
 LUAI_FUNC int luaO_log2 (unsigned int x);
 LUAI_FUNC int luaO_int2fb (unsigned int x);
 LUAI_FUNC int luaO_fb2int (int x);
-LUAI_FUNC int luaO_rawequalObj (const TValue *t1, const TValue *t2);
+
+/**
+ * @note 2025-04-08:
+ *  We use C99 `bool` for clarity as this is not part of the user-facing API.
+ */
+LUAI_FUNC bool luaO_rawequalObj (const TValue *t1, const TValue *t2);
 LUAI_FUNC int luaO_str2d (const char *s, lua_Number *result);
 LUAI_FUNC const char *luaO_pushvfstring (lua_State *L, const char *fmt,
                                                        va_list argp);

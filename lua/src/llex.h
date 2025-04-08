@@ -32,6 +32,42 @@ enum RESERVED {
   TK_NAME, TK_STRING, TK_EOS
 };
 
+typedef enum {
+  /* RESERVED */
+  Token_And, Token_Break, Token_Do, Token_Else, Token_Elseif, Token_End,
+  Token_False, Token_For, Token_Function, Token_If, Token_In, Token_Local,
+  Token_Nil, Token_Not, Token_Or, Token_Repeat, Token_Return, Token_Then,
+  Token_True, Token_Until, Token_While,
+  
+
+  /* BALANCED PAIRS */
+  Token_Left_Paren, Token_Right_Paren, /* `(` `)` */
+  Token_Left_Curly, Token_Right_Curly, /* `{` `}` */
+  Token_Left_Bracket, Token_Right_Bracket, /* `[` `]` */
+
+
+  /* PUNCTUATION */
+  Token_Comma, Token_Colon, Token_Semi, /* `,` `:` `;` */
+  Token_Dot, Token_Concat, Token_Vararg, /* `.` `..` `...` */
+  Token_Assign, /* `=` */
+
+
+  /* ARITHMETIC */
+  Token_Add, Token_Sub, /* `+` binary `-` */
+  Token_Mul, Token_Div, Token_Mod, /* `*` `/` `%` */
+  Token_Unm, Token_Len, Token_Pow, /* unary `-` `#` `^` */
+  
+
+  /* COMPARISON */
+  Token_Eq, Token_Neq, /* `==` `~=` */
+  Token_Lt, Token_Leq, /* `<` `<=` */
+  Token_Gt, Token_Geq, /* `>` `>=` */
+
+
+  /* MISC. TERMINALS */
+  Token_Number, Token_String, Token_Name, Token_Eos,
+} TokenType;
+
 /* number of reserved words */
 #define NUM_RESERVED	(cast(int, TK_WHILE-FIRST_RESERVED+1))
 

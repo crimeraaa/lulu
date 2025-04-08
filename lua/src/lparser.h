@@ -18,7 +18,7 @@
 
 /**
  * @note 2025-04-07:
- *  Originally called `ExprKind`.
+ *  Originally called `expkind`.
  */
 typedef enum {
   ExprKind_Void,	/* no value */
