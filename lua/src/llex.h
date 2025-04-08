@@ -11,7 +11,7 @@
 #include "lzio.h"
 
 
-#define FIRST_RESERVED	257
+/* #define FIRST_RESERVED	257 */
 
 /* maximum length of a reserved word */
 #define TOKEN_LEN	(sizeof("function")/sizeof(char))
@@ -21,17 +21,6 @@
 * WARNING: if you change the order of this enumeration,
 * grep "ORDER RESERVED"
 */
-enum RESERVED {
-  /* terminal symbols denoted by reserved words */
-  TK_AND = FIRST_RESERVED, TK_BREAK,
-  TK_DO, TK_ELSE, TK_ELSEIF, TK_END, TK_FALSE, TK_FOR, TK_FUNCTION,
-  TK_IF, TK_IN, TK_LOCAL, TK_NIL, TK_NOT, TK_OR, TK_REPEAT,
-  TK_RETURN, TK_THEN, TK_TRUE, TK_UNTIL, TK_WHILE,
-  /* other terminal symbols */
-  TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE, TK_NUMBER,
-  TK_NAME, TK_STRING, TK_EOS
-};
-
 typedef enum {
   /* RESERVED */
   Token_And, Token_Break, Token_Do, Token_Else, Token_Elseif, Token_End,
@@ -53,9 +42,9 @@ typedef enum {
 
 
   /* ARITHMETIC */
-  Token_Add, Token_Sub, /* `+` binary `-` */
+  Token_Add, Token_Sub, /* `+` `-` */
   Token_Mul, Token_Div, Token_Mod, /* `*` `/` `%` */
-  Token_Unm, Token_Len, Token_Pow, /* unary `-` `#` `^` */
+  Token_Len, Token_Pow, /* `#` `^` */
   
 
   /* COMPARISON */
@@ -65,11 +54,11 @@ typedef enum {
 
 
   /* MISC. TERMINALS */
-  Token_Number, Token_String, Token_Name, Token_Eos,
+  Token_Number, Token_String, Token_Name, Token_Error, Token_Eos,
 } TokenType;
 
 /* number of reserved words */
-#define NUM_RESERVED	(cast(int, TK_WHILE-FIRST_RESERVED+1))
+#define NUM_RESERVED    (cast(int, Token_While) + 1)
 
 
 /* array with token `names' */
@@ -83,15 +72,16 @@ typedef union {
 
 
 typedef struct Token {
-  int token; /* an ASCII character literal or one of `RESERVED`. */
+  TokenType type;
   SemInfo seminfo;
 } Token;
 
 
 typedef struct LexState {
   int character;  /* current character (charint) */
-  int linenumber;  /* input line counter */
-  int lastline;  /* line of last token `consumed' */
+  int errchar;    /* exact character that caused an error to propagate */
+  int linenumber; /* input line counter */
+  int lastline;   /* line of last token `consumed' */
   Token current;  /* current token */
   Token lookahead;  /* look ahead token */
   struct FuncState *func;  /* `FuncState' is private to the parser */
@@ -108,9 +98,9 @@ LUAI_FUNC void luaX_setinput (lua_State *L, LexState *lex, ZIO *z, TString *sour
 LUAI_FUNC TString *luaX_newstring (LexState *lex, const char *str, size_t l);
 LUAI_FUNC void luaX_next (LexState *lex);
 LUAI_FUNC void luaX_lookahead (LexState *lex);
-LUAI_FUNC void luaX_lexerror (LexState *lex, const char *msg, int token);
+LUAI_FUNC void luaX_lexerror (LexState *lex, const char *msg, TokenType type);
 LUAI_FUNC void luaX_syntaxerror (LexState *lex, const char *s);
-LUAI_FUNC const char *luaX_token2str (LexState *lex, int token);
+LUAI_FUNC const char *luaX_token2str (LexState *lex, TokenType type);
 
 
 #endif

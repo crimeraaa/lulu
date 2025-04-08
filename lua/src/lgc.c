@@ -311,7 +311,7 @@ static l_mem propagatemark (global_State *g) {
       traverseproto(g, p);
       return sizeof(Proto) + sizeof(Instruction) * p->size_code +
                              sizeof(Proto *) * p->size_children +
-                             sizeof(TValue) * p->size_constants + 
+                             sizeof(TValue) * p->size_constants +
                              sizeof(int) * p->size_lineinfo +
                              sizeof(LocVar) * p->size_locvars +
                              sizeof(TString *) * p->size_upvalues;
@@ -698,7 +698,7 @@ void luaC_linkupval (lua_State *L, UpVal *uv) {
   GCObject *o = obj2gco(uv);
   o->gch.next = g->rootgc;  /* link upvalue into `rootgc' list */
   g->rootgc = o;
-  if (isgray(o)) { 
+  if (isgray(o)) {
     if (g->gcstate == GCSpropagate) {
       gray2black(o);  /* closed upvalues need barrier */
       luaC_barrier(L, uv, uv->v);

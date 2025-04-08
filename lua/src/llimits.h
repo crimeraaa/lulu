@@ -15,6 +15,9 @@
 #include "lua.h"
 
 
+#include <assert.h>
+#define lua_assert  assert
+
 /**
  * @brief 2025-04-07:
  *  My addition. Used to differentiate from `int` return values of 0 or 1.
@@ -71,7 +74,6 @@ typedef LUAI_USER_ALIGNMENT_T L_Umaxalign;
 
 /* result of a `usual argument conversion' over lua_Number */
 typedef LUAI_UACNUMBER l_uacNumber;
-
 
 /* internal assertions for in-house debugging */
 #ifdef lua_assert

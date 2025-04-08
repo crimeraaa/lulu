@@ -21,21 +21,21 @@
  *  Originally called `expkind`.
  */
 typedef enum {
-  ExprKind_Void,	/* no value */
-  ExprKind_Nil,
-  ExprKind_True,
-  ExprKind_False,
-  ExprKind_Constant,		/* info = index of constant in `k' */
-  ExprKind_Number,	/* nval = numerical value */
-  ExprKind_Local,	/* info = local register */
-  ExprKind_Upvalue,       /* info = index of upvalue in `upvalues' */
-  ExprKind_Global,	/* info = index of table; aux = index of global name in `k' */
-  ExprKind_Index,	/* info = table register; aux = index register (or `k') */
-  ExprKind_Jump,		/* info = instruction pc */
-  ExprKind_Relocable,	/* info = instruction pc */
-  ExprKind_Nonrelocable,	/* info = result register */
-  ExprKind_Call,	/* info = instruction pc */
-  ExprKind_Vararg	/* info = instruction pc */
+  Expr_Void,	/* no value */
+  Expr_Nil,
+  Expr_True,
+  Expr_False,
+  Expr_Constant,		  /* info = index of constant in `k' */
+  Expr_Number,	      /* nval = numerical value */
+  Expr_Local,	        /* info = local register */
+  Expr_Upvalue,       /* info = index of upvalue in `upvalues' */
+  Expr_Global,	      /* info = index of table; aux = index of global name in `k' */
+  Expr_Index,	        /* info = table register; aux = index register (or `k') */
+  Expr_Jump,		      /* info = instruction pc */
+  Expr_Relocable,	    /* info = instruction pc */
+  Expr_Nonrelocable,	/* info = result register */
+  Expr_Call,	        /* info = instruction pc */
+  Expr_Vararg	        /* info = instruction pc */
 } ExprKind;
 
 /**
