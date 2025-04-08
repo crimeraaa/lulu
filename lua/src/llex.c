@@ -33,7 +33,7 @@ const char *const luaX_tokens [] = {
     "false", "for", "function", "if", "in", "local",
     "nil", "not", "or", "repeat", "return", "then",
     "true", "until", "while",
-  
+
     "(", ")", "{", "}", "[", "]",                         /* BALANCED PAIRS */
     ",", ":", ";", ".", "..", "...", "=",                 /* PUNCTUATION */
     "+", "-", "*", "/", "%", "#", "^",                    /* ARITHMETIC */
@@ -108,7 +108,7 @@ void luaX_lexerror (LexState *lex, const char *msg, TokenType type) {
    * @note 2025-04-08:
    *  Originally `if (token)` since we used to use charint and `token` could
    *  be an ASCII literal.
-   * 
+   *
    *  With our new system we need to explicitly save the culprit character
    *  beforehand.
    */
@@ -359,11 +359,11 @@ static TokenType single_char(LexState *lex) {
     case '{': return Token_Left_Curly;
     case '}': return Token_Right_Curly;
     case ']': return Token_Right_Bracket;
-              
+
     case ',': return Token_Comma;
     case ':': return Token_Colon;
     case ';': return Token_Semi;
-    
+
     case '+': return Token_Add;
     case '*': return Token_Mul;
     case '/': return Token_Div;
@@ -480,7 +480,7 @@ static TokenType llex (LexState *lex, SemInfo *seminfo) {
             TokenType type = cast(TokenType, ts->tsv.reserved - 1);
             lua_assert(Token_And <= type && type <= Token_While);
             return type;
-          } 
+          }
           else {
             seminfo->ts = ts;
             return Token_Name;

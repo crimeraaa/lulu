@@ -27,7 +27,7 @@ typedef enum {
   Token_False, Token_For, Token_Function, Token_If, Token_In, Token_Local,
   Token_Nil, Token_Not, Token_Or, Token_Repeat, Token_Return, Token_Then,
   Token_True, Token_Until, Token_While,
-  
+
 
   /* BALANCED PAIRS */
   Token_Left_Paren, Token_Right_Paren, /* `(` `)` */
@@ -45,7 +45,7 @@ typedef enum {
   Token_Add, Token_Sub, /* `+` `-` */
   Token_Mul, Token_Div, Token_Mod, /* `*` `/` `%` */
   Token_Len, Token_Pow, /* `#` `^` */
-  
+
 
   /* COMPARISON */
   Token_Eq, Token_Neq, /* `==` `~=` */

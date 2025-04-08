@@ -235,7 +235,7 @@ static int addk (FuncState *func, TValue *k, TValue *v) {
   if (ttisnumber(idx)) {
     /**
      * @note 2025-04-07:
-     *  Originally contained `&func->f->k` which is equivalent to our new
+     *  Originally contained `&fs->f->k` which is equivalent to our new
      *  `&func->proto->constants`.
      */
     lua_assert(luaO_rawequalObj(&proto->constants[cast_int(nvalue(idx))], v));
@@ -299,7 +299,7 @@ void luaK_setreturns (FuncState *func, Expr *expr, int nresults) {
 void luaK_setoneret (FuncState *func, Expr *expr) {
   if (expr->kind == Expr_Call) {  /* expression is an open function call? */
     expr->kind = Expr_Nonrelocable;
-    expr->u.s.info = GETARG_A(getcode(func, expr));
+    expr->u.s.info = GETARG_A(getcode(func, expr)); /* base of function */
   }
   else if (expr->kind == Expr_Vararg) {
     SETARG_B(getcode(func, expr), 2);
@@ -310,7 +310,7 @@ void luaK_setoneret (FuncState *func, Expr *expr) {
 
 void luaK_dischargevars (FuncState *func, Expr *expr) {
   switch (expr->kind) {
-    case Expr_Local: {
+    case Expr_Local: { /* info is already a local register */
       expr->kind = Expr_Nonrelocable;
       break;
     }
@@ -422,14 +422,16 @@ void luaK_exp2nextreg (FuncState *func, Expr *expr) {
   luaK_dischargevars(func, expr);
   freeexp(func, expr);
   luaK_reserveregs(func, 1);
-  exp2reg(func, expr, func->freereg - 1);
+  exp2reg(func, expr, func->freereg - 1); /* freereg - 1 is the register we want */
 }
 
 
 int luaK_exp2anyreg (FuncState *func, Expr *expr) {
   luaK_dischargevars(func, expr);
   if (expr->kind == Expr_Nonrelocable) {
-    if (!hasjumps(expr)) return expr->u.s.info;  /* exp is already in a register */
+    if (!hasjumps(expr))
+      return expr->u.s.info;  /* exp is already in a register */
+
     if (expr->u.s.info >= func->nactvar) {  /* reg. is not a local? */
       exp2reg(func, expr, expr->u.s.info);  /* put value on it */
       return expr->u.s.info;
@@ -751,7 +753,7 @@ void luaK_infix (FuncState *func, BinOpr op, Expr *v) {
     }
     case OPR_ADD: case OPR_SUB: case OPR_MUL: case OPR_DIV:
     case OPR_MOD: case OPR_POW: {
-      if (!isnumeral(v))
+      if (!isnumeral(v)) /* is not a number literal? */
         luaK_exp2RK(func, v);
       break;
     }

@@ -151,7 +151,7 @@ static void codestring (LexState *lex, Expr *expr, TString *s) {
 }
 
 
-static void checkname(LexState *lex, Expr *expr) {
+static void checkname (LexState *lex, Expr *expr) {
   codestring(lex, expr, str_checkname(lex));
 }
 
@@ -163,8 +163,10 @@ static int registerlocalvar (LexState *lex, TString *varname) {
   luaM_growvector(lex->L, proto->locvars, func->nlocvars, proto->size_locvars,
     LocVar, SHRT_MAX, "too many local variables");
 
-  while (oldsize < proto->size_locvars)
+  while (oldsize < proto->size_locvars) /* initialize new region */
     proto->locvars[oldsize++].varname = NULL;
+
+  /* declare first available local variable */
   proto->locvars[func->nlocvars].varname = varname;
   luaC_objbarrier(lex->L, proto, varname);
   return func->nlocvars++;
@@ -177,8 +179,12 @@ static int registerlocalvar (LexState *lex, TString *varname) {
 
 static void new_localvar (LexState *lex, TString *name, int n) {
   FuncState *func = lex->func;
+  int locvar;
   luaY_checklimit(func, func->nactvar+n+1, LUAI_MAXVARS, "local variables");
-  func->actvar[func->nactvar+n] = cast(unsigned short, registerlocalvar(lex, name));
+  
+  /* each active variable is merely an index into `func->proto->locvars[]` */
+  locvar = registerlocalvar(lex, name);
+  func->actvar[func->nactvar + n] = cast(unsigned short, locvar);
 }
 
 
@@ -243,7 +249,7 @@ static void markupval (FuncState *func, int level) {
 }
 
 
-static int singlevaraux (FuncState *func, TString *n, Expr *var, int base) {
+static int singlevaraux (FuncState *func, TString *n, Expr *var, bool base) {
   if (func == NULL) {  /* no more levels? */
     init_exp(var, Expr_Global, NO_REG);  /* default is global variable */
     return Expr_Global;
@@ -257,7 +263,7 @@ static int singlevaraux (FuncState *func, TString *n, Expr *var, int base) {
       return Expr_Local;
     }
     else {  /* not found at current level; try upper one */
-      if (singlevaraux(func->prev, n, var, 0) == Expr_Global)
+      if (singlevaraux(func->prev, n, var, false) == Expr_Global)
         return Expr_Global;
       var->u.s.info = indexupvalue(func, n, var);  /* else was LOCAL or UPVAL */
       var->kind = Expr_Upvalue;  /* upvalue in this level */
@@ -270,7 +276,7 @@ static int singlevaraux (FuncState *func, TString *n, Expr *var, int base) {
 static void singlevar (LexState *lex, Expr *var) {
   TString *varname = str_checkname(lex);
   FuncState *func = lex->func;
-  if (singlevaraux(func, varname, var, 1) == Expr_Global)
+  if (singlevaraux(func, varname, var, true) == Expr_Global)
     var->u.s.info = luaK_stringK(func, varname);  /* info points to global name */
 }
 
@@ -636,7 +642,7 @@ static int explist1 (LexState *lex, Expr *var) {
 }
 
 
-static void funcargs (LexState *lex, Expr *f) {
+static void funcargs (LexState *lex, Expr *expr) {
   FuncState *func = lex->func;
   Expr args;
   int base, nparams;
@@ -669,8 +675,8 @@ static void funcargs (LexState *lex, Expr *f) {
       return;
     }
   }
-  lua_assert(f->kind == Expr_Nonrelocable);
-  base = f->u.s.info;  /* base register for call */
+  lua_assert(expr->kind == Expr_Nonrelocable);
+  base = expr->u.s.info;  /* base register for call */
   if (hasmultret(args.kind))
     nparams = LUA_MULTRET;  /* open call */
   else {
@@ -678,9 +684,9 @@ static void funcargs (LexState *lex, Expr *f) {
       luaK_exp2nextreg(func, &args);  /* close last argument */
     nparams = func->freereg - (base+1);
   }
-  init_exp(f, Expr_Call, luaK_codeABC(func, OP_CALL, base, nparams+1, 2));
+  init_exp(expr, Expr_Call, luaK_codeABC(func, OP_CALL, base, nparams + 1, 2));
   luaK_fixline(func, line);
-  func->freereg = base+1;  /* call remove function and arguments and leaves
+  func->freereg = base + 1; /* call remove function and arguments and leaves
                             (unless changed) one result */
 }
 
@@ -1398,7 +1404,7 @@ static bool statement (LexState *lex) {
 
 static void chunk (LexState *lex) {
   /* chunk -> { stat [`;'] } */
-  bool is_last = 0;
+  bool is_last = false;
   enterlevel(lex);
   while (!is_last && !block_follow(lex->current.type)) {
     is_last = statement(lex);
