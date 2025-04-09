@@ -7,34 +7,26 @@ import "core:log"
 _ :: fmt // needed for when !ODIN_DEBUG
 
 MAX_CONSTANTS :: MAX_uBC
-MAX_LOCALS    :: cast(int)max(u8) + 1
 INVALID_REG   :: ~cast(u16)0
 UNINITIALIZED_LOCAL :: -1
 
-Local :: struct {
-    ident: ^OString,
-    depth: int,
-    // startpc, endpc: int,
-}
-
 Compiler :: struct {
-    vm:         ^VM,
-    locals:      [MAX_LOCALS]Local, // 'Declared' local variable stack. See `lparser.h:FuncState::actvar[]`.
-    count_local: int,      // How many locals are currently active?
-    scope_depth: int,      // How far down is our current lexical scope?
-    parent:     ^Compiler, // Enclosing state.
-    parser:     ^Parser,   // All nested compilers share the same parser.
-    chunk:      ^Chunk,    // Compilers do not own their chunks. They merely fill them.
-    free_reg:    u16,      // Index of the first free register.
-    last_jump_target, stack_usage: int,
-    is_print: bool, // HACK(2025-04-09): until `print` is a global runtime function
+    vm:             ^VM,
+    scope_depth:     int,      // How far down is our current lexical scope?
+    parent:         ^Compiler, // Enclosing state.
+    parser:         ^Parser,   // All nested compilers share the same parser.
+    chunk:          ^Chunk,    // Compilers do not own their chunks. They merely fill them.
+    free_reg:        int,      // Index of the first free register.
+    last_jump:       int,
+    is_print:        bool,     // HACK(2025-04-09): until `print` is a global runtime function
+    active_local:    int,      // How many locals are currently in scope?
 }
 
 compiler_init :: proc(compiler: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
     compiler.vm     = vm
     compiler.parser = parser
     compiler.chunk  = chunk
-    compiler.last_jump_target = -1
+    compiler.last_jump = -1
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
@@ -43,18 +35,20 @@ compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
     compiler_init(compiler, vm, parser, chunk)
 
     parser_advance(parser)
+
+    // Top level scope can also have its own locals.
+    compiler_begin_scope(compiler)
     for !parser_match(parser, .Eof) {
         parser_parse(parser, compiler)
     }
     parser_consume(parser, .Eof)
+    compiler_end_scope(compiler)
     compiler_end(compiler)
-    vm.top = compiler.stack_usage
 }
 
 compiler_end :: proc(compiler: ^Compiler) {
     compiler_emit_return(compiler, 0, 0)
     when DEBUG_PRINT_CODE {
-        fmt.printfln("=== STACK USAGE ===\n%i", compiler.stack_usage)
         debug_dump_chunk(compiler.chunk^)
     }
 }
@@ -63,20 +57,22 @@ compiler_begin_scope :: proc(compiler: ^Compiler) {
     compiler.scope_depth += 1
 }
 
+
+/*
+Notes:
+-   See `lparser.c:removevars(LexState *ls, int tolevel)`.
+ */
 compiler_end_scope :: proc(compiler: ^Compiler) {
-    ndepth  := compiler.scope_depth - 1
-    nlocals := compiler.count_local
-    defer {
-        compiler.scope_depth = ndepth
-        compiler.count_local = nlocals
-    }
+    depth := compiler.scope_depth - 1
+    count := compiler.active_local
+
+    for count > 0 && compiler.chunk.locals[count - 1].depth > depth do count -= 1
 
     // WARNING(2025-04-09): Is this safe? We need these to reuse registers once
     // locals go out of scope.
-    compiler.free_reg -= cast(u16)nlocals
-    for nlocals > 0 && compiler.locals[nlocals].depth > ndepth {
-        nlocals -= 1
-    }
+    compiler.free_reg     = count
+    compiler.active_local = count
+    compiler.scope_depth  = depth
 }
 
 ///=== REGISTER EMISSSION ======================================================
@@ -92,17 +88,17 @@ Links:
 compiler_reserve_reg :: proc(compiler: ^Compiler, count: int) {
     // log.debugf("free_reg := %i + %i", compiler.free_reg, count, location = location)
     // @todo 2025-01-06: Check the VM's available stack size?
-    compiler.free_reg += cast(u16)count
-    if cast(int)compiler.free_reg > compiler.stack_usage {
-        compiler.stack_usage = cast(int)compiler.free_reg
+    compiler.free_reg += count
+    if compiler.free_reg > compiler.chunk.stack_used {
+        compiler.chunk.stack_used = compiler.free_reg
     }
 }
 
 compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_location) {
-    // log.debugf("free_reg := %i - 1; reg := %i", compiler.free_reg, reg, location = location)
-    if !rk_is_k(reg) /* && reg >= fs->nactvar */ {
+    // Only pop if nonconstant and not the register of an existing local.
+    if !rk_is_k(reg) && cast(int)reg >= compiler.active_local {
         compiler.free_reg -= 1
-        log.assertf(reg == compiler.free_reg, "free_reg := %i but reg := %i",
+        log.assertf(cast(int)reg == compiler.free_reg, "free_reg := %i but reg := %i",
             compiler.free_reg, reg, loc = location)
     }
 }
@@ -145,8 +141,11 @@ Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2nextreg
  */
 compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
+    compiler_discharge_vars(compiler, expr)
+    compiler_pop_expr(compiler, expr)
+
     compiler_reserve_reg(compiler, 1)
-    compiler_expr_to_reg(compiler, expr, compiler.free_reg - 1)
+    compiler_expr_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1)
 }
 
 /*
@@ -162,8 +161,7 @@ compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
 
     // NOTE(2025-04-09): Seemingly redundant but useful when we get to jumps.
     // expr.f = NO_JUMP; expr.t = NO_JUMP;
-    expr.reg = reg
-    expr.type = .Discharged
+    expr_init_reg(expr, .Discharged, reg)
 }
 
 /*
@@ -176,7 +174,7 @@ Notes:
 compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
     if expr.type != .Discharged {
         compiler_reserve_reg(compiler, 1)
-        compiler_discharge_expr_to_reg(compiler, expr, compiler.free_reg - 1)
+        compiler_discharge_expr_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1)
     }
 }
 
@@ -291,9 +289,9 @@ compiler_emit_nil :: proc(compiler: ^Compiler, reg, count: u16) {
     pc    := chunk.pc
 
     // No jumps to current position?
-    if pc > compiler.last_jump_target {
+    if pc > compiler.last_jump {
         // Function start and positions already clean?
-        if pc == 0 && !compiler.is_print && cast(int)reg >= compiler.count_local {
+        if pc == 0 && !compiler.is_print && cast(int)reg >= compiler.active_local {
             return
         }
         // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
@@ -380,19 +378,19 @@ Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
  */
 compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (local_index: int) {
-    if compiler.count_local >= len(compiler.locals) {
+    chunk := compiler.chunk
+    if chunk.count_local >= len(chunk.locals) {
         parser_error_consumed(compiler.parser, "Too many local variables")
     }
 
     // Don't reserve registers here as our initializer expressions may do so
     // already, or we implicitly load nil.
-    defer compiler.count_local += 1
+    defer chunk.count_local += 1
 
-
-    local := &compiler.locals[compiler.count_local]
+    local := &chunk.locals[chunk.count_local]
     local.ident = ident
     local.depth = UNINITIALIZED_LOCAL
-    return compiler.count_local
+    return chunk.count_local
 }
 
 
@@ -401,7 +399,8 @@ Notes:
 -   See `lparser.c:searchvar(FuncState *fs, TString *n)`.
  */
 compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: int, ok: bool) {
-    #reverse for local, index in compiler.locals[:compiler.count_local] {
+    chunk := compiler.chunk
+    #reverse for local, index in chunk.locals[:compiler.active_local] {
         // If uninitialized, skip to allow: `x = 1; local x = x`
         if local.ident == ident && local.depth != UNINITIALIZED_LOCAL {
             return index, true

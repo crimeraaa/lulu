@@ -22,7 +22,7 @@ ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
     str = object_new(OString, vm, n + 1)
     defer intern_set(&vm.interned, str)
 
-    str.hash = fnv1a_hash_32(input)
+    str.hash = hash_string(input)
     str.len  = n
     #no_bounds_check {
         copy(str.data[:n], input)
@@ -45,28 +45,21 @@ ostring_to_cstring :: proc(str: ^OString) -> cstring #no_bounds_check {
     return cstring(cast([^]byte)&str.data)
 }
 
-fnv1a_hash_32 :: proc {
-    fnv1a_hash_32_bytes,
-    fnv1a_hash_32_string,
-    fnv1a_hash_32_f64,
-    fnv1a_hash_32_pointer,
-}
-
-fnv1a_hash_32_f64 :: proc(data: f64) -> (hash: u32) {
+hash_f64 :: proc(data: f64) -> (hash: u32) {
     data := data
-    return fnv1a_hash_32_bytes(mem.byte_slice(&data, size_of(data)))
+    return hash_bytes(mem.byte_slice(&data, size_of(data)))
 }
 
-fnv1a_hash_32_pointer :: proc(data: rawptr) -> (hash: u32) {
+hash_pointer :: proc(data: rawptr) -> (hash: u32) {
     data := data
-    return fnv1a_hash_32_bytes(mem.byte_slice(&data, size_of(data)))
+    return hash_bytes(mem.byte_slice(&data, size_of(data)))
 }
 
-fnv1a_hash_32_string :: proc(data: string) -> (hash: u32) {
-    return fnv1a_hash_32_bytes(transmute([]byte)data)
+hash_string :: proc(data: string) -> (hash: u32) {
+    return hash_bytes(transmute([]byte)data)
 }
 
-fnv1a_hash_32_bytes :: proc(bytes: []byte) -> (hash: u32) {
+hash_bytes :: proc(bytes: []byte) -> (hash: u32) {
     FNV1A_OFFSET_32 :: 0x811c9dc5
     FNV1A_PRIME_32  :: 0x01000193
 

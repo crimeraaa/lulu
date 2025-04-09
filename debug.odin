@@ -4,6 +4,8 @@ package lulu
 import "core:fmt"
 
 debug_dump_chunk :: proc(chunk: Chunk) {
+    fmt.printfln("=== STACK USAGE ===\n%i", chunk.stack_used)
+
     fmt.println("=== DISASSEMBLY: BEGIN ===")
     defer {
         fmt.println("\n=== DISASSEMBLY: END ===")

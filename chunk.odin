@@ -1,12 +1,24 @@
 #+private
 package lulu
 
+MAX_LOCALS :: 200
+
 Chunk :: struct {
-    source:     string, // Filename where the chunk originated.
-    constants: [dynamic]Value,
-    code:      []Instruction, // len(code) == allocated capacity
-    line:      []int,         // len(line) == allocated capacity
-    pc:        int, // First free index in `code` and `line`.
+    source:          string, // Filename where the chunk originated.
+    constants:     [dynamic]Value,
+    code:          []Instruction, // len(code) == allocated capacity
+    line:          []int, // len(line) == allocated capacity
+    pc:              int, // First free index in `code` and `line`.
+    stack_used:      int, // Used by VM to determine where stack top should point.
+
+    locals:         [MAX_LOCALS]Local, // 'Declared' local variable stack. See `lparser.h:FuncState::actvar[]`.
+    count_local:     int, // How many locals have we registered in total?
+}
+
+Local :: struct {
+    ident: ^OString,
+    depth: int,
+    // startpc, endpc: int,
 }
 
 chunk_init :: proc(vm: ^VM, chunk: ^Chunk, source: string) {

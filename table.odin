@@ -128,9 +128,9 @@ get_hash :: proc(key: Value) -> (hash: u32) {
     switch key.type {
     case .Nil:      unreachable()
     case .Boolean:  return cast(u32)key.boolean
-    case .Number:   return fnv1a_hash_32(key.number)
+    case .Number:   return hash_f64(key.number)
     case .String:   return key.ostring.hash
-    case .Table:    return fnv1a_hash_32(key.table)
+    case .Table:    return hash_pointer(key.table)
     }
     unreachable()
 }

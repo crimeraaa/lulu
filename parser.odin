@@ -169,7 +169,7 @@ Links:
  */
 parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
     if parser_match(parser, .Identifier) {
-        assignment(parser, compiler, &LValue{})
+        assignment(parser, compiler, &LValue{}, 1)
     } else {
         statement(parser, compiler)
     }
@@ -188,7 +188,7 @@ Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#singlevar
  */
 @(private="file")
-assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
+assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_vars: int) {
     // Inline implementation of `compiler.c:parseVariable()` since we immediately
     // consumed the '<identifier>'. Also, Lua doesn't have a 'var' keyword.
     variable(parser, compiler, &last.variable)
@@ -197,28 +197,20 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
     if parser_match(parser, .Comma) {
         next := &LValue{prev = last}
         parser_consume(parser, .Identifier)
-        assignment(parser, compiler, next)
+        assignment(parser, compiler, next, count_vars + 1)
         return // Prevent parents of recursive calls from consuming '='
     }
     parser_consume(parser, .Equals)
 
-    count_lvalues := lvalue_count(last)
-    count_exprs   := expr_list(parser, compiler)
+    expr := &Expr{}
+    count_exprs := expr_list(parser, compiler, expr)
+    adjust_assign(compiler, count_vars, count_exprs, expr) // Must come first!
 
-    if count_exprs > count_lvalues {
-        // a, b, c = 1, 2, 3, 4; free_reg = 4; count_lvalues = 3; count_exprs = 4;
-        compiler.free_reg -= count_exprs - count_lvalues
-    }
-    if count_lvalues > count_exprs {
-        // a, b, c, d = 1, 2, 3; free_reg = 3; count_lvalues = 4; count_exprs = 3;
-        n   := count_lvalues - count_exprs
-        reg := compiler.free_reg
-        compiler_reserve_reg(compiler, cast(int)n)
-        compiler_emit_nil(compiler, reg, n)
-    }
+    // a, b, c = 1, 2, 3, 4; free_reg = 4; count = 3; count_exprs = 4;
+    if count_vars < count_exprs do compiler.free_reg -= count_exprs - count_vars
 
     // a, b, c = 1, 2, 3; free_reg = 3; count_exprs = 3; reg = 2
-    reg := compiler.free_reg - 1
+    reg := cast(u16)compiler.free_reg - 1
 
     // Assign going downwards and free in the correct order so that these
     // registers can be reused.
@@ -234,14 +226,6 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
         compiler_pop_reg(compiler, reg)
         reg -= 1
     }
-}
-
-lvalue_count :: proc(last: ^LValue) -> (count: u16) {
-    iter := last
-    for _ in lvalue_iterator(&iter) {
-        count += 1
-    }
-    return count
 }
 
 lvalue_iterator :: proc(iter: ^^LValue) -> (current: ^LValue, ok: bool) {
@@ -289,6 +273,12 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     }
 }
 
+
+/*
+Brief:
+-   Intern an identifier represented by `parser.consumed` and return the
+    interned string itself for the caller's use.
+ */
 string_constant :: proc(parser: ^Parser, compiler: ^Compiler) -> ^OString {
     index := identifier_constant(parser, compiler, parser.consumed)
     return compiler.chunk.constants[index].ostring
@@ -305,39 +295,28 @@ Notes:
 */
 @(private="file")
 local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
-    nvars: int
+    count_vars: int
     for {
         parser_consume(parser, .Identifier)
-        declare_local(parser, compiler, string_constant(parser, compiler))
-        nvars += 1
-        if !parser_match(parser, .Comma) {
-            break;
-        }
+        local_decl(parser, compiler, string_constant(parser, compiler))
+        count_vars += 1
+        if !parser_match(parser, .Comma) do break
     }
-
 
     expr := &Expr{}
-    nexprs: int
+    count_exprs: int
+    // No need for `else` clause as zero value is already .Empty
     if parser_match(parser, .Equals) {
-        for {
-            expression(parser, compiler, expr)
-            nexprs += 1
-            if !parser_match(parser, .Comma) {
-                break;
-            }
-        }
-    } else {
-        // `nil` is the default value for local variables.
-        expr_init(expr, .Empty)
-        nexprs = 0
+        count_exprs = expr_list(parser, compiler, expr)
     }
+
     /*
     Normally, we want to ensure zero stack effect. However, in this case,
     we want the initialization expressions to remain on the stack as they
     will act as the local variables themselves.
     */
-    adjust_assign(compiler, nvars, nexprs, expr)
-    adjust_locals(compiler, nvars)
+    adjust_assign(compiler, count_vars, count_exprs, expr)
+    local_adjust(compiler, count_vars)
 }
 
 /*
@@ -346,8 +325,8 @@ Analogous to:
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.
  */
 @(private="file")
-declare_local :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString) {
-    for local, index in compiler.locals[:compiler.count_local] {
+local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString) {
+    for local, index in compiler.chunk.locals[:compiler.chunk.count_local] {
         // We hit an initialized local in an outer scope?
         if local.depth != UNINITIALIZED_LOCAL && local.depth < compiler.scope_depth {
             break
@@ -364,21 +343,17 @@ Notes:
 -   See `lparser.c:adjust_assign(LexState *ls, int nvars, int nexps, expdesc *e)`.
  */
 @(private="file")
-adjust_assign :: proc(compiler: ^Compiler, nvars, nexprs: int, expr: ^Expr) {
+adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^Expr) {
     // TODO(2025-04-08): Add `if (hasmultret(expr->kind))` analog
 
-    if expr.type != .Empty {
-        // close last expression
-        compiler_expr_next_reg(compiler, expr)
-    }
+    // Emit the last expression from `expr_list()`.
+    if expr.type != .Empty do compiler_expr_next_reg(compiler, expr)
 
     // More variables than expressions?
-    if extra := nvars - nexprs; extra > 0 {
+    if extra := count_vars - count_exprs; extra > 0 {
         reg := compiler.free_reg
         compiler_reserve_reg(compiler, extra)
-
-        // TODO(2025-04-08): Fix this so that we don't emit OpCode.Load_Nil
-        compiler_emit_nil(compiler, reg, cast(u16)extra)
+        compiler_emit_nil(compiler, cast(u16)reg, cast(u16)extra)
     }
 }
 
@@ -389,12 +364,14 @@ Notes:
     takes care of that already.
  */
 @(private="file")
-adjust_locals :: proc(compiler: ^Compiler, nvars: int) {
-    startpc := compiler.chunk.pc
-    // Unlike Lua, we don't adjust `compiler.count_local += nvars` here because
-    // we already did so at the time of `declare_local()`.
-    for i := nvars; i >= 0; i -= 1 {
-        compiler.locals[compiler.count_local - i].depth = compiler.scope_depth
+local_adjust :: proc(compiler: ^Compiler, nvars: int) {
+    // startpc := compiler.chunk.pc
+    depth := compiler.scope_depth
+
+    // NOTE(2025-04-09): This is VERY important!
+    compiler.active_local += nvars
+    for i := nvars; i > 0; i -= 1 {
+        compiler.chunk.locals[compiler.active_local - i].depth = depth
         // compiler.locals[compiler.count_local - i].startpc = startpc
     }
 }
@@ -420,27 +397,39 @@ print_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
     defer compiler.is_print = false
 
     parser_consume(parser, .Left_Paren)
-    n_args: u16
+
+    args := &Expr{}
+    count_args: int
     if !parser_check(parser, .Right_Paren) {
-        n_args = expr_list(parser, compiler)
+        count_args = expr_list(parser, compiler, args)
     }
+
+    // Emit the last expression from `expr_list()`.
+    if args.type != .Empty do compiler_expr_next_reg(compiler, args)
+
     parser_consume(parser, .Right_Paren)
-    compiler_emit_AB(compiler, .Print, compiler.free_reg - n_args, compiler.free_reg)
+    compiler_emit_AB(compiler, .Print,
+        cast(u16)(compiler.free_reg - count_args), cast(u16)compiler.free_reg)
+
     // This is hacky but it works to allow recycling of registers
-    compiler.free_reg -= n_args
+    compiler.free_reg -= count_args
 }
 
-// Pushes a comma-separated list of expressions onto the stack.
+/*
+Brief:
+-   Pushes a comma-separated list of expressions onto the stack.
+
+Notes:
+-   Like in Lua 5.1.5, the last expression is not emitted.
+ */
 @(private="file")
-expr_list :: proc(parser: ^Parser, compiler: ^Compiler) -> (count: u16) {
-    for {
-        arg := &Expr{}
-        expression(parser, compiler, arg)
+expr_list :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (count: int) {
+    count = 1 // at least one expression
+    expression(parser, compiler, expr)
+    for parser_match(parser, .Comma) {
+        compiler_expr_next_reg(compiler, expr)
+        expression(parser, compiler, expr)
         count += 1
-        compiler_expr_next_reg(compiler, arg)
-        if !parser_match(parser, .Comma) {
-            break
-        }
     }
     return count
 }
@@ -474,9 +463,7 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
 
     for {
         rule := get_rule(parser.lookahead.type)
-        if prec > rule.prec {
-            break
-        }
+        if prec > rule.prec do break
         // Can occur when we hardcode low precedence recursion in high precedence calls
         assert(rule.infix != nil)
         parser_advance(parser)
@@ -549,11 +536,9 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     index := identifier_constant(parser, compiler, parser.consumed)
     ident := compiler.chunk.constants[index].ostring
     local, ok := compiler_resolve_local(compiler, ident)
-    if ok {
-        expr_init_reg(expr, .Local, cast(u16)local)
-    } else {
-        expr_init_index(expr, .Global, index)
-    }
+
+    if ok do expr_init_reg(expr, .Local, cast(u16)local)
+    else do expr_init_index(expr, .Global, index)
 }
 
 @(private="file")
@@ -614,9 +599,7 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     // By not adding 1 for exponentiation we enforce right-associativity since we
     // keep emitting the ones to the right first
-    if prec != .Exponent {
-        prec += Precedence(1)
-    }
+    if prec != .Exponent do prec += Precedence(1)
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
     right := &Expr{}
@@ -630,9 +613,7 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     -   Otherwise, without this, they will be reversed!
      */
     if USE_CONSTANT_FOLDING {
-        if !expr_is_number(expr) {
-            compiler_expr_regconst(compiler, expr)
-        }
+        if !expr_is_number(expr) do compiler_expr_regconst(compiler, expr)
     } else {
         compiler_expr_regconst(compiler, expr)
     }
@@ -707,9 +688,7 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Left_Paren = {prefix = grouping},
         .Dash       = {prefix = unary,      infix = arith,     prec = .Terminal},
         .Plus       = {                     infix = arith,     prec = .Terminal},
-        .Star       = {                     infix = arith,     prec = .Factor},
-        .Slash      = {                     infix = arith,     prec = .Factor},
-        .Percent    = {                     infix = arith,     prec = .Factor},
+        .Star ..= .Percent = {              infix = arith,     prec = .Factor},
         .Caret      = {                     infix = arith,     prec = .Exponent},
         .Equals_2 ..= .Tilde_Eq = {         infix = compare,   prec = .Equality},
         .Left_Angle ..= .Right_Angle_Eq = { infix = compare,   prec = .Comparison},

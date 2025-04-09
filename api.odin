@@ -30,9 +30,10 @@ concat :: proc(vm: ^VM, count: int) {
         // Would be redundant to pop the one string then re-push it!
         return
     }
+
     // Overwrite the first argument when done and do not pop it.
-    first_arg := vm.top - count
-    vm_concat(vm, &vm.stack[first_arg], vm.stack[first_arg:vm.top])
+    target: [^]Value = &vm.top[-count]
+    vm_concat(vm, target, target[:count])
     pop(vm, count - 1)
 }
 
@@ -50,16 +51,21 @@ push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (result: string) {
 // You may use negative indexes to resolve from the top.
 @(private="file")
 index_to_address :: proc(vm: ^VM, index: int) -> ^Value {
+    // If negative we will index relative to the top
     from := vm.base if index >= 0 else vm.top
-    return &vm.stack[from + index]
+    return &from[index]
 }
 
 @(private="package")
 push :: proc(vm: ^VM, value: Value) {
-    vm.stack[vm.top] = value
-    vm.top += 1
+    vm.top[0] = value
+    vm.top = &vm.top[1]
+
+    // vm.stack[vm.top] = value
+    // vm.top += 1
 }
 
 pop :: proc(vm: ^VM, count: int) {
-    vm.top -= count
+    // vm.top -= count
+    vm.top = &vm.top[-count]
 }

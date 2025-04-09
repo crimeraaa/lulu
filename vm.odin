@@ -16,9 +16,9 @@ VM :: struct {
     interned:  Intern,
     globals:   Table,
     objects:  ^Object_Header,
-    top, base: int, // Absolute indexes of current stack frame window.
+    top, base: [^]Value, // Current stack frame window.
     chunk:    ^Chunk,
-    pc:        int, // Index of next instruction to be executed in the current chunk.
+    pc:        [^]Instruction, // Next instruction to be executed in the current chunk.
     handlers: ^Error_Handler,
 }
 
@@ -63,7 +63,7 @@ vm_get_builder :: proc(vm: ^VM) -> (builder: ^strings.Builder) {
 
 vm_runtime_error :: proc(vm: ^VM, $format: string, args: ..any) -> ! {
     chunk := vm.chunk
-    line  := chunk.line[vm.pc - 1]
+    line  := chunk.line[ptr_sub(vm.pc, &chunk.code[0]) - 1]
     reset_stack(vm)
     vm_throw(vm, .Runtime_Error, chunk.source, line, "Attempt to " + format, ..args)
 }
@@ -102,10 +102,16 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     defer chunk_destroy(vm, data.chunk)
 
     interpret :: proc(vm: ^VM, user_data: rawptr) {
-        data := cast(^Data)user_data
-        compiler_compile(vm, data.chunk, data.input)
-        vm.chunk = data.chunk
-        vm.pc    = 0
+        data  := cast(^Data)user_data
+        chunk := data.chunk
+        compiler_compile(vm, chunk, data.input)
+        vm.top   = &vm.stack[chunk.stack_used]
+        vm.chunk = chunk
+        vm.pc    = &chunk.code[0]
+
+        // Zero initialize the current stack frame, especially needed as local
+        // variable declarations with empty expressions default to implicit nil
+        for &slot in vm.stack[:chunk.stack_used] do value_set_nil(&slot)
         vm_execute(vm)
     }
 
@@ -152,23 +158,22 @@ vm_execute :: proc(vm: ^VM) {
     constants := chunk.constants[:]
     globals   := &vm.globals
     stack     := vm.stack[:]
-    ra: ^Value
 
     for {
         // We cannot extract 'vm.pc' into a local as it is needed in to `vm_runtime_error`.
-        inst := code[vm.pc]
+        inst := vm.pc[0]
         when DEBUG_TRACE_EXEC {
             fmt.printf("      ")
-            for value in stack[vm.base:vm.top] {
+            for value in vm.base[:ptr_sub(vm.top, vm.base)] {
                 value_print(value, .Stack)
             }
             fmt.println()
-            debug_dump_instruction(chunk^, inst, vm.pc)
+            debug_dump_instruction(chunk^, inst, ptr_sub(vm.pc, &code[0]))
         }
-        vm.pc += 1
+        vm.pc = &vm.pc[1]
 
         // Most instructions use this!
-        ra = &stack[inst.a]
+        ra := &stack[inst.a]
         switch (inst.op) {
         case .Move:
             ra^ = stack[inst.b]
@@ -226,7 +231,8 @@ vm_execute :: proc(vm: ^VM) {
             // If vararg, keep top as-is
             if n_results := inst.b; n_results != 0 {
                 new_top := inst.a + (n_results - 1)
-                vm.top   = cast(int)new_top
+                // vm.top   = cast(int)new_top
+                vm.top = &stack[new_top]
             }
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
             return
@@ -293,7 +299,7 @@ get_rk :: proc(vm: ^VM, b_or_c: u16, stack, constants: []Value) -> Value {
 
 @(private="file")
 reset_stack :: proc(vm: ^VM) {
-    vm.base = 0
+    vm.base = &vm.stack[0]
     vm.top  = vm.base
 }
 
