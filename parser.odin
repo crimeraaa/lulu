@@ -47,7 +47,7 @@ Expr :: struct {
 
 Expr_Info :: struct #raw_union {
     number: f64, // .Number
-    reg:    u16, // .Discharged
+    reg:    u16, // .Discharged, .Local
     index:  u32, // .Constant, .Global
     pc:     int, // .Need_Register
 }
@@ -57,7 +57,7 @@ Links:
 -   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
  */
 Expr_Type :: enum u8 {
-    Empty,          // Only used as zero-value. Similar to `VVOID`.
+    Empty,          // Zero-value or no arguments. Similar to `VVOID`.
     Discharged,     // This ^Expr was emitted to a register. Similar to `VNONRELOC`.
     Need_Register,  // This ^Expr needs to be assigned to a register. Similar to `VRELOCABLE`.
     Nil,
@@ -75,6 +75,24 @@ expr_init :: proc(expr: ^Expr, type: Expr_Type) {
     expr.type = type
 }
 
+expr_init_pc :: proc(expr: ^Expr, type: Expr_Type, pc: int) {
+    assert(type == .Need_Register)
+    expr.type = type
+    expr.pc   = pc
+}
+
+expr_init_reg :: proc(expr: ^Expr, type: Expr_Type, reg: u16) {
+    assert(type == .Discharged || type == .Local)
+    expr.type = type
+    expr.reg  = reg
+}
+
+expr_init_index :: proc(expr: ^Expr, type: Expr_Type, index: u32) {
+    assert(type == .Global || type == .Constant)
+    expr.type  = type
+    expr.index = index
+}
+
 expr_set_number :: proc(expr: ^Expr, n: f64) {
     expr.type   = .Number
     expr.number = n
@@ -88,7 +106,7 @@ expr_is_number :: proc(expr: ^Expr) -> bool {
 
 // The returned string will not last the next call to this!
 expr_to_string :: proc(expr: ^Expr) -> string {
-    @(static)
+    @(thread_local)
     buf: [64]byte
 
     builder := strings.builder_from_bytes(buf[:])
@@ -124,7 +142,7 @@ parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
 }
 
 parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
-    found = parser.lookahead.type == expected
+    found = (parser.lookahead.type == expected)
     if found {
         parser_advance(parser)
     }
@@ -132,7 +150,7 @@ parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
 }
 
 parser_check :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
-    found = parser.lookahead.type == expected
+    found = (parser.lookahead.type == expected)
     return found
 }
 
@@ -206,7 +224,13 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue) {
     // registers can be reused.
     iter := last
     for current in lvalue_iterator(&iter) {
-        compiler_emit_ABx(compiler, .Set_Global, reg, current.variable.index)
+        if type := current.variable.type; type == .Global {
+            compiler_emit_ABx(compiler, .Set_Global, reg, current.variable.index)
+        } else if type == .Local {
+            compiler_emit_ABC(compiler, .Move, current.variable.reg, reg, 0)
+        } else {
+            fmt.panicf("Invalid assignment target %v", current.variable.type)
+        }
         compiler_pop_reg(compiler, reg)
         reg -= 1
     }
@@ -235,10 +259,11 @@ Analogous to:
 */
 @(private="file")
 identifier_constant :: proc(parser: ^Parser, compiler: ^Compiler, token: Token) -> (index: u32) {
-    identifier := ostring_new(parser.vm, token.lexeme)
-    value      := value_make_string(identifier)
+    ident := ostring_new(parser.vm, token.lexeme)
+    value := value_make_string(ident)
     return compiler_add_constant(compiler, value)
 }
+
 
 /*
 Analogous to:
@@ -252,52 +277,76 @@ Links:
 statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     // line := parser.lookahead.line
     if parser_match(parser, .Print) {
-        print_statement(parser, compiler)
+        print_stmt(parser, compiler)
     } else if parser_match(parser, .Do) {
         compiler_begin_scope(compiler)
         block(parser, compiler)
         compiler_end_scope(compiler)
     } else if parser_match(parser, .Local) {
-        /*
-        Form:
-        -   'local' <identifier> ['=' <expression>]
-
-        Notes:
-        -   Due to the differences in Lua and Lox, we cannot combine local variable
-            declarations into our `parseVariable()` analog as we do not have a
-            catch-all `var` keyword.
-        */
-        parser_consume(parser, .Identifier)
-        declare_variable(parser, compiler)
-
-        expr := &Expr{}
-        if parser_match(parser, .Equals) {
-            expression(parser, compiler, expr)
-        } else {
-            expr_init(expr, .Nil)
-        }
-        /*
-        Normally, we want to ensure zero stack effect. However, in this case,
-        we want the initialization expressions to remain on the stack as they
-        will act as the local variables themselves.
-        */
+        local_stmt(parser, compiler)
     } else {
         error_at(parser, parser.lookahead, "Expected an expression")
     }
+}
+
+string_constant :: proc(parser: ^Parser, compiler: ^Compiler) -> ^OString {
+    index := identifier_constant(parser, compiler, parser.consumed)
+    return compiler.chunk.constants[index].ostring
+}
+
+/*
+Form:
+-   'local' <identifier> ['=' <expression>]
+
+Notes:
+-   Due to the differences in Lua and Lox, we cannot combine local variable
+    declarations into our `parseVariable()` analog as we do not have a
+    catch-all `var` keyword.
+*/
+@(private="file")
+local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
+    nvars: int
+    for {
+        parser_consume(parser, .Identifier)
+        declare_local(parser, compiler, string_constant(parser, compiler))
+        nvars += 1
+        if !parser_match(parser, .Comma) {
+            break;
+        }
+    }
+
+
+    expr := &Expr{}
+    nexprs: int
+    if parser_match(parser, .Equals) {
+        for {
+            expression(parser, compiler, expr)
+            nexprs += 1
+            if !parser_match(parser, .Comma) {
+                break;
+            }
+        }
+    } else {
+        // `nil` is the default value for local variables.
+        expr_init(expr, .Empty)
+        nexprs = 0
+    }
+    /*
+    Normally, we want to ensure zero stack effect. However, in this case,
+    we want the initialization expressions to remain on the stack as they
+    will act as the local variables themselves.
+    */
+    adjust_assign(compiler, nvars, nexprs, expr)
+    adjust_locals(compiler, nvars)
 }
 
 /*
 Analogous to:
 -   `compiler.c:declareVariable()` in the book.
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.
-
-Notes:
--   Assumes a token of type `.Identifier` was just consumed.
  */
 @(private="file")
-declare_variable :: proc(parser: ^Parser, compiler: ^Compiler) {
-    index := identifier_constant(parser, compiler, parser.consumed)
-    ident := compiler.chunk.constants[index].ostring
+declare_local :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString) {
     for local, index in compiler.locals[:compiler.count_local] {
         // We hit an initialized local in an outer scope?
         if local.depth != UNINITIALIZED_LOCAL && local.depth < compiler.scope_depth {
@@ -310,6 +359,46 @@ declare_variable :: proc(parser: ^Parser, compiler: ^Compiler) {
     compiler_add_local(compiler, ident)
 }
 
+/*
+Notes:
+-   See `lparser.c:adjust_assign(LexState *ls, int nvars, int nexps, expdesc *e)`.
+ */
+@(private="file")
+adjust_assign :: proc(compiler: ^Compiler, nvars, nexprs: int, expr: ^Expr) {
+    // TODO(2025-04-08): Add `if (hasmultret(expr->kind))` analog
+
+    if expr.type != .Empty {
+        // close last expression
+        compiler_expr_next_reg(compiler, expr)
+    }
+
+    // More variables than expressions?
+    if extra := nvars - nexprs; extra > 0 {
+        reg := compiler.free_reg
+        compiler_reserve_reg(compiler, extra)
+
+        // TODO(2025-04-08): Fix this so that we don't emit OpCode.Load_Nil
+        compiler_emit_nil(compiler, reg, cast(u16)extra)
+    }
+}
+
+
+/*
+Notes:
+-   We don't need a `remove_locals()` function because `compiler_end_scope()`
+    takes care of that already.
+ */
+@(private="file")
+adjust_locals :: proc(compiler: ^Compiler, nvars: int) {
+    startpc := compiler.chunk.pc
+    // Unlike Lua, we don't adjust `compiler.count_local += nvars` here because
+    // we already did so at the time of `declare_local()`.
+    for i := nvars; i >= 0; i -= 1 {
+        compiler.locals[compiler.count_local - i].depth = compiler.scope_depth
+        // compiler.locals[compiler.count_local - i].startpc = startpc
+    }
+}
+
 @(private="file")
 block :: proc(parser: ^Parser, compiler: ^Compiler) {
     for !parser_check(parser, .End) && !parser_check(parser, .Eof) {
@@ -319,8 +408,17 @@ block :: proc(parser: ^Parser, compiler: ^Compiler) {
     parser_consume(parser, .End)
 }
 
+
+/*
+
+Notes:
+-   See `lparser.c:funcargs(LexState *ls, expdesc *e)`.
+*/
 @(private="file")
-print_statement :: proc(parser: ^Parser, compiler: ^Compiler) {
+print_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
+    compiler.is_print = true
+    defer compiler.is_print = false
+
     parser_consume(parser, .Left_Paren)
     n_args: u16
     if !parser_check(parser, .Right_Paren) {
@@ -432,8 +530,7 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .Number:   expr_set_number(expr, parser.lexer.number)
     case .String:
         index := compiler_add_constant(compiler, value_make_string(parser.lexer.str))
-        expr_init(expr, .Constant)
-        expr.index = index
+        expr_init_index(expr, .Constant, index)
     case: unreachable()
     }
 }
@@ -441,6 +538,10 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 /*
 Assumptions:
 -   `parser.consumed` is of type `.Identifier`.
+
+Notes:
+-   See `lparser.c:singlevar(LexState *ls, Expr *var)`.
+-   See `lparser.c:singlevaraux(LexState *ls, TString *n, Expr *var, int (bool) base)`
  */
 @(private="file")
 variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
@@ -449,10 +550,9 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     ident := compiler.chunk.constants[index].ostring
     local, ok := compiler_resolve_local(compiler, ident)
     if ok {
-        expr_init(expr, .Local)
+        expr_init_reg(expr, .Local, cast(u16)local)
     } else {
-        expr_init(expr, .Global)
-        expr.index = index
+        expr_init_index(expr, .Global, index)
     }
 }
 

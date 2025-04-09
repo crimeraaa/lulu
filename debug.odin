@@ -64,10 +64,13 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     }
     fmt.printf("%-16v ", inst.op)
     switch (inst.op) {
+    case .Move:
+        print_args2(inst)
+        fmt.printfln("reg[%i] := reg[%i]", inst.a, inst.b)
     case .Load_Constant:
-        a, bc := inst.a, inst_get_Bx(inst)
+        bc := inst_get_Bx(inst)
         print_ABx(inst)
-        fmt.printf("reg[%i] := .const[%i] => ", a, bc)
+        fmt.printf("reg[%i] := .const[%i] => ", inst.a, bc)
         value_print(chunk.constants[bc], .Debug)
     case .Load_Nil:
         print_args2(inst)

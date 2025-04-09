@@ -8,10 +8,13 @@ _ :: fmt // needed for when !ODIN_DEBUG
 
 MAX_CONSTANTS :: MAX_uBC
 MAX_LOCALS    :: cast(int)max(u8) + 1
+INVALID_REG   :: ~cast(u16)0
+UNINITIALIZED_LOCAL :: -1
 
 Local :: struct {
     ident: ^OString,
     depth: int,
+    // startpc, endpc: int,
 }
 
 Compiler :: struct {
@@ -23,12 +26,22 @@ Compiler :: struct {
     parser:     ^Parser,   // All nested compilers share the same parser.
     chunk:      ^Chunk,    // Compilers do not own their chunks. They merely fill them.
     free_reg:    u16,      // Index of the first free register.
-    stack_usage: int,
+    last_jump_target, stack_usage: int,
+    is_print: bool, // HACK(2025-04-09): until `print` is a global runtime function
+}
+
+compiler_init :: proc(compiler: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
+    compiler.vm     = vm
+    compiler.parser = parser
+    compiler.chunk  = chunk
+    compiler.last_jump_target = -1
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
     parser   := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
-    compiler := &Compiler{vm = vm, parser = parser, chunk = chunk}
+    compiler := &Compiler{}
+    compiler_init(compiler, vm, parser, chunk)
+
     parser_advance(parser)
     for !parser_match(parser, .Eof) {
         parser_parse(parser, compiler)
@@ -57,8 +70,11 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
         compiler.scope_depth = ndepth
         compiler.count_local = nlocals
     }
+
+    // WARNING(2025-04-09): Is this safe? We need these to reuse registers once
+    // locals go out of scope.
+    compiler.free_reg -= cast(u16)nlocals
     for nlocals > 0 && compiler.locals[nlocals].depth > ndepth {
-        // emitByte(OP_POP)
         nlocals -= 1
     }
 }
@@ -143,9 +159,17 @@ Note:
 compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
     compiler_discharge_expr_to_reg(compiler, expr, reg)
     // @todo 2025-01-06: Implement the rest as needed...
+
+    // NOTE(2025-04-09): Seemingly redundant but useful when we get to jumps.
+    // expr.f = NO_JUMP; expr.t = NO_JUMP;
+    expr.reg = reg
+    expr.type = .Discharged
 }
 
 /*
+Brief:
+-   Analogous to `lcode.c:exp2anyreg(FuncState *fs, expdesc *e)`.
+
 Notes:
 -   Transforms `expr` into `.Discharged`, if it is not one already.
  */
@@ -181,13 +205,15 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
     case .Need_Register:
         compiler.chunk.code[expr.pc].a = reg
     case .Discharged:
-        // TODO(2025-01-10): Nothing to do here until OP_MOVE analog is implemented
-        return
+        // e.g. getting a local variable
+        if reg != expr.reg {
+            compiler_emit_ABC(compiler, .Move, reg, expr.reg, 0)
+        }
+        break
     case:
         assert(expr.type == .Empty)
     }
-    expr_init(expr, .Discharged)
-    expr.reg = reg
+    expr_init_reg(expr, .Discharged, reg)
 }
 
 /*
@@ -200,8 +226,10 @@ Notes:
 compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
     #partial switch type := expr.type; type {
     case .Global:
-        expr_init(expr, .Need_Register)
-        expr.pc = compiler_emit_ABx(compiler, .Get_Global, 0, expr.index)
+        expr_init_pc(expr, .Need_Register, compiler_emit_ABx(compiler, .Get_Global, 0, expr.index))
+    case .Local:
+        // info is already the local register we resolved beforehand.
+        expr_init(expr, .Discharged)
     }
 }
 
@@ -235,8 +263,7 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
             case .Number:   index = chunk_add_constant(chunk, value_make_number(expr.number))
             case:           unreachable() // How?
             }
-            expr_init(expr, .Constant)
-            expr.index = index
+            expr_init_index(expr, .Constant, index)
             return rk_as_k(cast(u16)index)
         }
     case .Constant:
@@ -252,27 +279,42 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
 
 ///=== INSTRUCTION EMISSION ====================================================
 
+
+/*
+Notes:
+-   Analogous to `lcode.c:luaK_nil(FuncState *fs, int from, int n)`
+ */
 compiler_emit_nil :: proc(compiler: ^Compiler, reg, count: u16) {
     assert(count != 0, "Emitting 0 nils is invalid!")
 
     chunk := compiler.chunk
-    pc    := len(chunk.code)
-    folding: if pc > 0 {
-        prev := &chunk.code[pc - 1]
-        if prev.op != .Load_Nil {
-            break folding
+    pc    := chunk.pc
+
+    // No jumps to current position?
+    if pc > compiler.last_jump_target {
+        // Function start and positions already clean?
+        if pc == 0 && !compiler.is_print && cast(int)reg >= compiler.count_local {
+            return
         }
-        // Ensure 'reg' is within range of 'prev' desired registers.
-        if !(prev.a <= reg && reg <= prev.b + 1) {
-            break folding
+        // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
+        folding: if pc > 0 {
+            prev := &chunk.code[pc - 1]
+            if prev.op != .Load_Nil {
+                break folding
+            }
+            // Ensure 'reg' is within range of 'prev' desired registers.
+            if !(prev.a <= reg && reg <= prev.b + 1) {
+                break folding
+            }
+            next := reg + count - 1
+            if next <= prev.b {
+                break folding
+            }
+            prev.b = next
+            return
         }
-        next := reg + count - 1
-        if next <= prev.b {
-            break folding
-        }
-        prev.b = next
-        return
     }
+
     // No optimization.
     compiler_emit_AB(compiler, .Load_Nil, reg, reg + count - 1)
 }
@@ -329,8 +371,6 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
     return index
 }
 
-UNINITIALIZED_LOCAL :: -1
-
 /*
 Analogous to:
 -   `compiler.c:addLocal()` in the book.
@@ -343,10 +383,11 @@ compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (local_index
     if compiler.count_local >= len(compiler.locals) {
         parser_error_consumed(compiler.parser, "Too many local variables")
     }
-    defer {
-        compiler.count_local += 1
-        compiler_reserve_reg(compiler, 1)
-    }
+
+    // Don't reserve registers here as our initializer expressions may do so
+    // already, or we implicitly load nil.
+    defer compiler.count_local += 1
+
 
     local := &compiler.locals[compiler.count_local]
     local.ident = ident
@@ -354,9 +395,15 @@ compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (local_index
     return compiler.count_local
 }
 
+
+/*
+Notes:
+-   See `lparser.c:searchvar(FuncState *fs, TString *n)`.
+ */
 compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: int, ok: bool) {
     #reverse for local, index in compiler.locals[:compiler.count_local] {
-        if local.ident == ident {
+        // If uninitialized, skip to allow: `x = 1; local x = x`
+        if local.ident == ident && local.depth != UNINITIALIZED_LOCAL {
             return index, true
         }
     }
@@ -393,8 +440,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     compiler_discharge_expr_any_reg(compiler, expr)
     compiler_pop_expr(compiler, expr)
 
-    expr_init(expr, .Need_Register)
-    expr.pc = compiler_emit_AB(compiler, .Not, 0, expr.reg)
+    expr_init_pc(expr, .Need_Register, compiler_emit_AB(compiler, .Not, 0, expr.reg))
 }
 
 /*
@@ -435,8 +481,7 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     }
 
     // Argument A will be fixed down the line.
-    expr_init(left, .Need_Register)
-    left.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
+    expr_init_pc(left, .Need_Register, compiler_emit_ABC(compiler, op, 0, rk_b, rk_c))
 }
 
 compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
@@ -453,8 +498,7 @@ compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Exp
         compiler_pop_expr(compiler, left)
     }
 
-    expr_init(left, .Need_Register)
-    left.pc = compiler_emit_ABC(compiler, op, 0, rk_b, rk_c)
+    expr_init_pc(left, .Need_Register, compiler_emit_ABC(compiler, op, 0, rk_b, rk_c))
 }
 
 /*
@@ -474,8 +518,7 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
         assert(left.reg == instr.b - 1)
         compiler_pop_expr(compiler, left)
         instr.b = left.reg
-        expr_init(left, .Need_Register)
-        left.pc = right.pc
+        expr_init_pc(left, .Need_Register, right.pc)
         return
     }
     // This is the first in a potential chain of concats.

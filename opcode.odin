@@ -50,6 +50,7 @@ Note on shorthand:
       into Kst. Otherwise, it is a Reg.
 ============================================================================= */
 //                Args  | Description
+Move,          // A B   | Reg[A] := Reg[B]
 Load_Constant, // A Bx  | Reg[A] := Kst[Bx]
 Load_Nil,      // A B   | Reg[A]..=Reg[B] := nil
 Load_Boolean,  // A B C | Reg[1] := (Bool)B; if ((Bool)C) ip++
@@ -107,6 +108,7 @@ OpCode_Info :: bit_field u8 {
 
 // See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
 opcode_info := [OpCode]OpCode_Info {
+.Move                       = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
 .Load_Constant              = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
 .Load_Boolean               = {type = .Separate,    a = true, b = .Used,      c = .Used},
 .Load_Nil                   = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},

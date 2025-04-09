@@ -170,6 +170,8 @@ vm_execute :: proc(vm: ^VM) {
         // Most instructions use this!
         ra = &stack[inst.a]
         switch (inst.op) {
+        case .Move:
+            ra^ = stack[inst.b]
         case .Load_Constant:
             bc := inst_get_Bx(inst)
             ra^ = constants[bc]
