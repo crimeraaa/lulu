@@ -294,7 +294,7 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
     L->savedpc = p->code;  /* starting point */
     ci->tailcalls = 0;
     ci->nresults = nresults;
-    for (st = L->top; st < ci->top; st++)
+    for (st = L->top; st < ci->top; st++) /* zero initialize this stack frame */
       setnilvalue(st);
     L->top = ci->top;
     if (L->hookmask & LUA_MASKCALL) {

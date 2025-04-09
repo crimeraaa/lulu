@@ -633,8 +633,9 @@ static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
     free(ptr);
     return NULL;
   }
-  else
+  else {
     return realloc(ptr, nsize);
+  }
 }
 
 
