@@ -41,8 +41,8 @@ Precedence :: enum u8 {
 }
 
 Expr :: struct {
-    using info: Expr_Info,
     type:       Expr_Type,
+    using info: Expr_Info,
 }
 
 Expr_Info :: struct #raw_union {
@@ -57,9 +57,9 @@ Links:
 -   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
  */
 Expr_Type :: enum u8 {
-    Empty,          // Zero-value or no arguments. Similar to `VVOID`.
-    Discharged,     // This ^Expr was emitted to a register. Similar to `VNONRELOC`.
-    Need_Register,  // This ^Expr needs to be assigned to a register. Similar to `VRELOCABLE`.
+    Empty,          // Zero-value or no arguments. See: `VVOID`.
+    Discharged,     // ^Expr was emitted to a register. See: `VNONRELOC`.
+    Need_Register,  // ^Expr needs to be assigned to a register. See: `VRELOCABLE`.
     Nil,
     True,
     False,
@@ -75,19 +75,19 @@ expr_init :: proc(expr: ^Expr, type: Expr_Type) {
     expr.type = type
 }
 
-expr_init_pc :: proc(expr: ^Expr, type: Expr_Type, pc: int) {
+expr_set_pc :: proc(expr: ^Expr, type: Expr_Type, pc: int) {
     assert(type == .Need_Register)
     expr.type = type
     expr.pc   = pc
 }
 
-expr_init_reg :: proc(expr: ^Expr, type: Expr_Type, reg: u16) {
+expr_set_reg :: proc(expr: ^Expr, type: Expr_Type, reg: u16) {
     assert(type == .Discharged || type == .Local)
     expr.type = type
     expr.reg  = reg
 }
 
-expr_init_index :: proc(expr: ^Expr, type: Expr_Type, index: u32) {
+expr_set_index :: proc(expr: ^Expr, type: Expr_Type, index: u32) {
     assert(type == .Global || type == .Constant)
     expr.type  = type
     expr.index = index
@@ -96,6 +96,10 @@ expr_init_index :: proc(expr: ^Expr, type: Expr_Type, index: u32) {
 expr_set_number :: proc(expr: ^Expr, n: f64) {
     expr.type   = .Number
     expr.number = n
+}
+
+expr_set_boolean :: proc(expr: ^Expr, b: bool) {
+    expr.type = .True if b else .False
 }
 
 // NOTE: In the future, may need to check for jump lists!
@@ -143,9 +147,7 @@ parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
 
 parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
     found = (parser.lookahead.type == expected)
-    if found {
-        parser_advance(parser)
-    }
+    if found do parser_advance(parser)
     return found
 }
 
@@ -168,9 +170,10 @@ Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#chunk
  */
 parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
-    if parser_match(parser, .Identifier) {
+    switch {
+    case parser_match(parser, .Identifier):
         assignment(parser, compiler, &LValue{}, 1)
-    } else {
+    case:
         statement(parser, compiler)
     }
     // Optional
@@ -221,7 +224,7 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
         } else if type == .Local {
             compiler_emit_ABC(compiler, .Move, current.variable.reg, reg, 0)
         } else {
-            fmt.panicf("Invalid assignment target %v", current.variable.type)
+            fmt.panicf("Invalid assignment target %v", type)
         }
         compiler_pop_reg(compiler, reg)
         reg -= 1
@@ -260,15 +263,16 @@ Links:
 @(private="file")
 statement :: proc(parser: ^Parser, compiler: ^Compiler) {
     // line := parser.lookahead.line
-    if parser_match(parser, .Print) {
+    switch {
+    case parser_match(parser, .Print):
         print_stmt(parser, compiler)
-    } else if parser_match(parser, .Do) {
+    case parser_match(parser, .Do):
         compiler_begin_scope(compiler)
         block(parser, compiler)
         compiler_end_scope(compiler)
-    } else if parser_match(parser, .Local) {
+    case parser_match(parser, .Local):
         local_stmt(parser, compiler)
-    } else {
+    case:
         error_at(parser, parser.lookahead, "Expected an expression")
     }
 }
@@ -517,7 +521,7 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .Number:   expr_set_number(expr, parser.lexer.number)
     case .String:
         index := compiler_add_constant(compiler, value_make_string(parser.lexer.str))
-        expr_init_index(expr, .Constant, index)
+        expr_set_index(expr, .Constant, index)
     case: unreachable()
     }
 }
@@ -537,8 +541,8 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     ident := compiler.chunk.constants[index].ostring
     local, ok := compiler_resolve_local(compiler, ident)
 
-    if ok do expr_init_reg(expr, .Local, cast(u16)local)
-    else do expr_init_index(expr, .Global, index)
+    if ok do expr_set_reg(expr, .Local, cast(u16)local)
+    else do expr_set_index(expr, .Global, index)
 }
 
 @(private="file")
@@ -566,8 +570,10 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
             compiler_expr_any_reg(compiler, expr)
         }
     } else {
+        // If nested (e.g. `-(-x)`) reuse the register we stored `x` in
         compiler_expr_any_reg(compiler, expr)
     }
+
     #partial switch type {
     case .Dash:
         // MUST be set to '.Number' in order to try constant folding.
@@ -581,17 +587,30 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
 /// INFIX EXPRESSIONS
 
+
+
 @(private="file")
-arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     type := parser.consumed.type
     op: OpCode
     #partial switch type {
-    case .Plus:     op = .Add
-    case .Dash:     op = .Sub
-    case .Star:     op = .Mul
-    case .Slash:    op = .Div
-    case .Percent:  op = .Mod
-    case .Caret:    op = .Pow
+    // Arithmetic
+    case .Plus:             op = .Add
+    case .Dash:             op = .Sub
+    case .Star:             op = .Mul
+    case .Slash:            op = .Div
+    case .Percent:          op = .Mod
+    case .Caret:            op = .Pow
+
+    // Comparison
+    case .Equals_2:         op = .Eq
+    case .Tilde_Eq:         op = .Neq
+    case .Left_Angle:       op = .Lt
+    case .Right_Angle:      op = .Gt
+    case .Left_Angle_Eq:    op = .Leq
+    case .Right_Angle_Eq:   op = .Geq
+
+    // Misc.
     case: unreachable()
     }
 
@@ -613,9 +632,16 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     -   Otherwise, without this, they will be reversed!
      */
     if USE_CONSTANT_FOLDING {
-        if !expr_is_number(expr) do compiler_expr_regconst(compiler, expr)
+        if !expr_is_number(left) do compiler_expr_regconst(compiler, left)
     } else {
-        compiler_expr_regconst(compiler, expr)
+        /*
+        NOTE(2025-01-19):
+        -   This is necessary when both sides are nonconstant binary expressions!
+            e.g. `'h' .. 'i' == 'h' .. 'i'`
+        -   This is because, by itself, expressions like `concat` result in
+            `.Need_Register`.
+         */
+        compiler_expr_regconst(compiler, left)
     }
 
     /*
@@ -626,35 +652,7 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     Links:
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
      */
-    compiler_emit_arith(compiler, op, expr, right)
-}
-
-@(private="file")
-compare :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    type := parser.consumed.type
-    op: OpCode
-    #partial switch type {
-    case .Equals_2:         op = .Eq
-    case .Tilde_Eq:         op = .Neq
-    case .Left_Angle:       op = .Lt
-    case .Right_Angle:      op = .Gt
-    case .Left_Angle_Eq:    op = .Leq
-    case .Right_Angle_Eq:   op = .Geq
-    case:                   unreachable()
-    }
-
-    /*
-    NOTE(2025-01-19):
-    -   This is necessary when both sides are nonconstant binary expressions!
-        e.g. `'h' .. 'i' == 'h' .. 'i'`
-    -   This is because, by itself, expressions like `concat` result in
-        `.Need_Register`.
-     */
-    compiler_expr_regconst(compiler, expr)
-    prec  := get_rule(type).prec
-    right := &Expr{}
-    parse_precedence(parser, compiler, right, prec + Precedence(1))
-    compiler_emit_compare(compiler, op, expr, right)
+    compiler_emit_arith(compiler, op, left, right)
 }
 
 /*
@@ -669,14 +667,14 @@ Links:
 -   http://lua-users.org/wiki/AssociativityOfConcatenation
  */
 @(private="file")
-concat :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+concat :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     // Left-hand operand MUST be on the stack
-    compiler_expr_next_reg(compiler, expr)
+    compiler_expr_next_reg(compiler, left)
 
     // If recursive concat, this will be `.Need_Register` as well.
-    next := &Expr{}
-    parse_precedence(parser, compiler, next, .Concat)
-    compiler_emit_concat(compiler, expr, next)
+    right := &Expr{}
+    parse_precedence(parser, compiler, right, .Concat)
+    compiler_emit_concat(compiler, left, right)
 }
 
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
@@ -686,13 +684,13 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .True       = {prefix = literal},
         .False      = {prefix = literal},
         .Left_Paren = {prefix = grouping},
-        .Dash       = {prefix = unary,      infix = arith,     prec = .Terminal},
-        .Plus       = {                     infix = arith,     prec = .Terminal},
-        .Star ..= .Percent = {              infix = arith,     prec = .Factor},
-        .Caret      = {                     infix = arith,     prec = .Exponent},
-        .Equals_2 ..= .Tilde_Eq = {         infix = compare,   prec = .Equality},
-        .Left_Angle ..= .Right_Angle_Eq = { infix = compare,   prec = .Comparison},
-        .Ellipsis_2 = {                     infix = concat,    prec = .Concat},
+        .Dash       = {prefix = unary,      infix = binary,     prec = .Terminal},
+        .Plus       = {                     infix = binary,     prec = .Terminal},
+        .Star ..= .Percent = {              infix = binary,     prec = .Factor},
+        .Caret      = {                     infix = binary,     prec = .Exponent},
+        .Equals_2 ..= .Tilde_Eq = {         infix = binary,     prec = .Equality},
+        .Left_Angle ..= .Right_Angle_Eq = { infix = binary,     prec = .Comparison},
+        .Ellipsis_2 = {                     infix = concat,     prec = .Concat},
         .Not        = {prefix = unary},
         .Number     = {prefix = literal},
         .String     = {prefix = literal},

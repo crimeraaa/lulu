@@ -71,7 +71,7 @@ Gt,            // A B C | Reg[A] := RK[B] >  RK[C]
 Leq,           // A B C | Reg[A] := RK[B] <= RK[C]
 Geq,           // A B C | Reg[A] := RK[B] >= RK[C]
 Not,           // A B   | Reg[A] := not RK[B]
-Concat,        // A B C | Reg[B] .. ... .. Reg[C]
+Concat,        // A B C | Reg[A] := Reg[B] .. ... .. Reg[C]
 Return,        // A B   | return Reg[A], ... Reg[A + B - 1]
 }
 
@@ -79,6 +79,7 @@ Return,        // A B   | return Reg[A], ... Reg[A + B - 1]
 Notes:
 (*) Return:
     - If B == 0, then return up to the current stack top (exclusive).
+    - To return 0 values, B == 1. To return 1 value, B == 2.
     - In other words, B == 0 indicates varargs.
 ============================================================================= */
 

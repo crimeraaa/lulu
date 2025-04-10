@@ -182,7 +182,8 @@ static void new_localvar (LexState *lex, TString *name, int n) {
   int locvar;
   luaY_checklimit(func, func->nactvar+n+1, LUAI_MAXVARS, "local variables");
 
-  /* each active variable is merely an index into `func->proto->locvars[]` */
+  /* each active variable is merely a generational index into
+    `func->proto->locvars[]` */
   locvar = registerlocalvar(lex, name);
   func->actvar[func->nactvar + n] = cast(unsigned short, locvar);
 }

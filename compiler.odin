@@ -33,7 +33,6 @@ compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
     parser   := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
     compiler := &Compiler{}
     compiler_init(compiler, vm, parser, chunk)
-
     parser_advance(parser)
 
     // Top level scope can also have its own locals.
@@ -94,6 +93,7 @@ compiler_reserve_reg :: proc(compiler: ^Compiler, count: int) {
     }
 }
 
+
 compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_location) {
     // Only pop if nonconstant and not the register of an existing local.
     if !rk_is_k(reg) && cast(int)reg >= compiler.active_local {
@@ -102,6 +102,21 @@ compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_loca
             compiler.free_reg, reg, loc = location)
     }
 }
+
+
+/*
+Notes:
+-   If `expr` is `.Discharged`, and its register does not refer to an existing
+    local, it MUST be the most recently discharged register in order to be able
+    to pop it.
+ */
+compiler_pop_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
+    // if e->k == VNONRELOC
+    if expr.type == .Discharged {
+        compiler_pop_reg(compiler, expr.reg)
+    }
+}
+
 
 /*
 Brief
@@ -161,7 +176,7 @@ compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
 
     // NOTE(2025-04-09): Seemingly redundant but useful when we get to jumps.
     // expr.f = NO_JUMP; expr.t = NO_JUMP;
-    expr_init_reg(expr, .Discharged, reg)
+    expr_set_reg(expr, .Discharged, reg)
 }
 
 /*
@@ -211,7 +226,7 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
     case:
         assert(expr.type == .Empty)
     }
-    expr_init_reg(expr, .Discharged, reg)
+    expr_set_reg(expr, .Discharged, reg)
 }
 
 /*
@@ -224,7 +239,7 @@ Notes:
 compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
     #partial switch type := expr.type; type {
     case .Global:
-        expr_init_pc(expr, .Need_Register, compiler_emit_ABx(compiler, .Get_Global, 0, expr.index))
+        expr_set_pc(expr, .Need_Register, compiler_emit_ABx(compiler, .Get_Global, 0, expr.index))
     case .Local:
         // info is already the local register we resolved beforehand.
         expr_init(expr, .Discharged)
@@ -261,7 +276,7 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
             case .Number:   index = chunk_add_constant(chunk, value_make_number(expr.number))
             case:           unreachable() // How?
             }
-            expr_init_index(expr, .Constant, index)
+            expr_set_index(expr, .Constant, index)
             return rk_as_k(cast(u16)index)
         }
     case .Constant:
@@ -414,8 +429,6 @@ Notes:
 -   Assumes the target operand was just consumed and now resides in `Expr`.
  */
 compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
-    compiler_discharge_vars(compiler, expr)
-
     /*
     Details:
     -   In the call to `parser.odin:unary()`, we should have consumed the
@@ -431,7 +444,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
         case .True, .Number, .Constant:
             expr.type = .False
             return
-        case .Discharged, .Need_Register:
+        case .Discharged, .Need_Register, .Global, .Local:
             break
         case: unreachable()
         }
@@ -439,7 +452,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     compiler_discharge_expr_any_reg(compiler, expr)
     compiler_pop_expr(compiler, expr)
 
-    expr_init_pc(expr, .Need_Register, compiler_emit_AB(compiler, .Not, 0, expr.reg))
+    expr_set_pc(expr, .Need_Register, compiler_emit_AB(compiler, .Not, 0, expr.reg))
 }
 
 /*
@@ -453,9 +466,9 @@ Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
  */
 compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
-    assert(.Add <= op && op <= .Unm || op == .Concat)
+    assert(.Add <= op && op <= .Unm || .Eq <= op && op <= .Geq || op == .Concat)
     when USE_CONSTANT_FOLDING {
-        if compiler_fold_constant_arith(op, left, right) {
+        if compiler_fold_numeric(op, left, right) {
             return
         }
     }
@@ -463,7 +476,7 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     // When OpCode.Unm, right is unused.
     rk_c, rk_b: u16
     if op == .Unm {
-        rk_b = compiler_expr_any_reg(compiler, left)
+        rk_b = compiler_expr_regconst(compiler, left)
     } else {
         rk_c = compiler_expr_regconst(compiler, right)
         rk_b = compiler_expr_regconst(compiler, left)
@@ -480,24 +493,7 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     }
 
     // Argument A will be fixed down the line.
-    expr_init_pc(left, .Need_Register, compiler_emit_ABC(compiler, op, 0, rk_b, rk_c))
-}
-
-compiler_emit_compare :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
-    assert(.Eq <= op && op <= .Geq)
-
-    rk_b := compiler_expr_regconst(compiler, left)
-    rk_c := compiler_expr_regconst(compiler, right)
-
-    if rk_b > rk_c {
-        compiler_pop_expr(compiler, left)
-        compiler_pop_expr(compiler, right)
-    } else {
-        compiler_pop_expr(compiler, right)
-        compiler_pop_expr(compiler, left)
-    }
-
-    expr_init_pc(left, .Need_Register, compiler_emit_ABC(compiler, op, 0, rk_b, rk_c))
+    expr_set_pc(left, .Need_Register, compiler_emit_ABC(compiler, op, 0, rk_b, rk_c))
 }
 
 /*
@@ -517,7 +513,7 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
         assert(left.reg == instr.b - 1)
         compiler_pop_expr(compiler, left)
         instr.b = left.reg
-        expr_init_pc(left, .Need_Register, right.pc)
+        expr_set_pc(left, .Need_Register, right.pc)
         return
     }
     // This is the first in a potential chain of concats.
@@ -525,44 +521,52 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     compiler_emit_arith(compiler, .Concat, left, right)
 }
 
-/*
-Notes:
--   If `expr` is `.Discharged`, it MUST be the most recently discharged register
-    in order to be able to pop it.
- */
-compiler_pop_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
-    // if e->k == VNONRELOC
-    if expr.type == .Discharged {
-        compiler_pop_reg(compiler, expr.reg)
-    }
-}
-
 // See: https://www.lua.org/source/5.1/lcode.c.html#constfolding
-compiler_fold_constant_arith :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
+@(private="file")
+compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     // Can't fold two non-number-literals!
-    if !expr_is_number(left) || !expr_is_number(right) {
-        return false
-    }
-    x, y, result: f64 = left.number, right.number, 0
+    if !expr_is_number(left) || !expr_is_number(right) do return false
+
+    x, y: f64 = left.number, right.number
+    result: union {f64, bool}
     #partial switch op {
+    // Arithmetic
     case .Add:  result = number_add(x, y)
     case .Sub:  result = number_sub(x, y)
     case .Mul:  result = number_mul(x, y)
     case .Div:
-        // Avoid division by zero on the C side of things
-        if x == 0 { return false }
+        // Avoid division by zero
+        if y == 0 do return false
         result = number_div(x, y)
     case .Mod:
         // Ditto
-        if x == 0 { return false }
+        if y == 0 do return false
         result = number_mod(x, y)
     case .Pow:  result = number_pow(x, y)
     case .Unm:  result = number_unm(x)
+
+    // Comparison
+    case .Eq:   result = number_eq(x, y)
+    case .Neq:  result = !number_eq(x, y)
+    case .Lt:   result = number_lt(x, y)
+    case .Leq:  result = number_leq(x, y)
+    case .Gt:   result = number_gt(x, y)
+    case .Geq:  result = number_geq(x, y)
+
+    // Cannot optimize concat at compile-time due to string conversion
+    case .Concat: return false
     case: unreachable()
     }
-    if number_is_nan(result) {
-        return false
+
+    switch value in result {
+    case f64:
+        if number_is_nan(value) do return false
+        expr_set_number(left, value)
+        return true
+    case bool:
+        expr_set_boolean(left, value)
+        return true
+    case:
+        unreachable()
     }
-    expr_set_number(left, result)
-    return true
 }
