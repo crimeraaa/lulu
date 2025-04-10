@@ -184,7 +184,7 @@ value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
     case .Normal:
         fmt.println(s)
     case .Debug:
-        if value_is_string(value) do fmt.printfln("%q", s) 
+        if value_is_string(value) do fmt.printfln("%q", s)
         else do fmt.println(s)
     case .Stack:
         if value_is_string(value) do fmt.printf("[ %q ]", s)

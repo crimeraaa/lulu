@@ -233,9 +233,7 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
 
 lvalue_iterator :: proc(iter: ^^LValue) -> (current: ^LValue, ok: bool) {
     current = iter^
-    if current == nil {
-        return nil, false
-    }
+    if current == nil do return nil, false
     iter^ = current.prev
     return current, true
 }
@@ -283,8 +281,9 @@ Brief:
 -   Intern an identifier represented by `parser.consumed` and return the
     interned string itself for the caller's use.
  */
-string_constant :: proc(parser: ^Parser, compiler: ^Compiler) -> ^OString {
+string_constant :: proc(parser: ^Parser, compiler: ^Compiler, out_index: ^u32 = nil) -> ^OString {
     index := identifier_constant(parser, compiler, parser.consumed)
+    if out_index != nil do out_index^ = index
     return compiler.chunk.constants[index].ostring
 }
 
@@ -323,6 +322,7 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
     local_adjust(compiler, count_vars)
 }
 
+
 /*
 Analogous to:
 -   `compiler.c:declareVariable()` in the book.
@@ -330,14 +330,8 @@ Analogous to:
  */
 @(private="file")
 local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString) {
-    for local, index in compiler.chunk.locals[:compiler.chunk.count_local] {
-        // We hit an initialized local in an outer scope?
-        if local.depth != UNINITIALIZED_LOCAL && local.depth < compiler.scope_depth {
-            break
-        }
-        if local.ident == ident {
-            parser_error_consumed(parser, "Shadowing of local variable")
-        }
+    if chunk_check_shadowing(compiler.chunk, ident, compiler.scope_depth) {
+        parser_error_consumed(parser, "Shadowing of local variable")
     }
     compiler_add_local(compiler, ident)
 }
@@ -537,11 +531,10 @@ Notes:
 @(private="file")
 variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     // Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
-    index := identifier_constant(parser, compiler, parser.consumed)
-    ident := compiler.chunk.constants[index].ostring
-    local, ok := compiler_resolve_local(compiler, ident)
+    index: u32
+    local, ok := compiler_resolve_local(compiler, string_constant(parser, compiler, &index))
 
-    if ok do expr_set_reg(expr, .Local, cast(u16)local)
+    if ok do expr_set_reg(expr, .Local, local)
     else do expr_set_index(expr, .Global, index)
 }
 
@@ -623,14 +616,6 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     // Compile the right-hand-side operand, filling in the details for 'right'.
     right := &Expr{}
     parse_precedence(parser, compiler, right, prec)
-
-
-    /*
-    Notes:
-    -   When `!USE_CONSTANT_FOLDING`, this is needed in order to emit the
-        arguments in the correct order.
-    -   Otherwise, without this, they will be reversed!
-     */
     if USE_CONSTANT_FOLDING {
         if !expr_is_number(left) do compiler_expr_regconst(compiler, left)
     } else {

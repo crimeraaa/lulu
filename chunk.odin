@@ -57,13 +57,58 @@ chunk_add_constant :: proc(chunk: ^Chunk, value: Value) -> (index: u32) {
     constants := &chunk.constants
     // Linear search is theoretically very slow!
     for constant, index in constants {
-        if value_eq(constant, value) {
-            return u32(index)
-        }
+        if value_eq(constant, value) do return cast(u32)index
     }
     append(constants, value)
     return cast(u32)len(constants) - 1
 }
+
+
+chunk_add_local :: proc(chunk: ^Chunk, ident: ^OString) -> (index: u16, ok: bool) {
+    if chunk.count_local >= len(chunk.locals) do return INVALID_REG, false
+
+    // Don't reserve registers here as our initializer expressions may do so
+    // already, or we implicitly load nil.
+    defer chunk.count_local += 1
+
+    local := &chunk.locals[chunk.count_local]
+    local.ident = ident
+    local.depth = UNINITIALIZED_LOCAL
+    return cast(u16)chunk.count_local, true
+}
+
+
+/*
+Notes:
+-   By itself, `chunk` does not know anything about how many local variables are
+    actually active (i.e. in scope). Thus you have to pass it explicitly.
+ */
+chunk_resolve_local :: proc(chunk: ^Chunk, ident: ^OString, count_active: int) -> (index: u16, ok: bool) {
+    // Reverse because top most are the more recent locals.
+    #reverse for local, index in chunk.locals[:count_active] {
+        // If uninitialized, skip to allow: `x = 1; local x = x`
+        if local.ident == ident && local.depth != UNINITIALIZED_LOCAL {
+            return cast(u16)index, true
+        }
+    }
+    return INVALID_REG, false
+}
+
+
+/*
+Notes:
+-   We allow shadowing across different scopes, so the `depth` parameter is
+    mainly meant to communicate the caller's desired scope depth.
+ */
+chunk_check_shadowing :: proc(chunk: ^Chunk, ident: ^OString, depth: int) -> (ok: bool) {
+    for local, index in chunk.locals[:chunk.count_local] {
+        // We hit an initialized local in an outer scope?
+        if local.depth != UNINITIALIZED_LOCAL && local.depth < depth do break
+        if local.ident == ident do return true
+    }
+    return false
+}
+
 
 chunk_destroy :: proc(vm: ^VM, chunk: ^Chunk) {
     allocator := vm.allocator

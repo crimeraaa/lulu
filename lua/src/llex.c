@@ -73,10 +73,6 @@ void luaX_init (lua_State *L) {
 #define MAXSRC          80
 
 
-/**
- * @note 2025-04-08:
- *  Is it possible for control characters to reach this point?
- */
 const char *luaX_token2str (LexState *lex, TokenType type) {
   if (type == Token_Error && lex->errchar != -1) {
     return (iscntrl(lex->errchar))

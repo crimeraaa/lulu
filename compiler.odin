@@ -7,7 +7,7 @@ import "core:log"
 _ :: fmt // needed for when !ODIN_DEBUG
 
 MAX_CONSTANTS :: MAX_uBC
-INVALID_REG   :: ~cast(u16)0
+INVALID_REG   :: max(u16) // Also applies to locals
 UNINITIALIZED_LOCAL :: -1
 
 Compiler :: struct {
@@ -58,8 +58,8 @@ compiler_begin_scope :: proc(compiler: ^Compiler) {
 
 
 /*
-Notes:
--   See `lparser.c:removevars(LexState *ls, int tolevel)`.
+Analogous to:
+-   `lparser.c:removevars(LexState *ls, int tolevel)` in Lua 5.1.5.
  */
 compiler_end_scope :: proc(compiler: ^Compiler) {
     depth := compiler.scope_depth - 1
@@ -74,12 +74,13 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
     compiler.scope_depth  = depth
 }
 
+
 ///=== REGISTER EMISSSION ======================================================
 
 
 /*
 Analogous to:
--   `lcode.c:luaK_reserveregs(FuncState *fs, int reg)` in Lua 5.1.
+-   `lcode.c:luaK_reserveregs(FuncState *fs, int reg)` in Lua 5.1.5.
 
 Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_reserveregs
@@ -145,6 +146,7 @@ compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     return expr.reg
 }
 
+
 /*
 Brief:
 -   Analogous to `lcode.c:luaK_exp2nextreg(FuncState *fs, expdesc *e)` in Lua 5.1.
@@ -179,9 +181,14 @@ compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
     expr_set_reg(expr, .Discharged, reg)
 }
 
+
 /*
 Brief:
--   Analogous to `lcode.c:exp2anyreg(FuncState *fs, expdesc *e)`.
+    Very similar to `compiler_discharge_expr_to_reg()` but we do nothing if `expr`
+    is already of type `.Discharged`.
+
+Analogous to:
+-    `lcode.c:exp2anyreg(FuncState *fs, expdesc *e)`.
 
 Notes:
 -   Transforms `expr` into `.Discharged`, if it is not one already.
@@ -192,6 +199,7 @@ compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
         compiler_discharge_expr_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1)
     }
 }
+
 
 /*
 Brief:
@@ -246,6 +254,17 @@ compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
     }
 }
 
+
+/*
+Analogous to:
+-   `lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)` in Lua 5.1.5.
+ */
+compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
+    // if hasjumps(expr) luaK_exp2anyreg(fs, e) else
+    compiler_discharge_vars(compiler, expr)
+}
+
+
 /*
 Analogous to:
 -   'lcode.c:luaK_exp2RK(FuncState *fs, expdesc *e)' in Lua 5.1.
@@ -254,15 +273,7 @@ Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2RK
  */
 compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
-    /*
-    TODO(2025-01-07):
-        call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)'
-
-    NOTE(2025-01-25):
-        inline implementation of only relevant line of above.
-     */
-    compiler_discharge_vars(compiler, expr)
-
+    compiler_expr_to_value(compiler, expr)
     #partial switch type := expr.type; type {
     case .Nil, .True, .False, .Number:
         chunk := compiler.chunk
@@ -384,6 +395,7 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
     return index
 }
 
+
 /*
 Analogous to:
 -   `compiler.c:addLocal()` in the book.
@@ -392,20 +404,10 @@ Analogous to:
 Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
  */
-compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (local_index: int) {
-    chunk := compiler.chunk
-    if chunk.count_local >= len(chunk.locals) {
-        parser_error_consumed(compiler.parser, "Too many local variables")
-    }
-
-    // Don't reserve registers here as our initializer expressions may do so
-    // already, or we implicitly load nil.
-    defer chunk.count_local += 1
-
-    local := &chunk.locals[chunk.count_local]
-    local.ident = ident
-    local.depth = UNINITIALIZED_LOCAL
-    return chunk.count_local
+compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16) {
+    i, ok := chunk_add_local(compiler.chunk, ident)
+    if !ok do parser_error_consumed(compiler.parser, "Too many local variables")
+    return i
 }
 
 
@@ -413,16 +415,10 @@ compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (local_index
 Notes:
 -   See `lparser.c:searchvar(FuncState *fs, TString *n)`.
  */
-compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: int, ok: bool) {
-    chunk := compiler.chunk
-    #reverse for local, index in chunk.locals[:compiler.active_local] {
-        // If uninitialized, skip to allow: `x = 1; local x = x`
-        if local.ident == ident && local.depth != UNINITIALIZED_LOCAL {
-            return index, true
-        }
-    }
-    return -1, false
+compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16, ok: bool) {
+    return chunk_resolve_local(compiler.chunk, ident, compiler.active_local)
 }
+
 
 /*
 Notes:
@@ -496,16 +492,15 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     expr_set_pc(left, .Need_Register, compiler_emit_ABC(compiler, op, 0, rk_b, rk_c))
 }
 
+
 /*
 Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
  */
 compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
-    // TODO(2025-01-12): call analog to 'lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)' here
-    compiler_discharge_vars(compiler, right)
+    compiler_expr_to_value(compiler, right)
 
-    chunk := compiler.chunk
-    code  := chunk.code[:]
+    code  := compiler.chunk.code[:]
 
     // This is past the first consecutive concat, so we can fold them.
     if right.type == .Need_Register && code[right.pc].op == .Concat {
@@ -521,7 +516,14 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     compiler_emit_arith(compiler, .Concat, left, right)
 }
 
-// See: https://www.lua.org/source/5.1/lcode.c.html#constfolding
+
+/*
+Analogous to:
+-   `lcode.c:constfolding(OpCode op, expdesc *e1, expdesc *e2)`
+
+Links:
+-   https://www.lua.org/source/5.1/lcode.c.html#constfolding
+ */
 @(private="file")
 compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     // Can't fold two non-number-literals!

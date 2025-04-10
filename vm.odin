@@ -210,9 +210,7 @@ vm_execute :: proc(vm: ^VM) {
         case .Pow: arith_op(vm, number_pow, ra, inst, stack, constants)
         case .Unm:
             rb := stack[inst.b]
-            if !value_is_number(rb) {
-                arith_error(vm, rb, rb)
-            }
+            if !value_is_number(rb) do arith_error(vm, rb, rb)
             value_set_number(ra, number_unm(rb.data.number))
         case .Eq, .Neq:
             rb, rc := get_rk_bc(vm, inst, stack, constants)
@@ -244,14 +242,11 @@ vm_execute :: proc(vm: ^VM) {
 @(private="file")
 arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
     x, y := get_rk_bc(vm, inst, stack, constants)
-    if !value_is_number(x) || !value_is_number(y) {
-        arith_error(vm, x, y)
-        return
-    }
+    if !value_is_number(x) || !value_is_number(y) do arith_error(vm, x, y)
     value_set_number(ra, op(x.data.number, y.data.number))
 }
 
-arith_error :: proc(vm: ^VM, x, y: Value) {
+arith_error :: proc(vm: ^VM, x, y: Value) -> ! {
     tpname := value_type_name(y) if value_is_number(x) else value_type_name(x)
     vm_runtime_error(vm, "perform arithmetic on a %s value", tpname)
 }
