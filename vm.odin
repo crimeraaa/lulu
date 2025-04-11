@@ -2,7 +2,7 @@
 package lulu
 
 import "base:intrinsics"
-import "core:c/libc"
+import c "core:c/libc"
 import "core:fmt"
 import "core:mem"
 import "core:strings"
@@ -24,7 +24,7 @@ VM :: struct {
 
 Error_Handler :: struct {
     prev:  ^Error_Handler,
-    buffer: libc.jmp_buf,
+    buffer: c.jmp_buf,
     status: Status,
 }
 
@@ -48,10 +48,10 @@ vm_throw :: proc(vm: ^VM, status: Status, source: string, line: int, format: str
     handler := vm.handlers
     if handler != nil {
         intrinsics.volatile_store(&handler.status, status)
-        libc.longjmp(&handler.buffer, 1)
+        c.longjmp(&handler.buffer, 1)
     } else {
         // Nothing much else can be done in this case.
-        libc.exit(libc.EXIT_FAILURE)
+        c.exit(c.EXIT_FAILURE)
     }
 }
 
@@ -68,7 +68,8 @@ vm_runtime_error :: proc(vm: ^VM, $format: string, args: ..any) -> ! {
     vm_throw(vm, .Runtime_Error, chunk.source, line, "Attempt to " + format, ..args)
 }
 
-vm_init :: proc(vm: ^VM, allocator: mem.Allocator) {
+@(require_results)
+vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
     reset_stack(vm)
 
     // _G and interned strings are not part of the collectable objects list.
@@ -79,6 +80,14 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) {
     vm.builder   = strings.builder_make(allocator)
     vm.allocator = allocator
     vm.chunk     = nil
+
+    // Try to handle initial allocations at startup
+    alloc_init :: proc(vm: ^VM, user_ptr: rawptr) {
+        push(vm, value_make_table(&vm.globals))
+        set_global(vm, "_G")
+    }
+
+    return vm_try(vm, alloc_init) == .Ok
 }
 
 vm_destroy :: proc(vm: ^VM) {
@@ -129,7 +138,7 @@ Analogous to:
 Links:
 -   https://www.lua.org/source/5.1/ldo.c.html#luaD_rawrunprotected
  */
-vm_try :: proc(vm: ^VM, try: Try_Proc, user_data: rawptr) -> (status: Status) {
+vm_try :: proc(vm: ^VM, try: Try_Proc, user_data: rawptr = nil) -> (status: Status) {
     handler: Error_Handler
     // Chain new handler
     handler.prev = vm.handlers
@@ -143,7 +152,7 @@ vm_try :: proc(vm: ^VM, try: Try_Proc, user_data: rawptr) -> (status: Status) {
     -   We cannot wrap this in a function because in order for `longjmp` to work,
         the stack frame that called `setjmp` MUST still be valid.
      */
-    if libc.setjmp(&handler.buffer) == 0 {
+    if c.setjmp(&handler.buffer) == 0 {
         try(vm, user_data)
     }
 

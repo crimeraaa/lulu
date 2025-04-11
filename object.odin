@@ -38,9 +38,8 @@ object_unlink :: proc(vm: ^VM, object: ^Object_Header) {
 
 object_iterator :: proc(iter: ^^Object_Header) -> (object: ^Object_Header, ok: bool) {
     object = iter^
-    if object == nil {
-        return nil, false
-    }
+    if object == nil do return nil, false
+
     iter^ = object.prev
     return object, true
 }

@@ -49,6 +49,10 @@ main :: proc() {
     }
 
     vm := open()
+    if vm == nil {
+        fmt.eprintln("Failed to open lulu!")
+        return
+    }
     defer close(vm)
 
     switch len(os.args) {

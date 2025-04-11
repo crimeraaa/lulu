@@ -112,8 +112,12 @@ value_make_number :: proc(n: f64) -> Value {
     return Value{type = .Number, number = n}
 }
 
-value_make_string :: proc(str: ^OString) -> Value {
-    return Value{type = .String, ostring = str}
+value_make_string :: proc(s: ^OString) -> Value {
+    return Value{type = .String, ostring = s}
+}
+
+value_make_table :: proc(t: ^Table) -> Value {
+    return Value{type = .Table, table = t}
 }
 
 value_set_nil :: proc(v: ^Value) {
@@ -131,9 +135,14 @@ value_set_number :: proc(v: ^Value, n: f64) {
     v.number = n
 }
 
-value_set_string :: proc(v: ^Value, str: ^OString) {
+value_set_string :: proc(v: ^Value, s: ^OString) {
     v.type    = .String
-    v.ostring = str
+    v.ostring = s
+}
+
+value_set_table :: proc(v: ^Value, t: ^Table) {
+    v.type  = .Table
+    v.table = t
 }
 
 value_copy :: proc(dst: ^Value, src: Value) {
@@ -159,6 +168,10 @@ value_is_number :: proc(a: Value) -> bool {
 
 value_is_string :: proc(a: Value) -> bool {
     return a.type == .String
+}
+
+value_is_table :: proc(a: Value) -> bool {
+    return a.type == .Table
 }
 
 value_eq :: proc(a, b: Value) -> bool {

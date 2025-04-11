@@ -2,22 +2,43 @@ package lulu
 
 import "core:fmt"
 
+// === VM MANIPULATION ======================================================{{{
+
+
+@(require_results)
 open :: proc(allocator := context.allocator) -> ^VM {
     @(static)
     vm: VM
-    vm_init(&vm, allocator)
-    return &vm
+    return &vm if vm_init(&vm, allocator) else nil
 }
 
 close :: proc(vm: ^VM) {
     vm_destroy(vm)
 }
 
+// }}}==========================================================================
+
+
+/*
+Notes:
+-   Assumes the value we want to set with is at the very top of the stack.
+    We will pop this value afterwards.
+ */
+set_global :: proc(vm: ^VM, key: string) {
+    vkey := value_make_string(ostring_new(vm, key))
+    table_set(vm, &vm.globals, vkey, vm.top[-1])
+    pop(vm, 1)
+}
+
+get_global :: proc(vm: ^VM, key: string) {
+    vkey  := value_make_string(ostring_new(vm, key))
+    value := table_get(&vm.globals, vkey) or_else value_make_nil()
+    push(vm, value)
+}
+
 to_string :: proc(vm: ^VM, index: int) -> (result: string, ok: bool) {
     value := index_to_address(vm, index)
-    if !value_is_string(value^) {
-        return "", false
-    }
+    if !value_is_string(value^) do return "", false
     return ostring_to_string(value.ostring), true
 }
 
@@ -58,11 +79,8 @@ index_to_address :: proc(vm: ^VM, index: int) -> ^Value {
 
 @(private="package")
 push :: proc(vm: ^VM, value: Value) {
-    vm.top[0] = value
     vm.top = &vm.top[1]
-
-    // vm.stack[vm.top] = value
-    // vm.top += 1
+    vm.top[-1] = value
 }
 
 pop :: proc(vm: ^VM, count: int) {

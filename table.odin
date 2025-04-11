@@ -38,9 +38,7 @@ table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) {
     }
 
     entry := find_entry(table.entries, key)
-    if valid = !value_is_nil(entry.key); valid {
-        value = entry.value
-    }
+    if valid = !value_is_nil(entry.key); valid do value = entry.value
     return value, valid
 }
 
@@ -72,14 +70,10 @@ table_set :: proc(vm: ^VM, table: ^Table, key, value: Value) {
 }
 
 table_unset :: proc(table: ^Table, key: Value) {
-    if table.count == 0 {
-        return
-    }
+    if table.count == 0 do return
 
     entry := find_entry(table.entries, key)
-    if value_is_nil(entry.key) {
-        return
-    }
+    if value_is_nil(entry.key) do return
 
     // Tombstones are invalid keys with non-nil values.
     value_set_nil(&entry.key)
@@ -93,9 +87,8 @@ Analogous to:
 table_copy :: proc(vm: ^VM, dst: ^Table, src: Table) {
     for entry in src.entries {
         // Skip tombstones and empty entries.
-        if value_is_nil(entry.key) {
-            continue
-        }
+        if value_is_nil(entry.key) do continue
+
         table_set(vm, dst, entry.key, entry.value)
     }
 }
@@ -113,9 +106,7 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
                 return entry if tombstone == nil else tombstone
             }
             // Non-nil value, so this is a tombstone. Recycle the first one we see.
-            if tombstone == nil {
-                tombstone = entry
-            }
+            if tombstone == nil do tombstone = entry
         } else if value_eq(entry.key, key) {
             return entry
         }
