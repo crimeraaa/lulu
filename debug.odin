@@ -27,14 +27,14 @@ debug_dump_chunk :: proc(chunk: Chunk) {
 debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     // unary negation, not and length never operate on constant indexes.
     unary :: proc(op: string, inst: Instruction) {
-        print_args2(inst)
+        print_AB(inst)
         fmt.printfln("reg[%i] := %sreg[%i]", inst.a, op, inst.b)
     }
 
     binary :: proc(op: string, inst: Instruction) {
         b_where, b_index := get_rk(inst.b)
         c_where, c_index := get_rk(inst.c)
-        print_args3(inst)
+        print_ABC(inst)
         fmt.printfln("reg[%i] := %s[%i] %s %s[%i]", inst.a, b_where, b_index, op, c_where, c_index)
     }
 
@@ -46,7 +46,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         return location, index
     }
 
-    print_args2 :: proc(inst: Instruction) {
+    print_AB :: proc(inst: Instruction) {
         fmt.printf("% 8i % 4i % 4s ; ", inst.a, inst.b, " ")
     }
 
@@ -54,7 +54,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         fmt.printf("% 8i % 4i % 4s ; ", inst.a, inst_get_Bx(inst), " ")
     }
 
-    print_args3 :: proc(inst: Instruction) {
+    print_ABC :: proc(inst: Instruction) {
         fmt.printf("% 8i % 4i % 4i ; ", inst.a, inst.b, inst.c)
     }
 
@@ -67,7 +67,7 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     fmt.printf("%-16v ", inst.op)
     switch (inst.op) {
     case .Move:
-        print_args2(inst)
+        print_AB(inst)
         fmt.printfln("reg[%i] := reg[%i]", inst.a, inst.b)
     case .Load_Constant:
         bc := inst_get_Bx(inst)
@@ -75,10 +75,10 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         fmt.printf("reg[%i] := .const[%i] => ", inst.a, bc)
         value_print(chunk.constants[bc], .Debug)
     case .Load_Nil:
-        print_args2(inst)
+        print_AB(inst)
         fmt.printfln("reg[%i..=%i] := nil", inst.a, inst.b)
     case .Load_Boolean:
-        print_args3(inst)
+        print_ABC(inst)
         fmt.printf("reg[%i] := %v", inst.a, inst.b == 1)
         if inst.c == 1 {
             fmt.println("; pc++")
@@ -95,8 +95,17 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         } else {
             fmt.printfln("_G[%q] := reg[%i]",  identifier, inst.a)
         }
+    case .New_Table:
+        print_ABC(inst)
+        fmt.printfln("reg[%i] = {{}} ; array size = %i, hash size = %i", inst.a, inst.b, inst.c)
+    case .Get_Table:
+        print_ABC(inst)
+        s, c := get_rk(inst.c)
+        fmt.printfln("reg[%i] := reg[%i][%s[%i]]", inst.a, inst.b, s, c)
+    case .Set_Table:
+        print_ABC(inst)
     case .Print:
-        print_args2(inst)
+        print_AB(inst)
         fmt.printfln("print(reg[%i..<%i])", inst.a, inst.b)
     case .Add: binary("+", inst)
     case .Sub: binary("-", inst)
@@ -113,12 +122,12 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Geq: binary(">=", inst)
     case .Not: unary("not ", inst)
     case .Concat:
-        print_args3(inst)
+        print_ABC(inst)
         fmt.printfln("reg[%i] := concat(reg[%i..=%i])", inst.a, inst.b, inst.c)
     case .Return:
         start := inst.a
         stop  := inst.b - 1 if inst.b != 0 else start
-        print_args2(inst)
+        print_AB(inst)
         fmt.printfln("return reg[%i..<%i]", start, stop)
     }
 }

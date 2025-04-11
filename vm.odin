@@ -8,6 +8,7 @@ import "core:mem"
 import "core:strings"
 
 STACK_MAX :: 256
+MEMORY_ERROR_STRING :: "Out of memory"
 
 VM :: struct {
     stack:     [STACK_MAX]Value,
@@ -32,6 +33,7 @@ Status :: enum {
     Ok,
     Compile_Error,
     Runtime_Error,
+    Out_Of_Memory,
 }
 
 Try_Proc :: #type proc(vm: ^VM, user_data: rawptr)
@@ -40,11 +42,7 @@ Try_Proc :: #type proc(vm: ^VM, user_data: rawptr)
 Links:
 -   https://www.lua.org/source/5.1/ldo.c.html#luaD_throw
  */
-vm_throw :: proc(vm: ^VM, status: Status, source: string, line: int, format: string, args: ..any) -> ! {
-    push_fstring(vm, "%s:%i ", source, line)
-    push_fstring(vm, format, ..args)
-    concat(vm, 2)
-
+vm_throw :: proc(vm: ^VM, status: Status) -> ! {
     handler := vm.handlers
     if handler != nil {
         intrinsics.volatile_store(&handler.status, status)
@@ -61,11 +59,30 @@ vm_get_builder :: proc(vm: ^VM) -> (builder: ^strings.Builder) {
     return builder
 }
 
-vm_runtime_error :: proc(vm: ^VM, $format: string, args: ..any) -> ! {
+vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, args: ..any) -> ! {
+    chunk := vm.chunk
+    reset_stack(vm)
+
+    push_fstring(vm, "%s:%i ", source, line)
+    push_fstring(vm, format, ..args)
+    concat(vm, 2)
+    vm_throw(vm, .Compile_Error)
+}
+
+vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
     chunk := vm.chunk
     line  := chunk.line[ptr_sub(vm.pc, &chunk.code[0]) - 1]
     reset_stack(vm)
-    vm_throw(vm, .Runtime_Error, chunk.source, line, "Attempt to " + format, ..args)
+
+    push_fstring(vm, "%s:%i Attempt to ", chunk.source, line)
+    push_fstring(vm, format, ..args)
+    concat(vm, 2)
+    vm_throw(vm, .Runtime_Error)
+}
+
+vm_memory_error :: proc(vm: ^VM) -> ! {
+    push_string(vm, MEMORY_ERROR_STRING)
+    vm_throw(vm, .Out_Of_Memory)
 }
 
 @(require_results)
@@ -83,6 +100,10 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 
     // Try to handle initial allocations at startup
     alloc_init :: proc(vm: ^VM, user_ptr: rawptr) {
+        // Intern the out of memory string already
+        push_string(vm, MEMORY_ERROR_STRING)
+        pop(vm, 1)
+
         push(vm, value_make_table(&vm.globals))
         set_global(vm, "_G")
     }
@@ -94,6 +115,8 @@ vm_destroy :: proc(vm: ^VM) {
     reset_stack(vm)
     intern_destroy(&vm.interned)
     table_destroy(vm, &vm.globals)
+
+    objects_print_all(vm)
     object_free_all(vm)
     strings.builder_destroy(&vm.builder)
     vm.objects  = nil
@@ -206,6 +229,20 @@ vm_execute :: proc(vm: ^VM) {
         case .Set_Global:
             key := constants[inst_get_Bx(inst)]
             table_set(vm, globals, key, ra^)
+        case .New_Table:
+            table := table_new(vm, cast(int)inst.b, cast(int)inst.c)
+            ra^ = value_make_table(table)
+        case .Get_Table:
+            key := get_rk(vm, inst.c, stack, constants)
+            table: ^Table
+            if t := vm.base[inst.b]; !value_is_table(t) do index_error(vm, t)
+            else do table = t.table
+            ra^ = table_get(table, key)
+        case .Set_Table:
+            key   := get_rk(vm, inst.b, stack, constants)
+            value := get_rk(vm, inst.c, stack, constants)
+            if !value_is_table(ra^) do index_error(vm, ra^)
+            table_set(vm, ra.table, key, value)
         case .Print:
             for arg in stack[inst.a:inst.b] {
                 value_print(arg, .Print)
@@ -255,9 +292,15 @@ arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction,
     value_set_number(ra, op(x.data.number, y.data.number))
 }
 
+@(private="file")
 arith_error :: proc(vm: ^VM, x, y: Value) -> ! {
     tpname := value_type_name(y) if value_is_number(x) else value_type_name(x)
     vm_runtime_error(vm, "perform arithmetic on a %s value", tpname)
+}
+
+@(private="file")
+index_error :: proc(vm: ^VM, t: Value) -> ! {
+    vm_runtime_error(vm, "index a %s value", value_type_name(t))
 }
 
 @(private="file")

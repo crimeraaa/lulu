@@ -32,7 +32,7 @@ set_global :: proc(vm: ^VM, key: string) {
 
 get_global :: proc(vm: ^VM, key: string) {
     vkey  := value_make_string(ostring_new(vm, key))
-    value := table_get(&vm.globals, vkey) or_else value_make_nil()
+    value := table_get(&vm.globals, vkey)
     push(vm, value)
 }
 

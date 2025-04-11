@@ -39,7 +39,7 @@ Note on shorthand:
 (*) Reg:
     - Register
     - requires absolute index into stack
-    - Reg[A] => often the destination operand
+    - Reg(A) => often the destination operand
 (*) Kst:
     - Constants Table
     - From current Chunk
@@ -50,29 +50,32 @@ Note on shorthand:
       into Kst. Otherwise, it is a Reg.
 ============================================================================= */
 //                Args  | Description
-Move,          // A B   | Reg[A] := Reg[B]
-Load_Constant, // A Bx  | Reg[A] := Kst[Bx]
-Load_Nil,      // A B   | Reg[A]..=Reg[B] := nil
-Load_Boolean,  // A B C | Reg[1] := (Bool)B; if ((Bool)C) ip++
-Get_Global,    // A Bx  | Reg[A] := _G[Kst[Bx]]
-Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg[A]
-Print,         // A B   | print(Reg[A]..=Reg[B])
-Add,           // A B C | Reg[A] := RK[B] + RK[C]
-Sub,           // A B C | Reg[A] := RK[B] - RK[C]
-Mul,           // A B C | Reg[A] := RK[B] * RK[C]
-Div,           // A B C | Reg[A] := RK[B] / RK[C]
-Mod,           // A B C | Reg[A] := RK[B] % RK[C]
-Pow,           // A B C | Reg[A] := RK[B} ^ RK[C]
-Unm,           // A B   | Reg[A] := -Reg[B]
-Eq,            // A B C | Reg[A] := RK[B] == RK[C]
-Neq,           // A B C | Reg[A] := RK[B] ~= RK[C]
-Lt,            // A B C | Reg[A] := RK[B] <  RK[C]
-Gt,            // A B C | Reg[A] := RK[B] >  RK[C]
-Leq,           // A B C | Reg[A] := RK[B] <= RK[C]
-Geq,           // A B C | Reg[A] := RK[B] >= RK[C]
-Not,           // A B   | Reg[A] := not RK[B]
-Concat,        // A B C | Reg[A] := Reg[B] .. ... .. Reg[C]
-Return,        // A B   | return Reg[A], ... Reg[A + B - 1]
+Move,          // A B   | Reg(A) := Reg(B)
+Load_Constant, // A Bx  | Reg(A) := Kst(Bx)
+Load_Nil,      // A B   | Reg(A)..=Reg(B) := nil
+Load_Boolean,  // A B C | Reg(1) := (Bool)B; if ((Bool)C) ip++
+Get_Global,    // A Bx  | Reg(A) := _G[Kst[Bx]]
+Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg(A)
+New_Table,     // A B C | Reg(A) := {} ; array size = B, hash size = C
+Get_Table,     // A B C | Reg(A) := Reg(B)[RK(C)]
+Set_Table,     // A B C | Reg(A)[RK(B)] := RK(C)
+Print,         // A B   | print(Reg(A)..=Reg(B))
+Add,           // A B C | Reg(A) := RK(B) + RK(C)
+Sub,           // A B C | Reg(A) := RK(B) - RK(C)
+Mul,           // A B C | Reg(A) := RK(B) * RK(C)
+Div,           // A B C | Reg(A) := RK(B) / RK(C)
+Mod,           // A B C | Reg(A) := RK(B) % RK(C)
+Pow,           // A B C | Reg(A) := RK(B) ^ RK(C)
+Unm,           // A B   | Reg(A) := -Reg(B)
+Eq,            // A B C | Reg(A) := RK(B) == RK(C)
+Neq,           // A B C | Reg(A) := RK(B) ~= RK(C)
+Lt,            // A B C | Reg(A) := RK(B) <  RK(C)
+Gt,            // A B C | Reg(A) := RK(B) >  RK(C)
+Leq,           // A B C | Reg(A) := RK(B) <= RK(C)
+Geq,           // A B C | Reg(A) := RK(B) >= RK(C)
+Not,           // A B   | Reg(A) := not RK(B)
+Concat,        // A B C | Reg(A) := Reg(B) .. ... .. Reg(C)
+Return,        // A B   | return Reg(A), ... Reg(A + B - 1)
 }
 
 /* =============================================================================
@@ -114,13 +117,15 @@ opcode_info := [OpCode]OpCode_Info {
 .Load_Boolean               = {type = .Separate,    a = true, b = .Used,      c = .Used},
 .Load_Nil                   = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Get_Global ..= .Set_Global = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
+.New_Table                  = {type = .Separate,    a = true, b = .Used,      c = .Used},
+.Get_Table ..= .Set_Table   = {type = .Separate,    a = true, b = .Reg_Const, c=  .Reg_Const},
 .Print                      = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Add ..= .Pow               = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
 .Unm                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Eq ..= .Geq                = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
 .Not                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Concat                     = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Reg_Jump},
-.Return                     = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
+.Return                     = {type = .Separate,    a = true, b = .Used,      c = .Unused},
 }
 
 

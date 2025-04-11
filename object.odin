@@ -12,7 +12,10 @@ Object_Header :: struct {
 object_new :: proc($T: typeid, vm: ^VM, extra := 0) -> (typed_object: ^T)
 where intrinsics.type_is_subtype_of(T, Object_Header) {
 
-    ptr, _ := mem.alloc(size_of(T) + extra, align_of(T), vm.allocator)
+    ptr, err := mem.alloc(size_of(T) + extra, align_of(T), vm.allocator)
+    // Assumes we are always in a protected call!
+    if err != nil do vm_memory_error(vm)
+
     header := cast(^Object_Header)ptr
     when T == OString {
         header.type = .String
@@ -52,10 +55,30 @@ object_free_all :: proc(vm: ^VM) {
             object_unlink(vm, object)
             ostring_free(vm, cast(^OString)object)
         case .Table:
+            table := cast(^Table)object
             object_unlink(vm, object)
-            table_destroy(vm, cast(^Table)object)
+            table_destroy(vm, table)
+            mem.free(table)
         case:
             fmt.panicf("Cannot free a %v value!", type)
+        }
+    }
+}
+
+objects_print_all :: proc(vm: ^VM) {
+    fmt.println("=== OBJECTS: BEGIN ===")
+    defer fmt.println("=== OBJECTS: END ===")
+
+    iter := vm.objects
+    for object in object_iterator(&iter) {
+        #partial switch object.type {
+        case .String:
+            ostring := cast(^OString)object
+            fmt.printfln("string: %q", ostring_to_string(ostring))
+        case .Table:
+            table := cast(^Table)object
+            fmt.printfln("table: %p", cast(rawptr)table)
+        case: unreachable()
         }
     }
 }

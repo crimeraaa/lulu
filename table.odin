@@ -14,8 +14,11 @@ Table_Entry :: struct {
     key, value: Value,
 }
 
-table_new :: proc(vm: ^VM) -> ^Table {
+
+table_new :: proc(vm: ^VM, count_array, count_hash: int) -> ^Table {
     table := object_new(Table, vm)
+    count := count_array + count_hash
+    if count > 0 do adjust_capacity(table, count, vm.allocator)
     return table
 }
 
@@ -31,7 +34,7 @@ Notes:
 -   But if `key` maps to nothing (that is, entry.key is nil, meaning we haven't
     yet mapped this key), then we can say it is invalid.
  */
-table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) {
+table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) #optional_ok {
     if table.count == 0 {
         value_set_nil(&value)
         return value, false
@@ -52,12 +55,7 @@ table_set :: proc(vm: ^VM, table: ^Table, key, value: Value) {
     -   n*0.75 == n*(3/4) == (n*3)/4
      */
     if n := len(table.entries); table.count >= (n*3) / 4 {
-        /*
-        Notes(2025-01-19):
-        -   We add 1 because if `n` is a power of 2 already, we would return it!
-         */
-        new_cap := max(8, math.next_power_of_two(n + 1))
-        adjust_capacity(table, new_cap, vm.allocator)
+        adjust_capacity(table, n, vm.allocator)
     }
 
     entry := find_entry(table.entries, key)
@@ -128,6 +126,12 @@ get_hash :: proc(key: Value) -> (hash: u32) {
 
 @(private="file")
 adjust_capacity :: proc(table: ^Table, new_cap: int, allocator: mem.Allocator) {
+    /*
+    Notes(2025-01-19):
+    -   We add 1 because if `n` is a power of 2 already, we would return it!
+     */
+    new_cap := max(8, math.next_power_of_two(new_cap + 1))
+
     // Assume all memory is zero'd out for us already. Fully zero'd = nil in Lua.
     new_entries := make([]Table_Entry, new_cap, allocator)
     new_count := 0

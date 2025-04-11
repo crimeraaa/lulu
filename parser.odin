@@ -484,7 +484,7 @@ parser_error_consumed :: proc(parser: ^Parser, msg: string) -> ! {
 error_at :: proc(parser: ^Parser, token: Token, msg: string) -> ! {
     // .Eof token: don't use lexeme as it'll just be an empty string.
     location := token.lexeme if token.type != .Eof else token_type_strings[.Eof]
-    vm_throw(parser.vm, .Compile_Error, parser.lexer.source, token.line, "%s at '%s'", msg, location)
+    vm_compile_error(parser.vm, parser.lexer.source, token.line, "%s at '%s'", msg, location)
 }
 
 /// PREFIX EXPRESSIONS
@@ -538,6 +538,35 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     else do expr_set_index(expr, .Global, index)
 }
 
+
+/*
+Notes:
+-   See the `lparser.c:ConsControl` structure in Lua 5.1.5.
+ */
+Constructor :: struct {
+    last: Expr,   // last item read
+    table: ^Expr, // table descriptor
+    count_array, count_hash: int,
+    to_store: int, // number of array elements pending to be stored
+}
+
+
+/*
+Assumptions:
+-   The `{` token was just consumed.
+ */
+@(private="file")
+constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+    // All information is pending so just use 0's, we'll fix it later
+    pc := compiler_emit_ABC(compiler, .New_Table, 0, 0, 0)
+    expr_set_pc(expr, .Need_Register, pc)
+
+    // expr.reg = compiler.free_reg
+    compiler_expr_next_reg(compiler, expr)
+    parser_consume(parser, .Right_Curly)
+}
+
+
 @(private="file")
 unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     type := parser.consumed.type
@@ -579,7 +608,6 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 }
 
 /// INFIX EXPRESSIONS
-
 
 
 @(private="file")
@@ -669,6 +697,7 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .True       = {prefix = literal},
         .False      = {prefix = literal},
         .Left_Paren = {prefix = grouping},
+        .Left_Curly = {prefix = constructor},
         .Dash       = {prefix = unary,      infix = binary,     prec = .Terminal},
         .Plus       = {                     infix = binary,     prec = .Terminal},
         .Star ..= .Percent = {              infix = binary,     prec = .Factor},

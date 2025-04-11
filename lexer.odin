@@ -415,7 +415,7 @@ lexer_error :: proc(lexer: ^Lexer, msg: string, lexeme := "") -> ! {
     if lexeme == "" {
         lexeme = lexer.input[lexer.start:lexer.current]
     }
-    vm_throw(lexer.vm, .Compile_Error, source, line, "%s at '%s'", msg, lexeme)
+    vm_compile_error(lexer.vm, source, line, "%s at '%s'", msg, lexeme)
 }
 
 @(private="file", require_results)

@@ -70,10 +70,7 @@ chunk_add_local :: proc(chunk: ^Chunk, ident: ^OString) -> (index: u16, ok: bool
     // Don't reserve registers here as our initializer expressions may do so
     // already, or we implicitly load nil.
     defer chunk.count_local += 1
-
-    local := &chunk.locals[chunk.count_local]
-    local.ident = ident
-    local.depth = UNINITIALIZED_LOCAL
+    chunk.locals[chunk.count_local] = {ident, UNINITIALIZED_LOCAL}
     return cast(u16)chunk.count_local, true
 }
 
