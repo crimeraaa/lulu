@@ -151,12 +151,14 @@ Notes:
     times in a row!
  */
 parser_backtrack :: proc(parser: ^Parser, consumed: Token) {
+    // point to start of previous lexeme
     lexer := &parser.lexer
-    // point to start of previous lexeme (hopefully)
-    lexer.start   = lexer.start - len(parser.consumed.lexeme)
+    lexer.start   -= len(parser.lookahead.lexeme)
     lexer.current = lexer.start
+    lexer.line    = consumed.line
 
     parser.consumed, parser.lookahead = consumed, parser.consumed
+
 }
 
 
@@ -636,11 +638,11 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         for {
             // for backtracking
             saved_consumed := parser.consumed
-            #partial switch(parser.lookahead.type) {
+            parser_advance(parser)
+            #partial switch(parser.consumed.type) {
             case .Identifier:
-                parser_advance(parser)
+                // used only when we consume '='
                 saved_ident := parser.consumed
-                // field_item ::= identifer '=' expression
                 if parser_match(parser, .Equals) {
                     ctor_field(parser, compiler, saved_ident, ctor)
                 } else {
@@ -648,9 +650,9 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
                     ctor_array(parser, compiler, ctor)
                 }
             case .Left_Bracket:
-                parser_advance(parser)
                 ctor_index(parser, compiler, ctor)
             case:
+                parser_backtrack(parser, saved_consumed)
                 ctor_array(parser, compiler, ctor)
             }
 
