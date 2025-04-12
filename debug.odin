@@ -97,13 +97,16 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         }
     case .New_Table:
         print_ABC(inst)
-        fmt.printfln("reg[%i] = {{}} ; array size = %i, hash size = %i", inst.a, inst.b, inst.c)
+        fmt.printfln("reg[%i] = {{}} ; #array = %i, #hash = %i", inst.a, inst.b, inst.c)
     case .Get_Table:
         print_ABC(inst)
         s, c := get_rk(inst.c)
         fmt.printfln("reg[%i] := reg[%i][%s[%i]]", inst.a, inst.b, s, c)
     case .Set_Table:
+        b_loc, b := get_rk(inst.b)
+        c_loc, c := get_rk(inst.c)
         print_ABC(inst)
+        fmt.printfln("reg[%i][%s[%i]] = %s[%i]", inst.a, b_loc, b, c_loc, c)
     case .Print:
         print_AB(inst)
         fmt.printfln("print(reg[%i..<%i])", inst.a, inst.b)

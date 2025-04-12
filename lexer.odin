@@ -10,8 +10,7 @@ import "core:unicode/utf8"
 Lexer :: struct {
     vm:             ^VM,      // Contains object list and string builder.
     input, source:   string,  // File data as text and its name.
-    number:          f64,     // Number literal, if we had any.
-    str:            ^OString, // String literal, if we had any.
+    literal:         union {f64, ^OString}, // String or number literal, if any.
     start, current:  int,     // Current lexeme iterators.
     line:            int,     // Current line number.
 }
@@ -145,9 +144,7 @@ lexer_scan_token :: proc(lexer: ^Lexer) -> (token: Token) {
     case '\'', '\"': return create_string_token(lexer, r)
     }
 
-    if type == .Error {
-        lexer_error(lexer, "Unexpected symbol")
-    }
+    if type == .Error do lexer_error(lexer, "Unexpected symbol")
     return create_token(lexer, type)
 }
 
@@ -244,11 +241,10 @@ create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token) {
         Notes:
         -   0[bB] = binary
         -   0[oO] = octal
-        -   0[zZ] = duodecimal
         -   0[xX] = hexadecimal
         -   Prefixed integers cannot contain a '.', so we do not recurse to consume it.
          */
-        if prev == '0' && matches(lexer, "bBoOzZxX") {
+        if prev == '0' && matches(lexer, "bBoOxX") {
             consume_sequence(lexer, is_alnum)
             return true
         }
@@ -281,9 +277,9 @@ create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token) {
         i: int
         // Do NOT shadow `ok`! We rely on it to check for errors.
         i, ok = strconv.parse_int(token.lexeme)
-        lexer.number = cast(f64)i
+        lexer.literal = cast(f64)i
     } else {
-        lexer.number, ok = strconv.parse_f64(token.lexeme)
+        lexer.literal, ok = strconv.parse_f64(token.lexeme)
     }
     if !ok {
         lexer_error(lexer, "Malformed number", token.lexeme)
@@ -296,9 +292,7 @@ create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token) {
     builder := vm_get_builder(lexer.vm)
     for !is_at_end(lexer^) && peek(lexer^) != quote {
         r := advance(lexer)
-        if r == '\n' {
-            break
-        }
+        if r == '\n' do break
         // If have escape character, skip it and read the escaped sequence
         if r == '\\' {
             switch r = advance(lexer); r {
@@ -309,9 +303,13 @@ create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token) {
             case 'r': r = '\r'
             case 't': r = '\t'
             case 'v': r = '\v'
-            case '\\', '\'', '\"':
+            case '\\', '\'', '\"': // `r` is already the correct escape char
                 break
-            case: lexer_error(lexer, "Invalid escape sequence")
+            case:
+                token := create_token(lexer, .Error)
+                // Skip the opening quote of the string literal
+                token.lexeme = token.lexeme[1:]
+                lexer_error(lexer, "Invalid escape sequence", token.lexeme)
             }
         }
         strings.write_rune(builder, r)
@@ -319,7 +317,7 @@ create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token) {
     if is_at_end(lexer^) || !matches(lexer, quote) {
         lexer_error(lexer, "Unterminated string")
     }
-    lexer.str = ostring_new(lexer.vm, strings.to_string(builder^))
+    lexer.literal = ostring_new(lexer.vm, strings.to_string(builder^))
     return create_token(lexer, .String)
 }
 
@@ -402,10 +400,7 @@ consume_multiline :: proc(lexer: ^Lexer, opening: int, $is_comment: bool) {
             lexer_error(lexer, "Unterminated multiline sequence")
         }
 
-        if advance(lexer) == '\n' {
-            lexer.line += 1
-        }
-        // advance(lexer)
+        if advance(lexer) == '\n' do lexer.line += 1
     }
 }
 
@@ -471,9 +466,7 @@ peek :: proc(lexer: Lexer) -> (r: rune) {
 
 @(private="file")
 peek_next :: proc(lexer: Lexer) -> (r: rune) {
-    if is_at_end(lexer) {
-        return utf8.RUNE_ERROR
-    }
+    if is_at_end(lexer) do return utf8.RUNE_ERROR
     return utf8.rune_at(lexer.input, lexer.current + 1)
 }
 

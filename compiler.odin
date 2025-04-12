@@ -111,10 +111,10 @@ Notes:
     local, it MUST be the most recently discharged register in order to be able
     to pop it.
  */
-compiler_pop_expr :: proc(compiler: ^Compiler, expr: ^Expr) {
+compiler_expr_pop :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
     // if e->k == VNONRELOC
     if expr.type == .Discharged {
-        compiler_pop_reg(compiler, expr.reg)
+        compiler_pop_reg(compiler, expr.reg, location = location)
     }
 }
 
@@ -157,9 +157,9 @@ Note:
 Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2nextreg
  */
-compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
+compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
     compiler_discharge_vars(compiler, expr)
-    compiler_pop_expr(compiler, expr)
+    compiler_expr_pop(compiler, expr, location = location)
 
     compiler_reserve_reg(compiler, 1)
     compiler_expr_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1)
@@ -167,10 +167,11 @@ compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
 
 /*
 Brief:
--   Analogous to `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.
+-   Assigns `expr` to register `reg`. It will always be transformed into type
+    `.Discharged`.
 
-Note:
--   `expr` will be transformed into `.Discharged`.
+Analogous to
+-   `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.
  */
 compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
     compiler_discharge_expr_to_reg(compiler, expr, reg)
@@ -238,19 +239,30 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
 }
 
 /*
+Brief:
+-   Readies the retrieval of expressions representing variables.
+-   Bytecode is emitted for globals and tables, but destination registers are
+    not yet set. In this case, `expr` is transformed to `.Need_Register`.
+-   Locals are already considered discharged because they already have a known
+    register.
+
 Analogous to:
 -   `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e)`
-
-Notes:
--   May transform `expr` into `.Need_Register`.
  */
 compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
     #partial switch type := expr.type; type {
     case .Global:
-        expr_set_pc(expr, .Need_Register, compiler_emit_ABx(compiler, .Get_Global, 0, expr.index))
+        pc := compiler_emit_ABx(compiler, .Get_Global, 0, expr.index)
+        expr_set_pc(expr, .Need_Register, pc)
     case .Local:
         // info is already the local register we resolved beforehand.
         expr_init(expr, .Discharged)
+    case .Index:
+        // We can now reuse the registers allocated for the table and index.
+        compiler_pop_reg(compiler, expr.aux)
+        compiler_pop_reg(compiler, expr.reg)
+        pc := compiler_emit_ABC(compiler, .Get_Table, 0, expr.reg, expr.aux)
+        expr_set_pc(expr, .Need_Register, pc)
     }
 }
 
@@ -266,11 +278,23 @@ compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
 
 
 /*
+Brief:
+-   Transforms `expr` to `.Discharged` or `.Constant`.
+-   This is useful to convert expressions that may either be literals or not
+    and get their resulting RK register.
+
 Analogous to:
--   'lcode.c:luaK_exp2RK(FuncState *fs, expdesc *e)' in Lua 5.1.
+-   'lcode.c:luaK_exp2RK(FuncState *fs, expdesc *e)' in Lua 5.1.5
 
 Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2RK
+
+Notes:
+-   For most cases, constant values' indexes can safely fit in an RK.
+-   However, if that is not true, the constant value must first be pushed to a
+    register.
+-   Expressions of type `.Constant` will still retain their normal index, so
+    the return value is for the caller's use.
  */
 compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     compiler_expr_to_value(compiler, expr)
@@ -289,11 +313,15 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
             }
             expr_set_index(expr, .Constant, index)
             return rk_as_k(cast(u16)index)
+        } else {
+            break
         }
     case .Constant:
         // Constant can fit in argument C?
         if index := expr.index; index <= MAX_INDEX_RK {
             return rk_as_k(cast(u16)index)
+        } else {
+            break
         }
     }
     return compiler_expr_any_reg(compiler, expr)
@@ -446,7 +474,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
         }
     }
     compiler_discharge_expr_any_reg(compiler, expr)
-    compiler_pop_expr(compiler, expr)
+    compiler_expr_pop(compiler, expr)
 
     expr_set_pc(expr, .Need_Register, compiler_emit_AB(compiler, .Not, 0, expr.reg))
 }
@@ -481,11 +509,11 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     // In the event BOTH are .Discharged, we want to pop them in the correct
     // order! Otherwise the assert in `compiler_pop_reg()` will fail.
     if rk_b > rk_c {
-        compiler_pop_expr(compiler, left)
-        compiler_pop_expr(compiler, right)
+        compiler_expr_pop(compiler, left)
+        compiler_expr_pop(compiler, right)
     } else {
-        compiler_pop_expr(compiler, right)
-        compiler_pop_expr(compiler, left)
+        compiler_expr_pop(compiler, right)
+        compiler_expr_pop(compiler, left)
     }
 
     // Argument A will be fixed down the line.
@@ -500,13 +528,13 @@ Links:
 compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     compiler_expr_to_value(compiler, right)
 
-    code  := compiler.chunk.code[:]
+    code := compiler.chunk.code[:]
 
     // This is past the first consecutive concat, so we can fold them.
     if right.type == .Need_Register && code[right.pc].op == .Concat {
         instr := &code[right.pc]
         assert(left.reg == instr.b - 1)
-        compiler_pop_expr(compiler, left)
+        compiler_expr_pop(compiler, left)
         instr.b = left.reg
         expr_set_pc(left, .Need_Register, right.pc)
         return
@@ -530,7 +558,7 @@ compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     if !expr_is_number(left) || !expr_is_number(right) do return false
 
     x, y: f64 = left.number, right.number
-    result: union {f64, bool}
+    result: union #no_nil {f64, bool}
     #partial switch op {
     // Arithmetic
     case .Add:  result = number_add(x, y)
@@ -571,4 +599,19 @@ compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     case:
         unreachable()
     }
+}
+
+
+/*
+Brief:
+-   Transform `table`, likely of type `.Discharged`, to `.Indexed`.
+    The `table.reg` remains the same but `table.aux` is added to specify
+    the index register.
+
+Analogous to:
+-   `lcode.c:luaK_indexed(FuncState *fs, expdesc *t, expdesc *key)` in Lua 5.1.5.
+ */
+compiler_emit_indexed :: proc(compiler: ^Compiler, table, key: ^Expr) {
+    aux := compiler_expr_regconst(compiler, key)
+    expr_set_aux(table, .Index, aux)
 }

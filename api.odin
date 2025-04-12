@@ -33,7 +33,7 @@ set_global :: proc(vm: ^VM, key: string) {
 get_global :: proc(vm: ^VM, key: string) {
     vkey  := value_make_string(ostring_new(vm, key))
     value := table_get(&vm.globals, vkey)
-    push(vm, value)
+    push_rawvalue(vm, value)
 }
 
 to_string :: proc(vm: ^VM, index: int) -> (result: string, ok: bool) {
@@ -60,7 +60,7 @@ concat :: proc(vm: ^VM, count: int) {
 
 push_string :: proc(vm: ^VM, str: string) -> (result: string) {
     interned := ostring_new(vm, str)
-    push(vm, value_make_string(interned))
+    push_rawvalue(vm, value_make_string(interned))
     return ostring_to_string(interned)
 }
 
@@ -77,13 +77,21 @@ index_to_address :: proc(vm: ^VM, index: int) -> ^Value {
     return &from[index]
 }
 
+/*
+Brief
+-   Internal use helper function.
+
+Notes:
+-   Distinct from the API function `push_value(vm: ^VM, index: int)` or
+    `lua_pushvalue(lua_State *L, int i)`, which copies the element at the
+    specified stack index and pushes it to the top of the stack.
+ */
 @(private="package")
-push :: proc(vm: ^VM, value: Value) {
+push_rawvalue :: proc(vm: ^VM, value: Value) {
     vm.top = &vm.top[1]
     vm.top[-1] = value
 }
 
 pop :: proc(vm: ^VM, count: int) {
-    // vm.top -= count
     vm.top = &vm.top[-count]
 }

@@ -104,7 +104,7 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
         push_string(vm, MEMORY_ERROR_STRING)
         pop(vm, 1)
 
-        push(vm, value_make_table(&vm.globals))
+        push_rawvalue(vm, value_make_table(&vm.globals))
         set_global(vm, "_G")
     }
 

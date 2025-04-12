@@ -457,7 +457,7 @@ static void yindex (LexState *lex, Expr *var) {
   luaX_next(lex);  /* skip the '[' */
   expression(lex, var);
   luaK_exp2val(lex->func, var);
-  check_next(lex, Token_Right_Curly);
+  check_next(lex, Token_Right_Bracket);
 }
 
 
