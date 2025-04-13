@@ -40,15 +40,22 @@ Precedence :: enum u8 {
     Primary,
 }
 
+
+/* 
+Notes:
+-   On x86-64, this should be 16 bytes due to 8-byte alignment from the `f64`.
+-   This means it should be able to be passed/returned in 2 registers if the
+    calling convention allows it.
+ */
 Expr :: struct {
-    using info: Expr_Info,  // first for padding
-    aux:        u16,        // .Index (key/index register)
     type:       Expr_Type,
+    using info: Expr_Info,
 }
 
 Expr_Info :: struct #raw_union {
     number: f64, // .Number
-    reg:    u16, // .Discharged, .Local, .Index (table register)
+    reg:    u16, // .Discharged, .Local
+    table:  struct {reg, index: u16}, // .Table_Index
     index:  u32, // .Constant, .Global
     pc:     int, // .Need_Register
 }
@@ -68,7 +75,7 @@ Expr_Type :: enum u8 {
     Constant,
     Global,
     Local,
-    Index,
+    Table_Index,
 }
 
 // Intended to be easier to grep
@@ -96,13 +103,19 @@ expr_set_index :: proc(expr: ^Expr, type: Expr_Type, index: u32) {
 }
 
 /*
-Notes:
--   Does not change `expr.info` or any sub-fields at all.
+Assumptions:
+-   `expr.reg` contains the register of the table.
+-   `index` contains the register/constant of the table's index/key.
+
+Guarantees:
+-   `expr.table` will be filled using the above information.
  */
-expr_set_aux :: proc(expr: ^Expr, type: Expr_Type, aux: u16) {
-    assert(type == .Index)
-    expr.type = type
-    expr.aux  = aux
+expr_set_table :: proc(expr: ^Expr, type: Expr_Type, index: u16) {
+    assert(type == .Table_Index)
+    reg := expr.reg
+    expr.type        = type
+    expr.table.reg   = reg
+    expr.table.index = index
 }
 
 expr_set_number :: proc(expr: ^Expr, n: f64) {
@@ -245,9 +258,8 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
     }
     parser_consume(parser, .Equals)
 
-    expr := &Expr{}
-    count_exprs := expr_list(parser, compiler, expr)
-    adjust_assign(compiler, count_vars, count_exprs, expr) // Must come first!
+    expr, count_exprs := expr_list(parser, compiler)
+    adjust_assign(compiler, count_vars, count_exprs, &expr) // Must come first!
 
     // a, b, c = 1, 2, 3, 4; free_reg = 4; count = 3; count_exprs = 4;
     if count_vars < count_exprs do compiler.free_reg -= count_exprs - count_vars
@@ -267,9 +279,9 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
         case .Local:
             // var.reg = local; reg = value;
             compiler_emit_ABC(compiler, .Move, var.reg, reg, 0)
-        case .Index:
+        case .Table_Index:
             // var.reg = table; var.aux = index; reg = value;
-            compiler_emit_ABC(compiler, .Set_Table, var.reg, var.aux, reg)
+            compiler_emit_ABC(compiler, .Set_Table, var.table.reg, var.table.index, reg)
         case:
             fmt.panicf("Invalid assignment target: %v", type)
         }
@@ -343,11 +355,11 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
         if !parser_match(parser, .Comma) do break
     }
 
-    expr := &Expr{}
+    expr: Expr
     count_exprs: int
     // No need for `else` clause as zero value is already .Empty
     if parser_match(parser, .Equals) {
-        count_exprs = expr_list(parser, compiler, expr)
+        expr, count_exprs = expr_list(parser, compiler)
     }
 
     /*
@@ -355,7 +367,7 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
     we want the initialization expressions to remain on the stack as they
     will act as the local variables themselves.
     */
-    adjust_assign(compiler, count_vars, count_exprs, expr)
+    adjust_assign(compiler, count_vars, count_exprs, &expr)
     local_adjust(compiler, count_vars)
 }
 
@@ -436,14 +448,14 @@ print_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
 
     parser_consume(parser, .Left_Paren)
 
-    args := &Expr{}
+    args: Expr
     count_args: int
     if !parser_check(parser, .Right_Paren) {
-        count_args = expr_list(parser, compiler, args)
+        args, count_args = expr_list(parser, compiler)
     }
 
     // Emit the last expression from `expr_list()`.
-    if args.type != .Empty do compiler_expr_next_reg(compiler, args)
+    if args.type != .Empty do compiler_expr_next_reg(compiler, &args)
 
     parser_consume(parser, .Right_Paren)
     compiler_emit_AB(compiler, .Print,
@@ -465,15 +477,15 @@ Notes:
 -   Like in Lua 5.1.5, the last expression is not emitted.
  */
 @(private="file")
-expr_list :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) -> (count: int) {
+expr_list :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr, count: int) {
     count = 1 // at least one expression
-    expression(parser, compiler, expr)
+    expr = expression(parser, compiler)
     for parser_match(parser, .Comma) {
-        compiler_expr_next_reg(compiler, expr)
-        expression(parser, compiler, expr)
+        compiler_expr_next_reg(compiler, &expr)
+        expr = expression(parser, compiler)
         count += 1
     }
-    return count
+    return expr, count
 }
 
 /*
@@ -489,8 +501,8 @@ Notes:
     to decide how to allocate that.
  */
 @(private="file")
-expression :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    parse_precedence(parser, compiler, expr, .Assignment + Precedence(1))
+expression :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr) {
+    return parse_precedence(parser, compiler, .Assignment + Precedence(1))
 }
 
 
@@ -501,7 +513,7 @@ Analogous to:
 Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#subexpr
  */
-parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec: Precedence) {
+parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence) -> (expr: Expr) {
     parser_recurse_begin(parser)
     defer parser_recurse_end(parser)
 
@@ -510,7 +522,7 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
     if prefix == nil {
         parser_error_consumed(parser, "Expected an expression")
     }
-    prefix(parser, compiler, expr)
+    prefix(parser, compiler, &expr)
 
     for {
         rule := get_rule(parser.lookahead.type)
@@ -518,8 +530,10 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr, prec
         // Can occur when we hardcode low precedence recursion in high precedence calls
         assert(rule.infix != nil)
         parser_advance(parser)
-        rule.infix(parser, compiler, expr)
+        rule.infix(parser, compiler, &expr)
     }
+    
+    return expr
 }
 
 
@@ -562,7 +576,7 @@ Form:
  */
 @(private="file")
 grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    expression(parser, compiler, expr)
+    expr^ = expression(parser, compiler)
     parser_consume(parser, .Right_Paren)
 }
 
@@ -584,13 +598,15 @@ Form:
  */
 @(private="file")
 literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    #partial switch type := parser.consumed.type; type {
+    token := parser.consumed
+    value := token.literal
+    #partial switch token.type {
     case .Nil:      expr_init(expr, .Nil)
     case .True:     expr_init(expr, .True)
     case .False:    expr_init(expr, .False)
-    case .Number:   expr_set_number(expr, parser.lexer.literal.(f64))
+    case .Number:   expr_set_number(expr, value.(f64))
     case .String:
-        index := compiler_add_constant(compiler, value_make_string(parser.lexer.literal.(^OString)))
+        index := compiler_add_constant(compiler, value_make_string(value.(^OString)))
         expr_set_index(expr, .Constant, index)
     case: unreachable()
     }
@@ -654,7 +670,7 @@ Analogous to:
  */
 @(private="file")
 indexed :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
-    expression(parser, compiler, &key)
+    key = expression(parser, compiler)
     compiler_expr_to_value(compiler, &key)
     parser_consume(parser, .Right_Bracket)
     return key
@@ -674,10 +690,9 @@ Constructor :: struct {
 
 /*
 Form:
--   table ::= '{' [table_element]* '}'
-    table_element ::= [ expression | field_item | indexed ] ','
+-   table ::= '{' [ table_element ]* '}'
+    table_element ::= [ expression | field_item | ( indexed '=' expression ) ] ','
     field_item ::= identifier '=' expression
-    indexed ::= '[' expression ']' '=' expression
 
 
 Assumptions:
@@ -734,13 +749,12 @@ ctor_array :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
     expr_set_index(key, .Constant, index)
     b := compiler_expr_regconst(compiler, key)
 
-    value := &Expr{}
-    expression(parser, compiler, value)
-    c := compiler_expr_regconst(compiler, value)
+    value := expression(parser, compiler)
+    c := compiler_expr_regconst(compiler, &value)
 
     compiler_emit_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
     compiler_expr_pop(compiler, value)
-    compiler_expr_pop(compiler, key)
+    compiler_expr_pop(compiler, key^)
 }
 
 
@@ -755,37 +769,32 @@ ctor_field :: proc(parser: ^Parser, compiler: ^Compiler, ident: Token, ctor: ^Co
     expr_set_index(key, .Constant, index)
     b := compiler_expr_regconst(compiler, key)
 
-    value := &Expr{}
-    expression(parser, compiler, value)
-    c := compiler_expr_regconst(compiler, value)
+    value := expression(parser, compiler)
+    c := compiler_expr_regconst(compiler, &value)
     compiler_emit_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
     compiler_expr_pop(compiler, value)
-    compiler_expr_pop(compiler, key)
+    compiler_expr_pop(compiler, key^)
 
 }
 
 
 @(private="file")
 ctor_index :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
-    key := &Expr{}
-    expression(parser, compiler, key)
+    defer ctor.count_hash += 1
+
+    key := expression(parser, compiler)
     parser_consume(parser, .Right_Bracket)
-    b := compiler_expr_regconst(compiler, key)
+    b := compiler_expr_regconst(compiler, &key)
 
     parser_consume(parser, .Equals)
 
-    value := &Expr{}
-    expression(parser, compiler, value)
-    c := compiler_expr_regconst(compiler, value)
+    value := expression(parser, compiler)
+    c := compiler_expr_regconst(compiler, &value)
 
     compiler_emit_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
     // Reuse these registers
     compiler_expr_pop(compiler, value)
     compiler_expr_pop(compiler, key)
-
-    if expr_is_number(key) do ctor.count_array += 1
-    else do ctor.count_hash += 1
-
 }
 
 /*
@@ -804,7 +813,7 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     type := parser.consumed.type
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
-    parse_precedence(parser, compiler, expr, .Unary)
+    expr^ = parse_precedence(parser, compiler, .Unary)
 
     /*
     Links:
@@ -883,8 +892,7 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     if prec != .Exponent do prec += Precedence(1)
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
-    right := &Expr{}
-    parse_precedence(parser, compiler, right, prec)
+    right := parse_precedence(parser, compiler, prec)
     if USE_CONSTANT_FOLDING {
         if !expr_is_number(left) do compiler_expr_regconst(compiler, left)
     } else {
@@ -906,7 +914,7 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     Links:
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
      */
-    compiler_emit_arith(compiler, op, left, right)
+    compiler_emit_arith(compiler, op, left, &right)
 }
 
 /*
@@ -937,9 +945,8 @@ concat :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     compiler_expr_next_reg(compiler, left)
 
     // If recursive concat, this will be `.Need_Register` as well.
-    right := &Expr{}
-    parse_precedence(parser, compiler, right, .Concat)
-    compiler_emit_concat(compiler, left, right)
+    right := parse_precedence(parser, compiler, .Concat)
+    compiler_emit_concat(compiler, left, &right)
 }
 
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {

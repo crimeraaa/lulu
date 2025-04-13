@@ -109,7 +109,7 @@ Assumptions:
     local, it MUST be the most recently discharged register in order to be able
     to pop it.
  */
-compiler_expr_pop :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
+compiler_expr_pop :: proc(compiler: ^Compiler, expr: Expr, location := #caller_location) {
     // if e->k == VNONRELOC
     if expr.type == .Discharged {
         compiler_pop_reg(compiler, expr.reg, location = location)
@@ -158,7 +158,7 @@ Links:
  */
 compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
     compiler_discharge_vars(compiler, expr)
-    compiler_expr_pop(compiler, expr, location = location)
+    compiler_expr_pop(compiler, expr^, location = location)
 
     compiler_reserve_reg(compiler, 1)
     compiler_expr_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1)
@@ -256,11 +256,11 @@ compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
     case .Local:
         // info is already the local register we resolved beforehand.
         expr_init(expr, .Discharged)
-    case .Index:
+    case .Table_Index:
         // We can now reuse the registers allocated for the table and index.
-        compiler_pop_reg(compiler, expr.aux)
-        compiler_pop_reg(compiler, expr.reg)
-        pc := compiler_emit_ABC(compiler, .Get_Table, 0, expr.reg, expr.aux)
+        compiler_pop_reg(compiler, expr.table.index)
+        compiler_pop_reg(compiler, expr.table.reg)
+        pc := compiler_emit_ABC(compiler, .Get_Table, 0, expr.table.reg, expr.table.index)
         expr_set_pc(expr, .Need_Register, pc)
     }
 }
@@ -482,7 +482,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
         }
     }
     compiler_discharge_expr_any_reg(compiler, expr)
-    compiler_expr_pop(compiler, expr)
+    compiler_expr_pop(compiler, expr^)
 
     expr_set_pc(expr, .Need_Register, compiler_emit_AB(compiler, .Not, 0, expr.reg))
 }
@@ -517,11 +517,11 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     // In the event BOTH are .Discharged, we want to pop them in the correct
     // order! Otherwise the assert in `compiler_pop_reg()` will fail.
     if rk_b > rk_c {
-        compiler_expr_pop(compiler, left)
-        compiler_expr_pop(compiler, right)
+        compiler_expr_pop(compiler, left^)
+        compiler_expr_pop(compiler, right^)
     } else {
-        compiler_expr_pop(compiler, right)
-        compiler_expr_pop(compiler, left)
+        compiler_expr_pop(compiler, right^)
+        compiler_expr_pop(compiler, left^)
     }
 
     // Argument A will be fixed down the line.
@@ -542,7 +542,7 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     if right.type == .Need_Register && code[right.pc].op == .Concat {
         instr := &code[right.pc]
         assert(left.reg == instr.b - 1)
-        compiler_expr_pop(compiler, left)
+        compiler_expr_pop(compiler, left^)
         instr.b = left.reg
         expr_set_pc(left, .Need_Register, right.pc)
         return
@@ -612,7 +612,7 @@ compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
 
 /*
 Overview
--   Transform `table`, likely of type `.Discharged`, to `.Indexed`.
+-   Transform `table`, likely of type `.Discharged`, to `.Table_Index`.
     The `table.reg` remains the same but `table.aux` is added to specify
     the index register.
 
@@ -620,6 +620,6 @@ Analogous to:
 -   `lcode.c:luaK_indexed(FuncState *fs, expdesc *t, expdesc *key)` in Lua 5.1.5.
  */
 compiler_emit_indexed :: proc(compiler: ^Compiler, table, key: ^Expr) {
-    aux := compiler_expr_regconst(compiler, key)
-    expr_set_aux(table, .Index, aux)
+    index := compiler_expr_regconst(compiler, key)
+    expr_set_table(table, .Table_Index, index)
 }

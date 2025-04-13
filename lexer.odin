@@ -10,15 +10,15 @@ import "core:unicode/utf8"
 Lexer :: struct {
     vm:             ^VM,      // Contains object list and string builder.
     input, source:   string,  // File data as text and its name.
-    literal:         union {f64, ^OString}, // String or number literal, if any.
     start, current:  int,     // Current lexeme iterators.
     line:            int,     // Current line number.
 }
 
 Token :: struct {
-    lexeme: string,
-    line:   int         `fmt:"-"`,
-    type:   Token_Type  `fmt:"s"`,
+    literal:    union {f64, ^OString},
+    lexeme:     string,
+    line:       int         `fmt:"-"`,
+    type:       Token_Type  `fmt:"s"`,
 }
 
 Token_Type :: enum u8 {
@@ -277,9 +277,9 @@ create_number_token :: proc(lexer: ^Lexer, prev: rune) -> (token: Token) {
         i: int
         // Do NOT shadow `ok`! We rely on it to check for errors.
         i, ok = strconv.parse_int(token.lexeme)
-        lexer.literal = cast(f64)i
+        token.literal = cast(f64)i
     } else {
-        lexer.literal, ok = strconv.parse_f64(token.lexeme)
+        token.literal, ok = strconv.parse_f64(token.lexeme)
     }
     if !ok {
         lexer_error(lexer, "Malformed number", token.lexeme)
@@ -319,8 +319,9 @@ create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token) {
     if is_at_end(lexer^) || !matches(lexer, quote) {
         lexer_error(lexer, "Unterminated string")
     }
-    lexer.literal = ostring_new(lexer.vm, strings.to_string(builder^))
-    return create_token(lexer, .String)
+    token = create_token(lexer, .String)
+    token.literal = ostring_new(lexer.vm, strings.to_string(builder^))
+    return token
 }
 
 @(private="file")

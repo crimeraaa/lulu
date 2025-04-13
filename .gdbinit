@@ -5,7 +5,7 @@
 file ./bin/lulu
 set print pretty on
 
-break lulu.odin:main
+break lulu::main
 
 layout src
 
