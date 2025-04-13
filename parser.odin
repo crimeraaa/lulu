@@ -824,22 +824,29 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     -   Otherwise, calls to `compiler_pop_expr()` will push through and mess up
         the free registers counter.
      */
-    when USE_CONSTANT_FOLDING {
-        if !(.Nil <= expr.type && expr.type <= .Number) {
-            compiler_expr_any_reg(compiler, expr)
-        }
-    } else {
-        // If nested (e.g. `-(-x)`) reuse the register we stored `x` in
-        compiler_expr_any_reg(compiler, expr)
-    }
-
     #partial switch type {
     case .Dash:
+        when USE_CONSTANT_FOLDING {
+            // Don't fold non-numeric constants (for arithmetic) or non-falsifiable
+            // constants (for comparison).
+            if !(.Nil <= expr.type && expr.type <= .Number) {
+                compiler_expr_any_reg(compiler, expr)
+            }
+        } else {
+            // If nested (e.g. `-(-x)`) reuse the register we stored `x` in
+            compiler_expr_any_reg(compiler, expr)
+        }
         // MUST be set to '.Number' in order to try constant folding.
         dummy := &Expr{}
         expr_set_number(dummy, 0)
         compiler_emit_arith(compiler, .Unm, expr, dummy)
-    case .Not:  compiler_emit_not(compiler, expr)
+    case .Not:
+        compiler_emit_not(compiler, expr)
+    case .Pound:
+        compiler_expr_any_reg(compiler, expr)
+        dummy := &Expr{}
+        expr_set_number(dummy, 0)
+        compiler_emit_arith(compiler, .Len, expr, dummy)
     case:       unreachable()
     }
 }
@@ -950,19 +957,31 @@ concat :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
     @(static, rodata)
     rules := #partial [Token_Type]Parse_Rule {
-        .Nil        = {prefix = literal},
-        .True       = {prefix = literal},
+        // Keywords
         .False      = {prefix = literal},
+        .Nil        = {prefix = literal},
+        .Not        = {prefix = unary},
+        .True       = {prefix = literal},
+
+        // Balanced Pairs
         .Left_Paren = {prefix = grouping},
         .Left_Curly = {prefix = constructor},
+
+        // Arithmetic
         .Dash       = {prefix = unary,      infix = binary,     prec = .Terminal},
         .Plus       = {                     infix = binary,     prec = .Terminal},
         .Star ..= .Percent = {              infix = binary,     prec = .Factor},
         .Caret      = {                     infix = binary,     prec = .Exponent},
+
+        // Comparison
         .Equals_2 ..= .Tilde_Eq = {         infix = binary,     prec = .Equality},
         .Left_Angle ..= .Right_Angle_Eq = { infix = binary,     prec = .Comparison},
+
+        // Other
         .Ellipsis_2 = {                     infix = concat,     prec = .Concat},
-        .Not        = {prefix = unary},
+        .Pound      = {prefix = unary},
+
+        // Literals
         .Number     = {prefix = literal},
         .String     = {prefix = literal},
         .Identifier = {prefix = variable},

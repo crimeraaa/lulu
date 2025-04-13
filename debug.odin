@@ -127,6 +127,8 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Concat:
         print_ABC(inst)
         fmt.printfln("reg[%i] := concat(reg[%i..=%i])", inst.a, inst.b, inst.c)
+    case .Len:
+        unary("#", inst)
     case .Return:
         start := inst.a
         stop  := inst.b - 1 if inst.b != 0 else start

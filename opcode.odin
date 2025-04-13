@@ -76,17 +76,20 @@ Leq,           // A B C | Reg(A) := RK(B) <= RK(C)
 Geq,           // A B C | Reg(A) := RK(B) >= RK(C)
 Not,           // A B   | Reg(A) := not RK(B)
 Concat,        // A B C | Reg(A) := Reg(B) .. ... .. Reg(C)
+Len,           // A B   | Reg(A) := #Reg(B)
 Return,        // A B   | return Reg(A), ... Reg(A + B - 1)
 }
 
 /* =============================================================================
 Notes:
+
 (*) Return:
     - If B == 0, then return up to the current stack top (exclusive).
     - To return 0 values, B == 1. To return 1 value, B == 2.
     - In other words, B == 0 indicates varargs.
+
 (*) Set_Array:
-    - Assumes all `B` values are also on the top of the stack.
+    - Assumes (for now) that all `B` values are also on the top of the stack.
 ============================================================================= */
 
 
@@ -129,6 +132,7 @@ opcode_info := [OpCode]OpCode_Info {
 .Eq ..= .Geq                = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
 .Not                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Concat                     = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Reg_Jump},
+.Len                        = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
 .Return                     = {type = .Separate,    a = true, b = .Used,      c = .Unused},
 }
 

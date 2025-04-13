@@ -190,10 +190,10 @@ Overview
 Analogous to:
 -    `lcode.c:exp2anyreg(FuncState *fs, expdesc *e)`.
  */
-compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
+compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
     if expr.type != .Discharged {
         compiler_reserve_reg(compiler, 1)
-        compiler_discharge_expr_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1)
+        compiler_discharge_expr_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1, location = location)
     }
 }
 
@@ -211,8 +211,8 @@ Analogous to:
 Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#discharge2reg
  */
-compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
-    compiler_discharge_vars(compiler, expr)
+compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16, location := #caller_location) {
+    compiler_discharge_vars(compiler, expr, location = location)
     #partial switch expr.type {
     case .Nil:      compiler_emit_nil(compiler, reg, 1)
     case .True:     compiler_emit_ABC(compiler, .Load_Boolean, reg, 1, 0)
@@ -248,7 +248,7 @@ Guarantees:
 -   Locals are transformed to `.Discharged` because they already have a known
     register.
  */
-compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
+compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
     #partial switch type := expr.type; type {
     case .Global:
         pc := compiler_emit_ABx(compiler, .Get_Global, 0, expr.index)
@@ -258,8 +258,8 @@ compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
         expr_init(expr, .Discharged)
     case .Table_Index:
         // We can now reuse the registers allocated for the table and index.
-        compiler_pop_reg(compiler, expr.table.index)
-        compiler_pop_reg(compiler, expr.table.reg)
+        compiler_pop_reg(compiler, expr.table.index, location = location)
+        compiler_pop_reg(compiler, expr.table.reg, location = location)
         pc := compiler_emit_ABC(compiler, .Get_Table, 0, expr.table.reg, expr.table.index)
         expr_set_pc(expr, .Need_Register, pc)
     }
@@ -468,6 +468,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     -   Thus, it should be able to be discharged (if it is not already!)
     -   This means we should be able to pop it as well.
      */
+    compiler_discharge_vars(compiler, expr)
     when USE_CONSTANT_FOLDING {
         #partial switch expr.type {
         case .Nil, .False:
@@ -476,7 +477,7 @@ compiler_emit_not :: proc(compiler: ^Compiler, expr: ^Expr) {
         case .True, .Number, .Constant:
             expr.type = .False
             return
-        case .Discharged, .Need_Register, .Global, .Local:
+        case .Discharged, .Need_Register:
             break
         case: unreachable()
         }
@@ -498,25 +499,23 @@ Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
  */
 compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
-    assert(.Add <= op && op <= .Unm || .Eq <= op && op <= .Geq || op == .Concat)
+    assert(.Add <= op && op <= .Unm || .Eq <= op && op <= .Geq || op == .Concat || op == .Len)
     when USE_CONSTANT_FOLDING {
-        if compiler_fold_numeric(op, left, right) {
-            return
-        }
+        if compiler_fold_numeric(op, left, right) do return
     }
 
-    // When OpCode.Unm, right is unused.
-    rk_c, rk_b: u16
-    if op == .Unm {
-        rk_b = compiler_expr_regconst(compiler, left)
+    c, b: u16
+    // Right is unused.
+    if op == .Unm || op == .Len {
+        b = compiler_expr_regconst(compiler, left)
     } else {
-        rk_c = compiler_expr_regconst(compiler, right)
-        rk_b = compiler_expr_regconst(compiler, left)
+        c = compiler_expr_regconst(compiler, right)
+        b = compiler_expr_regconst(compiler, left)
     }
 
     // In the event BOTH are .Discharged, we want to pop them in the correct
     // order! Otherwise the assert in `compiler_pop_reg()` will fail.
-    if rk_b > rk_c {
+    if b > c {
         compiler_expr_pop(compiler, left^)
         compiler_expr_pop(compiler, right^)
     } else {
@@ -525,7 +524,7 @@ compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     }
 
     // Argument A will be fixed down the line.
-    expr_set_pc(left, .Need_Register, compiler_emit_ABC(compiler, op, 0, rk_b, rk_c))
+    expr_set_pc(left, .Need_Register, compiler_emit_ABC(compiler, op, 0, b, c))
 }
 
 
@@ -592,7 +591,7 @@ compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     case .Geq:  result = number_geq(x, y)
 
     // Cannot optimize concat at compile-time due to string conversion
-    case .Concat: return false
+    case .Concat, .Len: return false
     case: unreachable()
     }
 

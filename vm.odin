@@ -285,6 +285,27 @@ vm_execute :: proc(vm: ^VM) {
             value_set_boolean(ra, value_is_falsy(x))
         // Add 1 because we want to include Reg[C]
         case .Concat: vm_concat(vm, ra, stack[inst.b:inst.c + 1])
+        case .Len:
+            rb := stack[inst.b]
+            #partial switch rb.type {
+            case .String:
+                ra^ = value_make_number(cast(f64)rb.ostring.len)
+            case .Table:
+                index, count := 1, 0
+                table := rb.table
+                // TODO(2025-04-13): Optimize by separating array from hash!
+                for {
+                    defer index += 1
+                    key := value_make_number(cast(f64)index)
+                    value, _ := table_get(table, key)
+                    if value_is_nil(value) do break
+                    else do count += 1
+                }
+                ra^ = value_make_number(cast(f64)count)
+            case:
+                vm_runtime_error(vm, "get length of a %s value", value_type_name(rb))
+            }
+
         case .Return:
             // If vararg, keep top as-is
             if count_results := inst.b; count_results != 0 {
