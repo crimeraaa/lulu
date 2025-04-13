@@ -80,11 +80,8 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Load_Boolean:
         print_ABC(inst)
         fmt.printf("reg[%i] := %v", inst.a, inst.b == 1)
-        if inst.c == 1 {
-            fmt.println("; pc++")
-        } else {
-            fmt.println()
-        }
+        if inst.c == 1 do fmt.println("; pc++")
+        else do fmt.println()
     case .Get_Global, .Set_Global:
         print_ABx(inst)
         key := chunk.constants[inst_get_Bx(inst)]

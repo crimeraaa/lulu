@@ -36,7 +36,7 @@ Status :: enum {
     Out_Of_Memory,
 }
 
-Try_Proc :: #type proc(vm: ^VM, user_data: rawptr)
+Protected_Proc :: #type proc(vm: ^VM, user_data: rawptr)
 
 /*
 Links:
@@ -63,7 +63,7 @@ vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, arg
     chunk := vm.chunk
     reset_stack(vm)
 
-    push_fstring(vm, "%s:%i ", source, line)
+    push_fstring(vm, "%s:%i: ", source, line)
     push_fstring(vm, format, ..args)
     concat(vm, 2)
     vm_throw(vm, .Compile_Error)
@@ -73,8 +73,7 @@ vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
     chunk := vm.chunk
     line  := chunk.line[ptr_sub(vm.pc, &chunk.code[0]) - 1]
     reset_stack(vm)
-
-    push_fstring(vm, "%s:%i Attempt to ", chunk.source, line)
+    push_fstring(vm, "%s:%i: Attempt to ", chunk.source, line)
     push_fstring(vm, format, ..args)
     concat(vm, 2)
     vm_throw(vm, .Runtime_Error)
@@ -108,7 +107,7 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
         set_global(vm, "_G")
     }
 
-    return vm_try(vm, alloc_init) == .Ok
+    return vm_run_protected(vm, alloc_init) == .Ok
 }
 
 vm_destroy :: proc(vm: ^VM) {
@@ -147,21 +146,22 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
         vm_execute(vm)
     }
 
-    return vm_try(vm, interpret, data)
+    return vm_run_protected(vm, interpret, data)
 }
 
+
 /*
-Brief:
+Overview:
 -   Wraps the call to `try(vm, user_data)` with an error handler. This allows us
     to catch errors without killing the program.
 
 Analogous to:
--   `ldo.c:luaD_rawrunprotected(lua_State *L, Pfunc f, void *ud)` in Lua 5.1.
+-   `ldo.c:luaD_rawrunprotected(lua_State *L, Pfunc f, void *ud)` in Lua 5.1.5.
 
 Links:
 -   https://www.lua.org/source/5.1/ldo.c.html#luaD_rawrunprotected
  */
-vm_try :: proc(vm: ^VM, try: Try_Proc, user_data: rawptr = nil) -> (status: Status) {
+vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) -> (status: Status) {
     handler: Error_Handler
     // Chain new handler
     handler.prev = vm.handlers
@@ -183,7 +183,11 @@ vm_try :: proc(vm: ^VM, try: Try_Proc, user_data: rawptr = nil) -> (status: Stat
     return intrinsics.volatile_load(&handler.status)
 }
 
-// Analogous to 'vm.c:run()' in the book.
+
+/*
+Analogous to:
+-   'vm.c:run()' in the book.
+ */
 vm_execute :: proc(vm: ^VM) {
     chunk     := vm.chunk
     code      := chunk.code[:]
@@ -242,11 +246,11 @@ vm_execute :: proc(vm: ^VM) {
             key   := get_rk(vm, inst.b, stack, constants)
             value := get_rk(vm, inst.c, stack, constants)
             if !value_is_table(ra^) do index_error(vm, ra^)
+            if value_is_nil(key) do vm_runtime_error(vm, "set a nil index")
+
             table_set(vm, ra.table, key, value)
         case .Print:
-            for arg in stack[inst.a:inst.b] {
-                value_print(arg, .Print)
-            }
+            for arg in stack[inst.a:inst.b] do value_print(arg, .Print)
             fmt.println()
         case .Add: arith_op(vm, number_add, ra, inst, stack, constants)
         case .Sub: arith_op(vm, number_sub, ra, inst, stack, constants)
@@ -273,16 +277,15 @@ vm_execute :: proc(vm: ^VM) {
         case .Concat: vm_concat(vm, ra, stack[inst.b:inst.c + 1])
         case .Return:
             // If vararg, keep top as-is
-            if n_results := inst.b; n_results != 0 {
-                new_top := inst.a + (n_results - 1)
-                // vm.top   = cast(int)new_top
-                vm.top = &stack[new_top]
+            if count_results := inst.b; count_results != 0 {
+                vm.top = &stack[inst.a + (count_results - 1)]
             }
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
             return
         }
     }
 }
+
 
 // Rough analog to C macro
 @(private="file")
@@ -313,6 +316,7 @@ compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruct
     value_set_boolean(ra, op(x.data.number, y.data.number))
 }
 
+@(private="file")
 compare_error :: proc(vm: ^VM, x, y: Value) {
     tpname1, tpname2 := value_type_name(x), value_type_name(y)
     if tpname1 == tpname2 {

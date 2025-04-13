@@ -306,10 +306,12 @@ create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token) {
             case '\\', '\'', '\"': // `r` is already the correct escape char
                 break
             case:
-                token := create_token(lexer, .Error)
-                // Skip the opening quote of the string literal
-                token.lexeme = token.lexeme[1:]
-                lexer_error(lexer, "Invalid escape sequence", token.lexeme)
+                // `r` may not necessarily be an ASCII character
+                buf: [2 * size_of(rune)]byte
+                tmp := strings.builder_from_bytes(buf[:])
+                strings.write_rune(&tmp, '\\')
+                strings.write_rune(&tmp, r)
+                lexer_error(lexer, "Invalid escape sequence", strings.to_string(tmp))
             }
         }
         strings.write_rune(builder, r)

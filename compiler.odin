@@ -7,8 +7,6 @@ import "core:log"
 _ :: fmt // needed for when !ODIN_DEBUG
 
 MAX_CONSTANTS :: MAX_uBC
-INVALID_REG   :: max(u16) // Also applies to locals
-UNINITIALIZED_LOCAL :: -1
 
 Compiler :: struct {
     vm:             ^VM,
@@ -106,8 +104,8 @@ compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_loca
 
 
 /*
-Notes:
--   If `expr` is `.Discharged`, and its register does not refer to an existing
+Assumptions:
+-   If `expr` is `.Discharged`, and its register does not refer to an *existing*
     local, it MUST be the most recently discharged register in order to be able
     to pop it.
  */
@@ -120,18 +118,19 @@ compiler_expr_pop :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_
 
 
 /*
-Brief
--   Analogous to `lcode.c:luaK_exp2anyreg(FuncState *fs, expdesc *e)` in Lua 5.1.
+Analogous to:
+-   `lcode.c:luaK_exp2anyreg(FuncState *fs, expdesc *e)` in Lua 5.1.5.
+
+Guarantees:
+-   `expr` ALWAYS transitions to `.Discharged` if it is not already so.
+-   Even if `expr` is a literal or a constant, it will be pushed.
+-   Use `expr.reg` to access which register it is currently in.
+
+Returns:
+-   The register we stored `expr` in.
 
 Links
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2anyreg
-
-Note:
--   `expr` ALWAYS transition to `.Discharged` if it is not already so.
--   Use the `.reg` field to access which register it is currently in.
-
-Returns
--   The register we stored `expr` in.
  */
 compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     compiler_discharge_vars(compiler, expr)
@@ -148,8 +147,8 @@ compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
 
 
 /*
-Brief:
--   Analogous to `lcode.c:luaK_exp2nextreg(FuncState *fs, expdesc *e)` in Lua 5.1.
+Analogous to:
+-   `lcode.c:luaK_exp2nextreg(FuncState *fs, expdesc *e)` in Lua 5.1.5.
 
 Note:
 -   `expr` will most likely be transformed into `.Discharged`.
@@ -166,12 +165,12 @@ compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #ca
 }
 
 /*
-Brief:
+Overview
 -   Assigns `expr` to register `reg`. It will always be transformed into type
     `.Discharged`.
 
 Analogous to
--   `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.
+-   `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.5
  */
 compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
     compiler_discharge_expr_to_reg(compiler, expr, reg)
@@ -184,15 +183,12 @@ compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
 
 
 /*
-Brief:
-    Very similar to `compiler_discharge_expr_to_reg()` but we do nothing if `expr`
-    is already of type `.Discharged`.
+Overview
+-   Very similar to `compiler_discharge_expr_to_reg()`
+-   We do nothing if `expr` is already of type `.Discharged`.
 
 Analogous to:
 -    `lcode.c:exp2anyreg(FuncState *fs, expdesc *e)`.
-
-Notes:
--   Transforms `expr` into `.Discharged`, if it is not one already.
  */
 compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
     if expr.type != .Discharged {
@@ -203,8 +199,10 @@ compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) {
 
 
 /*
-Brief:
--   Transforms `expr` to `.Discharged`.
+Overview
+-   Transforms `expr` to `.Discharged` no matter what.
+-   This may involve emitting get-operations for variables, literals, or
+    constants.
 -   Use `expr.reg` to get the register it resides in.
 
 Analogous to:
@@ -231,7 +229,6 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
         if reg != expr.reg {
             compiler_emit_ABC(compiler, .Move, reg, expr.reg, 0)
         }
-        break
     case:
         assert(expr.type == .Empty)
     }
@@ -239,15 +236,17 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
 }
 
 /*
-Brief:
+Overview
 -   Readies the retrieval of expressions representing variables.
--   Bytecode is emitted for globals and tables, but destination registers are
-    not yet set. In this case, `expr` is transformed to `.Need_Register`.
--   Locals are already considered discharged because they already have a known
-    register.
 
 Analogous to:
 -   `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e)`
+
+Guarantees:
+-   Bytecode is emitted for globals and tables, but destination registers are
+    not yet set. `expr` is transformed to `.Need_Register`.
+-   Locals are transformed to `.Discharged` because they already have a known
+    register.
  */
 compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr) {
     #partial switch type := expr.type; type {
@@ -278,7 +277,7 @@ compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
 
 
 /*
-Brief:
+Overview
 -   Transforms `expr` to `.Discharged` or `.Constant`.
 -   This is useful to convert expressions that may either be literals or not
     and get their resulting RK register.
@@ -333,8 +332,8 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
 
 
 /*
-Notes:
--   Analogous to `lcode.c:luaK_nil(FuncState *fs, int from, int n)`
+Analogous to:
+-   `lcode.c:luaK_nil(FuncState *fs, int from, int n)`
  */
 compiler_emit_nil :: proc(compiler: ^Compiler, reg, count: u16) {
     assert(count != 0, "Emitting 0 nils is invalid!")
@@ -371,8 +370,14 @@ compiler_emit_nil :: proc(compiler: ^Compiler, reg, count: u16) {
     compiler_emit_AB(compiler, .Load_Nil, reg, reg + count - 1)
 }
 
-// Analogous to `compiler.c:emitReturn()` in the book.
-// Similar to Lua, all functions have this return even if they have explicit returns.
+
+/*
+Analogous to:
+-   `compiler.c:emitReturn()` in the book.
+
+Notes:
+-   Like in Lua, all functions call this even if they have explicit returns.
+ */
 compiler_emit_return :: proc(compiler: ^Compiler, reg, n_results: u16) {
     // Add 1 because we want to differentiate from arg B == 0 indicating to return
     // up to top (a.k.a varargs).
@@ -399,8 +404,8 @@ compiler_emit_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32)
 
 /*
 Analogous to:
--   'lcode.c:luaK_code' in Lua 5.1.
--   'compiler.c:emitByte()' + 'compiler.c:emitBytes()' in the book.
+-   'lcode.c:luaK_code' in Lua 5.1.5
+-   'compiler.c:emitByte()' and 'compiler.c:emitBytes()' in the book.
 
 TODO(2025-01-07):
 -   Fix the line counter for folded constant expressions?
@@ -414,7 +419,10 @@ compiler_emit_instruction :: proc(compiler: ^Compiler, inst: Instruction) -> (pc
 ///=============================================================================
 
 
-// Analogous to 'compiler.c:makeConstant()' in the book.
+/*
+Analogous to:
+-   'compiler.c:makeConstant()' in the book.
+ */
 compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u32) {
     index = chunk_add_constant(compiler.chunk, constant)
     if index >= MAX_CONSTANTS {
@@ -427,7 +435,7 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
 /*
 Analogous to:
 -   `compiler.c:addLocal()` in the book.
--   `lparser.c:registerlocalvar(LexState *ls, TString *varname)` in Lua 5.1.
+-   `lparser.c:registerlocalvar(LexState *ls, TString *varname)` in Lua 5.1.5.
 
 Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
@@ -603,7 +611,7 @@ compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
 
 
 /*
-Brief:
+Overview
 -   Transform `table`, likely of type `.Discharged`, to `.Indexed`.
     The `table.reg` remains the same but `table.aux` is added to specify
     the index register.

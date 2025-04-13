@@ -1,7 +1,9 @@
 #+private
 package lulu
 
-MAX_LOCALS :: 200
+MAX_LOCALS          :: 200
+UNINITIALIZED_LOCAL :: -1
+INVALID_REG         :: max(u16) // Also applies to locals
 
 Chunk :: struct {
     source:          string, // Filename where the chunk originated.
