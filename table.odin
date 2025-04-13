@@ -36,8 +36,7 @@ Notes:
  */
 table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) #optional_ok {
     if table.count == 0 {
-        value_set_nil(&value)
-        return value, false
+        return value_make_nil(), false
     }
 
     entry := find_entry(table.entries, key)

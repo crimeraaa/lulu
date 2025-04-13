@@ -41,7 +41,7 @@ Precedence :: enum u8 {
 }
 
 
-/* 
+/*
 Notes:
 -   On x86-64, this should be 16 bytes due to 8-byte alignment from the `f64`.
 -   This means it should be able to be passed/returned in 2 registers if the
@@ -280,7 +280,7 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
             // var.reg = local; reg = value;
             compiler_emit_ABC(compiler, .Move, var.reg, reg, 0)
         case .Table_Index:
-            // var.reg = table; var.aux = index; reg = value;
+            // var.table.reg = table; var.table.index = key; reg = value;
             compiler_emit_ABC(compiler, .Set_Table, var.table.reg, var.table.index, reg)
         case:
             fmt.panicf("Invalid assignment target: %v", type)
@@ -429,7 +429,6 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
 @(private="file")
 block :: proc(parser: ^Parser, compiler: ^Compiler) {
     for !parser_check(parser, .End) && !parser_check(parser, .Eof) {
-        // Analog to `compiler.c:declaration()` in the book.
         parser_parse(parser, compiler)
     }
     parser_consume(parser, .End)
@@ -532,7 +531,7 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence)
         parser_advance(parser)
         rule.infix(parser, compiler, &expr)
     }
-    
+
     return expr
 }
 
@@ -732,29 +731,28 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     parser_consume(parser, .Right_Curly)
 
-    // TODO(2025-04-12): Look into `luaO_fb2int()` and `luaO_int2fb()`! They are
-    // able to store large sizes using "floating point byte" representations.
-    compiler.chunk.code[pc].b = cast(u16)ctor.count_array
-    compiler.chunk.code[pc].c = cast(u16)ctor.count_hash
+    // `fb_from_int()` may also round up the values by some factor, but that's
+    // okay because our hash table will simply over-allocate.
+    compiler.chunk.code[pc].b = cast(u16)fb_from_int(ctor.count_array)
+    compiler.chunk.code[pc].c = cast(u16)fb_from_int(ctor.count_hash)
+
+    if count := ctor.count_array; count > 0 {
+        // TODO(2025-04-13): Optimize for size! See `lopcodes.h:LFIELDS_PER_FLUSH`.
+        compiler_emit_ABx(compiler, .Set_Array, ctor.table.reg, cast(u32)count)
+        compiler.free_reg -= count
+    }
 }
 
 
 @(private="file")
 ctor_array :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
-    ctor.count_array += 1
-
-    // TODO(2025-04-12): This is stupid, replace with OpCode.Set_Array
-    key := &Expr{}
-    index := compiler_add_constant(compiler, value_make_number(cast(f64)ctor.count_array))
-    expr_set_index(key, .Constant, index)
-    b := compiler_expr_regconst(compiler, key)
+    defer {
+        ctor.count_array += 1
+        ctor.to_store    += 1
+    }
 
     value := expression(parser, compiler)
-    c := compiler_expr_regconst(compiler, &value)
-
-    compiler_emit_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
-    compiler_expr_pop(compiler, value)
-    compiler_expr_pop(compiler, key^)
+    compiler_expr_next_reg(compiler, &value)
 }
 
 

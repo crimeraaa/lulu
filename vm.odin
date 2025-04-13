@@ -234,8 +234,9 @@ vm_execute :: proc(vm: ^VM) {
             key := constants[inst_get_Bx(inst)]
             table_set(vm, globals, key, ra^)
         case .New_Table:
-            table := table_new(vm, cast(int)inst.b, cast(int)inst.c)
-            ra^ = value_make_table(table)
+            count_array := fb_to_int(cast(u8)inst.b)
+            count_hash  := fb_to_int(cast(u8)inst.c)
+            ra^ = value_make_table(table_new(vm, count_array, count_hash))
         case .Get_Table:
             key := get_rk(vm, inst.c, stack, constants)
             table: ^Table
@@ -249,6 +250,15 @@ vm_execute :: proc(vm: ^VM) {
             if value_is_nil(key) do vm_runtime_error(vm, "set a nil index")
 
             table_set(vm, ra.table, key, value)
+        case .Set_Array:
+            // Guaranteed because this only occurs in table constructors
+            table := ra.table
+            count := cast(int)inst_get_Bx(inst)
+            for i in 0..<count {
+                key   := value_make_number(cast(f64)i + 1)
+                value := vm.top[-count + i]
+                table_set(vm, table, key, value)
+            }
         case .Print:
             for arg in stack[inst.a:inst.b] do value_print(arg, .Print)
             fmt.println()

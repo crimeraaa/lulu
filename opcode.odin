@@ -59,6 +59,7 @@ Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg(A)
 New_Table,     // A B C | Reg(A) := {} ; array size = B, hash size = C
 Get_Table,     // A B C | Reg(A) := Reg(B)[RK(C)]
 Set_Table,     // A B C | Reg(A)[RK(B)] := RK(C)
+Set_Array,     // A Bx  | Reg(A)[1:Bx] = ...
 Print,         // A B   | print(Reg(A)..=Reg(B))
 Add,           // A B C | Reg(A) := RK(B) + RK(C)
 Sub,           // A B C | Reg(A) := RK(B) - RK(C)
@@ -84,6 +85,8 @@ Notes:
     - If B == 0, then return up to the current stack top (exclusive).
     - To return 0 values, B == 1. To return 1 value, B == 2.
     - In other words, B == 0 indicates varargs.
+(*) Set_Array:
+    - Assumes all `B` values are also on the top of the stack.
 ============================================================================= */
 
 
@@ -118,7 +121,8 @@ opcode_info := [OpCode]OpCode_Info {
 .Load_Nil                   = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Get_Global ..= .Set_Global = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
 .New_Table                  = {type = .Separate,    a = true, b = .Used,      c = .Used},
-.Get_Table ..= .Set_Table   = {type = .Separate,    a = true, b = .Reg_Const, c=  .Reg_Const},
+.Get_Table ..= .Set_Table   = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
+.Set_Array                  = {type = .Unsigned_Bx, a = true, b = .Used,      c = .Unused},
 .Print                      = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Add ..= .Pow               = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
 .Unm                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
@@ -167,4 +171,69 @@ inst_get_Bx :: proc(inst: Instruction) -> (bc: u32) {
     bc |= cast(u32)inst.b << OFFSET_B
     bc |= cast(u32)inst.c
     return bc
+}
+
+FB_MANTISSA_SIZE    :: 3
+FB_MANTISSA_MASK    :: 0b0000_0111
+FB_MANTISSA_IMPLIED :: 0b0000_1000
+
+FB_EXPONENT_SIZE    :: 5
+FB_EXPONENT_MASK    :: 0b0001_1111
+
+/*
+Overview:
+-   Convert the integer `i` to an 8-bit "floating point byte".
+-   The resulting float is stored in a `u8` and can only be decoded via
+    `fb_to_int()`.
+
+Format:
+-   0b_eeee_exxx
+-   `e`: exponent bit, `x`: mantissa bit
+-   Represents the value `(0b1xxx) * 2^(0b000e_eeee - 1)`
+-   The maximum value is `0b1111 * 2^(0b0001_1111 - 1)`, or `16106127360`.
+    In binary that is `0b1111000000000000000000000000000000` (thanks Python!)
+
+Analogous to:
+-   `lobject.c:luaO_int2fb(unsigned int x)` in Lua 5.1.5.
+
+Notes:
+-   If `u` is greater than 15, this will likely round up a bit.
+ */
+fb_from_int :: proc(u: int) -> (fb: u8) {
+    exp: u8
+    u := u
+
+    /*
+    Notes:
+    -   We use `0b0001_0000` or `16` because that is the first power of 2 that
+        cannot be represented even with our implied bit as 0b0000_1111 is 15.
+     */
+    for u >= 0b0001_0000 {
+        // Round up
+        u = (u + 1) >> 1
+        exp += 1
+    }
+
+    // Exponent is 0 in this case so no need to set it
+    if u < FB_MANTISSA_IMPLIED do return cast(u8)u
+
+    return ((exp + 1) << FB_MANTISSA_SIZE) | cast(u8)(u - FB_MANTISSA_IMPLIED)
+}
+
+/*
+Overview:
+-   Interprets the "floating point byte" `fb` and retrieves the positive
+    integer being stored there.
+
+Analogous to:
+-   `lobject.c:luaO_fb2int(int x)` in Lua 5.1.5.
+ */
+fb_to_int :: proc(fb: u8) -> int {
+    // MUST be unsigned to allow shifing.
+    exp := (fb >> FB_MANTISSA_SIZE) & FB_EXPONENT_MASK
+
+    // No exponent, so we can just interpret the mantissa as-is
+    if exp == 0 do return cast(int)fb
+
+    return (cast(int)(fb & FB_MANTISSA_MASK) + FB_MANTISSA_IMPLIED) << (exp - 1)
 }

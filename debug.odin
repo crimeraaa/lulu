@@ -104,6 +104,9 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         c_loc, c := get_rk(inst.c)
         print_ABC(inst)
         fmt.printfln("reg[%i][%s[%i]] = %s[%i]", inst.a, b_loc, b, c_loc, c)
+    case .Set_Array:
+        print_ABx(inst)
+        fmt.printfln("reg[%i][1:%i] = ...", inst.a, inst_get_Bx(inst))
     case .Print:
         print_AB(inst)
         fmt.printfln("print(reg[%i..<%i])", inst.a, inst.b)
