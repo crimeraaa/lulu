@@ -313,8 +313,8 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
         index: u32
         // Constant can fit in RK operand?
         if len(chunk.constants) <= MAX_INDEX_RK {
-            // TODO(2025-04-13): Can we guarantee this branch will never be
-            // reached for nil, true and false?
+            // For nil, true and false we may reach this branch when we have a
+            // comparison expression in `parser.odin:binary()`.
             #partial switch type {
             case .Nil:      index = chunk_add_constant(chunk, value_make_nil())
             case .True:     index = chunk_add_constant(chunk, value_make_boolean(true))
@@ -505,18 +505,21 @@ Notes:
 -   when `!USE_CONSTANT_FOLDING`, we expect that if `left` was a literal then
     we called `compiler_expr_regconst()` beforehand.
 -   Otherwise, the order of arguments will be reversed!
+-   Comparison expressions of non-number-literals are NEVER folded, because
+    checking for equality or inequality is very involved especially when we have
+    to resolve constants.
 
 Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#codearith
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
  */
-compiler_emit_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
+compiler_emit_binary :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
     assert(.Add <= op && op <= .Unm || .Eq <= op && op <= .Geq || op == .Concat || op == .Len)
     when USE_CONSTANT_FOLDING {
         if compiler_fold_numeric(op, left, right) do return
     }
 
-    c, b: u16
+    b, c: u16
     // Right is unused.
     if op == .Unm || op == .Len {
         b = compiler_expr_regconst(compiler, left)
@@ -560,7 +563,7 @@ compiler_emit_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     }
     // This is the first in a potential chain of concats.
     compiler_expr_next_reg(compiler, right)
-    compiler_emit_arith(compiler, .Concat, left, right)
+    compiler_emit_binary(compiler, .Concat, left, right)
 }
 
 
@@ -574,7 +577,7 @@ Links:
 @(private="file")
 compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     // Can't fold two non-number-literals!
-    if !expr_is_number(left) || !expr_is_number(right) do return false
+    if !expr_is_number(left^) || !expr_is_number(right^) do return false
 
     x, y: f64 = left.number, right.number
     result: union #no_nil {f64, bool}
