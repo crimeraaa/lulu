@@ -664,12 +664,8 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
             // emit the parent table of this field
             compiler_expr_next_reg(compiler, var)
             parser_consume(parser, .Identifier)
-
-            // TODO(2025-04-13): Make the following 4 lines into a function?
-            ident, index = ident_constant(parser, compiler, parser.consumed)
-            key := &Expr{}
-            expr_set_index(key, .Constant, index)
-            compiler_emit_indexed(compiler, var, key)
+            key := field_name(parser, compiler)
+            compiler_emit_indexed(compiler, var, &key)
         case parser_match(parser, .Colon):
             parser_error_consumed(parser, "':' syntax not yet supported")
         case:
@@ -694,6 +690,27 @@ indexed :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
     key = expression(parser, compiler)
     compiler_expr_to_value(compiler, &key)
     parser_consume(parser, .Right_Bracket)
+    return key
+}
+
+
+/*
+Form:
+-   field_name ::= identifier
+
+Overview:
+-   Save fieldname in an expression which we can emit as an RK.
+
+Assumptions:
+-   The desired field name (an `.Identifier`) was just consumed.
+
+Notes:
+-   If the index does not fit in an RK, you will have to push it yourself!
+ */
+@(private="file")
+field_name :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
+    _, index := ident_constant(parser, compiler, parser.consumed)
+    expr_set_index(&key, .Constant, index)
     return key
 }
 
@@ -733,10 +750,9 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         parser_advance(parser)
         #partial switch(parser.consumed.type) {
         case .Identifier:
-            // used only when we consume '='
-            saved_ident := parser.consumed
-            if parser_match(parser, .Equals) {
-                ctor_field(parser, compiler, saved_ident, ctor)
+            // `.Equals` is consumed inside of `ctor_field`
+            if parser_check(parser, .Equals) {
+                ctor_field(parser, compiler, ctor)
             } else {
                 parser_backtrack(parser, saved_consumed)
                 ctor_array(parser, compiler, ctor)
@@ -778,22 +794,24 @@ ctor_array :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
 }
 
 
+/*
+Assumptions:
+-   The `.Equals` token was NOT yet consumed, it should still be the
+    desired field name.
+ */
 @(private="file")
-ctor_field :: proc(parser: ^Parser, compiler: ^Compiler, ident: Token, ctor: ^Constructor) {
+ctor_field :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
     defer ctor.count_hash += 1
 
-    // save field name in expression to emit as RK
-    // if index does not fit in RK we will push the constant!
-    _, index := ident_constant(parser, compiler, ident)
-    key := &Expr{}
-    expr_set_index(key, .Constant, index)
-    b := compiler_expr_regconst(compiler, key)
+    key := field_name(parser, compiler)
+    parser_consume(parser, .Equals)
+    b := compiler_expr_regconst(compiler, &key)
 
     value := expression(parser, compiler)
     c := compiler_expr_regconst(compiler, &value)
     compiler_emit_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
     compiler_expr_pop(compiler, value)
-    compiler_expr_pop(compiler, key^)
+    compiler_expr_pop(compiler, key)
 
 }
 
