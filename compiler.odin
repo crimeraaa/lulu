@@ -124,6 +124,7 @@ Analogous to:
 Guarantees:
 -   `expr` ALWAYS transitions to `.Discharged` if it is not already so.
 -   Even if `expr` is a literal or a constant, it will be pushed.
+-   If `expr` is already `.Discharged`, we simply return its register.
 -   Use `expr.reg` to access which register it is currently in.
 
 Returns:
@@ -147,17 +148,21 @@ compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
 
 
 /*
+Overview:
+-   Pushes `expr` to the top of the stack no matter what.
+
 Analogous to:
 -   `lcode.c:luaK_exp2nextreg(FuncState *fs, expdesc *e)` in Lua 5.1.5.
 
-Note:
--   `expr` will most likely be transformed into `.Discharged`.
+Guarantees:
+-   `expr` will be transformed to type `.Discharged` if it is not so already.
+-   Even if `expr` is `.Discharged`, it will be pushed regardless.
 
 Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2nextreg
  */
 compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
-    compiler_discharge_vars(compiler, expr)
+    compiler_discharge_vars(compiler, expr, location = location)
     compiler_expr_pop(compiler, expr^, location = location)
 
     compiler_reserve_reg(compiler, 1)
@@ -166,8 +171,10 @@ compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #ca
 
 /*
 Overview
--   Assigns `expr` to register `reg`. It will always be transformed into type
-    `.Discharged`.
+-   Assigns `expr` to register `reg`. `expr` will always be transformed into
+    type `.Discharged`.
+-   Typically only called by other functions which simply want to push to the
+    index of the first free register `compiler.free_reg`.
 
 Analogous to
 -   `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.5
@@ -201,12 +208,14 @@ compiler_discharge_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr, locati
 /*
 Overview
 -   Transforms `expr` to `.Discharged` no matter what.
--   This may involve emitting get-operations for variables, literals, or
-    constants.
--   Use `expr.reg` to get the register it resides in.
+-   This may involve emitting get-operations for literals, constants, globals,
+    locals, or table indexes.
 
 Analogous to:
 -    `lcode.c:discharge2reg(FuncState *fs, expdesc *e, int reg)`
+
+Guarantees:
+-   `expr.reg` holds the register we just emitted `expr` to.
 
 Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#discharge2reg
@@ -238,9 +247,10 @@ compiler_discharge_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u1
 /*
 Overview
 -   Readies the retrieval of expressions representing variables.
+-   For other types of expressions nothing occurs.
 
 Analogous to:
--   `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e)`
+-   `lcode.c:luaK_dischargevars(FuncState *fs, expdesc *e)` in Lua 5.1.5.
 
 Guarantees:
 -   Bytecode is emitted for globals and tables, but destination registers are
@@ -283,7 +293,7 @@ Overview
     and get their resulting RK register.
 
 Analogous to:
--   'lcode.c:luaK_exp2RK(FuncState *fs, expdesc *e)' in Lua 5.1.5
+-   'lcode.c:luaK_exp2RK(FuncState *fs, expdesc *e)' in Lua 5.1.5.
 
 Links:
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2RK
@@ -303,6 +313,8 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
         index: u32
         // Constant can fit in RK operand?
         if len(chunk.constants) <= MAX_INDEX_RK {
+            // TODO(2025-04-13): Can we guarantee this branch will never be
+            // reached for nil, true and false?
             #partial switch type {
             case .Nil:      index = chunk_add_constant(chunk, value_make_nil())
             case .True:     index = chunk_add_constant(chunk, value_make_boolean(true))
@@ -408,7 +420,7 @@ Analogous to:
 -   'compiler.c:emitByte()' and 'compiler.c:emitBytes()' in the book.
 
 TODO(2025-01-07):
--   Fix the line counter for folded constant expressions?
+-   Fix the line counter for folded constant expressions across multiple lines?
  */
 compiler_emit_instruction :: proc(compiler: ^Compiler, inst: Instruction) -> (pc: int) {
     vm    := compiler.vm

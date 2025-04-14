@@ -26,7 +26,6 @@ Links:
  */
 Precedence :: enum u8 {
     None,
-    Assignment, // =
     Or,         // or
     And,        // and
     Equality,   // == ~=
@@ -225,7 +224,16 @@ Links:
 parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
     switch {
     case parser_match(parser, .Identifier):
-        assignment(parser, compiler, &LValue{}, 1)
+        last := &LValue{}
+        // Inline implementation of `compiler.c:parseVariable()` since we immediately
+        // consumed the 'identifier'. Also, Lua doesn't have a 'var' keyword.
+        variable(parser, compiler, &last.variable)
+
+        if parser_match(parser, .Left_Paren) {
+            parser_error_consumed(parser, "Function calls not yet implemented")
+        } else {
+            assignment(parser, compiler, last, 1)
+        }
     case:
         statement(parser, compiler)
     }
@@ -245,15 +253,14 @@ Links:
  */
 @(private="file")
 assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_vars: int) {
-    // Inline implementation of `compiler.c:parseVariable()` since we immediately
-    // consumed the 'identifier'. Also, Lua doesn't have a 'var' keyword.
-    variable(parser, compiler, &last.variable)
+    // Don't call `variable()` for the first assignment because we did so already
+    // to check for function calls.
+    if count_vars > 1 do variable(parser, compiler, &last.variable)
 
     // Use recursive calls to create a stack-allocated linked list.
     if parser_match(parser, .Comma) {
-        next := &LValue{prev = last}
         parser_consume(parser, .Identifier)
-        assignment(parser, compiler, next, count_vars + 1)
+        assignment(parser, compiler, &LValue{prev = last}, count_vars + 1)
         return // Prevent parents of recursive calls from consuming '='
     }
     parser_consume(parser, .Equals)
@@ -261,9 +268,7 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
     expr, count_exprs := expr_list(parser, compiler)
     adjust_assign(compiler, count_vars, count_exprs, &expr) // Must come first!
 
-    // a, b, c = 1, 2, 3, 4; free_reg = 4; count = 3; count_exprs = 4;
-    if count_vars < count_exprs do compiler.free_reg -= count_exprs - count_vars
-
+    // Register of the value we will use to assign a particlar `LValue`.
     // a, b, c = 1, 2, 3; free_reg = 3; count_exprs = 3; reg = 2
     reg := cast(u16)compiler.free_reg - 1
 
@@ -271,10 +276,12 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
     // registers can be reused.
     iter := last
     for current in lvalue_iterator(&iter) {
+        defer reg -= 1
+
         var := current.variable
         #partial switch type := var.type; type {
         case .Global:
-            // reg = dst; var.index = name
+            // reg = value; var.index = name
             compiler_emit_ABx(compiler, .Set_Global, reg, var.index)
         case .Local:
             // var.reg = local; reg = value;
@@ -283,10 +290,10 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
             // var.table.reg = table; var.table.index = key; reg = value;
             compiler_emit_ABC(compiler, .Set_Table, var.table.reg, var.table.index, reg)
         case:
-            fmt.panicf("Invalid assignment target: %v", type)
+            fmt.panicf("Impossible assignment target: %v", type)
         }
+        // TODO(2025-04-14): Maybe we can just pop `count_vars` directly?
         compiler_pop_reg(compiler, reg)
-        reg -= 1
     }
 }
 
@@ -337,7 +344,7 @@ statement :: proc(parser: ^Parser, compiler: ^Compiler) {
 
 /*
 Form:
--   local_stmt ::= 'local' local_decl [ '=' expr_list ]';'?
+-   local_stmt ::= 'local' local_decl [ '=' expr_list ]
 
 Notes:
 -   Due to the differences in Lua and Lox, we cannot combine local variable
@@ -404,7 +411,22 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
         reg := compiler.free_reg
         compiler_reserve_reg(compiler, extra)
         compiler_emit_nil(compiler, cast(u16)reg, cast(u16)extra)
+    } else {
+        /*
+        Sample:
+        -   local a, b, c = 1, 2, 3, 4
+
+        Results:
+        -   free_reg    = 4
+        -   count_vars  = 3
+        -   count_exprs = 4
+
+        Assumptions:
+        -   If `count_exprs == count_vars`, nothing changes as we subtract 0.
+         */
+        compiler.free_reg -= count_exprs - count_vars
     }
+
 }
 
 
@@ -449,14 +471,14 @@ print_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
 
     args: Expr
     count_args: int
-    if !parser_check(parser, .Right_Paren) {
+    if !parser_match(parser, .Right_Paren) {
         args, count_args = expr_list(parser, compiler)
+        parser_consume(parser, .Right_Paren)
     }
 
     // Emit the last expression from `expr_list()`.
     if args.type != .Empty do compiler_expr_next_reg(compiler, &args)
 
-    parser_consume(parser, .Right_Paren)
     compiler_emit_AB(compiler, .Print,
         cast(u16)(compiler.free_reg - count_args), cast(u16)compiler.free_reg)
 
@@ -501,7 +523,7 @@ Notes:
  */
 @(private="file")
 expression :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr) {
-    return parse_precedence(parser, compiler, .Assignment + Precedence(1))
+    return parse_precedence(parser, compiler, .None + Precedence(1))
 }
 
 
@@ -689,9 +711,9 @@ Constructor :: struct {
 
 /*
 Form:
--   table ::= '{' [ table_element ]* '}'
-    table_element ::= [ expression | field_item | ( indexed '=' expression ) ] ','
-    field_item ::= identifier '=' expression
+-   table ::= '{' table_element? [ ',' table_element ]* '}'
+    table_element ::= expression
+                    | ( indexed | identifier) '=' expression
 
 
 Assumptions:
@@ -804,7 +826,8 @@ Assumptions:
 -   The desired unary operator was just consumed.
 
 Guarantees:
--   `expr` ends up as an RK, it is either `.Constant` or `.Need_Register`.
+-   For arithetic and comparison, `expr` ends up as RK.
+-   For len, `expr` ends up as a register.
  */
 @(private="file")
 unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
@@ -828,7 +851,7 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .Dash:
         when USE_CONSTANT_FOLDING {
             // Don't fold non-numeric constants (for arithmetic) or non-falsifiable
-            // constants (for comparison).
+            // expressions (for comparison).
             if !(.Nil <= expr.type && expr.type <= .Number) {
                 compiler_expr_any_reg(compiler, expr)
             }
@@ -843,11 +866,13 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .Not:
         compiler_emit_not(compiler, expr)
     case .Pound:
+        // OpCode.Len CANNOT operate on constants no matter what.
         compiler_expr_any_reg(compiler, expr)
         dummy := &Expr{}
         expr_set_number(dummy, 0)
         compiler_emit_arith(compiler, .Len, expr, dummy)
-    case:       unreachable()
+    case:
+        unreachable()
     }
 }
 
@@ -890,14 +915,6 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     case: unreachable()
     }
 
-    prec := get_rule(type).prec
-
-    // By not adding 1 for exponentiation we enforce right-associativity since we
-    // keep emitting the ones to the right first
-    if prec != .Exponent do prec += Precedence(1)
-
-    // Compile the right-hand-side operand, filling in the details for 'right'.
-    right := parse_precedence(parser, compiler, prec)
     if USE_CONSTANT_FOLDING {
         if !expr_is_number(left) do compiler_expr_regconst(compiler, left)
     } else {
@@ -910,6 +927,15 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
          */
         compiler_expr_regconst(compiler, left)
     }
+
+    prec := get_rule(type).prec
+
+    // By not adding 1 for exponentiation we enforce right-associativity since we
+    // keep emitting the ones to the right first
+    if prec != .Exponent do prec += Precedence(1)
+
+    // Compile the right-hand-side operand, filling in the details for 'right'.
+    right := parse_precedence(parser, compiler, prec)
 
     /*
     Note:

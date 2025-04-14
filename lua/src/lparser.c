@@ -469,10 +469,10 @@ static void yindex (LexState *lex, Expr *var) {
 
 
 struct ConsControl {
-  Expr v;  /* last list item read */
-  Expr *t;  /* table descriptor */
-  int nh;  /* total number of `record' elements */
-  int na;  /* total number of array elements */
+  Expr value;  /* last list item read */
+  Expr *table;  /* table descriptor */
+  int nhash;  /* total number of `record' elements */
+  int narray;  /* total number of array elements */
   int tostore;  /* number of array elements pending to be stored */
 };
 
@@ -484,26 +484,26 @@ static void recfield (LexState *lex, struct ConsControl *cc) {
   Expr key, val;
   int rkkey;
   if (lex->current.type == Token_Name) {
-    luaY_checklimit(func, cc->nh, MAX_INT, "items in a constructor");
+    luaY_checklimit(func, cc->nhash, MAX_INT, "items in a constructor");
     checkname(lex, &key);
   }
   else  /* lex->t.token == '[' */
     yindex(lex, &key);
-  cc->nh++;
+  cc->nhash++;
   check_next(lex, Token_Assign);
   rkkey = luaK_exp2RK(func, &key);
   expression(lex, &val);
-  luaK_codeABC(func, OP_SETTABLE, cc->t->u.s.info, rkkey, luaK_exp2RK(func, &val));
+  luaK_codeABC(func, OP_SETTABLE, cc->table->u.s.info, rkkey, luaK_exp2RK(func, &val));
   func->freereg = reg;  /* free registers */
 }
 
 
 static void closelistfield (FuncState *func, struct ConsControl *cc) {
-  if (cc->v.kind == Expr_Void) return;  /* there is no list item */
-  luaK_exp2nextreg(func, &cc->v);
-  cc->v.kind = Expr_Void;
+  if (cc->value.kind == Expr_Void) return;  /* there is no list item */
+  luaK_exp2nextreg(func, &cc->value);
+  cc->value.kind = Expr_Void;
   if (cc->tostore == LFIELDS_PER_FLUSH) {
-    luaK_setlist(func, cc->t->u.s.info, cc->na, cc->tostore);  /* flush */
+    luaK_setlist(func, cc->table->u.s.info, cc->narray, cc->tostore);  /* flush */
     cc->tostore = 0;  /* no more items pending */
   }
 }
@@ -511,23 +511,23 @@ static void closelistfield (FuncState *func, struct ConsControl *cc) {
 
 static void lastlistfield (FuncState *func, struct ConsControl *cc) {
   if (cc->tostore == 0) return;
-  if (hasmultret(cc->v.kind)) {
-    luaK_setmultret(func, &cc->v);
-    luaK_setlist(func, cc->t->u.s.info, cc->na, LUA_MULTRET);
-    cc->na--;  /* do not count last expression (unknown number of elements) */
+  if (hasmultret(cc->value.kind)) {
+    luaK_setmultret(func, &cc->value);
+    luaK_setlist(func, cc->table->u.s.info, cc->narray, LUA_MULTRET);
+    cc->narray--;  /* do not count last expression (unknown number of elements) */
   }
   else {
-    if (cc->v.kind != Expr_Void)
-      luaK_exp2nextreg(func, &cc->v);
-    luaK_setlist(func, cc->t->u.s.info, cc->na, cc->tostore);
+    if (cc->value.kind != Expr_Void)
+      luaK_exp2nextreg(func, &cc->value);
+    luaK_setlist(func, cc->table->u.s.info, cc->narray, cc->tostore);
   }
 }
 
 
 static void listfield (LexState *lex, struct ConsControl *cc) {
-  expression(lex, &cc->v);
-  luaY_checklimit(lex->func, cc->na, MAX_INT, "items in a constructor");
-  cc->na++;
+  expression(lex, &cc->value);
+  luaY_checklimit(lex->func, cc->narray, MAX_INT, "items in a constructor");
+  cc->narray++;
   cc->tostore++;
 }
 
@@ -538,14 +538,14 @@ static void constructor (LexState *lex, Expr *t) {
   int line = lex->linenumber;
   int pc = luaK_codeABC(func, OP_NEWTABLE, 0, 0, 0);
   struct ConsControl cc;
-  cc.na = cc.nh = cc.tostore = 0;
-  cc.t = t;
+  cc.narray = cc.nhash = cc.tostore = 0;
+  cc.table = t;
   init_exp(t, Expr_Relocable, pc);
-  init_exp(&cc.v, Expr_Void, 0);  /* no value (yet) */
+  init_exp(&cc.value, Expr_Void, 0);  /* no value (yet) */
   luaK_exp2nextreg(lex->func, t);  /* fix it at stack top (for gc) */
   check_next(lex, Token_Left_Curly);
   do {
-    lua_assert(cc.v.kind == Expr_Void || cc.tostore > 0);
+    lua_assert(cc.value.kind == Expr_Void || cc.tostore > 0);
     if (lex->current.type == Token_Right_Curly) break;
     closelistfield(func, &cc);
     switch(lex->current.type) {
@@ -569,8 +569,8 @@ static void constructor (LexState *lex, Expr *t) {
   } while (test_next(lex, Token_Comma) || test_next(lex, Token_Semi));
   check_match(lex, Token_Right_Curly, Token_Left_Curly, line);
   lastlistfield(func, &cc);
-  SETARG_B(func->proto->code[pc], luaO_int2fb(cc.na)); /* set initial array size */
-  SETARG_C(func->proto->code[pc], luaO_int2fb(cc.nh));  /* set initial table size */
+  SETARG_B(func->proto->code[pc], luaO_int2fb(cc.narray)); /* set initial array size */
+  SETARG_C(func->proto->code[pc], luaO_int2fb(cc.nhash));  /* set initial table size */
 }
 
 /* }====================================================================== */
