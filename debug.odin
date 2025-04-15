@@ -97,7 +97,8 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         }
     case .New_Table:
         print_ABC(inst)
-        fmt.printfln("reg[%i] = {{}} ; #array = %i, #hash = %i", inst.a, inst.b, inst.c)
+        fmt.printfln("reg[%i] = {{}} ; #array=%i, #hash=%i",
+            inst.a, fb_to_int(cast(u8)inst.b), fb_to_int(cast(u8)inst.c))
     case .Get_Table:
         print_ABC(inst)
         s, c := get_rk(inst.c)
@@ -108,8 +109,10 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
         print_ABC(inst)
         fmt.printfln("reg[%i][%s[%i]] = %s[%i]", inst.a, b_loc, b, c_loc, c)
     case .Set_Array:
-        print_ABx(inst)
-        fmt.printfln("reg[%i][1:%i] = ...", inst.a, inst_get_Bx(inst))
+        print_ABC(inst)
+        assert(inst.b != 0 && inst.c != 0, "Impossible condition reached")
+        fmt.printfln("reg[%i][%i + i] = reg(%i + i) for 1 <= i <= %i",
+            inst.a, (inst.c - 1) * FIELDS_PER_FLUSH, inst.a, inst.b)
     case .Print:
         print_AB(inst)
         fmt.printfln("print(reg[%i..<%i])", inst.a, inst.b)

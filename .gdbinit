@@ -6,7 +6,7 @@ file ./bin/lulu
 set print pretty on
 
 break lulu::main
-break lulu::[compiler.odin]::compiler_emit_not
+# break lulu::[compiler.odin]::compiler_emit_not
 
 layout src
 

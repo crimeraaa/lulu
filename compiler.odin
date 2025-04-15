@@ -651,3 +651,35 @@ compiler_code_indexed :: proc(compiler: ^Compiler, table, key: ^Expr) {
     index := compiler_expr_regconst(compiler, key)
     expr_set_table(table, .Table_Index, index)
 }
+
+
+/*
+Analogous to:
+-   `lcode.c:luaK_setlist(FuncState *fs, int base, int nelems, int tostore)`
+    in Lua 5.1.5.
+
+Assumptions:
+-   `total` and `to_store` are never 0.
+ */
+compiler_code_set_array :: proc(compiler: ^Compiler, reg: u16, total, to_store: int) {
+    // Assert taken from Lua 5.4
+    assert(to_store != 0 && to_store <= FIELDS_PER_FLUSH)
+
+    // TOOD(2025-04-15): Check for LUA_MULTRET analog?
+    b := cast(u16)to_store
+
+    // Add 1 to distinguish from C == 0 which is a special case
+    c := ((total - 1) / FIELDS_PER_FLUSH) + 1
+
+    if c <= MAX_C {
+        compiler_code_ABC(compiler, .Set_Array, reg, b, cast(u16)c)
+    } else {
+        parser_error_consumed(compiler.parser,
+            ".Set_Array with > MAX_C offset is not yet supported")
+        // Actual value of C is found in the next "instruction"
+        // compiler_code_ABC(compiler, .Set_Array, reg, b, 0)
+        // compiler_code(compiler, transmute(Instruction)cast(u32)c)
+    }
+    // Reuse the registers that were allocated for the list elements
+    compiler.free_reg = cast(int)reg + 1
+}

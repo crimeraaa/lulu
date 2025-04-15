@@ -97,7 +97,7 @@ Note on shorthand:
 //                Args  | Description
 Move,          // A B   | Reg(A) := Reg(B)
 Load_Constant, // A Bx  | Reg(A) := Kst(Bx)
-Load_Nil,      // A B   | Reg(A)..=Reg(B) := nil
+Load_Nil,      // A B   | Reg(i) := nil for A <= i <= B
 Load_Boolean,  // A B C | Reg(1) := (Bool)B; if ((Bool)C) ip++
 Get_Global,    // A Bx  | Reg(A) := _G[Kst[Bx]]
 Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg(A)
@@ -105,7 +105,7 @@ New_Table,     // A B C | Reg(A) := {} ; array size = B, hash size = C
 Get_Table,     // A B C | Reg(A) := Reg(B)[RK(C)]
 Set_Table,     // A B C | Reg(A)[RK(B)] := RK(C)
 Set_Array,     // A Bx  | Reg(A)[(C-1)*FPF + i] = Reg(A + i) for 1 <= i <= B
-Print,         // A B   | print(Reg(A)..=Reg(B))
+Print,         // A B   | print(Reg(i), '\t') for A <= i <= B
 Add,           // A B C | Reg(A) := RK(B) + RK(C)
 Sub,           // A B C | Reg(A) := RK(B) - RK(C)
 Mul,           // A B C | Reg(A) := RK(B) * RK(C)
@@ -120,7 +120,7 @@ Gt,            // A B C | Reg(A) := RK(B) >  RK(C)
 Leq,           // A B C | Reg(A) := RK(B) <= RK(C)
 Geq,           // A B C | Reg(A) := RK(B) >= RK(C)
 Not,           // A B   | Reg(A) := not RK(B)
-Concat,        // A B C | Reg(A) := Reg(B) .. ... .. Reg(C)
+Concat,        // A B C | Reg(A) := Reg(A) .. Reg(i) for B <= i <= C
 Len,           // A B   | Reg(A) := #Reg(B)
 Return,        // A B   | return Reg(A), ... Reg(A + B - 1)
 }
@@ -129,8 +129,10 @@ Return,        // A B   | return Reg(A), ... Reg(A + B - 1)
 Overview:
 -   Maximum value of argument B for `OpCode.Set_Array`.
 -   Offset to use when decoding argument C.
+-   This also means that after every `.Set_Array` instruction we can reuse these
+    registers.
  */
-FIELDS_PER_FLUSH :: 100
+FIELDS_PER_FLUSH :: 50
 
 /* =============================================================================
 Notes:
@@ -146,10 +148,7 @@ Notes:
     -   If C == 0 then that means the *next* instruction, all its 32 bits,
         represents the actual unsigned value of C.
     -   Otherwise nonzero C represents an offset from `FIELDS_PER_FLUSH`.
-    -   That is, C == 1 results in (1 - 1) * FIELDS_PER_FLUSH or 0.
-        For this iteration we can set indexes 1 up to 100.
-    -   If C == 2, this results in (2 - 1) * FIELDS_PER_FLUSH or 100.
-        For this iteration we can set indexes 100 up to 200.
+    -   C will be used to calculate the actual range of indexes we need to set.
 ============================================================================= */
 
 
@@ -185,7 +184,7 @@ opcode_info := [OpCode]OpCode_Info {
 .Get_Global ..= .Set_Global = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
 .New_Table                  = {type = .Separate,    a = true, b = .Used,      c = .Used},
 .Get_Table ..= .Set_Table   = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
-.Set_Array                  = {type = .Unsigned_Bx, a = true, b = .Used,      c = .Unused},
+.Set_Array                  = {type = .Separate,    a = true, b = .Used,      c = .Used},
 .Print                      = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Add ..= .Pow               = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
 .Unm                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},

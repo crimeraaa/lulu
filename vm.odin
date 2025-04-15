@@ -261,12 +261,15 @@ vm_execute :: proc(vm: ^VM) {
             table_set(vm, ra.table, key, value)
         case .Set_Array:
             // Guaranteed because this only occurs in table constructors
-            table := ra.table
-            count := cast(int)inst_get_Bx(inst)
-            for i in 0..<count {
-                key   := value_make_number(cast(f64)i + 1)
-                value := vm.top[-count + i]
-                table_set(vm, table, key, value)
+            table  := ra.table
+            count  := cast(int)inst.b
+            offset := cast(int)((inst.c - 1) * FIELDS_PER_FLUSH)
+
+            assert(inst.b != 0 && inst.c != 0, "Impossible condition reached")
+
+            for i in 1..=count {
+                key := value_make_number(cast(f64)(offset + i))
+                table_set(vm, table, key, stack[cast(int)inst.a + i])
             }
         case .Print:
             for arg in stack[inst.a:inst.b] {

@@ -651,6 +651,20 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
             if parser_match(parser, .Right_Curly) {
                 break
             }
+            /*
+            Analogous to:
+            -   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)`
+
+            Assumptions:
+            -   This is an inline implementation.
+            -   `ctor_array` already pushed each expression.
+             */
+            if ctor.to_store == FIELDS_PER_FLUSH {
+                compiler_code_set_array(compiler, ctor.table.reg,
+                    ctor.count_array, ctor.to_store)
+                ctor.to_store = 0
+            }
+
             // for backtracking
             saved_consumed := parser.consumed
             parser_advance(parser)
@@ -671,21 +685,29 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
             }
 
             if !parser_match(parser, .Comma) {
+                parser_consume(parser, .Right_Curly)
                 break
             }
         }
+    }
+
+    /*
+    Analogous to:
+    -   `lparser.c:lastlistfield(LexState *ls, struct ConsControl *cc)`
+
+    TODO(2025-04-15): Add the other `if` branches!
+     */
+    if ctor.to_store != 0 {
+        // if (hasmultret(cc->value.kind)) ...
+        // if (cc->v.k != VVOID) ...
+        compiler_code_set_array(compiler, ctor.table.reg, ctor.count_array,
+            ctor.to_store)
     }
 
     // `fb_from_int()` may also round up the values by some factor, but that's
     // okay because our hash table will simply over-allocate.
     compiler.chunk.code[pc].b = cast(u16)fb_from_int(ctor.count_array)
     compiler.chunk.code[pc].c = cast(u16)fb_from_int(ctor.count_hash)
-
-    if count := ctor.count_array; count > 0 {
-        // TODO(2025-04-13): Optimize for size! See `lopcodes.h:LFIELDS_PER_FLUSH`.
-        compiler_code_ABx(compiler, .Set_Array, ctor.table.reg, cast(u32)count)
-        compiler.free_reg -= count
-    }
 }
 
 
