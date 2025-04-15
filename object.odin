@@ -14,7 +14,9 @@ where intrinsics.type_is_subtype_of(T, Object_Header) {
 
     ptr, err := mem.alloc(size_of(T) + extra, align_of(T), vm.allocator)
     // Assumes we are always in a protected call!
-    if err != nil do vm_memory_error(vm)
+    if err != nil {
+        vm_memory_error(vm)
+    }
 
     header := cast(^Object_Header)ptr
     when T == OString {
@@ -41,7 +43,9 @@ object_unlink :: proc(vm: ^VM, object: ^Object_Header) {
 
 object_iterator :: proc(iter: ^^Object_Header) -> (object: ^Object_Header, ok: bool) {
     object = iter^
-    if object == nil do return nil, false
+    if object == nil {
+        return nil, false
+    }
 
     iter^ = object.prev
     return object, true

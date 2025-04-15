@@ -38,7 +38,9 @@ get_global :: proc(vm: ^VM, key: string) {
 
 to_string :: proc(vm: ^VM, index: int) -> (result: string, ok: bool) {
     value := index_to_address(vm, index)
-    if !value_is_string(value^) do return "", false
+    if !value_is_string(value^) {
+        return "", false
+    }
     return ostring_to_string(value.ostring), true
 }
 

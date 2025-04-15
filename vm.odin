@@ -142,7 +142,9 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
 
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
-        for &slot in vm.stack[:chunk.stack_used] do value_set_nil(&slot)
+        for &slot in vm.stack[:chunk.stack_used] {
+            value_set_nil(&slot)
+        }
         vm_execute(vm)
     }
 
@@ -240,14 +242,21 @@ vm_execute :: proc(vm: ^VM) {
         case .Get_Table:
             key := get_rk(vm, inst.c, stack, constants)
             table: ^Table
-            if t := vm.base[inst.b]; !value_is_table(t) do index_error(vm, t)
-            else do table = t.table
+            if t := vm.base[inst.b]; !value_is_table(t) {
+                index_error(vm, t)
+            } else {
+                table = t.table
+            }
             ra^ = table_get(table, key)
         case .Set_Table:
             key   := get_rk(vm, inst.b, stack, constants)
             value := get_rk(vm, inst.c, stack, constants)
-            if !value_is_table(ra^) do index_error(vm, ra^)
-            if value_is_nil(key) do vm_runtime_error(vm, "set a nil index")
+            if !value_is_table(ra^) {
+                index_error(vm, ra^)
+            }
+            if value_is_nil(key) {
+                vm_runtime_error(vm, "set a nil index")
+            }
 
             table_set(vm, ra.table, key, value)
         case .Set_Array:
@@ -260,7 +269,9 @@ vm_execute :: proc(vm: ^VM) {
                 table_set(vm, table, key, value)
             }
         case .Print:
-            for arg in stack[inst.a:inst.b] do value_print(arg, .Print)
+            for arg in stack[inst.a:inst.b] {
+                value_print(arg, .Print)
+            }
             fmt.println()
         case .Add: arith_op(vm, number_add, ra, inst, stack, constants)
         case .Sub: arith_op(vm, number_sub, ra, inst, stack, constants)
@@ -270,7 +281,9 @@ vm_execute :: proc(vm: ^VM) {
         case .Pow: arith_op(vm, number_pow, ra, inst, stack, constants)
         case .Unm:
             rb := stack[inst.b]
-            if !value_is_number(rb) do arith_error(vm, rb, rb)
+            if !value_is_number(rb) {
+                arith_error(vm, rb, rb)
+            }
             value_set_number(ra, number_unm(rb.data.number))
         case .Eq, .Neq:
             rb, rc := get_rk_bc(vm, inst, stack, constants)
@@ -291,15 +304,19 @@ vm_execute :: proc(vm: ^VM) {
             case .String:
                 ra^ = value_make_number(cast(f64)rb.ostring.len)
             case .Table:
-                index, count := 1, 0
+                index := 1
+                count := 0
                 table := rb.table
                 // TODO(2025-04-13): Optimize by separating array from hash!
                 for {
                     defer index += 1
                     key := value_make_number(cast(f64)index)
                     value, _ := table_get(table, key)
-                    if value_is_nil(value) do break
-                    else do count += 1
+                    if value_is_nil(value) {
+                        break
+                    } else {
+                        count += 1
+                    }
                 }
                 ra^ = value_make_number(cast(f64)count)
             case:
@@ -322,7 +339,9 @@ vm_execute :: proc(vm: ^VM) {
 @(private="file")
 arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
     x, y := get_rk_bc(vm, inst, stack, constants)
-    if !value_is_number(x) || !value_is_number(y) do arith_error(vm, x, y)
+    if !value_is_number(x) || !value_is_number(y) {
+        arith_error(vm, x, y)
+    }
     value_set_number(ra, op(x.data.number, y.data.number))
 }
 

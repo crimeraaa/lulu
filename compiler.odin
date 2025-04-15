@@ -307,26 +307,26 @@ Notes:
  */
 compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     compiler_expr_to_value(compiler, expr)
-    #partial switch type := expr.type; type {
-    case .Nil, .True, .False, .Number:
-        chunk := compiler.chunk
-        index: u32
-        // Constant can fit in RK operand?
+
+    add_rk :: proc(chunk: ^Chunk, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
         if len(chunk.constants) <= MAX_INDEX_RK {
-            // For nil, true and false we may reach this branch when we have a
-            // comparison expression in `parser.odin:binary()`.
-            #partial switch type {
-            case .Nil:      index = chunk_add_constant(chunk, value_make_nil())
-            case .True:     index = chunk_add_constant(chunk, value_make_boolean(true))
-            case .False:    index = chunk_add_constant(chunk, value_make_boolean(false))
-            case .Number:   index = chunk_add_constant(chunk, value_make_number(expr.number))
-            case:           unreachable() // How?
-            }
+            index := chunk_add_constant(chunk, value)
             expr_set_index(expr, .Constant, index)
-            return rk_as_k(cast(u16)index)
-        } else {
-            break
+            return rk_as_k(cast(u16)index), true
         }
+        return INVALID_REG, false
+    }
+
+    chunk := compiler.chunk
+    #partial switch type := expr.type; type {
+    case .Nil:
+        return add_rk(chunk, value_make_nil(), expr) or_break
+    case .True:
+        return add_rk(chunk, value_make_boolean(true), expr) or_break
+    case .False:
+        return add_rk(chunk, value_make_boolean(false), expr) or_break
+    case .Number:
+        return add_rk(chunk, value_make_number(expr.number), expr) or_break
     case .Constant:
         // Constant can fit in argument C?
         if index := expr.index; index <= MAX_INDEX_RK {
@@ -454,7 +454,9 @@ Links:
  */
 compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16) {
     i, ok := chunk_add_local(compiler.chunk, ident)
-    if !ok do parser_error_consumed(compiler.parser, "Too many local variables")
+    if !ok {
+        parser_error_consumed(compiler.parser, "Too many local variables")
+    }
     return i
 }
 
@@ -516,7 +518,9 @@ Links:
 compiler_emit_binary :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
     assert(.Add <= op && op <= .Unm || .Eq <= op && op <= .Geq || op == .Concat || op == .Len)
     when USE_CONSTANT_FOLDING {
-        if compiler_fold_numeric(op, left, right) do return
+        if compiler_fold_numeric(op, left, right) {
+            return
+        }
     }
 
     b, c: u16
@@ -577,7 +581,9 @@ Links:
 @(private="file")
 compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     // Can't fold two non-number-literals!
-    if !expr_is_number(left^) || !expr_is_number(right^) do return false
+    if !expr_is_number(left^) || !expr_is_number(right^) {
+        return false
+    }
 
     x, y: f64 = left.number, right.number
     result: union #no_nil {f64, bool}
@@ -588,11 +594,15 @@ compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     case .Mul:  result = number_mul(x, y)
     case .Div:
         // Avoid division by zero
-        if y == 0 do return false
+        if y == 0 {
+            return false
+        }
         result = number_div(x, y)
     case .Mod:
         // Ditto
-        if y == 0 do return false
+        if y == 0 {
+            return false
+        }
         result = number_mod(x, y)
     case .Pow:  result = number_pow(x, y)
     case .Unm:  result = number_unm(x)
@@ -612,7 +622,9 @@ compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
 
     switch value in result {
     case f64:
-        if number_is_nan(value) do return false
+        if number_is_nan(value) {
+            return false
+        }
         expr_set_number(left, value)
         return true
     case bool:

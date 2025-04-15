@@ -144,7 +144,9 @@ lexer_scan_token :: proc(lexer: ^Lexer) -> (token: Token) {
     case '\'', '\"': return create_string_token(lexer, r)
     }
 
-    if type == .Error do lexer_error(lexer, "Unexpected symbol")
+    if type == .Error {
+        lexer_error(lexer, "Unexpected symbol")
+    }
     return create_token(lexer, type)
 }
 
@@ -292,7 +294,9 @@ create_string_token :: proc(lexer: ^Lexer, quote: rune) -> (token: Token) {
     builder := vm_get_builder(lexer.vm)
     for !is_at_end(lexer^) && peek(lexer^) != quote {
         r := advance(lexer)
-        if r == '\n' do break
+        if r == '\n' {
+            break
+        }
         // If have escape character, skip it and read the escaped sequence
         if r == '\\' {
             switch r = advance(lexer); r {
@@ -403,7 +407,9 @@ consume_multiline :: proc(lexer: ^Lexer, opening: int, $is_comment: bool) {
             lexer_error(lexer, "Unterminated multiline sequence")
         }
 
-        if advance(lexer) == '\n' do lexer.line += 1
+        if advance(lexer) == '\n' {
+            lexer.line += 1
+        }
     }
 }
 
@@ -469,7 +475,9 @@ peek :: proc(lexer: Lexer) -> (r: rune) {
 
 @(private="file")
 peek_next :: proc(lexer: Lexer) -> (r: rune) {
-    if is_at_end(lexer) do return utf8.RUNE_ERROR
+    if is_at_end(lexer) {
+        return utf8.RUNE_ERROR
+    }
     return utf8.rune_at(lexer.input, lexer.current + 1)
 }
 

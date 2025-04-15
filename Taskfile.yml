@@ -23,10 +23,11 @@ tasks:
     sources:
       - ./*.odin
 
+  # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:
     cmds:
       - task: build
-      - '{{.OUT_EXE}}'
+      - '{{.OUT_EXE}} {{.CLI_ARGS}}'
     interactive: true
 
   build-lua:
@@ -37,7 +38,7 @@ tasks:
         mv ./src/lua ../bin/
         mv ./src/luac ../bin/
         cd ..
-  
+
   # lol
   # https://taskfile.dev/styleguide/#prefer-using-external-scripts-instead-of-multi-line-commands
   clean-lua:
@@ -46,7 +47,7 @@ tasks:
         cd ./lua
         make clean
         cd ..
-  
+
   fix-whitespace:
     desc: Remove trailing whitespace from all *.odin files.
     deps:

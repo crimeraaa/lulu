@@ -15,7 +15,9 @@ Notes:
     However, extracting the cstring requires an unsafe cast.
  */
 ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
-    if prev, ok := intern_get(&vm.interned, input); ok do return prev
+    if prev, ok := intern_get(&vm.interned, input); ok {
+        return prev
+    }
 
     n  := len(input)
     str = object_new(OString, vm, n + 1)

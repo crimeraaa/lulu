@@ -21,12 +21,57 @@ OFFSET_BC   :: OFFSET_C             //        = 14
 OFFSET_A    :: OFFSET_OP + SIZE_OP  // 0 + 6  = 6
 OFFSET_OP   :: 0
 
+/*
+- Format:
+```
+    +---------+---------+--------+-------+
+    | 31..23  | 22..14  | 13..6  | 5..0  |
+    +---------+---------+--------+-------+
+    | B:9     | C:9     | A:8    | OP:6  |  `.Separate`
+    | Bx:18             | A:8    | OP:6  |  `.Unsigned_Bx`
+    | sBx:18            | A:8    | OP:6  |  `.Signed_Bx`
+    +---------+---------+--------+-------+
+```
+
+- Various casts and offsets:
+```
+    +---------+---------+
+    | 15..7   | 6..0    |
+    +---------+---------+
+    | B:9     | C:7     |   `u16`, byte offset 0
+    +---------+---------+
+
+
+    +---------+---------+--------+------+
+    | 23      | 22..14  | 13..6  | 5..0 |
+    +---------+---------+--------+------+
+    | B:1     | C:9     | A:8    | OP:6 |   `u32`, byte offset 1
+    +---------+---------+--------+------+
+
+    +---------+--------+------+
+    | 15..14  | 13..6  | 5..0 |
+    +---------+--------+------+
+    | C:2     | A:8    | OP:6 | `u16`, byte offset 2
+    +---------+--------+------+
+
+    +--------+------+
+    | 8..6   | 5..0 |
+    +--------+------+
+    | A:2    | OP:6 |   `u8`, byte offset 3
+    +--------+------+
+```
+
+Notes:
+-   We put `B` before `C` so that it's easier to do bit manipulation to get
+    the full 18-bit integer.
+ */
 Instruction :: bit_field u32 {
     b:  u16    | SIZE_B, // 9th bit is sign or flag
     c:  u16    | SIZE_C, // 9th bit is sign, or flag, or combined into B
     a:  u16    | SIZE_A, // Always unsigned
     op: OpCode | SIZE_OP  `fmt:"s"`,
 }
+
 
 /*
 Links:
@@ -37,17 +82,17 @@ OpCode :: enum u8 {
 /* =============================================================================
 Note on shorthand:
 (*) Reg:
-    - Register
-    - requires absolute index into stack
-    - Reg(A) => often the destination operand
+    -   'Register'
+    -   requires absolute index into stack
+    -   Reg(A) => often the destination operand
 (*) Kst:
-    - Constants Table
-    - From current Chunk
-    - Requires absolute index
+    -   'Constants Table'
+    -   From current Chunk
+    -   Requires absolute index
 (*) RK:
-    - Register or Constants Table
-    - If argument B or C is >= 0x100, meaning bit 9 is toggled, then it is an index
-      into Kst. Otherwise, it is a Reg.
+    -   'Register or Constants Table'
+    -   If argument B or C is >= 0x100, meaning bit 9 is toggled, then it is an
+        absolute index into Kst. Otherwise, it is a Reg.
 ============================================================================= */
 //                Args  | Description
 Move,          // A B   | Reg(A) := Reg(B)
@@ -210,7 +255,7 @@ fb_from_int :: proc(u: int) -> (fb: u8) {
     /*
     Notes:
     -   We use `0b0001_0000` or `16` because that is the first power of 2 that
-        cannot be represented even with our implied bit as 0b0000_1111 is 15.
+        cannot be represented even with our implied bit (0b0000_1111) is 15.
      */
     for u >= 0b0001_0000 {
         // Round up
@@ -219,7 +264,9 @@ fb_from_int :: proc(u: int) -> (fb: u8) {
     }
 
     // Exponent is 0 in this case so no need to set it
-    if u < FB_MANTISSA_IMPLIED do return cast(u8)u
+    if u < FB_MANTISSA_IMPLIED {
+        return cast(u8)u
+    }
 
     return ((exp + 1) << FB_MANTISSA_SIZE) | cast(u8)(u - FB_MANTISSA_IMPLIED)
 }
@@ -237,7 +284,9 @@ fb_to_int :: proc(fb: u8) -> int {
     exp := (fb >> FB_MANTISSA_SIZE) & FB_EXPONENT_MASK
 
     // No exponent, so we can just interpret the mantissa as-is
-    if exp == 0 do return cast(int)fb
+    if exp == 0 {
+        return cast(int)fb
+    }
 
     return (cast(int)(fb & FB_MANTISSA_MASK) + FB_MANTISSA_IMPLIED) << (exp - 1)
 }

@@ -86,14 +86,15 @@ parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
 }
 
 parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
-    found = (parser.lookahead.type == expected)
-    if found do parser_advance(parser)
-    return found
+    if parser.lookahead.type == expected {
+        parser_advance(parser)
+        return true
+    }
+    return false
 }
 
 parser_check :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
-    found = (parser.lookahead.type == expected)
-    return found
+    return parser.lookahead.type == expected
 }
 
 LValue :: struct {
@@ -143,7 +144,9 @@ Links:
 assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_vars: int) {
     // Don't call `variable()` for the first assignment because we did so already
     // to check for function calls.
-    if count_vars > 1 do variable(parser, compiler, &last.variable)
+    if count_vars > 1 {
+        variable(parser, compiler, &last.variable)
+    }
 
     // Use recursive calls to create a stack-allocated linked list.
     if parser_match(parser, .Comma) {
@@ -187,7 +190,9 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
 
 lvalue_iterator :: proc(iter: ^^LValue) -> (current: ^LValue, ok: bool) {
     current = iter^
-    if current == nil do return nil, false
+    if current == nil {
+        return nil, false
+    }
     iter^ = current.prev
     return current, true
 }
@@ -247,7 +252,9 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
         ident, _ := ident_constant(parser, compiler, parser.consumed)
         local_decl(parser, compiler, ident)
         count_vars += 1
-        if !parser_match(parser, .Comma) do break
+        if !parser_match(parser, .Comma) {
+            break
+        }
     }
 
     expr: Expr
@@ -292,7 +299,9 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
     // TODO(2025-04-08): Add `if (hasmultret(expr->kind))` analog
 
     // Emit the last expression from `expr_list()`.
-    if expr.type != .Empty do compiler_expr_next_reg(compiler, expr)
+    if expr.type != .Empty {
+        compiler_expr_next_reg(compiler, expr)
+    }
 
     // More variables than expressions?
     if extra := count_vars - count_exprs; extra > 0 {
@@ -365,7 +374,9 @@ print_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
     }
 
     // Emit the last expression from `expr_list()`.
-    if args.type != .Empty do compiler_expr_next_reg(compiler, &args)
+    if args.type != .Empty {
+        compiler_expr_next_reg(compiler, &args)
+    }
 
     compiler_emit_AB(compiler, .Print,
         cast(u16)(compiler.free_reg - count_args), cast(u16)compiler.free_reg)
@@ -435,7 +446,9 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence)
 
     for {
         rule := get_rule(parser.lookahead.type)
-        if prec > rule.prec do break
+        if prec > rule.prec {
+            break
+        }
         // Can occur when we hardcode low precedence recursion in high precedence calls
         assert(rule.infix != nil)
         parser_advance(parser)
@@ -538,8 +551,11 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
     ident, index := ident_constant(parser, compiler, parser.consumed)
     local, ok := compiler_resolve_local(compiler, ident)
 
-    if ok do expr_set_reg(var, .Local, local)
-    else do expr_set_index(var, .Global, index)
+    if ok {
+        expr_set_reg(var, .Local, local)
+    } else {
+        expr_set_index(var, .Global, index)
+    }
 
     table_fields: for {
         switch {
@@ -632,27 +648,31 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     expr_set_pc(ctor.table, .Need_Register, pc)
     compiler_expr_next_reg(compiler, ctor.table)
 
-    if !parser_check(parser, .Right_Curly) do for {
-        // for backtracking
-        saved_consumed := parser.consumed
-        parser_advance(parser)
-        #partial switch(parser.consumed.type) {
-        case .Identifier:
-            // `.Equals` is consumed inside of `ctor_field`
-            if parser_check(parser, .Equals) {
-                ctor_field(parser, compiler, ctor)
-            } else {
+    if !parser_check(parser, .Right_Curly) {
+        for {
+            // for backtracking
+            saved_consumed := parser.consumed
+            parser_advance(parser)
+            #partial switch(parser.consumed.type) {
+            case .Identifier:
+                // `.Equals` is consumed inside of `ctor_field`
+                if parser_check(parser, .Equals) {
+                    ctor_field(parser, compiler, ctor)
+                } else {
+                    parser_backtrack(parser, saved_consumed)
+                    ctor_array(parser, compiler, ctor)
+                }
+            case .Left_Bracket:
+                ctor_index(parser, compiler, ctor)
+            case:
                 parser_backtrack(parser, saved_consumed)
                 ctor_array(parser, compiler, ctor)
             }
-        case .Left_Bracket:
-            ctor_index(parser, compiler, ctor)
-        case:
-            parser_backtrack(parser, saved_consumed)
-            ctor_array(parser, compiler, ctor)
-        }
 
-        if !parser_match(parser, .Comma) do break
+            if !parser_match(parser, .Comma) {
+                break
+            }
+        }
     }
 
     parser_consume(parser, .Right_Curly)
@@ -822,7 +842,9 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     }
 
     if USE_CONSTANT_FOLDING {
-        if !expr_is_number(left^) do compiler_expr_regconst(compiler, left)
+        if !expr_is_number(left^) {
+            compiler_expr_regconst(compiler, left)
+        }
     } else {
         /*
         NOTE(2025-01-19):
@@ -838,7 +860,9 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
 
     // By not adding 1 for exponentiation we enforce right-associativity since we
     // keep emitting the ones to the right first
-    if prec != .Exponent do prec += Precedence(1)
+    if prec != .Exponent {
+        prec += Precedence(1)
+    }
 
     // Compile the right-hand-side operand, filling in the details for 'right'.
     right := parse_precedence(parser, compiler, prec)

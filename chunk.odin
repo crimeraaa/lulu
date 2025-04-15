@@ -59,7 +59,9 @@ chunk_add_constant :: proc(chunk: ^Chunk, value: Value) -> (index: u32) {
     constants := &chunk.constants
     // Linear search is theoretically very slow!
     for constant, index in constants {
-        if value_eq(constant, value) do return cast(u32)index
+        if value_eq(constant, value) {
+            return cast(u32)index
+        }
     }
     append(constants, value)
     return cast(u32)len(constants) - 1
@@ -67,7 +69,9 @@ chunk_add_constant :: proc(chunk: ^Chunk, value: Value) -> (index: u32) {
 
 
 chunk_add_local :: proc(chunk: ^Chunk, ident: ^OString) -> (index: u16, ok: bool) {
-    if chunk.count_local >= len(chunk.locals) do return INVALID_REG, false
+    if chunk.count_local >= len(chunk.locals) {
+        return INVALID_REG, false
+    }
 
     // Don't reserve registers here as our initializer expressions may do so
     // already, or we implicitly load nil.
@@ -102,8 +106,12 @@ Notes:
 chunk_check_shadowing :: proc(chunk: ^Chunk, ident: ^OString, depth: int) -> (ok: bool) {
     for local, index in chunk.locals[:chunk.count_local] {
         // We hit an initialized local in an outer scope?
-        if local.depth != UNINITIALIZED_LOCAL && local.depth < depth do break
-        if local.ident == ident do return true
+        if local.depth != UNINITIALIZED_LOCAL && local.depth < depth {
+            break
+        }
+        if local.ident == ident {
+            return true
+        }
     }
     return false
 }

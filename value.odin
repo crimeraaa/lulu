@@ -175,7 +175,9 @@ value_is_table :: proc(a: Value) -> bool {
 }
 
 value_eq :: proc(a, b: Value) -> bool {
-    if a.type != b.type do return false
+    if a.type != b.type {
+        return false
+    }
 
     switch a.type {
     case .Nil:      return true
@@ -197,11 +199,17 @@ value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
     case .Normal:
         fmt.println(s)
     case .Debug:
-        if value_is_string(value) do fmt.printfln("%q", s)
-        else do fmt.println(s)
+        if value_is_string(value) {
+            fmt.printfln("%q", s)
+        } else {
+            fmt.println(s)
+        }
     case .Stack:
-        if value_is_string(value) do fmt.printf("[ %q ]", s)
-        else do fmt.printf("[ %s ]", s)
+        if value_is_string(value) {
+            fmt.printf("[ %q ]", s)
+        } else {
+            fmt.printf("[ %s ]", s)
+        }
     case .Print:
         fmt.printf("%s\t", s)
     }
