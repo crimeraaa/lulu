@@ -367,7 +367,14 @@ consume_whitespace :: proc(lexer: ^Lexer) {
         if opening, is_multiline := check_multiline(lexer); is_multiline {
             consume_multiline(lexer, opening, is_comment = true)
         } else {
-            consume_sequence(lexer, proc(r: rune) -> bool { return r != '\n' })
+            /*
+            Notes(2025-04-15):
+            -   Sometimes get an LLVM linkage error if we use a named but scoped
+                function. Perhaps a race condition in the Odin compiler?
+             */
+            consume_sequence(lexer, proc(r: rune) -> bool {
+                return r != '\n'
+            })
         }
     }
 
@@ -452,20 +459,20 @@ matches :: proc {
 
 @(private="file")
 match_rune :: proc(lexer: ^Lexer, want: rune) -> (found: bool) {
-    found = peek(lexer^) == want
-    if found {
+    if peek(lexer^) == want {
         advance(lexer)
+        return true
     }
-    return found
+    return false
 }
 
 @(private="file")
 match_any :: proc(lexer: ^Lexer, want: string) -> (found: bool) {
-    found = strings.index_rune(want, peek(lexer^)) != -1
-    if found {
+    if strings.index_rune(want, peek(lexer^)) != -1 {
         advance(lexer)
+        return true
     }
-    return found
+    return false
 }
 
 @(private="file")

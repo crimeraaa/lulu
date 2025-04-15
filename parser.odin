@@ -63,8 +63,6 @@ parser_backtrack :: proc(parser: ^Parser, previous: Token) {
     lexer := &parser.lexer
     lexer.start   -= len(parser.lookahead.lexeme)
     lexer.current = lexer.start
-    lexer.line    = previous.line
-
     parser.consumed, parser.lookahead = previous, parser.consumed
 
 }
@@ -173,13 +171,13 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_va
         #partial switch type := var.type; type {
         case .Global:
             // reg = value; var.index = name
-            compiler_emit_ABx(compiler, .Set_Global, reg, var.index)
+            compiler_code_ABx(compiler, .Set_Global, reg, var.index)
         case .Local:
             // var.reg = local; reg = value;
-            compiler_emit_ABC(compiler, .Move, var.reg, reg, 0)
+            compiler_code_ABC(compiler, .Move, var.reg, reg, 0)
         case .Table_Index:
             // var.table.reg = table; var.table.index = key; reg = value;
-            compiler_emit_ABC(compiler, .Set_Table, var.table.reg, var.table.index, reg)
+            compiler_code_ABC(compiler, .Set_Table, var.table.reg, var.table.index, reg)
         case:
             fmt.panicf("Impossible assignment target: %v", type)
         }
@@ -307,7 +305,7 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
     if extra := count_vars - count_exprs; extra > 0 {
         reg := compiler.free_reg
         compiler_reserve_reg(compiler, extra)
-        compiler_emit_nil(compiler, cast(u16)reg, cast(u16)extra)
+        compiler_code_nil(compiler, cast(u16)reg, cast(u16)extra)
     } else {
         /*
         Sample:
@@ -378,7 +376,7 @@ print_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
         compiler_expr_next_reg(compiler, &args)
     }
 
-    compiler_emit_AB(compiler, .Print,
+    compiler_code_AB(compiler, .Print,
         cast(u16)(compiler.free_reg - count_args), cast(u16)compiler.free_reg)
 
     // This is hacky but it works to allow recycling of registers
@@ -563,13 +561,13 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
             // emit the parent table of this index
             compiler_expr_next_reg(compiler, var)
             key := indexed(parser, compiler)
-            compiler_emit_indexed(compiler, var, &key)
+            compiler_code_indexed(compiler, var, &key)
         case parser_match(parser, .Period):
             // emit the parent table of this field
             compiler_expr_next_reg(compiler, var)
             parser_consume(parser, .Identifier)
             key := field_name(parser, compiler)
-            compiler_emit_indexed(compiler, var, &key)
+            compiler_code_indexed(compiler, var, &key)
         case parser_match(parser, .Colon):
             parser_error_consumed(parser, "':' syntax not yet supported")
         case:
@@ -644,12 +642,15 @@ Assumptions:
 constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     ctor := &Constructor{table = expr}
     // All information is pending so just use 0's, we'll fix it later
-    pc := compiler_emit_ABC(compiler, .New_Table, 0, 0, 0)
+    pc := compiler_code_ABC(compiler, .New_Table, 0, 0, 0)
     expr_set_pc(ctor.table, .Need_Register, pc)
     compiler_expr_next_reg(compiler, ctor.table)
 
-    if !parser_check(parser, .Right_Curly) {
+    if !parser_match(parser, .Right_Curly) {
         for {
+            if parser_match(parser, .Right_Curly) {
+                break
+            }
             // for backtracking
             saved_consumed := parser.consumed
             parser_advance(parser)
@@ -675,8 +676,6 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         }
     }
 
-    parser_consume(parser, .Right_Curly)
-
     // `fb_from_int()` may also round up the values by some factor, but that's
     // okay because our hash table will simply over-allocate.
     compiler.chunk.code[pc].b = cast(u16)fb_from_int(ctor.count_array)
@@ -684,12 +683,16 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     if count := ctor.count_array; count > 0 {
         // TODO(2025-04-13): Optimize for size! See `lopcodes.h:LFIELDS_PER_FLUSH`.
-        compiler_emit_ABx(compiler, .Set_Array, ctor.table.reg, cast(u32)count)
+        compiler_code_ABx(compiler, .Set_Array, ctor.table.reg, cast(u32)count)
         compiler.free_reg -= count
     }
 }
 
 
+/*
+Analogous to:
+-   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)` in Lua 5.1.5.
+ */
 @(private="file")
 ctor_array :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
     defer {
@@ -717,7 +720,7 @@ ctor_field :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
 
     value := expression(parser, compiler)
     c := compiler_expr_regconst(compiler, &value)
-    compiler_emit_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
+    compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
     compiler_expr_pop(compiler, value)
     compiler_expr_pop(compiler, key)
 
@@ -737,7 +740,7 @@ ctor_index :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
     value := expression(parser, compiler)
     c := compiler_expr_regconst(compiler, &value)
 
-    compiler_emit_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
+    compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
     // Reuse these registers
     compiler_expr_pop(compiler, value)
     compiler_expr_pop(compiler, key)
@@ -788,15 +791,15 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         // MUST be set to '.Number' in order to try constant folding.
         dummy := &Expr{}
         expr_set_number(dummy, 0)
-        compiler_emit_binary(compiler, .Unm, expr, dummy)
+        compiler_code_binary(compiler, .Unm, expr, dummy)
     case .Not:
-        compiler_emit_not(compiler, expr)
+        compiler_code_not(compiler, expr)
     case .Pound:
         // OpCode.Len CANNOT operate on constants no matter what.
         compiler_expr_any_reg(compiler, expr)
         dummy := &Expr{}
         expr_set_number(dummy, 0)
-        compiler_emit_binary(compiler, .Len, expr, dummy)
+        compiler_code_binary(compiler, .Len, expr, dummy)
     case:
         unreachable()
     }
@@ -875,7 +878,7 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     Links:
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
      */
-    compiler_emit_binary(compiler, op, left, &right)
+    compiler_code_binary(compiler, op, left, &right)
 }
 
 /*
@@ -907,7 +910,7 @@ concat :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
 
     // If recursive concat, this will be `.Need_Register` as well.
     right := parse_precedence(parser, compiler, .Concat)
-    compiler_emit_concat(compiler, left, &right)
+    compiler_code_concat(compiler, left, &right)
 }
 
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {

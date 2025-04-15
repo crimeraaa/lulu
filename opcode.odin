@@ -104,7 +104,7 @@ Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg(A)
 New_Table,     // A B C | Reg(A) := {} ; array size = B, hash size = C
 Get_Table,     // A B C | Reg(A) := Reg(B)[RK(C)]
 Set_Table,     // A B C | Reg(A)[RK(B)] := RK(C)
-Set_Array,     // A Bx  | Reg(A)[1:Bx] = ...
+Set_Array,     // A Bx  | Reg(A)[(C-1)*FPF + i] = Reg(A + i) for 1 <= i <= B
 Print,         // A B   | print(Reg(A)..=Reg(B))
 Add,           // A B C | Reg(A) := RK(B) + RK(C)
 Sub,           // A B C | Reg(A) := RK(B) - RK(C)
@@ -125,16 +125,31 @@ Len,           // A B   | Reg(A) := #Reg(B)
 Return,        // A B   | return Reg(A), ... Reg(A + B - 1)
 }
 
+/*
+Overview:
+-   Maximum value of argument B for `OpCode.Set_Array`.
+-   Offset to use when decoding argument C.
+ */
+FIELDS_PER_FLUSH :: 100
+
 /* =============================================================================
 Notes:
 
 (*) Return:
-    - If B == 0, then return up to the current stack top (exclusive).
-    - To return 0 values, B == 1. To return 1 value, B == 2.
-    - In other words, B == 0 indicates varargs.
+    -   If B == 0, then return up to the current stack top (exclusive).
+    -   To return 0 values, B == 1. To return 1 value, B == 2.
+    -   In other words, B == 0 indicates varargs.
 
 (*) Set_Array:
-    - Assumes (for now) that all `B` values are also on the top of the stack.
+    -   B represents how many values are on the top of the stack for this
+        particular set list.
+    -   If C == 0 then that means the *next* instruction, all its 32 bits,
+        represents the actual unsigned value of C.
+    -   Otherwise nonzero C represents an offset from `FIELDS_PER_FLUSH`.
+    -   That is, C == 1 results in (1 - 1) * FIELDS_PER_FLUSH or 0.
+        For this iteration we can set indexes 1 up to 100.
+    -   If C == 2, this results in (2 - 1) * FIELDS_PER_FLUSH or 100.
+        For this iteration we can set indexes 100 up to 200.
 ============================================================================= */
 
 
@@ -187,20 +202,20 @@ opcode_info := [OpCode]OpCode_Info {
 BIT_RK       :: 1 << (SIZE_B - 1)
 MAX_INDEX_RK :: BIT_RK - 1
 
-rk_is_k :: proc(b_or_c: u16) -> bool {
+reg_is_k :: proc(b_or_c: u16) -> bool {
     return (b_or_c & BIT_RK) != 0
 }
 
-rk_get_k :: proc(b_or_c: u16) -> u16 {
+reg_get_k :: proc(b_or_c: u16) -> u16 {
     return (b_or_c & ~cast(u16)BIT_RK)
 }
 
-rk_as_k :: proc(b_or_c: u16) -> u16 {
+reg_as_k :: proc(b_or_c: u16) -> u16 {
     return b_or_c | BIT_RK
 }
 
 // This is kinda stupid
-inst_create :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
+inst_make_ABC :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
     inst.b  = b
     inst.c  = c
     inst.a  = a
@@ -208,7 +223,7 @@ inst_create :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
     return inst
 }
 
-inst_create_ABx :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
+inst_make_ABx :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
     inst.b  = cast(u16)(bc >> SIZE_C) // shift out 'c' bits
     inst.c  = cast(u16)(bc & MAX_C)   // remove 'b' bits
     inst.a  = a

@@ -395,7 +395,7 @@ get_rk_bc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rk_
 
 @(private="file")
 get_rk :: proc(vm: ^VM, b_or_c: u16, stack, constants: []Value) -> Value {
-    return constants[rk_get_k(b_or_c)] if rk_is_k(b_or_c) else stack[b_or_c]
+    return constants[reg_get_k(b_or_c)] if reg_is_k(b_or_c) else stack[b_or_c]
 }
 
 @(private="file")

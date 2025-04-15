@@ -39,10 +39,10 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     }
 
     get_rk :: proc(b_or_c: u16) -> (location: string, index: int) {
-        is_k := rk_is_k(b_or_c)
+        is_k := reg_is_k(b_or_c)
 
         location = ".const" if is_k else "reg"
-        index    = cast(int)(rk_get_k(b_or_c) if is_k else b_or_c)
+        index    = cast(int)(reg_get_k(b_or_c) if is_k else b_or_c)
         return location, index
     }
 
