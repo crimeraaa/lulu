@@ -18,6 +18,18 @@ close :: proc(vm: ^VM) {
 
 // }}}==========================================================================
 
+/*
+Overview:
+-   Get the index of the current stack top.
+-   This also represents the size of the current stack frame.
+
+Analogous to:
+-   `int lua_gettop(lua_State *L)`.
+ */
+get_top :: proc(vm: ^VM) -> (index: int) {
+    return ptr_sub(vm.top, vm.base)
+}
+
 
 /*
 Notes:

@@ -122,7 +122,7 @@ Geq,           // A B C | Reg(A) := RK(B) >= RK(C)
 Not,           // A B   | Reg(A) := not RK(B)
 Concat,        // A B C | Reg(A) := Reg(A) .. Reg(i) for B <= i <= C
 Len,           // A B   | Reg(A) := #Reg(B)
-Return,        // A B   | return Reg(A), ... Reg(A + B - 1)
+Return,        // A B C | return Reg(A), ... Reg(A + B)
 }
 
 /*
@@ -138,9 +138,9 @@ FIELDS_PER_FLUSH :: 50
 Notes:
 
 (*) Return:
-    -   If B == 0, then return up to the current stack top (exclusive).
-    -   To return 0 values, B == 1. To return 1 value, B == 2.
-    -   In other words, B == 0 indicates varargs.
+    -   If C == 1, then return up to the current stack frame top (exclusive).
+    -   If C == 0, then return only up to B values (inclusive).
+    -   B represents the number of return values as-is in that case.
 
 (*) Set_Array:
     -   B represents how many values are on the top of the stack for this
@@ -192,7 +192,7 @@ opcode_info := [OpCode]OpCode_Info {
 .Not                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
 .Concat                     = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Reg_Jump},
 .Len                        = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
-.Return                     = {type = .Separate,    a = true, b = .Used,      c = .Unused},
+.Return                     = {type = .Separate,    a = true, b = .Used,      c = .Used},
 }
 
 

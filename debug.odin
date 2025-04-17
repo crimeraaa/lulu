@@ -3,7 +3,7 @@ package lulu
 
 import "core:fmt"
 
-debug_dump_chunk :: proc(chunk: Chunk) {
+debug_dump_chunk :: proc(chunk: ^Chunk) {
     fmt.printfln("=== STACK USAGE ===\n%i", chunk.stack_used)
 
     fmt.println("=== DISASSEMBLY: BEGIN ===")
@@ -12,11 +12,22 @@ debug_dump_chunk :: proc(chunk: Chunk) {
     }
 
     fmt.printfln("\n.name\n%q", chunk.source)
-    fmt.println("\n.const:")
-    for constant, index in chunk.constants {
-        fmt.printf("[%04i] ", index)
-        value_print(constant, .Debug)
+
+    if chunk.count_local > 0 {
+        fmt.println("\n.local:")
+        for local, index in chunk.locals[:chunk.count_local] {
+            fmt.printfln("[%04i] %q", index, ostring_to_string(local.ident))
+        }
     }
+
+    if len(chunk.constants) > 0 {
+        fmt.println("\n.const:")
+        for constant, index in chunk.constants {
+            fmt.printf("[%04i] ", index)
+            value_print(constant, .Debug)
+        }
+    }
+
 
     fmt.println("\n.code")
     for inst, index in chunk.code[:chunk.pc] {
@@ -24,7 +35,7 @@ debug_dump_chunk :: proc(chunk: Chunk) {
     }
 }
 
-debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
+debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
     // unary negation, not and length never operate on constant indexes.
     unary :: proc(op: string, inst: Instruction) {
         print_AB(inst)
@@ -136,9 +147,13 @@ debug_dump_instruction :: proc(chunk: Chunk, inst: Instruction, index: int) {
     case .Len:
         unary("#", inst)
     case .Return:
-        start := inst.a
-        stop  := inst.b - 1 if inst.b != 0 else start
-        print_AB(inst)
-        fmt.printfln("return reg[%i..<%i]", start, stop)
+        print_ABC(inst)
+        reg  := cast(int)inst.a
+        nret := cast(int)inst.b
+        if inst.c == 0 {
+            fmt.printfln("return reg[%i..<%i]", reg, reg + nret)
+        } else {
+            fmt.printfln("return reg[%i..(top)]", reg);
+        }
     }
 }

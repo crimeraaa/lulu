@@ -120,36 +120,6 @@ value_make_table :: proc(t: ^Table) -> Value {
     return Value{type = .Table, table = t}
 }
 
-value_set_nil :: proc(v: ^Value) {
-    v.type   = .Nil
-    v.number = 0
-}
-
-value_set_boolean :: proc(v: ^Value, b: bool) {
-    v.type    = .Boolean
-    v.boolean = b
-}
-
-value_set_number :: proc(v: ^Value, n: f64) {
-    v.type   = .Number
-    v.number = n
-}
-
-value_set_string :: proc(v: ^Value, s: ^OString) {
-    v.type    = .String
-    v.ostring = s
-}
-
-value_set_table :: proc(v: ^Value, t: ^Table) {
-    v.type  = .Table
-    v.table = t
-}
-
-value_copy :: proc(dst: ^Value, src: Value) {
-    dst.type = src.type
-    dst.data = src.data
-}
-
 value_is_nil :: proc(a: Value) -> bool {
     return a.type == .Nil
 }

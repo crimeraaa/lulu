@@ -81,8 +81,7 @@ table_unset :: proc(table: ^Table, key: Value) {
     }
 
     // Tombstones are invalid keys with non-nil values.
-    value_set_nil(&entry.key)
-    value_set_boolean(&entry.value, true)
+    entry^ = Table_Entry{key = value_make_nil(), value = value_make_boolean(true)}
 }
 
 /*
@@ -141,11 +140,12 @@ adjust_capacity :: proc(table: ^Table, new_cap: int, allocator: mem.Allocator) {
     Notes(2025-01-19):
     -   We add 1 because if `n` is a power of 2 already, we would return it!
      */
-    new_cap := max(8, math.next_power_of_two(new_cap + 1))
+    new_cap := new_cap
+    new_cap = max(8, math.next_power_of_two(new_cap + 1))
 
     // Assume all memory is zero'd out for us already. Fully zero'd = nil in Lua.
     new_entries := make([]Table_Entry, new_cap, allocator)
-    new_count := 0
+    new_count   := 0
     for old_entry in table.entries {
         // Skip tombstones and empty entries.
         if value_is_nil(old_entry.key) {
@@ -153,8 +153,7 @@ adjust_capacity :: proc(table: ^Table, new_cap: int, allocator: mem.Allocator) {
         }
 
         new_entry := find_entry(new_entries, old_entry.key)
-        value_copy(&new_entry.key,   old_entry.key)
-        value_copy(&new_entry.value, new_entry.value)
+        new_entry^ = Table_Entry{key = old_entry.key, value = old_entry.value}
         new_count += 1
     }
 

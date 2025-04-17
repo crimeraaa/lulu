@@ -103,8 +103,8 @@ Notes:
 -   We allow shadowing across different scopes, so the `depth` parameter is
     mainly meant to communicate the caller's desired scope depth.
  */
-chunk_check_shadowing :: proc(chunk: ^Chunk, ident: ^OString, depth: int) -> (ok: bool) {
-    for local, index in chunk.locals[:chunk.count_local] {
+chunk_check_shadowing :: proc(chunk: ^Chunk, ident: ^OString, count_active, depth: int) -> (ok: bool) {
+    for local in chunk.locals[:count_active] {
         // We hit an initialized local in an outer scope?
         if local.depth != UNINITIALIZED_LOCAL && local.depth < depth {
             break

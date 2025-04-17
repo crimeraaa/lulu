@@ -372,6 +372,7 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
           Protect(Arith(L, ra, rb, rc, tm)); \
       }
 
+#if 0
 
 /**
  * @brief 2025-04-17
@@ -413,6 +414,12 @@ extern void print_stack(lua_State *L, const char *msg) {
   }
   printf("=== END STACK %s ===\n\n", msg);
 }
+
+#else
+
+#define print_stack(L, msg)
+
+#endif // 0
 
 void luaV_execute (lua_State *L, int nexeccalls) {
   LClosure *cl;

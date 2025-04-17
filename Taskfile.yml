@@ -10,6 +10,7 @@ vars:
     -sanitize:address
   RELEASE_FLAGS: >-
     -vet
+    -o:size
   ODIN_FLAGS: >-
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
     -define:USE_CONSTANT_FOLDING=true

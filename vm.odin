@@ -12,15 +12,15 @@ MEMORY_ERROR_STRING :: "Out of memory"
 
 VM :: struct {
     stack:     [STACK_MAX]Value,
-    allocator: mem.Allocator,
-    builder:   strings.Builder,
-    interned:  Intern,
-    globals:   Table,
-    objects:  ^Object_Header,
+    allocator:    mem.Allocator,
+    builder:      strings.Builder,
+    interned:     Intern,
+    globals:      Table,
+    objects:     ^Object_Header,
     top, base: [^]Value, // Current stack frame window.
-    chunk:    ^Chunk,
+    chunk:       ^Chunk,
     pc:        [^]Instruction, // Next instruction to be executed in the current chunk.
-    handlers: ^Error_Handler,
+    handlers:    ^Error_Handler,
 }
 
 Error_Handler :: struct {
@@ -60,7 +60,6 @@ vm_get_builder :: proc(vm: ^VM) -> (builder: ^strings.Builder) {
 }
 
 vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, args: ..any) -> ! {
-    chunk := vm.chunk
     reset_stack(vm)
 
     push_fstring(vm, "%s:%i: ", source, line)
@@ -115,7 +114,9 @@ vm_destroy :: proc(vm: ^VM) {
     intern_destroy(&vm.interned)
     table_destroy(vm, &vm.globals)
 
-    objects_print_all(vm)
+    when DEBUG_TRACE_EXEC {
+        objects_print_all(vm)
+    }
     object_free_all(vm)
     strings.builder_destroy(&vm.builder)
     vm.objects  = nil
@@ -143,7 +144,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
         for &slot in vm.stack[:chunk.stack_used] {
-            value_set_nil(&slot)
+            slot = value_make_nil()
         }
         vm_execute(vm)
     }
@@ -192,7 +193,6 @@ Analogous to:
  */
 vm_execute :: proc(vm: ^VM) {
     chunk     := vm.chunk
-    code      := chunk.code[:]
     constants := chunk.constants[:]
     globals   := &vm.globals
     stack     := vm.stack[:]
@@ -202,11 +202,11 @@ vm_execute :: proc(vm: ^VM) {
         inst := vm.pc[0]
         when DEBUG_TRACE_EXEC {
             fmt.printf("      ")
-            for value in vm.base[:ptr_sub(vm.top, vm.base)] {
+            for value in vm.base[:get_top(vm)] {
                 value_print(value, .Stack)
             }
             fmt.println()
-            debug_dump_instruction(chunk^, inst, ptr_sub(vm.pc, &code[0]))
+            debug_dump_instruction(chunk, inst, ptr_sub(vm.pc, &chunk.code[0]))
         }
         vm.pc = &vm.pc[1]
 
@@ -220,10 +220,11 @@ vm_execute :: proc(vm: ^VM) {
             ra^ = constants[bc]
         case .Load_Nil:
             // Add 1 because we want to include Reg[B]
-            for &value in stack[inst.a:inst.b + 1] {
-                value_set_nil(&value)
+            for &slot in stack[inst.a:inst.b + 1] {
+                slot = value_make_nil()
             }
-        case .Load_Boolean: value_set_boolean(ra, inst.b == 1)
+        case .Load_Boolean:
+            ra^ = value_make_boolean(inst.b == 1)
         case .Get_Global:
             key := constants[inst_get_Bx(inst)]
             value, ok := table_get(globals, key)
@@ -242,10 +243,10 @@ vm_execute :: proc(vm: ^VM) {
         case .Get_Table:
             key := get_rk(vm, inst.c, stack, constants)
             table: ^Table
-            if t := vm.base[inst.b]; !value_is_table(t) {
-                index_error(vm, t)
+            if rb := vm.base[inst.b]; !value_is_table(rb) {
+                index_error(vm, rb)
             } else {
-                table = t.table
+                table = rb.table
             }
             ra^ = table_get(table, key)
         case .Set_Table:
@@ -287,18 +288,18 @@ vm_execute :: proc(vm: ^VM) {
             if !value_is_number(rb) {
                 arith_error(vm, rb, rb)
             }
-            value_set_number(ra, number_unm(rb.data.number))
+            ra^ = value_make_number(number_unm(rb.data.number))
         case .Eq, .Neq:
             rb, rc := get_rk_bc(vm, inst, stack, constants)
-            b := value_eq(rb, rc)
-            value_set_boolean(ra, b if inst.op == .Eq else !b)
+            b  := value_eq(rb, rc)
+            ra^ = value_make_boolean(b if inst.op == .Eq else !b)
         case .Lt:   compare_op(vm, number_lt,  ra, inst, stack, constants)
         case .Gt:   compare_op(vm, number_gt,  ra, inst, stack, constants)
         case .Leq:  compare_op(vm, number_leq, ra, inst, stack, constants)
         case .Geq:  compare_op(vm, number_geq, ra, inst, stack, constants)
         case .Not:
             x := get_rk(vm, inst.b, stack, constants)
-            value_set_boolean(ra, value_is_falsy(x))
+            ra^ = value_make_boolean(value_is_falsy(x))
         // Add 1 because we want to include Reg[C]
         case .Concat: vm_concat(vm, ra, stack[inst.b:inst.c + 1])
         case .Len:
@@ -327,10 +328,9 @@ vm_execute :: proc(vm: ^VM) {
             }
 
         case .Return:
-            // If vararg, keep top as-is
-            if count_results := inst.b; count_results != 0 {
-                vm.top = &stack[inst.a + (count_results - 1)]
-            }
+            // if inst.c == 0 then we have a vararg
+            nret := cast(int)inst.b if inst.c == 0 else get_top(vm)
+            vm.top = &stack[cast(int)inst.a + nret]
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
             return
         }
@@ -345,7 +345,7 @@ arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction,
     if !value_is_number(x) || !value_is_number(y) {
         arith_error(vm, x, y)
     }
-    value_set_number(ra, op(x.data.number, y.data.number))
+    ra^ = value_make_number(op(x.data.number, y.data.number))
 }
 
 @(private="file")
@@ -366,7 +366,7 @@ compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruct
         compare_error(vm, x, y)
         return
     }
-    value_set_boolean(ra, op(x.data.number, y.data.number))
+    ra^ = value_make_boolean(op(x.data.number, y.data.number))
 }
 
 @(private="file")
@@ -388,7 +388,7 @@ vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
         strings.write_string(builder, ostring_to_string(arg.ostring))
     }
     s := strings.to_string(builder^)
-    value_set_string(ra, ostring_new(vm, s))
+    ra^ = value_make_string(ostring_new(vm, s))
 }
 
 @(private="file")

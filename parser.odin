@@ -2,7 +2,6 @@
 package lulu
 
 import "core:fmt"
-import "core:strings"
 
 // https://www.lua.org/source/5.1/luaconf.h.html#LUAI_MAXCCALLS
 PARSER_MAX_RECURSE :: 200
@@ -104,13 +103,17 @@ LValue :: struct {
 Analogous to:
 -   `compiler.c:declaration()` in the book.
 -   `lparser.c:chunk(LexState *ls)` in Lua 5.1.5.
+-   `compiler.c:statement()` in the book.
+-   `lparser.c:statement(LexState *ls)` in Lua 5.1.5.
 
 Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#chunk
+-   https://www.lua.org/source/5.1/lparser.c.html#statement
  */
 parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
-    switch {
-    case parser_match(parser, .Identifier):
+    parser_advance(parser)
+    #partial switch parser.consumed.type {
+    case .Identifier:
         last := &LValue{}
         // Inline implementation of `compiler.c:parseVariable()` since we immediately
         // consumed the 'identifier'. Also, Lua doesn't have a 'var' keyword.
@@ -121,8 +124,16 @@ parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
         } else {
             assignment(parser, compiler, last, 1)
         }
+    case .Print:
+        print_stmt(parser, compiler)
+    case .Do:
+        compiler_begin_scope(compiler)
+        block(parser, compiler)
+        compiler_end_scope(compiler)
+    case .Local:
+        local_stmt(parser, compiler)
     case:
-        statement(parser, compiler)
+        error_at(parser, parser.consumed, "Expected an expression")
     }
     // Optional
     parser_match(parser, .Semicolon)
@@ -206,33 +217,6 @@ ident_constant :: proc(parser: ^Parser, compiler: ^Compiler, token: Token) -> (i
     return ident, compiler_add_constant(compiler, value)
 }
 
-
-/*
-Analogous to:
--   `compiler.c:statement()` in the book.
--   `lparser.c:statement(LexState *ls)` in Lua 5.1.5.
-
-Links:
--   https://www.lua.org/source/5.1/lparser.c.html#statement
- */
-@(private="file")
-statement :: proc(parser: ^Parser, compiler: ^Compiler) {
-    // line := parser.lookahead.line
-    switch {
-    case parser_match(parser, .Print):
-        print_stmt(parser, compiler)
-    case parser_match(parser, .Do):
-        compiler_begin_scope(compiler)
-        block(parser, compiler)
-        compiler_end_scope(compiler)
-    case parser_match(parser, .Local):
-        local_stmt(parser, compiler)
-    case:
-        error_at(parser, parser.lookahead, "Expected an expression")
-    }
-}
-
-
 /*
 Form:
 -   local_stmt ::= 'local' local_decl [ '=' expr_list ]
@@ -282,7 +266,7 @@ Analogous to:
  */
 @(private="file")
 local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString) {
-    if chunk_check_shadowing(compiler.chunk, ident, compiler.scope_depth) {
+    if chunk_check_shadowing(compiler.chunk, ident, compiler.active_local, compiler.scope_depth) {
         parser_error_consumed(parser, "Shadowing of local variable")
     }
     compiler_add_local(compiler, ident)

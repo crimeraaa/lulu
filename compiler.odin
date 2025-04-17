@@ -46,7 +46,7 @@ compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
 compiler_end :: proc(compiler: ^Compiler) {
     compiler_code_return(compiler, 0, 0)
     when DEBUG_PRINT_CODE {
-        debug_dump_chunk(compiler.chunk^)
+        debug_dump_chunk(compiler.chunk)
     }
 }
 
@@ -389,11 +389,10 @@ Analogous to:
 
 Notes:
 -   Like in Lua, all functions call this even if they have explicit returns.
+-   We do not currently handle variadic (vararg) returns.
  */
-compiler_code_return :: proc(compiler: ^Compiler, reg, n_results: u16) {
-    // Add 1 because we want to differentiate from arg B == 0 indicating to return
-    // up to top (a.k.a varargs).
-    compiler_code_AB(compiler, .Return, reg, n_results + 1)
+compiler_code_return :: proc(compiler: ^Compiler, reg, nret: u16) {
+    compiler_code_ABC(compiler, .Return, reg, nret, 0)
 }
 
 compiler_code_ABC :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> (pc: int) {
