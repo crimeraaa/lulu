@@ -29,7 +29,7 @@ lparser.c:expr_stmt(LexState *lex) {
 // C.
 lparser.c:primaryexp(LexState *lex, Expr *var) {
     FuncState *func = lex->func;
-    prefixexp(lex, var);    
+    prefixexp(lex, var);
     .Status: {
         lex->current.type = Token_Left_Paren;
         var = {.kind = Expr_Global, .info = 0};
@@ -51,7 +51,7 @@ lparser.c:primaryexp(LexState *lex, Expr *var) {
 // D-1.
 lparser.c:prefixexp(LexState *lex, Expr *var) {
     switch (lex->current.type) {
-        case Token_Name: 
+        case Token_Name:
             singlevar(lex, var);
             .Status:
                 lex->current.type = Token_Left_Paren;
@@ -105,7 +105,7 @@ lcode.c:freeexp(FuncState *func, Expr *expr) {
 luaK_reserveregs(FuncState *func, int n = 1) {
     luaK_checkstack(func, n); // assume this always passes
     func->freereg += n // (freereg = 0) + (n = 1)
-    
+
     .Status: func->freereg = 1
 }
 
@@ -133,7 +133,7 @@ lcode.c:discharge2reg(FuncState *func, Expr *expr, int reg = 0) {
         SETARG_A(*pc, reg); // arg A = 0
         break;
     }
-    
+
     expr->u.s.info = reg; // 0
     expr->kind = Expr_Nonrelocable;
 
@@ -157,7 +157,7 @@ lparser.c:funcargs(LexState *lex, Expr *expr) {
         luaK_setreturns(func, &args, LUA_MULTRET); // luaK_setmultret
         check_match(lex, Token_Right_Paren, Token_Left_Paren, line);
     }
-    
+
     lua_assert(expr->kind == Expr_Nonrelocable);
     base = expr->u.s.info;
 
@@ -175,7 +175,7 @@ lparser.c:funcargs(LexState *lex, Expr *expr) {
 lparser.c:explist1(LexState *lex, Expr *var) {
     int n = 1;
     expression(lex, var);
-    
+
     // test_next(lex, Token_Comma) == false so no loop
     return n;
 }
@@ -191,7 +191,7 @@ lparser.c:subexpr(LexState *lex, Expr *var, unsigned int limit) {
     UnOpr uop;
     .Status:
         lex->current.type = Token_String
-        
+
     uop = getunopr(lex->current.type);
     (uop == OPR_NOUNOPR) -> {
         simpleexp(lex, var);
@@ -199,7 +199,7 @@ lparser.c:subexpr(LexState *lex, Expr *var, unsigned int limit) {
             lex->current.type = Token_Right_Paren,
             var = {.kind = Expr_Constant, info = 1},
         }
-    } 
+    }
 }
 
 // H-1
@@ -212,7 +212,7 @@ lparser.c:simpleexp(LexState *lex, Expr *var) {
             break;
         }
     }
-    
+
     luaX_next(lex);
     .Status:
         lex->current.type = Token_Right_Paren;

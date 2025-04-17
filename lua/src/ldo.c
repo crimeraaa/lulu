@@ -31,6 +31,7 @@
 #include "lzio.h"
 
 
+extern void print_stack(lua_State *L, const char *msg);
 
 
 /*
@@ -204,13 +205,12 @@ void luaD_callhook (lua_State *L, int event, int line) {
   }
 }
 
-
 static StkId adjust_varargs (lua_State *L, Proto *p, int actual) {
   int i;
   int nfixargs = p->numparams;
   Table *htab = NULL;
   StkId base, fixed;
-  for (; actual < nfixargs; ++actual)
+  for (; actual < nfixargs; ++actual) /* less args than params? */
     setnilvalue(L->top++);
 #if defined(LUA_COMPAT_VARARG)
   if (p->is_vararg & VARARG_NEEDSARG) { /* compat. with old-style vararg? */
@@ -228,7 +228,7 @@ static StkId adjust_varargs (lua_State *L, Proto *p, int actual) {
   /* move fixed parameters to final position */
   fixed = L->top - actual;  /* first fixed argument */
   base = L->top;  /* final position of first argument */
-  for (i=0; i<nfixargs; i++) {
+  for (i=0; i<nfixargs; i++) { /* push fixed arguments to new top */
     setobjs2s(L, L->top++, fixed+i);
     setnilvalue(fixed+i);
   }
@@ -237,7 +237,7 @@ static StkId adjust_varargs (lua_State *L, Proto *p, int actual) {
     sethvalue(L, L->top++, htab);
     lua_assert(iswhite(obj2gco(htab)));
   }
-  return base;
+  return base; /* varargs now reside *below* our base pointer */
 }
 
 
@@ -261,7 +261,6 @@ static StkId tryfuncTM (lua_State *L, StkId func) {
   ((L->ci == L->end_ci) ? growCI(L) : \
    (condhardstacktests(luaD_reallocCI(L, L->size_ci)), ++L->ci))
 
-
 int luaD_precall (lua_State *L, StkId func, int nresults) {
   LClosure *cl;
   ptrdiff_t funcr;
@@ -282,9 +281,11 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
         L->top = base + p->numparams;
     }
     else {  /* vararg function */
-      int nargs = cast_int(L->top - func) - 1;
+      int nargs = cast_int(L->top - func) - 1; /* stack frame size w/o func */
+      // print_stack(L, "before");
       base = adjust_varargs(L, p, nargs);
       func = restorestack(L, funcr);  /* previous call may change the stack */
+      // print_stack(L, "after");
     }
     ci = inc_ci(L);  /* now `enter' new function */
     ci->func = func;
@@ -374,8 +375,9 @@ void luaD_call (lua_State *L, StkId func, int nResults) {
     else if (L->nCcalls >= (LUAI_MAXCCALLS + (LUAI_MAXCCALLS>>3)))
       luaD_throw(L, LUA_ERRERR);  /* error while handing stack error */
   }
-  if (luaD_precall(L, func, nResults) == PCRLUA)  /* is a Lua function? */
+  if (luaD_precall(L, func, nResults) == PCRLUA) {/* is a Lua function? */
     luaV_execute(L, 1);  /* call it */
+  }
   L->nCcalls--;
   luaC_checkGC(L);
 }

@@ -63,12 +63,28 @@ typedef union {
   int b;
 } Value;
 
+/**
+ * @brief 2025-05-17
+ *  My addition for easier debug printing.
+ */
+typedef enum {
+  ValueType_None          = LUA_TNONE,
+  ValueType_Nil           = LUA_TNIL,
+  ValueType_Boolean       = LUA_TBOOLEAN,
+  ValueType_Lightuserdata = LUA_TLIGHTUSERDATA,
+  ValueType_Number        = LUA_TNUMBER,
+  ValueType_String        = LUA_TSTRING,
+  ValueType_Table         = LUA_TTABLE,
+  ValueType_Function      = LUA_TFUNCTION,
+  ValueType_Userdata      = LUA_TUSERDATA,
+  ValueType_Thread        = LUA_TTHREAD,
+} ValueType;
 
 /*
 ** Tagged Values
 */
 
-#define TValuefields	Value value; int tt
+#define TValuefields	Value value; ValueType tt
 
 typedef struct lua_TValue {
   TValuefields;

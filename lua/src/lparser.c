@@ -610,7 +610,7 @@ static void parlist (LexState *lex) {
 }
 
 
-static void body (LexState *lex, Expr *expr, int needself, int line) {
+static void body (LexState *lex, Expr *expr, bool needself, int line) {
   /* body ->  `(' parlist `)' chunk END */
   FuncState new_fs;
   open_func(lex, &new_fs);
@@ -857,36 +857,6 @@ static const struct {
 };
 
 #define UNARY_PRIORITY	8  /* priority for unary operators */
-
-typedef enum {
-  Prec_None,
-  Prec_Assignment,
-  Prec_Or,          /* logical `or` */
-  Prec_And,         /* logical `and` */
-  Prec_Equality,    /* `==` `~=` */
-  Prec_Comparison,  /* `<` `>` `<=` `>=` */
-  Prec_Terminal,    /* `+` `-` */
-  Prec_Factor,      /* `*` `/` `%` */
-  Prec_Unary,       /* unary `-` `#` logical `not` */
-  Prec_Exponent,    /* `^` `..` */
-} Precedence;
-
-typedef const struct {
-  void (*prefix)(LexState *lex, Expr *expr);
-  void (*infix)(LexState *lex, Expr *var);
-  Precedence prec;
-} ParseRule;
-
-/**
- * @todo 2025-04-08:
- *  In order for this to work we need to rework the lexer such that ALL possible
- *  tokens are included in the `TK_*` enum.
- */
-/*
-static ParseRule parse_rules[] = {
-  ['+'] = {},
-};
-*/
 
 /*
 ** subexpr -> (simpleexp | unop subexpr) { binop subexpr }
@@ -1241,14 +1211,14 @@ static void if_stmt (LexState *lex, int line) {
 
 
 static void local_func (LexState *lex) {
-  Expr v, b;
+  Expr name, fbody;
   FuncState *func = lex->func;
   new_localvar(lex, str_checkname(lex), 0);
-  init_exp(&v, Expr_Local, func->freereg);
+  init_exp(&name, Expr_Local, func->freereg);
   luaK_reserveregs(func, 1);
   adjustlocalvars(lex, 1);
-  body(lex, &b, 0, lex->linenumber);
-  luaK_storevar(func, &v, &b);
+  body(lex, &fbody, 0, lex->linenumber);
+  luaK_storevar(func, &name, &fbody);
   /* debug information will only see the variable after this point! */
   getlocvar(func, func->nactvar - 1).startpc = func->pc;
 }
@@ -1258,17 +1228,17 @@ static void local_stmt (LexState *lex) {
   /* stat -> LOCAL NAME {`,' NAME} [`=' explist1] */
   int nvars = 0;
   int nexps;
-  Expr e;
+  Expr exprs; /* assigning expression/s, if any */
   do {
     new_localvar(lex, str_checkname(lex), nvars++);
   } while (test_next(lex, Token_Comma));
   if (test_next(lex, Token_Assign))
-    nexps = explist1(lex, &e);
+    nexps = explist1(lex, &exprs);
   else {
-    e.kind = Expr_Void;
+    exprs.kind = Expr_Void;
     nexps = 0;
   }
-  adjust_assign(lex, nvars, nexps, &e);
+  adjust_assign(lex, nvars, nexps, &exprs);
   adjustlocalvars(lex, nvars);
 }
 
@@ -1291,12 +1261,12 @@ static bool funcname (LexState *lex, Expr *var) {
 
 static void func_stmt (LexState *lex, int line) {
   /* func_stmt -> FUNCTION funcname body */
-  int needself;
-  Expr v, b;
+  bool needself;
+  Expr var, fbody;
   luaX_next(lex);  /* skip FUNCTION */
-  needself = funcname(lex, &v);
-  body(lex, &b, needself, line);
-  luaK_storevar(lex->func, &v, &b);
+  needself = funcname(lex, &var);
+  body(lex, &fbody, needself, line);
+  luaK_storevar(lex->func, &var, &fbody);
   luaK_fixline(lex->func, line);  /* definition `happens' in the first line */
 }
 

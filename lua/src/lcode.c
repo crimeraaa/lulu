@@ -522,7 +522,7 @@ void luaK_self (FuncState *func, Expr *expr, Expr *key) {
   luaK_exp2anyreg(func, expr);
   freeexp(func, expr);
   index = func->freereg;
-  luaK_reserveregs(func, 2);
+  luaK_reserveregs(func, 2); /* reserve `self` and key */
   luaK_codeABC(func, OP_SELF, index, expr->u.s.info, luaK_exp2RK(func, key));
   freeexp(func, key);
   expr->u.s.info = index;

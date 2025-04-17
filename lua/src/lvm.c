@@ -373,6 +373,46 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
       }
 
 
+/**
+ * @brief 2025-04-17
+ *  My addition for debug printing.
+ */
+extern void print_stack(lua_State *L, const char *msg) {
+  StkId slot;
+  StkId top  = L->top;
+
+  printf("=== STACK %s ===\n", msg);
+  for (slot = L->stack; slot < top; slot++) {
+    ValueType type = slot->tt;
+    printf("\t");
+    switch (type) {
+      case ValueType_None:
+        printf("[ (none) ]");
+        break;
+      case ValueType_Nil:
+        printf("[ nil ]");
+        break;
+      case ValueType_Boolean:
+        printf("[ %s ]", bvalue(slot) ? "true" : "false");
+        break;
+      case ValueType_Number:
+        printf("[ " LUA_NUMBER_FMT " ]", nvalue(slot));
+        break;
+      case ValueType_String:
+        printf("[ " LUA_QS " ]", svalue(slot));
+        break;
+      default:
+        printf("[ %s: %p ]", luaT_typenames[type], cast(void *, gcvalue(slot)));
+        break;
+    }
+
+    if (slot == L->base) {
+      printf(" <- base");
+    }
+    printf("\n");
+  }
+  printf("=== END STACK %s ===\n\n", msg);
+}
 
 void luaV_execute (lua_State *L, int nexeccalls) {
   LClosure *cl;
@@ -584,19 +624,24 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         continue;
       }
       case OP_CALL: {
-        int b = GETARG_B(i);
+        int b        = GETARG_B(i);
         int nresults = GETARG_C(i) - 1;
-        if (b != 0) L->top = ra+b;  /* else previous instruction set top */
+        print_stack(L, "before");
+        if (b != 0)
+          L->top = ra+b;  /* else previous instruction set top */
         L->savedpc = pc;
         switch (luaD_precall(L, ra, nresults)) {
           case PCRLUA: {
+            print_stack(L, "after");
             nexeccalls++;
             goto reentry;  /* restart luaV_execute over new Lua function */
           }
           case PCRC: {
             /* it was a C function (`precall' called it); adjust results */
-            if (nresults >= 0) L->top = L->ci->top;
+            if (nresults >= 0)
+              L->top = L->ci->top;
             base = L->base;
+            print_stack(L, "after");
             continue;
           }
           default: {
@@ -744,16 +789,17 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         int b = GETARG_B(i) - 1;
         int j;
         CallInfo *ci = L->ci;
-        int n = cast_int(ci->base - ci->func) - cl->p->numparams - 1;
+        int nvarargs = cast_int(ci->base - ci->func) - cl->p->numparams - 1;
         if (b == LUA_MULTRET) {
-          Protect(luaD_checkstack(L, n));
+          /* check if we can accomodate the pushed varargs */
+          Protect(luaD_checkstack(L, nvarargs));
           ra = RA(i);  /* previous call may change the stack */
-          b = n;
-          L->top = ra + n;
+          b = nvarargs;
+          L->top = ra + nvarargs;
         }
         for (j = 0; j < b; j++) {
-          if (j < n) {
-            setobjs2s(L, ra + j, ci->base - n + j);
+          if (j < nvarargs) { /* varargs reside *before* base pointer */
+            setobjs2s(L, ra + j, ci->base - nvarargs + j);
           }
           else {
             setnilvalue(ra + j);
