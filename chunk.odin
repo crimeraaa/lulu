@@ -32,7 +32,7 @@ local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     n_written := &fi.n
     switch verb {
     case 'v':
-        n_written^ += fmt.wprintf(writer, "{{%q, %i}}", local.ident, local.depth)
+        n_written^ += fmt.wprintf(writer, "%s(%i)", local.ident, local.depth)
         return true
     case:
         return false

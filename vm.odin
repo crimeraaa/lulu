@@ -205,7 +205,7 @@ vm_execute :: proc(vm: ^VM) {
             #reverse for &value, reg in vm.base[:get_top(vm)] {
                 value_print(value, .Stack)
                 if local, ok := dyarray_get_safe(chunk.locals, reg); ok {
-                    fmt.printfln(" ; local %s(%i)", local.ident, local.depth)
+                    fmt.println(" ; local", local)
                 } else {
                     fmt.println()
                 }

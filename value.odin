@@ -207,9 +207,9 @@ value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
         fmt.println(value)
     case .Debug:
         if value_is_string(value) {
-            fmt.printfln("%q", value.ostring)
+            fmt.printf("%q", value.ostring)
         } else {
-            fmt.println(value)
+            fmt.print(value)
         }
     case .Stack:
         if value_is_string(value) {
