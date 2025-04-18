@@ -128,6 +128,7 @@ parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
     case .Print:
         print_stmt(parser, compiler)
     case .Do:
+        active := sa.len(compiler.active)
         compiler_begin_scope(compiler)
         block(parser, compiler)
         compiler_end_scope(compiler)
@@ -542,13 +543,13 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     token := parser.consumed
     value := token.literal
     #partial switch token.type {
-    case .Nil:      expr_init(expr, .Nil)
-    case .True:     expr_init(expr, .True)
-    case .False:    expr_init(expr, .False)
-    case .Number:   expr_set_number(expr, value.(f64))
+    case .Nil:      expr^ = expr_make(.Nil)
+    case .True:     expr^ = expr_make(.True)
+    case .False:    expr^ = expr_make(.False)
+    case .Number:   expr^ = expr_make(.Number, value.(f64))
     case .String:
         index := compiler_add_constant(compiler, value_make(value.(^OString)))
-        expr_set_index(expr, .Constant, index)
+        expr^ = expr_make(.Constant, index = index)
     case: unreachable()
     }
 }
@@ -571,9 +572,9 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
     local, ok := compiler_resolve_local(compiler, ident)
 
     if ok {
-        expr_set_reg(var, .Local, local)
+        var^ = expr_make(.Local, reg = local)
     } else {
-        expr_set_index(var, .Global, index)
+        var^ = expr_make(.Global, index = index)
     }
 
     table_fields: for {
@@ -633,8 +634,7 @@ Notes:
 @(private="file")
 field_name :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
     _, index := ident_constant(parser, compiler, parser.consumed)
-    expr_set_index(&key, .Constant, index)
-    return key
+    return expr_make(.Constant, index = index)
 }
 
 
@@ -664,7 +664,7 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     ctor := &Constructor{table = expr}
     // All information is pending so just use 0's, we'll fix it later
     pc := compiler_code_ABC(compiler, .New_Table, 0, 0, 0)
-    expr_set_pc(ctor.table, .Need_Register, pc)
+    ctor.table^ = expr_make(.Need_Register, pc = pc)
     compiler_expr_next_reg(compiler, ctor.table)
 
     if !parser_match(parser, .Right_Curly) {
@@ -833,17 +833,15 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
             compiler_expr_any_reg(compiler, expr)
         }
         // MUST be set to '.Number' in order to try constant folding.
-        dummy := &Expr{}
-        expr_set_number(dummy, 0)
-        compiler_code_binary(compiler, .Unm, expr, dummy)
+        dummy := expr_make(.Number)
+        compiler_code_binary(compiler, .Unm, expr, &dummy)
     case .Not:
         compiler_code_not(compiler, expr)
     case .Pound:
         // OpCode.Len CANNOT operate on constants no matter what.
         compiler_expr_any_reg(compiler, expr)
-        dummy := &Expr{}
-        expr_set_number(dummy, 0)
-        compiler_code_binary(compiler, .Len, expr, dummy)
+        dummy := expr_make(.Number)
+        compiler_code_binary(compiler, .Len, expr, &dummy)
     case:
         unreachable()
     }

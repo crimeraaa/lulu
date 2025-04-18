@@ -202,11 +202,14 @@ vm_execute :: proc(vm: ^VM) {
         // We cannot extract 'vm.pc' into a local as it is needed in to `vm_runtime_error`.
         inst := vm.pc[0]
         when DEBUG_TRACE_EXEC {
-            fmt.printf("      ")
-            for value in vm.base[:get_top(vm)] {
+            #reverse for &value, reg in vm.base[:get_top(vm)] {
                 value_print(value, .Stack)
+                if local, ok := dyarray_get_safe(chunk.locals, reg); ok {
+                    fmt.printfln(" ; local %s(%i)", local.ident, local.depth)
+                } else {
+                    fmt.println()
+                }
             }
-            fmt.println()
             index := ptr_sub(vm.pc, dyarray_get_ptr(&chunk.code, 0))
             debug_dump_instruction(chunk, inst, index)
         }

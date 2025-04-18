@@ -18,11 +18,16 @@ Expr :: struct {
 
 Expr_Info :: struct #raw_union {
     number: f64, // .Number
-    reg:    u16, // .Discharged, .Local
-    table:  struct {reg, index: u16}, // .Table_Index
-    index:  u32, // .Constant, .Global
     pc:     int, // .Need_Register
+    index:  u32, // .Constant, .Global
+    table:  Expr_Table, // .Table_Index
+    reg:    u16, // .Discharged, .Local
 }
+
+Expr_Table :: struct {
+    reg, index: u16,
+}
+
 
 /*
 Links:
@@ -44,74 +49,54 @@ Expr_Type :: enum u8 {
 
 // Intended to be easier to grep
 // Inspired by: https://www.lua.org/source/5.1/lparser.c.html#simpleexp
-expr_init :: proc(expr: ^Expr, type: Expr_Type) {
-    expr.type = type
+expr_make :: proc {
+    expr_make_none,
+    expr_make_pc,
+    expr_make_reg,
+    expr_make_index,
+    expr_make_table,
+    expr_make_number,
 }
 
-expr_set_pc :: proc(expr: ^Expr, type: Expr_Type, pc: int) {
+expr_make_none :: proc(type: Expr_Type) -> (expr: Expr) {
+    return Expr{type = type}
+}
+
+expr_make_pc :: proc(type: Expr_Type, pc: int) -> (expr: Expr) {
     assert(type == .Need_Register)
-    expr.type = type
-    expr.pc   = pc
+    return Expr{type = type, pc = pc}
 }
 
-expr_set_reg :: proc(expr: ^Expr, type: Expr_Type, reg: u16) {
+expr_make_reg :: proc(type: Expr_Type, reg: u16) -> (expr: Expr) {
     assert(type == .Discharged || type == .Local)
-    expr.type = type
-    expr.reg  = reg
+    return Expr{type = type, reg = reg}
 }
 
-expr_set_index :: proc(expr: ^Expr, type: Expr_Type, index: u32) {
+expr_make_index :: proc(type: Expr_Type, index: u32) -> (expr: Expr) {
     assert(type == .Global || type == .Constant)
-    expr.type  = type
-    expr.index = index
+    return Expr{type = type, index = index}
 }
 
 /*
 Assumptions:
--   `expr.reg` contains the register of the table.
+-   `reg` contains the register of the table.
 -   `index` contains the register/constant of the table's index/key.
 
 Guarantees:
 -   `expr.table` will be filled using the above information.
  */
-expr_set_table :: proc(expr: ^Expr, type: Expr_Type, index: u16) {
+expr_make_table :: proc(type: Expr_Type, reg, index: u16) -> (expr: Expr) {
     assert(type == .Table_Index)
-    reg := expr.reg
-    expr.type        = type
-    expr.table.reg   = reg
-    expr.table.index = index
+    return Expr{type = .Table_Index, table = {reg = reg, index = index}}
 }
 
-expr_set_number :: proc(expr: ^Expr, n: f64) {
-    expr.type   = .Number
-    expr.number = n
-}
-
-expr_set_boolean :: proc(expr: ^Expr, b: bool) {
-    expr.type = .True if b else .False
+expr_make_number :: proc(type: Expr_Type, number: f64) -> (expr: Expr) {
+    assert(type == .Number)
+    return Expr{type = .Number, number = number}
 }
 
 // NOTE: In the future, may need to check for jump lists!
 // See: https://www.lua.org/source/5.1/lcode.c.html#isnumeral
 expr_is_number :: proc(expr: Expr) -> bool {
     return expr.type == .Number
-}
-
-// The returned string will not last the next call to this!
-expr_to_string :: proc(expr: ^Expr) -> string {
-    @(thread_local)
-    buf: [64]byte
-
-    builder := strings.builder_from_bytes(buf[:])
-    fmt.sbprint(&builder, "{info = {")
-    #partial switch expr.type {
-    case .Nil, .True, .False:
-    case .Number:           fmt.sbprintf(&builder, "number = %f", expr.number)
-    case .Need_Register:    fmt.sbprintf(&builder, "pc = %i", expr.pc)
-    case .Discharged:       fmt.sbprintf(&builder, "reg = %i", expr.reg)
-    case .Constant:         fmt.sbprintf(&builder, "index = %i", expr.index)
-    case:                   unreachable()
-    }
-    fmt.sbprintf(&builder, "}, type = %s}", expr.type)
-    return strings.to_string(builder)
 }

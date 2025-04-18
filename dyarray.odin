@@ -50,6 +50,13 @@ dyarray_get_ptr :: proc(dyarray: ^DyArray($T), index: int) -> ^T {
     return &dyarray.data[index]
 }
 
+dyarray_get_safe :: proc(dyarray: DyArray($T), index: int) -> (value: T, ok: bool) {
+    if 0 <= index && index < dyarray.len {
+        return dyarray.data[index], true
+    }
+    return {}, false
+}
+
 dyarray_append :: proc(vm: ^VM, dyarray: ^DyArray($T), elem: T) {
     defer dyarray.len += 1
     old_len := dyarray_len(dyarray^)

@@ -213,9 +213,9 @@ value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
         }
     case .Stack:
         if value_is_string(value) {
-            fmt.printf("[ %q ]", value.ostring)
+            fmt.printf("\t[ %q ]", value.ostring)
         } else {
-            fmt.printf("[ %v ]", value)
+            fmt.printf("\t[ %v ]", value)
         }
     case .Print:
         fmt.print(value, '\t')

@@ -70,11 +70,12 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
     depth  := compiler.scope_depth
     reg    := sa.len(compiler.active) - 1
     locals := dyarray_slice(&compiler.chunk.locals)
+    // Don't pop registers as we'll go below the active count!
     for reg >= 0 && locals[reg].depth > depth {
         sa.pop_back(&compiler.active)
-        compiler_pop_reg(compiler, cast(u16)reg)
         reg -= 1
     }
+    compiler.free_reg = reg + 1
 }
 
 
@@ -190,7 +191,7 @@ compiler_expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
 
     // NOTE(2025-04-09): Seemingly redundant but useful when we get to jumps.
     // expr.f = NO_JUMP; expr.t = NO_JUMP;
-    expr_set_reg(expr, .Discharged, reg)
+    expr^ = expr_make(.Discharged, reg = reg)
 }
 
 
@@ -246,7 +247,7 @@ compiler_discharge_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16, lo
     case:
         assert(expr.type == .Empty)
     }
-    expr_set_reg(expr, .Discharged, reg)
+    expr^ = expr_make(.Discharged, reg = reg)
 }
 
 /*
@@ -267,16 +268,16 @@ compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr, location := #c
     #partial switch type := expr.type; type {
     case .Global:
         pc := compiler_code_ABx(compiler, .Get_Global, 0, expr.index)
-        expr_set_pc(expr, .Need_Register, pc)
+        expr^ = expr_make(.Need_Register, pc = pc)
     case .Local:
         // info is already the local register we resolved beforehand.
-        expr_init(expr, .Discharged)
+        expr^ = expr_make(.Discharged, reg = expr.reg)
     case .Table_Index:
         // We can now reuse the registers allocated for the table and index.
         compiler_pop_reg(compiler, expr.table.index, location = location)
         compiler_pop_reg(compiler, expr.table.reg, location = location)
         pc := compiler_code_ABC(compiler, .Get_Table, 0, expr.table.reg, expr.table.index)
-        expr_set_pc(expr, .Need_Register, pc)
+        expr^ = expr_make(.Need_Register, pc = pc)
     }
 }
 
@@ -316,7 +317,7 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     add_rk :: proc(vm: ^VM, chunk: ^Chunk, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
         if dyarray_len(chunk.constants) <= MAX_INDEX_RK {
             index := chunk_add_constant(vm, chunk, value)
-            expr_set_index(expr, .Constant, index)
+            expr^ = expr_make(.Constant, index = index)
             return reg_as_k(cast(u16)index), true
         }
         return INVALID_REG, false
@@ -520,7 +521,8 @@ compiler_code_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     compiler_discharge_any_reg(compiler, expr)
     compiler_expr_pop(compiler, expr^)
 
-    expr_set_pc(expr, .Need_Register, compiler_code_AB(compiler, .Not, 0, expr.reg))
+    pc := compiler_code_AB(compiler, .Not, 0, expr.reg)
+    expr^ = expr_make(.Need_Register, pc = pc)
 }
 
 
@@ -565,7 +567,8 @@ compiler_code_binary :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr
     }
 
     // Argument A will be fixed down the line.
-    expr_set_pc(left, .Need_Register, compiler_code_ABC(compiler, op, 0, b, c))
+    pc   := compiler_code_ABC(compiler, op, 0, b, c)
+    left^ = expr_make(.Need_Register, pc = pc)
 }
 
 
@@ -584,7 +587,7 @@ compiler_code_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
         assert(left.reg == instr.b - 1)
         compiler_expr_pop(compiler, left^)
         instr.b = left.reg
-        expr_set_pc(left, .Need_Register, right.pc)
+        left^ = expr_make(.Need_Register, pc = right.pc)
         return
     }
     // This is the first in a potential chain of concats.
@@ -647,10 +650,10 @@ compiler_fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
         if number_is_nan(value) {
             return false
         }
-        expr_set_number(left, value)
+        left^ = expr_make(.Number, value)
         return true
     case bool:
-        expr_set_boolean(left, value)
+        left^ = expr_make(.True if value else .False)
         return true
     case:
         unreachable()
@@ -669,7 +672,7 @@ Analogous to:
  */
 compiler_code_indexed :: proc(compiler: ^Compiler, table, key: ^Expr) {
     index := compiler_expr_regconst(compiler, key)
-    expr_set_table(table, .Table_Index, index)
+    table^ = expr_make(.Table_Index, reg = table.reg, index = index)
 }
 
 
@@ -688,7 +691,7 @@ compiler_code_set_array :: proc(compiler: ^Compiler, reg: u16, total, to_store: 
     // TOOD(2025-04-15): Check for LUA_MULTRET analog?
     b := cast(u16)to_store
 
-    /* 
+    /*
     Notes (2025-04-18):
     -   We subtract 1 in case `total == FIELDS_PER_FLUSH` which would result in
         C == 2. Otherwise, it will be decoded as the wrong offset!
