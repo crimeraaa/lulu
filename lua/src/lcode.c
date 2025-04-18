@@ -478,11 +478,16 @@ int luaK_exp2RK (FuncState *func, Expr *expr) {
 }
 
 
+/**
+ * @brief
+ *  Emits the bytecode to set global, local, table, or upvalue variables.
+ */
 void luaK_storevar (FuncState *func, Expr *var, Expr *expr) {
   switch (var->kind) {
     case Expr_Local: {
+      int local = var->u.s.info;
       freeexp(func, expr);
-      exp2reg(func, expr, var->u.s.info);
+      exp2reg(func, expr, local); /* reuse local register or code OP_MOVE */
       return;
     }
     case Expr_Upvalue: {
@@ -495,13 +500,16 @@ void luaK_storevar (FuncState *func, Expr *var, Expr *expr) {
       break;
     }
     case Expr_Global: {
-      int reg = luaK_exp2anyreg(func, expr);
-      luaK_codeABx(func, OP_SETGLOBAL, reg, var->u.s.info);
+      int reg   = luaK_exp2anyreg(func, expr);
+      int index = var->u.s.info;
+      luaK_codeABx(func, OP_SETGLOBAL, reg, index);
       break;
     }
     case Expr_Index: {
-      int reg = luaK_exp2RK(func, expr);
-      luaK_codeABC(func, OP_SETTABLE, var->u.s.info, var->u.s.aux, reg);
+      int table = var->u.s.info;
+      int key   = var->u.s.aux;
+      int value = luaK_exp2RK(func, expr);
+      luaK_codeABC(func, OP_SETTABLE, table, key, value);
       break;
     }
     default: {

@@ -41,7 +41,7 @@ Precedence :: enum u8 {
 
 
 /*
-Analogous to:
+**Analogous to**
 -   'compiler.c:advance()' in the book.
  */
 parser_advance :: proc(parser: ^Parser) {
@@ -51,11 +51,11 @@ parser_advance :: proc(parser: ^Parser) {
 
 
 /*
-Assumptions:
+**Assumptions**
 -   `previous` is the token right before `parser.consumed`.
 -   Is not called multiple times in a row.
 
-Guarantees:
+**Guarantees**
 -   `parser.lexer` points to the start of the lexeme before `parser.lookahead`.
 -   When we call `parser_advance()`, we end up back at the old lookahead.
  */
@@ -69,7 +69,7 @@ parser_backtrack :: proc(parser: ^Parser, previous: Token) {
 
 
 /*
-Analogous to:
+**Analogous to**
 -   'compiler.c:consume()' in the book.
  */
 parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
@@ -101,13 +101,13 @@ LValue :: struct {
 }
 
 /*
-Analogous to:
+**Analogous to**
 -   `compiler.c:declaration()` in the book.
 -   `lparser.c:chunk(LexState *ls)` in Lua 5.1.5.
 -   `compiler.c:statement()` in the book.
 -   `lparser.c:statement(LexState *ls)` in Lua 5.1.5.
 
-Links:
+**Links**
 -   https://www.lua.org/source/5.1/lparser.c.html#chunk
 -   https://www.lua.org/source/5.1/lparser.c.html#statement
  */
@@ -119,7 +119,6 @@ parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
         // Inline implementation of `compiler.c:parseVariable()` since we immediately
         // consumed the 'identifier'. Also, Lua doesn't have a 'var' keyword.
         variable(parser, compiler, &last.variable)
-
         if parser_match(parser, .Left_Paren) {
             parser_error_consumed(parser, "Function calls not yet implemented")
         } else {
@@ -142,74 +141,70 @@ parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
 }
 
 /*
-Analogous to:
+**Analogous to**
 -   `compiler.c:varDeclaration()` in the book.
 -   `compiler.c:parseVariable()` (somewhat) in the book.
 
-Links:
+**Links**
 -   https://www.lua.org/source/5.1/lparser.c.html#exprstat
 -   https://www.lua.org/source/5.1/lparser.c.html#prefixexp
 -   https://www.lua.org/source/5.1/lparser.c.html#singlevar
  */
 @(private="file")
-assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, count_vars: int) {
+assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, n_vars: int) {
     // Don't call `variable()` for the first assignment because we did so already
     // to check for function calls.
-    if count_vars > 1 {
+    if n_vars > 1 {
         variable(parser, compiler, &last.variable)
     }
 
     // Use recursive calls to create a stack-allocated linked list.
     if parser_match(parser, .Comma) {
         parser_consume(parser, .Identifier)
-        assignment(parser, compiler, &LValue{prev = last}, count_vars + 1)
-        return // Prevent parents of recursive calls from consuming '='
-    }
-    parser_consume(parser, .Equals)
+        parser_recurse_begin(parser)
+        assignment(parser, compiler, &LValue{prev = last}, n_vars + 1)
+        parser_recurse_end(parser)
+        // Parents of recursive calls will always go to base cases because their
+        // values are guaranteed to be pushed to the stack.
+    } else {
+        parser_consume(parser, .Equals)
 
-    expr, count_exprs := expr_list(parser, compiler)
-    adjust_assign(compiler, count_vars, count_exprs, &expr) // Must come first!
-
-    // Register of the value we will use to assign a particlar `LValue`.
-    // a, b, c = 1, 2, 3; free_reg = 3; count_exprs = 3; reg = 2
-    reg := cast(u16)compiler.free_reg - 1
-
-    // Assign going downwards and free in the correct order so that these
-    // registers can be reused.
-    iter := last
-    for current in lvalue_iterator(&iter) {
-        defer reg -= 1
-
-        var := current.variable
-        #partial switch type := var.type; type {
-        case .Global:
-            // reg = value; var.index = name
-            compiler_code_ABx(compiler, .Set_Global, reg, var.index)
-        case .Local:
-            // var.reg = local; reg = value;
-            compiler_code_ABC(compiler, .Move, var.reg, reg, 0)
-        case .Table_Index:
-            // var.table.reg = table; var.table.index = key; reg = value;
-            compiler_code_ABC(compiler, .Set_Table, var.table.reg, var.table.index, reg)
-        case:
-            fmt.panicf("Impossible assignment target: %v", type)
+        /*
+        **Notes** (2025-04-18):
+        -   We don't want to immediately push `expr`. This is an optimization
+            mainly for the last occurence of `Expr_Type.Table_Index`.
+        -   We want to handle each recursive call's associated expression.
+         */
+        expr, n_exprs := expr_list(parser, compiler)
+        if n_exprs == n_vars {
+            // luaK_setoneret(ls->fs, &e)
+            compiler_store_var(compiler, &last.variable, &expr)
+            return // Avoid base case to prevent needless popping.
         }
-        // TODO(2025-04-14): Maybe we can just pop `count_vars` directly?
-        compiler_pop_reg(compiler, reg)
+        adjust_assign(compiler, n_vars, n_exprs, &expr)
+        // Go to base case as our value is on the top of the stack.
     }
+
+    /*
+    **Overview**
+    -   Base case. We just push to the next register no matter what.
+
+    **Assumptions**
+    -   `expr_list()` pushed all expressions except the last.
+
+    **Guarantees**
+    -   As we unwind the recursive call stack, we keep decrementing
+        `compiler.free_reg`.
+    -   `compiler.free_reg - 1` (the current top) is the register of the desired
+        value for the current assignment target.
+     */
+    expr := expr_make(.Discharged, reg = cast(u16)compiler.free_reg - 1)
+    compiler_store_var(compiler, &last.variable, &expr)
 }
 
-lvalue_iterator :: proc(iter: ^^LValue) -> (current: ^LValue, ok: bool) {
-    current = iter^
-    if current == nil {
-        return nil, false
-    }
-    iter^ = current.prev
-    return current, true
-}
 
 /*
-Analogous to:
+**Analogous to**
 -   `compiler.c:identifierConstant(Token *name)` in the book.
 */
 @(private="file")
@@ -220,10 +215,10 @@ ident_constant :: proc(parser: ^Parser, compiler: ^Compiler, token: Token) -> (i
 }
 
 /*
-Form:
+**Form**
 -   local_stmt ::= 'local' local_decl [ '=' expr_list ]
 
-Notes:
+**Notes**
 -   Due to the differences in Lua and Lox, we cannot combine local variable
     declarations into our `parseVariable()` analog as we do not have a
     catch-all `var` keyword.
@@ -235,7 +230,9 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
         defer count_vars += 1
 
         parser_consume(parser, .Identifier)
-        ident, _ := ident_constant(parser, compiler, parser.consumed)
+        // Don't call `ident_constant()` because we don't need to pollute the
+        // constants array.
+        ident := ostring_new(parser.vm, parser.consumed.lexeme)
         local_decl(parser, compiler, ident, count_vars)
 
         if !parser_match(parser, .Comma) {
@@ -261,10 +258,10 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
 
 
 /*
-Form:
+**Form**
 -   local_decl ::= identifier [',' identifier]*
 
-Analogous to:
+**Analogous to**
 -   `compiler.c:declareVariable()` in the book.
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.5.
  */
@@ -285,7 +282,7 @@ local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counte
     }
 
     /*
-    Notes (2025-04-18):
+    **Notes (2025-04-18)**
     -   In `new_localvar()`, Lua DOES push to the `ls->actvar[]` array but does
         not increment `ls->nactvar`.
     -   This is likely how they keep track of "uninitialized" locals.
@@ -303,7 +300,7 @@ local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counte
 }
 
 /*
-Notes:
+**Notes**
 -   See `lparser.c:adjust_assign(LexState *ls, int nvars, int nexps, expdesc *e)`.
  */
 @(private="file")
@@ -322,15 +319,15 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
         compiler_code_nil(compiler, cast(u16)reg, cast(u16)extra)
     } else {
         /*
-        Sample:
+        **Sample**
         -   local a, b, c = 1, 2, 3, 4
 
-        Results:
+        **Results**
         -   free_reg    = 4
         -   count_vars  = 3
         -   count_exprs = 4
 
-        Assumptions:
+        **Assumptions**
         -   If `count_exprs == count_vars`, nothing changes as we subtract 0.
          */
         compiler.free_reg -= count_exprs - count_vars
@@ -339,10 +336,10 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
 
 
 /*
-Analogous to:
+**Analogous to**
 -   `lparser.c:adjustlocalvars(LexState *ls, int nvars)` in Lua 5.1.5.
 
-Notes:
+**Notes**
 -   We don't need a `remove_locals()` function because `compiler_end_scope()`
     takes care of that already.
  */
@@ -352,16 +349,19 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
     depth := compiler.scope_depth
 
     /*
-    Assumptions;
+    **Assumptions**
     -   This relies on the next `nvars` elements in the array having been set
         previously by `local_decl`.
     -   `compiler.active.len` was NOT incremented yet.
      */
     nactive := sa.len(compiler.active) + nvars
     sa.resize(&compiler.active, nactive)
+    active := sa.slice(&compiler.active)
     locals := dyarray_slice(&compiler.chunk.locals)
     for i := nvars; i > 0; i -= 1 {
-        locals[nactive - i].depth = depth
+        // `lparser.c:getlocvar(fs, i)`
+        index := active[nactive - i]
+        locals[index].depth = depth
     }
 }
 
@@ -375,8 +375,7 @@ block :: proc(parser: ^Parser, compiler: ^Compiler) {
 
 
 /*
-
-Notes:
+**Notes**
 -   See `lparser.c:funcargs(LexState *ls, expdesc *e)`.
 */
 @(private="file")
@@ -406,14 +405,14 @@ print_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
 }
 
 /*
-Form:
+**Form**
 -   expr_list ::= expression [',' expression]*
 
-Overview:
+**Overview**
 -   Pushes a comma-separated list of expressions onto the stack, save for the
     last expression.
 
-Notes:
+**Notes**
 -   Like in Lua 5.1.5, the last expression is not emitted.
  */
 @(private="file")
@@ -429,13 +428,13 @@ expr_list :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr, count: i
 }
 
 /*
-Form:
+**Form**
 -   expression ::= literal | unary | grouping | binary | variable
 
-Analogous to:
+**Analogous to**
 -   `compiler.c:expression()` in the book.
 
-Notes:
+**Notes**
 -   Expressions only ever produce 1 net resulting value, which should reside in `expr`.
 -   However, `expr` itself does not reside in a register yet. It is up to you
     to decide how to allocate that.
@@ -447,10 +446,10 @@ expression :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr) {
 
 
 /*
-Analogous to:
+**Analogous to**
 -   'lparser.c:subexpr(LexState *ls, expdesc *v, int limit)' in Lua 5.1.5.
 
-Links:
+**Links**
 -   https://www.lua.org/source/5.1/lparser.c.html#subexpr
  */
 parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence) -> (expr: Expr) {
@@ -480,7 +479,7 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence)
 
 
 /*
-Analogous to:
+**Analogous to**
 -   'compiler.c:errorAtCurrent()' in the book.
  */
 parser_error_lookahead :: proc(parser: ^Parser, msg: string) -> ! {
@@ -489,7 +488,7 @@ parser_error_lookahead :: proc(parser: ^Parser, msg: string) -> ! {
 
 
 /*
-Analogous to:
+**Analogous to**
 -   'compiler.c:error()' in the book.
  */
 parser_error_consumed :: proc(parser: ^Parser, msg: string) -> ! {
@@ -498,7 +497,7 @@ parser_error_consumed :: proc(parser: ^Parser, msg: string) -> ! {
 
 
 /*
-Analogous to:
+**Analogous to**
 -   'compiler.c:errorAt()' in the book.
  */
 @(private="file")
@@ -513,7 +512,7 @@ error_at :: proc(parser: ^Parser, token: Token, msg: string) -> ! {
 
 
 /*
-Form:
+**Form**
 -   grouping ::= '(' expression ')'
  */
 @(private="file")
@@ -535,7 +534,7 @@ parser_recurse_end :: proc(parser: ^Parser) {
 
 
 /*
-Form:
+**Form**
 -   literal ::= 'nil' | 'true' | 'false' | NUMBER | STRING
  */
 @(private="file")
@@ -555,58 +554,75 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 }
 
 /*
-Form:
+**Form**
 -   variable ::= identifier [ indexed | ( '.' identifier ) ]*
 
-Assumptions:
+**Assumptions**
 -   `parser.consumed` is of type `.Identifier`.
 
-Notes:
+**Notes:**
 -   See `lparser.c:singlevar(LexState *ls, Expr *var)`.
 -   See `lparser.c:singlevaraux(LexState *ls, TString *n, Expr *var, int (bool) base)`
  */
 @(private="file")
 variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
-    // Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
-    ident, index := ident_constant(parser, compiler, parser.consumed)
+    /*
+    **Overview**
+    -   Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
+
+    **Notes** (2025-04-18):
+    -   We don't call `ident_constant()` yet because we don't want
+     */
+    ident := ostring_new(parser.vm, parser.consumed.lexeme)
     local, ok := compiler_resolve_local(compiler, ident)
 
     if ok {
         var^ = expr_make(.Local, reg = local)
     } else {
+        index := compiler_add_constant(compiler, value_make_string(ident))
         var^ = expr_make(.Global, index = index)
     }
 
     table_fields: for {
-        switch {
-        case parser_match(parser, .Left_Bracket):
-            // emit the parent table of this index
-            compiler_expr_next_reg(compiler, var)
+        prev := parser.consumed
+        parser_advance(parser)
+        #partial switch parser.consumed.type {
+        case .Left_Bracket:
+            /*
+            **Overview**
+            -   Emit the parent table of this index.
+
+            **Notes** (2025-04-18):
+            -   If it's a local then just reuse the register.
+            -   If it's a constant then try to use RK, else push it.
+             */
+            compiler_expr_any_reg(compiler, var)
             key := indexed(parser, compiler)
             compiler_code_indexed(compiler, var, &key)
-        case parser_match(parser, .Period):
-            // emit the parent table of this field
-            compiler_expr_next_reg(compiler, var)
+        case .Period:
+            // Same idea as in `.Left_Bracket` case.
+            compiler_expr_any_reg(compiler, var)
             parser_consume(parser, .Identifier)
             key := field_name(parser, compiler)
             compiler_code_indexed(compiler, var, &key)
-        case parser_match(parser, .Colon):
+        case .Colon:
             parser_error_consumed(parser, "':' syntax not yet supported")
         case:
+            parser_backtrack(parser, prev)
             break table_fields
         }
     }
 }
 
 /*
-Form:
+**Form**
 -   indexed ::= '[' expression ']'
 
-Overview:
+**Overview**
 -   Compiles an expression and saves it to a new `Expr` instance.
 -   This instance represents either a get-operation or a literal.
 
-Analogous to:
+**Analogous to**
 -   `lparser.c:yindex(LexState *ls, expdesc *var)` in Lua 5.1.5.
  */
 @(private="file")
@@ -619,16 +635,16 @@ indexed :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
 
 
 /*
-Form:
+**Form**
 -   field_name ::= identifier
 
-Overview:
+**Overview**
 -   Save fieldname in an expression which we can emit as an RK.
 
-Assumptions:
+**Assumptions**
 -   The desired field name (an `.Identifier`) was just consumed.
 
-Notes:
+**Notes**
 -   If the index does not fit in an RK, you will have to push it yourself!
  */
 @(private="file")
@@ -639,7 +655,7 @@ field_name :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
 
 
 /*
-Notes:
+**Notes**
 -   See the `lparser.c:ConsControl` structure in Lua 5.1.5.
  */
 Constructor :: struct {
@@ -650,13 +666,13 @@ Constructor :: struct {
 
 
 /*
-Form:
+**Form**
 -   table ::= '{' table_element? [ ',' table_element ]* '}'
     table_element ::= expression
                     | ( indexed | identifier) '=' expression
 
 
-Assumptions:
+**Assumptions**
 -   The `{` token was just consumed.
  */
 @(private="file")
@@ -673,10 +689,10 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
                 break
             }
             /*
-            Analogous to:
+            **Analogous to**
             -   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)`
 
-            Assumptions:
+            **Assumptions**
             -   This is an inline implementation.
             -   `ctor_array` already pushed each expression.
              */
@@ -713,7 +729,7 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     }
 
     /*
-    Analogous to:
+    **Analogous to**
     -   `lparser.c:lastlistfield(LexState *ls, struct ConsControl *cc)`
 
     TODO(2025-04-15): Add the other `if` branches!
@@ -734,7 +750,7 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
 
 /*
-Analogous to:
+**Analogous to**
 -   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)` in Lua 5.1.5.
  */
 @(private="file")
@@ -750,7 +766,7 @@ ctor_array :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
 
 
 /*
-Assumptions:
+**Assumptions**
 -   The `.Equals` token was NOT yet consumed, it should still be the
     desired field name.
  */
@@ -791,14 +807,14 @@ ctor_index :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
 }
 
 /*
-Form:
+**Form**
 -   unary ::= unary_op expression
     unary_op ::= '-' | 'not' | '#'
 
-Assumptions:
+**Assumptions**
 -   The desired unary operator was just consumed.
 
-Guarantees:
+**Guarantees**
 -   For arithetic and comparison, `expr` ends up as RK.
 -   For len, `expr` ends up as a register.
  */
@@ -810,11 +826,11 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     expr^ = parse_precedence(parser, compiler, .Unary)
 
     /*
-    Links:
+    **Links**
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_prefix
     -   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
 
-    Notes:
+    **Notes**
     -   Inline implementation of the only relevant lines from `lcode.c:luaK_prefix()`.
     -   Ensure the zero-value for `Expr_Type` is anything BUT `.Discharged`.
     -   Otherwise, calls to `compiler_pop_expr()` will push through and mess up
@@ -851,13 +867,13 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
 
 /*
-Form:
+**Form**
 -   binary     ::= binary_op expression
     binary_op  ::= arith_op | compare_op
     arith_op   ::= '+' | '-' | '*' | '/' | '%' | '^'
     compare_op ::= '==' | '~=' | '<' | '>' | '<=' | '>='
 
-Notes:
+**Notes**
 -   '..' is not included due to its unique semantics: neither arguments B nor C
     can be RK.
  */
@@ -913,36 +929,36 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     right := parse_precedence(parser, compiler, prec)
 
     /*
-    Note:
+    **Note**
     -   This is effectively the inline implementation of the only relevant line/s
         from 'lcode.c:luaK_posfix()'.
 
-    Links:
+    **Links**
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
      */
     compiler_code_binary(compiler, op, left, &right)
 }
 
 /*
-Form:
+**Form**
 -   concat ::= expression ['..' expression]+
 
-Assumptions:
+**Assumptions**
 -   `..` was just consumed and the right-hand-side operand is the lookahead.
 -   The left-hand-side operand already resides in `left`.
 
-Guarantees:
+**Guarantees**
 -   `left` will be pushed to the stack, then it will be of type `.Need_Register`
     where its `pc` field will refer to the location of `OpCode.Concat`.
 
-Notes:
+**Notes**
 -   Concat is treated as right-associative for optimization via recursive calls.
 -   This means that recursive call's `left` parameter will also refer to its
     parent caller's `right` parameter.
 -   This is because attempting to optimize within a loop is a lot harder than it
     seems.
 
-Links:
+**Links**
 -   http://lua-users.org/wiki/AssociativityOfConcatenation
  */
 @(private="file")

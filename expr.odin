@@ -1,12 +1,9 @@
 #+private
 package lulu
 
-import "core:strings"
-import "core:fmt"
-
 
 /*
-Notes:
+**Notes**
 -   On x86-64, this should be 16 bytes due to 8-byte alignment from the `f64`.
 -   This means it should be able to be passed/returned in 2 registers if the
     calling convention allows it.
@@ -30,7 +27,7 @@ Expr_Table :: struct {
 
 
 /*
-Links:
+**Links**
 -   https://the-ravi-programming-language.readthedocs.io/en/latest/lua-parser.html#state-transitions
  */
 Expr_Type :: enum u8 {
@@ -78,11 +75,11 @@ expr_make_index :: proc(type: Expr_Type, index: u32) -> (expr: Expr) {
 }
 
 /*
-Assumptions:
+**Assumptions**
 -   `reg` contains the register of the table.
 -   `index` contains the register/constant of the table's index/key.
 
-Guarantees:
+**Guarantees**
 -   `expr.table` will be filled using the above information.
  */
 expr_make_table :: proc(type: Expr_Type, reg, index: u16) -> (expr: Expr) {

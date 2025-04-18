@@ -984,14 +984,14 @@ static void assignment (LexState *lex, struct LHS_assign *lh, int nvars) {
     if (next.var.kind == Expr_Local)
       check_conflict(lex, lh, &next.var);
     luaY_checklimit(lex->func, nvars, LUAI_MAXCCALLS - lex->L->nCcalls, "variables in assignment");
-    assignment(lex, &next, nvars+1);
+    assignment(lex, &next, nvars + 1);
   }
   else {  /* assignment -> `=' explist1 */
     int nexps;
     check_next(lex, Token_Assign);
     nexps = explist1(lex, &expr);
     if (nexps != nvars) {
-      adjust_assign(lex, nvars, nexps, &expr);
+      adjust_assign(lex, nvars, nexps, &expr); /* may push `expr` */
       if (nexps > nvars)
         lex->func->freereg -= (nexps - nvars);  /* remove extra values */
     }
@@ -1001,7 +1001,17 @@ static void assignment (LexState *lex, struct LHS_assign *lh, int nvars) {
       return;  /* avoid default */
     }
   }
-  init_exp(&expr, Expr_Nonrelocable, lex->func->freereg-1); /* default assignment */
+  /**
+   * @details
+   *  - Each recursive call will end up calling `luaK_storevar().
+   *  - This decrements `lex->func->freereg` whenever we have a register that
+   *    does not refer to a local.
+   *  - This is usually the case in `explist()` pushes all expressions in order
+   *    except for the last.
+   *  - Thus, we can assume that the current top of the stack is where our
+   *    desired value (for this assignment target) lies.
+   */
+  init_exp(&expr, Expr_Nonrelocable, lex->func->freereg-1);
   luaK_storevar(lex->func, &lh->var, &expr);
 }
 

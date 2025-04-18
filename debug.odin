@@ -56,7 +56,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
 
     binary :: proc(chunk: ^Chunk, op: string, inst: Instruction) {
         print_ABC(inst)
-        print_reg(chunk, inst.a, ":=")
+        print_reg(chunk, inst.a, " := ")
         print_reg(chunk, inst.b, " %s ", op)
         print_reg(chunk, inst.c)
     }
@@ -78,8 +78,9 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
             fmt.printf(format, ..args)
         }
         if reg_is_k(reg) {
-            index := cast(int)reg_as_k(reg)
+            index := cast(int)reg_get_k(reg)
             value_print(dyarray_get(chunk.constants, index), .Debug)
+            return
         }
         if local, ok := dyarray_get_safe(chunk.locals, cast(int)reg); ok {
             // see `chunk.odin:local_formatter()`
