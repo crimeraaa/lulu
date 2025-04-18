@@ -1,12 +1,33 @@
+#+private
 package lulu
 
+import "core:fmt"
+import "core:io"
 import "core:mem"
+import "core:unicode/utf8"
 
 OString :: struct {
     using base: Object_Header,
     hash:       u32,
     len:        int, // Length in bytes, not runes.
     data:    [0]byte,
+}
+
+ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
+    ostring   := (cast(^^OString)arg.data)^
+    s         := ostring_to_string(ostring)
+    n_written := &fi.n
+    writer    := fi.writer
+    switch verb {
+    case 'v', 's':
+        io.write_string(writer, s, n_written)
+        return true
+    case 'q':
+        n_written^ += fmt.wprintf(writer, "%q", s)
+        return true
+    case:
+        return false
+    }
 }
 
 /*

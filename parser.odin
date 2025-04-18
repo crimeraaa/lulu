@@ -2,6 +2,7 @@
 package lulu
 
 import "core:fmt"
+import sa "core:container/small_array"
 
 // https://www.lua.org/source/5.1/luaconf.h.html#LUAI_MAXCCALLS
 PARSER_MAX_RECURSE :: 200
@@ -230,10 +231,12 @@ Notes:
 local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
     count_vars: int
     for {
+        defer count_vars += 1
+
         parser_consume(parser, .Identifier)
         ident, _ := ident_constant(parser, compiler, parser.consumed)
-        local_decl(parser, compiler, ident)
-        count_vars += 1
+        local_decl(parser, compiler, ident, count_vars)
+
         if !parser_match(parser, .Comma) {
             break
         }
@@ -265,11 +268,36 @@ Analogous to:
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.5.
  */
 @(private="file")
-local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString) {
-    if chunk_check_shadowing(compiler.chunk, ident, compiler.active_local, compiler.scope_depth) {
-        parser_error_consumed(parser, "Shadowing of local variable")
+local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counter: int) {
+    chunk := compiler.chunk
+    depth := compiler.scope_depth
+    #reverse for active in sa.slice(&compiler.active) {
+        local := chunk.locals.data[active]
+        // Already poking at initialized locals in outer scopes?
+        if local.depth != UNINITIALIZED_LOCAL && local.depth < depth {
+            break
+        }
+        if local.ident == ident {
+            parser_error_consumed(parser, "Shadowing of local variable")
+        }
     }
-    compiler_add_local(compiler, ident)
+
+    /*
+    Notes (2025-04-18):
+    -   In `new_localvar()`, Lua DOES push to the `ls->actvar[]` array but does
+        not increment `ls->nactvar`.
+    -   This is likely how they keep track of "uninitialized" locals.
+    -   So we don't want to push because that will mutate the length thus
+        messing up our "uninitialized" counter.
+     */
+    active_reg := sa.len(compiler.active) + counter
+    if active_reg >= MAX_LOCALS {
+        buf: [64]byte
+        msg := fmt.bprintf(buf[:], "More than %i local variables", MAX_LOCALS)
+        parser_error_consumed(parser, msg)
+    }
+    local_index := compiler_add_local(compiler, ident)
+    sa.set(&compiler.active, index = active_reg, item = local_index)
 }
 
 /*
@@ -305,11 +333,13 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
          */
         compiler.free_reg -= count_exprs - count_vars
     }
-
 }
 
 
 /*
+Analogous to:
+-   `lparser.c:adjustlocalvars(LexState *ls, int nvars)` in Lua 5.1.5.
+
 Notes:
 -   We don't need a `remove_locals()` function because `compiler_end_scope()`
     takes care of that already.
@@ -319,10 +349,18 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
     // startpc := compiler.chunk.pc
     depth := compiler.scope_depth
 
-    // NOTE(2025-04-09): This is VERY important!
-    compiler.active_local += nvars
+    /*
+    Assumptions;
+    -   This relies on the next `nvars` elements in the array having been set
+        previously by `local_decl`.
+    -   `compiler.active.len` was NOT incremented yet.
+     */
+    nactive := sa.len(compiler.active) + nvars
+    sa.resize(&compiler.active, nactive)
+
+    locals := &compiler.chunk.locals
     for i := nvars; i > 0; i -= 1 {
-        compiler.chunk.locals[compiler.active_local - i].depth = depth
+        locals.data[nactive - i].depth = depth
         // compiler.locals[compiler.count_local - i].startpc = startpc
     }
 }

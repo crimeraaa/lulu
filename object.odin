@@ -5,8 +5,8 @@ import "core:mem"
 import "core:fmt"
 
 Object_Header :: struct {
-    type:  Value_Type,
-    prev: ^Object_Header,
+    type:  Value_Type       `fmt:"s"`,
+    prev: ^Object_Header    `fmt:"p"`,
 }
 
 object_new :: proc($T: typeid, vm: ^VM, extra := 0) -> (typed_object: ^T)
@@ -77,11 +77,9 @@ objects_print_all :: proc(vm: ^VM) {
     for object in object_iterator(&iter) {
         #partial switch object.type {
         case .String:
-            ostring := cast(^OString)object
-            fmt.printfln("string: %q", ostring_to_string(ostring))
+            fmt.printfln("string: %q", cast(^OString)object)
         case .Table:
-            table := cast(^Table)object
-            fmt.printfln("table: %p", cast(rawptr)table)
+            fmt.printfln("table: %p", object)
         case: unreachable()
         }
     }

@@ -2,11 +2,15 @@
 package lulu
 
 import "core:fmt"
+import "core:io"
 import "core:log"
+import sa "core:container/small_array"
 
 _ :: fmt // needed for when !ODIN_DEBUG
 
 MAX_CONSTANTS :: MAX_uBC
+
+Active_Locals :: sa.Small_Array(MAX_LOCALS, u16)
 
 Compiler :: struct {
     vm:             ^VM,
@@ -17,7 +21,11 @@ Compiler :: struct {
     free_reg:        int,      // Index of the first free register.
     last_jump:       int,
     is_print:        bool,     // HACK(2025-04-09): until `print` is a global runtime function
-    active_local:    int,      // How many locals are currently in scope?
+
+    // Indexes are local registers. Values are indexes into `chunk.locals[]` for
+    // information like identifiers and depth.
+    // See `lparser.h:LexState::actvar[]`.
+    active: Active_Locals,
 }
 
 compiler_init :: proc(compiler: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
@@ -54,22 +62,20 @@ compiler_begin_scope :: proc(compiler: ^Compiler) {
     compiler.scope_depth += 1
 }
 
-
 /*
 Analogous to:
 -   `lparser.c:removevars(LexState *ls, int tolevel)` in Lua 5.1.5.
  */
 compiler_end_scope :: proc(compiler: ^Compiler) {
-    depth := compiler.scope_depth - 1
-    count := compiler.active_local
+    compiler.scope_depth -= 1
+    depth  := compiler.scope_depth
+    reg    := sa.len(compiler.active) - 1
 
-    for count > 0 && compiler.chunk.locals[count - 1].depth > depth do count -= 1
-
-    // WARNING(2025-04-09): Is this safe? We need these to reuse registers once
-    // locals go out of scope.
-    compiler.free_reg     = count
-    compiler.active_local = count
-    compiler.scope_depth  = depth
+    for reg >= 0 && compiler.chunk.locals.data[reg].depth > depth {
+        sa.pop_back(&compiler.active)
+        compiler_pop_reg(compiler, cast(u16)reg)
+        reg -= 1
+    }
 }
 
 
@@ -95,7 +101,7 @@ compiler_reserve_reg :: proc(compiler: ^Compiler, count: int) {
 
 compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_location) {
     // Only pop if nonconstant and not the register of an existing local.
-    if !reg_is_k(reg) && cast(int)reg >= compiler.active_local {
+    if !reg_is_k(reg) && cast(int)reg >= sa.len(compiler.active) {
         compiler.free_reg -= 1
         log.assertf(cast(int)reg == compiler.free_reg, "free_reg := %i but reg := %i",
             compiler.free_reg, reg, loc = location)
@@ -308,25 +314,26 @@ Notes:
 compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     compiler_expr_to_value(compiler, expr)
 
-    add_rk :: proc(chunk: ^Chunk, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
+    add_rk :: proc(vm: ^VM, chunk: ^Chunk, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
         if len(chunk.constants) <= MAX_INDEX_RK {
-            index := chunk_add_constant(chunk, value)
+            index := chunk_add_constant(vm, chunk, value)
             expr_set_index(expr, .Constant, index)
             return reg_as_k(cast(u16)index), true
         }
         return INVALID_REG, false
     }
 
+    vm := compiler.vm
     chunk := compiler.chunk
     #partial switch type := expr.type; type {
     case .Nil:
-        return add_rk(chunk, value_make_nil(), expr) or_break
+        return add_rk(vm, chunk, value_make_nil(), expr) or_break
     case .True:
-        return add_rk(chunk, value_make_boolean(true), expr) or_break
+        return add_rk(vm, chunk, value_make_boolean(true), expr) or_break
     case .False:
-        return add_rk(chunk, value_make_boolean(false), expr) or_break
+        return add_rk(vm, chunk, value_make_boolean(false), expr) or_break
     case .Number:
-        return add_rk(chunk, value_make_number(expr.number), expr) or_break
+        return add_rk(vm, chunk, value_make_number(expr.number), expr) or_break
     case .Constant:
         // Constant can fit in argument C?
         if index := expr.index; index <= MAX_INDEX_RK {
@@ -356,7 +363,7 @@ compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
     // No jumps to current position?
     if pc > compiler.last_jump {
         // Function start and positions already clean?
-        if pc == 0 && !compiler.is_print && cast(int)reg >= compiler.active_local {
+        if pc == 0 && !compiler.is_print && cast(int)reg >= sa.len(compiler.active) {
             return
         }
         // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
@@ -435,7 +442,7 @@ Analogous to:
 -   'compiler.c:makeConstant()' in the book.
  */
 compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u32) {
-    index = chunk_add_constant(compiler.chunk, constant)
+    index = chunk_add_constant(compiler.vm, compiler.chunk, constant)
     if index >= MAX_CONSTANTS {
         parser_error_consumed(compiler.parser, "Function uses too many constants")
     }
@@ -452,20 +459,33 @@ Links:
 -   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
  */
 compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16) {
-    i, ok := chunk_add_local(compiler.chunk, ident)
-    if !ok {
-        parser_error_consumed(compiler.parser, "Too many local variables")
-    }
-    return i
+    return chunk_add_local(compiler.vm, compiler.chunk, ident)
 }
 
 
 /*
 Notes:
 -   See `lparser.c:searchvar(FuncState *fs, TString *n)`.
+-   `compiler.chunk.locals` itself contains information about ALL possible
+    locals for this chunk.
+-   `compiler.active_locals` contains information about which locals in the
+    above array are currently in scope.
  */
 compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16, ok: bool) {
-    return chunk_resolve_local(compiler.chunk, ident, compiler.active_local)
+    locals := compiler.chunk.locals
+
+    /*
+    Notes:
+    -   `active` is NOT what we want to return, as it is an index to `chunk.locals`.
+    -   `reg`
+     */
+    #reverse for active, reg in sa.slice(&compiler.active) {
+        local := locals.data[active]
+        if local.ident == ident {
+            return cast(u16)reg, true
+        }
+    }
+    return INVALID_REG, false
 }
 
 

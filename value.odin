@@ -2,6 +2,7 @@
 package lulu
 
 import "core:fmt"
+import "core:io"
 import "core:math"
 
 Value :: struct {
@@ -161,38 +162,50 @@ value_eq :: proc(a, b: Value) -> bool {
 
 number_is_nan :: math.is_nan_f64
 
-value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
-    // We assume this is valid for numbers, booleans and pointers.
-    buf: [64]byte
-    s := value_to_string(buf[:], value)
-    switch mode {
-    case .Normal:
-        fmt.println(s)
-    case .Debug:
-        if value_is_string(value) {
-            fmt.printfln("%q", s)
-        } else {
-            fmt.println(s)
+value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
+    value     := (cast(^Value)arg.data)^
+    writer    := fi.writer
+    n_written := &fi.n
+    switch verb {
+    case 'v':
+        switch value.type {
+        case .Nil:
+            io.write_string(writer, "nil", n_written)
+        case .Boolean:
+            io.write_string(writer, "true" if value.boolean else "false", n_written)
+        case .Number:
+            n_written^ += fmt.wprintf(writer, "%.14g", value.number)
+        case .String:
+            n_written^ += fmt.wprint(writer, value.ostring)
+        case .Table:
+            n_written^ += fmt.wprintf(writer, "%s: %p", value_type_name(value), value.table)
+        case:
+            unreachable()
         }
-    case .Stack:
-        if value_is_string(value) {
-            fmt.printf("[ %q ]", s)
-        } else {
-            fmt.printf("[ %s ]", s)
-        }
-    case .Print:
-        fmt.printf("%s\t", s)
+        return true
+    case:
+        return false
     }
 }
 
-value_to_string :: proc(buf: []byte, value: Value) -> string {
-    switch value.type {
-    case .Nil:      return "nil"
-    case .Boolean:  return "true" if value.data.boolean else "false"
-    case .Number:   return fmt.bprintf(buf, "%.14g", value.data.number)
-    case .String:   return ostring_to_string(value.ostring)
-    case .Table:    return fmt.bprintf(buf, "%s: %p", value_type_name(value), cast(rawptr)value.table)
+value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
+    switch mode {
+    case .Normal:
+        fmt.println(value)
+    case .Debug:
+        if value_is_string(value) {
+            fmt.printfln("%q", value.ostring)
+        } else {
+            fmt.println(value)
+        }
+    case .Stack:
+        if value_is_string(value) {
+            fmt.printf("[ %q ]", value.ostring)
+        } else {
+            fmt.printf("[ %v ]", value)
+        }
+    case .Print:
+        fmt.print(value, '\t')
     }
-    unreachable()
 }
 

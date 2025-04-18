@@ -3,6 +3,19 @@ package lulu
 
 import "core:fmt"
 
+@(private="file",init)
+init_formatters :: proc() {
+    fmt.set_user_formatters(new(map[typeid]fmt.User_Formatter))
+    err := fmt.register_user_formatter(^OString, ostring_formatter)
+    assert(err == nil)
+
+    err = fmt.register_user_formatter(Local, local_formatter)
+    assert(err == nil)
+
+    err = fmt.register_user_formatter(Value, value_formatter)
+    assert(err == nil)
+}
+
 debug_dump_chunk :: proc(chunk: ^Chunk) {
     fmt.printfln("=== STACK USAGE ===\n%i", chunk.stack_used)
 
@@ -13,16 +26,16 @@ debug_dump_chunk :: proc(chunk: ^Chunk) {
 
     fmt.printfln("\n.name\n%q", chunk.source)
 
-    if chunk.count_local > 0 {
+    if dyarray_len(chunk.locals) > 0 {
         fmt.println("\n.local:")
-        for local, index in chunk.locals[:chunk.count_local] {
-            fmt.printfln("[%04i] %q", index, ostring_to_string(local.ident))
+        for local, index in dyarray_slice(&chunk.locals) {
+            fmt.printfln("[%04i] %q", index, local.ident)
         }
     }
 
     if len(chunk.constants) > 0 {
         fmt.println("\n.const:")
-        for constant, index in chunk.constants {
+        for constant, index in chunk.constants[:chunk.count_constants] {
             fmt.printf("[%04i] ", index)
             value_print(constant, .Debug)
         }
@@ -100,11 +113,10 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
         print_ABx(inst)
         key := chunk.constants[inst_get_Bx(inst)]
         assert(value_is_string(key))
-        identifier := ostring_to_string(key.ostring)
         if inst.op == .Get_Global {
-            fmt.printfln("reg[%i] := _G[%q]", inst.a, identifier)
+            fmt.printfln("reg[%i] := _G[%q]", inst.a, key.ostring)
         } else {
-            fmt.printfln("_G[%q] := reg[%i]",  identifier, inst.a)
+            fmt.printfln("_G[%q] := reg[%i]",  key.ostring, inst.a)
         }
     case .New_Table:
         print_ABC(inst)
