@@ -97,6 +97,15 @@ number_unm :: proc(a: f64) -> f64 {
     return -a
 }
 
+value_make :: proc {
+    value_make_nil,
+    value_make_boolean,
+    value_make_number,
+    value_make_integer,
+    value_make_string,
+    value_make_table,
+}
+
 value_type_name :: proc(v: Value) -> string {
     return value_type_strings[v.type]
 }
@@ -111,6 +120,10 @@ value_make_boolean :: proc(b: bool) -> Value {
 
 value_make_number :: proc(n: f64) -> Value {
     return Value{type = .Number, number = n}
+}
+
+value_make_integer :: proc(i: int) -> Value {
+    return value_make_number(cast(f64)i)
 }
 
 value_make_string :: proc(s: ^OString) -> Value {

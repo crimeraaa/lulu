@@ -214,7 +214,7 @@ Analogous to:
 @(private="file")
 ident_constant :: proc(parser: ^Parser, compiler: ^Compiler, token: Token) -> (ident: ^OString, index: u32) {
     ident = ostring_new(parser.vm, token.lexeme)
-    value := value_make_string(ident)
+    value := value_make(ident)
     return ident, compiler_add_constant(compiler, value)
 }
 
@@ -269,10 +269,11 @@ Analogous to:
  */
 @(private="file")
 local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counter: int) {
-    chunk := compiler.chunk
-    depth := compiler.scope_depth
+    chunk  := compiler.chunk
+    depth  := compiler.scope_depth
+    locals := dyarray_slice(&chunk.locals)
     #reverse for active in sa.slice(&compiler.active) {
-        local := chunk.locals.data[active]
+        local := locals[active]
         // Already poking at initialized locals in outer scopes?
         if local.depth != UNINITIALIZED_LOCAL && local.depth < depth {
             break
@@ -357,11 +358,9 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
      */
     nactive := sa.len(compiler.active) + nvars
     sa.resize(&compiler.active, nactive)
-
-    locals := &compiler.chunk.locals
+    locals := dyarray_slice(&compiler.chunk.locals)
     for i := nvars; i > 0; i -= 1 {
-        locals.data[nactive - i].depth = depth
-        // compiler.locals[compiler.count_local - i].startpc = startpc
+        locals[nactive - i].depth = depth
     }
 }
 
@@ -548,7 +547,7 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .False:    expr_init(expr, .False)
     case .Number:   expr_set_number(expr, value.(f64))
     case .String:
-        index := compiler_add_constant(compiler, value_make_string(value.(^OString)))
+        index := compiler_add_constant(compiler, value_make(value.(^OString)))
         expr_set_index(expr, .Constant, index)
     case: unreachable()
     }
@@ -728,8 +727,9 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     // `fb_from_int()` may also round up the values by some factor, but that's
     // okay because our hash table will simply over-allocate.
-    compiler.chunk.code[pc].b = cast(u16)fb_from_int(ctor.count_array)
-    compiler.chunk.code[pc].c = cast(u16)fb_from_int(ctor.count_hash)
+    ip := dyarray_get_ptr(&compiler.chunk.code, pc)
+    ip.b = cast(u16)fb_from_int(ctor.count_array)
+    ip.c = cast(u16)fb_from_int(ctor.count_hash)
 }
 
 

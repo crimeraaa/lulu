@@ -33,9 +33,9 @@ debug_dump_chunk :: proc(chunk: ^Chunk) {
         }
     }
 
-    if len(chunk.constants) > 0 {
+    if dyarray_len(chunk.constants) > 0 {
         fmt.println("\n.const:")
-        for constant, index in chunk.constants[:chunk.count_constants] {
+        for constant, index in dyarray_slice(&chunk.constants) {
             fmt.printf("[%04i] ", index)
             value_print(constant, .Debug)
         }
@@ -43,7 +43,7 @@ debug_dump_chunk :: proc(chunk: ^Chunk) {
 
 
     fmt.println("\n.code")
-    for inst, index in chunk.code[:chunk.pc] {
+    for inst, index in dyarray_slice(&chunk.code) {
         debug_dump_instruction(chunk, inst, index)
     }
 }
@@ -83,10 +83,11 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
     }
 
     fmt.printf("[%04i] ", index)
-    if index > 0 && chunk.line[index] == chunk.line[index - 1] {
+    line := dyarray_get(chunk.line, index)
+    if index > 0 && line == dyarray_get(chunk.line, index - 1) {
         fmt.print("   | ")
     } else {
-        fmt.printf("% 4i ", chunk.line[index])
+        fmt.printf("% 4i ", line)
     }
     fmt.printf("%-16v ", inst.op)
     switch (inst.op) {
@@ -97,7 +98,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
         bc := inst_get_Bx(inst)
         print_ABx(inst)
         fmt.printf("reg[%i] := .const[%i] => ", inst.a, bc)
-        value_print(chunk.constants[bc], .Debug)
+        value_print(dyarray_get(chunk.constants, cast(int)bc), .Debug)
     case .Load_Nil:
         print_AB(inst)
         fmt.printfln("reg[%i..=%i] := nil", inst.a, inst.b)
@@ -111,7 +112,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
         }
     case .Get_Global, .Set_Global:
         print_ABx(inst)
-        key := chunk.constants[inst_get_Bx(inst)]
+        key := dyarray_get(chunk.constants, cast(int)inst_get_Bx(inst))
         assert(value_is_string(key))
         if inst.op == .Get_Global {
             fmt.printfln("reg[%i] := _G[%q]", inst.a, key.ostring)

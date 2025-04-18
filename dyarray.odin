@@ -2,8 +2,6 @@
 package lulu
 
 import "core:math"
-import "core:mem"
-import "core:slice"
 
 /*
 **Overview**
@@ -13,6 +11,17 @@ import "core:slice"
 DyArray :: struct($T: typeid) {
     data: []T,  // len(data) == cap
     len:    int,
+}
+
+dyarray_resize :: proc(vm: ^VM, dyarray: ^DyArray($T), new_cap: int) {
+    old_data := dyarray.data
+    defer delete(old_data, vm.allocator)
+    new_data, err := make([]T, new_cap, vm.allocator)
+    if err != nil {
+        vm_memory_error(vm)
+    }
+    copy(new_data, old_data)
+    dyarray.data = new_data
 }
 
 dyarray_delete :: proc(vm: ^VM, dyarray: ^DyArray($T)) {
@@ -33,19 +42,19 @@ dyarray_data :: proc(dyarray: DyArray($T)) -> []T {
     return dyarray.data
 }
 
+dyarray_get :: proc(dyarray: DyArray($T), index: int) -> T {
+    return dyarray.data[index]
+}
+
+dyarray_get_ptr :: proc(dyarray: ^DyArray($T), index: int) -> ^T {
+    return &dyarray.data[index]
+}
+
 dyarray_append :: proc(vm: ^VM, dyarray: ^DyArray($T), elem: T) {
     defer dyarray.len += 1
     old_len := dyarray_len(dyarray^)
     if old_len >= dyarray_cap(dyarray^) {
-        old_data      := dyarray.data
-        new_cap       := max(8, math.next_power_of_two(old_len + 1))
-        new_data, err := make([]T, new_cap, vm.allocator)
-        defer delete(old_data, vm.allocator)
-        if err != nil {
-            vm_memory_error(vm)
-        }
-        copy(new_data, old_data)
-        dyarray.data = new_data
+        dyarray_resize(vm, dyarray, max(8, math.next_power_of_two(old_len + 1)))
     }
     dyarray.data[old_len] = elem
 }

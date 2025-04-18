@@ -4,7 +4,6 @@ package lulu
 import "core:fmt"
 import "core:io"
 import "core:mem"
-import "core:unicode/utf8"
 
 OString :: struct {
     using base: Object_Header,

@@ -37,13 +37,13 @@ Notes:
     We will pop this value afterwards.
  */
 set_global :: proc(vm: ^VM, key: string) {
-    vkey := value_make_string(ostring_new(vm, key))
+    vkey := value_make(ostring_new(vm, key))
     table_set(vm, &vm.globals, vkey, vm.top[-1])
     pop(vm, 1)
 }
 
 get_global :: proc(vm: ^VM, key: string) {
-    vkey  := value_make_string(ostring_new(vm, key))
+    vkey  := value_make(ostring_new(vm, key))
     value := table_get(&vm.globals, vkey)
     push_rawvalue(vm, value)
 }
@@ -74,7 +74,7 @@ concat :: proc(vm: ^VM, count: int) {
 
 push_string :: proc(vm: ^VM, str: string) -> (result: string) {
     interned := ostring_new(vm, str)
-    push_rawvalue(vm, value_make_string(interned))
+    push_rawvalue(vm, value_make(interned))
     return ostring_to_string(interned)
 }
 

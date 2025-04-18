@@ -70,7 +70,8 @@ vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, arg
 
 vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
     chunk := vm.chunk
-    line  := chunk.line[ptr_sub(vm.pc, &chunk.code[0]) - 1]
+    index := ptr_sub(vm.pc, dyarray_get_ptr(&chunk.code, 0)) - 1
+    line  := dyarray_get(chunk.line, index)
     reset_stack(vm)
     push_fstring(vm, "%s:%i: Attempt to ", chunk.source, line)
     push_fstring(vm, format, ..args)
@@ -102,7 +103,7 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
         push_string(vm, MEMORY_ERROR_STRING)
         pop(vm, 1)
 
-        push_rawvalue(vm, value_make_table(&vm.globals))
+        push_rawvalue(vm, value_make(&vm.globals))
         set_global(vm, "_G")
     }
 
@@ -139,12 +140,12 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
         compiler_compile(vm, chunk, data.input)
         vm.top   = &vm.stack[chunk.stack_used]
         vm.chunk = chunk
-        vm.pc    = &chunk.code[0]
+        vm.pc    = dyarray_get_ptr(&chunk.code, 0)
 
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
         for &slot in vm.stack[:chunk.stack_used] {
-            slot = value_make_nil()
+            slot = value_make()
         }
         vm_execute(vm)
     }
@@ -193,7 +194,7 @@ Analogous to:
  */
 vm_execute :: proc(vm: ^VM) {
     chunk     := vm.chunk
-    constants := chunk.constants[:]
+    constants := dyarray_slice(&chunk.constants)
     globals   := &vm.globals
     stack     := vm.stack[:]
 
@@ -206,7 +207,8 @@ vm_execute :: proc(vm: ^VM) {
                 value_print(value, .Stack)
             }
             fmt.println()
-            debug_dump_instruction(chunk, inst, ptr_sub(vm.pc, &chunk.code[0]))
+            index := ptr_sub(vm.pc, dyarray_get_ptr(&chunk.code, 0))
+            debug_dump_instruction(chunk, inst, index)
         }
         vm.pc = &vm.pc[1]
 
@@ -221,10 +223,10 @@ vm_execute :: proc(vm: ^VM) {
         case .Load_Nil:
             // Add 1 because we want to include Reg[B]
             for &slot in stack[inst.a:inst.b + 1] {
-                slot = value_make_nil()
+                slot = value_make()
             }
         case .Load_Boolean:
-            ra^ = value_make_boolean(inst.b == 1)
+            ra^ = value_make(inst.b == 1)
         case .Get_Global:
             key := constants[inst_get_Bx(inst)]
             value, ok := table_get(globals, key)
@@ -237,9 +239,9 @@ vm_execute :: proc(vm: ^VM) {
             key := constants[inst_get_Bx(inst)]
             table_set(vm, globals, key, ra^)
         case .New_Table:
-            count_array := fb_to_int(cast(u8)inst.b)
-            count_hash  := fb_to_int(cast(u8)inst.c)
-            ra^ = value_make_table(table_new(vm, count_array, count_hash))
+            n_array := fb_to_int(cast(u8)inst.b)
+            n_hash  := fb_to_int(cast(u8)inst.c)
+            ra^ = value_make(table_new(vm, n_array, n_hash))
         case .Get_Table:
             key := get_rk(vm, inst.c, stack, constants)
             table: ^Table
@@ -269,7 +271,7 @@ vm_execute :: proc(vm: ^VM) {
             assert(inst.b != 0 && inst.c != 0, "Impossible condition reached")
 
             for i in 1..=count {
-                key := value_make_number(cast(f64)(offset + i))
+                key := value_make(offset + i)
                 table_set(vm, table, key, stack[cast(int)inst.a + i])
             }
         case .Print:
@@ -288,25 +290,25 @@ vm_execute :: proc(vm: ^VM) {
             if !value_is_number(rb) {
                 arith_error(vm, rb, rb)
             }
-            ra^ = value_make_number(number_unm(rb.data.number))
+            ra^ = value_make(number_unm(rb.data.number))
         case .Eq, .Neq:
             rb, rc := get_rk_bc(vm, inst, stack, constants)
             b  := value_eq(rb, rc)
-            ra^ = value_make_boolean(b if inst.op == .Eq else !b)
+            ra^ = value_make(b if inst.op == .Eq else !b)
         case .Lt:   compare_op(vm, number_lt,  ra, inst, stack, constants)
         case .Gt:   compare_op(vm, number_gt,  ra, inst, stack, constants)
         case .Leq:  compare_op(vm, number_leq, ra, inst, stack, constants)
         case .Geq:  compare_op(vm, number_geq, ra, inst, stack, constants)
         case .Not:
             x := get_rk(vm, inst.b, stack, constants)
-            ra^ = value_make_boolean(value_is_falsy(x))
+            ra^ = value_make(value_is_falsy(x))
         // Add 1 because we want to include Reg[C]
         case .Concat: vm_concat(vm, ra, stack[inst.b:inst.c + 1])
         case .Len:
             rb := stack[inst.b]
             #partial switch rb.type {
             case .String:
-                ra^ = value_make_number(cast(f64)rb.ostring.len)
+                ra^ = value_make(rb.ostring.len)
             case .Table:
                 index := 1
                 count := 0
@@ -314,7 +316,7 @@ vm_execute :: proc(vm: ^VM) {
                 // TODO(2025-04-13): Optimize by separating array from hash!
                 for {
                     defer index += 1
-                    key := value_make_number(cast(f64)index)
+                    key      := value_make(index)
                     value, _ := table_get(table, key)
                     if value_is_nil(value) {
                         break
@@ -322,7 +324,7 @@ vm_execute :: proc(vm: ^VM) {
                         count += 1
                     }
                 }
-                ra^ = value_make_number(cast(f64)count)
+                ra^ = value_make(count)
             case:
                 vm_runtime_error(vm, "get length of a %s value", value_type_name(rb))
             }
@@ -345,7 +347,7 @@ arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction,
     if !value_is_number(x) || !value_is_number(y) {
         arith_error(vm, x, y)
     }
-    ra^ = value_make_number(op(x.data.number, y.data.number))
+    ra^ = value_make(op(x.data.number, y.data.number))
 }
 
 @(private="file")
@@ -366,7 +368,7 @@ compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruct
         compare_error(vm, x, y)
         return
     }
-    ra^ = value_make_boolean(op(x.data.number, y.data.number))
+    ra^ = value_make(op(x.data.number, y.data.number))
 }
 
 @(private="file")
@@ -388,7 +390,7 @@ vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
         strings.write_string(builder, ostring_to_string(arg.ostring))
     }
     s := strings.to_string(builder^)
-    ra^ = value_make_string(ostring_new(vm, s))
+    ra^ = value_make(ostring_new(vm, s))
 }
 
 @(private="file")

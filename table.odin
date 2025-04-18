@@ -38,7 +38,7 @@ Notes:
  */
 table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) #optional_ok {
     if table.count == 0 {
-        return value_make_nil(), false
+        return value_make(), false
     }
 
     entry := find_entry(table.entries, key)
@@ -81,7 +81,7 @@ table_unset :: proc(table: ^Table, key: Value) {
     }
 
     // Tombstones are invalid keys with non-nil values.
-    entry^ = Table_Entry{key = value_make_nil(), value = value_make_boolean(true)}
+    entry^ = Table_Entry{key = value_make(), value = value_make(true)}
 }
 
 /*

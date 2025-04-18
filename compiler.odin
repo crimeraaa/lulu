@@ -2,7 +2,6 @@
 package lulu
 
 import "core:fmt"
-import "core:io"
 import "core:log"
 import sa "core:container/small_array"
 
@@ -70,8 +69,8 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
     compiler.scope_depth -= 1
     depth  := compiler.scope_depth
     reg    := sa.len(compiler.active) - 1
-
-    for reg >= 0 && compiler.chunk.locals.data[reg].depth > depth {
+    locals := dyarray_slice(&compiler.chunk.locals)
+    for reg >= 0 && locals[reg].depth > depth {
         sa.pop_back(&compiler.active)
         compiler_pop_reg(compiler, cast(u16)reg)
         reg -= 1
@@ -233,12 +232,12 @@ compiler_discharge_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16, lo
     case .True:     compiler_code_ABC(compiler, .Load_Boolean, reg, 1, 0)
     case .False:    compiler_code_ABC(compiler, .Load_Boolean, reg, 0, 0)
     case .Number:
-        index := compiler_add_constant(compiler, value_make_number(expr.number))
+        index := compiler_add_constant(compiler, value_make(expr.number))
         compiler_code_ABx(compiler, .Load_Constant, reg, index)
     case .Constant:
         compiler_code_ABx(compiler, .Load_Constant, reg, expr.index)
     case .Need_Register:
-        compiler.chunk.code[expr.pc].a = reg
+        dyarray_get_ptr(&compiler.chunk.code, expr.pc).a = reg
     case .Discharged:
         // e.g. getting a local variable
         if reg != expr.reg {
@@ -293,18 +292,18 @@ compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
 
 
 /*
-Overview
+**Overview**
 -   Transforms `expr` to `.Discharged` or `.Constant`.
 -   This is useful to convert expressions that may either be literals or not
     and get their resulting RK register.
 
-Analogous to:
+**Analogous to:**
 -   'lcode.c:luaK_exp2RK(FuncState *fs, expdesc *e)' in Lua 5.1.5.
 
-Links:
+**Links:**
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2RK
 
-Notes:
+**Notes:**
 -   For most cases, constant values' indexes can safely fit in an RK.
 -   However, if that is not true, the constant value must first be pushed to a
     register.
@@ -315,7 +314,7 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     compiler_expr_to_value(compiler, expr)
 
     add_rk :: proc(vm: ^VM, chunk: ^Chunk, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
-        if len(chunk.constants) <= MAX_INDEX_RK {
+        if dyarray_len(chunk.constants) <= MAX_INDEX_RK {
             index := chunk_add_constant(vm, chunk, value)
             expr_set_index(expr, .Constant, index)
             return reg_as_k(cast(u16)index), true
@@ -327,13 +326,13 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     chunk := compiler.chunk
     #partial switch type := expr.type; type {
     case .Nil:
-        return add_rk(vm, chunk, value_make_nil(), expr) or_break
+        return add_rk(vm, chunk, value_make(), expr) or_break
     case .True:
-        return add_rk(vm, chunk, value_make_boolean(true), expr) or_break
+        return add_rk(vm, chunk, value_make(true), expr) or_break
     case .False:
-        return add_rk(vm, chunk, value_make_boolean(false), expr) or_break
+        return add_rk(vm, chunk, value_make(false), expr) or_break
     case .Number:
-        return add_rk(vm, chunk, value_make_number(expr.number), expr) or_break
+        return add_rk(vm, chunk, value_make(expr.number), expr) or_break
     case .Constant:
         // Constant can fit in argument C?
         if index := expr.index; index <= MAX_INDEX_RK {
@@ -351,7 +350,7 @@ compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
 
 
 /*
-Analogous to:
+**Analogous to:**
 -   `lcode.c:luaK_nil(FuncState *fs, int from, int n)`
  */
 compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
@@ -368,7 +367,7 @@ compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
         }
         // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
         folding: if pc > 0 {
-            prev := &chunk.code[pc - 1]
+            prev := dyarray_get_ptr(&chunk.code, pc - 1)
             if prev.op != .Load_Nil {
                 break folding
             }
@@ -472,15 +471,17 @@ Notes:
     above array are currently in scope.
  */
 compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16, ok: bool) {
-    locals := compiler.chunk.locals
+    locals := dyarray_slice(&compiler.chunk.locals)
 
     /*
     Notes:
-    -   `active` is NOT what we want to return, as it is an index to `chunk.locals`.
-    -   `reg`
+    -   `active` is NOT what we want to return, as it is an index to
+        `chunk.locals`.
+    -   `reg` IS what we want to return, as we assume that locals are only
+        ever stored sequentially starting from the 0th register.
      */
     #reverse for active, reg in sa.slice(&compiler.active) {
-        local := locals.data[active]
+        local := locals[active]
         if local.ident == ident {
             return cast(u16)reg, true
         }
@@ -575,7 +576,7 @@ Links:
 compiler_code_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     compiler_expr_to_value(compiler, right)
 
-    code := compiler.chunk.code[:]
+    code := dyarray_slice(&compiler.chunk.code)
 
     // This is past the first consecutive concat, so we can fold them.
     if right.type == .Need_Register && code[right.pc].op == .Concat {
@@ -687,7 +688,12 @@ compiler_code_set_array :: proc(compiler: ^Compiler, reg: u16, total, to_store: 
     // TOOD(2025-04-15): Check for LUA_MULTRET analog?
     b := cast(u16)to_store
 
-    // Add 1 to distinguish from C == 0 which is a special case
+    /* 
+    Notes (2025-04-18):
+    -   We subtract 1 in case `total == FIELDS_PER_FLUSH` which would result in
+        C == 2. Otherwise, it will be decoded as the wrong offset!
+    -   We add 1 to distinguish from C == 0 which is a special case.
+     */
     c := ((total - 1) / FIELDS_PER_FLUSH) + 1
 
     if c <= MAX_C {
