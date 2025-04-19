@@ -205,6 +205,22 @@ void luaD_callhook (lua_State *L, int event, int line) {
   }
 }
 
+/**
+ * @brief
+ *  - Vararg functions will copy their fixed arguments to the top of the stack
+ *    and set `L->top` accordingly.
+ *  - This allow for the correct registers to be used for locals and
+ *    temporaries.
+ *  - `L->base` is not changed by this function; it is however updated very
+ *    soon after the call to this in `luaD_precall()`.
+ *
+ * @note 2025-04-19:
+ *  - To get varargs, we will need to poke at stack slots *below* the new base
+ *    pointer.
+ *
+ * @return
+ *  The index of the new stack frame base pointer.
+ */
 static StkId adjust_varargs (lua_State *L, Proto *p, int actual) {
   int i;
   int nfixargs = p->numparams;
@@ -261,43 +277,53 @@ static StkId tryfuncTM (lua_State *L, StkId func) {
   ((L->ci == L->end_ci) ? growCI(L) : \
    (condhardstacktests(luaD_reallocCI(L, L->size_ci)), ++L->ci))
 
-int luaD_precall (lua_State *L, StkId func, int nresults) {
-  LClosure *cl;
-  ptrdiff_t funcr;
-  if (!ttisfunction(func)) /* `func' is not a function? */
-    func = tryfuncTM(L, func);  /* check the `function' tag method */
-  funcr = savestack(L, func);
-  cl = &clvalue(func)->l;
+
+int luaD_precall (lua_State *L, StkId func_value, int nresults) {
+  LClosure *closure;
+  ptrdiff_t saved_stack; /* size in terms of `char` (bytes) */
+  if (!ttisfunction(func_value)) {/* `func' is not a function? */
+    /* check the `function' tag method */
+    func_value = tryfuncTM(L, func_value);
+  }
+
+  saved_stack = savestack(L, func_value);
+  closure = &clvalue(func_value)->l;
   L->ci->savedpc = L->savedpc;
-  if (!cl->isC) {  /* Lua function? prepare its call */
-    CallInfo *ci;
-    StkId st, base;
-    Proto *p = cl->p;
+  if (!closure->isC) {  /* Lua function? prepare its call */
+    CallInfo *callinfo;
+    StkId st; /* iterator for zero-init */
+    StkId base; /* points to first fixed argument */
+    Proto *p = closure->p;
     luaD_checkstack(L, p->maxstacksize);
-    func = restorestack(L, funcr);
+    /* `luaD_checkstack()` may reallocate the stack, so re-validate */
+    func_value = restorestack(L, saved_stack);
     if (!p->is_vararg) {  /* no varargs? */
-      base = func + 1;
-      if (L->top > base + p->numparams)
+      base = func_value + 1; /* point to first fixed argument */
+      if (L->top > base + p->numparams) {
         L->top = base + p->numparams;
+      }
     }
     else {  /* vararg function */
-      int nargs = cast_int(L->top - func) - 1; /* stack frame size w/o func */
-      // print_stack(L, "before");
+      /* stack frame size (includes fixed and varargs) without considering
+        `func_value` */
+      int nargs = cast_int(L->top - func_value) - 1;
       base = adjust_varargs(L, p, nargs);
-      func = restorestack(L, funcr);  /* previous call may change the stack */
-      // print_stack(L, "after");
+      /* `adjust_varargs()` may change stack when `LUA_COMPAT_VARARG` defined */
+      func_value = restorestack(L, saved_stack);
     }
-    ci = inc_ci(L);  /* now `enter' new function */
-    ci->func = func;
-    L->base = ci->base = base;
-    ci->top = L->base + p->maxstacksize;
-    lua_assert(ci->top <= L->stack_last);
+    callinfo = inc_ci(L);  /* now `enter' new function */
+    callinfo->func = func_value;
+    L->base = callinfo->base = base;
+    callinfo->top = L->base + p->maxstacksize;
+    lua_assert(callinfo->top <= L->stack_last);
     L->savedpc = p->code;  /* starting point */
-    ci->tailcalls = 0;
-    ci->nresults = nresults;
-    for (st = L->top; st < ci->top; st++) /* zero initialize this stack frame */
+    callinfo->tailcalls = 0;
+    callinfo->nresults = nresults;
+    /* zero-init this stack frame; mainly meant for locals at the start */
+    for (st = L->top; st < callinfo->top; st++) {
       setnilvalue(st);
-    L->top = ci->top;
+    }
+    L->top = callinfo->top;
     if (L->hookmask & LUA_MASKCALL) {
       L->savedpc++;  /* hooks assume 'pc' is already incremented */
       luaD_callhook(L, LUA_HOOKCALL, -1);
@@ -306,22 +332,25 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
     return PCRLUA;
   }
   else {  /* if is a C function, call it */
-    CallInfo *ci;
+    CallInfo *callinfo;
     int n;
     luaD_checkstack(L, LUA_MINSTACK);  /* ensure minimum stack size */
-    ci = inc_ci(L);  /* now `enter' new function */
-    ci->func = restorestack(L, funcr);
-    L->base = ci->base = ci->func + 1;
-    ci->top = L->top + LUA_MINSTACK;
-    lua_assert(ci->top <= L->stack_last);
-    ci->nresults = nresults;
-    if (L->hookmask & LUA_MASKCALL)
+    callinfo       = inc_ci(L);  /* now `enter' new function */
+    callinfo->func = restorestack(L, saved_stack);
+    L->base        = callinfo->base = callinfo->func + 1;
+    callinfo->top  = L->top + LUA_MINSTACK;
+
+    lua_assert(callinfo->top <= L->stack_last);
+    callinfo->nresults = nresults;
+    if (L->hookmask & LUA_MASKCALL) {
       luaD_callhook(L, LUA_HOOKCALL, -1);
+    }
     lua_unlock(L);
     n = (*curr_func(L)->c.f)(L);  /* do the actual call */
     lua_lock(L);
-    if (n < 0)  /* yielding? */
+    if (n < 0) { /* yielding? */
       return PCRYIELD;
+    }
     else {
       luaD_poscall(L, L->top - n);
       return PCRC;
@@ -497,8 +526,13 @@ static void f_parser (lua_State *L, void *ud) {
   struct SParser *p = cast(struct SParser *, ud);
   int c = luaZ_lookahead(p->z);
   luaC_checkGC(L);
-  tf = ((c == LUA_SIGNATURE[0]) ? luaU_undump : luaY_parser)(L, p->z,
-                                                             &p->buff, p->name);
+
+  if (c == LUA_SIGNATURE[0]) { /* Is possible pre-compiled code? */
+    tf = luaU_undump(L, p->z, &p->buff, p->name);
+  } else {
+    tf = luaY_parser(L, p->z, &p->buff, p->name);
+  }
+
   cl = luaF_newLclosure(L, tf->nups, hvalue(gt(L)));
   cl->l.p = tf;
   for (i = 0; i < tf->nups; i++)  /* initialize eventual upvalues */

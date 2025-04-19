@@ -70,13 +70,17 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
     depth  := compiler.scope_depth
     reg    := sa.len(compiler.active) - 1
     locals := dyarray_slice(&compiler.chunk.locals)
+    endpc  := compiler.chunk.pc
 
-    // fmt.println("before:\n\t", locals, "\n\t", sa.slice(&compiler.active))
-    // defer fmt.println("after:\n\t", locals, "\n\t", sa.slice(&compiler.active))
+    fmt.printfln("block(%i) before:\n\t%v\n\t%v",
+                 depth + 1, locals, sa.slice(&compiler.active))
+    defer fmt.printfln("block(%i) after:\n\t%v\n\t%v",
+                       depth + 1, locals, sa.slice(&compiler.active))
 
     // Don't pop registers as we'll go below the active count!
     for reg >= 0 && locals[reg].depth > depth {
         sa.pop_back(&compiler.active)
+        locals[reg].endpc = endpc
         reg -= 1
     }
     compiler.free_reg = reg + 1

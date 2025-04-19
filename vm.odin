@@ -116,7 +116,7 @@ vm_destroy :: proc(vm: ^VM) {
     table_destroy(vm, &vm.globals)
 
     when DEBUG_TRACE_EXEC {
-        objects_print_all(vm)
+        // objects_print_all(vm)
     }
     object_free_all(vm)
     strings.builder_destroy(&vm.builder)

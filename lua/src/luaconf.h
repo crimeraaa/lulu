@@ -757,10 +757,35 @@ union luai_Cast { double l_d; long l_l; };
 ** without modifying the main part of the file.
 */
 
-#undef LUA_COMPAT_VARARG
-#undef LUA_COMPAT_MOD
-#undef LUA_COMPAT_GFIND
 #undef LUA_COMPAT_OPENLIB
+#undef LUA_COMPAT_GFIND
+#undef LUA_COMPAT_LSTR
+#undef LUA_COMPAT_MOD
+#undef LUA_COMPAT_VARARG
+
+#include <assert.h>
+#define lua_assert  assert
+
+/**
+ * @brief 2025-04-07:
+ *  My addition. Used to differentiate from `int` return values of 0 or 1.
+ */
+#ifndef __cplusplus
+
+/* https://gcc.gnu.org/onlinedocs/cpp/Standard-Predefined-Macros.html */
+#if defined(__STDC__) && __STDC_VERSION__ >= 199901L
+#include <stdbool.h>
+
+#else /* __STDC_VERSION__ < C99 */
+
+/* lol */
+#define bool  int
+#define true  1
+#define false 0
+
+#endif /* __STDC__ */
+
+#endif /* __cplusplus */
 
 
 #endif

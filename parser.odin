@@ -234,7 +234,6 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
         // constants array.
         ident := ostring_new(parser.vm, parser.consumed.lexeme)
         local_decl(parser, compiler, ident, count_vars)
-
         if !parser_match(parser, .Comma) {
             break
         }
@@ -273,7 +272,7 @@ local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counte
     #reverse for active in sa.slice(&compiler.active) {
         local := locals[active]
         // Already poking at initialized locals in outer scopes?
-        if local.depth != UNINITIALIZED_LOCAL && local.depth < depth {
+        if local.depth < depth {
             break
         }
         if local.ident == ident {
@@ -345,8 +344,8 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
  */
 @(private="file")
 local_adjust :: proc(compiler: ^Compiler, nvars: int) {
-    // startpc := compiler.chunk.pc
-    depth := compiler.scope_depth
+    startpc := compiler.chunk.pc
+    depth   := compiler.scope_depth
 
     /*
     **Assumptions**
@@ -361,7 +360,9 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
     for i := nvars; i > 0; i -= 1 {
         // `lparser.c:getlocvar(fs, i)`
         index := active[nactive - i]
-        locals[index].depth = depth
+        local := &locals[index]
+        local.depth   = depth
+        local.startpc = startpc
     }
 }
 

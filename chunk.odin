@@ -23,7 +23,7 @@ Chunk :: struct {
 Local :: struct {
     ident: ^OString `fmt:"q"`, // see `string.odin:ostring_fmt()`.
     depth: int,
-    // startpc, endpc: int,
+    startpc, endpc: int,
 }
 
 local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
@@ -70,13 +70,37 @@ chunk_add_constant :: proc(vm: ^VM, chunk: ^Chunk, value: Value) -> (index: u32)
 chunk_add_local :: proc(vm: ^VM, chunk: ^Chunk, ident: ^OString) -> (index: u16) {
     // Don't reserve registers here as our initializer expressions may do so
     // already, or we implicitly load nil.
-    dyarray_append(vm, &chunk.locals, Local{ident, UNINITIALIZED_LOCAL})
+    dyarray_append(vm, &chunk.locals, Local{
+        ident   = ident,
+        depth   = UNINITIALIZED_LOCAL,
+        startpc = chunk.pc,
+        endpc   = 0,
+    })
     return cast(u16)dyarray_len(chunk.locals) - 1
 }
 
 
+chunk_get_local_name :: proc(chunk: ^Chunk, reg, pc: int) -> (name: string, ok: bool) {
+    counter := reg
+    locals  := dyarray_slice(&chunk.locals)
+    for local in locals {
+        // This local is outside the range of the pc's scope.
+        if local.startpc > pc {
+            break;
+        }
+        // This local is in range of the pc's scope?
+        if pc < local.endpc {
+            counter -= 1
+            if counter == 0 {
+                return ostring_to_string(local.ident), true
+            }
+        }
+    }
+    return "", false
+}
+
+
 chunk_destroy :: proc(vm: ^VM, chunk: ^Chunk) {
-    allocator := vm.allocator
     dyarray_delete(vm, &chunk.constants)
     dyarray_delete(vm, &chunk.code)
     dyarray_delete(vm, &chunk.line)

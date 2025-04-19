@@ -18,8 +18,8 @@
 #define resethookcount(L)	(L->hookcount = L->basehookcount)
 
 
-LUAI_FUNC void luaG_typeerror (lua_State *L, const TValue *o,
-                                             const char *opname);
+LUAI_FUNC void luaG_typeerror (lua_State *L, const TValue *culprit,
+                                             const char *action);
 LUAI_FUNC void luaG_concaterror (lua_State *L, StkId p1, StkId p2);
 LUAI_FUNC void luaG_aritherror (lua_State *L, const TValue *p1,
                                               const TValue *p2);

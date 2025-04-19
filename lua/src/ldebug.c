@@ -33,11 +33,16 @@
 static const char *getfuncname (lua_State *L, CallInfo *ci, const char **name);
 
 
-static int currentpc (lua_State *L, CallInfo *ci) {
-  if (!isLua(ci)) return -1;  /* function is not a Lua function? */
-  if (ci == L->ci)
-    ci->savedpc = L->savedpc;
-  return pcRel(ci->savedpc, ci_func(ci)->l.p);
+static int currentpc (lua_State *L, CallInfo *callinfo) {
+  if (!isLua(callinfo)) {  /* function is not a Lua function? */
+    return -1;
+  }
+  /* For the very first call, `callinfo->savedpc` is `NULL`. */
+  if (callinfo == L->ci) {
+    callinfo->savedpc = L->savedpc;
+  }
+  /* Relevant expansion: `(ci->savedpc - ci_func(callinfo)->l.p->code) - 1` */
+  return pcRel(callinfo->savedpc, ci_func(callinfo)->l.p);
 }
 
 
@@ -494,13 +499,23 @@ static const char *kname (Proto *p, int c) {
 }
 
 
+/**
+ * @note 2025-04-19:
+ *  Callstack to check:
+ *  - `ldebug.c:luaG_typeerror()`
+ *  - `ldebug.c:isinstack()`
+ *  - `ldebug.c:getobjname()`
+ *  - `ldebug.c:currentpc()`
+ *  - `lfunc.c:luaF_getlocalname()`
+ */
 static const char *getobjname (lua_State *L, CallInfo *ci, int stackpos,
                                const char **name) {
   if (isLua(ci)) {  /* a Lua function? */
     Proto *p = ci_func(ci)->l.p;
     int pc = currentpc(L, ci);
     Instruction i;
-    *name = luaF_getlocalname(p, stackpos+1, pc);
+    /* TODO: Why `stackpos + 1? */
+    *name = luaF_getlocalname(p, stackpos + 1, pc);
     if (*name)  /* is a local? */
       return "local";
     i = symbexec(p, pc, stackpos);  /* try symbolic execution */
@@ -556,25 +571,36 @@ static const char *getfuncname (lua_State *L, CallInfo *ci, const char **name) {
 
 
 /* only ANSI way to check whether a pointer points to an array */
-static int isinstack (CallInfo *ci, const TValue *o) {
-  StkId p;
-  for (p = ci->base; p < ci->top; p++)
-    if (o == p) return 1;
-  return 0;
+static bool isinstack (CallInfo *ci, const TValue *target) {
+  StkId slot;
+  for (slot = ci->base; slot < ci->top; slot++) {
+    if (target == slot) {
+      return true;
+    }
+  }
+  return false;
 }
 
 
-void luaG_typeerror (lua_State *L, const TValue *o, const char *op) {
+/**
+ * @param culprit
+ *  This is the `TValue`, either a register (local, temporary) or a constant
+ *  that resulted in this function being called.
+ */
+void luaG_typeerror (lua_State *L, const TValue *culprit, const char *action) {
   const char *name = NULL;
-  const char *t = luaT_typenames[ttype(o)];
-  const char *kind = (isinstack(L->ci, o)) ?
-                         getobjname(L, L->ci, cast_int(o - L->base), &name) :
-                         NULL;
-  if (kind)
+  const char *t    = luaT_typenames[ttype(culprit)];
+  const char *kind = NULL;
+  if (isinstack(L->ci, culprit)) { /* Culprit is stored in a register? */
+    int index = cast_int(culprit - L->base);
+    kind = getobjname(L, L->ci, index, &name);
+  }
+  if (kind) {
     luaG_runerror(L, "attempt to %s %s " LUA_QS " (a %s value)",
-                op, kind, name, t);
-  else
-    luaG_runerror(L, "attempt to %s a %s value", op, t);
+                      action, kind, name, t);
+  } else {
+    luaG_runerror(L, "attempt to %s a %s value", action, t);
+  }
 }
 
 

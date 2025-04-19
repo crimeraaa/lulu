@@ -358,9 +358,21 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
 #define dojump(L,pc,i)	{(pc) += (i); luai_threadyield(L);}
 
 
+/**
+ * @note 2025-04-19:
+ *  This updates `L->savedpc` by assigning it to the local `pc`.
+ *  This is used for debugging purposes.
+ *
+ *  This also updates the local `base`.
+ */
 #define Protect(x)	{ L->savedpc = pc; {x;}; base = L->base; }
 
 
+/**
+ * @note 2025-04-19:
+ *  This calls `Protect()` if at least 1 argument is a non-number.
+ *  This will update `L->savedpc`. See the notes for `Protect()`.
+ */
 #define arith_op(op,tm) { \
         TValue *rb = RKB(i); \
         TValue *rc = RKC(i); \
@@ -481,6 +493,7 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         TValue *rb = KBx(i);
         sethvalue(L, &g, cl->env);
         lua_assert(ttisstring(rb));
+        /* Note (2025-04-19): `Protect()` updates `L->savedpc`. */
         Protect(luaV_gettable(L, &g, rb, ra));
         continue;
       }
@@ -736,6 +749,11 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         setobjs2s(L, cb+1, ra+1);
         setobjs2s(L, cb, ra);
         L->top = cb+3;  /* func. + 2 args (state and index) */
+        /**
+         * @note 2025-04-19:
+         *  Unlike previous calls to `Protect()`, this will most likely update
+         *  `L->base`, hence we need to update the local `base`.
+         */
         Protect(luaD_call(L, cb, GETARG_C(i)));
         L->top = L->ci->top;
         cb = RA(i) + 3;  /* previous call may change the stack */
@@ -789,6 +807,7 @@ void luaV_execute (lua_State *L, int nexeccalls) {
           }
         }
         setclvalue(L, ra, ncl);
+        /* Same comment as in `OP_TFORLOOP`. */
         Protect(luaC_checkGC(L));
         continue;
       }
@@ -798,14 +817,32 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         CallInfo *ci = L->ci;
         int nvarargs = cast_int(ci->base - ci->func) - cl->p->numparams - 1;
         if (b == LUA_MULTRET) {
-          /* check if we can accomodate the pushed varargs */
+          /**
+           * @brief
+           *  Checks if we can accomodate the pushed varargs.
+           *
+           * @note 2025-04-19:
+           *  The call to `luaD_checkstack()` may reallocate the stack,
+           *  thus updating `L->base`. Local `base` will likewise be updated.
+           */
           Protect(luaD_checkstack(L, nvarargs));
           ra = RA(i);  /* previous call may change the stack */
           b = nvarargs;
           L->top = ra + nvarargs;
         }
+        /**
+         * @brief 2025-04-19:
+         *  To get varargs, we need to poke at the stack slots *before* the
+         *  current stack frame base pointer.
+         *
+         * @note 2025-04-19:
+         *  We do so because functions with varargs would have gone through
+         *  `luaD_precall()`.
+         *  In that function we would have pushed the fixed arguments to the top
+         *  and set `L->top`, leaving varargs below the first fixed argument.
+         */
         for (j = 0; j < b; j++) {
-          if (j < nvarargs) { /* varargs reside *before* base pointer */
+          if (j < nvarargs) {
             setobjs2s(L, ra + j, ci->base - nvarargs + j);
           }
           else {

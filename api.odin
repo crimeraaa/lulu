@@ -102,7 +102,7 @@ Notes:
  */
 @(private="package")
 push_rawvalue :: proc(vm: ^VM, value: Value) {
-    vm.top = &vm.top[1]
+    vm.top     = &vm.top[1]
     vm.top[-1] = value
 }
 
