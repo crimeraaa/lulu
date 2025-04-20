@@ -10,9 +10,10 @@ source printers/lua.py
 break lua.c:main
 # Protected call of `luaD_protectedparser()`
 break ldo.c:f_parser
-break lapi.c:lua_pcall
-break ldo.c:luaD_call if nResults == -1
-break lvm.c:luaV_execute
+break luaY_parser
+break lua_pcall
+break luaD_call if nResults == -1
+break luaV_execute
 
 # file ./bin/lulu
 # break lulu::main
