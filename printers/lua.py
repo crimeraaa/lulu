@@ -1,60 +1,62 @@
 import gdb  # Need to configure .vscode/settings.json for this to show in PyLance!
 from enum import Enum
-from typing import Final, Union
+from typing import Final, Union, TypeAlias
 
 
 def lua_pretty_printers_lookup(val: gdb.Value):
+    # Strip away `const` and/or `volatile`
+    utype = val.type.unqualified()
     try:
-        # Strip away `const` and/or `volatile`
-        utype = val.type.unqualified()
-
-        # Strip away pointers until we hit the most pointed-to type
-        # We may have a void pointer, in which case `val.dereference()` will throw.
+        # Strip away pointers until we hit the most pointed-to type.
+        # It may be a `void *` which would cause `val.dereference()` to throw.
         while utype.code == gdb.TYPE_CODE_PTR:
             val   = val.dereference()
             utype = val.type.unqualified()
+
         return lua_pretty_printers[utype.name](val)
-    except Exception:
+    except: # Don't care about the specific error type
         return None
 
 
 gdb.pretty_printers.append(lua_pretty_printers_lookup)
 
+
 ###=== TOKEN PRINTER ======================================================= {{{
 
 
 class TokenPrinter:
-    __type:    str
-    __seminfo: str | float | None
+    """ NOTE(2025-04-20): Keep track of the field names in `llex.h`! """
+    _type:    str
+    _seminfo: str | float | None
 
 
     def __init__(self, token: gdb.Value):
-        # enum already have their proper names
-        self.__type = str(token["type"])
-        seminfo     = token["seminfo"]
-        match self.__type:
+        # In GDB, enums already have their proper names
+        self._type = str(token["type"])
+        seminfo    = token["seminfo"]
+        match self._type:
             case "Token_Number":
-                self.__seminfo = float(seminfo["r"])
+                self._seminfo = float(seminfo["r"])
             case "Token_String":
                 # `seminfo.ts` is already `TString *` so no need to get address.
-                self.__seminfo = getstr(seminfo["ts"])
+                self._seminfo = getstr(seminfo["ts"])
             case "Token_Name":
-                self.__seminfo = getstr(seminfo["ts"])
+                self._seminfo = getstr(seminfo["ts"])
             case "Token_Eos":
-                self.__seminfo = -1
+                self._seminfo = -1
             case _:
-                self.__seminfo = None
+                self._seminfo = None
 
         # Enquote all strings
-        if isinstance(self.__seminfo, str):
-            self.__seminfo = f"\"{self.__seminfo}\""
+        if isinstance(self._seminfo, str):
+            self._seminfo = f"\"{self._seminfo}\""
 
 
     def to_string(self):
-        if self.__seminfo:
-            return f"{self.__type}: {self.__seminfo}"
+        if self._seminfo:
+            return f"{self._type}: {self._seminfo}"
         else:
-            return self.__type
+            return self._type
 
 
 ###=== }}} =====================================================================
@@ -66,37 +68,34 @@ OpCode: Final = gdb.lookup_type("OpCode")
 
 
 class InstructionPrinter:
-    __val: int
+    _ip:     int
+    _pretty: str
 
 
     def __init__(self, val: gdb.Value):
-        self.__val = int(val)
+        # `Instruction` is just a typedef for some unsigned 32-bit integer
+        self._ip = int(val)
+        # GDB already represents enums as their names, not their values
+        op   = str(gdb.Value(GET_OPCODE(self._ip)).cast(OpCode))
+        a    = GETARG_A(self._ip)
+        args = [f"{op}: A={a}, "]
+        if op in luaP_opmodes:
+            # The only ones we mapped are iABx or iAsBx
+            if luaP_opmodes[op] == OpMode.iABx:
+                bx = GETARG_Bx(self._ip)
+                args.append(f"Bx={bx}")
+            else:
+                sbx = GETARG_sBx(self._ip)
+                args.append(f"sBx={sbx}")
+        else:
+            b = GETARG_B(self._ip)
+            c = GETARG_C(self._ip)
+            args.append(f"B={b}, C={c}")
+        self._pretty = "".join(args)
 
 
     def to_string(self) -> str:
-        try:
-            ip   = self.__val
-            op   = str(gdb.Value(GET_OPCODE(ip)).cast(OpCode))
-            a    = GETARG_A(ip)
-
-            args = [f"{op}: A={a}, "]
-            if op in luaP_opmodes:
-                match luaP_opmodes[op]:
-                    case OpMode.iABx:
-                        bx = GETARG_Bx(ip)
-                        args.append(f"Bx={bx}")
-
-                    case OpMode.iAsBx:
-                        sbx = GETARG_sBx(ip)
-                        args.append(f"sBx={sbx}")
-            else:
-                b = GETARG_B(ip)
-                c = GETARG_C(ip)
-                args.append(f"B={b}, C={c}")
-
-            return "".join(args)
-        except (ValueError, TypeError, IndexError, KeyError) as err:
-            return repr(err)
+        return self._pretty
 
 
 ###=== lopcodes.h ========================================================== {{{
@@ -208,7 +207,7 @@ luaT_typenames: dict[lua_Type, str] = {
 
 
 # `lobject.h:union Value`
-Value = Union[None|bool|int|str|gdb.Value]
+Value: TypeAlias = Union[None | bool | int | str | gdb.Value]
 
 
 def bvalue(tvalue: gdb.Value) -> bool:
@@ -247,56 +246,54 @@ def getstr(ts: gdb.Value) -> str:
 
 
 class TValuePrinter:
-    __value: Value
-    __tag:   lua_Type
+    """ NOTE(2025-04-20): Keep track of the field names in `lobject.h`! """
+    _value: Value
+    _tag:   lua_Type
 
 
     def __init__(self, value: gdb.Value):
+        # We assume `value.tt` is in range of `lua_Type`
         tag = lua_Type(int(value["tt"]))
         actual: Value
-        try:
-            match tag:
-                case lua_Type.NIL:           actual = None
-                case lua_Type.NONE:          actual = None
-                case lua_Type.BOOLEAN:       actual = bvalue(value)
-                case lua_Type.LIGHTUSERDATA: actual = pvalue(value)
-                case lua_Type.NUMBER:        actual = nvalue(value)
-                case lua_Type.STRING:        actual = svalue(value)
-                case _:
-                    actual = gcvalue(value).cast(VOID_POINTER)
-        except Exception as err:
-            print(repr(err))
-            return
-        # Can't print `actual` in case it's a `gdb.Value`; that will cause us
-        # to recurse indefinitely!
-        self.__value = actual
-        self.__tag   = tag
+        match tag:
+            case lua_Type.NIL:           actual = None
+            case lua_Type.NONE:          actual = None
+            case lua_Type.BOOLEAN:       actual = bvalue(value)
+            case lua_Type.LIGHTUSERDATA: actual = pvalue(value)
+            case lua_Type.NUMBER:        actual = nvalue(value)
+            case lua_Type.STRING:        actual = svalue(value)
+            case _:
+                actual = gcvalue(value).cast(VOID_POINTER)
+        self._value = actual
+        self._tag   = tag
 
 
     def to_string(self) -> str:
-        match self.__tag:
+        match self._tag:
             case lua_Type.NONE:
                 return "none"
             case lua_Type.NIL:
                 return "nil"
             case lua_Type.BOOLEAN:
-                return "true" if self.__value else "false"
+                return "true" if self._value else "false"
             case lua_Type.NUMBER:
-                return str(self.__value)
+                return str(self._value)
             case lua_Type.STRING:
-                return f"\"{self.__value}\""
+                return f"\"{self._value}\""
             case _:
                 # GDB already knows how to print addresses
-                addr = self.__value.cast(VOID_POINTER)
-                return f"{luaT_typenames[self.__tag]}: {str(addr)}"
+                addr = self._value.cast(VOID_POINTER)
+                return f"{luaT_typenames[self._tag]}: {str(addr)}"
 
 
 ###=== }}} =====================================================================
 
 
-lua_pretty_printers: Final = {
+lua_pretty_printers = {
     "Instruction": InstructionPrinter,
     "TValue":      TValuePrinter,
     "StkId":       TValuePrinter,
     "Token":       TokenPrinter,
 }
+
+
