@@ -33,6 +33,11 @@
 static const char *getfuncname (lua_State *L, CallInfo *ci, const char **name);
 
 
+/**
+ * @return
+ *  The absolute index of the instruction that caused the error to be raised.
+ *  Think the index of `callinfo->savedpc` in its `Proto::code` array.
+ */
 static int currentpc (lua_State *L, CallInfo *callinfo) {
   if (!isLua(callinfo)) {  /* function is not a Lua function? */
     return -1;
@@ -41,7 +46,14 @@ static int currentpc (lua_State *L, CallInfo *callinfo) {
   if (callinfo == L->ci) {
     callinfo->savedpc = L->savedpc;
   }
-  /* Relevant expansion: `(ci->savedpc - ci_func(callinfo)->l.p->code) - 1` */
+  /** 
+   * @brief
+   *  Relevant expansion: `(ci->savedpc - ci_func(callinfo)->l.p->code) - 1`
+   *
+   * @note 2025-04-20:
+   *  `pcRel()` subtracts 1 becasue `savedpc` always points to the instruction
+   *  *after* the current one.
+   */
   return pcRel(callinfo->savedpc, ci_func(callinfo)->l.p);
 }
 
@@ -278,7 +290,7 @@ LUA_API int lua_getinfo (lua_State *L, const char *what, lua_Debug *ar) {
 
 
 
-static int precheck (const Proto *pt) {
+static bool precheck (const Proto *pt) {
   check(pt->maxstacksize <= MAXSTACK);
   check(pt->numparams+(pt->is_vararg & VARARG_HASARG) <= pt->maxstacksize);
   check(!(pt->is_vararg & VARARG_NEEDSARG) ||
@@ -286,27 +298,27 @@ static int precheck (const Proto *pt) {
   check(pt->size_upvalues <= pt->nups);
   check(pt->size_lineinfo == pt->size_code || pt->size_lineinfo == 0);
   check(pt->size_code > 0 && GET_OPCODE(pt->code[pt->size_code-1]) == OP_RETURN);
-  return 1;
+  return true;
 }
 
 
 #define checkopenop(pt,pc)	luaG_checkopenop((pt)->code[(pc)+1])
 
-int luaG_checkopenop (Instruction i) {
+bool luaG_checkopenop (Instruction i) {
   switch (GET_OPCODE(i)) {
     case OP_CALL:
     case OP_TAILCALL:
     case OP_RETURN:
     case OP_SETLIST: {
       check(GETARG_B(i) == 0);
-      return 1;
+      return true;
     }
-    default: return 0;  /* invalid instruction after an open call */
+    default: return false;  /* invalid instruction after an open call */
   }
 }
 
 
-static int checkArgMode (const Proto *pt, int r, enum OpArgMask mode) {
+static bool checkArgMode (const Proto *pt, int r, enum OpArgMask mode) {
   switch (mode) {
     case OpArgN: check(r == 0); break;
     case OpArgU: break;
@@ -315,10 +327,23 @@ static int checkArgMode (const Proto *pt, int r, enum OpArgMask mode) {
       check(ISK(r) ? INDEXK(r) < pt->size_constants : r < pt->maxstacksize);
       break;
   }
-  return 1;
+  return true;
 }
 
 
+/**
+ * @brief
+ *  Executes `pt` all instructions up to, but not including, `lastpc`.
+ *
+ * @param pt
+ *  Where the relevant bytecode and constants are found.
+ *  
+ * @param lastpc
+ *  The index of the instruction that caused the error to be thrown.
+ * 
+ * @param reg
+ *  The index, into the stack frame, of the value that caused the error.
+ */
 static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
   int pc;
   int last;  /* stores position of last instruction that changed `reg' */
@@ -486,7 +511,7 @@ static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
 /* }====================================================== */
 
 
-int luaG_checkcode (const Proto *pt) {
+bool luaG_checkcode (const Proto *pt) {
   return (symbexec(pt, pt->size_code, NO_REG) != 0);
 }
 
@@ -514,7 +539,17 @@ static const char *getobjname (lua_State *L, CallInfo *ci, int stackpos,
     Proto *p = ci_func(ci)->l.p;
     int pc = currentpc(L, ci);
     Instruction i;
-    /* TODO: Why `stackpos + 1? */
+    /**
+     * @note 2025-04-20:
+     *  Since locals ALWAYS exist at the bottom of the stack, we can safely
+     *  assume they will occupy base indices 0, 1, 2, etc.
+     *
+     *  So if the local at index 0 is the culprit, that means we want to check
+     *  for the 1st local. Hence we add 1 to `stackpos`.
+     * 
+     * We must NEVER pass 0 as-is because that will result in the local
+     * `counter` being negative.
+     */
     *name = luaF_getlocalname(p, stackpos + 1, pc);
     if (*name)  /* is a local? */
       return "local";

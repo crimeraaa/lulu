@@ -7,8 +7,8 @@ def lua_pretty_printers_lookup(val: gdb.Value):
     # Strip away `const` and/or `volatile`
     utype = val.type.unqualified()
 
-    # Strip away pointers until we hit the most pointed-to type.
-    while utype.code == gdb.TYPE_CODE_PTR:
+    # Strip away the first layer of pointer
+    if utype.code == gdb.TYPE_CODE_PTR:
         # Get the pointed-to `gdb.Type`, e.g. `TValue` from `TValue *`.
         # This also works for `void *`; We end up with `void`.
         utype = utype.target().unqualified()
@@ -200,16 +200,8 @@ def gcvalue(tvalue: gdb.Value) -> gdb.Value:
 
 
 def svalue(tvalue: gdb.Value) -> str:
-    """
-    **Analogous to**
-    -   `&gcvalue(tvalue)->ts`
-
-    **Notes**
-    -   `TValue::value.gc->ts` itself is a `TString` structure, *not* a pointer.
-    -   We need to explicitly get the address in order to actually do pointer
-        arithmetic in `getstr()`.
-    """
-    return getstr(gcvalue(tvalue)["ts"].address)
+    # Let `TStringPrinter` handle it
+    return str(gcvalue(tvalue)["ts"])
 
 
 def getstr(tstring: gdb.Value) -> str:
@@ -232,10 +224,9 @@ def getstr(tstring: gdb.Value) -> str:
     """
     data    = (tstring + 1).cast(CONST_CHAR_POINTER)
     nchars  = tstring["tsv"]["len"]
-    quote   = '\'' if nchars == 1 else '\"'
 
     # Only `char *` and variants thereof can safely use the `.string()` method.
-    return "".join([quote, data.string(length = nchars), quote])
+    return data.string(length = nchars)
 
 
 class TValuePrinter:
@@ -272,7 +263,8 @@ class TValuePrinter:
             case lua_Type.NUMBER:
                 return str(self.__value)
             case lua_Type.STRING:
-                return f"\"{self.__value}\""
+                # `svalue()` returned a Python string
+                return self.__value
             case _:
                 # GDB already knows how to print addresses
                 addr = self.__value.cast(VOID_POINTER)
@@ -288,8 +280,28 @@ class TStringPrinter:
         self.__data = getstr(val.address)
 
 
-    def to_string(self):
+    def to_string(self) -> str:
         return self.__data
+
+    
+    def display_hint(self):
+        return "string"
+
+
+class LocVarPrinter:
+    __name:    str
+    __startpc: int
+    __endpc:   int
+    
+    
+    def __init__(self, val: gdb.Value):
+        self.__name    = str(val["varname"])
+        self.__startpc = int(val["startpc"])
+        self.__endpc   = int(val["endpc"])
+    
+
+    def to_string(self) -> str:
+        return f"{{{self.__name}: startpc={self.__startpc}, endpc={self.__endpc}}}"
 
 
 ###=== }}} =====================================================================
@@ -312,17 +324,17 @@ class TokenPrinter:
             case "Token_Number":
                 self.__seminfo = float(seminfo["r"])
             case "Token_String":
-                # `seminfo.ts` is already `TString *` so no need to get address.
-                self.__seminfo = getstr(seminfo["ts"])
+                # Let `TStringPrinter` handle it
+                self.__seminfo = str(seminfo["ts"])
             case "Token_Name":
-                self.__seminfo = getstr(seminfo["ts"])
+                self.__seminfo = str(seminfo["ts"])
             case "Token_Eos":
                 self.__seminfo = -1
             case _:
                 self.__seminfo = None
 
 
-    def to_string(self):
+    def to_string(self) -> str:
         if self.__seminfo:
             return f"{self.__type}: {self.__seminfo}"
         else:
@@ -338,30 +350,25 @@ class TokenPrinter:
 class ExprPrinter:
     __kind:   gdb.Value
     __expr:   gdb.Value
-    __info:   None | int | float
-    __aux:    None | int
     __pretty: str
 
 
-    def __set(self, *, info: str = None, aux: bool = False, nval: bool = False):
+    def __set(self, *, info = "", aux = False, nval = False):
         args = [str(self.__kind).removeprefix("Expr_")]
         if info:
-            self.__info = self.__expr["u"]["s"]["info"]
-            args.append(f"{info} = {self.__info}")
+            args.append(f"{info} = {int(self.__expr['u']['s']['info'])}")
 
         if aux:
-            self.__aux  = self.__expr["u"]["s"]["aux"]
-            actual: int = self.__aux
-            if ISK(actual):
-                kind   = "constant-index"
-                actual = INDEXK(actual)
+            data = int(self.__expr['u']['s']['aux'])
+            if ISK(data):
+                kind = "constant-index"
+                data = INDEXK(data)
             else:
                 kind = "register"
-            args.append(f", {kind} = {actual}")
+            args.append(f", {kind} = {data}")
 
         if nval:
-            self.__info = self.__expr["u"]["nval"]
-            args.append(str(self.__info))
+            args.append(str(float(self.__expr['u']['nval'])))
 
         if len(args) > 1:
             args.insert(1, ": ")
@@ -374,30 +381,18 @@ class ExprPrinter:
         self.__kind = expr["kind"]
         self.__expr = expr
         match str(self.__kind):
-            case "Expr_Constant":
-                self.__set(info = "constant-index")
-            case "Expr_Number":
-                self.__set(nval = True)
-            case "Expr_Local":
-                self.__set(info = "register")
-            case "Expr_Upvalue":
-                self.__set(info = "upvalue-index")
-            case "Expr_Global":
-                self.__set(info = "constant-index")
-            case "Expr_Index":
-                self.__set(info = "table-register", aux = True)
-            case "Expr_Jump":
-                self.__set(info = "pc")
-            case "Expr_Relocable":
-                self.__set(info = "pc")
-            case "Expr_Nonrelocable":
-                self.__set(info = "register")
-            case "Expr_Call":
-                self.__set(info = "pc")
-            case "Expr_Vararg":
-                self.__set(info = "pc")
-            case _:
-                self.__set()
+            case "Expr_Constant":     self.__set(info = "constant-index")
+            case "Expr_Number":       self.__set(nval = True)
+            case "Expr_Local":        self.__set(info = "register")
+            case "Expr_Upvalue":      self.__set(info = "upvalue-index")
+            case "Expr_Global":       self.__set(info = "constant-index")
+            case "Expr_Index":        self.__set(info = "table-register", aux = True)
+            case "Expr_Jump":         self.__set(info = "pc")
+            case "Expr_Relocable":    self.__set(info = "pc")
+            case "Expr_Nonrelocable": self.__set(info = "register")
+            case "Expr_Call":         self.__set(info = "pc")
+            case "Expr_Vararg":       self.__set(info = "pc")
+            case _: self.__set()
 
 
     def to_string(self) -> str:
@@ -411,8 +406,9 @@ lua_pretty_printers = {
     "Instruction": InstructionPrinter,
     "TValue":      TValuePrinter,
     "TString":     TStringPrinter,
+    "LocVar":      LocVarPrinter,
     "Token":       TokenPrinter,
-    "StkId":       TValuePrinter,
+    # "StkId":       TValuePrinter, # Perhaps we DO want the addresses?
     "Expr":        ExprPrinter,
 }
 
