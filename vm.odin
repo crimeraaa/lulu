@@ -7,11 +7,13 @@ import "core:fmt"
 import "core:mem"
 import "core:strings"
 
-STACK_MAX :: 256
+// Minimum stack size guaranteed to be available to all functions
+STACK_MIN :: 8
+
 MEMORY_ERROR_STRING :: "Out of memory"
 
 VM :: struct {
-    stack:     [STACK_MAX]Value,
+    stack:      []Value, // len(stack) == stack_size
     allocator:    mem.Allocator,
     builder:      strings.Builder,
     interned:     Intern,
@@ -70,7 +72,7 @@ vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, arg
 
 vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
     chunk := vm.chunk
-    index := ptr_sub(vm.pc, dyarray_get_ptr(&chunk.code, 0)) - 1
+    index := ptr_index(vm.pc, chunk.code) - 1
     line  := dyarray_get(chunk.line, index)
     reset_stack(vm)
     push_fstring(vm, "%s:%i: Attempt to ", chunk.source, line)
@@ -86,8 +88,6 @@ vm_memory_error :: proc(vm: ^VM) -> ! {
 
 @(require_results)
 vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
-    reset_stack(vm)
-
     // _G and interned strings are not part of the collectable objects list.
     intern_init(vm, &vm.interned)
     vm.globals.type = .Table
@@ -99,7 +99,13 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 
     // Try to handle initial allocations at startup
     alloc_init :: proc(vm: ^VM, user_ptr: rawptr) {
+        vm_grow_stack(vm, STACK_MIN)
+        reset_stack(vm)
+
         // Intern the out of memory string already
+        // TODO(2025-04-21): When we have garbage collection, we need to mark
+        // this object as uncollectable! Otherwise, when it's popped from the
+        // stack, it may be garbage collected.
         push_string(vm, MEMORY_ERROR_STRING)
         pop(vm, 1)
 
@@ -107,11 +113,50 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
         set_global(vm, "_G")
     }
 
-    return vm_run_protected(vm, alloc_init) == .Ok
+    ok = (vm_run_protected(vm, alloc_init) == .Ok)
+    // Bad stuff happened; free any and all allocations we *did* make
+    if !ok {
+        vm_destroy(vm)
+    }
+    return ok
+}
+
+vm_check_stack :: proc(vm: ^VM, extra: int) {
+    stack_end       := &vm.stack[len(vm.stack) - 1]
+    stack_remaining := ptr_sub(stack_end, vm.top)
+    // Remaining stack slots can't accomodate `extra` values?
+    if stack_remaining <= extra {
+        vm_grow_stack(vm, extra)
+    }
+}
+
+
+/* 
+**Guarantees**
+-   `vm.top` and `vm.base` will point to the correct locations in the new stack.
+ */
+vm_grow_stack :: proc(vm: ^VM, extra: int) {
+    new_size := extra
+    // Can we just simply double the stack size?
+    if new_size <= len(vm.stack) {
+        new_size = len(vm.stack) * 2
+    } else {
+        new_size += len(vm.stack)
+    }
+    new_stack, err := make([]Value, new_size, vm.allocator)
+    if err != nil {
+        vm_memory_error(vm)
+    }
+    old_stack      := vm.stack
+    defer delete(old_stack, vm.allocator)
+    copy(new_stack, old_stack)
+    vm.stack = new_stack
+    vm.top   = &new_stack[ptr_index(vm.top, old_stack)]
+    vm.base  = &new_stack[ptr_index(vm.base, old_stack)]
 }
 
 vm_destroy :: proc(vm: ^VM) {
-    reset_stack(vm)
+    delete(vm.stack, vm.allocator)
     intern_destroy(&vm.interned)
     table_destroy(vm, &vm.globals)
 
@@ -120,6 +165,8 @@ vm_destroy :: proc(vm: ^VM) {
     }
     object_free_all(vm)
     strings.builder_destroy(&vm.builder)
+    vm.top      = nil
+    vm.base     = nil
     vm.objects  = nil
     vm.chunk    = nil
 }
@@ -138,6 +185,9 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
         data  := cast(^Data)user_data
         chunk := data.chunk
         compiler_compile(vm, chunk, data.input)
+        vm_check_stack(vm, chunk.stack_used)
+        // Set up stack frame
+        vm.base  = &vm.stack[0]
         vm.top   = &vm.stack[chunk.stack_used]
         vm.chunk = chunk
         vm.pc    = dyarray_get_ptr(&chunk.code, 0)
@@ -196,7 +246,7 @@ vm_execute :: proc(vm: ^VM) {
     chunk     := vm.chunk
     constants := dyarray_slice(&chunk.constants)
     globals   := &vm.globals
-    stack     := vm.stack[:]
+    stack     := vm.stack[:chunk.stack_used]
 
     for {
         // We cannot extract 'vm.pc' into a local as it is needed in to `vm_runtime_error`.
@@ -210,7 +260,7 @@ vm_execute :: proc(vm: ^VM) {
                     fmt.println()
                 }
             }
-            index := ptr_sub(vm.pc, dyarray_get_ptr(&chunk.code, 0))
+            index := ptr_index(vm.pc, chunk.code)
             debug_dump_instruction(chunk, inst, index)
         }
         vm.pc = &vm.pc[1]
@@ -333,7 +383,7 @@ vm_execute :: proc(vm: ^VM) {
             }
 
         case .Return:
-            // if inst.c == 0 then we have a vararg
+            // if inst.c != 0 then we have a vararg
             nret := cast(int)inst.b if inst.c == 0 else get_top(vm)
             vm.top = &stack[cast(int)inst.a + nret]
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
@@ -415,4 +465,27 @@ reset_stack :: proc(vm: ^VM) {
 // `mem.ptr_sub` seems to be off by +1
 ptr_sub :: proc(a, b: ^$T) -> int {
     return cast(int)(uintptr(a) - uintptr(b)) / size_of(T)
+}
+
+
+/* 
+**Overview**
+-   Get the absolute index of `ptr` in `data`.
+-   This is a VERY unsafe function as it makes many major assumptions.
+
+**Assumptions**
+-   `ptr` IS in range of `data[:]`.
+-   This function NEVER returns an invalid index.
+ */
+ptr_index :: proc {
+    ptr_index_slice,
+    ptr_index_dyarray,
+}
+
+ptr_index_slice :: proc(ptr: ^$T, data: $S/[]T) -> (index: int) {
+    return ptr_sub(ptr, raw_data(data))
+}
+
+ptr_index_dyarray :: proc(ptr: ^$T, data: DyArray(T)) -> (index: int) {
+    return ptr_sub(ptr, raw_data(data.data))
 }

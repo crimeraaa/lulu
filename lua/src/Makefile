@@ -11,7 +11,8 @@ CC= clang
 
 # Use GNU C17 as we are on linux compiling with GCC/Clang
 # This gives us access to `_longjmp`, `mkstemp`, etc.
-CFLAGS= -std=gnu17 -O0 -g -Wall -Wextra $(MYCFLAGS)
+# https://clang.llvm.org/docs/UsersManual.html#controlling-macro-debug-info-generation
+CFLAGS= -std=gnu17 -O0 -g -fdebug-macro -Wall -Wextra $(MYCFLAGS)
 AR= ar rcu
 RANLIB= ranlib
 RM= rm -f

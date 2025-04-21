@@ -46,7 +46,7 @@ static int currentpc (lua_State *L, CallInfo *callinfo) {
   if (callinfo == L->ci) {
     callinfo->savedpc = L->savedpc;
   }
-  /** 
+  /**
    * @brief
    *  Relevant expansion: `(ci->savedpc - ci_func(callinfo)->l.p->code) - 1`
    *
@@ -337,10 +337,10 @@ static bool checkArgMode (const Proto *pt, int r, enum OpArgMask mode) {
  *
  * @param pt
  *  Where the relevant bytecode and constants are found.
- *  
+ *
  * @param lastpc
  *  The index of the instruction that caused the error to be thrown.
- * 
+ *
  * @param reg
  *  The index, into the stack frame, of the value that caused the error.
  */
@@ -546,7 +546,7 @@ static const char *getobjname (lua_State *L, CallInfo *ci, int stackpos,
      *
      *  So if the local at index 0 is the culprit, that means we want to check
      *  for the 1st local. Hence we add 1 to `stackpos`.
-     * 
+     *
      * We must NEVER pass 0 as-is because that will result in the local
      * `counter` being negative.
      */

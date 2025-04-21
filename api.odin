@@ -2,7 +2,7 @@ package lulu
 
 import "core:fmt"
 
-// === VM MANIPULATION ======================================================{{{
+///=== VM MANIPULATION ===================================================== {{{
 
 
 @(require_results)
@@ -16,14 +16,15 @@ close :: proc(vm: ^VM) {
     vm_destroy(vm)
 }
 
-// }}}==========================================================================
+///=== }}} =====================================================================
+
 
 /*
-Overview:
+**Overview**
 -   Get the index of the current stack top.
 -   This also represents the size of the current stack frame.
 
-Analogous to:
+**Analogous to**
 -   `int lua_gettop(lua_State *L)`.
  */
 get_top :: proc(vm: ^VM) -> (index: int) {
@@ -32,9 +33,10 @@ get_top :: proc(vm: ^VM) -> (index: int) {
 
 
 /*
-Notes:
--   Assumes the value we want to set with is at the very top of the stack.
-    We will pop this value afterwards.
+**Notes**
+-   Assumes the value we want to set with is at the very top of the stack,
+    a.k.a. at index `-1`.
+-   We will pop this value afterwards.
  */
 set_global :: proc(vm: ^VM, key: string) {
     vkey := value_make(ostring_new(vm, key))
@@ -42,6 +44,11 @@ set_global :: proc(vm: ^VM, key: string) {
     pop(vm, 1)
 }
 
+
+/* 
+**Notes**
+-   See the notes regarding the stack in `push_rawvalue()`.
+ */
 get_global :: proc(vm: ^VM, key: string) {
     vkey  := value_make(ostring_new(vm, key))
     value := table_get(&vm.globals, vkey)
@@ -56,6 +63,12 @@ to_string :: proc(vm: ^VM, index: int) -> (result: string, ok: bool) {
     return ostring_to_string(value.ostring), true
 }
 
+
+/* 
+**Notes**
+-   Unlike the `push_*` family of functions, we reuse the `-count` stack slot
+    instead of pushing.
+ */
 concat :: proc(vm: ^VM, count: int) {
     switch count {
     case 0:
@@ -72,16 +85,27 @@ concat :: proc(vm: ^VM, count: int) {
     pop(vm, count - 1)
 }
 
+
+/* 
+**Notes**
+-   See the notes regarding the stack in `push_rawvalue()`.
+ */
 push_string :: proc(vm: ^VM, str: string) -> (result: string) {
     interned := ostring_new(vm, str)
     push_rawvalue(vm, value_make(interned))
     return ostring_to_string(interned)
 }
 
+
+/* 
+**Notes**
+-   See the notes regarding the stack in `push_rawvalue()`.
+ */
 push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (result: string) {
     builder := vm_get_builder(vm)
     return push_string(vm, fmt.sbprintf(builder, format, ..args))
 }
+
 
 // You may use negative indexes to resolve from the top.
 @(private="file")
@@ -92,13 +116,22 @@ index_to_address :: proc(vm: ^VM, index: int) -> ^Value {
 }
 
 /*
-Brief
+**Brief**
 -   Internal use helper function.
 
-Notes:
+**Assumptions**
+-   Does not check if the VM stack actually has enough space to accomodate the
+    pushed value.
+-   You must have checked the stack beforehand and resized if necessary.
+
+**Notes**
 -   Distinct from the API function `push_value(vm: ^VM, index: int)` or
-    `lua_pushvalue(lua_State *L, int i)`, which copies the element at the
-    specified stack index and pushes it to the top of the stack.
+    `lua_pushvalue(lua_State *L, int i)`.
+-   That function copies the element at the specified stack index and pushes it
+    to the top of the stack.
+
+**Links**
+-   https://www.lua.org/pil/24.2.1.html
  */
 @(private="package")
 push_rawvalue :: proc(vm: ^VM, value: Value) {

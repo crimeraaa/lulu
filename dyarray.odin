@@ -14,17 +14,6 @@ DyArray :: struct($T: typeid) {
     len:    int,
 }
 
-dyarray_resize :: proc(vm: ^VM, dyarray: ^DyArray($T), new_cap: int) {
-    old_data := dyarray.data
-    defer delete(old_data, vm.allocator)
-    new_data, err := make([]T, new_cap, vm.allocator)
-    if err != nil {
-        vm_memory_error(vm)
-    }
-    copy(new_data, old_data)
-    dyarray.data = new_data
-}
-
 dyarray_delete :: proc(vm: ^VM, dyarray: ^DyArray($T)) {
     delete(dyarray.data, vm.allocator)
     dyarray.data = {}
@@ -67,7 +56,17 @@ dyarray_append :: proc(vm: ^VM, dyarray: ^DyArray($T), elem: T) {
     dyarray.data[old_len] = elem
 }
 
+dyarray_resize :: proc(vm: ^VM, dyarray: ^DyArray($T), new_cap: int) {
+    old_data := dyarray.data
+    defer delete(old_data, vm.allocator)
+    new_data, err := make([]T, new_cap, vm.allocator)
+    if err != nil {
+        vm_memory_error(vm)
+    }
+    copy(new_data, old_data)
+    dyarray.data = new_data
+}
 
-dyarray_slice :: proc(dyarray: ^DyArray($T)) -> []T {
-    return dyarray.data[:dyarray.len]
+dyarray_slice :: proc(dyarray: ^DyArray($T), end_index := -1) -> []T {
+    return dyarray.data[:dyarray.len if end_index == -1 else end_index]
 }

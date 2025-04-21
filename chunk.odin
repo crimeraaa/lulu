@@ -11,13 +11,12 @@ INVALID_REG         :: max(u16) // Also applies to locals
 
 Chunk :: struct {
     source:          string, // Filename where the chunk originated.
+    locals:          DyArray(Local), // 'Declared' local variable stack. See `lparser.h:FuncState::actvar[]`.
     constants:       DyArray(Value),
     code:            DyArray(Instruction),
     line:            DyArray(int),
     pc:              int, // First free index in `code` and `line`.
-    stack_used:      int, // Used by VM to determine where stack top should point.
-
-    locals:          DyArray(Local), // 'Declared' local variable stack. See `lparser.h:FuncState::actvar[]`.
+    stack_used:      int, // How many stack slots does this chunk require?
 }
 
 Local :: struct {

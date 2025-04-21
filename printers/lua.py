@@ -283,7 +283,7 @@ class TStringPrinter:
     def to_string(self) -> str:
         return self.__data
 
-    
+
     def display_hint(self):
         return "string"
 
@@ -292,13 +292,13 @@ class LocVarPrinter:
     __name:    str
     __startpc: int
     __endpc:   int
-    
-    
+
+
     def __init__(self, val: gdb.Value):
         self.__name    = str(val["varname"])
         self.__startpc = int(val["startpc"])
         self.__endpc   = int(val["endpc"])
-    
+
 
     def to_string(self) -> str:
         return f"{{{self.__name}: startpc={self.__startpc}, endpc={self.__endpc}}}"

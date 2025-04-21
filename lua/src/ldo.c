@@ -291,37 +291,38 @@ int luaD_precall (lua_State *L, StkId func_value, int nresults) {
   L->ci->savedpc = L->savedpc;
   if (!closure->isC) {  /* Lua function? prepare its call */
     CallInfo *callinfo;
-    StkId st; /* iterator for zero-init */
-    StkId base; /* points to first fixed argument */
-    Proto *p = closure->p;
-    luaD_checkstack(L, p->maxstacksize);
+    StkId     slot; /* iterator for zero-init */
+    StkId     base; /* points to first fixed argument */
+    Proto    *proto = closure->p;
+    /* ensure we can push the values required by `proto` */
+    luaD_checkstack(L, proto->maxstacksize);
     /* `luaD_checkstack()` may reallocate the stack, so re-validate */
     func_value = restorestack(L, saved_stack);
-    if (!p->is_vararg) {  /* no varargs? */
+    if (!proto->is_vararg) {  /* no varargs? */
       base = func_value + 1; /* point to first fixed argument */
-      if (L->top > base + p->numparams) {
-        L->top = base + p->numparams;
+      if (L->top > base + proto->numparams) {
+        L->top = base + proto->numparams;
       }
     }
     else {  /* vararg function */
       /* stack frame size (includes fixed and varargs) without considering
         `func_value` */
       int nargs = cast_int(L->top - func_value) - 1;
-      base = adjust_varargs(L, p, nargs);
+      base = adjust_varargs(L, proto, nargs);
       /* `adjust_varargs()` may change stack when `LUA_COMPAT_VARARG` defined */
       func_value = restorestack(L, saved_stack);
     }
     callinfo = inc_ci(L);  /* now `enter' new function */
     callinfo->func = func_value;
     L->base = callinfo->base = base;
-    callinfo->top = L->base + p->maxstacksize;
+    callinfo->top = L->base + proto->maxstacksize;
     lua_assert(callinfo->top <= L->stack_last);
-    L->savedpc = p->code;  /* starting point */
+    L->savedpc = proto->code;  /* starting point */
     callinfo->tailcalls = 0;
     callinfo->nresults = nresults;
     /* zero-init this stack frame; mainly meant for locals at the start */
-    for (st = L->top; st < callinfo->top; st++) {
-      setnilvalue(st);
+    for (slot = L->top; slot < callinfo->top; slot++) {
+      setnilvalue(slot);
     }
     L->top = callinfo->top;
     if (L->hookmask & LUA_MASKCALL) {

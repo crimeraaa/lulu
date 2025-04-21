@@ -13,12 +13,20 @@
 #include "lzio.h"
 
 
-#define luaD_checkstack(L,n)	\
-  if ((char *)L->stack_last - (char *)L->top <= (n)*(int)sizeof(TValue)) \
-    luaD_growstack(L, n); \
+/**
+ * @brief
+ *  Checks if `L` can accomodate `extra` extra elements.
+ */
+#define luaD_checkstack(L, extra)	\
+  if ((char *)L->stack_last - (char *)L->top <= (extra)*(int)sizeof(TValue)) \
+    luaD_growstack(L, extra); \
   else condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK - 1));
 
 
+/**
+ * @note 2025-04-21:
+ *  May resize the stack.
+ */
 #define incr_top(L) {luaD_checkstack(L,1); L->top++;}
 
 #define savestack(L,p)		((char *)(p) - (char *)L->stack)
