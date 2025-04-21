@@ -394,18 +394,33 @@ static void close_func (LexState *lex) {
   lua_State *L = lex->L;
   FuncState *func = lex->func;
   Proto *proto = func->proto;
+
+  /* Set the `endpc` of all remaining locals and free their registers */
   removevars(lex, 0);
   luaK_ret(func, 0, 0);  /* final return */
+
+  /* shrink `proto->code` and `proto->lineinfo` to contain exactly `func->pc`
+    instructions */
   luaM_reallocvector(L, proto->code, proto->size_code, func->pc, Instruction);
   proto->size_code = func->pc;
   luaM_reallocvector(L, proto->lineinfo, proto->size_lineinfo, func->pc, int);
   proto->size_lineinfo = func->pc;
-  luaM_reallocvector(L, proto->constants, proto->size_constants, func->nconstants, TValue);
+
+  /* shrink `proto->constants` to contain exactly `func->nconstants` values */
+  luaM_reallocvector(L, proto->constants, proto->size_constants,
+    func->nconstants, TValue);
   proto->size_constants = func->nconstants;
+
+  /* shrink `proto->children` to contain exactyl `func->nchildren` nested
+    functions */
   luaM_reallocvector(L, proto->children, proto->size_children, func->nchildren, Proto *);
   proto->size_children = func->nchildren;
+
+  /* shrink `proto->locvars` to contain exactly `func->nlocvars` locals */
   luaM_reallocvector(L, proto->locvars, proto->size_locvars, func->nlocvars, LocVar);
   proto->size_locvars = func->nlocvars;
+
+  /* shrink `proto->upvalues` to contain exactly `proto->nups` nupvalues */
   luaM_reallocvector(L, proto->upvalues, proto->size_upvalues, proto->nups, TString *);
   proto->size_upvalues = proto->nups;
   lua_assert(luaG_checkcode(proto));

@@ -14,15 +14,16 @@ OString :: struct {
 
 ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     ostring   := (cast(^^OString)arg.data)^
-    s         := ostring_to_string(ostring)
+    text         := ostring_to_string(ostring)
     n_written := &fi.n
     writer    := fi.writer
     switch verb {
     case 'v', 's':
-        io.write_string(writer, s, n_written)
+        io.write_string(writer, text, n_written)
         return true
     case 'q':
-        n_written^ += fmt.wprintf(writer, "%q", s)
+        quote := '\'' if ostring.len == 1 else '\"'
+        n_written^ += fmt.wprintf(writer, "%c%s%c", quote, text, quote)
         return true
     case:
         return false
@@ -39,15 +40,15 @@ ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
         return prev
     }
 
-    n  := len(input)
-    str = object_new(OString, vm, n + 1)
+    len := len(input)
+    str  = object_new(OString, vm, len + 1)
     defer intern_set(&vm.interned, str)
 
     str.hash = hash_string(input)
-    str.len  = n
+    str.len  = len
     #no_bounds_check {
-        copy(str.data[:n], input)
-        str.data[n] = 0
+        copy(str.data[:len], input)
+        str.data[len] = 0
     }
     return str
 }
@@ -57,13 +58,17 @@ ostring_free :: proc(vm: ^VM, str: ^OString, location := #caller_location) {
     mem.free_with_size(str, size_of(str^) + str.len + 1, vm.allocator, loc = location)
 }
 
-ostring_to_string :: proc(str: ^OString) -> string #no_bounds_check {
-    return string(str.data[:str.len])
+ostring_to_string :: proc(str: ^OString) -> string {
+    #no_bounds_check {
+        return string(str.data[:str.len])
+    }
 }
 
-ostring_to_cstring :: proc(str: ^OString) -> cstring #no_bounds_check {
-    assert(str.data[str.len] == 0)
-    return cstring(cast([^]byte)&str.data)
+ostring_to_cstring :: proc(str: ^OString) -> cstring {
+    #no_bounds_check {
+        assert(str.data[str.len] == 0)
+        return cstring(cast([^]byte)&str.data)
+    }
 }
 
 hash_f64 :: proc(data: f64) -> (hash: u32) {

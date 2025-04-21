@@ -80,7 +80,7 @@ typedef struct FuncState {
   int freereg;  /* first free register */
   int nconstants;  /* number of elements in `proto->constants` */
   int nchildren;  /* number of elements in `proto->p` */
-  short nlocvars;  /* number of elements in `locvars' */
+  short nlocvars;  /* number of elements in `proto->locvars' */
   lu_byte nactvar;  /* number of active local variables */
   UpValDesc upvalues[LUAI_MAXUPVALUES];  /* upvalues */
   unsigned short actvar[LUAI_MAXVARS];  /* declared-variable stack */

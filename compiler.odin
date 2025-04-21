@@ -7,24 +7,25 @@ import sa "core:container/small_array"
 
 _ :: fmt // needed for when !ODIN_DEBUG
 
+MAX_LOCALS    :: 200
 MAX_CONSTANTS :: MAX_uBC
 
 Active_Locals :: sa.Small_Array(MAX_LOCALS, u16)
 
 Compiler :: struct {
-    vm:             ^VM,
-    scope_depth:     int,      // How far down is our current lexical scope?
-    parent:         ^Compiler, // Enclosing state.
-    parser:         ^Parser,   // All nested compilers share the same parser.
-    chunk:          ^Chunk,    // Compilers do not own their chunks. They merely fill them.
-    free_reg:        int,      // Index of the first free register.
-    last_jump:       int,
-    is_print:        bool,     // HACK(2025-04-09): until `print` is a global runtime function
-
     // Indexes are local registers. Values are indexes into `chunk.locals[]` for
     // information like identifiers and depth.
     // See `lparser.h:LexState::actvar[]`.
-    active: Active_Locals,
+    active:          Active_Locals,
+    count:           struct {constants, locals: int},
+    vm:             ^VM,
+    parent:         ^Compiler, // Enclosing state.
+    parser:         ^Parser,   // All nested compilers share the same parser.
+    chunk:          ^Chunk,    // Compilers do not own their chunks. They merely fill them.
+    scope_depth:     int,      // How far down is our current lexical scope?
+    free_reg:        int,      // Index of the first free register.
+    last_jump:       int,
+    is_print:        bool,     // HACK(2025-04-09): until `print` is a global runtime function
 }
 
 compiler_init :: proc(compiler: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
@@ -46,14 +47,17 @@ compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
         parser_parse(parser, compiler)
     }
     parser_consume(parser, .Eof)
+    compiler_code_return(compiler, 0, 0)
     compiler_end_scope(compiler)
     compiler_end(compiler)
 }
 
 compiler_end :: proc(compiler: ^Compiler) {
-    compiler_code_return(compiler, 0, 0)
+    vm     := compiler.vm
+    chunk  := compiler.chunk
+    chunk_fini(vm, chunk, compiler)
     when DEBUG_PRINT_CODE {
-        debug_dump_chunk(compiler.chunk)
+        debug_dump_chunk(chunk)
     }
 }
 
@@ -67,20 +71,28 @@ compiler_begin_scope :: proc(compiler: ^Compiler) {
  */
 compiler_end_scope :: proc(compiler: ^Compiler) {
     compiler.scope_depth -= 1
+    vm     := compiler.vm
+    chunk  := compiler.chunk
     depth  := compiler.scope_depth
     reg    := sa.len(compiler.active) - 1
-    locals := dyarray_slice(&compiler.chunk.locals)
-    endpc  := compiler.chunk.pc
+    active := sa.slice(&compiler.active)
+    locals := chunk.locals[:compiler.count.locals]
+    endpc  := chunk.pc
 
-    fmt.printfln("block(%i) before:\n\t%v\n\t%v",
-                 depth + 1, locals, sa.slice(&compiler.active))
-    defer fmt.printfln("block(%i) after:\n\t%v\n\t%v",
-                       depth + 1, locals, sa.slice(&compiler.active))
+    // fmt.printfln("block(%i) before:\n\t%v\n\t%v",
+    //              depth + 1, locals, sa.slice(&compiler.active))
+    // defer fmt.printfln("block(%i) after:\n\t%v\n\t%v",
+    //                    depth + 1, locals, sa.slice(&compiler.active))
 
     // Don't pop registers as we'll go below the active count!
-    for reg >= 0 && locals[reg].depth > depth {
+    for reg >= 0 {
+        index := active[reg]
+        local := &locals[index]
+        if local.depth <= depth {
+            break
+        }
         sa.pop_back(&compiler.active)
-        locals[reg].endpc = endpc
+        local.endpc = endpc
         reg -= 1
     }
     compiler.free_reg = reg + 1
@@ -328,26 +340,25 @@ compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
 compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     compiler_expr_to_value(compiler, expr)
 
-    add_rk :: proc(vm: ^VM, chunk: ^Chunk, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
-        if dyarray_len(chunk.constants) <= MAX_INDEX_RK {
-            index := chunk_add_constant(vm, chunk, value)
+    add_rk :: proc(compiler: ^Compiler, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
+        chunk := compiler.chunk
+        if len(chunk.constants) <= MAX_INDEX_RK {
+            index := compiler_add_constant(compiler, value)
             expr^ = expr_make(.Constant, index = index)
             return reg_as_k(cast(u16)index), true
         }
         return INVALID_REG, false
     }
 
-    vm := compiler.vm
-    chunk := compiler.chunk
     #partial switch type := expr.type; type {
     case .Nil:
-        return add_rk(vm, chunk, value_make(), expr) or_break
+        return add_rk(compiler, value_make(), expr) or_break
     case .True:
-        return add_rk(vm, chunk, value_make(true), expr) or_break
+        return add_rk(compiler, value_make(true), expr) or_break
     case .False:
-        return add_rk(vm, chunk, value_make(false), expr) or_break
+        return add_rk(compiler, value_make(false), expr) or_break
     case .Number:
-        return add_rk(vm, chunk, value_make(expr.number), expr) or_break
+        return add_rk(compiler, value_make(expr.number), expr) or_break
     case .Constant:
         // Constant can fit in argument C?
         if index := expr.index; index <= MAX_INDEX_RK {
@@ -456,9 +467,14 @@ compiler_code :: proc(compiler: ^Compiler, inst: Instruction) -> (pc: int) {
 -   'compiler.c:makeConstant()' in the book.
  */
 compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u32) {
-    index = chunk_add_constant(compiler.vm, compiler.chunk, constant)
+    vm    := compiler.vm
+    chunk := compiler.chunk
+    count := &compiler.count.constants
+    index = chunk_add_constant(vm, chunk, constant, count)
     if index >= MAX_CONSTANTS {
-        parser_error_consumed(compiler.parser, "Function uses too many constants")
+        buf: [64]byte
+        msg := fmt.bprintf(buf[:], "More than %i constants", MAX_CONSTANTS)
+        parser_error_consumed(compiler.parser, msg)
     }
     return index
 }
@@ -475,7 +491,10 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
 -   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
  */
 compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16) {
-    return chunk_add_local(compiler.vm, compiler.chunk, ident)
+    vm := compiler.vm
+    chunk := compiler.chunk
+    count := &compiler.count.locals
+    return chunk_add_local(compiler.vm, compiler.chunk, ident, count)
 }
 
 
@@ -488,7 +507,7 @@ compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16)
     above array are currently in scope.
  */
 compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16, ok: bool) {
-    locals := dyarray_slice(&compiler.chunk.locals)
+    locals := compiler.chunk.locals
 
     /*
     **Notes**

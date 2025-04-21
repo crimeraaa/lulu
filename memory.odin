@@ -2,6 +2,7 @@
 package lulu
 
 import "base:builtin"
+import "base:intrinsics"
 import "core:math"
 
 slice_make :: proc(vm: ^VM, $T: typeid, count: int) -> []T {
@@ -15,15 +16,59 @@ slice_make :: proc(vm: ^VM, $T: typeid, count: int) -> []T {
 slice_insert :: proc(vm: ^VM, slice: ^$S/[]$T, index: int, value: T) {
     if index >= len(slice) {
         new_count := max(8, math.next_power_of_two(index + 1))
-        tmp       := slice_make(vm, T, new_count)
-        copy(tmp, slice^)
-        delete(slice^, vm.allocator)
-        slice^ = tmp
+        slice_resize(vm, slice, new_count)
     }
     slice[index] = value
+}
+
+slice_resize :: proc(vm: ^VM, slice: ^$S/[]$T, count: int) {
+    // Nothing to do?
+    if count == len(slice) {
+        return
+    }
+    prev := slice^
+    next := slice_make(vm, T, count)
+    copy(next, prev)
+    delete(prev, vm.allocator)
+    slice^ = next
 }
 
 slice_delete :: proc(vm: ^VM, slice: ^$S/[]$T) {
     delete(slice^, vm.allocator)
     slice^ = {}
+}
+
+
+ptr_offset :: intrinsics.ptr_offset
+ptr_sub    :: intrinsics.ptr_sub
+
+
+/*
+**Overview**
+-   Get the absolute index of `ptr` in `data`.
+-   This is a VERY unsafe function as it makes many major assumptions.
+
+**Assumptions**
+-   `ptr` IS in range of `data[:]`.
+-   This function NEVER returns an invalid index.
+ */
+ptr_index :: proc(ptr: ^$T, data: $S/[]T) -> (index: int) {
+    return ptr_sub(cast([^]T)ptr, raw_data(data))
+}
+
+
+/*
+**Overview**
+-   Get the absolute index of `ptr` in `data`.
+-   Checks first if `ptr` is indeed an element in range of `data`.
+ */
+ptr_index_safe :: proc(ptr: ^$T, data: $S/[]T) -> (index: int, found: bool) {
+    base_addr := cast(uintptr)raw_data(data)
+    end_addr  := cast(uintptr)ptr_offset(raw_data(data), len(data))
+    addr      := cast(uintptr)ptr
+
+    if base_addr <= addr && addr < end_addr {
+        return ptr_index(ptr, data), true
+    }
+    return -1, false
 }

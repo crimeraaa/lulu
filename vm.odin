@@ -123,7 +123,7 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 
 vm_check_stack :: proc(vm: ^VM, extra: int) {
     stack_end       := &vm.stack[len(vm.stack) - 1]
-    stack_remaining := ptr_sub(stack_end, vm.top)
+    stack_remaining := ptr_sub(cast([^]Value)stack_end, vm.top)
     // Remaining stack slots can't accomodate `extra` values?
     if stack_remaining <= extra {
         vm_grow_stack(vm, extra)
@@ -178,7 +178,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     }
 
     data := &Data{chunk = &Chunk{}, input = input}
-    chunk_init(vm, data.chunk, name)
+    chunk_init(data.chunk, name)
     defer chunk_destroy(vm, data.chunk)
 
     interpret :: proc(vm: ^VM, user_data: rawptr) {
@@ -244,23 +244,23 @@ Analogous to:
  */
 vm_execute :: proc(vm: ^VM) {
     chunk     := vm.chunk
-    constants := dyarray_slice(&chunk.constants)
+    constants := chunk.constants
     globals   := &vm.globals
-    stack     := vm.stack[:chunk.stack_used]
+    stack     := vm.base[:chunk.stack_used]
 
     for {
         // We cannot extract 'vm.pc' into a local as it is needed in to `vm_runtime_error`.
         inst := vm.pc[0]
         when DEBUG_TRACE_EXEC {
-            #reverse for &value, reg in vm.base[:get_top(vm)] {
+            index := ptr_index(vm.pc, chunk.code)
+            #reverse for &value, reg in stack {
                 value_print(value, .Stack)
-                if local, ok := dyarray_get_safe(chunk.locals, reg); ok {
-                    fmt.println(" ; local", local)
+                if local, ok := chunk_get_local(chunk, reg + 1, index); ok {
+                    fmt.printfln(" ; local %s", local)
                 } else {
                     fmt.println()
                 }
             }
-            index := ptr_index(vm.pc, chunk.code)
             debug_dump_instruction(chunk, inst, index)
         }
         vm.pc = &vm.pc[1]
@@ -296,17 +296,17 @@ vm_execute :: proc(vm: ^VM) {
             n_hash  := fb_to_int(cast(u8)inst.c)
             ra^ = value_make(table_new(vm, n_array, n_hash))
         case .Get_Table:
-            key := get_rk(vm, inst.c, stack, constants)
+            key := get_rk(vm, inst.c, stack, constants)^
             table: ^Table
-            if rb := vm.base[inst.b]; !value_is_table(rb) {
+            if rb := stack[inst.b]; !value_is_table(rb) {
                 index_error(vm, rb)
             } else {
                 table = rb.table
             }
             ra^ = table_get(table, key)
         case .Set_Table:
-            key   := get_rk(vm, inst.b, stack, constants)
-            value := get_rk(vm, inst.c, stack, constants)
+            key   := get_rk(vm, inst.b, stack, constants)^
+            value := get_rk(vm, inst.c, stack, constants)^
             if !value_is_table(ra^) {
                 index_error(vm, ra^)
             }
@@ -339,21 +339,21 @@ vm_execute :: proc(vm: ^VM) {
         case .Mod: arith_op(vm, number_mod, ra, inst, stack, constants)
         case .Pow: arith_op(vm, number_pow, ra, inst, stack, constants)
         case .Unm:
-            rb := stack[inst.b]
-            if !value_is_number(rb) {
+            rb := &stack[inst.b]
+            if !value_is_number(rb^) {
                 arith_error(vm, rb, rb)
             }
-            ra^ = value_make(number_unm(rb.data.number))
+            ra^ = value_make(number_unm(rb.number))
         case .Eq, .Neq:
             rb, rc := get_rk_bc(vm, inst, stack, constants)
-            b  := value_eq(rb, rc)
-            ra^ = value_make(b if inst.op == .Eq else !b)
+            equals := value_eq(rb^, rc^)
+            ra^ = value_make(equals if inst.op == .Eq else !equals)
         case .Lt:   compare_op(vm, number_lt,  ra, inst, stack, constants)
         case .Gt:   compare_op(vm, number_gt,  ra, inst, stack, constants)
         case .Leq:  compare_op(vm, number_leq, ra, inst, stack, constants)
         case .Geq:  compare_op(vm, number_geq, ra, inst, stack, constants)
         case .Not:
-            x := get_rk(vm, inst.b, stack, constants)
+            x := get_rk(vm, inst.b, stack, constants)^
             ra^ = value_make(value_is_falsy(x))
         // Add 1 because we want to include Reg[C]
         case .Concat: vm_concat(vm, ra, stack[inst.b:inst.c + 1])
@@ -396,17 +396,31 @@ vm_execute :: proc(vm: ^VM) {
 // Rough analog to C macro
 @(private="file")
 arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
-    x, y := get_rk_bc(vm, inst, stack, constants)
-    if !value_is_number(x) || !value_is_number(y) {
-        arith_error(vm, x, y)
+    left, right := get_rk_bc(vm, inst, stack, constants)
+    if !value_is_number(left^) || !value_is_number(right^) {
+        arith_error(vm, left, right)
     }
-    ra^ = value_make(op(x.data.number, y.data.number))
+    ra^ = value_make(op(left.number, right.number))
 }
 
 @(private="file")
-arith_error :: proc(vm: ^VM, x, y: Value) -> ! {
-    tpname := value_type_name(y) if value_is_number(x) else value_type_name(x)
-    vm_runtime_error(vm, "perform arithmetic on a %s value", tpname)
+arith_error :: proc(vm: ^VM, left, right: ^Value) -> ! {
+    // left hand side is fine, right hand side is the culprit
+    culprit := right if value_is_number(left^) else left
+    typname := value_type_name(culprit^)
+
+    // Culprit is in the active stack frame?
+    if reg, ok := ptr_index_safe(culprit, vm.base[:get_top(vm)]); ok {
+        // pc always points to instruction AFTER current, so culprit is pc - 1
+        pc := ptr_index(vm.pc, vm.chunk.code) - 1
+        local, found := chunk_get_local(vm.chunk, reg + 1, pc)
+        if found {
+            vm_runtime_error(vm, "perform arithmetic on local %q (a %s value)",
+                local.ident, typname)
+        }
+    }
+    // Default case; we only know its type
+    vm_runtime_error(vm, "perform arithmetic on a %s value", typname)
 }
 
 @(private="file")
@@ -416,17 +430,17 @@ index_error :: proc(vm: ^VM, t: Value) -> ! {
 
 @(private="file")
 compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
-    x, y := get_rk_bc(vm, inst, stack, constants)
-    if !value_is_number(x) || !value_is_number(y) {
-        compare_error(vm, x, y)
+    left, right := get_rk_bc(vm, inst, stack, constants)
+    if !value_is_number(left^) || !value_is_number(right^) {
+        compare_error(vm, left, right)
         return
     }
-    ra^ = value_make(op(x.data.number, y.data.number))
+    ra^ = value_make(op(left.number, right.number))
 }
 
 @(private="file")
-compare_error :: proc(vm: ^VM, x, y: Value) {
-    tpname1, tpname2 := value_type_name(x), value_type_name(y)
+compare_error :: proc(vm: ^VM, left, right: ^Value) {
+    tpname1, tpname2 := value_type_name(left^), value_type_name(right^)
     if tpname1 == tpname2 {
         vm_runtime_error(vm, "compare 2 %s values", tpname1)
     } else {
@@ -447,45 +461,17 @@ vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
 }
 
 @(private="file")
-get_rk_bc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rk_b: Value, rk_c: Value) {
+get_rk_bc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rkb, rkc: ^Value) {
     return get_rk(vm, inst.b, stack, constants), get_rk(vm, inst.c, stack, constants)
 }
 
 @(private="file")
-get_rk :: proc(vm: ^VM, b_or_c: u16, stack, constants: []Value) -> Value {
-    return constants[reg_get_k(b_or_c)] if reg_is_k(b_or_c) else stack[b_or_c]
+get_rk :: proc(vm: ^VM, reg: u16, stack, constants: []Value) -> ^Value {
+    return &constants[reg_get_k(reg)] if reg_is_k(reg) else &stack[reg]
 }
 
 @(private="file")
 reset_stack :: proc(vm: ^VM) {
     vm.base = &vm.stack[0]
     vm.top  = vm.base
-}
-
-// `mem.ptr_sub` seems to be off by +1
-ptr_sub :: proc(a, b: ^$T) -> int {
-    return cast(int)(uintptr(a) - uintptr(b)) / size_of(T)
-}
-
-
-/*
-**Overview**
--   Get the absolute index of `ptr` in `data`.
--   This is a VERY unsafe function as it makes many major assumptions.
-
-**Assumptions**
--   `ptr` IS in range of `data[:]`.
--   This function NEVER returns an invalid index.
- */
-ptr_index :: proc {
-    ptr_index_slice,
-    ptr_index_dyarray,
-}
-
-ptr_index_slice :: proc(ptr: ^$T, data: $S/[]T) -> (index: int) {
-    return ptr_sub(ptr, raw_data(data))
-}
-
-ptr_index_dyarray :: proc(ptr: ^$T, data: DyArray(T)) -> (index: int) {
-    return ptr_sub(ptr, raw_data(data.data))
 }

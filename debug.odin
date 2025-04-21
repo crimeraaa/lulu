@@ -2,8 +2,9 @@
 package lulu
 
 import "core:fmt"
+import "core:math"
 
-@(private="file",init)
+@(private="file", init)
 init_formatters :: proc() {
     fmt.set_user_formatters(new(map[typeid]fmt.User_Formatter))
     err := fmt.register_user_formatter(^OString, ostring_formatter)
@@ -24,41 +25,50 @@ debug_dump_chunk :: proc(chunk: ^Chunk) {
 
     fmt.printfln("\n.name\n%q", chunk.source)
 
-    if dyarray_len(chunk.locals) > 0 {
+    if n := len(chunk.locals); n > 0 {
         fmt.println("\n.local:")
-        for local, index in dyarray_slice(&chunk.locals) {
-            fmt.printfln("[%04i] %q", index, local.ident)
+        n_digits := math.count_digits_of_base(n, 10)
+        for local, index in chunk.locals {
+            fmt.printfln("[%0*i] %q ; local %v", n_digits, index, local.ident,
+                local)
         }
     }
 
-    if dyarray_len(chunk.constants) > 0 {
+    if n := len(chunk.constants); n > 0 {
         fmt.println("\n.const:")
-        for constant, index in dyarray_slice(&chunk.constants) {
-            fmt.printf("[%04i] ", index)
+        n_digits := math.count_digits_of_base(n, 10)
+        for constant, index in chunk.constants {
+            fmt.printf("[%0*i] ", n_digits, index)
             value_print(constant, .Debug)
             fmt.println()
         }
     }
 
     fmt.println("\n.code")
+    left_pad := math.count_digits_of_base(chunk.pc, 10)
     for inst, index in chunk.code[:chunk.pc] {
-        debug_dump_instruction(chunk, inst, index)
+        debug_dump_instruction(chunk, inst, index, left_pad)
     }
 }
 
-debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
-    unary :: proc(chunk: ^Chunk, op: string, inst: Instruction) {
-        print_AB(inst)
-        print_reg(chunk, inst.a)
-        fmt.printf(" := %s", op)
-        print_reg(chunk, inst.b)
+debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int, left_pad := 4) {
+    Print_Info :: struct {
+        chunk: ^Chunk,
+        pc:     int,
     }
 
-    binary :: proc(chunk: ^Chunk, op: string, inst: Instruction) {
+    unary :: proc(info: Print_Info, op: string, inst: Instruction) {
+        print_AB(inst)
+        print_reg(info, inst.a)
+        fmt.printf(" := %s", op)
+        print_reg(info, inst.b)
+    }
+
+    binary :: proc(info: Print_Info, op: string, inst: Instruction) {
         print_ABC(inst)
-        print_reg(chunk, inst.a, " := ")
-        print_reg(chunk, inst.b, " %s ", op)
-        print_reg(chunk, inst.c)
+        print_reg(info, inst.a, " := ")
+        print_reg(info, inst.b, " %s ", op)
+        print_reg(info, inst.c)
     }
 
     print_AB :: proc(inst: Instruction) {
@@ -73,16 +83,17 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
         fmt.printf("% 8i % 4i % 4i ; ", inst.a, inst.b, inst.c)
     }
 
-    print_reg :: proc(chunk: ^Chunk, reg: u16, format := "", args: ..any) {
+    print_reg :: proc(info: Print_Info, reg: u16, format := "", args: ..any) {
         defer if format != "" {
             fmt.printf(format, ..args)
         }
+        chunk := info.chunk
         if reg_is_k(reg) {
             index := cast(int)reg_get_k(reg)
-            value_print(dyarray_get(chunk.constants, index), .Debug)
+            value_print(chunk.constants[index], .Debug)
             return
         }
-        if local, ok := dyarray_get_safe(chunk.locals, cast(int)reg); ok {
+        if local, ok := chunk_get_local(chunk, cast(int)reg + 1, info.pc); ok {
             // see `chunk.odin:local_formatter()`
             fmt.print("local", local)
         } else {
@@ -90,86 +101,88 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
         }
     }
 
-    fmt.printf("[%04i] ", index)
+    fmt.printf("[%0*i] ", left_pad, index)
     if line := chunk.line[index]; index > 0 && line == chunk.line[index - 1] {
         fmt.print("   | ")
     } else {
         fmt.printf("% 4i ", line)
     }
 
-    fmt.printf("%-16v ", inst.op)
+    fmt.printf("%-14v ", inst.op)
     defer fmt.println()
+
+    info := Print_Info{chunk = chunk, pc = index}
     switch (inst.op) {
     case .Move:
         print_AB(inst)
-        print_reg(chunk, inst.a, " := ")
-        print_reg(chunk, inst.b)
+        print_reg(info, inst.a, " := ")
+        print_reg(info, inst.b)
     case .Load_Constant:
         bc := inst_get_Bx(inst)
         print_ABx(inst)
-        print_reg(chunk, inst.a, " := ")
-        value_print(dyarray_get(chunk.constants, cast(int)bc), .Debug)
+        print_reg(info, inst.a, " := ")
+        value_print(chunk.constants[bc], .Debug)
     case .Load_Nil:
         print_AB(inst)
         fmt.printf("reg[%i..=%i] := nil", inst.a, inst.b)
     case .Load_Boolean:
         print_ABC(inst)
-        print_reg(chunk, inst.a, " := ")
+        print_reg(info, inst.a, " := ")
         fmt.printf(" := %v", inst.b == 1)
         if inst.c == 1 {
             fmt.print("; pc++")
         }
     case .Get_Global, .Set_Global:
         print_ABx(inst)
-        key := dyarray_get(chunk.constants, cast(int)inst_get_Bx(inst))
+        key := chunk.constants[inst_get_Bx(inst)]
         assert(value_is_string(key))
         if inst.op == .Get_Global {
-            print_reg(chunk, inst.a, " := _G.%s", key.ostring)
+            print_reg(info, inst.a, " := _G.%s", key.ostring)
         } else {
             fmt.printf("_G.%s := ",  key.ostring)
-            print_reg(chunk, inst.a)
+            print_reg(info, inst.a)
         }
     case .New_Table:
         print_ABC(inst)
-        print_reg(chunk, inst.a, " = {{}} ; #array=%i, #hash=%i",
+        print_reg(info, inst.a, " = {{}} ; #array=%i, #hash=%i",
                   fb_to_int(cast(u8)inst.b), fb_to_int(cast(u8)inst.c))
     case .Get_Table:
         print_ABC(inst)
-        print_reg(chunk, inst.a, " := ")
-        print_reg(chunk, inst.b, "[")
-        print_reg(chunk, inst.c, "]")
+        print_reg(info, inst.a, " := ")
+        print_reg(info, inst.b, "[")
+        print_reg(info, inst.c, "]")
     case .Set_Table:
         print_ABC(inst)
-        print_reg(chunk, inst.a, "[")
-        print_reg(chunk, inst.b, "] = ")
-        print_reg(chunk, inst.c)
+        print_reg(info, inst.a, "[")
+        print_reg(info, inst.b, "] = ")
+        print_reg(info, inst.c)
     case .Set_Array:
         print_ABC(inst)
         assert(inst.b != 0 && inst.c != 0, "Impossible condition reached")
-        print_reg(chunk, inst.a, "[%i+i] = reg(%i+i) for 1 <= i <= %i",
+        print_reg(info, inst.a, "[%i+i] = reg(%i+i) for 1 <= i <= %i",
                  (inst.c - 1) * FIELDS_PER_FLUSH, inst.a, inst.b)
     case .Print:
         print_AB(inst)
         fmt.printf("print(reg[%i..<%i])", inst.a, inst.b)
-    case .Add: binary(chunk, "+", inst)
-    case .Sub: binary(chunk, "-", inst)
-    case .Mul: binary(chunk, "*", inst)
-    case .Div: binary(chunk, "/", inst)
-    case .Mod: binary(chunk, "%", inst)
-    case .Pow: binary(chunk, "^", inst)
-    case .Unm: unary(chunk, "-", inst)
-    case .Eq:  binary(chunk, "==", inst)
-    case .Neq: binary(chunk, "~=", inst)
-    case .Lt:  binary(chunk, "<", inst)
-    case .Gt:  binary(chunk, ">", inst)
-    case .Leq: binary(chunk, "<=", inst)
-    case .Geq: binary(chunk, ">=", inst)
-    case .Not: unary(chunk,"not ", inst)
+    case .Add: binary(info, "+", inst)
+    case .Sub: binary(info, "-", inst)
+    case .Mul: binary(info, "*", inst)
+    case .Div: binary(info, "/", inst)
+    case .Mod: binary(info, "%", inst)
+    case .Pow: binary(info, "^", inst)
+    case .Unm: unary(info,  "-", inst)
+    case .Eq:  binary(info, "==", inst)
+    case .Neq: binary(info, "~=", inst)
+    case .Lt:  binary(info, "<", inst)
+    case .Gt:  binary(info, ">", inst)
+    case .Leq: binary(info, "<=", inst)
+    case .Geq: binary(info, ">=", inst)
+    case .Not: unary(info,  "not ", inst)
     case .Concat:
         print_ABC(inst)
-        print_reg(chunk, inst.a, " := concat(reg[%i..=%i])", inst.b, inst.c)
+        print_reg(info, inst.a, " := concat(reg[%i..=%i])", inst.b, inst.c)
     case .Len:
-        unary(chunk, "#", inst)
+        unary(info, "#", inst)
     case .Return:
         print_ABC(inst)
         reg  := cast(int)inst.a

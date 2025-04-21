@@ -268,7 +268,7 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
 local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counter: int) {
     chunk  := compiler.chunk
     depth  := compiler.scope_depth
-    locals := dyarray_slice(&chunk.locals)
+    locals := chunk.locals
     #reverse for active in sa.slice(&compiler.active) {
         local := locals[active]
         // Already poking at initialized locals in outer scopes?
@@ -356,7 +356,7 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
     nactive := sa.len(compiler.active) + nvars
     sa.resize(&compiler.active, nactive)
     active := sa.slice(&compiler.active)
-    locals := dyarray_slice(&compiler.chunk.locals)
+    locals := compiler.chunk.locals
     for i := nvars; i > 0; i -= 1 {
         // `lparser.c:getlocvar(fs, i)`
         index := active[nactive - i]
