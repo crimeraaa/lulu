@@ -4,17 +4,16 @@ package lulu
 import "core:fmt"
 import "core:math"
 
-@(private="file", init)
-init_formatters :: proc() {
+// Debug Info
+DEBUG_TRACE_EXEC :: #config(DEBUG_TRACE_EXEC, ODIN_DEBUG)
+DEBUG_PRINT_CODE :: #config(DEBUG_PRINT_CODE, ODIN_DEBUG)
+
+@(init)
+debug_init_formatters :: proc() {
     fmt.set_user_formatters(new(map[typeid]fmt.User_Formatter))
-    err := fmt.register_user_formatter(^OString, ostring_formatter)
-    assert(err == nil)
-
-    err = fmt.register_user_formatter(Local, local_formatter)
-    assert(err == nil)
-
-    err = fmt.register_user_formatter(Value, value_formatter)
-    assert(err == nil)
+    fmt.register_user_formatter(^OString, ostring_formatter)
+    fmt.register_user_formatter(Local, local_formatter)
+    fmt.register_user_formatter(Value, value_formatter)
 }
 
 debug_dump_chunk :: proc(chunk: ^Chunk) {

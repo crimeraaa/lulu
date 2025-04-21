@@ -69,7 +69,7 @@ compiler_begin_scope :: proc(compiler: ^Compiler) {
  */
 compiler_end_scope :: proc(compiler: ^Compiler) {
     compiler.scope_depth -= 1
-    vm     := compiler.vm
+    // vm     := compiler.vm
     chunk  := compiler.chunk
     depth  := compiler.scope_depth
     reg    := sa.len(compiler.active) - 1
@@ -489,10 +489,10 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
 -   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
  */
 compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16) {
-    vm := compiler.vm
+    vm    := compiler.vm
     chunk := compiler.chunk
     count := &compiler.count.locals
-    return chunk_add_local(compiler.vm, compiler.chunk, ident, count)
+    return chunk_add_local(vm, chunk, ident, count)
 }
 
 

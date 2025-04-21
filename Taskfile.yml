@@ -15,6 +15,7 @@ vars:
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
     -define:USE_CONSTANT_FOLDING=true
     -define:USE_READLINE=true
+    -collection:lulu=lulu/
   OUT_EXE: bin/lulu
 
 tasks:
@@ -74,7 +75,7 @@ tasks:
         -c ':xa'
     prompt: This command will potentially modify all *.odin files in './'. Continue?
     cmds:
-      - '{{.VIM}} {{.VIM_FLAGS}} ./*.odin'
+      - '{{.VIM}} {{.VIM_FLAGS}} ./*.odin lulu/*.odin lua/src/*.[ch]'
     requires:
       vars: [VIM_PATTERN, VIM_REPLACE]
     preconditions:

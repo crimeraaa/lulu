@@ -1,3 +1,4 @@
+#+private
 package lulu
 
 import "base:intrinsics"
@@ -77,7 +78,7 @@ objects_print_all :: proc(vm: ^VM) {
     for object in object_iterator(&iter) {
         #partial switch object.type {
         case .String:
-            fmt.printfln("string: %q", cast(^OString)object)
+            fmt.printfln("string: %q", ostring_to_string(cast(^OString)object))
         case .Table:
             fmt.printfln("table: %p", object)
         case: unreachable()

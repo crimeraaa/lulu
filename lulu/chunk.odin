@@ -2,8 +2,6 @@
 package lulu
 
 import "core:fmt"
-import "core:math"
-import "core:mem"
 
 UNINITIALIZED_LOCAL :: -1
 INVALID_REG         :: max(u16) // Also applies to locals
@@ -100,9 +98,9 @@ chunk_add_local :: proc(vm: ^VM, chunk: ^Chunk, ident: ^OString, count: ^int) ->
 }
 
 
-chunk_get_local :: proc(chunk: ^Chunk, local_number, pc: int) -> (local: Local, found: bool) {
+chunk_get_local :: proc(chunk: ^Chunk, local_number, pc: int) -> (local: Local, ok: bool) {
     counter := local_number
-    for local in chunk.locals {
+    for var in chunk.locals {
         /*
         **Notes** (2025-04-21):
         -   This local is alive only beyond this instruction.
@@ -110,7 +108,7 @@ chunk_get_local :: proc(chunk: ^Chunk, local_number, pc: int) -> (local: Local, 
             already.
         -   This indicates we won't find it anyway.
          */
-        if local.startpc > pc {
+        if var.startpc > pc {
             break
         }
 
@@ -120,12 +118,12 @@ chunk_get_local :: proc(chunk: ^Chunk, local_number, pc: int) -> (local: Local, 
         -   We try to decrement `counter` the number of times we find a local
             that is definitely active.
          */
-        if pc < local.endpc {
+        if pc < var.endpc {
             counter -= 1
             // We iterated through this scope the correct number of times, so
             // we have the local we're after.
             if counter == 0 {
-                return local, true
+                return var, true
             }
         }
     }

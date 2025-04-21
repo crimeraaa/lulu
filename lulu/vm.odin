@@ -24,18 +24,10 @@ VM :: struct {
     pc:        [^]Instruction, // Next instruction to be executed in the current chunk.
     handlers:    ^Error_Handler,
 }
-
 Error_Handler :: struct {
     prev:  ^Error_Handler,
     buffer: c.jmp_buf,
     status: Status,
-}
-
-Status :: enum {
-    Ok,
-    Compile_Error,
-    Runtime_Error,
-    Out_Of_Memory,
 }
 
 Protected_Proc :: #type proc(vm: ^VM, user_data: rawptr)
@@ -427,7 +419,7 @@ vm_execute :: proc(vm: ^VM) {
         typname := value_type_name(culprit^)
 
         // Culprit is in the active stack frame?
-        if reg, ok := ptr_index_safe(culprit, vm.base[:get_top(vm)]); ok {
+        if reg, is_stack := ptr_index_safe(culprit, vm.base[:get_top(vm)]); is_stack {
             chunk := vm.chunk
 
             // Inline implementation `ldebug.c:currentpc()`.
@@ -436,7 +428,7 @@ vm_execute :: proc(vm: ^VM) {
             pc := ptr_index(vm.pc, chunk.code) - 1
 
             // Culprit is a variable or a field?
-            if ident, scope, ok := debug_get_variable(chunk, pc, reg); ok {
+            if ident, scope, is_var := debug_get_variable(chunk, pc, reg); is_var {
                 vm_runtime_error(vm, "perform arithmetic on %s %q (a %s value)",
                     scope, ident, typname)
             }

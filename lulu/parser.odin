@@ -4,6 +4,9 @@ package lulu
 import "core:fmt"
 import sa "core:container/small_array"
 
+// Runtime Features
+USE_CONSTANT_FOLDING :: #config(USE_CONSTANT_FOLDING, !ODIN_DEBUG)
+
 // https://www.lua.org/source/5.1/luaconf.h.html#LUAI_MAXCCALLS
 PARSER_MAX_RECURSE :: 200
 
@@ -127,7 +130,7 @@ parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
     case .Print:
         print_stmt(parser, compiler)
     case .Do:
-        active := sa.len(compiler.active)
+        // active := sa.len(compiler.active)
         compiler_begin_scope(compiler)
         block(parser, compiler)
         compiler_end_scope(compiler)

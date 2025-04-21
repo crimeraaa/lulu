@@ -1,5 +1,5 @@
 #+private
-package lulu
+package lulu_main
 
 @require import c "core:c/libc"
 @require import "core:strings"
@@ -35,8 +35,9 @@ read_line :: proc(buffer: []byte) -> (line: string, ok: bool) {
     return line, ok
 }
 
+
 /*
-Notes:
+**Notes**
 -   Assumes `line` was allocated via `read_line()`.
 -   If not, then you're gonna have a bad time!
  */
@@ -44,7 +45,9 @@ free_line :: proc(line: string) {
     c.free(cast(rawptr)strings.unsafe_string_to_cstring(line))
 }
 
+
 } else /* ODIN_OS != .Linux */ {
+
 
 read_line :: proc(buffer: []byte) -> (line: string, ok: bool) {
     os.write_string(os.stdout, PROMPT)

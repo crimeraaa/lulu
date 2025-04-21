@@ -1,27 +1,21 @@
-package lulu
+package lulu_main
 
 import "core:fmt"
 import "core:log"
 import "core:os"
 import "core:mem"
 
+import "lulu"
+
 _ :: log
 _ :: mem
 
-DEBUG :: #config(DEBUG, ODIN_DEBUG)
-
-// Debug Info
-DEBUG_TRACE_EXEC :: #config(DEBUG_TRACE_EXEC, DEBUG)
-DEBUG_PRINT_CODE :: #config(DEBUG_PRINT_CODE, DEBUG)
-
-// Runtime Features
-USE_CONSTANT_FOLDING :: #config(USE_CONSTANT_FOLDING, !DEBUG)
 USE_READLINE :: #config(USE_READLINE, ODIN_OS == .Linux)
 
 PROMPT :: ">>> "
 
 main :: proc() {
-    when DEBUG {
+    when ODIN_DEBUG {
         logger_opts :: log.Options{.Level, .Short_File_Path, .Line, .Procedure, .Terminal_Color}
         logger := log.create_console_logger(opt = logger_opts)
         defer log.destroy_console_logger(logger)
@@ -48,7 +42,7 @@ main :: proc() {
         }
     }
 
-    run_interactive :: proc(vm: ^VM) {
+    run_interactive :: proc(vm: ^lulu.State) {
         buffer: [256]byte
         for {
             input := read_line(buffer[:]) or_break
@@ -58,7 +52,7 @@ main :: proc() {
         }
     }
 
-    run_file :: proc(vm: ^VM, file_name: string) {
+    run_file :: proc(vm: ^lulu.State, file_name: string) {
         data, ok := os.read_entire_file(file_name)
         if !ok {
             fmt.eprintfln("Failed to read file %q.", file_name)
@@ -68,19 +62,19 @@ main :: proc() {
         run_input(vm, string(data), file_name)
     }
 
-    run_input :: proc(vm: ^VM, input, source: string) {
-        if vm_interpret(vm, input, source) != .Ok {
-            err_msg, _ := to_string(vm, -1)
+    run_input :: proc(vm: ^lulu.State, input, source: string) {
+        if lulu.run(vm, input, source) != .Ok {
+            err_msg, _ := lulu.to_string(vm, -1)
             fmt.eprintln(err_msg)
         }
     }
 
-    vm := open()
-    if vm == nil {
-        fmt.eprintln("Failed to open lulu!")
+    vm, err := lulu.open()
+    if err != nil {
+        fmt.eprintfln("Failed to open lulu; %t %v", err)
         return
     }
-    defer close(vm)
+    defer lulu.close(vm)
 
     switch len(os.args) {
     case 1: run_interactive(vm)
