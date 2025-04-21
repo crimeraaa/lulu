@@ -678,6 +678,60 @@ Constructor :: struct {
  */
 @(private="file")
 constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+
+    /*
+    **Analogous to**
+    -   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)` in
+        Lua 5.1.5.
+     */
+    array :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
+        defer {
+            ctor.count_array += 1
+            ctor.to_store    += 1
+        }
+
+        value := expression(parser, compiler)
+        compiler_expr_next_reg(compiler, &value)
+    }
+
+    /*
+    **Assumptions**
+    -   The `.Equals` token was NOT yet consumed, it should still be the
+        desired field name.
+     */
+    field :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
+        defer ctor.count_hash += 1
+
+        key := field_name(parser, compiler)
+        parser_consume(parser, .Equals)
+        b := compiler_expr_regconst(compiler, &key)
+
+        value := expression(parser, compiler)
+        c := compiler_expr_regconst(compiler, &value)
+        compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
+        compiler_expr_pop(compiler, value)
+        compiler_expr_pop(compiler, key)
+
+    }
+
+    index :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
+        defer ctor.count_hash += 1
+
+        key := expression(parser, compiler)
+        parser_consume(parser, .Right_Bracket)
+        b := compiler_expr_regconst(compiler, &key)
+
+        parser_consume(parser, .Equals)
+
+        value := expression(parser, compiler)
+        c := compiler_expr_regconst(compiler, &value)
+
+        compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
+        // Reuse these registers
+        compiler_expr_pop(compiler, value)
+        compiler_expr_pop(compiler, key)
+    }
+
     ctor := &Constructor{table = expr}
     // All information is pending so just use 0's, we'll fix it later
     pc := compiler_code_ABC(compiler, .New_Table, 0, 0, 0)
@@ -695,7 +749,7 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
             **Assumptions**
             -   This is an inline implementation.
-            -   `ctor_array` already pushed each expression.
+            -   `array` already pushed each expression.
              */
             if ctor.to_store == FIELDS_PER_FLUSH {
                 compiler_code_set_array(compiler, ctor.table.reg,
@@ -708,18 +762,18 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
             parser_advance(parser)
             #partial switch(parser.consumed.type) {
             case .Identifier:
-                // `.Equals` is consumed inside of `ctor_field`
+                // `.Equals` is consumed inside of `field`
                 if parser_check(parser, .Equals) {
-                    ctor_field(parser, compiler, ctor)
+                    field(parser, compiler, ctor)
                 } else {
                     parser_backtrack(parser, saved_consumed)
-                    ctor_array(parser, compiler, ctor)
+                    array(parser, compiler, ctor)
                 }
             case .Left_Bracket:
-                ctor_index(parser, compiler, ctor)
+                index(parser, compiler, ctor)
             case:
                 parser_backtrack(parser, saved_consumed)
-                ctor_array(parser, compiler, ctor)
+                array(parser, compiler, ctor)
             }
 
             if !parser_match(parser, .Comma) {
@@ -749,63 +803,6 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     ip.c = cast(u16)fb_from_int(ctor.count_hash)
 }
 
-
-/*
-**Analogous to**
--   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)` in Lua 5.1.5.
- */
-@(private="file")
-ctor_array :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
-    defer {
-        ctor.count_array += 1
-        ctor.to_store    += 1
-    }
-
-    value := expression(parser, compiler)
-    compiler_expr_next_reg(compiler, &value)
-}
-
-
-/*
-**Assumptions**
--   The `.Equals` token was NOT yet consumed, it should still be the
-    desired field name.
- */
-@(private="file")
-ctor_field :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
-    defer ctor.count_hash += 1
-
-    key := field_name(parser, compiler)
-    parser_consume(parser, .Equals)
-    b := compiler_expr_regconst(compiler, &key)
-
-    value := expression(parser, compiler)
-    c := compiler_expr_regconst(compiler, &value)
-    compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
-    compiler_expr_pop(compiler, value)
-    compiler_expr_pop(compiler, key)
-
-}
-
-
-@(private="file")
-ctor_index :: proc(parser: ^Parser, compiler: ^Compiler, ctor: ^Constructor) {
-    defer ctor.count_hash += 1
-
-    key := expression(parser, compiler)
-    parser_consume(parser, .Right_Bracket)
-    b := compiler_expr_regconst(compiler, &key)
-
-    parser_consume(parser, .Equals)
-
-    value := expression(parser, compiler)
-    c := compiler_expr_regconst(compiler, &value)
-
-    compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
-    // Reuse these registers
-    compiler_expr_pop(compiler, value)
-    compiler_expr_pop(compiler, key)
-}
 
 /*
 **Form**

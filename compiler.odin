@@ -1,11 +1,9 @@
 #+private
 package lulu
 
-import "core:fmt"
+@require import "core:fmt"
 import "core:log"
 import sa "core:container/small_array"
-
-_ :: fmt // needed for when !ODIN_DEBUG
 
 MAX_LOCALS    :: 200
 MAX_CONSTANTS :: MAX_uBC
@@ -429,20 +427,20 @@ compiler_code_return :: proc(compiler: ^Compiler, reg, nret: u16) {
 
 compiler_code_ABC :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
-    return compiler_code(compiler, inst_make_ABC(op, a, b, c))
+    return compiler_code(compiler, ip_make_ABC(op, a, b, c))
 }
 
 compiler_code_AB :: proc(compiler: ^Compiler, op: OpCode, a, b: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
     assert(opcode_info[op].a)
     assert(opcode_info[op].b != .Unused)
-    return compiler_code(compiler, inst_make_ABC(op, a, b, 0))
+    return compiler_code(compiler, ip_make_ABC(op, a, b, 0))
 }
 
 compiler_code_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32) -> (pc: int) {
     assert(opcode_info[op].type == .Unsigned_Bx || opcode_info[op].type == .Signed_Bx)
     assert(opcode_info[op].c == .Unused)
-    return compiler_code(compiler, inst_make_ABx(op, reg, index))
+    return compiler_code(compiler, ip_make_ABx(op, reg, index))
 }
 
 /*

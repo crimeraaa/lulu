@@ -48,6 +48,33 @@ main :: proc() {
         }
     }
 
+    run_interactive :: proc(vm: ^VM) {
+        buffer: [256]byte
+        for {
+            input := read_line(buffer[:]) or_break
+            defer free_line(input)
+            // Interpret even if empty, this will return 0 registers.
+            run_input(vm, input, "stdin")
+        }
+    }
+
+    run_file :: proc(vm: ^VM, file_name: string) {
+        data, ok := os.read_entire_file(file_name)
+        if !ok {
+            fmt.eprintfln("Failed to read file %q.", file_name)
+            return
+        }
+        defer delete(data)
+        run_input(vm, string(data), file_name)
+    }
+
+    run_input :: proc(vm: ^VM, input, source: string) {
+        if vm_interpret(vm, input, source) != .Ok {
+            err_msg, _ := to_string(vm, -1)
+            fmt.eprintln(err_msg)
+        }
+    }
+
     vm := open()
     if vm == nil {
         fmt.eprintln("Failed to open lulu!")
@@ -59,34 +86,5 @@ main :: proc() {
     case 1: run_interactive(vm)
     case 2: run_file(vm, os.args[1])
     case:   fmt.eprintfln("Usage: %s [script]", os.args[0])
-    }
-}
-
-@(private="file")
-run_interactive :: proc(vm: ^VM) {
-    for {
-        input := read_line() or_break
-        defer free_line(input)
-        // Interpret even if empty, this will return 0 registers.
-        run_input(vm, input, "stdin")
-    }
-}
-
-@(private="file")
-run_file :: proc(vm: ^VM, file_name: string) {
-    data, ok := os.read_entire_file(file_name)
-    if !ok {
-        fmt.eprintfln("Failed to read file %q.", file_name)
-        return
-    }
-    defer delete(data)
-    run_input(vm, string(data), file_name)
-}
-
-@(private="file")
-run_input :: proc(vm: ^VM, input, source: string) {
-    if vm_interpret(vm, input, source) != .Ok {
-        err_msg, _ := to_string(vm, -1)
-        fmt.eprintln(err_msg)
     }
 }

@@ -171,7 +171,7 @@ vm_destroy :: proc(vm: ^VM) {
     vm.chunk    = nil
 }
 
-vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
+vm_interpret :: proc(vm: ^VM, input, name: string) -> Status {
     Data :: struct {
         chunk: ^Chunk,
         input: string,
@@ -182,7 +182,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
     defer chunk_destroy(vm, data.chunk)
 
     interpret :: proc(vm: ^VM, user_data: rawptr) {
-        data  := cast(^Data)user_data
+        data  := (cast(^Data)user_data)^
         chunk := data.chunk
         compiler_compile(vm, chunk, data.input)
         vm_check_stack(vm, chunk.stack_used)
@@ -194,7 +194,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
 
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
-        for &slot in vm.stack[:chunk.stack_used] {
+        for &slot in vm.base[:chunk.stack_used] {
             slot = value_make()
         }
         vm_execute(vm)
@@ -215,7 +215,7 @@ Analogous to:
 Links:
 -   https://www.lua.org/source/5.1/ldo.c.html#luaD_rawrunprotected
  */
-vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) -> (status: Status) {
+vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) -> Status {
     handler: Error_Handler
     // Chain new handler
     handler.prev = vm.handlers
@@ -271,7 +271,7 @@ vm_execute :: proc(vm: ^VM) {
         case .Move:
             ra^ = stack[inst.b]
         case .Load_Constant:
-            bc := inst_get_Bx(inst)
+            bc := ip_get_Bx(inst)
             ra^ = constants[bc]
         case .Load_Nil:
             // Add 1 because we want to include Reg[B]
@@ -281,15 +281,15 @@ vm_execute :: proc(vm: ^VM) {
         case .Load_Boolean:
             ra^ = value_make(inst.b == 1)
         case .Get_Global:
-            key := constants[inst_get_Bx(inst)]
+            key := constants[ip_get_Bx(inst)]
             value, ok := table_get(globals, key)
             if !ok {
-                ident := ostring_to_string(key.ostring)
+                ident := value_to_string(key)
                 vm_runtime_error(vm, "read undefined global '%s'", ident)
             }
             ra^ = value
         case .Set_Global:
-            key := constants[inst_get_Bx(inst)]
+            key := constants[ip_get_Bx(inst)]
             table_set(vm, globals, key, ra^)
         case .New_Table:
             n_array := fb_to_int(cast(u8)inst.b)
@@ -319,10 +319,7 @@ vm_execute :: proc(vm: ^VM) {
             // Guaranteed because this only occurs in table constructors
             table  := ra.table
             count  := cast(int)inst.b
-            offset := cast(int)((inst.c - 1) * FIELDS_PER_FLUSH)
-
-            assert(inst.b != 0 && inst.c != 0, "Impossible condition reached")
-
+            offset := cast(int)(inst.c - 1) * FIELDS_PER_FLUSH
             for i in 1..=count {
                 key := value_make(offset + i)
                 table_set(vm, table, key, stack[cast(int)inst.a + i])
@@ -345,7 +342,7 @@ vm_execute :: proc(vm: ^VM) {
             }
             ra^ = value_make(number_unm(rb.number))
         case .Eq, .Neq:
-            rb, rc := get_rk_bc(vm, inst, stack, constants)
+            rb, rc := get_rkb_rkc(vm, inst, stack, constants)
             equals := value_eq(rb^, rc^)
             ra^ = value_make(equals if inst.op == .Eq else !equals)
         case .Lt:   compare_op(vm, number_lt,  ra, inst, stack, constants)
@@ -388,64 +385,80 @@ vm_execute :: proc(vm: ^VM) {
             vm.top = &stack[cast(int)inst.a + nret]
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
             return
+        case:
+            unreachable()
         }
     }
-}
 
+    ///=== VM EXECUTION HELPERS ============================================ {{{
 
-// Rough analog to C macro
-@(private="file")
-arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
-    left, right := get_rk_bc(vm, inst, stack, constants)
-    if !value_is_number(left^) || !value_is_number(right^) {
-        arith_error(vm, left, right)
+    get_rkb_rkc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rkb, rkc: ^Value) {
+        rkb = get_rk(vm, inst.b, stack, constants)
+        rkc = get_rk(vm, inst.c, stack, constants)
+        return rkb, rkc
     }
-    ra^ = value_make(op(left.number, right.number))
-}
 
-@(private="file")
-arith_error :: proc(vm: ^VM, left, right: ^Value) -> ! {
-    // left hand side is fine, right hand side is the culprit
-    culprit := right if value_is_number(left^) else left
-    typname := value_type_name(culprit^)
+    get_rk :: proc(vm: ^VM, reg: u16, stack, constants: []Value) -> ^Value {
+        return &constants[reg_get_k(reg)] if reg_is_k(reg) else &stack[reg]
+    }
 
-    // Culprit is in the active stack frame?
-    if reg, ok := ptr_index_safe(culprit, vm.base[:get_top(vm)]); ok {
-        // pc always points to instruction AFTER current, so culprit is pc - 1
-        pc := ptr_index(vm.pc, vm.chunk.code) - 1
-        local, found := chunk_get_local(vm.chunk, reg + 1, pc)
-        if found {
-            vm_runtime_error(vm, "perform arithmetic on local %q (a %s value)",
-                local.ident, typname)
+    // Rough analog to C macro
+    arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
+        left, right := get_rkb_rkc(vm, inst, stack, constants)
+        if !value_is_number(left^) || !value_is_number(right^) {
+            arith_error(vm, left, right)
+        }
+        ra^ = value_make(op(left.number, right.number))
+    }
+
+    // Rough analog to C macro
+    compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
+        left, right := get_rkb_rkc(vm, inst, stack, constants)
+        if !value_is_number(left^) || !value_is_number(right^) {
+            compare_error(vm, left, right)
+            return
+        }
+        ra^ = value_make(op(left.number, right.number))
+    }
+
+    arith_error :: proc(vm: ^VM, left, right: ^Value) -> ! {
+        // left hand side is fine, right hand side is the culprit
+        culprit := right if value_is_number(left^) else left
+        typname := value_type_name(culprit^)
+
+        // Culprit is in the active stack frame?
+        if reg, ok := ptr_index_safe(culprit, vm.base[:get_top(vm)]); ok {
+            chunk := vm.chunk
+
+            // Inline implementation `ldebug.c:currentpc()`.
+            // `pc` always points to instruction AFTER current, so culprit is
+            // at the index of `pc - 1`
+            pc := ptr_index(vm.pc, chunk.code) - 1
+
+            // Culprit is a variable or a field?
+            if ident, scope, ok := debug_get_variable(chunk, pc, reg); ok {
+                vm_runtime_error(vm, "perform arithmetic on %s %q (a %s value)",
+                    scope, ident, typname)
+            }
+        }
+        // Default case; we only know its type
+        vm_runtime_error(vm, "perform arithmetic on a %s value", typname)
+    }
+
+    compare_error :: proc(vm: ^VM, left, right: ^Value) {
+        tpname1, tpname2 := value_type_name(left^), value_type_name(right^)
+        if tpname1 == tpname2 {
+            vm_runtime_error(vm, "compare 2 %s values", tpname1)
+        } else {
+            vm_runtime_error(vm, "compare %s with %s", tpname1, tpname2)
         }
     }
-    // Default case; we only know its type
-    vm_runtime_error(vm, "perform arithmetic on a %s value", typname)
-}
 
-@(private="file")
-index_error :: proc(vm: ^VM, t: Value) -> ! {
-    vm_runtime_error(vm, "index a %s value", value_type_name(t))
-}
-
-@(private="file")
-compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
-    left, right := get_rk_bc(vm, inst, stack, constants)
-    if !value_is_number(left^) || !value_is_number(right^) {
-        compare_error(vm, left, right)
-        return
+    index_error :: proc(vm: ^VM, t: Value) -> ! {
+        vm_runtime_error(vm, "index a %s value", value_type_name(t))
     }
-    ra^ = value_make(op(left.number, right.number))
-}
 
-@(private="file")
-compare_error :: proc(vm: ^VM, left, right: ^Value) {
-    tpname1, tpname2 := value_type_name(left^), value_type_name(right^)
-    if tpname1 == tpname2 {
-        vm_runtime_error(vm, "compare 2 %s values", tpname1)
-    } else {
-        vm_runtime_error(vm, "compare %s with %s", tpname1, tpname2)
-    }
+    ///=== }}} =================================================================
 }
 
 vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
@@ -454,20 +467,10 @@ vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
         if !value_is_string(arg) {
             vm_runtime_error(vm, "concatenate a %s value", value_type_name(arg))
         }
-        strings.write_string(builder, ostring_to_string(arg.ostring))
+        strings.write_string(builder, value_to_string(arg))
     }
     s := strings.to_string(builder^)
     ra^ = value_make(ostring_new(vm, s))
-}
-
-@(private="file")
-get_rk_bc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rkb, rkc: ^Value) {
-    return get_rk(vm, inst.b, stack, constants), get_rk(vm, inst.c, stack, constants)
-}
-
-@(private="file")
-get_rk :: proc(vm: ^VM, reg: u16, stack, constants: []Value) -> ^Value {
-    return &constants[reg_get_k(reg)] if reg_is_k(reg) else &stack[reg]
 }
 
 @(private="file")

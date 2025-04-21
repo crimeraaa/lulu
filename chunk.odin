@@ -31,14 +31,19 @@ local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     switch verb {
     case 'v': // verbose; our very own "name mangling"
         n_written^ += fmt.wprintf(writer, "%s__%i(%i:%i)",
-            ostring_to_string(local.ident), local.depth, local.startpc, local.endpc)
+            local_to_string(local), local.depth, local.startpc, local.endpc)
         return true
     case 's': // summary
-        n_written^ += fmt.wprintf(writer, "%s", ostring_to_string(local.ident))
+        n_written^ += fmt.wprintf(writer, "%s", local_to_string(local))
         return true
     case:
         return false
     }
+}
+
+
+local_to_string :: proc(local: Local) -> string {
+    return ostring_to_string(local.ident)
 }
 
 chunk_init :: proc(chunk: ^Chunk, source: string) {
@@ -108,8 +113,8 @@ chunk_get_local :: proc(chunk: ^Chunk, local_number, pc: int) -> (local: Local, 
         if local.startpc > pc {
             break
         }
-        
-        /* 
+
+        /*
         **Notes** (2025-04-21):
         -   This local is definitely active at this instruction.
         -   We try to decrement `counter` the number of times we find a local

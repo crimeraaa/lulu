@@ -100,10 +100,10 @@ Load_Constant, // A Bx  | Reg(A) := Kst(Bx)
 Load_Nil,      // A B   | Reg(i) := nil for A <= i <= B
 Load_Boolean,  // A B C | Reg(1) := (Bool)B; if ((Bool)C) ip++
 Get_Global,    // A Bx  | Reg(A) := _G[Kst[Bx]]
-Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg(A)
-New_Table,     // A B C | Reg(A) := {} ; array size = B, hash size = C
 Get_Table,     // A B C | Reg(A) := Reg(B)[RK(C)]
+Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg(A)
 Set_Table,     // A B C | Reg(A)[RK(B)] := RK(C)
+New_Table,     // A B C | Reg(A) := {} ; array size = B, hash size = C
 Set_Array,     // A Bx  | Reg(A)[(C-1)*FPF + i] = Reg(A + i) for 1 <= i <= B
 Print,         // A B   | print(Reg(i), '\t') for A <= i <= B
 Add,           // A B C | Reg(A) := RK(B) + RK(C)
@@ -171,50 +171,64 @@ OpCode_Info :: bit_field u8 {
     type:    OpCode_Format   | 2,
     b:       OpCode_Arg_Type | 2,
     c:       OpCode_Arg_Type | 2,
-    a:       bool            | 1, // Is argument A used or not?
+    a:       bool            | 1, // Is argument A is a destination register?
     is_test: bool            | 1,
 }
 
-// See: https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
+/*
+**Notes**
+-   In Lua, `OP_EQ`, `OP_LT` and `OP_LE` actually have the register A mode set
+    to `false`.
+-   This is because A is not a register; rather they are used for control flow
+    and A is a constant (one of 0 or 1) to be used to determine the result of
+    the comparison.
+-   Until we implement jumps, we will continue to use A as a destination register.
+
+**Links**
+-   https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
+-   https://the-ravi-programming-language.readthedocs.io/en/latest/lua_bytecode_reference.html#op-eq-op-lt-and-op-le-instructions
+ */
 opcode_info := [OpCode]OpCode_Info {
-.Move                       = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
-.Load_Constant              = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
-.Load_Boolean               = {type = .Separate,    a = true, b = .Used,      c = .Used},
-.Load_Nil                   = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
-.Get_Global ..= .Set_Global = {type = .Unsigned_Bx, a = true, b = .Reg_Const, c = .Unused},
-.New_Table                  = {type = .Separate,    a = true, b = .Used,      c = .Used},
-.Get_Table ..= .Set_Table   = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
-.Set_Array                  = {type = .Separate,    a = true, b = .Used,      c = .Used},
-.Print                      = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
-.Add ..= .Pow               = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
-.Unm                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
-.Eq ..= .Geq                = {type = .Separate,    a = true, b = .Reg_Const, c = .Reg_Const},
-.Not                        = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Unused},
-.Concat                     = {type = .Separate,    a = true, b = .Reg_Jump,  c = .Reg_Jump},
-.Len                        = {type = .Separate,    a = true, b = .Reg_Const, c = .Unused},
-.Return                     = {type = .Separate,    a = true, b = .Used,      c = .Used},
+.Move           = {type = .Separate,    a = true,  b = .Reg_Const, c = .Unused},
+.Load_Constant  = {type = .Unsigned_Bx, a = true,  b = .Reg_Const, c = .Unused},
+.Load_Boolean   = {type = .Separate,    a = true,  b = .Used,      c = .Used},
+.Load_Nil       = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
+.Get_Global     = {type = .Unsigned_Bx, a = true,  b = .Reg_Const, c = .Unused},
+.Get_Table      = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
+.Set_Global     = {type = .Unsigned_Bx, a = false, b = .Reg_Const, c = .Unused},
+.Set_Table      = {type = .Separate,    a = false, b = .Reg_Const, c = .Reg_Const},
+.New_Table      = {type = .Separate,    a = true,  b = .Used,      c = .Used},
+.Set_Array      = {type = .Separate,    a = true,  b = .Used,      c = .Used},
+.Print          = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
+.Add ..= .Pow   = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
+.Unm            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
+.Eq ..= .Geq    = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
+.Not            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
+.Concat         = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Reg_Jump},
+.Len            = {type = .Separate,    a = true,  b = .Reg_Const, c = .Unused},
+.Return         = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 }
 
 
 // Bit 9 for arguments B and C indicates how to interpret them.
 // If 0, it is a register. If 1, it is an index into the constants table.
-BIT_RK       :: 1 << (SIZE_B - 1)
-MAX_INDEX_RK :: BIT_RK - 1
+REG_BIT_RK   :: 1 << (SIZE_B - 1)
+MAX_INDEX_RK :: REG_BIT_RK - 1
 
 reg_is_k :: proc(b_or_c: u16) -> bool {
-    return (b_or_c & BIT_RK) != 0
+    return (b_or_c & REG_BIT_RK) != 0
 }
 
 reg_get_k :: proc(b_or_c: u16) -> u16 {
-    return (b_or_c & ~cast(u16)BIT_RK)
+    return (b_or_c & ~cast(u16)REG_BIT_RK)
 }
 
 reg_as_k :: proc(b_or_c: u16) -> u16 {
-    return b_or_c | BIT_RK
+    return b_or_c | REG_BIT_RK
 }
 
 // This is kinda stupid
-inst_make_ABC :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
+ip_make_ABC :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
     inst.b  = b
     inst.c  = c
     inst.a  = a
@@ -222,7 +236,7 @@ inst_make_ABC :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
     return inst
 }
 
-inst_make_ABx :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
+ip_make_ABx :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
     inst.b  = cast(u16)(bc >> SIZE_C) // shift out 'c' bits
     inst.c  = cast(u16)(bc & MAX_C)   // remove 'b' bits
     inst.a  = a
@@ -230,7 +244,7 @@ inst_make_ABx :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
     return inst
 }
 
-inst_get_Bx :: proc(inst: Instruction) -> (bc: u32) {
+ip_get_Bx :: proc(inst: Instruction) -> (bc: u32) {
     bc |= cast(u32)inst.b << OFFSET_B
     bc |= cast(u32)inst.c
     return bc

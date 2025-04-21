@@ -158,6 +158,12 @@ value_is_table :: proc(a: Value) -> bool {
     return a.type == .Table
 }
 
+// Utility function because this is so common.
+value_to_string :: proc(a: Value) -> string {
+    assert(value_is_string(a))
+    return ostring_to_string(a.ostring)
+}
+
 value_eq :: proc(a, b: Value) -> bool {
     if a.type != b.type {
         return false
@@ -175,23 +181,24 @@ value_eq :: proc(a, b: Value) -> bool {
 
 number_is_nan :: math.is_nan_f64
 
-value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
-    value     := (cast(^Value)arg.data)^
-    writer    := fi.writer
-    n_written := &fi.n
+value_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
+    value  := (cast(^Value)arg.data)^
+    writer := info.writer
     switch verb {
     case 'v':
         switch value.type {
         case .Nil:
-            io.write_string(writer, "nil", n_written)
+            io.write_string(writer, "nil", &info.n)
         case .Boolean:
-            io.write_string(writer, "true" if value.boolean else "false", n_written)
+            io.write_string(writer, "true" if value.boolean else "false", &info.n)
         case .Number:
-            n_written^ += fmt.wprintf(writer, "%.14g", value.number)
+            info.n += fmt.wprintf(writer, "%.14g", value.number)
         case .String:
-            n_written^ += fmt.wprint(writer, value.ostring)
+            io.write_string(writer, value_to_string(value))
         case .Table:
-            n_written^ += fmt.wprintf(writer, "%s: %p", value_type_name(value), value.table)
+            type_name := value_type_name(value)
+            pointer   := cast(rawptr)value.table
+            info.n += fmt.wprintf(writer, "%s: %p", type_name, pointer)
         case:
             unreachable()
         }

@@ -12,18 +12,17 @@ OString :: struct {
     data:    [0]byte,
 }
 
-ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
-    ostring   := (cast(^^OString)arg.data)^
-    text         := ostring_to_string(ostring)
-    n_written := &fi.n
-    writer    := fi.writer
+ostring_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
+    ostring := (cast(^^OString)arg.data)^
+    text    := ostring_to_string(ostring)
+    writer  := info.writer
     switch verb {
     case 'v', 's':
-        io.write_string(writer, text, n_written)
+        io.write_string(writer, text, &info.n)
         return true
     case 'q':
         quote := '\'' if ostring.len == 1 else '\"'
-        n_written^ += fmt.wprintf(writer, "%c%s%c", quote, text, quote)
+        info.n += fmt.wprintf(writer, "%c%s%c", quote, text, quote)
         return true
     case:
         return false

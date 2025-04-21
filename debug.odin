@@ -51,36 +51,22 @@ debug_dump_chunk :: proc(chunk: ^Chunk) {
     }
 }
 
-debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int, left_pad := 4) {
+debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_pad := 4) {
     Print_Info :: struct {
         chunk: ^Chunk,
         pc:     int,
+        ip:     Instruction,
     }
 
-    unary :: proc(info: Print_Info, op: string, inst: Instruction) {
-        print_AB(inst)
-        print_reg(info, inst.a)
-        fmt.printf(" := %s", op)
-        print_reg(info, inst.b)
+    unary :: proc(info: Print_Info, op: string) {
+        print_reg(info, info.ip.a, " := %s", op)
+        print_reg(info, info.ip.b)
     }
 
-    binary :: proc(info: Print_Info, op: string, inst: Instruction) {
-        print_ABC(inst)
-        print_reg(info, inst.a, " := ")
-        print_reg(info, inst.b, " %s ", op)
-        print_reg(info, inst.c)
-    }
-
-    print_AB :: proc(inst: Instruction) {
-        fmt.printf("% 8i % 4i % 4s ; ", inst.a, inst.b, " ")
-    }
-
-    print_ABx :: proc(inst: Instruction) {
-        fmt.printf("% 8i % 4i % 4s ; ", inst.a, inst_get_Bx(inst), " ")
-    }
-
-    print_ABC :: proc(inst: Instruction) {
-        fmt.printf("% 8i % 4i % 4i ; ", inst.a, inst.b, inst.c)
+    binary :: proc(info: Print_Info, op: string) {
+        print_reg(info, info.ip.a, " := ")
+        print_reg(info, info.ip.b, " %s ", op)
+        print_reg(info, info.ip.c)
     }
 
     print_reg :: proc(info: Print_Info, reg: u16, format := "", args: ..any) {
@@ -95,9 +81,9 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int, lef
         }
         if local, ok := chunk_get_local(chunk, cast(int)reg + 1, info.pc); ok {
             // see `chunk.odin:local_formatter()`
-            fmt.print("local", local)
+            fmt.printf("local %s", local_to_string(local))
         } else {
-            fmt.printf("reg[%i]", reg)
+            fmt.printf("Reg(%i)", reg)
         }
     }
 
@@ -108,89 +94,248 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int, lef
         fmt.printf("% 4i ", line)
     }
 
-    fmt.printf("%-14v ", inst.op)
+    fmt.printf("%-14v ", ip.op)
     defer fmt.println()
 
-    info := Print_Info{chunk = chunk, pc = index}
-    switch (inst.op) {
+    switch info := opcode_info[ip.op]; info.type {
+    case .Separate:
+        fmt.printf("% 8i % 4i ", ip.a, ip.b)
+        if info.c == .Unused {
+            fmt.printf("% 4s", " ")
+        } else {
+            fmt.printf("% 4i", ip.c)
+        }
+        fmt.printf(" ; ")
+    case .Signed_Bx:
+        fmt.printf("% 8i % 4i % 4s ; ", ip.a, ip_get_Bx(ip), " ")
+    case .Unsigned_Bx:
+        fmt.printf("% 8i % 4i % 4s ; ", ip.a, ip_get_Bx(ip), " ")
+    case:
+        unreachable()
+    }
+
+    info := Print_Info{chunk = chunk, pc = index, ip = ip}
+    switch (ip.op) {
     case .Move:
-        print_AB(inst)
-        print_reg(info, inst.a, " := ")
-        print_reg(info, inst.b)
+        print_reg(info, ip.a, " := ")
+        print_reg(info, ip.b)
     case .Load_Constant:
-        bc := inst_get_Bx(inst)
-        print_ABx(inst)
-        print_reg(info, inst.a, " := ")
+        bc := ip_get_Bx(ip)
+        print_reg(info, ip.a, " := ")
         value_print(chunk.constants[bc], .Debug)
     case .Load_Nil:
-        print_AB(inst)
-        fmt.printf("reg[%i..=%i] := nil", inst.a, inst.b)
+        fmt.printf("Reg(i) := nil for %i <= i <= %i", ip.a, ip.b)
     case .Load_Boolean:
-        print_ABC(inst)
-        print_reg(info, inst.a, " := ")
-        fmt.printf(" := %v", inst.b == 1)
-        if inst.c == 1 {
+        print_reg(info, ip.a, " := ")
+        fmt.printf(" := %v", ip.b == 1)
+        if ip.c == 1 {
             fmt.print("; pc++")
         }
-    case .Get_Global, .Set_Global:
-        print_ABx(inst)
-        key := chunk.constants[inst_get_Bx(inst)]
-        assert(value_is_string(key))
-        if inst.op == .Get_Global {
-            print_reg(info, inst.a, " := _G.%s", key.ostring)
-        } else {
-            fmt.printf("_G.%s := ",  key.ostring)
-            print_reg(info, inst.a)
-        }
-    case .New_Table:
-        print_ABC(inst)
-        print_reg(info, inst.a, " = {{}} ; #array=%i, #hash=%i",
-                  fb_to_int(cast(u8)inst.b), fb_to_int(cast(u8)inst.c))
+    case .Get_Global:
+        key := chunk.constants[ip_get_Bx(ip)]
+        print_reg(info, ip.a, " := _G.%s", value_to_string(key))
     case .Get_Table:
-        print_ABC(inst)
-        print_reg(info, inst.a, " := ")
-        print_reg(info, inst.b, "[")
-        print_reg(info, inst.c, "]")
+        print_reg(info, ip.a, " := ")
+        print_reg(info, ip.b, "[")
+        print_reg(info, ip.c, "]")
+    case .Set_Global:
+        key := chunk.constants[ip_get_Bx(ip)]
+        fmt.printf("_G.%s := ",  value_to_string(key))
+        print_reg(info, ip.a)
     case .Set_Table:
-        print_ABC(inst)
-        print_reg(info, inst.a, "[")
-        print_reg(info, inst.b, "] = ")
-        print_reg(info, inst.c)
+        print_reg(info, ip.a, "[")
+        print_reg(info, ip.b, "] = ")
+        print_reg(info, ip.c)
+    case .New_Table:
+        print_reg(info, ip.a, " = {{}} ; #array=%i, #hash=%i",
+                  fb_to_int(cast(u8)ip.b), fb_to_int(cast(u8)ip.c))
     case .Set_Array:
-        print_ABC(inst)
-        assert(inst.b != 0 && inst.c != 0, "Impossible condition reached")
-        print_reg(info, inst.a, "[%i+i] = reg(%i+i) for 1 <= i <= %i",
-                 (inst.c - 1) * FIELDS_PER_FLUSH, inst.a, inst.b)
+        print_reg(info, ip.a, "[%i+i] = Reg(%i+i) for 1 <= i <= %i",
+                  cast(int)(ip.c - 1) * FIELDS_PER_FLUSH, ip.a, ip.b)
     case .Print:
-        print_AB(inst)
-        fmt.printf("print(reg[%i..<%i])", inst.a, inst.b)
-    case .Add: binary(info, "+", inst)
-    case .Sub: binary(info, "-", inst)
-    case .Mul: binary(info, "*", inst)
-    case .Div: binary(info, "/", inst)
-    case .Mod: binary(info, "%", inst)
-    case .Pow: binary(info, "^", inst)
-    case .Unm: unary(info,  "-", inst)
-    case .Eq:  binary(info, "==", inst)
-    case .Neq: binary(info, "~=", inst)
-    case .Lt:  binary(info, "<", inst)
-    case .Gt:  binary(info, ">", inst)
-    case .Leq: binary(info, "<=", inst)
-    case .Geq: binary(info, ">=", inst)
-    case .Not: unary(info,  "not ", inst)
+        fmt.printf("print(Reg(i), \\t) for %i <= i <= %i", ip.a, ip.b)
+    case .Add: binary(info, "+")
+    case .Sub: binary(info, "-")
+    case .Mul: binary(info, "*")
+    case .Div: binary(info, "/")
+    case .Mod: binary(info, "%")
+    case .Pow: binary(info, "^")
+    case .Unm: unary(info,  "-")
+    case .Eq:  binary(info, "==")
+    case .Neq: binary(info, "~=")
+    case .Lt:  binary(info, "<")
+    case .Gt:  binary(info, ">")
+    case .Leq: binary(info, "<=")
+    case .Geq: binary(info, ">=")
+    case .Not: unary(info,  "not ")
     case .Concat:
-        print_ABC(inst)
-        print_reg(info, inst.a, " := concat(reg[%i..=%i])", inst.b, inst.c)
+        print_reg(info, ip.a, " := concat(Reg(%i..=%i))", ip.b, ip.c)
     case .Len:
-        unary(info, "#", inst)
+        unary(info, "#")
     case .Return:
-        print_ABC(inst)
-        reg  := cast(int)inst.a
-        nret := cast(int)inst.b
-        if inst.c == 0 {
-            fmt.printf("return reg[%i..<%i]", reg, reg + nret)
+        reg       := cast(int)ip.a
+        n_results := cast(int)ip.b
+        if ip.c == 0 {
+            fmt.printf("return Reg(%i..<%i)", reg, reg + n_results)
         } else {
-            fmt.printf("return reg[%i..(top)]", reg);
+            fmt.printf("return Reg(%i..=%i)", reg, chunk.stack_used);
+        }
+    case:
+        unreachable()
+    }
+}
+
+
+/*
+**Overview**
+-   Attempts to resolve the global/local/field name of the stack index `reg` at
+    the desired instruction index `pc`.
+
+**Analogous to**
+-   `ldebug.c:getobjname(lua_State *L, CallInfo *ci, int stackpos, const char **name)`
+ */
+debug_get_variable :: proc(chunk: ^Chunk, pc, reg: int) -> (ident, scope: string, ok: bool) {
+    /*
+    **Analogous to**
+    -   `ldebug.c:kname(Proto *p, int c)` in Lua 5.1.5.
+     */
+    constant_ident :: proc(chunk: ^Chunk, reg: u16) -> string {
+        if reg_is_k(reg) {
+            if key := chunk.constants[reg_get_k(reg)]; value_is_string(key) {
+                return value_to_string(key)
+            }
+        }
+        // Either non-constant or non-string-constant, can't determine its name
+        return "?"
+    }
+
+    if local, found := chunk_get_local(chunk, reg + 1, pc); found {
+        return local_to_string(local), "local", true
+    }
+    ip := debug_symbolic_execution(chunk, pc, cast(u16)reg) or_return
+    #partial switch ip.op {
+    case .Move:
+        // Moving from Reg(B) to Reg(A)?
+        if ip.b < ip.a {
+            // Get the name for Reg(B).
+            // TODO(2025-04-22): Find out how this path is reached!
+            return debug_get_variable(chunk, pc, cast(int)ip.b)
+        }
+    case .Get_Global:
+        bx     := ip_get_Bx(ip)
+        global := chunk.constants[bx]
+        return value_to_string(global), "global", true
+    case .Get_Table:
+        return constant_ident(chunk, ip.c), "field", true
+    case:
+        break;
+    }
+    return "", "", false
+}
+
+
+/*
+**Analogous to**
+-   `ldebug.c:symbexec(const Proto *pt, int lastpc, int reg)` in Lua 5.1.5.
+ */
+debug_symbolic_execution :: proc(chunk: ^Chunk, lastpc: int, reg: u16) -> (i: Instruction, ok: bool) {
+    /*
+    **Overview**
+    -   Checks if `reg` is in range of the stack frame.
+     */
+    check_reg :: proc(chunk: ^Chunk, reg: u16) -> bool {
+        return cast(int)reg < chunk.stack_used
+    }
+
+    /*
+    **Overview**
+    -   Wrapped implementation of the first `switch` statement in `symbexec()`.
+     */
+    check_arg_info :: proc(chunk: ^Chunk, ip: Instruction) -> bool {
+        info := opcode_info[ip.op]
+        switch info.type {
+        case .Separate:
+            check_arg_mode(chunk, ip.b, info.b) or_return
+            check_arg_mode(chunk, ip.c, info.c) or_return
+            return true
+        case .Unsigned_Bx:
+            index := ip_get_Bx(ip)
+            if info.b == .Reg_Const {
+                return cast(int)index < len(chunk.constants)
+            }
+            return true
+        case .Signed_Bx:
+            // Based on the C source, this one is quite tricky!
+            panic("Signed_Bx not yet implemented")
+        case:
+            fmt.panicf("Unknown %[0]t %[0]v", info.type)
         }
     }
+
+    check_arg_mode :: proc(chunk: ^Chunk, reg: u16, type: OpCode_Arg_Type) -> bool {
+        switch type {
+        case .Unused:
+            return reg == 0
+        case .Used:
+            // Not enough information to verify how we should use this
+            return true
+        case .Reg_Const:
+            if reg_is_k(reg) {
+                return cast(int)reg_get_k(reg) < len(chunk.constants)
+            }
+            fallthrough
+        case .Reg_Jump:
+            // Register/jump is in range of the bytecode?
+            return cast(int)reg < chunk.stack_used
+        case:
+            unreachable()
+        }
+    }
+    // Point to the return 0 0 0 instruction; it's always a safe bet
+    index := len(chunk.code) - 1
+    for ip, ip_index in chunk.code[:lastpc] {
+        check_reg(chunk, ip.a) or_return
+        check_arg_info(chunk, ip) or_return
+
+        // Need to change register A?
+        if opcode_info[ip.op].a {
+            if ip.a == reg {
+                index = ip_index
+            }
+        }
+
+        #partial switch ip.op {
+        case .Load_Boolean:
+            // Have a jump?
+            if ip.c == 1 {
+
+            }
+        case .Load_Nil:
+            // Set registers from `a` to `b`
+            if ip.a <= reg && reg <= ip.b {
+                index = ip_index
+            }
+        case .Get_Global: fallthrough
+        case .Set_Global:
+            value_is_string(chunk.constants[ip_get_Bx(ip)]) or_return
+        case .Concat:
+            // Require at least 2 operands
+            (ip.b < ip.c) or_return
+        case .Return:
+            // If not in vararg return, ensure known registers are in range
+            if ip.c == 0 {
+                check_reg(chunk, ip.a + ip.b) or_return
+            }
+        case .Set_Array:
+            if ip.b > 0 {
+                check_reg(chunk, ip.a + ip.b) or_return
+            }
+            if ip.c == 0 {
+                panic("Set_Array with large C not yet supported")
+            }
+        }
+    }
+
+    return chunk.code[index], true
+
 }

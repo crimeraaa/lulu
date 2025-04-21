@@ -101,6 +101,18 @@ table_copy :: proc(vm: ^VM, dst: ^Table, src: Table) {
 
 @(private="file")
 find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
+
+    get_hash :: proc(key: Value) -> (hash: u32) {
+        switch key.type {
+        case .Nil:      unreachable()
+        case .Boolean:  return cast(u32)key.boolean
+        case .Number:   return hash_f64(key.number)
+        case .String:   return key.ostring.hash
+        case .Table:    return hash_pointer(key.table)
+        }
+        unreachable()
+    }
+
     wrap  := cast(u32)len(entries)
     tombstone: ^Table_Entry
     for index := get_hash(key) % wrap; /* empty */; index = (index + 1) % wrap {
@@ -122,17 +134,6 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
     unreachable()
 }
 
-@(private="file")
-get_hash :: proc(key: Value) -> (hash: u32) {
-    switch key.type {
-    case .Nil:      unreachable()
-    case .Boolean:  return cast(u32)key.boolean
-    case .Number:   return hash_f64(key.number)
-    case .String:   return key.ostring.hash
-    case .Table:    return hash_pointer(key.table)
-    }
-    unreachable()
-}
 
 @(private="file")
 adjust_capacity :: proc(table: ^Table, new_cap: int, allocator: mem.Allocator) {
