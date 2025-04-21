@@ -744,7 +744,7 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
     // `fb_from_int()` may also round up the values by some factor, but that's
     // okay because our hash table will simply over-allocate.
-    ip := dyarray_get_ptr(&compiler.chunk.code, pc)
+    ip := &compiler.chunk.code[pc]
     ip.b = cast(u16)fb_from_int(ctor.count_array)
     ip.c = cast(u16)fb_from_int(ctor.count_hash)
 }

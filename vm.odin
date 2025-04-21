@@ -73,7 +73,7 @@ vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, arg
 vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
     chunk := vm.chunk
     index := ptr_index(vm.pc, chunk.code) - 1
-    line  := dyarray_get(chunk.line, index)
+    line  := chunk.line[index]
     reset_stack(vm)
     push_fstring(vm, "%s:%i: Attempt to ", chunk.source, line)
     push_fstring(vm, format, ..args)
@@ -131,7 +131,7 @@ vm_check_stack :: proc(vm: ^VM, extra: int) {
 }
 
 
-/* 
+/*
 **Guarantees**
 -   `vm.top` and `vm.base` will point to the correct locations in the new stack.
  */
@@ -190,7 +190,7 @@ vm_interpret :: proc(vm: ^VM, input, name: string) -> (status: Status) {
         vm.base  = &vm.stack[0]
         vm.top   = &vm.stack[chunk.stack_used]
         vm.chunk = chunk
-        vm.pc    = dyarray_get_ptr(&chunk.code, 0)
+        vm.pc    = &chunk.code[0]
 
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
@@ -468,7 +468,7 @@ ptr_sub :: proc(a, b: ^$T) -> int {
 }
 
 
-/* 
+/*
 **Overview**
 -   Get the absolute index of `ptr` in `data`.
 -   This is a VERY unsafe function as it makes many major assumptions.

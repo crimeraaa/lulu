@@ -250,7 +250,7 @@ discharge_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16, location :=
     case .Constant:
         compiler_code_ABx(compiler, .Load_Constant, reg, expr.index)
     case .Need_Register:
-        dyarray_get_ptr(&compiler.chunk.code, expr.pc).a = reg
+        compiler.chunk.code[expr.pc].a = reg
     case .Discharged:
         // e.g. getting a local variable
         if reg != expr.reg {
@@ -382,7 +382,7 @@ compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
         }
         // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
         folding: if pc > 0 {
-            prev := dyarray_get_ptr(&chunk.code, pc - 1)
+            prev := &chunk.code[pc - 1]
             if prev.op != .Load_Nil {
                 break folding
             }
@@ -600,7 +600,7 @@ compiler_code_binary :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr
 compiler_code_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     compiler_expr_to_value(compiler, right)
 
-    code := dyarray_slice(&compiler.chunk.code)
+    code := compiler.chunk.code[:compiler.chunk.pc]
 
     // This is past the first consecutive concat, so we can fold them.
     if right.type == .Need_Register && code[right.pc].op == .Concat {

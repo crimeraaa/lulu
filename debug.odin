@@ -41,7 +41,7 @@ debug_dump_chunk :: proc(chunk: ^Chunk) {
     }
 
     fmt.println("\n.code")
-    for inst, index in dyarray_slice(&chunk.code) {
+    for inst, index in chunk.code[:chunk.pc] {
         debug_dump_instruction(chunk, inst, index)
     }
 }
@@ -91,8 +91,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, inst: Instruction, index: int) {
     }
 
     fmt.printf("[%04i] ", index)
-    line := dyarray_get(chunk.line, index)
-    if index > 0 && line == dyarray_get(chunk.line, index - 1) {
+    if line := chunk.line[index]; index > 0 && line == chunk.line[index - 1] {
         fmt.print("   | ")
     } else {
         fmt.printf("% 4i ", line)

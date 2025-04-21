@@ -13,8 +13,8 @@ Chunk :: struct {
     source:          string, // Filename where the chunk originated.
     locals:          DyArray(Local), // 'Declared' local variable stack. See `lparser.h:FuncState::actvar[]`.
     constants:       DyArray(Value),
-    code:            DyArray(Instruction),
-    line:            DyArray(int),
+    code:          []Instruction, // len(code) == cap
+    line:          []int,         // len(line) == cap
     pc:              int, // First free index in `code` and `line`.
     stack_used:      int, // How many stack slots does this chunk require?
 }
@@ -43,10 +43,11 @@ chunk_init :: proc(vm: ^VM, chunk: ^Chunk, source: string) {
 }
 
 chunk_append :: proc(vm: ^VM, chunk: ^Chunk, inst: Instruction, line: int) -> (pc: int) {
-    dyarray_append(vm, &chunk.code, inst)
-    dyarray_append(vm, &chunk.line, line)
+    pc = chunk.pc
     defer chunk.pc += 1
-    return chunk.pc
+    slice_insert(vm, &chunk.code, pc, inst)
+    slice_insert(vm, &chunk.line, pc, line)
+    return pc
 }
 
 /*
@@ -100,9 +101,9 @@ chunk_get_local_name :: proc(chunk: ^Chunk, reg, pc: int) -> (name: string, ok: 
 
 
 chunk_destroy :: proc(vm: ^VM, chunk: ^Chunk) {
-    dyarray_delete(vm, &chunk.constants)
-    dyarray_delete(vm, &chunk.code)
-    dyarray_delete(vm, &chunk.line)
     dyarray_delete(vm, &chunk.locals)
+    dyarray_delete(vm, &chunk.constants)
+    slice_delete(vm, &chunk.code)
+    slice_delete(vm, &chunk.line)
     chunk.source = "(freed chunk)"
 }
