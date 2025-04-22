@@ -41,14 +41,13 @@ ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
 
     len := len(input)
     str  = object_new(OString, vm, len + 1)
-    defer intern_set(&vm.interned, str)
-
     str.hash = hash_string(input)
     str.len  = len
     #no_bounds_check {
         copy(str.data[:len], input)
         str.data[len] = 0
     }
+    intern_set(&vm.interned, str)
     return str
 }
 
@@ -57,34 +56,34 @@ ostring_free :: proc(vm: ^VM, str: ^OString, location := #caller_location) {
     mem.free_with_size(str, size_of(str^) + str.len + 1, vm.allocator, loc = location)
 }
 
-ostring_to_string :: proc(str: ^OString) -> string {
+ostring_to_string :: #force_inline proc "contextless" (str: ^OString) -> string {
     #no_bounds_check {
         return string(str.data[:str.len])
     }
 }
 
-ostring_to_cstring :: proc(str: ^OString) -> cstring {
+ostring_to_cstring :: #force_inline proc "contextless" (str: ^OString) -> cstring {
     #no_bounds_check {
-        assert(str.data[str.len] == 0)
+        assert_contextless(str.data[str.len] == 0)
         return cstring(cast([^]byte)&str.data)
     }
 }
 
-hash_f64 :: proc(data: f64) -> (hash: u32) {
+hash_f64 :: #force_inline proc "contextless" (data: f64) -> (hash: u32) {
     data := data
     return hash_bytes(mem.byte_slice(&data, size_of(data)))
 }
 
-hash_pointer :: proc(data: rawptr) -> (hash: u32) {
+hash_pointer :: #force_inline proc "contextless" (data: rawptr) -> (hash: u32) {
     data := data
     return hash_bytes(mem.byte_slice(&data, size_of(data)))
 }
 
-hash_string :: proc(data: string) -> (hash: u32) {
+hash_string :: #force_inline proc "contextless" (data: string) -> (hash: u32) {
     return hash_bytes(transmute([]byte)data)
 }
 
-hash_bytes :: proc(bytes: []byte) -> (hash: u32) {
+hash_bytes :: proc "contextless" (bytes: []byte) -> (hash: u32) {
     FNV1A_OFFSET_32 :: 0x811c9dc5
     FNV1A_PRIME_32  :: 0x01000193
 

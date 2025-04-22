@@ -57,7 +57,7 @@ chunk_fini :: proc(vm: ^VM, chunk: ^Chunk, compiler: ^Compiler) {
 
 chunk_append :: proc(vm: ^VM, chunk: ^Chunk, inst: Instruction, line: int) -> (pc: int) {
     pc = chunk.pc
-    defer chunk.pc += 1
+    chunk.pc += 1
     slice_insert(vm, &chunk.code, pc, inst)
     slice_insert(vm, &chunk.line, pc, line)
     return pc

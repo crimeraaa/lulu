@@ -25,8 +25,6 @@ main :: proc() {
         mem.tracking_allocator_init(&track, context.allocator)
         context.allocator = mem.tracking_allocator(&track)
         defer {
-            defer mem.tracking_allocator_destroy(&track)
-
             if n := len(track.allocation_map); n > 0 {
                 fmt.eprintfln("=== %v allocations not freed: ===", n)
                 for _, entry in track.allocation_map {
@@ -39,30 +37,31 @@ main :: proc() {
                     fmt.eprintfln("- %p @ %v", entry.memory, entry.location)
                 }
             }
+            mem.tracking_allocator_destroy(&track)
         }
     }
 
-    run_interactive :: proc(vm: ^lulu.State) {
+    run_interactive :: proc(vm: ^lulu.VM) {
         buffer: [256]byte
         for {
             input := read_line(buffer[:]) or_break
-            defer free_line(input)
             // Interpret even if empty, this will return 0 registers.
             run_input(vm, input, "stdin")
+            free_line(input)
         }
     }
 
-    run_file :: proc(vm: ^lulu.State, file_name: string) {
+    run_file :: proc(vm: ^lulu.VM, file_name: string) {
         data, ok := os.read_entire_file(file_name)
         if !ok {
             fmt.eprintfln("Failed to read file %q.", file_name)
             return
         }
-        defer delete(data)
         run_input(vm, string(data), file_name)
+        delete(data)
     }
 
-    run_input :: proc(vm: ^lulu.State, input, source: string) {
+    run_input :: proc(vm: ^lulu.VM, input, source: string) {
         if lulu.run(vm, input, source) != .Ok {
             err_msg, _ := lulu.to_string(vm, -1)
             fmt.eprintln(err_msg)
@@ -74,11 +73,10 @@ main :: proc() {
         fmt.eprintfln("Failed to open lulu; %t %v", err)
         return
     }
-    defer lulu.close(vm)
-
     switch len(os.args) {
     case 1: run_interactive(vm)
     case 2: run_file(vm, os.args[1])
     case:   fmt.eprintfln("Usage: %s [script]", os.args[0])
     }
+    lulu.close(vm)
 }

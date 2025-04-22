@@ -506,9 +506,12 @@ parser_error_consumed :: proc(parser: ^Parser, msg: string) -> ! {
  */
 @(private="file")
 error_at :: proc(parser: ^Parser, token: Token, msg: string) -> ! {
+    vm     := parser.vm
+    source := parser.lexer.source
+    line   := token.line
     // .Eof token: don't use lexeme as it'll just be an empty string.
     location := token.lexeme if token.type != .Eof else token_type_strings[.Eof]
-    vm_compile_error(parser.vm, parser.lexer.source, token.line, "%s at '%s'", msg, location)
+    vm_compile_error(vm, source, line, "%s at '%s'", msg, location)
 }
 
 
@@ -741,48 +744,43 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     ctor.table^ = expr_make(.Need_Register, pc = pc)
     compiler_expr_next_reg(compiler, ctor.table)
 
-    if !parser_match(parser, .Right_Curly) {
-        for {
-            if parser_match(parser, .Right_Curly) {
-                break
-            }
-            /*
-            **Analogous to**
-            -   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)`
+    for !parser_match(parser, .Right_Curly) {
+        /*
+        **Analogous to**
+        -   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)`
 
-            **Assumptions**
-            -   This is an inline implementation.
-            -   `array` already pushed each expression.
-             */
-            if ctor.to_store == FIELDS_PER_FLUSH {
-                compiler_code_set_array(compiler, ctor.table.reg,
-                    ctor.count_array, ctor.to_store)
-                ctor.to_store = 0
-            }
+        **Assumptions**
+        -   This is an inline implementation.
+        -   `array` already pushed each expression.
+         */
+        if ctor.to_store == FIELDS_PER_FLUSH {
+            compiler_code_set_array(compiler, ctor.table.reg,
+                ctor.count_array, ctor.to_store)
+            ctor.to_store = 0
+        }
 
-            // for backtracking
-            saved_consumed := parser.consumed
-            parser_advance(parser)
-            #partial switch(parser.consumed.type) {
-            case .Identifier:
-                // `.Equals` is consumed inside of `field`
-                if parser_check(parser, .Equals) {
-                    field(parser, compiler, ctor)
-                } else {
-                    parser_backtrack(parser, saved_consumed)
-                    array(parser, compiler, ctor)
-                }
-            case .Left_Bracket:
-                index(parser, compiler, ctor)
-            case:
+        // for backtracking
+        saved_consumed := parser.consumed
+        parser_advance(parser)
+        #partial switch(parser.consumed.type) {
+        case .Identifier:
+            // `.Equals` is consumed inside of `field`
+            if parser_check(parser, .Equals) {
+                field(parser, compiler, ctor)
+            } else {
                 parser_backtrack(parser, saved_consumed)
                 array(parser, compiler, ctor)
             }
+        case .Left_Bracket:
+            index(parser, compiler, ctor)
+        case:
+            parser_backtrack(parser, saved_consumed)
+            array(parser, compiler, ctor)
+        }
 
-            if !parser_match(parser, .Comma) {
-                parser_consume(parser, .Right_Curly)
-                break
-            }
+        if !parser_match(parser, .Comma) {
+            parser_consume(parser, .Right_Curly)
+            break
         }
     }
 

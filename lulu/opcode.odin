@@ -105,7 +105,7 @@ Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg(A)
 Set_Table,     // A B C | Reg(A)[RK(B)] := RK(C)
 New_Table,     // A B C | Reg(A) := {} ; array size = B, hash size = C
 Set_Array,     // A Bx  | Reg(A)[(C-1)*FPF + i] = Reg(A + i) for 1 <= i <= B
-Print,         // A B   | print(Reg(i), '\t') for A <= i <= B
+Print,         // A B   | print(Reg(i), '\t') for A <= i < B
 Add,           // A B C | Reg(A) := RK(B) + RK(C)
 Sub,           // A B C | Reg(A) := RK(B) - RK(C)
 Mul,           // A B C | Reg(A) := RK(B) * RK(C)
@@ -215,20 +215,20 @@ opcode_info := [OpCode]OpCode_Info {
 REG_BIT_RK   :: 1 << (SIZE_B - 1)
 MAX_INDEX_RK :: REG_BIT_RK - 1
 
-reg_is_k :: proc(b_or_c: u16) -> bool {
+reg_is_k :: #force_inline proc "contextless" (b_or_c: u16) -> bool {
     return (b_or_c & REG_BIT_RK) != 0
 }
 
-reg_get_k :: proc(b_or_c: u16) -> u16 {
+reg_get_k :: #force_inline proc "contextless" (b_or_c: u16) -> u16 {
     return (b_or_c & ~cast(u16)REG_BIT_RK)
 }
 
-reg_as_k :: proc(b_or_c: u16) -> u16 {
+reg_as_k :: #force_inline proc "contextless" (b_or_c: u16) -> u16 {
     return b_or_c | REG_BIT_RK
 }
 
 // This is kinda stupid
-ip_make_ABC :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
+ip_make_ABC :: #force_inline proc "contextless" (op: OpCode, a, b, c: u16) -> (inst: Instruction) {
     inst.b  = b
     inst.c  = c
     inst.a  = a
@@ -236,7 +236,7 @@ ip_make_ABC :: proc(op: OpCode, a, b, c: u16) -> (inst: Instruction) {
     return inst
 }
 
-ip_make_ABx :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
+ip_make_ABx :: #force_inline proc "contextless" (op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
     inst.b  = cast(u16)(bc >> SIZE_C) // shift out 'c' bits
     inst.c  = cast(u16)(bc & MAX_C)   // remove 'b' bits
     inst.a  = a
@@ -244,7 +244,7 @@ ip_make_ABx :: proc(op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
     return inst
 }
 
-ip_get_Bx :: proc(inst: Instruction) -> (bc: u32) {
+ip_get_Bx :: #force_inline proc "contextless" (inst: Instruction) -> (bc: u32) {
     bc |= cast(u32)inst.b << OFFSET_B
     bc |= cast(u32)inst.c
     return bc

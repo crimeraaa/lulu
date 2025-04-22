@@ -11,28 +11,33 @@ vars:
   RELEASE_FLAGS: >-
     -vet
     -o:size
+  ODIN_SRC: lulu
   ODIN_FLAGS: >-
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
     -define:USE_CONSTANT_FOLDING=true
     -define:USE_READLINE=true
-    -collection:lulu=lulu/
+    -collection:lulu={{.ODIN_SRC}}/
   OUT_EXE: bin/lulu
+  LUA_SRC: lua/src
 
 tasks:
   build:
+    desc: Build the Lulu executable.
     cmds:
       - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:{{.OUT_EXE}}'
     sources:
-      - ./*.odin
+      - '{{.ODIN_SRC}}/*.odin'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:
+    desc: Build the Lulu executable if needed, then run it.
     cmds:
       - task: build
       - '{{.OUT_EXE}} {{.CLI_ARGS}}'
     interactive: true
 
   build-lua:
+    desc: Build the local Lua executable unconditionally.
     cmds:
       - |
         cd ./lua
@@ -51,7 +56,7 @@ tasks:
         cd ..
 
   fix-whitespace:
-    desc: Remove trailing whitespace from all *.odin files.
+    desc: Remove trailing whitespace from all *.{odin,c,h} files.
     deps:
       - task: find-and-replace
         vars:
@@ -60,7 +65,7 @@ tasks:
 
   # https://github.com/crimeraaa/lulu/blob/16cf4f5d187546704e7f66c9c401d85c4a71b68a/Taskfile.yml#L95C8-L95C11
   find-and-replace:
-    desc: Replace a pattern in all files *.odin files. Uses Vim syntax.
+    desc: Replace a pattern in all *.{odin,[ch]} files. Uses Vim syntax.
     vars:
       VIM: vim
       # Dissection:
@@ -75,7 +80,7 @@ tasks:
         -c ':xa'
     prompt: This command will potentially modify all *.odin files in './'. Continue?
     cmds:
-      - '{{.VIM}} {{.VIM_FLAGS}} ./*.odin lulu/*.odin lua/src/*.[ch]'
+      - '{{.VIM}} {{.VIM_FLAGS}} ./*.odin {{.ODIN_SRC}}/*.odin {{.LUA_SRC}}/*.[ch]'
     requires:
       vars: [VIM_PATTERN, VIM_REPLACE]
     preconditions:

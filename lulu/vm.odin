@@ -12,18 +12,6 @@ STACK_MIN :: 8
 
 MEMORY_ERROR_STRING :: "Out of memory"
 
-VM :: struct {
-    stack:      []Value, // len(stack) == stack_size
-    allocator:    mem.Allocator,
-    builder:      strings.Builder,
-    interned:     Intern,
-    globals:      Table,
-    objects:     ^Object_Header,
-    top, base: [^]Value, // Current stack frame window.
-    chunk:       ^Chunk,
-    pc:        [^]Instruction, // Next instruction to be executed in the current chunk.
-    handlers:    ^Error_Handler,
-}
 Error_Handler :: struct {
     prev:  ^Error_Handler,
     buffer: c.jmp_buf,
@@ -54,8 +42,6 @@ vm_get_builder :: proc(vm: ^VM) -> (builder: ^strings.Builder) {
 }
 
 vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, args: ..any) -> ! {
-    reset_stack(vm)
-
     push_fstring(vm, "%s:%i: ", source, line)
     push_fstring(vm, format, ..args)
     concat(vm, 2)
@@ -63,11 +49,12 @@ vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, arg
 }
 
 vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
-    chunk := vm.chunk
-    index := ptr_index(vm.pc, chunk.code) - 1
-    line  := chunk.line[index]
-    reset_stack(vm)
-    push_fstring(vm, "%s:%i: Attempt to ", chunk.source, line)
+    chunk  := vm.chunk
+    source := chunk.source
+    pc     := ptr_index(vm.pc, chunk.code)
+    line   := chunk.line[pc]
+
+    push_fstring(vm, "%s:%i: ", source, line)
     push_fstring(vm, format, ..args)
     concat(vm, 2)
     vm_throw(vm, .Runtime_Error)
@@ -135,16 +122,12 @@ vm_grow_stack :: proc(vm: ^VM, extra: int) {
     } else {
         new_size += len(vm.stack)
     }
-    new_stack, err := make([]Value, new_size, vm.allocator)
-    if err != nil {
-        vm_memory_error(vm)
-    }
-    old_stack      := vm.stack
-    defer delete(old_stack, vm.allocator)
-    copy(new_stack, old_stack)
-    vm.stack = new_stack
-    vm.top   = &new_stack[ptr_index(vm.top, old_stack)]
-    vm.base  = &new_stack[ptr_index(vm.base, old_stack)]
+    // Save the indexes now because the old data will be invalidated
+    old_base := ptr_index(vm.base, vm.stack)
+    old_top  := ptr_index(vm.top, vm.stack)
+    slice_resize(vm, &vm.stack, new_size)
+    vm.top   = &vm.stack[old_top]
+    vm.base  = &vm.stack[old_base]
 }
 
 vm_destroy :: proc(vm: ^VM) {
@@ -213,9 +196,6 @@ vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) 
     handler.prev = vm.handlers
     vm.handlers  = &handler
 
-    // Restore old handler
-    defer vm.handlers = handler.prev
-
     /*
     NOTE(2025-01-18):
     -   We cannot wrap this in a function because in order for `longjmp` to work,
@@ -225,21 +205,75 @@ vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) 
         try(vm, user_data)
     }
 
+    // Restore old handler
+    vm.handlers = handler.prev
+
     // Use volatile because we don't want this to be optimized out.
     return intrinsics.volatile_load(&handler.status)
 }
 
 
 /*
-Analogous to:
+**Analogous to**
 -   'vm.c:run()' in the book.
+-   `lvm.c:luaV_execute(lua_State *L, int nexeccalls)` in Lua 5.1.5.
  */
 vm_execute :: proc(vm: ^VM) {
+    ///=== VM EXECUTION HELPERS ============================================ {{{
+
+    get_rkb_rkc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rkb, rkc: ^Value) {
+        rkb = get_rk(vm, inst.b, stack, constants)
+        rkc = get_rk(vm, inst.c, stack, constants)
+        return rkb, rkc
+    }
+
+    get_rk :: proc(vm: ^VM, reg: u16, stack, constants: []Value) -> ^Value {
+        return &constants[reg_get_k(reg)] if reg_is_k(reg) else &stack[reg]
+    }
+
+    // Rough analog to C macro
+    arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
+        left, right := get_rkb_rkc(vm, inst, stack, constants)
+        if !value_is_number(left^) || !value_is_number(right^) {
+            arith_error(vm, left, right)
+        }
+        ra^ = value_make(op(left.number, right.number))
+    }
+
+    // Rough analog to C macro
+    compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
+        left, right := get_rkb_rkc(vm, inst, stack, constants)
+        if !value_is_number(left^) || !value_is_number(right^) {
+            compare_error(vm, left, right)
+        }
+        ra^ = value_make(op(left.number, right.number))
+    }
+
+    arith_error :: proc(vm: ^VM, left, right: ^Value) -> ! {
+        // left hand side is fine, right hand side is the culprit
+        culprit := right if value_is_number(left^) else left
+        debug_type_error(vm, culprit, "perform arithmetic on")
+    }
+
+    compare_error :: proc(vm: ^VM, left, right: ^Value) -> ! {
+        tpname1, tpname2 := value_type_name(left^), value_type_name(right^)
+        if tpname1 == tpname2 {
+            vm_runtime_error(vm, "compare 2 %s values", tpname1)
+        } else {
+            vm_runtime_error(vm, "compare %s with %s", tpname1, tpname2)
+        }
+    }
+
+    index_error :: #force_inline proc(vm: ^VM, culprit: ^Value) -> ! {
+        debug_type_error(vm, culprit, "index")
+    }
+
+    ///=== }}} =================================================================
+
     chunk     := vm.chunk
     constants := chunk.constants
     globals   := &vm.globals
     stack     := vm.base[:chunk.stack_used]
-
     for {
         // We cannot extract 'vm.pc' into a local as it is needed in to `vm_runtime_error`.
         inst := vm.pc[0]
@@ -290,7 +324,7 @@ vm_execute :: proc(vm: ^VM) {
         case .Get_Table:
             key := get_rk(vm, inst.c, stack, constants)^
             table: ^Table
-            if rb := stack[inst.b]; !value_is_table(rb) {
+            if rb := &stack[inst.b]; !value_is_table(rb^) {
                 index_error(vm, rb)
             } else {
                 table = rb.table
@@ -300,7 +334,7 @@ vm_execute :: proc(vm: ^VM) {
             key   := get_rk(vm, inst.b, stack, constants)^
             value := get_rk(vm, inst.c, stack, constants)^
             if !value_is_table(ra^) {
-                index_error(vm, ra^)
+                index_error(vm, ra)
             }
             if value_is_nil(key) {
                 vm_runtime_error(vm, "set a nil index")
@@ -352,12 +386,10 @@ vm_execute :: proc(vm: ^VM) {
             case .String:
                 ra^ = value_make(rb.ostring.len)
             case .Table:
-                index := 1
                 count := 0
                 table := rb.table
                 // TODO(2025-04-13): Optimize by separating array from hash!
-                for {
-                    defer index += 1
+                for index in 1..<table.count {
                     key      := value_make(index)
                     value, _ := table_get(table, key)
                     if value_is_nil(value) {
@@ -381,83 +413,13 @@ vm_execute :: proc(vm: ^VM) {
             unreachable()
         }
     }
-
-    ///=== VM EXECUTION HELPERS ============================================ {{{
-
-    get_rkb_rkc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rkb, rkc: ^Value) {
-        rkb = get_rk(vm, inst.b, stack, constants)
-        rkc = get_rk(vm, inst.c, stack, constants)
-        return rkb, rkc
-    }
-
-    get_rk :: proc(vm: ^VM, reg: u16, stack, constants: []Value) -> ^Value {
-        return &constants[reg_get_k(reg)] if reg_is_k(reg) else &stack[reg]
-    }
-
-    // Rough analog to C macro
-    arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
-        left, right := get_rkb_rkc(vm, inst, stack, constants)
-        if !value_is_number(left^) || !value_is_number(right^) {
-            arith_error(vm, left, right)
-        }
-        ra^ = value_make(op(left.number, right.number))
-    }
-
-    // Rough analog to C macro
-    compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
-        left, right := get_rkb_rkc(vm, inst, stack, constants)
-        if !value_is_number(left^) || !value_is_number(right^) {
-            compare_error(vm, left, right)
-            return
-        }
-        ra^ = value_make(op(left.number, right.number))
-    }
-
-    arith_error :: proc(vm: ^VM, left, right: ^Value) -> ! {
-        // left hand side is fine, right hand side is the culprit
-        culprit := right if value_is_number(left^) else left
-        typname := value_type_name(culprit^)
-
-        // Culprit is in the active stack frame?
-        if reg, is_stack := ptr_index_safe(culprit, vm.base[:get_top(vm)]); is_stack {
-            chunk := vm.chunk
-
-            // Inline implementation `ldebug.c:currentpc()`.
-            // `pc` always points to instruction AFTER current, so culprit is
-            // at the index of `pc - 1`
-            pc := ptr_index(vm.pc, chunk.code) - 1
-
-            // Culprit is a variable or a field?
-            if ident, scope, is_var := debug_get_variable(chunk, pc, reg); is_var {
-                vm_runtime_error(vm, "perform arithmetic on %s %q (a %s value)",
-                    scope, ident, typname)
-            }
-        }
-        // Default case; we only know its type
-        vm_runtime_error(vm, "perform arithmetic on a %s value", typname)
-    }
-
-    compare_error :: proc(vm: ^VM, left, right: ^Value) {
-        tpname1, tpname2 := value_type_name(left^), value_type_name(right^)
-        if tpname1 == tpname2 {
-            vm_runtime_error(vm, "compare 2 %s values", tpname1)
-        } else {
-            vm_runtime_error(vm, "compare %s with %s", tpname1, tpname2)
-        }
-    }
-
-    index_error :: proc(vm: ^VM, t: Value) -> ! {
-        vm_runtime_error(vm, "index a %s value", value_type_name(t))
-    }
-
-    ///=== }}} =================================================================
 }
 
 vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
     builder := vm_get_builder(vm)
-    for arg in args {
+    for &arg in args {
         if !value_is_string(arg) {
-            vm_runtime_error(vm, "concatenate a %s value", value_type_name(arg))
+            debug_type_error(vm, &arg, "concatenate")
         }
         strings.write_string(builder, value_to_string(arg))
     }

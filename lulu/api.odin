@@ -2,8 +2,20 @@ package lulu
 
 import "core:fmt"
 import "core:mem"
+import "core:strings"
 
-State :: VM
+VM :: struct {
+    stack:      []Value, // len(stack) == stack_size
+    allocator:    mem.Allocator,
+    builder:      strings.Builder,
+    interned:     Intern,
+    globals:      Table,
+    objects:     ^Object_Header,
+    top, base: [^]Value, // Current stack frame window.
+    chunk:       ^Chunk,
+    pc:        [^]Instruction, // Next instruction to be executed in the current chunk.
+    handlers:    ^Error_Handler,
+}
 
 Status :: enum {
     Ok,
@@ -16,17 +28,19 @@ Status :: enum {
 
 
 @(require_results)
-open :: proc(allocator := context.allocator) -> (vm: ^State, err: mem.Allocator_Error) {
-    vm = new(State, allocator) or_return
+open :: proc(allocator := context.allocator) -> (vm: ^VM, err: mem.Allocator_Error) {
+    @(static)
+    _vm: VM
+
+    vm = &_vm
     if vm_init(vm, allocator) {
         return vm, nil
     }
     return nil, .Out_Of_Memory
 }
 
-close :: proc(vm: ^State) {
+close :: proc(vm: ^VM) {
     vm_destroy(vm)
-    free(vm, vm.allocator)
 }
 
 
@@ -35,7 +49,7 @@ close :: proc(vm: ^State) {
 -   `lapi.c:lua_load(lua_State *L, lua_Reader reader, void *data, const char *chunkname)`
 -   `lapi.c:lua_pcall(lua_State *L, int nargs, int nresults, int errfunc)`
  */
-run :: proc(vm: ^State, input, source: string) -> Status {
+run :: proc(vm: ^VM, input, source: string) -> Status {
     return vm_interpret(vm, input, source)
 }
 
@@ -53,19 +67,19 @@ run :: proc(vm: ^State, input, source: string) -> Status {
 **Analogous to**
 -   `int lua_gettop(lua_State *L)`.
  */
-get_top :: proc(vm: ^State) -> (index: int) {
+get_top :: proc(vm: ^VM) -> (index: int) {
     return ptr_sub(vm.top, vm.base)
 }
 
 
-pop :: proc(vm: ^State, count: int) {
+pop :: proc(vm: ^VM, count: int) {
     vm.top = &vm.top[-count]
 }
 
 
 // You may use negative indexes to resolve from the top.
 @(private="file")
-index_to_address :: proc(vm: ^State, index: int) -> ^Value {
+index_to_address :: proc(vm: ^VM, index: int) -> ^Value {
     // If negative we will index relative to the top
     from := vm.base if index >= 0 else vm.top
     return &from[index]
@@ -76,7 +90,7 @@ index_to_address :: proc(vm: ^State, index: int) -> ^Value {
 **Notes**
 -   See the notes regarding the stack in `push_rawvalue()`.
  */
-push_string :: proc(vm: ^State, str: string) -> (result: string) {
+push_string :: proc(vm: ^VM, str: string) -> (result: string) {
     interned := ostring_new(vm, str)
     push_rawvalue(vm, value_make(interned))
     return ostring_to_string(interned)
@@ -87,7 +101,7 @@ push_string :: proc(vm: ^State, str: string) -> (result: string) {
 **Notes**
 -   See the notes regarding the stack in `push_rawvalue()`.
  */
-push_fstring :: proc(vm: ^State, format: string, args: ..any) -> (result: string) {
+push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (result: string) {
     builder := vm_get_builder(vm)
     return push_string(vm, fmt.sbprintf(builder, format, ..args))
 }
@@ -112,7 +126,7 @@ push_fstring :: proc(vm: ^State, format: string, args: ..any) -> (result: string
 -   https://www.lua.org/pil/24.2.1.html
  */
 @(private="package")
-push_rawvalue :: proc(vm: ^State, value: Value) {
+push_rawvalue :: proc(vm: ^VM, value: Value) {
     vm.top     = &vm.top[1]
     vm.top[-1] = value
 }
@@ -123,7 +137,7 @@ push_rawvalue :: proc(vm: ^State, value: Value) {
 ///=== VM TYPE CONVERSION API ============================================== {{{
 
 
-to_string :: proc(vm: ^State, index: int) -> (result: string, ok: bool) {
+to_string :: proc(vm: ^VM, index: int) -> (result: string, ok: bool) {
     value := index_to_address(vm, index)
     if !value_is_string(value^) {
         return "", false
@@ -141,7 +155,7 @@ to_string :: proc(vm: ^State, index: int) -> (result: string, ok: bool) {
 **Notes**
 -   See the notes regarding the stack in `push_rawvalue()`.
  */
-get_global :: proc(vm: ^State, key: string) {
+get_global :: proc(vm: ^VM, key: string) {
     vkey  := value_make(ostring_new(vm, key))
     value := table_get(&vm.globals, vkey)
     push_rawvalue(vm, value)
@@ -154,7 +168,7 @@ get_global :: proc(vm: ^State, key: string) {
     a.k.a. at index `-1`.
 -   We will pop this value afterwards.
  */
-set_global :: proc(vm: ^State, key: string) {
+set_global :: proc(vm: ^VM, key: string) {
     vkey := value_make(ostring_new(vm, key))
     table_set(vm, &vm.globals, vkey, vm.top[-1])
     pop(vm, 1)
@@ -170,7 +184,7 @@ set_global :: proc(vm: ^State, key: string) {
 -   Unlike the `push_*` family of functions, we reuse the `-count` stack slot
     instead of pushing.
  */
-concat :: proc(vm: ^State, count: int) {
+concat :: proc(vm: ^VM, count: int) {
     switch count {
     case 0:
         push_string(vm, "")

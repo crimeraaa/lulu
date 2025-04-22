@@ -42,22 +42,22 @@ value_type_strings := [Value_Type]string {
 }
 
 // Used for callbacks/dispatches
-Number_Arith_Proc   :: #type proc(a, b: f64) -> f64
-Number_Compare_Proc :: #type proc(a, b: f64) -> bool
+Number_Arith_Proc   :: #type proc "contextless" (a, b: f64) -> f64
+Number_Compare_Proc :: #type proc "contextless" (a, b: f64) -> bool
 
-number_add :: proc(a, b: f64) -> f64 {
+number_add :: #force_inline proc "contextless" (a, b: f64) -> f64 {
     return a + b
 }
 
-number_sub :: proc (a, b: f64) -> f64 {
+number_sub :: #force_inline proc "contextless"  (a, b: f64) -> f64 {
     return a - b
 }
 
-number_mul :: proc(a, b: f64) -> f64 {
+number_mul :: #force_inline proc "contextless" (a, b: f64) -> f64 {
     return a * b
 }
 
-number_div :: proc(a, b: f64) -> f64 {
+number_div :: #force_inline proc "contextless" (a, b: f64) -> f64 {
     return a / b
 }
 
@@ -65,35 +65,35 @@ number_div :: proc(a, b: f64) -> f64 {
 Links:
 -   https://www.lua.org/source/5.1/luaconf.h.html#luai_nummod
  */
-number_mod :: proc(a, b: f64) -> f64 {
+number_mod :: #force_inline proc "contextless" (a, b: f64) -> f64 {
     return a - math.floor(a / b)*b
 }
 
-number_pow :: proc(a, b: f64) -> f64 {
+number_pow :: #force_inline proc "contextless" (a, b: f64) -> f64 {
     return math.pow(a, b)
 }
 
-number_eq :: proc(a, b: f64) -> bool {
+number_eq :: #force_inline proc "contextless" (a, b: f64) -> bool {
     return a == b
 }
 
-number_lt :: proc(a, b: f64) -> bool {
+number_lt :: #force_inline proc "contextless" (a, b: f64) -> bool {
     return a < b
 }
 
-number_gt :: proc(a, b: f64) -> bool {
+number_gt :: #force_inline proc "contextless" (a, b: f64) -> bool {
     return a > b
 }
 
-number_leq :: proc(a, b: f64) -> bool {
+number_leq :: #force_inline proc "contextless" (a, b: f64) -> bool {
     return a <= b
 }
 
-number_geq :: proc(a, b: f64) -> bool {
+number_geq :: #force_inline proc "contextless" (a, b: f64) -> bool {
     return a >= b
 }
 
-number_unm :: proc(a: f64) -> f64 {
+number_unm :: #force_inline proc "contextless" (a: f64) -> f64 {
     return -a
 }
 
@@ -106,55 +106,55 @@ value_make :: proc {
     value_make_table,
 }
 
-value_type_name :: proc(v: Value) -> string {
+value_type_name :: #force_inline proc "contextless" (v: Value) -> string {
     return value_type_strings[v.type]
 }
 
-value_make_nil :: proc() -> Value {
+value_make_nil :: #force_inline proc "contextless" () -> Value {
     return Value{type = .Nil, number = 0}
 }
 
-value_make_boolean :: proc(b: bool) -> Value {
+value_make_boolean :: #force_inline proc "contextless" (b: bool) -> Value {
     return Value{type = .Boolean, boolean = b}
 }
 
-value_make_number :: proc(n: f64) -> Value {
+value_make_number :: #force_inline proc "contextless" (n: f64) -> Value {
     return Value{type = .Number, number = n}
 }
 
-value_make_integer :: proc(i: int) -> Value {
+value_make_integer :: #force_inline proc "contextless" (i: int) -> Value {
     return value_make_number(cast(f64)i)
 }
 
-value_make_string :: proc(s: ^OString) -> Value {
+value_make_string :: #force_inline proc "contextless" (s: ^OString) -> Value {
     return Value{type = .String, ostring = s}
 }
 
-value_make_table :: proc(t: ^Table) -> Value {
+value_make_table :: #force_inline proc "contextless" (t: ^Table) -> Value {
     return Value{type = .Table, table = t}
 }
 
-value_is_nil :: proc(a: Value) -> bool {
+value_is_nil :: #force_inline proc "contextless" (a: Value) -> bool {
     return a.type == .Nil
 }
 
-value_is_boolean :: proc(a: Value) -> bool {
+value_is_boolean :: #force_inline proc "contextless" (a: Value) -> bool {
     return a.type == .Boolean
 }
 
-value_is_falsy :: proc(a: Value) -> bool {
+value_is_falsy :: #force_inline proc "contextless" (a: Value) -> bool {
     return a.type == .Nil || (a.type == .Boolean && !a.boolean)
 }
 
-value_is_number :: proc(a: Value) -> bool {
+value_is_number :: #force_inline proc "contextless" (a: Value) -> bool {
     return a.type == .Number
 }
 
-value_is_string :: proc(a: Value) -> bool {
+value_is_string :: #force_inline proc "contextless" (a: Value) -> bool {
     return a.type == .String
 }
 
-value_is_table :: proc(a: Value) -> bool {
+value_is_table :: #force_inline proc "contextless" (a: Value) -> bool {
     return a.type == .Table
 }
 
@@ -164,7 +164,7 @@ value_to_string :: proc(a: Value) -> string {
     return ostring_to_string(a.ostring)
 }
 
-value_eq :: proc(a, b: Value) -> bool {
+value_eq :: proc "contextless" (a, b: Value) -> bool {
     if a.type != b.type {
         return false
     }

@@ -152,7 +152,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
         print_reg(info, ip.a, "[%i+i] = Reg(%i+i) for 1 <= i <= %i",
                   cast(int)(ip.c - 1) * FIELDS_PER_FLUSH, ip.a, ip.b)
     case .Print:
-        fmt.printf("print(Reg(i), \\t) for %i <= i <= %i", ip.a, ip.b)
+        fmt.printf("print(Reg(i), \\t) for %i <= i < %i", ip.a, ip.b)
     case .Add: binary(info, "+")
     case .Sub: binary(info, "-")
     case .Mul: binary(info, "*")
@@ -182,6 +182,28 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
     case:
         unreachable()
     }
+}
+
+
+debug_type_error :: proc(vm: ^VM, culprit: ^Value, action: string) -> ! {
+    type_name := value_type_name(culprit^)
+
+    // Culprit is in the active stack frame, thus may be a variable?
+    if reg, in_stack := ptr_index_safe(culprit, vm.base[:get_top(vm)]); in_stack {
+        chunk := vm.chunk
+
+        // Inline implementation `ldebug.c:currentpc()`.
+        // `pc` always points to instruction AFTER current, so culprit is
+        // at the index of `pc - 1`
+        pc := ptr_index(vm.pc, chunk.code) - 1
+
+        // Culprit is a local variable, global variable, or a field?
+        if ident, scope, is_var := debug_get_variable(chunk, pc, reg); is_var {
+            vm_runtime_error(vm, "Attempt to %s %s %q (a %s value)",
+                         action, scope, ident, type_name)
+        }
+    }
+    vm_runtime_error(vm, "Attempt to %s a %s value", action, type_name)
 }
 
 
@@ -241,6 +263,9 @@ debug_symbolic_execution :: proc(chunk: ^Chunk, lastpc: int, reg: u16) -> (i: In
     /*
     **Overview**
     -   Checks if `reg` is in range of the stack frame.
+
+    **Assumptions**
+    -   Since `reg` is unsigned, it can never be less than 0.
      */
     check_reg :: proc(chunk: ^Chunk, reg: u16) -> bool {
         return cast(int)reg < chunk.stack_used
@@ -307,7 +332,7 @@ debug_symbolic_execution :: proc(chunk: ^Chunk, lastpc: int, reg: u16) -> (i: In
         case .Load_Boolean:
             // Have a jump?
             if ip.c == 1 {
-
+                panic("Boolean with jump not yet supported")
             }
         case .Load_Nil:
             // Set registers from `a` to `b`
