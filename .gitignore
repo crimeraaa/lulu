@@ -5,6 +5,7 @@
 .vscode/
 .gdb_history
 .task/
+__pycache__/
 
 # This is just for my personal documentation of the GDB Python API
 gdb/

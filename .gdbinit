@@ -25,6 +25,7 @@ file ./bin/lulu
 source printers/lulu.py
 
 break lulu_main::main
+break lulu::[vm.odin]::vm_init
 break lulu::[vm.odin]::vm_interpret
 break lulu::[vm.odin]::vm_interpret.interpret-0
 break lulu::[parser.odin]::parser_parse
@@ -36,4 +37,4 @@ run
 
 # layout src by default focuses on the source code window; this makes arrow keys
 # navigate that rather than the command-line.
-focus cmd
+# focus cmd

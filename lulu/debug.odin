@@ -79,7 +79,6 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
             return
         }
         if local, ok := chunk_get_local(chunk, cast(int)reg + 1, info.pc); ok {
-            // see `chunk.odin:local_formatter()`
             fmt.printf("local %s", local_to_string(local))
         } else {
             fmt.printf("Reg(%i)", reg)

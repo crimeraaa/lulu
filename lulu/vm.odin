@@ -72,6 +72,14 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
     vm.globals.type = .Table
     vm.globals.prev = nil
 
+    // lol:    []^[]Value  // struct []^[]lulu::[value.odin]::Value
+    // pointer:    ^Value  // struct lulu::[value.odin]::Value *
+    // mpointer: [^]Value  // struct lulu::[value.odin]::Value *
+    // upvalues: []^Value  // struct []^lulu::[value.odin]::Value
+    // pslice:   ^[]Value  // struct []lulu::[value.odin]::Value *
+    // slice1:   []Value   // struct []lulu::[value.odin]::Value
+    // slice2:   [][]Value // struct [][]lulu::[value.odin]::Value
+
     vm.builder   = strings.builder_make(allocator)
     vm.allocator = allocator
     vm.chunk     = nil
@@ -311,7 +319,7 @@ vm_execute :: proc(vm: ^VM) {
             value, ok := table_get(globals, key)
             if !ok {
                 ident := value_to_string(key)
-                vm_runtime_error(vm, "read undefined global '%s'", ident)
+                vm_runtime_error(vm, "Attempt to read undefined global '%s'", ident)
             }
             ra^ = value
         case .Set_Global:
@@ -331,16 +339,15 @@ vm_execute :: proc(vm: ^VM) {
             }
             ra^ = table_get(table, key)
         case .Set_Table:
-            key   := get_rk(vm, inst.b, stack, constants)^
+            key   := get_rk(vm, inst.b, stack, constants)
             value := get_rk(vm, inst.c, stack, constants)^
             if !value_is_table(ra^) {
                 index_error(vm, ra)
             }
-            if value_is_nil(key) {
-                vm_runtime_error(vm, "set a nil index")
+            if value_is_nil(key^) {
+                debug_type_error(vm, key, "set a nil index")
             }
-
-            table_set(vm, ra.table, key, value)
+            table_set(vm, ra.table, key^, value)
         case .Set_Array:
             // Guaranteed because this only occurs in table constructors
             table  := ra.table
@@ -381,7 +388,7 @@ vm_execute :: proc(vm: ^VM) {
         // Add 1 because we want to include Reg[C]
         case .Concat: vm_concat(vm, ra, stack[inst.b:inst.c + 1])
         case .Len:
-            rb := stack[inst.b]
+            rb := &stack[inst.b]
             #partial switch rb.type {
             case .String:
                 ra^ = value_make(rb.ostring.len)
@@ -400,7 +407,7 @@ vm_execute :: proc(vm: ^VM) {
                 }
                 ra^ = value_make(count)
             case:
-                vm_runtime_error(vm, "get length of a %s value", value_type_name(rb))
+                debug_type_error(vm, rb, "get length of")
             }
 
         case .Return:

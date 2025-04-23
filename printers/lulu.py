@@ -1,53 +1,34 @@
 import gdb
-import re
 from typing import Final, Generator
 
-def odin_parse_type(decl: str) -> str:
-    """
-    Assumptions:
-    -   Odin does not append any length modifiers, or const/volatile qualifiers
-        to pointer types.
-    -   `struct ` (including the trailing space) is used to prefixed ALL
-        composite types.
-    """
-    tag = decl.removeprefix("struct ")
+# Ensure we can `import` the other 'modules' from this directory
+import os
+import sys
+SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
+if SCRIPT_PATH not in sys.path:
+    sys.path.append(SCRIPT_PATH)
 
-    # Slice or fixed array?
-    if tag[0] == '[':
-        ...
+import odin
+
+
+demangler: Final = odin.Demangler()
+
+# import traceback
 
 def lookup_types(val: gdb.Value):
-    utype = val.type.unqualified()
-
-    # The following branch is an abomination
     try:
-        tag = str(utype).removeprefix("struct ").strip()
-        if tag[0] == '[':
-            decl = tag[:tag.find(']')]
-            size = 0
-            for c in decl:
-                if c.isdecimal():
-                    size *= 10
-                    size += int(c)
-
-        if tag.find("[]") != -1:
-            # Is a slice; will delegate back to here on a per-value basis
-            return Odin_Slice(val, tag)
-
-        try:
-            # Is some other struct type; we need to look it up
-            rawname = LULU_PATTERN.match(tag).group(1)
-            return lulu_types_lookup[rawname](val)
-
-        # AttributeError
-        #   -   `.match()` returned `None` and we called `.group()`
-        # KeyError
-        #   -   `name` did not exist in the dict.
-        except (AttributeError, KeyError):
-            return odin_types_lookup[tag](val)
+        utype  = val.type.unqualified()
+        pretty = demangler.parse(str(utype))
+        match pretty.length:
+            case -2:
+                if pretty.tag in type_printers:
+                    return type_printers[pretty.tag](val)
+            case -1: return Odin_Slice(val, pretty.tag)
+            case _:  pass
     except:
+        # Too noisy
+        # traceback.print_exc()
         pass
-
     return None
 
 
@@ -117,29 +98,10 @@ class Odin_Slice:
         return 'array'
 
 
-odin_types_lookup: Final = {
-    "string": Odin_String,
-}
-
-
 ###=== }}} =====================================================================
 
 
 CONST_VOID_PTR: Final = gdb.lookup_type("void").const().pointer()
-
-# Dissection:
-#   lulu::
-#       -   Ensure we find the prefix; The string literal `lulu::`.
-#   (?:\[\w+\.odin\]::)?
-#       -   `?:` indicates a non-capturing group.
-#       -   *.odin filename assuming only alphabetical characters, enclosed in
-#           square brackets and followed by delimiter `::`.
-#   (\w+)
-#       -   1st capturing group.
-#       -   This is the raw name used for the struct, e.g. `Value` or `Table`.
-# Links:
-#   -   https://docs.python.org/3/library/re.html
-LULU_PATTERN: Final  = re.compile(r'lulu::(?:\[\w+\.odin\]::)(\w+)')
 
 class Lulu_Value:
     """
@@ -202,9 +164,10 @@ class Lulu_String:
 
 
 # Maybe easier to just hardcode the mangled names...
-lulu_types_lookup: Final = {
+type_printers: Final = {
+    "string":    Odin_String,
     "Value":     Lulu_Value,
     "OString":   Lulu_String,
-    "OString *": Lulu_String,
+    "OString *": Lulu_String, # All Odin pointers decay to C-style pointers
 }
 
