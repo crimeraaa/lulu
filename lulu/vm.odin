@@ -72,14 +72,6 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
     vm.globals.type = .Table
     vm.globals.prev = nil
 
-    // lol:    []^[]Value  // struct []^[]lulu::[value.odin]::Value
-    // pointer:    ^Value  // struct lulu::[value.odin]::Value *
-    // mpointer: [^]Value  // struct lulu::[value.odin]::Value *
-    // upvalues: []^Value  // struct []^lulu::[value.odin]::Value
-    // pslice:   ^[]Value  // struct []lulu::[value.odin]::Value *
-    // slice1:   []Value   // struct []lulu::[value.odin]::Value
-    // slice2:   [][]Value // struct [][]lulu::[value.odin]::Value
-
     vm.builder   = strings.builder_make(allocator)
     vm.allocator = allocator
     vm.chunk     = nil

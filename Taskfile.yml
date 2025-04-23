@@ -26,6 +26,7 @@ tasks:
     cmds:
       - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:{{.OUT_EXE}}'
     sources:
+      - '*.odin'
       - '{{.ODIN_SRC}}/*.odin'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands

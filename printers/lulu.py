@@ -1,30 +1,39 @@
 import gdb
-from typing import Final, Generator
+from typing import Final, Generator, Optional
 
 # Ensure we can `import` the other 'modules' from this directory
 import os
 import sys
+
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 if SCRIPT_PATH not in sys.path:
     sys.path.append(SCRIPT_PATH)
+    sys.path.append(SCRIPT_PATH + "/odin")
 
-import odin
+import odin.demangler
 
 
-demangler: Final = odin.Demangler()
+demangler: Final = odin.demangler.Parser()
 
 # import traceback
 
 def lookup_types(val: gdb.Value):
     try:
-        utype  = val.type.unqualified()
-        pretty = demangler.parse(str(utype))
-        match pretty.length:
-            case -2:
-                if pretty.tag in type_printers:
-                    return type_printers[pretty.tag](val)
-            case -1: return Odin_Slice(val, pretty.tag)
-            case _:  pass
+        utype = str(val.type.unqualified())
+        demangled = odin.demangler.parse(demangler, utype)
+        # print(demangled)
+
+        tag = demangled.tag
+        match demangled.kind:
+            case "slice":
+                return Odin_Slice(val, tag)
+            case "dynamic":
+                return Odin_Slice(val, tag, True)
+            case _:
+                pass
+
+        if tag in type_printers:
+            return type_printers[tag](val)
     except:
         # Too noisy
         # traceback.print_exc()
@@ -71,27 +80,122 @@ class Odin_Slice:
     __tag:  str
     __data: gdb.Value
     __len:  int
+    __cap:  Optional[int]
 
 
-    def __init__(self, val: gdb.Value, tag: str):
+    def __init__(self, val: gdb.Value, tag: str, has_cap = False):
         self.__tag  = tag
         self.__data = val["data"] # Assumed to be a pointer of some kind
         self.__len  = int(val["len"])
+        self.__cap  = int(val["cap"]) if has_cap else None
 
 
     def children(self) -> tuple[str, gdb.Value]:
-        return self.__next_element()
+        return self.__iter__()
 
 
-    def __next_element(self) -> Generator[tuple[str, gdb.Value], str, gdb.Value]:
+    def __iter__(self) -> Generator[tuple[str, gdb.Value], str, gdb.Value]:
         for i in range(self.__len):
             yield str(i), (self.__data + i).dereference()
 
 
     def to_string(self) -> str:
         """ Because of the `'array'` display hint, the actual data is printed
-        by GDB using the `children()` method."""
-        return f"{self.__tag}{{len = {self.__len}}}"
+        by GDB using the `children()` method. """
+        info = f"len = {self.__len}"
+        if self.__cap is not None:
+            info += f", cap = {self.__cap}"
+        return f"{self.__tag}{{{info}}}"
+
+
+    def display_hint(self) -> str:
+        return 'array'
+
+
+UINTPTR: Final = gdb.lookup_type("uintptr")
+
+
+class Odin_Map:
+    """
+    Links:
+    - https://pkg.odin-lang.org/base/runtime/#Raw_Map
+
+    Odin: ```map[string]^OString```
+
+    C:
+    ```
+
+    // `struct{...}` is the very compressed Odin-style struct definition used as
+    // the mangled name.
+    #define ELEM_TYPENAME  struct{\
+        key:string,\
+        value:^lulu::[string.odin]::OString,\
+        hash:uintptr,\
+        key_cell:string,\
+        value_cell:^lulu::[string.odin]::OString\
+    }
+
+    struct map[string]^lulu::[string.odin]::OString {
+        struct ELEM_TYPENAME *data;
+        int len;
+        struct runtime::Allocator allocator;
+    }
+
+    struct ELEM_TYPENAME {
+        struct string key;
+        struct lulu::[string.odin]::OString *value;
+        uintptr hash;
+        struct string key_cell;
+        struct lulu::[string.odin]::OString *value_cell;
+    }
+    ```
+    """
+    __tag:  str
+    __data: gdb.Value
+    __len:  int
+    __cap:  int
+
+
+    # The lower 6 bits of `__data` are used as log2 of the actual capacity.
+    MASK_CAP: Final = 0b0011_1111
+
+
+    def __init__(self, value: gdb.Value, tag: str):
+        data = value["data"].cast(UINTPTR)
+        self.__tag  = tag
+        self.__data = data
+        self.__len  = value["len"]
+        if data == 0:
+            self.__cap = 0
+        else:
+            self.__cap = 1 << int(self.__log2_cap(self))
+
+
+    def __log2_cap(self) -> int:
+        """
+        Links:
+        -   https://github.com/odin-lang/Odin/blob/master/base/runtime/dynamic_map_internal.odin#L192
+        """
+        return int(self.__data) & self.MASK_CAP
+
+
+    def __get_data(self) -> gdb.Value:
+        return self.__data & ~self.MASK_CAP
+
+
+    def children(self) -> tuple[str, gdb.Value]:
+        return self.__iter__()
+
+
+    def __iter__(self) -> Generator[tuple[str, gdb.Value], str, gdb.Value]:
+        for i in range(self.__len):
+            # TODO(2025-04-24): Due to how `map` is implemented in Odin, this
+            # mere index operation is not enough!
+            yield str(i), (self.__data + i).dereference()
+
+
+    def to_string(self) -> str:
+        return f"{self.__tag}{{len = {self.__len}, cap = {self.__cap}}}"
 
 
     def display_hint(self) -> str:
@@ -102,6 +206,7 @@ class Odin_Slice:
 
 
 CONST_VOID_PTR: Final = gdb.lookup_type("void").const().pointer()
+NULL:           Final = gdb.Value(0).cast(CONST_VOID_PTR)
 
 class Lulu_Value:
     """
@@ -168,6 +273,8 @@ type_printers: Final = {
     "string":    Odin_String,
     "Value":     Lulu_Value,
     "OString":   Lulu_String,
-    "OString *": Lulu_String, # All Odin pointers decay to C-style pointers
+
+    # All Odin pointers decay to C-style pointers
+    "OString *": Lulu_String,
 }
 

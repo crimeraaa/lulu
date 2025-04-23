@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:io"
 import "core:math"
 
+
 Value :: struct {
     type:       Value_Type,
     using data: Value_Data,

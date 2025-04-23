@@ -43,6 +43,7 @@ main :: proc() {
 
     run_interactive :: proc(vm: ^lulu.VM) {
         buffer: [256]byte
+
         for {
             input := read_line(buffer[:]) or_break
             // Interpret even if empty, this will return 0 registers.
