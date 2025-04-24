@@ -1,42 +1,60 @@
 import gdb
 from typing import Final, Generator, Optional
 
-# Ensure we can `import` the other 'modules' from this directory
 import os
 import sys
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 if SCRIPT_PATH not in sys.path:
-    sys.path.append(SCRIPT_PATH)
-    sys.path.append(SCRIPT_PATH + "/odin")
+    sys.path.append(SCRIPT_PATH) # `import` from `../printers/`
+    sys.path.append(SCRIPT_PATH + "/odin") # `import` from `../printers/odin/`
+
 
 import odin.demangler
 
 
-demangler: Final = odin.demangler.Parser()
-
-# import traceback
-
 def lookup_types(val: gdb.Value):
     try:
         utype = str(val.type.unqualified())
-        demangled = odin.demangler.parse(demangler, utype)
-        # print(demangled)
+        if utype in type_printers:
+            return type_printers[utype](val)
 
-        tag = demangled.tag
-        match demangled.kind:
-            case "slice":
-                return Odin_Slice(val, tag)
-            case "dynamic":
-                return Odin_Slice(val, tag, True)
-            case _:
+        demangled, tag = odin.demangler.demangle(utype)
+
+        match demangled.mode:
+            case "array":
+                """
+                Likely impossible; Odin arrays just 100% C declarations so our
+                demangler cannot (and *will* not) handle these cases.
+                -   `[256]byte` becomes `byte [256]`.
+                -   `[2][3]f32` becomes `f32 [2][3]`.
+                -   `[16]^byte` becomes `byte *[16]`.
+                -   `[8]^string` becomes `struct string *[8]`.
+
+                Pointers to any of the above get very ugly very fast due to how
+                C's type declarations work. E.g:
+                -   `^[256]byte` becomes `byte (*)[256]`
+                -   `^[2][3]f32` becomes `f32 (*)[2][3]`
+                -   `^[16]^byte` becomes `byte *(*)[16]`
+                -   `^[8]^string` becomes `struct string *(*)[8]`
+
+                Want even more pain? Try arrays-of-pointers-to-arrays!
+                -   `[2]^[3]f32` becomes `byte (*[2])[3]`
+                -   `^[2]^[3]f32` becomes `byte (*(*)[2])[3]`
+
+                Fortunately for us, GDB already knows how to deal with fixed-size
+                arrays (and pointers thereof) so we don't need to create our own
+                special logic.
+                """
                 pass
-
-        if tag in type_printers:
-            return type_printers[tag](val)
+            case "slice":
+                return odin_Slice(val, tag)
+            case "dynamic":
+                return odin_Slice(val, tag, has_cap=True)
+            case "map":
+                # return Odin_Map(val, pattern[1] + pattern[2] + pattern[3])
+                pass
     except:
-        # Too noisy
-        # traceback.print_exc()
         pass
     return None
 
@@ -44,10 +62,11 @@ def lookup_types(val: gdb.Value):
 gdb.pretty_printers.append(lookup_types)
 
 
+
 ###=== ODIN DATA TYPES ===================================================== {{{
 
 
-class Odin_String:
+class odin_String:
     """
     struct string {
         u8 *data;
@@ -70,7 +89,7 @@ class Odin_String:
         return 'string'
 
 
-class Odin_Slice:
+class odin_Slice:
     """
     struct []$T {
         T *data;
@@ -102,9 +121,9 @@ class Odin_Slice:
     def to_string(self) -> str:
         """ Because of the `'array'` display hint, the actual data is printed
         by GDB using the `children()` method. """
-        info = f"len = {self.__len}"
+        info = f"len={self.__len}"
         if self.__cap is not None:
-            info += f", cap = {self.__cap}"
+            info += f", cap={self.__cap}"
         return f"{self.__tag}{{{info}}}"
 
 
@@ -115,38 +134,33 @@ class Odin_Slice:
 UINTPTR: Final = gdb.lookup_type("uintptr")
 
 
-class Odin_Map:
+class odin_Map:
     """
     Links:
     - https://pkg.odin-lang.org/base/runtime/#Raw_Map
 
-    Odin: ```map[string]^OString```
+    Odin: ```map[$K]$V```
 
     C:
     ```
 
     // `struct{...}` is the very compressed Odin-style struct definition used as
-    // the mangled name.
-    #define ELEM_TYPENAME  struct{\
-        key:string,\
-        value:^lulu::[string.odin]::OString,\
-        hash:uintptr,\
-        key_cell:string,\
-        value_cell:^lulu::[string.odin]::OString\
-    }
+    // the struct tag.
+    #define DATA_TYPE_TAG \
+        struct{key:$K,value:$V,hash:uintptr,key_cell:$K,value_cell:$V}
 
-    struct map[string]^lulu::[string.odin]::OString {
-        struct ELEM_TYPENAME *data;
+    struct map[$K]$V {
+        struct DATA_TYPE_TAG *data;
         int len;
         struct runtime::Allocator allocator;
     }
 
-    struct ELEM_TYPENAME {
-        struct string key;
-        struct lulu::[string.odin]::OString *value;
+    struct DATA_TYPE_TAG {
+        $K key;
+        $V value;
         uintptr hash;
-        struct string key_cell;
-        struct lulu::[string.odin]::OString *value_cell;
+        $K key_cell;
+        $V value_cell;
     }
     ```
     """
@@ -208,7 +222,7 @@ class Odin_Map:
 CONST_VOID_PTR: Final = gdb.lookup_type("void").const().pointer()
 NULL:           Final = gdb.Value(0).cast(CONST_VOID_PTR)
 
-class Lulu_Value:
+class lulu_Value:
     """
     struct lulu::[value.odin]::Value {
         enum lulu::[value.odin]::Value_Type  type;
@@ -234,7 +248,7 @@ class Lulu_Value:
         return self.__pretty
 
 
-class Lulu_Object_Header:
+class lulu_Object_Header:
     """
     struct lulu::[object.odin]::Object_Header {
         enum lulu::[value.odin]::Value_Type        type;
@@ -243,7 +257,7 @@ class Lulu_Object_Header:
     """
     ...
 
-class Lulu_String:
+class lulu_OString:
     """
     struct lulu::[string.odin]::OString {
         struct lulu::[object.odin]::Object_Header base;
@@ -270,11 +284,11 @@ class Lulu_String:
 
 # Maybe easier to just hardcode the mangled names...
 type_printers: Final = {
-    "string":    Odin_String,
-    "Value":     Lulu_Value,
-    "OString":   Lulu_String,
+    "struct string":                    odin_String,
+    "struct lulu::[value.odin]::Value": lulu_Value,
+    "struct OString":                   lulu_OString,
 
     # All Odin pointers decay to C-style pointers
-    "OString *": Lulu_String,
+    "struct lulu::[string.odin]::OString *": lulu_OString,
 }
 
