@@ -6,12 +6,12 @@ import sys
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 if SCRIPT_PATH not in sys.path:
-    sys.path.append(SCRIPT_PATH) # `import` from `../printers/`
-    sys.path.append(SCRIPT_PATH + "/odin") # `import` from `../printers/odin/`
+    sys.path.append(SCRIPT_PATH) # `import` from `.`
 
+import odin.parser
 
-import odin.demangler
-
+parser = odin.parser.Parser()
+saved = {}
 
 def lookup_types(val: gdb.Value):
     try:
@@ -19,8 +19,7 @@ def lookup_types(val: gdb.Value):
         if utype in type_printers:
             return type_printers[utype](val)
 
-        demangled, tag = odin.demangler.demangle(utype)
-
+        demangled, tag = odin.parser.demangle(parser, utype, saved)
         match demangled.mode:
             case "array":
                 """
