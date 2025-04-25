@@ -1,4 +1,4 @@
-import gdb  # Need to configure .vscode/settings.json for this to show in PyLance!
+import gdb  # type: ignore # Need to configure .vscode/settings.json for this to show in PyLance!
 from enum import Enum
 from typing import Final, Union, TypeAlias
 

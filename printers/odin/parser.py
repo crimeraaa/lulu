@@ -7,7 +7,7 @@ NOTE(2025-04-25):
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Final, Optional, TypeAlias, Literal, Callable
+from typing import Optional, TypeAlias, Literal, Callable
 from .lexer import Token, Lexer
 
 Usertype: TypeAlias = Literal["struct", "enum", "union"]
@@ -21,6 +21,8 @@ class Declaration:
     package:    Optional[str] = None
     file:       Optional[str] = None
     name:       str           = ""
+    tparam:     Optional[str] = "" # Parameter name for parapoly instantiations
+    targ:       Optional[str] = "" # Fully-qualified argument for parapoly instantiations
     size:       Optional[int] = None # For fixed-size arrays only
     pointer:    int           = 0 # Levels of indirection directly attached.
 
@@ -32,38 +34,40 @@ class Declaration:
         if i := self.info:      result.append(i)
         if p := self.package:   result.append(p + '.')
         result.append(self.name) # MUST exist
+        if t := self.tparam:    result.append(f"(${t}={self.targ})")
         return ''.join(result)
 
 
 @dataclass
 class Demangled:
-    decl:   Declaration = None
-    mode:   Optional[Usertype | Builtin] = None
-    nested: bool = False
+    decl:      Declaration = None
+    mode:      Optional[Usertype | Builtin] = None
+    recursing: bool = False
 
 
     def recurse(self, expr: Callable[[], None]):
-        self.nested = True
+        self.recursing = True
         expr()
-        self.nested = False
+        self.recursing = False
+
 
     def set_package(self, package: str):
-        if not self.nested:
+        if not self.recursing:
             self.decl.package = package
 
 
     def set_file(self, file: str):
-        if not self.nested:
+        if not self.recursing:
             self.decl.file = file
 
 
     def set_name(self, name: str):
-        if not self.nested:
+        if not self.recursing:
             self.decl.name = name
 
 
     def set_size(self, size: int):
-        if not self.nested:
+        if not self.recursing:
             self.decl.size = size
 
 
@@ -86,6 +90,14 @@ class Demangled:
         self.decl.prefix = prefix
 
 
+    def set_tparam(self, tparam: str):
+        self.decl.tparam = tparam
+
+
+    def set_targ(self, targ: str):
+        self.decl.targ = targ
+
+
     def set_struct(self, struct: str, mode: str):
         """
         Note:
@@ -99,7 +111,7 @@ class Demangled:
         -   `struct [][]byte`
         -   `struct [dynamic][]string`
         """
-        if self.nested:
+        if self.recursing:
             return
 
         if prev := self.decl.struct:
@@ -112,11 +124,6 @@ class Demangled:
 
 
 class Parser:
-    lexer:     Lexer
-    consumed:  Token
-    lookahead: Token
-
-
     def __init__(self):
         self.lexer     = Lexer()
         self.consumed  = Token()
@@ -134,17 +141,19 @@ class Parser:
         return found
 
 
+    def match_any(self, expected: list[Token.Type]) -> bool:
+        found = self.check_any(expected)
+        if found:
+            self.next()
+        return found
+
+
     def check(self, expected: Token.Type) -> bool:
         return self.lookahead.type == expected
 
 
-    def keyword(self, expected: str | list[str] | set[str]) -> str:
-        keyword = self.consume(Token.Type.Keyword)
-        # `in` keyword applies to `list`, `set` and `str`
-        if keyword in expected:
-            return keyword
-
-        parser.unexpected(expected, keyword)
+    def check_any(self, expected: list[Token.Type]) -> bool:
+        return self.lookahead.type in expected
 
 
     def consume(self, expected: Token.Type) -> str:
@@ -155,6 +164,12 @@ class Parser:
                 exp = f"<{expected.name.lower()}>"
             self.unexpected(exp, repr(self.lookahead))
         return self.consumed.data
+
+
+    def consume_any(self, expected: list[Token.Type]) -> Optional[str]:
+        if self.match_any(expected):
+            return self.consumed.data
+        return None
 
 
     def next(self):
@@ -234,20 +249,20 @@ def prefix(parser: Parser, demangled: Demangled):
     Notes:
     -   We do not allow `map` without a preceding `struct` for our purposes.
     """
-    VALID: Final = {"struct", "union", "enum"}
-
-    if parser.check(Token.Type.Keyword):
-        demangled.set_prefix(parser.keyword(VALID))
+    if prefix := parser.consume_any([
+            Token.Type.Struct, Token.Type.Enum, Token.Type.Union]):
+        demangled.set_prefix(prefix)
 
 
 def qualname(parser: Parser, demangled: Demangled) -> str:
     """
     ```
-    <qualname>  ::= <namespace>? <ident>
+    <qualname>  ::= <namespace>? <ident> <parapoly>?
     <namespace> ::= <package> <file>?
     <package>   ::= <ident> '::'
     <file>      ::= '[' <ident> ']' '::'
     <ident>     ::= r'[-_.\w]+'
+    <parapoly>  ::= '(' '$' <ident> '=' <qualname> ')'
     ```
     """
     tokens: list[str] = []
@@ -269,6 +284,15 @@ def qualname(parser: Parser, demangled: Demangled) -> str:
         tokens.append(ident)
 
     demangled.set_name(ident)
+
+    # Parapoly instantiation? e.g. `Map_Cell($T=string)`
+    if parser.match(Token.Type.Left_Paren):
+        parser.consume(Token.Type.Dollar)
+        demangled.set_tparam(parser.consume(Token.Type.Ident))
+        parser.consume(Token.Type.Equal)
+        demangled.recurse(lambda: demangled.set_targ(qualname(parser, demangled)))
+        parser.consume(Token.Type.Right_Paren)
+
     return '.'.join(tokens)
 
 
@@ -319,7 +343,7 @@ def compound(parser: Parser, demangled: Demangled):
             """
             # `output` is from a recursive call so we don't care about the
             # number of pointers; we just want the demangled type.
-            if demangled.nested:
+            if demangled.recursing:
                 tokens.append('^')
 
             # `output` is from the primary call, and the primary type is a
@@ -329,9 +353,8 @@ def compound(parser: Parser, demangled: Demangled):
                     "`[^]` in primary types are impossible within GDB")
 
         # Dynamic array?
-        elif parser.check(Token.Type.Keyword):
-            mode = parser.keyword("dynamic")
-            demangled.set_struct("[dynamic]", mode)
+        elif parser.match(Token.Type.Dynamic):
+            demangled.set_struct("[dynamic]", "dynamic")
             tokens.clear()
 
         # Slice?
@@ -343,17 +366,21 @@ def compound(parser: Parser, demangled: Demangled):
             demangled.set_size(array)
 
     # <map> ::= "map" '[' <qualname> ']'
-    elif parser.check(Token.Type.Keyword):
-        mode = parser.keyword("map")
+    elif parser.match(Token.Type.Map):
         tokens.append(parser.consume(Token.Type.Left_Bracket))
-        demangled.set_struct(mode, mode)
+        demangled.set_struct("map", "map")
 
         """
-        NOTE(2025-04-25):
-        -   I'm unsure how aliases to basic types are mangled.
-        -   e.g. is `core/libc.char` mangled to `libc::char`?
-        -   ...or is it immediately resolved to `byte`?
-        -   How about `distinct` types?
+        NOTE(2025-04-24):
+        -   Non-`distinct` type aliases are NOT mangled.
+        -   e.g. `core/c.char` is resolved to `u8`.
+        -   So `map[c.char][^]c.char` becomes `struct map[u8][^]u8`.
+
+        -   However, `distinct` types ARE mangled.
+        -   e.g. `mode :: distinct char` is mangle to `pkg::mode`
+        -   `asciiz :: distinct [^]c.char` is mangled to `pkg::asciiz`
+        -   `pkg` is whatever package this declaration was found in.
+        -   `map[mode]asciiz` becomes `struct map[pkg::mode]pkg::asciiz`.
         """
         demangled.recurse(lambda: tokens.append(qualname(parser, demangled)))
 
@@ -384,13 +411,13 @@ if __name__ == "__main__":
     import traceback
     import readline # Just importing this already affects `input()`.
 
-    parser = Parser()
-    saved: dict[str, Result] = {}
+    __parser = Parser()
+    __saved: dict[str, Result] = {}
     print("Enter an Odin mangled type to parse.")
     while True:
         try:
             decl = input(">>> ")
-            demangled, pretty = demangle(parser, decl, saved)
+            demangled, pretty = demangle(__parser, decl, __saved)
             # print(demangled)
             print(f"Odin: {pretty}")
         except (KeyboardInterrupt, EOFError):

@@ -22,8 +22,6 @@ set print pretty on
 
 file ./bin/lulu
 
-source printers/lulu.py
-
 break lulu_main::main
 break lulu::[vm.odin]::vm_init
 break lulu::[vm.odin]::vm_interpret

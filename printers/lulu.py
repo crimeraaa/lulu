@@ -1,25 +1,66 @@
-import gdb
-from typing import Final, Generator, Optional
+# This is just for type annotations; the `gdb` module only exists within GDB!
+import gdb # type: ignore
+from dataclasses import dataclass
+from typing import Final, Generator, TypeAlias
 
-import os
-import sys
+from .odin import parser
 
-SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
-if SCRIPT_PATH not in sys.path:
-    sys.path.append(SCRIPT_PATH) # `import` from `.`
+ENABLE_MSFT_WORKAROUNDS: Final = True
+"""
+The VSCode C/C++ extension, as well as Windows Subsystem for Linux (WSL),
+seem to not properly respect the `map` display hint.
+"""
 
-import odin.parser
 
-parser = odin.parser.Parser()
-saved = {}
+def register_printers(objfile: gdb.Objfile):
+    """
+    Overview:
+    -   For our purposes, an `objfile` is simply the executable we're debugging.
+    -   If we're debugging `lulu/bin/lulu` then that's the objfile.
+    -   Each objfile has its own pretty printers list associated with it.
+    -   So instead of poking at the global `gdb.pretty_printers`, we can instead
+        modify the pretty printers list on a per-objfile basis.
 
-def lookup_types(val: gdb.Value):
+    Usage:
+    -   Create `lulu/bin/lulu-gdb.py` right next to `lulu/bin/lulu`.
+    -   When invoking `gdb lulu/bin/lulu`, it will load `lulu/bin/lulu-gdb.py`
+        if auto loading of scripts was enabled.
+
+    Notes:
+    -   GDB Python does NOT include the relative current directory in `sys.path`.
+    -   Thus, to import anyting from `printers`, you need to do one of:
+        1.  Add the absolute path of `lulu/printers` to `sys.path` manually.
+        2.  Use `importlib.util` to directly load `lulu/printers/lulu.py`.
+
+    Sample:
+    ```
+    # lulu/bin/lulu-gdb.py
+    import gdb
+    import os
+    import os
+
+    # Get the full path that contains `lulu/printers/lulu.py`
+    LULU_PATH = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
+    if LULU_PATH not in sys.path:
+        sys.path.insert(0, LULU_PATH)
+
+    from printers import lulu
+    lulu.register_printers(gdb.current_objfile())
+    ```
+    """
+    objfile.pretty_printers.append(lookup_printer)
+
+
+__parser = parser.Parser()
+__saved: dict[str, parser.Result] = {}
+
+def lookup_printer(val: gdb.Value):
     try:
         utype = str(val.type.unqualified())
-        if utype in type_printers:
-            return type_printers[utype](val)
+        if utype in __printers:
+            return __printers[utype](val)
 
-        demangled, tag = odin.parser.demangle(parser, utype, saved)
+        demangled, tag = parser.demangle(__parser, utype, __saved)
         match demangled.mode:
             case "array":
                 """
@@ -46,20 +87,20 @@ def lookup_types(val: gdb.Value):
                 special logic.
                 """
                 pass
-            case "slice":
-                return odin_Slice(val, tag)
-            case "dynamic":
-                return odin_Slice(val, tag, has_cap=True)
-            case "map":
-                # return Odin_Map(val, pattern[1] + pattern[2] + pattern[3])
-                pass
+            case "slice":   return odin_Slice(val, tag)
+            case "dynamic": return odin_Slice(val, tag, has_cap=True)
+            case "map":     return odin_Map(val, tag)
     except:
         pass
     return None
 
 
-gdb.pretty_printers.append(lookup_types)
+VOID_PTR:   Final = gdb.lookup_type("void").pointer()
+UINTPTR:    Final = gdb.lookup_type("uintptr")
+NULL:       Final = gdb.Value(0).cast(VOID_PTR)
 
+
+Iterator: TypeAlias = Generator[tuple[str, gdb.Value], str, gdb.Value]
 
 
 ###=== ODIN DATA TYPES ===================================================== {{{
@@ -72,16 +113,16 @@ class odin_String:
         int len;
     }
     """
-    __data: str
 
 
     def __init__(self, val: gdb.Value):
-        # `u8 *` can also be dereferenced properly as a string
-        self.__data = val["data"].string(encoding="utf-8", length = int(val["len"]))
+        self.__data: Final = val["data"]
+        self.__len:  Final = int(val["len"])
 
 
     def to_string(self) -> str:
-        return self.__data
+        # `u8 *` can also be dereferenced properly as a string
+        return self.__data.string(encoding = "utf-8", length = self.__len)
 
 
     def display_hint(self) -> str:
@@ -95,24 +136,20 @@ class odin_Slice:
         int len;
     }
     """
-    __tag:  str
-    __data: gdb.Value
-    __len:  int
-    __cap:  Optional[int]
 
 
     def __init__(self, val: gdb.Value, tag: str, has_cap = False):
-        self.__tag  = tag
-        self.__data = val["data"] # Assumed to be a pointer of some kind
-        self.__len  = int(val["len"])
-        self.__cap  = int(val["cap"]) if has_cap else None
+        self.__tag:  Final = tag
+        self.__data: Final = val["data"] # NOTE(2025-04-25): Must be a pointer!
+        self.__len:  Final = int(val["len"])
+        self.__cap:  Final = int(val["cap"]) if has_cap else None
 
 
     def children(self) -> tuple[str, gdb.Value]:
         return self.__iter__()
 
 
-    def __iter__(self) -> Generator[tuple[str, gdb.Value], str, gdb.Value]:
+    def __iter__(self) -> Iterator:
         for i in range(self.__len):
             yield str(i), (self.__data + i).dereference()
 
@@ -130,13 +167,11 @@ class odin_Slice:
         return 'array'
 
 
-UINTPTR: Final = gdb.lookup_type("uintptr")
-
-
 class odin_Map:
     """
     Links:
-    - https://pkg.odin-lang.org/base/runtime/#Raw_Map
+    -   https://pkg.odin-lang.org/base/runtime/#Raw_Map
+    -   https://gist.github.com/flga/30184a5b47a8b8ed0201fa33dd01dfe6#file-odin-gdb-pretty-printers-py
 
     Odin: ```map[$K]$V```
 
@@ -163,88 +198,164 @@ class odin_Map:
     }
     ```
     """
-    __tag:  str
-    __data: gdb.Value
-    __len:  int
-    __cap:  int
-
-
     # The lower 6 bits of `__data` are used as log2 of the actual capacity.
     MASK_CAP: Final = 0b0011_1111
 
+    @dataclass
+    class Cell:
+        type:      gdb.Type
+        cell_type: gdb.Type
+        base_addr: int
+
+        def cell_addr(self, index: int) -> int:
+            """
+            Overview:
+            -   See `base/runtime/dynamic_map_internal.odin:map_cell_index_static()`,
+                specifically the "worst case" branch.
+            -   From `base/runtime/dynamic_map_internal.odin:Map_Cell`:
+            -   The usual array[index] indexing for []T backed by a []Map_Cell(T)
+                becomes a bit more involved as there now may be internal padding.
+                The indexing now becomes
+
+                N :: len(Map_Cell(T){}.data)
+                i := index / N
+                j := index % N
+                cell[i].data[j]
+
+            Links:
+            -   https://github.com/odin-lang/Odin/blob/master/base/runtime/dynamic_map_internal.odin#L90
+            """
+            if self.type.sizeof == 0:
+                return self.base_addr
+
+            # How many $T can fit in a cacheline?
+            elems_per_cell = self.cell_type.sizeof // self.type.sizeof
+            cell_index = index // elems_per_cell
+            data_index = index % elems_per_cell
+            return self.base_addr + (cell_index * self.cell_type.sizeof) \
+                + (data_index * self.type.sizeof)
+
+
+        def cell_value(self, index: int) -> gdb.Value:
+            addr = self.cell_addr(index)
+            return gdb.Value(addr).cast(self.type.pointer()).dereference()
+
 
     def __init__(self, value: gdb.Value, tag: str):
-        data = value["data"].cast(UINTPTR)
-        self.__tag  = tag
-        self.__data = data
-        self.__len  = value["len"]
-        if data == 0:
-            self.__cap = 0
-        else:
-            self.__cap = 1 << int(self.__log2_cap(self))
-
-
-    def __log2_cap(self) -> int:
         """
+        Assumptions:
+        -   The lower 6 bits of all pointers for this platform are never used.
+        -   Thus, the map's capacity is stored in these bits as a log2.
+        -   The actual pointer is simply the data pointer with the lower 6
+            bits zeroed out.
+
         Links:
         -   https://github.com/odin-lang/Odin/blob/master/base/runtime/dynamic_map_internal.odin#L192
         """
-        return int(self.__data) & self.MASK_CAP
+        self.__tag: Final = tag
+
+        data      = value["data"]
+        base_addr = int(data) & ~self.MASK_CAP
+        cap_log2  = int(data) & self.MASK_CAP
+        self.__len: Final = int(value["len"])
+        self.__cap: Final = 1 << cap_log2 if cap_log2 else 0
+
+        # For the following lines, please refer to:
+        #   `base/runtime/dynamic_map_internal.odin:map_kvh_data_static()`
+        # https://github.com/odin-lang/Odin/blob/master/base/runtime/dynamic_map_internal.odin#L805C1-L805C21
 
 
-    def __get_data(self) -> gdb.Value:
-        return self.__data & ~self.MASK_CAP
+        # ks: [^]Map_Cell($K) = auto_cast map_data(transmute(Raw_Map)m)
+        self.__key: Final = odin_Map.Cell(
+            type      = data["key"].type,
+            cell_type = data["key_cell"].type,
+            base_addr = base_addr
+        )
+
+        # vs: [^]Map_Cell($V) = auto_cast map_cell_index_static(ks, cap(m))
+        self.__value: Final = odin_Map.Cell(
+            type      = data["value"].type,
+            cell_type = data["value_cell"].type,
+            base_addr = self.__key.cell_addr(self.__cap)
+        )
+
+        # hs: [^]Map_Hash = auto_cast map_cell_index_static(vs, cap(m))
+        hash_type = data["hash"].type
+        self.__tombstone_mask: Final = 1 << (hash_type.sizeof*8 - 1)
+        """
+        ```
+        Map_Hash :: uintptr
+        TOMBSTONE_MASK :: 1<<(size_of(Map_Hash)*8 - 1)
+        """
+
+        hash_addr = self.__value.cell_addr(self.__cap)
+        self.__hashes: Final = gdb.Value(hash_addr).cast(hash_type.pointer())
 
 
     def children(self) -> tuple[str, gdb.Value]:
         return self.__iter__()
 
 
-    def __iter__(self) -> Generator[tuple[str, gdb.Value], str, gdb.Value]:
-        for i in range(self.__len):
-            # TODO(2025-04-24): Due to how `map` is implemented in Odin, this
-            # mere index operation is not enough!
-            yield str(i), (self.__data + i).dereference()
+    def __iter__(self) -> Iterator:
+        for i in range(self.__cap):
+            hash = (self.__hashes + i).dereference()
+            # Skip empty/deleted entries
+            if hash == 0 or (hash & self.__tombstone_mask) != 0:
+                continue
+
+            key = self.__key.cell_value(i)
+            if self.__value.type.sizeof == 0:
+                yield str(i), key
+
+            value = self.__value.cell_value(i)
+            yield str(key), value
 
 
     def to_string(self) -> str:
-        return f"{self.__tag}{{len = {self.__len}, cap = {self.__cap}}}"
+        return f"{self.__tag}{{len={self.__len}, cap={self.__cap}}}"
 
 
     def display_hint(self) -> str:
-        return 'array'
+        if self.__value.type.sizeof == 0:
+            return "array"
+        return "map" if not ENABLE_MSFT_WORKAROUNDS else None
 
 
 ###=== }}} =====================================================================
 
 
-CONST_VOID_PTR: Final = gdb.lookup_type("void").const().pointer()
-NULL:           Final = gdb.Value(0).cast(CONST_VOID_PTR)
-
 class lulu_Value:
     """
+    ```
     struct lulu::[value.odin]::Value {
         enum lulu::[value.odin]::Value_Type  type;
         union lulu::[value.odin]::Value_Data data;
     }
+    ```
     """
-    __pretty: str
+    DECL: Final = "struct lulu::[value.odin]::Value"
+
 
     def __init__(self, val: gdb.Value):
-        tag  = str(val["type"])
-        data = val["data"]
-        match tag:
-            case "Nil":     self.__pretty = "nil"
-            case "Boolean": self.__pretty = str(bool(data["boolean"]))
-            case "Number":  self.__pretty = str(float(data["number"]))
-            case "String":  self.__pretty = str(data["ostring"])
-            case _:
-                pointer = data["table"].cast(CONST_VOID_PTR)
-                self.__pretty = f"{tag.lower()}: {pointer}"
+        # In GDB, enums are already pretty-printed to their names
+        self.__tag:  Final = str(val["type"])
+        self.__data: Final = val["data"]
 
 
     def to_string(self) -> str:
-        return self.__pretty
+        match self.__tag:
+            # Python's builtin types
+            case "Nil":     return "nil"
+            case "Boolean": return str(bool(self.__data["boolean"]))
+            case "Number":  return str(float(self.__data["number"]))
+            # will (eventually) delegate to `lulu_OString`
+            case "String":  return str(self.__data["ostring"])
+
+        # Assuming ALL data pointers have the same representation
+        # Meaning `(void *)value.ostring == (void *)value.table` for the same
+        # `lulu::Value` instance.
+        pointer = self.__data["table"].cast(VOID_PTR)
+        return f"{self.__tag.lower()}: {pointer}"
 
 
 class lulu_Object_Header:
@@ -256,6 +367,7 @@ class lulu_Object_Header:
     """
     ...
 
+
 class lulu_OString:
     """
     struct lulu::[string.odin]::OString {
@@ -265,16 +377,17 @@ class lulu_OString:
         u8  data[0];
     }
     """
-    __data: str
+    DECL: Final = 'struct lulu::[string.odin]::OString'
 
 
     def __init__(self, val: gdb.Value):
         # Don't call `.address()`; that gives us `u8 (*)[0]`
-        self.__data = val["data"].string(length = int(val["len"]))
+        self.__data: Final = val["data"]
+        self.__len:  Final = int(val["len"])
 
 
     def to_string(self) -> str:
-        return self.__data
+        return self.__data.string(encoding = "utf-8", length = self.__len)
 
 
     def display_hint(self) -> str:
@@ -282,12 +395,10 @@ class lulu_OString:
 
 
 # Maybe easier to just hardcode the mangled names...
-type_printers: Final = {
-    "struct string":                    odin_String,
-    "struct lulu::[value.odin]::Value": lulu_Value,
-    "struct OString":                   lulu_OString,
-
-    # All Odin pointers decay to C-style pointers
-    "struct lulu::[string.odin]::OString *": lulu_OString,
+__printers: Final = {
+    "struct string":            odin_String,
+    lulu_Value.DECL:            lulu_Value,
+    lulu_OString.DECL:          lulu_OString,
+    lulu_OString.DECL + " *":   lulu_OString, # All Odin pointers decay to C-style pointers
 }
 

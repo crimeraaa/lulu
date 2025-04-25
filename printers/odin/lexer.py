@@ -11,13 +11,19 @@ class Token:
         Left_Bracket    = '['
         Right_Paren     = ')'
         Right_Bracket   = ']'
+        Dollar          = '$'
+        Equal           = '='
         Delim           = "::"
         Asterisk        = '*'
         Caret           = '^'
-        Keyword         = 1 # `struct` | `enum` | `union` | `dynamic` | `map`
-        Integer         = 2 # An integer literal, mainly for fixed array types.
-        Ident           = 3 # package declarations, filenames, type names.
-        Unknown         = 4 # Not a token we know how to deal with!
+        Struct          = "struct"
+        Enum            = "enum"
+        Union           = "union"
+        Dynamic         = "dynamic"
+        Map             = "map"
+        Integer         = 1 # An integer literal, mainly for fixed array types.
+        Ident           = 2 # package declarations, filenames, type names.
+        Unknown         = 3 # Not a token we know how to deal with!
         Eof             = "<eof>" # End of input string reached.
 
 
@@ -50,22 +56,13 @@ class Lexer:
     -   https://docs.python.org/3/library/re.html#writing-a-tokenizer
     """
 
-    input:      str # The string we're tokenizing
-    start:      int # Start of lexeme
-    current:    int # `Pointer` to current character in lexeme
-    keywords:   Final = {"struct", "enum", "union", "dynamic", "map"}
-    characters: Final = {
-        '(': Token.Type.Left_Paren,
-        '[': Token.Type.Left_Bracket,
-        ']': Token.Type.Right_Bracket,
-        ')': Token.Type.Right_Paren,
-        '*': Token.Type.Asterisk,
-        '^': Token.Type.Caret,
-    }
+    TOKEN_TYPES: Final = {t.value: t for t in Token.Type if isinstance(t.value, str)}
 
 
     def __init__(self):
-        self.set_input("")
+        self.input   = ""
+        self.start   = 0
+        self.current = 0
 
 
     def set_input(self, input: str):
@@ -94,14 +91,11 @@ class Lexer:
                 self.advance()
                 c = self.peek()
 
-            if self.lexeme() in self.keywords:
-                # For our purposes `string`, `int` and such are NOT keyword
-                # as they are primarily type names.
-                return self.make_token(token, Token.Type.Keyword)
-            else:
-                # Still need to further verify if it's a package name, a file
-                # name or a type name.
-                return self.make_token(token, Token.Type.Ident)
+            ttype = Token.Type.Ident
+            if s := self.lexeme():
+                if s in self.TOKEN_TYPES:
+                    ttype = self.TOKEN_TYPES[s]
+            return self.make_token(token, ttype)
         elif c.isdecimal():
             c = self.peek()
             while c.isdecimal():
@@ -110,10 +104,11 @@ class Lexer:
             return self.make_token(token, Token.Type.Integer)
 
         if c == ':':
-            if self.advance() == ':':
-                return self.make_token(token, Token.Type.Delim)
-        elif c in self.characters:
-            return self.make_token(token, self.characters[c])
+            self.advance()
+
+        if s := self.lexeme():
+            if s in self.TOKEN_TYPES:
+                return self.make_token(token, self.TOKEN_TYPES[s])
 
         # Base-case
         return self.make_token(token, Token.Type.Unknown)
