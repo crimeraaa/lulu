@@ -5,208 +5,70 @@ NOTE(2025-04-25):
     if running from the top-level `lulu` directory.
 -   If CWD is `lulu/printers` then run `python -m odin.parser`.
 """
-from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional, TypeAlias, Literal, Callable
-from .lexer import Token, Lexer
+from typing import Optional, TypeAlias
+from .lexer import Token, Token_Type, Lexer
+from .declaration import Demangled, quote
 
-Usertype: TypeAlias = Literal["struct", "enum", "union"]
-Builtin:  TypeAlias = Literal["slice", "array", "dynamic", "map"]
-
-@dataclass
-class Declaration:
-    prefix:     Optional[Usertype] = None
-    struct:     Optional[Literal["map", "[]", "[dynamic]"]] = None
-    info:       Optional[str] = None # e.g. `[K]` in `map[K]`, `T` in `[]T` and `[dynamic]T`
-    package:    Optional[str] = None
-    file:       Optional[str] = None
-    name:       str           = ""
-    tparam:     Optional[str] = "" # Parameter name for parapoly instantiations
-    targ:       Optional[str] = "" # Fully-qualified argument for parapoly instantiations
-    size:       Optional[int] = None # For fixed-size arrays only
-    pointer:    int           = 0 # Levels of indirection directly attached.
+Result: TypeAlias = tuple[Demangled, str]
 
 
-    def __str__(self) -> str:
-        result: list[str] = []
-        if p := self.pointer:   result.append('^' * p)
-        if s := self.struct:    result.append(s)
-        if i := self.info:      result.append(i)
-        if p := self.package:   result.append(p + '.')
-        result.append(self.name) # MUST exist
-        if t := self.tparam:    result.append(f"(${t}={self.targ})")
-        return ''.join(result)
+class ExpectedError(ValueError):
+    expected: tuple[Token_Type]
+    culprit:  Token
+    
+    def __init__(self, *expected: Token_Type, culprit: Token):
+        self.expected = expected
+        self.culprit  = culprit
+        expstr = '|'.join([quote(token.value) for token in expected])
+        culstr = quote(repr(culprit))
+        super().__init__(f"Expected {expstr}; got {culstr}")
 
 
 @dataclass
-class Demangled:
-    decl:      Declaration = None
-    mode:      Optional[Usertype | Builtin] = None
-    recursing: bool = False
-
-
-    def recurse(self, expr: Callable[[], None]):
-        self.recursing = True
-        expr()
-        self.recursing = False
-
-
-    def set_package(self, package: str):
-        if not self.recursing:
-            self.decl.package = package
-
-
-    def set_file(self, file: str):
-        if not self.recursing:
-            self.decl.file = file
-
-
-    def set_name(self, name: str):
-        if not self.recursing:
-            self.decl.name = name
-
-
-    def set_size(self, size: int):
-        if not self.recursing:
-            self.decl.size = size
-
-
-    # When recursing, assume the outermost call was the one who initialized it.
-    def add_info(self, tokens: str):
-        if self.decl.info:
-            self.decl.info += tokens
-        else:
-            self.decl.info = tokens
-
-
-    def add_pointer(self, count = 1):
-        self.decl.pointer += count
-
-
-    def set_prefix(self, prefix: Usertype):
-        if prev := self.decl.prefix:
-            raise ValueError(
-                f"Already have decl.prefix={quote(prev)}; got {quote(prefix)}")
-        self.decl.prefix = prefix
-
-
-    def set_tparam(self, tparam: str):
-        self.decl.tparam = tparam
-
-
-    def set_targ(self, targ: str):
-        self.decl.targ = targ
-
-
-    def set_struct(self, struct: str, mode: str):
-        """
-        Note:
-        -   When recursively parsing, `self.prev` is set to `True`.
-        -   That means we are not in the primary call.
-        -   In that case, instances of `map`, `dynamic`, etc. describe the
-            array/map elements, not the container.
-
-        Examples:
-        -   `struct map[string][dynamic]int`
-        -   `struct [][]byte`
-        -   `struct [dynamic][]string`
-        """
-        if self.recursing:
-            return
-
-        if prev := self.decl.struct:
-            raise ValueError(
-                f"Already have decl.struct={quote(prev)}; got {quote(struct)}")
-
-        self.decl.struct = struct
-        self.mode        = mode
-
-
-
 class Parser:
-    def __init__(self):
-        self.lexer     = Lexer()
-        self.consumed  = Token()
-        self.lookahead = Token()
-
-
+    lexer       = Lexer()
+    consumed    = Token()
+    lookahead   = Token()
+    
     def set_input(self, decl: str):
         self.lexer.set_input(decl)
+        self.next()
 
-
-    def match(self, expected: Token.Type) -> bool:
+    def match(self, expected: Token_Type) -> bool:
         found = self.lookahead.type == expected
         if found:
             self.next()
         return found
 
-
-    def match_any(self, expected: list[Token.Type]) -> bool:
-        found = self.check_any(expected)
-        if found:
-            self.next()
-        return found
-
-
-    def check(self, expected: Token.Type) -> bool:
-        return self.lookahead.type == expected
-
-
-    def check_any(self, expected: list[Token.Type]) -> bool:
-        return self.lookahead.type in expected
-
-
-    def consume(self, expected: Token.Type) -> str:
-        if not self.match(expected):
-            if isinstance(expected.value, str):
-                exp = quote(expected.value)
-            else:
-                exp = f"<{expected.name.lower()}>"
-            self.unexpected(exp, repr(self.lookahead))
-        return self.consumed.data
-
-
-    def consume_any(self, expected: list[Token.Type]) -> Optional[str]:
-        if self.match_any(expected):
-            return self.consumed.data
-        return None
-
-
     def next(self):
         self.consumed.copy(self.lookahead)
         self.lexer.lex(self.lookahead)
 
+    def match_any(self, *expected: Token_Type) -> bool:
+        found = self.lookahead.type in expected
+        if found:
+            self.next()
+        return found
 
-    def unexpected(self, expected: str | list[str] | set[str], culprit: str):
-        if isinstance(expected, (list, set)):
-            expected = '|'.join([quote(text) for text in expected])
-        else:
-            expected = quote(expected)
-        raise ValueError(f"Expected {expected}; got {culprit}")
+    def check(self, expected: Token_Type) -> bool:
+        return self.lookahead.type == expected
 
+    def consume(self, expected: Token_Type) -> str:
+        if not self.match(expected):
+            raise ExpectedError(expected, culprit=self.lookahead)
+        return self.consumed.data
 
-def quote(text: str) -> str:
-    """
-    Overview
-    -   C-style quoting.
-    -   Single-length strings use single quotes, `'`, to mimic `char`.
-    -   All other strings, including the empty string, use double quotes to
-        mimic C-string literals: `""`, `"Hi mom!"`
-    """
-    quote = '\'' if len(text) == 1 else '\"'
-    return quote + text + quote
-
-
-Result: TypeAlias = tuple[Demangled, str]
+    def expected(self, *expected: Token_Type):
+        raise ExpectedError(expected, culprit=self.lookahead)
 
 
 def demangle(parser: Parser, decl: str, saved: dict[str, Result]) -> Result:
     if decl in saved:
         return saved[decl]
 
-    demangled = Demangled(decl = Declaration())
+    demangled = Demangled()
     parser.set_input(decl)
-    parser.next()
     fulltype(parser, demangled)
 
     saved[decl] = demangled, str(demangled.decl)
@@ -235,7 +97,7 @@ def fulltype(parser: Parser, demangled: Demangled):
 
 def c_pointer(parser: Parser, demangled: Demangled):
     count = 0
-    while parser.match(Token.Type.Asterisk):
+    while parser.match(Token_Type.Asterisk):
         count += 1
     demangled.add_pointer(count)
 
@@ -249,9 +111,8 @@ def prefix(parser: Parser, demangled: Demangled):
     Notes:
     -   We do not allow `map` without a preceding `struct` for our purposes.
     """
-    if prefix := parser.consume_any([
-            Token.Type.Struct, Token.Type.Enum, Token.Type.Union]):
-        demangled.set_prefix(prefix)
+    if parser.match_any(Token_Type.Struct, Token_Type.Enum, Token_Type.Union):
+        demangled.set_prefix(parser.consumed.data)
 
 
 def qualname(parser: Parser, demangled: Demangled) -> str:
@@ -262,38 +123,64 @@ def qualname(parser: Parser, demangled: Demangled) -> str:
     <package>   ::= <ident> '::'
     <file>      ::= '[' <ident> ']' '::'
     <ident>     ::= r'[-_.\w]+'
-    <parapoly>  ::= '(' '$' <ident> '=' <qualname> ')'
+    <parapoly>  ::= '(' <polyargs> ')'
     ```
     """
-    tokens: list[str] = []
-    ident = parser.consume(Token.Type.Ident)
-    tokens.append(ident)
+    ident = parser.consume(Token_Type.Ident)
     # Have a package namespace?
-    if parser.match(Token.Type.Delim):
+    if parser.match(Token_Type.Delim):
         demangled.set_package(ident)
         # Have a file sub-namespace?
-        if parser.match(Token.Type.Left_Bracket):
-            ident = parser.consume(Token.Type.Ident)
+        if parser.match(Token_Type.Left_Bracket):
+            ident = parser.consume(Token_Type.Ident)
             # tokens.append(f"[{ident}]") # Not present in Odin-facing decl
-            parser.consume(Token.Type.Right_Bracket)
-            parser.consume(Token.Type.Delim)
+            parser.consume(Token_Type.Right_Bracket)
+            parser.consume(Token_Type.Delim)
             demangled.set_file(ident)
 
         # A lone type name ALWAYS follows the namespacing.
-        ident = parser.consume(Token.Type.Ident)
-        tokens.append(ident)
+        ident = parser.consume(Token_Type.Ident)
 
     demangled.set_name(ident)
 
-    # Parapoly instantiation? e.g. `Map_Cell($T=string)`
-    if parser.match(Token.Type.Left_Paren):
-        parser.consume(Token.Type.Dollar)
-        demangled.set_tparam(parser.consume(Token.Type.Ident))
-        parser.consume(Token.Type.Equal)
-        demangled.recurse(lambda: demangled.set_targ(qualname(parser, demangled)))
-        parser.consume(Token.Type.Right_Paren)
+    # Parapoly instantiation?
+    # - `Map_Cell($T=string)`
+    # - `Small_Array($T=u16,$N=200)`
+    if parser.match(Token_Type.Left_Paren):
+        polyargs(parser, demangled)
+        parser.consume(Token_Type.Right_Paren)
+        
+    return str(demangled.decl)
 
-    return '.'.join(tokens)
+
+def polyargs(parser: Parser, demangled: Demangled):
+    """
+    ```
+    <polyargs>  ::= '$' <ident> '=' <funcarg>
+    <funcarg>   ::= <qualname> | <literal>
+    <literal>   ::= <int> | <str> | 'true' | 'false' | 'nil'
+    ```
+    
+    Note:
+    -   It's entirely possible for a parapoly argument to itself be a
+        parapoly instantiation, hence we call `qualname()` recursively.
+    -   e.g. `small_array::Small_Array($T=mygame::Vector3($T=f32), $N=4)`
+    """
+    while True:
+        parser.consume(Token_Type.Dollar)
+        tparam = parser.consume(Token_Type.Ident)
+        parser.consume(Token_Type.Equal)
+        
+        if parser.check(Token_Type.Ident):
+            tmp = Demangled()
+            demangled.add_polyarg(tparam, qualname(parser, tmp))
+        elif parser.check(Token_Type.Integer):
+            demangled.add_polyarg(tparam, parser.consume(Token_Type.Integer))
+        else:
+            parser.expected(Token_Type.Ident, Token_Type.Integer)
+        
+        if not parser.match(Token_Type.Comma):
+            return
 
 
 def compound(parser: Parser, demangled: Demangled):
@@ -313,23 +200,22 @@ def compound(parser: Parser, demangled: Demangled):
         they are directly part of the mangled names, e.g. `struct []^int`.
     -   All other pointers are mangled to C-style `T *`.
     """
-
     tokens: list[str] = []
 
     # <array-like>
-    if parser.match(Token.Type.Left_Bracket):
+    if parser.match(Token_Type.Left_Bracket):
         tokens.append('[')
         array: Optional[int] = None
 
         # Fixed-size array?
-        if parser.match(Token.Type.Integer):
-            array   = int(parser.consumed.data)
+        if parser.match(Token_Type.Integer):
+            array = int(parser.consumed.data)
             tokens.append(str(array))
-            demangled.set_struct(f"[{array}]", "array")
+            demangled.set_odintype(f"[{array}]", "array")
             tokens.clear()
 
         # Multi-pointer?
-        elif parser.match(Token.Type.Caret):
+        elif parser.match(Token_Type.Caret):
             """
             NOTE(2025-04-25):
             -   This shouldn't be reached for primary calls within GDB.
@@ -341,34 +227,25 @@ def compound(parser: Parser, demangled: Demangled):
             -   `[][^]byte` becomes `struct [][^]byte`
             -   `[][^]string` becomes `struct [][^]string`
             """
-            # `output` is from a recursive call so we don't care about the
-            # number of pointers; we just want the demangled type.
-            if demangled.recursing:
-                tokens.append('^')
-
-            # `output` is from the primary call, and the primary type is a
-            # multipointer.
-            else:
-                raise ValueError(
-                    "`[^]` in primary types are impossible within GDB")
+            tokens.append('^')
 
         # Dynamic array?
-        elif parser.match(Token.Type.Dynamic):
-            demangled.set_struct("[dynamic]", "dynamic")
+        elif parser.match(Token_Type.Dynamic):
+            demangled.set_odintype("[dynamic]", "dynamic")
             tokens.clear()
 
         # Slice?
         else:
-            demangled.set_struct("[]", "slice")
+            demangled.set_odintype("[]", "slice")
             tokens.clear()
 
         if array:
             demangled.set_size(array)
 
     # <map> ::= "map" '[' <qualname> ']'
-    elif parser.match(Token.Type.Map):
-        tokens.append(parser.consume(Token.Type.Left_Bracket))
-        demangled.set_struct("map", "map")
+    elif parser.match(Token_Type.Map):
+        tokens.append(parser.consume(Token_Type.Left_Bracket))
+        demangled.set_odintype("map", "map")
 
         """
         NOTE(2025-04-24):
@@ -377,34 +254,38 @@ def compound(parser: Parser, demangled: Demangled):
         -   So `map[c.char][^]c.char` becomes `struct map[u8][^]u8`.
 
         -   However, `distinct` types ARE mangled.
-        -   e.g. `mode :: distinct char` is mangle to `pkg::mode`
+        -   e.g. `mode :: distinct char` is mangled to `pkg::mode`
         -   `asciiz :: distinct [^]c.char` is mangled to `pkg::asciiz`
         -   `pkg` is whatever package this declaration was found in.
         -   `map[mode]asciiz` becomes `struct map[pkg::mode]pkg::asciiz`.
         """
-        demangled.recurse(lambda: tokens.append(qualname(parser, demangled)))
+        key = Demangled()
+        tokens.append(qualname(parser, key))
 
     # Not one of: slice, array, dynamic, map.
     # In this case, `demangled.decl.info` will not be set.
     else:
         return
 
-    rb = parser.consume(Token.Type.Right_Bracket)
+    rb = parser.consume(Token_Type.Right_Bracket)
     # We haven't yet cleared the tokesn list?
-    if len(tokens) > 0:
+    if tokens:
         tokens.append(rb)
 
     # Compound-to-pointer, so the Odin-style pointer is already part of the
     # mangled name. e.g. `[]^T`, `map[string]^T` `[dynamic]^T`.
-    while parser.match(Token.Type.Caret):
+    while parser.match(Token_Type.Caret):
         tokens.append('^')
 
-    demangled.add_info(''.join(tokens))
+    if tokens:
+        demangled.add_info(tokens)
 
     # Compound-to-Compound; e.g. `[][]T`, `[8]map[string]T`,
     # `[]^[]T`, `map[string]map[string]T`
-    if parser.check(Token.Type.Left_Bracket):
-        demangled.recurse(lambda: compound(parser, demangled))
+    if not parser.check(Token_Type.Ident):
+        value = Demangled()
+        compound(parser, value)
+        demangled.add_info(value)
 
 
 if __name__ == "__main__":

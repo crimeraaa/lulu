@@ -1,9 +1,9 @@
 # This is just for type annotations; the `gdb` module only exists within GDB!
 import gdb # type: ignore
 from dataclasses import dataclass
-from typing import Final, Generator, TypeAlias
+from typing import Final, Optional, Generator, TypeAlias
 
-from .odin import parser
+from ..odin import parser
 
 ENABLE_MSFT_WORKAROUNDS: Final = True
 """
@@ -54,6 +54,7 @@ def register_printers(objfile: gdb.Objfile):
 __parser = parser.Parser()
 __saved: dict[str, parser.Result] = {}
 
+
 def lookup_printer(val: gdb.Value):
     try:
         utype = str(val.type.unqualified())
@@ -95,16 +96,12 @@ def lookup_printer(val: gdb.Value):
     return None
 
 
-VOID_PTR:   Final = gdb.lookup_type("void").pointer()
-UINTPTR:    Final = gdb.lookup_type("uintptr")
-NULL:       Final = gdb.Value(0).cast(VOID_PTR)
-
-
+VOID_PTR: Final     = gdb.lookup_type("void").pointer()
+UINTPTR:  Final     = gdb.lookup_type("uintptr")
+NULL:     Final     = gdb.Value(0).cast(VOID_PTR)
 Iterator: TypeAlias = Generator[tuple[str, gdb.Value], str, gdb.Value]
 
-
 ###=== ODIN DATA TYPES ===================================================== {{{
-
 
 class odin_String:
     """
@@ -113,17 +110,18 @@ class odin_String:
         int len;
     }
     """
+    DECL: Final = "struct string"
 
+    __data: Final[gdb.Value]
+    __len:  Final[int]
 
     def __init__(self, val: gdb.Value):
-        self.__data: Final = val["data"]
-        self.__len:  Final = int(val["len"])
-
+        self.__data = val["data"]
+        self.__len  = int(val["len"])
 
     def to_string(self) -> str:
         # `u8 *` can also be dereferenced properly as a string
         return self.__data.string(encoding = "utf-8", length = self.__len)
-
 
     def display_hint(self) -> str:
         return 'string'
@@ -135,24 +133,31 @@ class odin_Slice:
         T *data;
         int len;
     }
-    """
 
+    struct [dynamic]$T {
+        T *data;
+        int len;
+        int cap;
+        struct runtime::Allocator allocator;
+    }
+    """
+    __tag:  Final[str]
+    __data: Final[gdb.Value]
+    __len:  Final[int]
+    __cap:  Final[Optional[int]]
 
     def __init__(self, val: gdb.Value, tag: str, has_cap = False):
-        self.__tag:  Final = tag
-        self.__data: Final = val["data"] # NOTE(2025-04-25): Must be a pointer!
-        self.__len:  Final = int(val["len"])
-        self.__cap:  Final = int(val["cap"]) if has_cap else None
+        self.__tag  = tag
+        self.__data = val["data"] # NOTE(2025-04-25): Must be a pointer!
+        self.__len  = int(val["len"])
+        self.__cap  = int(val["cap"]) if has_cap else None
 
-
-    def children(self) -> tuple[str, gdb.Value]:
+    def children(self) -> Iterator:
         return self.__iter__()
-
 
     def __iter__(self) -> Iterator:
         for i in range(self.__len):
             yield str(i), (self.__data + i).dereference()
-
 
     def to_string(self) -> str:
         """ Because of the `'array'` display hint, the actual data is printed
@@ -161,7 +166,6 @@ class odin_Slice:
         if self.__cap is not None:
             info += f", cap={self.__cap}"
         return f"{self.__tag}{{{info}}}"
-
 
     def display_hint(self) -> str:
         return 'array'
@@ -198,8 +202,7 @@ class odin_Map:
     }
     ```
     """
-    # The lower 6 bits of `__data` are used as log2 of the actual capacity.
-    MASK_CAP: Final = 0b0011_1111
+
 
     @dataclass
     class Cell:
@@ -232,69 +235,79 @@ class odin_Map:
             elems_per_cell = self.cell_type.sizeof // self.type.sizeof
             cell_index = index // elems_per_cell
             data_index = index % elems_per_cell
-            return self.base_addr + (cell_index * self.cell_type.sizeof) \
-                + (data_index * self.type.sizeof)
-
+            return (self.base_addr
+                    + (cell_index * self.cell_type.sizeof)
+                    + (data_index * self.type.sizeof))
 
         def cell_value(self, index: int) -> gdb.Value:
             addr = self.cell_addr(index)
             return gdb.Value(addr).cast(self.type.pointer()).dereference()
 
 
+    # The lower 6 bits of `__data` are used as log2 of the actual capacity.
+    MASK_CAP:           Final = 0b0011_1111
+
+    __tag:              Final[str]
+    __len:              Final[int]
+    __cap:              Final[int]
+    __key:              Final[Cell]
+    __value:            Final[Cell]
+    __tombstone_mask:   Final[int]
+    __hashes:           Final[gdb.Value]
+
     def __init__(self, value: gdb.Value, tag: str):
         """
         Assumptions:
         -   The lower 6 bits of all pointers for this platform are never used.
         -   Thus, the map's capacity is stored in these bits as a log2.
+        -   This also makes the assumption that the map's capacity is always a
+            power of 2.
         -   The actual pointer is simply the data pointer with the lower 6
             bits zeroed out.
+
+        Notes:
+        -   Odin makes many optimizations with the map layout.
+        -   We cannot simply dereference the pointer as-is.
 
         Links:
         -   https://github.com/odin-lang/Odin/blob/master/base/runtime/dynamic_map_internal.odin#L192
         """
-        self.__tag: Final = tag
+        data        = value["data"]
+        base_addr   = int(data) & ~self.MASK_CAP
+        cap_log2    = int(data) & self.MASK_CAP
 
-        data      = value["data"]
-        base_addr = int(data) & ~self.MASK_CAP
-        cap_log2  = int(data) & self.MASK_CAP
-        self.__len: Final = int(value["len"])
-        self.__cap: Final = 1 << cap_log2 if cap_log2 else 0
+        self.__tag  = tag
+        self.__len  = int(value["len"])
+        self.__cap  = 1 << cap_log2 if cap_log2 else 0
 
         # For the following lines, please refer to:
         #   `base/runtime/dynamic_map_internal.odin:map_kvh_data_static()`
         # https://github.com/odin-lang/Odin/blob/master/base/runtime/dynamic_map_internal.odin#L805C1-L805C21
-
-
         # ks: [^]Map_Cell($K) = auto_cast map_data(transmute(Raw_Map)m)
-        self.__key: Final = odin_Map.Cell(
-            type      = data["key"].type,
-            cell_type = data["key_cell"].type,
-            base_addr = base_addr
+        self.__key = odin_Map.Cell(
+            type=data["key"].type,
+            cell_type=data["key_cell"].type,
+            base_addr=base_addr
         )
 
         # vs: [^]Map_Cell($V) = auto_cast map_cell_index_static(ks, cap(m))
-        self.__value: Final = odin_Map.Cell(
-            type      = data["value"].type,
-            cell_type = data["value_cell"].type,
-            base_addr = self.__key.cell_addr(self.__cap)
+        self.__value = odin_Map.Cell(
+            type=data["value"].type,
+            cell_type=data["value_cell"].type,
+            base_addr=self.__key.cell_addr(self.__cap)
         )
 
+        # Map_Hash :: uintptr
+        # TOMBSTONE_MASK :: 1<<(size_of(Map_Hash)*8 - 1)
         # hs: [^]Map_Hash = auto_cast map_cell_index_static(vs, cap(m))
         hash_type = data["hash"].type
-        self.__tombstone_mask: Final = 1 << (hash_type.sizeof*8 - 1)
-        """
-        ```
-        Map_Hash :: uintptr
-        TOMBSTONE_MASK :: 1<<(size_of(Map_Hash)*8 - 1)
-        """
+        self.__tombstone_mask = 1 << (hash_type.sizeof*8 - 1)
 
         hash_addr = self.__value.cell_addr(self.__cap)
-        self.__hashes: Final = gdb.Value(hash_addr).cast(hash_type.pointer())
-
+        self.__hashes = gdb.Value(hash_addr).cast(hash_type.pointer())
 
     def children(self) -> tuple[str, gdb.Value]:
         return self.__iter__()
-
 
     def __iter__(self) -> Iterator:
         for i in range(self.__cap):
@@ -310,10 +323,8 @@ class odin_Map:
             value = self.__value.cell_value(i)
             yield str(key), value
 
-
     def to_string(self) -> str:
         return f"{self.__tag}{{len={self.__len}, cap={self.__cap}}}"
-
 
     def display_hint(self) -> str:
         if self.__value.type.sizeof == 0:
@@ -328,19 +339,20 @@ class lulu_Value:
     """
     ```
     struct lulu::[value.odin]::Value {
-        enum lulu::[value.odin]::Value_Type  type;
+        enum lulu::[value.odin]::Value_Type type;
         union lulu::[value.odin]::Value_Data data;
     }
     ```
     """
-    DECL: Final = "struct lulu::[value.odin]::Value"
+    DECL:   Final = "struct lulu::[value.odin]::Value"
 
+    __tag:  Final[str]
+    __data: Final[gdb.Value]
 
     def __init__(self, val: gdb.Value):
         # In GDB, enums are already pretty-printed to their names
-        self.__tag:  Final = str(val["type"])
-        self.__data: Final = val["data"]
-
+        self.__tag  = str(val["type"])
+        self.__data = val["data"]
 
     def to_string(self) -> str:
         match self.__tag:
@@ -361,7 +373,7 @@ class lulu_Value:
 class lulu_Object_Header:
     """
     struct lulu::[object.odin]::Object_Header {
-        enum lulu::[value.odin]::Value_Type        type;
+        enum lulu::[value.odin]::Value_Type type;
         struct lulu::[object.odin]::Object_Header *prev;
     }
     """
@@ -377,18 +389,19 @@ class lulu_OString:
         u8  data[0];
     }
     """
-    DECL: Final = 'struct lulu::[string.odin]::OString'
+    DECL:     Final = 'struct lulu::[string.odin]::OString'
+    DECL_PTR: Final = DECL + " *"
 
+    __data:   Final[gdb.Value]
+    __len:    Final[int]
 
     def __init__(self, val: gdb.Value):
         # Don't call `.address()`; that gives us `u8 (*)[0]`
-        self.__data: Final = val["data"]
-        self.__len:  Final = int(val["len"])
-
+        self.__data = val["data"]
+        self.__len  = int(val["len"])
 
     def to_string(self) -> str:
         return self.__data.string(encoding = "utf-8", length = self.__len)
-
 
     def display_hint(self) -> str:
         return 'string'
@@ -396,9 +409,9 @@ class lulu_OString:
 
 # Maybe easier to just hardcode the mangled names...
 __printers: Final = {
-    "struct string":            odin_String,
-    lulu_Value.DECL:            lulu_Value,
-    lulu_OString.DECL:          lulu_OString,
-    lulu_OString.DECL + " *":   lulu_OString, # All Odin pointers decay to C-style pointers
+    odin_String.DECL:       odin_String,
+    lulu_Value.DECL:        lulu_Value,
+    lulu_OString.DECL:      lulu_OString,
+    lulu_OString.DECL_PTR:  lulu_OString,
 }
 
