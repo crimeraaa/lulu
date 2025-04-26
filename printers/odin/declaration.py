@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import TypeAlias, Literal, Optional
 
 Usertype: TypeAlias = Literal["struct", "enum", "union"]
-Builtin:  TypeAlias = Literal["slice", "array", "dynamic", "map"]
+Odintype: TypeAlias = Literal["map", "[]", "[dynamic]"]
 
 
 @dataclass
@@ -15,7 +15,7 @@ class Polyarg:
 @dataclass
 class Declaration:
     prefix:     Optional[Usertype] = None
-    odintype:   Optional[Literal["map", "[]", "[dynamic]"]] = None
+    odintype:   Optional[Odintype] = None
     info:       str           = "" # e.g. `[K]` in `map[K]`, `T` in `[]T` and `[dynamic]T`
     package:    Optional[str] = None
     file:       Optional[str] = None
@@ -40,45 +40,38 @@ class Declaration:
             result.append(f"({', '.join(polyargs)})")
         return ''.join(result)
 
-
-@dataclass
-class Demangled:
-    decl: Declaration = field(default_factory=Declaration)
-    mode: Optional[Usertype | Builtin] = None
-    
     def set_package(self, package: str):
-        self.decl.package = package
+        self.package = package
 
     def set_file(self, file: str):
-        self.decl.file = file
+        self.file = file
 
     def set_name(self, name: str):
-        self.decl.name = name
+        self.name = name
 
     def set_size(self, size: int):
-        self.decl.size = size
+        self.size = size
 
-    def add_info(self, info: list[str] | Demangled):
-        if isinstance(info, Demangled):
-            self.decl.info += str(info.decl)
+    def add_info(self, info: list[str] | Declaration):
+        if isinstance(info, Declaration):
+            self.info += str(info)
         elif isinstance(info, list):
-            self.decl.info += ''.join(info)
+            self.info += ''.join(info)
         else:
             raise TypeError(
                 f"Expected `Demangled` or `list[str]`; got `{type(info)}`")
 
     def add_pointer(self, count = 1):
-        self.decl.pointer += count
-    
+        self.pointer += count
+
     def add_polyarg(self, tparam: str, targ: str):
-        self.decl.parapoly.append(Polyarg(param=tparam, arg=targ))
+        self.parapoly.append(Polyarg(param=tparam, arg=targ))
 
     def set_prefix(self, prefix: Usertype):
-        self.decl.prefix = prefix
+        self.prefix = prefix
 
-    def set_odintype(self, odintype: str, mode: str):
-        self.decl.odintype = odintype
-        self.mode          = mode
+    def set_odintype(self, odintype: Odintype):
+        self.odintype = odintype
 
 
 def quote(text: str) -> str:

@@ -5,6 +5,14 @@
 
 set print pretty on
 
+# Ensure we can do `import printers`
+python
+import os
+import sys
+if os.getcwd() not in sys.path:
+    sys.path.insert(0, os.getcwd())
+end
+
 # file ./bin/lua
 # source printers/lua.py
 
@@ -24,6 +32,7 @@ file ./bin/lulu
 
 break lulu_main::main
 break lulu::[vm.odin]::vm_init
+break lulu::[string.odin]::ostring_new
 break lulu::[vm.odin]::vm_interpret
 break lulu::[vm.odin]::vm_interpret.interpret-0
 break lulu::[parser.odin]::parser_parse

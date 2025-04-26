@@ -6,11 +6,10 @@ NOTE(2025-04-25):
 -   If CWD is `lulu/printers` then run `python -m odin.parser`.
 """
 from dataclasses import dataclass
-from typing import Optional, TypeAlias
-from .lexer import Token, Token_Type, Lexer
-from .declaration import Demangled, quote
+from typing import Optional
 
-Result: TypeAlias = tuple[Demangled, str]
+from .lexer import Token, Token_Type, Lexer
+from .declaration import Declaration, quote
 
 
 class ExpectedError(ValueError):
@@ -63,19 +62,22 @@ class Parser:
         raise ExpectedError(expected, culprit=self.lookahead)
 
 
-def demangle(parser: Parser, decl: str, saved: dict[str, Result]) -> Result:
-    if decl in saved:
-        return saved[decl]
+def demangle(parser: Parser, mangled: str, saved: dict[str, str]) -> str:
+    # Parsing is a rather involved process, so if we already know the
+    # demangled version of this `mangled` then reuse it!
+    if mangled in saved:
+        return saved[mangled]
 
-    demangled = Demangled()
-    parser.set_input(decl)
-    fulltype(parser, demangled)
+    decl = Declaration()
+    parser.set_input(mangled)
+    fulltype(parser, decl)
 
-    saved[decl] = demangled, str(demangled.decl)
-    return saved[decl]
+    demangled      = str(decl)
+    saved[mangled] = demangled
+    return demangled
 
 
-def fulltype(parser: Parser, demangled: Demangled):
+def fulltype(parser: Parser, decl: Declaration):
     """
     ```
     <full-type>     ::= ( <prefix> ' ' )? <compound>? <qualname> ( ' ' <trailing> )?
@@ -85,24 +87,24 @@ def fulltype(parser: Parser, demangled: Demangled):
     <array-pointer> ::= '(' <c-pointer> ')'
     ```
     """
-    prefix(parser, demangled)
-    compound(parser, demangled)
-    qualname(parser, demangled)
+    prefix(parser, decl)
+    compound(parser, decl)
+    qualname(parser, decl)
 
     # I am NOT dealing with ridiculous C array-pointer declarations
     # The main issue is that since fixed-size arrays themselves fit in C,
     # pointers-within and pointers-to do not get mangled to Odin's pointers.
-    c_pointer(parser, demangled)
+    c_pointer(parser, decl)
 
 
-def c_pointer(parser: Parser, demangled: Demangled):
+def c_pointer(parser: Parser, decl: Declaration):
     count = 0
     while parser.match(Token_Type.Asterisk):
         count += 1
-    demangled.add_pointer(count)
+    decl.add_pointer(count)
 
 
-def prefix(parser: Parser, demangled: Demangled):
+def prefix(parser: Parser, decl: Declaration):
     """
     ```
     <prefix> ::= "struct" | "enum" | "union"
@@ -112,10 +114,10 @@ def prefix(parser: Parser, demangled: Demangled):
     -   We do not allow `map` without a preceding `struct` for our purposes.
     """
     if parser.match_any(Token_Type.Struct, Token_Type.Enum, Token_Type.Union):
-        demangled.set_prefix(parser.consumed.data)
+        decl.set_prefix(parser.consumed.data)
 
 
-def qualname(parser: Parser, demangled: Demangled) -> str:
+def qualname(parser: Parser, decl: Declaration) -> str:
     """
     ```
     <qualname>  ::= <namespace>? <ident> <parapoly>?
@@ -129,38 +131,38 @@ def qualname(parser: Parser, demangled: Demangled) -> str:
     ident = parser.consume(Token_Type.Ident)
     # Have a package namespace?
     if parser.match(Token_Type.Delim):
-        demangled.set_package(ident)
+        decl.set_package(ident)
         # Have a file sub-namespace?
         if parser.match(Token_Type.Left_Bracket):
             ident = parser.consume(Token_Type.Ident)
             # tokens.append(f"[{ident}]") # Not present in Odin-facing decl
             parser.consume(Token_Type.Right_Bracket)
             parser.consume(Token_Type.Delim)
-            demangled.set_file(ident)
+            decl.set_file(ident)
 
         # A lone type name ALWAYS follows the namespacing.
         ident = parser.consume(Token_Type.Ident)
 
-    demangled.set_name(ident)
+    decl.set_name(ident)
 
     # Parapoly instantiation?
     # - `Map_Cell($T=string)`
     # - `Small_Array($T=u16,$N=200)`
     if parser.match(Token_Type.Left_Paren):
-        polyargs(parser, demangled)
+        polyargs(parser, decl)
         parser.consume(Token_Type.Right_Paren)
-        
-    return str(demangled.decl)
+
+    return str(decl)
 
 
-def polyargs(parser: Parser, demangled: Demangled):
+def polyargs(parser: Parser, decl: Declaration):
     """
     ```
     <polyargs>  ::= '$' <ident> '=' <funcarg>
     <funcarg>   ::= <qualname> | <literal>
     <literal>   ::= <int> | <str> | 'true' | 'false' | 'nil'
     ```
-    
+
     Note:
     -   It's entirely possible for a parapoly argument to itself be a
         parapoly instantiation, hence we call `qualname()` recursively.
@@ -170,20 +172,20 @@ def polyargs(parser: Parser, demangled: Demangled):
         parser.consume(Token_Type.Dollar)
         tparam = parser.consume(Token_Type.Ident)
         parser.consume(Token_Type.Equal)
-        
+
         if parser.check(Token_Type.Ident):
-            tmp = Demangled()
-            demangled.add_polyarg(tparam, qualname(parser, tmp))
+            tmp = Declaration()
+            decl.add_polyarg(tparam, qualname(parser, tmp))
         elif parser.check(Token_Type.Integer):
-            demangled.add_polyarg(tparam, parser.consume(Token_Type.Integer))
+            decl.add_polyarg(tparam, parser.consume(Token_Type.Integer))
         else:
             parser.expected(Token_Type.Ident, Token_Type.Integer)
-        
+
         if not parser.match(Token_Type.Comma):
             return
 
 
-def compound(parser: Parser, demangled: Demangled):
+def compound(parser: Parser, decl: Declaration):
     """
     ```
     <compound>  ::= <header> '^'* <compound>*
@@ -211,7 +213,7 @@ def compound(parser: Parser, demangled: Demangled):
         if parser.match(Token_Type.Integer):
             array = int(parser.consumed.data)
             tokens.append(str(array))
-            demangled.set_odintype(f"[{array}]", "array")
+            decl.set_odintype(f"[{array}]")
             tokens.clear()
 
         # Multi-pointer?
@@ -231,21 +233,21 @@ def compound(parser: Parser, demangled: Demangled):
 
         # Dynamic array?
         elif parser.match(Token_Type.Dynamic):
-            demangled.set_odintype("[dynamic]", "dynamic")
+            decl.set_odintype("[dynamic]")
             tokens.clear()
 
         # Slice?
         else:
-            demangled.set_odintype("[]", "slice")
+            decl.set_odintype("[]")
             tokens.clear()
 
         if array:
-            demangled.set_size(array)
+            decl.set_size(array)
 
     # <map> ::= "map" '[' <qualname> ']'
     elif parser.match(Token_Type.Map):
         tokens.append(parser.consume(Token_Type.Left_Bracket))
-        demangled.set_odintype("map", "map")
+        decl.set_odintype("map")
 
         """
         NOTE(2025-04-24):
@@ -259,11 +261,11 @@ def compound(parser: Parser, demangled: Demangled):
         -   `pkg` is whatever package this declaration was found in.
         -   `map[mode]asciiz` becomes `struct map[pkg::mode]pkg::asciiz`.
         """
-        key = Demangled()
-        tokens.append(qualname(parser, key))
+        key_decl = Declaration()
+        tokens.append(qualname(parser, key_decl))
 
     # Not one of: slice, array, dynamic, map.
-    # In this case, `demangled.decl.info` will not be set.
+    # In this case, `decl.info` will not be set.
     else:
         return
 
@@ -278,14 +280,14 @@ def compound(parser: Parser, demangled: Demangled):
         tokens.append('^')
 
     if tokens:
-        demangled.add_info(tokens)
+        decl.add_info(tokens)
 
     # Compound-to-Compound; e.g. `[][]T`, `[8]map[string]T`,
     # `[]^[]T`, `map[string]map[string]T`
     if not parser.check(Token_Type.Ident):
-        value = Demangled()
-        compound(parser, value)
-        demangled.add_info(value)
+        value_decl = Declaration()
+        compound(parser, value_decl)
+        decl.add_info(value_decl)
 
 
 if __name__ == "__main__":
@@ -293,14 +295,13 @@ if __name__ == "__main__":
     import readline # Just importing this already affects `input()`.
 
     __parser = Parser()
-    __saved: dict[str, Result] = {}
+    __saved: dict[str, str] = {}
     print("Enter an Odin mangled type to parse.")
     while True:
         try:
-            decl = input(">>> ")
-            demangled, pretty = demangle(__parser, decl, __saved)
-            # print(demangled)
-            print(f"Odin: {pretty}")
+            mangled   = input(">>> ")
+            demangled = demangle(__parser, mangled, __saved)
+            print(f"Odin: {demangled}")
         except (KeyboardInterrupt, EOFError):
             print()
             break
