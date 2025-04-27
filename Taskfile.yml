@@ -5,36 +5,59 @@ version: '3'
 vars:
   MODE: '{{default "debug"}}'
   ODIN: odin
+
   DEBUG_FLAGS: >-
     -debug
     -sanitize:address
   RELEASE_FLAGS: >-
     -vet
     -o:size
-  ODIN_SRC: lulu
+
+  LULU_OUT: bin/lulu
+  LULU_SRC: lulu
+
+  CDECL_OUT: bin/cdecl
+  CDECL_SRC: cdecl
+
+  # I am aware this is incredibly ugly
+  ODIN_SRC_GLOB: '{{ "{" }}.,{{.LULU_SRC}},{{.CDECL_SRC}}{{ "}" }}'
   ODIN_FLAGS: >-
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
     -define:USE_CONSTANT_FOLDING=true
     -define:USE_READLINE=true
-    -collection:lulu={{.ODIN_SRC}}/
-  OUT_EXE: bin/lulu
+    -collection:lulu={{.LULU_SRC}}/
+
   LUA_SRC: lua/src
 
 tasks:
   build:
     desc: Build the Lulu executable.
     cmds:
-      - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:{{.OUT_EXE}}'
+      - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:{{.LULU_OUT}}'
     sources:
       - '*.odin'
-      - '{{.ODIN_SRC}}/*.odin'
+      - '{{.LULU_SRC}}/*.odin'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:
     desc: Build the Lulu executable if needed, then run it.
     cmds:
       - task: build
-      - '{{.OUT_EXE}} {{.CLI_ARGS}}'
+      - '{{.LULU_OUT}} {{.CLI_ARGS}}'
+    interactive: true
+
+  build-cdecl:
+    desc: Build the cdecl executable.
+    cmds:
+      - '{{.ODIN}} build {{.CDECL_SRC}} {{.ODIN_FLAGS}} -out:{{.CDECL_OUT}}'
+    sources:
+      - '{{.CDECL_SRC}}/*.odin'
+
+  run-cdecl:
+    desc: Build the cdecl executable if needed, then run it.
+    cmds:
+      - task: build-cdecl
+      - '{{.CDECL_OUT}} {{.CLI_ARGS}}'
     interactive: true
 
   build-lua:
@@ -79,9 +102,9 @@ tasks:
         -u NONE
         -c ':bufdo! %s/{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
         -c ':xa'
-    prompt: This command will potentially modify all *.odin files in './'. Continue?
+    prompt: This command will potentially modify all *.odin files in '{{.ODIN_SRC_GLOB}}'. Continue?
     cmds:
-      - '{{.VIM}} {{.VIM_FLAGS}} ./*.odin {{.ODIN_SRC}}/*.odin {{.LUA_SRC}}/*.[ch]'
+      - '{{.VIM}} {{.VIM_FLAGS}} {{.ODIN_SRC_GLOB}}/*.odin {{.LUA_SRC}}/*.[ch]'
     requires:
       vars: [VIM_PATTERN, VIM_REPLACE]
     preconditions:

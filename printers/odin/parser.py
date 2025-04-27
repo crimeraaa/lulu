@@ -15,7 +15,7 @@ from .declaration import Declaration, quote
 class ExpectedError(ValueError):
     expected: tuple[Token_Type]
     culprit:  Token
-    
+
     def __init__(self, *expected: Token_Type, culprit: Token):
         self.expected = expected
         self.culprit  = culprit
@@ -29,7 +29,7 @@ class Parser:
     lexer       = Lexer()
     consumed    = Token()
     lookahead   = Token()
-    
+
     def set_input(self, decl: str):
         self.lexer.set_input(decl)
         self.next()

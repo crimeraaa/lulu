@@ -20,7 +20,7 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
     # lulu/bin/lulu-gdb.py
     import gdb
     from printers import odin, lulu
-    
+
     inferior = gdb.current_objfile()
     gdb.printing.register_pretty_printer(inferior, lulu.pretty_printer)
     gdb.printing.register_pretty_printer(inferior, odin.pretty_printer)
