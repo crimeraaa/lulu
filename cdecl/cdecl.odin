@@ -5,12 +5,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 
-global_builder: strings.Builder
-
 main :: proc() {
-    // We have a leak but I don't really care
-    strings.builder_init(&global_builder, len = 0, cap = 256)
-
     switch len(os.args) {
     case 1: run_interactive()
     case 2: run(os.args[1])
@@ -40,12 +35,16 @@ run_interactive :: proc() {
 
 
 run :: proc(line: string) {
-    strings.builder_reset(&global_builder)
-    parser := parser_make(line, strings.to_writer(&global_builder))
-    if parser_parse(&parser) {
-        parser_fini(&parser)
-        fmt.println(strings.to_string(global_builder))
-    } else {
-        fmt.println("Error:", strings.to_string(global_builder))
+    stdout := os.stream_from_handle(os.stdout)
+    tokens := tokenize(line)
+    defer delete(tokens)
+    
+    parser := parser_make(tokens, stdout)
+    decl   := decl_make()
+    defer decl_destroy(&decl)
+
+    if parser_parse(&parser, &decl) {
+        parser_dump(&parser)
     }
+    fmt.println()
 }

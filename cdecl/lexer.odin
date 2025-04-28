@@ -18,15 +18,19 @@ Token :: struct {
 }
 
 Token_Type :: enum u8 {
+    // Zero-value (default type)
     Invalid,
 
     // Keywords (that we care about)
     Void, Bool, Char, Short, Int, Long,
-    Signed, Unsigned,
-    Float, Double, Complex,
+    Float, Double,
     Struct, Enum, Union,
+    
+    // Modifiers
+    Signed, Unsigned, Complex,
+    
+    // CV Qualifiers
     Const, Volatile,
-    Restrict, Register,
 
     // Encloses Pointer-to-array or Pointer-to-function
     LParen, LBracket,
@@ -34,11 +38,15 @@ Token_Type :: enum u8 {
     // Array literals
     RParen, RBracket,
 
-    // Pointer, Terminals
-    Pointer, Ident, Integer_Literal, Eof,
+    // Pointer
+    Asterisk,
+
+    // Terminals
+    Semicolon, Ident, Integer_Literal, Eof,
 }
 
 token_to_string :: proc(type: Token_Type) -> string {
+    // So many lookup tables!
     @(static, rodata)
     token_strings := [Token_Type]string{
         .Invalid  = "<invalid>",
@@ -46,12 +54,10 @@ token_to_string :: proc(type: Token_Type) -> string {
         // Keywords (that we care about)
         .Void     = "void",     .Bool     = "bool",
         .Char     = "char",     .Short    = "short",    .Int     = "int",     .Long = "long",
-        .Signed   = "signed",   .Unsigned = "unsigned",
-        .Float    = "float",    .Double   = "double",   .Complex = "complex",
+        .Float    = "float",    .Double   = "double",
         .Struct   = "struct",   .Enum     = "enum",     .Union   = "union",
+        .Signed   = "signed",   .Unsigned = "unsigned", .Complex = "complex",
         .Const    = "const",    .Volatile = "volatile",
-        .Register = "register", .Restrict = "restrict",
-
 
         // Encloses Pointer-to-array or Pointer-to-function
         .LParen   = "(", .RParen   = ")",
@@ -59,10 +65,27 @@ token_to_string :: proc(type: Token_Type) -> string {
         // Array literals
         .LBracket = "[", .RBracket = "]",
 
-        // Pointer, Terminals
-        .Pointer = "*", .Ident = "<ident>", .Integer_Literal = "<integer>", .Eof = "<eof>",
+        // Pointer
+        .Asterisk = "*",
+        
+        // Terminals
+        .Semicolon = ";",
+        .Ident     = "<ident>", .Integer_Literal = "<integer>", .Eof = "<eof>",
     }
     return token_strings[type]
+}
+
+tokenize :: proc(line: string) -> []Token {
+    lexer  := lexer_make(line)
+    tokens := make([dynamic]Token)
+    for {
+        token := lexer_lex(&lexer)
+        append(&tokens, token)
+        if token.type == .Invalid || token.type == .Eof {
+            break
+        }
+    }
+    return tokens[:]
 }
 
 lexer_make :: proc(input: string) -> Lexer {
@@ -77,7 +100,8 @@ lexer_lex :: proc(self: ^Lexer) -> Token {
         case ')': return .RParen
         case '[': return .LBracket
         case ']': return .RBracket
-        case '*': return .Pointer
+        case '*': return .Asterisk
+        case ';': return .Semicolon
         case:     return .Invalid
         }
     }
@@ -89,8 +113,8 @@ lexer_lex :: proc(self: ^Lexer) -> Token {
 
     // Start of lexeme is the first non-whitespace
     self.start = self.cursor
-    r := lexer_consume(self)
-    if unicode.is_alpha(r) {
+    switch r := lexer_consume(self); {
+    case unicode.is_alpha(r):
         // Keyword or identifier?
         // Advance returned the previous, so peek the current
         r = lexer_peek(self^)
@@ -98,30 +122,40 @@ lexer_lex :: proc(self: ^Lexer) -> Token {
             r = lexer_next(self)
         }
         return lexer_keyword(self)
-    } else if unicode.is_digit(r) {
+    case unicode.is_digit(r):
         // Integer literal?
         r = lexer_peek(self^)
         for unicode.is_digit(r) {
             r = lexer_next(self)
         }
         return lexer_make_token(self^, .Integer_Literal)
+    case:
+        return lexer_make_token(self^, get_type(r))
     }
-    return lexer_make_token(self^, get_type(r))
 }
 
 lexer_make_token :: proc(self: Lexer, type: Token_Type, word := "") -> Token {
     word := word if word != "" else self.input[self.start:self.cursor]
-    col  := lexer_col(self)
+    col  := lexer_col(self) + 1
     return Token{type = type, lexeme = word, line = self.line, col = col}
 }
 
+/*
+**Overview**
+-   Returns a string view into the input containing the current line.
+-   This is mainly useful for error reporting.
+*/
 lexer_line :: proc(self: Lexer) -> string {
     return strings.trim_left(self.input[self.line_index:], "\n")
 }
 
+
+/*
+**Overview**
+-   Returns the 0-based index into the current line.
+ */
 lexer_col :: proc(self: Lexer) -> int {
-    // Add 1 because would otherwise by 0-based column into this line
-    return (self.start - self.line_index) + 1
+    return (self.start - self.line_index)
 }
 
 lexer_skip_whitespace :: proc(self: ^Lexer) {
@@ -177,43 +211,34 @@ lexer_eof :: proc(self: Lexer) -> bool {
 }
 
 lexer_keyword :: proc(self: ^Lexer) -> Token {
+    /*
+    **Notes** (2025-04-28)
+    -   Theoretically, linear search is really slow.
+    -   In practice however our worst case is 3 elements.
+    -   It's not like the lexer is the bottleneck for performance anyway.
+    */
     @require_results
-    check_keyword :: proc(type: Token_Type, word: string) -> Token_Type {
-        return type if word == to_string(type) else .Ident
+    check_keywords :: proc(word: string, types: ..Token_Type) -> Token_Type {
+        for type in types {
+            if word == to_string(type) {
+                return type
+            }
+        }
+        return .Ident
     }
 
     word := self.input[self.start:self.cursor]
     type := Token_Type.Ident
     switch word[0] {
-    case 'c':
-        switch len(word) {
-        case len("char"):    type = check_keyword(.Char, word)
-        case len("const"):   type = check_keyword(.Const, word)
-        case len("complex"): type = check_keyword(.Complex, word)
-        }
-    case 'd': type = check_keyword(.Double, word)
-    case 'f': type = check_keyword(.Float, word)
-    case 'i': type = check_keyword(.Int, word)
-    case 'l': type = check_keyword(.Long, word)
-    case 's':
-        // len("struct") == len("signed")
-        if len(word) != len("struct") {
-            break
-        }
-        switch word[1] {
-        case 'i': type = check_keyword(.Signed, word)
-        case 't': type = check_keyword(.Struct, word)
-        }
-    case 'u':
-        switch len(word) {
-        case len("union"):    type = check_keyword(.Union, word)
-        case len("unsigned"): type = check_keyword(.Unsigned, word)
-        }
-    case 'v':
-        switch len(word) {
-        case len("void"):     type = check_keyword(.Void, word)
-        case len("volatile"): type = check_keyword(.Volatile, word)
-        }
+    case 'c': type = check_keywords(word, .Char, .Const, .Complex)
+    case 'd': type = check_keywords(word, .Double)
+    case 'e': type = check_keywords(word, .Enum)
+    case 'f': type = check_keywords(word, .Float)
+    case 'i': type = check_keywords(word, .Int)
+    case 'l': type = check_keywords(word, .Long)
+    case 's': type = check_keywords(word, .Short, .Signed, .Struct)
+    case 'u': type = check_keywords(word, .Union, .Unsigned)
+    case 'v': type = check_keywords(word, .Void, .Volatile)
     }
     return lexer_make_token(self^, type, word)
 }

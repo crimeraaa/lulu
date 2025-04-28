@@ -1,9 +1,5 @@
 package cdecl
 
-Prefix :: enum u8 {
-    None, Struct, Enum, Union
-}
-
 Modifier :: enum u8 {
     None, Signed, Unsigned, Complex
 }
@@ -12,40 +8,29 @@ Qualifier :: enum u8 {
     Const, Volatile
 }
 
-Tag :: enum u8 {
+Base_Tag :: enum u8 {
     None, Void, Bool,
     Char, Short, Int, Long, Long_Long,
     Float, Double, Long_Double,
+    Struct, Enum, Union,
+    Pointer,
 }
 
 Qualifier_Set :: distinct bit_set[Qualifier]
 
 Declaration :: struct {
-    tag:        Tag, // Required if `prefix` is `.None`
-    prefix:     Prefix,
+    base_tag:   Base_Tag        `fmt:"s"`, // Required if `prefix` is `.None`
     modifier:   Modifier,
     qualifiers: Qualifier_Set,
-    ident:      string, // required if `prefix` is not `.None`
-    pointee:   ^Declaration,
+    tag, var:   string          `fmt:"q"`,
+    child:     ^Declaration     `fmt:"-"`,
 }
 
 to_string :: proc {
     token_to_string,
-    prefix_to_string,
     modifier_to_string,
     qualifier_to_string,
     tag_to_string,
-}
-
-prefix_to_string :: #force_inline proc "contextless" (prefix: Prefix) -> string {
-    @(static, rodata)
-    prefix_strings := [Prefix]string{
-        .None   = "none",
-        .Struct = "struct",
-        .Enum   = "enum",
-        .Union  = "union",
-    }
-    return prefix_strings[prefix]
 }
 
 modifier_to_string :: #force_inline proc "contextless" (mod: Modifier) -> string {
@@ -68,32 +53,57 @@ qualifier_to_string :: #force_inline proc "contextless" (qual: Qualifier) -> str
     return qualifier_strings[qual]
 }
 
-tag_is_integer :: #force_inline proc "contextless" (tag: Tag) -> bool {
-    return .Char <= tag && tag <= .Long_Long
-}
-
-tag_is_floating :: #force_inline proc "contextless" (tag: Tag) -> bool {
-    return .Float <= tag && tag <= .Long_Double
-}
-
-tag_to_string :: #force_inline proc "contextless" (tag: Tag) -> string {
+tag_to_string :: #force_inline proc "contextless" (tag: Base_Tag) -> string {
+    // Can't directly map to `Token_Type` because there is no `long long` and
+    // `long double` token.
     @(static, rodata)
-    tag_strings := [Tag]string {
-        .None        =  "none",
-        .Void        =  "void",
-        .Bool        =  "bool",
-        .Char        =  "char",
-        .Short       =  "short",
-        .Int         =  "int",
-        .Long        =  "long",
-        .Long_Long   =  "long long",
-        .Float       =  "float",
-        .Double      =  "double",
-        .Long_Double =  "long double",
+    tag_strings := [Base_Tag]string {
+        .None        = "none",
+        .Void        = "void",
+        .Bool        = "bool",
+        .Char        = "char",
+        .Short       = "short",
+        .Int         = "int",
+        .Long        = "long",
+        .Long_Long   = "long long",
+        .Float       = "float",
+        .Double      = "double",
+        .Long_Double = "long double",
+        .Struct      = "struct",
+        .Enum        = "enum",
+        .Union       = "union",
+        .Pointer     = "<pointer>",
     }
     return tag_strings[tag]
 }
 
-declaration_make :: proc(pointee: ^Declaration = nil) -> Declaration {
-    return Declaration{pointee = pointee}
+decl_make :: proc(child: ^Declaration = nil) -> Declaration {
+    return Declaration{
+        base_tag = .Pointer if child != nil else .None,
+        child     = child,
+    }
 }
+
+decl_destroy :: proc(self: ^Declaration) {
+    for child := self.child; child != nil; {
+        next := child.child
+        free(child)
+        child = next
+    }
+}
+
+decl_set_pointer :: proc(#no_alias self, pointee: ^Declaration) {
+    // Very important for `self` and `pointee` to be 2 unique addresses as we
+    // will reset `self`!
+    pointee^ = self^
+    self^    = decl_make(pointee)
+}
+
+decl_is_integer :: #force_inline proc "contextless" (self: ^Declaration) -> bool {
+    return .Char <= self.base_tag && self.base_tag <= .Long_Long
+}
+
+decl_is_floating :: #force_inline proc "contextless" (self: ^Declaration) -> bool {
+    return .Float <= self.base_tag && self.base_tag <= .Long_Double
+}
+
