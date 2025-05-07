@@ -81,7 +81,7 @@ objects_print_all :: proc(vm: ^VM) {
             fmt.printfln("string: %q", ostring_to_string(cast(^OString)object))
         case .Table:
             fmt.printfln("table: %p", object)
-        case: unreachable()
+        case: unreachable("Cannot print object type %v", object.type)
         }
     }
 }

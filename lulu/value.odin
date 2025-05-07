@@ -165,7 +165,7 @@ value_to_string :: proc(a: Value) -> string {
     return ostring_to_string(a.ostring)
 }
 
-value_eq :: proc "contextless" (a, b: Value) -> bool {
+value_eq :: proc(a, b: Value) -> bool {
     if a.type != b.type {
         return false
     }
@@ -177,7 +177,7 @@ value_eq :: proc "contextless" (a, b: Value) -> bool {
     case .String:   return a.ostring == b.ostring
     case .Table:    return a.table == b.table
     }
-    unreachable()
+    unreachable("Unknown value type %v", a.type)
 }
 
 number_is_nan :: math.is_nan_f64
@@ -201,7 +201,7 @@ value_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
             pointer   := cast(rawptr)value.table
             info.n += fmt.wprintf(writer, "%s: %p", type_name, pointer)
         case:
-            unreachable()
+            unreachable("Unknown value type %v", value.type)
         }
         return true
     case:

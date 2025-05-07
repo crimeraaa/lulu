@@ -2,20 +2,16 @@
 package lulu
 
 
-/*
-**Notes**
--   On x86-64, this should be 16 bytes due to 8-byte alignment from the `f64`.
--   This means it should be able to be passed/returned in 2 registers if the
-    calling convention allows it.
- */
 Expr :: struct {
-    type:       Expr_Type,
-    using info: Expr_Info,
+    type:          Expr_Type,
+    using info:    Expr_Info,
+    jump_if_true:  int,
+    jump_if_false: int,
 }
 
 Expr_Info :: struct #raw_union {
     number: f64, // .Number
-    pc:     int, // .Need_Register
+    pc:     int, // .Need_Register, .Jump
     index:  u32, // .Constant, .Global
     table:  Expr_Table, // .Table_Index
     reg:    u16, // .Discharged, .Local
@@ -42,6 +38,7 @@ Expr_Type :: enum u8 {
     Global,
     Local,
     Table_Index,
+    Jump,
 }
 
 // Intended to be easier to grep
@@ -55,23 +52,42 @@ expr_make :: proc {
     expr_make_number,
 }
 
-expr_make_none :: proc(type: Expr_Type) -> (expr: Expr) {
-    return Expr{type = type}
+expr_make_none :: proc(type: Expr_Type) -> Expr {
+    return Expr{
+        type          = type,
+        jump_if_true  = NO_JUMP,
+        jump_if_false = NO_JUMP
+    }
 }
 
-expr_make_pc :: proc(type: Expr_Type, pc: int) -> (expr: Expr) {
+expr_make_pc :: proc(type: Expr_Type, pc: int) -> Expr {
     assert(type == .Need_Register)
-    return Expr{type = type, pc = pc}
+    return Expr{
+        type          = type,
+        pc            = pc,
+        jump_if_true  = NO_JUMP,
+        jump_if_false = NO_JUMP
+    }
 }
 
-expr_make_reg :: proc(type: Expr_Type, reg: u16) -> (expr: Expr) {
+expr_make_reg :: proc(type: Expr_Type, reg: u16) -> Expr {
     assert(type == .Discharged || type == .Local)
-    return Expr{type = type, reg = reg}
+    return Expr{
+        type          = type,
+        reg           = reg,
+        jump_if_true  = NO_JUMP,
+        jump_if_false = NO_JUMP,
+    }
 }
 
-expr_make_index :: proc(type: Expr_Type, index: u32) -> (expr: Expr) {
+expr_make_index :: proc(type: Expr_Type, index: u32) -> Expr {
     assert(type == .Global || type == .Constant)
-    return Expr{type = type, index = index}
+    return Expr{
+        type          = type,
+        index         = index,
+        jump_if_true  = NO_JUMP,
+        jump_if_false = NO_JUMP,
+    }
 }
 
 /*
@@ -82,18 +98,29 @@ expr_make_index :: proc(type: Expr_Type, index: u32) -> (expr: Expr) {
 **Guarantees**
 -   `expr.table` will be filled using the above information.
  */
-expr_make_table :: proc(type: Expr_Type, reg, index: u16) -> (expr: Expr) {
+expr_make_table :: proc(type: Expr_Type, reg, index: u16) -> Expr {
     assert(type == .Table_Index)
-    return Expr{type = .Table_Index, table = {reg = reg, index = index}}
+    return Expr{
+        type          = .Table_Index,
+        table         = {reg = reg, index = index},
+        jump_if_true  = NO_JUMP,
+        jump_if_false = NO_JUMP,
+    }
 }
 
-expr_make_number :: proc(type: Expr_Type, number: f64) -> (expr: Expr) {
+expr_make_number :: proc(type: Expr_Type, number: f64) -> Expr {
     assert(type == .Number)
-    return Expr{type = .Number, number = number}
+    return Expr{
+        type          = .Number,
+        number        = number,
+        jump_if_true  = NO_JUMP,
+        jump_if_false = NO_JUMP,
+    }
 }
 
-// NOTE: In the future, may need to check for jump lists!
 // See: https://www.lua.org/source/5.1/lcode.c.html#isnumeral
 expr_is_number :: proc(expr: Expr) -> bool {
-    return expr.type == .Number
+    return expr.type == .Number \
+        && expr.jump_if_true  == NO_JUMP \
+        && expr.jump_if_false == NO_JUMP
 }

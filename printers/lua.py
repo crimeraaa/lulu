@@ -3,27 +3,12 @@ from enum import Enum
 from typing import Final, Union, TypeAlias
 
 
-def lua_pretty_printers_lookup(val: gdb.Value):
+def pretty_printers_lookup(val: gdb.Value):
     # Strip away `const` and/or `volatile`
-    utype = val.type.unqualified()
-
-    # Strip away the first layer of pointer
-    if utype.code == gdb.TYPE_CODE_PTR:
-        # Get the pointed-to `gdb.Type`, e.g. `TValue` from `TValue *`.
-        # This also works for `void *`; We end up with `void`.
-        utype = utype.target().unqualified()
-
-        # We need to update `val` so that all our printers assume they work with
-        # values/structs as-is, not pointers thereof.
-        if utype.code != gdb.TYPE_CODE_VOID:
-            val = val.dereference()
-
-    if utype.name in lua_pretty_printers:
-        return lua_pretty_printers[utype.name](val)
+    utype = str(val.type.unqualified())
+    if utype in __pretty_printers:
+        return __pretty_printers[utype](val)
     return None
-
-
-gdb.pretty_printers.append(lua_pretty_printers_lookup)
 
 
 ###=== lopcodes.h ========================================================== {{{
@@ -35,13 +20,11 @@ SIZE_Bx:    Final =  SIZE_B + SIZE_C
 SIZE_A:     Final =  8
 SIZE_OP:    Final =  6
 
-
 MASK_B:     Final =  (1 << SIZE_B)  - 1 # 0b00000000_00000000_00000001_11111111
 MASK_C:     Final =  MASK_B
 MASK_Bx:    Final =  (1 << SIZE_Bx) - 1 # 0b00000000_00000011_11111111_11111111
 MASK_A:     Final =  (1 << SIZE_A)  - 1 # 0b00000000_00000000_00000000_11111111
 MASK_OP:    Final =  (1 << SIZE_OP) - 1 # 0b00000000_00000000_00000000_00111111
-
 
 OFFSET_OP:  Final =  0
 OFFSET_A:   Final =  OFFSET_OP + SIZE_OP
@@ -49,13 +32,10 @@ OFFSET_C:   Final =  OFFSET_A  + SIZE_A
 OFFSET_B:   Final =  OFFSET_C  + SIZE_C
 OFFSET_Bx:  Final =  OFFSET_C
 
-
 MAXARG_Bx:  Final = (1 << SIZE_Bx) - 1
 MAXARG_sBx: Final =  MAXARG_Bx >> 1
 
-
 BITRK: Final = 1 << (SIZE_B - 1) # 0b1_0000_0000
-
 
 OpCode: Final = gdb.lookup_type("OpCode")
 
@@ -115,7 +95,6 @@ class InstructionPrinter:
     __ip:     int
     __pretty: str
 
-
     def __init__(self, val: gdb.Value):
         # `Instruction` is just a typedef for some unsigned 32-bit integer
         self.__ip = int(val)
@@ -137,7 +116,6 @@ class InstructionPrinter:
             args.append(f"B={b}, C={c}")
         self.__pretty = "".join(args)
 
-
     def to_string(self) -> str:
         return self.__pretty
 
@@ -147,12 +125,11 @@ class InstructionPrinter:
 
 ###=== lobject.h =========================================================== {{{
 
-
 VOID_POINTER:       Final = gdb.lookup_type("void").pointer()
 CONST_CHAR_POINTER: Final = gdb.lookup_type("char").const().pointer()
 
 
-class lua_Type(Enum):
+class Type(Enum):
     NONE          = -1
     NIL           =  0
     BOOLEAN       =  1
@@ -165,19 +142,18 @@ class lua_Type(Enum):
     THREAD        =  8
 
 
-luaT_typenames: dict[lua_Type, str] = {
-    lua_Type.NONE:          "none",
-    lua_Type.NIL:           "nil",
-    lua_Type.BOOLEAN:       "boolean",
-    lua_Type.LIGHTUSERDATA: "lightuserdata",
-    lua_Type.NUMBER:        "number",
-    lua_Type.STRING:        "string",
-    lua_Type.TABLE:         "table",
-    lua_Type.FUNCTION:      "function",
-    lua_Type.USERDATA:      "userdata",
-    lua_Type.THREAD:        "thread",
+luaT_typenames: dict[Type, str] = {
+    Type.NONE:          "none",
+    Type.NIL:           "nil",
+    Type.BOOLEAN:       "boolean",
+    Type.LIGHTUSERDATA: "lightuserdata",
+    Type.NUMBER:        "number",
+    Type.STRING:        "string",
+    Type.TABLE:         "table",
+    Type.FUNCTION:      "function",
+    Type.USERDATA:      "userdata",
+    Type.THREAD:        "thread",
 }
-
 
 # `lobject.h:union Value`
 Value: TypeAlias = Union[None | bool | int | str | gdb.Value]
@@ -232,20 +208,20 @@ def getstr(tstring: gdb.Value) -> str:
 class TValuePrinter:
     """ NOTE(2025-04-20): Keep track of the field names in `lobject.h`! """
     __value: Value
-    __tag:   lua_Type
+    __tag:   Type
 
 
     def __init__(self, value: gdb.Value):
         # We assume `value.tt` is in range of `lua_Type`
-        tag = lua_Type(int(value["tt"]))
+        tag = Type(int(value["tt"]))
         actual: Value
         match tag:
-            case lua_Type.NIL:           actual = None
-            case lua_Type.NONE:          actual = None
-            case lua_Type.BOOLEAN:       actual = bvalue(value)
-            case lua_Type.LIGHTUSERDATA: actual = pvalue(value)
-            case lua_Type.NUMBER:        actual = nvalue(value)
-            case lua_Type.STRING:        actual = svalue(value)
+            case Type.NIL:           actual = None
+            case Type.NONE:          actual = None
+            case Type.BOOLEAN:       actual = bvalue(value)
+            case Type.LIGHTUSERDATA: actual = pvalue(value)
+            case Type.NUMBER:        actual = nvalue(value)
+            case Type.STRING:        actual = svalue(value)
             case _:
                 actual = gcvalue(value).cast(VOID_POINTER)
         self.__value = actual
@@ -254,15 +230,15 @@ class TValuePrinter:
 
     def to_string(self) -> str:
         match self.__tag:
-            case lua_Type.NONE:
+            case Type.NONE:
                 return "none"
-            case lua_Type.NIL:
+            case Type.NIL:
                 return "nil"
-            case lua_Type.BOOLEAN:
+            case Type.BOOLEAN:
                 return "true" if self.__value else "false"
-            case lua_Type.NUMBER:
+            case Type.NUMBER:
                 return str(self.__value)
-            case lua_Type.STRING:
+            case Type.STRING:
                 # `svalue()` returned a Python string
                 return self.__value
             case _:
@@ -274,15 +250,15 @@ class TValuePrinter:
 class TStringPrinter:
     __data: str
 
-
     def __init__(self, val: gdb.Value):
-        # Assume that pointers were already stripped, so we need to get `&ts`
-        self.__data = getstr(val.address)
-
+        if val.type.code == gdb.TYPE_CODE_PTR:
+            data = val
+        else:
+            data = val.address
+        self.__data = getstr(data)
 
     def to_string(self) -> str:
         return self.__data
-
 
     def display_hint(self):
         return "string"
@@ -293,12 +269,10 @@ class LocVarPrinter:
     __startpc: int
     __endpc:   int
 
-
     def __init__(self, val: gdb.Value):
         self.__name    = str(val["varname"])
         self.__startpc = int(val["startpc"])
         self.__endpc   = int(val["endpc"])
-
 
     def to_string(self) -> str:
         return f"{{{self.__name}: startpc={self.__startpc}, endpc={self.__endpc}}}"
@@ -352,7 +326,6 @@ class ExprPrinter:
     __expr:   gdb.Value
     __pretty: str
 
-
     def __set(self, *, info = "", aux = False, nval = False):
         args = [str(self.__kind).removeprefix("Expr_")]
         if info:
@@ -375,7 +348,6 @@ class ExprPrinter:
 
         self.__pretty = "".join(args)
 
-
     def __init__(self, expr: gdb.Value):
         # The ExprKind enum is already accounted for within GDB
         self.__kind = expr["kind"]
@@ -394,7 +366,6 @@ class ExprPrinter:
             case "Expr_Vararg":       self.__set(info = "pc")
             case _: self.__set()
 
-
     def to_string(self) -> str:
         return self.__pretty
 
@@ -402,14 +373,17 @@ class ExprPrinter:
 ###=== }}} =====================================================================
 
 
-lua_pretty_printers = {
-    "Instruction": InstructionPrinter,
-    "TValue":      TValuePrinter,
-    "TString":     TStringPrinter,
-    "LocVar":      LocVarPrinter,
-    "Token":       TokenPrinter,
-    # "StkId":       TValuePrinter, # Perhaps we DO want the addresses?
-    "Expr":        ExprPrinter,
+__pretty_printers = {
+    "Instruction":   InstructionPrinter,
+    "Instruction *": InstructionPrinter,
+    "TValue":        TValuePrinter,
+    "TString":       TStringPrinter,
+    "TString *":     TStringPrinter,
+    "LocVar":        LocVarPrinter,
+    "Token":         TokenPrinter,
+    "Token *":       TokenPrinter,
+    "Expr":          ExprPrinter,
+    "Expr *":        ExprPrinter,
 }
 
 

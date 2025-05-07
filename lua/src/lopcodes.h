@@ -94,8 +94,11 @@ enum OpMode {iABC, iABx, iAsBx};  /* basic instruction format */
 		((cast(Instruction, b)<<POS_C)&MASK1(SIZE_C,POS_C))))
 
 #define GETARG_Bx(i)	(cast(int, ((i)>>POS_Bx) & MASK1(SIZE_Bx,0)))
-#define SETARG_Bx(i,b)	((i) = (((i)&MASK0(SIZE_Bx,POS_Bx)) | \
-		((cast(Instruction, b)<<POS_Bx)&MASK1(SIZE_Bx,POS_Bx))))
+#define SETARG_Bx(i,b)	(\
+  (i) = (((i) & MASK0(SIZE_Bx, POS_Bx)) \
+      | ((cast(Instruction, b) << POS_Bx) \
+          & MASK1(SIZE_Bx, POS_Bx) \
+    )))
 
 #define GETARG_sBx(i)	(GETARG_Bx(i)-MAXARG_sBx)
 #define SETARG_sBx(i,b)	SETARG_Bx((i),cast(unsigned int, (b)+MAXARG_sBx))

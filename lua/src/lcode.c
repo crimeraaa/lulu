@@ -706,12 +706,12 @@ static void codearith (FuncState *func, OpCode op, Expr *e1, Expr *e2) {
 }
 
 
-static void codecomp (FuncState *func, OpCode op, int cond, Expr *e1, Expr *e2) {
+static void codecomp (FuncState *func, OpCode op, bool cond, Expr *e1, Expr *e2) {
   int o1 = luaK_exp2RK(func, e1);
   int o2 = luaK_exp2RK(func, e2);
   freeexp(func, e2);
   freeexp(func, e1);
-  if (cond == 0 && op != OP_EQ) {
+  if (!cond && op != OP_EQ) {
     int temp;  /* exchange args to replace by `<' or `<=' */
     temp = o1; o1 = o2; o2 = temp;  /* o1 <==> o2 */
     cond = 1;
@@ -809,12 +809,12 @@ void luaK_posfix (FuncState *func, BinOpr op, Expr *e1, Expr *e2) {
     case OPR_DIV: codearith(func, OP_DIV, e1, e2); break;
     case OPR_MOD: codearith(func, OP_MOD, e1, e2); break;
     case OPR_POW: codearith(func, OP_POW, e1, e2); break;
-    case OPR_EQ: codecomp(func, OP_EQ, 1, e1, e2); break;
-    case OPR_NE: codecomp(func, OP_EQ, 0, e1, e2); break;
-    case OPR_LT: codecomp(func, OP_LT, 1, e1, e2); break;
-    case OPR_LE: codecomp(func, OP_LE, 1, e1, e2); break;
-    case OPR_GT: codecomp(func, OP_LT, 0, e1, e2); break;
-    case OPR_GE: codecomp(func, OP_LE, 0, e1, e2); break;
+    case OPR_EQ: codecomp(func, OP_EQ, true, e1, e2); break;
+    case OPR_NE: codecomp(func, OP_EQ, false, e1, e2); break;
+    case OPR_LT: codecomp(func, OP_LT, true, e1, e2); break;
+    case OPR_LE: codecomp(func, OP_LE, true, e1, e2); break;
+    case OPR_GT: codecomp(func, OP_LT, false, e1, e2); break;
+    case OPR_GE: codecomp(func, OP_LE, false, e1, e2); break;
     default: lua_assert(0);
   }
 }

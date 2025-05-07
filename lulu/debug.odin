@@ -4,10 +4,6 @@ package lulu
 import "core:fmt"
 import "core:math"
 
-// Debug Info
-DEBUG_TRACE_EXEC :: #config(DEBUG_TRACE_EXEC, ODIN_DEBUG)
-DEBUG_PRINT_CODE :: #config(DEBUG_PRINT_CODE, ODIN_DEBUG)
-
 @(init)
 debug_init_formatters :: proc() {
     fmt.set_user_formatters(new(map[typeid]fmt.User_Formatter))
@@ -26,18 +22,18 @@ debug_dump_chunk :: proc(chunk: ^Chunk) {
 
     if n := len(chunk.locals); n > 0 {
         fmt.println("\n.local:")
-        n_digits := math.count_digits_of_base(n, 10)
+        left_pad := math.count_digits_of_base(n, 10)
         for local, index in chunk.locals {
-            fmt.printfln("[%0*i] %q ; local %v", n_digits, index, local.ident,
+            fmt.printfln("[%0*i] %q ; local %v", left_pad, index, local.ident,
                 local)
         }
     }
 
     if n := len(chunk.constants); n > 0 {
         fmt.println("\n.const:")
-        n_digits := math.count_digits_of_base(n, 10)
+        left_pad := math.count_digits_of_base(n, 10)
         for constant, index in chunk.constants {
-            fmt.printf("[%0*i] ", n_digits, index)
+            fmt.printf("[%0*i] ", left_pad, index)
             value_print(constant, .Debug)
             fmt.println()
         }
@@ -63,6 +59,12 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
     }
 
     binary :: proc(info: Print_Info, op: string) {
+        print_reg(info, info.ip.a, " := ")
+        print_reg(info, info.ip.b, " %s ", op)
+        print_reg(info, info.ip.c)
+    }
+
+    compare :: proc(info: Print_Info, op: string) {
         print_reg(info, info.ip.a, " := ")
         print_reg(info, info.ip.b, " %s ", op)
         print_reg(info, info.ip.c)
@@ -105,11 +107,11 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
         }
         fmt.printf(" ; ")
     case .Signed_Bx:
-        fmt.printf("% 8i % 4i % 4s ; ", ip.a, ip_get_Bx(ip), " ")
+        fmt.printf("% 8i % 4i % 4s ; ", ip.a, ip_get_sBx(ip), " ")
     case .Unsigned_Bx:
         fmt.printf("% 8i % 4i % 4s ; ", ip.a, ip_get_Bx(ip), " ")
     case:
-        unreachable()
+        unreachable("Bad opcode info %v", info)
     }
 
     info := Print_Info{chunk = chunk, pc = index, ip = ip}
@@ -159,17 +161,17 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
     case .Mod: binary(info, "%")
     case .Pow: binary(info, "^")
     case .Unm: unary(info,  "-")
-    case .Eq:  binary(info, "==")
-    case .Neq: binary(info, "~=")
-    case .Lt:  binary(info, "<")
-    case .Gt:  binary(info, ">")
-    case .Leq: binary(info, "<=")
-    case .Geq: binary(info, ">=")
+    case .Eq:  compare(info, "==")
+    case .Neq: compare(info, "~=")
+    case .Lt:  compare(info, "<")
+    case .Leq: compare(info, "<=")
     case .Not: unary(info,  "not ")
     case .Concat:
         print_reg(info, ip.a, " := concat(Reg(%i..=%i))", ip.b, ip.c)
     case .Len:
         unary(info, "#")
+    case .Jump:
+        fmt.printf("pc += %i", ip_get_sBx(ip))
     case .Return:
         reg       := cast(int)ip.a
         n_results := cast(int)ip.b
@@ -179,7 +181,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
             fmt.printf("return Reg(%i..=%i)", reg, chunk.stack_used);
         }
     case:
-        unreachable()
+        unreachable("Unknown opcode %v", ip.op)
     }
 }
 
@@ -311,7 +313,7 @@ debug_symbolic_execution :: proc(chunk: ^Chunk, lastpc: int, reg: u16) -> (i: In
             // Register/jump is in range of the bytecode?
             return cast(int)reg < chunk.stack_used
         case:
-            unreachable()
+            unreachable("")
         }
     }
     // Point to the return 0 0 0 instruction; it's always a safe bet

@@ -7,11 +7,6 @@ import "core:fmt"
 import "core:mem"
 import "core:strings"
 
-// Minimum stack size guaranteed to be available to all functions
-STACK_MIN :: 8
-
-MEMORY_ERROR_STRING :: "Out of memory"
-
 Error_Handler :: struct {
     prev:  ^Error_Handler,
     buffer: c.jmp_buf,
@@ -221,9 +216,9 @@ vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) 
 vm_execute :: proc(vm: ^VM) {
     ///=== VM EXECUTION HELPERS ============================================ {{{
 
-    get_rkb_rkc :: proc(vm: ^VM, inst: Instruction, stack, constants: []Value) -> (rkb, rkc: ^Value) {
-        rkb = get_rk(vm, inst.b, stack, constants)
-        rkc = get_rk(vm, inst.c, stack, constants)
+    get_rkb_rkc :: proc(vm: ^VM, ip: Instruction, stack, constants: []Value) -> (rkb, rkc: ^Value) {
+        rkb = get_rk(vm, ip.b, stack, constants)
+        rkc = get_rk(vm, ip.c, stack, constants)
         return rkb, rkc
     }
 
@@ -232,8 +227,8 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
-        left, right := get_rkb_rkc(vm, inst, stack, constants)
+    arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, ip: Instruction, stack, constants: []Value) {
+        left, right := get_rkb_rkc(vm, ip, stack, constants)
         if !value_is_number(left^) || !value_is_number(right^) {
             arith_error(vm, left, right)
         }
@@ -241,8 +236,8 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, inst: Instruction, stack, constants: []Value) {
-        left, right := get_rkb_rkc(vm, inst, stack, constants)
+    compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, ip: Instruction, stack, constants: []Value) {
+        left, right := get_rkb_rkc(vm, ip, stack, constants)
         if !value_is_number(left^) || !value_is_number(right^) {
             compare_error(vm, left, right)
         }
@@ -276,7 +271,7 @@ vm_execute :: proc(vm: ^VM) {
     stack     := vm.base[:chunk.stack_used]
     for {
         // We cannot extract 'vm.pc' into a local as it is needed in to `vm_runtime_error`.
-        inst := vm.pc[0]
+        ip := vm.pc[0]
         when DEBUG_TRACE_EXEC {
             index := ptr_index(vm.pc, chunk.code)
             #reverse for &value, reg in stack {
@@ -287,27 +282,30 @@ vm_execute :: proc(vm: ^VM) {
                     fmt.println()
                 }
             }
-            debug_dump_instruction(chunk, inst, index)
+            debug_dump_instruction(chunk, ip, index)
         }
         vm.pc = &vm.pc[1]
 
         // Most instructions use this!
-        ra := &stack[inst.a]
-        switch (inst.op) {
+        ra := &stack[ip.a]
+        switch (ip.op) {
         case .Move:
-            ra^ = stack[inst.b]
+            ra^ = stack[ip.b]
         case .Load_Constant:
-            bc := ip_get_Bx(inst)
+            bc := ip_get_Bx(ip)
             ra^ = constants[bc]
         case .Load_Nil:
             // Add 1 because we want to include Reg[B]
-            for &slot in stack[inst.a:inst.b + 1] {
+            for &slot in stack[ip.a:ip.b + 1] {
                 slot = value_make()
             }
         case .Load_Boolean:
-            ra^ = value_make(inst.b == 1)
+            ra^ = value_make(ip.b == 1)
+            if ip.c == 1 {
+                vm.pc = ptr_offset(vm.pc, +1)
+            }
         case .Get_Global:
-            key := constants[ip_get_Bx(inst)]
+            key := constants[ip_get_Bx(ip)]
             value, ok := table_get(globals, key)
             if !ok {
                 ident := value_to_string(key)
@@ -315,24 +313,24 @@ vm_execute :: proc(vm: ^VM) {
             }
             ra^ = value
         case .Set_Global:
-            key := constants[ip_get_Bx(inst)]
+            key := constants[ip_get_Bx(ip)]
             table_set(vm, globals, key, ra^)
         case .New_Table:
-            n_array := fb_to_int(cast(u8)inst.b)
-            n_hash  := fb_to_int(cast(u8)inst.c)
+            n_array := fb_to_int(cast(u8)ip.b)
+            n_hash  := fb_to_int(cast(u8)ip.c)
             ra^ = value_make(table_new(vm, n_array, n_hash))
         case .Get_Table:
-            key := get_rk(vm, inst.c, stack, constants)^
+            key := get_rk(vm, ip.c, stack, constants)^
             table: ^Table
-            if rb := &stack[inst.b]; !value_is_table(rb^) {
+            if rb := &stack[ip.b]; !value_is_table(rb^) {
                 index_error(vm, rb)
             } else {
                 table = rb.table
             }
             ra^ = table_get(table, key)
         case .Set_Table:
-            key   := get_rk(vm, inst.b, stack, constants)
-            value := get_rk(vm, inst.c, stack, constants)^
+            key   := get_rk(vm, ip.b, stack, constants)
+            value := get_rk(vm, ip.c, stack, constants)^
             if !value_is_table(ra^) {
                 index_error(vm, ra)
             }
@@ -343,44 +341,44 @@ vm_execute :: proc(vm: ^VM) {
         case .Set_Array:
             // Guaranteed because this only occurs in table constructors
             table  := ra.table
-            count  := cast(int)inst.b
-            offset := cast(int)(inst.c - 1) * FIELDS_PER_FLUSH
+            count  := cast(int)ip.b
+            offset := cast(int)(ip.c - 1) * FIELDS_PER_FLUSH
             for i in 1..=count {
                 key := value_make(offset + i)
-                table_set(vm, table, key, stack[cast(int)inst.a + i])
+                table_set(vm, table, key, stack[cast(int)ip.a + i])
             }
         case .Print:
-            for arg in stack[inst.a:inst.b] {
+            for arg in stack[ip.a:ip.b] {
                 value_print(arg, .Print)
             }
             fmt.println()
-        case .Add: arith_op(vm, number_add, ra, inst, stack, constants)
-        case .Sub: arith_op(vm, number_sub, ra, inst, stack, constants)
-        case .Mul: arith_op(vm, number_mul, ra, inst, stack, constants)
-        case .Div: arith_op(vm, number_div, ra, inst, stack, constants)
-        case .Mod: arith_op(vm, number_mod, ra, inst, stack, constants)
-        case .Pow: arith_op(vm, number_pow, ra, inst, stack, constants)
+        case .Add: arith_op(vm, number_add, ra, ip, stack, constants)
+        case .Sub: arith_op(vm, number_sub, ra, ip, stack, constants)
+        case .Mul: arith_op(vm, number_mul, ra, ip, stack, constants)
+        case .Div: arith_op(vm, number_div, ra, ip, stack, constants)
+        case .Mod: arith_op(vm, number_mod, ra, ip, stack, constants)
+        case .Pow: arith_op(vm, number_pow, ra, ip, stack, constants)
         case .Unm:
-            rb := &stack[inst.b]
+            rb := &stack[ip.b]
             if !value_is_number(rb^) {
                 arith_error(vm, rb, rb)
             }
             ra^ = value_make(number_unm(rb.number))
-        case .Eq, .Neq:
-            rb, rc := get_rkb_rkc(vm, inst, stack, constants)
-            equals := value_eq(rb^, rc^)
-            ra^ = value_make(equals if inst.op == .Eq else !equals)
-        case .Lt:   compare_op(vm, number_lt,  ra, inst, stack, constants)
-        case .Gt:   compare_op(vm, number_gt,  ra, inst, stack, constants)
-        case .Leq:  compare_op(vm, number_leq, ra, inst, stack, constants)
-        case .Geq:  compare_op(vm, number_geq, ra, inst, stack, constants)
+        case .Eq:
+            rb, rc := get_rkb_rkc(vm, ip, stack, constants)
+            ra^ = value_make(value_eq(rb^, rc^))
+        case .Neq:
+            rb, rc := get_rkb_rkc(vm, ip, stack, constants)
+            ra^ = value_make(!value_eq(rb^, rc^))
+        case .Lt:   compare_op(vm, number_lt,  ra, ip, stack, constants)
+        case .Leq:  compare_op(vm, number_leq, ra, ip, stack, constants)
         case .Not:
-            x := get_rk(vm, inst.b, stack, constants)^
+            x := get_rk(vm, ip.b, stack, constants)^
             ra^ = value_make(value_is_falsy(x))
         // Add 1 because we want to include Reg[C]
-        case .Concat: vm_concat(vm, ra, stack[inst.b:inst.c + 1])
+        case .Concat: vm_concat(vm, ra, stack[ip.b:ip.c + 1])
         case .Len:
-            rb := &stack[inst.b]
+            rb := &stack[ip.b]
             #partial switch rb.type {
             case .String:
                 ra^ = value_make(rb.ostring.len)
@@ -402,14 +400,17 @@ vm_execute :: proc(vm: ^VM) {
                 debug_type_error(vm, rb, "get length of")
             }
 
+        case .Jump:
+            offset := ip_get_sBx(ip)
+            vm.pc = ptr_offset(vm.pc, offset)
         case .Return:
-            // if inst.c != 0 then we have a vararg
-            nret := cast(int)inst.b if inst.c == 0 else get_top(vm)
-            vm.top = &stack[cast(int)inst.a + nret]
+            // if ip.c != 0 then we have a vararg
+            nret := cast(int)ip.b if ip.c == 0 else get_top(vm)
+            vm.top = &stack[cast(int)ip.a + nret]
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
             return
         case:
-            unreachable()
+            unreachable("Unknown opcode %v", ip.op)
         }
     }
 }

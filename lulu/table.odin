@@ -104,13 +104,13 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
 
     get_hash :: proc(key: Value) -> (hash: u32) {
         switch key.type {
-        case .Nil:      unreachable()
+        case .Nil:      break
         case .Boolean:  return cast(u32)key.boolean
         case .Number:   return hash_f64(key.number)
         case .String:   return key.ostring.hash
         case .Table:    return hash_pointer(key.table)
         }
-        unreachable()
+        unreachable("Cannot hash type %v", key.type)
     }
 
     wrap  := cast(u32)len(entries)
@@ -131,7 +131,7 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
             return entry
         }
     }
-    unreachable()
+    unreachable("How did you even get here?")
 }
 
 

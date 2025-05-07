@@ -1,25 +1,25 @@
 #+private
 package lulu
 
-SIZE_B      :: 9
-SIZE_C      :: 9
-SIZE_A      :: 8
-SIZE_BC     :: SIZE_B + SIZE_C      // 9 + 9 = 18
-SIZE_OP     :: 6
+SIZE_B  :: 9
+SIZE_C  :: 9
+SIZE_A  :: 8
+SIZE_OP :: 6
+SIZE_Bx :: SIZE_B + SIZE_C      // 9 + 9 = 18
 
-MAX_B       :: 1<<SIZE_B  - 1       // 1<<9 - 1  = 0b1_1111_1111
-MAX_C       :: 1<<SIZE_C  - 1       // 1<<9 - 1  = 0b1_1111_1111
-MAX_uBC     :: 1<<SIZE_BC - 1       // 1<<18 - 1 = 0b11_1111_1111_1111_1111
-MAX_A       :: 1<<SIZE_A  - 1       // 1<<8 - 1  = 0b1111_1111
-MAX_sBC     :: 1<<(SIZE_BC - 1) - 1 // 1<<(18 - 1) -1 = 0b1_1111_1111_1111_111
-MAX_OP      :: 1<<SIZE_OP - 1       // (1 << 6)  - 1 = 0b0011_1111
+MAX_B   :: (1 << SIZE_B)  - 1       // 1<<9 - 1  = 0b1_1111_1111
+MAX_C   :: (1 << SIZE_C)  - 1       // 1<<9 - 1  = 0b1_1111_1111
+MAX_A   :: (1 << SIZE_A)  - 1       // 1<<8 - 1    = 0b1111_1111
+MAX_OP  :: (1 << SIZE_OP) - 1       // (1 << 6)  - 1 = 0b0011_1111
+MAX_Bx  :: (1 << SIZE_Bx) - 1       // 1<<18 - 1 = 0b11_1111_1111_1111_1111
+MAX_sBx :: (1 << (SIZE_Bx - 1)) - 1 // 1<<(18 - 1) - 1 = 0b1_1111_1111_1111_111
 
 // Starting bit indexes.
-OFFSET_B    :: OFFSET_C  + SIZE_C   // 14 + 9 = 23
-OFFSET_C    :: OFFSET_A  + SIZE_A   // 6  + 8 = 14
-OFFSET_BC   :: OFFSET_C             //        = 14
-OFFSET_A    :: OFFSET_OP + SIZE_OP  // 0 + 6  = 6
-OFFSET_OP   :: 0
+OFFSET_B  :: OFFSET_C  + SIZE_C   // 14 + 9 = 23
+OFFSET_C  :: OFFSET_A  + SIZE_A   // 6  + 8 = 14
+OFFSET_A  :: OFFSET_OP + SIZE_OP  // 0 + 6  = 6
+OFFSET_OP :: 0
+OFFSET_Bx :: OFFSET_C             //        = 14
 
 /*
 - Format:
@@ -116,12 +116,11 @@ Unm,           // A B   | Reg(A) := -Reg(B)
 Eq,            // A B C | Reg(A) := RK(B) == RK(C)
 Neq,           // A B C | Reg(A) := RK(B) ~= RK(C)
 Lt,            // A B C | Reg(A) := RK(B) <  RK(C)
-Gt,            // A B C | Reg(A) := RK(B) >  RK(C)
 Leq,           // A B C | Reg(A) := RK(B) <= RK(C)
-Geq,           // A B C | Reg(A) := RK(B) >= RK(C)
 Not,           // A B   | Reg(A) := not RK(B)
 Concat,        // A B C | Reg(A) := Reg(A) .. Reg(i) for B <= i <= C
 Len,           // A B   | Reg(A) := #Reg(B)
+Jump,          // sBx   | pc += sBx
 Return,        // A B C | return Reg(A), ... Reg(A + B)
 }
 
@@ -136,6 +135,14 @@ FIELDS_PER_FLUSH :: 50
 
 /* =============================================================================
 Notes:
+
+(*) Eq, Lt, Leq:
+    -   Following the Lua 5.1.5 implementation, Argument A represents a boolean
+        condition to determine how to interpret the result of the comparison.
+    -   If A == 1, then comparison is kept as-is.
+    -   If A == 0, then the comparison is inverted.
+    -   The `pc++` business is because we expect the emit `.Load_Boolean` twice.
+    -   These instructions do not modify registers by themselves.
 
 (*) Return:
     -   If C == 1, then return up to the current stack frame top (exclusive).
@@ -202,10 +209,11 @@ opcode_info := [OpCode]OpCode_Info {
 .Print          = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
 .Add ..= .Pow   = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
 .Unm            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
-.Eq ..= .Geq    = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
+.Eq ..= .Leq    = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
 .Not            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
 .Concat         = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Reg_Jump},
 .Len            = {type = .Separate,    a = true,  b = .Reg_Const, c = .Unused},
+.Jump           = {type = .Signed_Bx,   a = false, b = .Reg_Jump,  c = .Unused},
 .Return         = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 }
 
@@ -215,39 +223,47 @@ opcode_info := [OpCode]OpCode_Info {
 REG_BIT_RK   :: 1 << (SIZE_B - 1)
 MAX_INDEX_RK :: REG_BIT_RK - 1
 
-reg_is_k :: #force_inline proc "contextless" (b_or_c: u16) -> bool {
-    return (b_or_c & REG_BIT_RK) != 0
+reg_is_k :: #force_inline proc "contextless" (bc: u16) -> bool {
+    return (bc & REG_BIT_RK) != 0
 }
 
-reg_get_k :: #force_inline proc "contextless" (b_or_c: u16) -> u16 {
-    return (b_or_c & ~cast(u16)REG_BIT_RK)
+reg_get_k :: #force_inline proc "contextless" (bc: u16) -> u16 {
+    return (bc & ~cast(u16)REG_BIT_RK)
 }
 
-reg_as_k :: #force_inline proc "contextless" (b_or_c: u16) -> u16 {
-    return b_or_c | REG_BIT_RK
+reg_as_k :: #force_inline proc "contextless" (bc: u16) -> u16 {
+    return bc | REG_BIT_RK
 }
 
 // This is kinda stupid
-ip_make_ABC :: #force_inline proc "contextless" (op: OpCode, a, b, c: u16) -> (inst: Instruction) {
-    inst.b  = b
-    inst.c  = c
-    inst.a  = a
-    inst.op = op
-    return inst
+ip_make_ABC :: #force_inline proc "contextless" (op: OpCode, a, b, c: u16) -> Instruction {
+    return Instruction{b = b, c = c, a = a, op = op}
 }
 
-ip_make_ABx :: #force_inline proc "contextless" (op: OpCode, a: u16, bc: u32) -> (inst: Instruction) {
-    inst.b  = cast(u16)(bc >> SIZE_C) // shift out 'c' bits
-    inst.c  = cast(u16)(bc & MAX_C)   // remove 'b' bits
-    inst.a  = a
-    inst.op = op
-    return inst
+ip_make_ABx :: #force_inline proc "contextless" (op: OpCode, a: u16, bx: u32) -> Instruction {
+    return {
+        b  = u16(bx >> SIZE_C), // shift out upper 'c' bits for arg B
+        c  = u16(bx & MAX_C),   // remove lower 'b' bits for arg C
+        a  = a,
+        op = op,
+    }
 }
 
-ip_get_Bx :: #force_inline proc "contextless" (inst: Instruction) -> (bc: u32) {
-    bc |= cast(u32)inst.b << OFFSET_B
-    bc |= cast(u32)inst.c
-    return bc
+ip_get_Bx :: #force_inline proc "contextless" (ip: Instruction) -> u32 {
+    return (u32(ip.b) << OFFSET_B) | u32(ip.c)
+}
+
+ip_get_sBx :: #force_inline proc "contextless" (ip: Instruction) -> (sbx: int) {
+    return int(ip_get_Bx(ip)) - MAX_sBx
+}
+
+ip_set_Bx :: #force_inline proc "contextless" (ip: ^Instruction, bx: u32) {
+    ip.b = u16(bx >> SIZE_C) // shift out lower `c` bits for arg B
+    ip.c = u16(bx & MAX_C)   // remove upper `b` bits for arg C
+}
+
+ip_set_sBx :: #force_inline proc "contextless" (ip: ^Instruction, sbx: int) {
+    ip_set_Bx(ip, u32(sbx + MAX_sBx))
 }
 
 FB_MANTISSA_SIZE    :: 3

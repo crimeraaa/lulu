@@ -4,12 +4,6 @@ package lulu
 import "core:fmt"
 import sa "core:container/small_array"
 
-// Runtime Features
-USE_CONSTANT_FOLDING :: #config(USE_CONSTANT_FOLDING, !ODIN_DEBUG)
-
-// https://www.lua.org/source/5.1/luaconf.h.html#LUAI_MAXCCALLS
-PARSER_MAX_RECURSE :: 200
-
 Parser :: struct {
     vm:                 ^VM,
     lexer:               Lexer,
@@ -22,8 +16,9 @@ Parse_Rule :: struct {
     prec:          Precedence,
 }
 
+
 /*
-Links:
+**Links**
 -   https://www.lua.org/pil/3.5.html
 -   https://www.lua.org/manual/5.1/manual.html#2.5.6
  */
@@ -556,7 +551,7 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     case .String:
         index := compiler_add_constant(compiler, value_make(value.(^OString)))
         expr^ = expr_make(.Constant, index = index)
-    case: unreachable()
+    case: unreachable("Token type %v is not a literal", token.type)
     }
 }
 
@@ -849,16 +844,16 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         }
         // MUST be set to '.Number' in order to try constant folding.
         dummy := expr_make(.Number)
-        compiler_code_binary(compiler, .Unm, expr, &dummy)
+        compiler_code_arith(compiler, .Unm, expr, &dummy)
     case .Not:
         compiler_code_not(compiler, expr)
     case .Pound:
         // OpCode.Len CANNOT operate on constants no matter what.
         compiler_expr_any_reg(compiler, expr)
         dummy := expr_make(.Number)
-        compiler_code_binary(compiler, .Len, expr, &dummy)
+        compiler_code_arith(compiler, .Len, expr, &dummy)
     case:
-        unreachable()
+        unreachable("Token %v is not an unary operator", type)
     }
 }
 
@@ -867,38 +862,28 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 
 /*
 **Form**
--   binary     ::= binary_op expression
-    binary_op  ::= arith_op | compare_op
-    arith_op   ::= '+' | '-' | '*' | '/' | '%' | '^'
-    compare_op ::= '==' | '~=' | '<' | '>' | '<=' | '>='
+-   arith    ::= arith_op expression
+    arith_op ::= '+' | '-' | '*' | '/' | '%' | '^'
 
 **Notes**
 -   '..' is not included due to its unique semantics: neither arguments B nor C
     can be RK.
  */
 @(private="file")
-binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
+arith :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     type := parser.consumed.type
     op: OpCode
     #partial switch type {
     // Arithmetic
-    case .Plus:             op = .Add
-    case .Dash:             op = .Sub
-    case .Star:             op = .Mul
-    case .Slash:            op = .Div
-    case .Percent:          op = .Mod
-    case .Caret:            op = .Pow
-
-    // Comparison
-    case .Equals_2:         op = .Eq
-    case .Tilde_Eq:         op = .Neq
-    case .Left_Angle:       op = .Lt
-    case .Right_Angle:      op = .Gt
-    case .Left_Angle_Eq:    op = .Leq
-    case .Right_Angle_Eq:   op = .Geq
+    case .Plus:    op = .Add
+    case .Dash:    op = .Sub
+    case .Star:    op = .Mul
+    case .Slash:   op = .Div
+    case .Percent: op = .Mod
+    case .Caret:   op = .Pow
 
     // Misc.
-    case: unreachable()
+    case: fmt.panicf("Invalid binary operator %v", type)
     }
 
     if USE_CONSTANT_FOLDING {
@@ -935,8 +920,38 @@ binary :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     **Links**
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
      */
-    compiler_code_binary(compiler, op, left, &right)
+    compiler_code_arith(compiler, op, left, &right)
 }
+
+/*
+**Form**
+-   compare    ::= compare_op expression
+    compare_op ::= '==' | '<' | '<=' | '~=' | '>=' | '>'
+
+*/
+compare :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
+    type := parser.consumed.type
+    inverted := false
+    op: OpCode
+    #partial switch type {
+    case .Tilde_Eq:       op = .Neq
+    case .Equals_2:       op = .Eq
+
+    case .Right_Angle_Eq: inverted = true; fallthrough
+    case .Left_Angle:     op = .Lt
+
+    case .Right_Angle:    inverted = true; fallthrough
+    case .Left_Angle_Eq:  op = .Leq
+    case:
+        unreachable("Token %v is not a comparison operator", type)
+    }
+
+    compiler_expr_regconst(compiler, left)
+    prec  := get_rule(type).prec
+    right := parse_precedence(parser, compiler, prec)
+    compiler_code_compare(compiler, op, inverted, left, &right)
+}
+
 
 /*
 **Form**
@@ -984,14 +999,14 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Left_Curly = {prefix = constructor},
 
         // Arithmetic
-        .Dash       = {prefix = unary,      infix = binary,     prec = .Terminal},
-        .Plus       = {                     infix = binary,     prec = .Terminal},
-        .Star ..= .Percent = {              infix = binary,     prec = .Factor},
-        .Caret      = {                     infix = binary,     prec = .Exponent},
+        .Dash       = {prefix = unary,      infix = arith,     prec = .Terminal},
+        .Plus       = {                     infix = arith,     prec = .Terminal},
+        .Star ..= .Percent = {              infix = arith,     prec = .Factor},
+        .Caret      = {                     infix = arith,     prec = .Exponent},
 
         // Comparison
-        .Equals_2 ..= .Tilde_Eq = {         infix = binary,     prec = .Equality},
-        .Left_Angle ..= .Right_Angle_Eq = { infix = binary,     prec = .Comparison},
+        .Equals_2 ..= .Tilde_Eq = {         infix = compare, prec = .Equality},
+        .Left_Angle ..= .Right_Angle_Eq = { infix = compare, prec = .Comparison},
 
         // Other
         .Ellipsis_2 = {                     infix = concat,     prec = .Concat},

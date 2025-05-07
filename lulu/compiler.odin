@@ -2,13 +2,24 @@
 package lulu
 
 @require import "core:fmt"
+import "base:builtin"
 import "core:log"
 import sa "core:container/small_array"
 
 MAX_LOCALS    :: 200
-MAX_CONSTANTS :: MAX_uBC
+MAX_CONSTANTS :: MAX_Bx
+NO_JUMP       :: -1
 
 Active_Locals :: sa.Small_Array(MAX_LOCALS, u16)
+
+@cold
+unreachable :: #force_inline proc(format: string, args: ..any, location := #caller_location) -> ! {
+    when ODIN_DEBUG {
+        fmt.panicf(format, ..args, loc = location)
+    } else {
+        builtin.unreachable()
+    }
+}
 
 Compiler :: struct {
     // Indexes are local registers. Values are indexes into `chunk.locals[]` for
@@ -23,14 +34,16 @@ Compiler :: struct {
     scope_depth:     int,      // How far down is our current lexical scope?
     free_reg:        int,      // Index of the first free register.
     last_jump:       int,
+    list_jump:       int,      // List of pending chunks to `chunk.pc`.
     is_print:        bool,     // HACK(2025-04-09): until `print` is a global runtime function
 }
 
 compiler_init :: proc(compiler: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
-    compiler.vm     = vm
-    compiler.parser = parser
-    compiler.chunk  = chunk
-    compiler.last_jump = -1
+    compiler.vm        = vm
+    compiler.parser    = parser
+    compiler.chunk     = chunk
+    compiler.last_jump = NO_JUMP
+    compiler.list_jump = NO_JUMP
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
@@ -69,7 +82,6 @@ compiler_begin_scope :: proc(compiler: ^Compiler) {
  */
 compiler_end_scope :: proc(compiler: ^Compiler) {
     compiler.scope_depth -= 1
-    // vm     := compiler.vm
     chunk  := compiler.chunk
     depth  := compiler.scope_depth
     reg    := sa.len(compiler.active) - 1
@@ -210,7 +222,6 @@ expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
     // @todo 2025-01-06: Implement the rest as needed...
 
     // NOTE(2025-04-09): Seemingly redundant but useful when we get to jumps.
-    // expr.f = NO_JUMP; expr.t = NO_JUMP;
     expr^ = expr_make(.Discharged, reg = reg)
 }
 
@@ -267,7 +278,9 @@ discharge_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16, location :=
             compiler_code_ABC(compiler, .Move, reg, expr.reg, 0)
         }
     case:
-        assert(expr.type == .Empty)
+        // Nothing to do?
+        assert(expr.type == .Empty || expr.type == .Jump)
+        return
     }
     expr^ = expr_make(.Discharged, reg = reg)
 }
@@ -430,6 +443,11 @@ compiler_code_ABC :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> (pc:
     return compiler_code(compiler, ip_make_ABC(op, a, b, c))
 }
 
+compiler_code_AsBx :: proc(compiler: ^Compiler, op: OpCode, a: u16, sbx: int) -> (pc: int) {
+    assert(opcode_info[op].type == .Signed_Bx)
+    return compiler_code_ABx(compiler, op, a, u32(sbx + MAX_sBx))
+}
+
 compiler_code_AB :: proc(compiler: ^Compiler, op: OpCode, a, b: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
     assert(opcode_info[op].a)
@@ -553,7 +571,7 @@ compiler_code_not :: proc(compiler: ^Compiler, expr: ^Expr) {
         // Registers have runtime values so we can't necessarily fold them.
         case .Discharged, .Need_Register:
             break
-        case: unreachable()
+        case: unreachable("Cannot fold expression %v", expr.type)
         }
     }
     discharge_any_reg(compiler, expr)
@@ -569,16 +587,15 @@ compiler_code_not :: proc(compiler: ^Compiler, expr: ^Expr) {
 -   when `!USE_CONSTANT_FOLDING`, we expect that if `left` was a literal then
     we called `compiler_expr_regconst()` beforehand.
 -   Otherwise, the order of arguments will be reversed!
--   Comparison expressions of non-number-literals are NEVER folded, because
-    checking for equality or inequality is very involved especially when we have
-    to resolve constants.
+-   Comparison expressions are NEVER folded, because checking for equality or
+    inequality is very involved especially when we have to resolve constants.
 
 **Links**
 -   https://www.lua.org/source/5.1/lcode.c.html#codearith
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
  */
-compiler_code_binary :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
-    assert(.Add <= op && op <= .Unm || .Eq <= op && op <= .Geq || op == .Concat || op == .Len)
+compiler_code_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
+    assert(.Add <= op && op <= .Unm || op == .Concat || op == .Len)
     when USE_CONSTANT_FOLDING {
         if fold_numeric(op, left, right) {
             return
@@ -609,6 +626,86 @@ compiler_code_binary :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr
     left^ = expr_make(.Need_Register, pc = pc)
 }
 
+/*
+**Analogous to**
+-   `lcode.c:codecomp(FuncState *fs, OpCode op, int cond, expdesc *e1, expdesc *e2)`
+    in Lua 5.1.5.
+*/
+compiler_code_compare :: proc(compiler: ^Compiler, op: OpCode, inverted: bool, left, right: ^Expr) {
+    assert(.Eq <= op && op <= .Leq);
+    c := compiler_expr_regconst(compiler, right)
+    b := compiler_expr_regconst(compiler, left)
+
+    if b > c {
+        compiler_expr_pop(compiler, left^)
+        compiler_expr_pop(compiler, right^)
+    } else {
+        compiler_expr_pop(compiler, right^)
+        compiler_expr_pop(compiler, left^)
+    }
+
+    // Exchange arguments in `<` or `<=` to emulate `>=` or `>`, respectively.
+    if inverted && op != .Eq {
+        b, c = c, b
+    }
+
+    pc   := compiler_code_ABC(compiler, op, 0, b, c)
+    left^ = expr_make(.Need_Register, pc = pc)
+}
+
+compiler_jump_concat :: proc(compiler: ^Compiler, list1: ^int, list2: int) {
+    if list2 == NO_JUMP {
+        return
+    }
+
+    if list1^ == NO_JUMP {
+        list1^ = list2
+        return
+    }
+
+    pc := list1^
+    next := get_jump(compiler, pc)
+    // Find the last element.
+    for next != NO_JUMP {
+        pc   = next
+        next = get_jump(compiler, pc)
+    }
+
+    fix_jump(compiler, pc, list2)
+}
+
+
+/*
+**Analogous to**
+-   `lcode.c:getjump(FuncState *fs, int pc)` in Lua 5.1.5.
+*/
+@(private="file")
+get_jump :: proc(compiler: ^Compiler, pc: int) -> int {
+    offset := ip_get_sBx(compiler.chunk.code[pc])
+    // If points to self, then represents end of jump list.
+    if offset == NO_JUMP {
+        return NO_JUMP
+    }
+    // Convert offset into absolute position.
+    return (pc + 1) + offset
+}
+
+
+/*
+**Analogous to**
+-   `lcode.c:fixjump(FuncState *fs, int pc, int dest)` in Lua 5.1.5.
+*/
+@(private="file")
+fix_jump :: proc(compiler: ^Compiler, pc, dst: int) {
+    jump := &compiler.chunk.code[pc]
+    offset := dst - (pc + 1)
+    assert(dst != NO_JUMP)
+    if abs(offset) > MAX_sBx {
+        parser_error_consumed(compiler.parser, "control structure too long")
+    }
+    ip_set_sBx(jump, offset)
+}
+
 
 /*
 **Links**
@@ -630,7 +727,7 @@ compiler_code_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
     }
     // This is the first in a potential chain of concats.
     compiler_expr_next_reg(compiler, right)
-    compiler_code_binary(compiler, .Concat, left, right)
+    compiler_code_arith(compiler, .Concat, left, right)
 }
 
 
@@ -649,7 +746,7 @@ fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     }
 
     x, y: f64 = left.number, right.number
-    result: union #no_nil {f64, bool}
+    result: f64
     #partial switch op {
     // Arithmetic
     case .Add:  result = number_add(x, y)
@@ -670,32 +767,16 @@ fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     case .Pow:  result = number_pow(x, y)
     case .Unm:  result = number_unm(x)
 
-    // Comparison
-    case .Eq:   result = number_eq(x, y)
-    case .Neq:  result = !number_eq(x, y)
-    case .Lt:   result = number_lt(x, y)
-    case .Leq:  result = number_leq(x, y)
-    case .Gt:   result = number_gt(x, y)
-    case .Geq:  result = number_geq(x, y)
-
     // Cannot optimize concat at compile-time due to string conversion
     case .Concat, .Len: return false
-    case: unreachable()
+    case: unreachable("Cannot fold opcode %v", op)
     }
 
-    switch value in result {
-    case f64:
-        if number_is_nan(value) {
-            return false
-        }
-        left^ = expr_make(.Number, value)
-        return true
-    case bool:
-        left^ = expr_make(.True if value else .False)
-        return true
-    case:
-        unreachable()
+    if number_is_nan(result) {
+        return false
     }
+    left^ = expr_make(.Number, result)
+    return true
 }
 
 
@@ -795,7 +876,7 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
         value := compiler_expr_regconst(compiler, expr)
         compiler_code_ABC(compiler, .Set_Table, table, key, value)
     case:
-        fmt.panicf("Invalid variable kind %v", var.type)
+        unreachable("Invalid variable kind %v", var.type)
     }
     // If `expr` ended up as a non-local register, reuse its register
     compiler_expr_pop(compiler, expr^)
