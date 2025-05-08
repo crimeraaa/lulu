@@ -398,7 +398,10 @@ vm_execute :: proc(vm: ^VM) {
             case:
                 debug_type_error(vm, rb, "get length of")
             }
-
+        case .Test:
+            if !value_is_falsy(ra^) == bool(ip.c) {
+                vm.pc = ptr_offset(vm.pc, 1)
+            }
         case .Jump:
             offset := ip_get_sBx(ip)
             vm.pc = ptr_offset(vm.pc, offset)

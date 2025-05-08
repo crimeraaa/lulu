@@ -25,25 +25,25 @@ Compiler :: struct {
     // Indexes are local registers. Values are indexes into `chunk.locals[]` for
     // information like identifiers and depth.
     // See `lparser.h:LexState::actvar[]`.
-    active:          Active_Locals,
-    count:           struct {constants, locals: int},
-    vm:             ^VM,
-    parent:         ^Compiler, // Enclosing state.
-    parser:         ^Parser,   // All nested compilers share the same parser.
-    chunk:          ^Chunk,    // Compilers do not own their chunks. They merely fill them.
-    scope_depth:     int,      // How far down is our current lexical scope?
-    free_reg:        int,      // Index of the first free register.
-    last_jump:       int,
-    list_jump:       int,      // List of pending chunks to `chunk.pc`.
-    is_print:        bool,     // HACK(2025-04-09): until `print` is a global runtime function
+    active:      Active_Locals,
+    count:       struct {constants, locals: int},
+    vm:         ^VM,
+    parent:     ^Compiler, // Enclosing state.
+    parser:     ^Parser,   // All nested compilers share the same parser.
+    chunk:      ^Chunk,    // Compilers do not own their chunks. They merely fill them.
+    scope_depth: int,      // How far down is our current lexical scope?
+    free_reg:    int,      // Index of the first free register.
+    last_target: int,      // pc of the last jump target. See `FuncState::lasttarget`.
+    list_jump:   int,      // List of pending chunks to `chunk.pc`. See `FuncState::jpc`.
+    is_print:    bool,     // HACK(2025-04-09): until `print` is a global runtime function
 }
 
 compiler_init :: proc(compiler: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
-    compiler.vm        = vm
-    compiler.parser    = parser
-    compiler.chunk     = chunk
-    compiler.last_jump = NO_JUMP
-    compiler.list_jump = NO_JUMP
+    compiler.vm           = vm
+    compiler.parser      = parser
+    compiler.chunk       = chunk
+    compiler.last_target = NO_JUMP
+    compiler.list_jump   = NO_JUMP
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
@@ -397,7 +397,7 @@ compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
     pc    := chunk.pc
 
     // No jumps to current position?
-    if pc > compiler.last_jump {
+    if pc > compiler.last_target {
         // Function start and positions already clean?
         if pc == 0 && !compiler.is_print && cast(int)reg >= sa.len(compiler.active) {
             return
@@ -440,25 +440,24 @@ compiler_code_return :: proc(compiler: ^Compiler, reg, nret: u16) {
 
 compiler_code_ABC :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
-    return compiler_code(compiler, ip_make_ABC(op, a, b, c))
-}
-
-compiler_code_AsBx :: proc(compiler: ^Compiler, op: OpCode, a: u16, sbx: int) -> (pc: int) {
-    assert(opcode_info[op].type == .Signed_Bx)
-    return compiler_code_ABx(compiler, op, a, u32(sbx + MAX_sBx))
+    return compiler_code(compiler, ip_make(op, a, b, c))
 }
 
 compiler_code_AB :: proc(compiler: ^Compiler, op: OpCode, a, b: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
     assert(opcode_info[op].a)
     assert(opcode_info[op].b != .Unused)
-    return compiler_code(compiler, ip_make_ABC(op, a, b, 0))
+    return compiler_code(compiler, ip_make(op, a, b, c = 0))
 }
 
 compiler_code_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32) -> (pc: int) {
-    assert(opcode_info[op].type == .Unsigned_Bx || opcode_info[op].type == .Signed_Bx)
-    assert(opcode_info[op].c == .Unused)
-    return compiler_code(compiler, ip_make_ABx(op, reg, index))
+    assert(opcode_info[op].type == .Unsigned_Bx && opcode_info[op].c == .Unused)
+    return compiler_code(compiler, ip_make(op, a = reg, bx = index))
+}
+
+compiler_code_AsBx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, jump: int) -> (pc: int) {
+    assert(opcode_info[op].type == .Signed_Bx && opcode_info[op].c == .Unused)
+    return compiler_code(compiler, ip_make(op, a = reg, sbx = jump))
 }
 
 /*
@@ -490,7 +489,7 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
     if index >= MAX_CONSTANTS {
         buf: [64]byte
         msg := fmt.bprintf(buf[:], "More than %i constants", MAX_CONSTANTS)
-        parser_error_consumed(compiler.parser, msg)
+        parser_error(compiler.parser, msg)
     }
     return index
 }
@@ -653,60 +652,6 @@ compiler_code_compare :: proc(compiler: ^Compiler, op: OpCode, inverted: bool, l
     left^ = expr_make(.Need_Register, pc = pc)
 }
 
-compiler_jump_concat :: proc(compiler: ^Compiler, list1: ^int, list2: int) {
-    if list2 == NO_JUMP {
-        return
-    }
-
-    if list1^ == NO_JUMP {
-        list1^ = list2
-        return
-    }
-
-    pc := list1^
-    next := get_jump(compiler, pc)
-    // Find the last element.
-    for next != NO_JUMP {
-        pc   = next
-        next = get_jump(compiler, pc)
-    }
-
-    fix_jump(compiler, pc, list2)
-}
-
-
-/*
-**Analogous to**
--   `lcode.c:getjump(FuncState *fs, int pc)` in Lua 5.1.5.
-*/
-@(private="file")
-get_jump :: proc(compiler: ^Compiler, pc: int) -> int {
-    offset := ip_get_sBx(compiler.chunk.code[pc])
-    // If points to self, then represents end of jump list.
-    if offset == NO_JUMP {
-        return NO_JUMP
-    }
-    // Convert offset into absolute position.
-    return (pc + 1) + offset
-}
-
-
-/*
-**Analogous to**
--   `lcode.c:fixjump(FuncState *fs, int pc, int dest)` in Lua 5.1.5.
-*/
-@(private="file")
-fix_jump :: proc(compiler: ^Compiler, pc, dst: int) {
-    jump := &compiler.chunk.code[pc]
-    offset := dst - (pc + 1)
-    assert(dst != NO_JUMP)
-    if abs(offset) > MAX_sBx {
-        parser_error_consumed(compiler.parser, "control structure too long")
-    }
-    ip_set_sBx(jump, offset)
-}
-
-
 /*
 **Links**
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
@@ -821,7 +766,7 @@ compiler_code_set_array :: proc(compiler: ^Compiler, reg: u16, total, to_store: 
     if c <= MAX_C {
         compiler_code_ABC(compiler, .Set_Array, reg, b, cast(u16)c)
     } else {
-        parser_error_consumed(compiler.parser,
+        parser_error(compiler.parser,
             ".Set_Array with > MAX_C offset is not yet supported")
         // Actual value of C is found in the next "instruction"
         // compiler_code_ABC(compiler, .Set_Array, reg, b, 0)
@@ -881,5 +826,41 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
     // If `expr` ended up as a non-local register, reuse its register
     compiler_expr_pop(compiler, expr^)
 }
+
+///=== }}} =====================================================================
+
+///=== JUMP MANIPULATION =================================================== {{{
+
+
+compiler_code_test :: proc(compiler: ^Compiler, cond: ^Expr, skip_cond: bool) {
+    ra := compiler_expr_any_reg(compiler, cond)
+    compiler_code_ABC(compiler, .Test, ra, 0, 1 if skip_cond else 0)
+}
+
+/*
+**Analogous to**
+-   `compiler.c:emitJump(uint8_t instruction)` in Crafting Interpreters, Chapter 23.1.
+
+**Returns**
+-   The index of our jump instruction in the current chunk's code.
+*/
+compiler_code_jump :: proc(compiler: ^Compiler) -> (jump_pc: int) {
+    return compiler_code_AsBx(compiler, .Jump, 0, MAX_sBx + 1)
+}
+
+/*
+**Analogous to**
+-   `compiler.c:patchJump(int offset)` in Crafting Interpreters, Chapter 23.1.
+*/
+compiler_patch_jump :: proc(compiler: ^Compiler, jump_pc: int) {
+    chunk  := compiler.chunk
+    ip     := &chunk.code[jump_pc]
+    offset := chunk.pc - jump_pc - 1
+    if !(-MAX_sBx <= offset && offset <= MAX_sBx) {
+        parser_error(compiler.parser, "Jump too large")
+    }
+    ip_set_sBx(ip, offset)
+}
+
 
 ///=== }}} =====================================================================

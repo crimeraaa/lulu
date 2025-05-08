@@ -1,27 +1,23 @@
 local x = true
-print("if-true:");
 if x then
-    print("yay");
+    print("success(1)");
 end;
 
-print("if-false:")
 x = false
 if x then
-    print("yay");
+    print("wrong(2)");
 end;
 
-print("if-true-else")
 x = true
 if x then
-    print("yay");
+    print("success(3)");
 else
-    print("nay");
+    print("wrong(3)");
 end;
 
-print("if-false-else");
 x = false
 if x then
-    print("yay");
+    print("wrong(4)");
 else
-    print("nay");
+    print("success(4)");
 end;

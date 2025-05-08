@@ -56,10 +56,19 @@ void luaK_nil (FuncState *func, int from, int n) {
 }
 
 
+/**
+ * @note 2025-05-08
+ *  - Concept check: what *is* a jump list? How does it work?
+ *
+ * @returns
+ *  - The pc of `OP_JUMP` we just emitted.
+ */
 int luaK_jump (FuncState *func) {
   int jpc = func->jpc;  /* save list of jumps to here */
   int j;
   func->jpc = NO_JUMP;
+
+  /* the 'root' jump will always be NO_JUMP to indicate start of list */
   j = luaK_codeAsBx(func, OP_JMP, 0, NO_JUMP);
   luaK_concat(func, &j, jpc);  /* keep them on hold */
   return j;
@@ -71,6 +80,11 @@ void luaK_ret (FuncState *func, int first, int nret) {
 }
 
 
+/**
+ * @brief 2025-05-08
+ *  Emits `op` with its arguments as normal, but also emits `OP_JUMP`
+ *  immediately afterward.
+ */
 static int condjump (FuncState *func, OpCode op, int A, int B, int C) {
   luaK_codeABC(func, op, A, B, C);
   return luaK_jump(func);
@@ -184,9 +198,14 @@ void luaK_patchtohere (FuncState *func, int list) {
 
 
 void luaK_concat (FuncState *func, int *l1, int l2) {
-  if (l2 == NO_JUMP) return;
-  else if (*l1 == NO_JUMP)
+  /* base case #1 (e.g. first jump) */
+  if (l2 == NO_JUMP) {
+    return;
+  }
+  /* base case #2 (e.g. assigning `*&expr->f` to `pc` in `luaK_goiftrue()`) */
+  else if (*l1 == NO_JUMP) {
     *l1 = l2;
+  }
   else {
     int list = *l1;
     int next;
@@ -546,7 +565,7 @@ static void invertjump (FuncState *func, Expr *expr) {
 }
 
 
-static int jumponcond (FuncState *func, Expr *expr, int cond) {
+static int jumponcond (FuncState *func, Expr *expr, bool cond) {
   if (expr->kind == Expr_Relocable) {
     Instruction ie = getcode(func, expr);
     if (GET_OPCODE(ie) == OP_NOT) {
@@ -561,6 +580,14 @@ static int jumponcond (FuncState *func, Expr *expr, int cond) {
 }
 
 
+/**
+ * @details 2025-05-08: Sample callstack
+ *  - lparser.c:statement(LexState *ls)
+ *  - lparser.c:if_stmt(LexState *ls, int line)
+ *  - lparser.c:test_then_block(LexState *ls)
+ *  - lparser.c:cond(LexState *ls)
+ *  - lcode.c:luaK_goiftrue(FuncState *fs, expdesc *e = cond:expr)
+ */
 void luaK_goiftrue (FuncState *func, Expr *expr) {
   int pc;  /* pc of last jump */
   luaK_dischargevars(func, expr);
@@ -568,7 +595,16 @@ void luaK_goiftrue (FuncState *func, Expr *expr) {
     case Expr_Constant:
     case Expr_Number:
     case Expr_True: {
-      pc = NO_JUMP;  /* always true; do nothing */
+      /**
+       * @note 2025-05-08
+       *  Always true hence we do nothing here. Even though `luaK_exp2rk()` can
+       *  add `false` and `nil` to the constants array, it is only called in the
+       *  middle of binary arithmetic logical/expressions.
+       *
+       *  So for conditions, it is safe to assume we never use falsy values from
+       *  the constants array.
+       */
+      pc = NO_JUMP;
       break;
     }
     case Expr_Jump: {
@@ -577,7 +613,7 @@ void luaK_goiftrue (FuncState *func, Expr *expr) {
       break;
     }
     default: {
-      pc = jumponcond(func, expr, 0);
+      pc = jumponcond(func, expr, false);
       break;
     }
   }
@@ -601,7 +637,7 @@ static void luaK_goiffalse (FuncState *func, Expr *expr) {
       break;
     }
     default: {
-      pc = jumponcond(func, expr, 1);
+      pc = jumponcond(func, expr, true);
       break;
     }
   }

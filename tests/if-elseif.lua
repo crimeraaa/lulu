@@ -1,10 +1,10 @@
-local x = false -- OP_FALSE ; push false
-if x --[[OP_GET_LOCAL 0, OP_TEST ]] then
-    print("yay")
-    -- OP_JUMP ; goto 'end'
+local x
+if x then
+    print("x is truthy")
 elseif x == false then
-    print("nay")
-    -- OP_JUMP ; goto 'end'
+    print("x is false")
+elseif x == nil then
+    print("x is nil")
 else
-    print("huh")
+    print("impossible(1)")
 end

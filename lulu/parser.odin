@@ -83,15 +83,19 @@ parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
 }
 
 parser_match :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
-    if parser.lookahead.type == expected {
+    if found = parser.lookahead.type == expected; found {
         parser_advance(parser)
-        return true
     }
-    return false
+    return found
 }
 
-parser_check :: proc(parser: ^Parser, expected: Token_Type) -> (found: bool) {
-    return parser.lookahead.type == expected
+parser_check :: proc(parser: ^Parser, expected: ..Token_Type) -> (found: bool) {
+    for type in expected {
+        if found = parser.lookahead.type == type; found {
+            return found
+        }
+    }
+    return found
 }
 
 LValue :: struct {
@@ -118,19 +122,21 @@ parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
         // consumed the 'identifier'. Also, Lua doesn't have a 'var' keyword.
         last := &LValue{variable = variable(parser, compiler)}
         if parser_match(parser, .Left_Paren) {
-            parser_error_consumed(parser, "Function calls not yet implemented")
+            parser_error(parser, "Function calls not yet implemented")
         } else {
             assignment(parser, compiler, last, 1)
         }
-    case .Print:
-        print_stmt(parser, compiler)
     case .Do:
         // active := sa.len(compiler.active)
         compiler_begin_scope(compiler)
-        block(parser, compiler)
+        do_block(parser, compiler)
         compiler_end_scope(compiler)
+    case .If:
+        if_stmt(parser, compiler)
     case .Local:
         local_stmt(parser, compiler)
+    case .Print:
+        print_stmt(parser, compiler)
     case:
         error_at(parser, parser.consumed, "Expected an expression")
     }
@@ -274,7 +280,7 @@ local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counte
             break
         }
         if local.ident == ident {
-            parser_error_consumed(parser, "Shadowing of local variable")
+            parser_error(parser, "Shadowing of local variable")
         }
     }
 
@@ -290,7 +296,7 @@ local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counte
     if active_reg >= MAX_LOCALS {
         buf: [64]byte
         msg := fmt.bprintf(buf[:], "More than %i local variables", MAX_LOCALS)
-        parser_error_consumed(parser, msg)
+        parser_error(parser, msg)
     }
     local_index := compiler_add_local(compiler, ident)
     sa.set(&compiler.active, index = active_reg, item = local_index)
@@ -365,13 +371,60 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
 }
 
 @(private="file")
-block :: proc(parser: ^Parser, compiler: ^Compiler) {
-    for !parser_check(parser, .End) && !parser_check(parser, .Eof) {
+do_block :: proc(parser: ^Parser, compiler: ^Compiler) {
+    for !parser_check(parser, .End, .Eof) {
         parser_parse(parser, compiler)
     }
     parser_consume(parser, .End)
 }
 
+
+/*
+**Form**
+```
+if_stmt ::= 'if' expression 'then' block 'end'
+```
+*/
+@(private="file")
+if_stmt :: proc(parser: ^Parser, compiler: ^Compiler, recursive := false) {
+    if_cond :: proc(parser: ^Parser, compiler: ^Compiler) -> (jump_pc: int) {
+        expr := expression(parser, compiler)
+        parser_consume(parser, .Then)
+
+        // If condition is true, skip the jump
+        compiler_code_test(compiler, &expr, true)
+        return compiler_code_jump(compiler)
+    }
+
+    then_block :: proc(parser: ^Parser, compiler: ^Compiler) {
+        for !parser_check(parser, .Else, .Elseif, .End, .Eof) {
+            parser_parse(parser, compiler)
+        }
+    }
+
+    // Unconditional jump which pushes through when the test fails.
+    then_jump := if_cond(parser, compiler)
+    then_block(parser, compiler)
+
+    // Unconditional jump to skip a potential 'else' block.
+    else_jump := compiler_code_jump(compiler)
+    compiler_patch_jump(compiler, then_jump)
+
+    // TODO(2025-05-08): Don't use recursion for `elseif` implementation!
+    // Try to understand and reimplment Lua's "jump lists".
+    if parser_match(parser, .Elseif) {
+        if_stmt(parser, compiler, true)
+    } else if parser_match(parser, .Else) {
+        then_block(parser, compiler)
+    }
+
+    // Ensure that recursive cases ('elseif') jumps to 'end' properly.
+    compiler_patch_jump(compiler, else_jump)
+
+    if !recursive {
+        parser_consume(parser, .End)
+    }
+}
 
 /*
 **Notes**
@@ -458,7 +511,7 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence)
     parser_advance(parser)
     prefix := get_rule(parser.consumed.type).prefix
     if prefix == nil {
-        parser_error_consumed(parser, "Expected an expression")
+        parser_error(parser, "Expected an expression")
     }
 
     // Prefix expressions are always the "root" node. We don't know if we're in
@@ -494,7 +547,7 @@ parser_error_lookahead :: proc(parser: ^Parser, msg: string) -> ! {
 **Analogous to**
 -   'compiler.c:error()' in the book.
  */
-parser_error_consumed :: proc(parser: ^Parser, msg: string) -> ! {
+parser_error :: proc(parser: ^Parser, msg: string) -> ! {
     error_at(parser, parser.consumed, msg)
 }
 
@@ -531,7 +584,7 @@ grouping :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
 parser_recurse_begin :: proc(parser: ^Parser) {
     parser.recurse += 1
     if parser.recurse >= PARSER_MAX_RECURSE {
-        parser_error_consumed(parser, "Too many syntax levels")
+        parser_error(parser, "Too many syntax levels")
     }
 }
 
@@ -615,7 +668,7 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
             key := field_name(parser, compiler)
             compiler_code_indexed(compiler, &var, &key)
         case .Colon:
-            parser_error_consumed(parser, "':' syntax not yet supported")
+            parser_error(parser, "':' syntax not yet supported")
         case:
             parser_backtrack(parser, prev)
             break table_fields
@@ -823,6 +876,10 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
  */
 @(private="file")
 unary :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
+    // MUST be set to '.Number' in order to try constant folding.
+    @(static)
+    dummy := Expr{type = .Number}
+
     type := parser.consumed.type
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
@@ -851,15 +908,12 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
             // If nested (e.g. `-(-x)`) reuse the register we stored `x` in
             compiler_expr_any_reg(compiler, &expr)
         }
-        // MUST be set to '.Number' in order to try constant folding.
-        dummy := expr_make(.Number)
         compiler_code_arith(compiler, .Unm, &expr, &dummy)
     case .Not:
         compiler_code_not(compiler, &expr)
     case .Pound:
         // OpCode.Len CANNOT operate on constants no matter what.
         compiler_expr_any_reg(compiler, &expr)
-        dummy := expr_make(.Number)
         compiler_code_arith(compiler, .Len, &expr, &dummy)
     case:
         unreachable("Token %v is not an unary operator", type)

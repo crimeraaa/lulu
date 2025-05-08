@@ -7,19 +7,12 @@ SIZE_A  :: 8
 SIZE_OP :: 6
 SIZE_Bx :: SIZE_B + SIZE_C      // 9 + 9 = 18
 
-MAX_B   :: (1 << SIZE_B)  - 1       // 1<<9 - 1  = 0b1_1111_1111
-MAX_C   :: (1 << SIZE_C)  - 1       // 1<<9 - 1  = 0b1_1111_1111
-MAX_A   :: (1 << SIZE_A)  - 1       // 1<<8 - 1    = 0b1111_1111
+MAX_B   :: (1 << SIZE_B)  - 1       // 1<<9 - 1      = 0b1_1111_1111
+MAX_C   :: (1 << SIZE_C)  - 1       // 1<<9 - 1      = 0b1_1111_1111
+MAX_A   :: (1 << SIZE_A)  - 1       // 1<<8 - 1      = 0b1111_1111
 MAX_OP  :: (1 << SIZE_OP) - 1       // (1 << 6)  - 1 = 0b0011_1111
-MAX_Bx  :: (1 << SIZE_Bx) - 1       // 1<<18 - 1 = 0b11_1111_1111_1111_1111
-MAX_sBx :: (1 << (SIZE_Bx - 1)) - 1 // 1<<(18 - 1) - 1 = 0b1_1111_1111_1111_111
-
-// Starting bit indexes.
-OFFSET_B  :: OFFSET_C  + SIZE_C   // 14 + 9 = 23
-OFFSET_C  :: OFFSET_A  + SIZE_A   // 6  + 8 = 14
-OFFSET_A  :: OFFSET_OP + SIZE_OP  // 0 + 6  = 6
-OFFSET_OP :: 0
-OFFSET_Bx :: OFFSET_C             //        = 14
+MAX_Bx  :: (1 << SIZE_Bx) - 1       // 1<<18 - 1     = 0b11_1111_1111_1111_1111
+MAX_sBx :: MAX_Bx >> 1              //               = 0b1_1111_1111_1111_111
 
 /*
 - Format:
@@ -120,6 +113,7 @@ Leq,           // A B C | Reg(A) := RK(B) <= RK(C)
 Not,           // A B   | Reg(A) := not RK(B)
 Concat,        // A B C | Reg(A) := Reg(A) .. Reg(i) for B <= i <= C
 Len,           // A B   | Reg(A) := #Reg(B)
+Test,          // A   C | if (Bool(Reg(A)) == Bool(C)) then pc++
 Jump,          // sBx   | pc += sBx
 Return,        // A B C | return Reg(A), ... Reg(A + B)
 }
@@ -213,6 +207,7 @@ opcode_info := [OpCode]OpCode_Info {
 .Not            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
 .Concat         = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Reg_Jump},
 .Len            = {type = .Separate,    a = true,  b = .Reg_Const, c = .Unused},
+.Test           = {type = .Separate,    a = false, b = .Unused,    c = .Used},
 .Jump           = {type = .Signed_Bx,   a = false, b = .Reg_Jump,  c = .Unused},
 .Return         = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 }
@@ -235,7 +230,12 @@ reg_as_k :: #force_inline proc "contextless" (bc: u16) -> u16 {
     return bc | REG_BIT_RK
 }
 
-// This is kinda stupid
+ip_make :: proc {
+    ip_make_ABC,
+    ip_make_ABx,
+    ip_make_AsBx,
+}
+
 ip_make_ABC :: #force_inline proc "contextless" (op: OpCode, a, b, c: u16) -> Instruction {
     return Instruction{b = b, c = c, a = a, op = op}
 }
@@ -249,12 +249,21 @@ ip_make_ABx :: #force_inline proc "contextless" (op: OpCode, a: u16, bx: u32) ->
     }
 }
 
-ip_get_Bx :: #force_inline proc "contextless" (ip: Instruction) -> u32 {
-    return (u32(ip.b) << OFFSET_B) | u32(ip.c)
+ip_make_AsBx :: #force_inline proc "contextless" (op: OpCode, a: u16, sbx: int) -> Instruction {
+    return ip_make_ABx(op, a, u32(sbx + MAX_sBx))
+}
+
+ip_get_Bx :: #force_inline proc "contextless" (ip: Instruction) -> (bx: u32) {
+    // NOTE(2025-05-08): Since we're dealing with bit fields rather than raw
+    // unsigned integers, we don't need to use the bit index offset.
+    b := u32(ip.b) << SIZE_B
+    c := u32(ip.c)
+    return b | c
 }
 
 ip_get_sBx :: #force_inline proc "contextless" (ip: Instruction) -> (sbx: int) {
-    return int(ip_get_Bx(ip)) - MAX_sBx
+    bx := ip_get_Bx(ip)
+    return int(bx) - MAX_sBx
 }
 
 ip_set_Bx :: #force_inline proc "contextless" (ip: ^Instruction, bx: u32) {
@@ -267,11 +276,11 @@ ip_set_sBx :: #force_inline proc "contextless" (ip: ^Instruction, sbx: int) {
 }
 
 FB_MANTISSA_SIZE    :: 3
-FB_MANTISSA_MASK    :: 0b0000_0111
-FB_MANTISSA_IMPLIED :: 0b0000_1000
+FB_MANTISSA_IMPLIED :: 1 << FB_MANTISSA_SIZE    // 0b0000_1000
+FB_MANTISSA_MASK    :: FB_MANTISSA_IMPLIED - 1  // 0b0000_0111
 
 FB_EXPONENT_SIZE    :: 5
-FB_EXPONENT_MASK    :: 0b0001_1111
+FB_EXPONENT_MASK    :: (1 << FB_MANTISSA_SIZE) - 1 // 0b0001_1111
 
 /*
 Overview:

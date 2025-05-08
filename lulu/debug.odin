@@ -125,7 +125,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
     case .Load_Boolean:
         print_reg(info, ip.a, " := %v", ip.b == 1)
         if ip.c == 1 {
-            fmt.print("; pc++")
+            fmt.print("; goto .code[%i]", index + 2)
         }
     case .Get_Global:
         key := chunk.constants[ip_get_Bx(ip)]
@@ -166,8 +166,11 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
         print_reg(info, ip.a, " := concat(Reg(%i..=%i))", ip.b, ip.c)
     case .Len:
         unary(info, "#")
+    case .Test:
+        fmt.print("if Bool(")
+        print_reg(info, ip.a, ") == %v then goto .code[%i]", bool(ip.c), index + 2)
     case .Jump:
-        fmt.printf("pc += %i", ip_get_sBx(ip))
+        fmt.printf("goto .code[%i]", index + 1 + ip_get_sBx(ip))
     case .Return:
         reg       := cast(int)ip.a
         n_results := cast(int)ip.b
@@ -336,8 +339,7 @@ debug_symbolic_execution :: proc(chunk: ^Chunk, lastpc: int, reg: u16) -> (i: In
             if ip.a <= reg && reg <= ip.b {
                 index = ip_index
             }
-        case .Get_Global: fallthrough
-        case .Set_Global:
+        case .Get_Global, .Set_Global:
             value_is_string(chunk.constants[ip_get_Bx(ip)]) or_return
         case .Concat:
             // Require at least 2 operands
