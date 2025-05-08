@@ -33,9 +33,7 @@ debug_dump_chunk :: proc(chunk: ^Chunk) {
         fmt.println("\n.const:")
         left_pad := math.count_digits_of_base(n, 10)
         for constant, index in chunk.constants {
-            fmt.printf("[%0*i] ", left_pad, index)
-            value_print(constant, .Debug)
-            fmt.println()
+            fmt.printfln("[%0*i] %d", left_pad, index, constant)
         }
     }
 
@@ -77,7 +75,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
         chunk := info.chunk
         if reg_is_k(reg) {
             index := cast(int)reg_get_k(reg)
-            value_print(chunk.constants[index], .Debug)
+            fmt.printf("%d", chunk.constants[index])
             return
         }
         if local, ok := chunk_get_local(chunk, cast(int)reg + 1, info.pc); ok {
@@ -121,13 +119,11 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
         print_reg(info, ip.b)
     case .Load_Constant:
         bc := ip_get_Bx(ip)
-        print_reg(info, ip.a, " := ")
-        value_print(chunk.constants[bc], .Debug)
+        print_reg(info, ip.a, " := %d", chunk.constants[bc])
     case .Load_Nil:
         fmt.printf("Reg(i) := nil for %i <= i <= %i", ip.a, ip.b)
     case .Load_Boolean:
-        print_reg(info, ip.a, " := ")
-        fmt.printf(" := %v", ip.b == 1)
+        print_reg(info, ip.a, " := %v", ip.b == 1)
         if ip.c == 1 {
             fmt.print("; pc++")
         }
@@ -293,7 +289,7 @@ debug_symbolic_execution :: proc(chunk: ^Chunk, lastpc: int, reg: u16) -> (i: In
             // Based on the C source, this one is quite tricky!
             panic("Signed_Bx not yet implemented")
         case:
-            fmt.panicf("Unknown %[0]t %[0]v", info.type)
+            unreachable("Unknown %[0]t %[0]v", info.type)
         }
     }
 

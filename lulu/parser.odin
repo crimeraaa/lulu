@@ -12,8 +12,9 @@ Parser :: struct {
 }
 
 Parse_Rule :: struct {
-    prefix, infix: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr),
-    prec:          Precedence,
+    prefix: proc(parser: ^Parser, compiler: ^Compiler) -> Expr,
+    infix:  proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr),
+    prec:   Precedence,
 }
 
 
@@ -113,10 +114,9 @@ parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
     parser_advance(parser)
     #partial switch parser.consumed.type {
     case .Identifier:
-        last := &LValue{}
         // Inline implementation of `compiler.c:parseVariable()` since we immediately
         // consumed the 'identifier'. Also, Lua doesn't have a 'var' keyword.
-        variable(parser, compiler, &last.variable)
+        last := &LValue{variable = variable(parser, compiler)}
         if parser_match(parser, .Left_Paren) {
             parser_error_consumed(parser, "Function calls not yet implemented")
         } else {
@@ -153,7 +153,7 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, n_vars: 
     // Don't call `variable()` for the first assignment because we did so already
     // to check for function calls.
     if n_vars > 1 {
-        variable(parser, compiler, &last.variable)
+        last.variable = variable(parser, compiler)
     }
 
     // Use recursive calls to create a stack-allocated linked list.
@@ -417,7 +417,7 @@ print_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
 @(private="file")
 expr_list :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr, count: int) {
     count = 1 // at least one expression
-    expr = expression(parser, compiler)
+    expr  = expression(parser, compiler)
     for parser_match(parser, .Comma) {
         compiler_expr_next_reg(compiler, &expr)
         expr = expression(parser, compiler)
@@ -451,7 +451,7 @@ expression :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr) {
 **Links**
 -   https://www.lua.org/source/5.1/lparser.c.html#subexpr
  */
-parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence) -> (expr: Expr) {
+parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence) -> Expr {
     parser_recurse_begin(parser)
     defer parser_recurse_end(parser)
 
@@ -460,8 +460,10 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence)
     if prefix == nil {
         parser_error_consumed(parser, "Expected an expression")
     }
-    prefix(parser, compiler, &expr)
 
+    // Prefix expressions are always the "root" node. We don't know if we're in
+    // a recursive call.
+    expr := prefix(parser, compiler)
     for {
         rule := get_rule(parser.lookahead.type)
         if prec > rule.prec {
@@ -470,6 +472,8 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence)
         // Can occur when we hardcode low precedence recursion in high precedence calls
         assert(rule.infix != nil)
         parser_advance(parser)
+
+        // Infix expressions are the actual branches.
         rule.infix(parser, compiler, &expr)
     }
 
@@ -518,9 +522,10 @@ error_at :: proc(parser: ^Parser, token: Token, msg: string) -> ! {
 -   grouping ::= '(' expression ')'
  */
 @(private="file")
-grouping :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
-    expr^ = expression(parser, compiler)
+grouping :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
+    expr := expression(parser, compiler)
     parser_consume(parser, .Right_Paren)
+    return expr
 }
 
 parser_recurse_begin :: proc(parser: ^Parser) {
@@ -540,18 +545,19 @@ parser_recurse_end :: proc(parser: ^Parser) {
 -   literal ::= 'nil' | 'true' | 'false' | NUMBER | STRING
  */
 @(private="file")
-literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+literal :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
     token := parser.consumed
     value := token.literal
     #partial switch token.type {
-    case .Nil:      expr^ = expr_make(.Nil)
-    case .True:     expr^ = expr_make(.True)
-    case .False:    expr^ = expr_make(.False)
-    case .Number:   expr^ = expr_make(.Number, value.(f64))
+    case .Nil:      return expr_make(.Nil)
+    case .True:     return expr_make(.True)
+    case .False:    return expr_make(.False)
+    case .Number:   return expr_make(.Number, value.(f64))
     case .String:
         index := compiler_add_constant(compiler, value_make(value.(^OString)))
-        expr^ = expr_make(.Constant, index = index)
-    case: unreachable("Token type %v is not a literal", token.type)
+        return expr_make(.Constant, index = index)
+    case:
+        unreachable("Token type %v is not a literal", token.type)
     }
 }
 
@@ -567,7 +573,7 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 -   See `lparser.c:singlevaraux(LexState *ls, TString *n, Expr *var, int (bool) base)`
  */
 @(private="file")
-variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
+variable :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
     /*
     **Overview**
     -   Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
@@ -575,16 +581,17 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
     **Notes** (2025-04-18):
     -   We don't call `ident_constant()` yet because we don't want
      */
-    ident := ostring_new(parser.vm, parser.consumed.lexeme)
-    local, ok := compiler_resolve_local(compiler, ident)
 
-    if ok {
-        var^ = expr_make(.Local, reg = local)
-    } else {
+    first_var :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
+        ident := ostring_new(parser.vm, parser.consumed.lexeme)
+        if local, ok := compiler_resolve_local(compiler, ident); ok {
+            return expr_make(.Local, reg = local)
+        }
         index := compiler_add_constant(compiler, value_make_string(ident))
-        var^ = expr_make(.Global, index = index)
+        return expr_make(.Global, index = index)
     }
 
+    var := first_var(parser, compiler)
     table_fields: for {
         prev := parser.consumed
         parser_advance(parser)
@@ -598,15 +605,15 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
             -   If it's a local then just reuse the register.
             -   If it's a constant then try to use RK, else push it.
              */
-            compiler_expr_any_reg(compiler, var)
+            compiler_expr_any_reg(compiler, &var)
             key := indexed(parser, compiler)
-            compiler_code_indexed(compiler, var, &key)
+            compiler_code_indexed(compiler, &var, &key)
         case .Period:
             // Same idea as in `.Left_Bracket` case.
-            compiler_expr_any_reg(compiler, var)
+            compiler_expr_any_reg(compiler, &var)
             parser_consume(parser, .Identifier)
             key := field_name(parser, compiler)
-            compiler_code_indexed(compiler, var, &key)
+            compiler_code_indexed(compiler, &var, &key)
         case .Colon:
             parser_error_consumed(parser, "':' syntax not yet supported")
         case:
@@ -614,6 +621,7 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler, var: ^Expr) {
             break table_fields
         }
     }
+    return var
 }
 
 /*
@@ -661,7 +669,7 @@ field_name :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
 -   See the `lparser.c:ConsControl` structure in Lua 5.1.5.
  */
 Constructor :: struct {
-    table: ^Expr, // table descriptor
+    table: Expr, // table descriptor
     count_array, count_hash: int,
     to_store: int, // number of array elements pending to be stored
 }
@@ -678,7 +686,7 @@ Constructor :: struct {
 -   The `{` token was just consumed.
  */
 @(private="file")
-constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
 
     /*
     **Analogous to**
@@ -733,11 +741,10 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
         compiler_expr_pop(compiler, key)
     }
 
-    ctor := &Constructor{table = expr}
     // All information is pending so just use 0's, we'll fix it later
     pc := compiler_code_ABC(compiler, .New_Table, 0, 0, 0)
-    ctor.table^ = expr_make(.Need_Register, pc = pc)
-    compiler_expr_next_reg(compiler, ctor.table)
+    ctor := &Constructor{table = expr_make(.Need_Register, pc = pc )}
+    compiler_expr_next_reg(compiler, &ctor.table)
 
     for !parser_match(parser, .Right_Curly) {
         /*
@@ -797,6 +804,8 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
     ip := &compiler.chunk.code[pc]
     ip.b = cast(u16)fb_from_int(ctor.count_array)
     ip.c = cast(u16)fb_from_int(ctor.count_hash)
+
+    return ctor.table
 }
 
 
@@ -813,11 +822,11 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
 -   For len, `expr` ends up as a register.
  */
 @(private="file")
-unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
+unary :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
     type := parser.consumed.type
 
     // Compile the operand. We know the first token of the operand is in the lookahead.
-    expr^ = parse_precedence(parser, compiler, .Unary)
+    expr := parse_precedence(parser, compiler, .Unary)
 
     /*
     **Links**
@@ -836,25 +845,27 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler, expr: ^Expr) {
             // Don't fold non-numeric constants (for arithmetic) or non-falsifiable
             // expressions (for comparison).
             if !(.Nil <= expr.type && expr.type <= .Number) {
-                compiler_expr_any_reg(compiler, expr)
+                compiler_expr_any_reg(compiler, &expr)
             }
         } else {
             // If nested (e.g. `-(-x)`) reuse the register we stored `x` in
-            compiler_expr_any_reg(compiler, expr)
+            compiler_expr_any_reg(compiler, &expr)
         }
         // MUST be set to '.Number' in order to try constant folding.
         dummy := expr_make(.Number)
-        compiler_code_arith(compiler, .Unm, expr, &dummy)
+        compiler_code_arith(compiler, .Unm, &expr, &dummy)
     case .Not:
-        compiler_code_not(compiler, expr)
+        compiler_code_not(compiler, &expr)
     case .Pound:
         // OpCode.Len CANNOT operate on constants no matter what.
-        compiler_expr_any_reg(compiler, expr)
+        compiler_expr_any_reg(compiler, &expr)
         dummy := expr_make(.Number)
-        compiler_code_arith(compiler, .Len, expr, &dummy)
+        compiler_code_arith(compiler, .Len, &expr, &dummy)
     case:
         unreachable("Token %v is not an unary operator", type)
     }
+
+    return expr
 }
 
 /// INFIX EXPRESSIONS
@@ -883,7 +894,7 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     case .Caret:   op = .Pow
 
     // Misc.
-    case: fmt.panicf("Invalid binary operator %v", type)
+    case: unreachable("Invalid binary operator %v", type)
     }
 
     if USE_CONSTANT_FOLDING {
@@ -909,7 +920,6 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
         prec += Precedence(1)
     }
 
-    // Compile the right-hand-side operand, filling in the details for 'right'.
     right := parse_precedence(parser, compiler, prec)
 
     /*
@@ -937,10 +947,12 @@ compare :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     case .Tilde_Eq:       op = .Neq
     case .Equals_2:       op = .Eq
 
-    case .Right_Angle_Eq: inverted = true; fallthrough
+    // (x > y) == (y < x)
+    case .Right_Angle:    inverted = true; fallthrough
     case .Left_Angle:     op = .Lt
 
-    case .Right_Angle:    inverted = true; fallthrough
+    // (x >= y) == (y <= x)
+    case .Right_Angle_Eq: inverted = true; fallthrough
     case .Left_Angle_Eq:  op = .Leq
     case:
         unreachable("Token %v is not a comparison operator", type)
@@ -999,17 +1011,23 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Left_Curly = {prefix = constructor},
 
         // Arithmetic
-        .Dash       = {prefix = unary,      infix = arith,     prec = .Terminal},
-        .Plus       = {                     infix = arith,     prec = .Terminal},
-        .Star ..= .Percent = {              infix = arith,     prec = .Factor},
-        .Caret      = {                     infix = arith,     prec = .Exponent},
+        .Plus       = {infix = arith, prec = .Terminal},
+        .Dash       = {prefix = unary, infix = arith, prec = .Terminal},
+        .Star       = {infix = arith, prec = .Factor},
+        .Slash      = {infix = arith, prec = .Factor},
+        .Percent    = {infix = arith, prec = .Factor},
+        .Caret      = {infix = arith, prec = .Exponent},
 
         // Comparison
-        .Equals_2 ..= .Tilde_Eq = {         infix = compare, prec = .Equality},
-        .Left_Angle ..= .Right_Angle_Eq = { infix = compare, prec = .Comparison},
+        .Equals_2       = {infix = compare, prec = .Equality},
+        .Tilde_Eq       = {infix = compare, prec = .Equality},
+        .Left_Angle     = {infix = compare, prec = .Comparison},
+        .Left_Angle_Eq  = {infix = compare, prec = .Comparison},
+        .Right_Angle    = {infix = compare, prec = .Comparison},
+        .Right_Angle_Eq = {infix = compare, prec = .Comparison},
 
         // Other
-        .Ellipsis_2 = {                     infix = concat,     prec = .Concat},
+        .Ellipsis_2 = {infix = concat, prec = .Concat},
         .Pound      = {prefix = unary},
 
         // Literals

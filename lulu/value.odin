@@ -26,13 +26,6 @@ Value_Type :: enum {
     Table,
 }
 
-Value_Print_Mode :: enum u8 {
-    Normal, // Prints the value as-is and prints a newline.
-    Debug,  // Same as .Normal, but surrounds strings with quotes.
-    Stack,  // Prints the value surrounded by square brackets. No newline.
-    Print,  // Don't print a newline. Prints a tab character after.
-}
-
 @(rodata)
 value_type_strings := [Value_Type]string {
     .Nil     = "nil",
@@ -160,8 +153,8 @@ value_is_table :: #force_inline proc "contextless" (a: Value) -> bool {
 }
 
 // Utility function because this is so common.
-value_to_string :: proc(a: Value) -> string {
-    assert(value_is_string(a))
+value_to_string :: #force_inline proc "contextless" (a: Value) -> string {
+    assert_contextless(value_is_string(a))
     return ostring_to_string(a.ostring)
 }
 
@@ -186,6 +179,7 @@ value_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
     value  := (cast(^Value)arg.data)^
     writer := info.writer
     switch verb {
+    // Normal
     case 'v':
         switch value.type {
         case .Nil:
@@ -195,7 +189,7 @@ value_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
         case .Number:
             info.n += fmt.wprintf(writer, "%.14g", value.number)
         case .String:
-            io.write_string(writer, value_to_string(value))
+            io.write_string(writer, value_to_string(value), &info.n)
         case .Table:
             type_name := value_type_name(value)
             pointer   := cast(rawptr)value.table
@@ -203,30 +197,24 @@ value_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
         case:
             unreachable("Unknown value type %v", value.type)
         }
-        return true
+
+    // Debug
+    case 'd':
+        if value_is_string(value) {
+            // Delegate to `ostring_formatter()`
+            info.n += fmt.wprintf(writer, "%q", value.ostring)
+        } else {
+            // Delegate to normal case
+            info.n += fmt.wprint(writer, value)
+        }
+
+    // Stack (not string!)
+    case 's':
+        // Delegate to Debug case
+        info.n += fmt.wprintf(writer, "\t[ %d ]", value)
+
     case:
         return false
     }
+    return true
 }
-
-value_print :: proc(value: Value, mode := Value_Print_Mode.Normal) {
-    switch mode {
-    case .Normal:
-        fmt.println(value)
-    case .Debug:
-        if value_is_string(value) {
-            fmt.printf("%q", value.ostring)
-        } else {
-            fmt.print(value)
-        }
-    case .Stack:
-        if value_is_string(value) {
-            fmt.printf("\t[ %q ]", value.ostring)
-        } else {
-            fmt.printf("\t[ %v ]", value)
-        }
-    case .Print:
-        fmt.print(value, '\t')
-    }
-}
-

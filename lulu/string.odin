@@ -34,38 +34,39 @@ Notes:
 -   These strings are compatible with C-style strings.
     However, extracting the cstring requires an unsafe cast.
  */
-ostring_new :: proc(vm: ^VM, input: string) -> (str: ^OString) {
+ostring_new :: proc(vm: ^VM, input: string) -> (ostring: ^OString) {
     if prev, ok := intern_get(&vm.interned, input); ok {
         return prev
     }
 
     len := len(input)
-    str  = object_new(OString, vm, len + 1)
-    str.hash = hash_string(input)
-    str.len  = len
+    ostring      = object_new(OString, vm, len + 1)
+    ostring.hash = hash_string(input)
+    ostring.len  = len
     #no_bounds_check {
-        copy(str.data[:len], input)
-        str.data[len] = 0
+        copy(ostring.data[:len], input)
+        ostring.data[len] = 0
     }
-    intern_set(&vm.interned, str)
-    return str
+    intern_set(&vm.interned, ostring)
+    return ostring
 }
 
-ostring_free :: proc(vm: ^VM, str: ^OString, location := #caller_location) {
+ostring_free :: proc(vm: ^VM, ostring: ^OString, location := #caller_location) {
     // We also allocated memory for the nul char for C compatibility.
-    mem.free_with_size(str, size_of(str^) + str.len + 1, vm.allocator, loc = location)
+    size := size_of(ostring^) + ostring.len + 1
+    mem.free_with_size(ostring, size, vm.allocator, loc = location)
 }
 
-ostring_to_string :: #force_inline proc "contextless" (str: ^OString) -> string {
+ostring_to_string :: #force_inline proc "contextless" (ostring: ^OString) -> string {
     #no_bounds_check {
-        return string(str.data[:str.len])
+        return string(ostring.data[:ostring.len])
     }
 }
 
-ostring_to_cstring :: #force_inline proc "contextless" (str: ^OString) -> cstring {
+ostring_to_cstring :: #force_inline proc "contextless" (ostring: ^OString) -> cstring {
     #no_bounds_check {
-        assert_contextless(str.data[str.len] == 0)
-        return cstring(cast([^]byte)&str.data)
+        assert_contextless(ostring.data[ostring.len] == 0)
+        return cstring(cast([^]byte)&ostring.data)
     }
 }
 

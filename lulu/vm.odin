@@ -274,12 +274,11 @@ vm_execute :: proc(vm: ^VM) {
         ip := vm.pc[0]
         when DEBUG_TRACE_EXEC {
             index := ptr_index(vm.pc, chunk.code)
-            #reverse for &value, reg in stack {
-                value_print(value, .Stack)
+            #reverse for value, reg in stack {
                 if local, ok := chunk_get_local(chunk, reg + 1, index); ok {
-                    fmt.printfln(" ; local %s", local)
+                    fmt.printfln("%s ; local %s", value, local)
                 } else {
-                    fmt.println()
+                    fmt.printfln("%s", value)
                 }
             }
             debug_dump_instruction(chunk, ip, index)
@@ -349,7 +348,7 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Print:
             for arg in stack[ip.a:ip.b] {
-                value_print(arg, .Print)
+                fmt.print(arg, '\t', sep = "")
             }
             fmt.println()
         case .Add: arith_op(vm, number_add, ra, ip, stack, constants)

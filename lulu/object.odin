@@ -65,7 +65,7 @@ object_free_all :: proc(vm: ^VM) {
             table_destroy(vm, table)
             mem.free(table)
         case:
-            fmt.panicf("Cannot free a %v value!", type)
+            unreachable("Cannot free a %v value!", type)
         }
     }
 }
