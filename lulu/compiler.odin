@@ -335,7 +335,7 @@ compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
     and get their resulting RK register.
 
 **Analogous to:**
--   'lcode.c:luaK_exp2RK(FuncState *fs, expdesc *e)' in Lua 5.1.5.
+-   `lcode.c:luaK_exp2RK(FuncState *fs, expdesc *e)` in Lua 5.1.5.
 
 **Links:**
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2RK
@@ -428,7 +428,8 @@ compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
 
 /*
 **Analogous to**
--   `compiler.c:emitReturn()` in the book.
+-   `compiler.c:emitReturn()` in Crafting Interpreters, Chapter 17.3:
+    *Emitting Bytecode*.
 
 **Notes**
 -   Like in Lua, all functions call this even if they have explicit returns.
@@ -456,14 +457,16 @@ compiler_code_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32)
 }
 
 compiler_code_AsBx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, jump: int) -> (pc: int) {
-    assert(opcode_info[op].type == .Signed_Bx && opcode_info[op].c == .Unused)
+    assert(opcode_info[op].type == .Signed_Bx)
+    assert(opcode_info[op].c == .Unused)
     return compiler_code(compiler, ip_make(op, a = reg, sbx = jump))
 }
 
 /*
 **Analogous to**
--   'lcode.c:luaK_code' in Lua 5.1.5.
--   'compiler.c:emitByte()' and 'compiler.c:emitBytes()' in the book.
+-   `lcode.c:luaK_code` in Lua 5.1.5.
+-   `compiler.c:emitByte()`, `compiler.c:emitBytes()` in Crafting Interpeters,
+    Chapter 17.3: "Emitting Bytecode".
 
 **TODO(2025-01-07)**
 -   Fix the line counter for folded constant expressions across multiple lines?
@@ -479,7 +482,8 @@ compiler_code :: proc(compiler: ^Compiler, inst: Instruction) -> (pc: int) {
 
 /*
 **Analogous to**
--   'compiler.c:makeConstant()' in the book.
+-   `compiler.c:makeConstant()` in Crafting Interpreters, Chapter 17.4.1:
+    *Parsers for tokens*.
  */
 compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u32) {
     vm    := compiler.vm
@@ -497,9 +501,11 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
 
 ///=== LOCAL MANIPULATION ================================================== {{{
 
+
 /*
 **Analogous to**
--   `compiler.c:addLocal()` in the book.
+-   `compiler.c:addLocal()` in Crafting Interpreters, Chapter 22.3: *Declaring
+    Local Variables*.
 -   `lparser.c:registerlocalvar(LexState *ls, TString *varname)` in Lua 5.1.5.
 
 **Links**
@@ -833,20 +839,50 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
 
 
 /*
+**Overview**
+-   Emit the `.Test` opcode along with its necessary `.Jump`.
+
 **Guarantees**
--   `OpCode.Test` will use the register/constant of `cond`.
--   If `cond` is a non-local register then it is popped.
+-   Argument A will use the register/constant of `expr`.
+-   If `expr` is a non-local register then it is popped.
+-   `expr` will always be transformed to type `.Discharged`.
+
+**Returns**
+-   The pc of the `.Jump` we emitted.
  */
-compiler_code_test :: proc(compiler: ^Compiler, cond: ^Expr, skip_when: bool) {
-    ra := compiler_expr_any_reg(compiler, cond)
-    compiler_code_ABC(compiler, .Test, ra, 0, 1 if skip_when else 0)
-    compiler_expr_pop(compiler, cond^)
+compiler_code_test :: proc(compiler: ^Compiler, expr: ^Expr, cond: bool) -> (jump_pc: int) {
+    ra := compiler_expr_any_reg(compiler, expr)
+    compiler_code_ABC(compiler, .Test, ra, 0, u16(cond))
+    compiler_expr_pop(compiler, expr^)
+    return compiler_code_jump(compiler)
+}
+
+
+/*
+**Overview**
+-   Emit `.Test_Set` along with its associated `.Jump`.
+-   `left` is emitted and reused to be the potential destination register.
+
+**Guarantees**
+-   `left` is first pushed to some register if it is not one already.
+-   If `left` is a non-local register, then it is popped.
+-   `left` is then transformed to type `.Need_Register` with its `pc` pointing
+    to `.Test_Set`.
+*/
+compiler_code_test_set :: proc(compiler: ^Compiler, left: ^Expr, cond: bool) -> (jump_pc: int) {
+    reg := compiler_expr_any_reg(compiler, left)
+    compiler_expr_pop(compiler, left^)
+
+    test_pc := compiler_code_ABC(compiler, .Test_Set, 0, reg, u16(cond))
+    left^ = expr_make(.Need_Register, pc = test_pc)
+    return compiler_code_jump(compiler)
 }
 
 
 /*
 **Analogous to**
--   `compiler.c:emitJump(uint8_t instruction)` in Crafting Interpreters, Chapter 23.1.
+-   `compiler.c:emitJump(uint8_t instruction)` in Crafting Interpreters,
+    Chapter 23.1: *If Statements*.
 
 **Assumptions**
 -   `prev` is the pc of the previous jump we want to chain.
@@ -861,18 +897,10 @@ compiler_code_jump :: proc(compiler: ^Compiler, prev := NO_JUMP) -> (jump_pc: in
 }
 
 
-compiler_code_jump_if :: proc(compiler: ^Compiler, expr: ^Expr, cond: bool) -> (jump_pc: int) {
-    // Flip `cond` because if we want to jump when falsy, then we need to
-    // test for true. This makes it so that if our condition is falsy, the test
-    // doesn't skip the jump, so the jump is performed.
-    compiler_code_test(compiler, expr, !cond)
-    return compiler_code_jump(compiler)
-}
-
-
 /*
 **Analogous to**
--   `compiler.c:patchJump(int offset)` in Crafting Interpreters, Chapter 23.1.
+-   `compiler.c:patchJump(int offset)` in Crafting Interpreters, Chapter 23.1:
+    *If Statements*.
 -   `lcode.c:patchlistaux(FuncState *fs, int list, int vtarget, int reg, int dtarget)` in Lua 5.1.5.
 */
 compiler_patch_jump :: proc(compiler: ^Compiler, jump_pc: int) {

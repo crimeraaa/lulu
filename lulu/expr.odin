@@ -5,8 +5,6 @@ package lulu
 Expr :: struct {
     type:          Expr_Type,
     using info:    Expr_Info,
-    jump_if_true:  int,
-    jump_if_false: int,
 }
 
 Expr_Info :: struct #raw_union {
@@ -53,41 +51,22 @@ expr_make :: proc {
 }
 
 expr_make_none :: proc(type: Expr_Type) -> Expr {
-    return Expr{
-        type          = type,
-        jump_if_true  = NO_JUMP,
-        jump_if_false = NO_JUMP
-    }
+    return Expr{type = type}
 }
 
 expr_make_pc :: proc(type: Expr_Type, pc: int) -> Expr {
     assert(type == .Need_Register)
-    return Expr{
-        type          = type,
-        pc            = pc,
-        jump_if_true  = NO_JUMP,
-        jump_if_false = NO_JUMP
-    }
+    return Expr{type = type, pc = pc}
 }
 
 expr_make_reg :: proc(type: Expr_Type, reg: u16) -> Expr {
     assert(type == .Discharged || type == .Local)
-    return Expr{
-        type          = type,
-        reg           = reg,
-        jump_if_true  = NO_JUMP,
-        jump_if_false = NO_JUMP,
-    }
+    return Expr{type = type, reg = reg}
 }
 
 expr_make_index :: proc(type: Expr_Type, index: u32) -> Expr {
     assert(type == .Global || type == .Constant)
-    return Expr{
-        type          = type,
-        index         = index,
-        jump_if_true  = NO_JUMP,
-        jump_if_false = NO_JUMP,
-    }
+    return Expr{type = type, index = index}
 }
 
 /*
@@ -100,27 +79,16 @@ expr_make_index :: proc(type: Expr_Type, index: u32) -> Expr {
  */
 expr_make_table :: proc(type: Expr_Type, reg, index: u16) -> Expr {
     assert(type == .Table_Index)
-    return Expr{
-        type          = .Table_Index,
-        table         = {reg = reg, index = index},
-        jump_if_true  = NO_JUMP,
-        jump_if_false = NO_JUMP,
-    }
+    return Expr{type = .Table_Index, table = {reg = reg, index = index}}
 }
 
 expr_make_number :: proc(type: Expr_Type, number: f64) -> Expr {
     assert(type == .Number)
-    return Expr{
-        type          = .Number,
-        number        = number,
-        jump_if_true  = NO_JUMP,
-        jump_if_false = NO_JUMP,
-    }
+    return Expr{type = .Number, number = number}
 }
 
 // See: https://www.lua.org/source/5.1/lcode.c.html#isnumeral
 expr_is_number :: proc(expr: Expr) -> bool {
-    return expr.type == .Number \
-        && expr.jump_if_true  == NO_JUMP \
-        && expr.jump_if_false == NO_JUMP
+    // TODO(2025-05-10): Check for jump lists?
+    return expr.type == .Number
 }

@@ -23,7 +23,7 @@ Parse_Rule :: struct {
 -   https://www.lua.org/pil/3.5.html
 -   https://www.lua.org/manual/5.1/manual.html#2.5.6
  */
-Precedence :: enum u8 {
+Precedence :: enum {
     None,
     Or,         // or
     And,        // and
@@ -41,7 +41,8 @@ Precedence :: enum u8 {
 
 /*
 **Analogous to**
--   'compiler.c:advance()' in the book.
+-   `compiler.c:advance()` in Crafting Interpreters, Chapter 17.2: *Parsing
+    Tokens*.
  */
 parser_advance :: proc(parser: ^Parser) {
     token := lexer_scan_token(&parser.lexer)
@@ -69,7 +70,8 @@ parser_backtrack :: proc(parser: ^Parser, previous: Token) {
 
 /*
 **Analogous to**
--   'compiler.c:consume()' in the book.
+-   `compiler.c:consume()` in Crafting Interpreters, Chapter 17.2.1:
+    *Handling syntax errors*.
  */
 parser_consume :: proc(parser: ^Parser, expected: Token_Type) {
     if parser.lookahead.type == expected {
@@ -105,10 +107,10 @@ LValue :: struct {
 
 /*
 **Analogous to**
--   `compiler.c:declaration()` in the book.
--   `lparser.c:chunk(LexState *ls)` in Lua 5.1.5.
--   `compiler.c:statement()` in the book.
--   `lparser.c:statement(LexState *ls)` in Lua 5.1.5.
+-   `compiler.c:declaration()` and `compiler.c:statement()` in Crafting
+    Interpreters, Chapter 21.1: "Statements".
+-   `lparser.c:chunk(LexState *ls)` and `lparser.c:statement(LexState *ls)`
+    in Lua 5.1.5.
 
 **Links**
 -   https://www.lua.org/source/5.1/lparser.c.html#chunk
@@ -146,8 +148,8 @@ parser_parse :: proc(parser: ^Parser, compiler: ^Compiler) {
 
 /*
 **Analogous to**
--   `compiler.c:varDeclaration()` in the book.
--   `compiler.c:parseVariable()` (somewhat) in the book.
+-   `compiler.c:varDeclaration()` and `compiler.c:parserVariable()` (somewhat)
+    in Crafting Interpreters, Chapter 21.2: *Variable Declarations*.
 
 **Links**
 -   https://www.lua.org/source/5.1/lparser.c.html#exprstat
@@ -209,7 +211,8 @@ assignment :: proc(parser: ^Parser, compiler: ^Compiler, last: ^LValue, n_vars: 
 
 /*
 **Analogous to**
--   `compiler.c:identifierConstant(Token *name)` in the book.
+-   `compiler.c:identifierConstant(Token *name)` in Crafting Interpreters,
+    Chapter 21.2, *Variable Declarations*.
 */
 @(private="file")
 ident_constant :: proc(parser: ^Parser, compiler: ^Compiler, token: Token) -> (ident: ^OString, index: u32) {
@@ -265,7 +268,8 @@ local_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
 -   local_decl ::= identifier [',' identifier]*
 
 **Analogous to**
--   `compiler.c:declareVariable()` in the book.
+-   `compiler.c:declareVariable()` in Crafting Interpreters, Chapter 22.3:
+    *Declaring Local Variables*.
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.5.
  */
 @(private="file")
@@ -307,7 +311,7 @@ local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counte
 -   See `lparser.c:adjust_assign(LexState *ls, int nvars, int nexps, expdesc *e)`.
  */
 @(private="file")
-adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^Expr) {
+adjust_assign :: proc(compiler: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
     // TODO(2025-04-08): Add `if (hasmultret(expr->kind))` analog
 
     // Emit the last expression from `expr_list()`.
@@ -316,7 +320,7 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
     }
 
     // More variables than expressions?
-    if extra := count_vars - count_exprs; extra > 0 {
+    if extra := n_vars - n_exprs; extra > 0 {
         reg := compiler.free_reg
         compiler_reserve_reg(compiler, extra)
         compiler_code_nil(compiler, cast(u16)reg, cast(u16)extra)
@@ -327,13 +331,13 @@ adjust_assign :: proc(compiler: ^Compiler, count_vars, count_exprs: int, expr: ^
 
         **Results**
         -   free_reg    = 4
-        -   count_vars  = 3
-        -   count_exprs = 4
+        -   n_vars  = 3
+        -   n_exprs = 4
 
         **Assumptions**
-        -   If `count_exprs == count_vars`, nothing changes as we subtract 0.
+        -   If `n_exprs == n_vars`, nothing changes as we subtract 0.
          */
-        compiler.free_reg -= count_exprs - count_vars
+        compiler.free_reg -= n_exprs - n_vars
     }
 }
 
@@ -384,13 +388,19 @@ do_block :: proc(parser: ^Parser, compiler: ^Compiler) {
 ```
 if_stmt ::= 'if' expression 'then' block 'end'
 ```
+
+**Analogous to**
+-   `compiler.c:ifStatement()` in Crafting Interpreters, Chapter 23.1:
+    *If Statements*.
 */
 @(private="file")
 if_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
     then_cond :: proc(parser: ^Parser, compiler: ^Compiler) -> (jump_pc: int) {
         expr := expression(parser, compiler)
         parser_consume(parser, .Then)
-        jump_pc = compiler_code_jump_if(compiler, &expr, false)
+
+        // Jump only when the condition is falsy.
+        jump_pc = compiler_code_test(compiler, &expr, false)
         then_block(parser, compiler)
         return jump_pc
     }
@@ -401,7 +411,6 @@ if_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
         }
     }
 
-    // Jump only when the condition is falsy.
     then_jump := then_cond(parser, compiler)
 
     // Unconditional jump to skip an 'else' block.
@@ -484,7 +493,8 @@ expr_list :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr, count: i
 -   expression ::= literal | unary | grouping | binary | variable
 
 **Analogous to**
--   `compiler.c:expression()` in the book.
+-   `compiler.c:expression()` in Crafting Interpreters, Chapter 17.4:
+    *Parsing Prefix Expressions*.
 
 **Notes**
 -   Expressions only ever produce 1 net resulting value, which should reside in `expr`.
@@ -499,7 +509,7 @@ expression :: proc(parser: ^Parser, compiler: ^Compiler) -> (expr: Expr) {
 
 /*
 **Analogous to**
--   'lparser.c:subexpr(LexState *ls, expdesc *v, int limit)' in Lua 5.1.5.
+-   `lparser.c:subexpr(LexState *ls, expdesc *v, int limit)` in Lua 5.1.5.
 
 **Links**
 -   https://www.lua.org/source/5.1/lparser.c.html#subexpr
@@ -536,7 +546,8 @@ parse_precedence :: proc(parser: ^Parser, compiler: ^Compiler, prec: Precedence)
 
 /*
 **Analogous to**
--   'compiler.c:errorAtCurrent()' in the book.
+-   `compiler.c:errorAtCurrent()` in Crafting Interpreters, Chapter 17.2.1:
+    *Handling syntax errors*.
  */
 parser_error_lookahead :: proc(parser: ^Parser, msg: string) -> ! {
     error_at(parser, parser.lookahead, msg)
@@ -545,7 +556,8 @@ parser_error_lookahead :: proc(parser: ^Parser, msg: string) -> ! {
 
 /*
 **Analogous to**
--   'compiler.c:error()' in the book.
+-   `compiler.c:error()` in Crafting Interpreters, Chapter 17.2.1: *Handling
+    syntax errors*.
  */
 parser_error :: proc(parser: ^Parser, msg: string) -> ! {
     error_at(parser, parser.consumed, msg)
@@ -554,7 +566,8 @@ parser_error :: proc(parser: ^Parser, msg: string) -> ! {
 
 /*
 **Analogous to**
--   'compiler.c:errorAt()' in the book.
+-   `compiler.c:errorAt()` in Crafting Interpreters, Chapter 17.2.1: *Handling
+    syntax errors*.
  */
 @(private="file")
 error_at :: proc(parser: ^Parser, token: Token, msg: string) -> ! {
@@ -567,7 +580,7 @@ error_at :: proc(parser: ^Parser, token: Token, msg: string) -> ! {
 }
 
 
-/// PREFIX EXPRESSIONS
+///=== PREFIX EXPRESSIONS ================================================== {{{
 
 
 /*
@@ -618,21 +631,24 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
 **Form**
 -   variable ::= identifier [ indexed | ( '.' identifier ) ]*
 
+**Analogous to:**
+-   `lparser.c:singlevar(LexState *ls, Expr *var)` and
+    `lparser.c:singlevaraux(LexState *ls, TString *n, Expr *var, int base)`
+    in Lua 5.1.5.
+
 **Assumptions**
 -   `parser.consumed` is of type `.Identifier`.
-
-**Notes:**
--   See `lparser.c:singlevar(LexState *ls, Expr *var)`.
--   See `lparser.c:singlevaraux(LexState *ls, TString *n, Expr *var, int (bool) base)`
  */
 @(private="file")
 variable :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
     /*
     **Analogous to**
-    -   `compiler.c:namedVariable(Token name)` in the book.
+    -   `compiler.c:namedVariable(Token name)` in Crafting Interpreters,
+        Chapter 21.3: *Reading Variables*.
 
     **Notes** (2025-04-18):
-    -   We don't call `ident_constant()` yet because we don't want
+    -   We don't call `ident_constant()` yet because we don't want to pollute
+        the constants array in case of local names.
      */
     first_var :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
         ident := ostring_new(parser.vm, parser.consumed.lexeme)
@@ -716,17 +732,6 @@ field_name :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
 
 
 /*
-**Notes**
--   See the `lparser.c:ConsControl` structure in Lua 5.1.5.
- */
-Constructor :: struct {
-    table: Expr, // table descriptor
-    count_array, count_hash: int,
-    to_store: int, // number of array elements pending to be stored
-}
-
-
-/*
 **Form**
 -   table ::= '{' table_element? [ ',' table_element ]* '}'
     table_element ::= expression
@@ -734,10 +739,20 @@ Constructor :: struct {
 
 
 **Assumptions**
--   The `{` token was just consumed.
+-   The left curly brace token was just consumed.
  */
 @(private="file")
 constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
+    /*
+    **Analogous to**
+    -   `lparser.c:ConsControl` in Lua 5.1.5.
+     */
+    Constructor :: struct {
+        table: Expr, // table descriptor
+        count_array, count_hash: int,
+        to_store: int, // number of array elements pending to be stored
+    }
+
 
     /*
     **Analogous to**
@@ -850,11 +865,11 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
             ctor.to_store)
     }
 
-    // `fb_from_int()` may also round up the values by some factor, but that's
+    // `fb_make()` may also round up the values by some factor, but that's
     // okay because our hash table will simply over-allocate.
     ip := &compiler.chunk.code[pc]
-    ip.b = cast(u16)fb_from_int(ctor.count_array)
-    ip.c = cast(u16)fb_from_int(ctor.count_hash)
+    ip.b = cast(u16)fb_make(ctor.count_array)
+    ip.c = cast(u16)fb_make(ctor.count_hash)
 
     return ctor.table
 }
@@ -920,7 +935,9 @@ unary :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
     return expr
 }
 
-/// INFIX EXPRESSIONS
+///=== }}} =====================================================================
+
+///=== INFIX EXPRESSIONS =================================================== {{{
 
 
 /*
@@ -976,8 +993,8 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
 
     /*
     **Note**
-    -   This is effectively the inline implementation of the only relevant line/s
-        from 'lcode.c:luaK_posfix()'.
+    -   This is effectively the inline implementation of the only relevant
+        line/s from `lcode.c:luaK_posfix()`.
 
     **Links**
     -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
@@ -1049,13 +1066,48 @@ concat :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
     compiler_code_concat(compiler, left, &right)
 }
 
+@(private="file")
+logic_and :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
+    // skip jump if falsy
+    logical(parser, compiler, left, cond = false, prec = .And)
+}
+
+@(private="file")
+logic_or :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
+    // skip jump if truthy
+    logical(parser, compiler, left, cond = true, prec = .Or)
+}
+
+
+/*
+**Visualization**
+        <left>
+    +-- Test_Set <reg> <left> <COND> ; if bool(<left>) == <COND> then skip Jump
++---|-- Jump <right + 1>
+|   +-> <right>
+|       ; assign <reg>
++-----> ...
+*/
+@(private="file")
+logical :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr, cond: bool, prec: Precedence) {
+    jump_pc := compiler_code_test_set(compiler, left, cond = cond)
+    right   := parse_precedence(parser, compiler, prec)
+    compiler_expr_next_reg(compiler, &right)
+    compiler_expr_pop(compiler, right)
+    compiler_patch_jump(compiler, jump_pc)
+}
+
+///=== }}} =====================================================================
+
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
     @(static, rodata)
     rules := #partial [Token_Type]Parse_Rule {
         // Keywords
+        .And        = {infix  = logic_and, prec = .And},
         .False      = {prefix = literal},
         .Nil        = {prefix = literal},
         .Not        = {prefix = unary},
+        .Or         = {infix  = logic_or, prec = .Or},
         .True       = {prefix = literal},
 
         // Balanced Pairs
@@ -1063,12 +1115,12 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Left_Curly = {prefix = constructor},
 
         // Arithmetic
-        .Plus       = {infix = arith, prec = .Terminal},
+        .Plus       = {infix  = arith, prec = .Terminal},
         .Dash       = {prefix = unary, infix = arith, prec = .Terminal},
-        .Star       = {infix = arith, prec = .Factor},
-        .Slash      = {infix = arith, prec = .Factor},
-        .Percent    = {infix = arith, prec = .Factor},
-        .Caret      = {infix = arith, prec = .Exponent},
+        .Star       = {infix  = arith, prec = .Factor},
+        .Slash      = {infix  = arith, prec = .Factor},
+        .Percent    = {infix  = arith, prec = .Factor},
+        .Caret      = {infix  = arith, prec = .Exponent},
 
         // Comparison
         .Equals_2       = {infix = compare, prec = .Equality},

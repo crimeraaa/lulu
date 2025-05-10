@@ -186,9 +186,8 @@ Links:
 -   https://www.lua.org/source/5.1/ldo.c.html#luaD_rawrunprotected
  */
 vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) -> Status {
-    handler: Error_Handler
     // Chain new handler
-    handler.prev = vm.handlers
+    handler := Error_Handler{prev = vm.handlers}
     vm.handlers  = &handler
 
     /*
@@ -210,7 +209,8 @@ vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) 
 
 /*
 **Analogous to**
--   'vm.c:run()' in the book.
+-   `vm.c:run()` in Crafting Interpreters, Chapter 15.1.1: *Executing
+    Instructions*.
 -   `lvm.c:luaV_execute(lua_State *L, int nexeccalls)` in Lua 5.1.5.
  */
 vm_execute :: proc(vm: ^VM) {
@@ -227,7 +227,7 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra: ^Value, ip: Instruction, stack, constants: []Value) {
+    arith_op :: proc(vm: ^VM, op: Number_Arith_Proc, ra: ^Value, ip: Instruction, stack, constants: []Value) {
         left, right := get_rkb_rkc(vm, ip, stack, constants)
         if !value_is_number(left^) || !value_is_number(right^) {
             arith_error(vm, left, right)
@@ -236,7 +236,7 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, ra: ^Value, ip: Instruction, stack, constants: []Value) {
+    compare_op :: proc(vm: ^VM, op: Number_Compare_Proc, ra: ^Value, ip: Instruction, stack, constants: []Value) {
         left, right := get_rkb_rkc(vm, ip, stack, constants)
         if !value_is_number(left^) || !value_is_number(right^) {
             compare_error(vm, left, right)
@@ -261,6 +261,10 @@ vm_execute :: proc(vm: ^VM) {
 
     index_error :: #force_inline proc(vm: ^VM, culprit: ^Value) -> ! {
         debug_type_error(vm, culprit, "index")
+    }
+    
+    incr_top :: #force_inline proc(vm: ^VM, amount := 1) {
+        vm.pc = ptr_offset(vm.pc, amount)
     }
 
     ///=== }}} =================================================================
@@ -287,7 +291,7 @@ vm_execute :: proc(vm: ^VM) {
 
         // Most instructions use this!
         ra := &stack[ip.a]
-        switch (ip.op) {
+        switch ip.op {
         case .Move:
             ra^ = stack[ip.b]
         case .Load_Constant:
@@ -301,7 +305,7 @@ vm_execute :: proc(vm: ^VM) {
         case .Load_Boolean:
             ra^ = value_make(ip.b == 1)
             if ip.c == 1 {
-                vm.pc = ptr_offset(vm.pc, +1)
+                incr_top(vm)
             }
         case .Get_Global:
             key := constants[ip_get_Bx(ip)]
@@ -315,8 +319,8 @@ vm_execute :: proc(vm: ^VM) {
             key := constants[ip_get_Bx(ip)]
             table_set(vm, globals, key, ra^)
         case .New_Table:
-            n_array := fb_to_int(cast(u8)ip.b)
-            n_hash  := fb_to_int(cast(u8)ip.c)
+            n_array := fb_decode(cast(u8)ip.b)
+            n_hash  := fb_decode(cast(u8)ip.c)
             ra^ = value_make(table_new(vm, n_array, n_hash))
         case .Get_Table:
             key := get_rk(vm, ip.c, stack, constants)^
@@ -399,12 +403,19 @@ vm_execute :: proc(vm: ^VM) {
                 debug_type_error(vm, rb, "get length of")
             }
         case .Test:
-            if !value_is_falsy(ra^) == bool(ip.c) {
-                vm.pc = ptr_offset(vm.pc, 1)
+            if !value_is_falsy(ra^) != bool(ip.c) {
+                incr_top(vm)
+            }
+        case .Test_Set:
+            rb := stack[ip.b]
+            if !value_is_falsy(rb) == bool(ip.c) {
+                ra^ = rb
+            } else {
+                incr_top(vm)
             }
         case .Jump:
             offset := ip_get_sBx(ip)
-            vm.pc = ptr_offset(vm.pc, offset)
+            incr_top(vm, offset)
         case .Return:
             // if ip.c != 0 then we have a vararg
             nret := cast(int)ip.b if ip.c == 0 else get_top(vm)

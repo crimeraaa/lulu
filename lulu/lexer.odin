@@ -21,7 +21,7 @@ Token :: struct {
     literal:    union {f64, ^OString},
 }
 
-Token_Type :: enum u8 {
+Token_Type :: enum {
     // Keywords
     And,            Break,          Do,
     Else,           Elseif,         End,
@@ -340,7 +340,7 @@ is_alnum :: proc(r: rune) -> bool {
 
 @(private="file")
 consume_sequence :: proc(lexer: ^Lexer, $callback: proc(r: rune) -> bool) {
-    // The 'is_at_end' check is VERY important in case we hit <EOF> here!
+    // The `is_at_end` check is VERY important in case we hit <EOF> here!
     for !is_at_end(lexer^) && callback(peek(lexer^)) {
         // WARNING(2025-01-18): May throw!
         advance(lexer)

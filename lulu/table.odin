@@ -51,8 +51,12 @@ table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) #opt
 table_set :: proc(vm: ^VM, table: ^Table, key, value: Value) {
     /*
     Notes:
-    -   This is a safer version of line `table->count > table->capacity > TABLE_MAX_LOAD`
-        in the book.
+    -   This is a safer version of the following line:
+
+        `table->count > table->capacity > TABLE_MAX_LOAD`
+
+        in Crafting Interpreters, Chapter 20.4.2: *Inserting Entries*.
+
     -   Where `TABLE_MAX_LOAD` is a macro that expands to `0.75`.
     -   Here we aim to reduce error by doing purely integer math.
     -   n*0.75 == n*(3/4) == (n*3)/4

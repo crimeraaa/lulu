@@ -26,6 +26,18 @@
 
 const TValue luaO_nilobject_ = {{NULL}, LUA_TNIL};
 
+#define FB_MANT_SIZE      3
+
+/* `(1 << 3) == 0b0000_1000` */
+#define FB_MANT_IMPLIED  (1 << FB_MANT_SIZE)
+
+/* `(0b0000_1000 - 1) == 0b0000_0111` */
+#define FB_MANT_MASK     (FB_MANT_IMPLIED - 1)
+
+#define FB_EXP_SIZE      5
+
+/* `((1 << 5) - 1) == (0b0010_0000) - 1 == 0b0001_1111` */
+#define FB_EXP_MASK     ((1 << FB_EXP_SIZE) - 1)
 
 /*
 ** converts an integer to a "floating point byte", represented as
@@ -33,21 +45,29 @@ const TValue luaO_nilobject_ = {{NULL}, LUA_TNIL};
 ** eeeee != 0 and (xxx) otherwise.
 */
 int luaO_int2fb (unsigned int x) {
-  int e = 0;  /* expoent */
-  while (x >= 16) {
-    x = (x+1) >> 1;
-    e++;
+  int exp = 0;
+  while (x >= (FB_MANT_IMPLIED << 1)) {
+    x = (x + 1) >> 1; /* round up */
+    exp++;
   }
-  if (x < 8) return x;
-  else return ((e+1) << 3) | (cast_int(x) - 8);
+  if (x < FB_MANT_IMPLIED) {
+    return x;
+  }
+  else {
+    return ((exp + 1) << FB_MANT_SIZE) | (cast_int(x) - FB_MANT_IMPLIED);
+  }
 }
 
 
 /* converts back */
 int luaO_fb2int (int x) {
-  int e = (x >> 3) & 31;
-  if (e == 0) return x;
-  else return ((x & 7)+8) << (e - 1);
+  int e = (x >> FB_MANT_SIZE) & FB_EXP_MASK;
+  if (e == 0) {
+    return x;
+  }
+  else {
+    return ((x & FB_MANT_MASK) + FB_MANT_IMPLIED) << (e - 1);
+  }
 }
 
 
@@ -63,7 +83,11 @@ int luaO_log2 (unsigned int x) {
     8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8
   };
   int l = -1;
-  while (x >= 256) { l += 8; x >>= 8; }
+  while (x >= 256) {
+    l += 8; /* 7 (0b0000_0111),  15 (0b0000_1111), 23 (0b0001_0111),
+              31 (0b00001_1111), 40 (0b0010_0111), 48 (0b0010_1111), ... */
+    x >>= 8;
+  }
   return l + log_2[x];
 
 }

@@ -144,12 +144,12 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
         print_reg(info, ip.c)
     case .New_Table:
         print_reg(info, ip.a, " = {{}} ; #array=%i, #hash=%i",
-                  fb_to_int(cast(u8)ip.b), fb_to_int(cast(u8)ip.c))
+                  fb_decode(cast(u8)ip.b), fb_decode(cast(u8)ip.c))
     case .Set_Array:
         print_reg(info, ip.a, "[%i+i] = Reg(%i+i) for 1 <= i <= %i",
                   cast(int)(ip.c - 1) * FIELDS_PER_FLUSH, ip.a, ip.b)
     case .Print:
-        fmt.printf("print(Reg(i), \\t) for %i <= i < %i", ip.a, ip.b)
+        fmt.printf("print(Reg(i), '\\t') for %i <= i < %i", ip.a, ip.b)
     case .Add: binary(info, "+")
     case .Sub: binary(info, "-")
     case .Mul: binary(info, "*")
@@ -167,8 +167,13 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
     case .Len:
         unary(info, "#")
     case .Test:
-        fmt.printf("if %sBool(", "" if bool(ip.c) else "not ")
-        print_reg(info, ip.a, ") then goto .code[%i]", index + 2)
+        fmt.print("if Bool(")
+        print_reg(info, ip.a, ") != %v then goto .code[%i]", bool(ip.c), index + 2)
+    case .Test_Set:
+        fmt.print("if Bool(")
+        print_reg(info, ip.b, ") == %v then ", bool(ip.c))
+        print_reg(info, ip.a, " := ")
+        print_reg(info, ip.b, " else goto .code[%i]", index + 2)
     case .Jump:
         fmt.printf("goto .code[%i]", index + 1 + ip_get_sBx(ip))
     case .Return:

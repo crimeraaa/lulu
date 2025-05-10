@@ -71,7 +71,7 @@ Links:
 -   https://www.lua.org/source/5.1/lopcodes.h.html
 -   https://stevedonovan.github.io/lua-5.1.4/lopcodes.h.html
  */
-OpCode :: enum u8 {
+OpCode :: enum {
 /* =============================================================================
 Note on shorthand:
 (*) Reg:
@@ -113,7 +113,8 @@ Leq,           // A B C | Reg(A) := RK(B) <= RK(C)
 Not,           // A B   | Reg(A) := not RK(B)
 Concat,        // A B C | Reg(A) := Reg(A) .. Reg(i) for B <= i <= C
 Len,           // A B   | Reg(A) := #Reg(B)
-Test,          // A   C | if (Bool(Reg(A)) == Bool(C)) then pc++
+Test,          // A   C | if Bool(Reg(A)) != Bool(C) then pc++
+Test_Set,      // A B C | if (Bool(B) == Bool(C)) then Reg(A) := Reg(B) else pc++
 Jump,          // sBx   | pc += sBx
 Return,        // A B C | return Reg(A), ... Reg(A + B)
 }
@@ -153,6 +154,10 @@ Notes:
 ============================================================================= */
 
 
+/*
+**Note** (2025-05-10):
+-   MUST be `u8`.
+*/
 OpCode_Arg_Type :: enum u8 {
     Unused = 0,
     Used,       // Argument is used but is not a register, constant or jump offset.
@@ -160,7 +165,14 @@ OpCode_Arg_Type :: enum u8 {
     Reg_Const,  // Argument is either a register OR a constants table index?
 }
 
-// How should we interpret the arguments?
+/*
+**Overview**
+-   Indicates how we should interpret the arguments of an `OpCode`.
+
+**Note** (2025-05-10):
+-   MUST be `u8`, otherwise seems to result in wrong values (e.g. `.Signed_Bx`
+    becomes `-2` in `.Jump` somehow)
+*/
 OpCode_Format :: enum u8 {
     Separate,    // A, B and C are all treated separately.
     Unsigned_Bx, // B is combined with C to form an unsigned 18-bit integer.
@@ -175,6 +187,7 @@ OpCode_Info :: bit_field u8 {
     a:       bool            | 1, // Is argument A is a destination register?
     is_test: bool            | 1,
 }
+
 
 /*
 **Notes**
@@ -208,6 +221,7 @@ opcode_info := [OpCode]OpCode_Info {
 .Concat         = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Reg_Jump},
 .Len            = {type = .Separate,    a = true,  b = .Reg_Const, c = .Unused},
 .Test           = {type = .Separate,    a = false, b = .Unused,    c = .Used},
+.Test_Set       = {type = .Separate,    a = true,  b = .Reg_Const, c = .Used},
 .Jump           = {type = .Signed_Bx,   a = false, b = .Reg_Jump,  c = .Unused},
 .Return         = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 }
@@ -280,7 +294,7 @@ FB_MANTISSA_IMPLIED :: 1 << FB_MANTISSA_SIZE    // 0b0000_1000
 FB_MANTISSA_MASK    :: FB_MANTISSA_IMPLIED - 1  // 0b0000_0111
 
 FB_EXPONENT_SIZE    :: 5
-FB_EXPONENT_MASK    :: (1 << FB_MANTISSA_SIZE) - 1 // 0b0001_1111
+FB_EXPONENT_MASK    :: (1 << FB_EXPONENT_SIZE) - 1 // 0b0001_1111
 
 /*
 Overview:
@@ -301,16 +315,18 @@ Analogous to:
 Notes:
 -   If `u` is greater than 15, this will likely round up a bit.
  */
-fb_from_int :: proc(u: int) -> (fb: u8) {
+fb_make :: proc(u: int) -> (fb: u8) {
     exp: u8
     u := u
 
     /*
     Notes:
-    -   We use `0b0001_0000` or `16` because that is the first power of 2 that
-        cannot be represented even with our implied bit (0b0000_1111) is 15.
+    -   We use `0b0000_1000 << 1`, which is `16`.
+    -   It is the first power of 2 that cannot be represented even with our
+        implied bit of `0b0000_1000`.
+    -   The maximum possible value should be `0b0000_1111`, which is 15.
      */
-    for u >= 0b0001_0000 {
+    for u >= (FB_MANTISSA_IMPLIED << 1) {
         // Round up
         u = (u + 1) >> 1
         exp += 1
@@ -332,7 +348,7 @@ Overview:
 Analogous to:
 -   `lobject.c:luaO_fb2int(int x)` in Lua 5.1.5.
  */
-fb_to_int :: proc(fb: u8) -> int {
+fb_decode :: proc(fb: u8) -> int {
     // MUST be unsigned to allow shifing.
     exp := (fb >> FB_MANTISSA_SIZE) & FB_EXPONENT_MASK
 
