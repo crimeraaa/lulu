@@ -94,7 +94,7 @@ static int condjump (FuncState *func, OpCode op, int A, int B, int C) {
 static void fixjump (FuncState *func, int pc, int dest) {
   Instruction *jmp = &func->proto->code[pc];
   int offset = dest-(pc+1);
-  lua_assert(dest != NO_JUMP);
+  lua_assert(dest != NO_JUMP); /* would be an infinite loop! */
   if (abs(offset) > MAXARG_sBx)
     luaX_syntaxerror(func->lex, "control structure too long");
   SETARG_sBx(*jmp, offset);
@@ -112,11 +112,12 @@ int luaK_getlabel (FuncState *func) {
 
 
 static int getjump (FuncState *func, int pc) {
-  int offset = GETARG_sBx(func->proto->code[pc]);
+  Instruction ip = func->proto->code[pc];
+  int offset = GETARG_sBx(ip);
   if (offset == NO_JUMP)  /* point to itself represents end of list */
     return NO_JUMP;  /* end of list */
   else
-    return (pc+1)+offset;  /* turn offset into absolute position */
+    return (pc + 1) + offset;  /* turn offset into absolute position */
 }
 
 
@@ -193,10 +194,17 @@ void luaK_patchlist (FuncState *func, int list, int target) {
 
 void luaK_patchtohere (FuncState *func, int list) {
   luaK_getlabel(func);
-  luaK_concat(func, &func->jpc, list);
+  luaK_concat(func, &func->jpc, list); /* set `jpc` if `list != -1` */
 }
 
 
+/**
+ * @brief
+ *  This function can do one of several things, in order:
+ *    1.) `l2` is `NO_JUMP`: Nothing when `l2`.
+ *    2.) `*l1 is NO_JUMP`: Initialize `*l1` with `l2` when it is `NO_JUMP`.
+ *    3.) Otherwise: add
+ */
 void luaK_concat (FuncState *func, int *l1, int l2) {
   /* base case #1 (e.g. first jump) */
   if (l2 == NO_JUMP) {
@@ -208,9 +216,11 @@ void luaK_concat (FuncState *func, int *l1, int l2) {
   }
   else {
     int list = *l1;
-    int next;
-    while ((next = getjump(func, list)) != NO_JUMP)  /* find last element */
+    int next = getjump(func, list);
+    while (next != NO_JUMP) { /* find last element */
       list = next;
+      next = getjump(func, list);
+    }
     fixjump(func, list, l2);
   }
 }
@@ -565,6 +575,18 @@ static void invertjump (FuncState *func, Expr *expr) {
 }
 
 
+/**
+ * @brief
+ *  Create an `OP_TEST` and `OP_JMP` pair. If the test does not pass,
+ *  then that means the jump isn't skipped.
+ *
+ * @param cond
+ *  The boolean condition which the test must meet in order to not skip the
+ *  jump, thus actually performing the jump.
+ *
+ * @returns
+ *  The index of the `OP_JMP` instruction we just created.
+ */
 static int jumponcond (FuncState *func, Expr *expr, bool cond) {
   if (expr->kind == Expr_Relocable) {
     Instruction ie = getcode(func, expr);
@@ -613,11 +635,20 @@ void luaK_goiftrue (FuncState *func, Expr *expr) {
       break;
     }
     default: {
+      /* don't skip jump when condition returns false */
       pc = jumponcond(func, expr, false);
       break;
     }
   }
-  luaK_concat(func, &expr->f, pc);  /* insert last jump in `f' list */
+  /**
+   * @brief 2025-05-10:
+   *  inserts the last jump in `f` list
+   *
+   * @note 2025-05-10:
+   *  For the first instance of a conditional, e.g. `if x then end`, `expr.f`
+   *  is `NO_JUMP` and `pc >= 0` so we will almost always set `expr.f`.
+   */
+  luaK_concat(func, &expr->f, pc);
   luaK_patchtohere(func, expr->t);
   expr->t = NO_JUMP;
 }

@@ -2,14 +2,14 @@
 package lulu
 
 import "base:intrinsics"
-import c "core:c/libc"
+import "core:c/libc"
 import "core:fmt"
 import "core:mem"
 import "core:strings"
 
 Error_Handler :: struct {
     prev:  ^Error_Handler,
-    buffer: c.jmp_buf,
+    buffer: libc.jmp_buf,
     status: Status,
 }
 
@@ -23,10 +23,10 @@ vm_throw :: proc(vm: ^VM, status: Status) -> ! {
     handler := vm.handlers
     if handler != nil {
         intrinsics.volatile_store(&handler.status, status)
-        c.longjmp(&handler.buffer, 1)
+        libc.longjmp(&handler.buffer, 1)
     } else {
         // Nothing much else can be done in this case.
-        c.exit(c.EXIT_FAILURE)
+        libc.exit(libc.EXIT_FAILURE)
     }
 }
 
@@ -196,7 +196,7 @@ vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) 
     -   We cannot wrap this in a function because in order for `longjmp` to work,
         the stack frame that called `setjmp` MUST still be valid.
      */
-    if c.setjmp(&handler.buffer) == 0 {
+    if libc.setjmp(&handler.buffer) == 0 {
         try(vm, user_data)
     }
 

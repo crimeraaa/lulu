@@ -167,8 +167,8 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
     case .Len:
         unary(info, "#")
     case .Test:
-        fmt.print("if Bool(")
-        print_reg(info, ip.a, ") == %v then goto .code[%i]", bool(ip.c), index + 2)
+        fmt.printf("if %sBool(", "" if bool(ip.c) else "not ")
+        print_reg(info, ip.a, ") then goto .code[%i]", index + 2)
     case .Jump:
         fmt.printf("goto .code[%i]", index + 1 + ip_get_sBx(ip))
     case .Return:

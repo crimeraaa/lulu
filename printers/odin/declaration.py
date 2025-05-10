@@ -2,8 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TypeAlias, Literal, Optional
 
-Usertype: TypeAlias = Literal["struct", "enum", "union"]
-Odintype: TypeAlias = Literal["map", "[]", "[dynamic]"]
+Usertype: TypeAlias = Literal["struct", "enum", "union"] | str
+Odintype: TypeAlias = Literal["map", "[]", "[dynamic]"] | str
 
 
 @dataclass

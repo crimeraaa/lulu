@@ -2,7 +2,7 @@
 package lulu
 
 import "core:fmt"
-import sa "core:container/small_array"
+import "core:container/small_array"
 
 Parser :: struct {
     vm:                 ^VM,
@@ -273,7 +273,7 @@ local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counte
     chunk  := compiler.chunk
     depth  := compiler.scope_depth
     locals := chunk.locals
-    #reverse for active in sa.slice(&compiler.active) {
+    #reverse for active in small_array.slice(&compiler.active) {
         local := locals[active]
         // Already poking at initialized locals in outer scopes?
         if local.depth < depth {
@@ -292,14 +292,14 @@ local_decl :: proc(parser: ^Parser, compiler: ^Compiler, ident: ^OString, counte
     -   So we don't want to push because that will mutate the length thus
         messing up our "uninitialized" counter.
      */
-    active_reg := sa.len(compiler.active) + counter
+    active_reg := small_array.len(compiler.active) + counter
     if active_reg >= MAX_LOCALS {
         buf: [64]byte
         msg := fmt.bprintf(buf[:], "More than %i local variables", MAX_LOCALS)
         parser_error(parser, msg)
     }
     local_index := compiler_add_local(compiler, ident)
-    sa.set(&compiler.active, index = active_reg, item = local_index)
+    small_array.set(&compiler.active, index = active_reg, item = local_index)
 }
 
 /*
@@ -357,9 +357,9 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
         previously by `local_decl`.
     -   `compiler.active.len` was NOT incremented yet.
      */
-    nactive := sa.len(compiler.active) + nvars
-    sa.resize(&compiler.active, nactive)
-    active := sa.slice(&compiler.active)
+    nactive := small_array.len(compiler.active) + nvars
+    small_array.resize(&compiler.active, nactive)
+    active := small_array.slice(&compiler.active)
     locals := compiler.chunk.locals
     for i := nvars; i > 0; i -= 1 {
         // `lparser.c:getlocvar(fs, i)`
@@ -386,14 +386,13 @@ if_stmt ::= 'if' expression 'then' block 'end'
 ```
 */
 @(private="file")
-if_stmt :: proc(parser: ^Parser, compiler: ^Compiler, recursive := false) {
-    if_cond :: proc(parser: ^Parser, compiler: ^Compiler) -> (jump_pc: int) {
+if_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
+    then_cond :: proc(parser: ^Parser, compiler: ^Compiler) -> (jump_pc: int) {
         expr := expression(parser, compiler)
         parser_consume(parser, .Then)
-
-        // If condition is true, skip the jump
-        compiler_code_test(compiler, &expr, true)
-        return compiler_code_jump(compiler)
+        jump_pc = compiler_code_jump_if(compiler, &expr, false)
+        then_block(parser, compiler)
+        return jump_pc
     }
 
     then_block :: proc(parser: ^Parser, compiler: ^Compiler) {
@@ -402,28 +401,29 @@ if_stmt :: proc(parser: ^Parser, compiler: ^Compiler, recursive := false) {
         }
     }
 
-    // Unconditional jump which pushes through when the test fails.
-    then_jump := if_cond(parser, compiler)
-    then_block(parser, compiler)
+    // Jump only when the condition is falsy.
+    then_jump := then_cond(parser, compiler)
 
-    // Unconditional jump to skip a potential 'else' block.
+    // Unconditional jump to skip an 'else' block.
     else_jump := compiler_code_jump(compiler)
     compiler_patch_jump(compiler, then_jump)
 
-    // TODO(2025-05-08): Don't use recursion for `elseif` implementation!
-    // Try to understand and reimplment Lua's "jump lists".
-    if parser_match(parser, .Elseif) {
-        if_stmt(parser, compiler, true)
-    } else if parser_match(parser, .Else) {
+    for parser_match(parser, .Elseif) {
+        // Each 'then' jump is independent of the others, so we never need to
+        // chain them.
+        then_jump = then_cond(parser, compiler)
+
+        // All 'elseif' branches need to jump to the same endpoint.
+        else_jump = compiler_code_jump(compiler, prev = else_jump)
+        compiler_patch_jump(compiler, then_jump)
+    }
+
+    // `else` block by itself doesn't contain any jumps
+    if parser_match(parser, .Else) {
         then_block(parser, compiler)
     }
-
-    // Ensure that recursive cases ('elseif') jumps to 'end' properly.
     compiler_patch_jump(compiler, else_jump)
-
-    if !recursive {
-        parser_consume(parser, .End)
-    }
+    parser_consume(parser, .End)
 }
 
 /*
@@ -628,13 +628,12 @@ literal :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
 @(private="file")
 variable :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
     /*
-    **Overview**
-    -   Inline implementation of `compiler.c:namedVariable(Token name)` in the book.
+    **Analogous to**
+    -   `compiler.c:namedVariable(Token name)` in the book.
 
     **Notes** (2025-04-18):
     -   We don't call `ident_constant()` yet because we don't want
      */
-
     first_var :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
         ident := ostring_new(parser.vm, parser.consumed.lexeme)
         if local, ok := compiler_resolve_local(compiler, ident); ok {
@@ -642,6 +641,24 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
         }
         index := compiler_add_constant(compiler, value_make_string(ident))
         return expr_make(.Global, index = index)
+    }
+
+    /*
+    **Form**
+    -   index ::= '[' expression ']'
+
+    **Overview**
+    -   Compiles an expression and saves it to a new `Expr` instance.
+    -   This instance represents either a get-operation or a literal.
+
+    **Analogous to**
+    -   `lparser.c:yindex(LexState *ls, expdesc *var)` in Lua 5.1.5.
+     */
+    index :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
+        key = expression(parser, compiler)
+        compiler_expr_to_value(compiler, &key)
+        parser_consume(parser, .Right_Bracket)
+        return key
     }
 
     var := first_var(parser, compiler)
@@ -659,7 +676,7 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
             -   If it's a constant then try to use RK, else push it.
              */
             compiler_expr_any_reg(compiler, &var)
-            key := indexed(parser, compiler)
+            key := index(parser, compiler)
             compiler_code_indexed(compiler, &var, &key)
         case .Period:
             // Same idea as in `.Left_Bracket` case.
@@ -675,25 +692,6 @@ variable :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
         }
     }
     return var
-}
-
-/*
-**Form**
--   indexed ::= '[' expression ']'
-
-**Overview**
--   Compiles an expression and saves it to a new `Expr` instance.
--   This instance represents either a get-operation or a literal.
-
-**Analogous to**
--   `lparser.c:yindex(LexState *ls, expdesc *var)` in Lua 5.1.5.
- */
-@(private="file")
-indexed :: proc(parser: ^Parser, compiler: ^Compiler) -> (key: Expr) {
-    key = expression(parser, compiler)
-    compiler_expr_to_value(compiler, &key)
-    parser_consume(parser, .Right_Bracket)
-    return key
 }
 
 
@@ -766,11 +764,11 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
 
         key := field_name(parser, compiler)
         parser_consume(parser, .Equals)
-        b := compiler_expr_regconst(compiler, &key)
+        rkb := compiler_expr_regconst(compiler, &key)
 
         value := expression(parser, compiler)
-        c := compiler_expr_regconst(compiler, &value)
-        compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
+        rkc := compiler_expr_regconst(compiler, &value)
+        compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, rkb, rkc)
         compiler_expr_pop(compiler, value)
         compiler_expr_pop(compiler, key)
 
@@ -781,14 +779,14 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
 
         key := expression(parser, compiler)
         parser_consume(parser, .Right_Bracket)
-        b := compiler_expr_regconst(compiler, &key)
+        rkb := compiler_expr_regconst(compiler, &key)
 
         parser_consume(parser, .Equals)
 
         value := expression(parser, compiler)
-        c := compiler_expr_regconst(compiler, &value)
+        rkc := compiler_expr_regconst(compiler, &value)
 
-        compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, b, c)
+        compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, rkb, rkc)
         // Reuse these registers
         compiler_expr_pop(compiler, value)
         compiler_expr_pop(compiler, key)

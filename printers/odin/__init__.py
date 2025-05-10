@@ -3,7 +3,7 @@ from typing import Final, Generator, TypeAlias
 from dataclasses import dataclass
 from . import parser
 
-Iterator: TypeAlias = Generator[tuple[str, gdb.Value], str, gdb.Value]
+Iterator: TypeAlias = Generator[tuple[str, gdb.Value], str, None]
 
 ENABLE_MSFT_WORKAROUNDS: Final = True
 """
@@ -22,18 +22,19 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         self.__saved  = {}
 
     def __call__(self, val: gdb.Value):
-        tag = self.demangle(val)
-        if tag == "string":
-            return StringPrinter(val)
-        elif tag.startswith("[]"):
-            return SlicePrinter(val, tag)
-        elif tag.startswith("[dynamic]"):
-            return DynamicPrinter(val, tag)
-        elif tag.startswith("map"):
-            return MapPrinter(val, tag)
+        tag, ok = self.demangle(val)
+        if ok:
+            if tag == "string":
+                return StringPrinter(val)
+            elif tag.startswith("[]"):
+                return SlicePrinter(val, tag)
+            elif tag.startswith("[dynamic]"):
+                return DynamicPrinter(val, tag)
+            elif tag.startswith("map["):
+                return MapPrinter(val, tag)
         return None
 
-    def demangle(self, val: gdb.Value) -> str:
+    def demangle(self, val: gdb.Value) -> tuple[str, bool]:
         return parser.demangle(self.__parser, str(val.type), self.__saved)
 
 
@@ -129,7 +130,7 @@ class DynamicPrinter:
 
 @dataclass
 class MapCell:
-    elem_type:      gdb.Type
+    elem_type: gdb.Type
     cell_type: gdb.Type
     base_addr: int
 
@@ -282,10 +283,10 @@ class MapPrinter:
     def to_string(self) -> str:
         return f"{self.__tag}{{len={self.__len}, cap={self.__cap}}}"
 
-    def display_hint(self) -> str:
+    def display_hint(self) -> str | None:
         if self.__value.elem_type.sizeof == 0:
             return "array"
         return "map" if not ENABLE_MSFT_WORKAROUNDS else None
 
 
-pretty_printer = __PrettyPrinter("odin_pretty_printer")
+pretty_printer = __PrettyPrinter("odin")

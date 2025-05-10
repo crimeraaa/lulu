@@ -13,7 +13,7 @@ from .declaration import Declaration, quote
 
 
 class ExpectedError(ValueError):
-    expected: tuple[Token_Type]
+    expected: tuple[Token_Type, ...]
     culprit:  Token
 
     def __init__(self, *expected: Token_Type, culprit: Token):
@@ -59,22 +59,27 @@ class Parser:
         return self.consumed.data
 
     def expected(self, *expected: Token_Type):
-        raise ExpectedError(expected, culprit=self.lookahead)
+        raise ExpectedError(*expected, culprit=self.lookahead)
 
 
-def demangle(parser: Parser, mangled: str, saved: dict[str, str]) -> str:
+def demangle(parser: Parser, mangled: str, saved: dict[str, str]) -> tuple[str, bool]:
     # Parsing is a rather involved process, so if we already know the
     # demangled version of this `mangled` then reuse it!
     if mangled in saved:
-        return saved[mangled]
+        return saved[mangled], True
 
-    decl = Declaration()
-    parser.set_input(mangled)
-    fulltype(parser, decl)
+    try:
+        decl = Declaration()
+        parser.set_input(mangled)
+        fulltype(parser, decl)
+    except ExpectedError:
+        # Wasn't valid, but save it anyway so we don't have to parse again
+        saved[mangled] = mangled
+        return mangled, False
 
     demangled      = str(decl)
     saved[mangled] = demangled
-    return demangled
+    return demangled, True
 
 
 def fulltype(parser: Parser, decl: Declaration):
@@ -124,7 +129,7 @@ def qualname(parser: Parser, decl: Declaration) -> str:
     <namespace> ::= <package> <file>?
     <package>   ::= <ident> '::'
     <file>      ::= '[' <ident> ']' '::'
-    <ident>     ::= r'[-_.\w]+'
+    <ident>     ::= r'[-_.\\w]+'
     <parapoly>  ::= '(' <polyargs> ')'
     ```
     """
@@ -191,7 +196,7 @@ def compound(parser: Parser, decl: Declaration):
     <compound>  ::= <header> '^'* <compound>*
     <header>    ::= '[' ( <int> | "dynamic" | '^' )? ']'
                     | "map" '[' <qualname> ']'
-    <int>       ::= r'\d+'
+    <int>       ::= r'\\d+'
     ```
 
     Note:

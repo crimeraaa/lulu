@@ -4,13 +4,17 @@ package lulu
 @require import "core:fmt"
 import "base:builtin"
 import "core:log"
-import sa "core:container/small_array"
+import "core:container/small_array"
 
 MAX_LOCALS    :: 200
 MAX_CONSTANTS :: MAX_Bx
-NO_JUMP       :: -1
 
-Active_Locals :: sa.Small_Array(MAX_LOCALS, u16)
+// In the context of jumps, since pc is always the *next* instruction,
+// adding `-1` to it simply brings us back to the `Jump` instruction.
+// This results in an infinite loop.
+NO_JUMP :: -1
+
+Active_Locals :: small_array.Small_Array(MAX_LOCALS, u16)
 
 @cold
 unreachable :: #force_inline proc(format: string, args: ..any, location := #caller_location) -> ! {
@@ -84,15 +88,10 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
     compiler.scope_depth -= 1
     chunk  := compiler.chunk
     depth  := compiler.scope_depth
-    reg    := sa.len(compiler.active) - 1
-    active := sa.slice(&compiler.active)
+    reg    := small_array.len(compiler.active) - 1
+    active := small_array.slice(&compiler.active)
     locals := chunk.locals[:compiler.count.locals]
     endpc  := chunk.pc
-
-    // fmt.printfln("block(%i) before:\n\t%v\n\t%v",
-    //              depth + 1, locals, sa.slice(&compiler.active))
-    // defer fmt.printfln("block(%i) after:\n\t%v\n\t%v",
-    //                    depth + 1, locals, sa.slice(&compiler.active))
 
     // Don't pop registers as we'll go below the active count!
     for reg >= 0 {
@@ -101,7 +100,7 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
         if local.depth <= depth {
             break
         }
-        sa.pop_back(&compiler.active)
+        small_array.pop_back(&compiler.active)
         local.endpc = endpc
         reg -= 1
     }
@@ -131,7 +130,7 @@ compiler_reserve_reg :: proc(compiler: ^Compiler, count: int) {
 
 compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_location) {
     // Only pop if nonconstant and not the register of an existing local.
-    if !reg_is_k(reg) && cast(int)reg >= sa.len(compiler.active) {
+    if !reg_is_k(reg) && cast(int)reg >= small_array.len(compiler.active) {
         compiler.free_reg -= 1
         log.assertf(cast(int)reg == compiler.free_reg, "free_reg := %i but reg := %i",
             compiler.free_reg, reg, loc = location)
@@ -398,8 +397,9 @@ compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
 
     // No jumps to current position?
     if pc > compiler.last_target {
-        // Function start and positions already clean?
-        if pc == 0 && !compiler.is_print && cast(int)reg >= sa.len(compiler.active) {
+        // Since we assume stack frames are initialized to `nil`, we don't need
+        // to push `nil` when we're at the very start of the function.
+        if pc == 0 && !compiler.is_print && cast(int)reg >= small_array.len(compiler.active) {
             return
         }
         // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
@@ -531,7 +531,7 @@ compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: 
     -   `reg` IS what we want to return, as we assume that locals are only
         ever stored sequentially starting from the 0th register.
      */
-    #reverse for active, reg in sa.slice(&compiler.active) {
+    #reverse for active, reg in small_array.slice(&compiler.active) {
         // `lparser.c:getlocvar(fs, i)`
         local := locals[active]
         if local.ident == ident {
@@ -832,34 +832,64 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
 ///=== JUMP MANIPULATION =================================================== {{{
 
 
-compiler_code_test :: proc(compiler: ^Compiler, cond: ^Expr, skip_cond: bool) {
+/*
+**Guarantees**
+-   `OpCode.Test` will use the register/constant of `cond`.
+-   If `cond` is a non-local register then it is popped.
+ */
+compiler_code_test :: proc(compiler: ^Compiler, cond: ^Expr, skip_when: bool) {
     ra := compiler_expr_any_reg(compiler, cond)
-    compiler_code_ABC(compiler, .Test, ra, 0, 1 if skip_cond else 0)
+    compiler_code_ABC(compiler, .Test, ra, 0, 1 if skip_when else 0)
+    compiler_expr_pop(compiler, cond^)
 }
+
 
 /*
 **Analogous to**
 -   `compiler.c:emitJump(uint8_t instruction)` in Crafting Interpreters, Chapter 23.1.
 
+**Assumptions**
+-   `prev` is the pc of the previous jump we want to chain.
+-   If it's `NO_JUMP` then that indicates this is the very first jump in the
+    chain.
+
 **Returns**
 -   The index of our jump instruction in the current chunk's code.
 */
-compiler_code_jump :: proc(compiler: ^Compiler) -> (jump_pc: int) {
-    return compiler_code_AsBx(compiler, .Jump, 0, MAX_sBx + 1)
+compiler_code_jump :: proc(compiler: ^Compiler, prev := NO_JUMP) -> (jump_pc: int) {
+    return compiler_code_AsBx(compiler, .Jump, 0, prev)
 }
+
+
+compiler_code_jump_if :: proc(compiler: ^Compiler, expr: ^Expr, cond: bool) -> (jump_pc: int) {
+    // Flip `cond` because if we want to jump when falsy, then we need to
+    // test for true. This makes it so that if our condition is falsy, the test
+    // doesn't skip the jump, so the jump is performed.
+    compiler_code_test(compiler, expr, !cond)
+    return compiler_code_jump(compiler)
+}
+
 
 /*
 **Analogous to**
 -   `compiler.c:patchJump(int offset)` in Crafting Interpreters, Chapter 23.1.
+-   `lcode.c:patchlistaux(FuncState *fs, int list, int vtarget, int reg, int dtarget)` in Lua 5.1.5.
 */
 compiler_patch_jump :: proc(compiler: ^Compiler, jump_pc: int) {
-    chunk  := compiler.chunk
-    ip     := &chunk.code[jump_pc]
-    offset := chunk.pc - jump_pc - 1
-    if !(-MAX_sBx <= offset && offset <= MAX_sBx) {
-        parser_error(compiler.parser, "Jump too large")
+    chunk := compiler.chunk
+    code  := chunk.code
+    pc    := chunk.pc
+    for list := jump_pc; list != NO_JUMP; {
+        ip     := &code[list]
+        offset := pc - list - 1
+        if !(-MAX_sBx <= offset && offset <= MAX_sBx) {
+            parser_error(compiler.parser, "Jump too large")
+        }
+
+        // If ip.sBx is not `NO_JUMP` then we still have a chain to resolve.
+        list = ip_get_sBx(ip^)
+        ip_set_sBx(ip, offset)
     }
-    ip_set_sBx(ip, offset)
 }
 
 

@@ -1,7 +1,7 @@
 #+private
 package lulu_main
 
-@require import c "core:c/libc"
+@require import "core:c/libc"
 @require import "core:strings"
 @require import "core:os"
 @require import "core:io"
@@ -42,7 +42,7 @@ read_line :: proc(buffer: []byte) -> (line: string, ok: bool) {
 -   If not, then you're gonna have a bad time!
  */
 free_line :: proc(line: string) {
-    c.free(cast(rawptr)strings.unsafe_string_to_cstring(line))
+    libc.free(cast(rawptr)strings.unsafe_string_to_cstring(line))
 }
 
 

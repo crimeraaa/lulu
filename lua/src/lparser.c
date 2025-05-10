@@ -193,15 +193,18 @@ static void adjustlocalvars (LexState *lex, int nvars) {
   FuncState *func = lex->func;
   func->nactvar = cast_byte(func->nactvar + nvars);
   for (; nvars; nvars--) {
-    getlocvar(func, func->nactvar - nvars).startpc = func->pc;
+    LocVar *loc = &getlocvar(func, func->nactvar - nvars);
+    loc->startpc = func->pc;
   }
 }
 
 
 static void removevars (LexState *lex, int tolevel) {
   FuncState *func = lex->func;
-  while (func->nactvar > tolevel)
-    getlocvar(func, --func->nactvar).endpc = func->pc;
+  while (func->nactvar > tolevel) {
+    LocVar *loc = &getlocvar(func, --func->nactvar);
+    loc->endpc = func->pc;
+  }
 }
 
 
@@ -1199,7 +1202,7 @@ static void for_stmt (LexState *lex, int line) {
   leaveblock(func);  /* loop scope (`break' jumps to this point) */
 }
 
-
+/* returns the pc of the jump instruction that comes after the test */
 static int test_then_block (LexState *lex) {
   /* test_then_block -> [IF | ELSEIF] cond THEN block */
   int condexit;
@@ -1218,13 +1221,13 @@ static void if_stmt (LexState *lex, int line) {
   int escapelist = NO_JUMP;
   flist = test_then_block(lex);  /* IF cond THEN block */
   while (lex->current.type == Token_Elseif) {
-    luaK_concat(func, &escapelist, luaK_jump(func));
-    luaK_patchtohere(func, flist);
+    luaK_concat(func, &escapelist, luaK_jump(func)); /* assigns `escapelist` */
+    luaK_patchtohere(func, flist); /* definitely assigns `func.jpc` */
     flist = test_then_block(lex);  /* ELSEIF cond THEN block */
   }
   if (lex->current.type == Token_Else) {
-    luaK_concat(func, &escapelist, luaK_jump(func));
-    luaK_patchtohere(func, flist);
+    luaK_concat(func, &escapelist, luaK_jump(func)); /* assigns `escapelist` */
+    luaK_patchtohere(func, flist); /* definitely assigns `func.jpc` */
     luaX_next(lex);  /* skip ELSE (after patch, for correct line info) */
     block(lex);  /* `else' part */
   }

@@ -15,10 +15,10 @@ Lexer :: struct {
 }
 
 Token :: struct {
-    literal:    union {f64, ^OString},
+    type:       Token_Type  `fmt:"s"`,
     lexeme:     string,
     line:       int         `fmt:"-"`,
-    type:       Token_Type  `fmt:"s"`,
+    literal:    union {f64, ^OString},
 }
 
 Token_Type :: enum u8 {
