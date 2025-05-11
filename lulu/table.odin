@@ -5,7 +5,7 @@ import "core:math"
 import "core:mem"
 
 Table :: struct {
-    using base: Object_Header,
+    using base: Object,
     entries:    []Table_Entry, // `len(entries)` == allocated capacity.
     count:      int, // Number of active entries. Not necessarily contiguous!
 }
@@ -30,10 +30,14 @@ table_destroy :: proc(vm: ^VM, t: ^Table) {
 }
 
 /*
-Notes:
+**Notes**:
 -   It is possible for `k` to exist and map to a nil value. This is valid.
 -   But if `k` maps to nothing (that is, entry.key is nil, meaning we haven't
     yet mapped this key), then we can say it is invalid.
+
+**Assumptions**
+-   `k` is non-nil.
+-   We assume the VM handled that beforehand, it would have thrown an error.
  */
 table_get :: proc(t: ^Table, k: Value) -> (v: Value, ok: bool) #optional_ok {
     if t.count == 0 {
@@ -47,9 +51,26 @@ table_get :: proc(t: ^Table, k: Value) -> (v: Value, ok: bool) #optional_ok {
     return v, ok
 }
 
+/*
+**Assumptions**
+-   `k` is non-nil.
+-   We assume the VM handled that beforehand, it would have thrown an error.
+-   If `v` is nil then we proceed with mapping it as the value of `k`; however
+    this entry will be considered a tombstone.
+
+**Notes**
+-   Concept check:
+    ```lua
+    local t = {}
+    t.a = nil
+    for k, v in pairs(t) do
+        print(k, v)
+    end
+    ```
+ */
 table_set :: proc(vm: ^VM, t: ^Table, k, v: Value) {
     /*
-    Notes:
+    **Notes**
     -   This is a safer version of the following line:
 
         `table->count > table->capacity > TABLE_MAX_LOAD`
@@ -65,7 +86,9 @@ table_set :: proc(vm: ^VM, t: ^Table, k, v: Value) {
     }
 
     entry := find_entry(t.entries, k)
-    // Tombstones have nil keys but non-nil values, so don't count them.
+
+    // Don't count tombstones as they were valid at some point and thus added
+    // to the count already.
     if value_is_nil(entry.key) && value_is_nil(entry.value) {
         t.count += 1
     }
@@ -78,13 +101,10 @@ table_unset :: proc(t: ^Table, k: Value) {
         return
     }
 
-    entry := find_entry(t.entries, k)
-    if value_is_nil(entry.key) {
-        return
+    // If unset or a tombstone, it's already unset.
+    if entry := find_entry(t.entries, k); !value_is_nil(entry.key) {
+        entry^ = Table_Entry{key = value_make(), value = value_make(true)}
     }
-
-    // Tombstones are invalid keys with non-nil values.
-    entry^ = Table_Entry{key = value_make(), value = value_make(true)}
 }
 
 /*
@@ -102,10 +122,14 @@ table_copy :: proc(vm: ^VM, dst: ^Table, src: Table) {
     }
 }
 
+/*
+**Assumptions**
+-   `k` is non-nil. That's all I ask.
+ */
 @(private="file")
 find_entry :: proc(entries: []Table_Entry, k: Value) -> ^Table_Entry {
 
-    get_hash :: proc(k: Value) -> (hash: u32) {
+    get_hash :: proc(k: Value) -> u32 {
         switch k.type {
         case .Nil:      break
         case .Boolean:  return cast(u32)k.boolean
@@ -116,20 +140,20 @@ find_entry :: proc(entries: []Table_Entry, k: Value) -> ^Table_Entry {
         unreachable("Cannot hash type %v", k.type)
     }
 
-    wrap  := cast(u32)len(entries)
-    tombstone: ^Table_Entry
+    wrap := cast(u32)len(entries)
+    tomb: ^Table_Entry
     for i := get_hash(k) % wrap; /* empty */; i = (i + 1) % wrap {
         entry := &entries[i]
         // Tombstone or empty entry?
         if value_is_nil(entry.key) {
             // Empty entry?
             if value_is_nil(entry.value) {
-                return entry if tombstone == nil else tombstone
+                return entry if tomb == nil else tomb
             }
             // Non-nil value, so this is a tombstone.
             // Recycle the first one we see.
-            if tombstone == nil {
-                tombstone = entry
+            if tomb == nil {
+                tomb = entry
             }
         } else if value_eq(entry.key, k) {
             return entry

@@ -1,9 +1,10 @@
-#+private
+#+private file
 package lulu
 
 import "core:fmt"
 import "core:container/small_array"
 
+@(private="package")
 Parser :: struct {
     vm:                 ^VM,
     lexer:               Lexer,
@@ -44,6 +45,7 @@ Precedence :: enum {
 -   `compiler.c:advance()` in Crafting Interpreters, Chapter 17.2: *Parsing
     Tokens*.
  */
+@(private="package")
 parser_advance :: proc(p: ^Parser) {
     token := lexer_scan_token(&p.lexer)
     p.consumed, p.lookahead = p.lookahead, token
@@ -73,6 +75,7 @@ parser_backtrack :: proc(p: ^Parser, prev: Token) {
 -   `compiler.c:consume()` in Crafting Interpreters, Chapter 17.2.1:
     *Handling syntax errors*.
  */
+@(private="package")
 parser_consume :: proc(p: ^Parser, expected: Token_Type) {
     if p.lookahead.type == expected {
         parser_advance(p)
@@ -84,6 +87,7 @@ parser_consume :: proc(p: ^Parser, expected: Token_Type) {
     parser_error_lookahead(p, s)
 }
 
+@(private="package")
 parser_match :: proc(p: ^Parser, expected: Token_Type) -> (found: bool) {
     if found = p.lookahead.type == expected; found {
         parser_advance(p)
@@ -100,8 +104,8 @@ parser_check :: proc(p: ^Parser, expected: ..Token_Type) -> (found: bool) {
     return found
 }
 
-LValue :: struct {
-    prev:    ^LValue,
+Assign :: struct {
+    prev:    ^Assign,
     variable: Expr,
 }
 
@@ -116,13 +120,14 @@ LValue :: struct {
 -   https://www.lua.org/source/5.1/lparser.c.html#chunk
 -   https://www.lua.org/source/5.1/lparser.c.html#statement
  */
+@(private="package")
 parser_parse :: proc(p: ^Parser, c: ^Compiler) {
     parser_advance(p)
     #partial switch p.consumed.type {
     case .Identifier:
         // Inline implementation of `compiler.c:parseVariable()` since we immediately
         // consumed the 'identifier'. Also, Lua doesn't have a 'var' keyword.
-        last := &LValue{variable = variable(p, c)}
+        last := &Assign{variable = variable(p, c)}
         if parser_match(p, .Left_Paren) {
             parser_error(p, "Function calls not yet implemented")
         } else {
@@ -156,8 +161,7 @@ parser_parse :: proc(p: ^Parser, c: ^Compiler) {
 -   https://www.lua.org/source/5.1/lparser.c.html#prefixexp
 -   https://www.lua.org/source/5.1/lparser.c.html#singlevar
  */
-@(private="file")
-assignment :: proc(p: ^Parser, c: ^Compiler, last: ^LValue, n_vars: int) {
+assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
     // Don't call `variable()` for the first assignment because we did so already
     // to check for function calls.
     if n_vars > 1 {
@@ -168,7 +172,7 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^LValue, n_vars: int) {
     if parser_match(p, .Comma) {
         parser_consume(p, .Identifier)
         parser_recurse_begin(p)
-        assignment(p, c, &LValue{prev = last}, n_vars + 1)
+        assignment(p, c, &Assign{prev = last}, n_vars + 1)
         parser_recurse_end(p)
         // Parents of recursive calls will always go to base cases because their
         // values are guaranteed to be pushed to the stack.
@@ -214,7 +218,6 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^LValue, n_vars: int) {
 -   `compiler.c:identifierConstant(Token *name)` in Crafting Interpreters,
     Chapter 21.2, *Variable Declarations*.
 */
-@(private="file")
 ident_constant :: proc(p: ^Parser, c: ^Compiler, token: Token) -> (ident: ^OString, index: u32) {
     ident = ostring_new(p.vm, token.lexeme)
     value := value_make(ident)
@@ -230,7 +233,6 @@ ident_constant :: proc(p: ^Parser, c: ^Compiler, token: Token) -> (ident: ^OStri
     declarations into our `parseVariable()` analog as we do not have a
     catch-all `var` keyword.
 */
-@(private="file")
 local_stmt :: proc(p: ^Parser, c: ^Compiler) {
     count_vars: int
     for {
@@ -272,7 +274,6 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
     *Declaring Local Variables*.
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.5.
  */
-@(private="file")
 local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, counter: int) {
     chunk  := c.chunk
     depth  := c.scope_depth
@@ -310,7 +311,6 @@ local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, counter: int) {
 **Notes**
 -   See `lparser.c:adjust_assign(LexState *ls, int nvars, int nexps, expdesc *e)`.
  */
-@(private="file")
 adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
     // TODO(2025-04-08): Add `if (hasmultret(expr->kind))` analog
 
@@ -350,7 +350,6 @@ adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
 -   We don't need a `remove_locals()` function because `compiler_end_scope()`
     takes care of that already.
  */
-@(private="file")
 local_adjust :: proc(c: ^Compiler, nvars: int) {
     startpc := c.n_code
     depth   := c.scope_depth
@@ -374,7 +373,6 @@ local_adjust :: proc(c: ^Compiler, nvars: int) {
     }
 }
 
-@(private="file")
 do_block :: proc(p: ^Parser, c: ^Compiler) {
     for !parser_check(p, .End, .Eof) {
         parser_parse(p, c)
@@ -393,7 +391,6 @@ if_stmt ::= 'if' expression 'then' block 'end'
 -   `compiler.c:ifStatement()` in Crafting Interpreters, Chapter 23.1:
     *If Statements*.
 */
-@(private="file")
 if_stmt :: proc(p: ^Parser, c: ^Compiler) {
     then_cond :: proc(p: ^Parser, c: ^Compiler) -> (jump_pc: int) {
         expr := expression(p, c)
@@ -438,7 +435,6 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
 **Notes**
 -   See `lparser.c:funcargs(LexState *ls, expdesc *e)`.
 */
-@(private="file")
 print_stmt :: proc(p: ^Parser, c: ^Compiler) {
     c.is_print = true
     defer c.is_print = false
@@ -475,7 +471,6 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 **Notes**
 -   Like in Lua 5.1.5, the last expression is not emitted.
  */
-@(private="file")
 expr_list :: proc(p: ^Parser, c: ^Compiler) -> (expr: Expr, count: int) {
     count = 1 // at least one expression
     expr  = expression(p, c)
@@ -500,7 +495,6 @@ expr_list :: proc(p: ^Parser, c: ^Compiler) -> (expr: Expr, count: int) {
 -   However, `expr` itself does not reside in a register yet. It is up to you
     to decide how to allocate that.
  */
-@(private="file")
 expression :: proc(p: ^Parser, c: ^Compiler) -> (expr: Expr) {
     return parse_precedence(p, c, .None + Precedence(1))
 }
@@ -558,6 +552,7 @@ parser_error_lookahead :: proc(p: ^Parser, msg: string) -> ! {
 -   `compiler.c:error()` in Crafting Interpreters, Chapter 17.2.1: *Handling
     syntax errors*.
  */
+@(private="package")
 parser_error :: proc(p: ^Parser, msg: string) -> ! {
     error_at(p, p.consumed, msg)
 }
@@ -568,7 +563,6 @@ parser_error :: proc(p: ^Parser, msg: string) -> ! {
 -   `compiler.c:errorAt()` in Crafting Interpreters, Chapter 17.2.1: *Handling
     syntax errors*.
  */
-@(private="file")
 error_at :: proc(p: ^Parser, token: Token, msg: string) -> ! {
     vm     := p.vm
     source := p.lexer.source
@@ -586,7 +580,6 @@ error_at :: proc(p: ^Parser, token: Token, msg: string) -> ! {
 **Form**
 -   grouping ::= '(' expression ')'
  */
-@(private="file")
 grouping :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     expr := expression(p, c)
     parser_consume(p, .Right_Paren)
@@ -607,23 +600,28 @@ parser_recurse_end :: proc(p: ^Parser) {
 
 /*
 **Form**
--   literal ::= 'nil' | 'true' | 'false' | NUMBER | STRING
+-   `literal ::= 'nil' | 'true' | 'false' | NUMBER | STRING`
  */
-@(private="file")
-literal :: proc(p: ^Parser, c: ^Compiler) -> Expr {
-    token := p.consumed
-    value := token.literal
-    #partial switch token.type {
-    case .Nil:      return expr_make(.Nil)
-    case .True:     return expr_make(.True)
-    case .False:    return expr_make(.False)
-    case .Number:   return expr_make(.Number, value.(f64))
-    case .String:
-        index := compiler_add_constant(c, value_make(value.(^OString)))
-        return expr_make(.Constant, index = index)
-    case:
-        unreachable("Token type %v is not a literal", token.type)
-    }
+lit_nil :: proc(p: ^Parser, c: ^Compiler) -> Expr {
+    return expr_make(.Nil)
+}
+
+lit_true :: proc(p: ^Parser, c: ^Compiler) -> Expr {
+    return expr_make(.True)
+}
+
+lit_false :: proc(p: ^Parser, c: ^Compiler) -> Expr {
+    return expr_make(.False)
+}
+
+lit_number :: proc(p: ^Parser, c: ^Compiler) -> Expr {
+    return expr_make(.Number, p.consumed.literal.(f64))
+}
+
+lit_string :: proc(p: ^Parser, c: ^Compiler) -> Expr {
+    v     := value_make(p.consumed.literal.(^OString))
+    index := compiler_add_constant(c, v)
+    return expr_make(.Constant, index = index)
 }
 
 /*
@@ -638,7 +636,6 @@ literal :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 **Assumptions**
 -   `p.consumed` is of type `.Identifier`.
  */
-@(private="file")
 variable :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     /*
     **Analogous to**
@@ -723,7 +720,6 @@ variable :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 **Notes**
 -   If the index does not fit in an RK, you will have to push it yourself!
  */
-@(private="file")
 field_name :: proc(p: ^Parser, c: ^Compiler) -> (key: Expr) {
     _, index := ident_constant(p, c, p.consumed)
     return expr_make(.Constant, index = index)
@@ -740,7 +736,6 @@ field_name :: proc(p: ^Parser, c: ^Compiler) -> (key: Expr) {
 **Assumptions**
 -   The left curly brace token was just consumed.
  */
-@(private="file")
 constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     /*
     **Analogous to**
@@ -886,7 +881,6 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 -   For arithetic and comparison, `expr` ends up as RK.
 -   For len, `expr` ends up as a register.
  */
-@(private="file")
 unary :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     // MUST be set to '.Number' in order to try constant folding.
     @(static)
@@ -941,31 +935,29 @@ unary :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 
 /*
 **Form**
--   arith    ::= arith_op expression
+-   arith    ::= expression arith_op expression
     arith_op ::= '+' | '-' | '*' | '/' | '%' | '^'
 
 **Notes**
 -   '..' is not included due to its unique semantics: neither arguments B nor C
     can be RK.
  */
-@(private="file")
 arith :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
-    type := p.consumed.type
-    op: OpCode
-    #partial switch type {
-    // Arithmetic
-    case .Plus:    op = .Add
-    case .Dash:    op = .Sub
-    case .Star:    op = .Mul
-    case .Slash:   op = .Div
-    case .Percent: op = .Mod
-    case .Caret:   op = .Pow
-
-    // Misc.
-    case: unreachable("Invalid binary operator %v", type)
+    arith_op :: proc(type: Token_Type) -> (op: OpCode, prec: Precedence) {
+        #partial switch type {
+        case .Plus:    op = .Add
+        case .Dash:    op = .Sub
+        case .Star:    op = .Mul
+        case .Slash:   op = .Div
+        case .Percent: op = .Mod
+        case .Caret:   op = .Pow
+        case:
+            unreachable("Impossible condition reached; got token %v", type)
+        }
+        return op, get_rule(type).prec
     }
 
-    if USE_CONSTANT_FOLDING {
+    when USE_CONSTANT_FOLDING {
         if !expr_is_number(left^) {
             compiler_expr_rk(c, left)
         }
@@ -980,7 +972,7 @@ arith :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
         compiler_expr_rk(c, left)
     }
 
-    prec := get_rule(type).prec
+    op, prec := arith_op(p.consumed.type)
 
     // By not adding 1 for exponentiation we enforce right-associativity since we
     // keep emitting the ones to the right first
@@ -989,16 +981,7 @@ arith :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     }
 
     right := parse_precedence(p, c, prec)
-
-    /*
-    **Note**
-    -   This is effectively the inline implementation of the only relevant
-        line/s from `lcode.c:luaK_posfix()`.
-
-    **Links**
-    -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
-     */
-    compiler_code_arith(c, op, left, &right)
+    compiler_code_arith(c, op, left, &right) // `lcode.c:luaK_posfix()`
 }
 
 
@@ -1008,28 +991,24 @@ arith :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     compare_op ::= '==' | '<' | '<=' | '~=' | '>=' | '>'
 
 */
-@(private="file")
 compare :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
-    type     := p.consumed.type
-    inverted := false
-    op: OpCode
-    #partial switch type {
-    case .Tilde_Eq:       op = .Neq
-    case .Equals_2:       op = .Eq
-
-    // (x > y) == (y < x)
-    case .Right_Angle:    inverted = true; fallthrough
-    case .Left_Angle:     op = .Lt
-
-    // (x >= y) == (y <= x)
-    case .Right_Angle_Eq: inverted = true; fallthrough
-    case .Left_Angle_Eq:  op = .Leq
-    case:
-        unreachable("Token %v is not a comparison operator", type)
+    compare_op :: proc(type: Token_Type) -> (op: OpCode, inverted: bool, prec: Precedence) {
+        #partial switch type {
+        case .Equals_2:       op = .Eq;  inverted = false
+        case .Left_Angle:     op = .Lt;  inverted = false
+        case .Left_Angle_Eq:  op = .Leq; inverted = false
+        case .Tilde_Eq:       op = .Eq;  inverted = true
+        case .Right_Angle:    op = .Lt;  inverted = true
+        case .Right_Angle_Eq: op = .Leq; inverted = true
+        case:
+            unreachable("Impossible condition reached; got token %v", type)
+        }
+        return op, inverted, get_rule(type).prec
     }
 
+
     compiler_expr_rk(c, left)
-    prec  := get_rule(type).prec
+    op, inverted, prec := compare_op(p.consumed.type)
     right := parse_precedence(p, c, prec)
     compiler_code_compare(c, op, inverted, left, &right)
 }
@@ -1057,7 +1036,6 @@ compare :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 **Links**
 -   http://lua-users.org/wiki/AssociativityOfConcatenation
  */
-@(private="file")
 concat :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     // Left-hand operand MUST be on the stack
     compiler_expr_next_reg(c, left)
@@ -1067,32 +1045,31 @@ concat :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     compiler_code_concat(c, left, &right)
 }
 
-@(private="file")
-logic_and :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
-    // skip jump if falsy
-    logical(p, c, left, cond = false, prec = .And)
-}
-
-@(private="file")
-logic_or :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
-    // skip jump if truthy
-    logical(p, c, left, cond = true, prec = .Or)
-}
-
 
 /*
 **Visualization**
+```
         <left>
     +-- Test_Set <reg> <left> <COND> ; if bool(<left>) == <COND> then skip Jump
 +---|-- Jump <right + 1>
 |   +-> <right>
 |       ; assign <reg>
 +-----> ...
+```
 */
-@(private="file")
-logical :: proc(p: ^Parser, c: ^Compiler, left: ^Expr, cond: bool, prec: Precedence) {
-    jump_pc := compiler_code_test_set(c, left, cond = cond)
-    right   := parse_precedence(p, c, prec)
+logic :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
+    logic_op :: proc(type: Token_Type) -> (cond: bool, prec: Precedence) {
+        #partial switch type {
+        case .And: return false, .And // Skip jump if falsy
+        case .Or:  return true,  .Or  // Skip jump if truthy
+        case:
+            unreachable("Impossible condition reached; got token %v", type)
+        }
+    }
+
+    cond, prec := logic_op(p.consumed.type)
+    jump_pc    := compiler_code_test_set(c, left, cond)
+    right      := parse_precedence(p, c, prec)
     compiler_expr_next_reg(c, &right)
     compiler_expr_pop(c, right)
     compiler_patch_jump(c, jump_pc)
@@ -1100,29 +1077,28 @@ logical :: proc(p: ^Parser, c: ^Compiler, left: ^Expr, cond: bool, prec: Precede
 
 ///=== }}} =====================================================================
 
-@(private="file")
 get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
     @(static, rodata)
     rules := #partial [Token_Type]Parse_Rule {
         // Keywords
-        .And        = {infix  = logic_and, prec = .And},
-        .False      = {prefix = literal},
-        .Nil        = {prefix = literal},
+        .And        = {infix  = logic, prec = .And},
+        .False      = {prefix = lit_false},
+        .Nil        = {prefix = lit_nil},
         .Not        = {prefix = unary},
-        .Or         = {infix  = logic_or, prec = .Or},
-        .True       = {prefix = literal},
+        .Or         = {infix  = logic, prec = .Or},
+        .True       = {prefix = lit_true},
 
         // Balanced Pairs
         .Left_Paren = {prefix = grouping},
         .Left_Curly = {prefix = constructor},
 
         // Arithmetic
-        .Plus       = {infix  = arith, prec = .Terminal},
+        .Plus       = {prefix = nil,   infix = arith, prec = .Terminal},
         .Dash       = {prefix = unary, infix = arith, prec = .Terminal},
-        .Star       = {infix  = arith, prec = .Factor},
-        .Slash      = {infix  = arith, prec = .Factor},
-        .Percent    = {infix  = arith, prec = .Factor},
-        .Caret      = {infix  = arith, prec = .Exponent},
+        .Star       = {prefix = nil,   infix = arith, prec = .Factor},
+        .Slash      = {prefix = nil,   infix = arith, prec = .Factor},
+        .Percent    = {prefix = nil,   infix = arith, prec = .Factor},
+        .Caret      = {prefix = nil,   infix = arith, prec = .Exponent},
 
         // Comparison
         .Equals_2       = {infix = compare, prec = .Equality},
@@ -1137,8 +1113,8 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Pound      = {prefix = unary},
 
         // Literals
-        .Number     = {prefix = literal},
-        .String     = {prefix = literal},
+        .Number     = {prefix = lit_number},
+        .String     = {prefix = lit_string},
         .Identifier = {prefix = variable},
     }
     return rules[type]

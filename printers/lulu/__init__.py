@@ -65,9 +65,15 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         }
 
     def __call__(self, val: gdb.Value):
-        type_name, ok = odin.pretty_printer.demangle(val)
-        if ok and (type_name in self.__printers):
-            return self.__printers[type_name](val)
+        # Seems that from within the VSCode debugger an exception is silently
+        # raised and squashed while trying to print `lulu.VM`
+        #
+        # Curiously, running GDB on the command line doesn't show any errors.
+        try:
+            tag, _ = odin.pretty_printer.demangle(val)
+            return self.__printers[tag](val)
+        except:
+            pass
         return None
 
 

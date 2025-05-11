@@ -10,7 +10,7 @@ VM :: struct {
     builder:      strings.Builder,
     interned:     Intern,
     globals:      Table,
-    objects:     ^Object_Header,
+    objects:     ^Object,
     top, base: [^]Value, // Current stack frame window.
     chunk:       ^Chunk,
     pc:        [^]Instruction, // Next instruction to be executed in the current chunk.

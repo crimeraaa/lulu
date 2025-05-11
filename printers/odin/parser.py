@@ -305,8 +305,11 @@ if __name__ == "__main__":
     while True:
         try:
             mangled   = input(">>> ")
-            demangled = demangle(__parser, mangled, __saved)
-            print(f"Odin: {demangled}")
+            demangled, ok = demangle(__parser, mangled, __saved)
+            if ok:
+                print(f"Odin: {demangled}")
+            else:
+                print(f"{mangled} is not a valid Odin type")
         except (KeyboardInterrupt, EOFError):
             print()
             break

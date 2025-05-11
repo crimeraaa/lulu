@@ -104,7 +104,7 @@ value_type_name :: #force_inline proc "contextless" (v: Value) -> string {
 }
 
 value_make_nil :: #force_inline proc "contextless" () -> Value {
-    return Value{type = .Nil, number = 0}
+    return Value{type = .Nil}
 }
 
 value_make_boolean :: #force_inline proc "contextless" (b: bool) -> Value {
@@ -174,46 +174,44 @@ value_eq :: proc(a, b: Value) -> bool {
 
 number_is_nan :: math.is_nan_f64
 
-value_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
-    v := (cast(^Value)arg.data)^
-    w := info.writer
-    switch verb {
-    // Normal
-    case 'v':
+value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
+    basic_print :: proc(fi: ^fmt.Info, v: Value) {
         switch v.type {
-        case .Nil:
-            io.write_string(w, "nil", &info.n)
-        case .Boolean:
-            io.write_string(w, "true" if v.boolean else "false", &info.n)
-        case .Number:
-            info.n += fmt.wprintf(w, "%.14g", v.number)
-        case .String:
-            io.write_string(w, value_to_string(v), &info.n)
+        case .Nil:      io.write_string(fi.writer, "nil", &fi.n)
+        case .Boolean:  io.write_string(fi.writer, "true" if v.boolean else "false", &fi.n)
+        case .Number:   fi.n += fmt.wprintf(fi.writer, "%.14g", v.number)
+        case .String:   io.write_string(fi.writer, value_to_string(v), &fi.n)
         case .Table:
             type_name := value_type_name(v)
             pointer   := cast(rawptr)v.table
-            info.n += fmt.wprintf(w, "%s: %p", type_name, pointer)
+            fi.n += fmt.wprintf(fi.writer, "%s: %p", type_name, pointer)
         case:
             unreachable("Unknown value type %v", v.type)
         }
+    }
 
-    // Debug
-    case 'd':
-        if value_is_string(v) {
-            // Delegate to `ostring_formatter()`
-            info.n += fmt.wprintf(w, "%q", v.ostring)
-        } else {
-            // Delegate to normal case
-            info.n += fmt.wprint(w, v)
+    modified_print :: proc(fi: ^fmt.Info, v: Value, is_stack := false) {
+        if is_stack {
+            io.write_string(fi.writer, "\t[ ", &fi.n)
+        }
+        defer if is_stack {
+            io.write_string(fi.writer, " ]", &fi.n)
         }
 
-    // Stack (not string!)
-    case 's':
-        // Delegate to Debug case
-        info.n += fmt.wprintf(w, "\t[ %d ]", v)
+        if value_is_string(v) {
+            s := value_to_string(v)
+            io.write_quoted_string(fi.writer, s, '\'' if len(s) == 1 else '\"', &fi.n)
+        } else {
+            basic_print(fi, v)
+        }
+    }
 
-    case:
-        return false
+    v := (cast(^Value)arg.data)^
+    switch verb {
+    case 'v': basic_print(fi, v)
+    case 'd': modified_print(fi, v)
+    case 's': modified_print(fi, v, is_stack = true)
+    case:     return false
     }
     return true
 }

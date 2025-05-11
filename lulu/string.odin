@@ -6,27 +6,23 @@ import "core:io"
 import "core:mem"
 
 OString :: struct {
-    using base: Object_Header,
+    using base: Object,
     hash:       u32,
     len:        int, // Length in bytes, not runes.
     data:    [0]byte,
 }
 
 ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
-    s := (cast(^^OString)arg.data)^
-    w := fi.writer
-    text := ostring_to_string(s)
+    s := ostring_to_string((cast(^^OString)arg.data)^)
     switch verb {
     case 'v', 's':
-        io.write_string(w, text, &fi.n)
-        return true
+        io.write_string(fi.writer, s, &fi.n)
     case 'q':
-        quote := '\'' if s.len == 1 else '\"'
-        fi.n += fmt.wprintf(w, "%c%s%c", quote, text, quote)
-        return true
+        io.write_quoted_string(fi.writer, s, '\'' if len(s) == 1 else '\"', &fi.n)
     case:
         return false
     }
+    return true
 }
 
 /*

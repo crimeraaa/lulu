@@ -1,5 +1,5 @@
 import gdb # type: ignore
-from typing import Final
+from typing import Final, Optional
 from dataclasses import dataclass
 from .. import base
 from . import parser
@@ -17,6 +17,7 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
     def __call__(self, val: gdb.Value):
         tag, ok = self.demangle(val)
         if ok:
+            if tag == "rune":                 return RunePrinter(val)
             if tag == "string":               return StringPrinter(val)
             elif tag.startswith("[]"):        return SlicePrinter(val, tag)
             elif tag.startswith("[dynamic]"): return DynamicPrinter(val, tag)
@@ -25,6 +26,23 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
 
     def demangle(self, val: gdb.Value) -> tuple[str, bool]:
         return parser.demangle(self.__parser, str(val.type), self.__saved)
+
+
+class RunePrinter:
+    """
+    typedef byte[4] rune;
+    """
+    __rune: Final[gdb.Value]
+
+    def __init__(self, value: gdb.Value):
+        self.__rune = value
+
+    def to_string(self) -> str:
+        ptr = self.__rune.address.cast(base.CONST_CHAR_POINTER)
+        return ptr.string(encoding="utf-8", length=4)
+
+    def display_hint(self) -> Optional[str]:
+        return "string"
 
 
 class StringPrinter:
@@ -77,8 +95,8 @@ class SlicePrinter:
         by GDB using the `children()` method. """
         return f"{self.__tag}{{len={self.__len}}}"
 
-    def display_hint(self) -> str:
-        return 'array'
+    def display_hint(self) -> Optional[str]:
+        return base.display_hint("array")
 
 
 class DynamicPrinter:
@@ -113,8 +131,8 @@ class DynamicPrinter:
         by GDB using the `children()` method. """
         return f"{self.__tag}{{len={self.__len}, cap={self.__cap}}}"
 
-    def display_hint(self) -> str:
-        return 'array'
+    def display_hint(self) -> Optional[str]:
+        return base.display_hint("array")
 
 
 @dataclass
@@ -275,7 +293,7 @@ class MapPrinter:
     def display_hint(self) -> str | None:
         if self.__value.elem_type.sizeof == 0:
             return "array"
-        return "map" if not base.ENABLE_MSFT_WORKAROUNDS else None
+        return base.display_hint("map")
 
 
 pretty_printer = __PrettyPrinter("odin")

@@ -23,15 +23,13 @@ Local :: struct {
 
 local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     var := (cast(^Local)arg.data)^
-    w := fi.writer
-    n := &fi.n
     switch verb {
     case 'v': // verbose; our very own "name mangling"
-        n^ += fmt.wprintf(w, "%s__%i(%i:%i)",
+        fi.n += fmt.wprintf(fi.writer, "%s__%i(%i:%i)",
             local_to_string(var), var.depth, var.startpc, var.endpc)
         return true
     case 's': // summary
-        n^ += fmt.wprintf(w, "%s", local_to_string(var))
+        fi.n += fmt.wprintf(fi.writer, "%s", local_to_string(var))
         return true
     case:
         return false
