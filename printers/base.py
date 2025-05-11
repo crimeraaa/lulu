@@ -9,7 +9,6 @@ The VSCode C/C++ extension, as well as Windows Subsystem for Linux (WSL),
 seem to not properly respect the `map` display hint.
 """
 
-UINTPTR:            Final = gdb.lookup_type("uintptr")
 VOID_POINTER:       Final = gdb.lookup_type("void").pointer()
 CONST_CHAR_POINTER: Final = gdb.lookup_type("char").const().pointer()
 
