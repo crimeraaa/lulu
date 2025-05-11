@@ -47,12 +47,12 @@ class ExprPrinter:
         if nval:
             args.append(str(float(self.__expr['u']['nval'])))
 
-        args.append(self.__jump('t'))
-        args.append(self.__jump('f'))
+        args.append(self.__jump("patch_true"))
+        args.append(self.__jump("patch_false"))
         return "".join(args)
 
-    def __jump(self, char: Literal['t', 'f']) -> str:
-        jump = int(self.__expr[char])
-        return "" if jump == NO_JUMP else f", exit-{char}-pc = {jump}"
+    def __jump(self, patch: Literal["patch_true", "patch_false"]) -> str:
+        jump = int(self.__expr[patch])
+        return "" if jump == NO_JUMP else f", {patch} = {jump}"
 
 

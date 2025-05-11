@@ -8,6 +8,8 @@
 #define ldebug_h
 
 
+#include <stdio.h> /* fprintf */
+
 #include "lstate.h"
 
 

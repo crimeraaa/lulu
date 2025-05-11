@@ -217,8 +217,43 @@ Analogous to
  */
 @(private="file")
 expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
+    need_value :: proc(compiler: ^Compiler, list: int) -> bool {
+        for list := list; list != NO_JUMP; list = get_jump(compiler, list) {
+            ip := get_jump_control(compiler, list)
+            // Test can produce a value, e.g. `OpCode.Eq`?
+            if ip.op != .Test_Set {
+                return true
+            }
+        }
+        // None found
+        return false
+    }
+
+    get_jump :: proc(compiler: ^Compiler, pc: int) -> (offset: int) {
+        ip := compiler.chunk.code[pc]
+        // Start of jump list?
+        if offset = ip_get_sBx(ip); offset == NO_JUMP {
+            return NO_JUMP
+        }
+        // Turn relative offset into absolute position.
+        return (pc + 1) + offset
+    }
+
+    get_jump_control :: proc(compiler: ^Compiler, pc: int) -> (ip: ^Instruction) {
+        ip = &compiler.chunk.code[pc]
+        // Have something before the jump instruction?
+        if pc >= 1 && opcode_info[ip.op].is_test {
+            return ptr_offset(ip, -1)
+        }
+        return ip
+    }
+
     discharge_to_reg(compiler, expr, reg)
-    // @todo 2025-01-06: Implement the rest as needed...
+
+    // uh oh
+    if expr_has_jumps(expr^) {
+        unreachable("jumps not yet implemented!")
+    }
 
     // NOTE(2025-04-09): Seemingly redundant but useful when we get to jumps.
     expr^ = expr_make(.Discharged, reg = reg)
@@ -281,7 +316,10 @@ discharge_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16, location :=
         assert(expr.type == .Empty || expr.type == .Jump)
         return
     }
-    expr^ = expr_make(.Discharged, reg = reg)
+    // Don't set `expr.patch_*`
+    expr.type = .Discharged
+    expr.reg  = reg
+    // expr^ = expr_make(.Discharged, reg = reg)
 }
 
 /*
@@ -309,7 +347,7 @@ compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr, location := #c
     case .Table_Index:
         // We can now reuse the registers allocated for the table and index.
         table := expr.table.reg
-        key   := expr.table.index
+        key   := expr.table.key_reg
         compiler_pop_reg(compiler, key, location = location)
         compiler_pop_reg(compiler, table, location = location)
         pc := compiler_code_ABC(compiler, .Get_Table, 0, table, key)
@@ -347,7 +385,7 @@ compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
 -   Expressions of type `.Constant` will still retain their normal index, so
     the return value is for the caller's use.
  */
-compiler_expr_regconst :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
+compiler_expr_rk :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
     compiler_expr_to_value(compiler, expr)
 
     add_rk :: proc(compiler: ^Compiler, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
@@ -590,7 +628,7 @@ compiler_code_not :: proc(compiler: ^Compiler, expr: ^Expr) {
 /*
 **Notes**
 -   when `!USE_CONSTANT_FOLDING`, we expect that if `left` was a literal then
-    we called `compiler_expr_regconst()` beforehand.
+    we called `compiler_expr_rk()` beforehand.
 -   Otherwise, the order of arguments will be reversed!
 -   Comparison expressions are NEVER folded, because checking for equality or
     inequality is very involved especially when we have to resolve constants.
@@ -610,10 +648,10 @@ compiler_code_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
     b, c: u16
     // Right is unused.
     if op == .Unm || op == .Len {
-        b = compiler_expr_regconst(compiler, left)
+        b = compiler_expr_rk(compiler, left)
     } else {
-        c = compiler_expr_regconst(compiler, right)
-        b = compiler_expr_regconst(compiler, left)
+        c = compiler_expr_rk(compiler, right)
+        b = compiler_expr_rk(compiler, left)
     }
 
     // In the event BOTH are .Discharged, we want to pop them in the correct
@@ -638,23 +676,21 @@ compiler_code_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
 */
 compiler_code_compare :: proc(compiler: ^Compiler, op: OpCode, inverted: bool, left, right: ^Expr) {
     assert(.Eq <= op && op <= .Leq);
-    c := compiler_expr_regconst(compiler, right)
-    b := compiler_expr_regconst(compiler, left)
+    inverted := inverted
+    rkb := compiler_expr_rk(compiler, left)
+    rkc := compiler_expr_rk(compiler, right)
 
-    if b > c {
-        compiler_expr_pop(compiler, left^)
-        compiler_expr_pop(compiler, right^)
-    } else {
-        compiler_expr_pop(compiler, right^)
-        compiler_expr_pop(compiler, left^)
-    }
+    // Reuse these registers after the comparison is made
+    compiler_expr_pop(compiler, right^)
+    compiler_expr_pop(compiler, left^)
 
     // Exchange arguments in `<` or `<=` to emulate `>=` or `>`, respectively.
     if inverted && op != .Eq {
-        b, c = c, b
+        rkb, rkc = rkc, rkb
+        inverted = false
     }
 
-    pc   := compiler_code_ABC(compiler, op, 0, b, c)
+    pc := compiler_code_ABC(compiler, op, 0, rkb, rkc)
     left^ = expr_make(.Need_Register, pc = pc)
 }
 
@@ -741,7 +777,7 @@ fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
 -   `lcode.c:luaK_indexed(FuncState *fs, expdesc *t, expdesc *key)` in Lua 5.1.5.
  */
 compiler_code_indexed :: proc(compiler: ^Compiler, table, key: ^Expr) {
-    index := compiler_expr_regconst(compiler, key)
+    index := compiler_expr_rk(compiler, key)
     table^ = expr_make(.Table_Index, reg = table.reg, index = index)
 }
 
@@ -822,10 +858,9 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
         beforehand.
      */
     case .Table_Index:
-        table := var.table.reg
-        key   := var.table.index
-        value := compiler_expr_regconst(compiler, expr)
-        compiler_code_ABC(compiler, .Set_Table, table, key, value)
+        table := var.table
+        value := compiler_expr_rk(compiler, expr)
+        compiler_code_ABC(compiler, .Set_Table, table.reg, table.key_reg, value)
     case:
         unreachable("Invalid variable kind %v", var.type)
     }
@@ -852,8 +887,18 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
  */
 compiler_code_test :: proc(compiler: ^Compiler, expr: ^Expr, cond: bool) -> (jump_pc: int) {
     ra := compiler_expr_any_reg(compiler, expr)
-    compiler_code_ABC(compiler, .Test, ra, 0, u16(cond))
     compiler_expr_pop(compiler, expr^)
+    return compiler_code_cond_jump(compiler, .Test, ra, 0, u16(cond))
+}
+
+
+/*
+**Analogous to**
+-   `lcode.c:condjump(FuncState *fs, OpCode op, int A, int B, int C)` in
+    Lua 5.1.5.
+*/
+compiler_code_cond_jump :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> (jump_pc: int) {
+    compiler_code_ABC(compiler, op, a, b, c)
     return compiler_code_jump(compiler)
 }
 

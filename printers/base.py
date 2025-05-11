@@ -1,0 +1,15 @@
+import gdb # type: ignore
+from typing import Final, Generator, TypeAlias
+
+Iterator: TypeAlias = Generator[tuple[str, gdb.Value], str, None]
+
+ENABLE_MSFT_WORKAROUNDS: Final = True
+"""
+The VSCode C/C++ extension, as well as Windows Subsystem for Linux (WSL),
+seem to not properly respect the `map` display hint.
+"""
+
+UINTPTR:            Final = gdb.lookup_type("uintptr")
+VOID_POINTER:       Final = gdb.lookup_type("void").pointer()
+CONST_CHAR_POINTER: Final = gdb.lookup_type("char").const().pointer()
+

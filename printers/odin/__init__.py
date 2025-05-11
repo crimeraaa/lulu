@@ -1,15 +1,8 @@
 import gdb # type: ignore
-from typing import Final, Generator, TypeAlias
+from typing import Final
 from dataclasses import dataclass
+from .. import base
 from . import parser
-
-Iterator: TypeAlias = Generator[tuple[str, gdb.Value], str, None]
-
-ENABLE_MSFT_WORKAROUNDS: Final = True
-"""
-The VSCode C/C++ extension, as well as Windows Subsystem for Linux (WSL),
-seem to not properly respect the `map` display hint.
-"""
 
 
 class __PrettyPrinter(gdb.printing.PrettyPrinter):
@@ -24,14 +17,10 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
     def __call__(self, val: gdb.Value):
         tag, ok = self.demangle(val)
         if ok:
-            if tag == "string":
-                return StringPrinter(val)
-            elif tag.startswith("[]"):
-                return SlicePrinter(val, tag)
-            elif tag.startswith("[dynamic]"):
-                return DynamicPrinter(val, tag)
-            elif tag.startswith("map["):
-                return MapPrinter(val, tag)
+            if tag == "string":               return StringPrinter(val)
+            elif tag.startswith("[]"):        return SlicePrinter(val, tag)
+            elif tag.startswith("[dynamic]"): return DynamicPrinter(val, tag)
+            elif tag.startswith("map"):       return MapPrinter(val, tag)
         return None
 
     def demangle(self, val: gdb.Value) -> tuple[str, bool]:
@@ -76,10 +65,10 @@ class SlicePrinter:
         self.__data = val["data"] # NOTE(2025-04-25): Must be a pointer!
         self.__len  = int(val["len"])
 
-    def children(self) -> Iterator:
+    def children(self) -> base.Iterator:
         return self.__iter__()
 
-    def __iter__(self) -> Iterator:
+    def __iter__(self) -> base.Iterator:
         for i in range(self.__len):
             yield str(i), (self.__data + i).dereference()
 
@@ -112,10 +101,10 @@ class DynamicPrinter:
         self.__len  = int(val["len"])
         self.__cap  = int(val["cap"])
 
-    def children(self) -> Iterator:
+    def children(self) -> base.Iterator:
         return self.__iter__()
 
-    def __iter__(self) -> Iterator:
+    def __iter__(self) -> base.Iterator:
         for i in range(self.__len):
             yield str(i), (self.__data + i).dereference()
 
@@ -263,10 +252,10 @@ class MapPrinter:
         hash_addr = self.__value.cell_addr(self.__cap)
         self.__hashes = gdb.Value(hash_addr).cast(hash_type.pointer())
 
-    def children(self) -> Iterator:
+    def children(self) -> base.Iterator:
         return self.__iter__()
 
-    def __iter__(self) -> Iterator:
+    def __iter__(self) -> base.Iterator:
         for i in range(self.__cap):
             hash = (self.__hashes + i).dereference()
             # Skip empty/deleted entries
@@ -286,7 +275,7 @@ class MapPrinter:
     def display_hint(self) -> str | None:
         if self.__value.elem_type.sizeof == 0:
             return "array"
-        return "map" if not ENABLE_MSFT_WORKAROUNDS else None
+        return "map" if not base.ENABLE_MSFT_WORKAROUNDS else None
 
 
 pretty_printer = __PrettyPrinter("odin")

@@ -76,11 +76,11 @@ LUAI_FUNC int luaK_exp2anyreg (FuncState *func, Expr *expr);
 LUAI_FUNC void luaK_exp2nextreg (FuncState *func, Expr *expr);
 LUAI_FUNC void luaK_exp2val (FuncState *func, Expr *expr);
 LUAI_FUNC int luaK_exp2RK (FuncState *func, Expr *expr);
-LUAI_FUNC void luaK_self (FuncState *func, Expr *e, Expr *key);
-LUAI_FUNC void luaK_indexed (FuncState *func, Expr *t, Expr *k);
+LUAI_FUNC void luaK_self (FuncState *func, Expr *expr, Expr *key);
+LUAI_FUNC void luaK_indexed (FuncState *func, Expr *table, Expr *key);
 LUAI_FUNC void luaK_goiftrue (FuncState *func, Expr *expr);
-LUAI_FUNC void luaK_storevar (FuncState *func, Expr *var, Expr *e);
-LUAI_FUNC void luaK_setreturns (FuncState *func, Expr *e, int nresults);
+LUAI_FUNC void luaK_storevar (FuncState *func, Expr *var, Expr *expr);
+LUAI_FUNC void luaK_setreturns (FuncState *func, Expr *expr, int nresults);
 LUAI_FUNC void luaK_setoneret (FuncState *func, Expr *expr);
 LUAI_FUNC int luaK_jump (FuncState *func);
 LUAI_FUNC void luaK_ret (FuncState *func, int first, int nret);
@@ -88,9 +88,9 @@ LUAI_FUNC void luaK_patchlist (FuncState *func, int list, int target);
 LUAI_FUNC void luaK_patchtohere (FuncState *func, int list);
 LUAI_FUNC void luaK_concat (FuncState *func, int *l1, int l2);
 LUAI_FUNC int luaK_getlabel (FuncState *func);
-LUAI_FUNC void luaK_prefix (FuncState *func, UnOpr op, Expr *v);
-LUAI_FUNC void luaK_infix (FuncState *func, BinOpr op, Expr *v);
-LUAI_FUNC void luaK_posfix (FuncState *func, BinOpr op, Expr *v1, Expr *v2);
+LUAI_FUNC void luaK_prefix (FuncState *func, UnOpr op, Expr *left);
+LUAI_FUNC void luaK_infix (FuncState *func, BinOpr op, Expr *left);
+LUAI_FUNC void luaK_posfix (FuncState *func, BinOpr op, Expr *left, Expr *right);
 LUAI_FUNC void luaK_setlist (FuncState *func, int base, int nelems, int tostore);
 
 

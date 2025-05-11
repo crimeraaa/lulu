@@ -29,7 +29,6 @@
 #include "lvm.h"
 
 
-
 static const char *getfuncname (lua_State *L, CallInfo *ci, const char **name);
 
 
@@ -282,7 +281,11 @@ LUA_API int lua_getinfo (lua_State *L, const char *what, lua_Debug *ar) {
 ** =======================================================
 */
 
-#define check(x)		if (!(x)) return 0;
+#define check(x) \
+if (!(x)) { \
+  fprintf(stderr, "%s:%i: '" #x "' failed!\n", __FILE__, __LINE__); \
+  return 0;\
+}
 
 #define checkjump(pt,pc)	check(0 <= pc && pc < pt->sizecode)
 
@@ -348,6 +351,7 @@ static Instruction symbexec (const Proto *pt, int lastpc, int reg) {
   int pc;
   int last;  /* stores position of last instruction that changed `reg' */
   last = pt->size_code-1;  /* points to final return (a `neutral' instruction) */
+
   check(precheck(pt));
   for (pc = 0; pc < lastpc; pc++) {
     Instruction i = pt->code[pc];

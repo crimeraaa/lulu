@@ -140,9 +140,10 @@ static TString *str_checkname (LexState *lex) {
 
 
 static void init_exp (Expr *expr, ExprKind kind, int info) {
-  expr->f = expr->t = NO_JUMP;
-  expr->kind = kind;
-  expr->u.s.info = info;
+  expr->patch_false = NO_JUMP;
+  expr->patch_true  = NO_JUMP;
+  expr->kind        = kind;
+  expr->u.s.info    = info;
 }
 
 
@@ -267,8 +268,11 @@ static int singlevaraux (FuncState *func, TString *n, Expr *var, bool base) {
       return Expr_Local;
     }
     else {  /* not found at current level; try upper one */
-      if (singlevaraux(func->prev, n, var, false) == Expr_Global)
+      if (singlevaraux(func->prev, n, var, false) == Expr_Global) {
         return Expr_Global;
+      }
+
+      /* init_exp-like but does not set the patch lists */
       var->u.s.info = indexupvalue(func, n, var);  /* else was LOCAL or UPVAL */
       var->kind = Expr_Upvalue;  /* upvalue in this level */
       return Expr_Upvalue;
@@ -280,8 +284,10 @@ static int singlevaraux (FuncState *func, TString *n, Expr *var, bool base) {
 static void singlevar (LexState *lex, Expr *var) {
   TString *varname = str_checkname(lex);
   FuncState *func = lex->func;
-  if (singlevaraux(func, varname, var, true) == Expr_Global)
+  if (singlevaraux(func, varname, var, true) == Expr_Global) {
+    /* init_exp */
     var->u.s.info = luaK_stringK(func, varname);  /* info points to global name */
+  }
 }
 
 
@@ -426,6 +432,7 @@ static void close_func (LexState *lex) {
   /* shrink `proto->upvalues` to contain exactly `proto->nups` nupvalues */
   luaM_reallocvector(L, proto->upvalues, proto->size_upvalues, proto->nups, TString *);
   proto->size_upvalues = proto->nups;
+
   lua_assert(luaG_checkcode(proto));
   lua_assert(func->bl == NULL);
   lex->func = func->prev;
@@ -972,15 +979,17 @@ struct LHS_assign {
 static void check_conflict (LexState *lex, struct LHS_assign *lh, Expr *var) {
   FuncState *func = lex->func;
   int extra = func->freereg;  /* eventual position to save local variable */
-  int conflict = 0;
+  bool conflict = false;
   for (; lh; lh = lh->prev) {
     if (lh->var.kind == Expr_Index) {
       if (lh->var.u.s.info == var->u.s.info) {  /* conflict? */
-        conflict = 1;
+        conflict = true;
+        /* init_exp-like */
         lh->var.u.s.info = extra;  /* previous assignment will use safe copy */
       }
       if (lh->var.u.s.aux == var->u.s.info) {  /* conflict? */
-        conflict = 1;
+        conflict = true;
+        /* init_exp-like */
         lh->var.u.s.aux = extra;  /* previous assignment will use safe copy */
       }
     }
@@ -994,14 +1003,17 @@ static void check_conflict (LexState *lex, struct LHS_assign *lh, Expr *var) {
 
 static void assignment (LexState *lex, struct LHS_assign *lh, int nvars) {
   Expr expr;
-  check_condition(lex, Expr_Local <= lh->var.kind && lh->var.kind <= Expr_Index, "syntax error");
+  check_condition(lex, Expr_Local <= lh->var.kind && lh->var.kind <= Expr_Index,
+      "syntax error");
+
   if (test_next(lex, Token_Comma)) {  /* assignment -> `,' primaryexp assignment */
     struct LHS_assign next;
     next.prev = lh;
     primaryexp(lex, &next.var);
     if (next.var.kind == Expr_Local)
       check_conflict(lex, lh, &next.var);
-    luaY_checklimit(lex->func, nvars, LUAI_MAXCCALLS - lex->L->nCcalls, "variables in assignment");
+    luaY_checklimit(lex->func, nvars, LUAI_MAXCCALLS - lex->L->nCcalls,
+      "variables in assignment");
     assignment(lex, &next, nvars + 1);
   }
   else {  /* assignment -> `=' explist1 */
@@ -1041,14 +1053,14 @@ static int cond (LexState *lex) {
   if (expr.kind == Expr_Nil)
     expr.kind = Expr_False;  /* `falses' are all equal here */
   luaK_goiftrue(lex->func, &expr);
-  return expr.f;
+  return expr.patch_false;
 }
 
 
 static void break_stmt (LexState *lex) {
-  FuncState *func = lex->func;
-  BlockCnt *bl = func->bl;
-  int upval = 0;
+  FuncState *func  = lex->func;
+  BlockCnt  *bl    = func->bl;
+  bool       upval = false;
   while (bl && !bl->isbreakable) {
     upval |= bl->upval; /* equivalent to: upval = upval || bl->upval; */
     bl = bl->previous;

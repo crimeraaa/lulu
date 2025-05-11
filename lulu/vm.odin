@@ -262,7 +262,7 @@ vm_execute :: proc(vm: ^VM) {
     index_error :: #force_inline proc(vm: ^VM, culprit: ^Value) -> ! {
         debug_type_error(vm, culprit, "index")
     }
-    
+
     incr_top :: #force_inline proc(vm: ^VM, amount := 1) {
         vm.pc = ptr_offset(vm.pc, amount)
     }

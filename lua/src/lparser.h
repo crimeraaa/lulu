@@ -31,7 +31,7 @@ typedef enum {
   Expr_Upvalue,       /* info = index of upvalue in `upvalues' */
   Expr_Global,	      /* info = index of table; aux = index of global name in `k' */
   Expr_Index,	        /* info = table register; aux = index register (or `k') */
-  Expr_Jump,		      /* info = instruction pc */
+  Expr_Jump,		      /* info = instruction pc ; used for tests/comparisons */
   Expr_Relocable,	    /* info = instruction pc */
   Expr_Nonrelocable,	/* info = result register */
   Expr_Call,	        /* info = instruction pc */
@@ -48,8 +48,8 @@ typedef struct Expr {
     struct { int info, aux; } s;
     lua_Number nval;
   } u;
-  int t;  /* patch list (pc) of `exit when true' */
-  int f;  /* patch list (pc) of `exit when false' */
+  int patch_true;  /* patch list (pc) of `exit when true' */
+  int patch_false; /* patch list (pc) of `exit when false' */
 } Expr;
 
 

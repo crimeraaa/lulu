@@ -52,18 +52,18 @@ parser_advance :: proc(parser: ^Parser) {
 
 /*
 **Assumptions**
--   `previous` is the token right before `parser.consumed`.
+-   `prev` is the token right before `parser.consumed`.
 -   Is not called multiple times in a row.
 
 **Guarantees**
 -   `parser.lexer` points to the start of the lexeme before `parser.lookahead`.
 -   When we call `parser_advance()`, we end up back at the old lookahead.
  */
-parser_backtrack :: proc(parser: ^Parser, previous: Token) {
+parser_backtrack :: proc(parser: ^Parser, prev: Token) {
     lexer := &parser.lexer
     lexer.start   -= len(parser.lookahead.lexeme)
     lexer.current = lexer.start
-    parser.consumed, parser.lookahead = previous, parser.consumed
+    parser.consumed, parser.lookahead = prev, parser.consumed
 
 }
 
@@ -361,13 +361,13 @@ local_adjust :: proc(compiler: ^Compiler, nvars: int) {
         previously by `local_decl`.
     -   `compiler.active.len` was NOT incremented yet.
      */
-    nactive := small_array.len(compiler.active) + nvars
-    small_array.resize(&compiler.active, nactive)
+    n_active := small_array.len(compiler.active) + nvars
+    small_array.resize(&compiler.active, n_active)
     active := small_array.slice(&compiler.active)
     locals := compiler.chunk.locals
     for i := nvars; i > 0; i -= 1 {
         // `lparser.c:getlocvar(fs, i)`
-        index := active[nactive - i]
+        index := active[n_active - i]
         local := &locals[index]
         local.depth   = depth
         local.startpc = startpc
@@ -412,9 +412,7 @@ if_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
     }
 
     then_jump := then_cond(parser, compiler)
-
-    // Unconditional jump to skip an 'else' block.
-    else_jump := compiler_code_jump(compiler)
+    else_jump := compiler_code_jump(compiler) // Unconditional skip 'else'
     compiler_patch_jump(compiler, then_jump)
 
     for parser_match(parser, .Elseif) {
@@ -422,7 +420,8 @@ if_stmt :: proc(parser: ^Parser, compiler: ^Compiler) {
         // chain them.
         then_jump = then_cond(parser, compiler)
 
-        // All 'elseif' branches need to jump to the same endpoint.
+        // 'if' and all its child 'elseif' branches, when done, need to jump to
+        // the same endpoint.
         else_jump = compiler_code_jump(compiler, prev = else_jump)
         compiler_patch_jump(compiler, then_jump)
     }
@@ -779,10 +778,10 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
 
         key := field_name(parser, compiler)
         parser_consume(parser, .Equals)
-        rkb := compiler_expr_regconst(compiler, &key)
+        rkb := compiler_expr_rk(compiler, &key)
 
         value := expression(parser, compiler)
-        rkc := compiler_expr_regconst(compiler, &value)
+        rkc := compiler_expr_rk(compiler, &value)
         compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, rkb, rkc)
         compiler_expr_pop(compiler, value)
         compiler_expr_pop(compiler, key)
@@ -794,12 +793,12 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
 
         key := expression(parser, compiler)
         parser_consume(parser, .Right_Bracket)
-        rkb := compiler_expr_regconst(compiler, &key)
+        rkb := compiler_expr_rk(compiler, &key)
 
         parser_consume(parser, .Equals)
 
         value := expression(parser, compiler)
-        rkc := compiler_expr_regconst(compiler, &value)
+        rkc := compiler_expr_rk(compiler, &value)
 
         compiler_code_ABC(compiler, .Set_Table, ctor.table.reg, rkb, rkc)
         // Reuse these registers
@@ -828,7 +827,7 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
         }
 
         // for backtracking
-        saved_consumed := parser.consumed
+        prev := parser.consumed
         parser_advance(parser)
         #partial switch(parser.consumed.type) {
         case .Identifier:
@@ -836,13 +835,13 @@ constructor :: proc(parser: ^Parser, compiler: ^Compiler) -> Expr {
             if parser_check(parser, .Equals) {
                 field(parser, compiler, ctor)
             } else {
-                parser_backtrack(parser, saved_consumed)
+                parser_backtrack(parser, prev)
                 array(parser, compiler, ctor)
             }
         case .Left_Bracket:
             index(parser, compiler, ctor)
         case:
-            parser_backtrack(parser, saved_consumed)
+            parser_backtrack(parser, prev)
             array(parser, compiler, ctor)
         }
 
@@ -968,7 +967,7 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
 
     if USE_CONSTANT_FOLDING {
         if !expr_is_number(left^) {
-            compiler_expr_regconst(compiler, left)
+            compiler_expr_rk(compiler, left)
         }
     } else {
         /*
@@ -978,7 +977,7 @@ arith :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
         -   This is because, by itself, expressions like `concat` result in
             `.Need_Register`.
          */
-        compiler_expr_regconst(compiler, left)
+        compiler_expr_rk(compiler, left)
     }
 
     prec := get_rule(type).prec
@@ -1027,7 +1026,7 @@ compare :: proc(parser: ^Parser, compiler: ^Compiler, left: ^Expr) {
         unreachable("Token %v is not a comparison operator", type)
     }
 
-    compiler_expr_regconst(compiler, left)
+    compiler_expr_rk(compiler, left)
     prec  := get_rule(type).prec
     right := parse_precedence(parser, compiler, prec)
     compiler_code_compare(compiler, op, inverted, left, &right)

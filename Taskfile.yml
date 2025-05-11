@@ -16,18 +16,18 @@ vars:
   LULU_OUT: bin/lulu
   LULU_SRC: lulu
 
-  CDECL_OUT: bin/cdecl
-  CDECL_SRC: cdecl
-
   # I am aware this is incredibly ugly
-  ODIN_SRC_GLOB: '{{ "{" }}.,{{.LULU_SRC}},{{.CDECL_SRC}}{{ "}" }}'
+  LULU_GLOB: '{{ "{.," }}{{.LULU_SRC}}{{ "}" }}/*.odin'
+
   ODIN_FLAGS: >-
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
     -define:USE_CONSTANT_FOLDING=true
     -define:USE_READLINE=true
     -collection:lulu={{.LULU_SRC}}/
 
+  LUA_OUT: bin/lua
   LUA_SRC: lua/src
+  LUA_GLOB: '{{.LUA_SRC}}/*.[ch]'
 
 tasks:
   build:
@@ -35,8 +35,9 @@ tasks:
     cmds:
       - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:{{.LULU_OUT}}'
     sources:
-      - '*.odin'
+      - './*.odin'
       - '{{.LULU_SRC}}/*.odin'
+      # - '{{.LULU_GLOB}}' # Doesn't seem to work properly!
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:
@@ -46,22 +47,8 @@ tasks:
       - '{{.LULU_OUT}} {{.CLI_ARGS}}'
     interactive: true
 
-  build-cdecl:
-    desc: Build the cdecl executable.
-    cmds:
-      - '{{.ODIN}} build {{.CDECL_SRC}} {{.ODIN_FLAGS}} -out:{{.CDECL_OUT}}'
-    sources:
-      - '{{.CDECL_SRC}}/*.odin'
-
-  run-cdecl:
-    desc: Build the cdecl executable if needed, then run it.
-    cmds:
-      - task: build-cdecl
-      - '{{.CDECL_OUT}} {{.CLI_ARGS}}'
-    interactive: true
-
   build-lua:
-    desc: Build the local Lua executable unconditionally.
+    desc: Build the local Lua executable if needed.
     cmds:
       - |
         cd ./lua
@@ -69,6 +56,15 @@ tasks:
         mv ./src/lua ../bin/
         mv ./src/luac ../bin/
         cd ..
+    sources:
+      - '{{.LUA_GLOB}}'
+
+  run-lua:
+    desc: Build the local Lua executable if needed, then run it.
+    cmds:
+      - task: build-lua
+      - '{{.LUA_OUT}} {{.CLI_ARGS}}'
+    interactive: true
 
   # lol
   # https://taskfile.dev/styleguide/#prefer-using-external-scripts-instead-of-multi-line-commands
@@ -102,10 +98,14 @@ tasks:
         -u NONE
         -c ':bufdo! %s/{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
         -c ':xa'
-    prompt: This command will potentially modify all *.odin files in '{{.ODIN_SRC_GLOB}}'. Continue?
+    prompt: This command will potentially modify all files in '{{.LULU_GLOB}}'. Continue?
     cmds:
-      - '{{.VIM}} {{.VIM_FLAGS}} {{.ODIN_SRC_GLOB}}/*.odin {{.LUA_SRC}}/*.[ch]'
+      - '{{.VIM}} {{.VIM_FLAGS}} {{.LULU_GLOB}} {{.LUA_GLOB}}'
     requires:
       vars: [VIM_PATTERN, VIM_REPLACE]
     preconditions:
       - sh: command -v {{.VIM}}
+
+  list:
+    cmds:
+      - ls {{.LULU_GLOB}}

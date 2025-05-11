@@ -1,10 +1,6 @@
 import gdb # type: ignore
 from enum import Enum
-from typing import Final
-
-VOID_POINTER:       Final = gdb.lookup_type("void").pointer()
-CONST_CHAR_POINTER: Final = gdb.lookup_type("char").const().pointer()
-
+from .. import base
 
 class Type(Enum):
     NONE          = -1
@@ -57,7 +53,7 @@ def getstr(tstring: gdb.Value) -> str:
     **Guarantees**
     -   Embedded nul-characters `\0` are included.
     """
-    data    = (tstring + 1).cast(CONST_CHAR_POINTER)
+    data    = (tstring + 1).cast(base.CONST_CHAR_POINTER)
     nchars  = int(tstring["tsv"]["len"])
 
     # Only `char *` and variants thereof can safely use the `.string()` method.
@@ -83,7 +79,7 @@ class TValuePrinter:
             case _:
                 # GDB already knows how to print addresses
                 # assumes `(void *)TValue::value.p == (void *)TValue::value.gc`
-                addr = gcvalue(self.__value).cast(VOID_POINTER)
+                addr = gcvalue(self.__value).cast(base.VOID_POINTER)
                 return f"{tag.name.lower()}: {str(addr)}"
 
 
