@@ -12,7 +12,6 @@ Chunk :: struct {
     constants:     []Value,
     code:          []Instruction, // len(code) == cap
     line:          []int,         // len(line) == cap
-    pc:              int, // First free index in `code` and `line`.
     stack_used:      int, // How many stack slots does this chunk require?
 }
 
@@ -23,16 +22,16 @@ Local :: struct {
 }
 
 local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
-    local     := (cast(^Local)arg.data)^
-    writer    := fi.writer
-    n_written := &fi.n
+    var := (cast(^Local)arg.data)^
+    w := fi.writer
+    n := &fi.n
     switch verb {
     case 'v': // verbose; our very own "name mangling"
-        n_written^ += fmt.wprintf(writer, "%s__%i(%i:%i)",
-            local_to_string(local), local.depth, local.startpc, local.endpc)
+        n^ += fmt.wprintf(w, "%s__%i(%i:%i)",
+            local_to_string(var), var.depth, var.startpc, var.endpc)
         return true
     case 's': // summary
-        n_written^ += fmt.wprintf(writer, "%s", local_to_string(local))
+        n^ += fmt.wprintf(w, "%s", local_to_string(var))
         return true
     case:
         return false
@@ -40,27 +39,25 @@ local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 }
 
 
-local_to_string :: proc(local: Local) -> string {
-    return ostring_to_string(local.ident)
+local_to_string :: proc(var: Local) -> string {
+    return ostring_to_string(var.ident)
 }
 
-chunk_init :: proc(chunk: ^Chunk, source: string) {
-    chunk.source = source
+chunk_init :: proc(c: ^Chunk, source: string) {
+    c.source = source
 }
 
-chunk_fini :: proc(vm: ^VM, chunk: ^Chunk, compiler: ^Compiler) {
-    slice_resize(vm, &chunk.locals,    compiler.count.locals)
-    slice_resize(vm, &chunk.constants, compiler.count.constants)
-    slice_resize(vm, &chunk.code,      chunk.pc)
-    slice_resize(vm, &chunk.line,      chunk.pc)
+chunk_fini :: proc(vm: ^VM, ch: ^Chunk, cl: ^Compiler) {
+    slice_resize(vm, &ch.locals,    cl.count.locals)
+    slice_resize(vm, &ch.constants, cl.count.constants)
+    slice_resize(vm, &ch.code,      cl.n_code)
+    slice_resize(vm, &ch.line,      cl.n_code)
 }
 
-chunk_append :: proc(vm: ^VM, chunk: ^Chunk, inst: Instruction, line: int) -> (pc: int) {
-    pc = chunk.pc
-    chunk.pc += 1
-    slice_insert(vm, &chunk.code, pc, inst)
-    slice_insert(vm, &chunk.line, pc, line)
-    return pc
+chunk_append :: proc(vm: ^VM, c: ^Chunk, i: Instruction, line: int, pc: ^int) {
+    slice_insert(vm, &c.code, pc^, i)
+    slice_insert(vm, &c.line, pc^, line)
+    pc^ += 1
 }
 
 /*
@@ -71,24 +68,24 @@ chunk_append :: proc(vm: ^VM, chunk: ^Chunk, inst: Instruction, line: int) -> (p
  -  The index will be needed later on for opcodes to access the value in the
     constants table.
  */
-chunk_add_constant :: proc(vm: ^VM, chunk: ^Chunk, value: Value, limit: ^int) -> (index: u32) {
+chunk_add_constant :: proc(vm: ^VM, c: ^Chunk, value: Value, limit: ^int) -> (index: u32) {
     // Linear search is theoretically very slow!
-    for constant, index in chunk.constants[:limit^] {
+    for constant, index in c.constants[:limit^] {
         if value_eq(constant, value) {
             return cast(u32)index
         }
     }
     defer limit^ += 1
-    slice_insert(vm, &chunk.constants, limit^, value)
+    slice_insert(vm, &c.constants, limit^, value)
     return cast(u32)limit^
 }
 
 
-chunk_add_local :: proc(vm: ^VM, chunk: ^Chunk, ident: ^OString, count: ^int) -> (index: u16) {
+chunk_add_local :: proc(vm: ^VM, c: ^Chunk, ident: ^OString, count: ^int) -> (index: u16) {
     defer count^ += 1
     // Don't reserve registers here as our initializer expressions may do so
     // already, or we implicitly load nil.
-    slice_insert(vm, &chunk.locals, count^, Local{
+    slice_insert(vm, &c.locals, count^, Local{
         ident   = ident,
         depth   = UNINITIALIZED_LOCAL,
         startpc = 0,
@@ -98,9 +95,9 @@ chunk_add_local :: proc(vm: ^VM, chunk: ^Chunk, ident: ^OString, count: ^int) ->
 }
 
 
-chunk_get_local :: proc(chunk: ^Chunk, local_number, pc: int) -> (local: Local, ok: bool) {
+chunk_get_local :: proc(c: ^Chunk, local_number, pc: int) -> (local: Local, ok: bool) {
     counter := local_number
-    for var in chunk.locals {
+    for var in c.locals {
         /*
         **Notes** (2025-04-21):
         -   This local is alive only beyond this instruction.
@@ -131,10 +128,10 @@ chunk_get_local :: proc(chunk: ^Chunk, local_number, pc: int) -> (local: Local, 
 }
 
 
-chunk_destroy :: proc(vm: ^VM, chunk: ^Chunk) {
-    slice_delete(vm, &chunk.locals)
-    slice_delete(vm, &chunk.constants)
-    slice_delete(vm, &chunk.code)
-    slice_delete(vm, &chunk.line)
-    chunk.source = "(freed chunk)"
+chunk_destroy :: proc(vm: ^VM, c: ^Chunk) {
+    slice_delete(vm, &c.locals)
+    slice_delete(vm, &c.constants)
+    slice_delete(vm, &c.code)
+    slice_delete(vm, &c.line)
+    c.source = "(freed chunk)"
 }

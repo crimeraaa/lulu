@@ -26,15 +26,6 @@ Value_Type :: enum {
     Table,
 }
 
-@(rodata)
-value_type_strings := [Value_Type]string {
-    .Nil     = "nil",
-    .Boolean = "boolean",
-    .Number  = "number",
-    .String  = "string",
-    .Table   = "table",
-}
-
 // Used for callbacks/dispatches
 Number_Arith_Proc   :: #type proc "contextless" (a, b: f64) -> f64
 Number_Compare_Proc :: #type proc "contextless" (a, b: f64) -> bool
@@ -101,6 +92,14 @@ value_make :: proc {
 }
 
 value_type_name :: #force_inline proc "contextless" (v: Value) -> string {
+    @(static, rodata)
+    value_type_strings := [Value_Type]string {
+        .Nil     = "nil",
+        .Boolean = "boolean",
+        .Number  = "number",
+        .String  = "string",
+        .Table   = "table",
+    }
     return value_type_strings[v.type]
 }
 
@@ -128,34 +127,34 @@ value_make_table :: #force_inline proc "contextless" (t: ^Table) -> Value {
     return Value{type = .Table, table = t}
 }
 
-value_is_nil :: #force_inline proc "contextless" (a: Value) -> bool {
-    return a.type == .Nil
+value_is_nil :: #force_inline proc "contextless" (v: Value) -> bool {
+    return v.type == .Nil
 }
 
-value_is_boolean :: #force_inline proc "contextless" (a: Value) -> bool {
-    return a.type == .Boolean
+value_is_boolean :: #force_inline proc "contextless" (v: Value) -> bool {
+    return v.type == .Boolean
 }
 
-value_is_falsy :: #force_inline proc "contextless" (a: Value) -> bool {
-    return a.type == .Nil || (a.type == .Boolean && !a.boolean)
+value_is_falsy :: #force_inline proc "contextless" (v: Value) -> bool {
+    return v.type == .Nil || (v.type == .Boolean && !v.boolean)
 }
 
-value_is_number :: #force_inline proc "contextless" (a: Value) -> bool {
-    return a.type == .Number
+value_is_number :: #force_inline proc "contextless" (v: Value) -> bool {
+    return v.type == .Number
 }
 
-value_is_string :: #force_inline proc "contextless" (a: Value) -> bool {
-    return a.type == .String
+value_is_string :: #force_inline proc "contextless" (v: Value) -> bool {
+    return v.type == .String
 }
 
-value_is_table :: #force_inline proc "contextless" (a: Value) -> bool {
-    return a.type == .Table
+value_is_table :: #force_inline proc "contextless" (v: Value) -> bool {
+    return v.type == .Table
 }
 
 // Utility function because this is so common.
-value_to_string :: #force_inline proc "contextless" (a: Value) -> string {
-    assert_contextless(value_is_string(a))
-    return ostring_to_string(a.ostring)
+value_to_string :: #force_inline proc "contextless" (v: Value) -> string {
+    assert_contextless(value_is_string(v))
+    return ostring_to_string(v.ostring)
 }
 
 value_eq :: proc(a, b: Value) -> bool {
@@ -176,42 +175,42 @@ value_eq :: proc(a, b: Value) -> bool {
 number_is_nan :: math.is_nan_f64
 
 value_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
-    value  := (cast(^Value)arg.data)^
-    writer := info.writer
+    v := (cast(^Value)arg.data)^
+    w := info.writer
     switch verb {
     // Normal
     case 'v':
-        switch value.type {
+        switch v.type {
         case .Nil:
-            io.write_string(writer, "nil", &info.n)
+            io.write_string(w, "nil", &info.n)
         case .Boolean:
-            io.write_string(writer, "true" if value.boolean else "false", &info.n)
+            io.write_string(w, "true" if v.boolean else "false", &info.n)
         case .Number:
-            info.n += fmt.wprintf(writer, "%.14g", value.number)
+            info.n += fmt.wprintf(w, "%.14g", v.number)
         case .String:
-            io.write_string(writer, value_to_string(value), &info.n)
+            io.write_string(w, value_to_string(v), &info.n)
         case .Table:
-            type_name := value_type_name(value)
-            pointer   := cast(rawptr)value.table
-            info.n += fmt.wprintf(writer, "%s: %p", type_name, pointer)
+            type_name := value_type_name(v)
+            pointer   := cast(rawptr)v.table
+            info.n += fmt.wprintf(w, "%s: %p", type_name, pointer)
         case:
-            unreachable("Unknown value type %v", value.type)
+            unreachable("Unknown value type %v", v.type)
         }
 
     // Debug
     case 'd':
-        if value_is_string(value) {
+        if value_is_string(v) {
             // Delegate to `ostring_formatter()`
-            info.n += fmt.wprintf(writer, "%q", value.ostring)
+            info.n += fmt.wprintf(w, "%q", v.ostring)
         } else {
             // Delegate to normal case
-            info.n += fmt.wprint(writer, value)
+            info.n += fmt.wprint(w, v)
         }
 
     // Stack (not string!)
     case 's':
         // Delegate to Debug case
-        info.n += fmt.wprintf(writer, "\t[ %d ]", value)
+        info.n += fmt.wprintf(w, "\t[ %d ]", v)
 
     case:
         return false

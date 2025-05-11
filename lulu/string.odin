@@ -12,17 +12,17 @@ OString :: struct {
     data:    [0]byte,
 }
 
-ostring_formatter :: proc(info: ^fmt.Info, arg: any, verb: rune) -> bool {
-    ostring := (cast(^^OString)arg.data)^
-    text    := ostring_to_string(ostring)
-    writer  := info.writer
+ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
+    s := (cast(^^OString)arg.data)^
+    w := fi.writer
+    text := ostring_to_string(s)
     switch verb {
     case 'v', 's':
-        io.write_string(writer, text, &info.n)
+        io.write_string(w, text, &fi.n)
         return true
     case 'q':
-        quote := '\'' if ostring.len == 1 else '\"'
-        info.n += fmt.wprintf(writer, "%c%s%c", quote, text, quote)
+        quote := '\'' if s.len == 1 else '\"'
+        fi.n += fmt.wprintf(w, "%c%s%c", quote, text, quote)
         return true
     case:
         return false
@@ -34,54 +34,55 @@ Notes:
 -   These strings are compatible with C-style strings.
     However, extracting the cstring requires an unsafe cast.
  */
-ostring_new :: proc(vm: ^VM, input: string) -> (ostring: ^OString) {
+ostring_new :: proc(vm: ^VM, input: string) -> ^OString {
     if prev, ok := intern_get(&vm.interned, input); ok {
         return prev
     }
 
-    len := len(input)
-    ostring      = object_new(OString, vm, len + 1)
-    ostring.hash = hash_string(input)
-    ostring.len  = len
+    n := len(input)
+    s := object_new(OString, vm, n + 1)
+
+    s.hash = hash_string(input)
+    s.len  = n
     #no_bounds_check {
-        copy(ostring.data[:len], input)
-        ostring.data[len] = 0
+        copy(s.data[:n], input)
+        s.data[n] = 0
     }
-    intern_set(&vm.interned, ostring)
-    return ostring
+    intern_set(&vm.interned, s)
+    return s
 }
 
-ostring_free :: proc(vm: ^VM, ostring: ^OString, location := #caller_location) {
+ostring_free :: proc(vm: ^VM, s: ^OString, location := #caller_location) {
     // We also allocated memory for the nul char for C compatibility.
-    size := size_of(ostring^) + ostring.len + 1
-    mem.free_with_size(ostring, size, vm.allocator, loc = location)
+    size := size_of(s^) + s.len + 1
+    mem.free_with_size(s, size, vm.allocator, loc = location)
 }
 
-ostring_to_string :: #force_inline proc "contextless" (ostring: ^OString) -> string {
+ostring_to_string :: #force_inline proc "contextless" (s: ^OString) -> string {
     #no_bounds_check {
-        return string(ostring.data[:ostring.len])
+        return string(s.data[:s.len])
     }
 }
 
-ostring_to_cstring :: #force_inline proc "contextless" (ostring: ^OString) -> cstring {
+ostring_to_cstring :: #force_inline proc "contextless" (s: ^OString) -> cstring {
     #no_bounds_check {
-        assert_contextless(ostring.data[ostring.len] == 0)
-        return cstring(cast([^]byte)&ostring.data)
+        assert_contextless(s.data[s.len] == 0)
+        return cstring(cast([^]byte)&s.data)
     }
 }
 
-hash_f64 :: #force_inline proc "contextless" (data: f64) -> (hash: u32) {
-    data := data
-    return hash_bytes(mem.byte_slice(&data, size_of(data)))
+hash_f64 :: #force_inline proc "contextless" (n: f64) -> (hash: u32) {
+    n := n
+    return hash_bytes(mem.byte_slice(&n, size_of(n)))
 }
 
-hash_pointer :: #force_inline proc "contextless" (data: rawptr) -> (hash: u32) {
-    data := data
-    return hash_bytes(mem.byte_slice(&data, size_of(data)))
+hash_pointer :: #force_inline proc "contextless" (p: rawptr) -> (hash: u32) {
+    p := p
+    return hash_bytes(mem.byte_slice(&p, size_of(p)))
 }
 
-hash_string :: #force_inline proc "contextless" (data: string) -> (hash: u32) {
-    return hash_bytes(transmute([]byte)data)
+hash_string :: #force_inline proc "contextless" (s: string) -> (hash: u32) {
+    return hash_bytes(transmute([]byte)s)
 }
 
 hash_bytes :: proc "contextless" (bytes: []byte) -> (hash: u32) {

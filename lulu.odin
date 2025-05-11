@@ -63,7 +63,7 @@ main :: proc() {
     }
 
     run_input :: proc(vm: ^lulu.VM, input, source: string) {
-        if lulu.run(vm, input, source) != .Ok {
+        if lulu.run(vm, input, source) != nil {
             err_msg, _ := lulu.to_string(vm, -1)
             fmt.eprintln(err_msg)
         }

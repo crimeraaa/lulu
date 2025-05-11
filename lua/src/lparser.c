@@ -1272,8 +1272,9 @@ static void local_stmt (LexState *lex) {
   do {
     new_localvar(lex, str_checkname(lex), nvars++);
   } while (test_next(lex, Token_Comma));
-  if (test_next(lex, Token_Assign))
+  if (test_next(lex, Token_Assign)) {
     nexps = explist1(lex, &exprs);
+  }
   else {
     exprs.kind = Expr_Void;
     nexps = 0;
@@ -1316,9 +1317,10 @@ static void expr_stmt (LexState *lex) {
   FuncState *func = lex->func;
   struct LHS_assign v;
   primaryexp(lex, &v.var);
-  if (v.var.kind == Expr_Call)  /* stat -> func */
-    SETARG_C(getcode(func, &v.var), 1);  /* call statement uses no results */
-  else {  /* stat -> assignment */
+  if (v.var.kind == Expr_Call) { /* stat -> func */
+    Instruction *ip = getcode(func, &v.var);
+    SETARG_C(*ip, 1);  /* call statement uses no results */
+  } else {  /* stat -> assignment */
     v.prev = NULL;
     assignment(lex, &v, 1);
   }
@@ -1328,28 +1330,29 @@ static void expr_stmt (LexState *lex) {
 static void return_stmt (LexState *lex) {
   /* stat -> RETURN explist */
   FuncState *func = lex->func;
-  Expr e;
+  Expr expr;
   int first, nret;  /* registers with returned values */
   luaX_next(lex);  /* skip RETURN */
   if (block_follow(lex->current.type) || lex->current.type == Token_Semi)
     first = nret = 0;  /* return no values */
   else {
-    nret = explist1(lex, &e);  /* optional return values */
-    if (hasmultret(e.kind)) {
-      luaK_setmultret(func, &e);
-      if (e.kind == Expr_Call && nret == 1) {  /* tail call? */
-        SET_OPCODE(getcode(func,&e), OP_TAILCALL);
-        lua_assert(GETARG_A(getcode(func,&e)) == func->nactvar);
+    nret = explist1(lex, &expr);  /* optional return values */
+    if (hasmultret(expr.kind)) {
+      luaK_setmultret(func, &expr);
+      if (expr.kind == Expr_Call && nret == 1) {  /* tail call? */
+        Instruction *ip = getcode(func, &expr);
+        SET_OPCODE(*ip, OP_TAILCALL);
+        lua_assert(GETARG_A(*ip) == func->nactvar);
       }
       first = func->nactvar;
-      nret = LUA_MULTRET;  /* return all values */
+      nret  = LUA_MULTRET;  /* return all values */
     }
     else {
       if (nret == 1) {  /* only one single value? */
-        first = luaK_exp2anyreg(func, &e);
+        first = luaK_exp2anyreg(func, &expr);
       }
       else {
-        luaK_exp2nextreg(func, &e);  /* values must go to the `stack' */
+        luaK_exp2nextreg(func, &expr);  /* values must go to the `stack' */
         first = func->nactvar;  /* return all `active' values */
         lua_assert(nret == func->freereg - first);
       }

@@ -15,40 +15,39 @@ Table_Entry :: struct {
 }
 
 
-table_new :: proc(vm: ^VM, count_array, count_hash: int) -> ^Table {
-    table := object_new(Table, vm)
-    count := count_array + count_hash
-    if count > 0 {
-        adjust_capacity(table, count, vm.allocator)
+table_new :: proc(vm: ^VM, n_array, n_hash: int) -> ^Table {
+    t := object_new(Table, vm)
+    if total := n_array + n_hash; total > 0 {
+        adjust_capacity(t, total, vm.allocator)
     }
-    return table
+    return t
 }
 
-table_destroy :: proc(vm: ^VM, table: ^Table) {
-    delete(table.entries, vm.allocator)
-    table.count   = 0
-    table.entries = nil
+table_destroy :: proc(vm: ^VM, t: ^Table) {
+    delete(t.entries, vm.allocator)
+    t.count   = 0
+    t.entries = nil
 }
 
 /*
 Notes:
--   It is possible for `key` to exist and map to a nil value. This is valid.
--   But if `key` maps to nothing (that is, entry.key is nil, meaning we haven't
+-   It is possible for `k` to exist and map to a nil value. This is valid.
+-   But if `k` maps to nothing (that is, entry.key is nil, meaning we haven't
     yet mapped this key), then we can say it is invalid.
  */
-table_get :: proc(table: ^Table, key: Value) -> (value: Value, valid: bool) #optional_ok {
-    if table.count == 0 {
+table_get :: proc(t: ^Table, k: Value) -> (v: Value, ok: bool) #optional_ok {
+    if t.count == 0 {
         return value_make(), false
     }
 
-    entry := find_entry(table.entries, key)
-    if valid = !value_is_nil(entry.key); valid {
-        value = entry.value
+    entry := find_entry(t.entries, k)
+    if ok = !value_is_nil(entry.key); ok {
+        v = entry.value
     }
-    return value, valid
+    return v, ok
 }
 
-table_set :: proc(vm: ^VM, table: ^Table, key, value: Value) {
+table_set :: proc(vm: ^VM, t: ^Table, k, v: Value) {
     /*
     Notes:
     -   This is a safer version of the following line:
@@ -61,25 +60,25 @@ table_set :: proc(vm: ^VM, table: ^Table, key, value: Value) {
     -   Here we aim to reduce error by doing purely integer math.
     -   n*0.75 == n*(3/4) == (n*3)/4
      */
-    if n := len(table.entries); table.count >= (n*3) / 4 {
-        adjust_capacity(table, n, vm.allocator)
+    if n := len(t.entries); t.count >= (n*3) / 4 {
+        adjust_capacity(t, n, vm.allocator)
     }
 
-    entry := find_entry(table.entries, key)
+    entry := find_entry(t.entries, k)
     // Tombstones have nil keys but non-nil values, so don't count them.
     if value_is_nil(entry.key) && value_is_nil(entry.value) {
-        table.count += 1
+        t.count += 1
     }
-    entry.key   = key
-    entry.value = value
+    entry.key   = k
+    entry.value = v
 }
 
-table_unset :: proc(table: ^Table, key: Value) {
-    if table.count == 0 {
+table_unset :: proc(t: ^Table, k: Value) {
+    if t.count == 0 {
         return
     }
 
-    entry := find_entry(table.entries, key)
+    entry := find_entry(t.entries, k)
     if value_is_nil(entry.key) {
         return
     }
@@ -90,7 +89,7 @@ table_unset :: proc(table: ^Table, key: Value) {
 
 /*
 Analogous to:
--   `table.c:tableAddAll(Table *from, Table *to)`
+-   `t.c:tableAddAll(Table *from, Table *to)`
  */
 table_copy :: proc(vm: ^VM, dst: ^Table, src: Table) {
     for entry in src.entries {
@@ -104,34 +103,35 @@ table_copy :: proc(vm: ^VM, dst: ^Table, src: Table) {
 }
 
 @(private="file")
-find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
+find_entry :: proc(entries: []Table_Entry, k: Value) -> ^Table_Entry {
 
-    get_hash :: proc(key: Value) -> (hash: u32) {
-        switch key.type {
+    get_hash :: proc(k: Value) -> (hash: u32) {
+        switch k.type {
         case .Nil:      break
-        case .Boolean:  return cast(u32)key.boolean
-        case .Number:   return hash_f64(key.number)
-        case .String:   return key.ostring.hash
-        case .Table:    return hash_pointer(key.table)
+        case .Boolean:  return cast(u32)k.boolean
+        case .Number:   return hash_f64(k.number)
+        case .String:   return k.ostring.hash
+        case .Table:    return hash_pointer(k.table)
         }
-        unreachable("Cannot hash type %v", key.type)
+        unreachable("Cannot hash type %v", k.type)
     }
 
     wrap  := cast(u32)len(entries)
     tombstone: ^Table_Entry
-    for index := get_hash(key) % wrap; /* empty */; index = (index + 1) % wrap {
-        entry := &entries[index]
+    for i := get_hash(k) % wrap; /* empty */; i = (i + 1) % wrap {
+        entry := &entries[i]
         // Tombstone or empty entry?
         if value_is_nil(entry.key) {
             // Empty entry?
             if value_is_nil(entry.value) {
                 return entry if tombstone == nil else tombstone
             }
-            // Non-nil value, so this is a tombstone. Recycle the first one we see.
+            // Non-nil value, so this is a tombstone.
+            // Recycle the first one we see.
             if tombstone == nil {
                 tombstone = entry
             }
-        } else if value_eq(entry.key, key) {
+        } else if value_eq(entry.key, k) {
             return entry
         }
     }
@@ -140,7 +140,7 @@ find_entry :: proc(entries: []Table_Entry, key: Value) -> ^Table_Entry {
 
 
 @(private="file")
-adjust_capacity :: proc(table: ^Table, new_cap: int, allocator: mem.Allocator) {
+adjust_capacity :: proc(t: ^Table, new_cap: int, allocator: mem.Allocator) {
     /*
     Notes(2025-01-19):
     -   We add 1 because if `n` is a power of 2 already, we would return it!
@@ -151,7 +151,7 @@ adjust_capacity :: proc(table: ^Table, new_cap: int, allocator: mem.Allocator) {
     // Assume all memory is zero'd out for us already. Fully zero'd = nil in Lua.
     new_entries := make([]Table_Entry, new_cap, allocator)
     new_count   := 0
-    for old_entry in table.entries {
+    for old_entry in t.entries {
         // Skip tombstones and empty entries.
         if value_is_nil(old_entry.key) {
             continue
@@ -162,7 +162,7 @@ adjust_capacity :: proc(table: ^Table, new_cap: int, allocator: mem.Allocator) {
         new_count += 1
     }
 
-    delete(table.entries, allocator)
-    table.entries = new_entries
-    table.count   = new_count
+    delete(t.entries, allocator)
+    t.entries = new_entries
+    t.count   = new_count
 }

@@ -65,9 +65,7 @@ ptr_index :: #force_inline proc "contextless" (ptr: ^$T, data: $S/[]T) -> (index
 ptr_index_safe :: proc "contextless" (ptr: ^$T, data: $S/[]T) -> (index: int, found: bool) {
     base_addr := cast(uintptr)raw_data(data)
     end_addr  := cast(uintptr)ptr_offset(raw_data(data), len(data))
-    addr      := cast(uintptr)ptr
-
-    if base_addr <= addr && addr < end_addr {
+    if addr := cast(uintptr)ptr; base_addr <= addr && addr < end_addr {
         return ptr_index(ptr, data), true
     }
     return -1, false

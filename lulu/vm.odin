@@ -10,7 +10,7 @@ import "core:strings"
 Error_Handler :: struct {
     prev:  ^Error_Handler,
     buffer: libc.jmp_buf,
-    status: Status,
+    code:   Error,
 }
 
 Protected_Proc :: #type proc(vm: ^VM, user_data: rawptr)
@@ -19,10 +19,9 @@ Protected_Proc :: #type proc(vm: ^VM, user_data: rawptr)
 Links:
 -   https://www.lua.org/source/5.1/ldo.c.html#luaD_throw
  */
-vm_throw :: proc(vm: ^VM, status: Status) -> ! {
-    handler := vm.handlers
-    if handler != nil {
-        intrinsics.volatile_store(&handler.status, status)
+vm_throw :: proc(vm: ^VM, code: Error) -> ! {
+    if handler := vm.handlers; handler != nil {
+        intrinsics.volatile_store(&handler.code, code)
         libc.longjmp(&handler.buffer, 1)
     } else {
         // Nothing much else can be done in this case.
@@ -87,9 +86,8 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
         set_global(vm, "_G")
     }
 
-    ok = (vm_run_protected(vm, alloc_init) == .Ok)
     // Bad stuff happened; free any and all allocations we *did* make
-    if !ok {
+    if ok = vm_run_protected(vm, alloc_init) == nil; !ok {
         vm_destroy(vm)
     }
     return ok
@@ -141,19 +139,19 @@ vm_destroy :: proc(vm: ^VM) {
     vm.chunk    = nil
 }
 
-vm_interpret :: proc(vm: ^VM, input, name: string) -> Status {
+vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
     Data :: struct {
-        chunk: ^Chunk,
+        chunk: Chunk,
         input: string,
     }
 
-    data := &Data{chunk = &Chunk{}, input = input}
-    chunk_init(data.chunk, name)
-    defer chunk_destroy(vm, data.chunk)
+    data := &Data{input = input}
+    chunk_init(&data.chunk, source)
+    defer chunk_destroy(vm, &data.chunk)
 
     interpret :: proc(vm: ^VM, user_data: rawptr) {
-        data  := (cast(^Data)user_data)^
-        chunk := data.chunk
+        data  := cast(^Data)user_data
+        chunk := &data.chunk
         compiler_compile(vm, chunk, data.input)
         vm_check_stack(vm, chunk.stack_used)
         // Set up stack frame
@@ -185,7 +183,7 @@ Analogous to:
 Links:
 -   https://www.lua.org/source/5.1/ldo.c.html#luaD_rawrunprotected
  */
-vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) -> Status {
+vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) -> Error {
     // Chain new handler
     handler := Error_Handler{prev = vm.handlers}
     vm.handlers  = &handler
@@ -203,7 +201,7 @@ vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) 
     vm.handlers = handler.prev
 
     // Use volatile because we don't want this to be optimized out.
-    return intrinsics.volatile_load(&handler.status)
+    return intrinsics.volatile_load(&handler.code)
 }
 
 
@@ -263,7 +261,7 @@ vm_execute :: proc(vm: ^VM) {
         debug_type_error(vm, culprit, "index")
     }
 
-    incr_top :: #force_inline proc(vm: ^VM, amount := 1) {
+    incr_pc :: #force_inline proc "contextless" (vm: ^VM, amount := 1) {
         vm.pc = ptr_offset(vm.pc, amount)
     }
 
@@ -287,7 +285,7 @@ vm_execute :: proc(vm: ^VM) {
             }
             debug_dump_instruction(chunk, ip, index)
         }
-        vm.pc = &vm.pc[1]
+        incr_pc(vm)
 
         // Most instructions use this!
         ra := &stack[ip.a]
@@ -305,16 +303,16 @@ vm_execute :: proc(vm: ^VM) {
         case .Load_Boolean:
             ra^ = value_make(ip.b == 1)
             if ip.c == 1 {
-                incr_top(vm)
+                incr_pc(vm)
             }
         case .Get_Global:
             key := constants[ip_get_Bx(ip)]
-            value, ok := table_get(globals, key)
-            if !ok {
+            if value, ok := table_get(globals, key); !ok {
                 ident := value_to_string(key)
                 vm_runtime_error(vm, "Attempt to read undefined global '%s'", ident)
+            } else {
+                ra^ = value
             }
-            ra^ = value
         case .Set_Global:
             key := constants[ip_get_Bx(ip)]
             table_set(vm, globals, key, ra^)
@@ -332,14 +330,14 @@ vm_execute :: proc(vm: ^VM) {
             }
             ra^ = table_get(table, key)
         case .Set_Table:
-            key   := get_rk(vm, ip.b, stack, constants)
-            value := get_rk(vm, ip.c, stack, constants)^
             if !value_is_table(ra^) {
                 index_error(vm, ra)
             }
+            key := get_rk(vm, ip.b, stack, constants)
             if value_is_nil(key^) {
-                debug_type_error(vm, key, "set a nil index")
+                index_error(vm, key)
             }
+            value := get_rk(vm, ip.c, stack, constants)^
             table_set(vm, ra.table, key^, value)
         case .Set_Array:
             // Guaranteed because this only occurs in table constructors
@@ -404,18 +402,18 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Test:
             if !value_is_falsy(ra^) != bool(ip.c) {
-                incr_top(vm)
+                incr_pc(vm)
             }
         case .Test_Set:
             rb := stack[ip.b]
             if !value_is_falsy(rb) == bool(ip.c) {
                 ra^ = rb
             } else {
-                incr_top(vm)
+                incr_pc(vm)
             }
         case .Jump:
             offset := ip_get_sBx(ip)
-            incr_top(vm, offset)
+            incr_pc(vm, offset)
         case .Return:
             // if ip.c != 0 then we have a vararg
             nret := cast(int)ip.b if ip.c == 0 else get_top(vm)

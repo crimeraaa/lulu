@@ -30,9 +30,9 @@ static bool hasjumps (Expr *expr) {
 
 
 static bool isnumeral (Expr *expr) {
-  return (expr->kind == Expr_Number \
-      && expr->patch_true == NO_JUMP \
-      && expr->patch_false == NO_JUMP);
+  return expr->kind == Expr_Number
+      && expr->patch_true == NO_JUMP
+      && expr->patch_false == NO_JUMP;
 }
 
 
@@ -83,26 +83,28 @@ static void expr_set_aux (Expr *expr, ExprKind kind, int aux) {
 
 
 void luaK_nil (FuncState *func, int from, int n) {
-  Instruction *previous;
+  int until_reg = from + n - 1;
   if (func->pc > func->lasttarget) {  /* no jumps to current position? */
     if (func->pc == 0) {  /* function start? */
-      if (from >= func->nactvar)
+      if (from >= func->nactvar) {
         return;  /* positions are already clean */
+      }
     }
     else {
-      previous = &func->proto->code[func->pc - 1];
-      if (GET_OPCODE(*previous) == OP_LOADNIL) {
-        int pfrom = GETARG_A(*previous);
-        int pto = GETARG_B(*previous);
-        if (pfrom <= from && from <= pto+1) {  /* can connect both? */
-          if (from+n-1 > pto)
-            SETARG_B(*previous, from+n-1);
+      Instruction *prev = &func->proto->code[func->pc - 1];
+      if (GET_OPCODE(*prev) == OP_LOADNIL) {
+        int pfrom = GETARG_A(*prev);
+        int pto   = GETARG_B(*prev);
+        if (pfrom <= from && from <= pto + 1) {  /* can connect both? */
+          if (until_reg > pto) {
+            SETARG_B(*prev, until_reg);
+          }
           return;
         }
       }
     }
   }
-  luaK_codeABC(func, OP_LOADNIL, from, from+n-1, 0);  /* else no optimization */
+  luaK_codeABC(func, OP_LOADNIL, from, until_reg, 0); /* no optimization */
 }
 
 
@@ -145,8 +147,9 @@ static void fixjump (FuncState *func, int pc, int dest) {
   Instruction *jmp = &func->proto->code[pc];
   int offset = dest-(pc+1);
   lua_assert(dest != NO_JUMP); /* would be an infinite loop! */
-  if (abs(offset) > MAXARG_sBx)
+  if (abs(offset) > MAXARG_sBx) {
     luaX_syntaxerror(func->lex, "control structure too long");
+  }
   SETARG_sBx(*jmp, offset);
 }
 
@@ -164,19 +167,25 @@ int luaK_getlabel (FuncState *func) {
 static int getjump (FuncState *func, int pc) {
   Instruction ip = func->proto->code[pc];
   int offset = GETARG_sBx(ip);
-  if (offset == NO_JUMP)  /* point to itself represents end of list */
+  if (offset == NO_JUMP) {/* point to itself represents end of list */
     return NO_JUMP;  /* end of list */
-  else
-    return (pc + 1) + offset;  /* turn offset into absolute position */
+  }
+  return (pc + 1) + offset;  /* turn offset into absolute position */
 }
 
 
 static Instruction *getjumpcontrol (FuncState *func, int pc) {
-  Instruction *pi = &func->proto->code[pc];
-  if (pc >= 1 && testTMode(GET_OPCODE(*(pi-1))))
-    return pi-1;
-  else
-    return pi;
+  Instruction *ip = &func->proto->code[pc];
+  /* `ip - 1` is only safe to load and dereference when `pc` greater than 0 */
+  if (pc >= 1) {
+    Instruction *prev = ip - 1;
+    OpCode       op   = GET_OPCODE(*prev);
+    /* only comparisons and `OP_TEST(SET)?` are considered tests */
+    if (testTMode(op)) {
+      return prev;
+    }
+  }
+  return ip;
 }
 
 
@@ -186,41 +195,50 @@ static Instruction *getjumpcontrol (FuncState *func, int pc) {
 */
 static bool need_value (FuncState *func, int list) {
   for (; list != NO_JUMP; list = getjump(func, list)) {
-    Instruction i = *getjumpcontrol(func, list);
-    if (GET_OPCODE(i) != OP_TESTSET)
+    Instruction ip = *getjumpcontrol(func, list);
+    if (GET_OPCODE(ip) != OP_TESTSET) {
       return true;
+    }
   }
   return false;  /* not found */
 }
 
 
 static bool patchtestreg (FuncState *func, int node, int reg) {
-  Instruction *i = getjumpcontrol(func, node);
-  if (GET_OPCODE(*i) != OP_TESTSET)
+  Instruction *ip = getjumpcontrol(func, node);
+  int rb, cond;
+  if (GET_OPCODE(*ip) != OP_TESTSET) {
     return false;  /* cannot patch other instructions */
-  if (reg != NO_REG && reg != GETARG_B(*i))
-    SETARG_A(*i, reg);
-  else  /* no register to put value or register already has the value */
-    *i = CREATE_ABC(OP_TEST, GETARG_B(*i), 0, GETARG_C(*i));
-
+  }
+  rb   = GETARG_B(*ip);
+  cond = GETARG_C(*ip);
+  if (reg != NO_REG && reg != rb) {
+    SETARG_A(*ip, reg);
+  }
+  else { /* no register to put value or register already has the value */
+    *ip = CREATE_ABC(OP_TEST, rb, 0, cond);
+  }
   return true;
 }
 
 
 static void removevalues (FuncState *func, int list) {
-  for (; list != NO_JUMP; list = getjump(func, list))
-      patchtestreg(func, list, NO_REG);
+  for (; list != NO_JUMP; list = getjump(func, list)) {
+    patchtestreg(func, list, NO_REG);
+  }
 }
 
 
 static void patchlistaux (FuncState *func, int list, int vtarget, int reg,
-                          int dtarget) {
+                          int default_target) {
   while (list != NO_JUMP) {
     int next = getjump(func, list);
-    if (patchtestreg(func, list, reg))
+    if (patchtestreg(func, list, reg)) {
       fixjump(func, list, vtarget);
-    else
-      fixjump(func, list, dtarget);  /* jump to default target */
+    }
+    else {
+      fixjump(func, list, default_target);
+    }
     list = next;
   }
 }
@@ -233,8 +251,9 @@ static void dischargejpc (FuncState *func) {
 
 
 void luaK_patchlist (FuncState *func, int list, int target) {
-  if (target == func->pc)
+  if (target == func->pc) {
     luaK_patchtohere(func, list);
+  }
   else {
     lua_assert(target < func->pc);
     patchlistaux(func, list, target, NO_REG, target);
@@ -251,9 +270,9 @@ void luaK_patchtohere (FuncState *func, int list) {
 /**
  * @brief
  *  This function can do one of several things, in order:
- *    1.) `l2` is `NO_JUMP`: Nothing when `l2`.
- *    2.) `*l1 is NO_JUMP`: Initialize `*l1` with `l2` when it is `NO_JUMP`.
- *    3.) Otherwise: add
+ *    1.) `l2` is `NO_JUMP`: Nothing.
+ *    2.) `*l1 is NO_JUMP`: Initialize `*l1` with `l2`.
+ *    3.) Otherwise: add `l2` into the jump list pointed to be `l1`.
  */
 void luaK_concat (FuncState *func, int *l1, int l2) {
   /* base case #1 (e.g. first jump) */
@@ -324,8 +343,9 @@ static int addk (FuncState *func, TValue *k, TValue *v) {
     setnvalue(idx, cast_num(func->nconstants));
     luaM_growvector(L, proto->constants, func->nconstants, proto->size_constants,
                     TValue, MAXARG_Bx, "constant table overflow");
-    while (oldsize < proto->size_constants)
+    while (oldsize < proto->size_constants) {
       setnilvalue(&proto->constants[oldsize++]);
+    }
     setobj(L, &proto->constants[func->nconstants], v);
     luaC_barrier(L, proto, v);
     return func->nconstants++;
@@ -364,24 +384,29 @@ static int nilK (FuncState *func) {
 
 
 void luaK_setreturns (FuncState *func, Expr *expr, int nresults) {
+  Instruction *ip;
   if (expr->kind == Expr_Call) {  /* expression is an open function call? */
-    SETARG_C(getcode(func, expr), nresults+1);
+    ip = getcode(func, expr);
+    SETARG_C(*ip, nresults+1);
   }
   else if (expr->kind == Expr_Vararg) {
-    SETARG_B(getcode(func, expr), nresults+1);
-    SETARG_A(getcode(func, expr), func->freereg);
+    ip = getcode(func, expr);
+    SETARG_B(*ip, nresults+1);
+    SETARG_A(*ip, func->freereg);
     luaK_reserveregs(func, 1);
   }
 }
 
 
 void luaK_setoneret (FuncState *func, Expr *expr) {
+  Instruction *ip;
   if (expr->kind == Expr_Call) {  /* expression is an open function call? */
-    int base_reg = GETARG_A(getcode(func, expr));
-    expr_set_info(expr, Expr_Nonrelocable, base_reg);
+    ip = getcode(func, expr);
+    expr_set_info(expr, Expr_Nonrelocable, GETARG_A(*ip));
   }
   else if (expr->kind == Expr_Vararg) {
-    SETARG_B(getcode(func, expr), 2);
+    ip = getcode(func, expr);
+    SETARG_B(*ip, 2);
     expr_set_kind(expr, Expr_Relocable); /* can relocate its simple result */
   }
 }
@@ -425,7 +450,7 @@ void luaK_dischargevars (FuncState *func, Expr *expr) {
 
 static int code_label (FuncState *func, int A, bool b, bool jump) {
   luaK_getlabel(func);  /* those instructions may be jump targets */
-  return luaK_codeABC(func, OP_LOADBOOL, A, cast(int, b), cast(int, jump));
+  return luaK_codeABC(func, OP_LOADBOOL, A, cast_int(b), cast_int(jump));
 }
 
 
@@ -456,7 +481,7 @@ static void discharge2reg (FuncState *func, Expr *expr, int reg) {
       break;
     }
     case Expr_Relocable: { /* global, upvalue, table field */
-      Instruction *pc = &getcode(func, expr);
+      Instruction *pc = getcode(func, expr);
       SETARG_A(*pc, reg);
       break;
     }
@@ -508,7 +533,8 @@ static void exp2reg (FuncState *func, Expr *expr, int reg) {
     int final;  /* position after whole expression */
     int p_f = NO_JUMP;  /* position of an eventual LOAD false */
     int p_t = NO_JUMP;  /* position of an eventual LOAD true */
-    if (need_value(func, expr->patch_true) || need_value(func, expr->patch_false)) {
+    if (need_value(func, expr->patch_true)
+      || need_value(func, expr->patch_false)) {
       int fj = (expr->kind == Expr_Jump) ? NO_JUMP : luaK_jump(func);
       p_f = code_label(func, reg, 0, 1);
       p_t = code_label(func, reg, 1, 0);
@@ -687,10 +713,10 @@ static void invertjump (FuncState *func, Expr *expr) {
  */
 static int jumponcond (FuncState *func, Expr *expr, bool cond) {
   if (expr->kind == Expr_Relocable) {
-    Instruction ie = getcode(func, expr);
-    if (GET_OPCODE(ie) == OP_NOT) {
+    Instruction ip = *getcode(func, expr);
+    if (GET_OPCODE(ip) == OP_NOT) {
       func->pc--;  /* remove previous OP_NOT */
-      return condjump(func, OP_TEST, GETARG_B(ie), 0, !cond);
+      return condjump(func, OP_TEST, GETARG_B(ip), 0, !cond);
     }
     /* else go through */
   }
@@ -971,7 +997,7 @@ void luaK_posfix (FuncState *func, BinOpr op, Expr *left, Expr *right) {
     case OPR_CONCAT: {
       Instruction *ip;
       luaK_exp2val(func, right);
-      ip = &getcode(func, right);
+      ip = getcode(func, right);
       if (right->kind == Expr_Relocable && GET_OPCODE(*ip) == OP_CONCAT) {
         int left_reg = left->u.s.info;
         lua_assert(left_reg == GETARG_B(*ip) - 1);

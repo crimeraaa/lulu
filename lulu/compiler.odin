@@ -39,59 +39,58 @@ Compiler :: struct {
     free_reg:    int,      // Index of the first free register.
     last_target: int,      // pc of the last jump target. See `FuncState::lasttarget`.
     list_jump:   int,      // List of pending chunks to `chunk.pc`. See `FuncState::jpc`.
+    n_code:      int,      // First free index in `chunk.code`.
     is_print:    bool,     // HACK(2025-04-09): until `print` is a global runtime function
 }
 
-compiler_init :: proc(compiler: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
-    compiler.vm           = vm
-    compiler.parser      = parser
-    compiler.chunk       = chunk
-    compiler.last_target = NO_JUMP
-    compiler.list_jump   = NO_JUMP
+compiler_init :: proc(c: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
+    c.vm          = vm
+    c.parser      = parser
+    c.chunk       = chunk
+    c.last_target = NO_JUMP
+    c.list_jump   = NO_JUMP
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
-    parser   := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
-    compiler := &Compiler{}
-    compiler_init(compiler, vm, parser, chunk)
-    parser_advance(parser)
+    p := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
+    c := &Compiler{}
+    compiler_init(c, vm, p, chunk)
+    parser_advance(p)
 
     // Top level scope can also have its own locals.
-    compiler_begin_scope(compiler)
-    for !parser_match(parser, .Eof) {
-        parser_parse(parser, compiler)
+    compiler_begin_scope(c)
+    for !parser_match(p, .Eof) {
+        parser_parse(p, c)
     }
-    parser_consume(parser, .Eof)
-    compiler_code_return(compiler, 0, 0)
-    compiler_end_scope(compiler)
-    compiler_end(compiler)
+    parser_consume(p, .Eof)
+    compiler_code_return(c, 0, 0)
+    compiler_end_scope(c)
+    compiler_end(c)
 }
 
-compiler_end :: proc(compiler: ^Compiler) {
-    vm     := compiler.vm
-    chunk  := compiler.chunk
-    chunk_fini(vm, chunk, compiler)
+compiler_end :: proc(c: ^Compiler) {
+    chunk_fini(c.vm, c.chunk, c)
     when DEBUG_PRINT_CODE {
-        debug_dump_chunk(chunk)
+        debug_dump_chunk(c.chunk, c.n_code)
     }
 }
 
-compiler_begin_scope :: proc(compiler: ^Compiler) {
-    compiler.scope_depth += 1
+compiler_begin_scope :: proc(c: ^Compiler) {
+    c.scope_depth += 1
 }
 
 /*
 **Analogous to**
 -   `lparser.c:removevars(LexState *ls, int tolevel)` in Lua 5.1.5.
  */
-compiler_end_scope :: proc(compiler: ^Compiler) {
-    compiler.scope_depth -= 1
-    chunk  := compiler.chunk
-    depth  := compiler.scope_depth
-    reg    := small_array.len(compiler.active) - 1
-    active := small_array.slice(&compiler.active)
-    locals := chunk.locals[:compiler.count.locals]
-    endpc  := chunk.pc
+compiler_end_scope :: proc(c: ^Compiler) {
+    c.scope_depth -= 1
+
+    depth  := c.scope_depth
+    reg    := small_array.len(c.active) - 1
+    active := small_array.slice(&c.active)
+    locals := c.chunk.locals[:c.count.locals]
+    endpc  := c.n_code
 
     // Don't pop registers as we'll go below the active count!
     for reg >= 0 {
@@ -100,11 +99,11 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
         if local.depth <= depth {
             break
         }
-        small_array.pop_back(&compiler.active)
+        small_array.pop_back(&c.active)
         local.endpc = endpc
         reg -= 1
     }
-    compiler.free_reg = reg + 1
+    c.free_reg = reg + 1
 }
 
 
@@ -118,22 +117,21 @@ compiler_end_scope :: proc(compiler: ^Compiler) {
 **Links**
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_reserveregs
  */
-compiler_reserve_reg :: proc(compiler: ^Compiler, count: int) {
-    // log.debugf("free_reg := %i + %i", compiler.free_reg, count, location = location)
+compiler_reserve_reg :: proc(c: ^Compiler, count: int) {
+    // log.debugf("free_reg := %i + %i", c.free_reg, count, location = location)
     // @todo 2025-01-06: Check the VM's available stack size?
-    compiler.free_reg += count
-    if compiler.free_reg > compiler.chunk.stack_used {
-        compiler.chunk.stack_used = compiler.free_reg
+    if c.free_reg += count; c.free_reg > c.chunk.stack_used {
+        c.chunk.stack_used = c.free_reg
     }
 }
 
 
-compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_location) {
+compiler_pop_reg :: proc(c: ^Compiler, reg: u16, location := #caller_location) {
     // Only pop if nonconstant and not the register of an existing local.
-    if !reg_is_k(reg) && cast(int)reg >= small_array.len(compiler.active) {
-        compiler.free_reg -= 1
-        log.assertf(cast(int)reg == compiler.free_reg, "free_reg := %i but reg := %i",
-            compiler.free_reg, reg, loc = location)
+    if !reg_is_k(reg) && cast(int)reg >= small_array.len(c.active) {
+        c.free_reg -= 1
+        log.assertf(cast(int)reg == c.free_reg, "free_reg := %i but reg := %i",
+            c.free_reg, reg, loc = location)
     }
 }
 
@@ -144,10 +142,10 @@ compiler_pop_reg :: proc(compiler: ^Compiler, reg: u16, location := #caller_loca
     local, it MUST be the most recently discharged register in order to be able
     to pop it.
  */
-compiler_expr_pop :: proc(compiler: ^Compiler, expr: Expr, location := #caller_location) {
+compiler_expr_pop :: proc(c: ^Compiler, expr: Expr, location := #caller_location) {
     // if e->k == VNONRELOC
     if expr.type == .Discharged {
-        compiler_pop_reg(compiler, expr.reg, location = location)
+        compiler_pop_reg(c, expr.reg, location = location)
     }
 }
 
@@ -168,8 +166,8 @@ compiler_expr_pop :: proc(compiler: ^Compiler, expr: Expr, location := #caller_l
 Links
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2anyreg
  */
-compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
-    compiler_discharge_vars(compiler, expr)
+compiler_expr_any_reg :: proc(c: ^Compiler, expr: ^Expr) -> (reg: u16) {
+    compiler_discharge_vars(c, expr)
 
     // If already in a register don't waste time trying to re-emit it.
     // Doing so will also mess up any calls to 'compiler_pop_reg()'.
@@ -177,7 +175,7 @@ compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
         // TODO(2025-01-08): Check if has jumps then check if non-local.
         return expr.reg
     }
-    compiler_expr_next_reg(compiler, expr)
+    compiler_expr_next_reg(c, expr)
     return expr.reg
 }
 
@@ -196,12 +194,12 @@ compiler_expr_any_reg :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
 **Links**
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2nextreg
  */
-compiler_expr_next_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
-    compiler_discharge_vars(compiler, expr, location = location)
-    compiler_expr_pop(compiler, expr^, location = location)
+compiler_expr_next_reg :: proc(c: ^Compiler, expr: ^Expr, location := #caller_location) {
+    compiler_discharge_vars(c, expr, location = location)
+    compiler_expr_pop(c, expr^, location = location)
 
-    compiler_reserve_reg(compiler, 1)
-    expr_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1)
+    compiler_reserve_reg(c, 1)
+    expr_to_reg(c, expr, cast(u16)c.free_reg - 1)
 }
 
 
@@ -210,16 +208,16 @@ Overview
 -   Assigns `expr` to register `reg`. `expr` will always be transformed into
     type `.Discharged`.
 -   Typically only called by other functions which simply want to push to the
-    index of the first free register `compiler.free_reg`.
+    index of the first free register `c.free_reg`.
 
 Analogous to
 -   `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.5
  */
 @(private="file")
-expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
-    need_value :: proc(compiler: ^Compiler, list: int) -> bool {
-        for list := list; list != NO_JUMP; list = get_jump(compiler, list) {
-            ip := get_jump_control(compiler, list)
+expr_to_reg :: proc(c: ^Compiler, expr: ^Expr, reg: u16) {
+    need_value :: proc(c: ^Compiler, list: int) -> bool {
+        for list := list; list != NO_JUMP; list = get_jump(c, list) {
+            ip := get_jump_control(c, list)
             // Test can produce a value, e.g. `OpCode.Eq`?
             if ip.op != .Test_Set {
                 return true
@@ -229,8 +227,8 @@ expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
         return false
     }
 
-    get_jump :: proc(compiler: ^Compiler, pc: int) -> (offset: int) {
-        ip := compiler.chunk.code[pc]
+    get_jump :: proc(c: ^Compiler, pc: int) -> (offset: int) {
+        ip := c.chunk.code[pc]
         // Start of jump list?
         if offset = ip_get_sBx(ip); offset == NO_JUMP {
             return NO_JUMP
@@ -239,8 +237,8 @@ expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
         return (pc + 1) + offset
     }
 
-    get_jump_control :: proc(compiler: ^Compiler, pc: int) -> (ip: ^Instruction) {
-        ip = &compiler.chunk.code[pc]
+    get_jump_control :: proc(c: ^Compiler, pc: int) -> (ip: ^Instruction) {
+        ip = &c.chunk.code[pc]
         // Have something before the jump instruction?
         if pc >= 1 && opcode_info[ip.op].is_test {
             return ptr_offset(ip, -1)
@@ -248,9 +246,9 @@ expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
         return ip
     }
 
-    discharge_to_reg(compiler, expr, reg)
+    discharge_to_reg(c, expr, reg)
 
-    // uh oh
+    // `discharge_to_reg()` didn't modify `expr` so let's take care of it here
     if expr_has_jumps(expr^) {
         unreachable("jumps not yet implemented!")
     }
@@ -261,18 +259,19 @@ expr_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16) {
 
 
 /*
-Overview
--   Very similar to `compiler_discharge_to_reg()`
--   We do nothing if `expr` is already of type `.Discharged`.
+**Overview**
+-   Push `expr` to the next register if it's not already of type `.Discharged`.
+-   `expr` is guaranteed to be transformed to `.Discharged`, except if it's
+    of type `.Empty` or `.Jump`.
 
 **Analogous to**
--    `lcode.c:exp2anyreg(FuncState *fs, expdesc *e)`.
+-    `lcode.c:exp2anyreg(FuncState *fs, expdesc *e)` in Lua 5.1.5.
  */
 @(private="file")
-discharge_any_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
+discharge_any_reg :: proc(c: ^Compiler, expr: ^Expr, location := #caller_location) {
     if expr.type != .Discharged {
-        compiler_reserve_reg(compiler, 1)
-        discharge_to_reg(compiler, expr, cast(u16)compiler.free_reg - 1, location = location)
+        compiler_reserve_reg(c, 1)
+        discharge_to_reg(c, expr, cast(u16)c.free_reg - 1, location = location)
     }
 }
 
@@ -293,23 +292,23 @@ discharge_any_reg :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_
 -   https://www.lua.org/source/5.1/lcode.c.html#discharge2reg
  */
 @(private="file")
-discharge_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16, location := #caller_location) {
-    compiler_discharge_vars(compiler, expr, location = location)
+discharge_to_reg :: proc(c: ^Compiler, expr: ^Expr, reg: u16, location := #caller_location) {
+    compiler_discharge_vars(c, expr, location = location)
     #partial switch expr.type {
-    case .Nil:      compiler_code_nil(compiler, reg, 1)
-    case .True:     compiler_code_ABC(compiler, .Load_Boolean, reg, 1, 0)
-    case .False:    compiler_code_ABC(compiler, .Load_Boolean, reg, 0, 0)
+    case .Nil:      compiler_code_nil(c, reg, 1)
+    case .True:     compiler_code_ABC(c, .Load_Boolean, reg, 1, 0)
+    case .False:    compiler_code_ABC(c, .Load_Boolean, reg, 0, 0)
     case .Number:
-        index := compiler_add_constant(compiler, value_make(expr.number))
-        compiler_code_ABx(compiler, .Load_Constant, reg, index)
+        index := compiler_add_constant(c, value_make(expr.number))
+        compiler_code_ABx(c, .Load_Constant, reg, index)
     case .Constant:
-        compiler_code_ABx(compiler, .Load_Constant, reg, expr.index)
+        compiler_code_ABx(c, .Load_Constant, reg, expr.index)
     case .Need_Register:
-        compiler.chunk.code[expr.pc].a = reg
+        c.chunk.code[expr.pc].a = reg
     case .Discharged:
         // e.g. getting a local variable
         if reg != expr.reg {
-            compiler_code_ABC(compiler, .Move, reg, expr.reg, 0)
+            compiler_code_ABC(c, .Move, reg, expr.reg, 0)
         }
     case:
         // Nothing to do?
@@ -336,10 +335,10 @@ discharge_to_reg :: proc(compiler: ^Compiler, expr: ^Expr, reg: u16, location :=
 -   Locals are transformed to `.Discharged` because they already have a known
     register.
  */
-compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr, location := #caller_location) {
+compiler_discharge_vars :: proc(c: ^Compiler, expr: ^Expr, location := #caller_location) {
     #partial switch type := expr.type; type {
     case .Global:
-        pc := compiler_code_ABx(compiler, .Get_Global, 0, expr.index)
+        pc := compiler_code_ABx(c, .Get_Global, 0, expr.index)
         expr^ = expr_make(.Need_Register, pc = pc)
     case .Local:
         // info is already the local register we resolved beforehand.
@@ -348,9 +347,9 @@ compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr, location := #c
         // We can now reuse the registers allocated for the table and index.
         table := expr.table.reg
         key   := expr.table.key_reg
-        compiler_pop_reg(compiler, key, location = location)
-        compiler_pop_reg(compiler, table, location = location)
-        pc := compiler_code_ABC(compiler, .Get_Table, 0, table, key)
+        compiler_pop_reg(c, key, location = location)
+        compiler_pop_reg(c, table, location = location)
+        pc := compiler_code_ABC(c, .Get_Table, 0, table, key)
         expr^ = expr_make(.Need_Register, pc = pc)
     }
 }
@@ -360,9 +359,9 @@ compiler_discharge_vars :: proc(compiler: ^Compiler, expr: ^Expr, location := #c
 **Analogous to**
 -   `lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)` in Lua 5.1.5.
  */
-compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
+compiler_expr_to_value :: proc(c: ^Compiler, expr: ^Expr) {
     // if hasjumps(expr) luaK_exp2anyreg(fs, e) else
-    compiler_discharge_vars(compiler, expr)
+    compiler_discharge_vars(c, expr)
 }
 
 
@@ -385,37 +384,30 @@ compiler_expr_to_value :: proc(compiler: ^Compiler, expr: ^Expr) {
 -   Expressions of type `.Constant` will still retain their normal index, so
     the return value is for the caller's use.
  */
-compiler_expr_rk :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
-    compiler_expr_to_value(compiler, expr)
+compiler_expr_rk :: proc(c: ^Compiler, expr: ^Expr) -> (reg: u16) {
+    compiler_expr_to_value(c, expr)
 
-    add_rk :: proc(compiler: ^Compiler, value: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
-        chunk := compiler.chunk
-        if len(chunk.constants) <= MAX_INDEX_RK {
-            index := compiler_add_constant(compiler, value)
+    add_rk :: proc(c: ^Compiler, v: Value, expr: ^Expr) -> (rk: u16, ok: bool) {
+        if len(c.chunk.constants) <= MAX_INDEX_RK {
+            index := compiler_add_constant(c, v)
             expr^ = expr_make(.Constant, index = index)
             return reg_as_k(cast(u16)index), true
         }
         return INVALID_REG, false
     }
 
-    #partial switch type := expr.type; type {
-    case .Nil:
-        return add_rk(compiler, value_make(), expr) or_break
-    case .True:
-        return add_rk(compiler, value_make(true), expr) or_break
-    case .False:
-        return add_rk(compiler, value_make(false), expr) or_break
-    case .Number:
-        return add_rk(compiler, value_make(expr.number), expr) or_break
+    #partial switch expr.type {
+    case .Nil:    return add_rk(c, value_make(), expr) or_break
+    case .True:   return add_rk(c, value_make(true), expr) or_break
+    case .False:  return add_rk(c, value_make(false), expr) or_break
+    case .Number: return add_rk(c, value_make(expr.number), expr) or_break
     case .Constant:
         // Constant can fit in argument C?
         if index := expr.index; index <= MAX_INDEX_RK {
             return reg_as_k(cast(u16)index)
-        } else {
-            break
         }
     }
-    return compiler_expr_any_reg(compiler, expr)
+    return compiler_expr_any_reg(c, expr)
 }
 
 ///=============================================================================
@@ -427,22 +419,19 @@ compiler_expr_rk :: proc(compiler: ^Compiler, expr: ^Expr) -> (reg: u16) {
 **Analogous to:**
 -   `lcode.c:luaK_nil(FuncState *fs, int from, int n)`
  */
-compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
+compiler_code_nil :: proc(c: ^Compiler, reg, count: u16) {
     assert(count != 0, "Emitting 0 nils is invalid!")
 
-    chunk := compiler.chunk
-    pc    := chunk.pc
-
     // No jumps to current position?
-    if pc > compiler.last_target {
+    if pc := c.n_code; pc > c.last_target {
         // Since we assume stack frames are initialized to `nil`, we don't need
         // to push `nil` when we're at the very start of the function.
-        if pc == 0 && !compiler.is_print && cast(int)reg >= small_array.len(compiler.active) {
+        if pc == 0 && !c.is_print && cast(int)reg >= small_array.len(c.active) {
             return
         }
         // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
         folding: if pc > 0 {
-            prev := &chunk.code[pc - 1]
+            prev := &c.chunk.code[pc - 1]
             if prev.op != .Load_Nil {
                 break folding
             }
@@ -460,7 +449,7 @@ compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
     }
 
     // No optimization.
-    compiler_code_AB(compiler, .Load_Nil, reg, reg + count - 1)
+    compiler_code_AB(c, .Load_Nil, reg, reg + count - 1)
 }
 
 
@@ -473,31 +462,31 @@ compiler_code_nil :: proc(compiler: ^Compiler, reg, count: u16) {
 -   Like in Lua, all functions call this even if they have explicit returns.
 -   We do not currently handle variadic (vararg) returns.
  */
-compiler_code_return :: proc(compiler: ^Compiler, reg, nret: u16) {
-    compiler_code_ABC(compiler, .Return, reg, nret, 0)
+compiler_code_return :: proc(c: ^Compiler, reg, nret: u16) {
+    compiler_code_ABC(c, .Return, reg, nret, 0)
 }
 
-compiler_code_ABC :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> (pc: int) {
+compiler_code_ABC :: proc(cl: ^Compiler, op: OpCode, a, b, c: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
-    return compiler_code(compiler, ip_make(op, a, b, c))
+    return compiler_code(cl, ip_make(op, a, b, c))
 }
 
-compiler_code_AB :: proc(compiler: ^Compiler, op: OpCode, a, b: u16) -> (pc: int) {
+compiler_code_AB :: proc(c: ^Compiler, op: OpCode, a, b: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
     assert(opcode_info[op].a)
     assert(opcode_info[op].b != .Unused)
-    return compiler_code(compiler, ip_make(op, a, b, c = 0))
+    return compiler_code(c, ip_make(op, a, b, c = 0))
 }
 
-compiler_code_ABx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, index: u32) -> (pc: int) {
+compiler_code_ABx :: proc(c: ^Compiler, op: OpCode, reg: u16, index: u32) -> (pc: int) {
     assert(opcode_info[op].type == .Unsigned_Bx && opcode_info[op].c == .Unused)
-    return compiler_code(compiler, ip_make(op, a = reg, bx = index))
+    return compiler_code(c, ip_make(op, a = reg, bx = index))
 }
 
-compiler_code_AsBx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, jump: int) -> (pc: int) {
+compiler_code_AsBx :: proc(c: ^Compiler, op: OpCode, reg: u16, jump: int) -> (pc: int) {
     assert(opcode_info[op].type == .Signed_Bx)
     assert(opcode_info[op].c == .Unused)
-    return compiler_code(compiler, ip_make(op, a = reg, sbx = jump))
+    return compiler_code(c, ip_make(op, a = reg, sbx = jump))
 }
 
 /*
@@ -509,10 +498,9 @@ compiler_code_AsBx :: proc(compiler: ^Compiler, op: OpCode, reg: u16, jump: int)
 **TODO(2025-01-07)**
 -   Fix the line counter for folded constant expressions across multiple lines?
  */
-compiler_code :: proc(compiler: ^Compiler, inst: Instruction) -> (pc: int) {
-    vm    := compiler.vm
-    chunk := compiler.chunk
-    return chunk_append(vm, chunk, inst, compiler.parser.consumed.line)
+compiler_code :: proc(c: ^Compiler, i: Instruction) -> (pc: int) {
+    chunk_append(c.vm, c.chunk, i, c.parser.consumed.line, &c.n_code)
+    return c.n_code - 1
 }
 
 ///=== }}} =====================================================================
@@ -523,15 +511,12 @@ compiler_code :: proc(compiler: ^Compiler, inst: Instruction) -> (pc: int) {
 -   `compiler.c:makeConstant()` in Crafting Interpreters, Chapter 17.4.1:
     *Parsers for tokens*.
  */
-compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u32) {
-    vm    := compiler.vm
-    chunk := compiler.chunk
-    count := &compiler.count.constants
-    index = chunk_add_constant(vm, chunk, constant, count)
+compiler_add_constant :: proc(c: ^Compiler, v: Value) -> (index: u32) {
+    index = chunk_add_constant(c.vm, c.chunk, v, &c.count.constants)
     if index >= MAX_CONSTANTS {
         buf: [64]byte
         msg := fmt.bprintf(buf[:], "More than %i constants", MAX_CONSTANTS)
-        parser_error(compiler.parser, msg)
+        parser_error(c.parser, msg)
     }
     return index
 }
@@ -549,24 +534,23 @@ compiler_add_constant :: proc(compiler: ^Compiler, constant: Value) -> (index: u
 **Links**
 -   https://www.lua.org/source/5.1/lparser.c.html#registerlocalvar
  */
-compiler_add_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16) {
-    vm    := compiler.vm
-    chunk := compiler.chunk
-    count := &compiler.count.locals
-    return chunk_add_local(vm, chunk, ident, count)
+compiler_add_local :: proc(c: ^Compiler, ident: ^OString) -> (index: u16) {
+    return chunk_add_local(c.vm, c.chunk, ident, &c.count.locals)
 }
 
 
 /*
+**Analogous to**
+-   `lparser.c:searchvar(FuncState *fs, TString *n)` in Lua 5.1.5.
+
 **Notes**
--   See `lparser.c:searchvar(FuncState *fs, TString *n)`.
--   `compiler.chunk.locals` itself contains information about ALL possible
+-   `c.chunk.locals` itself contains information about ALL possible
     locals for this chunk.
--   `compiler.active_locals` contains information about which locals in the
+-   `c.active[]` contains information about which locals in the
     above array are currently in scope.
  */
-compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: u16, ok: bool) {
-    locals := compiler.chunk.locals
+compiler_resolve_local :: proc(c: ^Compiler, ident: ^OString) -> (index: u16, ok: bool) {
+    locals := c.chunk.locals
 
     /*
     **Notes**
@@ -575,10 +559,9 @@ compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: 
     -   `reg` IS what we want to return, as we assume that locals are only
         ever stored sequentially starting from the 0th register.
      */
-    #reverse for active, reg in small_array.slice(&compiler.active) {
-        // `lparser.c:getlocvar(fs, i)`
-        local := locals[active]
-        if local.ident == ident {
+    #reverse for active, reg in small_array.slice(&c.active) {
+        // `lparser.c:getlocvar(FuncState *fs, int i)`
+        if locals[active].ident == ident {
             return cast(u16)reg, true
         }
     }
@@ -594,7 +577,7 @@ compiler_resolve_local :: proc(compiler: ^Compiler, ident: ^OString) -> (index: 
 **Notes**
 -   Assumes the target operand was just consumed and now resides in `Expr`.
  */
-compiler_code_not :: proc(compiler: ^Compiler, expr: ^Expr) {
+compiler_code_not :: proc(c: ^Compiler, expr: ^Expr) {
     /*
     **Details**
     -   In the call to `parser.odin:unary()`, we should have consumed the
@@ -602,7 +585,7 @@ compiler_code_not :: proc(compiler: ^Compiler, expr: ^Expr) {
     -   Thus, it should be able to be discharged (if it is not already!)
     -   This means we should be able to pop it as well.
      */
-    compiler_discharge_vars(compiler, expr)
+    compiler_discharge_vars(c, expr)
     when USE_CONSTANT_FOLDING {
         #partial switch expr.type {
         case .Nil, .False:
@@ -617,10 +600,10 @@ compiler_code_not :: proc(compiler: ^Compiler, expr: ^Expr) {
         case: unreachable("Cannot fold expression %v", expr.type)
         }
     }
-    discharge_any_reg(compiler, expr)
-    compiler_expr_pop(compiler, expr^)
+    discharge_any_reg(c, expr)
+    compiler_expr_pop(c, expr^)
 
-    pc := compiler_code_AB(compiler, .Not, 0, expr.reg)
+    pc := compiler_code_AB(c, .Not, 0, expr.reg)
     expr^ = expr_make(.Need_Register, pc = pc)
 }
 
@@ -637,7 +620,7 @@ compiler_code_not :: proc(compiler: ^Compiler, expr: ^Expr) {
 -   https://www.lua.org/source/5.1/lcode.c.html#codearith
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
  */
-compiler_code_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr) {
+compiler_code_arith :: proc(c: ^Compiler, op: OpCode, left, right: ^Expr) {
     assert(.Add <= op && op <= .Unm || op == .Concat || op == .Len)
     when USE_CONSTANT_FOLDING {
         if fold_numeric(op, left, right) {
@@ -645,27 +628,27 @@ compiler_code_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
         }
     }
 
-    b, c: u16
+    rkb, rkc: u16
     // Right is unused.
     if op == .Unm || op == .Len {
-        b = compiler_expr_rk(compiler, left)
+        rkb = compiler_expr_rk(c, left)
     } else {
-        c = compiler_expr_rk(compiler, right)
-        b = compiler_expr_rk(compiler, left)
+        rkc = compiler_expr_rk(c, right)
+        rkb = compiler_expr_rk(c, left)
     }
 
     // In the event BOTH are .Discharged, we want to pop them in the correct
     // order! Otherwise the assert in `compiler_pop_reg()` will fail.
-    if b > c {
-        compiler_expr_pop(compiler, left^)
-        compiler_expr_pop(compiler, right^)
+    if rkb > rkc {
+        compiler_expr_pop(c, left^)
+        compiler_expr_pop(c, right^)
     } else {
-        compiler_expr_pop(compiler, right^)
-        compiler_expr_pop(compiler, left^)
+        compiler_expr_pop(c, right^)
+        compiler_expr_pop(c, left^)
     }
 
     // Argument A will be fixed down the line.
-    pc   := compiler_code_ABC(compiler, op, 0, b, c)
+    pc   := compiler_code_ABC(c, op, 0, rkb, rkc)
     left^ = expr_make(.Need_Register, pc = pc)
 }
 
@@ -674,15 +657,15 @@ compiler_code_arith :: proc(compiler: ^Compiler, op: OpCode, left, right: ^Expr)
 -   `lcode.c:codecomp(FuncState *fs, OpCode op, int cond, expdesc *e1, expdesc *e2)`
     in Lua 5.1.5.
 */
-compiler_code_compare :: proc(compiler: ^Compiler, op: OpCode, inverted: bool, left, right: ^Expr) {
+compiler_code_compare :: proc(c: ^Compiler, op: OpCode, inverted: bool, left, right: ^Expr) {
     assert(.Eq <= op && op <= .Leq);
     inverted := inverted
-    rkb := compiler_expr_rk(compiler, left)
-    rkc := compiler_expr_rk(compiler, right)
+    rkb := compiler_expr_rk(c, left)
+    rkc := compiler_expr_rk(c, right)
 
     // Reuse these registers after the comparison is made
-    compiler_expr_pop(compiler, right^)
-    compiler_expr_pop(compiler, left^)
+    compiler_expr_pop(c, right^)
+    compiler_expr_pop(c, left^)
 
     // Exchange arguments in `<` or `<=` to emulate `>=` or `>`, respectively.
     if inverted && op != .Eq {
@@ -690,7 +673,7 @@ compiler_code_compare :: proc(compiler: ^Compiler, op: OpCode, inverted: bool, l
         inverted = false
     }
 
-    pc := compiler_code_ABC(compiler, op, 0, rkb, rkc)
+    pc := compiler_code_ABC(c, op, 0, rkb, rkc)
     left^ = expr_make(.Need_Register, pc = pc)
 }
 
@@ -698,23 +681,23 @@ compiler_code_compare :: proc(compiler: ^Compiler, op: OpCode, inverted: bool, l
 **Links**
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
  */
-compiler_code_concat :: proc(compiler: ^Compiler, left, right: ^Expr) {
-    compiler_expr_to_value(compiler, right)
+compiler_code_concat :: proc(c: ^Compiler, left, right: ^Expr) {
+    compiler_expr_to_value(c, right)
 
-    code := compiler.chunk.code[:compiler.chunk.pc]
+    code := c.chunk.code[:c.n_code]
 
     // This is past the first consecutive concat, so we can fold them.
     if right.type == .Need_Register && code[right.pc].op == .Concat {
         ip := &code[right.pc]
         assert(left.reg == ip.b - 1)
-        compiler_expr_pop(compiler, left^)
+        compiler_expr_pop(c, left^)
         ip.b  = left.reg
         left^ = expr_make(.Need_Register, pc = right.pc)
         return
     }
     // This is the first in a potential chain of concats.
-    compiler_expr_next_reg(compiler, right)
-    compiler_code_arith(compiler, .Concat, left, right)
+    compiler_expr_next_reg(c, right)
+    compiler_code_arith(c, .Concat, left, right)
 }
 
 
@@ -776,8 +759,8 @@ fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
 **Analogous to**
 -   `lcode.c:luaK_indexed(FuncState *fs, expdesc *t, expdesc *key)` in Lua 5.1.5.
  */
-compiler_code_indexed :: proc(compiler: ^Compiler, table, key: ^Expr) {
-    index := compiler_expr_rk(compiler, key)
+compiler_code_indexed :: proc(c: ^Compiler, table, key: ^Expr) {
+    index := compiler_expr_rk(c, key)
     table^ = expr_make(.Table_Index, reg = table.reg, index = index)
 }
 
@@ -790,12 +773,12 @@ compiler_code_indexed :: proc(compiler: ^Compiler, table, key: ^Expr) {
 **Assumptions**
 -   `total` and `to_store` are never 0.
  */
-compiler_code_set_array :: proc(compiler: ^Compiler, reg: u16, total, to_store: int) {
+compiler_code_set_array :: proc(c: ^Compiler, reg: u16, total, to_store: int) {
     // Assert taken from Lua 5.4
     assert(to_store != 0 && to_store <= FIELDS_PER_FLUSH)
 
     // TOOD(2025-04-15): Check for LUA_MULTRET analog?
-    b := cast(u16)to_store
+    count := cast(u16)to_store
 
     /*
     **Notes (2025-04-18)**
@@ -803,19 +786,17 @@ compiler_code_set_array :: proc(compiler: ^Compiler, reg: u16, total, to_store: 
         C == 2. Otherwise, it will be decoded as the wrong offset!
     -   We add 1 to distinguish from C == 0 which is a special case.
      */
-    c := ((total - 1) / FIELDS_PER_FLUSH) + 1
-
-    if c <= MAX_C {
-        compiler_code_ABC(compiler, .Set_Array, reg, b, cast(u16)c)
+    if offset := ((total - 1) / FIELDS_PER_FLUSH) + 1; offset <= MAX_C {
+        compiler_code_ABC(c, .Set_Array, reg, count, cast(u16)offset)
     } else {
-        parser_error(compiler.parser,
+        parser_error(c.parser,
             ".Set_Array with > MAX_C offset is not yet supported")
         // Actual value of C is found in the next "instruction"
-        // compiler_code_ABC(compiler, .Set_Array, reg, b, 0)
-        // compiler_code(compiler, transmute(Instruction)cast(u32)c)
+        // compiler_code_ABC(c, .Set_Array, reg, b, 0)
+        // compiler_code(c, transmute(Instruction)cast(u32)c)
     }
     // Reuse the registers that were allocated for the list elements
-    compiler.free_reg = cast(int)reg + 1
+    c.free_reg = cast(int)reg + 1
 }
 
 
@@ -830,7 +811,7 @@ compiler_code_set_array :: proc(compiler: ^Compiler, reg: u16, total, to_store: 
 -   See notes per switch-case.
 -   `expr` can be pushed, reused as a local, or used as a constant index.
  */
-compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
+compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
     #partial switch var.type {
     /*
     -   Most likely we want to do `OpCode.Move` as this is usually the case for
@@ -840,17 +821,17 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
      */
     case .Local:
         // If `expr` is currently a non-local register, reuse its register
-        compiler_expr_pop(compiler, expr^)
-        expr_to_reg(compiler, expr, var.reg)
+        compiler_expr_pop(c, expr^)
+        expr_to_reg(c, expr, var.reg)
     /*
     -   `var.index` is already set to the identifier.
     -   `expr` can only be pushed to a register (constants) or reuse an
         existing register (locals, temporaries).
      */
     case .Global:
-        reg   := compiler_expr_any_reg(compiler, expr)
+        reg   := compiler_expr_any_reg(c, expr)
         index := var.index
-        compiler_code_ABx(compiler, .Set_Global, reg, index)
+        compiler_code_ABx(c, .Set_Global, reg, index)
     /*
     -   `var.table` already refers to the target table and key.
     -   `expr` can be emitted to an RK register as is defined in `opcode.odin`.
@@ -859,13 +840,13 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
      */
     case .Table_Index:
         table := var.table
-        value := compiler_expr_rk(compiler, expr)
-        compiler_code_ABC(compiler, .Set_Table, table.reg, table.key_reg, value)
+        value := compiler_expr_rk(c, expr)
+        compiler_code_ABC(c, .Set_Table, table.reg, table.key_reg, value)
     case:
         unreachable("Invalid variable kind %v", var.type)
     }
     // If `expr` ended up as a non-local register, reuse its register
-    compiler_expr_pop(compiler, expr^)
+    compiler_expr_pop(c, expr^)
 }
 
 ///=== }}} =====================================================================
@@ -885,10 +866,10 @@ compiler_store_var :: proc(compiler: ^Compiler, var, expr: ^Expr) {
 **Returns**
 -   The pc of the `.Jump` we emitted.
  */
-compiler_code_test :: proc(compiler: ^Compiler, expr: ^Expr, cond: bool) -> (jump_pc: int) {
-    ra := compiler_expr_any_reg(compiler, expr)
-    compiler_expr_pop(compiler, expr^)
-    return compiler_code_cond_jump(compiler, .Test, ra, 0, u16(cond))
+compiler_code_test :: proc(c: ^Compiler, expr: ^Expr, cond: bool) -> (jump_pc: int) {
+    ra := compiler_expr_any_reg(c, expr)
+    compiler_expr_pop(c, expr^)
+    return compiler_code_cond_jump(c, .Test, ra, 0, u16(cond))
 }
 
 
@@ -897,9 +878,9 @@ compiler_code_test :: proc(compiler: ^Compiler, expr: ^Expr, cond: bool) -> (jum
 -   `lcode.c:condjump(FuncState *fs, OpCode op, int A, int B, int C)` in
     Lua 5.1.5.
 */
-compiler_code_cond_jump :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -> (jump_pc: int) {
-    compiler_code_ABC(compiler, op, a, b, c)
-    return compiler_code_jump(compiler)
+compiler_code_cond_jump :: proc(cl: ^Compiler, op: OpCode, a, b, c: u16) -> (jump_pc: int) {
+    compiler_code_ABC(cl, op, a, b, c)
+    return compiler_code_jump(cl)
 }
 
 
@@ -914,13 +895,13 @@ compiler_code_cond_jump :: proc(compiler: ^Compiler, op: OpCode, a, b, c: u16) -
 -   `left` is then transformed to type `.Need_Register` with its `pc` pointing
     to `.Test_Set`.
 */
-compiler_code_test_set :: proc(compiler: ^Compiler, left: ^Expr, cond: bool) -> (jump_pc: int) {
-    reg := compiler_expr_any_reg(compiler, left)
-    compiler_expr_pop(compiler, left^)
+compiler_code_test_set :: proc(c: ^Compiler, left: ^Expr, cond: bool) -> (jump_pc: int) {
+    reg := compiler_expr_any_reg(c, left)
+    compiler_expr_pop(c, left^)
 
-    test_pc := compiler_code_ABC(compiler, .Test_Set, 0, reg, u16(cond))
+    test_pc := compiler_code_ABC(c, .Test_Set, 0, reg, u16(cond))
     left^ = expr_make(.Need_Register, pc = test_pc)
-    return compiler_code_jump(compiler)
+    return compiler_code_jump(c)
 }
 
 
@@ -937,8 +918,8 @@ compiler_code_test_set :: proc(compiler: ^Compiler, left: ^Expr, cond: bool) -> 
 **Returns**
 -   The index of our jump instruction in the current chunk's code.
 */
-compiler_code_jump :: proc(compiler: ^Compiler, prev := NO_JUMP) -> (jump_pc: int) {
-    return compiler_code_AsBx(compiler, .Jump, 0, prev)
+compiler_code_jump :: proc(c: ^Compiler, prev := NO_JUMP) -> (jump_pc: int) {
+    return compiler_code_AsBx(c, .Jump, 0, prev)
 }
 
 
@@ -948,15 +929,14 @@ compiler_code_jump :: proc(compiler: ^Compiler, prev := NO_JUMP) -> (jump_pc: in
     *If Statements*.
 -   `lcode.c:patchlistaux(FuncState *fs, int list, int vtarget, int reg, int dtarget)` in Lua 5.1.5.
 */
-compiler_patch_jump :: proc(compiler: ^Compiler, jump_pc: int) {
-    chunk := compiler.chunk
-    code  := chunk.code
-    pc    := chunk.pc
+compiler_patch_jump :: proc(c: ^Compiler, jump_pc: int) {
+    code := c.chunk.code
+    pc   := c.n_code
     for list := jump_pc; list != NO_JUMP; {
         ip     := &code[list]
         offset := pc - list - 1
         if !(-MAX_sBx <= offset && offset <= MAX_sBx) {
-            parser_error(compiler.parser, "Jump too large")
+            parser_error(c.parser, "Jump too large")
         }
 
         // If ip.sBx is not `NO_JUMP` then we still have a chain to resolve.

@@ -17,8 +17,8 @@ VM :: struct {
     handlers:    ^Error_Handler,
 }
 
-Status :: enum {
-    Ok,
+Error :: enum {
+    None,
     Compile_Error,
     Runtime_Error,
     Out_Of_Memory,
@@ -49,7 +49,7 @@ close :: proc(vm: ^VM) {
 -   `lapi.c:lua_load(lua_State *L, lua_Reader reader, void *data, const char *chunkname)`
 -   `lapi.c:lua_pcall(lua_State *L, int nargs, int nresults, int errfunc)`
  */
-run :: proc(vm: ^VM, input, source: string) -> Status {
+run :: proc(vm: ^VM, input, source: string) -> Error {
     return vm_interpret(vm, input, source)
 }
 

@@ -36,7 +36,7 @@ typedef enum BinOpr {
 typedef enum UnOpr { OPR_MINUS, OPR_NOT, OPR_LEN, OPR_NOUNOPR } UnOpr;
 
 /* Assumes `expr` is of type `Expr_Relocable` */
-#define getcode(func, expr)	((func)->proto->code[(expr)->u.s.info])
+#define getcode(func, expr)	(&(func)->proto->code[(expr)->u.s.info])
 
 #define luaK_codeAsBx(func, op, A, sBx)	luaK_codeABx(func, op, A, (sBx) + MAXARG_sBx)
 

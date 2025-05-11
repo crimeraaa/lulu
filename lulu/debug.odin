@@ -12,39 +12,39 @@ debug_init_formatters :: proc() {
     fmt.register_user_formatter(Value, value_formatter)
 }
 
-debug_dump_chunk :: proc(chunk: ^Chunk) {
-    fmt.printfln("=== STACK USAGE ===\n%i", chunk.stack_used)
+debug_dump_chunk :: proc(c: ^Chunk, code_size: int) {
+    fmt.printfln("=== STACK USAGE ===\n%i", c.stack_used)
 
     fmt.println("=== DISASSEMBLY: BEGIN ===")
     defer fmt.println("\n=== DISASSEMBLY: END ===")
 
-    fmt.printfln("\n.name\n%q", chunk.source)
+    fmt.printfln("\n.name\n%q", c.source)
 
-    if n := len(chunk.locals); n > 0 {
+    if n := len(c.locals); n > 0 {
         fmt.println("\n.local:")
         left_pad := math.count_digits_of_base(n, 10)
-        for local, index in chunk.locals {
+        for local, index in c.locals {
             fmt.printfln("[%0*i] %q ; local %v", left_pad, index, local.ident,
                 local)
         }
     }
 
-    if n := len(chunk.constants); n > 0 {
+    if n := len(c.constants); n > 0 {
         fmt.println("\n.const:")
         left_pad := math.count_digits_of_base(n, 10)
-        for constant, index in chunk.constants {
+        for constant, index in c.constants {
             fmt.printfln("[%0*i] %d", left_pad, index, constant)
         }
     }
 
     fmt.println("\n.code")
-    left_pad := math.count_digits_of_base(chunk.pc, 10)
-    for inst, index in chunk.code[:chunk.pc] {
-        debug_dump_instruction(chunk, inst, index, left_pad)
+    left_pad := math.count_digits_of_base(code_size, 10)
+    for ip, index in c.code[:code_size] {
+        debug_dump_instruction(c, ip, index, left_pad)
     }
 }
 
-debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_pad := 4) {
+debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index: int, left_pad := 4) {
     Print_Info :: struct {
         chunk: ^Chunk,
         pc:     int,
@@ -86,7 +86,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
     }
 
     fmt.printf("[%0*i] ", left_pad, index)
-    if line := chunk.line[index]; index > 0 && line == chunk.line[index - 1] {
+    if line := c.line[index]; index > 0 && line == c.line[index - 1] {
         fmt.print("   | ")
     } else {
         fmt.printf("% 4i ", line)
@@ -112,14 +112,14 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
         unreachable("Bad opcode info %v", info)
     }
 
-    info := Print_Info{chunk = chunk, pc = index, ip = ip}
+    info := Print_Info{chunk = c, pc = index, ip = ip}
     switch (ip.op) {
     case .Move:
         print_reg(info, ip.a, " := ")
         print_reg(info, ip.b)
     case .Load_Constant:
         bc := ip_get_Bx(ip)
-        print_reg(info, ip.a, " := %d", chunk.constants[bc])
+        print_reg(info, ip.a, " := %d", c.constants[bc])
     case .Load_Nil:
         fmt.printf("Reg(i) := nil for %i <= i <= %i", ip.a, ip.b)
     case .Load_Boolean:
@@ -128,14 +128,14 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
             fmt.print("; goto .code[%i]", index + 2)
         }
     case .Get_Global:
-        key := chunk.constants[ip_get_Bx(ip)]
+        key := c.constants[ip_get_Bx(ip)]
         print_reg(info, ip.a, " := _G.%s", value_to_string(key))
     case .Get_Table:
         print_reg(info, ip.a, " := ")
         print_reg(info, ip.b, "[")
         print_reg(info, ip.c, "]")
     case .Set_Global:
-        key := chunk.constants[ip_get_Bx(ip)]
+        key := c.constants[ip_get_Bx(ip)]
         fmt.printf("_G.%s := ",  value_to_string(key))
         print_reg(info, ip.a)
     case .Set_Table:
@@ -182,7 +182,7 @@ debug_dump_instruction :: proc(chunk: ^Chunk, ip: Instruction, index: int, left_
         if ip.c == 0 {
             fmt.printf("return Reg(%i..<%i)", reg, reg + n_results)
         } else {
-            fmt.printf("return Reg(%i..=%i)", reg, chunk.stack_used);
+            fmt.printf("return Reg(%i..=%i)", reg, c.stack_used);
         }
     case:
         unreachable("Unknown opcode %v", ip.op)
@@ -220,14 +220,14 @@ debug_type_error :: proc(vm: ^VM, culprit: ^Value, action: string) -> ! {
 **Analogous to**
 -   `ldebug.c:getobjname(lua_State *L, CallInfo *ci, int stackpos, const char **name)`
  */
-debug_get_variable :: proc(chunk: ^Chunk, pc, reg: int) -> (ident, scope: string, ok: bool) {
+debug_get_variable :: proc(c: ^Chunk, pc, reg: int) -> (ident, scope: string, ok: bool) {
     /*
     **Analogous to**
     -   `ldebug.c:kname(Proto *p, int c)` in Lua 5.1.5.
      */
-    constant_ident :: proc(chunk: ^Chunk, reg: u16) -> string {
+    constant_ident :: proc(c: ^Chunk, reg: u16) -> string {
         if reg_is_k(reg) {
-            if key := chunk.constants[reg_get_k(reg)]; value_is_string(key) {
+            if key := c.constants[reg_get_k(reg)]; value_is_string(key) {
                 return value_to_string(key)
             }
         }
@@ -235,24 +235,25 @@ debug_get_variable :: proc(chunk: ^Chunk, pc, reg: int) -> (ident, scope: string
         return "?"
     }
 
-    if local, found := chunk_get_local(chunk, reg + 1, pc); found {
+    if local, found := chunk_get_local(c, reg + 1, pc); found {
         return local_to_string(local), "local", true
     }
-    ip := debug_symbolic_execution(chunk, pc, cast(u16)reg) or_return
+
+    ip := debug_symbolic_execution(c, pc, cast(u16)reg) or_return
     #partial switch ip.op {
     case .Move:
         // Moving from Reg(B) to Reg(A)?
         if ip.b < ip.a {
             // Get the name for Reg(B).
             // TODO(2025-04-22): Find out how this path is reached!
-            return debug_get_variable(chunk, pc, cast(int)ip.b)
+            return debug_get_variable(c, pc, cast(int)ip.b)
         }
     case .Get_Global:
         bx     := ip_get_Bx(ip)
-        global := chunk.constants[bx]
+        global := c.constants[bx]
         return value_to_string(global), "global", true
     case .Get_Table:
-        return constant_ident(chunk, ip.c), "field", true
+        return constant_ident(c, ip.c), "field", true
     case:
         break;
     }

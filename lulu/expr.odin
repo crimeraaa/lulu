@@ -13,14 +13,9 @@ Expr_Info :: struct #raw_union {
     number: f64, // .Number
     pc:     int, // .Need_Register, .Jump
     index:  u32, // .Constant, .Global
-    table:  Expr_Table, // .Table_Index
+    table:  struct {reg, key_reg: u16}, // .Table_Index
     reg:    u16, // .Discharged, .Local
 }
-
-Expr_Table :: struct {
-    reg, key_reg: u16,
-}
-
 
 /*
 **Links**
@@ -119,13 +114,11 @@ expr_make_number :: proc(type: Expr_Type, number: f64) -> Expr {
 }
 
 // See: https://www.lua.org/source/5.1/lcode.c.html#isnumeral
-expr_is_number :: proc(expr: Expr) -> bool {
-    return expr.type == .Number \
-        && expr.patch_true == NO_JUMP \
-        && expr.patch_false == NO_JUMP
+expr_is_number :: proc(e: Expr) -> bool {
+    return e.type == .Number && e.patch_true == NO_JUMP && e.patch_false == NO_JUMP
 }
 
-expr_has_jumps :: proc(expr: Expr) -> bool {
-    return expr.patch_true != expr.patch_false
+expr_has_jumps :: proc(e: Expr) -> bool {
+    return e.patch_true != e.patch_false
 }
 

@@ -15,8 +15,8 @@ Intern :: struct {
     entries: map[string]^OString,
 }
 
-intern_init :: proc(vm: ^VM, interned: ^Intern) {
-    interned.entries = make(map[string]^OString, vm.allocator)
+intern_init :: proc(vm: ^VM, i: ^Intern) {
+    i.entries = make(map[string]^OString, vm.allocator)
 }
 
 /*
@@ -25,22 +25,22 @@ Notes:
 -   It's entirely possible that a freed `^OString` will still be pointed to
     by some other non-string in the objects linked list: a dangling pointer.
  */
-intern_destroy :: proc(interned: ^Intern) {
-    delete(interned.entries)
+intern_destroy :: proc(i: ^Intern) {
+    delete(i.entries)
 }
 
-intern_get :: proc(interned: ^Intern, key: string) -> (value: ^OString, ok: bool) {
-    return interned.entries[key]
+intern_get :: proc(i: ^Intern, key: string) -> (value: ^OString, ok: bool) {
+    return i.entries[key]
 }
 
-intern_set :: proc(interned: ^Intern, ostring: ^OString, location := #caller_location) {
-    key := ostring_to_string(ostring)
-    pkey, pvalue, just_inserted, mem_err := map_entry(&interned.entries, key)
+intern_set :: proc(i: ^Intern, s: ^OString, location := #caller_location) {
+    key := ostring_to_string(s)
+    pkey, pvalue, just_inserted, mem_err := map_entry(&i.entries, key)
     // We should only ever call this when inserting the key for the first time.
     assert(just_inserted, loc = location)
     assert(mem_err == nil)
 
     // Key and value effectively point to the same allocated memory.
-    pkey^, pvalue^ = key, ostring
+    pkey^, pvalue^ = key, s
 }
 
