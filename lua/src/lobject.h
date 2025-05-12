@@ -77,7 +77,7 @@ typedef enum {
   ValueType_Table         = LUA_TTABLE,
   ValueType_Function      = LUA_TFUNCTION,
   ValueType_Userdata      = LUA_TUSERDATA,
-  ValueType_Thread        = LUA_TTHREAD,
+  ValueType_Thread        = LUA_TTHREAD
 } ValueType;
 
 /*

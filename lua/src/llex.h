@@ -54,7 +54,7 @@ typedef enum {
 
 
   /* MISC. TERMINALS */
-  Token_Number, Token_String, Token_Name, Token_Error, Token_Eos,
+  Token_Number, Token_String, Token_Name, Token_Error, Token_Eos
 } TokenType;
 
 /* number of reserved words */

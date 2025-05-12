@@ -773,7 +773,7 @@ union luai_Cast { double l_d; long l_l; };
 #ifndef __cplusplus
 
 /* https://gcc.gnu.org/onlinedocs/cpp/Standard-Predefined-Macros.html */
-#if defined(__STDC__) && __STDC_VERSION__ >= 199901L
+#if defined(__GNUC__) || (defined(__STDC__) && __STDC_VERSION__ >= 199901L)
 #include <stdbool.h>
 
 #else /* __STDC_VERSION__ < C99 */

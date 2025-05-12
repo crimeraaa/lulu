@@ -136,6 +136,10 @@ void luaK_ret (FuncState *func, int first, int nret) {
  * @brief 2025-05-08
  *  Emits `op` with its arguments as normal, but also emits `OP_JUMP`
  *  immediately afterward.
+ *
+ * @return
+ *  The `pc` of the resulting `OP_JUMP`. This is useful to immediately chain
+ *  jump lists.
  */
 static int condjump (FuncState *func, OpCode op, int A, int B, int C) {
   luaK_codeABC(func, op, A, B, C);
@@ -143,14 +147,14 @@ static int condjump (FuncState *func, OpCode op, int A, int B, int C) {
 }
 
 
-static void fixjump (FuncState *func, int pc, int dest) {
-  Instruction *jmp = &func->proto->code[pc];
-  int offset = dest-(pc+1);
+static void fixjump (FuncState *func, int jump_pc, int dest) {
+  Instruction *jump_ip = &func->proto->code[jump_pc];
+  int offset = dest - (jump_pc + 1);
   lua_assert(dest != NO_JUMP); /* would be an infinite loop! */
   if (abs(offset) > MAXARG_sBx) {
     luaX_syntaxerror(func->lex, "control structure too long");
   }
-  SETARG_sBx(*jmp, offset);
+  SETARG_sBx(*jump_ip, offset);
 }
 
 
@@ -164,13 +168,22 @@ int luaK_getlabel (FuncState *func) {
 }
 
 
-static int getjump (FuncState *func, int pc) {
-  Instruction ip = func->proto->code[pc];
+/**
+ * @brief
+ *  Returns the would-be value of the `sBx` argument in the jump instruction
+ *  pointed to by `jump_pc`.
+ *
+ * @note 2025-05-12:
+ *  In the case of jump chains, each jump instruction's `sBx` argument actually
+ *  refers to the `pc` of the preceding jump. Think of it like a linked list.
+ */
+static int getjump (FuncState *func, int jump_pc) {
+  Instruction ip = func->proto->code[jump_pc];
   int offset = GETARG_sBx(ip);
-  if (offset == NO_JUMP) {/* point to itself represents end of list */
-    return NO_JUMP;  /* end of list */
+  if (offset == NO_JUMP) { /* point to itself represents end of jump chain */
+    return NO_JUMP;  /* end of jump chain */
   }
-  return (pc + 1) + offset;  /* turn offset into absolute position */
+  return (jump_pc + 1) + offset;  /* turn offset into absolute position */
 }
 
 
@@ -189,16 +202,27 @@ static Instruction *getjumpcontrol (FuncState *func, int pc) {
 }
 
 
-/*
-** check whether list has any jump that do not produce a value
-** (or produce an inverted value)
-*/
-static bool need_value (FuncState *func, int list) {
-  for (; list != NO_JUMP; list = getjump(func, list)) {
-    Instruction ip = *getjumpcontrol(func, list);
+/**
+ * @brief
+ *  Checks whether at least one jump in the chain starting at `jump_pc` has
+ *  a comparison (`OP_(EQ|LT|LE)`) or `OP_TEST`. This indicates that a
+ *  particular jump produces a value
+ *
+ * @note 2025-05-12:
+ *  The value 'produced' may be inverted, that is argument A (for comparisons)
+ *  is 0 meaning the opposite of the opcode: e.g. `OP_EQ` conceptually becomes
+ *  `OP_NEQ`.
+ */
+static bool need_value (FuncState *func, int jump_pc) {
+  int list_pc = jump_pc;
+  while (list_pc != NO_JUMP) {
+    int next = getjump(func, list_pc);
+    /* instruction before the jump; jumps in jump chains always have this */
+    Instruction ip = *getjumpcontrol(func, list_pc);
     if (GET_OPCODE(ip) != OP_TESTSET) {
       return true;
     }
+    list_pc = next;
   }
   return false;  /* not found */
 }
@@ -228,18 +252,22 @@ static void removevalues (FuncState *func, int list) {
   }
 }
 
-
-static void patchlistaux (FuncState *func, int list, int vtarget, int reg,
+/**
+ * @brief
+ *  Finalizes all the pending jumps in the jump chain starting at `jump_pc`.
+ */
+static void patchlistaux (FuncState *func, int jump_pc, int vtarget, int reg,
                           int default_target) {
-  while (list != NO_JUMP) {
-    int next = getjump(func, list);
-    if (patchtestreg(func, list, reg)) {
-      fixjump(func, list, vtarget);
+  int list_pc = jump_pc;
+  while (list_pc != NO_JUMP) {
+    int next = getjump(func, list_pc);
+    if (patchtestreg(func, list_pc, reg)) {
+      fixjump(func, list_pc, vtarget);
     }
     else {
-      fixjump(func, list, default_target);
+      fixjump(func, list_pc, default_target);
     }
-    list = next;
+    list_pc = next;
   }
 }
 
@@ -266,13 +294,35 @@ void luaK_patchtohere (FuncState *func, int list) {
   luaK_concat(func, &func->jpc, list); /* set `jpc` if `list != -1` */
 }
 
+/**
+ * @brief
+ *  Get the `pc` of the 'root' jump in the jump chain; that is this is the very
+ *  first jump in the chain we emitted.
+ *
+ * @note 2025-05-12:
+ *  Assumption: we have at least one non-`NO_JUMP` in the chain pointed to
+ *  by `jump_pc`.
+ */
+static int getjumproot (FuncState *func, int jump_pc) {
+  int list_pc = jump_pc;
+  for (;;) {
+    int next_pc = getjump(func, list_pc);
+    /* `list_pc` already contains the `pc` of the root jump itself; assigning
+      it to `next_pc` would be disastrous */
+    if (next_pc == NO_JUMP) {
+      break;
+    }
+    list_pc = next_pc;
+  }
+  return list_pc;
+}
 
 /**
  * @brief
  *  This function can do one of several things, in order:
  *    1.) `l2` is `NO_JUMP`: Nothing.
  *    2.) `*l1 is NO_JUMP`: Initialize `*l1` with `l2`.
- *    3.) Otherwise: add `l2` into the jump list pointed to be `l1`.
+ *    3.) Otherwise: chain `l2` into the root of the jump list from `l1`.
  */
 void luaK_concat (FuncState *func, int *l1, int l2) {
   /* base case #1 (e.g. first jump) */
@@ -284,13 +334,7 @@ void luaK_concat (FuncState *func, int *l1, int l2) {
     *l1 = l2;
   }
   else {
-    int list = *l1;
-    int next = getjump(func, list);
-    while (next != NO_JUMP) { /* find last element */
-      list = next;
-      next = getjump(func, list);
-    }
-    fixjump(func, list, l2);
+    fixjump(func, getjumproot(func, *l1), l2);
   }
 }
 
@@ -536,8 +580,8 @@ static void exp2reg (FuncState *func, Expr *expr, int reg) {
     if (need_value(func, expr->patch_true)
       || need_value(func, expr->patch_false)) {
       int fj = (expr->kind == Expr_Jump) ? NO_JUMP : luaK_jump(func);
-      p_f = code_label(func, reg, 0, 1);
-      p_t = code_label(func, reg, 1, 0);
+      p_f = code_label(func, reg, /* .b = */ false, /* .cond = */ true);
+      p_t = code_label(func, reg, /* .b = */ true,  /* .cond = */ false);
       luaK_patchtohere(func, fj);
     }
     final = luaK_getlabel(func);
@@ -716,13 +760,13 @@ static int jumponcond (FuncState *func, Expr *expr, bool cond) {
     Instruction ip = *getcode(func, expr);
     if (GET_OPCODE(ip) == OP_NOT) {
       func->pc--;  /* remove previous OP_NOT */
-      return condjump(func, OP_TEST, GETARG_B(ip), 0, !cond);
+      return condjump(func, OP_TEST, GETARG_B(ip), 0, cast_int(!cond));
     }
     /* else go through */
   }
   discharge2anyreg(func, expr);
   freeexp(func, expr);
-  return condjump(func, OP_TESTSET, NO_REG, expr->u.s.info, cond);
+  return condjump(func, OP_TESTSET, NO_REG, expr->u.s.info, cast_int(cond));
 }
 
 
@@ -890,9 +934,10 @@ static void codearith (FuncState *func, OpCode op, Expr *left, Expr *right) {
   }
   else {
     int pc;
+    /* unused for unary; assumes `right` is a dummy `.Number` */
     int rkc = (op != OP_UNM && op != OP_LEN) ? luaK_exp2RK(func, right) : 0;
     int rkb = luaK_exp2RK(func, left);
-    if (rkb > rkc) {
+    if (rkb > rkc) { /* pop used registers in correct order */
       freeexp(func, left);
       freeexp(func, right);
     }
@@ -907,7 +952,13 @@ static void codearith (FuncState *func, OpCode op, Expr *left, Expr *right) {
 }
 
 
-static void codecomp (FuncState *func, OpCode op, bool cond, Expr *left, Expr *right) {
+/**
+ * @brief
+ *  Transforms `left` into `Expr_Jump` where its `info` is the pc of the
+ *  comparison instruction.
+ */
+static void codecomp (FuncState *func, OpCode op, bool cond, Expr *left,
+                      Expr *right) {
   int pc;
   int rkb = luaK_exp2RK(func, left);
   int rkc = luaK_exp2RK(func, right);
@@ -1017,12 +1068,12 @@ void luaK_posfix (FuncState *func, BinOpr op, Expr *left, Expr *right) {
     case OPR_DIV: codearith(func, OP_DIV, left, right); break;
     case OPR_MOD: codearith(func, OP_MOD, left, right); break;
     case OPR_POW: codearith(func, OP_POW, left, right); break;
-    case OPR_EQ: codecomp(func, OP_EQ, true, left, right); break;
-    case OPR_NE: codecomp(func, OP_EQ, false, left, right); break;
-    case OPR_LT: codecomp(func, OP_LT, true, left, right); break;
-    case OPR_LE: codecomp(func, OP_LE, true, left, right); break;
-    case OPR_GT: codecomp(func, OP_LT, false, left, right); break;
-    case OPR_GE: codecomp(func, OP_LE, false, left, right); break;
+    case OPR_EQ:  codecomp(func,  OP_EQ,  true,  left, right); break;
+    case OPR_NE:  codecomp(func,  OP_EQ,  false, left, right); break;
+    case OPR_LT:  codecomp(func,  OP_LT,  true,  left, right); break;
+    case OPR_LE:  codecomp(func,  OP_LE,  true,  left, right); break;
+    case OPR_GT:  codecomp(func,  OP_LT,  false, left, right); break;
+    case OPR_GE:  codecomp(func,  OP_LE,  false, left, right); break;
     default: lua_assert(0);
   }
 }
@@ -1034,16 +1085,19 @@ void luaK_fixline (FuncState *func, int line) {
 
 
 static int luaK_code (FuncState *func, Instruction i, int line) {
-  Proto *f = func->proto;
+  Proto *proto = func->proto;
   dischargejpc(func);  /* `pc' will change */
+
   /* put new instruction in code array */
-  luaM_growvector(func->L, f->code, func->pc, f->size_code, Instruction,
+  luaM_growvector(func->L, proto->code, func->pc, proto->size_code, Instruction,
                   MAX_INT, "code size overflow");
-  f->code[func->pc] = i;
+  proto->code[func->pc] = i;
+
   /* save corresponding line information */
-  luaM_growvector(func->L, f->lineinfo, func->pc, f->size_lineinfo, int,
+  luaM_growvector(func->L, proto->lineinfo, func->pc, proto->size_lineinfo, int,
                   MAX_INT, "code size overflow");
-  f->lineinfo[func->pc] = line;
+  proto->lineinfo[func->pc] = line;
+
   return func->pc++;
 }
 
@@ -1064,7 +1118,7 @@ int luaK_codeABx (FuncState *func, OpCode o, int a, unsigned int bc) {
 
 
 void luaK_setlist (FuncState *func, int base, int nelems, int tostore) {
-  int c =  (nelems - 1)/LFIELDS_PER_FLUSH + 1;
+  int c = (nelems - 1)/LFIELDS_PER_FLUSH + 1;
   int b = (tostore == LUA_MULTRET) ? 0 : tostore;
   lua_assert(tostore != 0);
   if (c <= MAXARG_C) {

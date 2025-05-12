@@ -9,10 +9,10 @@ PLAT= none
 
 CC= clang
 
-# Use GNU C17 as we are on linux compiling with GCC/Clang
+# Use GNU89 as we are on linux compiling with GCC/Clang
 # This gives us access to `_longjmp`, `mkstemp`, etc.
 # https://clang.llvm.org/docs/UsersManual.html#controlling-macro-debug-info-generation
-CFLAGS= -std=gnu17 -O0 -g -fdebug-macro -Wall -Wextra $(MYCFLAGS)
+CFLAGS= -std=gnu89 -Wall -Wextra -O0 -g -fdebug-macro $(MYCFLAGS)
 AR= ar rcu
 RANLIB= ranlib
 RM= rm -f
