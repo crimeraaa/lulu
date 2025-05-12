@@ -4,6 +4,10 @@ package lulu
 import "core:fmt"
 import "core:math"
 
+count_digits :: proc(value: int) -> int {
+    return math.count_digits_of_base(value, 10)
+}
+
 @(init)
 debug_init_formatters :: proc() {
     fmt.set_user_formatters(new(map[typeid]fmt.User_Formatter))
@@ -22,7 +26,7 @@ debug_dump_chunk :: proc(c: ^Chunk, code_size: int) {
 
     if n := len(c.locals); n > 0 {
         fmt.println("\n.local:")
-        left_pad := math.count_digits_of_base(n, 10)
+        left_pad := count_digits(n)
         for local, index in c.locals {
             fmt.printfln("[%0*i] %q ; local %v", left_pad, index, local.ident,
                 local)
@@ -31,14 +35,14 @@ debug_dump_chunk :: proc(c: ^Chunk, code_size: int) {
 
     if n := len(c.constants); n > 0 {
         fmt.println("\n.const:")
-        left_pad := math.count_digits_of_base(n, 10)
+        left_pad := count_digits(n)
         for constant, index in c.constants {
             fmt.printfln("[%0*i] %d", left_pad, index, constant)
         }
     }
 
     fmt.println("\n.code")
-    left_pad := math.count_digits_of_base(code_size, 10)
+    left_pad := count_digits(code_size)
     for ip, index in c.code[:code_size] {
         debug_dump_instruction(c, ip, index, left_pad)
     }
@@ -79,7 +83,7 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index: int, left_pad 
             return
         }
         if local, ok := chunk_get_local(chunk, cast(int)reg + 1, info.pc); ok {
-            fmt.printf("local %s", local_to_string(local))
+            fmt.printf("%s", local)
         } else {
             fmt.printf("Reg(%i)", reg)
         }

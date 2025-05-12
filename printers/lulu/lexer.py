@@ -23,9 +23,10 @@ class TokenPrinter:
 
     def to_string(self) -> str:
         ttype = str(self.__type)
-        word  = str(self.__lexeme)
+        word  = str(self.__lexeme).strip("\'\"")
+        quote = '\'' if len(word) == 1 else '\"'
         # Keyword or operator?
         if ttype.lower() == word or not word.isalpha():
             return ttype
-        return f"{ttype}: {word}"
+        return f"{ttype}: {quote}{word}{quote}"
 

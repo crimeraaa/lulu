@@ -37,7 +37,6 @@ tasks:
     sources:
       - './*.odin'
       - '{{.LULU_SRC}}/*.odin'
-      # - '{{.LULU_GLOB}}' # Doesn't seem to work properly!
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:

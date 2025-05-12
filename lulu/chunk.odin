@@ -2,6 +2,7 @@
 package lulu
 
 import "core:fmt"
+import "core:io"
 
 UNINITIALIZED_LOCAL :: -1
 INVALID_REG         :: max(u16) // Also applies to locals
@@ -22,18 +23,18 @@ Local :: struct {
 }
 
 local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
-    var := (cast(^Local)arg.data)^
+    var   := (cast(^Local)arg.data)^
+    ident := local_to_string(var)
     switch verb {
-    case 'v': // verbose; our very own "name mangling"
-        fi.n += fmt.wprintf(fi.writer, "%s__%i(%i:%i)",
-            local_to_string(var), var.depth, var.startpc, var.endpc)
-        return true
+    case 'v': // verbose
+        fi.n += fmt.wprintf(fi.writer, "%s@code[%i:%i]", ident, var.startpc,
+                            var.endpc)
     case 's': // summary
-        fi.n += fmt.wprintf(fi.writer, "%s", local_to_string(var))
-        return true
+        fi.n += fmt.wprintf(fi.writer, "local %s$%i", ident, var.depth)
     case:
         return false
     }
+    return true
 }
 
 

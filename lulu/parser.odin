@@ -63,8 +63,8 @@ parser_advance :: proc(p: ^Parser) {
  */
 parser_backtrack :: proc(p: ^Parser, prev: Token) {
     lexer := &p.lexer
-    lexer.start   -= len(p.lookahead.lexeme)
-    lexer.current = lexer.start
+    lexer.current -= len(p.lookahead.lexeme)
+    lexer.start   = lexer.current
     p.consumed, p.lookahead = prev, p.consumed
 
 }
@@ -275,9 +275,8 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.5.
  */
 local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, counter: int) {
-    chunk  := c.chunk
     depth  := c.scope_depth
-    locals := chunk.locals
+    locals := c.chunk.locals
     #reverse for active in small_array.slice(&c.active) {
         local := locals[active]
         // Already poking at initialized locals in outer scopes?
@@ -824,7 +823,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         // for backtracking
         prev := p.consumed
         parser_advance(p)
-        #partial switch(p.consumed.type) {
+        #partial switch p.consumed.type {
         case .Identifier:
             // `.Equals` is consumed inside of `field`
             if parser_check(p, .Equals) {

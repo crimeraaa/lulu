@@ -271,19 +271,24 @@ vm_execute :: proc(vm: ^VM) {
     constants := chunk.constants
     globals   := &vm.globals
     stack     := vm.base[:chunk.stack_used]
+
+    ip_left_pad    := count_digits(len(chunk.code))
+    stack_left_pad := count_digits(len(stack))
+
     for {
         // We cannot extract 'vm.pc' into a local as it is needed in to `vm_runtime_error`.
         ip := vm.pc[0]
         when DEBUG_TRACE_EXEC {
             index := ptr_index(vm.pc, chunk.code)
-            #reverse for value, reg in stack {
+            for value, reg in stack {
+                fmt.printf("\t$% -*i | %d", stack_left_pad, reg, value)
                 if local, ok := chunk_get_local(chunk, reg + 1, index); ok {
-                    fmt.printfln("%s ; local %s", value, local)
+                    fmt.printfln(" ; %s", local)
                 } else {
-                    fmt.printfln("%s", value)
+                    fmt.println()
                 }
             }
-            debug_dump_instruction(chunk, ip, index)
+            debug_dump_instruction(chunk, ip, index, ip_left_pad)
         }
         incr_pc(vm)
 
@@ -350,7 +355,7 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Print:
             for arg in stack[ip.a:ip.b] {
-                fmt.print(arg, '\t', sep = "")
+                fmt.print(arg, ' ')
             }
             fmt.println()
         case .Add: arith_op(vm, number_add, ra, ip, stack, constants)
@@ -387,7 +392,7 @@ vm_execute :: proc(vm: ^VM) {
                 count := 0
                 table := rb.table
                 // TODO(2025-04-13): Optimize by separating array from hash!
-                for index in 1..<table.count {
+                for index in 1..=table.count {
                     key      := value_make(index)
                     value, _ := table_get(table, key)
                     if value_is_nil(value) {

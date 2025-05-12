@@ -583,9 +583,12 @@ static void constructor (LexState *lex, Expr *t) {
   FuncState *fs = lex->funcstate;
   int line = lex->linenumber;
   int pc = luaK_codeABC(fs, OP_NEWTABLE, 0, 0, 0);
+  Instruction *ip;  /* don't initialize yet; `proto.code` may change */
   struct ConsControl cc;
-  cc.narray = cc.nhash = cc.tostore = 0;
-  cc.table = t;
+  cc.narray  = 0;
+  cc.nhash   = 0;
+  cc.tostore = 0;
+  cc.table   = t;
   init_exp(t, Expr_Relocable, pc);
   init_exp(&cc.value, Expr_Void, 0);  /* no value (yet) */
   luaK_exp2nextreg(lex->funcstate, t);  /* fix it at stack top (for gc) */
@@ -615,8 +618,9 @@ static void constructor (LexState *lex, Expr *t) {
   } while (test_next(lex, Token_Comma) || test_next(lex, Token_Semi));
   check_match(lex, Token_Right_Curly, Token_Left_Curly, line);
   lastlistfield(fs, &cc);
-  SETARG_B(fs->proto->code[pc], luaO_int2fb(cc.narray)); /* set initial array size */
-  SETARG_C(fs->proto->code[pc], luaO_int2fb(cc.nhash));  /* set initial table size */
+  ip = &fs->proto->code[pc];
+  SETARG_B(*ip, luaO_int2fb(cc.narray)); /* set initial array size */
+  SETARG_C(*ip, luaO_int2fb(cc.nhash));  /* set initial table size */
 }
 
 /* }====================================================================== */

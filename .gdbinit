@@ -30,11 +30,8 @@ end
 
 file ./bin/lulu
 
-break lulu_main::main
-break lulu::[vm.odin]::vm_init
-break lulu::[string.odin]::ostring_new
-break lulu::[vm.odin]::vm_interpret
-break lulu::[vm.odin]::vm_interpret.interpret-0
+break lulu::[compiler.odin]::compiler_compile
+break lulu::[lexer.odin]::create_keyword_identifier_token
 break lulu::[parser.odin]::parser_parse
 
 layout src

@@ -3,8 +3,8 @@ do
     local x = x + 2
     do
         local x = x * 2
-        print("Expected:", 30, "Actual:", x)
+        print("x:", x, "Expected:", 30)
     end
-    print("Expected:", 15, "Actual:", x)
+    print("x:", x, "Expected:", 15)
 end
-print("Expected:", 13, "Actual:", x)
+print("x", x, "Expected:", 13)
