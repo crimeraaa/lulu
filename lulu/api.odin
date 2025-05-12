@@ -13,7 +13,7 @@ VM :: struct {
     objects:     ^Object,
     top, base: [^]Value, // Current stack frame window.
     chunk:       ^Chunk,
-    pc:        [^]Instruction, // Next instruction to be executed in the current chunk.
+    saved_ip:    ^Instruction, // Used for error reporting
     handlers:    ^Error_Handler,
 }
 

@@ -193,7 +193,10 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index: int, left_pad 
     }
 }
 
-
+/*
+**Assumptions**
+-   `vm.saved_ip` was properly set beforehand.
+ */
 debug_type_error :: proc(vm: ^VM, culprit: ^Value, action: string) -> ! {
     type_name := value_type_name(culprit^)
 
@@ -202,9 +205,9 @@ debug_type_error :: proc(vm: ^VM, culprit: ^Value, action: string) -> ! {
         chunk := vm.chunk
 
         // Inline implementation `ldebug.c:currentpc()`.
-        // `pc` always points to instruction AFTER current, so culprit is
-        // at the index of `pc - 1`
-        pc := ptr_index(vm.pc, chunk.code) - 1
+        // `vm.saved_ip` always points to instruction AFTER current, so
+        // culprit is at the index of `pc - 1`
+        pc := ptr_index(vm.saved_ip, chunk.code) - 1
 
         // Culprit is a local variable, global variable, or a field?
         if ident, scope, is_var := debug_get_variable(chunk, pc, reg); is_var {

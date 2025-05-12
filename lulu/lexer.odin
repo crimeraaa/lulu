@@ -16,10 +16,16 @@ Lexer :: struct {
 
 @(private="package")
 Token :: struct {
-    type:       Token_Type  `fmt:"s"`,
-    lexeme:     string      `fmt:"q"`,
-    line:       int         `fmt:"-"`,
-    literal:    union {f64, ^OString},
+    type:          Token_Type  `fmt:"s"`,
+    lexeme:        string      `fmt:"q"`,
+    line:          int          `fmt:"-"`,
+    using literal: Token_Literal,
+}
+
+@(private="package")
+Token_Literal :: struct #raw_union {
+    number:   f64,
+    ostring: ^OString,
 }
 
 @(private="package")
@@ -282,9 +288,9 @@ create_number_token :: proc(l: ^Lexer, prev: rune) -> Token {
         i: int
         // Do NOT shadow `ok`! We rely on it to check for errors.
         i, ok = strconv.parse_int(token.lexeme)
-        token.literal = cast(f64)i
+        token.number = cast(f64)i
     } else {
-        token.literal, ok = strconv.parse_f64(token.lexeme)
+        token.number, ok = strconv.parse_f64(token.lexeme)
     }
     if !ok {
         lexer_error(l, "Malformed number", token.lexeme)
@@ -333,7 +339,7 @@ create_string_token :: proc(l: ^Lexer, quote: rune) -> Token {
         lexer_error(l, "Unterminated string")
     }
     token := create_token(l^, .String)
-    token.literal = ostring_new(l.vm, strings.to_string(builder^))
+    token.ostring = ostring_new(l.vm, strings.to_string(builder^))
     return token
 }
 

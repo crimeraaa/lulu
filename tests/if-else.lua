@@ -21,3 +21,8 @@ if x then
 else
     print("success(3)");
 end;
+
+-- local x = false
+-- if x then
+--     print("wrong(4)")
+-- end

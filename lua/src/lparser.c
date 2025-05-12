@@ -1268,8 +1268,9 @@ static void if_stmt (LexState *lex, int line) {
     luaX_next(lex);  /* skip ELSE (after patch, for correct line info) */
     block(lex);  /* `else' part */
   }
-  else
-    luaK_concat(fs, &escapelist, flist);
+  else {
+    luaK_concat(fs, &escapelist, flist); /* assigns `escapelist` */
+  }
   luaK_patchtohere(fs, escapelist);
   check_match(lex, Token_End, Token_If, line);
 }

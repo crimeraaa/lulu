@@ -14,7 +14,7 @@ Parser :: struct {
 
 Parse_Rule :: struct {
     prefix: proc(p: ^Parser, c: ^Compiler) -> Expr,
-    infix:  proc(p: ^Parser, c: ^Compiler, expr: ^Expr),
+    infix:  proc(p: ^Parser, c: ^Compiler, left: ^Expr),
     prec:   Precedence,
 }
 
@@ -138,12 +138,9 @@ parser_parse :: proc(p: ^Parser, c: ^Compiler) {
         compiler_begin_scope(c)
         do_block(p, c)
         compiler_end_scope(c)
-    case .If:
-        if_stmt(p, c)
-    case .Local:
-        local_stmt(p, c)
-    case .Print:
-        print_stmt(p, c)
+    case .If:    if_stmt(p, c)
+    case .Local: local_stmt(p, c)
+    case .Print: print_stmt(p, c)
     case:
         error_at(p, p.consumed, "Expected an expression")
     }
@@ -208,8 +205,8 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
     -   `c.free_reg - 1` (the current top) is the register of the desired
         value for the current assignment target.
      */
-    expr := expr_make(.Discharged, reg = cast(u16)c.free_reg - 1)
-    compiler_store_var(c, &last.variable, &expr)
+    e := expr_make(.Discharged, reg = cast(u16)c.free_reg - 1)
+    compiler_store_var(c, &last.variable, &e)
 }
 
 
@@ -234,25 +231,25 @@ ident_constant :: proc(p: ^Parser, c: ^Compiler, token: Token) -> (ident: ^OStri
     catch-all `var` keyword.
 */
 local_stmt :: proc(p: ^Parser, c: ^Compiler) {
-    count_vars: int
+    n_vars: int
     for {
-        defer count_vars += 1
+        defer n_vars += 1
 
         parser_consume(p, .Identifier)
         // Don't call `ident_constant()` because we don't need to pollute the
         // constants array.
         ident := ostring_new(p.vm, p.consumed.lexeme)
-        local_decl(p, c, ident, count_vars)
+        local_decl(p, c, ident, n_vars)
         if !parser_match(p, .Comma) {
             break
         }
     }
 
     expr: Expr
-    count_exprs: int
+    n_exprs: int
     // No need for `else` clause as zero value is already .Empty
     if parser_match(p, .Equals) {
-        expr, count_exprs = expr_list(p, c)
+        expr, n_exprs = expr_list(p, c)
     }
 
     /*
@@ -260,8 +257,8 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
     we want the initialization expressions to remain on the stack as they
     will act as the local variables themselves.
     */
-    adjust_assign(c, count_vars, count_exprs, &expr)
-    local_adjust(c, count_vars)
+    adjust_assign(c, n_vars, n_exprs, &expr)
+    local_adjust(c, n_vars)
 }
 
 
@@ -412,12 +409,11 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
     compiler_patch_jump(c, then_jump)
 
     for parser_match(p, .Elseif) {
-        // Each 'then' jump is independent of the others, so we never need to
-        // chain them.
+        // each `then` jump connects to the next so that `elseif` branches
+        // are tried in order
         then_jump = then_cond(p, c)
 
-        // 'if' and all its child 'elseif' branches, when done, need to jump to
-        // the same endpoint.
+        // all child non-`else` branches skip over the one `else` branch
         else_jump = compiler_code_jump(c, prev = else_jump)
         compiler_patch_jump(c, then_jump)
     }
@@ -441,9 +437,9 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
     parser_consume(p, .Left_Paren)
 
     args: Expr
-    count_args: int
+    n_args: int
     if !parser_match(p, .Right_Paren) {
-        args, count_args = expr_list(p, c)
+        args, n_args = expr_list(p, c)
         parser_consume(p, .Right_Paren)
     }
 
@@ -452,11 +448,12 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
         compiler_expr_next_reg(c, &args)
     }
 
-    compiler_code_AB(c, .Print,
-        cast(u16)(c.free_reg - count_args), cast(u16)c.free_reg)
+    base_reg := u16(c.free_reg - n_args)
+    last_reg := u16(c.free_reg) // If > MAX_A should still fit
+    compiler_code_AB(c, .Print, base_reg, last_reg)
 
     // This is hacky but it works to allow recycling of registers
-    c.free_reg -= count_args
+    c.free_reg -= n_args
 }
 
 /*
@@ -518,7 +515,7 @@ parse_precedence :: proc(p: ^Parser, c: ^Compiler, prec: Precedence) -> Expr {
 
     // Prefix expressions are always the "root" node. We don't know if we're in
     // a recursive call.
-    expr := prefix(p, c)
+    left := prefix(p, c)
     for {
         rule := get_rule(p.lookahead.type)
         if prec > rule.prec {
@@ -529,10 +526,9 @@ parse_precedence :: proc(p: ^Parser, c: ^Compiler, prec: Precedence) -> Expr {
         parser_advance(p)
 
         // Infix expressions are the actual branches.
-        rule.infix(p, c, &expr)
+        rule.infix(p, c, &left)
     }
-
-    return expr
+    return left
 }
 
 
@@ -563,12 +559,11 @@ parser_error :: proc(p: ^Parser, msg: string) -> ! {
     syntax errors*.
  */
 error_at :: proc(p: ^Parser, token: Token, msg: string) -> ! {
-    vm     := p.vm
     source := p.lexer.source
     line   := token.line
     // .Eof token: don't use lexeme as it'll just be an empty string.
     location := token.lexeme if token.type != .Eof else token_type_strings[.Eof]
-    vm_compile_error(vm, source, line, "%s at '%s'", msg, location)
+    vm_compile_error(p.vm, source, line, "%s at '%s'", msg, location)
 }
 
 
@@ -586,8 +581,7 @@ grouping :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 }
 
 parser_recurse_begin :: proc(p: ^Parser) {
-    p.recurse += 1
-    if p.recurse >= PARSER_MAX_RECURSE {
+    if p.recurse += 1; p.recurse >= PARSER_MAX_RECURSE {
         parser_error(p, "Too many syntax levels")
     }
 }
@@ -601,26 +595,18 @@ parser_recurse_end :: proc(p: ^Parser) {
 **Form**
 -   `literal ::= 'nil' | 'true' | 'false' | NUMBER | STRING`
  */
-lit_nil :: proc(p: ^Parser, c: ^Compiler) -> Expr {
-    return expr_make(.Nil)
-}
-
-lit_true :: proc(p: ^Parser, c: ^Compiler) -> Expr {
-    return expr_make(.True)
-}
-
-lit_false :: proc(p: ^Parser, c: ^Compiler) -> Expr {
-    return expr_make(.False)
-}
-
-lit_number :: proc(p: ^Parser, c: ^Compiler) -> Expr {
-    return expr_make(.Number, p.consumed.literal.(f64))
-}
-
-lit_string :: proc(p: ^Parser, c: ^Compiler) -> Expr {
-    v     := value_make(p.consumed.literal.(^OString))
-    index := compiler_add_constant(c, v)
-    return expr_make(.Constant, index = index)
+literal :: proc(p: ^Parser, c: ^Compiler) -> Expr {
+    #partial switch p.consumed.type {
+    case .Nil:    return expr_make(.Nil)
+    case .True:   return expr_make(.True)
+    case .False:  return expr_make(.False)
+    case .Number: return expr_make(.Number, p.consumed.number)
+    case .String:
+        index := compiler_add_constant(c, p.consumed.ostring)
+        return expr_make(.Constant, index = index)
+    case:
+        unreachable("Invalid literal token %v", p.consumed.type)
+    }
 }
 
 /*
@@ -650,7 +636,7 @@ variable :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         if local, ok := compiler_resolve_local(c, ident); ok {
             return expr_make(.Local, reg = local)
         }
-        index := compiler_add_constant(c, value_make_string(ident))
+        index := compiler_add_constant(c, ident)
         return expr_make(.Global, index = index)
     }
 
@@ -741,9 +727,9 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     -   `lparser.c:ConsControl` in Lua 5.1.5.
      */
     Constructor :: struct {
-        table: Expr, // table descriptor
-        count_array, count_hash: int,
-        to_store: int, // number of array elements pending to be stored
+        table:           Expr, // table descriptor
+        n_array, n_hash: int,
+        to_store:        int, // number of array elements pending to be stored
     }
 
 
@@ -754,7 +740,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
      */
     array :: proc(p: ^Parser, c: ^Compiler, ctor: ^Constructor) {
         defer {
-            ctor.count_array += 1
+            ctor.n_array += 1
             ctor.to_store    += 1
         }
 
@@ -768,22 +754,21 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         desired field name.
      */
     field :: proc(p: ^Parser, c: ^Compiler, ctor: ^Constructor) {
-        defer ctor.count_hash += 1
+        defer ctor.n_hash += 1
 
-        key := field_name(p, c)
         parser_consume(p, .Equals)
+        key := field_name(p, c)
         rkb := compiler_expr_rk(c, &key)
 
         value := expression(p, c)
-        rkc := compiler_expr_rk(c, &value)
+        rkc   := compiler_expr_rk(c, &value)
         compiler_code_ABC(c, .Set_Table, ctor.table.reg, rkb, rkc)
         compiler_expr_pop(c, value)
         compiler_expr_pop(c, key)
-
     }
 
     index :: proc(p: ^Parser, c: ^Compiler, ctor: ^Constructor) {
-        defer ctor.count_hash += 1
+        defer ctor.n_hash += 1
 
         key := expression(p, c)
         parser_consume(p, .Right_Bracket)
@@ -802,7 +787,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 
     // All information is pending so just use 0's, we'll fix it later
     pc := compiler_code_ABC(c, .New_Table, 0, 0, 0)
-    ctor := &Constructor{table = expr_make(.Need_Register, pc = pc )}
+    ctor := &Constructor{table = expr_make(.Need_Register, pc = pc)}
     compiler_expr_next_reg(c, &ctor.table)
 
     for !parser_match(p, .Right_Curly) {
@@ -816,7 +801,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
          */
         if ctor.to_store == FIELDS_PER_FLUSH {
             compiler_code_set_array(c, ctor.table.reg,
-                ctor.count_array, ctor.to_store)
+                ctor.n_array, ctor.to_store)
             ctor.to_store = 0
         }
 
@@ -854,16 +839,14 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     if ctor.to_store != 0 {
         // if (hasmultret(cc->value.kind)) ...
         // if (cc->v.k != VVOID) ...
-        compiler_code_set_array(c, ctor.table.reg, ctor.count_array,
-            ctor.to_store)
+        compiler_code_set_array(c, ctor.table.reg, ctor.n_array, ctor.to_store)
     }
 
     // `fb_make()` may also round up the values by some factor, but that's
     // okay because our hash table will simply over-allocate.
     ip := &c.chunk.code[pc]
-    ip.b = cast(u16)fb_make(ctor.count_array)
-    ip.c = cast(u16)fb_make(ctor.count_hash)
-
+    ip.b = cast(u16)fb_make(ctor.n_array)
+    ip.c = cast(u16)fb_make(ctor.n_hash)
     return ctor.table
 }
 
@@ -1049,10 +1032,12 @@ concat :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 **Visualization**
 ```
         <left>
-    +-- Test_Set <reg> <left> <COND> ; if bool(<left>) == <COND> then skip Jump
-+---|-- Jump <right + 1>
+    +-- Test_Set Reg(A) <left> $COND
+    |   ; if bool(<left>) == bool($COND) then Reg(A) := <left> else goto <right>
++---|-- Jump 0 1
+|   |   ; goto <right + 1>
 |   +-> <right>
-|       ; assign <reg>
+|       ; Reg(A) := <right>
 +-----> ...
 ```
 */
@@ -1081,11 +1066,11 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
     rules := #partial [Token_Type]Parse_Rule {
         // Keywords
         .And        = {infix  = logic, prec = .And},
-        .False      = {prefix = lit_false},
-        .Nil        = {prefix = lit_nil},
+        .False      = {prefix = literal},
+        .Nil        = {prefix = literal},
         .Not        = {prefix = unary},
         .Or         = {infix  = logic, prec = .Or},
-        .True       = {prefix = lit_true},
+        .True       = {prefix = literal},
 
         // Balanced Pairs
         .Left_Paren = {prefix = grouping},
@@ -1112,8 +1097,8 @@ get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
         .Pound      = {prefix = unary},
 
         // Literals
-        .Number     = {prefix = lit_number},
-        .String     = {prefix = lit_string},
+        .Number     = {prefix = literal},
+        .String     = {prefix = literal},
         .Identifier = {prefix = variable},
     }
     return rules[type]

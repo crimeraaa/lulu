@@ -305,7 +305,7 @@ void luaK_patchlist (FuncState *fs, int list, int target) {
   }
 }
 
-
+/* may assign `fs->jpc` */
 void luaK_patchtohere (FuncState *fs, int list) {
   luaK_getlabel(fs);
   luaK_concat(fs, &fs->jpc, list); /* set `jpc` if `list != -1` */

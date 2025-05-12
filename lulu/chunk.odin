@@ -43,7 +43,8 @@ local_to_string :: proc(var: Local) -> string {
 }
 
 chunk_init :: proc(c: ^Chunk, source: string) {
-    c.source = source
+    c.source     = source
+    c.stack_used = 2 // Registers 0 and 1 are always valid
 }
 
 chunk_fini :: proc(vm: ^VM, ch: ^Chunk, cl: ^Compiler) {

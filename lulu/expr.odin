@@ -43,7 +43,6 @@ expr_make :: proc {
     expr_make_pc,
     expr_make_reg,
     expr_make_index,
-    expr_make_table,
     expr_make_number,
 }
 
@@ -85,23 +84,6 @@ expr_make_index :: proc(type: Expr_Type, index: u32) -> Expr {
     }
 }
 
-/*
-**Assumptions**
--   `reg` contains the register of the table.
--   `index` contains the register/constant of the table's index/key.
-
-**Guarantees**
--   `expr.table` will be filled using the above information.
- */
-expr_make_table :: proc(type: Expr_Type, reg, index: u16) -> Expr {
-    assert(type == .Table_Index)
-    return Expr{
-        type        = .Table_Index,
-        table       = {reg = reg, key_reg = index},
-        patch_true  = NO_JUMP,
-        patch_false = NO_JUMP,
-    }
-}
 
 expr_make_number :: proc(type: Expr_Type, number: f64) -> Expr {
     assert(type == .Number)
@@ -111,6 +93,52 @@ expr_make_number :: proc(type: Expr_Type, number: f64) -> Expr {
         patch_true  = NO_JUMP,
         patch_false = NO_JUMP,
     }
+}
+
+// Similar to `expr_make*` but `e.patch_{true,false}` are never changed.
+expr_set :: proc {
+    expr_set_none,
+    expr_set_pc,
+    expr_set_reg,
+    expr_set_index,
+    expr_set_table,
+}
+
+expr_set_none :: proc(e: ^Expr, type: Expr_Type) {
+    e.type = type
+}
+
+expr_set_pc :: proc(e: ^Expr, type: Expr_Type, pc: int) {
+    assert(type == .Need_Register || type == .Jump)
+    e.type = type
+    e.pc   = pc
+}
+
+expr_set_reg :: proc(e: ^Expr, type: Expr_Type, reg: u16) {
+    assert(type == .Discharged || type == .Local)
+    e.type = type
+    e.reg  = reg
+}
+
+expr_set_index :: proc(e: ^Expr, type: Expr_Type, index: u32) {
+    assert(type == .Constant || type == .Global)
+    e.type  = type
+    e.index = index
+}
+
+
+/*
+**Assumptions**
+-   `reg` contains the register of the table.
+-   `index` contains the register/constant of the table's index/key.
+
+**Guarantees**
+-   `expr.table` will be filled using the above information.
+ */
+expr_set_table :: proc(e: ^Expr, type: Expr_Type, table_reg, key_reg: u16) {
+    assert(type == .Table_Index)
+    e.type  = type
+    e.table = {reg = table_reg, key_reg = key_reg}
 }
 
 // See: https://www.lua.org/source/5.1/lcode.c.html#isnumeral
