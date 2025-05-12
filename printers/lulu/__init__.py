@@ -2,6 +2,7 @@
 import gdb # type: ignore
 from typing import Final
 from printers import odin
+from .. import base
 from . import opcode, lexer, expr, value
 
 class __PrettyPrinter(gdb.printing.PrettyPrinter):
@@ -45,8 +46,6 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         -   So even if our regex allows for pointers, the parent class
             literally does not allow you to work with pointers.
         """
-        super().__init__(name)
-
         # Assuming demangled but fully-qualified names
         self.__printers = {
             # Structs
@@ -63,6 +62,8 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             "^lulu.Value":       value.ValuePrinter,
             "^lulu.OString":     odin.StringPrinter,
         }
+        super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))
+
 
     def __call__(self, val: gdb.Value):
         # Seems that from within the VSCode debugger an exception is silently

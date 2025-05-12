@@ -14,15 +14,19 @@ def pretty_printers_lookup(val: gdb.Value):
 
 
 __pretty_printers = {
+    # Lua 5.1.5 structs
     "Instruction":   InstructionPrinter,
-    "Instruction *": InstructionPrinter,
     "TValue":        TValuePrinter,
     "TString":       TStringPrinter,
-    "TString *":     TStringPrinter,
     "LocVar":        LocVarPrinter,
     "Token":         TokenPrinter,
-    "Token *":       TokenPrinter,
     "Expr":          ExprPrinter,
+
+    # Pointers thereof
+    "Instruction *": InstructionPrinter,
+    "Token *":       TokenPrinter,
     "Expr *":        ExprPrinter,
+    "TString *":     TStringPrinter,
+    "LocVar *":      LocVarPrinter,
 }
 

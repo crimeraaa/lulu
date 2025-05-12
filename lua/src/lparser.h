@@ -25,17 +25,17 @@ typedef enum {
   Expr_Nil,
   Expr_True,
   Expr_False,
-  Expr_Constant,		  /* info = index of constant in `k' */
-  Expr_Number,	      /* nval = numerical value */
-  Expr_Local,	        /* info = local register */
-  Expr_Upvalue,       /* info = index of upvalue in `upvalues' */
-  Expr_Global,	      /* info = index of table; aux = index of global name in `k' */
-  Expr_Index,	        /* info = table register; aux = index register (or `k') */
-  Expr_Jump,		      /* info = instruction pc ; used for tests/comparisons */
-  Expr_Relocable,	    /* info = instruction pc */
+  Expr_Constant,	/* info = index of constant in `k' */
+  Expr_Number,	/* nval = numerical value */
+  Expr_Local,	 /* info = local register */
+  Expr_Upvalue,  /* info = index of upvalue in `upvalues' */
+  Expr_Global,  /* info = index of table; aux = index of global name in `k' */
+  Expr_Index,	 /* info = table register; aux = index register (or `k') */
+  Expr_Jump,	/* info = instruction pc ; used for tests/comparisons */
+  Expr_Relocable,	 /* info = instruction pc */
   Expr_Nonrelocable,	/* info = result register */
-  Expr_Call,	        /* info = instruction pc */
-  Expr_Vararg	        /* info = instruction pc */
+  Expr_Call,	/* info = instruction pc */
+  Expr_Vararg	 /* info = instruction pc */
 } ExprKind;
 
 /**
@@ -71,7 +71,7 @@ typedef struct FuncState {
   Proto *proto;  /* current function header */
   Table *h;  /* table to find (and reuse) elements in `k' */
   struct FuncState *prev;  /* enclosing function */
-  struct LexState *lex;  /* lexical state */
+  struct LexState *lexstate;  /* lexical state */
   struct lua_State *L;  /* copy of the Lua state */
   struct BlockCnt *bl;  /* chain of current blocks */
   int pc;  /* next position to code (equivalent to `ncode') */

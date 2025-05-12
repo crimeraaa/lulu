@@ -122,7 +122,7 @@ void luaX_syntaxerror (LexState *lex, const char *msg) {
 TString *luaX_newstring (LexState *lex, const char *str, size_t l) {
   lua_State *L = lex->L;
   TString *ts = luaS_newlstr(L, str, l);
-  TValue *o = luaH_setstr(L, lex->func->h, ts);  /* entry for `str' */
+  TValue *o = luaH_setstr(L, lex->funcstate->h, ts);  /* entry for `str' */
   if (ttisnil(o)) {
     setbvalue(o, 1);  /* make sure `str' will not be collected */
     luaC_checkGC(L);
@@ -148,7 +148,7 @@ void luaX_setinput (lua_State *L, LexState *lex, ZIO *z, TString *source) {
   lex->L = L;
   lex->lookahead.type = Token_Eos;  /* no look-ahead token (at first) */
   lex->z = z;
-  lex->func = NULL;
+  lex->funcstate = NULL;
   lex->linenumber = 1;
   lex->lastline = 1;
   lex->source = source;

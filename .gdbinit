@@ -36,7 +36,6 @@ break lulu::[string.odin]::ostring_new
 break lulu::[vm.odin]::vm_interpret
 break lulu::[vm.odin]::vm_interpret.interpret-0
 break lulu::[parser.odin]::parser_parse
-break lulu::[parser.odin]::literal
 
 layout src
 

@@ -1,5 +1,5 @@
 import gdb # type: ignore
-from typing import Final, Optional
+from typing import Final
 from dataclasses import dataclass
 from .. import base
 from . import parser
@@ -10,39 +10,22 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
     __saved:    dict[str, str]
 
     def __init__(self, name: str):
-        super().__init__(name)
+        super().__init__(name, subprinters=base.subprinters("string", "array",
+                                                            "dynamic", "map"))
         self.__parser = parser.Parser()
         self.__saved  = {}
 
-    def __call__(self, val: gdb.Value):
-        tag, ok = self.demangle(val)
+    def __call__(self, value: gdb.Value):
+        tag, ok = self.demangle(value)
         if ok:
-            if tag == "rune":                 return RunePrinter(val)
-            if tag == "string":               return StringPrinter(val)
-            elif tag.startswith("[]"):        return SlicePrinter(val, tag)
-            elif tag.startswith("[dynamic]"): return DynamicPrinter(val, tag)
-            elif tag.startswith("map"):       return MapPrinter(val, tag)
+            if tag == "string":               return StringPrinter(value)
+            elif tag.startswith("[]"):        return SlicePrinter(value, tag)
+            elif tag.startswith("[dynamic]"): return DynamicPrinter(value, tag)
+            elif tag.startswith("map"):       return MapPrinter(value, tag)
         return None
 
-    def demangle(self, val: gdb.Value) -> tuple[str, bool]:
-        return parser.demangle(self.__parser, str(val.type), self.__saved)
-
-
-class RunePrinter:
-    """
-    typedef byte[4] rune;
-    """
-    __rune: Final[gdb.Value]
-
-    def __init__(self, value: gdb.Value):
-        self.__rune = value
-
-    def to_string(self) -> str:
-        ptr = self.__rune.address.cast(base.CONST_CHAR_POINTER)
-        return ptr.string(encoding="utf-8", length=4)
-
-    def display_hint(self) -> Optional[str]:
-        return "string"
+    def demangle(self, value: gdb.Value) -> tuple[str, bool]:
+        return parser.demangle(self.__parser, str(value.type), self.__saved)
 
 
 class StringPrinter:
@@ -52,12 +35,12 @@ class StringPrinter:
         int len;
     }
     """
-    __data: Final[gdb.Value]
-    __len:  Final[int]
+    __data: gdb.Value
+    __len:  int
 
-    def __init__(self, val: gdb.Value):
-        self.__data = val["data"]
-        self.__len  = int(val["len"])
+    def __init__(self, value: gdb.Value):
+        self.__data = value["data"]
+        self.__len  = int(value["len"])
 
     def to_string(self) -> str:
         # `u8 *` can also be dereferenced properly as a string
@@ -74,14 +57,14 @@ class SlicePrinter:
         int len;
     }
     """
-    __tag:  Final[str]
-    __data: Final[gdb.Value]
-    __len:  Final[int]
+    __tag:  str
+    __data: gdb.Value
+    __len:  int
 
-    def __init__(self, val: gdb.Value, tag: str):
+    def __init__(self, value: gdb.Value, tag: str):
         self.__tag  = tag
-        self.__data = val["data"] # NOTE(2025-04-25): Must be a pointer!
-        self.__len  = int(val["len"])
+        self.__data = value["data"] # NOTE(2025-04-25): Must be a pointer!
+        self.__len  = int(value["len"])
 
     def children(self) -> base.Iterator:
         return self.__iter__()
@@ -90,13 +73,13 @@ class SlicePrinter:
         for i in range(self.__len):
             yield str(i), (self.__data + i).dereference()
 
-    def to_string(self) -> str:
+    def to_string(self):
         """ Because of the `'array'` display hint, the actual data is printed
         by GDB using the `children()` method. """
         return f"{self.__tag}{{len={self.__len}}}"
 
-    def display_hint(self) -> Optional[str]:
-        return base.display_hint("array")
+    def display_hint(self):
+        return "array"
 
 
 class DynamicPrinter:
@@ -108,16 +91,16 @@ class DynamicPrinter:
         runtime::Allocator allocator;
     }
     """
-    __tag:  Final[str]
-    __data: Final[gdb.Value]
-    __len:  Final[int]
-    __cap:  Final[int]
+    __tag:  str
+    __data: gdb.Value
+    __len:  int
+    __cap:  int
 
-    def __init__(self, val: gdb.Value, tag: str):
+    def __init__(self, value: gdb.Value, tag: str):
         self.__tag  = tag
-        self.__data = val["data"]
-        self.__len  = int(val["len"])
-        self.__cap  = int(val["cap"])
+        self.__data = value["data"]
+        self.__len  = int(value["len"])
+        self.__cap  = int(value["cap"])
 
     def children(self) -> base.Iterator:
         return self.__iter__()
@@ -126,13 +109,13 @@ class DynamicPrinter:
         for i in range(self.__len):
             yield str(i), (self.__data + i).dereference()
 
-    def to_string(self) -> str:
+    def to_string(self):
         """ Because of the `'array'` display hint, the actual data is printed
         by GDB using the `children()` method. """
         return f"{self.__tag}{{len={self.__len}, cap={self.__cap}}}"
 
-    def display_hint(self) -> Optional[str]:
-        return base.display_hint("array")
+    def display_hint(self):
+        return "array"
 
 
 @dataclass
@@ -209,17 +192,17 @@ class MapPrinter:
 
 
     # The lower 6 bits of `__data` are used as log2 of the actual capacity.
-    MASK_CAP:           Final = 0b0011_1111
+    MASK_CAP: Final = 0b0011_1111
 
-    __tag:              Final[str]
-    __len:              Final[int]
-    __cap:              Final[int]
-    __key:              Final[MapCell]
-    __value:            Final[MapCell]
-    __tombstone_mask:   Final[int]
-    __hashes:           Final[gdb.Value]
+    __tag:              str
+    __len:              int
+    __cap:              int
+    __key:              MapCell
+    __value:            MapCell
+    __tombstone_mask:   int
+    __hashes:           gdb.Value
 
-    def __init__(self, val: gdb.Value, tag: str):
+    def __init__(self, value: gdb.Value, tag: str):
         """
         Assumptions:
         -   The lower 6 bits of all pointers for this platform are never used.
@@ -236,12 +219,12 @@ class MapPrinter:
         Links:
         -   https://github.com/odin-lang/Odin/blob/master/base/runtime/dynamic_map_internal.odin#L192
         """
-        data        = val["data"]
+        data        = value["data"]
         base_addr   = int(data) & ~self.MASK_CAP
         cap_log2    = int(data) & self.MASK_CAP
 
         self.__tag  = tag
-        self.__len  = int(val["len"])
+        self.__len  = int(value["len"])
         self.__cap  = 1 << cap_log2 if cap_log2 else 0
 
         # For the following lines, please refer to:
