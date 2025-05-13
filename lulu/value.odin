@@ -66,16 +66,8 @@ number_lt :: #force_inline proc "contextless" (a, b: f64) -> bool {
     return a < b
 }
 
-number_gt :: #force_inline proc "contextless" (a, b: f64) -> bool {
-    return a > b
-}
-
 number_leq :: #force_inline proc "contextless" (a, b: f64) -> bool {
     return a <= b
-}
-
-number_geq :: #force_inline proc "contextless" (a, b: f64) -> bool {
-    return a >= b
 }
 
 number_unm :: #force_inline proc "contextless" (a: f64) -> f64 {
@@ -93,14 +85,14 @@ value_make :: proc {
 
 value_type_name :: #force_inline proc "contextless" (v: Value) -> string {
     @(static, rodata)
-    value_type_strings := [Value_Type]string {
+    type_names := [Value_Type]string {
         .Nil     = "nil",
         .Boolean = "boolean",
         .Number  = "number",
         .String  = "string",
         .Table   = "table",
     }
-    return value_type_strings[v.type]
+    return type_names[v.type]
 }
 
 value_make_nil :: #force_inline proc "contextless" () -> Value {
@@ -152,8 +144,7 @@ value_is_table :: #force_inline proc "contextless" (v: Value) -> bool {
 }
 
 // Utility function because this is so common.
-value_to_string :: #force_inline proc "contextless" (v: Value) -> string {
-    assert_contextless(value_is_string(v))
+value_as_string :: #force_inline proc "contextless" (v: Value) -> string {
     return ostring_to_string(v.ostring)
 }
 
@@ -179,8 +170,8 @@ value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
         switch v.type {
         case .Nil:      io.write_string(fi.writer, "nil", &fi.n)
         case .Boolean:  io.write_string(fi.writer, "true" if v.boolean else "false", &fi.n)
-        case .Number:   fi.n += fmt.wprintf(fi.writer, "%.14g", v.number)
-        case .String:   io.write_string(fi.writer, value_to_string(v), &fi.n)
+        case .Number:   fi.n += fmt.wprintf(fi.writer, NUMBER_FMT, v.number)
+        case .String:   io.write_string(fi.writer, value_as_string(v), &fi.n)
         case .Table:
             type_name := value_type_name(v)
             pointer   := cast(rawptr)v.table
@@ -199,7 +190,7 @@ value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
         }
 
         if value_is_string(v) {
-            s := value_to_string(v)
+            s := value_as_string(v)
             io.write_quoted_string(fi.writer, s, '\'' if len(s) == 1 else '\"', &fi.n)
         } else {
             basic_print(fi, v)

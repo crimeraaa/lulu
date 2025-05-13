@@ -12,7 +12,7 @@ Parser :: struct {
     recurse:             int,
 }
 
-Parse_Rule :: struct {
+Rule :: struct {
     prefix: proc(p: ^Parser, c: ^Compiler) -> Expr,
     infix:  proc(p: ^Parser, c: ^Compiler, left: ^Expr),
     prec:   Precedence,
@@ -318,7 +318,7 @@ adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
     // More variables than expressions?
     if extra := n_vars - n_exprs; extra > 0 {
         reg := c.free_reg
-        compiler_reserve_reg(c, extra)
+        compiler_reg_reserve(c, extra)
         compiler_code_nil(c, cast(u16)reg, cast(u16)extra)
     } else {
         /*
@@ -414,7 +414,7 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
         then_jump = then_cond(p, c)
 
         // all child non-`else` branches skip over the one `else` branch
-        else_jump = compiler_code_jump(c, prev = else_jump)
+        else_jump = compiler_code_jump(c, child = else_jump)
         compiler_patch_jump(c, then_jump)
     }
 
@@ -974,25 +974,25 @@ arith :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 
 */
 compare :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
-    compare_op :: proc(type: Token_Type) -> (op: OpCode, inverted: bool, prec: Precedence) {
+    compare_op :: proc(type: Token_Type) -> (op: OpCode, cond: bool, prec: Precedence) {
         #partial switch type {
-        case .Equals_2:       op = .Eq;  inverted = false
-        case .Left_Angle:     op = .Lt;  inverted = false
-        case .Left_Angle_Eq:  op = .Leq; inverted = false
-        case .Tilde_Eq:       op = .Eq;  inverted = true
-        case .Right_Angle:    op = .Lt;  inverted = true
-        case .Right_Angle_Eq: op = .Leq; inverted = true
+        case .Equals_2:       op = .Eq;  cond = true
+        case .Left_Angle:     op = .Lt;  cond = true
+        case .Left_Angle_Eq:  op = .Leq; cond = true
+        case .Tilde_Eq:       op = .Eq;  cond = false
+        case .Right_Angle:    op = .Lt;  cond = false
+        case .Right_Angle_Eq: op = .Leq; cond = false
         case:
             unreachable("Impossible condition reached; got token %v", type)
         }
-        return op, inverted, get_rule(type).prec
+        return op, cond, get_rule(type).prec
     }
 
 
     compiler_expr_rk(c, left)
-    op, inverted, prec := compare_op(p.consumed.type)
+    op, cond, prec := compare_op(p.consumed.type)
     right := parse_precedence(p, c, prec)
-    compiler_code_compare(c, op, inverted, left, &right)
+    compiler_code_compare(c, op, cond, left, &right)
 }
 
 
@@ -1044,26 +1044,37 @@ concat :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 logic :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     logic_op :: proc(type: Token_Type) -> (cond: bool, prec: Precedence) {
         #partial switch type {
-        case .And: return false, .And // Skip jump if falsy
-        case .Or:  return true,  .Or  // Skip jump if truthy
+        case .And: return true,  .And // Skip jump if falsy
+        case .Or:  return false, .Or  // Skip jump if truthy
         case:
             unreachable("Impossible condition reached; got token %v", type)
         }
     }
 
     cond, prec := logic_op(p.consumed.type)
-    jump_pc    := compiler_code_test_set(c, left, cond)
+    jump_pc    := compiler_code_jump_if(c, left, cond)
     right      := parse_precedence(p, c, prec)
-    compiler_expr_next_reg(c, &right)
-    compiler_expr_pop(c, right)
-    compiler_patch_jump(c, jump_pc)
+
+    // We don't care about the left hand side anymore, right is more important
+    // for back patching
+    left^ = right
+
+    // `luaK_posfix()`
+    if cond {
+        // `case OPR_AND: luaK_concat(fs, &right->f, left->f);
+        left.patch_false = jump_pc
+    } else {
+        // `case OPR_OR:  luaK_concat(fs, &right->t, left->t);`
+        left.patch_true = jump_pc
+    }
 }
 
 ///=== }}} =====================================================================
 
-get_rule :: proc(type: Token_Type) -> (rule: Parse_Rule) {
+
+get_rule :: proc(type: Token_Type) -> (rule: Rule) {
     @(static, rodata)
-    rules := #partial [Token_Type]Parse_Rule {
+    rules := #partial [Token_Type]Rule {
         // Keywords
         .And        = {infix  = logic, prec = .And},
         .False      = {prefix = literal},

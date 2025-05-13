@@ -106,15 +106,14 @@ Div,           // A B C | Reg(A) := RK(B) / RK(C)
 Mod,           // A B C | Reg(A) := RK(B) % RK(C)
 Pow,           // A B C | Reg(A) := RK(B) ^ RK(C)
 Unm,           // A B   | Reg(A) := -Reg(B)
-Eq,            // A B C | Reg(A) := RK(B) == RK(C)
-Neq,           // A B C | Reg(A) := RK(B) ~= RK(C)
-Lt,            // A B C | Reg(A) := RK(B) <  RK(C)
-Leq,           // A B C | Reg(A) := RK(B) <= RK(C)
+Eq,            // A B C | if (RK(B) == RK(C)) != Bool(A) then pc++
+Lt,            // A B C | if (RK(B) <  RK(C)) != Bool(A) then pc++
+Leq,           // A B C | if (RK(B) <= RK(C)) != Bool(A) then pc++
 Not,           // A B   | Reg(A) := not RK(B)
 Concat,        // A B C | Reg(A) := Reg(A) .. Reg(i) for B <= i <= C
 Len,           // A B   | Reg(A) := #Reg(B)
-Test,          // A   C | if Bool(Reg(A)) != Bool(C) then pc++
-Test_Set,      // A B C | if (Bool(B) == Bool(C)) then Reg(A) := Reg(B) else pc++
+Test,          // A   C | if Bool(Reg(A)) == Bool(C) then pc++
+Test_Set,      // A B C | if Bool(Reg(B)) == Bool(C) then pc++ else Reg(A) := Reg(B)
 Jump,          // sBx   | pc += sBx
 Return,        // A B C | return Reg(A), ... Reg(A + B)
 }
@@ -185,7 +184,7 @@ OpCode_Info :: bit_field u8 {
     b:       OpCode_Arg_Type | 2,
     c:       OpCode_Arg_Type | 2,
     a:       bool            | 1, // Is argument A is a destination register?
-    is_test: bool            | 1,
+    is_test: bool            | 1, // Is a comparison/test/test-set?
 }
 
 
@@ -216,12 +215,12 @@ opcode_info := [OpCode]OpCode_Info {
 .Print          = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
 .Add ..= .Pow   = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
 .Unm            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
-.Eq ..= .Leq    = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
+.Eq ..= .Leq    = {type = .Separate,    a = false, b = .Reg_Const, c = .Reg_Const,  is_test = true},
 .Not            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
 .Concat         = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Reg_Jump},
 .Len            = {type = .Separate,    a = true,  b = .Reg_Const, c = .Unused},
-.Test           = {type = .Separate,    a = false, b = .Unused,    c = .Used},
-.Test_Set       = {type = .Separate,    a = true,  b = .Reg_Const, c = .Used},
+.Test           = {type = .Separate,    a = true,  b = .Unused,    c = .Used,       is_test = true},
+.Test_Set       = {type = .Separate,    a = true,  b = .Reg_Const, c = .Used,       is_test = true},
 .Jump           = {type = .Signed_Bx,   a = false, b = .Reg_Jump,  c = .Unused},
 .Return         = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 }

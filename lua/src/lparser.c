@@ -1258,12 +1258,24 @@ static void if_stmt (LexState *lex, int line) {
   int escapelist = NO_JUMP;
   flist = test_then_block(lex);  /* IF cond THEN block */
   while (lex->current.type == Token_Elseif) {
-    luaK_concat(fs, &escapelist, luaK_jump(fs)); /* assigns `escapelist` */
-    luaK_patchtohere(fs, flist); /* definitely assigns `func.jpc` */
+    /**
+     * @note 2025-05-13:
+     *  On the first `elseif`, `escapelist` is initailized with the new jump.
+     *  From then on, we will call `fixjump()`.
+     *
+     */
+    luaK_concat(fs, &escapelist, luaK_jump(fs));
+
+    /**
+     * @note 2025-05-13:
+     *  Always(?) assigns `fs.jpc`; it will later be discharged in the next
+     *  call to `luaK_code()` which would be called by `expression()`.
+     */
+    luaK_patchtohere(fs, flist);
     flist = test_then_block(lex);  /* ELSEIF cond THEN block */
   }
   if (lex->current.type == Token_Else) {
-    luaK_concat(fs, &escapelist, luaK_jump(fs)); /* assigns `escapelist` */
+    luaK_concat(fs, &escapelist, luaK_jump(fs)); /* may assigns `escapelist` */
     luaK_patchtohere(fs, flist); /* definitely assigns `func.jpc` */
     luaX_next(lex);  /* skip ELSE (after patch, for correct line info) */
     block(lex);  /* `else' part */

@@ -5,6 +5,7 @@
     EDIT(2024/04/16):
     We now have multiple statement support!
 --]============================================================================]
-print((1 + 2) * 3 - 4 / -5)
-print(1 - -2)
-print((-1 + 2) * 3 - -4)
+print(1 + 2*3 - 4/-5, "Expected:", 7.8)
+print((1+2)*3 - 4/-5, "Expected:", 9.8)
+print(1 - -2, "Expected:", 3)
+print((-1+2)*3 - -4, "Expected:", 7)

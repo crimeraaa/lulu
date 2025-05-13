@@ -29,18 +29,17 @@ Error :: enum {
 
 @(require_results)
 open :: proc(allocator := context.allocator) -> (vm: ^VM, err: mem.Allocator_Error) {
-    @(static)
-    _vm: VM
-
-    vm = &_vm
-    if vm_init(vm, allocator) {
+    vm, err = new(VM, allocator)
+    if err == nil && vm_init(vm, allocator) {
         return vm, nil
     }
+    free(vm, allocator)
     return nil, .Out_Of_Memory
 }
 
 close :: proc(vm: ^VM) {
     vm_destroy(vm)
+    mem.free(vm, vm.allocator)
 }
 
 
@@ -49,10 +48,13 @@ close :: proc(vm: ^VM) {
 -   `lapi.c:lua_load(lua_State *L, lua_Reader reader, void *data, const char *chunkname)`
 -   `lapi.c:lua_pcall(lua_State *L, int nargs, int nresults, int errfunc)`
  */
-run :: proc(vm: ^VM, input, source: string) -> Error {
-    return vm_interpret(vm, input, source)
+run :: proc(vm: ^VM, input, source: string, quiet := false) -> Error {
+    config := Debug_Config{
+        .Trace_Exec if DEBUG_TRACE_EXEC else nil,
+        .Dump_Chunk if DEBUG_PRINT_CODE else nil,
+    }
+    return vm_interpret(vm, input, source, {} if quiet else config)
 }
-
 
 ///=== }}} =====================================================================
 
@@ -79,10 +81,9 @@ pop :: proc(vm: ^VM, count: int) {
 
 // You may use negative indexes to resolve from the top.
 @(private="file")
-index_to_address :: proc(vm: ^VM, index: int) -> ^Value {
-    // If negative we will index relative to the top
-    from := vm.base if index >= 0 else vm.top
-    return &from[index]
+index_to_address :: proc(vm: ^VM, i: int) -> ^Value {
+    // If negative, subtract from current top
+    return &vm.base[i if i >= 0 else get_top(vm) + i]
 }
 
 
@@ -90,10 +91,10 @@ index_to_address :: proc(vm: ^VM, index: int) -> ^Value {
 **Notes**
 -   See the notes regarding the stack in `push_rawvalue()`.
  */
-push_string :: proc(vm: ^VM, str: string) -> (result: string) {
-    interned := ostring_new(vm, str)
-    push_rawvalue(vm, value_make(interned))
-    return ostring_to_string(interned)
+push_string :: proc(vm: ^VM, s: string) -> string {
+    o := ostring_new(vm, s)
+    push_rawvalue(vm, value_make(o))
+    return ostring_to_string(o)
 }
 
 
@@ -101,7 +102,7 @@ push_string :: proc(vm: ^VM, str: string) -> (result: string) {
 **Notes**
 -   See the notes regarding the stack in `push_rawvalue()`.
  */
-push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (result: string) {
+push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (s: string) {
     builder := vm_get_builder(vm)
     return push_string(vm, fmt.sbprintf(builder, format, ..args))
 }
@@ -126,9 +127,9 @@ push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (result: string) {
 -   https://www.lua.org/pil/24.2.1.html
  */
 @(private="package")
-push_rawvalue :: proc(vm: ^VM, value: Value) {
+push_rawvalue :: proc(vm: ^VM, v: Value) {
     vm.top     = &vm.top[1]
-    vm.top[-1] = value
+    vm.top[-1] = v
 }
 
 
@@ -137,12 +138,38 @@ push_rawvalue :: proc(vm: ^VM, value: Value) {
 ///=== VM TYPE CONVERSION API ============================================== {{{
 
 
-to_string :: proc(vm: ^VM, index: int) -> (result: string, ok: bool) {
-    value := index_to_address(vm, index)
-    if !value_is_string(value^) {
-        return "", false
+/*
+**Notes** (2025-05-13)
+-   If the value relative index `i` is not yet a boolean, we will convert it
+    to one first.
+ */
+to_boolean :: proc(vm: ^VM, i: int) -> bool {
+    v := index_to_address(vm, i)
+    if !value_is_boolean(v^) {
+        v^ = value_make(!value_is_falsy(v^))
     }
-    return value_to_string(value^), true
+    return v.boolean
+}
+
+to_string :: proc(vm: ^VM, i: int) -> (s: string, ok: bool) #optional_ok {
+    v := index_to_address(vm, i)
+    if !value_is_string(v^) {
+        value_is_number(v^) or_return
+        buf: [32]byte
+        o := ostring_new(vm, fmt.bprintf(buf[:], NUMBER_FMT, v.number))
+        v^ = value_make(o)
+    }
+    return value_as_string(v^), true
+}
+
+to_number :: proc(vm: ^VM, i: int) -> (n: f64, ok: bool) #optional_ok {
+    v := index_to_address(vm, i)
+    if !value_is_number(v^) {
+        value_is_string(v^) or_return
+        n := string_to_number(value_as_string(v^)) or_return
+        v^ = value_make(n)
+    }
+    return v.number, true
 }
 
 

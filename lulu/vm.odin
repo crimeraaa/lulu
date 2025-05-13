@@ -139,13 +139,14 @@ vm_destroy :: proc(vm: ^VM) {
     vm.chunk    = nil
 }
 
-vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
+vm_interpret :: proc(vm: ^VM, input, source: string, config: Debug_Config) -> Error {
     Data :: struct {
-        chunk: Chunk,
-        input: string,
+        chunk:  Chunk,
+        input:  string,
+        config: Debug_Config,
     }
 
-    data := &Data{input = input}
+    data := &Data{input = input, config = config}
     chunk_init(&data.chunk, source)
     defer chunk_destroy(vm, &data.chunk)
 
@@ -153,6 +154,9 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
         data  := cast(^Data)user_data
         chunk := &data.chunk
         compiler_compile(vm, chunk, data.input)
+        if .Dump_Chunk in data.config {
+            debug_dump_chunk(chunk, len(chunk.code))
+        }
         vm_check_stack(vm, chunk.stack_used)
         // Set up stack frame
         vm.base  = &vm.stack[0]
@@ -164,7 +168,7 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
         for &slot in vm.base[:chunk.stack_used] {
             slot = value_make()
         }
-        vm_execute(vm)
+        vm_execute(vm, data.config)
     }
 
     return vm_run_protected(vm, interpret, data)
@@ -210,7 +214,7 @@ vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) 
     Instructions*.
 -   `lvm.c:luaV_execute(lua_State *L, int nexeccalls)` in Lua 5.1.5.
  */
-vm_execute :: proc(vm: ^VM) {
+vm_execute :: proc(vm: ^VM, config: Debug_Config) {
     ///=== VM EXECUTION HELPERS ============================================ {{{
 
     get_rk :: proc {
@@ -237,11 +241,14 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    compare_op :: proc(vm: ^VM, ip: [^]Instruction, op: Number_Compare_Proc, ra, left, right: ^Value) {
+    compare_op :: proc(vm: ^VM, ip: ^[^]Instruction, op: Number_Compare_Proc, left, right: ^Value) {
         if !value_is_number(left^) || !value_is_number(right^) {
-            compare_error(vm, ip, left, right)
+            compare_error(vm, ip^, left, right)
         }
-        ra^ = value_make(op(left.number, right.number))
+        cond := bool(ip[-1].a)
+        if op(left.number, right.number) != cond {
+            incr_ip(ip)
+        }
     }
 
     arith_error :: proc(vm: ^VM, ip: [^]Instruction, left, right: ^Value) -> ! {
@@ -284,7 +291,7 @@ vm_execute :: proc(vm: ^VM) {
     chunk     := vm.chunk
     constants := chunk.constants
     globals   := &vm.globals
-    stack     := vm.base[:chunk.stack_used]
+    stack     := vm.base[:max(2, chunk.stack_used)] // Ensure Reg(0) and Reg(1)
     ip        := raw_data(chunk.code) // Don't deref; use `incr_ip()`
 
     ip_left_pad    := count_digits(len(chunk.code))
@@ -292,7 +299,7 @@ vm_execute :: proc(vm: ^VM) {
 
     for {
         read := incr_ip(&ip)
-        when DEBUG_TRACE_EXEC {
+        if .Trace_Exec in config {
             index := ptr_index(ip, chunk.code) - 1
             for value, reg in stack {
                 fmt.printf("\t$% -*i | %d", stack_left_pad, reg, value)
@@ -304,7 +311,10 @@ vm_execute :: proc(vm: ^VM) {
             }
             debug_dump_instruction(chunk, read, index, ip_left_pad)
         }
-        ra := &stack[read.a] // Most instructions use this!
+        // Most instructions use this; we also guarantee register 0 and 1
+        // are safe to deference no matter what. So for comparisons we can
+        // safely move past this load even if it goes unused.
+        ra := &stack[read.a]
         switch read.op {
         case .Move:
             ra^ = stack[read.b]
@@ -324,7 +334,8 @@ vm_execute :: proc(vm: ^VM) {
         case .Get_Global:
             key := constants[ip_get_Bx(read)]
             if value, ok := table_get(globals, key); !ok {
-                ident := value_to_string(key)
+                ident := value_as_string(key)
+                protect_begin(vm, ip)
                 vm_runtime_error(vm, "Attempt to read undefined global '%s'",
                                  ident)
             } else {
@@ -381,12 +392,12 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Eq:
             rb, rc := get_rk(read, stack, constants)
-            ra^ = value_make(value_eq(rb^, rc^))
-        case .Neq:
-            rb, rc := get_rk(read, stack, constants)
-            ra^ = value_make(!value_eq(rb^, rc^))
-        case .Lt:  compare_op(vm, ip, number_lt,  ra, get_rk(read, stack, constants))
-        case .Leq: compare_op(vm, ip, number_leq, ra, get_rk(read, stack, constants))
+            if value_eq(rb^, rc^) != bool(read.a) {
+                // Skip the jump which would otherwise load false
+                incr_ip(&ip)
+            }
+        case .Lt:  compare_op(vm, &ip, number_lt,  get_rk(read, stack, constants))
+        case .Leq: compare_op(vm, &ip, number_leq, get_rk(read, stack, constants))
         case .Not:
             x := get_rk(read.b, stack, constants)^
             ra^ = value_make(value_is_falsy(x))
@@ -443,7 +454,7 @@ vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
         if !value_is_string(arg) {
             debug_type_error(vm, &arg, "concatenate")
         }
-        strings.write_string(builder, value_to_string(arg))
+        strings.write_string(builder, value_as_string(arg))
     }
     s := strings.to_string(builder^)
     ra^ = value_make(ostring_new(vm, s))

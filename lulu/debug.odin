@@ -4,6 +4,11 @@ package lulu
 import "core:fmt"
 import "core:math"
 
+Debug_Config :: bit_set[enum{
+    Dump_Chunk,
+    Trace_Exec,
+}]
+
 count_digits :: proc(value: int) -> int {
     return math.count_digits_of_base(value, 10)
 }
@@ -17,12 +22,11 @@ debug_init_formatters :: proc() {
 }
 
 debug_dump_chunk :: proc(c: ^Chunk, code_size: int) {
-    fmt.printfln("=== STACK USAGE ===\n%i", c.stack_used)
-
     fmt.println("=== DISASSEMBLY: BEGIN ===")
     defer fmt.println("\n=== DISASSEMBLY: END ===")
 
     fmt.printfln("\n.name\n%q", c.source)
+    fmt.printfln("\n.stack_used\n%i", c.stack_used)
 
     if n := len(c.locals); n > 0 {
         fmt.println("\n.local:")
@@ -67,9 +71,19 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index: int, left_pad 
     }
 
     compare :: proc(info: Print_Info, op: string) {
-        print_reg(info, info.ip.a, " := ")
-        print_reg(info, info.ip.b, " %s ", op)
-        print_reg(info, info.ip.c)
+        get_op :: proc(op: string, cond: bool) -> string {
+            if cond {
+                switch op {
+                case "==": return "~="
+                case "<":  return ">="
+                case "<=": return ">"
+                }
+            }
+            return op
+        }
+        fmt.print("if ")
+        print_reg(info, info.ip.b, " %s ", get_op(op, bool(info.ip.a)))
+        print_reg(info, info.ip.c, " then goto .code[%i]", info.pc + 2)
     }
 
     print_reg :: proc(info: Print_Info, reg: u16, format := "", args: ..any) {
@@ -128,19 +142,19 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index: int, left_pad 
         fmt.printf("Reg(i) := nil for %i <= i <= %i", ip.a, ip.b)
     case .Load_Boolean:
         print_reg(info, ip.a, " := %v", ip.b == 1)
-        if ip.c == 1 {
-            fmt.print("; goto .code[%i]", index + 2)
+        if bool(ip.c) {
+            fmt.printf("; goto .code[%i]", index + 2)
         }
     case .Get_Global:
         key := c.constants[ip_get_Bx(ip)]
-        print_reg(info, ip.a, " := _G.%s", value_to_string(key))
+        print_reg(info, ip.a, " := _G.%s", value_as_string(key))
     case .Get_Table:
         print_reg(info, ip.a, " := ")
         print_reg(info, ip.b, "[")
         print_reg(info, ip.c, "]")
     case .Set_Global:
         key := c.constants[ip_get_Bx(ip)]
-        fmt.printf("_G.%s := ",  value_to_string(key))
+        fmt.printf("_G.%s := ",  value_as_string(key))
         print_reg(info, ip.a)
     case .Set_Table:
         print_reg(info, ip.a, "[")
@@ -162,7 +176,6 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index: int, left_pad 
     case .Pow: binary(info, "^")
     case .Unm: unary(info,  "-")
     case .Eq:  compare(info, "==")
-    case .Neq: compare(info, "~=")
     case .Lt:  compare(info, "<")
     case .Leq: compare(info, "<=")
     case .Not: unary(info,  "not ")
@@ -170,14 +183,16 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index: int, left_pad 
         print_reg(info, ip.a, " := concat(Reg(%i..=%i))", ip.b, ip.c)
     case .Len:
         unary(info, "#")
-    case .Test:
-        fmt.print("if Bool(")
-        print_reg(info, ip.a, ") != %v then goto .code[%i]", bool(ip.c), index + 2)
-    case .Test_Set:
-        fmt.print("if Bool(")
-        print_reg(info, ip.b, ") == %v then ", bool(ip.c))
-        print_reg(info, ip.a, " := ")
-        print_reg(info, ip.b, " else goto .code[%i]", index + 2)
+    case .Test, .Test_Set:
+        dst  := ip.a if ip.op == .Test_Set else NO_REG
+        test := ip.b if ip.op == .Test_Set else ip.a
+        fmt.printf("if %s", "not " if bool(ip.c) else "")
+        print_reg(info, test, " then goto .code[%i]", index + 2)
+        if dst != NO_REG {
+            fmt.print(" else ")
+            print_reg(info, dst, " := ")
+            print_reg(info, test)
+        }
     case .Jump:
         fmt.printf("goto .code[%i]", index + 1 + ip_get_sBx(ip))
     case .Return:
@@ -235,7 +250,7 @@ debug_get_variable :: proc(c: ^Chunk, pc, reg: int) -> (ident, scope: string, ok
     constant_ident :: proc(c: ^Chunk, reg: u16) -> string {
         if reg_is_k(reg) {
             if key := c.constants[reg_get_k(reg)]; value_is_string(key) {
-                return value_to_string(key)
+                return value_as_string(key)
             }
         }
         // Either non-constant or non-string-constant, can't determine its name
@@ -258,7 +273,7 @@ debug_get_variable :: proc(c: ^Chunk, pc, reg: int) -> (ident, scope: string, ok
     case .Get_Global:
         bx     := ip_get_Bx(ip)
         global := c.constants[bx]
-        return value_to_string(global), "global", true
+        return value_as_string(global), "global", true
     case .Get_Table:
         return constant_ident(c, ip.c), "field", true
     case:

@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:io"
 
 UNINITIALIZED_LOCAL :: -1
-INVALID_REG         :: max(u16) // Also applies to locals
+NO_REG              :: max(u16) // Also applies to locals
 
 Chunk :: struct {
     source:          string, // Filename where the chunk originated.
@@ -43,8 +43,7 @@ local_to_string :: proc(var: Local) -> string {
 }
 
 chunk_init :: proc(c: ^Chunk, source: string) {
-    c.source     = source
-    c.stack_used = 2 // Registers 0 and 1 are always valid
+    c.source = source
 }
 
 chunk_fini :: proc(vm: ^VM, ch: ^Chunk, cl: ^Compiler) {

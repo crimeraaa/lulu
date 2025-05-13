@@ -29,7 +29,7 @@ class ExprPrinter:
                 info_name  = "register"
                 info_value = self.__info["reg"]
             case "Need_Register":
-                info_name = "pc"
+                info_name  = "pc"
                 info_value = self.__info["pc"]
             case "Number":
                 info_name = "number"
@@ -38,10 +38,10 @@ class ExprPrinter:
                 info_name = "index"
                 info_value = self.__info["index"]
             case "Global":
-                info_name = "index"
-                info_name = self.__info["index"]
+                info_name  = "index"
+                info_value = self.__info["index"]
             case "Local":
-                info_name = "register"
+                info_name = "reg"
                 info_value = self.__info["reg"]
             case "Table_Index":
                 info_name  = "table(reg)"

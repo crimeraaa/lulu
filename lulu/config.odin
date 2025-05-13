@@ -4,7 +4,9 @@ package lulu
 // Minimum stack size guaranteed to be available to all functions
 STACK_MIN :: 8
 
+// Compile-time string constants
 MEMORY_ERROR_STRING :: "Out of memory"
+NUMBER_FMT :: "%.14g"
 
 // Compile-time Features
 USE_CONSTANT_FOLDING :: #config(USE_CONSTANT_FOLDING, !ODIN_DEBUG)

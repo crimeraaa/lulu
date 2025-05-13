@@ -2,7 +2,7 @@ local x
 if x == true then
     print("x is true")
 elseif x then
-    print("x is truhty")
+    print("x is truthy")
 elseif x == false then
     print("x is false")
 elseif x == nil then

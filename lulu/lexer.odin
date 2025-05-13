@@ -245,18 +245,19 @@ create_keyword_identifier_token :: proc(l: ^Lexer) -> Token {
 
 
 @(require_results)
-create_number_token :: proc(l: ^Lexer, prev: rune) -> Token {
-    consume_number :: proc(l: ^Lexer, prev: rune = 0) -> (prefixed: bool) {
+create_number_token :: proc(l: ^Lexer, first: rune) -> Token {
+    consume_number :: proc(l: ^Lexer, first: rune = 0) {
         /*
         Notes:
         -   0[bB] = binary
         -   0[oO] = octal
         -   0[xX] = hexadecimal
-        -   Prefixed integers cannot contain a '.', so we do not recurse to consume it.
+        -   Prefixed integers cannot contains the charset `[-.+]`, so we do not
+            recurse to consume it.
          */
-        if prev == '0' && matches(l, "bBoOxX") {
+        if first == '0' && matches(l, "bBoOxX") {
             consume_sequence(l, is_alnum)
-            return true
+            return
         }
 
         // Consume integer portion.
@@ -271,31 +272,40 @@ create_number_token :: proc(l: ^Lexer, prev: rune) -> Token {
 
         // Have exponent form?
         if matches(l, "eE") {
-            // WARNING(2025-01-25): Be careful not to introduce ambiguity!
+            // Optional sign
             matches(l, "+-")
             consume_sequence(l, is_digit)
         }
         // Consume trailing characters so we can tell if this is a bad number.
         consume_sequence(l, is_alnum)
-        return false
     }
 
-    prefixed := consume_number(l, prev)
-    token    := create_token(l^, .Number)
+    consume_number(l, first)
+    token := create_token(l^, .Number)
+    if n, ok := string_to_number(token.lexeme); ok {
+        token.number = n
+        return token
+    }
+    lexer_error(l, "Malformed number", token.lexeme)
+}
 
-    ok: bool
-    if prefixed {
+@(private="package")
+string_to_number :: proc(s: string) -> (n: f64, ok: bool) #optional_ok {
+    // Require at least 1 digit if prefixed
+    if len(s) > 2 && s[0] == '0' {
+        base: int
+        switch s[1] {
+        case 'b': base = 2
+        case 'd': base = 10
+        case 'o': base = 8
+        case 'x': base = 16
+        case: return
+        }
         i: int
-        // Do NOT shadow `ok`! We rely on it to check for errors.
-        i, ok = strconv.parse_int(token.lexeme)
-        token.number = cast(f64)i
-    } else {
-        token.number, ok = strconv.parse_f64(token.lexeme)
+        i, ok = strconv.parse_int(s[2:], base)
+        return f64(i), ok
     }
-    if !ok {
-        lexer_error(l, "Malformed number", token.lexeme)
-    }
-    return token
+    return strconv.parse_f64(s)
 }
 
 @(require_results)
@@ -320,26 +330,26 @@ create_string_token :: proc(l: ^Lexer, quote: rune) -> Token {
         }
 
         // `r` may not necessarily be an ASCII character
-        buf: [2 * size_of(rune)]byte
-        tmp := strings.builder_from_bytes(buf[:])
-        strings.write_rune(&tmp, '\\')
-        strings.write_rune(&tmp, r)
-        lexer_error(l, "Invalid escape sequence", strings.to_string(tmp))
+        backing: [2 * size_of(rune)]byte
+        b := strings.builder_from_bytes(backing[:])
+        strings.write_rune(&b, '\\')
+        strings.write_rune(&b, r)
+        lexer_error(l, "Invalid escape sequence", strings.to_string(b))
     }
 
-    builder := vm_get_builder(l.vm)
+    b := vm_get_builder(l.vm)
     for !is_at_end(l^) && peek(l^) != quote {
         r := advance(l)
         if r == '\n' {
             break
         }
-        strings.write_rune(builder, check_rune(l, r))
+        strings.write_rune(b, check_rune(l, r))
     }
     if is_at_end(l^) || !matches(l, quote) {
         lexer_error(l, "Unterminated string")
     }
     token := create_token(l^, .String)
-    token.ostring = ostring_new(l.vm, strings.to_string(builder^))
+    token.ostring = ostring_new(l.vm, strings.to_string(b^))
     return token
 }
 
@@ -379,16 +389,14 @@ consume_whitespace :: proc(l: ^Lexer) {
         advance(l)
         if opening, is_multiline := check_multiline(l); is_multiline {
             consume_multiline(l, opening, is_comment = true)
-        } else {
-            /*
-            Notes(2025-04-15):
-            -   Sometimes get an LLVM linkage error if we use a named but scoped
-                function. Perhaps a race condition in the Odin compiler?
-             */
-            consume_sequence(l, proc(r: rune) -> bool {
-                return r != '\n'
-            })
+            return
         }
+        /*
+        Notes(2025-04-15):
+        -   Sometimes get an LLVM linkage error if we use a named but scoped
+            function. Perhaps a race condition in the Odin compiler?
+         */
+        consume_sequence(l, proc(r: rune) -> bool { return r != '\n' })
     }
 
     for {

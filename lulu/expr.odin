@@ -11,7 +11,7 @@ Expr :: struct {
 
 Expr_Info :: struct #raw_union {
     number: f64, // .Number
-    pc:     int, // .Need_Register, .Jump
+    pc:     int, // .Need_Register, .Has_Jump
     index:  u32, // .Constant, .Global
     table:  struct {reg, key_reg: u16}, // .Table_Index
     reg:    u16, // .Discharged, .Local
@@ -33,7 +33,7 @@ Expr_Type :: enum {
     Global,
     Local,
     Table_Index,
-    Jump,
+    Has_Jump,       // `.pc` points to the jump instruction.
 }
 
 // Intended to be easier to grep
@@ -55,7 +55,7 @@ expr_make_none :: proc(type: Expr_Type) -> Expr {
 }
 
 expr_make_pc :: proc(type: Expr_Type, pc: int) -> Expr {
-    assert(type == .Need_Register)
+    assert(type == .Need_Register || type == .Has_Jump)
     return Expr{
         type        = type,
         pc          = pc,
@@ -85,11 +85,11 @@ expr_make_index :: proc(type: Expr_Type, index: u32) -> Expr {
 }
 
 
-expr_make_number :: proc(type: Expr_Type, number: f64) -> Expr {
+expr_make_number :: proc(type: Expr_Type, n: f64) -> Expr {
     assert(type == .Number)
     return Expr{
         type        = .Number,
-        number      = number,
+        number      = n,
         patch_true  = NO_JUMP,
         patch_false = NO_JUMP,
     }
@@ -109,7 +109,7 @@ expr_set_none :: proc(e: ^Expr, type: Expr_Type) {
 }
 
 expr_set_pc :: proc(e: ^Expr, type: Expr_Type, pc: int) {
-    assert(type == .Need_Register || type == .Jump)
+    assert(type == .Need_Register || type == .Has_Jump)
     e.type = type
     e.pc   = pc
 }

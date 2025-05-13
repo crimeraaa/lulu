@@ -74,10 +74,11 @@ main :: proc() {
         fmt.eprintfln("Failed to open lulu; %t %v", err)
         return
     }
+    defer lulu.close(vm)
+
     switch len(os.args) {
     case 1: run_interactive(vm)
     case 2: run_file(vm, os.args[1])
     case:   fmt.eprintfln("Usage: %s [script]", os.args[0])
     }
-    lulu.close(vm)
 }

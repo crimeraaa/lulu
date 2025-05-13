@@ -30,6 +30,8 @@ end
 
 file ./bin/lulu
 
+break lulu_main::main
+break lulu::run
 break lulu::[compiler.odin]::compiler_compile
 break lulu::[lexer.odin]::create_keyword_identifier_token
 break lulu::[parser.odin]::parser_parse

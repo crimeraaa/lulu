@@ -147,14 +147,21 @@ static int condjump (FuncState *fs, OpCode op, int A, int B, int C) {
 }
 
 
-static void fixjump (FuncState *fs, int jump_pc, int dest) {
-  Instruction *jump_ip = &fs->proto->code[jump_pc];
-  int offset = dest - (jump_pc + 1);
+/**
+ * @brief
+ *  Set the jump instruction at `pc` to do a relative jump to `dest`.
+ *
+ * @note 2025-05-13:
+ *  We assume `dest` is an absolute pc.
+ */
+static void fixjump (FuncState *fs, int pc, int dest) {
+  Instruction *ip = &fs->proto->code[pc];
+  int offset = dest - (pc + 1);
   lua_assert(dest != NO_JUMP); /* would be an infinite loop! */
   if (abs(offset) > MAXARG_sBx) {
     luaX_syntaxerror(fs->lexstate, "control structure too long");
   }
-  SETARG_sBx(*jump_ip, offset);
+  SETARG_sBx(*ip, offset);
 }
 
 
@@ -170,12 +177,8 @@ int luaK_getlabel (FuncState *fs) {
 
 /**
  * @brief
- *  Returns the would-be value of the `sBx` argument in the jump instruction
- *  pointed to by `jump_pc`.
- *
- * @note 2025-05-12:
- *  In the case of jump chains, each jump instruction's `sBx` argument actually
- *  refers to the `pc` of the preceding jump. Think of it like a linked list.
+ *  Returns the `pc` of the preceding jump, assuming that we are using relative
+ *  offsets rather than absolute.
  */
 static int getjump (FuncState *fs, int jump_pc) {
   Instruction ip = fs->proto->code[jump_pc];
@@ -269,6 +272,10 @@ static void removevalues (FuncState *fs, int list) {
  *
  * @todo 2025-05-12:
  *  What does `vtarget` mean?
+ *
+ * @note 2025-05-13:
+ *  For the most part, `default_target == vtarget` and `reg == NO_REG`.
+ *  This is only not the case in `exp2reg()`.
  */
 static void patchlistaux (FuncState *fs, int jump_pc, int vtarget, int reg,
                           int default_target) {
@@ -277,6 +284,7 @@ static void patchlistaux (FuncState *fs, int jump_pc, int vtarget, int reg,
   while (list_pc != NO_JUMP) {
     int next = getjump(fs, list_pc);
     if (patchtestreg(fs, list_pc, reg)) {
+      /* only really matters for `exp2reg()` */
       fixjump(fs, list_pc, vtarget);
     }
     else {
@@ -342,15 +350,16 @@ static int getjumproot (FuncState *fs, int jump_pc) {
  *    3.) Otherwise: chain `l2` into the root of the jump list from `l1`.
  */
 void luaK_concat (FuncState *fs, int *l1, int l2) {
-  /* base case #1 (e.g. first jump) */
+  /* Nothing to do; no state changes */
   if (l2 == NO_JUMP) {
     return;
   }
-  /* base case #2 (e.g. assigning `*&expr->f` to `pc` in `luaK_goiftrue()`) */
+  /* first jump for `l1`; `l2` is just the `pc` of a new jump */
   else if (*l1 == NO_JUMP) {
     *l1 = l2;
   }
   else {
+    /* chain */
     fixjump(fs, getjumproot(fs, *l1), l2);
   }
 }
@@ -584,31 +593,31 @@ static void discharge2anyreg (FuncState *fs, Expr *expr) {
  *  This is the main workhorse when it comes to register emission.
  *  All the `luaK_exp2*` functions eventually delegate to this one.
  */
-static void exp2reg (FuncState *fs, Expr *expr, int reg) {
-  discharge2reg(fs, expr, reg);
-  if (expr->kind == Expr_Jump) {
+static void exp2reg (FuncState *fs, Expr *e, int reg) {
+  bool has_jump = e->kind == Expr_Jump;
+  discharge2reg(fs, e, reg);
+  if (has_jump) {
     /* expr_set (somewhat) ; always updates `patch_true` */
-    luaK_concat(fs, &expr->patch_true, expr->u.s.info);  /* put this jump in `t' list */
+    luaK_concat(fs, &e->patch_true, e->u.s.info);  /* put this jump in `t' list */
   }
-  if (hasjumps(expr)) {
+  if (hasjumps(e)) {
     int final;  /* position after whole expression */
     int p_f = NO_JUMP;  /* position of an eventual LOAD false */
     int p_t = NO_JUMP;  /* position of an eventual LOAD true */
-    if (need_value(fs, expr->patch_true)
-      || need_value(fs, expr->patch_false)) {
-      int fj = (expr->kind == Expr_Jump) ? NO_JUMP : luaK_jump(fs);
-      p_f = code_label(fs, reg, /* b: */ false, /* cond: */ true);
-      p_t = code_label(fs, reg, /* b: */ true,  /* cond: */ false);
+    if (need_value(fs, e->patch_true) || need_value(fs, e->patch_false)) {
+      int fj = (has_jump) ? NO_JUMP : luaK_jump(fs);
+      p_f = code_label(fs, reg, /* b: */ false, /* jump: */ true);
+      p_t = code_label(fs, reg, /* b: */ true,  /* jump: */ false);
       luaK_patchtohere(fs, fj);
     }
     final = luaK_getlabel(fs);
-    patchlistaux(fs, /* jump_pc: */ expr->patch_false, /* vtarget: */ final,
+    patchlistaux(fs, /* jump_pc: */ e->patch_false, /* vtarget: */ final,
                 /* reg: */ reg, /* default_target: */ p_f);
 
-    patchlistaux(fs, /* jump_pc: */ expr->patch_true, /* vtarget: */ final,
+    patchlistaux(fs, /* jump_pc: */ e->patch_true, /* vtarget: */ final,
                 /* reg: */ reg, /* default_target: */ p_t);
   }
-  expr_init_info(expr, Expr_Nonrelocable, reg);
+  expr_init_info(e, Expr_Nonrelocable, reg);
 }
 
 
@@ -792,6 +801,71 @@ static int jumponcond (FuncState *fs, Expr *expr, bool cond) {
 
 
 /**
+ * @brief
+ *  Returns the `pc` of the last jump. If there is no jump beforehand and we
+ *  cannot fold it `e`, we will create a new one.
+ */
+static int get_cond_jump (FuncState *fs, Expr *e, bool cond) {
+  luaK_dischargevars(fs, e);
+  switch (e->kind) {
+    case Expr_Constant: case Expr_Number: case Expr_True: {
+      /* constants guaranteed to be truthy here; can fold */
+      if (cond) {
+        return NO_JUMP;
+      }
+      break;
+    }
+    case Expr_Nil: case Expr_False: {
+      /* always false; can fold */
+      if (!cond) {
+        return NO_JUMP;
+      }
+      break;
+    }
+    case Expr_Jump: {
+      if (cond) {
+        invertjump(fs, e);
+      }
+      return e->u.s.info;
+    }
+    default:
+      break;
+  }
+  return jumponcond(fs, e, !cond);
+}
+
+
+/**
+ * @brief 2025-05-10:
+ *  Inserts the pc of the last jump to one of `e`'s patch lists depending on
+ *  `cond`. The other patch list will be discharged and reset.
+ *
+ * @note 2025-05-10:
+ *  For the first instance of a conditional, e.g. `if x then end`, `expr.f`
+ *  is `NO_JUMP` and `pc >= 0` so we will almost always set `expr.f`.
+ */
+static void go_if_cond (FuncState *fs, Expr *e, bool cond) {
+  int pc = get_cond_jump(fs, e, cond);
+  int *to_jump;
+  int *to_patch;
+
+  if (cond) { /* logical 'and'; short circuit when falsy */
+    to_jump  = &e->patch_false;
+    to_patch = &e->patch_true;
+  } else { /* logical 'or'; short circuit jumps when truthy */
+    to_jump  = &e->patch_true;
+    to_patch = &e->patch_false;
+  }
+
+  luaK_concat(fs, to_jump, pc);
+  /* assigns `fs->jpc`. next time we do `luaK_code()`; `dischargejpc()` will
+    finalize the saved jump. */
+  luaK_patchtohere(fs, *to_patch);
+  *to_patch = NO_JUMP;
+}
+
+
+/**
  * @details 2025-05-08: Sample callstack
  *  - lparser.c:statement(LexState *ls)
  *  - lparser.c:if_stmt(LexState *ls, int line)
@@ -799,85 +873,13 @@ static int jumponcond (FuncState *fs, Expr *expr, bool cond) {
  *  - lparser.c:cond(LexState *ls)
  *  - lcode.c:luaK_goiftrue(FuncState *fs, expdesc *e = cond:expr)
  */
-void luaK_goiftrue (FuncState *fs, Expr *expr) {
-  int pc;  /* pc of last jump */
-  luaK_dischargevars(fs, expr);
-  switch (expr->kind) {
-    case Expr_Constant:
-    case Expr_Number:
-    case Expr_True: {
-      /**
-       * @note 2025-05-08
-       *  Always true hence we do nothing here.
-       *
-       * @note 2025-05-12:
-       *  Even though `luaK_exp2rk()` can add `false` and `nil` to the
-       *  constants array, it is only called in the middle of binary arithmetic
-       *  logical/expressions.
-       *
-       *  So for conditions, it is safe to assume we never use falsy values
-       *  from the constants array.
-       */
-      pc = NO_JUMP;
-      break;
-    }
-    case Expr_Jump: {
-      invertjump(fs, expr);
-      pc = expr->u.s.info;
-      break;
-    }
-    default: {
-      /**
-       * @brief
-       *  `expr` is potentially falsy; don't skip jump when condition returns
-       *  false.
-       *
-       * @note
-       *  Even if we have literal `false`, we can't assume we can optimize it
-       *  out because it may be an `elseif` block which DOES need a jump no
-       *  matter what.
-       */
-      pc = jumponcond(fs, expr, false);
-      break;
-    }
-  }
-  /**
-   * @brief 2025-05-10:
-   *  inserts the last jump in `f` list
-   *
-   * @note 2025-05-10:
-   *  For the first instance of a conditional, e.g. `if x then end`, `expr.f`
-   *  is `NO_JUMP` and `pc >= 0` so we will almost always set `expr.f`.
-   */
-  luaK_concat(fs, &expr->patch_false, pc);
-  luaK_patchtohere(fs, expr->patch_true);
-  /* expr_set (somewhat) */
-  expr->patch_true = NO_JUMP;
+void luaK_goiftrue (FuncState *fs, Expr *e) {
+  go_if_cond(fs, e, /* cond: */ true);
 }
 
 
-static void luaK_goiffalse (FuncState *fs, Expr *expr) {
-  int pc;  /* pc of last jump */
-  luaK_dischargevars(fs, expr);
-  switch (expr->kind) {
-    case Expr_Nil:
-    case Expr_False: {
-      pc = NO_JUMP;  /* always false; do nothing */
-      break;
-    }
-    case Expr_Jump: {
-      pc = expr->u.s.info;
-      break;
-    }
-    default: {
-      pc = jumponcond(fs, expr, true);
-      break;
-    }
-  }
-  luaK_concat(fs, &expr->patch_true, pc);  /* insert last jump in `t' list */
-  luaK_patchtohere(fs, expr->patch_false);
-  /* expr_set (somewhat) */
-  expr->patch_false = NO_JUMP;
+static void luaK_goiffalse (FuncState *fs, Expr *e) {
+  go_if_cond(fs, e, /* cond: */ false);
 }
 
 
@@ -1067,7 +1069,8 @@ void luaK_posfix (FuncState *fs, BinOpr op, Expr *left, Expr *right) {
       lua_assert(left->patch_true == NO_JUMP);  /* list must be closed */
       luaK_dischargevars(fs, right);
       luaK_concat(fs, &right->patch_false, left->patch_false);
-      /* expr_set */
+      /* for folded literals: we return `right` directly without even loading
+        `left` */
       *left = *right;
       break;
     }
@@ -1075,8 +1078,7 @@ void luaK_posfix (FuncState *fs, BinOpr op, Expr *left, Expr *right) {
       lua_assert(left->patch_false == NO_JUMP);  /* list must be closed */
       luaK_dischargevars(fs, right);
       luaK_concat(fs, &right->patch_true, left->patch_true);
-      /* expr_set */
-      *left = *right;
+      *left = *right; /* same case as in `OP_OR` */
       break;
     }
     case OPR_CONCAT: {
