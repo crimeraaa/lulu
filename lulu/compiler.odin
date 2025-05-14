@@ -16,27 +16,10 @@ NO_JUMP :: -1
 
 Active_Locals :: small_array.Small_Array(MAX_LOCALS, u16)
 
-@(private="file")
-get_ip :: proc {
-    get_ip_from_expr,
-    get_ip_from_pc,
-}
-
-@(private="file")
-get_ip_from_expr :: #force_inline proc "contextless" (c: ^Compiler, e: ^Expr) -> ^Instruction {
-    return &c.chunk.code[e.pc]
-}
-
-@(private="file")
-get_ip_from_pc :: #force_inline proc "contextless" (c: ^Compiler, pc: int, loc := #caller_location) -> ^Instruction {
-    assert_contextless(pc >= 0, loc = loc)
-    return &c.chunk.code[pc]
-}
-
 @cold
-unreachable :: #force_inline proc(format: string, args: ..any, loc := #caller_location) -> ! {
+unreachable :: #force_inline proc(format: string, args: ..any) -> ! {
     when ODIN_DEBUG {
-        fmt.panicf(format, ..args, loc = loc)
+        fmt.panicf(format, ..args)
     } else {
         builtin.unreachable()
     }
@@ -58,6 +41,19 @@ Compiler :: struct {
     list_jump:   int,      // List of pending chunks to `chunk.pc`. See `FuncState::jpc`.
     n_code:      int,      // First free index in `chunk.code`.
     is_print:    bool,     // HACK(2025-04-09): until `print` is a global runtime function
+}
+
+get_ip :: proc {
+    get_ip_from_expr,
+    get_ip_from_pc,
+}
+
+get_ip_from_expr :: #force_inline proc "contextless" (c: ^Compiler, e: ^Expr) -> ^Instruction {
+    return &c.chunk.code[e.pc]
+}
+
+get_ip_from_pc :: #force_inline proc "contextless" (c: ^Compiler, pc: int) -> ^Instruction {
+    return &c.chunk.code[pc]
 }
 
 compiler_init :: proc(c: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
@@ -132,20 +128,18 @@ compiler_end_scope :: proc(c: ^Compiler) {
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_reserveregs
  */
 compiler_reg_reserve :: proc(c: ^Compiler, count: int) {
-    // log.debugf("free_reg := %i + %i", c.free_reg, count, location = location)
-    // @todo 2025-01-06: Check the VM's available stack size?
     if c.free_reg += count; c.free_reg > c.chunk.stack_used {
         c.chunk.stack_used = c.free_reg
     }
 }
 
 
-compiler_reg_pop :: proc(c: ^Compiler, reg: u16, loc := #caller_location) {
+compiler_reg_pop :: proc(c: ^Compiler, reg: u16) {
     // Only pop if nonconstant and not the register of an existing local.
     if !reg_is_k(reg) && cast(int)reg >= small_array.len(c.active) {
         c.free_reg -= 1
         log.assertf(cast(int)reg == c.free_reg, "free_reg := %i but reg := %i",
-            c.free_reg, reg, loc = loc)
+            c.free_reg, reg)
     }
 }
 
@@ -156,10 +150,10 @@ compiler_reg_pop :: proc(c: ^Compiler, reg: u16, loc := #caller_location) {
     local, it MUST be the most recently discharged register in order to be able
     to pop it.
  */
-compiler_expr_pop :: proc(c: ^Compiler, e: Expr, loc := #caller_location) {
+compiler_expr_pop :: proc(c: ^Compiler, e: Expr) {
     // if e->k == VNONRELOC
     if e.type == .Discharged {
-        compiler_reg_pop(c, e.reg, loc = loc)
+        compiler_reg_pop(c, e.reg)
     }
 }
 
@@ -208,9 +202,9 @@ compiler_expr_any_reg :: proc(c: ^Compiler, e: ^Expr) -> (reg: u16) {
 **Links**
 -   https://www.lua.org/source/5.1/lcode.c.html#luaK_exp2nextreg
  */
-compiler_expr_next_reg :: proc(c: ^Compiler, e: ^Expr, loc := #caller_location) {
-    compiler_discharge_vars(c, e, loc = loc)
-    compiler_expr_pop(c, e^, loc = loc)
+compiler_expr_next_reg :: proc(c: ^Compiler, e: ^Expr) {
+    compiler_discharge_vars(c, e)
+    compiler_expr_pop(c, e^)
 
     compiler_reg_reserve(c, 1)
     expr_to_reg(c, e, cast(u16)c.free_reg - 1)
@@ -251,7 +245,7 @@ expr_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
     }
 
     discharge_to_reg(c, e, reg)
-    is_jump := e.type == .Has_Jump
+    is_jump := e.type == .Jump
     if is_jump {
         // use `pc` of the comparison/test as the first jump when true
         compiler_add_jump(c, &e.patch_true, e.pc)
@@ -262,6 +256,8 @@ expr_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
         load_false := NO_JUMP
         load_true  := NO_JUMP
         if need_value(c, e.patch_true) || need_value(c, e.patch_false) {
+            // `Expr` that are not explicitly `.Jump` can still have pending
+            // patch lists!
             jump_to_false := NO_JUMP if is_jump else compiler_code_jump(c)
             load_false = code_label(c, reg, b = false, skip = true)
             load_true  = code_label(c, reg, b = true,  skip = false)
@@ -311,10 +307,10 @@ compiler_get_label :: proc(c: ^Compiler) -> (pc: int) {
 -    `lcode.c:exp2anyreg(FuncState *fs, expdesc *e)` in Lua 5.1.5.
  */
 @(private="file")
-discharge_any_reg :: proc(c: ^Compiler, e: ^Expr, loc := #caller_location) {
+discharge_any_reg :: proc(c: ^Compiler, e: ^Expr) {
     if e.type != .Discharged {
         compiler_reg_reserve(c, 1)
-        discharge_to_reg(c, e, cast(u16)c.free_reg - 1, loc = loc)
+        discharge_to_reg(c, e, cast(u16)c.free_reg - 1)
     }
 }
 
@@ -335,8 +331,8 @@ discharge_any_reg :: proc(c: ^Compiler, e: ^Expr, loc := #caller_location) {
 -   https://www.lua.org/source/5.1/lcode.c.html#discharge2reg
  */
 @(private="file")
-discharge_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16, loc := #caller_location) {
-    compiler_discharge_vars(c, e, loc = loc)
+discharge_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
+    compiler_discharge_vars(c, e)
     #partial switch e.type {
     case .Nil:      compiler_code_nil(c, reg, 1)
     case .True:     compiler_code_boolean(c, reg, true)
@@ -345,7 +341,7 @@ discharge_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16, loc := #caller_locati
         index := compiler_add_constant(c, e.number)
         compiler_code_ABx(c, .Load_Constant, reg, index)
     case .Constant:      compiler_code_ABx(c, .Load_Constant, reg, e.index)
-    case .Need_Register: c.chunk.code[e.pc].a = reg
+    case .Need_Register: get_ip(c, e).a = reg
     case .Discharged:
         // e.g. getting a local variable
         if reg != e.reg {
@@ -353,7 +349,7 @@ discharge_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16, loc := #caller_locati
         }
     case:
         // Nothing to do?
-        assert(e.type == .Empty || e.type == .Has_Jump)
+        assert(e.type == .Empty || e.type == .Jump)
         return
     }
     expr_set(e, .Discharged, reg = reg)
@@ -373,7 +369,7 @@ discharge_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16, loc := #caller_locati
 -   Locals are transformed to `.Discharged` because they already have a known
     register.
  */
-compiler_discharge_vars :: proc(c: ^Compiler, e: ^Expr, loc := #caller_location) {
+compiler_discharge_vars :: proc(c: ^Compiler, e: ^Expr) {
     #partial switch type := e.type; type {
     case .Global:
         pc := compiler_code_ABx(c, .Get_Global, 0, e.index)
@@ -385,8 +381,8 @@ compiler_discharge_vars :: proc(c: ^Compiler, e: ^Expr, loc := #caller_location)
         // We can now reuse the registers allocated for the table and index.
         table := e.table.reg
         key   := e.table.key_reg
-        compiler_reg_pop(c, key, loc = loc)
-        compiler_reg_pop(c, table, loc = loc)
+        compiler_reg_pop(c, key)
+        compiler_reg_pop(c, table)
         pc := compiler_code_ABC(c, .Get_Table, 0, table, key)
         expr_set(e, .Need_Register, pc = pc)
     }
@@ -398,8 +394,11 @@ compiler_discharge_vars :: proc(c: ^Compiler, e: ^Expr, loc := #caller_location)
 -   `lcode.c:luaK_exp2val(FuncState *fs, expdesc *e)` in Lua 5.1.5.
  */
 compiler_expr_to_value :: proc(c: ^Compiler, e: ^Expr) {
-    // if hasjumps(e) luaK_exp2anyreg(fs, e) else
-    compiler_discharge_vars(c, e)
+    if expr_has_jumps(e^) {
+        compiler_expr_any_reg(c, e)
+    } else {
+        compiler_discharge_vars(c, e)
+    }
 }
 
 
@@ -468,7 +467,7 @@ compiler_code_nil :: proc(c: ^Compiler, reg, count: u16) {
     if pc := c.n_code; pc > c.last_target {
         // Since we assume stack frames are initialized to `nil`, we don't need
         // to push `nil` when we're at the very start of the function.
-        if pc == 0 && !c.is_print && cast(int)reg >= small_array.len(c.active) {
+        if pc == 0 && /* !c.is_print && */ cast(int)reg >= small_array.len(c.active) {
             return
         }
         // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
@@ -517,11 +516,12 @@ compiler_code_AB :: proc(c: ^Compiler, op: OpCode, a, b: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
     assert(opcode_info[op].a)
     assert(opcode_info[op].b != .Unused)
-    return compiler_code(c, ip_make(op, a, b, c = 0))
+    return compiler_code(c, ip_make(op, a, b, 0))
 }
 
 compiler_code_ABx :: proc(c: ^Compiler, op: OpCode, reg: u16, index: u32) -> (pc: int) {
-    assert(opcode_info[op].type == .Unsigned_Bx && opcode_info[op].c == .Unused)
+    assert(opcode_info[op].type == .Unsigned_Bx)
+    assert(opcode_info[op].c == .Unused)
     return compiler_code(c, ip_make(op, a = reg, bx = index))
 }
 
@@ -652,6 +652,10 @@ compiler_code_not :: proc(c: ^Compiler, e: ^Expr) {
         case .True, .Number, .Constant:
             e.type = .False
             return
+        case .Jump:
+            // flip the cond for comparisons
+            invert_test(c, e^)
+            return
         // Registers have runtime values so we can't necessarily fold them.
         case .Discharged, .Need_Register:
             break
@@ -666,98 +670,7 @@ compiler_code_not :: proc(c: ^Compiler, e: ^Expr) {
 }
 
 
-/*
-**Notes**
--   when `!USE_CONSTANT_FOLDING`, we expect that if `left` was a literal then
-    we called `compiler_expr_rk()` beforehand.
--   Otherwise, the order of arguments will be reversed!
--   Comparison expressions are NEVER folded, because checking for equality or
-    inequality is very involved especially when we have to resolve constants.
-
-**Links**
--   https://www.lua.org/source/5.1/lcode.c.html#codearith
--   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
- */
-compiler_code_arith :: proc(c: ^Compiler, op: OpCode, left, right: ^Expr) {
-    assert(.Add <= op && op <= .Unm || op == .Concat || op == .Len)
-    when USE_CONSTANT_FOLDING {
-        if fold_numeric(op, left, right) {
-            return
-        }
-    }
-
-    rkb, rkc: u16
-    // Right is unused.
-    if op == .Unm || op == .Len {
-        rkb = compiler_expr_rk(c, left)
-    } else {
-        rkc = compiler_expr_rk(c, right)
-        rkb = compiler_expr_rk(c, left)
-    }
-
-    // In the event BOTH are .Discharged, we want to pop them in the correct
-    // order! Otherwise the assert in `compiler_pop_reg()` will fail.
-    if rkb > rkc {
-        compiler_expr_pop(c, left^)
-        compiler_expr_pop(c, right^)
-    } else {
-        compiler_expr_pop(c, right^)
-        compiler_expr_pop(c, left^)
-    }
-
-    // Argument A will be fixed down the line.
-    pc   := compiler_code_ABC(c, op, 0, rkb, rkc)
-    left^ = expr_make(.Need_Register, pc = pc)
-}
-
-/*
-**Analogous to**
--   `lcode.c:codecomp(FuncState *fs, OpCode op, int cond, expdesc *e1, expdesc *e2)`
-    in Lua 5.1.5.
-*/
-compiler_code_compare :: proc(c: ^Compiler, op: OpCode, cond: bool, left, right: ^Expr) {
-    assert(.Eq <= op && op <= .Leq);
-    cond := cond
-    rkb := compiler_expr_rk(c, left)
-    rkc := compiler_expr_rk(c, right)
-
-    // Reuse these registers after the comparison is made
-    compiler_expr_pop(c, right^)
-    compiler_expr_pop(c, left^)
-
-    // Exchange arguments in `<` or `<=` to emulate `>` or `>=`, respectively.
-    if !cond && op != .Eq {
-        rkb, rkc = rkc, rkb
-        cond = !cond
-    }
-
-    pc := compiler_code_cond_jump(c, op, u16(cond), rkb, rkc)
-    left^ = expr_make(.Has_Jump, pc = pc)
-}
-
-/*
-**Links**
--   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
- */
-compiler_code_concat :: proc(c: ^Compiler, left, right: ^Expr) {
-    compiler_expr_to_value(c, right)
-
-    code := c.chunk.code[:c.n_code]
-
-    // This is past the first consecutive concat, so we can fold them.
-    if right.type == .Need_Register && code[right.pc].op == .Concat {
-        ip := &code[right.pc]
-        assert(left.reg == ip.b - 1)
-        compiler_expr_pop(c, left^)
-        ip.b  = left.reg
-        left^ = expr_make(.Need_Register, pc = right.pc)
-        return
-    }
-    // This is the first in a potential chain of concats.
-    compiler_expr_next_reg(c, right)
-    compiler_code_arith(c, .Concat, left, right)
-}
-
+when USE_CONSTANT_FOLDING {
 
 /*
 **Analogous to**
@@ -767,7 +680,7 @@ Links:
 -   https://www.lua.org/source/5.1/lcode.c.html#constfolding
  */
 @(private="file")
-fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
+fold_arith :: proc(op: OpCode, left, right: ^Expr) -> (success: bool) {
     // Can't fold two non-number-literals!
     if !expr_is_number(left^) || !expr_is_number(right^) {
         return false
@@ -807,6 +720,139 @@ fold_numeric :: proc(op: OpCode, left, right: ^Expr) -> (ok: bool) {
     return true
 }
 
+}
+
+
+/*
+**Notes**
+-   when `!USE_CONSTANT_FOLDING`, we expect that if `left` was a literal then
+    we called `compiler_expr_rk()` beforehand.
+-   Otherwise, the order of arguments will be reversed!
+-   Comparison expressions are NEVER folded, because checking for equality or
+    inequality is very involved especially when we have to resolve constants.
+
+**Links**
+-   https://www.lua.org/source/5.1/lcode.c.html#codearith
+-   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
+ */
+compiler_code_arith :: proc(c: ^Compiler, op: OpCode, left, right: ^Expr) {
+    assert(.Add <= op && op <= .Unm || op == .Concat || op == .Len)
+    when USE_CONSTANT_FOLDING {
+        if fold_arith(op, left, right) {
+            return
+        }
+    }
+
+    rkb, rkc: u16
+    // Right is unused.
+    if op == .Unm || op == .Len {
+        rkb = compiler_expr_rk(c, left)
+    } else {
+        rkc = compiler_expr_rk(c, right)
+        rkb = compiler_expr_rk(c, left)
+    }
+
+    // In the event BOTH are .Discharged, we want to pop them in the correct
+    // order! Otherwise the assert in `compiler_pop_reg()` will fail.
+    if rkb > rkc {
+        compiler_expr_pop(c, left^)
+        compiler_expr_pop(c, right^)
+    } else {
+        compiler_expr_pop(c, right^)
+        compiler_expr_pop(c, left^)
+    }
+
+    // Argument A will be fixed down the line.
+    pc   := compiler_code_ABC(c, op, 0, rkb, rkc)
+    left^ = expr_make(.Need_Register, pc = pc)
+}
+
+when USE_CONSTANT_FOLDING {
+
+fold_compare :: proc(op: OpCode, left, right: ^Expr, cond: bool) -> (success: bool) {
+    if !expr_is_number(left^) || !expr_is_number(right^) {
+        if op == .Eq {
+            if expr_is_literal(left^) && expr_is_literal(right^) {
+                b := (left.type == right.type)
+                if !cond {
+                    b = !b
+                }
+                left^ = expr_make(.True if b else .False)
+                return true
+            }
+        }
+        return false
+    }
+    a, b := left.number, right.number
+    res: bool
+    #partial switch op {
+    case .Eq:  res = number_eq(a, b)
+    case .Lt:  res = number_lt(a, b)
+    case .Leq: res = number_leq(a, b)
+    case:
+        unreachable("Cannot compare using opcode %v", op)
+    }
+    if !cond {
+        res = !res
+    }
+    left^ = expr_make(.True if res else .False)
+    return true
+}
+
+}
+
+/*
+**Analogous to**
+-   `lcode.c:codecomp(FuncState *fs, OpCode op, int cond, expdesc *e1, expdesc *e2)`
+    in Lua 5.1.5.
+*/
+compiler_code_compare :: proc(c: ^Compiler, op: OpCode, cond: bool, left, right: ^Expr) {
+    assert(.Eq <= op && op <= .Leq);
+    when USE_CONSTANT_FOLDING {
+        if fold_compare(op, left, right, cond) {
+            return
+        }
+    }
+
+    cond := cond
+    rkb := compiler_expr_rk(c, left)
+    rkc := compiler_expr_rk(c, right)
+
+    // Reuse these registers after the comparison is made
+    compiler_expr_pop(c, right^)
+    compiler_expr_pop(c, left^)
+
+    // Exchange arguments in `<` or `<=` to emulate `>` or `>=`, respectively.
+    if !cond && op != .Eq {
+        rkb, rkc = rkc, rkb
+        cond = !cond
+    }
+
+    pc := compiler_code_cond_jump(c, op, u16(cond), rkb, rkc)
+    left^ = expr_make(.Jump, pc = pc)
+}
+
+/*
+**Links**
+-   https://www.lua.org/source/5.1/lcode.c.html#luaK_posfix
+ */
+compiler_code_concat :: proc(c: ^Compiler, left, right: ^Expr) {
+    compiler_expr_to_value(c, right)
+    // This is past the first consecutive concat, so we can fold them.
+    if right.type == .Need_Register {
+        if ip := get_ip(c, right); ip.op == .Concat {
+            assert(left.reg == ip.b - 1)
+            compiler_expr_pop(c, left^)
+            ip.b  = left.reg
+            left^ = expr_make(.Need_Register, pc = right.pc)
+            return
+        }
+    }
+    // This is the first in a potential chain of concats.
+    compiler_expr_next_reg(c, right)
+    compiler_code_arith(c, .Concat, left, right)
+}
+
 
 /*
 **Overview**
@@ -833,7 +879,8 @@ compiler_code_indexed :: proc(c: ^Compiler, table, key: ^Expr) {
  */
 compiler_code_set_array :: proc(c: ^Compiler, reg: u16, total, to_store: int) {
     // Assert taken from Lua 5.4
-    assert(to_store != 0 && to_store <= FIELDS_PER_FLUSH)
+    assert(to_store != 0)
+    assert(to_store <= FIELDS_PER_FLUSH)
 
     // TOOD(2025-04-15): Check for LUA_MULTRET analog?
     count := cast(u16)to_store
@@ -916,18 +963,20 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
 **Overview**
 -   Emit the `.Test` opcode along with its necessary `.Jump`.
 
+**Analogous to**
+-   (Somewhat) `lcode.c:luaK_goiftrue(FuncState *fs, expdesc *e)` and
+    `lcode.c:luaK_goiffalse(FuncState *fs, expdesc *e)` in Lua 5.1.5.
+
 **Guarantees**
 -   Argument A will use the register/constant of `e`.
 -   If `e` is a non-local register then it is popped.
 -   `e` will always be transformed to type `.Discharged`.
-
-**Returns**
--   The pc of the `.Jump` we emitted.
  */
 compiler_code_test :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: int) {
     ra := compiler_expr_any_reg(c, e)
     compiler_expr_pop(c, e^)
-    return compiler_code_cond_jump(c, .Test, ra, 0, u16(cond))
+    jump_pc = compiler_code_cond_jump(c, .Test, ra, 0, u16(cond))
+    return jump_pc
 }
 
 
@@ -977,9 +1026,9 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: i
             if !cond {
                 return NO_JUMP
             }
-        case .Has_Jump:
+        case .Jump:
             if cond {
-                invert_jump(c, e^)
+                invert_test(c, e^)
             }
             return e.pc
         }
@@ -998,23 +1047,25 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: i
         return compiler_code_cond_jump(c, .Test_Set, NO_REG, e.reg, u16(!cond))
     }
 
+    // `to_patch^` is not `NO_JUMP` only when we are the parent of a nested
+    // logicals, e.g. the complete `and` expression in `x and y or default`
     get_targets :: proc(e: ^Expr, cond: bool) -> (to_init, to_patch: ^int) {
+        // .And
         if cond {
             return &e.patch_false, &e.patch_true
         }
+        // .Or
         return &e.patch_true, &e.patch_false
     }
 
-    /*
-    **TODO** (2025-05-13):
-    -   Currently, this messes up badly when dealing with folded constatnts.
-    -   Concept check: `print("got:", nil and false or true)`
-    */
     pc := prev_jump(c, e, cond)
     to_init, to_patch := get_targets(e, cond)
     compiler_add_jump(c, to_init, pc)
+
+    // only occurs in nested logicals
     if to_patch^ != NO_JUMP {
-        compiler_patch_jump(c, pc = to_patch^, reg = e.reg)
+        reg := NO_REG if pc == NO_JUMP else u16(c.free_reg)
+        compiler_patch_jump(c, pc = to_patch^, reg = reg)
         to_patch^ = NO_JUMP
     }
     return pc
@@ -1031,13 +1082,21 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: i
     *If Statements*.
 -   `lcode.c:patchlistaux(FuncState *fs, int list, int vtarget, int reg, int dtarget)` in Lua 5.1.5.
 */
-compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u16 = NO_REG, loc := #caller_location) {
+compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u16 = NO_REG) {
+    /*
+    **Analogous to**
+    -   `lcode.c:patchetestreg(FuncState *fs, int pc, int reg)` in Lua 5.1.5.
+
+    **Notes** (2025-05-14):
+    -   Unlike in Lua, we don't check if `reg == NO_REG`; we can already do that
+        in the caller's loop.
+     */
     patch_test_reg :: proc(c: ^Compiler, pc: int, reg: u16) -> bool {
         ip := get_jump_control(c, pc)
         if ip.op != .Test_Set {
             return false // Cannot be patched
         }
-        if reg != ip.b {
+        if reg != NO_REG && reg != ip.b {
             ip.a = reg
         } else {
             ip^ = ip_make(.Test, ip.b, 0, ip.c)
@@ -1052,10 +1111,8 @@ compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u
     }
 
     for list := pc; list != NO_JUMP; {
-        next := get_jump(c, list, loc = loc)
-        if reg != NO_REG {
-            patch_test_reg(c, pc, reg)
-        }
+        next := get_jump(c, list)
+        patch_test_reg(c, pc, reg)
         set_jump(c, list, target)
         list = next
     }
@@ -1071,33 +1128,32 @@ compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u
 -   `lcode.c:getjump(FuncState *fs, int list)` in Lua 5.1.5.
  */
 @(private="file")
-get_jump :: proc(c: ^Compiler, pc: int, loc := #caller_location) -> (offset: int) {
-    assert(pc >= 0, loc = loc)
-    ip := c.chunk.code[pc]
+get_jump :: proc(c: ^Compiler, pc: int) -> (dst: int, ok: bool) #optional_ok {
+    assert(pc >= 0)
+    ip := get_ip(c, pc)
     // Start of jump list?
-    if offset = ip_get_sBx(ip); offset == NO_JUMP {
-        return NO_JUMP
+    offset := ip_get_sBx(ip^)
+    if offset == NO_JUMP {
+        return NO_JUMP, false
     }
     // Turn relative offset into absolute position.
-    return (pc + 1) + offset
+    return (pc + 1) + offset, true
 }
 
+
+// Get the pc of the first jump in the list pointed to by `pc`.
 @(private="file")
-get_jump_root :: proc(c: ^Compiler, pc: int) -> (root: int) {
-    root = pc
+get_jump_root :: proc(c: ^Compiler, pc: int) -> int {
+    pc := pc
     for {
-        next := get_jump(c, root)
-        if next == NO_JUMP {
-            break
-        }
-        root = next
+        pc = get_jump(c, pc) or_break
     }
-    return root
+    return pc
 }
 
 @(private="file")
-get_jump_control :: proc(c: ^Compiler, pc: int, loc := #caller_location) -> (ip: ^Instruction) {
-    ip = get_ip(c, pc, loc)
+get_jump_control :: proc(c: ^Compiler, pc: int) -> (ip: ^Instruction) {
+    ip = get_ip(c, pc)
     // Have something before the jump instruction?
     if pc >= 1 {
         prev := ptr_offset(ip, -1)
@@ -1108,15 +1164,26 @@ get_jump_control :: proc(c: ^Compiler, pc: int, loc := #caller_location) -> (ip:
     return ip
 }
 
+
+/*
+**Analogous to**
+-   `lcode.c:invertjump(FuncState *fs, expdesc *e)`
+ */
 @(private="file")
-invert_jump :: proc(c: ^Compiler, e: Expr) {
+invert_test :: proc(c: ^Compiler, e: Expr) {
     ip := get_jump_control(c, e.pc)
+    assert(opcode_info[ip.op].is_test)
     assert(ip.op != .Test && ip.op != .Test_Set)
     ip.a = u16(!bool(ip.a))
 }
 
 
 /*
+**Overview**
+-   Adds a jump pc, `branch`, to the jump list `list`.
+-   Usually `branch` is the address of an `Expr::patch_{true,false}`. This
+    is how they get initalized.
+
 **Analogous to**
 -   `lcode.c:luaK_concat(FuncState *fs, int *l1, int l2)`
 */
@@ -1124,10 +1191,11 @@ compiler_add_jump :: proc(c: ^Compiler, list: ^int, branch: int) {
     if branch == NO_JUMP {
         return
     } else if list^ == NO_JUMP {
+        // First jump in the list
         list^ = branch
         return
     }
-    // `fixjump(fs, last, l2)`
+    // `fixjump(fs, last, l2)` ; append this jump
     set_jump(c, get_jump_root(c, list^), branch)
 }
 

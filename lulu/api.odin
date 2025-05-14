@@ -48,12 +48,8 @@ close :: proc(vm: ^VM) {
 -   `lapi.c:lua_load(lua_State *L, lua_Reader reader, void *data, const char *chunkname)`
 -   `lapi.c:lua_pcall(lua_State *L, int nargs, int nresults, int errfunc)`
  */
-run :: proc(vm: ^VM, input, source: string, quiet := false) -> Error {
-    config := Debug_Config{
-        .Trace_Exec if DEBUG_TRACE_EXEC else nil,
-        .Dump_Chunk if DEBUG_PRINT_CODE else nil,
-    }
-    return vm_interpret(vm, input, source, {} if quiet else config)
+run :: proc(vm: ^VM, input, source: string) -> Error {
+    return vm_interpret(vm, input, source)
 }
 
 ///=== }}} =====================================================================

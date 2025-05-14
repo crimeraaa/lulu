@@ -1,8 +1,7 @@
 # This is just for type annotations; the `gdb` module only exists within GDB!
 import gdb # type: ignore
 from typing import Final
-from printers import odin
-from .. import base
+from printers import odin, base
 from . import opcode, lexer, expr, value
 
 class __PrettyPrinter(gdb.printing.PrettyPrinter):

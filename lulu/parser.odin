@@ -388,14 +388,14 @@ if_stmt ::= 'if' expression 'then' block 'end'
     *If Statements*.
 */
 if_stmt :: proc(p: ^Parser, c: ^Compiler) {
-    then_cond :: proc(p: ^Parser, c: ^Compiler) -> (jump_pc: int) {
-        expr := expression(p, c)
+    then_cond :: proc(p: ^Parser, c: ^Compiler) -> (cond: Expr, jump_pc: int) {
+        cond = expression(p, c)
         parser_consume(p, .Then)
 
         // Jump only when the condition is falsy.
-        jump_pc = compiler_code_test(c, &expr, false)
+        jump_pc = compiler_code_test(c, &cond, false)
         then_block(p, c)
-        return jump_pc
+        return cond, jump_pc
     }
 
     then_block :: proc(p: ^Parser, c: ^Compiler) {
@@ -404,14 +404,14 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
         }
     }
 
-    then_jump := then_cond(p, c)
+    then_expr, then_jump := then_cond(p, c)
     else_jump := compiler_code_jump(c) // Unconditional skip 'else'
     compiler_patch_jump(c, then_jump)
 
     for parser_match(p, .Elseif) {
         // each `then` jump connects to the next so that `elseif` branches
         // are tried in order
-        then_jump = then_cond(p, c)
+        then_expr, then_jump = then_cond(p, c)
 
         // all child non-`else` branches skip over the one `else` branch
         else_jump = compiler_code_jump(c, child = else_jump)
@@ -425,6 +425,7 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
     compiler_patch_jump(c, else_jump)
     parser_consume(p, .End)
 }
+
 
 /*
 **Notes**
@@ -456,6 +457,7 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
     c.free_reg -= n_args
 }
 
+
 /*
 **Form**
 -   expr_list ::= expression [',' expression]*
@@ -477,6 +479,7 @@ expr_list :: proc(p: ^Parser, c: ^Compiler) -> (expr: Expr, count: int) {
     }
     return expr, count
 }
+
 
 /*
 **Form**
@@ -786,7 +789,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     }
 
     // All information is pending so just use 0's, we'll fix it later
-    pc := compiler_code_ABC(c, .New_Table, 0, 0, 0)
+    pc   := compiler_code_ABC(c, .New_Table, 0, 0, 0)
     ctor := &Constructor{table = expr_make(.Need_Register, pc = pc)}
     compiler_expr_next_reg(c, &ctor.table)
 
@@ -794,14 +797,10 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         /*
         **Analogous to**
         -   `lparser.c:closelistfield(LexState *ls, struct ConsControl *cc)`
-
-        **Assumptions**
-        -   This is an inline implementation.
-        -   `array` already pushed each expression.
          */
         if ctor.to_store == FIELDS_PER_FLUSH {
-            compiler_code_set_array(c, ctor.table.reg,
-                ctor.n_array, ctor.to_store)
+            compiler_code_set_array(c, ctor.table.reg, ctor.n_array,
+                                    ctor.to_store)
             ctor.to_store = 0
         }
 
@@ -844,7 +843,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 
     // `fb_make()` may also round up the values by some factor, but that's
     // okay because our hash table will simply over-allocate.
-    ip := &c.chunk.code[pc]
+    ip := get_ip(c, pc)
     ip.b = cast(u16)fb_make(ctor.n_array)
     ip.c = cast(u16)fb_make(ctor.n_hash)
     return ctor.table
@@ -867,11 +866,8 @@ unary :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     // MUST be set to '.Number' in order to try constant folding.
     @(static)
     dummy := Expr{type = .Number, patch_true = NO_JUMP, patch_false = NO_JUMP}
-
     type := p.consumed.type
-
-    // Compile the operand. We know the first token of the operand is in the lookahead.
-    expr := parse_precedence(p, c, .Unary)
+    arg := parse_precedence(p, c, .Unary)
 
     /*
     **Links**
@@ -889,25 +885,29 @@ unary :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         when USE_CONSTANT_FOLDING {
             // Don't fold non-numeric constants (for arithmetic) or non-falsifiable
             // expressions (for comparison).
-            if !(.Nil <= expr.type && expr.type <= .Number) {
-                compiler_expr_any_reg(c, &expr)
+            #partial switch arg.type {
+            case .Nil, .True, .False, .Number:
+                expr_has_jumps(arg) or_break
+                fallthrough
+            case:
+                compiler_expr_any_reg(c, &arg)
             }
         } else {
             // If nested (e.g. `-(-x)`) reuse the register we stored `x` in
-            compiler_expr_any_reg(c, &expr)
+            compiler_expr_any_reg(c, &arg)
         }
-        compiler_code_arith(c, .Unm, &expr, &dummy)
+        compiler_code_arith(c, .Unm, &arg, &dummy)
     case .Not:
-        compiler_code_not(c, &expr)
+        compiler_code_not(c, &arg)
     case .Pound:
         // OpCode.Len CANNOT operate on constants no matter what.
-        compiler_expr_any_reg(c, &expr)
-        compiler_code_arith(c, .Len, &expr, &dummy)
+        compiler_expr_any_reg(c, &arg)
+        compiler_code_arith(c, .Len, &arg, &dummy)
     case:
         unreachable("Token %v is not an unary operator", type)
     }
 
-    return expr
+    return arg
 }
 
 ///=== }}} =====================================================================
@@ -988,8 +988,18 @@ compare :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
         return op, cond, get_rule(type).prec
     }
 
-
-    compiler_expr_rk(c, left)
+    // See comment in `compiler.odin:arith()`.
+    when USE_CONSTANT_FOLDING {
+        #partial switch left.type {
+        case .Nil, .True, .False, .Number:
+            expr_has_jumps(left^) or_break
+            fallthrough
+        case:
+            compiler_expr_rk(c, left)
+        }
+    } else {
+        compiler_expr_rk(c, left)
+    }
     op, cond, prec := compare_op(p.consumed.type)
     right := parse_precedence(p, c, prec)
     compiler_code_compare(c, op, cond, left, &right)

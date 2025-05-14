@@ -11,7 +11,7 @@ Expr :: struct {
 
 Expr_Info :: struct #raw_union {
     number: f64, // .Number
-    pc:     int, // .Need_Register, .Has_Jump
+    pc:     int, // .Need_Register, .Jump
     index:  u32, // .Constant, .Global
     table:  struct {reg, key_reg: u16}, // .Table_Index
     reg:    u16, // .Discharged, .Local
@@ -33,7 +33,7 @@ Expr_Type :: enum {
     Global,
     Local,
     Table_Index,
-    Has_Jump,       // `.pc` points to the jump instruction.
+    Jump,           // `.pc` points to the jump instruction.
 }
 
 // Intended to be easier to grep
@@ -55,7 +55,7 @@ expr_make_none :: proc(type: Expr_Type) -> Expr {
 }
 
 expr_make_pc :: proc(type: Expr_Type, pc: int) -> Expr {
-    assert(type == .Need_Register || type == .Has_Jump)
+    assert(type == .Need_Register || type == .Jump)
     return Expr{
         type        = type,
         pc          = pc,
@@ -109,7 +109,7 @@ expr_set_none :: proc(e: ^Expr, type: Expr_Type) {
 }
 
 expr_set_pc :: proc(e: ^Expr, type: Expr_Type, pc: int) {
-    assert(type == .Need_Register || type == .Has_Jump)
+    assert(type == .Need_Register || type == .Jump)
     e.type = type
     e.pc   = pc
 }
@@ -139,6 +139,15 @@ expr_set_table :: proc(e: ^Expr, type: Expr_Type, table_reg, key_reg: u16) {
     assert(type == .Table_Index)
     e.type  = type
     e.table = {reg = table_reg, key_reg = key_reg}
+}
+
+expr_is_literal :: proc(e: Expr) -> bool {
+    #partial switch e.type {
+    case .Nil, .True, .False, .Number:
+        return true
+    case:
+        return false
+    }
 }
 
 // See: https://www.lua.org/source/5.1/lcode.c.html#isnumeral

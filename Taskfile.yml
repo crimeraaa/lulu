@@ -13,16 +13,16 @@ vars:
     -vet
     -o:size
 
-  LULU_OUT: bin/lulu
+  LULU_MAIN_OUT: bin/lulu
+  LULU_TEST_OUT: bin/lulu.bin
   LULU_SRC: lulu
 
   # I am aware this is incredibly ugly
   LULU_GLOB: '{{ "{.," }}{{.LULU_SRC}}{{ "}" }}/*.odin'
 
+  # Common flags
   ODIN_FLAGS: >-
-    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
     -define:USE_CONSTANT_FOLDING=true
-    -define:USE_READLINE=true
     -collection:lulu={{.LULU_SRC}}/
 
   LUA_OUT: bin/lua
@@ -31,11 +31,18 @@ vars:
 
 tasks:
   build:
-    desc: Build the Lulu executable.
+    desc: Build the Lulu executable
+    vars:
+      FLAGS: >-
+        {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
+        {{.ODIN_FLAGS}}
+    requires:
+      vars: [MODE, ODIN_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
     cmds:
-      - '{{.ODIN}} build . {{.ODIN_FLAGS}} -out:{{.LULU_OUT}}'
+      - '{{.ODIN}} build . {{.FLAGS}} -define:USE_READLINE=true -out:{{.LULU_MAIN_OUT}}'
     sources:
-      - './*.odin'
+      - 'lulu.odin'
+      - 'readline.odin'
       - '{{.LULU_SRC}}/*.odin'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
@@ -43,8 +50,22 @@ tasks:
     desc: Build the Lulu executable if needed, then run it.
     cmds:
       - task: build
-      - '{{.LULU_OUT}} {{.CLI_ARGS}}'
+      - '{{.LULU_MAIN_OUT}} {{.CLI_ARGS}}'
     interactive: true
+
+  test:
+    desc: Build the Lulu executable if needed and run tests on it.
+    cmds:
+      - >-
+        {{.ODIN}} test . {{.ODIN_FLAGS}}
+        -define:USE_READLINE=false
+        -define:DEBUG_PRINT_CODE=false
+        -define:DEBUG_TRACE_EXEC=false
+        -out:{{.LULU_TEST_OUT}}
+      - '{{.LULU_TEST_OUT}} {{.CLI_ARGS}}'
+    sources:
+      - test.odin
+      - '{{.LULU_SRC}}/*.odin'
 
   build-lua:
     desc: Build the local Lua executable if needed.

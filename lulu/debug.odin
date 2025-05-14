@@ -4,11 +4,6 @@ package lulu
 import "core:fmt"
 import "core:math"
 
-Debug_Config :: bit_set[enum{
-    Dump_Chunk,
-    Trace_Exec,
-}]
-
 count_digits :: proc(value: int) -> int {
     return math.count_digits_of_base(value, 10)
 }
@@ -52,7 +47,7 @@ debug_dump_chunk :: proc(c: ^Chunk, code_size: int) {
     }
 }
 
-debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index: int, left_pad := 4) {
+debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int) {
     Print_Info :: struct {
         chunk: ^Chunk,
         pc:     int,
