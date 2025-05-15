@@ -59,7 +59,7 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
         print_reg(info, info.ip.b)
     }
 
-    binary :: proc(info: Print_Info, op: string) {
+    arith :: proc(info: Print_Info, op: string) {
         print_reg(info, info.ip.a, " := ")
         print_reg(info, info.ip.b, " %s ", op)
         print_reg(info, info.ip.c)
@@ -163,12 +163,12 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
                   cast(int)(ip.c - 1) * FIELDS_PER_FLUSH, ip.a, ip.b)
     case .Print:
         fmt.printf("print(Reg(i), '\\t') for %i <= i < %i", ip.a, ip.b)
-    case .Add: binary(info, "+")
-    case .Sub: binary(info, "-")
-    case .Mul: binary(info, "*")
-    case .Div: binary(info, "/")
-    case .Mod: binary(info, "%")
-    case .Pow: binary(info, "^")
+    case .Add: arith(info, "+")
+    case .Sub: arith(info, "-")
+    case .Mul: arith(info, "*")
+    case .Div: arith(info, "/")
+    case .Mod: arith(info, "%")
+    case .Pow: arith(info, "^")
     case .Unm: unary(info,  "-")
     case .Eq:  compare(info, "==")
     case .Lt:  compare(info, "<")
@@ -211,7 +211,7 @@ debug_type_error :: proc(vm: ^VM, culprit: ^Value, action: string) -> ! {
     type_name := value_type_name(culprit^)
 
     // Culprit is in the active stack frame, thus may be a variable?
-    if reg, in_stack := ptr_index_safe(culprit, vm.base[:get_top(vm)]); in_stack {
+    if reg, in_stack := ptr_index_safe(culprit, vm.view); in_stack {
         chunk := vm.chunk
 
         // Inline implementation `ldebug.c:currentpc()`.

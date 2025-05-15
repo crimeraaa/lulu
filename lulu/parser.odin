@@ -95,13 +95,31 @@ parser_match :: proc(p: ^Parser, expected: Token_Type) -> (found: bool) {
     return found
 }
 
-parser_check :: proc(p: ^Parser, expected: ..Token_Type) -> (found: bool) {
-    for type in expected {
-        if found = p.lookahead.type == type; found {
-            return found
-        }
+parser_check :: proc(p: ^Parser, expected: Token_Type) -> (found: bool) {
+    if found = p.lookahead.type == expected; found {
+        parser_advance(p)
     }
     return found
+}
+
+@(private="package")
+parser_program :: proc(p: ^Parser, c: ^Compiler) {
+    // TODO(2025-05-14): Determine if this is a safe optimization!
+    main_has_return :: proc(c: ^Compiler) -> bool {
+        return c.pc > 0 && get_ip(c, c.pc - 1).op == .Return
+    }
+
+    // Top level scope can also have its own locals.
+    compiler_begin_scope(c)
+    for !parser_match(p, .Eof) {
+        declaration(p, c)
+    }
+    parser_consume(p, .Eof)
+    if !main_has_return(c) {
+        compiler_code_return(c, 0, 0)
+    }
+    compiler_end_scope(c)
+    compiler_end(c)
 }
 
 Assign :: struct {
@@ -120,27 +138,24 @@ Assign :: struct {
 -   https://www.lua.org/source/5.1/lparser.c.html#chunk
 -   https://www.lua.org/source/5.1/lparser.c.html#statement
  */
-@(private="package")
-parser_parse :: proc(p: ^Parser, c: ^Compiler) {
+declaration :: proc(p: ^Parser, c: ^Compiler) {
     parser_advance(p)
     #partial switch p.consumed.type {
     case .Identifier:
-        // Inline implementation of `compiler.c:parseVariable()` since we immediately
-        // consumed the 'identifier'. Also, Lua doesn't have a 'var' keyword.
+        // Inline implementation of `compiler.c:parseVariable()` since we
+        // immediately consumed the 'identifier'. Also, Lua doesn't have a
+        // 'var' keyword.
         last := &Assign{variable = variable(p, c)}
         if parser_match(p, .Left_Paren) {
             parser_error(p, "Function calls not yet implemented")
         } else {
             assignment(p, c, last, 1)
         }
-    case .Do:
-        // active := sa.len(c.active)
-        compiler_begin_scope(c)
-        do_block(p, c)
-        compiler_end_scope(c)
-    case .If:    if_stmt(p, c)
-    case .Local: local_stmt(p, c)
-    case .Print: print_stmt(p, c)
+    case .Do:     do_block(p, c)
+    case .If:     if_stmt(p, c)
+    case .Local:  local_stmt(p, c)
+    case .Print:  print_stmt(p, c)
+    case .Return: return_stmt(p, c)
     case:
         error_at(p, p.consumed, "Expected an expression")
     }
@@ -182,13 +197,13 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
             mainly for the last occurence of `Expr_Type.Table_Index`.
         -   We want to handle each recursive call's associated expression.
          */
-        expr, n_exprs := expr_list(p, c)
+        top, n_exprs := expr_list(p, c)
         if n_exprs == n_vars {
             // luaK_setoneret(ls->fs, &e)
-            compiler_store_var(c, &last.variable, &expr)
+            compiler_store_var(c, &last.variable, &top)
             return // Avoid base case to prevent needless popping.
         }
-        adjust_assign(c, n_vars, n_exprs, &expr)
+        adjust_assign(c, n_vars, n_exprs, &top)
         // Go to base case as our value is on the top of the stack.
     }
 
@@ -245,11 +260,11 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
         }
     }
 
-    expr: Expr
+    top: Expr
     n_exprs: int
     // No need for `else` clause as zero value is already .Empty
     if parser_match(p, .Equals) {
-        expr, n_exprs = expr_list(p, c)
+        top, n_exprs = expr_list(p, c)
     }
 
     /*
@@ -257,7 +272,7 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
     we want the initialization expressions to remain on the stack as they
     will act as the local variables themselves.
     */
-    adjust_assign(c, n_vars, n_exprs, &expr)
+    adjust_assign(c, n_vars, n_exprs, &top)
     local_adjust(c, n_vars)
 }
 
@@ -347,7 +362,7 @@ adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
     takes care of that already.
  */
 local_adjust :: proc(c: ^Compiler, nvars: int) {
-    startpc := c.n_code
+    startpc := c.pc
     depth   := c.scope_depth
 
     /*
@@ -370,11 +385,25 @@ local_adjust :: proc(c: ^Compiler, nvars: int) {
 }
 
 do_block :: proc(p: ^Parser, c: ^Compiler) {
-    for !parser_check(p, .End, .Eof) {
-        parser_parse(p, c)
+    compiler_begin_scope(c)
+    for !still_in_block(p) {
+        declaration(p, c)
     }
     parser_consume(p, .End)
+    compiler_end_scope(c)
 }
+
+/*
+**Analogous to**
+-   `lparser.c:block_follow(LexState *ls)` in Lua 5.1.5
+ */
+still_in_block :: proc(p: ^Parser) -> bool {
+    #partial switch p.lookahead.type {
+    case .Else, .Elseif, .End, .Until, .Eof: return true
+    }
+    return false
+}
+
 
 
 /*
@@ -388,30 +417,30 @@ if_stmt ::= 'if' expression 'then' block 'end'
     *If Statements*.
 */
 if_stmt :: proc(p: ^Parser, c: ^Compiler) {
-    then_cond :: proc(p: ^Parser, c: ^Compiler) -> (cond: Expr, jump_pc: int) {
-        cond = expression(p, c)
+    then_cond :: proc(p: ^Parser, c: ^Compiler) -> (jump_pc: int) {
+        cond := expression(p, c)
         parser_consume(p, .Then)
 
         // Jump only when the condition is falsy.
         jump_pc = compiler_code_test(c, &cond, false)
         then_block(p, c)
-        return cond, jump_pc
+        return jump_pc
     }
 
     then_block :: proc(p: ^Parser, c: ^Compiler) {
-        for !parser_check(p, .Else, .Elseif, .End, .Eof) {
-            parser_parse(p, c)
+        for !still_in_block(p) {
+            declaration(p, c)
         }
     }
 
-    then_expr, then_jump := then_cond(p, c)
+    then_jump := then_cond(p, c)
     else_jump := compiler_code_jump(c) // Unconditional skip 'else'
     compiler_patch_jump(c, then_jump)
 
     for parser_match(p, .Elseif) {
         // each `then` jump connects to the next so that `elseif` branches
         // are tried in order
-        then_expr, then_jump = then_cond(p, c)
+        then_jump = then_cond(p, c)
 
         // all child non-`else` branches skip over the one `else` branch
         else_jump = compiler_code_jump(c, child = else_jump)
@@ -439,6 +468,7 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 
     args: Expr
     n_args: int
+    base_reg := u16(c.free_reg)
     if !parser_match(p, .Right_Paren) {
         args, n_args = expr_list(p, c)
         parser_consume(p, .Right_Paren)
@@ -448,13 +478,26 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
     if args.type != .Empty {
         compiler_expr_next_reg(c, &args)
     }
-
-    base_reg := u16(c.free_reg - n_args)
     last_reg := u16(c.free_reg) // If > MAX_A should still fit
-    compiler_code_AB(c, .Print, base_reg, last_reg)
+    compiler_code(c, .Print, ra = base_reg, rb = last_reg)
 
     // This is hacky but it works to allow recycling of registers
     c.free_reg -= n_args
+}
+
+return_stmt :: proc(p: ^Parser, c: ^Compiler) {
+    // Although `return end` in the main block skips this, remember we
+    // explicitly check for EOF after!
+    base_reg := u16(c.free_reg)
+    count: int = 0
+    if !still_in_block(p) {
+        top: Expr
+        top, count = expr_list(p, c)
+        compiler_expr_next_reg(c, &top)
+    } else {
+        parser_advance(p)
+    }
+    compiler_code_return(c, base_reg, u16(count))
 }
 
 
@@ -469,21 +512,21 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 **Notes**
 -   Like in Lua 5.1.5, the last expression is not emitted.
  */
-expr_list :: proc(p: ^Parser, c: ^Compiler) -> (expr: Expr, count: int) {
+expr_list :: proc(p: ^Parser, c: ^Compiler) -> (top: Expr, count: int) {
     count = 1 // at least one expression
-    expr  = expression(p, c)
+    top  = expression(p, c)
     for parser_match(p, .Comma) {
-        compiler_expr_next_reg(c, &expr)
-        expr = expression(p, c)
+        compiler_expr_next_reg(c, &top)
+        top = expression(p, c)
         count += 1
     }
-    return expr, count
+    return top, count
 }
 
 
 /*
 **Form**
--   expression ::= literal | unary | grouping | binary | variable
+-   expression ::= literal | unary | grouping | arith | compare | variable
 
 **Analogous to**
 -   `compiler.c:expression()` in Crafting Interpreters, Chapter 17.4:
@@ -765,7 +808,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 
         value := expression(p, c)
         rkc   := compiler_expr_rk(c, &value)
-        compiler_code_ABC(c, .Set_Table, ctor.table.reg, rkb, rkc)
+        compiler_code(c, .Set_Table, a = ctor.table.reg, b = rkb, c = rkc)
         compiler_expr_pop(c, value)
         compiler_expr_pop(c, key)
     }
@@ -782,14 +825,14 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         value := expression(p, c)
         rkc := compiler_expr_rk(c, &value)
 
-        compiler_code_ABC(c, .Set_Table, ctor.table.reg, rkb, rkc)
+        compiler_code(c, .Set_Table, a = ctor.table.reg, b = rkb, c = rkc)
         // Reuse these registers
         compiler_expr_pop(c, value)
         compiler_expr_pop(c, key)
     }
 
     // All information is pending so just use 0's, we'll fix it later
-    pc   := compiler_code_ABC(c, .New_Table, 0, 0, 0)
+    pc   := compiler_code(c, .New_Table, a = 0, b = 0, c = 0)
     ctor := &Constructor{table = expr_make(.Need_Register, pc = pc)}
     compiler_expr_next_reg(c, &ctor.table)
 

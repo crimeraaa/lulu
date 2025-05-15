@@ -7,7 +7,7 @@ import "core:math"
 
 
 Value :: struct {
-    type:       Value_Type,
+    type:       Type,
     using data: Value_Data,
 }
 
@@ -16,14 +16,6 @@ Value_Data :: struct #raw_union {
     boolean:  bool,
     ostring: ^OString,
     table:   ^Table,
-}
-
-Value_Type :: enum {
-    Nil,
-    Number,
-    Boolean,
-    String,
-    Table,
 }
 
 // Used for callbacks/dispatches
@@ -85,7 +77,7 @@ value_make :: proc {
 
 value_type_name :: #force_inline proc "contextless" (v: Value) -> string {
     @(static, rodata)
-    type_names := [Value_Type]string {
+    type_names := [Type]string {
         .Nil     = "nil",
         .Boolean = "boolean",
         .Number  = "number",

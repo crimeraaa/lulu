@@ -2,7 +2,6 @@
 package lulu
 
 import "core:fmt"
-import "core:io"
 
 UNINITIALIZED_LOCAL :: -1
 NO_REG              :: max(u16) // Also applies to locals
@@ -50,8 +49,8 @@ chunk_init :: proc(c: ^Chunk, source: string) {
 chunk_fini :: proc(vm: ^VM, ch: ^Chunk, cl: ^Compiler) {
     slice_resize(vm, &ch.locals,    cl.count.locals)
     slice_resize(vm, &ch.constants, cl.count.constants)
-    slice_resize(vm, &ch.code,      cl.n_code)
-    slice_resize(vm, &ch.line,      cl.n_code)
+    slice_resize(vm, &ch.code,      cl.pc)
+    slice_resize(vm, &ch.line,      cl.pc)
 }
 
 chunk_append :: proc(vm: ^VM, c: ^Chunk, i: Instruction, line: int, pc: ^int) {

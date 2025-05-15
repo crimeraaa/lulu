@@ -26,7 +26,7 @@ ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 }
 
 /*
-Notes:
+**Notes** (2025-01-13)
 -   These strings are compatible with C-style strings.
     However, extracting the cstring requires an unsafe cast.
  */
@@ -46,6 +46,12 @@ ostring_new :: proc(vm: ^VM, input: string) -> ^OString {
     }
     intern_set(&vm.interned, s)
     return s
+}
+
+ostringf_new :: proc(vm: ^VM, format: string, args: ..any) -> ^OString {
+    b := vm_get_builder(vm)
+    s := fmt.sbprintf(b, format, ..args)
+    return ostring_new(vm, s)
 }
 
 ostring_free :: proc(vm: ^VM, s: ^OString, location := #caller_location) {

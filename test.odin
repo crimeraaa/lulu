@@ -1,8 +1,6 @@
 package lulu_main
 
 import "core:testing"
-import "core:os"
-import "core:io"
 
 import "lulu"
 

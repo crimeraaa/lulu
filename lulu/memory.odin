@@ -52,7 +52,7 @@ ptr_sub    :: intrinsics.ptr_sub
 -   `ptr` IS in range of `data[:]`.
 -   This function NEVER returns an invalid index.
  */
-ptr_index :: #force_inline proc "contextless" (ptr: ^$T, data: $S/[]T) -> (index: int) {
+ptr_index :: #force_inline proc "contextless" (ptr: ^$T, data: $S/[]T) -> (i: int) {
     return ptr_sub(cast([^]T)ptr, raw_data(data))
 }
 
@@ -62,10 +62,10 @@ ptr_index :: #force_inline proc "contextless" (ptr: ^$T, data: $S/[]T) -> (index
 -   Get the absolute index of `ptr` in `data`.
 -   Checks first if `ptr` is indeed an element in range of `data`.
  */
-ptr_index_safe :: proc "contextless" (ptr: ^$T, data: $S/[]T) -> (index: int, found: bool) {
-    base_addr := cast(uintptr)raw_data(data)
-    end_addr  := cast(uintptr)ptr_offset(raw_data(data), len(data))
-    if addr := cast(uintptr)ptr; base_addr <= addr && addr < end_addr {
+ptr_index_safe :: proc "contextless" (ptr: ^$T, data: $S/[]T) -> (i: int, found: bool) {
+    base_addr := uintptr(raw_data(data))
+    end_addr  := uintptr(ptr_offset(raw_data(data), len(data)))
+    if addr := uintptr(ptr); base_addr <= addr && addr < end_addr {
         return ptr_index(ptr, data), true
     }
     return -1, false

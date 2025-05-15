@@ -1,14 +1,11 @@
 package lulu_main
 
 import "core:fmt"
-import "core:log"
 import "core:os"
-import "core:mem"
+@require import "core:log"
+@require import "core:mem"
 
 import "lulu"
-
-_ :: log
-_ :: mem
 
 USE_READLINE :: #config(USE_READLINE, ODIN_OS == .Linux)
 
@@ -43,12 +40,22 @@ main :: proc() {
 
     run_interactive :: proc(vm: ^lulu.VM) {
         buffer: [256]byte
+        defer free_all_lines()
 
         for {
             input := read_line(buffer[:]) or_break
+            need_return := len(input) > 0 && input[0] == '='
+            if need_return {
+                prev := input
+                input = lulu.push_fstring(vm, "return %s", prev[1:])
+                free_line(prev)
+            }
             // Interpret even if empty, this will return 0 registers.
             run_input(vm, input, "stdin")
-            free_line(input)
+
+            if !need_return {
+                free_line(input)
+            }
         }
     }
 
@@ -66,7 +73,17 @@ main :: proc() {
         if lulu.run(vm, input, source) != nil {
             err_msg, _ := lulu.to_string(vm, -1)
             fmt.eprintln(err_msg)
+            return
         }
+
+        fmt.printf("returned %i values: ", lulu.get_top(vm))
+        for i in 1..=lulu.get_top(vm) {
+            if i != 1 {
+                fmt.print(", ")
+            }
+            fmt.print(lulu.to_string(vm, i))
+        }
+        fmt.println()
     }
 
     vm, err := lulu.open()

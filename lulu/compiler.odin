@@ -39,7 +39,7 @@ Compiler :: struct {
     free_reg:    int,      // Index of the first free register.
     last_target: int,      // pc of the last jump target. See `FuncState::lasttarget`.
     list_jump:   int,      // List of pending chunks to `chunk.pc`. See `FuncState::jpc`.
-    n_code:      int,      // First free index in `chunk.code`.
+    pc:          int,      // First free index in `chunk.code`.
     is_print:    bool,     // HACK(2025-04-09): until `print` is a global runtime function
 }
 
@@ -69,16 +69,7 @@ compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
     c := &Compiler{}
     compiler_init(c, vm, p, chunk)
     parser_advance(p)
-
-    // Top level scope can also have its own locals.
-    compiler_begin_scope(c)
-    for !parser_match(p, .Eof) {
-        parser_parse(p, c)
-    }
-    parser_consume(p, .Eof)
-    compiler_code_return(c, 0, 0)
-    compiler_end_scope(c)
-    compiler_end(c)
+    parser_program(p, c)
 }
 
 compiler_end :: proc(c: ^Compiler) {
@@ -100,7 +91,7 @@ compiler_end_scope :: proc(c: ^Compiler) {
     reg    := small_array.len(c.active) - 1
     active := small_array.slice(&c.active)
     locals := c.chunk.locals[:c.count.locals]
-    endpc  := c.n_code
+    endpc  := c.pc
 
     // Don't pop registers as we'll go below the active count!
     for reg >= 0 {
@@ -228,8 +219,7 @@ expr_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
     need_value :: proc(c: ^Compiler, pc: int) -> bool {
         for list := pc; list != NO_JUMP; {
             next := get_jump(c, list)
-            ip := get_jump_control(c, list)
-            if ip.op != .Test_Set {
+            if ip := get_jump_control(c, list); ip.op != .Test_Set {
                 return true
             }
             list = next
@@ -270,10 +260,9 @@ expr_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
     }
 
     /*
-    **Notes**
-    -   (2025-04-09): Seemingly redundant but useful when we get to jumps.
-    -   (2025-05-12): Use `expr_make*` since we DO want to reset the jump lists
-        at this point; we just discharged them.
+    **Notes** (2025-05-12)
+    -   Use `expr_make*` since we DO want to reset the jump lists at this
+        point; we just discharged them.
      */
     e^ = expr_make(.Discharged, reg = reg)
 }
@@ -291,7 +280,7 @@ expr_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
 -   This seems to only apply to `compiler_code_nil()`.
  */
 compiler_get_label :: proc(c: ^Compiler) -> (pc: int) {
-    pc = c.n_code
+    pc = c.pc
     c.last_target = pc
     return pc
 }
@@ -339,13 +328,14 @@ discharge_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
     case .False:    compiler_code_boolean(c, reg, false)
     case .Number:
         index := compiler_add_constant(c, e.number)
-        compiler_code_ABx(c, .Load_Constant, reg, index)
-    case .Constant:      compiler_code_ABx(c, .Load_Constant, reg, e.index)
+        compiler_code(c, .Load_Constant, reg = reg, index = index)
+    case .Constant:
+        compiler_code(c, .Load_Constant, reg = reg, index = e.index)
     case .Need_Register: get_ip(c, e).a = reg
     case .Discharged:
         // e.g. getting a local variable
         if reg != e.reg {
-            compiler_code_ABC(c, .Move, reg, e.reg, 0)
+            compiler_code(c, .Move, ra = reg, rb = e.reg)
         }
     case:
         // Nothing to do?
@@ -372,18 +362,18 @@ discharge_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
 compiler_discharge_vars :: proc(c: ^Compiler, e: ^Expr) {
     #partial switch type := e.type; type {
     case .Global:
-        pc := compiler_code_ABx(c, .Get_Global, 0, e.index)
+        pc := compiler_code(c, .Get_Global, reg = 0, index = e.index)
         expr_set(e, .Need_Register, pc = pc)
     case .Local:
         // info is already the local register we resolved beforehand.
         expr_set(e, .Discharged, reg = e.reg)
     case .Table_Index:
+        table_reg := e.table.reg
+        key_reg   := e.table.key_reg
         // We can now reuse the registers allocated for the table and index.
-        table := e.table.reg
-        key   := e.table.key_reg
-        compiler_reg_pop(c, key)
-        compiler_reg_pop(c, table)
-        pc := compiler_code_ABC(c, .Get_Table, 0, table, key)
+        compiler_reg_pop(c, key_reg)
+        compiler_reg_pop(c, table_reg)
+        pc := compiler_code(c, .Get_Table, a = 0, b = table_reg, c = key_reg)
         expr_set(e, .Need_Register, pc = pc)
     }
 }
@@ -453,7 +443,7 @@ compiler_expr_rk :: proc(c: ^Compiler, e: ^Expr) -> (reg: u16) {
 
 
 compiler_code_boolean :: proc(c: ^Compiler, reg: u16, b: bool, skip := false) -> (pc: int) {
-    return compiler_code_ABC(c, .Load_Boolean, reg, u16(b), u16(skip))
+    return compiler_code(c, .Load_Boolean, a = reg, b = u16(b), c = u16(skip))
 }
 
 /*
@@ -464,10 +454,10 @@ compiler_code_nil :: proc(c: ^Compiler, reg, count: u16) {
     assert(count != 0, "Emitting 0 nils is invalid!")
 
     // No jumps to current position?
-    if pc := c.n_code; pc > c.last_target {
+    if pc := c.pc; pc > c.last_target {
         // Since we assume stack frames are initialized to `nil`, we don't need
         // to push `nil` when we're at the very start of the function.
-        if pc == 0 && /* !c.is_print && */ cast(int)reg >= small_array.len(c.active) {
+        if pc == 0 && cast(int)reg >= small_array.len(c.active) {
             return
         }
         // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
@@ -490,7 +480,7 @@ compiler_code_nil :: proc(c: ^Compiler, reg, count: u16) {
     }
 
     // No optimization.
-    compiler_code_AB(c, .Load_Nil, reg, reg + count - 1)
+    compiler_code(c, .Load_Nil, ra = reg, rb = reg + count - 1)
 }
 
 
@@ -507,28 +497,36 @@ compiler_code_return :: proc(c: ^Compiler, reg, nret: u16) {
     compiler_code_ABC(c, .Return, reg, nret, 0)
 }
 
-compiler_code_ABC :: proc(cl: ^Compiler, op: OpCode, a, b, c: u16) -> (pc: int) {
-    assert(opcode_info[op].type == .Separate)
-    return compiler_code(cl, ip_make(op, a, b, c))
+compiler_code :: proc {
+    compiler_code_ABC,
+    compiler_code_AB,
+    compiler_code_ABx,
+    compiler_code_AsBx,
 }
 
-compiler_code_AB :: proc(c: ^Compiler, op: OpCode, a, b: u16) -> (pc: int) {
+compiler_code_ABC :: proc(cl: ^Compiler, op: OpCode, a, b, c: u16) -> (pc: int) {
+    assert(opcode_info[op].type == .Separate)
+    return add_instruction(cl, ip_make(op, a, b, c))
+}
+
+compiler_code_AB :: proc(c: ^Compiler, op: OpCode, ra, rb: u16) -> (pc: int) {
     assert(opcode_info[op].type == .Separate)
     assert(opcode_info[op].a)
     assert(opcode_info[op].b != .Unused)
-    return compiler_code(c, ip_make(op, a, b, 0))
+    assert(opcode_info[op].c == .Unused)
+    return add_instruction(c, ip_make(op, ra, rb, 0))
 }
 
 compiler_code_ABx :: proc(c: ^Compiler, op: OpCode, reg: u16, index: u32) -> (pc: int) {
     assert(opcode_info[op].type == .Unsigned_Bx)
     assert(opcode_info[op].c == .Unused)
-    return compiler_code(c, ip_make(op, a = reg, bx = index))
+    return add_instruction(c, ip_make(op, a = reg, bx = index))
 }
 
 compiler_code_AsBx :: proc(c: ^Compiler, op: OpCode, reg: u16, jump: int) -> (pc: int) {
     assert(opcode_info[op].type == .Signed_Bx)
     assert(opcode_info[op].c == .Unused)
-    return compiler_code(c, ip_make(op, a = reg, sbx = jump))
+    return add_instruction(c, ip_make(op, a = reg, sbx = jump))
 }
 
 /*
@@ -540,9 +538,10 @@ compiler_code_AsBx :: proc(c: ^Compiler, op: OpCode, reg: u16, jump: int) -> (pc
 **TODO(2025-01-07)**
 -   Fix the line counter for folded constant expressions across multiple lines?
  */
-compiler_code :: proc(c: ^Compiler, i: Instruction) -> (pc: int) {
-    chunk_append(c.vm, c.chunk, i, c.parser.consumed.line, &c.n_code)
-    return c.n_code - 1
+@(private="file")
+add_instruction :: proc(c: ^Compiler, i: Instruction) -> (pc: int) {
+    chunk_append(c.vm, c.chunk, i, c.parser.consumed.line, &c.pc)
+    return c.pc - 1
 }
 
 ///=== }}} =====================================================================
@@ -665,7 +664,7 @@ compiler_code_not :: proc(c: ^Compiler, e: ^Expr) {
     discharge_any_reg(c, e)
     compiler_expr_pop(c, e^)
 
-    pc := compiler_code_AB(c, .Not, 0, e.reg)
+    pc := compiler_code(c, .Not, ra = 0, rb = e.reg)
     expr_set(e, .Need_Register, pc = pc)
 }
 
@@ -763,7 +762,7 @@ compiler_code_arith :: proc(c: ^Compiler, op: OpCode, left, right: ^Expr) {
     }
 
     // Argument A will be fixed down the line.
-    pc   := compiler_code_ABC(c, op, 0, rkb, rkc)
+    pc   := compiler_code(c, op, a = 0, b = rkb, c = rkc)
     left^ = expr_make(.Need_Register, pc = pc)
 }
 
@@ -892,7 +891,7 @@ compiler_code_set_array :: proc(c: ^Compiler, reg: u16, total, to_store: int) {
     -   We add 1 to distinguish from C == 0 which is a special case.
      */
     if offset := ((total - 1) / FIELDS_PER_FLUSH) + 1; offset <= MAX_C {
-        compiler_code_ABC(c, .Set_Array, reg, count, cast(u16)offset)
+        compiler_code(c, .Set_Array, a = reg, b = count, c = cast(u16)offset)
     } else {
         parser_error(c.parser,
             ".Set_Array with > MAX_C offset is not yet supported")
@@ -934,9 +933,8 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
         existing register (locals, temporaries).
      */
     case .Global:
-        reg   := compiler_expr_any_reg(c, expr)
-        index := var.index
-        compiler_code_ABx(c, .Set_Global, reg, index)
+        reg := compiler_expr_any_reg(c, expr)
+        compiler_code(c, .Set_Global, reg = reg, index = var.index)
     /*
     -   `var.table` already refers to the target table and key.
     -   `e` can be emitted to an RK register as is defined in `opcode.odin`.
@@ -946,7 +944,7 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
     case .Table_Index:
         table := var.table
         value := compiler_expr_rk(c, expr)
-        compiler_code_ABC(c, .Set_Table, table.reg, table.key_reg, value)
+        compiler_code(c, .Set_Table, a = table.reg, b = table.key_reg, c = value)
     case:
         unreachable("Invalid variable kind %v", var.type)
     }
@@ -986,7 +984,7 @@ compiler_code_test :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: int)
     Lua 5.1.5.
 */
 compiler_code_cond_jump :: proc(cl: ^Compiler, op: OpCode, a, b, c: u16) -> (jump_pc: int) {
-    compiler_code_ABC(cl, op, a, b, c)
+    compiler_code(cl, op, a, b, c)
     return compiler_code_jump(cl)
 }
 
@@ -1007,7 +1005,7 @@ compiler_code_cond_jump :: proc(cl: ^Compiler, op: OpCode, a, b, c: u16) -> (jum
 */
 compiler_code_jump :: proc(c: ^Compiler, child := NO_JUMP) -> (pc: int) {
     // TODO(2025-05-13): Add compiler saved jump pc?
-    pc = compiler_code_AsBx(c, .Jump, 0, child)
+    pc = compiler_code(c, .Jump, reg = 0, jump = child)
     if child != NO_JUMP {
         set_jump(c, pc, child)
     }
@@ -1036,7 +1034,7 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: i
         if e.type == .Need_Register {
             if ip := get_ip(c, e); ip.op == .Not {
                 // remove previous `not`
-                c.n_code -= 1
+                c.pc -= 1
                 return compiler_code_cond_jump(c, .Test_Set, ip.b, 0, u16(cond))
             }
             // otherwise, go through
@@ -1064,6 +1062,8 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: i
 
     // only occurs in nested logicals
     if to_patch^ != NO_JUMP {
+        // `NO_REG` is necessary if we want to convert a `.Test_Set` to mere
+        // `.Test` by this point.
         reg := NO_REG if pc == NO_JUMP else u16(c.free_reg)
         compiler_patch_jump(c, pc = to_patch^, reg = reg)
         to_patch^ = NO_JUMP

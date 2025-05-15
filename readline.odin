@@ -17,24 +17,22 @@ foreign import gnu_history "system:history"
 
 // https://www.lua.org/source/5.1/luaconf.h.html#lua_readline
 foreign gnu_readline {
-    @(link_name="readline")
-    _readline :: proc "c" (prompt: cstring) -> cstring ---
+    readline :: proc "c" (prompt: cstring) -> cstring ---
 }
 
 foreign gnu_history {
-    @(link_name="add_history")
-    _add_history :: proc "c" (buffer: cstring) ---
+    add_history :: proc "c" (buffer: cstring) ---
+    clear_history :: proc "c" () ---
 }
 
 read_line :: proc(buffer: []byte) -> (line: string, ok: bool) {
-    s := _readline(PROMPT)
+    s := readline(PROMPT)
     // Minor QOL; users rarely want to jump back to empty lines!
     if line, ok = string(s), s != nil; ok && line != "" {
-        _add_history(s)
+        add_history(s)
     }
     return line, ok
 }
-
 
 /*
 **Notes**
@@ -43,6 +41,10 @@ read_line :: proc(buffer: []byte) -> (line: string, ok: bool) {
  */
 free_line :: proc(line: string) {
     libc.free(cast(rawptr)strings.unsafe_string_to_cstring(line))
+}
+
+free_all_lines :: proc() {
+    clear_history()
 }
 
 
@@ -56,8 +58,8 @@ read_line :: proc(buffer: []byte) -> (line: string, ok: bool) {
     return string(buffer[:n_read]), err == nil
 }
 
-free_line :: proc(line: string) {
-    // Nothing to do, just keep around for consistency
-}
+// Nothing to do, just keep around for consistency.
+free_line :: proc(line: string) {}
+free_all_lines :: proc() {}
 
 }

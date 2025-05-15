@@ -6,7 +6,7 @@ import "core:mem"
 import "core:fmt"
 
 Object :: struct {
-    type:  Value_Type  `fmt:"s"`,
+    type:  Type  `fmt:"s"`,
     prev: ^Object      `fmt:"p"`,
 }
 

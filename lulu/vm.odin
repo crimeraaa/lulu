@@ -6,6 +6,7 @@ import "core:c/libc"
 import "core:fmt"
 import "core:mem"
 import "core:strings"
+import "core:slice"
 
 Error_Handler :: struct {
     prev:  ^Error_Handler,
@@ -29,10 +30,10 @@ vm_throw :: proc(vm: ^VM, code: Error) -> ! {
     }
 }
 
-vm_get_builder :: proc(vm: ^VM) -> (builder: ^strings.Builder) {
-    builder = &vm.builder
-    strings.builder_reset(builder)
-    return builder
+vm_get_builder :: proc(vm: ^VM) -> (b: ^strings.Builder) {
+    b = &vm.builder
+    strings.builder_reset(b)
+    return b
 }
 
 vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, args: ..any) -> ! {
@@ -94,10 +95,31 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 }
 
 vm_check_stack :: proc(vm: ^VM, extra: int) {
-    stack_end := &vm.stack[len(vm.stack) - 1]
+    stack_end :=  len(vm.stack_all) - 1
+    view_end   := ptr_index(vm_view_ptr(vm, .Top), vm.stack_all)
     // Remaining stack slots can't accomodate `extra` values?
-    if ptr_sub(cast([^]Value)stack_end, vm.top) <= extra {
+    if stack_end - view_end <= extra {
         vm_grow_stack(vm, extra)
+    }
+}
+
+@(private="package")
+View_Mode :: enum {
+    Base, Top
+}
+
+vm_view_index_in_stack :: proc(vm: ^VM, $mode: View_Mode) -> int {
+    return ptr_index(vm_view_ptr(vm, mode), vm.stack_all)
+}
+
+
+vm_view_ptr :: proc(vm: ^VM, $end: View_Mode) -> [^]Value {
+    when end == .Base {
+        return raw_data(vm.view)
+    } else when end == .Top {
+        return ptr_offset(raw_data(vm.view), get_top(vm))
+    } else {
+        #panic("Invalid mode")
     }
 }
 
@@ -109,21 +131,20 @@ vm_check_stack :: proc(vm: ^VM, extra: int) {
 vm_grow_stack :: proc(vm: ^VM, extra: int) {
     new_size := extra
     // Can we just simply double the stack size?
-    if new_size <= len(vm.stack) {
-        new_size = len(vm.stack) * 2
+    if new_size <= len(vm.stack_all) {
+        new_size = len(vm.stack_all) * 2
     } else {
-        new_size += len(vm.stack)
+        new_size += len(vm.stack_all)
     }
     // Save the indexes now because the old data will be invalidated
-    old_base := ptr_index(vm.base, vm.stack)
-    old_top  := ptr_index(vm.top, vm.stack)
-    slice_resize(vm, &vm.stack, new_size)
-    vm.top   = &vm.stack[old_top]
-    vm.base  = &vm.stack[old_base]
+    base := ptr_index(raw_data(vm.view), vm.stack_all)
+    size := get_top(vm)
+    slice_resize(vm, &vm.stack_all, new_size)
+    vm.view = vm.stack_all[base:base + size]
 }
 
 vm_destroy :: proc(vm: ^VM) {
-    delete(vm.stack, vm.allocator)
+    delete(vm.stack_all, vm.allocator)
     intern_destroy(&vm.interned)
     table_destroy(vm, &vm.globals)
 
@@ -132,8 +153,7 @@ vm_destroy :: proc(vm: ^VM) {
     }
     object_free_all(vm)
     strings.builder_destroy(&vm.builder)
-    vm.top      = nil
-    vm.base     = nil
+    vm.view     = {}
     vm.objects  = nil
     vm.chunk    = nil
 }
@@ -156,14 +176,12 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
             debug_dump_chunk(chunk, len(chunk.code))
         }
         vm_check_stack(vm, chunk.stack_used)
-        // Set up stack frame
-        vm.base  = &vm.stack[0]
-        vm.top   = &vm.stack[chunk.stack_used]
+        vm.view  = vm.stack_all[:chunk.stack_used]
         vm.chunk = chunk
 
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
-        for &slot in vm.base[:chunk.stack_used] {
+        for &slot in vm.view {
             slot = value_make()
         }
         vm_execute(vm)
@@ -289,11 +307,13 @@ vm_execute :: proc(vm: ^VM) {
     chunk     := vm.chunk
     constants := chunk.constants
     globals   := &vm.globals
-    stack     := vm.base[:chunk.stack_used]
+    stack     := vm.view
     ip        := raw_data(chunk.code) // Don't deref; use `incr_ip()`
 
-    ip_left_pad    := count_digits(len(chunk.code))
-    stack_left_pad := count_digits(len(stack))
+    when DEBUG_TRACE_EXEC {
+        ip_left_pad    := count_digits(len(chunk.code))
+        stack_left_pad := count_digits(len(stack))
+    }
 
     for {
         read := incr_ip(&ip)
@@ -439,8 +459,15 @@ vm_execute :: proc(vm: ^VM) {
             incr_ip(&ip, offset)
         case .Return:
             // if ip.c != 0 then we have a vararg
-            nret := cast(int)read.b if read.c == 0 else get_top(vm)
-            vm.top = &stack[cast(int)read.a + nret]
+            n := cast(int)read.b if read.c == 0 else get_top(vm)
+            results := slice.from_ptr(ra, n)
+            final   := stack[:n]
+            // Overwrite registers 0 up to n
+            for &slot, reg in final {
+                slot = results[reg]
+            }
+            vm.view = final
+
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
             return
         case:
@@ -463,6 +490,5 @@ vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
 
 @(private="file")
 reset_stack :: proc(vm: ^VM) {
-    vm.base = &vm.stack[0]
-    vm.top  = vm.base
+    vm.view = vm.stack_all[0:0]
 }
