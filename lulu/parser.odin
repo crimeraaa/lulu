@@ -174,6 +174,9 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
 -   https://www.lua.org/source/5.1/lparser.c.html#singlevar
  */
 assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
+    // Needs to be addressable
+    last := last
+
     // Don't call `variable()` for the first assignment because we did so already
     // to check for function calls.
     if n_vars > 1 {
@@ -186,42 +189,46 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
         parser_recurse_begin(p)
         assignment(p, c, &Assign{prev = last}, n_vars + 1)
         parser_recurse_end(p)
-        // Parents of recursive calls will always go to base cases because their
-        // values are guaranteed to be pushed to the stack.
-    } else {
-        parser_consume(p, .Equals)
-
-        /*
-        **Notes** (2025-04-18):
-        -   We don't want to immediately push `expr`. This is an optimization
-            mainly for the last occurence of `Expr_Type.Table_Index`.
-        -   We want to handle each recursive call's associated expression.
-         */
-        top, n_exprs := expr_list(p, c)
-        if n_exprs == n_vars {
-            // luaK_setoneret(ls->fs, &e)
-            compiler_store_var(c, &last.variable, &top)
-            return // Avoid base case to prevent needless popping.
-        }
-        adjust_assign(c, n_vars, n_exprs, &top)
-        // Go to base case as our value is on the top of the stack.
+        return
     }
+    parser_consume(p, .Equals)
 
     /*
-    **Overview**
-    -   Base case. We just push to the next register no matter what.
-
-    **Assumptions**
-    -   `expr_list()` pushed all expressions except the last.
-
-    **Guarantees**
-    -   As we unwind the recursive call stack, we keep decrementing
-        `c.free_reg`.
-    -   `c.free_reg - 1` (the current top) is the register of the desired
-        value for the current assignment target.
+    **Notes** (2025-04-18):
+    -   We don't want to immediately push `expr`. This is an optimization
+        mainly for the last occurence of `Expr_Type.Table_Index`.
+    -   We want to handle each recursive call's associated expression.
      */
-    e := expr_make(.Discharged, reg = cast(u16)c.free_reg - 1)
-    compiler_store_var(c, &last.variable, &e)
+    top, n_exprs := expr_list(p, c)
+    iter: ^Assign
+    if n_exprs == n_vars {
+        // luaK_setoneret(ls->fs, &e) // Used for `Call` or `Vararg`
+        compiler_store_var(c, &last.variable, &top)
+
+        // `last` is already properly assigned, so skip it
+        iter = last.prev
+    } else {
+        adjust_assign(c, n_vars, n_exprs, &top)
+        iter = last
+    }
+
+    for target in assign_list(&iter) {
+        e := expr_make(.Discharged, reg = cast(u16)c.free_reg - 1)
+        compiler_store_var(c, &target.variable, &e)
+    }
+}
+
+assign_list :: proc(iter: ^^Assign) -> (a: ^Assign, ok: bool) {
+    // Current iteration
+    a = iter^
+
+    // Exhausted iterator
+    if ok = (a == nil); ok {
+        // Prepare for next iteration
+        iter^ = a.prev
+        return a, true
+    }
+    return a, ok
 }
 
 
