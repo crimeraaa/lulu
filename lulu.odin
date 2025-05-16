@@ -39,23 +39,13 @@ main :: proc() {
     }
 
     run_interactive :: proc(vm: ^lulu.VM) {
-        buffer: [256]byte
-        defer free_all_lines()
+        defer clear_lines()
 
         for {
-            input := read_line(buffer[:]) or_break
-            need_return := len(input) > 0 && input[0] == '='
-            if need_return {
-                prev := input
-                input = lulu.push_fstring(vm, "return %s", prev[1:])
-                free_line(prev)
-            }
+            input := read_line(vm) or_break
             // Interpret even if empty, this will return 0 registers.
             run_input(vm, input, "stdin")
-
-            if !need_return {
-                free_line(input)
-            }
+            // TODO(2025-05-16): Handle incomplete lines?
         }
     }
 
@@ -70,8 +60,8 @@ main :: proc() {
     }
 
     run_input :: proc(vm: ^lulu.VM, input, source: string) {
-        if lulu.run(vm, input, source) != nil {
-            err_msg, _ := lulu.to_string(vm, -1)
+        if lulu.run(vm, input, source) != .Ok {
+            err_msg := lulu.to_string(vm, -1)
             fmt.eprintln(err_msg)
             return
         }

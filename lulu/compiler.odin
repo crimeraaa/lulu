@@ -3,7 +3,6 @@ package lulu
 
 import "core:fmt"
 import "base:builtin"
-import "core:log"
 import "core:container/small_array"
 
 MAX_LOCALS    :: 200
@@ -129,7 +128,7 @@ compiler_reg_pop :: proc(c: ^Compiler, reg: u16) {
     // Only pop if nonconstant and not the register of an existing local.
     if !reg_is_k(reg) && cast(int)reg >= small_array.len(c.active) {
         c.free_reg -= 1
-        log.assertf(cast(int)reg == c.free_reg, "free_reg := %i but reg := %i",
+        fmt.assertf(cast(int)reg == c.free_reg, "free_reg := %i but reg := %i",
             c.free_reg, reg)
     }
 }

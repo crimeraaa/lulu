@@ -25,6 +25,7 @@ ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     return true
 }
 
+
 /*
 **Notes** (2025-01-13)
 -   These strings are compatible with C-style strings.

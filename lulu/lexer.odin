@@ -442,7 +442,7 @@ consume_multiline :: proc(l: ^Lexer, opening: int, $is_comment: bool) {
 
 lexer_error :: proc(l: ^Lexer, msg: string, lexeme := "") -> ! {
     lexeme := l.input[l.start:l.current] if lexeme == "" else lexeme
-    vm_compile_error(l.vm, l.source, l.line, "%s at '%s'", msg, lexeme)
+    vm_syntax_error(l.vm, l.source, l.line, "%s at '%s'", msg, lexeme)
 }
 
 @(require_results)

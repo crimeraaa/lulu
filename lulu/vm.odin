@@ -25,6 +25,7 @@ vm_throw :: proc(vm: ^VM, code: Error) -> ! {
         intrinsics.volatile_store(&handler.code, code)
         libc.longjmp(&handler.buffer, 1)
     } else {
+        fmt.eprintln("Unprotected call to Lulu API")
         // Nothing much else can be done in this case.
         libc.exit(libc.EXIT_FAILURE)
     }
@@ -36,11 +37,11 @@ vm_get_builder :: proc(vm: ^VM) -> (b: ^strings.Builder) {
     return b
 }
 
-vm_compile_error :: proc(vm: ^VM, source: string, line: int, format: string, args: ..any) -> ! {
+vm_syntax_error :: proc(vm: ^VM, source: string, line: int, format: string, args: ..any) -> ! {
     push_fstring(vm, "%s:%i: ", source, line)
     push_fstring(vm, format, ..args)
     concat(vm, 2)
-    vm_throw(vm, .Compile_Error)
+    vm_throw(vm, .Syntax)
 }
 
 vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
@@ -52,7 +53,7 @@ vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
     push_fstring(vm, "%s:%i: ", source, line)
     push_fstring(vm, format, ..args)
     concat(vm, 2)
-    vm_throw(vm, .Runtime_Error)
+    vm_throw(vm, .Runtime)
 }
 
 vm_memory_error :: proc(vm: ^VM) -> ! {
@@ -96,28 +97,49 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 
 vm_check_stack :: proc(vm: ^VM, extra: int) {
     stack_end :=  len(vm.stack_all) - 1
-    view_end   := ptr_index(vm_view_ptr(vm, .Top), vm.stack_all)
+    view_end   := vm_view_absindex(vm, .Top)
     // Remaining stack slots can't accomodate `extra` values?
     if stack_end - view_end <= extra {
         vm_grow_stack(vm, extra)
     }
 }
 
-@(private="package")
-View_Mode :: enum {
-    Base, Top
-}
+View_Mode :: enum {Base, Top}
 
-vm_view_index_in_stack :: proc(vm: ^VM, $mode: View_Mode) -> int {
+/*
+**Overview**
+-   Get the absolute index of `&vm.view[0]` or `&vm.view[len(vm.view)]` in
+    `vm.stack_all`.
+
+**Example**
+-   `vm.stack_all` is `[nil, true, false, 3.14, "Hi mom!"]`
+
+```odin
+vm.view = vm.stack_all[2:4]
+vm_view_absindex(vm, .Base) // view index 0 is stack index 2
+vm.view_absindex(vm, .Top)  // view index 2 is stack index 4
+```
+ */
+vm_view_absindex :: proc(vm: ^VM, $mode: View_Mode) -> int {
     return ptr_index(vm_view_ptr(vm, mode), vm.stack_all)
 }
 
 
-vm_view_ptr :: proc(vm: ^VM, $end: View_Mode) -> [^]Value {
-    when end == .Base {
+/*
+**Warning**
+-   For `View_Mode.Top`, pointer will be 1 past the last valid element in
+    `vm.view`.
+-   It is NOT safe to assume you can dereference index 0, or any indexes above.
+-   This is because it is possible for `&vm.view[len(vm.view)]` to be the same
+    as `&vm.stack_all[len(vm.stack_all)]`.
+-   In that case it will point to 1 past the last valid element in the main
+    stack.
+ */
+vm_view_ptr :: proc(vm: ^VM, $mode: View_Mode) -> [^]Value {
+    when mode == .Base {
         return raw_data(vm.view)
-    } else when end == .Top {
-        return ptr_offset(raw_data(vm.view), get_top(vm))
+    } else when mode == .Top {
+        return ptr_offset(raw_data(vm.view), len(vm.view))
     } else {
         #panic("Invalid mode")
     }
@@ -137,10 +159,13 @@ vm_grow_stack :: proc(vm: ^VM, extra: int) {
         new_size += len(vm.stack_all)
     }
     // Save the indexes now because the old data will be invalidated
-    base := ptr_index(raw_data(vm.view), vm.stack_all)
-    size := get_top(vm)
+    // This is safe even on the very first call, because *both* `stack_all` and
+    // `view` are `nil`. Pointer subtraction, after casting to `uintptr`,
+    // results in `0`.
+    base := vm_view_absindex(vm, .Base)
+    top  := base + get_top(vm)
     slice_resize(vm, &vm.stack_all, new_size)
-    vm.view = vm.stack_all[base:base + size]
+    vm.view = vm.stack_all[base:top]
 }
 
 vm_destroy :: proc(vm: ^VM) {
@@ -158,6 +183,15 @@ vm_destroy :: proc(vm: ^VM) {
     vm.chunk    = nil
 }
 
+
+/*
+**Assumptions**
+-   `input` was previously pushed to the VM stack. It probably resides at index
+    0 or 1.
+-   It is valid for the entire call to `compiler_compile` because the VM stack
+    is not modified nor reallocated at any point there.
+-   Once we start execution, however, its register will be overriden.
+ */
 vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
     Data :: struct {
         chunk:  Chunk,
@@ -249,7 +283,7 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    arith_op :: proc(vm: ^VM, ip: [^]Instruction, op: Number_Arith_Proc, ra, left, right: ^Value) {
+    arith_op :: proc(vm: ^VM, ip: [^]Instruction, $op: Number_Arith_Proc, ra, left, right: ^Value) {
         if !value_is_number(left^) || !value_is_number(right^) {
             arith_error(vm, ip, left, right)
         }
@@ -257,7 +291,7 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    compare_op :: proc(vm: ^VM, ip: ^[^]Instruction, op: Number_Compare_Proc, left, right: ^Value) {
+    compare_op :: proc(vm: ^VM, ip: ^[^]Instruction, $op: Number_Compare_Proc, left, right: ^Value) {
         if !value_is_number(left^) || !value_is_number(right^) {
             compare_error(vm, ip^, left, right)
         }
@@ -296,6 +330,7 @@ vm_execute :: proc(vm: ^VM) {
         debug_type_error(vm, culprit, "index")
     }
 
+    // Mimic C-style `*ip++`.
     incr_ip :: #force_inline proc "contextless" (ip: ^[^]Instruction, offset := 1) -> Instruction {
         defer ip^ = ptr_offset(ip^, offset)
         // pointer-to-indexable (slice, multipointer) can be indexed directly
@@ -462,10 +497,15 @@ vm_execute :: proc(vm: ^VM) {
             n := cast(int)read.b if read.c == 0 else get_top(vm)
             results := slice.from_ptr(ra, n)
             final   := stack[:n]
-            // Overwrite registers 0 up to n
+
+            // Overwrite registers 0 up to n; later on, when we have function
+            // calls, callers will have their results in the right place.
             for &slot, reg in final {
                 slot = results[reg]
             }
+
+            // TODO(2025-05-16): Don't do this when we have function calls;
+            // because it will invalidate the caller's stack frame/view!
             vm.view = final
 
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
@@ -477,14 +517,14 @@ vm_execute :: proc(vm: ^VM) {
 }
 
 vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
-    builder := vm_get_builder(vm)
+    b := vm_get_builder(vm)
     for &arg in args {
         if !value_is_string(arg) {
             debug_type_error(vm, &arg, "concatenate")
         }
-        strings.write_string(builder, value_as_string(arg))
+        strings.write_string(b, value_as_string(arg))
     }
-    s := strings.to_string(builder^)
+    s := strings.to_string(b^)
     ra^ = value_make(ostring_new(vm, s))
 }
 

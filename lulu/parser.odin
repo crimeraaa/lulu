@@ -608,8 +608,8 @@ error_at :: proc(p: ^Parser, token: Token, msg: string) -> ! {
     source := p.lexer.source
     line   := token.line
     // .Eof token: don't use lexeme as it'll just be an empty string.
-    location := token.lexeme if token.type != .Eof else token_type_strings[.Eof]
-    vm_compile_error(p.vm, source, line, "%s at '%s'", msg, location)
+    loc := token.lexeme if token.type != .Eof else token_type_strings[.Eof]
+    vm_syntax_error(p.vm, source, line, "%s at '%s'", msg, loc)
 }
 
 

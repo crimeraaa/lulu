@@ -26,9 +26,9 @@ Type :: enum {
 }
 
 Error :: enum {
-    None,
-    Compile_Error,
-    Runtime_Error,
+    Ok,
+    Syntax,
+    Runtime,
     Out_Of_Memory,
 }
 
@@ -78,8 +78,9 @@ get_top :: proc(vm: ^VM) -> (index: int) {
 }
 
 
-pop :: proc(vm: ^VM, count: int) {
-    vm.view = vm.view[:len(vm.view) - 1]
+pop :: proc(vm: ^VM, n := 1) {
+    // This is generally safe, because we are *shrinking* the view.
+    vm.view = vm.view[:len(vm.view) - n]
 }
 
 
@@ -124,6 +125,15 @@ push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (s: string) {
     return push_string(vm, fmt.sbprintf(b, format, ..args))
 }
 
+/*
+**Overview**
+-   Pushes a copy of the value at index `i`.
+ */
+push_value :: proc(vm: ^VM, i: int) {
+    v := poke(vm, i)^
+    push_rawvalue(vm, v)
+}
+
 
 /*
 **Brief**
@@ -145,8 +155,11 @@ push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (s: string) {
  */
 @(private="package")
 push_rawvalue :: proc(vm: ^VM, v: Value) {
-    base := vm_view_index_in_stack(vm, .Base)
-    top  := vm_view_index_in_stack(vm, .Top)
+    // Could do something unsafe like:
+    //      `vm.view = slice.from_ptr(raw_data(vm.view), len(vm.view) + 1)`
+    // But then we don't have bounds checking on the full stack.
+    base := vm_view_absindex(vm, .Base)
+    top  := vm_view_absindex(vm, .Top)
     vm.view = vm.stack_all[base:top + 1]
     poke_top(vm, -1)^ = v
 }
@@ -154,7 +167,7 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
 
 ///=== }}} =====================================================================
 
-///=== VM TYPE CONVERSION API ============================================== {{{
+///=== VM TYPE MANIPULATION API ============================================ {{{
 
 
 type :: proc(vm: ^VM, i: int) -> Type {
@@ -165,7 +178,34 @@ type_name :: proc(vm: ^VM, i: int) -> string {
     return value_type_name(poke(vm, i)^)
 }
 
+is_nil :: proc(vm: ^VM, i: int) -> bool {
+    return value_is_nil(poke(vm, i)^)
+}
+
+is_boolean :: proc(vm: ^VM, i: int) -> bool {
+    return value_is_nil(poke(vm, i)^)
+}
+
+is_number :: proc(vm: ^VM, i: int) -> bool {
+    return value_is_number(poke(vm, i)^)
+}
+
+is_string :: proc(vm: ^VM, i: int) -> bool {
+    return value_is_string(poke(vm, i)^)
+}
+
+is_table :: proc(vm: ^VM, i: int) -> bool {
+    return value_is_table(poke(vm, i)^)
+}
+
+
 /*
+**Overview**
+-   Convert the value at index `i` to a boolean, if it is not one already.
+
+**Returns**
+-   The boolean representation of the value.
+
 **Notes** (2025-05-13)
 -   If the value at relative index `i` is not yet a boolean, we will convert it
     to one first.
@@ -180,6 +220,13 @@ to_boolean :: proc(vm: ^VM, i: int) -> bool {
 
 
 /*
+**Overview**
+-   Convert the value at index `i` to a string, if it is not one already.
+
+**Returns**
+-   The interned string representation of the value, and a boolean indicating
+    success.
+
 **Analogous to**
 -   `lapi.c:lua_tolstring(lua_State *L, int index, size_t *len)` in Lua 5.1.5.
 
@@ -207,6 +254,14 @@ to_string :: proc(vm: ^VM, i: int) -> (s: string, ok: bool) #optional_ok {
     return value_as_string(v^), true
 }
 
+
+/*
+**Overview**
+-   Convert the value at index `i` to a number, if it is not one already.
+
+**Returns**
+-   The number representation of the value, and a boolean indicating success.
+ */
 to_number :: proc(vm: ^VM, i: int) -> (n: f64, ok: bool) #optional_ok {
     v := poke(vm, i)
     if !value_is_number(v^) {
@@ -244,7 +299,7 @@ set_global :: proc(vm: ^VM, key: string) {
     k := value_make(ostring_new(vm, key))
     v := poke_top(vm, -1)^
     table_set(vm, &vm.globals, k, v)
-    pop(vm, 1)
+    pop(vm)
 }
 
 ///=== }}} =====================================================================
