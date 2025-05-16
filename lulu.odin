@@ -71,7 +71,13 @@ main :: proc() {
             if i != 1 {
                 fmt.print(", ")
             }
-            fmt.print(lulu.to_string(vm, i))
+            switch lulu.type(vm, i) {
+            case .Nil:      fmt.print("nil")
+            case .Boolean:  fmt.print(lulu.to_boolean(vm, i))
+            case .Number:   fmt.print(lulu.to_number(vm, i))
+            case .String:   fmt.print(lulu.to_string(vm, i))
+            case .Table:    fmt.printf("%s: %p", lulu.type_name(vm, i), lulu.to_pointer(vm, i))
+            }
         }
         fmt.println()
     }

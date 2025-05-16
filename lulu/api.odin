@@ -91,6 +91,11 @@ poke :: proc(vm: ^VM, i: int) -> ^Value {
 }
 
 @(private="file")
+peek :: proc(vm: ^VM, i: int) -> Value {
+    return poke(vm, i)^
+}
+
+@(private="file")
 poke_base :: proc(vm: ^VM, i: int) -> ^Value {
     assert(i >= 0)
     return &vm.view[i]
@@ -130,8 +135,7 @@ push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (s: string) {
 -   Pushes a copy of the value at index `i`.
  */
 push_value :: proc(vm: ^VM, i: int) {
-    v := poke(vm, i)^
-    push_rawvalue(vm, v)
+    push_rawvalue(vm, peek(vm, i))
 }
 
 
@@ -175,80 +179,83 @@ type :: proc(vm: ^VM, i: int) -> Type {
 }
 
 type_name :: proc(vm: ^VM, i: int) -> string {
-    return value_type_name(poke(vm, i)^)
+    return value_type_name(peek(vm, i))
 }
 
 is_nil :: proc(vm: ^VM, i: int) -> bool {
-    return value_is_nil(poke(vm, i)^)
+    return value_is_nil(peek(vm, i))
 }
 
 is_boolean :: proc(vm: ^VM, i: int) -> bool {
-    return value_is_nil(poke(vm, i)^)
+    return value_is_nil(peek(vm, i))
 }
 
 is_number :: proc(vm: ^VM, i: int) -> bool {
-    return value_is_number(poke(vm, i)^)
+    return value_is_number(peek(vm, i))
 }
 
 is_string :: proc(vm: ^VM, i: int) -> bool {
-    return value_is_string(poke(vm, i)^)
+    return value_is_string(peek(vm, i))
 }
 
 is_table :: proc(vm: ^VM, i: int) -> bool {
-    return value_is_table(poke(vm, i)^)
+    return value_is_table(peek(vm, i))
 }
 
 
 /*
 **Overview**
--   Convert the value at index `i` to a boolean, if it is not one already.
+-   Gets the boolean representation of the value at stack index `i`.
 
-**Returns**
--   The boolean representation of the value.
+**Analogous to**
+-   `lapi.c:lua_toboolean(lua_State *L, int i)` in Lua 5.1.5.
 
 **Notes** (2025-05-13)
--   If the value at relative index `i` is not yet a boolean, we will convert it
-    to one first.
+-   If the value at relative index `i` is not a boolean, we do not convert it.
  */
 to_boolean :: proc(vm: ^VM, i: int) -> bool {
-    v := poke(vm, i)
-    if !value_is_boolean(v^) {
-        v^ = value_make(!value_is_falsy(v^))
-    }
-    return v.boolean
+    return !value_is_falsy(peek(vm, i))
 }
 
 
 /*
 **Overview**
--   Convert the value at index `i` to a string, if it is not one already.
+-   Gets the number representation of the value at stack index `i`.
+-   If it is not already a number nor a string convertible to a number, `ok`
+    is set to `false`.
 
-**Returns**
--   The interned string representation of the value, and a boolean indicating
-    success.
+**Analogous to**
+-   `lapi.c:lua_tonumber(lua_State *L, int i)` in Lua 5.1.5.
+ */
+to_number :: proc(vm: ^VM, i: int) -> (n: f64, ok: bool) #optional_ok {
+    v := peek(vm, i)
+    if !value_is_number(v) {
+        // Only strings are potentially convertible to numbers.
+        value_is_string(v) or_return
+
+        // Check if string can be parsed into a number.
+        n = string_to_number(value_as_string(v)) or_return
+        return n, true
+    }
+    return v.number, true
+}
+
+
+/*
+**Overview**
+-   Get the string representation of the value at stack index `i`.
+-   If the value is a number, it is converted to a string. This also affects
+    the value in the stack.
+-   Other types are not implicitly converted to strings.
 
 **Analogous to**
 -   `lapi.c:lua_tolstring(lua_State *L, int index, size_t *len)` in Lua 5.1.5.
-
-**Notes** (2025-05-14):
--   Unlike Lua, this API function allows values at index `i` to be of any type.
--   If we add metamethods (specifically `__tostring`), we should decide if
-    we want this function to call that or to just use the default behavior.
--   The idea is that the global `tostring()` function should handle that!
  */
 to_string :: proc(vm: ^VM, i: int) -> (s: string, ok: bool) #optional_ok {
     v := poke(vm, i)
-    o: ^OString
-    switch v.type {
-    case .Nil:     o = ostring_new(vm, "nil")
-    case .Boolean: o = ostring_new(vm, "true" if v.boolean else "false")
-    case .Number:  o = ostringf_new(vm, NUMBER_FMT, v.number)
-    case .String:  break
-    case .Table:   o = ostringf_new(vm, "%s: %p", value_type_name(v^), v.table)
-    case:
-        unreachable("Cannot convert value type %v to a string", v.type)
-    }
-    if o != nil {
+    if !value_is_string(v^) {
+        value_is_number(v^) or_return
+        o := ostringf_new(vm, NUMBER_FMT, v.number)
         v^ = value_make(o)
     }
     return value_as_string(v^), true
@@ -257,19 +264,13 @@ to_string :: proc(vm: ^VM, i: int) -> (s: string, ok: bool) #optional_ok {
 
 /*
 **Overview**
--   Convert the value at index `i` to a number, if it is not one already.
-
-**Returns**
--   The number representation of the value, and a boolean indicating success.
+-   Gets the pointer representation of the value at index `i`.
+-   Only 'objects', mainly values of type `table`, represented as a pointer.
  */
-to_number :: proc(vm: ^VM, i: int) -> (n: f64, ok: bool) #optional_ok {
-    v := poke(vm, i)
-    if !value_is_number(v^) {
-        value_is_string(v^) or_return
-        n  = string_to_number(value_as_string(v^)) or_return
-        v^ = value_make(n)
-    }
-    return v.number, true
+to_pointer :: proc(vm: ^VM, i: int) -> (p: rawptr, ok: bool) #optional_ok {
+    v := peek(vm, i)
+    value_is_table(v) or_return
+    return v.table, true
 }
 
 
