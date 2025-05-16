@@ -212,6 +212,8 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
         iter = last
     }
 
+    // Assign from right-to-left, using each topmost register as the assigning
+    // value and popping it if possible.
     for target in assign_list(&iter) {
         e := expr_make(.Discharged, reg = cast(u16)c.free_reg - 1)
         compiler_store_var(c, &target.variable, &e)
@@ -219,14 +221,16 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
 }
 
 assign_list :: proc(iter: ^^Assign) -> (a: ^Assign, ok: bool) {
-    // Current iteration
+    // Current iteration.
     a = iter^
 
-    // Exhausted iterator
-    if ok = (a == nil); ok {
-        // Prepare for next iteration
+    // Have we exhausted the iterator?
+    ok = (a != nil)
+
+    // Prepare for next iteration, but only if we haven't exhausted the
+    // iterator.
+    if ok {
         iter^ = a.prev
-        return a, true
     }
     return a, ok
 }
