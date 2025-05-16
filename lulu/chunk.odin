@@ -67,16 +67,17 @@ chunk_append :: proc(vm: ^VM, c: ^Chunk, i: Instruction, line: int, pc: ^int) {
  -  The index will be needed later on for opcodes to access the value in the
     constants table.
  */
-chunk_add_constant :: proc(vm: ^VM, c: ^Chunk, value: Value, limit: ^int) -> (index: u32) {
+chunk_add_constant :: proc(vm: ^VM, c: ^Chunk, v: Value, limit: ^int) -> (index: u32) {
     // Linear search is theoretically very slow!
-    for constant, index in c.constants[:limit^] {
-        if value_eq(constant, value) {
-            return cast(u32)index
+    n := limit^
+    for vk, i in c.constants[:n] {
+        if value_eq(vk, v) {
+            return u32(i)
         }
     }
-    defer limit^ += 1
-    slice_insert(vm, &c.constants, limit^, value)
-    return cast(u32)limit^
+    slice_insert(vm, &c.constants, n, v)
+    limit^ += 1
+    return u32(n)
 }
 
 

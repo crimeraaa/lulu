@@ -6,8 +6,8 @@ import "core:mem"
 import "core:fmt"
 
 Object :: struct {
-    type:  Type  `fmt:"s"`,
-    prev: ^Object      `fmt:"p"`,
+    type:  Type   `fmt:"s"`,
+    prev: ^Object `fmt:"p"`,
 }
 
 object_new :: proc($T: typeid, vm: ^VM, extra := 0) -> ^T
@@ -47,11 +47,17 @@ object_unlink :: proc(vm: ^VM, o: ^Object) {
 }
 
 object_iterator :: proc(iter: ^^Object) -> (o: ^Object, ok: bool) {
-    if o = iter^; o == nil {
-        return nil, false
+    // Current iteration.
+    o = iter^
+
+    // Have we exhausted the linked list?
+    ok = (o != nil)
+
+    if ok {
+        // Increment the iterator if there are still entries remaining.
+        iter^ = o.prev
     }
-    iter^ = o.prev
-    return o, true
+    return o, ok
 }
 
 object_free_all :: proc(vm: ^VM) {

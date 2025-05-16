@@ -58,13 +58,10 @@ parser_advance :: proc(p: ^Parser) {
 -   Is not called multiple times in a row.
 
 **Guarantees**
--   `p.lexer` points to the start of the lexeme before `p.lookahead`.
--   When we call `parser_advance()`, we end up back at the old lookahead.
+-   `p.lexer` is ready to re-consume the current `p.lookahead.lexeme`.
  */
 parser_backtrack :: proc(p: ^Parser, prev: Token) {
-    lexer := &p.lexer
-    lexer.current -= len(p.lookahead.lexeme)
-    lexer.start   = lexer.current
+    p.lexer.current -= len(p.lookahead.lexeme)
     p.consumed, p.lookahead = prev, p.consumed
 
 }
@@ -109,6 +106,7 @@ parser_program :: proc(p: ^Parser, c: ^Compiler) {
         return c.pc > 0 && get_ip(c, c.pc - 1).op == .Return
     }
 
+    parser_advance(p)
     // Top level scope can also have its own locals.
     compiler_begin_scope(c)
     for !parser_match(p, .Eof) {
@@ -174,9 +172,6 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
 -   https://www.lua.org/source/5.1/lparser.c.html#singlevar
  */
 assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
-    // Needs to be addressable
-    last := last
-
     // Don't call `variable()` for the first assignment because we did so already
     // to check for function calls.
     if n_vars > 1 {
@@ -186,9 +181,8 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
     // Use recursive calls to create a stack-allocated linked list.
     if parser_match(p, .Comma) {
         parser_consume(p, .Identifier)
-        parser_recurse_begin(p)
+        check_recurse(p)
         assignment(p, c, &Assign{prev = last}, n_vars + 1)
-        parser_recurse_end(p)
         return
     }
     parser_consume(p, .Equals)
@@ -266,9 +260,7 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
         // constants array.
         ident := ostring_new(p.vm, p.consumed.lexeme)
         local_decl(p, c, ident, n_vars)
-        if !parser_match(p, .Comma) {
-            break
-        }
+        parser_match(p, .Comma) or_break
     }
 
     top: Expr
@@ -439,6 +431,7 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
     }
 
     then_block :: proc(p: ^Parser, c: ^Compiler) {
+        check_recurse(p)
         for !still_in_block(p) {
             declaration(p, c)
         }
@@ -449,8 +442,7 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
     compiler_patch_jump(c, then_jump)
 
     for parser_match(p, .Elseif) {
-        // each `then` jump connects to the next so that `elseif` branches
-        // are tried in order
+        // each `then` jump is independent of the next; they are tried in order
         then_jump = then_cond(p, c)
 
         // all child non-`else` branches skip over the one `else` branch
@@ -561,8 +553,7 @@ expression :: proc(p: ^Parser, c: ^Compiler) -> (expr: Expr) {
 -   https://www.lua.org/source/5.1/lparser.c.html#subexpr
  */
 parse_precedence :: proc(p: ^Parser, c: ^Compiler, prec: Precedence) -> Expr {
-    parser_recurse_begin(p)
-    defer parser_recurse_end(p)
+    check_recurse(p)
 
     parser_advance(p)
     prefix := get_rule(p.consumed.type).prefix
@@ -637,13 +628,14 @@ grouping :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     return expr
 }
 
-parser_recurse_begin :: proc(p: ^Parser) {
+@(deferred_in=check_recurse_end)
+check_recurse :: proc(p: ^Parser) {
     if p.recurse += 1; p.recurse >= PARSER_MAX_RECURSE {
         parser_error(p, "Too many syntax levels")
     }
 }
 
-parser_recurse_end :: proc(p: ^Parser) {
+check_recurse_end :: proc(p: ^Parser) {
     p.recurse -= 1
 }
 
@@ -1108,29 +1100,31 @@ concat :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 logic :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     logic_op :: proc(type: Token_Type) -> (cond: bool, prec: Precedence) {
         #partial switch type {
-        case .And: return true,  .And // Skip jump if falsy
-        case .Or:  return false, .Or  // Skip jump if truthy
+        case .And: return true,  .And // Jump right if truthy else skip if falsy
+        case .Or:  return false, .Or  // Jump right if falsy else skip if truthy
         case:
             unreachable("Impossible condition reached; got token %v", type)
         }
     }
 
     cond, prec := logic_op(p.consumed.type)
-    jump_pc    := compiler_code_jump_if(c, left, cond)
-    right      := parse_precedence(p, c, prec)
+    compiler_code_jump_if(c, left, cond)
 
-    // We don't care about the left hand side anymore, right is more important
-    // for back patching
-    left^ = right
+    // Treat logical operators as left-associative so we don't needlessly
+    // recurse; e.g. in `x and y and z` we parse it as `(x and y) and z`
+    // rather than `x and (y and z)`.
+    right := parse_precedence(p, c, prec + Precedence(1))
 
-    // `luaK_posfix()`
+    // `luaK_posfix()`- ensure these lists are closed.
     if cond {
-        // `case OPR_AND: luaK_concat(fs, &right->f, left->f);
-        left.patch_false = jump_pc
+        assert(left.patch_true  == NO_JUMP)
     } else {
-        // `case OPR_OR:  luaK_concat(fs, &right->t, left->t);`
-        left.patch_true = jump_pc
+        assert(left.patch_false == NO_JUMP)
     }
+
+    // Don't change `left.patch_{true,false}`- we need it as-is!
+    left.type = right.type
+    left.info = right.info
 }
 
 ///=== }}} =====================================================================

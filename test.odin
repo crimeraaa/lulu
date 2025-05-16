@@ -1,4 +1,4 @@
-package lulu_main
+package main
 
 import "core:testing"
 import "core:fmt"

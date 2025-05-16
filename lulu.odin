@@ -1,8 +1,7 @@
-package lulu_main
+package main
 
 import "core:fmt"
 import "core:os"
-@require import "core:log"
 @require import "core:mem"
 
 import "lulu"
@@ -13,11 +12,6 @@ PROMPT :: ">>> "
 
 main :: proc() {
     when ODIN_DEBUG {
-        logger_opts :: log.Options{.Level, .Short_File_Path, .Line, .Procedure, .Terminal_Color}
-        logger := log.create_console_logger(opt = logger_opts)
-        defer log.destroy_console_logger(logger)
-        context.logger = logger
-
         track: mem.Tracking_Allocator
         mem.tracking_allocator_init(&track, context.allocator)
         context.allocator = mem.tracking_allocator(&track)

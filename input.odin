@@ -1,5 +1,5 @@
 #+private
-package lulu_main
+package main
 
 @require import "core:c/libc"
 @require import "core:strings"
@@ -29,17 +29,18 @@ foreign gnu_history {
 
 read_line :: proc(vm: ^lulu.VM) -> (line: string, ok: bool) {
     s := readline(PROMPT)
-    defer libc.free(rawptr(s))
-    // Minor QOL; users rarely want to jump back to empty lines!
-
-    if ok = (s != nil); ok {
-        tmp := string(s)
-        if tmp != "" {
-            add_history(s)
-        }
-        line = check_line(vm, tmp)
+    if s == nil {
+        return
     }
-    return line, ok
+    defer libc.free(rawptr(s))
+
+    tmp := string(s)
+
+    // Minor QOL; users rarely want to jump back to empty lines!
+    if tmp != "" {
+        add_history(s)
+    }
+    return check_line(vm, tmp), true
 }
 
 clear_lines :: proc() {
@@ -55,11 +56,10 @@ read_line :: proc(vm: ^lulu.VM) -> (line: string, ok: bool) {
     os.write_string(os.stdout, PROMPT)
     stdin := io.to_reader(os.stream_from_handle(os.stdin))
     n_read, err := io.read(stdin, buf[:])
-
-    if ok = err != nil; ok {
-        line = check_line(vm, string(buf[:n_read]))
+    if err != nil {
+        return
     }
-    return line, ok
+    return check_line(vm, string(buf[:n_read])), true
 }
 
 // Nothing to do, just keep around for consistency.

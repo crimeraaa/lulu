@@ -37,7 +37,6 @@ Compiler :: struct {
     scope_depth: int,      // How far down is our current lexical scope?
     free_reg:    int,      // Index of the first free register.
     last_target: int,      // pc of the last jump target. See `FuncState::lasttarget`.
-    list_jump:   int,      // List of pending chunks to `chunk.pc`. See `FuncState::jpc`.
     pc:          int,      // First free index in `chunk.code`.
     is_print:    bool,     // HACK(2025-04-09): until `print` is a global runtime function
 }
@@ -60,14 +59,12 @@ compiler_init :: proc(c: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
     c.parser      = parser
     c.chunk       = chunk
     c.last_target = NO_JUMP
-    c.list_jump   = NO_JUMP
 }
 
 compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
     p := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
     c := &Compiler{}
     compiler_init(c, vm, p, chunk)
-    parser_advance(p)
     parser_program(p, c)
 }
 
@@ -170,8 +167,16 @@ compiler_expr_any_reg :: proc(c: ^Compiler, e: ^Expr) -> (reg: u16) {
     // If already in a register don't waste time trying to re-emit it.
     // Doing so will also mess up any calls to 'compiler_pop_reg()'.
     if e.type == .Discharged {
-        // TODO(2025-01-08): Check if has jumps then check if non-local.
-        return e.reg
+        // Already have a register.
+        if !expr_has_jumps(e^) {
+            return e.reg
+        }
+
+        // Register, which is part of a patch list, is not a local?
+        if e.reg >= cast(u16)small_array.len(c.active) {
+            expr_to_reg(c, e, e.reg)
+            return e.reg
+        }
     }
     compiler_expr_next_reg(c, e)
     return e.reg
@@ -250,6 +255,8 @@ expr_to_reg :: proc(c: ^Compiler, e: ^Expr, reg: u16) {
             jump_to_false := NO_JUMP if is_jump else compiler_code_jump(c)
             load_false = code_label(c, reg, b = false, skip = true)
             load_true  = code_label(c, reg, b = true,  skip = false)
+            // Don't immediately patch because we don't want to call
+            // `get_label()` if it's not a jump.
             if jump_to_false != NO_JUMP {
                 compiler_patch_jump(c, jump_to_false)
             }
@@ -926,6 +933,7 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
         // If `e` is currently a non-local register, reuse its register
         compiler_expr_pop(c, expr^)
         expr_to_reg(c, expr, var.reg)
+
     /*
     -   `var.index` is already set to the identifier.
     -   `e` can only be pushed to a register (constants) or reuse an
@@ -934,6 +942,7 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
     case .Global:
         reg := compiler_expr_any_reg(c, expr)
         compiler_code(c, .Set_Global, reg = reg, index = var.index)
+
     /*
     -   `var.table` already refers to the target table and key.
     -   `e` can be emitted to an RK register as is defined in `opcode.odin`.
@@ -942,8 +951,8 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
      */
     case .Table_Index:
         table := var.table
-        value := compiler_expr_rk(c, expr)
-        compiler_code(c, .Set_Table, a = table.reg, b = table.key_reg, c = value)
+        rkc   := compiler_expr_rk(c, expr)
+        compiler_code(c, .Set_Table, a = table.reg, b = table.key_reg, c = rkc)
     case:
         unreachable("Invalid variable kind %v", var.type)
     }
@@ -1003,7 +1012,6 @@ compiler_code_cond_jump :: proc(cl: ^Compiler, op: OpCode, a, b, c: u16) -> (jum
 -   The index of our jump instruction in the current chunk's code.
 */
 compiler_code_jump :: proc(c: ^Compiler, child := NO_JUMP) -> (pc: int) {
-    // TODO(2025-05-13): Add compiler saved jump pc?
     pc = compiler_code(c, .Jump, reg = 0, jump = child)
     if child != NO_JUMP {
         set_jump(c, pc, child)
@@ -1011,7 +1019,15 @@ compiler_code_jump :: proc(c: ^Compiler, child := NO_JUMP) -> (pc: int) {
     return pc
 }
 
-compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: int) {
+
+/*
+**Notes** (2025-05-17):
+-   We are always adding new jumps on top of `e.patch_*`.
+-   You don't want to use the pc of the newly emitted `.Jump` instruction,
+    because for nested logicals `e.patch_*` will always refer to the root
+    of the jump list.
+ */
+compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
     prev_jump :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (pc: int) {
         compiler_discharge_vars(c, e)
         #partial switch e.type {
@@ -1044,9 +1060,7 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: i
         return compiler_code_cond_jump(c, .Test_Set, NO_REG, e.reg, u16(!cond))
     }
 
-    // `to_patch^` is not `NO_JUMP` only when we are the parent of a nested
-    // logicals, e.g. the complete `and` expression in `x and y or default`
-    get_targets :: proc(e: ^Expr, cond: bool) -> (to_init, to_patch: ^int) {
+    get_targets :: proc(e: ^Expr, cond: bool) -> (to_jump, to_patch: ^int) {
         // .And
         if cond {
             return &e.patch_false, &e.patch_true
@@ -1056,10 +1070,10 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: i
     }
 
     pc := prev_jump(c, e, cond)
-    to_init, to_patch := get_targets(e, cond)
-    compiler_add_jump(c, to_init, pc)
+    to_jump, to_patch := get_targets(e, cond)
+    compiler_add_jump(c, to_jump, pc)
 
-    // only occurs in nested logicals
+    // Only occurs in nested logicals, e.g. `x and y or z`.
     if to_patch^ != NO_JUMP {
         // `NO_REG` is necessary if we want to convert a `.Test_Set` to mere
         // `.Test` by this point.
@@ -1067,7 +1081,6 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: i
         compiler_patch_jump(c, pc = to_patch^, reg = reg)
         to_patch^ = NO_JUMP
     }
-    return pc
 }
 
 
@@ -1103,17 +1116,15 @@ compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u
         return true
     }
 
-    target := target
-    if target == NO_JUMP {
-        // `lcode.c:exp2reg(): fj = luaK_getlabel(fs);`
-        target = compiler_get_label(c)
-    }
-
-    for list := pc; list != NO_JUMP; {
-        next := get_jump(c, list)
+    // Instead of having a separate `dtarget` (default target) parameter, we
+    // use `NO_JUMP` to signal an optional argument.
+    // `lcode.c:exp2reg(): fj = luaK_getlabel(fs);`
+    target := compiler_get_label(c) if target == NO_JUMP else target
+    for pc := pc; pc != NO_JUMP; {
+        next := get_jump(c, pc)
         patch_test_reg(c, pc, reg)
-        set_jump(c, list, target)
-        list = next
+        set_jump(c, pc, target)
+        pc = next
     }
 }
 
@@ -1139,16 +1150,6 @@ get_jump :: proc(c: ^Compiler, pc: int) -> (dst: int, ok: bool) #optional_ok {
     return (pc + 1) + offset, true
 }
 
-
-// Get the pc of the first jump in the list pointed to by `pc`.
-@(private="file")
-get_jump_root :: proc(c: ^Compiler, pc: int) -> int {
-    pc := pc
-    for {
-        pc = get_jump(c, pc) or_break
-    }
-    return pc
-}
 
 @(private="file")
 get_jump_control :: proc(c: ^Compiler, pc: int) -> (ip: ^Instruction) {
@@ -1196,6 +1197,17 @@ compiler_add_jump :: proc(c: ^Compiler, list: ^int, branch: int) {
     }
     // `fixjump(fs, last, l2)` ; append this jump
     set_jump(c, get_jump_root(c, list^), branch)
+}
+
+
+// Get the pc of the first jump in the list pointed to by `pc`.
+@(private="file")
+get_jump_root :: proc(c: ^Compiler, pc: int) -> int {
+    pc := pc
+    for {
+        pc = get_jump(c, pc) or_break
+    }
+    return pc
 }
 
 

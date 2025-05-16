@@ -63,7 +63,7 @@ class ExprPrinter:
         if self.__patch_false != NO_JUMP:
             extra += f", f={self.__patch_false}"
 
-        if info_name and info_value:
+        if info_name and info_value is not None:
             return f"{self.__type}: {info_name}={info_value}" + extra
         return self.__type + extra
 
