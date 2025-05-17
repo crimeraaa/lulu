@@ -425,22 +425,21 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
 
     then_jump := then_cond(p, c)
     else_jump := NO_JUMP // No unconditional jump over `else` by default.
-    to_patch  := &then_jump.patch_false
     for parser_match(p, .Elseif) {
         // all child non-`else` branches skip over the one `else` branch
-        else_jump = compiler_code_jump(c, child = else_jump)
-        compiler_patch_jump(c, to_patch^)
+        compiler_add_jump(c, &else_jump, compiler_code_jump(c))
+        compiler_patch_jump(c, then_jump.patch_false)
 
         // each `then` jump is independent of the next; they are tried in order
         then_jump = then_cond(p, c)
     }
 
     if parser_match(p, .Else) {
-        else_jump = compiler_code_jump(c, child = else_jump)
-        compiler_patch_jump(c, to_patch^)
+        compiler_add_jump(c, &else_jump, compiler_code_jump(c))
+        compiler_patch_jump(c, then_jump.patch_false)
         then_block(p, c)
     } else {
-        compiler_patch_jump(c, to_patch^)
+        compiler_patch_jump(c, then_jump.patch_false)
     }
     compiler_patch_jump(c, else_jump)
     parser_consume(p, .End)
@@ -483,6 +482,7 @@ return_stmt :: proc(p: ^Parser, c: ^Compiler) {
         compiler_expr_next_reg(c, &top)
         compiler_code_return(c, reg = base, count = u16(count))
     } else {
+        // Don't advance; if in main block we'll check for EOF after
         // Can't assume we can safely index `c.free_reg`.
         compiler_code_return(c, reg = 0, count = 0)
     }
@@ -1002,7 +1002,6 @@ arith :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 **Form**
 -   compare    ::= compare_op expression
     compare_op ::= '==' | '<' | '<=' | '~=' | '>=' | '>'
-
 */
 compare :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     compare_op :: proc(type: Token_Type) -> (op: OpCode, cond: bool, prec: Precedence) {

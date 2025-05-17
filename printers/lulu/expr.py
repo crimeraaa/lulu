@@ -51,7 +51,7 @@ class ExprPrinter:
             case "Table_Index":
                 info_name  = "table(reg)"
                 info_value = self.__info["table"]["reg"]
-                extra      = f", key(reg)={self.__info['table']['index']}"
+                extra      = f", key(reg)={self.__info['table']['key_reg']}"
             case "Jump":
                 info_name  = "pc"
                 info_value = self.__info["pc"]

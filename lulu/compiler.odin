@@ -658,8 +658,7 @@ compiler_code_not :: proc(c: ^Compiler, e: ^Expr) {
             e.type = .False
             return
         case .Jump:
-            // flip the cond for comparisons
-            invert_test(c, e^)
+            invert_comparison(c, e^)
             return
         // Registers have runtime values so we can't necessarily fold them.
         case .Discharged, .Need_Register:
@@ -982,20 +981,11 @@ compiler_code_cond_jump :: proc(cl: ^Compiler, op: OpCode, a, b, c: u16) -> (jum
     Chapter 23.1: *If Statements*.
 -   `lcode.c:luaK_jump(FuncState *fs)` in Lua 5.1.5.
 
-**Assumptions**
--   `child` is the `pc` of the previous jump we want to chain.
--   If it's `NO_JUMP` then that indicates this is the very first jump in the
-    chain.
-
 **Returns**
 -   The index of our jump instruction in the current chunk's code.
 */
-compiler_code_jump :: proc(c: ^Compiler, child := NO_JUMP) -> (pc: int) {
-    pc = compiler_code(c, .Jump, reg = 0, jump = child)
-    if child != NO_JUMP {
-        set_jump(c, pc, child)
-    }
-    return pc
+compiler_code_jump :: proc(c: ^Compiler) -> (pc: int) {
+    return compiler_code(c, .Jump, reg = 0, jump = NO_JUMP)
 }
 
 
@@ -1031,7 +1021,7 @@ compiler_code_jump_if_not :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
             }
         case .Jump:
             if cond {
-                invert_test(c, e^)
+                invert_comparison(c, e^)
             }
             return e.pc
         }
@@ -1137,16 +1127,16 @@ compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u
 -   `lcode.c:getjump(FuncState *fs, int list)` in Lua 5.1.5.
  */
 @(private="file")
-get_jump :: proc(c: ^Compiler, pc: int) -> (dst: int, ok: bool) #optional_ok {
+get_jump :: proc(c: ^Compiler, pc: int) -> (dst: int) {
     assert(pc >= 0)
     ip := get_ip(c, pc)
     // Start of jump list?
     offset := ip_get_sBx(ip^)
     if offset == NO_JUMP {
-        return NO_JUMP, false
+        return NO_JUMP
     }
     // Turn relative offset into absolute position.
-    return (pc + 1) + offset, true
+    return (pc + 1) + offset
 }
 
 
@@ -1169,7 +1159,7 @@ get_jump_control :: proc(c: ^Compiler, pc: int) -> (ip: ^Instruction) {
 -   `lcode.c:invertjump(FuncState *fs, expdesc *e)`
  */
 @(private="file")
-invert_test :: proc(c: ^Compiler, e: Expr) {
+invert_comparison :: proc(c: ^Compiler, e: Expr) {
     ip := get_jump_control(c, e.pc)
     assert(opcode_info[ip.op].is_test)
     assert(ip.op != .Test && ip.op != .Test_Set)
@@ -1197,20 +1187,17 @@ compiler_add_jump :: proc(c: ^Compiler, list: ^int, branch: int) {
         // First jump in the list
         list^ = branch
     } else {
-        pc := get_jump_root(c, list^)
+        // pc of first unchained jump in this list.
+        pc := list^
+        for {
+            next := get_jump(c, pc)
+            if next == NO_JUMP {
+                break
+            }
+            pc = next
+        }
         set_jump(c, pc, branch)
     }
-}
-
-
-// Get the pc of the first jump in the list pointed to by `pc`.
-@(private="file")
-get_jump_root :: proc(c: ^Compiler, pc: int) -> int {
-    pc := pc
-    for {
-        pc = get_jump(c, pc) or_break
-    }
-    return pc
 }
 
 
