@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:mem"
 import "core:strings"
 
+Number :: NUMBER_TYPE
+
 VM :: struct {
     stack_all:  []Value, // len(stack) == stack_size
     allocator:    mem.Allocator,
@@ -53,8 +55,9 @@ close :: proc(vm: ^VM) {
 
 /*
 **Analogous to**
--   `lapi.c:lua_load(lua_State *L, lua_Reader reader, void *data, const char *chunkname)`
--   `lapi.c:lua_pcall(lua_State *L, int nargs, int nresults, int errfunc)`
+-   `lapi.c:lua_load(lua_State *L, lua_Reader reader, void *data,
+    const char *chunkname)` and `lapi.c:lua_pcall(lua_State *L, int nargs,
+    int nresults, int errfunc)` in Lua 5.1.5.
  */
 run :: proc(vm: ^VM, input, source: string) -> Error {
     return vm_interpret(vm, input, source)
@@ -227,7 +230,7 @@ to_boolean :: proc(vm: ^VM, i: int) -> bool {
 **Analogous to**
 -   `lapi.c:lua_tonumber(lua_State *L, int i)` in Lua 5.1.5.
  */
-to_number :: proc(vm: ^VM, i: int) -> (n: f64, ok: bool) #optional_ok {
+to_number :: proc(vm: ^VM, i: int) -> (n: Number, ok: bool) #optional_ok {
     v := peek(vm, i)
     if !value_is_number(v) {
         // Only strings are potentially convertible to numbers.
@@ -298,7 +301,7 @@ get_global :: proc(vm: ^VM, key: string) {
  */
 set_global :: proc(vm: ^VM, key: string) {
     k := value_make(ostring_new(vm, key))
-    v := poke_top(vm, -1)^
+    v := peek(vm, -1)
     table_set(vm, &vm.globals, k, v)
     pop(vm)
 }

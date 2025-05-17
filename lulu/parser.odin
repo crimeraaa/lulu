@@ -231,17 +231,6 @@ assign_list :: proc(iter: ^^Assign) -> (a: ^Assign, ok: bool) {
 
 
 /*
-**Analogous to**
--   `compiler.c:identifierConstant(Token *name)` in Crafting Interpreters,
-    Chapter 21.2, *Variable Declarations*.
-*/
-ident_constant :: proc(p: ^Parser, c: ^Compiler, token: Token) -> (ident: ^OString, index: u32) {
-    ident = ostring_new(p.vm, token.lexeme)
-    value := value_make(ident)
-    return ident, compiler_add_constant(c, value)
-}
-
-/*
 **Form**
 -   local_stmt ::= 'local' local_decl [ '=' expr_list ]
 
@@ -256,8 +245,6 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
         defer n_vars += 1
 
         parser_consume(p, .Identifier)
-        // Don't call `ident_constant()` because we don't need to pollute the
-        // constants array.
         ident := ostring_new(p.vm, p.consumed.lexeme)
         local_decl(p, c, ident, n_vars)
         parser_match(p, .Comma) or_break
@@ -675,10 +662,6 @@ variable :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     **Analogous to**
     -   `compiler.c:namedVariable(Token name)` in Crafting Interpreters,
         Chapter 21.3: *Reading Variables*.
-
-    **Notes** (2025-04-18):
-    -   We don't call `ident_constant()` yet because we don't want to pollute
-        the constants array in case of local names.
      */
     first_var :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         ident := ostring_new(p.vm, p.consumed.lexeme)
@@ -745,6 +728,10 @@ variable :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 **Form**
 -   field_name ::= identifier
 
+**Analogous to**
+-   `compiler.c:identifierConstant(Token *name)` in Crafting Interpreters,
+    Chapter 21.2, *Variable Declarations*.
+
 **Overview**
 -   Save fieldname in an expression which we can emit as an RK.
 
@@ -755,8 +742,8 @@ variable :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 -   If the index does not fit in an RK, you will have to push it yourself!
  */
 field_name :: proc(p: ^Parser, c: ^Compiler) -> (key: Expr) {
-    _, index := ident_constant(p, c, p.consumed)
-    return expr_make(.Constant, index = index)
+    o := ostring_new(p.vm, p.consumed.lexeme)
+    return expr_make(.Constant, index = compiler_add_constant(c, o))
 }
 
 
@@ -1111,8 +1098,8 @@ logic :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     compiler_code_jump_if(c, left, cond)
 
     // Treat logical operators as left-associative so we don't needlessly
-    // recurse; e.g. in `x and y and z` we parse it as `(x and y) and z`
-    // rather than `x and (y and z)`.
+    // recurse; e.g. `x and y and z` is parsed as `(x and y) and z` rather
+    // than `x and (y and z)`.
     right := parse_precedence(p, c, prec + Precedence(1))
 
     // `luaK_posfix()`- ensure these lists are closed.

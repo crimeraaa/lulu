@@ -270,22 +270,19 @@ static void removevalues (FuncState *fs, int list) {
  * @brief
  *  Finalizes all the pending jumps in the jump chain starting at `jump_pc`.
  *
- * @todo 2025-05-12:
- *  What does `vtarget` mean?
- *
  * @note 2025-05-13:
- *  For the most part, `default_target == vtarget` and `reg == NO_REG`.
+ *  For the most part, `default_target == value_target` and `reg == NO_REG`.
  *  This is only not the case in `exp2reg()`.
  */
-static void patchlistaux (FuncState *fs, int jump_pc, int vtarget, int reg,
-                          int default_target) {
+static void patchlistaux (FuncState *fs, int jump_pc, int value_target,
+                          int reg, int default_target) {
   /* patch all jumps in the chain */
   int list_pc = jump_pc;
   while (list_pc != NO_JUMP) {
     int next = getjump(fs, list_pc);
     if (patchtestreg(fs, list_pc, reg)) {
       /* only really matters for `exp2reg()` */
-      fixjump(fs, list_pc, vtarget);
+      fixjump(fs, list_pc, value_target);
     }
     else {
       fixjump(fs, list_pc, default_target);
@@ -296,7 +293,7 @@ static void patchlistaux (FuncState *fs, int jump_pc, int vtarget, int reg,
 
 
 static void dischargejpc (FuncState *fs) {
-  patchlistaux(fs, /* jump_pc: */ fs->jpc, /* vtarget: */ fs->pc,
+  patchlistaux(fs, /* jump_pc: */ fs->jpc, /* value_target: */ fs->pc,
                /* reg: */ NO_REG, /* default_target: */ fs->pc);
   fs->jpc = NO_JUMP;
 }
@@ -308,7 +305,7 @@ void luaK_patchlist (FuncState *fs, int list, int target) {
   }
   else {
     lua_assert(target < fs->pc);
-    patchlistaux(fs, /* jump_pc: */ list, /* vtarget: */ target,
+    patchlistaux(fs, /* jump_pc: */ list, /* value_target: */ target,
                 /* reg: */ NO_REG, /* default_target: */ target);
   }
 }
@@ -437,7 +434,7 @@ int luaK_numberK (FuncState *fs, lua_Number r) {
 }
 
 
-static int boolK (FuncState *fs, int b) {
+static int boolK (FuncState *fs, bool b) {
   TValue o;
   setbvalue(&o, b);
   return addk(fs, &o, &o);
@@ -611,10 +608,10 @@ static void exp2reg (FuncState *fs, Expr *e, int reg) {
       luaK_patchtohere(fs, fj);
     }
     final = luaK_getlabel(fs);
-    patchlistaux(fs, /* jump_pc: */ e->patch_false, /* vtarget: */ final,
+    patchlistaux(fs, /* jump_pc: */ e->patch_false, /* value_target: */ final,
                 /* reg: */ reg, /* default_target: */ p_f);
 
-    patchlistaux(fs, /* jump_pc: */ e->patch_true, /* vtarget: */ final,
+    patchlistaux(fs, /* jump_pc: */ e->patch_true, /* value_target: */ final,
                 /* reg: */ reg, /* default_target: */ p_t);
   }
   expr_init_info(e, Expr_Nonrelocable, reg);

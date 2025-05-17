@@ -12,59 +12,15 @@ Value :: struct {
 }
 
 Value_Data :: struct #raw_union {
-    number:   f64,
+    number:   Number,
     boolean:  bool,
     ostring: ^OString,
     table:   ^Table,
 }
 
 // Used for callbacks/dispatches
-Number_Arith_Proc   :: #type proc "contextless" (a, b: f64) -> f64
-Number_Compare_Proc :: #type proc "contextless" (a, b: f64) -> bool
-
-number_add :: #force_inline proc "contextless" (a, b: f64) -> f64 {
-    return a + b
-}
-
-number_sub :: #force_inline proc "contextless"  (a, b: f64) -> f64 {
-    return a - b
-}
-
-number_mul :: #force_inline proc "contextless" (a, b: f64) -> f64 {
-    return a * b
-}
-
-number_div :: #force_inline proc "contextless" (a, b: f64) -> f64 {
-    return a / b
-}
-
-/*
-Links:
--   https://www.lua.org/source/5.1/luaconf.h.html#luai_nummod
- */
-number_mod :: #force_inline proc "contextless" (a, b: f64) -> f64 {
-    return a - math.floor(a / b)*b
-}
-
-number_pow :: #force_inline proc "contextless" (a, b: f64) -> f64 {
-    return math.pow(a, b)
-}
-
-number_eq :: #force_inline proc "contextless" (a, b: f64) -> bool {
-    return a == b
-}
-
-number_lt :: #force_inline proc "contextless" (a, b: f64) -> bool {
-    return a < b
-}
-
-number_leq :: #force_inline proc "contextless" (a, b: f64) -> bool {
-    return a <= b
-}
-
-number_unm :: #force_inline proc "contextless" (a: f64) -> f64 {
-    return -a
-}
+Number_Arith_Proc   :: #type proc "contextless" (a, b: Number) -> Number
+Number_Compare_Proc :: #type proc "contextless" (a, b: Number) -> bool
 
 value_make :: proc {
     value_make_nil,
@@ -95,12 +51,12 @@ value_make_boolean :: #force_inline proc "contextless" (b: bool) -> Value {
     return Value{type = .Boolean, boolean = b}
 }
 
-value_make_number :: #force_inline proc "contextless" (n: f64) -> Value {
+value_make_number :: #force_inline proc "contextless" (n: Number) -> Value {
     return Value{type = .Number, number = n}
 }
 
 value_make_integer :: #force_inline proc "contextless" (i: int) -> Value {
-    return value_make_number(cast(f64)i)
+    return value_make_number(cast(Number)i)
 }
 
 value_make_string :: #force_inline proc "contextless" (s: ^OString) -> Value {
@@ -154,8 +110,6 @@ value_eq :: proc(a, b: Value) -> bool {
     }
     unreachable("Unknown value type %v", a.type)
 }
-
-number_is_nan :: math.is_nan_f64
 
 value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     basic_print :: proc(fi: ^fmt.Info, v: Value) {

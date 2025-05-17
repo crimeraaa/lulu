@@ -24,7 +24,7 @@ Token :: struct {
 
 @(private="package")
 Token_Literal :: struct #raw_union {
-    number:   f64,
+    number:   Number,
     ostring: ^OString,
 }
 
@@ -290,7 +290,7 @@ create_number_token :: proc(l: ^Lexer, first: rune) -> Token {
 }
 
 @(private="package")
-string_to_number :: proc(s: string) -> (n: f64, ok: bool) #optional_ok {
+string_to_number :: proc(s: string) -> (n: Number, ok: bool) #optional_ok {
     // Require at least 1 digit if prefixed
     if len(s) > 2 && s[0] == '0' {
         base: int
@@ -303,7 +303,7 @@ string_to_number :: proc(s: string) -> (n: f64, ok: bool) #optional_ok {
         }
         i: int
         i, ok = strconv.parse_int(s[2:], base)
-        return f64(i), ok
+        return Number(i), ok
     }
     return strconv.parse_f64(s)
 }

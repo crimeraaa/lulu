@@ -2,10 +2,12 @@ package main
 
 import "core:testing"
 import "core:fmt"
+import "core:strings"
 
 import "lulu"
 
-@(private="file")
+Value :: union {bool, lulu.Number, string}
+
 new_vm :: proc(t: ^testing.T) -> ^lulu.VM {
     teardown :: proc(user_ptr: rawptr) {
         lulu.close(cast(^lulu.VM)user_ptr)
@@ -19,9 +21,19 @@ new_vm :: proc(t: ^testing.T) -> ^lulu.VM {
     return vm
 }
 
-@(private="file")
-run_string :: proc(t: ^testing.T, vm: ^lulu.VM, input: string, loc := #caller_location) {
-    testing.expect(t, lulu.run(vm, input, loc.procedure) == .Ok)
+run_string :: proc(t: ^testing.T, vm: ^lulu.VM, input: string, expected: Value = nil, loc := #caller_location) {
+    line: string
+    if expected != nil && !strings.contains(input, "return ") {
+        line = fmt.tprintf("return %s", input)
+    } else {
+        line = input
+    }
+    testing.expect_value(t, lulu.run(vm, line, loc.procedure), lulu.Error.Ok, loc = loc)
+    switch v in expected {
+    case bool:        testing.expect_value(t, lulu.to_boolean(vm, -1), v, loc = loc)
+    case lulu.Number: testing.expect_value(t, lulu.to_number(vm,  -1), v, loc = loc)
+    case string:      testing.expect_value(t, lulu.to_string(vm,  -1), v, loc = loc)
+    }
 }
 
 @test
@@ -33,13 +45,29 @@ hello :: proc(t: ^testing.T) {
 @test
 arith :: proc(t: ^testing.T) {
     vm := new_vm(t)
-    run_arith(t, vm, 1.0 + 2.0*3.0 - 4.0/-5.0)
-    run_arith(t, vm, (1.0 + 2.0)*3.0 - 4.0/-5.0)
+    res1 :: 1 + 2*3 - 4.0/-5
+    res2 :: (1 + 2)*3 - 4.0/-5
+    run_string(t, vm, `1 + 2*3 - 4/-5`,   expected = res1)
+    run_string(t, vm, `(1 + 2)*3 - 4/-5`, expected = res2)
+
+    run_string(t, vm, `x,y,z,a,b = 1,2,3,4,5`)
+    run_string(t, vm, `x + y*z - a/-b`, expected = res1)
+    run_string(t, vm, `(x+y)*z - a/-b`, expected = res2)
 }
 
-@(private="file")
-run_arith :: proc(t: ^testing.T, vm: ^lulu.VM, $n: f64, expr := #caller_expression(n), loc := #caller_location) {
-    line := fmt.tprintf("return %s", expr)
-    run_string(t, vm, line, loc = loc)
-    testing.expect(t, lulu.to_number(vm, -1) == n)
+@test
+compare :: proc(t: ^testing.T) {
+    vm := new_vm(t)
+    run_string(t, vm, `2 < 3`,  expected = true)
+    run_string(t, vm, `3 <= 2`, expected = false)
+    run_string(t, vm, `3 > 2`,  expected = true)
+    run_string(t, vm, `2 >= 3`, expected = false)
+    run_string(t, vm, `2 == 2`, expected = true)
+}
+
+@test
+globals :: proc(t: ^testing.T) {
+    vm := new_vm(t)
+    run_string(t, vm, `PI, G = 3.14, -9.81; return PI == 3.14`, expected = true)
+    run_string(t, vm, `G == -9.81`, expected = true)
 }

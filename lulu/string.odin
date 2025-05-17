@@ -74,7 +74,7 @@ ostring_to_cstring :: #force_inline proc "contextless" (s: ^OString) -> cstring 
     }
 }
 
-hash_f64 :: #force_inline proc "contextless" (n: f64) -> (hash: u32) {
+hash_number :: #force_inline proc "contextless" (n: Number) -> (hash: u32) {
     n := n
     return hash_bytes(mem.byte_slice(&n, size_of(n)))
 }
@@ -85,6 +85,10 @@ hash_pointer :: #force_inline proc "contextless" (p: rawptr) -> (hash: u32) {
 }
 
 hash_string :: #force_inline proc "contextless" (s: string) -> (hash: u32) {
+    /*
+    **Notes** (2025-05-17)
+    -   This is safe, because `hash_bytes()` does not mutate `bytes` at all.
+     */
     return hash_bytes(transmute([]byte)s)
 }
 

@@ -560,7 +560,7 @@ compiler_add_constant :: proc {
 }
 
 
-compiler_add_number :: proc(c: ^Compiler, n: f64) -> (index: u32) {
+compiler_add_number :: proc(c: ^Compiler, n: Number) -> (index: u32) {
     return compiler_add_value(c, value_make(n))
 }
 
@@ -691,8 +691,8 @@ fold_arith :: proc(op: OpCode, left, right: ^Expr) -> (success: bool) {
         return false
     }
 
-    x, y: f64 = left.number, right.number
-    result: f64
+    x, y: Number = left.number, right.number
+    result: Number
     #partial switch op {
     // Arithmetic
     case .Add:  result = number_add(x, y)
@@ -1028,6 +1028,8 @@ compiler_code_jump :: proc(c: ^Compiler, child := NO_JUMP) -> (pc: int) {
     of the jump list.
  */
 compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
+    // If we cannot fold or `e` is not already a jump (comparison), we will
+    // emit `.Test_Set` with its corresponding jump.
     prev_jump :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (pc: int) {
         compiler_discharge_vars(c, e)
         #partial switch e.type {
@@ -1092,16 +1094,13 @@ compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
 **Analogous to**
 -   `compiler.c:patchJump(int offset)` in Crafting Interpreters, Chapter 23.1:
     *If Statements*.
--   `lcode.c:patchlistaux(FuncState *fs, int list, int vtarget, int reg, int dtarget)` in Lua 5.1.5.
+-   `lcode.c:patchlistaux(FuncState *fs, int list, int vtarget, int reg,
+    int dtarget)` in Lua 5.1.5.
 */
 compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u16 = NO_REG) {
     /*
     **Analogous to**
     -   `lcode.c:patchetestreg(FuncState *fs, int pc, int reg)` in Lua 5.1.5.
-
-    **Notes** (2025-05-14):
-    -   Unlike in Lua, we don't check if `reg == NO_REG`; we can already do that
-        in the caller's loop.
      */
     patch_test_reg :: proc(c: ^Compiler, pc: int, reg: u16) -> bool {
         ip := get_jump_control(c, pc)
@@ -1109,8 +1108,20 @@ compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u
             return false // Cannot be patched
         }
         if reg != NO_REG && reg != ip.b {
+            /*
+            **Notes** (2025-05-17):
+            -   Some register was provided and the register of the expression,
+                Reg(B), is not the same as the destination, Reg(A).
+            -   Assigns logicals to temporaries, locals, or table fields.
+             */
             ip.a = reg
         } else {
+            /*
+            **Notes** (2025-05-17)
+            -   We don't need `.Test_Set` anymore because either `NO_REG` was
+                provided or we're assigning to the same register.
+            -   This also occurs for setting globals.
+             */
             ip^ = ip_make(.Test, ip.b, 0, ip.c)
         }
         return true
@@ -1180,12 +1191,16 @@ invert_test :: proc(c: ^Compiler, e: Expr) {
 
 /*
 **Overview**
--   Adds a jump pc, `branch`, to the jump list `list`.
+-   Appends a jump pc, `branch`, to the jump list `list`.
 -   Usually `branch` is the address of an `Expr::patch_{true,false}`. This
     is how they get initalized.
 
 **Analogous to**
 -   `lcode.c:luaK_concat(FuncState *fs, int *l1, int l2)`
+
+**Notes** (2025-05-17)
+-   E.g. given jump list `[.Jump: pc=2, offset=-1]` and branch `.Jump: pc=2`
+-   Result: `[.Jump: pc=2, offset=2, .Jump: pc=5, offset=-1]`
 */
 compiler_add_jump :: proc(c: ^Compiler, list: ^int, branch: int) {
     if branch == NO_JUMP {
@@ -1193,10 +1208,10 @@ compiler_add_jump :: proc(c: ^Compiler, list: ^int, branch: int) {
     } else if list^ == NO_JUMP {
         // First jump in the list
         list^ = branch
-        return
+    } else {
+        pc := get_jump_root(c, list^)
+        set_jump(c, pc, branch)
     }
-    // `fixjump(fs, last, l2)` ; append this jump
-    set_jump(c, get_jump_root(c, list^), branch)
 }
 
 

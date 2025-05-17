@@ -62,7 +62,7 @@ tasks:
         -define:DEBUG_PRINT_CODE=false
         -define:DEBUG_TRACE_EXEC=false
         -out:{{.LULU_TEST_OUT}}
-      - '{{.LULU_TEST_OUT}} {{.CLI_ARGS}}'
+      # - '{{.LULU_TEST_OUT}} {{.CLI_ARGS}}'
     sources:
       - test.odin
       - '{{.LULU_SRC}}/*.odin'
@@ -75,6 +75,7 @@ tasks:
         make --always-make --jobs=8
         mv ./src/lua ../bin/
         mv ./src/luac ../bin/
+        mv ./src/liblua.a ../bin/
         cd ..
     sources:
       - '{{.LUA_GLOB}}'

@@ -133,7 +133,7 @@ find_entry :: proc(entries: []Table_Entry, k: Value) -> ^Table_Entry {
         switch k.type {
         case .Nil:      break
         case .Boolean:  return cast(u32)k.boolean
-        case .Number:   return hash_f64(k.number)
+        case .Number:   return hash_number(k.number)
         case .String:   return k.ostring.hash
         case .Table:    return hash_pointer(k.table)
         }

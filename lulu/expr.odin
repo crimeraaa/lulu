@@ -10,7 +10,7 @@ Expr :: struct {
 }
 
 Expr_Info :: struct #raw_union {
-    number: f64, // .Number
+    number: Number, // .Number
     pc:     int, // .Need_Register, .Jump
     index:  u32, // .Constant, .Global
     table:  struct {reg, key_reg: u16}, // .Table_Index
@@ -85,7 +85,7 @@ expr_make_index :: proc(type: Expr_Type, index: u32) -> Expr {
 }
 
 
-expr_make_number :: proc(type: Expr_Type, n: f64) -> Expr {
+expr_make_number :: proc(type: Expr_Type, n: Number) -> Expr {
     assert(type == .Number)
     return Expr{
         type        = .Number,

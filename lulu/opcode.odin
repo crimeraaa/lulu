@@ -195,7 +195,6 @@ OpCode_Info :: bit_field u8 {
 -   This is because A is not a register; rather they are used for control flow
     and A is a constant (one of 0 or 1) to be used to determine the result of
     the comparison.
--   Until we implement jumps, we will continue to use A as a destination register.
 
 **Links**
 -   https://www.lua.org/source/5.1/lopcodes.c.html#luaP_opmodes
@@ -219,7 +218,7 @@ opcode_info := [OpCode]OpCode_Info {
 .Not            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
 .Concat         = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Reg_Jump},
 .Len            = {type = .Separate,    a = true,  b = .Reg_Const, c = .Unused},
-.Test           = {type = .Separate,    a = true,  b = .Unused,    c = .Used,       is_test = true},
+.Test           = {type = .Separate,    a = false, b = .Unused,    c = .Used,       is_test = true},
 .Test_Set       = {type = .Separate,    a = true,  b = .Reg_Const, c = .Used,       is_test = true},
 .Jump           = {type = .Signed_Bx,   a = false, b = .Reg_Jump,  c = .Unused},
 .Return         = {type = .Separate,    a = true,  b = .Used,      c = .Used},
