@@ -101,11 +101,6 @@ parser_check :: proc(p: ^Parser, expected: Token_Type) -> (found: bool) {
 
 @(private="package")
 parser_program :: proc(p: ^Parser, c: ^Compiler) {
-    // TODO(2025-05-14): Determine if this is a safe optimization!
-    main_has_return :: proc(c: ^Compiler) -> bool {
-        return c.pc > 0 && get_ip(c, c.pc - 1).op == .Return
-    }
-
     parser_advance(p)
     // Top level scope can also have its own locals.
     compiler_begin_scope(c)
@@ -113,9 +108,15 @@ parser_program :: proc(p: ^Parser, c: ^Compiler) {
         declaration(p, c)
     }
     parser_consume(p, .Eof)
-    if !main_has_return(c) {
-        compiler_code_return(c, 0, 0)
-    }
+
+    /*
+    **Notes** (2025-05-17)
+    -   We cannot assume we don't need the implicit return.
+    -   Concept check: `local x; if x then return x end`
+    -   The last instruction *is* a return, but only conditionally.
+    -   Say the `if` branch fails; our next instruction is invalid.
+     */
+    compiler_code_return(c, reg = 0, count = 0)
     compiler_end_scope(c)
     compiler_end(c)
 }
@@ -407,14 +408,12 @@ if_stmt ::= 'if' expression 'then' block 'end'
     *If Statements*.
 */
 if_stmt :: proc(p: ^Parser, c: ^Compiler) {
-    then_cond :: proc(p: ^Parser, c: ^Compiler) -> (jump_pc: int) {
-        cond := expression(p, c)
+    then_cond :: proc(p: ^Parser, c: ^Compiler) -> (cond: Expr) {
+        cond = expression(p, c)
         parser_consume(p, .Then)
-
-        // Jump only when the condition is falsy.
-        jump_pc = compiler_code_test(c, &cond, false)
+        compiler_code_jump_if_not(c, &cond, true)
         then_block(p, c)
-        return jump_pc
+        return cond
     }
 
     then_block :: proc(p: ^Parser, c: ^Compiler) {
@@ -425,21 +424,23 @@ if_stmt :: proc(p: ^Parser, c: ^Compiler) {
     }
 
     then_jump := then_cond(p, c)
-    else_jump := compiler_code_jump(c) // Unconditional skip 'else'
-    compiler_patch_jump(c, then_jump)
-
+    else_jump := NO_JUMP // No unconditional jump over `else` by default.
+    to_patch  := &then_jump.patch_false
     for parser_match(p, .Elseif) {
-        // each `then` jump is independent of the next; they are tried in order
-        then_jump = then_cond(p, c)
-
         // all child non-`else` branches skip over the one `else` branch
         else_jump = compiler_code_jump(c, child = else_jump)
-        compiler_patch_jump(c, then_jump)
+        compiler_patch_jump(c, to_patch^)
+
+        // each `then` jump is independent of the next; they are tried in order
+        then_jump = then_cond(p, c)
     }
 
-    // `else` block by itself doesn't contain any jumps
     if parser_match(p, .Else) {
+        else_jump = compiler_code_jump(c, child = else_jump)
+        compiler_patch_jump(c, to_patch^)
         then_block(p, c)
+    } else {
+        compiler_patch_jump(c, to_patch^)
     }
     compiler_patch_jump(c, else_jump)
     parser_consume(p, .End)
@@ -476,18 +477,15 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 }
 
 return_stmt :: proc(p: ^Parser, c: ^Compiler) {
-    // Although `return end` in the main block skips this, remember we
-    // explicitly check for EOF after!
-    base_reg := u16(c.free_reg)
-    count: int = 0
-    if !still_in_block(p) {
-        top: Expr
-        top, count = expr_list(p, c)
+    if !still_in_block(p) && !parser_check(p, .Semicolon) {
+        base := u16(c.free_reg)
+        top, count := expr_list(p, c)
         compiler_expr_next_reg(c, &top)
+        compiler_code_return(c, reg = base, count = u16(count))
     } else {
-        parser_advance(p)
+        // Can't assume we can safely index `c.free_reg`.
+        compiler_code_return(c, reg = 0, count = 0)
     }
-    compiler_code_return(c, base_reg, u16(count))
 }
 
 
@@ -504,7 +502,7 @@ return_stmt :: proc(p: ^Parser, c: ^Compiler) {
  */
 expr_list :: proc(p: ^Parser, c: ^Compiler) -> (top: Expr, count: int) {
     count = 1 // at least one expression
-    top  = expression(p, c)
+    top   = expression(p, c)
     for parser_match(p, .Comma) {
         compiler_expr_next_reg(c, &top)
         top = expression(p, c)
@@ -1087,15 +1085,15 @@ concat :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 logic :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     logic_op :: proc(type: Token_Type) -> (cond: bool, prec: Precedence) {
         #partial switch type {
-        case .And: return true,  .And // Jump right if truthy else skip if falsy
-        case .Or:  return false, .Or  // Jump right if falsy else skip if truthy
+        case .And: return true,  .And
+        case .Or:  return false, .Or
         case:
             unreachable("Impossible condition reached; got token %v", type)
         }
     }
 
     cond, prec := logic_op(p.consumed.type)
-    compiler_code_jump_if(c, left, cond)
+    compiler_code_jump_if_not(c, left, cond)
 
     // Treat logical operators as left-associative so we don't needlessly
     // recurse; e.g. `x and y and z` is parsed as `(x and y) and z` rather

@@ -499,8 +499,8 @@ compiler_code_nil :: proc(c: ^Compiler, reg, count: u16) {
 -   Like in Lua, all functions call this even if they have explicit returns.
 -   We do not currently handle variadic (vararg) returns.
  */
-compiler_code_return :: proc(c: ^Compiler, reg, nret: u16) {
-    compiler_code_ABC(c, .Return, reg, nret, 0)
+compiler_code_return :: proc(c: ^Compiler, reg, count: u16) {
+    compiler_code_ABC(c, .Return, reg, count, 0)
 }
 
 compiler_code :: proc {
@@ -966,27 +966,6 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
 
 
 /*
-**Overview**
--   Emit the `.Test` opcode along with its necessary `.Jump`.
-
-**Analogous to**
--   (Somewhat) `lcode.c:luaK_goiftrue(FuncState *fs, expdesc *e)` and
-    `lcode.c:luaK_goiffalse(FuncState *fs, expdesc *e)` in Lua 5.1.5.
-
-**Guarantees**
--   Argument A will use the register/constant of `e`.
--   If `e` is a non-local register then it is popped.
--   `e` will always be transformed to type `.Discharged`.
- */
-compiler_code_test :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (jump_pc: int) {
-    ra := compiler_expr_any_reg(c, e)
-    compiler_expr_pop(c, e^)
-    jump_pc = compiler_code_cond_jump(c, .Test, ra, 0, u16(cond))
-    return jump_pc
-}
-
-
-/*
 **Analogous to**
 -   `lcode.c:condjump(FuncState *fs, OpCode op, int A, int B, int C)` in
     Lua 5.1.5.
@@ -1021,13 +1000,22 @@ compiler_code_jump :: proc(c: ^Compiler, child := NO_JUMP) -> (pc: int) {
 
 
 /*
+**Overview**
+-   Emit a `.Test_Set` and `.Jump` instruction pair.
+-   When `cond` if truthy, we will skip over `.Jump` and continue execution
+    as normal.
+-   Otherwise, we will not skip `.Jump` and go to wherever it leads us.
+
+**Analogous to**
+-   `lcode.c:luaK_goif{true,false}(FuncState *fs, expdesc *e)` in Lua 5.1.5.
+
 **Notes** (2025-05-17):
 -   We are always adding new jumps on top of `e.patch_*`.
 -   You don't want to use the pc of the newly emitted `.Jump` instruction,
     because for nested logicals `e.patch_*` will always refer to the root
     of the jump list.
  */
-compiler_code_jump_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
+compiler_code_jump_if_not :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
     // If we cannot fold or `e` is not already a jump (comparison), we will
     // emit `.Test_Set` with its corresponding jump.
     prev_jump :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (pc: int) {
