@@ -26,7 +26,7 @@ class TokenPrinter:
         word  = str(self.__lexeme).strip("\'\"")
         quote = '\'' if len(word) == 1 else '\"'
         # Keyword or operator?
-        if ttype.lower() == word or not word.isalpha():
+        if ttype.lower() == word or not word.isidentifier():
             return ttype
         return f"{ttype}: {quote}{word}{quote}"
 
