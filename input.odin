@@ -7,28 +7,27 @@ package main
 @require import "core:io"
 
 import "lulu"
+import rl "readline"
 
 when USE_READLINE {
 
-// https://odin-lang.org/docs/overview/#foreign-system
-@(extra_linker_flags="-lreadline")
-foreign import gnu_readline "system:readline"
-
-@(extra_linker_flags="-lhistory")
-foreign import gnu_history "system:history"
-
-// https://www.lua.org/source/5.1/luaconf.h.html#lua_readline
-foreign gnu_readline {
-    readline :: proc "c" (prompt: cstring) -> cstring ---
+generator :: proc "c" (line: cstring, state: int) -> cstring {
+    return nil
 }
 
-foreign gnu_history {
-    add_history :: proc "c" (buffer: cstring) ---
-    clear_history :: proc "c" () ---
+tab_complete :: proc "c" (line: cstring, start, stop: int) -> [^]cstring {
+    rl.attempted_completion_over = true
+    return rl.completion_matches(line, generator)
 }
+
+@init
+setup_readline :: proc() {
+    rl.bind_key('\t', rl.insert)
+}
+
 
 read_line :: proc(vm: ^lulu.VM) -> (line: string, ok: bool) {
-    s := readline(PROMPT)
+    s := rl.readline(PROMPT)
     if s == nil {
         return
     }
@@ -38,13 +37,13 @@ read_line :: proc(vm: ^lulu.VM) -> (line: string, ok: bool) {
 
     // Minor QOL; users rarely want to jump back to empty lines!
     if tmp != "" {
-        add_history(s)
+        rl.add_history(s)
     }
     return check_line(vm, tmp), true
 }
 
 clear_lines :: proc() {
-    clear_history()
+    rl.clear_history()
 }
 
 

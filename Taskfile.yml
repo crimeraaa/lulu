@@ -24,6 +24,7 @@ vars:
   ODIN_FLAGS: >-
     -define:USE_CONSTANT_FOLDING=true
     -collection:lulu={{.LULU_SRC}}/
+    -collection:readline=readline/
 
   LUA_OUT: bin/lua
   LUA_SRC: lua/src
@@ -42,7 +43,7 @@ tasks:
       - '{{.ODIN}} build . {{.FLAGS}} -define:USE_READLINE=true -out:{{.LULU_MAIN_OUT}}'
     sources:
       - 'lulu.odin'
-      - 'readline.odin'
+      - 'input.odin'
       - '{{.LULU_SRC}}/*.odin'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands

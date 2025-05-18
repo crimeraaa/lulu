@@ -5,36 +5,65 @@
 
 #include "lreadline.h"
 
-enum {
-    /* keywords */
-    KW_AND, KW_BREAK, KW_DO, KW_ELSE, KW_ELSEIF, KW_END, KW_FALSE, KW_FOR,
-    KW_FUNCTION, KW_IF, KW_IN, KW_LOCAL, KW_RETURN, KW_REPEAT, KW_THEN, KW_TRUE,
-    KW_UNTIL, KW_WHILE,
+static Env env;
 
-    /* base functions */
-    FN_ASSERT, FN_COLLECTGARBAGE, FN_DOFILE, FN_ERROR, FN_GETFENV,
-    FN_GETMETATABLE, FN_IPAIRS, FN_LOAD, FN_LOADFILE, FN_LOADSTRING, FN_MODULE,
-    FN_NEXT, FN_PAIRS, FN_PCALL, FN_PRINT, FN_RAWEQUAL, FN_RAWGET, FN_RAWSET,
-    FN_REQUIRE, FN_SELECT, FN_SETFENV, FN_SETMETATABLE, FN_TONUMBER,
-    FN_TOSTRING, FN_TYPE, FN_UNPACK, FN_XPCALL,
+static bool
+is_lower(char ch, int *i)
+{
+    bool ok = 'a' <= ch && ch <= 'z';
+    if (ok) {
+        *i = ch - 'a';
+    }
+    return ok;
+}
 
-    /* base libraries */
-    LIB_COROUTINE, LIB_DEBUG, LIB_IO, LIB_MATH, LIB_OS, LIB_PACKAGE,
-    LIB_STRING, LIB_TABLE,
-};
+static bool
+is_upper(char ch, int *i)
+{
+    bool ok = 'A' <= ch && ch <= 'Z';
+    if (ok) {
+        *i = ch - 'A';
+    }
+    return ok;
+}
 
-#define RESERVED_FIRST  KW_AND
-#define RESERVED_LAST   KW_WHILE
+static Node *
+find_node(const char *line, size_t len, Node *node)
+{
+    while (node != NULL) {
+        /* Compare the prefix, not the entire string! */
+        if (strncmp(line, node->data, len) == 0) {
+            return node;
+        }
+        node = node->prev;
+    }
+    return NULL;
+}
 
-#define BASEFN_FIRST    FN_ASSERT
-#define BASEFN_LAST     FN_UNPACK
+static Node **
+parent_node(const char *line, size_t len)
+{
+    int i;
+    if (len == 0) {
+        return NULL;
+    }
+    if (is_upper(line[0], &i)) {
+        return &env.upper[i];
+    } else if (is_lower(line[0], &i)) {
+        return &env.lower[i];
+    } else if (line[0] == '_') {
+        return &env.underscore;
+    }
+    return NULL;
+}
 
-#define BASELIB_FIRST   LIB_COROUTINE
-#define BASELIB_LAST    LIB_TABLE
+static Node *
+first_node(const char *line, size_t len)
+{
+    Node *node = *parent_node(line, len);
+    return find_node(line, len, node);
+}
 
-#define IS_RESERVED(i)  (RESERVED_FIRST <= (i) && (i) <= RESERVED_LAST)
-#define IS_BASEFN(i)    (BASEFN_FIRST   <= (i) && (i) <= BASEFN_LAST)
-#define IS_BASELIB(i)   (BASELIB_FIRST  <= (i) && (i) <= BASELIB_LAST)
 
 /**
  * @typedef
@@ -43,62 +72,35 @@ enum {
 static char *
 keyword_generator(const char *line, int state)
 {
-    /**
-     * @note 2025-05-18
-     *  -   This is very ugly and error prone
-     *
-     * @link https://www.lua.org/manual/5.1/
-     */
-    static const char *const reserved[] = {
-        /* keywords */
-        "and", "break", "do", "else", "elseif", "end", "false", "for",
-        "function", "if", "in", "local", "return", "repeat", "then", "true",
-        "until", "while",
-
-        /* base functions */
-        "assert", "collectgarbage", "dofile", "error", "getfenv",
-        "getmetatable", "ipairs", "load", "loadfile", "loadstring", "module",
-        "next", "pairs", "pcall", "print", "rawequal", "rawget", "rawset",
-        "require", "select", "setfenv", "setmetatable", "tonumber", "tostring",
-        "type", "unpack", "xpcall",
-
-        /* base libraries */
-        "coroutine", "debug", "io", "math", "os", "package", "string", "table",
-        NULL
-    };
-
     /* First call for `line`, `state == 0`. Otherwise, `state != 0`. */
-    static int    list_index;
-    static size_t line_len;
+    static size_t      len;
+    static const Node *node;
 
     if (state == 0) {
-        list_index = 0;
-        line_len   = strlen(line);
+        len = strlen(line);
     }
 
     /* No text, so insert TAB as-is. */
-    if (line_len == 0) {
+    if (len == 0) {
         rl_insert_text("\t");
         return NULL;
     }
 
-    for (;;) {
-        const int   index = list_index++;
-        const char *name  = reserved[index];
-        if (name == NULL) {
-            break;
+    /*  In order to check for *multiple* completions, we need to use shared
+        state between function calls. */
+    if (state == 0) {
+        node = first_node(line, len);
+    } else {
+        node = find_node(line, len, node->prev);
+    }
+
+    if (node != NULL) {
+        switch (node->type) {
+        case NODE_BASIC:    rl_completion_append_character = ' '; break;
+        case NODE_TABLE:    rl_completion_append_character = '.'; break;
+        case NODE_FUNCTION: rl_completion_append_character = '('; break;
         }
-        if (strncmp(line, name, line_len) == 0) {
-            char *out = strdup(name);
-            if (IS_RESERVED(index)) {
-                rl_completion_append_character = ' ';
-            } else if (IS_BASEFN(index)) {
-                rl_completion_append_character = '(';
-            } else if (IS_BASELIB(index)) {
-                rl_completion_append_character = '.';
-            }
-            return out;
-        }
+        return strndup(node->data, node->len);
     }
 
     return NULL; /* No possible completions. */
@@ -184,10 +186,69 @@ static luaL_Reg fns[] = {
     {NULL, NULL}
 };
 
+static void
+add_node(Node_Type type, const char *key, size_t len)
+{
+    Node  *node;
+    Node **list = parent_node(key, len);
+
+    /* At least 1 char is allowed, not accounting for padding. */
+    node = malloc(sizeof(*node) + len);
+    node->prev      = *list;
+    node->len       = len;
+    node->type      = type;
+    node->data[len] = '\0';
+    memcpy(node->data, key, len);
+    *list = node;
+}
+
+
+/**
+ * @note 2025-05-18
+ *  -   This is very ugly and error prone
+ *
+ * @link https://www.lua.org/manual/5.1/
+ */
+static const char *const reserved[] = {
+    /* keywords */
+    "and", "break", "do", "else", "elseif", "end", "false", "for",
+    "function", "if", "in", "local", "nil", "not", "or", "return", "repeat",
+    "then", "true", "until", "while"
+};
+
+
 LUALIB_API int
 luaopen_readline(lua_State *L)
 {
+    int i;
     rl_attempted_completion_function = keyword_completion;
+
+    lua_getglobal(L, "_G"); /* _G */
+    lua_pushnil(L);         /* _G, k */
+    while (lua_next(L, -2) != 0) /* _G, k, _G[k] */ {
+        const char *key;
+        size_t      len;
+        Node_Type   type;
+
+        /* Can't complete non-string keys */
+        if (!lua_isstring(L, -2)) {
+            continue;
+        }
+
+        switch (lua_type(L, -1)) {
+        case LUA_TTABLE:    type = NODE_TABLE;    break;
+        case LUA_TFUNCTION: type = NODE_FUNCTION; break;
+        default:            type = NODE_BASIC;    break;
+        }
+        key = lua_tolstring(L, -2, &len);
+        add_node(type, key, len);
+        lua_pop(L, 1); /* _G, k */
+    }
+
+    for (i = 0; i < (int)(sizeof(reserved) / sizeof(reserved[0])); ++i) {
+        const char *key = reserved[i];
+        add_node(NODE_BASIC, key, strlen(key));
+    }
 
     /**
      * @note 2025-05-18
