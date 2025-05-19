@@ -115,7 +115,7 @@ class TStringPrinter:
 class NodePrinter:
     __val: gdb.Value
     __key: gdb.Value
-    
+
     def __init__(self, v: gdb.Value):
         self.__val = v["i_val"]
         self.__key = v["i_key"]["tvk"]

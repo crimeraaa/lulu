@@ -8,18 +8,31 @@ local LUA_KEYWORDS = {
     "then", "true", "until", "while",
 }
 
+local type    = type
+local require = require
+local tostring = tostring
+
+local format, rep    = string.format, string.rep
+local remove         = table.remove
+local pairs, ipairs  = pairs, ipairs
+local rawget, rawset = rawget, rawset
+local getmetatable, setmetatable = getmetatable, setmetatable
+
+local function toqstring(v)
+    return type(v) == "string" and format("%q", v) or tostring(v)
+end
+
 function Completer.lua(env)
     local c = Completer(env)
     for _, keyword in ipairs(LUA_KEYWORDS) do
         c:insert(keyword)
     end
-    require "readline".set_completer(c)
-    return c
+    return require "readline".set_completer(c)
 end
 
 function Completer:find(text)
     local first = text:sub(1, 1)
-    local list  = self.nodes[first]
+    local list  = self[first]
     if not list then
         return nil, nil
     end
@@ -47,7 +60,7 @@ function Completer:insert(text)
     -- This character isn't mapped yet?
     if not list then
         list = {}
-        self.nodes[text:sub(1, 1)] = list
+        self[text:sub(1, 1)] = list
     end
 
     list[#list + 1] = text
@@ -56,12 +69,12 @@ end
 function Completer:remove(text)
     local list, index = self:find(text)
     if index then
-        table.remove(list, index)
+        remove(list, index)
     end
 end
 
 function Completer:watch_static_env(env)
-    self.saved = env
+    self.env = env
     for k in pairs(env) do
         self:insert(k)
     end
@@ -69,7 +82,8 @@ function Completer:watch_static_env(env)
 end
 
 function Completer:watch_dynamic_env(env)
-    assert(getmetatable(env) == nil)
+    assert(getmetatable(env) == nil,
+       "Pre-existing metatable found; new metatable may not work properly")
     self:watch_static_env(env)
 
     local mt = {}
@@ -91,38 +105,21 @@ function Completer:watch_dynamic_env(env)
 end
 
 function Completer:restore_env()
-    local env = setmetatable(self.saved)
+    assert(self.env, "No previous environment to restore with")
+    local env = setmetatable(self.env)
+    self.env = nil
     return env
 end
 
 function Completer:dump(prefix)
     if prefix then
-        dump_table(self.nodes[prefix] or {})
+        dump_table(self[prefix] or {})
     else
-        dump_table(self.nodes)
+        dump_table(self)
     end
 end
 
-local mt = {}
-
-function mt.__index(self, k)
-    if type(k) == "string" then
-        if #k == 1 then
-            return self.nodes[k]
-        else
-            return Completer[k]
-        end
-    end
-    return nil
-end
-
-local base_type     = type
-local base_tostring = tostring
-local format        = string.format
-
-local function tostring(v)
-    return base_type(v) == "string" and format("%q", v) or base_tostring(v)
-end
+local saved_tabs = {[0] = ""}
 
 function dump_table(t, recurse, visited)
     recurse = recurse or 0
@@ -133,19 +130,26 @@ function dump_table(t, recurse, visited)
     end
     visited[t] = true
 
-    local tabs = string.rep('\t', recurse)
+    local tabs = saved_tabs[recurse]
+    if not tabs then
+        tabs = rep('\t', recurse)
+        saved_tabs[recurse] = tabs
+    end
+
     for k, v in pairs(t) do
-        io.stdout:write(tabs, '[', tostring(k), "] = ", tostring(v), '\n')
+        io.stdout:write(tabs, '[', toqstring(k), "] = ", toqstring(v), '\n')
         if type(v) == "table" then
             dump_table(v, recurse + 1, visited)
         end
     end
 end
 
+local mt = {__index = Completer}
+
 Completer = setmetatable(Completer, {
     __call = function(self, env)
         -- Each key is letter in the charset `[a-zA-Z_]`
-        local c = setmetatable({saved = nil, nodes = {}}, mt)
+        local c = setmetatable({}, mt)
         c:watch_dynamic_env(env or {})
         return c
     end,

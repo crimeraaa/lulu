@@ -1,7 +1,3 @@
-#define _GNU_SOURCE
-#include <stdlib.h> /* malloc */
-#include <string.h> /* strlen, _POSIX_C_SOURCE: strdup */
-#include <stdio.h>  /* _GNU_SOURCE: asprintf */
 
 #include "lreadline.h"
 
@@ -57,16 +53,22 @@ keyword_generator(const char *line, int state)
 
         lua_rawgeti(L2, -1, list_index++); /* nodes, list, list[list_index] */
         if (!lua_isstring(L2, -1)) {
-            lua_pop(L2, 1);
+            lua_pop(L2, 1); /* nodes, list */
             continue;
         }
         key = lua_tolstring(L2, -1, &key_len);
         if (strncmp(line, key, line_len) == 0) {
-            /*  If we pop before this, the string in the stack may be
-                invalidated if we so happen to garbage collect right then. */
-            char *out = strndup(key, key_len);
+            /**
+             * @brief
+             *  It is valid to hold a pointer to a Lua string as long as we
+             *  are within C. The moment control is returned back to Lua,
+             *  however, we cannot assume the pointer will remain valid.
+             *
+             * @link
+             *  http://lua-users.org/lists/lua-l/2006-02/msg00696.html
+             */
             lua_pop(L2, 2); /* nodes */
-            return out;
+            return strndup(key, key_len);
         }
         lua_pop(L2, 1); /* nodes, list */
     }
@@ -87,7 +89,7 @@ keyword_completion(const char *line, int start, int end)
     char **completions = NULL; /* 1D `char *` array allocated by Readline. */
     (void)start; (void)end;
     rl_attempted_completion_over = 1;
-    lua_getglobal(L2, "readline");      /* readline */
+    lua_getglobal(L2, LIBNAME);      /* readline */
     lua_getfield(L2, -1, "completer");  /* readline, nodes=readline.completer */
     if (lua_istable(L2, -1)) {
         completions = rl_completion_matches(line, &keyword_generator);
@@ -173,11 +175,12 @@ gnu_clear_history(lua_State *L)
 static int
 set_completer(lua_State *L)
 {
-    luaL_checktype(L, 1, LUA_TTABLE);
-    lua_getglobal(L, "readline");
-    lua_pushvalue(L, -2);
-    lua_setfield(L, -2, "completer");
-    return 0;
+    luaL_checktype(L, 1, LUA_TTABLE); /* t={} */
+    lua_getglobal(L, LIBNAME);        /* t, rl */
+    lua_pushvalue(L, -2);             /* t, rl, t */
+    lua_setfield(L, -2, "completer"); /* t, rl ; rl.completer = t */
+    lua_pop(L, 1);                    /* t */
+    return 1;
 }
 
 static luaL_Reg fns[] = {
@@ -201,6 +204,6 @@ luaopen_readline(lua_State *L)
      * @link
      *  https://www.lua.org/manual/5.1/manual.html#7.3
      */
-    luaL_register(L, "readline", fns); /* readline */
+    luaL_register(L, LIBNAME, fns); /* readline */
     return 1;
 }

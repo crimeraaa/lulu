@@ -1,5 +1,7 @@
 #!./bin/lua
 
+-- NOTE(crimeraaa, 2025-05-19): CWD must already be in LUA_PATH!
+local completer = require "lreadline.completer".lua(_G)
 local rl = require "readline"
 
 ---@diagnostic disable
