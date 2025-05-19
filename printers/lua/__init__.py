@@ -1,8 +1,5 @@
 import gdb  # type: ignore # Need to configure .vscode/settings.json for this to show in PyLance!
-from .lopcodes import InstructionPrinter
-from .lobject import LocVarPrinter, TValuePrinter, TStringPrinter
-from .llex import TokenPrinter
-from .lparser import ExprPrinter
+from . import lopcodes, lobject, llex, lparser
 
 
 def pretty_printers_lookup(val: gdb.Value):
@@ -15,18 +12,17 @@ def pretty_printers_lookup(val: gdb.Value):
 
 __pretty_printers = {
     # Lua 5.1.5 structs
-    "Instruction":   InstructionPrinter,
-    "TValue":        TValuePrinter,
-    "TString":       TStringPrinter,
-    "LocVar":        LocVarPrinter,
-    "Token":         TokenPrinter,
-    "Expr":          ExprPrinter,
+    "Instruction":   lopcodes.InstructionPrinter,
+    "TValue":        lobject.TValuePrinter,
+    "union TString": lobject.TStringPrinter,
+    "Node":          lobject.NodePrinter,
+    "LocVar":        lobject.LocVarPrinter,
+    "Token":         llex.TokenPrinter,
+    "Expr":          lparser.ExprPrinter,
 
-    # Pointers thereof
-    "Instruction *": InstructionPrinter,
-    "Token *":       TokenPrinter,
-    "Expr *":        ExprPrinter,
-    "TString *":     TStringPrinter,
-    "LocVar *":      LocVarPrinter,
+    # Pointers thereof that never function as arrays
+    "Token *":         llex.TokenPrinter,
+    "union TString *": lobject.TStringPrinter,
+    "Expr *":          lparser.ExprPrinter,
 }
 

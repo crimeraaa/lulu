@@ -1,3 +1,4 @@
+from __future__ import annotations
 import gdb # type: ignore
 from enum import Enum
 from .. import base
@@ -14,47 +15,52 @@ class Type(Enum):
     USERDATA      =  7
     THREAD        =  8
 
+def ttisnil(v: gdb.Value) -> bool:
+    return int(v["tt"]) == Type.NIL.value
 
-def bvalue(tvalue: gdb.Value) -> bool:
-    return bool(tvalue["value"]["b"])
-
-
-def nvalue(tvalue: gdb.Value) -> float:
-    return float(tvalue["value"]["n"])
+def bvalue(v: gdb.Value) -> bool:
+    return bool(v["value"]["b"])
 
 
-def pvalue(tvalue: gdb.Value) -> gdb.Value:
-    return tvalue["value"]["p"]
+def nvalue(v: gdb.Value) -> float:
+    return float(v["value"]["n"])
 
 
-def gcvalue(tvalue: gdb.Value) -> gdb.Value:
-    return tvalue["value"]["gc"]
+def pvalue(v: gdb.Value) -> gdb.Value:
+    return v["value"]["p"]
 
 
-def svalue(tvalue: gdb.Value) -> str:
+def gcvalue(v: gdb.Value) -> gdb.Value:
+    return v["value"]["gc"]
+
+
+def svalue(v: gdb.Value) -> str:
     # Let `TStringPrinter` handle it
-    return str(gcvalue(tvalue)["ts"])
+    return str(gcvalue(v)["ts"].address)
+
+def hvalue(v: gdb.Value) -> gdb.Value:
+    return gcvalue(v)['h'].address
 
 
-def getstr(tstring: gdb.Value) -> str:
+def getstr(ts: gdb.Value) -> str:
     """
     **Parameters**
-        `tstring` - represents a `TString *` (NOT a `TString`).
+        `ts` - represents a `TString *` (NOT a `TString`).
 
     **Analogous to**
     -   `#define getstr(ts) (const char *)(ts + 1)`
 
     **Assumptions**
     -   Addition should is overloaded for pointer types.
-    -   `tstring` is the union with appropriate padding.
-    -   `tstring.tsv` is the actual string data.
+    -   `ts` is the union with appropriate padding.
+    -   `ts.tsv` is the actual string data.
     -   For pointer arithmetic it is safer to use `ts`.
 
     **Guarantees**
     -   Embedded nul-characters `\0` are included.
     """
-    data    = (tstring + 1).cast(base.CONST_CHAR_POINTER)
-    nchars  = int(tstring["tsv"]["len"])
+    data    = (ts + 1).cast(base.CONST_CHAR_POINTER)
+    nchars  = int(ts["tsv"]["len"])
 
     # Only `char *` and variants thereof can safely use the `.string()` method.
     return data.string(length = nchars)
@@ -64,23 +70,32 @@ class TValuePrinter:
     """ NOTE(2025-04-20): Keep track of the field names in `lobject.h`! """
     __value: gdb.Value
 
-    def __init__(self, value: gdb.Value):
-        self.__value = value
+    def __init__(self, v: gdb.Value):
+        self.__value = v
 
     def to_string(self) -> str:
-        # We assume `value.tt` is in range of `Type`
-        tag = Type(int(self.__value["tt"]))
-        match tag:
-            case Type.NONE:    return "none"
-            case Type.NIL:     return "nil"
-            case Type.BOOLEAN: return str(bvalue(self.__value)).lower()
-            case Type.NUMBER:  return str(nvalue(self.__value))
-            case Type.STRING:  return svalue(self.__value)
-            case _:
-                # GDB already knows how to print addresses
-                # assumes `(void *)TValue::value.p == (void *)TValue::value.gc`
-                addr = gcvalue(self.__value).cast(base.VOID_POINTER)
-                return f"{tag.name.lower()}: {str(addr)}"
+        return tostring(self.__value)
+
+
+def tostring(v: gdb.Value) -> str:
+    # We assume `value.tt` is in range of `Type`
+    tag = Type(int(v["tt"]))
+    match tag:
+        case Type.NONE:    return "none"
+        case Type.NIL:     return "nil"
+        case Type.BOOLEAN: return str(bvalue(v)).lower()
+        case Type.NUMBER:  return str(nvalue(v))
+        case Type.STRING:  return svalue(v)
+        case _:
+            pass
+    # GDB already knows how to print addresses
+    # assumes `(void *)TValue::value.p == (void *)TValue::value.gc`
+    addr = gcvalue(v).cast(base.VOID_POINTER)
+    return f"{tag.name.lower()}: {addr}"
+
+
+first_table = True
+visited: dict[gdb.Value, bool] = {}
 
 
 class TStringPrinter:
@@ -97,15 +112,27 @@ class TStringPrinter:
         return "string"
 
 
+class NodePrinter:
+    __val: gdb.Value
+    __key: gdb.Value
+    
+    def __init__(self, v: gdb.Value):
+        self.__val = v["i_val"]
+        self.__key = v["i_key"]["tvk"]
+
+    def to_string(self) -> str:
+        return f"[{str(self.__key)}]={self.__val}"
+
+
 class LocVarPrinter:
     __name:    gdb.Value
     __startpc: gdb.Value
     __endpc:   gdb.Value
 
-    def __init__(self, val: gdb.Value):
-        self.__name    = val["varname"]
-        self.__startpc = val["startpc"]
-        self.__endpc   = val["endpc"]
+    def __init__(self, v: gdb.Value):
+        self.__name    = v["varname"]
+        self.__startpc = v["startpc"]
+        self.__endpc   = v["endpc"]
 
     def to_string(self) -> str:
         return f"{{{self.__name}: startpc={self.__startpc}, endpc={self.__endpc}}}"

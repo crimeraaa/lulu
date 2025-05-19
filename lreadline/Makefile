@@ -1,5 +1,5 @@
 CC := clang
-CC_FLAGS := -std=gnu89 -Wall -Wextra -Werror -g
+CC_FLAGS := -std=gnu89 -Wall -Wextra -g
 
 FILE := lreadline
 SRC  := $(FILE).c

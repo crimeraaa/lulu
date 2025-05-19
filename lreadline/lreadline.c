@@ -5,67 +5,18 @@
 
 #include "lreadline.h"
 
-static Env env;
-
-static bool
-is_lower(char ch, int *i)
-{
-    bool ok = 'a' <= ch && ch <= 'z';
-    if (ok) {
-        *i = ch - 'a';
-    }
-    return ok;
-}
-
-static bool
-is_upper(char ch, int *i)
-{
-    bool ok = 'A' <= ch && ch <= 'Z';
-    if (ok) {
-        *i = ch - 'A';
-    }
-    return ok;
-}
-
-static Node *
-find_node(const char *line, size_t len, Node *node)
-{
-    while (node != NULL) {
-        /* Compare the prefix, not the entire string! */
-        if (strncmp(line, node->data, len) == 0) {
-            return node;
-        }
-        node = node->prev;
-    }
-    return NULL;
-}
-
-static Node **
-parent_node(const char *line, size_t len)
-{
-    int i;
-    if (len == 0) {
-        return NULL;
-    }
-    if (is_upper(line[0], &i)) {
-        return &env.upper[i];
-    } else if (is_lower(line[0], &i)) {
-        return &env.lower[i];
-    } else if (line[0] == '_') {
-        return &env.underscore;
-    }
-    return NULL;
-}
-
-static Node *
-first_node(const char *line, size_t len)
-{
-    Node *node = *parent_node(line, len);
-    return find_node(line, len, node);
-}
-
+/* GNU Readline isn't thread-safe anyway */
+static lua_State *L2;
 
 /**
+ * @note 2025-05-19
+ *  Assumes `readline.completer` is definitely a table and currently on top of
+ *  the stack.
+ *
+ * @warning 2025-05-19
+ *  This function is very fragile; if Lua throws at any point we will definitely
+ *  leak memory.
+ *
  * @typedef
  *  `rl_compentry_func_t`
  */
@@ -73,36 +24,53 @@ static char *
 keyword_generator(const char *line, int state)
 {
     /* First call for `line`, `state == 0`. Otherwise, `state != 0`. */
-    static size_t      len;
-    static const Node *node;
+    static size_t line_len;
+    static int    list_index, list_len;
+    static char   key[2];
 
     if (state == 0) {
-        len = strlen(line);
+        line_len = strlen(line);
+        key[0]   = line[0]; /* At least a nul char */
+        key[1]   = '\0';
     }
 
     /* No text, so insert TAB as-is. */
-    if (len == 0) {
+    if (line_len == 0) {
         rl_insert_text("\t");
         return NULL;
     }
 
-    /*  In order to check for *multiple* completions, we need to use shared
-        state between function calls. */
+    lua_getfield(L2, -1, key); /* nodes, list=nodes[key]? */
+    if (!lua_istable(L2, -1)) {
+        lua_pop(L2, 1);
+        return NULL;
+    }
+
     if (state == 0) {
-        node = first_node(line, len);
-    } else {
-        node = find_node(line, len, node->prev);
+        list_index = 1;
+        list_len   = (int)lua_objlen(L2, -1); /* list_len = #list */
     }
 
-    if (node != NULL) {
-        switch (node->type) {
-        case NODE_BASIC:    rl_completion_append_character = ' '; break;
-        case NODE_TABLE:    rl_completion_append_character = '.'; break;
-        case NODE_FUNCTION: rl_completion_append_character = '('; break;
+    for (; list_index <= list_len;) {
+        const char *key;
+        size_t      key_len;
+
+        lua_rawgeti(L2, -1, list_index++); /* nodes, list, list[list_index] */
+        if (!lua_isstring(L2, -1)) {
+            lua_pop(L2, 1);
+            continue;
         }
-        return strndup(node->data, node->len);
+        key = lua_tolstring(L2, -1, &key_len);
+        if (strncmp(line, key, line_len) == 0) {
+            /*  If we pop before this, the string in the stack may be
+                invalidated if we so happen to garbage collect right then. */
+            char *out = strndup(key, key_len);
+            lua_pop(L2, 2); /* nodes */
+            return out;
+        }
+        lua_pop(L2, 1); /* nodes, list */
     }
-
+    lua_pop(L2, 1); /* nodes */
     return NULL; /* No possible completions. */
 }
 
@@ -116,9 +84,16 @@ keyword_generator(const char *line, int state)
 static char **
 keyword_completion(const char *line, int start, int end)
 {
+    char **completions = NULL; /* 1D `char *` array allocated by Readline. */
     (void)start; (void)end;
     rl_attempted_completion_over = 1;
-    return rl_completion_matches(line, &keyword_generator);
+    lua_getglobal(L2, "readline");      /* readline */
+    lua_getfield(L2, -1, "completer");  /* readline, nodes=readline.completer */
+    if (lua_istable(L2, -1)) {
+        completions = rl_completion_matches(line, &keyword_generator);
+    }
+    lua_pop(L2, 2);
+    return completions;
 }
 
 static int
@@ -179,76 +154,45 @@ gnu_clear_history(lua_State *L)
     return 0;
 }
 
+
+/**
+ * @brief
+ *  A 'completer' is a user-created table which originates from Lua. It
+ *  stores what 'words' have been defined so far to use for autocompletion.
+ *
+ * @details
+ *  It must fulfill the following requirements:
+ *      1.  It can use single-character strings in the set `[a-zA-Z_]` as keys.
+ *          These represent the starting characters of words.
+ *
+ *      2.  Each character maps to a `string[]` or `nil`. We do not
+ *          use a dictionary as that will require an arbitrary iteration.
+ *          With arrays (that originate from Lua) we can simply call
+ *          `lua_objlen()`.
+ */
+static int
+set_completer(lua_State *L)
+{
+    luaL_checktype(L, 1, LUA_TTABLE);
+    lua_getglobal(L, "readline");
+    lua_pushvalue(L, -2);
+    lua_setfield(L, -2, "completer");
+    return 0;
+}
+
 static luaL_Reg fns[] = {
     {"readline",      &gnu_readline},
     {"add_history",   &gnu_add_history},
     {"clear_history", &gnu_clear_history},
+    {"set_completer", &set_completer},
     {NULL, NULL}
 };
-
-static void
-add_node(Node_Type type, const char *key, size_t len)
-{
-    Node  *node;
-    Node **list = parent_node(key, len);
-
-    /* At least 1 char is allowed, not accounting for padding. */
-    node = malloc(sizeof(*node) + len);
-    node->prev      = *list;
-    node->len       = len;
-    node->type      = type;
-    node->data[len] = '\0';
-    memcpy(node->data, key, len);
-    *list = node;
-}
-
-
-/**
- * @note 2025-05-18
- *  -   This is very ugly and error prone
- *
- * @link https://www.lua.org/manual/5.1/
- */
-static const char *const reserved[] = {
-    /* keywords */
-    "and", "break", "do", "else", "elseif", "end", "false", "for",
-    "function", "if", "in", "local", "nil", "not", "or", "return", "repeat",
-    "then", "true", "until", "while"
-};
-
 
 LUALIB_API int
 luaopen_readline(lua_State *L)
 {
-    int i;
+    L2 = L;
     rl_attempted_completion_function = keyword_completion;
-
-    lua_getglobal(L, "_G"); /* _G */
-    lua_pushnil(L);         /* _G, k */
-    while (lua_next(L, -2) != 0) /* _G, k, _G[k] */ {
-        const char *key;
-        size_t      len;
-        Node_Type   type;
-
-        /* Can't complete non-string keys */
-        if (!lua_isstring(L, -2)) {
-            continue;
-        }
-
-        switch (lua_type(L, -1)) {
-        case LUA_TTABLE:    type = NODE_TABLE;    break;
-        case LUA_TFUNCTION: type = NODE_FUNCTION; break;
-        default:            type = NODE_BASIC;    break;
-        }
-        key = lua_tolstring(L, -2, &len);
-        add_node(type, key, len);
-        lua_pop(L, 1); /* _G, k */
-    }
-
-    for (i = 0; i < (int)(sizeof(reserved) / sizeof(reserved[0])); ++i) {
-        const char *key = reserved[i];
-        add_node(NODE_BASIC, key, strlen(key));
-    }
 
     /**
      * @note 2025-05-18
@@ -257,6 +201,6 @@ luaopen_readline(lua_State *L)
      * @link
      *  https://www.lua.org/manual/5.1/manual.html#7.3
      */
-    luaL_register(L, "readline", fns);
+    luaL_register(L, "readline", fns); /* readline */
     return 1;
 }
