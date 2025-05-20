@@ -1,9 +1,5 @@
 #!./bin/lua
 
--- NOTE(crimeraaa, 2025-05-19): CWD must already be in LUA_PATH!
-local completer = require "lreadline.completer".lua(_G)
-local rl = require "readline"
-
 ---@diagnostic disable
 --[[-------------------------------------------------------------------
 
@@ -2115,6 +2111,10 @@ function ChunkSpy_Sample()
   --]]-------------------------------------------------------------------
 
   function ChunkSpy_Interact()
+    -- NOTE(crimeraaa, 2025-05-19): CWD must already be in LUA_PATH!
+    local completer = require "lreadline/completer".lua(_G)
+    local rl = require "readline"
+
     config.DISPLAY_BRIEF = true
     config.OUTPUT_FILE = nil
     local prevline, done

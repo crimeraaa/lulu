@@ -1,5 +1,9 @@
 -- The following is a helper script because doing heavy table manipulation
 -- from C is a pain.
+
+---@class Completer
+---@field env table
+---@overload fun(env: table): Completer
 local Completer = {}
 
 local LUA_KEYWORDS = {
@@ -8,8 +12,8 @@ local LUA_KEYWORDS = {
     "then", "true", "until", "while",
 }
 
-local type    = type
-local require = require
+local type     = type
+local require  = require
 local tostring = tostring
 
 local format, rep    = string.format, string.rep
@@ -23,16 +27,19 @@ local function toqstring(v)
 end
 
 function Completer.lua(env)
-    local c = Completer(env)
+    local c = Completer(env or getfenv())
     for _, keyword in ipairs(LUA_KEYWORDS) do
         c:insert(keyword)
     end
     return require "readline".set_completer(c)
 end
 
+---@param text string
 function Completer:find(text)
     local first = text:sub(1, 1)
-    local list  = self[first]
+    
+    ---@type string[]?
+    local list = self[first]
     if not list then
         return nil, nil
     end
@@ -51,6 +58,7 @@ function Completer:insert(text)
         return
     end
 
+    ---@cast text string
     local list, index = self:find(text)
     -- Already exists
     if list and index then
@@ -66,6 +74,7 @@ function Completer:insert(text)
     list[#list + 1] = text
 end
 
+---@param text string
 function Completer:remove(text)
     local list, index = self:find(text)
     if index then
@@ -73,19 +82,16 @@ function Completer:remove(text)
     end
 end
 
-function Completer:watch_static_env(env)
+---@param env table
+function Completer:watch_env(env)
+    assert(getmetatable(env) == nil,
+       "Pre-existing metatable found; new metatable may not work properly")
     self.env = env
     for k in pairs(env) do
         self:insert(k)
     end
-    return env
-end
 
-function Completer:watch_dynamic_env(env)
-    assert(getmetatable(env) == nil,
-       "Pre-existing metatable found; new metatable may not work properly")
-    self:watch_static_env(env)
-
+    ---@type metatable
     local mt = {}
     function mt.__index(t, k)
         self:insert(k)
@@ -111,6 +117,7 @@ function Completer:restore_env()
     return env
 end
 
+---@param prefix? string
 function Completer:dump(prefix)
     if prefix then
         dump_table(self[prefix] or {})
@@ -144,15 +151,15 @@ function dump_table(t, recurse, visited)
     end
 end
 
+---@type metatable
 local mt = {__index = Completer}
 
-Completer = setmetatable(Completer, {
+return setmetatable(Completer, {
     __call = function(self, env)
-        -- Each key is letter in the charset `[a-zA-Z_]`
+        -- Each key is letter is in the charset `[a-zA-Z_]`
+        ---@type Completer
         local c = setmetatable({}, mt)
-        c:watch_dynamic_env(env or {})
+        c:watch_env(env or {})
         return c
     end,
 })
-
-return Completer

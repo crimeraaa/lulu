@@ -2,7 +2,6 @@
 #define LREADLINE_H
 
 
-#define _GNU_SOURCE
 #include <stdlib.h> /* malloc */
 #include <string.h> /* strlen, _POSIX_C_SOURCE: strdup */
 
