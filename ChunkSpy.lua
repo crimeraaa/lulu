@@ -2131,6 +2131,9 @@ function ChunkSpy_Sample()
 
     -- NOTE(crimeraaa, 2025-05-18): Use Lua bindings in `readline.so`
     local l = rl.readline(prevline and ">>" or ">")
+    if l then
+      rl.add_history(l)
+    end
 
     -------------------------------------------------------------
     if l == nil or (l == "exit" or l == "quit" and not prevline) then
@@ -2158,6 +2161,7 @@ function ChunkSpy_Sample()
       end
     -------------------------------------------------------------
     end--if l
+    rl.clear_history()
   end--while
 end
 

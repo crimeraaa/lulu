@@ -1,8 +1,7 @@
 #+private
 package main
 
-@require import "core:c/libc"
-@require import "core:strings"
+@require import c "core:c/libc"
 @require import "core:os"
 @require import "core:io"
 
@@ -11,27 +10,20 @@ import rl "readline"
 
 when USE_READLINE {
 
-generator :: proc "c" (line: cstring, state: int) -> cstring {
-    return nil
-}
-
-tab_complete :: proc "c" (line: cstring, start, stop: int) -> [^]cstring {
-    rl.attempted_completion_over = true
-    return rl.completion_matches(line, generator)
-}
-
-@init
-setup_readline :: proc() {
+setup_readline :: proc(vm: ^lulu.VM) {
     rl.bind_key('\t', rl.insert)
 }
 
+cleanup_readline :: proc() {
+    rl.clear_history()
+}
 
 read_line :: proc(vm: ^lulu.VM) -> (line: string, ok: bool) {
     s := rl.readline(PROMPT)
     if s == nil {
         return
     }
-    defer libc.free(rawptr(s))
+    defer c.free(rawptr(s))
 
     tmp := string(s)
 
@@ -41,11 +33,6 @@ read_line :: proc(vm: ^lulu.VM) -> (line: string, ok: bool) {
     }
     return check_line(vm, tmp), true
 }
-
-clear_lines :: proc() {
-    rl.clear_history()
-}
-
 
 } else /* ODIN_OS != .Linux */ {
 
@@ -60,9 +47,6 @@ read_line :: proc(vm: ^lulu.VM) -> (line: string, ok: bool) {
     }
     return check_line(vm, string(buf[:n_read])), true
 }
-
-// Nothing to do, just keep around for consistency.
-clear_lines :: proc() {}
 
 }
 

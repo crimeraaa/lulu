@@ -117,7 +117,7 @@ View_Mode :: enum {Base, Top}
 ```odin
 vm.view = vm.stack_all[2:4]
 vm_view_absindex(vm, .Base) // view index 0 is stack index 2
-vm.view_absindex(vm, .Top)  // view index 2 is stack index 4
+vm_view_absindex(vm, .Top)  // view index 2 is stack index 4
 ```
  */
 vm_view_absindex :: proc(vm: ^VM, $mode: View_Mode) -> int {

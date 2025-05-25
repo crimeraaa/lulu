@@ -33,7 +33,10 @@ main :: proc() {
     }
 
     run_interactive :: proc(vm: ^lulu.VM) {
-        defer clear_lines()
+        when USE_READLINE {
+            setup_readline(vm)
+            defer cleanup_readline()
+        }
 
         for {
             input := read_line(vm) or_break

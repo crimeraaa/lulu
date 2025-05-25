@@ -12,20 +12,29 @@ local LUA_KEYWORDS = {
     "then", "true", "until", "while",
 }
 
-local type     = type
-local require  = require
-local tostring = tostring
-
-local format, rep    = string.format, string.rep
-local remove         = table.remove
-local pairs, ipairs  = pairs, ipairs
-local rawget, rawset = rawget, rawset
-local getmetatable, setmetatable = getmetatable, setmetatable
+local assert        = assert
+local type          = type
+local require       = require
+local tostring      = tostring
+local remove        = table.remove
+local pairs         = pairs
+local ipairs        = ipairs
+local rawget        = rawget
+local rawset        = rawset
+local getfenv       = getfenv
+local getmetatable  = getmetatable
+local setmetatable  = setmetatable
 
 local function toqstring(v)
-    return type(v) == "string" and format("%q", v) or tostring(v)
+    if type(v) == "string" then
+        ---@cast v string
+        local quote = #v == 1 and '\'' or '\"'
+        return quote .. v .. quote
+    end
+    return tostring(v)
 end
 
+---@param env? table
 function Completer.lua(env)
     local c = Completer(env or getfenv())
     for _, keyword in ipairs(LUA_KEYWORDS) do
@@ -35,33 +44,36 @@ function Completer.lua(env)
 end
 
 ---@param text string
+---@return string[]? list
+---@return integer?  index
+---@return boolean   ok
 function Completer:find(text)
+    if type(text) ~= "string" or #text == 0 then
+        return nil, nil, false
+    end
+
     local first = text:sub(1, 1)
-    
+
     ---@type string[]?
     local list = self[first]
     if not list then
-        return nil, nil
+        return nil, nil, true
     end
 
     for i, v in ipairs(list) do
         if text == v then
-            return list, i
+            return list, i, true
         end
     end
 
-    return list, nil
+    return list, nil, true
 end
 
+---@param text string
 function Completer:insert(text)
-    if type(text) ~= "string" or #text == 0 then
-        return
-    end
-
-    ---@cast text string
-    local list, index = self:find(text)
-    -- Already exists
-    if list and index then
+    local list, index, ok = self:find(text)
+    -- Invalid `text` or `text` already exists?
+    if not ok or (list and index) then
         return
     end
 
@@ -77,7 +89,7 @@ end
 ---@param text string
 function Completer:remove(text)
     local list, index = self:find(text)
-    if index then
+    if list and index then
         remove(list, index)
     end
 end
@@ -93,12 +105,16 @@ function Completer:watch_env(env)
 
     ---@type metatable
     local mt = {}
+
+    -- Watch all named variable retrievals.
     function mt.__index(t, k)
         self:insert(k)
         return rawget(t, k)
     end
 
+    -- Watch all named variable declaration or assignment.
     function mt.__newindex(t, k, v)
+        -- Assigning the variable at `t[k]` a variable to `nil`?
         if v == nil then
             self:remove(k)
         else
@@ -127,7 +143,11 @@ function Completer:dump(prefix)
 end
 
 local saved_tabs = {[0] = ""}
+local stdout     = io.stdout
 
+---@param t table
+---@param recurse? integer
+---@param visited? table<table, boolean>
 function dump_table(t, recurse, visited)
     recurse = recurse or 0
     visited = visited or {}
@@ -139,12 +159,12 @@ function dump_table(t, recurse, visited)
 
     local tabs = saved_tabs[recurse]
     if not tabs then
-        tabs = rep('\t', recurse)
+        tabs = ('\t'):rep(recurse)
         saved_tabs[recurse] = tabs
     end
 
     for k, v in pairs(t) do
-        io.stdout:write(tabs, '[', toqstring(k), "] = ", toqstring(v), '\n')
+        stdout:write(tabs, '[', toqstring(k), "] = ", toqstring(v), '\n')
         if type(v) == "table" then
             dump_table(v, recurse + 1, visited)
         end

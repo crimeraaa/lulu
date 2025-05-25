@@ -158,13 +158,21 @@ gnu_readline(lua_State *L)
         lua_pushnil(L);
     } else {
         size_t len = strlen(line);
-        if (len > 0) {
-            add_history(line);
-        }
         lua_pushlstring(L, line, len);
         free(line);
     }
     return 1;
+}
+
+static bool
+optbool(lua_State *L, int narg)
+{
+    /* Received a non-empty argument? Includes explicitly passing `nil`. */
+    if (!lua_isnone(L, narg)) {
+        luaL_checktype(L, narg, LUA_TBOOLEAN);
+        return lua_toboolean(L, narg);
+    }
+    return false;
 }
 
 static int
@@ -172,7 +180,8 @@ gnu_add_history(lua_State *L)
 {
     size_t len;
     const char *line = luaL_checklstring(L, 1, &len);
-    if (len > 0) {
+    bool allow_empty = optbool(L, 2);
+    if (len > 0 || allow_empty) {
         add_history(line);
     }
     return 0;
