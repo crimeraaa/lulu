@@ -20,7 +20,8 @@ VM :: struct {
 }
 
 Type :: enum {
-    Nil,
+    None = -1, // API use only; values outside the current stack view.
+    Nil  =  0,
     Number,
     Boolean,
     String,
@@ -89,25 +90,32 @@ pop :: proc(vm: ^VM, n := 1) {
 
 // You may use negative indexes to resolve from the top.
 @(private="file")
-poke :: proc(vm: ^VM, i: int) -> ^Value {
-    return poke_base(vm, i - 1) if i > 0 else poke_top(vm, i)
+poke :: proc(vm: ^VM, i: int) -> (v: ^Value, ok: bool) {
+    if i > 0 {
+        return poke_base(vm, i - 1)
+    }
+    return poke_top(vm, i)
 }
 
 @(private="file")
 peek :: proc(vm: ^VM, i: int) -> Value {
-    return poke(vm, i)^
+    v, ok := poke(vm, i)
+    return v^ if ok else value_make()
 }
 
 @(private="file")
-poke_base :: proc(vm: ^VM, i: int) -> ^Value {
+poke_base :: proc(vm: ^VM, i: int) -> (v: ^Value, ok: bool) {
     assert(i >= 0)
-    return &vm.view[i]
+    if i > len(vm.view) {
+        return nil, false
+    }
+    return &vm.view[i], true
 }
 
 @(private="file")
-poke_top :: proc(vm: ^VM, i: int) -> ^Value {
+poke_top :: proc(vm: ^VM, i: int) -> (v: ^Value, ok: bool) {
     assert(i <= 0)
-    return &vm.view[len(vm.view) + i]
+    return poke_base(vm, len(vm.view) + i)
 }
 
 
@@ -168,7 +176,9 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
     base := vm_view_absindex(vm, .Base)
     top  := vm_view_absindex(vm, .Top)
     vm.view = vm.stack_all[base:top + 1]
-    poke_top(vm, -1)^ = v
+    if ptr, ok := poke_top(vm, -1); ok {
+        ptr^ = v
+    }
 }
 
 
@@ -178,7 +188,8 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
 
 
 type :: proc(vm: ^VM, i: int) -> Type {
-    return poke(vm, i).type
+    v, ok := poke(vm, i)
+    return v.type if ok else Type.None
 }
 
 type_name :: proc(vm: ^VM, i: int) -> string {
@@ -255,7 +266,7 @@ to_number :: proc(vm: ^VM, i: int) -> (n: Number, ok: bool) #optional_ok {
 -   `lapi.c:lua_tolstring(lua_State *L, int index, size_t *len)` in Lua 5.1.5.
  */
 to_string :: proc(vm: ^VM, i: int) -> (s: string, ok: bool) #optional_ok {
-    v := poke(vm, i)
+    v := poke(vm, i) or_return
     if !value_is_string(v^) {
         value_is_number(v^) or_return
         o := ostringf_new(vm, NUMBER_FMT, v.number)
@@ -288,7 +299,7 @@ to_pointer :: proc(vm: ^VM, i: int) -> (p: rawptr, ok: bool) #optional_ok {
  */
 get_global :: proc(vm: ^VM, key: string) {
     k := value_make(ostring_new(vm, key))
-    v := table_get(&vm.globals, k)
+    v := table_get(vm.globals, k)
     push_rawvalue(vm, v)
 }
 
@@ -328,7 +339,8 @@ concat :: proc(vm: ^VM, count: int) {
     }
 
     // Overwrite the first argument when done and do not pop it.
-    target: [^]Value = poke_top(vm, -count)
+    target: [^]Value
+    target, _ = poke_top(vm, -count)
     vm_concat(vm, target, target[:count])
     pop(vm, count - 1)
 }

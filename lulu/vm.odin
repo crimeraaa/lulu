@@ -64,10 +64,7 @@ vm_memory_error :: proc(vm: ^VM) -> ! {
 @(require_results)
 vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
     // _G and interned strings are not part of the collectable objects list.
-    intern_init(vm, &vm.interned)
-    vm.globals.type = .Table
-    vm.globals.prev = nil
-
+    vm.globals   = {type = .Table, prev = nil}
     vm.builder   = strings.builder_make(allocator)
     vm.allocator = allocator
     vm.chunk     = nil
@@ -96,8 +93,8 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 }
 
 vm_check_stack :: proc(vm: ^VM, extra: int) {
-    stack_end :=  len(vm.stack_all) - 1
-    view_end   := vm_view_absindex(vm, .Top)
+    stack_end := len(vm.stack_all) - 1
+    view_end  := vm_view_absindex(vm, .Top)
     // Remaining stack slots can't accomodate `extra` values?
     if stack_end - view_end <= extra {
         vm_grow_stack(vm, extra)
@@ -170,7 +167,7 @@ vm_grow_stack :: proc(vm: ^VM, extra: int) {
 
 vm_destroy :: proc(vm: ^VM) {
     delete(vm.stack_all, vm.allocator)
-    intern_destroy(&vm.interned)
+    intern_destroy(vm, &vm.interned)
     table_destroy(vm, &vm.globals)
 
     when DEBUG_TRACE_EXEC {
@@ -387,7 +384,7 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Get_Global:
             k := constants[ip_get_Bx(read)]
-            if v, ok := table_get(globals, k); !ok {
+            if v, ok := table_get(globals^, k); !ok {
                 ident := value_as_string(k)
                 protect_begin(vm, ip)
                 vm_runtime_error(vm, "Attempt to read undefined global '%s'",
@@ -407,7 +404,7 @@ vm_execute :: proc(vm: ^VM) {
                 index_error(vm, ip, rb)
             } else {
                 key := get_rk(read.c, stack, constants)^
-                ra^ = table_get(rb.table, key)
+                ra^ = table_get(rb.table^, key)
             }
         case .Set_Table:
             if !value_is_table(ra^) {
@@ -470,7 +467,7 @@ vm_execute :: proc(vm: ^VM) {
                 count := 0
                 for index in 1..=t.count {
                     k := value_make(index)
-                    if v := table_get(t, k); value_is_nil(v) {
+                    if v := table_get(t^, k); value_is_nil(v) {
                         break
                     }
                     count += 1

@@ -4,6 +4,18 @@ package lulu
 import "core:fmt"
 import "core:io"
 import "core:mem"
+import "core:math"
+
+/* 
+**Overview**
+-   A variation of `Table` optimized specifically to intern strings.
+ */
+Intern :: struct {
+    entries: []Intern_Entry, // len(entries) == allocated capacity
+    count:     int,     // number of active entries
+}
+
+Intern_Entry :: ^OString
 
 OString :: struct {
     using base: Object,
@@ -32,7 +44,7 @@ ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     However, extracting the cstring requires an unsafe cast.
  */
 ostring_new :: proc(vm: ^VM, input: string) -> ^OString {
-    if prev, ok := intern_get(&vm.interned, input); ok {
+    if prev := intern_get(vm.interned, input); prev != nil {
         return prev
     }
 
@@ -45,7 +57,7 @@ ostring_new :: proc(vm: ^VM, input: string) -> ^OString {
         copy(s.data[:n], input)
         s.data[n] = 0
     }
-    intern_set(&vm.interned, s)
+    intern_set(vm, &vm.interned, s)
     return s
 }
 
@@ -103,4 +115,91 @@ hash_bytes :: proc "contextless" (bytes: []byte) -> (hash: u32) {
     }
 
     return hash
+}
+
+// Some unique, non-nil address that we will never write to.
+@(private="file")
+TOMBSTONE := OString{}
+
+@(private="file")
+find_entry :: proc(entries: []Intern_Entry, s: $T) -> (p: ^Intern_Entry, is_first: bool)
+where T == string || T == ^OString #optional_ok {
+    wrap := u32(len(entries))
+    tomb: ^Intern_Entry
+    hash := hash_string(s) when T == string else s.hash
+    for i := hash % wrap; /* empty */; i = (i + 1) % wrap {
+        p = &entries[i]
+        switch p^ {
+        case nil:
+            is_first = tomb == nil
+            return p if is_first else tomb, is_first
+        case &TOMBSTONE:
+            if tomb == nil {
+                tomb = p
+            }
+            continue
+        case:
+            last := ostring_to_string(p^) when T == string else p^
+            if last == s {
+                return p, false
+            }
+        }
+    }
+    unreachable("How did you even get here?")
+}
+
+intern_get :: proc(t: Intern, s: string) -> (o: ^OString) {
+    if t.count == 0 {
+        return
+    }
+    p := find_entry(t.entries, s)
+    return p^ if p != nil else nil
+}
+
+intern_set :: proc(vm: ^VM, t: ^Intern, o: ^OString) {
+    if n := len(t.entries); t.count >= (n*3) / 4 {
+        intern_resize(vm, t, n)
+    }
+    p, is_first := find_entry(t.entries, o)
+    p^ = o
+    // Tombstones would have already been counted.
+    if is_first {
+        t.count += 1
+    }
+}
+
+intern_resize :: proc(vm: ^VM, t: ^Intern, new_cap: int) {
+    new_cap := new_cap
+    new_cap = max(8, math.next_power_of_two(new_cap + 1))
+    
+    prev := t.entries
+    defer slice_delete(vm, &prev)
+
+    t.entries = slice_make(vm, Intern_Entry, new_cap)
+    t.count   = 0
+    for e in prev {
+        if e == nil || e == &TOMBSTONE {
+            continue
+        }
+        
+        p := find_entry(t.entries, e)
+        p^ = e
+        t.count += 1
+    }
+}
+
+intern_unset :: proc(t: ^Intern, o: ^OString) {
+    if t.count == 0 {
+        return
+    }
+
+    if p := find_entry(t.entries, o); p != nil {
+        p^ = &TOMBSTONE
+        t.count -= 1
+    }
+}
+
+intern_destroy :: proc(vm: ^VM, t: ^Intern) {
+    slice_delete(vm, &t.entries)
+    t.count = 0
 }

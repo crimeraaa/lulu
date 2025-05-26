@@ -2,7 +2,6 @@
 package lulu
 
 import "core:math"
-import "core:mem"
 
 Table :: struct {
     using base: Object,
@@ -18,13 +17,13 @@ Table_Entry :: struct {
 table_new :: proc(vm: ^VM, n_array, n_hash: int) -> ^Table {
     t := object_new(Table, vm)
     if total := n_array + n_hash; total > 0 {
-        adjust_capacity(t, total, vm.allocator)
+        table_resize(vm, t, total)
     }
     return t
 }
 
 table_destroy :: proc(vm: ^VM, t: ^Table) {
-    delete(t.entries, vm.allocator)
+    slice_delete(vm, &t.entries)
     t.count   = 0
     t.entries = nil
 }
@@ -39,17 +38,18 @@ table_destroy :: proc(vm: ^VM, t: ^Table) {
 -   `k` is non-nil.
 -   We assume the VM handled that beforehand, it would have thrown an error.
  */
-table_get :: proc(t: ^Table, k: Value) -> (v: Value, ok: bool) #optional_ok {
+table_get :: proc(t: Table, k: Value) -> (v: Value, ok: bool) #optional_ok {
     if t.count == 0 {
         return value_make(), false
     }
 
     entry := find_entry(t.entries, k)
-    if ok = !value_is_nil(entry.key); ok {
+    if !value_is_nil(entry.key) {
         v = entry.value
     }
-    return v, ok
+    return v, true
 }
+
 
 /*
 **Assumptions**
@@ -82,7 +82,7 @@ table_set :: proc(vm: ^VM, t: ^Table, k, v: Value) {
     -   n*0.75 == n*(3/4) == (n*3)/4
      */
     if n := len(t.entries); t.count >= (n*3) / 4 {
-        adjust_capacity(t, n, vm.allocator)
+        table_resize(vm, t, n)
     }
 
     entry := find_entry(t.entries, k)
@@ -122,6 +122,7 @@ table_copy :: proc(vm: ^VM, dst: ^Table, src: Table) {
     }
 }
 
+
 /*
 **Assumptions**
 -   `k` is non-nil. That's all I ask.
@@ -131,8 +132,8 @@ find_entry :: proc(entries: []Table_Entry, k: Value) -> ^Table_Entry {
 
     get_hash :: proc(k: Value) -> u32 {
         switch k.type {
-        case .Nil:      break
-        case .Boolean:  return cast(u32)k.boolean
+        case .None, .Nil: break
+        case .Boolean:  return u32(k.boolean)
         case .Number:   return hash_number(k.number)
         case .String:   return k.ostring.hash
         case .Table:    return hash_pointer(k.table)
@@ -163,8 +164,7 @@ find_entry :: proc(entries: []Table_Entry, k: Value) -> ^Table_Entry {
 }
 
 
-@(private="file")
-adjust_capacity :: proc(t: ^Table, new_cap: int, allocator: mem.Allocator) {
+table_resize :: proc(vm: ^VM, t: ^Table, new_cap: int) {
     /*
     Notes(2025-01-19):
     -   We add 1 because if `n` is a power of 2 already, we would return it!
@@ -172,21 +172,20 @@ adjust_capacity :: proc(t: ^Table, new_cap: int, allocator: mem.Allocator) {
     new_cap := new_cap
     new_cap = max(8, math.next_power_of_two(new_cap + 1))
 
+    prev := t.entries
+    defer slice_delete(vm, &prev)
+
     // Assume all memory is zero'd out for us already. Fully zero'd = nil in Lua.
-    new_entries := make([]Table_Entry, new_cap, allocator)
-    new_count   := 0
-    for old_entry in t.entries {
+    t.entries = slice_make(vm, Table_Entry, new_cap)
+    t.count = 0
+    for old in prev {
         // Skip tombstones and empty entries.
-        if value_is_nil(old_entry.key) {
+        if value_is_nil(old.key) {
             continue
         }
 
-        new_entry := find_entry(new_entries, old_entry.key)
-        new_entry^ = Table_Entry{key = old_entry.key, value = old_entry.value}
-        new_count += 1
+        e := find_entry(t.entries, old.key)
+        e^ = Table_Entry{key = old.key, value = old.value}
+        t.count += 1
     }
-
-    delete(t.entries, allocator)
-    t.entries = new_entries
-    t.count   = new_count
 }

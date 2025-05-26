@@ -3,7 +3,6 @@ package lulu
 
 import "core:fmt"
 import "core:io"
-import "core:math"
 
 
 Value :: struct {
@@ -34,6 +33,7 @@ value_make :: proc {
 value_type_name :: #force_inline proc "contextless" (v: Value) -> string {
     @(static, rodata)
     type_names := [Type]string {
+        .None    = "no value",
         .Nil     = "nil",
         .Boolean = "boolean",
         .Number  = "number",
@@ -102,6 +102,7 @@ value_eq :: proc(a, b: Value) -> bool {
     }
 
     switch a.type {
+    case .None:     break
     case .Nil:      return true
     case .Boolean:  return a.boolean == b.boolean
     case .Number:   return number_eq(a.number, b.number)
@@ -114,6 +115,7 @@ value_eq :: proc(a, b: Value) -> bool {
 value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     basic_print :: proc(fi: ^fmt.Info, v: Value) {
         switch v.type {
+        case .None:     io.write_string(fi.writer, "none", &fi.n)
         case .Nil:      io.write_string(fi.writer, "nil", &fi.n)
         case .Boolean:  io.write_string(fi.writer, "true" if v.boolean else "false", &fi.n)
         case .Number:   fi.n += fmt.wprintf(fi.writer, NUMBER_FMT, v.number)

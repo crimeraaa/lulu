@@ -69,6 +69,7 @@ main :: proc() {
                 fmt.print(", ")
             }
             switch lulu.type(vm, i) {
+            case .None:     fmt.print("no value") // Impossible
             case .Nil:      fmt.print("nil")
             case .Boolean:  fmt.print(lulu.to_boolean(vm, i))
             case .Number:   fmt.print(lulu.to_number(vm, i))
