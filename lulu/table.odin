@@ -164,28 +164,31 @@ find_entry :: proc(entries: []Table_Entry, k: Value) -> ^Table_Entry {
 }
 
 
-table_resize :: proc(vm: ^VM, t: ^Table, new_cap: int) {
+table_resize :: proc(vm: ^VM, t: ^Table, n: int) {
     /*
     Notes(2025-01-19):
     -   We add 1 because if `n` is a power of 2 already, we would return it!
      */
-    new_cap := new_cap
-    new_cap = max(8, math.next_power_of_two(new_cap + 1))
+    n := n
+    n = max(8, math.next_power_of_two(n + 1))
 
     prev := t.entries
     defer slice_delete(vm, &prev)
 
     // Assume all memory is zero'd out for us already. Fully zero'd = nil in Lua.
-    t.entries = slice_make(vm, Table_Entry, new_cap)
-    t.count = 0
+    next := slice_make(vm, Table_Entry, n)
+    next_n := 0
     for old in prev {
         // Skip tombstones and empty entries.
         if value_is_nil(old.key) {
             continue
         }
 
-        e := find_entry(t.entries, old.key)
+        e := find_entry(next, old.key)
         e^ = Table_Entry{key = old.key, value = old.value}
-        t.count += 1
+        next_n += 1
     }
+
+    t.entries = next
+    t.count   = next_n
 }

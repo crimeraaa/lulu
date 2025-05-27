@@ -6,13 +6,15 @@ import "core:io"
 import "core:mem"
 import "core:math"
 
-/* 
+/*
 **Overview**
 -   A variation of `Table` optimized specifically to intern strings.
+
+- TODO(2025-05-27): Separate the list of strings from the main objects list.
  */
 Intern :: struct {
     entries: []Intern_Entry, // len(entries) == allocated capacity
-    count:     int,     // number of active entries
+    count:     int,          // number of active entries
 }
 
 Intern_Entry :: ^OString
@@ -44,14 +46,14 @@ ostring_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     However, extracting the cstring requires an unsafe cast.
  */
 ostring_new :: proc(vm: ^VM, input: string) -> ^OString {
-    if prev := intern_get(vm.interned, input); prev != nil {
+    h := hash_string(input)
+    if prev := intern_get(vm.interned, input, h); prev != nil {
         return prev
     }
 
     n := len(input)
     s := object_new(OString, vm, n + 1)
-
-    s.hash = hash_string(input)
+    s.hash = h
     s.len  = n
     #no_bounds_check {
         copy(s.data[:n], input)
@@ -117,30 +119,23 @@ hash_bytes :: proc "contextless" (bytes: []byte) -> (hash: u32) {
     return hash
 }
 
-// Some unique, non-nil address that we will never write to.
 @(private="file")
-TOMBSTONE := OString{}
-
-@(private="file")
-find_entry :: proc(entries: []Intern_Entry, s: $T) -> (p: ^Intern_Entry, is_first: bool)
-where T == string || T == ^OString #optional_ok {
+find_entry :: proc(entries: []Intern_Entry, o: ^OString) -> (p: ^Intern_Entry, is_first: bool) {
     wrap := u32(len(entries))
     tomb: ^Intern_Entry
-    hash := hash_string(s) when T == string else s.hash
-    for i := hash % wrap; /* empty */; i = (i + 1) % wrap {
+    for i := o.hash % wrap; /* empty */; i = (i + 1) % wrap {
         p = &entries[i]
         switch p^ {
         case nil:
             is_first = tomb == nil
             return p if is_first else tomb, is_first
-        case &TOMBSTONE:
-            if tomb == nil {
-                tomb = p
-            }
-            continue
         case:
-            last := ostring_to_string(p^) when T == string else p^
-            if last == s {
+            if .Collectible in p^.flags {
+                // Reuse the first tombstone we see.
+                if tomb == nil {
+                    tomb = p
+                }
+            } else if p^ == o {
                 return p, false
             }
         }
@@ -148,12 +143,28 @@ where T == string || T == ^OString #optional_ok {
     unreachable("How did you even get here?")
 }
 
-intern_get :: proc(t: Intern, s: string) -> (o: ^OString) {
+intern_get :: proc(t: Intern, s: string, hash: u32) -> (o: ^OString) {
     if t.count == 0 {
-        return
+        return nil
     }
-    p := find_entry(t.entries, s)
-    return p^ if p != nil else nil
+
+    entries := t.entries
+    wrap    := u32(len(entries))
+    for i := hash % wrap; /* empty */; i = (i + 1) % wrap {
+        o = entries[i]
+        if o == nil {
+            return nil
+        }
+        // Check hash for early exit; compare strings only if we have to.
+        if hash == o.hash && s == ostring_to_string(o) {
+            // Tombstone- marked for collection but can now be re-used.
+            if .Collectible in o.flags {
+                o.flags -= {.Collectible}
+            }
+            return o
+        }
+    }
+    return nil
 }
 
 intern_set :: proc(vm: ^VM, t: ^Intern, o: ^OString) {
@@ -168,24 +179,27 @@ intern_set :: proc(vm: ^VM, t: ^Intern, o: ^OString) {
     }
 }
 
-intern_resize :: proc(vm: ^VM, t: ^Intern, new_cap: int) {
-    new_cap := new_cap
-    new_cap = max(8, math.next_power_of_two(new_cap + 1))
-    
+intern_resize :: proc(vm: ^VM, t: ^Intern, n: int) {
+    n := n
+    n = max(8, math.next_power_of_two(n + 1))
+
     prev := t.entries
     defer slice_delete(vm, &prev)
 
-    t.entries = slice_make(vm, Intern_Entry, new_cap)
-    t.count   = 0
+    e2 := slice_make(vm, Intern_Entry, n)
+    n2 := 0
     for e in prev {
-        if e == nil || e == &TOMBSTONE {
+        if e == nil || .Collectible in e.flags {
             continue
         }
-        
-        p := find_entry(t.entries, e)
+
+        p, _ := find_entry(e2, e)
         p^ = e
-        t.count += 1
+        n2 += 1
     }
+
+    t.entries = e2
+    t.count   = n2
 }
 
 intern_unset :: proc(t: ^Intern, o: ^OString) {
@@ -193,8 +207,9 @@ intern_unset :: proc(t: ^Intern, o: ^OString) {
         return
     }
 
-    if p := find_entry(t.entries, o); p != nil {
-        p^ = &TOMBSTONE
+    entries := t.entries
+    if p, _ := find_entry(entries, o); p != nil {
+        p^.flags += {.Collectible}
         t.count -= 1
     }
 }

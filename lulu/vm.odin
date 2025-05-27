@@ -64,7 +64,7 @@ vm_memory_error :: proc(vm: ^VM) -> ! {
 @(require_results)
 vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
     // _G and interned strings are not part of the collectable objects list.
-    vm.globals   = {type = .Table, prev = nil}
+    vm.globals   = {type = .Table, next = nil}
     vm.builder   = strings.builder_make(allocator)
     vm.allocator = allocator
     vm.chunk     = nil

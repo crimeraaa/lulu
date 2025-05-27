@@ -7,7 +7,14 @@ import "core:fmt"
 
 Object :: struct {
     type:  Type   `fmt:"s"`,
-    prev: ^Object `fmt:"p"`,
+    next: ^Object `fmt:"p"`,
+    flags: Object_Flags,
+}
+
+Object_Flags :: bit_set[Object_Flag; u8]
+
+Object_Flag :: enum {
+    Collectible,
 }
 
 object_new :: proc($T: typeid, vm: ^VM, extra := 0) -> ^T
@@ -32,7 +39,7 @@ where intrinsics.type_is_subtype_of(T, Object) {
 }
 
 object_link :: proc(vm: ^VM, o: ^Object) {
-    o.prev     = vm.objects
+    o.next     = vm.objects
     vm.objects = o
 }
 
@@ -42,8 +49,8 @@ Notes:
 -   In that case save it beforehand.
  */
 object_unlink :: proc(vm: ^VM, o: ^Object) {
-    vm.objects  = o.prev
-    o.prev      = nil
+    vm.objects = o.next
+    o.next     = nil
 }
 
 object_iterator :: proc(iter: ^^Object) -> (o: ^Object, ok: bool) {
@@ -55,7 +62,7 @@ object_iterator :: proc(iter: ^^Object) -> (o: ^Object, ok: bool) {
 
     if ok {
         // Increment the iterator if there are still entries remaining.
-        iter^ = o.prev
+        iter^ = o.next
     }
     return o, ok
 }
