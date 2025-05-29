@@ -8,16 +8,12 @@ import "lulu"
 
 Value :: union {bool, lulu.Number, string}
 
-new_vm :: proc(t: ^testing.T) -> ^lulu.VM {
-    teardown :: proc(user_ptr: rawptr) {
-        lulu.close(cast(^lulu.VM)user_ptr)
-    }
-
+@(deferred_out=lulu.close)
+open_safe :: proc(t: ^testing.T) -> ^lulu.VM {
     vm, err := lulu.open()
     if err != nil {
         testing.fail_now(t, "out of memory")
     }
-    testing.cleanup(t, teardown, vm)
     return vm
 }
 
@@ -38,13 +34,13 @@ run_string :: proc(t: ^testing.T, vm: ^lulu.VM, input: string, expected: Value =
 
 @test
 hello :: proc(t: ^testing.T) {
-    vm := new_vm(t)
+    vm := open_safe(t)
     run_string(t, vm, `print("Hi mom!")`)
 }
 
 @test
 arith :: proc(t: ^testing.T) {
-    vm := new_vm(t)
+    vm := open_safe(t)
     res1 :: 1 + 2*3 - 4.0/-5
     res2 :: (1 + 2)*3 - 4.0/-5
     run_string(t, vm, `1 + 2*3 - 4/-5`,   expected = res1)
@@ -57,7 +53,7 @@ arith :: proc(t: ^testing.T) {
 
 @test
 compare :: proc(t: ^testing.T) {
-    vm := new_vm(t)
+    vm := open_safe(t)
     run_string(t, vm, `2 < 3`,  expected = true)
     run_string(t, vm, `3 <= 2`, expected = false)
     run_string(t, vm, `3 > 2`,  expected = true)
@@ -67,7 +63,7 @@ compare :: proc(t: ^testing.T) {
 
 @test
 globals :: proc(t: ^testing.T) {
-    vm := new_vm(t)
+    vm := open_safe(t)
     run_string(t, vm, `PI, G = 3.14, -9.81; return PI == 3.14`, expected = true)
     run_string(t, vm, `G == -9.81`, expected = true)
 }

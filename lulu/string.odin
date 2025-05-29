@@ -13,6 +13,7 @@ import "core:math"
 - TODO(2025-05-27): Separate the list of strings from the main objects list.
  */
 Intern :: struct {
+    root:     ^Object,
     entries: []Intern_Entry, // len(entries) == allocated capacity
     count:     int,          // number of active entries
 }
@@ -20,7 +21,7 @@ Intern :: struct {
 Intern_Entry :: ^OString
 
 OString :: struct {
-    using base: Object,
+    using base: Object_Base,
     hash:       u32,
     len:        int, // Length in bytes, not runes.
     data:    [0]byte,
@@ -52,7 +53,10 @@ ostring_new :: proc(vm: ^VM, input: string) -> ^OString {
     }
 
     n := len(input)
-    s := object_new(OString, vm, n + 1)
+    o := object_new(OString, vm, n + 1)
+    object_link(&vm.interned.root, o)
+
+    s := &o.ostring
     s.hash = h
     s.len  = n
     #no_bounds_check {
@@ -215,6 +219,11 @@ intern_unset :: proc(t: ^Intern, o: ^OString) {
 }
 
 intern_destroy :: proc(vm: ^VM, t: ^Intern) {
+    iter := t.root
+    for p in object_iterator(&iter) {
+        ostring_free(vm, cast(^OString)p)
+    }
     slice_delete(vm, &t.entries)
     t.count = 0
+    t.root  = nil
 }

@@ -5,9 +5,15 @@ import "base:intrinsics"
 import "core:mem"
 import "core:fmt"
 
-Object :: struct {
-    type:  Type   `fmt:"s"`,
+Object :: struct #raw_union {
+    base:    Object_Base,
+    ostring: OString,
+    table:   Table,
+}
+
+Object_Base :: struct {
     next: ^Object `fmt:"p"`,
+    type:  Type   `fmt:"s"`,
     flags: Object_Flags,
 }
 
@@ -17,8 +23,8 @@ Object_Flag :: enum {
     Collectible,
 }
 
-object_new :: proc($T: typeid, vm: ^VM, extra := 0) -> ^T
-where intrinsics.type_is_subtype_of(T, Object) {
+object_new :: proc($T: typeid, vm: ^VM, extra := 0) -> ^Object
+where intrinsics.type_is_subtype_of(T, Object_Base) {
 
     ptr, err := mem.alloc(size_of(T) + extra, align_of(T), vm.allocator)
     // Assumes we are always in a protected call!
@@ -28,19 +34,18 @@ where intrinsics.type_is_subtype_of(T, Object) {
 
     o := cast(^Object)ptr
     when T == OString {
-        o.type = .String
+        o.base.type = .String
     } else when T == Table {
-        o.type = .Table
+        o.base.type = .Table
     } else {
         #panic("Invalid type!")
     }
-    object_link(vm, o)
-    return cast(^T)o
+    return o
 }
 
-object_link :: proc(vm: ^VM, o: ^Object) {
-    o.next     = vm.objects
-    vm.objects = o
+object_link :: proc(parent: ^^Object, o: ^Object) {
+    o.base.next = parent^
+    parent^     = o
 }
 
 /*
@@ -48,9 +53,9 @@ Notes:
 -   If you're iterating, `o.prev` will be invalidated!
 -   In that case save it beforehand.
  */
-object_unlink :: proc(vm: ^VM, o: ^Object) {
-    vm.objects = o.next
-    o.next     = nil
+object_unlink :: proc(parent: ^^Object, o: ^Object) {
+    parent^     = o.base.next
+    o.base.next = nil
 }
 
 object_iterator :: proc(iter: ^^Object) -> (o: ^Object, ok: bool) {
@@ -62,7 +67,7 @@ object_iterator :: proc(iter: ^^Object) -> (o: ^Object, ok: bool) {
 
     if ok {
         // Increment the iterator if there are still entries remaining.
-        iter^ = o.next
+        iter^ = o.base.next
     }
     return o, ok
 }
@@ -70,20 +75,15 @@ object_iterator :: proc(iter: ^^Object) -> (o: ^Object, ok: bool) {
 object_free_all :: proc(vm: ^VM) {
     iter := vm.objects
     for o in object_iterator(&iter) {
-        #partial switch type := o.type; type {
-        case .String:
-            s := cast(^OString)o
-            object_unlink(vm, o)
-            ostring_free(vm, s)
+        #partial switch o.base.type {
         case .Table:
-            t := cast(^Table)o
-            object_unlink(vm, o)
-            table_destroy(vm, t)
-            mem.free(t)
+            table_destroy(vm, &o.table)
+            mem.free(o)
         case:
-            unreachable("Cannot free a %v value!", type)
+            unreachable("Cannot free a %v value!", o.base.type)
         }
     }
+    vm.objects = nil
 }
 
 objects_print_all :: proc(vm: ^VM) {
@@ -92,12 +92,12 @@ objects_print_all :: proc(vm: ^VM) {
 
     iter := vm.objects
     for o in object_iterator(&iter) {
-        #partial switch o.type {
+        #partial switch o.base.type {
         case .String:
-            fmt.printfln("string: %q", ostring_to_string(cast(^OString)o))
+            fmt.printfln("string: %q", ostring_to_string(&o.ostring))
         case .Table:
             fmt.printfln("table: %p", o)
-        case: unreachable("Cannot print object type %v", o.type)
+        case: unreachable("Cannot print object type %v", o.base.type)
         }
     }
 }

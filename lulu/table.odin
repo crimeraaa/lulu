@@ -4,7 +4,7 @@ package lulu
 import "core:math"
 
 Table :: struct {
-    using base: Object,
+    using base: Object_Base,
     entries:    []Table_Entry, // `len(entries)` == allocated capacity.
     count:      int, // Number of active entries. Not necessarily contiguous!
 }
@@ -15,7 +15,10 @@ Table_Entry :: struct {
 
 
 table_new :: proc(vm: ^VM, n_array, n_hash: int) -> ^Table {
-    t := object_new(Table, vm)
+    o := object_new(Table, vm)
+    object_link(&vm.objects, o)
+
+    t := &o.table
     if total := n_array + n_hash; total > 0 {
         table_resize(vm, t, total)
     }
