@@ -94,12 +94,12 @@ ostring_to_cstring :: #force_inline proc "contextless" (s: ^OString) -> cstring 
 
 hash_number :: #force_inline proc "contextless" (n: Number) -> (hash: u32) {
     n := n
-    return hash_bytes(mem.byte_slice(&n, size_of(n)))
+    return hash_bytes(mem.ptr_to_bytes(&n))
 }
 
 hash_pointer :: #force_inline proc "contextless" (p: rawptr) -> (hash: u32) {
     p := p
-    return hash_bytes(mem.byte_slice(&p, size_of(p)))
+    return hash_bytes(mem.ptr_to_bytes(&p))
 }
 
 hash_string :: #force_inline proc "contextless" (s: string) -> (hash: u32) {
@@ -129,19 +129,18 @@ find_entry :: proc(entries: []Intern_Entry, o: ^OString) -> (p: ^Intern_Entry, i
     tomb: ^Intern_Entry
     for i := o.hash % wrap; /* empty */; i = (i + 1) % wrap {
         p = &entries[i]
-        switch p^ {
-        case nil:
+        if p^ == nil {
             is_first = tomb == nil
             return p if is_first else tomb, is_first
-        case:
-            if .Collectible in p^.flags {
-                // Reuse the first tombstone we see.
-                if tomb == nil {
-                    tomb = p
-                }
-            } else if p^ == o {
-                return p, false
+        }
+
+        if .Collectible in p^.flags {
+            // Reuse the first tombstone we see.
+            if tomb == nil {
+                tomb = p
             }
+        } else if p^ == o {
+            return p, false
         }
     }
     unreachable("How did you even get here?")
@@ -193,7 +192,11 @@ intern_resize :: proc(vm: ^VM, t: ^Intern, n: int) {
     e2 := slice_make(vm, Intern_Entry, n)
     n2 := 0
     for e in prev {
-        if e == nil || .Collectible in e.flags {
+        if e == nil {
+            continue
+        } else if .Collectible in e.flags {
+            object_unlink(&t.root, cast(^Object)e)
+            ostring_free(vm, e)
             continue
         }
 
@@ -221,7 +224,7 @@ intern_unset :: proc(t: ^Intern, o: ^OString) {
 intern_destroy :: proc(vm: ^VM, t: ^Intern) {
     iter := t.root
     for p in object_iterator(&iter) {
-        ostring_free(vm, cast(^OString)p)
+        ostring_free(vm, &p.ostring)
     }
     slice_delete(vm, &t.entries)
     t.count = 0

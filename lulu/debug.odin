@@ -181,6 +181,8 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
     case .Test, .Test_Set:
         dst  := ip.a if ip.op == .Test_Set else NO_REG
         test := ip.b if ip.op == .Test_Set else ip.a
+
+        // pc++ if the comparison fails
         fmt.printf("if %s", "not " if bool(ip.c) else "")
         print_reg(info, test, " then goto .code[%i]", index + 2)
         if dst != NO_REG {

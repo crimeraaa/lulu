@@ -404,7 +404,7 @@ vm_execute :: proc(vm: ^VM) {
                 index_error(vm, ip, rb)
             } else {
                 key := get_rk(read.c, stack, constants)^
-                ra^ = table_get(rb.table^, key)
+                ra^ = table_get(rb.table, key)
             }
         case .Set_Table:
             if !value_is_table(ra^) {
@@ -413,20 +413,24 @@ vm_execute :: proc(vm: ^VM) {
             if k, v := get_rk(read, stack, constants); value_is_nil(k^) {
                 index_error(vm, ip, k)
             } else {
-                table_set(vm, ra.table, k^, v^)
+                table_set(vm, &ra.table, k^, v^)
             }
         case .Set_Array:
             // Guaranteed to work; only occurs in table constructors
+            t := &ra.table
             count  := cast(int)read.b
             offset := cast(int)(read.c - 1) * FIELDS_PER_FLUSH
             for index in 1..=count {
                 k := value_make(offset + index)
                 v := stack[cast(int)read.a + index]
-                table_set(vm, ra.table, k, v)
+                table_set(vm, t, k, v)
             }
         case .Print:
-            for arg in stack[read.a:read.b] {
-                fmt.print(arg, ' ', sep = "")
+            for arg, i in stack[read.a:read.b] {
+                if i != 0 {
+                    fmt.print(' ')
+                }
+                fmt.print(arg)
             }
             fmt.println()
         case .Add: arith_op(vm, ip, number_add, ra, get_rk(read, stack, constants))
@@ -462,7 +466,7 @@ vm_execute :: proc(vm: ^VM) {
             case .String:
                 ra^ = value_make(rb.ostring.len)
             case .Table:
-                t := rb.table
+                t := &rb.table
                 // TODO(2025-04-13): Optimize by separating array from hash!
                 count := 0
                 for index in 1..=t.count {
@@ -481,10 +485,10 @@ vm_execute :: proc(vm: ^VM) {
                 incr_ip(&ip)
             }
         case .Test_Set:
-            if rb := stack[read.b]; !value_is_falsy(rb) == bool(read.c) {
-                ra^ = rb
-            } else {
+            if rb := stack[read.b]; !value_is_falsy(rb) != bool(read.c) {
                 incr_ip(&ip)
+            } else {
+                ra^ = rb
             }
         case .Jump:
             offset := ip_get_sBx(read)

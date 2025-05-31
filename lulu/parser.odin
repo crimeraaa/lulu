@@ -1072,8 +1072,8 @@ concat :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 **Visualization**
 ```
         <left>
-    +-- Test_Set Reg(A) <left> $COND
-    |   ; if bool(<left>) == bool($COND) then Reg(A) := <left> else goto <right>
+    +-- Test_Set Reg(A) <left> !$COND
+    |   ; if bool(<left>) == bool(!$COND) then Reg(A) := <left> else goto <right>
 +---|-- Jump 0 1
 |   |   ; goto <right + 1>
 |   +-> <right>

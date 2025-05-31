@@ -189,7 +189,7 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
 
 type :: proc(vm: ^VM, i: int) -> Type {
     v, ok := poke(vm, i)
-    return v.type if ok else Type.None
+    return v.type if ok else .None
 }
 
 type_name :: proc(vm: ^VM, i: int) -> string {
@@ -284,7 +284,7 @@ to_string :: proc(vm: ^VM, i: int) -> (s: string, ok: bool) #optional_ok {
 to_pointer :: proc(vm: ^VM, i: int) -> (p: rawptr, ok: bool) #optional_ok {
     v := peek(vm, i)
     value_is_table(v) or_return
-    return v.table, true
+    return v.object, true
 }
 
 

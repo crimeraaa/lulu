@@ -112,8 +112,8 @@ Leq,           // A B C | if (RK(B) <= RK(C)) != Bool(A) then pc++
 Not,           // A B   | Reg(A) := not RK(B)
 Concat,        // A B C | Reg(A) := Reg(A) .. Reg(i) for B <= i <= C
 Len,           // A B   | Reg(A) := #Reg(B)
-Test,          // A   C | if Bool(Reg(A)) == Bool(C) then pc++
-Test_Set,      // A B C | if Bool(Reg(B)) == Bool(C) then pc++ else Reg(A) := Reg(B)
+Test,          // A   C | if Bool(Reg(A)) != Bool(C) then pc++
+Test_Set,      // A B C | if Bool(Reg(B)) != Bool(C) then pc++ else Reg(A) := Reg(B)
 Jump,          // sBx   | pc += sBx
 Return,        // A B C | return Reg(A), ... Reg(A + B)
 }

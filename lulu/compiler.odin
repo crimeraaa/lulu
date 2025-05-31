@@ -775,15 +775,13 @@ when USE_CONSTANT_FOLDING {
 
 fold_compare :: proc(op: OpCode, left, right: ^Expr, cond: bool) -> (success: bool) {
     if !expr_is_number(left^) || !expr_is_number(right^) {
-        if op == .Eq {
-            if expr_is_literal(left^) && expr_is_literal(right^) {
-                b := (left.type == right.type)
-                if !cond {
-                    b = !b
-                }
-                left^ = expr_make(.True if b else .False)
-                return true
+        if op == .Eq && expr_is_literal(left^) && expr_is_literal(right^) {
+            b := (left.type == right.type)
+            if !cond {
+                b = !b
             }
+            left^ = expr_make(.True if b else .False)
+            return true
         }
         return false
     }
@@ -1040,7 +1038,7 @@ compiler_code_jump_if_not :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
         return compiler_code_cond_jump(c, .Test_Set, NO_REG, e.reg, u16(!cond))
     }
 
-    get_targets :: proc(e: ^Expr, cond: bool) -> (to_jump, to_patch: ^int) {
+    get_targets :: proc(e: ^Expr, cond: bool) -> (jump_list, patch_list: ^int) {
         // .And
         if cond {
             return &e.patch_false, &e.patch_true
@@ -1050,16 +1048,16 @@ compiler_code_jump_if_not :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
     }
 
     pc := prev_jump(c, e, cond)
-    to_jump, to_patch := get_targets(e, cond)
-    compiler_add_jump(c, to_jump, pc)
+    jump_list, patch_list := get_targets(e, cond)
+    compiler_add_jump(c, jump_list, pc)
 
     // Only occurs in nested logicals, e.g. `x and y or z`.
-    if to_patch^ != NO_JUMP {
+    if patch_list^ != NO_JUMP {
         // `NO_REG` is necessary if we want to convert a `.Test_Set` to mere
         // `.Test` by this point.
         reg := NO_REG if pc == NO_JUMP else u16(c.free_reg)
-        compiler_patch_jump(c, pc = to_patch^, reg = reg)
-        to_patch^ = NO_JUMP
+        compiler_patch_jump(c, pc = patch_list^, reg = reg)
+        patch_list^ = NO_JUMP
     }
 }
 

@@ -6,7 +6,7 @@ import "core:os"
 
 import "lulu"
 
-USE_READLINE :: #config(USE_READLINE, ODIN_OS == .Linux)
+USE_READLINE :: #config(LULU_USE_READLINE, ODIN_OS == .Linux)
 
 PROMPT :: ">>> "
 
@@ -57,9 +57,9 @@ main :: proc() {
     }
 
     run_input :: proc(vm: ^lulu.VM, input, source: string) {
-        if lulu.run(vm, input, source) != .Ok {
+        if err := lulu.run(vm, input, source); err != .Ok {
             err_msg := lulu.to_string(vm, -1)
-            fmt.eprintln(err_msg)
+            fmt.eprintfln("[%w] %s", err, err_msg)
             return
         }
 
@@ -82,7 +82,7 @@ main :: proc() {
 
     vm, err := lulu.open()
     if err != nil {
-        fmt.eprintfln("Failed to open lulu; %t %v", err)
+        fmt.eprintfln("Failed to open lulu; %w", err)
         return
     }
     defer lulu.close(vm)

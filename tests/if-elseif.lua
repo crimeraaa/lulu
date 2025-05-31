@@ -7,6 +7,6 @@ elseif x == false then
     print("x is false")
 elseif x == nil then
     print("x is nil")
--- else
---     print("impossible(1)")
+else
+    print("impossible(1)")
 end

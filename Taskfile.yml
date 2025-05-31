@@ -22,7 +22,7 @@ vars:
 
   # Common flags
   ODIN_FLAGS: >-
-    -define:USE_CONSTANT_FOLDING=true
+    -define:LULU_USE_CONSTANT_FOLDING=true
     -collection:lulu={{.LULU_SRC}}/
     -collection:readline=readline/
 
@@ -40,7 +40,7 @@ tasks:
     requires:
       vars: [MODE, ODIN_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
     cmds:
-      - '{{.ODIN}} build . {{.FLAGS}} -define:USE_READLINE=true -out:{{.LULU_MAIN_OUT}}'
+      - '{{.ODIN}} build . {{.FLAGS}} -define:LULU_USE_READLINE=true -out:{{.LULU_MAIN_OUT}}'
     sources:
       - 'lulu.odin'
       - 'input.odin'
@@ -59,9 +59,9 @@ tasks:
     cmds:
       - >-
         {{.ODIN}} test . {{.ODIN_FLAGS}}
-        -define:USE_READLINE=false
-        -define:DEBUG_PRINT_CODE=false
-        -define:DEBUG_TRACE_EXEC=false
+        -define:LULU_USE_READLINE=false
+        -define:LULU_DEBUG_PRINT_CODE=false
+        -define:LULU_DEBUG_TRACE_EXEC=false
         -out:{{.LULU_TEST_OUT}}
       # - '{{.LULU_TEST_OUT}} {{.CLI_ARGS}}'
     sources:

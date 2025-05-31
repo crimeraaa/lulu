@@ -139,7 +139,7 @@ find_entry :: proc(entries: []Table_Entry, k: Value) -> ^Table_Entry {
         case .Boolean:  return u32(k.boolean)
         case .Number:   return hash_number(k.number)
         case .String:   return k.ostring.hash
-        case .Table:    return hash_pointer(k.table)
+        case .Table:    return hash_pointer(k.object)
         }
         unreachable("Cannot hash type %v", k.type)
     }

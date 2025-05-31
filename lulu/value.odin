@@ -13,8 +13,9 @@ Value :: struct {
 Value_Data :: struct #raw_union {
     number:   Number,
     boolean:  bool,
-    ostring: ^OString,
-    table:   ^Table,
+    using object: ^Object,
+    // ostring: ^OString,
+    // table:   ^Table,
 }
 
 // Used for callbacks/dispatches
@@ -60,11 +61,11 @@ value_make_integer :: #force_inline proc "contextless" (i: int) -> Value {
 }
 
 value_make_string :: #force_inline proc "contextless" (s: ^OString) -> Value {
-    return Value{type = .String, ostring = s}
+    return Value{type = .String, object = cast(^Object)s}
 }
 
 value_make_table :: #force_inline proc "contextless" (t: ^Table) -> Value {
-    return Value{type = .Table, table = t}
+    return Value{type = .Table, object = cast(^Object)t}
 }
 
 value_is_nil :: #force_inline proc "contextless" (v: Value) -> bool {
@@ -93,7 +94,7 @@ value_is_table :: #force_inline proc "contextless" (v: Value) -> bool {
 
 // Utility function because this is so common.
 value_as_string :: #force_inline proc "contextless" (v: Value) -> string {
-    return ostring_to_string(v.ostring)
+    return ostring_to_string(&v.ostring)
 }
 
 value_eq :: proc(a, b: Value) -> bool {
@@ -102,12 +103,11 @@ value_eq :: proc(a, b: Value) -> bool {
     }
 
     switch a.type {
-    case .None:     break
-    case .Nil:      return true
-    case .Boolean:  return a.boolean == b.boolean
-    case .Number:   return number_eq(a.number, b.number)
-    case .String:   return a.ostring == b.ostring
-    case .Table:    return a.table == b.table
+    case .None:             break
+    case .Nil:              return true
+    case .Boolean:          return a.boolean == b.boolean
+    case .Number:           return number_eq(a.number, b.number)
+    case .String, .Table:   return a.object == b.object
     }
     unreachable("Unknown value type %v", a.type)
 }
@@ -122,8 +122,7 @@ value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
         case .String:   io.write_string(fi.writer, value_as_string(v), &fi.n)
         case .Table:
             type_name := value_type_name(v)
-            pointer   := cast(rawptr)v.table
-            fi.n += fmt.wprintf(fi.writer, "%s: %p", type_name, pointer)
+            fi.n += fmt.wprintf(fi.writer, "%s: %p", type_name, v.object)
         case:
             unreachable("Unknown value type %v", v.type)
         }

@@ -296,8 +296,8 @@ string_to_number :: proc(s: string) -> (n: Number, ok: bool) #optional_ok {
         base: int
         switch s[1] {
         case 'b': base = 2
-        case 'd': base = 10
         case 'o': base = 8
+        case 'd': base = 10
         case 'x': base = 16
         case: return
         }
