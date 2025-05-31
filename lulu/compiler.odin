@@ -1054,10 +1054,10 @@ compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u
     **Analogous to**
     -   `lcode.c:patchetestreg(FuncState *fs, int pc, int reg)` in Lua 5.1.5.
      */
-    patch_test_reg :: proc(c: ^Compiler, pc: int, reg: u16) -> bool {
+    patch_test_reg :: proc(c: ^Compiler, pc: int, reg: u16) {
         ip := get_jump_control(c, pc)
         if ip.op != .Test_Set {
-            return false // Cannot be patched
+            return // Cannot be patched
         }
         if reg != NO_REG && reg != ip.b {
             /*
@@ -1076,7 +1076,6 @@ compiler_patch_jump :: proc(c: ^Compiler, pc: int, target: int = NO_JUMP, reg: u
              */
             ip^ = ip_make(.Test, ip.b, 0, ip.c)
         }
-        return true
     }
 
     // Instead of having a separate `dtarget` (default target) parameter, we

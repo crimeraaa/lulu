@@ -454,23 +454,23 @@ if_block :: proc(p: ^Parser, c: ^Compiler) {
         }
     }
 
-    then_jump := then_cond(p, c)
+    then_expr := then_cond(p, c)
     else_jump := NO_JUMP // No unconditional jump over `else` by default.
     for parser_match(p, .Elseif) {
         // all child non-`else` branches skip over the one `else` branch
         compiler_add_jump(c, &else_jump, compiler_code_jump(c))
-        compiler_patch_jump(c, then_jump.patch_false)
+        compiler_patch_jump(c, then_expr.patch_false)
 
         // each `then` jump is independent of the next; they are tried in order
-        then_jump = then_cond(p, c)
+        then_expr = then_cond(p, c)
     }
 
     if parser_match(p, .Else) {
         compiler_add_jump(c, &else_jump, compiler_code_jump(c))
-        compiler_patch_jump(c, then_jump.patch_false)
+        compiler_patch_jump(c, then_expr.patch_false)
         then_block(p, c)
     } else {
-        compiler_patch_jump(c, then_jump.patch_false)
+        compiler_patch_jump(c, then_expr.patch_false)
     }
     compiler_patch_jump(c, else_jump)
     parser_consume(p, .End)
@@ -508,14 +508,14 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 
 while_loop :: proc(p: ^Parser, c: ^Compiler) {
     loop_start := c.pc
-    cond  := expression(p, c)
-    b := block_make(p, c, is_loop = true)
+    cond := expression(p, c)
+    b    := block_make(p, c, is_loop = true)
     block_set(p, c, &b)
     compiler_code_go_if(c, &cond, true)
+    compiler_add_jump(c, &b.break_list, cond.patch_false)
     parser_consume(p, .Do)
     do_block(p, c)
     compiler_patch_jump(c, compiler_code_jump(c), target = loop_start)
-    compiler_patch_jump(c, cond.patch_false)
     compiler_patch_jump(c, b.break_list)
 }
 

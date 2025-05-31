@@ -3,8 +3,7 @@ package lulu
 
 import "core:fmt"
 
-UNINITIALIZED_LOCAL :: -1
-NO_REG              :: max(u16) // Also applies to locals
+NO_REG :: max(u16) // Also applies to locals
 
 Chunk :: struct {
     source:          string, // Filename where the chunk originated.
