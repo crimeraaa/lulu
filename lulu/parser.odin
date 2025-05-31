@@ -10,12 +10,14 @@ Parser :: struct {
     lexer:               Lexer,
     consumed, lookahead: Token,
     recurse:             int,
-    break_list:         ^Break_List,
+    block:              ^Block,
 }
 
-Break_List :: struct {
-    prev:     ^Break_List,
-    jump_list: int,
+Block :: struct {
+    prev:        ^Block,
+    n_outer:      int, // Number of local variables external to this scope.
+    break_list:   int,
+    is_breakable: bool,
 }
 
 Rule :: struct {
@@ -108,22 +110,12 @@ parser_check :: proc(p: ^Parser, expected: Token_Type) -> (found: bool) {
 @(private="package")
 parser_program :: proc(p: ^Parser, c: ^Compiler) {
     parser_advance(p)
-    // Top level scope can also have its own locals.
-    compiler_begin_scope(c)
+    b := block_make(p, c)
+    block_set(p, c, &b)
     for !parser_match(p, .Eof) {
         declaration(p, c)
     }
     parser_consume(p, .Eof)
-
-    /*
-    **Notes** (2025-05-17)
-    -   We cannot assume we don't need the implicit return.
-    -   Concept check: `local x; if x then return x end`
-    -   The last instruction *is* a return, but only conditionally.
-    -   Say the `if` branch fails; our next instruction is invalid.
-     */
-    compiler_code_return(c, reg = 0, count = 0)
-    compiler_end_scope(c)
     compiler_end(c)
 }
 
@@ -161,12 +153,7 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
     case .Local:  local_stmt(p, c)
     case .Print:  print_stmt(p, c)
     case .While:  while_loop(p, c)
-    case .Break:
-        b := p.break_list
-        if b == nil {
-            parser_error(p, "No loop to break")
-        }
-        compiler_add_jump(c, &b.jump_list, compiler_code_jump(c))
+    case .Break:  break_stmt(p, c)
     case .Return: return_stmt(p, c)
     case:
         error_at(p, p.consumed, "Expected an expression")
@@ -291,14 +278,9 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.5.
  */
 local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, counter: int) {
-    depth  := c.scope_depth
     locals := c.chunk.locals
-    #reverse for active in small_array.slice(&c.active) {
+    #reverse for active in small_array.slice(&c.active)[p.block.n_outer:] {
         local := locals[active]
-        // Already poking at initialized locals in outer scopes?
-        if local.depth < depth {
-            break
-        }
         if local.ident == ident {
             parser_error(p, "Shadowing of local variable")
         }
@@ -367,7 +349,6 @@ adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
  */
 local_adjust :: proc(c: ^Compiler, nvars: int) {
     startpc := c.pc
-    depth   := c.scope_depth
 
     /*
     **Assumptions**
@@ -383,18 +364,53 @@ local_adjust :: proc(c: ^Compiler, nvars: int) {
         // `lparser.c:getlocvar(fs, i)`
         index := active[n_active - i]
         local := &locals[index]
-        local.depth   = depth
         local.startpc = startpc
     }
 }
 
 do_block :: proc(p: ^Parser, c: ^Compiler) {
-    compiler_begin_scope(c)
+    b := block_make(p, c)
+    block_set(p, c, &b)
     for !still_in_block(p) {
         declaration(p, c)
     }
     parser_consume(p, .End)
-    compiler_end_scope(c)
+}
+
+block_make :: proc(p: ^Parser, c: ^Compiler, is_loop := false) -> Block {
+    return Block{
+        prev         = p.block,
+        n_outer      = small_array.len(c.active),
+        break_list   = NO_JUMP,
+        is_breakable = is_loop,
+    }
+}
+
+@(deferred_in=block_end)
+block_set :: proc(p: ^Parser, c: ^Compiler, b: ^Block) {
+    p.block = b
+}
+
+/*
+**Analogous to**
+-   `lparser.c:removevars(LexState *ls, int tolevel)` in Lua 5.1.5.
+ */
+block_end :: proc(p: ^Parser, c: ^Compiler, b: ^Block) {
+    defer p.block = b.prev
+
+    active := small_array.slice(&c.active)
+    locals := c.chunk.locals[:c.count.locals]
+    limit  := b.n_outer
+    endpc  := c.pc
+
+    // Don't pop registers as we'll go below the active count!
+    for reg := small_array.len(c.active) - 1; reg >= limit; reg -= 1 {
+        index := active[reg]
+        local := &locals[index]
+        small_array.pop_back(&c.active)
+        local.endpc = endpc
+    }
+    c.free_reg = limit
 }
 
 /*
@@ -431,6 +447,8 @@ if_block :: proc(p: ^Parser, c: ^Compiler) {
 
     then_block :: proc(p: ^Parser, c: ^Compiler) {
         check_recurse(p)
+        b := block_make(p, c)
+        block_set(p, c, &b)
         for !still_in_block(p) {
             declaration(p, c)
         }
@@ -491,16 +509,25 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 while_loop :: proc(p: ^Parser, c: ^Compiler) {
     loop_start := c.pc
     cond  := expression(p, c)
-    blist := Break_List{prev = p.break_list, jump_list = NO_JUMP}
-    p.break_list = &blist
-    defer p.break_list = blist.prev
-
+    b := block_make(p, c, is_loop = true)
+    block_set(p, c, &b)
     compiler_code_go_if(c, &cond, true)
     parser_consume(p, .Do)
     do_block(p, c)
     compiler_patch_jump(c, compiler_code_jump(c), target = loop_start)
     compiler_patch_jump(c, cond.patch_false)
-    compiler_patch_jump(c, blist.jump_list)
+    compiler_patch_jump(c, b.break_list)
+}
+
+break_stmt :: proc(p: ^Parser, c: ^Compiler) {
+    b := p.block
+    for b != nil && !b.is_breakable {
+        b = b.prev
+    }
+    if b == nil {
+        parser_error(p, "No loop to break")
+    }
+    compiler_add_jump(c, &b.break_list, compiler_code_jump(c))
 }
 
 return_stmt :: proc(p: ^Parser, c: ^Compiler) {
@@ -925,8 +952,8 @@ unary :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     // MUST be set to '.Number' in order to try constant folding.
     @(static)
     dummy := Expr{type = .Number, patch_true = NO_JUMP, patch_false = NO_JUMP}
-    type := p.consumed.type
-    arg := parse_precedence(p, c, .Unary)
+    type  := p.consumed.type
+    arg   := parse_precedence(p, c, .Unary)
 
     /*
     **Links**

@@ -27,7 +27,7 @@ debug_dump_chunk :: proc(c: ^Chunk, code_size: int) {
         fmt.println("\n.local:")
         left_pad := count_digits(n)
         for local, index in c.locals {
-            fmt.printfln("[%0*i] %q ; local %v", left_pad, index, local.ident,
+            fmt.printfln("[%0*i] %q ; %v", left_pad, index, local.ident,
                 local)
         }
     }

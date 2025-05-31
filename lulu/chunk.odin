@@ -17,7 +17,6 @@ Chunk :: struct {
 
 Local :: struct {
     ident:         ^OString,
-    depth:          int,
     startpc, endpc: int,
 }
 
@@ -26,10 +25,10 @@ local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     ident := local_to_string(var)
     switch verb {
     case 'v': // verbose
-        fi.n += fmt.wprintf(fi.writer, "%s@code[%i:%i]", ident, var.startpc,
+        fi.n += fmt.wprintf(fi.writer, "local %s@code[%i:%i]", ident, var.startpc,
                             var.endpc)
     case 's': // summary
-        fi.n += fmt.wprintf(fi.writer, "local %s$%i", ident, var.depth)
+        fi.n += fmt.wprintf(fi.writer, "local %s$%i", ident, var.startpc)
     case:
         return false
     }
@@ -87,7 +86,6 @@ chunk_add_local :: proc(vm: ^VM, c: ^Chunk, ident: ^OString, count: ^int) -> (in
     // already, or we implicitly load nil.
     slice_insert(vm, &c.locals, count^, Local{
         ident   = ident,
-        depth   = UNINITIALIZED_LOCAL,
         startpc = 0,
         endpc   = 0,
     })

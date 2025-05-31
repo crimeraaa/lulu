@@ -34,7 +34,6 @@ Compiler :: struct {
     parent:     ^Compiler, // Enclosing state.
     parser:     ^Parser,   // All nested compilers share the same parser.
     chunk:      ^Chunk,    // Compilers do not own their chunks. They merely fill them.
-    scope_depth: int,      // How far down is our current lexical scope?
     free_reg:    int,      // Index of the first free register.
     last_target: int,      // pc of the last jump target. See `FuncState::lasttarget`.
     pc:          int,      // First free index in `chunk.code`.
@@ -69,38 +68,15 @@ compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
 }
 
 compiler_end :: proc(c: ^Compiler) {
+    /*
+    **Notes** (2025-05-17)
+    -   We cannot assume we don't need the implicit return.
+    -   Concept check: `local x; if x then return x end`
+    -   The last instruction *is* a return, but only conditionally.
+    -   Say the `if` branch fails; our next instruction is invalid.
+     */
+    compiler_code_return(c, reg = 0, count = 0)
     chunk_fini(c.vm, c.chunk, c)
-}
-
-compiler_begin_scope :: proc(c: ^Compiler) {
-    c.scope_depth += 1
-}
-
-/*
-**Analogous to**
--   `lparser.c:removevars(LexState *ls, int tolevel)` in Lua 5.1.5.
- */
-compiler_end_scope :: proc(c: ^Compiler) {
-    c.scope_depth -= 1
-
-    depth  := c.scope_depth
-    reg    := small_array.len(c.active) - 1
-    active := small_array.slice(&c.active)
-    locals := c.chunk.locals[:c.count.locals]
-    endpc  := c.pc
-
-    // Don't pop registers as we'll go below the active count!
-    for reg >= 0 {
-        index := active[reg]
-        local := &locals[index]
-        if local.depth <= depth {
-            break
-        }
-        small_array.pop_back(&c.active)
-        local.endpc = endpc
-        reg -= 1
-    }
-    c.free_reg = reg + 1
 }
 
 
