@@ -1003,7 +1003,7 @@ compiler_code_jump :: proc(c: ^Compiler) -> (pc: int) {
     because for nested logicals `e.patch_*` will always refer to the root
     of the jump list.
  */
-compiler_code_jump_if_not :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
+compiler_code_go_if :: proc(c: ^Compiler, e: ^Expr, cond: bool) {
     // If we cannot fold or `e` is not already a jump (comparison), we will
     // emit `.Test_Set` with its corresponding jump.
     prev_jump :: proc(c: ^Compiler, e: ^Expr, cond: bool) -> (pc: int) {

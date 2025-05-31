@@ -297,8 +297,8 @@ FB_EXPONENT_MASK    :: (1 << FB_EXPONENT_SIZE) - 1 // 0b0001_1111
 /*
 Overview:
 -   Convert the integer `i` to an 8-bit "floating point byte".
--   The resulting float is stored in a `u8` and can only be decoded via
-    `fb_to_int()`.
+-   The resulting float is stored in a `u8` and can only be properly read
+    via `fb_decode()`.
 
 Format:
 -   0b_eeee_exxx

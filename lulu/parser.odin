@@ -10,6 +10,12 @@ Parser :: struct {
     lexer:               Lexer,
     consumed, lookahead: Token,
     recurse:             int,
+    break_list:         ^Break_List,
+}
+
+Break_List :: struct {
+    prev:     ^Break_List,
+    jump_list: int,
 }
 
 Rule :: struct {
@@ -151,9 +157,16 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
             assignment(p, c, last, 1)
         }
     case .Do:     do_block(p, c)
-    case .If:     if_stmt(p, c)
+    case .If:     if_block(p, c)
     case .Local:  local_stmt(p, c)
     case .Print:  print_stmt(p, c)
+    case .While:  while_loop(p, c)
+    case .Break:
+        b := p.break_list
+        if b == nil {
+            parser_error(p, "No loop to break")
+        }
+        compiler_add_jump(c, &b.jump_list, compiler_code_jump(c))
     case .Return: return_stmt(p, c)
     case:
         error_at(p, p.consumed, "Expected an expression")
@@ -400,18 +413,18 @@ still_in_block :: proc(p: ^Parser) -> bool {
 /*
 **Form**
 ```
-if_stmt ::= 'if' expression 'then' block 'end'
+if_block ::= 'if' expression 'then' block 'end'
 ```
 
 **Analogous to**
 -   `compiler.c:ifStatement()` in Crafting Interpreters, Chapter 23.1:
     *If Statements*.
 */
-if_stmt :: proc(p: ^Parser, c: ^Compiler) {
+if_block :: proc(p: ^Parser, c: ^Compiler) {
     then_cond :: proc(p: ^Parser, c: ^Compiler) -> (cond: Expr) {
         cond = expression(p, c)
         parser_consume(p, .Then)
-        compiler_code_jump_if_not(c, &cond, true)
+        compiler_code_go_if(c, &cond, true)
         then_block(p, c)
         return cond
     }
@@ -473,6 +486,21 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 
     // This is hacky but it works to allow recycling of registers
     c.free_reg -= n_args
+}
+
+while_loop :: proc(p: ^Parser, c: ^Compiler) {
+    loop_start := c.pc
+    cond  := expression(p, c)
+    blist := Break_List{prev = p.break_list, jump_list = NO_JUMP}
+    p.break_list = &blist
+    defer p.break_list = blist.prev
+
+    compiler_code_go_if(c, &cond, true)
+    parser_consume(p, .Do)
+    do_block(p, c)
+    compiler_patch_jump(c, compiler_code_jump(c), target = loop_start)
+    compiler_patch_jump(c, cond.patch_false)
+    compiler_patch_jump(c, blist.jump_list)
 }
 
 return_stmt :: proc(p: ^Parser, c: ^Compiler) {
@@ -1092,7 +1120,7 @@ logic :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
     }
 
     cond, prec := logic_op(p.consumed.type)
-    compiler_code_jump_if_not(c, left, cond)
+    compiler_code_go_if(c, left, cond)
 
     // Treat logical operators as left-associative so we don't needlessly
     // recurse; e.g. `x and y and z` is parsed as `(x and y) and z` rather
