@@ -12,6 +12,7 @@ Chunk :: struct {
     code:          []Instruction, // len(code) == cap
     line:          []int,         // len(line) == cap
     stack_used:      int, // How many stack slots does this chunk require?
+    is_vararg:       bool,
 }
 
 Local :: struct {

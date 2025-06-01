@@ -2,8 +2,8 @@ package lulu
 
 Function :: struct {
     using base: Object_Base,
-    arity: int,
     chunk: Chunk,
+    arity: int,
 }
 
 function_new :: proc(vm: ^VM, source: string) -> ^Function {
@@ -11,7 +11,6 @@ function_new :: proc(vm: ^VM, source: string) -> ^Function {
     object_link(&vm.objects, o)
 
     f := &o.function
-    f.arity = 0
     chunk_init(&f.chunk, source)
     return f
 }

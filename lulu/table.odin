@@ -47,10 +47,10 @@ table_get :: proc(t: Table, k: Value) -> (v: Value, ok: bool) #optional_ok {
     }
 
     entry := find_entry(t.entries, k)
-    if !value_is_nil(entry.key) {
+    if ok = !value_is_nil(entry.key); ok {
         v = entry.value
     }
-    return v, true
+    return v, ok
 }
 
 

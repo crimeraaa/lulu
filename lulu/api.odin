@@ -3,10 +3,14 @@ package lulu
 import "core:fmt"
 import "core:mem"
 import "core:strings"
+import "core:container/small_array"
 
 Number :: NUMBER_TYPE
 
 VM :: struct {
+    frames:       small_array.Small_Array(MAX_FRAMES, Frame),
+    current:     ^Frame,
+
     stack_all:  []Value, // len(stack) == stack_size
     allocator:    mem.Allocator,
     builder:      strings.Builder,
@@ -14,7 +18,6 @@ VM :: struct {
     globals:      Table,
     objects:     ^Object,
     view:       []Value,
-    chunk:       ^Chunk,
     saved_ip:    ^Instruction, // Used for error reporting
     handlers:    ^Error_Handler,
 }

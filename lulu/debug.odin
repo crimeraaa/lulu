@@ -220,10 +220,11 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
  */
 debug_type_error :: proc(vm: ^VM, culprit: ^Value, action: string) -> ! {
     type_name := value_type_name(culprit^)
+    frame     := vm.current
 
     // Culprit is in the active stack frame, thus may be a variable?
-    if reg, in_stack := ptr_index_safe(culprit, vm.view); in_stack {
-        chunk := vm.chunk
+    if reg, in_stack := ptr_index_safe(culprit, frame.window); in_stack {
+        chunk := &frame.function.chunk
 
         // Inline implementation `ldebug.c:currentpc()`.
         // `vm.saved_ip` always points to instruction AFTER current, so

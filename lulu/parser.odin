@@ -108,15 +108,25 @@ parser_check :: proc(p: ^Parser, expected: Token_Type) -> (found: bool) {
 }
 
 @(private="package")
-parser_program :: proc(p: ^Parser, c: ^Compiler) {
+parser_program :: proc(vm: ^VM, source, input: string) -> ^Function {
+    p := &Parser{vm = vm, lexer = lexer_create(vm, input, source)}
+    c := &Compiler{}
+    f := function_new(vm, source)
+
+    // Main function is always a vararg
+    f.chunk.is_vararg = true
+    compiler_init(c, vm, p, &f.chunk)
+
     parser_advance(p)
     b := block_make(p, c)
     block_set(p, c, &b)
     for !parser_match(p, .Eof) {
         declaration(p, c)
     }
+
     parser_consume(p, .Eof)
     compiler_end(c)
+    return f
 }
 
 Assign :: struct {

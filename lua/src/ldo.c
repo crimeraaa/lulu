@@ -140,6 +140,15 @@ static void correctstack (lua_State *L, TValue *oldstack) {
 
 
 void luaD_reallocstack (lua_State *L, int newsize) {
+  /**
+   * @note 2025-06-01:
+   *  - This will end up pointing to freed memory!
+   *  - Strictly speaking, freed pointers have indeterminate values.
+   *  - Thus the pointer arithmetic (as in `correctstack()`) is potentially
+   *    undefined behavior.
+   *  - However I'm guessing that all the platforms Lua compiles on provides
+   *    the expected results?
+   */
   TValue *oldstack = L->stack;
   int realsize = newsize + 1 + EXTRA_STACK;
   lua_assert(L->stack_last - L->stack == L->stacksize - EXTRA_STACK - 1);
