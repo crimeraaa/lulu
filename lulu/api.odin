@@ -26,6 +26,7 @@ Type :: enum {
     Boolean,
     String,
     Table,
+    Function,
 }
 
 Error :: enum {
@@ -192,8 +193,17 @@ type :: proc(vm: ^VM, i: int) -> Type {
     return v.type if ok else .None
 }
 
-type_name :: proc(vm: ^VM, i: int) -> string {
+type_name :: proc {
+    type_name_from_value,
+    type_name_from_type,
+}
+
+type_name_from_value :: proc(vm: ^VM, i: int) -> string {
     return value_type_name(peek(vm, i))
+}
+
+type_name_from_type :: proc(vm: ^VM, t: Type) -> string {
+    return value_type_names[t]
 }
 
 is_nil :: proc(vm: ^VM, i: int) -> bool {
@@ -283,8 +293,10 @@ to_string :: proc(vm: ^VM, i: int) -> (s: string, ok: bool) #optional_ok {
  */
 to_pointer :: proc(vm: ^VM, i: int) -> (p: rawptr, ok: bool) #optional_ok {
     v := peek(vm, i)
-    value_is_table(v) or_return
-    return v.object, true
+    if v.type >= .Table {
+        return v.object, true
+    }
+    return nil, false
 }
 
 

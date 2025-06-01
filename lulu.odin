@@ -74,7 +74,8 @@ main :: proc() {
             case .Boolean:  fmt.print(lulu.to_boolean(vm, i))
             case .Number:   fmt.print(lulu.to_number(vm, i))
             case .String:   fmt.print(lulu.to_string(vm, i))
-            case .Table:    fmt.printf("%s: %p", lulu.type_name(vm, i), lulu.to_pointer(vm, i))
+            case .Table, .Function:
+                fmt.printf("%s: %p", lulu.type_name(vm, i), lulu.to_pointer(vm, i))
             }
         }
         fmt.println()

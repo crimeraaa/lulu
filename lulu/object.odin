@@ -6,9 +6,10 @@ import "core:mem"
 import "core:fmt"
 
 Object :: struct #raw_union {
-    base:    Object_Base,
-    ostring: OString,
-    table:   Table,
+    base:     Object_Base,
+    ostring:  OString,
+    table:    Table,
+    function: Function,
 }
 
 Object_Base :: struct {
@@ -37,7 +38,9 @@ where intrinsics.type_is_subtype_of(T, Object_Base) {
         o.base.type = .String
     } else when T == Table {
         o.base.type = .Table
-    } else {
+    } else when T == Function {
+        o.base.type = .Function
+    }else {
         #panic("Invalid type!")
     }
     return o
@@ -79,6 +82,9 @@ object_free_all :: proc(vm: ^VM) {
         case .Table:
             table_destroy(vm, &o.table)
             mem.free(o)
+        case .Function:
+            function_destroy(vm, &o.function)
+            mem.free(o)
         case:
             unreachable("Cannot free a %v value!", o.base.type)
         }
@@ -97,6 +103,8 @@ objects_print_all :: proc(vm: ^VM) {
             fmt.printfln("string: %q", ostring_to_string(&o.ostring))
         case .Table:
             fmt.printfln("table: %p", o)
+        case .Function:
+            fmt.printfln("function: %p", o)
         case: unreachable("Cannot print object type %v", o.base.type)
         }
     }

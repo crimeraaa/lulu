@@ -60,11 +60,14 @@ compiler_init :: proc(c: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
     c.last_target = NO_JUMP
 }
 
-compiler_compile :: proc(vm: ^VM, chunk: ^Chunk, input: string) {
-    p := &Parser{vm = vm, lexer = lexer_create(vm, input, chunk.source)}
+compiler_compile :: proc(vm: ^VM, source, input: string) -> ^Function {
+    f := function_new(vm, source)
+    p := &Parser{vm = vm, lexer = lexer_create(vm, input, source)}
     c := &Compiler{}
-    compiler_init(c, vm, p, chunk)
+
+    compiler_init(c, vm, p, &f.chunk)
     parser_program(p, c)
+    return f
 }
 
 compiler_end :: proc(c: ^Compiler) {

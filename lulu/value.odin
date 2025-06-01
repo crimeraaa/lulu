@@ -11,11 +11,9 @@ Value :: struct {
 }
 
 Value_Data :: struct #raw_union {
-    number:   Number,
-    boolean:  bool,
+    number:        Number,
+    boolean:       bool,
     using object: ^Object,
-    // ostring: ^OString,
-    // table:   ^Table,
 }
 
 // Used for callbacks/dispatches
@@ -29,19 +27,22 @@ value_make :: proc {
     value_make_integer,
     value_make_string,
     value_make_table,
+    value_make_function,
 }
 
 value_type_name :: #force_inline proc "contextless" (v: Value) -> string {
-    @(static, rodata)
-    type_names := [Type]string {
-        .None    = "no value",
-        .Nil     = "nil",
-        .Boolean = "boolean",
-        .Number  = "number",
-        .String  = "string",
-        .Table   = "table",
-    }
-    return type_names[v.type]
+    return value_type_names[v.type]
+}
+
+@(rodata)
+value_type_names := [Type]string {
+    .None     = "no value",
+    .Nil      = "nil",
+    .Boolean  = "boolean",
+    .Number   = "number",
+    .String   = "string",
+    .Table    = "table",
+    .Function = "function",
 }
 
 value_make_nil :: #force_inline proc "contextless" () -> Value {
@@ -68,6 +69,10 @@ value_make_table :: #force_inline proc "contextless" (t: ^Table) -> Value {
     return Value{type = .Table, object = cast(^Object)t}
 }
 
+value_make_function :: #force_inline proc "contextless" (f: ^Function) -> Value {
+    return Value{type = .Function, object = cast(^Object)f}
+}
+
 value_is_nil :: #force_inline proc "contextless" (v: Value) -> bool {
     return v.type == .Nil
 }
@@ -92,6 +97,10 @@ value_is_table :: #force_inline proc "contextless" (v: Value) -> bool {
     return v.type == .Table
 }
 
+value_is_function :: #force_inline proc "contextless" (v: Value) -> bool {
+    return v.type == .Function
+}
+
 // Utility function because this is so common.
 value_as_string :: #force_inline proc "contextless" (v: Value) -> string {
     return ostring_to_string(&v.ostring)
@@ -103,11 +112,12 @@ value_eq :: proc(a, b: Value) -> bool {
     }
 
     switch a.type {
-    case .None:             break
-    case .Nil:              return true
-    case .Boolean:          return a.boolean == b.boolean
-    case .Number:           return number_eq(a.number, b.number)
-    case .String, .Table:   return a.object == b.object
+    case .None:    break
+    case .Nil:     return true
+    case .Boolean: return a.boolean == b.boolean
+    case .Number:  return number_eq(a.number, b.number)
+    case .String, .Table, .Function:
+        return a.object == b.object
     }
     unreachable("Unknown value type %v", a.type)
 }
@@ -120,7 +130,7 @@ value_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
         case .Boolean:  io.write_string(fi.writer, "true" if v.boolean else "false", &fi.n)
         case .Number:   fi.n += fmt.wprintf(fi.writer, NUMBER_FMT, v.number)
         case .String:   io.write_string(fi.writer, value_as_string(v), &fi.n)
-        case .Table:
+        case .Table, .Function:
             type_name := value_type_name(v)
             fi.n += fmt.wprintf(fi.writer, "%s: %p", type_name, v.object)
         case:

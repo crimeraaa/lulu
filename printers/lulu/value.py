@@ -25,11 +25,11 @@ class ValuePrinter:
             case "Boolean": return str(bool(self.__data["boolean"])).lower()
             case "Number":  return str(float(self.__data["number"]))
             # will (eventually) delegate to `odin.StringPrinter`
-            case "String":  return str(self.__data["ostring"])
+            case "String":  return str(self.__data["object"]["ostring"].address)
 
         # Assuming ALL data pointers have the same representation
         # Meaning `(void *)value.ostring == (void *)value.table` for the same
         # `lulu::Value` instance.
-        pointer = self.__data["table"].cast(base.VOID_POINTER)
+        pointer = self.__data["object"].cast(base.VOID_POINTER)
         return f"{self.__type.lower()}: {pointer}"
 

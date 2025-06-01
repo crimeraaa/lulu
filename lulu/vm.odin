@@ -191,24 +191,24 @@ vm_destroy :: proc(vm: ^VM) {
  */
 vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
     Data :: struct {
-        chunk:  Chunk,
+        source: string,
         input:  string,
     }
 
-    data := &Data{input = input}
-    chunk_init(&data.chunk, source)
-    defer chunk_destroy(vm, &data.chunk)
-
+    data := &Data{source = source, input = input}
     interpret :: proc(vm: ^VM, user_data: rawptr) {
         data  := cast(^Data)user_data
-        chunk := &data.chunk
-        compiler_compile(vm, chunk, data.input)
+        fmain := compiler_compile(vm, data.source, data.input)
         if DEBUG_PRINT_CODE {
-            debug_dump_chunk(chunk, len(chunk.code))
+            debug_dump_chunk(&fmain.chunk, len(fmain.chunk.code))
         }
-        vm_check_stack(vm, chunk.stack_used)
-        vm.view  = vm.stack_all[:chunk.stack_used]
-        vm.chunk = chunk
+        n := fmain.chunk.stack_used + 1
+        vm_check_stack(vm, n)
+        vm.view = vm.stack_all[:n]
+        // Users cannot (and should not!) poke at the main function.
+        vm.view[0] = value_make(fmain)
+        vm.view    = vm.view[1:]
+        vm.chunk   = &fmain.chunk
 
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
