@@ -20,15 +20,14 @@ debug_dump_chunk :: proc(c: ^Chunk, code_size: int) {
     fmt.println("=== DISASSEMBLY: BEGIN ===")
     defer fmt.println("\n=== DISASSEMBLY: END ===")
 
-    fmt.printfln("\n.name\n%q", c.source)
+    fmt.printfln("\n.source\n%q", c.source)
     fmt.printfln("\n.stack_used\n%i", c.stack_used)
 
     if n := len(c.locals); n > 0 {
         fmt.println("\n.local:")
         left_pad := count_digits(n)
         for local, index in c.locals {
-            fmt.printfln("[%0*i] %q ; %v", left_pad, index, local.ident,
-                local)
+            fmt.printfln("[%0*i] %q ; %v", left_pad, index, local.ident, local)
         }
     }
 

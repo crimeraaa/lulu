@@ -53,7 +53,7 @@ get_ip_from_pc :: #force_inline proc "contextless" (c: ^Compiler, pc: int) -> ^I
     return &c.chunk.code[pc]
 }
 
-compiler_init :: proc(c: ^Compiler, vm: ^VM, parser: ^Parser, chunk: ^Chunk) {
+compiler_init :: proc(vm: ^VM, c: ^Compiler, parser: ^Parser, chunk: ^Chunk) {
     c.vm          = vm
     c.parser      = parser
     c.chunk       = chunk
@@ -70,6 +70,9 @@ compiler_end :: proc(c: ^Compiler) {
      */
     compiler_code_return(c, reg = 0, count = 0)
     chunk_fini(c.vm, c.chunk, c)
+    if DEBUG_PRINT_CODE {
+        debug_dump_chunk(c.chunk, len(c.chunk.code))
+    }
 }
 
 
@@ -526,6 +529,7 @@ compiler_add_constant :: proc {
     compiler_add_number,
     compiler_add_value,
     compiler_add_string,
+    compiler_add_function,
 }
 
 
@@ -535,6 +539,10 @@ compiler_add_number :: proc(c: ^Compiler, n: Number) -> (index: u32) {
 
 compiler_add_string :: proc(c: ^Compiler, s: ^OString) -> (index: u32) {
     return compiler_add_value(c, value_make(s))
+}
+
+compiler_add_function :: proc(c: ^Compiler, f: ^Function) -> (index: u32) {
+    return compiler_add_value(c, value_make(f))
 }
 
 
@@ -595,6 +603,13 @@ compiler_resolve_local :: proc(c: ^Compiler, ident: ^OString) -> (index: u16, ok
         // `lparser.c:getlocvar(FuncState *fs, int i)`
         if locals[active].ident == ident {
             return cast(u16)reg, true
+        }
+    }
+
+    if c.parent != nil {
+        index, ok = compiler_resolve_local(c.parent, ident)
+        if ok {
+            parser_error(c.parser, "Upvalues not yet supported")
         }
     }
     return NO_REG, false

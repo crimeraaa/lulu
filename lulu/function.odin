@@ -2,8 +2,8 @@ package lulu
 
 Function :: struct {
     using base: Object_Base,
-    chunk: Chunk,
-    arity: int,
+    chunk:      Chunk,
+    arity:      int,
 }
 
 function_new :: proc(vm: ^VM, source: string) -> ^Function {

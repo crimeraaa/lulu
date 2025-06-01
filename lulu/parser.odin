@@ -101,10 +101,7 @@ parser_match :: proc(p: ^Parser, expected: Token_Type) -> (found: bool) {
 }
 
 parser_check :: proc(p: ^Parser, expected: Token_Type) -> (found: bool) {
-    if found = p.lookahead.type == expected; found {
-        parser_advance(p)
-    }
-    return found
+    return p.lookahead.type == expected
 }
 
 @(private="package")
@@ -115,9 +112,11 @@ parser_program :: proc(vm: ^VM, source, input: string) -> ^Function {
 
     // Main function is always a vararg
     f.chunk.is_vararg = true
-    compiler_init(c, vm, p, &f.chunk)
+    compiler_init(vm, c, p, &f.chunk)
 
     parser_advance(p)
+
+    // Ensure topmost block is non-nil when resolving locals
     b := block_make(p, c)
     block_set(p, c, &b)
     for !parser_match(p, .Eof) {
@@ -127,6 +126,11 @@ parser_program :: proc(vm: ^VM, source, input: string) -> ^Function {
     parser_consume(p, .Eof)
     compiler_end(c)
     return f
+}
+
+parser_ident :: proc(p: ^Parser) -> ^OString {
+    parser_consume(p, .Identifier)
+    return ostring_new(p.vm, p.consumed.lexeme)
 }
 
 Assign :: struct {
@@ -158,14 +162,15 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
         } else {
             assignment(p, c, last, 1)
         }
-    case .Do:     do_block(p, c)
-    case .If:     if_block(p, c)
-    case .Local:  local_stmt(p, c)
-    case .Print:  print_stmt(p, c)
-    case .While:  while_loop(p, c)
-    case .For:    for_loop(p, c)
-    case .Break:  break_stmt(p, c)
-    case .Return: return_stmt(p, c)
+    case .Break:    break_stmt(p, c)
+    case .Do:       do_block(p, c)
+    case .For:      for_loop(p, c)
+    case .Function: function_decl(p, c)
+    case .If:       if_block(p, c)
+    case .Local:    local_stmt(p, c)
+    case .Print:    print_stmt(p, c)
+    case .Return:   return_stmt(p, c)
+    case .While:    while_loop(p, c)
     case:
         error_at(p, p.consumed, "Expected an expression")
     }
@@ -254,9 +259,8 @@ assign_list :: proc(iter: ^^Assign) -> (a: ^Assign, ok: bool) {
 local_stmt :: proc(p: ^Parser, c: ^Compiler) {
     n_vars: int
     for {
-        parser_consume(p, .Identifier)
-        ident := ostring_new(p.vm, p.consumed.lexeme)
-        local_decl(p, c, ident, &n_vars)
+        s := parser_ident(p)
+        local_decl(p, c, s, &n_vars)
         parser_match(p, .Comma) or_break
     }
 
@@ -435,7 +439,6 @@ still_in_block :: proc(p: ^Parser) -> bool {
 }
 
 
-
 /*
 **Form**
 ```
@@ -484,6 +487,41 @@ if_block :: proc(p: ^Parser, c: ^Compiler) {
     }
     compiler_patch_jump(c, else_jump)
     parser_consume(p, .End)
+}
+
+
+function_decl :: proc(p: ^Parser, c: ^Compiler) {
+    parser_consume(p, .Identifier)
+    var   := variable(p, c)
+    index := function_body(p, c)
+    fexpr := expr_make(.Constant, index = index)
+    compiler_store_var(c, &var, &fexpr)
+}
+
+function_body :: proc(p: ^Parser, c: ^Compiler) -> (index: u32) {
+    parser_consume(p, .Left_Paren)
+    f  := function_new(p.vm, p.lexer.source)
+    c2 := &Compiler{parent = c}
+
+    // Ensure topmost block is non-nil when resolving locals
+    b := block_make(p, c2)
+    block_set(p, c2, &b)
+
+    compiler_init(p.vm, c2, p, &f.chunk)
+    for !parser_check(p, .Right_Paren) {
+        if parser_match(p, .Ellipsis_3) {
+            f.chunk.is_vararg = true
+            break
+        }
+        param := parser_ident(p)
+        local_decl(p, c2, param, &f.arity)
+        parser_match(p, .Comma) or_break
+    }
+    parser_consume(p, .Right_Paren)
+    local_adjust(c2, f.arity)
+    do_block(p, c2)
+    compiler_end(c2)
+    return compiler_add_constant(c2.parent, f)
 }
 
 
@@ -536,11 +574,10 @@ for_loop :: proc(p: ^Parser, c: ^Compiler) {
         local_decl(p, c, o, n_vars)
     }
 
-    parser_consume(p, .Identifier)
+    ident := parser_ident(p)
     base := c.free_reg
     b := block_make(p, c, is_loop = true)
     block_set(p, c, &b)
-    ident := ostring_new(p.vm, p.consumed.lexeme)
 
     parser_consume(p, .Equals)
     init := expression(p, c) // for index initial value
@@ -815,7 +852,6 @@ variable :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         case .Period:
             // Same idea as in `.Left_Bracket` case.
             compiler_expr_any_reg(c, &var)
-            parser_consume(p, .Identifier)
             key := field_name(p, c)
             compiler_code_indexed(c, &var, &key)
         case .Colon:
@@ -847,7 +883,7 @@ variable :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 -   If the index does not fit in an RK, you will have to push it yourself!
  */
 field_name :: proc(p: ^Parser, c: ^Compiler) -> (key: Expr) {
-    o := ostring_new(p.vm, p.consumed.lexeme)
+    o := parser_ident(p)
     return expr_make(.Constant, index = compiler_add_constant(c, o))
 }
 
@@ -897,8 +933,8 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     field :: proc(p: ^Parser, c: ^Compiler, ctor: ^Constructor) {
         defer ctor.n_hash += 1
 
-        parser_consume(p, .Equals)
         key := field_name(p, c)
+        parser_consume(p, .Equals)
         rkb := compiler_expr_rk(c, &key)
 
         value := expression(p, c)
@@ -949,6 +985,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         case .Identifier:
             // `.Equals` is consumed inside of `field`
             if parser_check(p, .Equals) {
+                parser_backtrack(p, prev)
                 field(p, c, ctor)
             } else {
                 parser_backtrack(p, prev)

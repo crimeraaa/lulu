@@ -209,9 +209,6 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
     interpret :: proc(vm: ^VM, user_data: rawptr) {
         data  := cast(^Data)user_data
         fmain := parser_program(vm, data.source, data.input)
-        if DEBUG_PRINT_CODE {
-            debug_dump_chunk(&fmain.chunk, len(fmain.chunk.code))
-        }
         // Need to accomodate the main function itself as well
         n := fmain.chunk.stack_used + 1
         vm_check_stack(vm, n)
