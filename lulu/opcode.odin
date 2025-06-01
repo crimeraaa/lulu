@@ -74,11 +74,11 @@ Links:
 OpCode :: enum {
 /* =============================================================================
 Note on shorthand:
-(*) Reg:
+(*) R:
     -   'Register'
     -   requires absolute index into stack
-    -   Reg(A) => often the destination operand
-(*) Kst:
+    -   R(A) => often the destination operand
+(*) K:
     -   'Constants Table'
     -   From current Chunk
     -   Requires absolute index
@@ -88,34 +88,36 @@ Note on shorthand:
         absolute index into Kst. Otherwise, it is a Reg.
 ============================================================================= */
 //                Args  | Description
-Move,          // A B   | Reg(A) := Reg(B)
-Load_Constant, // A Bx  | Reg(A) := Kst(Bx)
-Load_Nil,      // A B   | Reg(i) := nil for A <= i <= B
-Load_Boolean,  // A B C | Reg(1) := (Bool)B; if ((Bool)C) ip++
-Get_Global,    // A Bx  | Reg(A) := _G[Kst[Bx]]
-Get_Table,     // A B C | Reg(A) := Reg(B)[RK(C)]
-Set_Global,    // A Bx  | _G[Kst[Bx]] := Reg(A)
-Set_Table,     // A B C | Reg(A)[RK(B)] := RK(C)
-New_Table,     // A B C | Reg(A) := {} ; array size = B, hash size = C
-Set_Array,     // A Bx  | Reg(A)[(C-1)*FPF + i] = Reg(A + i) for 1 <= i <= B
-Print,         // A B   | print(Reg(i), '\t') for A <= i < B
-Add,           // A B C | Reg(A) := RK(B) + RK(C)
-Sub,           // A B C | Reg(A) := RK(B) - RK(C)
-Mul,           // A B C | Reg(A) := RK(B) * RK(C)
-Div,           // A B C | Reg(A) := RK(B) / RK(C)
-Mod,           // A B C | Reg(A) := RK(B) % RK(C)
-Pow,           // A B C | Reg(A) := RK(B) ^ RK(C)
-Unm,           // A B   | Reg(A) := -Reg(B)
+Move,          // A B   | R(A) := R(B)
+Load_Constant, // A Bx  | R(A) := K(Bx)
+Load_Nil,      // A B   | R(i) := nil for A <= i <= B
+Load_Boolean,  // A B C | R(A) := Bool(B); if Bool(C) ip++
+Get_Global,    // A Bx  | R(A) := _G[K(Bx)]
+Get_Table,     // A B C | R(A) := R(B)[RK(C)]
+Set_Global,    // A Bx  | _G[Kst[Bx]] := R(A)
+Set_Table,     // A B C | R(A)[RK(B)] := RK(C)
+New_Table,     // A B C | R(A) := {} ; array size = B, hash size = C
+Set_Array,     // A Bx  | R(A)[(C-1)*FPF + i] = R(A + i) for 1 <= i <= B
+Print,         // A B   | print(R(i), '\t') for A <= i < B
+Add,           // A B C | R(A) := RK(B) + RK(C)
+Sub,           // A B C | R(A) := RK(B) - RK(C)
+Mul,           // A B C | R(A) := RK(B) * RK(C)
+Div,           // A B C | R(A) := RK(B) / RK(C)
+Mod,           // A B C | R(A) := RK(B) % RK(C)
+Pow,           // A B C | R(A) := RK(B) ^ RK(C)
+Unm,           // A B   | R(A) := -R(B)
 Eq,            // A B C | if (RK(B) == RK(C)) != Bool(A) then pc++
 Lt,            // A B C | if (RK(B) <  RK(C)) != Bool(A) then pc++
 Leq,           // A B C | if (RK(B) <= RK(C)) != Bool(A) then pc++
-Not,           // A B   | Reg(A) := not RK(B)
-Concat,        // A B C | Reg(A) := Reg(A) .. Reg(i) for B <= i <= C
-Len,           // A B   | Reg(A) := #Reg(B)
-Test,          // A   C | if Bool(Reg(A)) != Bool(C) then pc++
-Test_Set,      // A B C | if Bool(Reg(B)) != Bool(C) then pc++ else Reg(A) := Reg(B)
+Not,           // A B   | R(A) := not RK(B)
+Concat,        // A B C | R(A) := R(A) .. R(i) for B <= i <= C
+Len,           // A B   | R(A) := #R(B)
+Test,          // A   C | if Bool(R(A)) != Bool(C) then pc++
+Test_Set,      // A B C | if Bool(R(B)) != Bool(C) then pc++ else R(A) := R(B)
 Jump,          // sBx   | pc += sBx
-Return,        // A B C | return Reg(A), ... Reg(A + B)
+For_Prep,      // A sBx | R(A) -= R(A+2); pc += sBx
+For_Loop,      // A sBx | if R(A) < R(A+1) then pc += sBx else R(A) += R(A+2)
+Return,        // A B C | return R(A), ... R(A + B)
 }
 
 /*
@@ -220,6 +222,8 @@ opcode_info := [OpCode]OpCode_Info {
 .Len            = {type = .Separate,    a = true,  b = .Reg_Const, c = .Unused},
 .Test           = {type = .Separate,    a = false, b = .Unused,    c = .Used,       is_test = true},
 .Test_Set       = {type = .Separate,    a = true,  b = .Reg_Const, c = .Used,       is_test = true},
+.For_Prep       = {type = .Signed_Bx,   a = true,  b = .Reg_Jump,  c = .Unused},
+.For_Loop       = {type = .Signed_Bx,   a = true,  b = .Reg_Jump,  c = .Unused},
 .Jump           = {type = .Signed_Bx,   a = false, b = .Reg_Jump,  c = .Unused},
 .Return         = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 }

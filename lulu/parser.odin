@@ -153,6 +153,7 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
     case .Local:  local_stmt(p, c)
     case .Print:  print_stmt(p, c)
     case .While:  while_loop(p, c)
+    case .For:    for_loop(p, c)
     case .Break:  break_stmt(p, c)
     case .Return: return_stmt(p, c)
     case:
@@ -243,17 +244,14 @@ assign_list :: proc(iter: ^^Assign) -> (a: ^Assign, ok: bool) {
 local_stmt :: proc(p: ^Parser, c: ^Compiler) {
     n_vars: int
     for {
-        defer n_vars += 1
-
         parser_consume(p, .Identifier)
         ident := ostring_new(p.vm, p.consumed.lexeme)
-        local_decl(p, c, ident, n_vars)
+        local_decl(p, c, ident, &n_vars)
         parser_match(p, .Comma) or_break
     }
 
     top: Expr
     n_exprs: int
-    // No need for `else` clause as zero value is already .Empty
     if parser_match(p, .Equals) {
         top, n_exprs = expr_list(p, c)
     }
@@ -277,7 +275,7 @@ local_stmt :: proc(p: ^Parser, c: ^Compiler) {
     *Declaring Local Variables*.
 -   `lparser.c:new_localvar(LexState *ls, TString *name, int n)` in Lua 5.1.5.
  */
-local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, counter: int) {
+local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, n: ^int) {
     locals := c.chunk.locals
     #reverse for active in small_array.slice(&c.active)[p.block.n_outer:] {
         local := locals[active]
@@ -294,7 +292,7 @@ local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, counter: int) {
     -   So we don't want to push because that will mutate the length thus
         messing up our "uninitialized" counter.
      */
-    active_reg := small_array.len(c.active) + counter
+    active_reg := small_array.len(c.active) + n^
     if active_reg >= MAX_LOCALS {
         buf: [64]byte
         msg := fmt.bprintf(buf[:], "More than %i local variables", MAX_LOCALS)
@@ -302,7 +300,9 @@ local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, counter: int) {
     }
     local_index := compiler_add_local(c, ident)
     small_array.set(&c.active, index = active_reg, item = local_index)
+    n^ += 1
 }
+
 
 /*
 **Notes**
@@ -509,18 +509,60 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 while_loop :: proc(p: ^Parser, c: ^Compiler) {
     loop_start := c.pc
     cond := expression(p, c)
-    b    := block_make(p, c, is_loop = true)
+    parser_consume(p, .Do)
+
+    b := block_make(p, c, is_loop = true)
     block_set(p, c, &b)
     compiler_code_go_if(c, &cond, true)
     compiler_add_jump(c, &b.break_list, cond.patch_false)
-    parser_consume(p, .Do)
     do_block(p, c)
     compiler_patch_jump(c, compiler_code_jump(c), target = loop_start)
     compiler_patch_jump(c, b.break_list)
 }
 
+for_loop :: proc(p: ^Parser, c: ^Compiler) {
+    local_literal :: proc(p: ^Parser, c: ^Compiler, s: string, n_vars: ^int) {
+        o := ostring_new(p.vm, s)
+        local_decl(p, c, o, n_vars)
+    }
+
+    parser_consume(p, .Identifier)
+    base := c.free_reg
+    b := block_make(p, c, is_loop = true)
+    block_set(p, c, &b)
+    ident := ostring_new(p.vm, p.consumed.lexeme)
+
+    parser_consume(p, .Equals)
+    init := expression(p, c) // for index initial value
+    compiler_expr_next_reg(c, &init)
+
+    parser_consume(p, .Comma)
+    cond := expression(p, c) // for condition
+    compiler_expr_next_reg(c, &cond)
+
+    incr := expression(p, c) if parser_match(p, .Comma) else expr_make(Number(1))
+    compiler_expr_next_reg(c, &incr)
+    parser_consume(p, .Do)
+
+    n_vars: int
+    local_decl(p, c, ident, &n_vars) // for index
+    local_literal(p, c, "(for cond)", &n_vars)
+    local_literal(p, c, "(for incr)", &n_vars)
+    local_adjust(c, n_vars)
+
+    prep_pc := compiler_code(c, .For_Prep, u16(base), NO_JUMP)
+    do_block(p, c)
+
+    loop_pc := compiler_code(c, .For_Loop, u16(base), NO_JUMP)
+    compiler_patch_jump(c, prep_pc, target = loop_pc)
+    compiler_patch_jump(c, loop_pc, target = prep_pc + 1)
+    compiler_patch_jump(c, b.break_list)
+}
+
 break_stmt :: proc(p: ^Parser, c: ^Compiler) {
     b := p.block
+    // Get potentially-breakable parents of non-breakable blocks
+    // e.g. `if`, `elseif`, `else`
     for b != nil && !b.is_breakable {
         b = b.prev
     }
@@ -686,10 +728,10 @@ check_recurse_end :: proc(p: ^Parser) {
  */
 literal :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     #partial switch p.consumed.type {
-    case .Nil:    return expr_make(.Nil)
-    case .True:   return expr_make(.True)
-    case .False:  return expr_make(.False)
-    case .Number: return expr_make(.Number, p.consumed.number)
+    case .Nil:    return expr_make(Expr_Type.Nil)
+    case .True:   return expr_make(true)
+    case .False:  return expr_make(false)
+    case .Number: return expr_make(p.consumed.number)
     case .String:
         index := compiler_add_constant(c, p.consumed.ostring)
         return expr_make(.Constant, index = index)
@@ -1127,12 +1169,12 @@ concat :: proc(p: ^Parser, c: ^Compiler, left: ^Expr) {
 **Visualization**
 ```
         <left>
-    +-- Test_Set Reg(A) <left> !$COND
-    |   ; if bool(<left>) == bool(!$COND) then Reg(A) := <left> else goto <right>
+    +-- Test_Set R(A) <left> !$COND
+    |   ; if bool(<left>) == bool(!$COND) then R(A) := <left> else goto <right>
 +---|-- Jump 0 1
 |   |   ; goto <right + 1>
 |   +-> <right>
-|       ; Reg(A) := <right>
+|       ; R(A) := <right>
 +-----> ...
 ```
 */

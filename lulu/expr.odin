@@ -40,15 +40,29 @@ Expr_Type :: enum {
 // Inspired by: https://www.lua.org/source/5.1/lparser.c.html#simpleexp
 expr_make :: proc {
     expr_make_none,
+    expr_make_number,
+    expr_make_boolean,
     expr_make_pc,
     expr_make_reg,
     expr_make_index,
-    expr_make_number,
 }
 
 expr_make_none :: proc(type: Expr_Type) -> Expr {
     return Expr{
         type        = type,
+        patch_true  = NO_JUMP,
+        patch_false = NO_JUMP,
+    }
+}
+
+expr_make_boolean :: proc(boolean: bool) -> Expr {
+    return expr_make_none(.True if boolean else .False)
+}
+
+expr_make_number :: proc(number: Number) -> Expr {
+    return Expr{
+        type        = .Number,
+        number      = number,
         patch_true  = NO_JUMP,
         patch_false = NO_JUMP,
     }
@@ -79,17 +93,6 @@ expr_make_index :: proc(type: Expr_Type, index: u32) -> Expr {
     return Expr{
         type        = type,
         index       = index,
-        patch_true  = NO_JUMP,
-        patch_false = NO_JUMP,
-    }
-}
-
-
-expr_make_number :: proc(type: Expr_Type, n: Number) -> Expr {
-    assert(type == .Number)
-    return Expr{
-        type        = .Number,
-        number      = n,
         patch_true  = NO_JUMP,
         patch_false = NO_JUMP,
     }

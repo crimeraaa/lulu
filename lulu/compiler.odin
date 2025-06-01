@@ -696,7 +696,7 @@ fold_arith :: proc(op: OpCode, left, right: ^Expr) -> (success: bool) {
     if number_is_nan(result) {
         return false
     }
-    left^ = expr_make(.Number, result)
+    left^ = expr_make(result)
     return true
 }
 
@@ -756,7 +756,7 @@ fold_compare :: proc(op: OpCode, left, right: ^Expr, cond: bool) -> (success: bo
             if !cond {
                 b = !b
             }
-            left^ = expr_make(.True if b else .False)
+            left^ = expr_make(b)
             return true
         }
         return false
@@ -773,7 +773,7 @@ fold_compare :: proc(op: OpCode, left, right: ^Expr, cond: bool) -> (success: bo
     if !cond {
         res = !res
     }
-    left^ = expr_make(.True if res else .False)
+    left^ = expr_make(res)
     return true
 }
 

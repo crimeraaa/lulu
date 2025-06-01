@@ -94,7 +94,7 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
         if local, ok := chunk_get_local(chunk, cast(int)reg + 1, info.pc); ok {
             fmt.printf("%s", local)
         } else {
-            fmt.printf("Reg(%i)", reg)
+            fmt.printf("R(%i)", reg)
         }
     }
 
@@ -134,7 +134,7 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
         bc := ip_get_Bx(ip)
         print_reg(info, ip.a, " := %d", c.constants[bc])
     case .Load_Nil:
-        fmt.printf("Reg(i) := nil for %i <= i <= %i", ip.a, ip.b)
+        fmt.printf("R(i) := nil for %i <= i <= %i", ip.a, ip.b)
     case .Load_Boolean:
         print_reg(info, ip.a, " := %v", ip.b == 1)
         if bool(ip.c) {
@@ -159,10 +159,10 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
         print_reg(info, ip.a, " = {{}} ; #array=%i, #hash=%i",
                   fb_decode(cast(u8)ip.b), fb_decode(cast(u8)ip.c))
     case .Set_Array:
-        print_reg(info, ip.a, "[%i+i] = Reg(%i+i) for 1 <= i <= %i",
+        print_reg(info, ip.a, "[%i+i] = R(%i+i) for 1 <= i <= %i",
                   cast(int)(ip.c - 1) * FIELDS_PER_FLUSH, ip.a, ip.b)
     case .Print:
-        fmt.printf("print(Reg(i), '\\t') for %i <= i < %i", ip.a, ip.b)
+        fmt.printf("print(R(i), '\\t') for %i <= i < %i", ip.a, ip.b)
     case .Add: arith(info, "+")
     case .Sub: arith(info, "-")
     case .Mul: arith(info, "*")
@@ -175,7 +175,7 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
     case .Leq: compare(info, "<=")
     case .Not: unary(info,  "not ")
     case .Concat:
-        print_reg(info, ip.a, " := concat(Reg(%i..=%i))", ip.b, ip.c)
+        print_reg(info, ip.a, " := concat(R(%i..=%i))", ip.b, ip.c)
     case .Len:
         unary(info, "#")
     case .Test, .Test_Set:
@@ -190,15 +190,24 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
             print_reg(info, dst, " := ")
             print_reg(info, test)
         }
+    case .For_Prep:
+        fmt.print("ensure(Number(")
+        print_reg(info, ip.a, ")); goto .code [%i]", index + 1 + ip_get_sBx(ip))
+    case .For_Loop:
+        fmt.print("if ")
+        print_reg(info, ip.a, " < ")
+        print_reg(info, ip.a + 1, " then goto .code[%i], ", index + 1 + ip_get_sBx(ip))
+        print_reg(info, ip.a, " += ")
+        print_reg(info, ip.a + 2)
     case .Jump:
         fmt.printf("goto .code[%i]", index + 1 + ip_get_sBx(ip))
     case .Return:
         reg       := cast(int)ip.a
         n_results := cast(int)ip.b
         if ip.c == 0 {
-            fmt.printf("return Reg(%i..<%i)", reg, reg + n_results)
+            fmt.printf("return R(%i..<%i)", reg, reg + n_results)
         } else {
-            fmt.printf("return Reg(%i..=%i)", reg, c.stack_used);
+            fmt.printf("return R(%i..=%i)", reg, c.stack_used);
         }
     case:
         unreachable("Unknown opcode %v", ip.op)
@@ -261,9 +270,9 @@ debug_get_variable :: proc(c: ^Chunk, pc, reg: int) -> (ident, scope: string, ok
     ip := debug_symbolic_execution(c, pc, cast(u16)reg) or_return
     #partial switch ip.op {
     case .Move:
-        // Moving from Reg(B) to Reg(A)?
+        // Moving from R(B) to R(A)?
         if ip.b < ip.a {
-            // Get the name for Reg(B).
+            // Get the name for R(B).
             // TODO(2025-04-22): Find out how this path is reached!
             return debug_get_variable(c, pc, cast(int)ip.b)
         }

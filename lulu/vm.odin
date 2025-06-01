@@ -235,8 +235,8 @@ Links:
  */
 vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) -> Error {
     // Chain new handler
-    handler := Error_Handler{prev = vm.handlers}
-    vm.handlers  = &handler
+    handler    := Error_Handler{prev = vm.handlers}
+    vm.handlers = &handler
 
     /*
     NOTE(2025-01-18):
@@ -493,6 +493,30 @@ vm_execute :: proc(vm: ^VM) {
         case .Jump:
             offset := ip_get_sBx(read)
             incr_ip(&ip, offset)
+        case .For_Prep:
+            protect_begin(vm, ip)
+            cond := ptr_offset(ra, 1)
+            incr := ptr_offset(ra, 2)
+            if !value_is_number(ra^) {
+                vm_runtime_error(vm, "`for` initial value must be a number")
+            } else if !value_is_number(cond^) {
+                vm_runtime_error(vm, "`for` condition must be a number")
+            } else if !value_is_number(incr^) {
+                vm_runtime_error(vm, "`for` increment must be a number")
+            }
+            // Adjust for the first iteration because the increment will occur
+            // right after the condition rather than at the end of the block.
+            ra.number = number_sub(ra.number, incr.number)
+            loop := ip_get_sBx(read)
+            incr_ip(&ip, loop)
+        case .For_Loop:
+            cond := ptr_offset(ra, 1)
+            incr := ptr_offset(ra, 2)
+            if number_lt(ra.number, cond.number) {
+                ra.number = number_add(ra.number, incr.number)
+                body := ip_get_sBx(read)
+                incr_ip(&ip, body)
+            }
         case .Return:
             // if ip.c != 0 then we have a vararg
             n := cast(int)read.b if read.c == 0 else get_top(vm)

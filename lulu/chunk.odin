@@ -24,10 +24,10 @@ local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     ident := local_to_string(var)
     switch verb {
     case 'v': // verbose
-        fi.n += fmt.wprintf(fi.writer, "local %s@code[%i:%i]", ident, var.startpc,
+        fi.n += fmt.wprintf(fi.writer, "%s@code[%i:%i]", ident, var.startpc,
                             var.endpc)
     case 's': // summary
-        fi.n += fmt.wprintf(fi.writer, "local %s$%i", ident, var.startpc)
+        fi.n += fmt.wprintf(fi.writer, "%s$%i", ident, var.startpc)
     case:
         return false
     }
@@ -41,7 +41,7 @@ local_to_string :: proc(var: Local) -> string {
 
 chunk_init :: proc(c: ^Chunk, source: string) {
     c.source     = source
-    c.stack_used = 2 // Ensure both Reg(0) and Reg(1) can always be loaded
+    c.stack_used = 2 // Ensure both R(0) and R(1) can always be loaded
 }
 
 chunk_fini :: proc(vm: ^VM, ch: ^Chunk, cl: ^Compiler) {
