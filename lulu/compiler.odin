@@ -353,6 +353,8 @@ compiler_discharge_vars :: proc(c: ^Compiler, e: ^Expr) {
         compiler_reg_pop(c, table_reg)
         pc := compiler_code(c, .Get_Table, a = 0, b = table_reg, c = key_reg)
         expr_set(e, .Need_Register, pc = pc)
+    case .Call:
+        ip := get_ip(c, e)
     }
 }
 
@@ -939,6 +941,14 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
     }
     // If `e` ended up as a non-local register, reuse its register
     compiler_expr_pop(c, expr^)
+}
+
+compiler_set_1_return :: proc(c: ^Compiler, call: ^Expr) {
+    // Expression is an open function call?
+    if call.type == .Call {
+        ip := get_ip(c, call)
+        expr_set(call, .Discharged, reg = ip.a)
+    }
 }
 
 ///=== }}} =====================================================================

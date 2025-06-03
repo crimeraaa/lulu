@@ -177,8 +177,7 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
     // Could do something unsafe like:
     //      `vm.view = slice.from_ptr(raw_data(vm.view), len(vm.view) + 1)`
     // But then we don't have bounds checking on the full stack.
-    base := vm_view_absindex(vm, .Base)
-    top  := vm_view_absindex(vm, .Top)
+    base, top := vm_view_absindex(vm, vm.view)
     vm.view = vm.stack_all[base:top + 1]
     if ptr, ok := poke_top(vm, -1); ok {
         ptr^ = v

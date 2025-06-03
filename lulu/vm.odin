@@ -101,10 +101,11 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 }
 
 vm_check_stack :: proc(vm: ^VM, extra: int) {
-    stack_end := len(vm.stack_all) - 1
-    view_end  := vm_view_absindex(vm, .Top)
+    stack_end   := len(vm.stack_all) - 1
+    _, view_end := vm_view_absindex(vm, vm.view)
     // Remaining stack slots can't accomodate `extra` values?
     if stack_end - view_end <= extra {
+        prev := vm.stack_all
         vm_grow_stack(vm, extra)
     }
 }
@@ -121,12 +122,13 @@ View_Mode :: enum {Base, Top}
 
 ```odin
 vm.view = vm.stack_all[2:4]
-vm_view_absindex(vm, .Base) // view index 0 is stack index 2
-vm_view_absindex(vm, .Top)  // view index 2 is stack index 4
+vm_view_absindex(vm, vm.view) // view indexes 0 and 2 are stack indexes 2 and 4
 ```
  */
-vm_view_absindex :: proc(vm: ^VM, $mode: View_Mode) -> int {
-    return ptr_index(vm_view_ptr(vm, mode), vm.stack_all)
+vm_view_absindex :: proc(vm: ^VM, view: []Value) -> (base, top: int) {
+    base = ptr_index(vm_view_ptr(vm, view, .Base), vm.stack_all)
+    top  = ptr_index(vm_view_ptr(vm, view, .Top),  vm.stack_all)
+    return base, top
 }
 
 
@@ -140,11 +142,11 @@ vm_view_absindex :: proc(vm: ^VM, $mode: View_Mode) -> int {
 -   In that case it will point to 1 past the last valid element in the main
     stack.
  */
-vm_view_ptr :: proc(vm: ^VM, $mode: View_Mode) -> [^]Value {
+vm_view_ptr :: proc(vm: ^VM, view: []Value, $mode: View_Mode) -> [^]Value {
     when mode == .Base {
-        return raw_data(vm.view)
+        return raw_data(view)
     } else when mode == .Top {
-        return ptr_offset(raw_data(vm.view), len(vm.view))
+        return ptr_offset(raw_data(view), len(view))
     } else {
         #panic("Invalid mode")
     }
@@ -170,10 +172,17 @@ vm_grow_stack :: proc(vm: ^VM, extra: int) {
     // This is safe even on the very first call, because *both* `stack_all` and
     // `view` are `nil`. Pointer subtraction, after casting to `uintptr`,
     // results in `0`.
-    base := vm_view_absindex(vm, .Base)
-    top  := base + get_top(vm)
+    base, top := vm_view_absindex(vm, vm.view)
+    prev := vm.stack_all
     slice_resize(vm, &vm.stack_all, new_size)
-    vm.view = vm.stack_all[base:top]
+    next := vm.stack_all
+    vm.stack_all = prev
+    for &cf in small_array.slice(&vm.frames) {
+        base, top := vm_view_absindex(vm, cf.window)
+        cf.window = next[base:top]
+    }
+    vm.stack_all = next
+    vm.view      = next[base:top]
 }
 
 vm_destroy :: proc(vm: ^VM) {
@@ -214,25 +223,45 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
         vm_check_stack(vm, n)
 
         // Users cannot (and should not!) poke at the main function.
-        vm.stack_all[0] = value_make(fmain)
+        i := get_top(vm)
+        vm.stack_all[i] = value_make(fmain)
 
-        w  := vm.stack_all[1:n]
-        cf := small_array.get_ptr(&vm.frames, 0)
-        vm.frames.len   += 1
-        vm.current = cf
-        cf.function      = fmain
-        cf.window        = w
-        cf.ip            = raw_data(fmain.chunk.code)
+        window := vm.stack_all[i + 1:n]
+        vm_push_frame(vm, fmain, window)
 
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
-        for &slot in w {
+        for &slot in window {
             slot = value_make()
         }
         vm_execute(vm)
     }
 
     return vm_run_protected(vm, interpret, data)
+}
+
+
+vm_push_frame :: proc(vm: ^VM, fn: ^Function, window: []Value) -> ^Frame{
+    cf := small_array.get_ptr(&vm.frames, vm.frames.len)
+    vm.frames.len += 1
+    cf.function = fn
+    cf.ip       = raw_data(fn.chunk.code)
+    cf.window   = window
+    vm.current  = cf
+    vm.view     = window
+    return cf
+}
+
+vm_pop_frame :: proc(vm: ^VM) -> ^Frame {
+    vm.frames.len -= 1
+    // Have a previous frame to return to?
+    if vm.frames.len > 0 {
+        cf := small_array.get_ptr(&vm.frames, vm.frames.len)
+        vm.current = cf
+        vm.view    = cf.window
+        return cf
+    }
+    return nil
 }
 
 
@@ -529,6 +558,23 @@ vm_execute :: proc(vm: ^VM) {
                 body := ip_get_sBx(read)
                 incr_ip(&frame.ip, body)
             }
+        case .Call:
+            vm_protect(vm)
+            if !value_is_function(ra^) {
+                debug_type_error(vm, ra, "call")
+            }
+
+            n_arg := read.b
+            n_ret := read.c
+            fn    := &ra.function
+            vm_check_stack(vm, fn.chunk.stack_used)
+
+            base := ptr_index(ra, vm.stack_all)
+            top  := base + fn.chunk.stack_used
+
+            // Adjust local state
+            frame = vm_push_frame(vm, fn, vm.stack_all[base:top])
+            chunk = &fn.chunk
         case .Return:
             // if ip.c != 0 then we have a vararg
             n := cast(int)read.b if read.c == 0 else get_top(vm)
@@ -541,12 +587,17 @@ vm_execute :: proc(vm: ^VM) {
                 slot = results[reg]
             }
 
-            // TODO(2025-05-16): Don't do this when we have function calls;
-            // because it will invalidate the caller's stack frame/view!
-            vm.view = final
+            frame = vm_pop_frame(vm)
 
+            // Returning to main function
             // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
-            return
+            if frame == nil {
+                vm.view = final
+                return
+            }
+
+            // Still within Lua
+            chunk = &frame.function.chunk
         case:
             unreachable("Unknown opcode %v", read.op)
         }

@@ -113,18 +113,20 @@ parser_program :: proc(vm: ^VM, source, input: string) -> ^Function {
     // Main function is always a vararg
     f.chunk.is_vararg = true
     compiler_init(vm, c, p, &f.chunk)
+    // Must occur before `block_end()`.
+    defer compiler_end(c)
 
     parser_advance(p)
 
     // Ensure topmost block is non-nil when resolving locals
     b := block_make(p, c)
     block_set(p, c, &b)
+
     for !parser_match(p, .Eof) {
         declaration(p, c)
     }
 
     parser_consume(p, .Eof)
-    compiler_end(c)
     return f
 }
 
@@ -158,16 +160,25 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
         // 'var' keyword.
         last := &Assign{variable = variable(p, c)}
         if parser_match(p, .Left_Paren) {
-            parser_error(p, "Function calls not yet implemented")
+            function_call(p , c, &last.variable)
+            // No returns are used
+            ip := get_ip(c, &last.variable)
+            ip.c = 0
         } else {
             assignment(p, c, last, 1)
         }
     case .Break:    break_stmt(p, c)
     case .Do:       do_block(p, c)
     case .For:      for_loop(p, c)
-    case .Function: function_decl(p, c)
+    case .Function:
+        function_decl(p, c, is_local = false)
     case .If:       if_block(p, c)
-    case .Local:    local_stmt(p, c)
+    case .Local:
+        if parser_match(p, .Function) {
+            function_decl(p, c, is_local = true)
+        } else {
+            local_stmt(p, c)
+        }
     case .Print:    print_stmt(p, c)
     case .Return:   return_stmt(p, c)
     case .While:    while_loop(p, c)
@@ -361,20 +372,20 @@ adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
 -   We don't need a `remove_locals()` function because `compiler_end_scope()`
     takes care of that already.
  */
-local_adjust :: proc(c: ^Compiler, nvars: int) {
+local_adjust :: proc(c: ^Compiler, n_vars: int) {
     startpc := c.pc
 
     /*
     **Assumptions**
-    -   This relies on the next `nvars` elements in the array having been set
+    -   This relies on the next `n_vars` elements in the array having been set
         previously by `local_decl`.
     -   `c.active.len` was NOT incremented yet.
      */
-    n_active := small_array.len(c.active) + nvars
+    n_active := small_array.len(c.active) + n_vars
     small_array.resize(&c.active, n_active)
     active := small_array.slice(&c.active)
     locals := c.chunk.locals
-    for i := nvars; i > 0; i -= 1 {
+    for i := n_vars; i > 0; i -= 1 {
         // `lparser.c:getlocvar(fs, i)`
         index := active[n_active - i]
         local := &locals[index]
@@ -490,24 +501,35 @@ if_block :: proc(p: ^Parser, c: ^Compiler) {
 }
 
 
-function_decl :: proc(p: ^Parser, c: ^Compiler) {
-    parser_consume(p, .Identifier)
-    var   := variable(p, c)
-    index := function_body(p, c)
-    fexpr := expr_make(.Constant, index = index)
+function_decl :: proc(p: ^Parser, c: ^Compiler, is_local: bool) {
+    var: Expr
+    if is_local {
+        n: int
+        ident := parser_ident(p)
+        local_decl(p, c, ident, &n)
+        local_adjust(c, n)
+        var = expr_make(.Local, reg = u16(c.free_reg))
+    } else {
+        parser_consume(p, .Identifier)
+        var = variable(p, c)
+    }
+    fexpr := function_body(p, c)
     compiler_store_var(c, &var, &fexpr)
 }
 
-function_body :: proc(p: ^Parser, c: ^Compiler) -> (index: u32) {
+function_body :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     parser_consume(p, .Left_Paren)
     f  := function_new(p.vm, p.lexer.source)
     c2 := &Compiler{parent = c}
+
+    compiler_init(p.vm, c2, p, &f.chunk)
+    // Must occur before `block_end()`.
+    defer compiler_end(c2)
 
     // Ensure topmost block is non-nil when resolving locals
     b := block_make(p, c2)
     block_set(p, c2, &b)
 
-    compiler_init(p.vm, c2, p, &f.chunk)
     for !parser_check(p, .Right_Paren) {
         if parser_match(p, .Ellipsis_3) {
             f.chunk.is_vararg = true
@@ -519,9 +541,38 @@ function_body :: proc(p: ^Parser, c: ^Compiler) -> (index: u32) {
     }
     parser_consume(p, .Right_Paren)
     local_adjust(c2, f.arity)
+    compiler_reg_reserve(c2, f.arity)
     do_block(p, c2)
-    compiler_end(c2)
-    return compiler_add_constant(c2.parent, f)
+    i := compiler_add_constant(c2.parent, f)
+    return expr_make(.Constant, index = i)
+}
+
+
+/*
+**Assumptions**
+-   `call` was the result of `variable()`.
+ */
+function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
+    // Function to be called must be on the stack.
+    compiler_expr_next_reg(c, call)
+
+    args: Expr
+    n_args: int
+    if !parser_match(p, .Right_Paren) {
+        args, n_args = expr_list(p, c)
+        compiler_expr_next_reg(c, &args)
+        parser_consume(p, .Right_Paren)
+    }
+
+    // Emit the last expression from `expr_list()`.
+    if args.type != .Empty {
+        compiler_expr_next_reg(c, &args)
+    }
+
+    // Assume 1 return by default.
+    call_pc := compiler_code(c, .Call, a = call.reg, b = u16(n_args), c = 1)
+    call^ = expr_make(.Call, pc = call_pc)
+    c.free_reg -= n_args
 }
 
 
@@ -1264,6 +1315,7 @@ get_rule :: proc(type: Token_Type) -> (rule: Rule) {
         // Keywords
         .And        = {infix  = logic, prec = .And},
         .False      = {prefix = literal},
+        .Function   = {prefix = function_body},
         .Nil        = {prefix = literal},
         .Not        = {prefix = unary},
         .Or         = {infix  = logic, prec = .Or},

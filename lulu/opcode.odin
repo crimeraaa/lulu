@@ -117,6 +117,7 @@ Test_Set,      // A B C | if Bool(R(B)) != Bool(C) then pc++ else R(A) := R(B)
 Jump,          // sBx   | pc += sBx
 For_Prep,      // A sBx | R(A) -= R(A+2); pc += sBx
 For_Loop,      // A sBx | if R(A) < R(A+1) then pc += sBx else R(A) += R(A+2)
+Call,          // A B C | R(A:A+C) := R(A)(A+1:A+B)
 Return,        // A B C | return R(A), ... R(A + B)
 }
 
@@ -152,6 +153,14 @@ Notes:
         represents the actual unsigned value of C.
     -   Otherwise nonzero C represents an offset from `FIELDS_PER_FLUSH`.
     -   C will be used to calculate the actual range of indexes we need to set.
+
+(*) Call
+    -   R(A) represents the register of the function to be called.
+    -   R(B) is the number of non-variadic arguments passed to R(A).
+    -   R(C) is the number of returns to use, mainly in assignments.
+    -   If a call is 'sandwiched', e.g. in `local x, y = f(), true` then
+        then call's returns are truncated to exactly 1.
+
 ============================================================================= */
 
 
@@ -225,6 +234,7 @@ opcode_info := [OpCode]OpCode_Info {
 .For_Prep       = {type = .Signed_Bx,   a = true,  b = .Reg_Jump,  c = .Unused},
 .For_Loop       = {type = .Signed_Bx,   a = true,  b = .Reg_Jump,  c = .Unused},
 .Jump           = {type = .Signed_Bx,   a = false, b = .Reg_Jump,  c = .Unused},
+.Call           = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 .Return         = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 }
 

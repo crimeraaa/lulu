@@ -200,11 +200,15 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
         print_reg(info, ip.a + 2)
     case .Jump:
         fmt.printf("goto .code[%i]", index + 1 + ip_get_sBx(ip))
+    case .Call:
+        base   := ip.a + 1
+        top    := base + ip.b
+        n_rets := ip.a + ip.c
+        fmt.printf("R(%i..<%i) := R(%i)(R(%i..<%i))", ip.a, n_rets, ip.a, base, top)
     case .Return:
-        reg       := cast(int)ip.a
-        n_results := cast(int)ip.b
+        reg := ip.a
         if ip.c == 0 {
-            fmt.printf("return R(%i..<%i)", reg, reg + n_results)
+            fmt.printf("return R(%i..<%i)", reg, reg + ip.b)
         } else {
             fmt.printf("return R(%i..=%i)", reg, c.stack_used);
         }
@@ -317,16 +321,19 @@ debug_symbolic_execution :: proc(chunk: ^Chunk, lastpc: int, reg: u16) -> (i: In
             check_arg_mode(chunk, ip.c, info.c) or_return
             return true
         case .Unsigned_Bx:
-            index := ip_get_Bx(ip)
+            index := int(ip_get_Bx(ip))
             if info.b == .Reg_Const {
-                return cast(int)index < len(chunk.constants)
+                return 0 <= index && index < len(chunk.constants)
             }
             return true
         case .Signed_Bx:
-            // Based on the C source, this one is quite tricky!
-            panic("Signed_Bx not yet implemented")
+            target := ip_get_sBx(ip)
+            if info.b == .Reg_Jump {
+                return 0 <= target && target < len(chunk.code)
+            }
+            return true
         case:
-            unreachable("Unknown %[0]t %[0]v", info.type)
+            unreachable("Unknown %w", info.type)
         }
     }
 

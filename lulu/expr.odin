@@ -11,7 +11,7 @@ Expr :: struct {
 
 Expr_Info :: struct #raw_union {
     number: Number, // .Number
-    pc:     int, // .Need_Register, .Jump
+    pc:     int, // .Need_Register, .Jump, .Call
     index:  u32, // .Constant, .Global
     table:  struct {reg, key_reg: u16}, // .Table_Index
     reg:    u16, // .Discharged, .Local
@@ -34,6 +34,7 @@ Expr_Type :: enum {
     Local,
     Table_Index,
     Jump,           // `.pc` points to the jump instruction.
+    Call,
 }
 
 // Intended to be easier to grep
@@ -69,7 +70,7 @@ expr_make_number :: proc(number: Number) -> Expr {
 }
 
 expr_make_pc :: proc(type: Expr_Type, pc: int) -> Expr {
-    assert(type == .Need_Register || type == .Jump)
+    assert(type == .Need_Register || type == .Jump || type == .Call)
     return Expr{
         type        = type,
         pc          = pc,
