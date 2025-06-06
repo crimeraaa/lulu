@@ -580,7 +580,7 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Call:
             vm_protect(vm, ip)
-            switch vm_call(vm, ip, ra, argc = int(read.b), retc = int(read.c)) {
+            switch vm_call(vm, ip, ra, n_arg = int(read.b), n_ret = int(read.c)) {
             case .None:
                 debug_type_error(vm, ra, "call")
             case .Lua:
@@ -596,7 +596,16 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Return:
             // Returning from main function?
-            if vm_return(vm, ra, retc = int(read.b), is_vararg = (read.c != 0)) {
+            n_ret: int
+            if read.c == 0 {
+                n_ret = int(read.b)
+            } else {
+                unreachable("variadic returns not yet supported")
+                // No idea if this actually works
+                // _, top := vm_view_absindex(vm, vm.view)
+                // n_ret = top - ptr_index(ra, vm.stack_all)
+            }
+            if vm_return(vm, ra, n_ret) {
                 return
             }
 
@@ -621,7 +630,7 @@ Call_Type :: enum {
 **Analogous to**
 -   `ldo.c:luaD_precall(lua_State *L, StkId func, int nresults)` in Lua 5.1.5.
  */
-vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, argc, retc: int) -> Call_Type {
+vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
     if !value_is_function(ra^) {
         return nil
     }
@@ -631,7 +640,7 @@ vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, argc, retc: int) -> Cal
     top  := base + fn.chunk.stack_used
 
     // Some parameters were not provided so they need to be initialized to nil?
-    if extra := fn.arity - argc; extra > 0 {
+    if extra := fn.arity - n_arg; extra > 0 {
         top += extra
     }
     // Otherwise, excess parameters are implicitly overwritten when we
@@ -640,13 +649,13 @@ vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, argc, retc: int) -> Cal
     // WARNING(2025-06-06): May invalidate R(A)!
     vm_check_stack(vm, fn.chunk.stack_used)
     frame := vm_frame_push(vm, fn, vm.stack_all[base:top])
-    frame.n_results = retc
+    frame.n_results = n_ret
     return .Lua
 }
 
-vm_return :: proc(vm: ^VM, ra: ^Value, retc: int, is_vararg: bool) -> (is_last: bool) {
-    results := slice.from_ptr(ra, get_top(vm) if is_vararg else retc)
-    frame   := vm.current
+vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> (is_last: bool) {
+    results := slice.from_ptr(ra, n_ret)
+    frame := vm.current
 
     // Overwrite stack slot of function object as well
     final := slice.from_ptr(slice_offset(frame.window, -1), len(results))

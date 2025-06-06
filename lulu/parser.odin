@@ -587,6 +587,13 @@ function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
     c.free_reg -= n_args
 }
 
+vararg :: proc(p: ^Parser, c: ^Compiler) -> Expr {
+    if !c.chunk.is_vararg {
+        parser_error(p, "Function does not have varargs")
+    }
+    parser_error(p, "Varargs not yet supported")
+}
+
 
 /*
 **Notes**
@@ -1350,7 +1357,8 @@ get_rule :: proc(type: Token_Type) -> (rule: Rule) {
         .Right_Angle_Eq = {infix = compare, prec = .Comparison},
 
         // Other
-        .Ellipsis_2 = {infix = concat, prec = .Concat},
+        .Ellipsis_3 = {prefix = vararg},
+        .Ellipsis_2 = {infix  = concat, prec = .Concat},
         .Pound      = {prefix = unary},
 
         // Literals
