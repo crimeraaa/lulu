@@ -575,16 +575,31 @@ function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
     n_args: int
     if !parser_match(p, .Right_Paren) {
         args, n_args = expr_list(p, c)
+        /*
+        **Notes** (2025-06-07)
+        -   In this case, the last argument is a function call and can thus
+            return an unknown number of values.
+        -   To accomodate that we would need to treat this function call as
+            variadic.
+        -   Otherwise, we would end up assuming we only use 1 result.
+         */
+        if args.type == .Call {
+            // TODO
+        }
+
         // Push the last expression from `expr_list()`.
         compiler_expr_next_reg(c, &args)
         parser_consume(p, .Right_Paren)
     }
 
+    base := call.reg
+
     // Assume 1 return by default.
-    call_pc := compiler_code(c, .Call, a = call.reg, b = u16(n_args), c = 1)
+    call_pc := compiler_code(c, .Call, a = base, b = u16(n_args), c = 1)
     call^ = expr_make(.Call, pc = call_pc)
+
     // Don't pop the function object (just yet)
-    c.free_reg -= n_args
+    c.free_reg = int(base) + 1
 }
 
 vararg :: proc(p: ^Parser, c: ^Compiler) -> Expr {

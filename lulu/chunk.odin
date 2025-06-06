@@ -113,7 +113,7 @@ chunk_get_local :: proc(c: ^Chunk, local_number, pc: int) -> (local: Local, ok: 
         -   We try to decrement `counter` the number of times we find a local
             that is definitely active.
          */
-        if pc < var.endpc {
+        if pc <= var.endpc {
             counter -= 1
             // We iterated through this scope the correct number of times, so
             // we have the local we're after.

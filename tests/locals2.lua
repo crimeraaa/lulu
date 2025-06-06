@@ -1,5 +1,5 @@
 local x, y = "x1", "y1"
-print("x, y:", x, y, "Expected:", "x1", "y2")
+print("x, y:", x, y, "Expected:", "x1", "y1")
 do
     local x; -- If nothing happens in this block, then `startpc == endpc`
     print("x, y:", x, y, "Expected:", nil, "y1")
