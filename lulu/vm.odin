@@ -19,6 +19,7 @@ Frame :: struct {
     function:   ^Function,
     saved_ip: [^]Instruction, // Pointer to first argument, if available.
     window:    []Value,
+    n_results:   int,
 }
 
 MAX_FRAMES :: 64
@@ -227,14 +228,7 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
 
         // Users cannot (and should not!) poke at the main function.
         vm.stack_all[0] = value_make(fmain)
-        window := vm.stack_all[1:n]
-        vm_frame_push(vm, fmain, window)
-
-        // Zero initialize the current stack frame, especially needed as local
-        // variable declarations with empty expressions default to implicit nil
-        for &slot in window {
-            slot = value_make()
-        }
+        vm_frame_push(vm, fmain, vm.stack_all[1:n])
         vm_execute(vm)
     }
 
@@ -246,15 +240,22 @@ vm_frame_slice :: proc(vm: ^VM) -> []Frame {
     return small_array.slice(&vm.frames)
 }
 
-vm_frame_push :: proc(vm: ^VM, fn: ^Function, window: []Value) -> (cf: ^Frame, chunk: ^Chunk, ip: [^]Instruction) {
-    cf = small_array.get_ptr(&vm.frames, vm.frames.len)
+vm_frame_push :: proc(vm: ^VM, fn: ^Function, window: []Value) -> ^Frame {
+    cf := small_array.get_ptr(&vm.frames, vm.frames.len)
     vm.frames.len += 1
     cf.function = fn
     cf.saved_ip = nil // May have been reused
     cf.window   = window
     vm.current  = cf
     vm.view     = window
-    return cf, &fn.chunk, raw_data(fn.chunk.code)
+
+    // Zero initialize the current stack frame, sans function arguments.
+    // This is especially needed as local variable declarations with empty
+    // expressions default to implicit nil.
+    for &slot in window[fn.arity:] {
+        slot = value_make()
+    }
+    return cf
 }
 
 vm_frame_reset :: proc(vm: ^VM) {
@@ -262,14 +263,14 @@ vm_frame_reset :: proc(vm: ^VM) {
     vm.current    = nil
 }
 
-vm_frame_pop :: proc(vm: ^VM) -> (cf: ^Frame, chunk: ^Chunk, ip: [^]Instruction) {
+vm_frame_pop :: proc(vm: ^VM) -> (frame: ^Frame) {
     vm.frames.len -= 1
     // Have a previous frame to return to?
     if vm.frames.len > 0 {
-        cf = small_array.get_ptr(&vm.frames, vm.frames.len - 1)
-        vm.current = cf
-        vm.view    = cf.window
-        return cf, &cf.function.chunk, cf.saved_ip
+        frame = small_array.get_ptr(&vm.frames, vm.frames.len - 1)
+        vm.current = frame
+        vm.view    = frame.window
+        return frame
     }
     return
 }
@@ -325,6 +326,13 @@ vm_protect :: #force_inline proc "contextless" (vm: ^VM, ip: [^]Instruction) {
  */
 vm_execute :: proc(vm: ^VM) {
     ///=== VM EXECUTION HELPERS ============================================ {{{
+
+    get_caller :: proc(vm: ^VM) -> (frame: ^Frame, chunk: ^Chunk, ip: [^]Instruction) {
+        frame = vm.current
+        chunk = &frame.function.chunk
+        ip    = raw_data(chunk.code) if frame.saved_ip == nil else frame.saved_ip
+        return
+    }
 
     get_rk :: proc {
         get_rk_one,
@@ -390,10 +398,8 @@ vm_execute :: proc(vm: ^VM) {
 
     ///=== }}} =================================================================
 
-    frame   := vm.current
-    chunk   := &frame.function.chunk
     globals := &vm.globals
-    ip      := raw_data(chunk.code)
+    frame, chunk, ip := get_caller(vm)
 
     when DEBUG_TRACE_EXEC {
         ip_left_pad    := count_digits(len(chunk.code))
@@ -574,57 +580,100 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Call:
             vm_protect(vm, ip)
-            if !value_is_function(ra^) {
+            switch vm_call(vm, ip, ra, argc = int(read.b), retc = int(read.c)) {
+            case .None:
                 debug_type_error(vm, ra, "call")
+            case .Lua:
+                // Adjust local state
+                frame.saved_ip = ip
+                frame, chunk, ip = get_caller(vm)
+            case .Odin:
+                unreachable("Odin functions not yet supported")
             }
-            // Adjust local state
-            frame.saved_ip = ip
-            frame, chunk, ip = vm_call(vm, ip, ra, argc = int(read.b),
-                                       retc = int(read.c))
+
+            when DEBUG_TRACE_EXEC {
+                fmt.printfln("\n=== BEGIN CALL: %v ===\n", ra^)
+            }
         case .Return:
-            is_last: bool
-            frame, chunk, ip, is_last = vm_return(vm, ra, retc = int(read.b),
-                                                  is_vararg = read.c == 0)
-            if is_last {
+            // Returning from main function?
+            if vm_return(vm, ra, retc = int(read.b), is_vararg = (read.c != 0)) {
                 return
             }
+
+            when DEBUG_TRACE_EXEC {
+                fmt.println("\n=== END CALL ===\n")
+            }
+            frame, chunk, ip = get_caller(vm)
         case:
             unreachable("Unknown opcode %v", read.op)
         }
     }
 }
 
-vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, argc, retc: int) -> (frame: ^Frame, chunk: ^Chunk, nextip: [^]Instruction) {
+Call_Type :: enum {
+    None,
+    Lua,
+    Odin,
+}
+
+
+/*
+**Analogous to**
+-   `ldo.c:luaD_precall(lua_State *L, StkId func, int nresults)` in Lua 5.1.5.
+ */
+vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, argc, retc: int) -> Call_Type {
+    if !value_is_function(ra^) {
+        return nil
+    }
     fn := &ra.function
     // Caller function is not included in the stack frame
     base := ptr_index(ra, vm.stack_all) + 1
     top  := base + fn.chunk.stack_used
 
+    // Some parameters were not provided so they need to be initialized to nil?
+    if extra := fn.arity - argc; extra > 0 {
+        top += extra
+    }
+    // Otherwise, excess parameters are implicitly overwritten when we
+    // initialize the callstack.
+
     // WARNING(2025-06-06): May invalidate R(A)!
     vm_check_stack(vm, fn.chunk.stack_used)
-    return vm_frame_push(vm, fn, vm.stack_all[base:top])
+    frame := vm_frame_push(vm, fn, vm.stack_all[base:top])
+    frame.n_results = retc
+    return .Lua
 }
 
-vm_return :: proc(vm: ^VM, ra: ^Value, retc: int, is_vararg: bool) -> (frame: ^Frame, chunk: ^Chunk, ip: [^]Instruction, is_last: bool) {
-    // if ip.c != 0 then we have a vararg
-    n := retc if is_vararg else get_top(vm)
-    results := slice.from_ptr(ra, n)
-    frame = vm.current
+vm_return :: proc(vm: ^VM, ra: ^Value, retc: int, is_vararg: bool) -> (is_last: bool) {
+    results := slice.from_ptr(ra, get_top(vm) if is_vararg else retc)
+    frame   := vm.current
 
     // Overwrite stack slot of function object as well
-    final := ptr_offset(raw_data(frame.window), -1)[:n]
+    final := slice.from_ptr(slice_offset(frame.window, -1), len(results))
     for &slot, reg in final {
         slot = results[reg]
     }
 
-    frame, chunk, ip = vm_frame_pop(vm)
+    // Less expressions than expected?
+    if extra := frame.n_results - len(results); extra > 0 {
+        // Pretend this is safe :)
+        final = slice.from_ptr(raw_data(final), len(results) + extra)
+        // Initialize the remaining assignments to `nil`.
+        for &slot in final[len(results):] {
+            slot = value_make()
+        }
+    }
+
+    frame = vm_frame_pop(vm)
     // Return from main function; no previous stack frame to restore.
     // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
     if is_last = (frame == nil); is_last {
         vm.view = final
+    } else {
+        // Otherwise, still within Lua
+        vm.current = frame
     }
-    // Otherwise, still within Lua
-    return
+    return is_last
 }
 
 vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {

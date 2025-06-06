@@ -207,6 +207,7 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
         fmt.printf("R(%i..<%i) := R(%i)(R(%i..<%i))", ip.a, n_rets, ip.a, base, top)
     case .Return:
         reg := ip.a
+        // Have a vararg?
         if ip.c == 0 {
             fmt.printf("return R(%i..<%i)", reg, reg + ip.b)
         } else {
@@ -235,9 +236,9 @@ debug_type_error :: proc(vm: ^VM, culprit: ^Value, action: string) -> ! {
         pc := ptr_index(vm.saved_ip, chunk.code) - 1
 
         // Culprit is a local variable, global variable, or a field?
-        if ident, scope, is_var := debug_get_variable(chunk, pc, reg); is_var {
+        if scope, ident, is_var := debug_get_variable(chunk, pc, reg); is_var {
             vm_runtime_error(vm, "Attempt to %s %s %q (a %s value)",
-                         action, scope, ident, type_name)
+                         action, ident, scope, type_name)
         }
     }
     vm_runtime_error(vm, "Attempt to %s a %s value", action, type_name)
@@ -252,7 +253,7 @@ debug_type_error :: proc(vm: ^VM, culprit: ^Value, action: string) -> ! {
 **Analogous to**
 -   `ldebug.c:getobjname(lua_State *L, CallInfo *ci, int stackpos, const char **name)`
  */
-debug_get_variable :: proc(c: ^Chunk, pc, reg: int) -> (ident, scope: string, ok: bool) {
+debug_get_variable :: proc(c: ^Chunk, pc, reg: int) -> (scope, ident: string, ok: bool) {
     /*
     **Analogous to**
     -   `ldebug.c:kname(Proto *p, int c)` in Lua 5.1.5.

@@ -87,7 +87,8 @@ compiler_end :: proc(c: ^Compiler) {
 -    https://www.lua.org/source/5.1/lcode.c.html#luaK_reserveregs
  */
 compiler_reg_reserve :: proc(c: ^Compiler, count: int) {
-    if c.free_reg += count; c.free_reg > c.chunk.stack_used {
+    c.free_reg += count
+    if c.free_reg > c.chunk.stack_used {
         c.chunk.stack_used = c.free_reg
     }
 }
@@ -97,8 +98,9 @@ compiler_reg_pop :: proc(c: ^Compiler, reg: u16) {
     // Only pop if nonconstant and not the register of an existing local.
     if !reg_is_k(reg) && cast(int)reg >= small_array.len(c.active) {
         c.free_reg -= 1
-        fmt.assertf(cast(int)reg == c.free_reg, "free_reg := %i but reg := %i",
-            c.free_reg, reg)
+        fmt.assertf(cast(int)reg == c.free_reg,
+            "c.free_reg := %i but reg := %i @ %s:%i",
+            c.free_reg, reg, c.chunk.source, c.parser.consumed.line)
     }
 }
 

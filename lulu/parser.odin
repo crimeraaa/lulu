@@ -164,6 +164,7 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
             // No returns are used
             ip := get_ip(c, &last.variable)
             ip.c = 0
+            c.free_reg -= 1
         } else {
             assignment(p, c, last, 1)
         }
@@ -584,7 +585,6 @@ function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
     call^ = expr_make(.Call, pc = call_pc)
     // Don't pop the function object (just yet)
     c.free_reg -= n_args
-
 }
 
 
@@ -610,8 +610,6 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
 
     last_reg := u16(c.free_reg) // If > MAX_A should still fit
     compiler_code(c, .Print, ra = base_reg, rb = last_reg)
-
-    // This is hacky but it works to allow recycling of registers
     c.free_reg -= n_args
 }
 

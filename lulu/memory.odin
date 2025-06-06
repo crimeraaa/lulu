@@ -4,6 +4,7 @@ package lulu
 import "base:builtin"
 import "base:intrinsics"
 import "core:math"
+import "core:slice"
 
 slice_make :: proc(vm: ^VM, $T: typeid, count: int) -> []T {
     s := make([]T, count, vm.allocator)
@@ -13,29 +14,33 @@ slice_make :: proc(vm: ^VM, $T: typeid, count: int) -> []T {
     return s
 }
 
-slice_insert :: proc(vm: ^VM, slice: ^$S/[]$T, index: int, value: T) {
-    if index >= len(slice) {
+slice_insert :: proc(vm: ^VM, s: ^$S/[]$T, index: int, value: T) {
+    if index >= len(s) {
         new_count := max(8, math.next_power_of_two(index + 1))
-        slice_resize(vm, slice, new_count)
+        slice_resize(vm, s, new_count)
     }
-    slice[index] = value
+    s[index] = value
 }
 
-slice_resize :: proc(vm: ^VM, slice: ^$S/[]$T, count: int) {
+slice_resize :: proc(vm: ^VM, s: ^$S/[]$T, count: int) {
     // Nothing to do?
-    if count == len(slice) {
+    if count == len(s) {
         return
     }
-    prev := slice^
+    prev := s^
     next := slice_make(vm, T, count)
     copy(next, prev)
     delete(prev, vm.allocator)
-    slice^ = next
+    s^ = next
 }
 
-slice_delete :: proc(vm: ^VM, slice: ^$S/[]$T) {
-    delete(slice^, vm.allocator)
-    slice^ = {}
+slice_delete :: proc(vm: ^VM, s: ^$S/[]$T) {
+    delete(s^, vm.allocator)
+    s^ = {}
+}
+
+slice_offset :: proc(s: $S/[]$T, count: int) -> [^]T {
+    return ptr_offset(raw_data(s), count)
 }
 
 

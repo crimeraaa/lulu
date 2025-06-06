@@ -26,7 +26,7 @@ local_formatter :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
     switch verb {
     case 'v': // verbose
         fi.n += fmt.wprintf(fi.writer, "%s@code[%i:%i]", ident, var.startpc,
-                            var.endpc)
+                            var.endpc + 1)
     case 's': // summary
         fi.n += fmt.wprintf(fi.writer, "%s$%i", ident, var.startpc)
     case:
