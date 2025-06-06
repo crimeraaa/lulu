@@ -17,7 +17,7 @@ Error_Handler :: struct {
 
 Frame :: struct {
     function:   ^Function,
-    ip:       [^]Instruction,
+    saved_ip: [^]Instruction, // Pointer to first argument, if available.
     window:    []Value,
 }
 
@@ -104,8 +104,7 @@ vm_check_stack :: proc(vm: ^VM, extra: int) {
     stack_end   := len(vm.stack_all) - 1
     _, view_end := vm_view_absindex(vm, vm.view)
     // Remaining stack slots can't accomodate `extra` values?
-    if stack_end - view_end <= extra {
-        prev := vm.stack_all
+    if stack_end - view_end < extra {
         vm_grow_stack(vm, extra)
     }
 }
@@ -177,7 +176,7 @@ vm_grow_stack :: proc(vm: ^VM, extra: int) {
     slice_resize(vm, &vm.stack_all, new_size)
     next := vm.stack_all
     vm.stack_all = prev
-    for &cf in small_array.slice(&vm.frames) {
+    for &cf in vm_frame_slice(vm) {
         base, top := vm_view_absindex(vm, cf.window)
         cf.window = next[base:top]
     }
@@ -215,6 +214,10 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
     }
 
     data := &Data{source = source, input = input}
+
+    // In case we came from a previously thrown error
+    vm_frame_reset(vm)
+
     interpret :: proc(vm: ^VM, user_data: rawptr) {
         data  := cast(^Data)user_data
         fmain := parser_program(vm, data.source, data.input)
@@ -223,11 +226,9 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
         vm_check_stack(vm, n)
 
         // Users cannot (and should not!) poke at the main function.
-        i := get_top(vm)
-        vm.stack_all[i] = value_make(fmain)
-
-        window := vm.stack_all[i + 1:n]
-        vm_push_frame(vm, fmain, window)
+        vm.stack_all[0] = value_make(fmain)
+        window := vm.stack_all[1:n]
+        vm_frame_push(vm, fmain, window)
 
         // Zero initialize the current stack frame, especially needed as local
         // variable declarations with empty expressions default to implicit nil
@@ -241,27 +242,36 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
 }
 
 
-vm_push_frame :: proc(vm: ^VM, fn: ^Function, window: []Value) -> ^Frame{
-    cf := small_array.get_ptr(&vm.frames, vm.frames.len)
+vm_frame_slice :: proc(vm: ^VM) -> []Frame {
+    return small_array.slice(&vm.frames)
+}
+
+vm_frame_push :: proc(vm: ^VM, fn: ^Function, window: []Value) -> (cf: ^Frame, chunk: ^Chunk, ip: [^]Instruction) {
+    cf = small_array.get_ptr(&vm.frames, vm.frames.len)
     vm.frames.len += 1
     cf.function = fn
-    cf.ip       = raw_data(fn.chunk.code)
+    cf.saved_ip = nil // May have been reused
     cf.window   = window
     vm.current  = cf
     vm.view     = window
-    return cf
+    return cf, &fn.chunk, raw_data(fn.chunk.code)
 }
 
-vm_pop_frame :: proc(vm: ^VM) -> ^Frame {
+vm_frame_reset :: proc(vm: ^VM) {
+    vm.frames.len = 0
+    vm.current    = nil
+}
+
+vm_frame_pop :: proc(vm: ^VM) -> (cf: ^Frame, chunk: ^Chunk, ip: [^]Instruction) {
     vm.frames.len -= 1
     // Have a previous frame to return to?
     if vm.frames.len > 0 {
-        cf := small_array.get_ptr(&vm.frames, vm.frames.len)
+        cf = small_array.get_ptr(&vm.frames, vm.frames.len - 1)
         vm.current = cf
         vm.view    = cf.window
-        return cf
+        return cf, &cf.function.chunk, cf.saved_ip
     }
-    return nil
+    return
 }
 
 
@@ -300,10 +310,10 @@ vm_run_protected :: proc(vm: ^VM, try: Protected_Proc, user_data: rawptr = nil) 
 
 /*
 **Analogous to**
--   `lvm.c:vm_Protect(x)` in Lua 5.1.5.
+-   `lvm.c:Protect(x)` in Lua 5.1.5.
  */
-vm_protect :: #force_inline proc "contextless" (vm: ^VM) {
-    vm.saved_ip = vm.current.ip
+vm_protect :: #force_inline proc "contextless" (vm: ^VM, ip: [^]Instruction) {
+    vm.saved_ip = ip
 }
 
 
@@ -334,7 +344,8 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    arith_op :: proc(vm: ^VM, $op: Number_Arith_Proc, ra, left, right: ^Value) {
+    arith_op :: proc(vm: ^VM, ip: [^]Instruction, $op: Number_Arith_Proc, ra, left, right: ^Value) {
+        vm_protect(vm, ip)
         if !value_is_number(left^) || !value_is_number(right^) {
             arith_error(vm, left, right)
         }
@@ -342,24 +353,23 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     // Rough analog to C macro
-    compare_op :: proc(vm: ^VM, $op: Number_Compare_Proc, cond: bool, left, right: ^Value) {
+    compare_op :: proc(vm: ^VM, ip: ^[^]Instruction, $op: Number_Compare_Proc, cond: bool, left, right: ^Value) {
+        vm_protect(vm, ip^)
         if !value_is_number(left^) || !value_is_number(right^) {
             compare_error(vm, left, right)
         }
         if op(left.number, right.number) != cond {
-            incr_ip(&vm.current.ip)
+            incr_ip(ip)
         }
     }
 
     arith_error :: proc(vm: ^VM, left, right: ^Value) -> ! {
-        vm_protect(vm)
         // true => left hand side is fine, right hand side is the culprit
         culprit := right if value_is_number(left^) else left
         debug_type_error(vm, culprit, "perform arithmetic on")
     }
 
     compare_error :: proc(vm: ^VM, left, right: ^Value) -> ! {
-        vm_protect(vm)
         if t1, t2 := value_type_name(left^), value_type_name(right^); t1 == t2 {
             vm_runtime_error(vm, "Attempt to compare 2 %s values", t1)
         } else {
@@ -368,7 +378,6 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     index_error :: #force_inline proc(vm: ^VM, culprit: ^Value) -> ! {
-        vm_protect(vm)
         debug_type_error(vm, culprit, "index")
     }
 
@@ -384,6 +393,7 @@ vm_execute :: proc(vm: ^VM) {
     frame   := vm.current
     chunk   := &frame.function.chunk
     globals := &vm.globals
+    ip      := raw_data(chunk.code)
 
     when DEBUG_TRACE_EXEC {
         ip_left_pad    := count_digits(len(chunk.code))
@@ -391,9 +401,9 @@ vm_execute :: proc(vm: ^VM) {
     }
 
     for {
-        read := incr_ip(&frame.ip)
+        read := incr_ip(&ip)
         when DEBUG_TRACE_EXEC {
-            index := ptr_index(frame.ip, chunk.code) - 1
+            index := ptr_index(ip, chunk.code) - 1
             for value, reg in frame.window {
                 fmt.printf("\t$% -*i | %d", stack_left_pad, reg, value)
                 if local, ok := chunk_get_local(chunk, reg + 1, index); ok {
@@ -423,12 +433,12 @@ vm_execute :: proc(vm: ^VM) {
         case .Load_Boolean:
             ra^ = value_make(read.b == 1)
             if bool(read.c) {
-                incr_ip(&frame.ip)
+                incr_ip(&ip)
             }
         case .Get_Global:
+            vm_protect(vm, ip)
             k := chunk.constants[ip_get_Bx(read)]
             if v, ok := table_get(globals^, k); !ok {
-                vm_protect(vm)
                 vm_runtime_error(vm, "Attempt to read undefined global '%s'",
                                  value_as_string(k))
             } else {
@@ -442,6 +452,7 @@ vm_execute :: proc(vm: ^VM) {
             n_hash  := fb_decode(cast(u8)read.c)
             ra^ = value_make(table_new(vm, n_array, n_hash))
         case .Get_Table:
+            vm_protect(vm, ip)
             if rb := &frame.window[read.b]; !value_is_table(rb^) {
                 index_error(vm, rb)
             } else {
@@ -449,6 +460,7 @@ vm_execute :: proc(vm: ^VM) {
                 ra^ = table_get(rb.table, key)
             }
         case .Set_Table:
+            vm_protect(vm, ip)
             if !value_is_table(ra^) {
                 index_error(vm, ra)
             }
@@ -475,13 +487,14 @@ vm_execute :: proc(vm: ^VM) {
                 fmt.print(arg)
             }
             fmt.println()
-        case .Add: arith_op(vm, number_add, ra, get_rk(read, frame))
-        case .Sub: arith_op(vm, number_sub, ra, get_rk(read, frame))
-        case .Mul: arith_op(vm, number_mul, ra, get_rk(read, frame))
-        case .Div: arith_op(vm, number_div, ra, get_rk(read, frame))
-        case .Mod: arith_op(vm, number_mod, ra, get_rk(read, frame))
-        case .Pow: arith_op(vm, number_pow, ra, get_rk(read, frame))
+        case .Add: arith_op(vm, ip, number_add, ra, get_rk(read, frame))
+        case .Sub: arith_op(vm, ip, number_sub, ra, get_rk(read, frame))
+        case .Mul: arith_op(vm, ip, number_mul, ra, get_rk(read, frame))
+        case .Div: arith_op(vm, ip, number_div, ra, get_rk(read, frame))
+        case .Mod: arith_op(vm, ip, number_mod, ra, get_rk(read, frame))
+        case .Pow: arith_op(vm, ip, number_pow, ra, get_rk(read, frame))
         case .Unm:
+            vm_protect(vm, ip)
             if rb := &frame.window[read.b]; !value_is_number(rb^) {
                 arith_error(vm, rb, rb)
             } else {
@@ -491,17 +504,19 @@ vm_execute :: proc(vm: ^VM) {
             rb, rc := get_rk(read, frame)
             if value_eq(rb^, rc^) != bool(read.a) {
                 // Skip the jump which would otherwise load false
-                incr_ip(&frame.ip)
+                incr_ip(&ip)
             }
-        case .Lt:  compare_op(vm, number_lt,  bool(read.a), get_rk(read, frame))
-        case .Leq: compare_op(vm, number_leq, bool(read.a), get_rk(read, frame))
+        case .Lt:  compare_op(vm, &ip, number_lt,  bool(read.a), get_rk(read, frame))
+        case .Leq: compare_op(vm, &ip, number_leq, bool(read.a), get_rk(read, frame))
         case .Not:
             x := get_rk(read.b, frame)^
             ra^ = value_make(value_is_falsy(x))
         // Add 1 because we want to include Reg[C]
         case .Concat:
+            vm_protect(vm, ip)
             vm_concat(vm, ra, frame.window[read.b:read.c + 1])
         case .Len:
+            vm_protect(vm, ip)
             #partial switch rb := &frame.window[read.b]; rb.type {
             case .String:
                 ra^ = value_make(rb.ostring.len)
@@ -518,26 +533,25 @@ vm_execute :: proc(vm: ^VM) {
                 }
                 ra^ = value_make(count)
             case:
-            vm_protect(vm)
                 debug_type_error(vm, rb, "get length of")
             }
         case .Test:
             if !value_is_falsy(ra^) != bool(read.c) {
-                incr_ip(&frame.ip)
+                incr_ip(&ip)
             }
         case .Test_Set:
             if rb := frame.window[read.b]; !value_is_falsy(rb) != bool(read.c) {
-                incr_ip(&frame.ip)
+                incr_ip(&ip)
             } else {
                 ra^ = rb
             }
         case .Jump:
             offset := ip_get_sBx(read)
-            incr_ip(&frame.ip, offset)
+            incr_ip(&ip, offset)
         case .For_Prep:
             cond := ptr_offset(ra, 1)
             incr := ptr_offset(ra, 2)
-            vm_protect(vm)
+            vm_protect(vm, ip)
             if !value_is_number(ra^) {
                 vm_runtime_error(vm, "`for` initial value must be a number")
             } else if !value_is_number(cond^) {
@@ -549,66 +563,74 @@ vm_execute :: proc(vm: ^VM) {
             // right after the condition rather than at the end of the block.
             ra.number = number_sub(ra.number, incr.number)
             loop := ip_get_sBx(read)
-            incr_ip(&frame.ip, loop)
+            incr_ip(&ip, loop)
         case .For_Loop:
             cond := ptr_offset(ra, 1)
             incr := ptr_offset(ra, 2)
             if number_lt(ra.number, cond.number) {
                 ra.number = number_add(ra.number, incr.number)
                 body := ip_get_sBx(read)
-                incr_ip(&frame.ip, body)
+                incr_ip(&ip, body)
             }
         case .Call:
-            vm_protect(vm)
+            vm_protect(vm, ip)
             if !value_is_function(ra^) {
                 debug_type_error(vm, ra, "call")
             }
-
-            n_arg := read.b
-            n_ret := read.c
-            fn    := &ra.function
-            vm_check_stack(vm, fn.chunk.stack_used)
-
-            base := ptr_index(ra, vm.stack_all)
-            top  := base + fn.chunk.stack_used
-
             // Adjust local state
-            frame = vm_push_frame(vm, fn, vm.stack_all[base:top])
-            chunk = &fn.chunk
+            frame.saved_ip = ip
+            frame, chunk, ip = vm_call(vm, ip, ra, argc = int(read.b),
+                                       retc = int(read.c))
         case .Return:
-            // if ip.c != 0 then we have a vararg
-            n := cast(int)read.b if read.c == 0 else get_top(vm)
-            results := slice.from_ptr(ra, n)
-            final   := frame.window[:n]
-
-            // Overwrite registers 0 up to n; later on, when we have function
-            // calls, callers will have their results in the right place.
-            for &slot, reg in final {
-                slot = results[reg]
-            }
-
-            frame = vm_pop_frame(vm)
-
-            // Returning to main function
-            // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
-            if frame == nil {
-                vm.view = final
+            is_last: bool
+            frame, chunk, ip, is_last = vm_return(vm, ra, retc = int(read.b),
+                                                  is_vararg = read.c == 0)
+            if is_last {
                 return
             }
-
-            // Still within Lua
-            chunk = &frame.function.chunk
         case:
             unreachable("Unknown opcode %v", read.op)
         }
     }
 }
 
+vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, argc, retc: int) -> (frame: ^Frame, chunk: ^Chunk, nextip: [^]Instruction) {
+    fn := &ra.function
+    // Caller function is not included in the stack frame
+    base := ptr_index(ra, vm.stack_all) + 1
+    top  := base + fn.chunk.stack_used
+
+    // WARNING(2025-06-06): May invalidate R(A)!
+    vm_check_stack(vm, fn.chunk.stack_used)
+    return vm_frame_push(vm, fn, vm.stack_all[base:top])
+}
+
+vm_return :: proc(vm: ^VM, ra: ^Value, retc: int, is_vararg: bool) -> (frame: ^Frame, chunk: ^Chunk, ip: [^]Instruction, is_last: bool) {
+    // if ip.c != 0 then we have a vararg
+    n := retc if is_vararg else get_top(vm)
+    results := slice.from_ptr(ra, n)
+    frame = vm.current
+
+    // Overwrite stack slot of function object as well
+    final := ptr_offset(raw_data(frame.window), -1)[:n]
+    for &slot, reg in final {
+        slot = results[reg]
+    }
+
+    frame, chunk, ip = vm_frame_pop(vm)
+    // Return from main function; no previous stack frame to restore.
+    // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
+    if is_last = (frame == nil); is_last {
+        vm.view = final
+    }
+    // Otherwise, still within Lua
+    return
+}
+
 vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {
     b := vm_get_builder(vm)
     for &arg in args {
         if !value_is_string(arg) {
-            vm_protect(vm)
             debug_type_error(vm, &arg, "concatenate")
         }
         strings.write_string(b, value_as_string(arg))

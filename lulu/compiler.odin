@@ -354,7 +354,7 @@ compiler_discharge_vars :: proc(c: ^Compiler, e: ^Expr) {
         pc := compiler_code(c, .Get_Table, a = 0, b = table_reg, c = key_reg)
         expr_set(e, .Need_Register, pc = pc)
     case .Call:
-        ip := get_ip(c, e)
+        compiler_set_1_return(c, e)
     }
 }
 

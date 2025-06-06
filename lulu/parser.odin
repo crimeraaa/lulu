@@ -224,7 +224,8 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
     top, n_exprs := expr_list(p, c)
     iter: ^Assign
     if n_exprs == n_vars {
-        // luaK_setoneret(ls->fs, &e) // Used for `Call` or `Vararg`
+        // last expression can have variadic returns
+        compiler_set_1_return(c, &top)
         compiler_store_var(c, &last.variable, &top)
 
         // `last` is already properly assigned, so skip it
@@ -334,15 +335,28 @@ local_decl :: proc(p: ^Parser, c: ^Compiler, ident: ^OString, n: ^int) {
 -   See `lparser.c:adjust_assign(LexState *ls, int nvars, int nexps, expdesc *e)`.
  */
 adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
-    // TODO(2025-04-08): Add `if (hasmultret(expr->kind))` analog
+    extra := n_vars - n_exprs
 
-    // Emit the last expression from `expr_list()`.
+    // `lcode.c:luaK_setreturns(FuncState *fs, expdesc *e, int nresults)`
+    if expr.type == .Call {
+        // Include function object itself
+        extra += 1
+        ip := get_ip(c, expr)
+        // Stack slot of caller object will be overridden
+        ip.c = u16(extra)
+        if extra > 1 {
+            compiler_reg_reserve(c, extra - 1)
+        }
+        return
+    }
+
+    // Push the last expression from `expr_list()`.
     if expr.type != .Empty {
         compiler_expr_next_reg(c, expr)
     }
 
     // More variables than expressions?
-    if extra := n_vars - n_exprs; extra > 0 {
+    if extra > 0 {
         reg := c.free_reg
         compiler_reg_reserve(c, extra)
         compiler_code_nil(c, cast(u16)reg, cast(u16)extra)
@@ -352,9 +366,9 @@ adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
         -   local a, b, c = 1, 2, 3, 4
 
         **Results**
-        -   free_reg    = 4
-        -   n_vars  = 3
-        -   n_exprs = 4
+        -   free_reg = 4
+        -   n_vars   = 3
+        -   n_exprs  = 4
 
         **Assumptions**
         -   If `n_exprs == n_vars`, nothing changes as we subtract 0.
@@ -560,19 +574,17 @@ function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
     n_args: int
     if !parser_match(p, .Right_Paren) {
         args, n_args = expr_list(p, c)
+        // Push the last expression from `expr_list()`.
         compiler_expr_next_reg(c, &args)
         parser_consume(p, .Right_Paren)
-    }
-
-    // Emit the last expression from `expr_list()`.
-    if args.type != .Empty {
-        compiler_expr_next_reg(c, &args)
     }
 
     // Assume 1 return by default.
     call_pc := compiler_code(c, .Call, a = call.reg, b = u16(n_args), c = 1)
     call^ = expr_make(.Call, pc = call_pc)
+    // Don't pop the function object (just yet)
     c.free_reg -= n_args
+
 }
 
 
@@ -591,13 +603,11 @@ print_stmt :: proc(p: ^Parser, c: ^Compiler) {
     base_reg := u16(c.free_reg)
     if !parser_match(p, .Right_Paren) {
         args, n_args = expr_list(p, c)
+        // Push the last expression from `expr_list()`.
+        compiler_expr_next_reg(c, &args)
         parser_consume(p, .Right_Paren)
     }
 
-    // Emit the last expression from `expr_list()`.
-    if args.type != .Empty {
-        compiler_expr_next_reg(c, &args)
-    }
     last_reg := u16(c.free_reg) // If > MAX_A should still fit
     compiler_code(c, .Print, ra = base_reg, rb = last_reg)
 
@@ -1322,7 +1332,7 @@ get_rule :: proc(type: Token_Type) -> (rule: Rule) {
         .True       = {prefix = literal},
 
         // Balanced Pairs
-        .Left_Paren = {prefix = grouping},
+        .Left_Paren = {prefix = grouping, infix = function_call, prec = .Call},
         .Left_Curly = {prefix = constructor},
 
         // Arithmetic
