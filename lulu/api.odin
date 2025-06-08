@@ -39,6 +39,11 @@ Error :: enum {
     Out_Of_Memory,
 }
 
+Library_Function :: struct {
+    name: string,
+    fn:   Function_Odin,
+}
+
 ///=== VM SETUP/TEARDOWN =================================================== {{{
 
 
@@ -102,14 +107,16 @@ poke :: proc(vm: ^VM, i: int) -> (v: ^Value, ok: bool) {
 
 @(private="file")
 peek :: proc(vm: ^VM, i: int) -> Value {
+    @(static, rodata)
+    none := Value{type = .None}
     v, ok := poke(vm, i)
-    return v^ if ok else value_make()
+    return v^ if ok else none
 }
 
 @(private="file")
 poke_base :: proc(vm: ^VM, i: int) -> (v: ^Value, ok: bool) {
     assert(i >= 0)
-    if i > len(vm.view) {
+    if i >= len(vm.view) {
         return nil, false
     }
     return &vm.view[i], true
@@ -121,10 +128,27 @@ poke_top :: proc(vm: ^VM, i: int) -> (v: ^Value, ok: bool) {
     return poke_base(vm, len(vm.view) + i)
 }
 
+///=== PUSH FUNCTIONS ====================================================== {{{
+
+
+push_nil :: proc(vm: ^VM, n := 1) {
+    vm_check_stack(vm, n)
+    for i in 0..<n {
+        push_rawvalue(vm, value_make())
+    }
+}
+
+push_boolean :: proc(vm: ^VM, b: bool) {
+    push_rawvalue(vm, value_make(b))
+}
+
+push_number :: proc(vm: ^VM, n: Number) {
+    push_rawvalue(vm, value_make(n))
+}
+
 
 /*
 **Notes**
--   See the notes regarding the stack in `push_rawvalue()`.
 -   The returned string's memory is owned and managed by the VM.
  */
 push_string :: proc(vm: ^VM, s: string) -> string {
@@ -136,7 +160,6 @@ push_string :: proc(vm: ^VM, s: string) -> string {
 
 /*
 **Notes**
--   See the notes regarding the stack in `push_rawvalue()`.
 -   The returned string's memory is owned and managed by the VM.
  */
 push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (s: string) {
@@ -150,6 +173,12 @@ push_fstring :: proc(vm: ^VM, format: string, args: ..any) -> (s: string) {
  */
 push_value :: proc(vm: ^VM, i: int) {
     push_rawvalue(vm, peek(vm, i))
+}
+
+
+push_function :: proc(vm: ^VM, p: Function_Odin) {
+    f := function_new(vm, p)
+    push_rawvalue(vm, value_make(f))
 }
 
 
@@ -177,12 +206,14 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
     //      `vm.view = slice.from_ptr(raw_data(vm.view), len(vm.view) + 1)`
     // But then we don't have bounds checking on the full stack.
     base, top := vm_absindex(vm, vm.view)
-    vm.view = vm.stack_all[base:top + 1]
+    next := vm.stack_all[base:top + 1]
+    vm.view = next
     if ptr, ok := poke_top(vm, -1); ok {
         ptr^ = v
     }
 }
 
+///=== }}} =====================================================================
 
 ///=== }}} =====================================================================
 
@@ -335,6 +366,14 @@ set_global :: proc(vm: ^VM, key: string) {
 
 ///=== VM MISCALLENOUS API ================================================= {{{
 
+
+call :: proc(vm: ^VM, n_arg, n_ret: int) {
+    // -narg is the first argument, so -(narg + 1) is the function itself.
+    v, ok := poke_top(vm, -(n_arg + 1))
+    if vm_call(vm, v, n_arg, n_ret) == .Lua {
+        vm_execute(vm)
+    }
+}
 
 /*
 **Notes**

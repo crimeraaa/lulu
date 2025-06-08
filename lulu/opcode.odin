@@ -100,7 +100,6 @@ Set_Global,    // A Bx  | _G[Kst[Bx]] := R(A)
 Set_Table,     // A B C | R(A)[RK(B)] := RK(C)
 New_Table,     // A B C | R(A) := {} ; array size = B, hash size = C
 Set_Array,     // A Bx  | R(A)[(C-1)*FPF + i] = R(A + i) for 1 <= i <= B
-Print,         // A B   | print(R(i), '\t') for A <= i < B
 Add,           // A B C | R(A) := RK(B) + RK(C)
 Sub,           // A B C | R(A) := RK(B) - RK(C)
 Mul,           // A B C | R(A) := RK(B) * RK(C)
@@ -224,7 +223,6 @@ opcode_info := [OpCode]OpCode_Info {
 .Set_Table      = {type = .Separate,    a = false, b = .Reg_Const, c = .Reg_Const},
 .New_Table      = {type = .Separate,    a = true,  b = .Used,      c = .Used},
 .Set_Array      = {type = .Separate,    a = true,  b = .Used,      c = .Used},
-.Print          = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
 .Add ..= .Pow   = {type = .Separate,    a = true,  b = .Reg_Const, c = .Reg_Const},
 .Unm            = {type = .Separate,    a = true,  b = .Reg_Jump,  c = .Unused},
 .Eq ..= .Leq    = {type = .Separate,    a = false, b = .Reg_Const, c = .Reg_Const,  is_test = true},

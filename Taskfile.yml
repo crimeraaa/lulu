@@ -43,6 +43,7 @@ tasks:
       - '{{.ODIN}} build . {{.FLAGS}} -define:LULU_USE_READLINE=true -out:{{.LULU_MAIN_OUT}}'
     sources:
       - 'lulu.odin'
+      - 'baselib.odin'
       - 'input.odin'
       - '{{.LULU_SRC}}/*.odin'
 

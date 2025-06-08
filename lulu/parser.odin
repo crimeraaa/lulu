@@ -177,7 +177,6 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
         } else {
             local_stmt(p, c)
         }
-    case .Print:    print_stmt(p, c)
     case .Return:   return_stmt(p, c)
     case .While:    while_loop(p, c)
     case:
@@ -562,6 +561,9 @@ function_body :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 /*
 **Assumptions**
 -   `call` was the result of `variable()`.
+
+**Notes**
+-   See `lparser.c:funcargs(LexState *ls, expdesc *e)`.
  */
 function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
     // Function to be called must be on the stack.
@@ -604,32 +606,6 @@ vararg :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         parser_error(p, "Function does not have varargs")
     }
     parser_error(p, "Varargs not yet supported")
-}
-
-
-/*
-**Notes**
--   See `lparser.c:funcargs(LexState *ls, expdesc *e)`.
-*/
-print_stmt :: proc(p: ^Parser, c: ^Compiler) {
-    c.is_print = true
-    defer c.is_print = false
-
-    parser_consume(p, .Left_Paren)
-
-    args: Expr
-    n_args: int
-    base_reg := u16(c.free_reg)
-    if !parser_match(p, .Right_Paren) {
-        args, n_args = expr_list(p, c)
-        // Push the last expression from `expr_list()`.
-        compiler_expr_next_reg(c, &args)
-        parser_consume(p, .Right_Paren)
-    }
-
-    last_reg := u16(c.free_reg) // If > MAX_A should still fit
-    compiler_code(c, .Print, ra = base_reg, rb = last_reg)
-    c.free_reg -= n_args
 }
 
 while_loop :: proc(p: ^Parser, c: ^Compiler) {

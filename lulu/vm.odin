@@ -103,7 +103,7 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 
 vm_check_stack :: proc(vm: ^VM, extra: int) {
     stack_end := len(vm.stack_all) - 1
-    view_end  := vm_absindex1(vm, vm.view, .Top)
+    view_end  := vm_absindex(vm, vm.view, from = .Top)
     // Remaining stack slots can't accomodate `extra` values?
     if stack_end - view_end < extra {
         vm_grow_stack(vm, extra)
@@ -236,8 +236,9 @@ vm_interpret :: proc(vm: ^VM, input, source: string) -> Error {
         vm_check_stack(vm, n)
 
         // Users cannot (and should not!) poke at the main function.
-        vm.stack_all[0] = value_make(fmain)
-        vm_frame_push(vm, fmain, vm.stack_all[1:n])
+        ra := &vm.stack_all[0]
+        ra^ = value_make(fmain)
+        vm_call(vm, ra, 0, 0)
         vm_execute(vm)
     }
 
@@ -261,8 +262,10 @@ vm_frame_push :: proc(vm: ^VM, fn: ^Function, window: []Value) -> ^Frame {
     // Zero initialize the current stack frame, sans function arguments.
     // This is especially needed as local variable declarations with empty
     // expressions default to implicit nil.
-    for &slot in window[fn.arity:] {
-        slot = value_make()
+    if fn.is_lua {
+        for &slot in window[fn.arity:] {
+            slot = value_make()
+        }
     }
     return cf
 }
@@ -333,7 +336,7 @@ vm_protect :: #force_inline proc "contextless" (vm: ^VM, ip: [^]Instruction) {
     Instructions*.
 -   `lvm.c:luaV_execute(lua_State *L, int nexeccalls)` in Lua 5.1.5.
  */
-vm_execute :: proc(vm: ^VM) {
+vm_execute :: proc(vm: ^VM, n_calls := 1) {
     ///=== VM EXECUTION HELPERS ============================================ {{{
 
     get_caller :: proc(vm: ^VM) -> (frame: ^Frame, window: []Value, chunk: ^Chunk, ip: [^]Instruction) {
@@ -408,6 +411,7 @@ vm_execute :: proc(vm: ^VM) {
 
     ///=== }}} =================================================================
 
+    n_calls := n_calls
     globals := &vm.globals
     frame, window, chunk, ip := get_caller(vm)
 
@@ -495,14 +499,6 @@ vm_execute :: proc(vm: ^VM) {
                 v := window[cast(int)read.a + index]
                 table_set(vm, t, k, v)
             }
-        case .Print:
-            for arg, i in window[read.a:read.b] {
-                if i != 0 {
-                    fmt.print(' ')
-                }
-                fmt.print(arg)
-            }
-            fmt.println()
         case .Add: arith_op(vm, ip, number_add, ra, get_rk(read, frame))
         case .Sub: arith_op(vm, ip, number_sub, ra, get_rk(read, frame))
         case .Mul: arith_op(vm, ip, number_mul, ra, get_rk(read, frame))
@@ -589,26 +585,29 @@ vm_execute :: proc(vm: ^VM) {
                 incr_ip(&ip, body)
             }
         case .Call:
+            when DEBUG_TRACE_EXEC {
+                fmt.printfln("\n=== BEGIN CALL: %v ===\n", ra^)
+            }
             vm_protect(vm, ip)
             switch vm_call(vm, ra, n_arg = int(read.b), n_ret = int(read.c)) {
-            case .None:
-                debug_type_error(vm, ra, "call")
             case .Lua:
                 // Adjust local state
                 frame.saved_ip = ip
                 frame, window, chunk, ip = get_caller(vm)
+                n_calls += 1
             case .Odin:
-                unreachable("Odin functions not yet supported")
-            }
-
-            when DEBUG_TRACE_EXEC {
-                fmt.printfln("\n=== BEGIN CALL: %v ===\n", ra^)
+                break
             }
         case .Return:
+            when DEBUG_TRACE_EXEC {
+                fmt.println("\n=== END CALL ===\n")
+            }
             n_ret: int
             if read.c == 0 {
                 n_ret = int(read.b)
             } else {
+                // Resolve the variable number of expressions into a concrete
+                // one
                 unreachable("variadic returns not yet supported")
                 // No idea if this actually works
                 // _, top := vm_view_absindex(vm, vm.view)
@@ -616,13 +615,15 @@ vm_execute :: proc(vm: ^VM) {
             }
             vm_protect(vm, ip)
             switch vm_return(vm, ra, n_ret) {
-            case .None: unreachable("impossible condition reached")
             case .Odin: return // Returning from main function; nothing to do.
-            case .Lua:  break  // Need to continue
-            }
-
-            when DEBUG_TRACE_EXEC {
-                fmt.println("\n=== END CALL ===\n")
+            case .Lua:
+                // This `vm_execute()` has a parent `vm_execute()` that is
+                // ready to finish execution.
+                n_calls -= 1
+                if n_calls == 0 {
+                    return
+                }
+                // Otherwise, have more functions to execute.
             }
             frame, window, chunk, ip = get_caller(vm)
         case:
@@ -632,7 +633,6 @@ vm_execute :: proc(vm: ^VM) {
 }
 
 Call_Type :: enum {
-    None,
     Lua,
     Odin,
 }
@@ -644,14 +644,33 @@ Call_Type :: enum {
  */
 vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
     if !value_is_function(ra^) {
-        return nil
+        debug_type_error(vm, ra, "call")
     }
-    fn := &ra.function
+    fn       := &ra.function
+    fn_index := ptr_index(ra, vm.stack_all)
+
     // Caller function is not included in the stack frame
-    base := ptr_index(ra, vm.stack_all) + 1
-    top  := base + fn.chunk.stack_used
+    base  := fn_index + 1
+    is_vararg := n_arg == VARARG
+    // Can call directly
+    if !fn.is_lua {
+        top   := vm_absindex(vm, vm.view, from = .Top) if is_vararg else base + n_arg
+        frame := vm_frame_push(vm, fn, vm.stack_all[base:top])
+        frame.n_results = n_ret
+
+        // Assume that it's the caller's problem to ensure valid stack size :)
+        n_ret := fn.odin(vm, top - base)
+        ret1  := &vm.view[get_top(vm) - n_ret] if n_ret > 0 else ra
+        vm_return(vm, ret1, n_ret)
+        when DEBUG_TRACE_EXEC {
+            fmt.println("\n=== END CALL ===\n")
+        }
+        return .Odin
+    }
+
+    top := base + fn.chunk.stack_used
     n_arg := n_arg
-    if n_arg == VARARG {
+    if is_vararg {
         n_arg = top - base
     }
 
@@ -669,6 +688,19 @@ vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
     return .Lua
 }
 
+
+/*
+**Assumptions**
+-   This is only results in `Call_Type.Lua` except in the case of returning
+    from the main function.
+
+**Notes** (2025-06-09)
+-   Returns the call type of the *caller* for the current frame.
+-   E.g. in the script `f()`, when we return from `f()` the caller is the main
+    function.
+-   In the script `return`, when we return from the main function, there is
+    nothing left to do.
+ */
 vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
     frame     := vm.current
     base, top := vm_absindex(vm, vm.view)
@@ -678,8 +710,8 @@ vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
     results   := vm.stack_all[start:stop]
 
     // Overwrite stack slot of function object
-    func  := base - 1
-    final := vm.stack_all[func:func + len(results)]
+    fn_index  := base - 1
+    final     := vm.stack_all[fn_index:fn_index + len(results)]
 
     for &slot, reg in final {
         slot = results[reg]
@@ -716,12 +748,10 @@ vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
     if frame == nil {
         vm.view = final
         return .Odin
-    } else {
-        // Otherwise, still within Lua
-        vm.current = frame
-        return .Lua
     }
-    return .None
+    // Otherwise, still within Lua
+    vm.current = frame
+    return .Lua
 }
 
 vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {

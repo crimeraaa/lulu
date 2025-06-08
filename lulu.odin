@@ -86,6 +86,7 @@ main :: proc() {
         fmt.eprintfln("Failed to open lulu; %w", err)
         return
     }
+    lulu.open_base(vm)
     defer lulu.close(vm)
 
     switch len(os.args) {

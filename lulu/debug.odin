@@ -160,8 +160,6 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
     case .Set_Array:
         print_reg(info, ip.a, "[%i+i] = R(%i+i) for 1 <= i <= %i",
                   cast(int)(ip.c - 1) * FIELDS_PER_FLUSH, ip.a, ip.b)
-    case .Print:
-        fmt.printf("print(R(i), '\\t') for %i <= i < %i", ip.a, ip.b)
     case .Add: arith(info, "+")
     case .Sub: arith(info, "-")
     case .Mul: arith(info, "*")

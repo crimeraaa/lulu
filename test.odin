@@ -14,6 +14,7 @@ open_safe :: proc(t: ^testing.T) -> ^lulu.VM {
     if err != nil {
         testing.fail_now(t, "out of memory")
     }
+    lulu.open_base(vm)
     return vm
 }
 

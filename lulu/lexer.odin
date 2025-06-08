@@ -36,7 +36,6 @@ Token_Type :: enum {
     False,          For,            Function,
     If,             In,             Local,
     Nil,            Not,            Or,
-    Print, // Temporary!
     Repeat,         Return,         Then,
     True,           Until,          While,
 
@@ -69,7 +68,6 @@ token_type_strings := [Token_Type]string {
     .False          = "false",      .For            = "for",        .Function   = "function",
     .If             = "if",         .In             = "in",         .Local      = "local",
     .Nil            = "nil",        .Not            = "not",        .Or         = "or",
-    .Print          = "print",
     .Repeat         = "repeat",     .Return         = "return",     .Then       = "then",
     .True           = "true",       .Until          = "until",      .While      = "while",
 
@@ -213,7 +211,6 @@ create_keyword_identifier_token :: proc(l: ^Lexer) -> Token {
             case 'o': return check_type(token, .Not)
             }
         case 'o': return check_type(token, .Or)
-        case 'p': return check_type(token, .Print)
         case 'r':
             if len(token.lexeme) != len("repeat") {
                 break

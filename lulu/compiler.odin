@@ -16,9 +16,9 @@ NO_JUMP :: -1
 Active_Locals :: small_array.Small_Array(MAX_LOCALS, u16)
 
 @cold
-unreachable :: #force_inline proc(format: string, args: ..any) -> ! {
+unreachable :: #force_inline proc(format: string, args: ..any, loc := #caller_location) -> ! {
     when ODIN_DEBUG {
-        fmt.panicf(format, ..args)
+        fmt.panicf(format, ..args, loc = loc)
     } else {
         builtin.unreachable()
     }
@@ -37,7 +37,6 @@ Compiler :: struct {
     free_reg:    int,      // Index of the first free register.
     last_target: int,      // pc of the last jump target. See `FuncState::lasttarget`.
     pc:          int,      // First free index in `chunk.code`.
-    is_print:    bool,     // HACK(2025-04-09): until `print` is a global runtime function
 }
 
 get_ip :: proc {
@@ -442,8 +441,8 @@ compiler_code_nil :: proc(c: ^Compiler, reg, count: u16) {
         if pc == 0 && cast(int)reg >= small_array.len(c.active) {
             return
         }
-        // TODO(2025-04-09): Remove `if pc > 0` when `print` is a global function
-        folding: if pc > 0 {
+
+        folding: {
             prev := get_ip(c, pc - 1)
             if prev.op != .Load_Nil {
                 break folding
