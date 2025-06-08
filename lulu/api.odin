@@ -85,7 +85,6 @@ get_top :: proc(vm: ^VM) -> (index: int) {
     return len(vm.view)
 }
 
-
 pop :: proc(vm: ^VM, n := 1) {
     // This is generally safe, because we are *shrinking* the view.
     vm.view = vm.view[:len(vm.view) - n]
@@ -177,7 +176,7 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
     // Could do something unsafe like:
     //      `vm.view = slice.from_ptr(raw_data(vm.view), len(vm.view) + 1)`
     // But then we don't have bounds checking on the full stack.
-    base, top := vm_view_absindex(vm, vm.view)
+    base, top := vm_absindex(vm, vm.view)
     vm.view = vm.stack_all[base:top + 1]
     if ptr, ok := poke_top(vm, -1); ok {
         ptr^ = v

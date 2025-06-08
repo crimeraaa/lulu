@@ -700,8 +700,10 @@ static void funcargs (LexState *lex, Expr *expr) {
   int line = lex->linenumber;
   switch (lex->current.type) {
     case Token_Left_Paren: {  /* funcargs -> `(' [ explist1 ] `)' */
-      if (line != lex->lastline)
-        luaX_syntaxerror(lex,"ambiguous syntax (function call x new statement)");
+      if (line != lex->lastline) {
+        luaX_syntaxerror(lex,
+          "ambiguous syntax (function call x new statement)");
+      }
       luaX_next(lex);
       if (lex->current.type == Token_Right_Paren)  /* arg list is empty? */
         args.kind = Expr_Void;

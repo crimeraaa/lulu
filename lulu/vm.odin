@@ -102,8 +102,8 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
 }
 
 vm_check_stack :: proc(vm: ^VM, extra: int) {
-    stack_end   := len(vm.stack_all) - 1
-    _, view_end := vm_view_absindex(vm, vm.view)
+    stack_end := len(vm.stack_all) - 1
+    view_end  := vm_absindex1(vm, vm.view, .Top)
     // Remaining stack slots can't accomodate `extra` values?
     if stack_end - view_end < extra {
         vm_grow_stack(vm, extra)
@@ -125,9 +125,18 @@ vm.view = vm.stack_all[2:4]
 vm_view_absindex(vm, vm.view) // view indexes 0 and 2 are stack indexes 2 and 4
 ```
  */
-vm_view_absindex :: proc(vm: ^VM, view: []Value) -> (base, top: int) {
-    base = ptr_index(vm_view_ptr(vm, view, .Base), vm.stack_all)
-    top  = ptr_index(vm_view_ptr(vm, view, .Top),  vm.stack_all)
+vm_absindex :: proc {
+    vm_absindex1,
+    vm_absindex2,
+}
+
+vm_absindex1 :: proc(vm: ^VM, view: []Value, $from: View_Mode) -> (i: int) {
+    return ptr_index(vm_view_ptr(vm, view, from), vm.stack_all)
+}
+
+vm_absindex2 :: proc(vm: ^VM, view: []Value) -> (base, top: int) {
+    base = vm_absindex1(vm, view, .Base)
+    top  = vm_absindex1(vm, view, .Top)
     return base, top
 }
 
@@ -142,10 +151,10 @@ vm_view_absindex :: proc(vm: ^VM, view: []Value) -> (base, top: int) {
 -   In that case it will point to 1 past the last valid element in the main
     stack.
  */
-vm_view_ptr :: proc(vm: ^VM, view: []Value, $mode: View_Mode) -> [^]Value {
-    when mode == .Base {
+vm_view_ptr :: proc(vm: ^VM, view: []Value, $from: View_Mode) -> [^]Value {
+    when from == .Base {
         return raw_data(view)
-    } else when mode == .Top {
+    } else when from == .Top {
         return ptr_offset(raw_data(view), len(view))
     } else {
         #panic("Invalid mode")
@@ -172,13 +181,13 @@ vm_grow_stack :: proc(vm: ^VM, extra: int) {
     // This is safe even on the very first call, because *both* `stack_all` and
     // `view` are `nil`. Pointer subtraction, after casting to `uintptr`,
     // results in `0`.
-    base, top := vm_view_absindex(vm, vm.view)
+    base, top := vm_absindex(vm, vm.view)
     prev := vm.stack_all
     slice_resize(vm, &vm.stack_all, new_size)
     next := vm.stack_all
     vm.stack_all = prev
     for &cf in vm_frame_slice(vm) {
-        base, top := vm_view_absindex(vm, cf.window)
+        base, top := vm_absindex(vm, cf.window)
         cf.window = next[base:top]
     }
     vm.stack_all = next
@@ -327,10 +336,11 @@ vm_protect :: #force_inline proc "contextless" (vm: ^VM, ip: [^]Instruction) {
 vm_execute :: proc(vm: ^VM) {
     ///=== VM EXECUTION HELPERS ============================================ {{{
 
-    get_caller :: proc(vm: ^VM) -> (frame: ^Frame, chunk: ^Chunk, ip: [^]Instruction) {
-        frame = vm.current
-        chunk = &frame.function.chunk
-        ip    = raw_data(chunk.code) if frame.saved_ip == nil else frame.saved_ip
+    get_caller :: proc(vm: ^VM) -> (frame: ^Frame, window: []Value, chunk: ^Chunk, ip: [^]Instruction) {
+        frame  = vm.current
+        window = vm.view
+        chunk  = &frame.function.chunk
+        ip     = raw_data(chunk.code) if frame.saved_ip == nil else frame.saved_ip
         return
     }
 
@@ -399,18 +409,18 @@ vm_execute :: proc(vm: ^VM) {
     ///=== }}} =================================================================
 
     globals := &vm.globals
-    frame, chunk, ip := get_caller(vm)
+    frame, window, chunk, ip := get_caller(vm)
 
     when DEBUG_TRACE_EXEC {
         ip_left_pad    := count_digits(len(chunk.code))
-        stack_left_pad := count_digits(len(frame.window))
+        stack_left_pad := count_digits(len(window))
     }
 
     for {
         read := incr_ip(&ip)
         when DEBUG_TRACE_EXEC {
             index := ptr_index(ip, chunk.code) - 1
-            for value, reg in frame.window {
+            for value, reg in window {
                 fmt.printf("\t$% -*i | %d", stack_left_pad, reg, value)
                 if local, ok := chunk_get_local(chunk, reg + 1, index); ok {
                     fmt.printfln(" ; %s", local)
@@ -424,16 +434,16 @@ vm_execute :: proc(vm: ^VM) {
         // Most instructions use this; we also guarantee register 0 and 1
         // are safe to deference no matter what. So for comparisons we can
         // safely move past this load even if it goes unused.
-        ra := &frame.window[read.a]
+        ra := &window[read.a]
         switch read.op {
         case .Move:
-            ra^ = frame.window[read.b]
+            ra^ = window[read.b]
         case .Load_Constant:
             bc := ip_get_Bx(read)
             ra^ = chunk.constants[bc]
         case .Load_Nil:
             // Add 1 because we want to include Reg[B]
-            for &slot in frame.window[read.a:read.b + 1] {
+            for &slot in window[read.a:read.b + 1] {
                 slot = value_make()
             }
         case .Load_Boolean:
@@ -459,7 +469,7 @@ vm_execute :: proc(vm: ^VM) {
             ra^ = value_make(table_new(vm, n_array, n_hash))
         case .Get_Table:
             vm_protect(vm, ip)
-            if rb := &frame.window[read.b]; !value_is_table(rb^) {
+            if rb := &window[read.b]; !value_is_table(rb^) {
                 index_error(vm, rb)
             } else {
                 key := get_rk(read.c, frame)^
@@ -482,11 +492,11 @@ vm_execute :: proc(vm: ^VM) {
             offset := cast(int)(read.c - 1) * FIELDS_PER_FLUSH
             for index in 1..=count {
                 k := value_make(offset + index)
-                v := frame.window[cast(int)read.a + index]
+                v := window[cast(int)read.a + index]
                 table_set(vm, t, k, v)
             }
         case .Print:
-            for arg, i in frame.window[read.a:read.b] {
+            for arg, i in window[read.a:read.b] {
                 if i != 0 {
                     fmt.print(' ')
                 }
@@ -501,7 +511,7 @@ vm_execute :: proc(vm: ^VM) {
         case .Pow: arith_op(vm, ip, number_pow, ra, get_rk(read, frame))
         case .Unm:
             vm_protect(vm, ip)
-            if rb := &frame.window[read.b]; !value_is_number(rb^) {
+            if rb := &window[read.b]; !value_is_number(rb^) {
                 arith_error(vm, rb, rb)
             } else {
                 ra^ = value_make(number_unm(rb.number))
@@ -520,10 +530,10 @@ vm_execute :: proc(vm: ^VM) {
         // Add 1 because we want to include Reg[C]
         case .Concat:
             vm_protect(vm, ip)
-            vm_concat(vm, ra, frame.window[read.b:read.c + 1])
+            vm_concat(vm, ra, window[read.b:read.c + 1])
         case .Len:
             vm_protect(vm, ip)
-            #partial switch rb := &frame.window[read.b]; rb.type {
+            #partial switch rb := &window[read.b]; rb.type {
             case .String:
                 ra^ = value_make(rb.ostring.len)
             case .Table:
@@ -546,7 +556,7 @@ vm_execute :: proc(vm: ^VM) {
                 incr_ip(&ip)
             }
         case .Test_Set:
-            if rb := frame.window[read.b]; !value_is_falsy(rb) != bool(read.c) {
+            if rb := window[read.b]; !value_is_falsy(rb) != bool(read.c) {
                 incr_ip(&ip)
             } else {
                 ra^ = rb
@@ -580,13 +590,13 @@ vm_execute :: proc(vm: ^VM) {
             }
         case .Call:
             vm_protect(vm, ip)
-            switch vm_call(vm, ip, ra, n_arg = int(read.b), n_ret = int(read.c)) {
+            switch vm_call(vm, ra, n_arg = int(read.b), n_ret = int(read.c)) {
             case .None:
                 debug_type_error(vm, ra, "call")
             case .Lua:
                 // Adjust local state
                 frame.saved_ip = ip
-                frame, chunk, ip = get_caller(vm)
+                frame, window, chunk, ip = get_caller(vm)
             case .Odin:
                 unreachable("Odin functions not yet supported")
             }
@@ -595,7 +605,6 @@ vm_execute :: proc(vm: ^VM) {
                 fmt.printfln("\n=== BEGIN CALL: %v ===\n", ra^)
             }
         case .Return:
-            // Returning from main function?
             n_ret: int
             if read.c == 0 {
                 n_ret = int(read.b)
@@ -605,14 +614,17 @@ vm_execute :: proc(vm: ^VM) {
                 // _, top := vm_view_absindex(vm, vm.view)
                 // n_ret = top - ptr_index(ra, vm.stack_all)
             }
-            if vm_return(vm, ra, n_ret) {
-                return
+            vm_protect(vm, ip)
+            switch vm_return(vm, ra, n_ret) {
+            case .None: unreachable("impossible condition reached")
+            case .Odin: return // Returning from main function; nothing to do.
+            case .Lua:  break  // Need to continue
             }
 
             when DEBUG_TRACE_EXEC {
                 fmt.println("\n=== END CALL ===\n")
             }
-            frame, chunk, ip = get_caller(vm)
+            frame, window, chunk, ip = get_caller(vm)
         case:
             unreachable("Unknown opcode %v", read.op)
         }
@@ -630,7 +642,7 @@ Call_Type :: enum {
 **Analogous to**
 -   `ldo.c:luaD_precall(lua_State *L, StkId func, int nresults)` in Lua 5.1.5.
  */
-vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
+vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
     if !value_is_function(ra^) {
         return nil
     }
@@ -638,6 +650,10 @@ vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, n_arg, n_ret: int) -> C
     // Caller function is not included in the stack frame
     base := ptr_index(ra, vm.stack_all) + 1
     top  := base + fn.chunk.stack_used
+    n_arg := n_arg
+    if n_arg == VARARG {
+        n_arg = top - base
+    }
 
     // Some parameters were not provided so they need to be initialized to nil?
     if extra := fn.arity - n_arg; extra > 0 {
@@ -653,20 +669,26 @@ vm_call :: proc(vm: ^VM, ip: [^]Instruction, ra: ^Value, n_arg, n_ret: int) -> C
     return .Lua
 }
 
-vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> (is_last: bool) {
-    results := slice.from_ptr(ra, n_ret)
-    frame := vm.current
+vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
+    frame     := vm.current
+    base, top := vm_absindex(vm, vm.view)
+    is_vararg := frame.n_results == VARARG
+    start     := ptr_index(ra, vm.stack_all)
+    stop      := top if is_vararg else start + n_ret
+    results   := vm.stack_all[start:stop]
 
-    // Overwrite stack slot of function object as well
-    final := slice.from_ptr(slice_offset(frame.window, -1), len(results))
+    // Overwrite stack slot of function object
+    func  := base - 1
+    final := vm.stack_all[func:func + len(results)]
+
     for &slot, reg in final {
         slot = results[reg]
     }
 
     // Less expressions than expected?
-    if extra := frame.n_results - len(results); extra > 0 {
-        // Pretend this is safe :)
-        final = slice.from_ptr(raw_data(final), len(results) + extra)
+    if extra := frame.n_results - len(results) if !is_vararg else -1; extra > 0 {
+        base, top := vm_absindex(vm, final)
+        final = vm.stack_all[base:top + extra]
         // Initialize the remaining assignments to `nil`.
         for &slot in final[len(results):] {
             slot = value_make()
@@ -674,15 +696,32 @@ vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> (is_last: bool) {
     }
 
     frame = vm_frame_pop(vm)
+
+    /*
+    **Notes** (2025-06-08)
+    -   Adjust the VM's view to point exactly above the last vararg so that
+        a (likely) succeeding `OpCode.Call` can just use the view top to count
+        the number of varargs.
+    -   Once that's done this change needs to be reverted immediately to allow
+        pushing of locals/temporaries beyond the varargs' registers.
+     */
+    if is_vararg {
+        base := vm_absindex(vm, vm.view, from = .Base)
+        top  := vm_absindex(vm, final, from = .Top)
+        vm.view = vm.stack_all[base:top]
+    }
+
     // Return from main function; no previous stack frame to restore.
     // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
-    if is_last = (frame == nil); is_last {
+    if frame == nil {
         vm.view = final
+        return .Odin
     } else {
         // Otherwise, still within Lua
         vm.current = frame
+        return .Lua
     }
-    return is_last
+    return .None
 }
 
 vm_concat :: proc(vm: ^VM, ra: ^Value, args: []Value) {

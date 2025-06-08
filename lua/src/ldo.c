@@ -299,7 +299,7 @@ int luaD_precall (lua_State *L, StkId func_value, int nresults) {
   closure = &clvalue(func_value)->l;
   L->ci->savedpc = L->savedpc;
   if (!closure->isC) {  /* Lua function? prepare its call */
-    CallInfo *callinfo;
+    CallInfo *ci;
     StkId     slot; /* iterator for zero-init */
     StkId     base; /* points to first fixed argument */
     Proto    *proto = closure->p;
@@ -321,19 +321,19 @@ int luaD_precall (lua_State *L, StkId func_value, int nresults) {
       /* `adjust_varargs()` may change stack when `LUA_COMPAT_VARARG` defined */
       func_value = restorestack(L, saved_stack);
     }
-    callinfo = inc_ci(L);  /* now `enter' new function */
-    callinfo->func = func_value;
-    L->base = callinfo->base = base;
-    callinfo->top = L->base + proto->maxstacksize;
-    lua_assert(callinfo->top <= L->stack_last);
+    ci = inc_ci(L);  /* now `enter' new function */
+    ci->func = func_value;
+    L->base = ci->base = base;
+    ci->top = L->base + proto->maxstacksize;
+    lua_assert(ci->top <= L->stack_last);
     L->savedpc = proto->code;  /* starting point */
-    callinfo->tailcalls = 0;
-    callinfo->nresults = nresults;
+    ci->tailcalls = 0;
+    ci->nresults = nresults;
     /* zero-init this stack frame; mainly meant for locals at the start */
-    for (slot = L->top; slot < callinfo->top; slot++) {
+    for (slot = L->top; slot < ci->top; slot++) {
       setnilvalue(slot);
     }
-    L->top = callinfo->top;
+    L->top = ci->top;
     if (L->hookmask & LUA_MASKCALL) {
       L->savedpc++;  /* hooks assume 'pc' is already incremented */
       luaD_callhook(L, LUA_HOOKCALL, -1);
@@ -342,16 +342,16 @@ int luaD_precall (lua_State *L, StkId func_value, int nresults) {
     return PCRLUA;
   }
   else {  /* if is a C function, call it */
-    CallInfo *callinfo;
+    CallInfo *ci;
     int n;
     luaD_checkstack(L, LUA_MINSTACK);  /* ensure minimum stack size */
-    callinfo       = inc_ci(L);  /* now `enter' new function */
-    callinfo->func = restorestack(L, saved_stack);
-    L->base        = callinfo->base = callinfo->func + 1;
-    callinfo->top  = L->top + LUA_MINSTACK;
+    ci       = inc_ci(L);  /* now `enter' new function */
+    ci->func = restorestack(L, saved_stack);
+    L->base  = ci->base = ci->func + 1;
+    ci->top  = L->top + LUA_MINSTACK;
 
-    lua_assert(callinfo->top <= L->stack_last);
-    callinfo->nresults = nresults;
+    lua_assert(ci->top <= L->stack_last);
+    ci->nresults = nresults;
     if (L->hookmask & LUA_MASKCALL) {
       luaD_callhook(L, LUA_HOOKCALL, -1);
     }

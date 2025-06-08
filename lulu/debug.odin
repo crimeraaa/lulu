@@ -201,10 +201,14 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
     case .Jump:
         fmt.printf("goto .code[%i]", index + 1 + ip_get_sBx(ip))
     case .Call:
-        base   := ip.a + 1
-        top    := base + ip.b
-        n_rets := ip.a + ip.c
-        fmt.printf("R(%i..<%i) := R(%i)(R(%i..<%i))", ip.a, n_rets, ip.a, base, top)
+        base   := int(ip.a) + 1
+        top    := -1 if ip.b == VARARG else base + int(ip.b)
+        n_rets := -1 if ip.c == VARARG else int(ip.a + ip.c)
+        // Have destination registers?
+        if int(ip.a) != n_rets {
+            fmt.printf("R(%i:%i) := ", ip.a, n_rets)
+        }
+        fmt.printf("R(%i)(R(%i:%i))", ip.a, base, top)
     case .Return:
         reg := ip.a
         // Have a vararg?

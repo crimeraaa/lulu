@@ -356,7 +356,7 @@ compiler_discharge_vars :: proc(c: ^Compiler, e: ^Expr) {
         pc := compiler_code(c, .Get_Table, a = 0, b = table_reg, c = key_reg)
         expr_set(e, .Need_Register, pc = pc)
     case .Call:
-        compiler_set_1_return(c, e)
+        compiler_set_one_return(c, e)
     }
 }
 
@@ -945,11 +945,19 @@ compiler_store_var :: proc(c: ^Compiler, var, expr: ^Expr) {
     compiler_expr_pop(c, expr^)
 }
 
-compiler_set_1_return :: proc(c: ^Compiler, call: ^Expr) {
+compiler_set_one_return :: proc(c: ^Compiler, call: ^Expr) {
     // Expression is an open function call?
     if call.type == .Call {
         ip := get_ip(c, call)
+        ip.c = 1
         expr_set(call, .Discharged, reg = ip.a)
+    }
+}
+
+compiler_set_returns :: proc(c: ^Compiler, call: ^Expr, n: int) {
+    if call.type == .Call {
+        ip := get_ip(c, call)
+        ip.c = u16(n)
     }
 }
 

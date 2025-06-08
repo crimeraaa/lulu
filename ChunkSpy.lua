@@ -2002,8 +2002,7 @@ end
 --]]-------------------------------------------------------------------
 
 function ChunkSpy_Sample()
-  local LUA_SAMPLE = string.dump(
-    function()
+  local LUA_SAMPLE = string.dump(function()
       local a = 1; b = "the quick brown fox\r\n"
       function c() b = a a = b end
       c = nil; c = -a; c = not b
@@ -2012,75 +2011,74 @@ function ChunkSpy_Sample()
       a = d..c..b; a = b == c; a = {1,2,}
         for i in b() do b = 1 end
         return
+    end)
+  local ok, msg = pcall(ChunkSpy, "test sample", LUA_SAMPLE)
+  if not ok then
+    print(title)
+    print("* Test sample has failed with the following error:")
+    print(msg)
+  end
+end
+
+--[[-------------------------------------------------------------------
+-- Top-level file/chunk handling, processes user's binary chunks
+--]]-------------------------------------------------------------------
+
+function ChunkSpy_DoFiles(files)
+  local binary_chunks = {}
+  ---------------------------------------------------------------
+  -- pre-processing of file list
+  ---------------------------------------------------------------
+  for i, v in pairs(files) do
+    local filename, binchunk
+    if type(i) == "number" then -- normally specified files
+      filename = v
+      local INF = io.open(filename, "rb")
+      if not INF then
+        error("cannot open \""..filename.."\" for reading")
       end
-    )
-    local ok, msg = pcall(ChunkSpy, "test sample", LUA_SAMPLE)
-    if not ok then
-      print(title)
-      print("* Test sample has failed with the following error:")
-      print(msg)
+      binchunk = INF:read("*a")
+      io.close(INF)
+    else -- binary chunk supplied by --source, after compilation
+      filename = i
+      binchunk = v
+    end
+    if binchunk then
+      local sig = string.sub(binchunk, 1, string.len(config.SIGNATURE))
+      -- identify all binary chunks via signature
+      if sig == config.SIGNATURE then
+        -- duplicate filenames eliminated here
+        binary_chunks[filename] = binchunk
+      else
+        -- may be a source code listing
+        table.insert(other_files, filename)
+      end
     end
   end
-
-  --[[-------------------------------------------------------------------
-  -- Top-level file/chunk handling, processes user's binary chunks
-  --]]-------------------------------------------------------------------
-
-  function ChunkSpy_DoFiles(files)
-    local binary_chunks = {}
-    ---------------------------------------------------------------
-    -- pre-processing of file list
-    ---------------------------------------------------------------
-    for i, v in pairs(files) do
-      local filename, binchunk
-      if type(i) == "number" then -- normally specified files
-        filename = v
-        local INF = io.open(filename, "rb")
-        if not INF then
-          error("cannot open \""..filename.."\" for reading")
-        end
-        binchunk = INF:read("*a")
-        io.close(INF)
-      else -- binary chunk supplied by --source, after compilation
-        filename = i
-        binchunk = v
-      end
-      if binchunk then
-        local sig = string.sub(binchunk, 1, string.len(config.SIGNATURE))
-        -- identify all binary chunks via signature
-        if sig == config.SIGNATURE then
-          -- duplicate filenames eliminated here
-          binary_chunks[filename] = binchunk
-        else
-          -- may be a source code listing
-          table.insert(other_files, filename)
-        end
-      end
+  ---------------------------------------------------------------
+  -- per-chunk processing
+  ---------------------------------------------------------------
+  local done
+  for i,v in pairs(binary_chunks) do
+    if done and (config.REWRITE_FLAG or config.RUN_FLAG) then
+      error("can rewrite or run only one file at a time")
     end
-    ---------------------------------------------------------------
-    -- per-chunk processing
-    ---------------------------------------------------------------
-    local done
-    for i,v in pairs(binary_chunks) do
-      if done and (config.REWRITE_FLAG or config.RUN_FLAG) then
-        error("can rewrite or run only one file at a time")
+    -- returns parsed table, for further optional processing
+    local result = ChunkSpy(i, v); done = true
+    -------------------------------------------------------------
+    -- write out a binary chunk option
+    -------------------------------------------------------------
+    if config.REWRITE_FLAG then
+      if not SetProfile(config.REWRITE_PROFILE) then
+        error("could not load profile for writing binary chunk")
       end
-      -- returns parsed table, for further optional processing
-      local result = ChunkSpy(i, v); done = true
-      -------------------------------------------------------------
-      -- write out a binary chunk option
-      -------------------------------------------------------------
-      if config.REWRITE_FLAG then
-        if not SetProfile(config.REWRITE_PROFILE) then
-          error("could not load profile for writing binary chunk")
+      if files[i] then
+        -- force --source consistency with luac output
+        if string.sub(result.func.source, 1, 1) ~= "@" then
+          result.func.source = "@"..result.func.source
         end
-        if files[i] then
-          -- force --source consistency with luac output
-          if string.sub(result.func.source, 1, 1) ~= "@" then
-            result.func.source = "@"..result.func.source
-          end
-        end
-        WriteBinaryChunk(result, true)
+      end
+      WriteBinaryChunk(result, true)
       -------------------------------------------------------------
       -- run a binary chunk option
       -- * global environment is inherited if read, quite dangerous
@@ -2104,36 +2102,26 @@ function ChunkSpy_Sample()
     if not done then
       print(title) print("ChunkSpy: no binary chunks processed!")
     end
-  end
+end
 
   --[[-------------------------------------------------------------------
   -- ChunkSpy interactive mode; instant feedback!
   --]]-------------------------------------------------------------------
 
-  function ChunkSpy_Interact()
-    -- NOTE(crimeraaa, 2025-05-19): CWD must already be in LUA_PATH!
-    local completer = require "lreadline/completer".lua(_G)
-    local rl = require "readline"
+function ChunkSpy_Interact()
+  -- NOTE(crimeraaa, 2025-05-19): CWD must already be in LUA_PATH!
+  local completer = require "lreadline/completer".lua(_G)
+  local rl = require "readline"
 
-    config.DISPLAY_BRIEF = true
-    config.OUTPUT_FILE = nil
-    local prevline, done
-    print(title)
-    print(interactive_help)
-    while not done do
-      -- if prevline then
-      --   io.stdout:write(">>")
-      -- else
-      --   io.stdout:write(">")
-      -- end
-      -- io.stdout:flush()
-      -- local l = io.stdin:read("*l")
-
+  config.DISPLAY_BRIEF = true
+  config.OUTPUT_FILE = nil
+  local prevline, done
+  print(title)
+  print(interactive_help)
+  while not done do
     -- NOTE(crimeraaa, 2025-05-18): Use Lua bindings in `readline.so`
     local l = rl.readline(prevline and ">>" or ">")
-    if l then
-      rl.add_history(l)
-    end
+    if l then rl.add_history(l) end
 
     -------------------------------------------------------------
     if l == nil or (l == "exit" or l == "quit" and not prevline) then
@@ -2161,8 +2149,9 @@ function ChunkSpy_Sample()
       end
     -------------------------------------------------------------
     end--if l
-    rl.clear_history()
   end--while
+
+  rl.clear_history()
 end
 
 --[[-------------------------------------------------------------------

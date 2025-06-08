@@ -703,14 +703,25 @@ void luaV_execute (lua_State *L, int nexeccalls) {
       }
       case OP_RETURN: {
         int b = GETARG_B(i);
-        if (b != 0) L->top = ra+b-1;
-        if (L->openupval) luaF_close(L, base);
+        /* set top to point above last result; will restore it properly soon */
+        if (b != 0) {
+          /* b == 0 is reserved for variadic returns */
+          L->top = ra + (b - 1);
+        }
+
+        if (L->openupval) {
+          luaF_close(L, base);
+        }
         L->savedpc = pc;
         b = luaD_poscall(L, ra);
         if (--nexeccalls == 0)  /* was previous function running `here'? */
           return;  /* no: return */
         else {  /* yes: continue its execution */
-          if (b) L->top = L->ci->top;
+          /* concept check: what is the stack top for each function call in:
+            `f(g(x,y,z))`? */
+          if (b) {
+            L->top = L->ci->top;
+          }
           lua_assert(isLua(L->ci));
           lua_assert(GET_OPCODE(*((L->ci)->savedpc - 1)) == OP_CALL);
           goto reentry;

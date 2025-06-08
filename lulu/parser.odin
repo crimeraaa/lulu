@@ -26,7 +26,6 @@ Rule :: struct {
     prec:   Precedence,
 }
 
-
 /*
 **Links**
 -   https://www.lua.org/pil/3.5.html
@@ -47,6 +46,10 @@ Precedence :: enum {
     Primary,
 }
 
+Assign :: struct {
+    prev:    ^Assign,
+    variable: Expr,
+}
 
 /*
 **Analogous to**
@@ -135,11 +138,6 @@ parser_ident :: proc(p: ^Parser) -> ^OString {
     return ostring_new(p.vm, p.consumed.lexeme)
 }
 
-Assign :: struct {
-    prev:    ^Assign,
-    variable: Expr,
-}
-
 /*
 **Analogous to**
 -   `compiler.c:declaration()` and `compiler.c:statement()` in Crafting
@@ -162,8 +160,7 @@ declaration :: proc(p: ^Parser, c: ^Compiler) {
         if parser_match(p, .Left_Paren) {
             function_call(p , c, &last.variable)
             // No returns are used
-            ip := get_ip(c, &last.variable)
-            ip.c = 0
+            compiler_set_returns(c, &last.variable, 0)
             c.free_reg -= 1
         } else {
             assignment(p, c, last, 1)
@@ -226,7 +223,7 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
     iter: ^Assign
     if n_exprs == n_vars {
         // last expression can have variadic returns
-        compiler_set_1_return(c, &top)
+        compiler_set_one_return(c, &top)
         compiler_store_var(c, &last.variable, &top)
 
         // `last` is already properly assigned, so skip it
@@ -238,13 +235,13 @@ assignment :: proc(p: ^Parser, c: ^Compiler, last: ^Assign, n_vars: int) {
 
     // Assign from right-to-left, using each topmost register as the assigning
     // value and popping it if possible.
-    for target in assign_list(&iter) {
+    for target in assign_iterator(&iter) {
         e := expr_make(.Discharged, reg = cast(u16)c.free_reg - 1)
         compiler_store_var(c, &target.variable, &e)
     }
 }
 
-assign_list :: proc(iter: ^^Assign) -> (a: ^Assign, ok: bool) {
+assign_iterator :: proc(iter: ^^Assign) -> (a: ^Assign, ok: bool) {
     // Current iteration.
     a = iter^
 
@@ -342,9 +339,8 @@ adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
     if expr.type == .Call {
         // Include function object itself
         extra += 1
-        ip := get_ip(c, expr)
         // Stack slot of caller object will be overridden
-        ip.c = u16(extra)
+        compiler_set_returns(c, expr, extra)
         if extra > 1 {
             compiler_reg_reserve(c, extra - 1)
         }
@@ -570,6 +566,7 @@ function_body :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
     // Function to be called must be on the stack.
     compiler_expr_next_reg(c, call)
+    base := call.reg
 
     args: Expr
     n_args: int
@@ -581,18 +578,18 @@ function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
             return an unknown number of values.
         -   To accomodate that we would need to treat this function call as
             variadic.
-        -   Otherwise, we would end up assuming we only use 1 result.
+        -   We also need to tell the function call that will provide the
+            variadic results that it needs to return variadics.
          */
         if args.type == .Call {
-            // TODO
+            compiler_set_returns(c, &args, VARARG)
+            n_args = VARARG
+        } else {
+            // Push the last expression from `expr_list()`.
+            compiler_expr_next_reg(c, &args)
         }
-
-        // Push the last expression from `expr_list()`.
-        compiler_expr_next_reg(c, &args)
         parser_consume(p, .Right_Paren)
     }
-
-    base := call.reg
 
     // Assume 1 return by default.
     call_pc := compiler_code(c, .Call, a = base, b = u16(n_args), c = 1)

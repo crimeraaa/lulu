@@ -468,7 +468,9 @@ void luaK_setreturns (FuncState *fs, Expr *expr, int nresults) {
 void luaK_setoneret (FuncState *fs, Expr *expr) {
   Instruction *ip;
   if (expr->kind == Expr_Call) {  /* expression is an open function call? */
+    /* C uses 2 as its default when we first emitted `OP_CALL` */
     ip = getcode(fs, expr);
+    lua_assert(GETARG_C(*ip) == 2);
     expr_set_info(expr, Expr_Nonrelocable, GETARG_A(*ip));
   }
   else if (expr->kind == Expr_Vararg) {
