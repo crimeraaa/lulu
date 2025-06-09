@@ -250,12 +250,14 @@ vm_frame_slice :: proc(vm: ^VM) -> []Frame {
     return small_array.slice(&vm.frames)
 }
 
-vm_frame_push :: proc(vm: ^VM, fn: ^Function, window: []Value) -> ^Frame {
-    cf := small_array.get_ptr(&vm.frames, vm.frames.len)
-    vm.frames.len += 1
-    cf.function = fn
-    cf.saved_ip = nil // May have been reused
-    cf.window   = window
+vm_frame_push :: proc(vm: ^VM, fn: ^Function, window: []Value, n_ret: int) {
+    small_array.push(&vm.frames, Frame{
+        function  = fn,
+        window    = window,
+        n_results = n_ret,
+    })
+
+    cf := small_array.get_ptr(&vm.frames, vm.frames.len - 1)
     vm.current  = cf
     vm.view     = window
 
@@ -267,7 +269,6 @@ vm_frame_push :: proc(vm: ^VM, fn: ^Function, window: []Value) -> ^Frame {
             slot = value_make()
         }
     }
-    return cf
 }
 
 vm_frame_reset :: proc(vm: ^VM) {
@@ -276,9 +277,9 @@ vm_frame_reset :: proc(vm: ^VM) {
 }
 
 vm_frame_pop :: proc(vm: ^VM) -> (frame: ^Frame) {
-    vm.frames.len -= 1
+    caller := small_array.pop_back(&vm.frames)
     // Have a previous frame to return to?
-    if vm.frames.len > 0 {
+    if small_array.len(vm.frames) > 0 {
         frame = small_array.get_ptr(&vm.frames, vm.frames.len - 1)
         vm.current = frame
         vm.view    = frame.window
@@ -596,6 +597,8 @@ vm_execute :: proc(vm: ^VM, n_calls := 1) {
                 frame, window, chunk, ip = get_caller(vm)
                 n_calls += 1
             case .Odin:
+                // May have been reallocated!
+                window = vm.view
                 break
             }
         case .Return:
@@ -654,12 +657,16 @@ vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
     is_vararg := n_arg == VARARG
     // Can call directly
     if !fn.is_lua {
-        top   := vm_absindex(vm, vm.view, from = .Top) if is_vararg else base + n_arg
-        frame := vm_frame_push(vm, fn, vm.stack_all[base:top])
-        frame.n_results = n_ret
+        vm_check_stack(vm, STACK_MIN)
+
+        top := vm_absindex(vm, vm.view, from = .Top) if is_vararg else base + n_arg
+        vm_frame_push(vm, fn, vm.stack_all[base:top], n_ret)
 
         // Assume that it's the caller's problem to ensure valid stack size :)
         n_ret := fn.odin(vm, top - base)
+
+        // May have been reallocated within the native function!
+        ra    := &vm.stack_all[fn_index]
         ret1  := &vm.view[get_top(vm) - n_ret] if n_ret > 0 else ra
         vm_return(vm, ret1, n_ret)
         when DEBUG_TRACE_EXEC {
@@ -683,8 +690,7 @@ vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
 
     // WARNING(2025-06-06): May invalidate R(A)!
     vm_check_stack(vm, fn.chunk.stack_used)
-    frame := vm_frame_push(vm, fn, vm.stack_all[base:top])
-    frame.n_results = n_ret
+    vm_frame_push(vm, fn, vm.stack_all[base:top], n_ret)
     return .Lua
 }
 
