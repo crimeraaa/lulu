@@ -90,6 +90,22 @@ get_top :: proc(vm: ^VM) -> (index: int) {
     return len(vm.view)
 }
 
+set_top :: proc(vm: ^VM, index: int) {
+    if index >= 0 {
+       base, top := vm_absindex(vm, vm.view)
+       new_top := top + index
+       // Zero-initialize the new region.
+       for &reg in vm.stack_all[top:new_top] {
+           reg = value_make()
+       }
+       vm.view = vm.stack_all[base:new_top]
+    } else {
+        // e.g. if `index == -1`, nothing changes as we still want the top to
+        // be the last slot.
+        pop(vm, -index + 1)
+    }
+}
+
 pop :: proc(vm: ^VM, n := 1) {
     // This is generally safe, because we are *shrinking* the view.
     vm.view = vm.view[:len(vm.view) - n]
@@ -205,9 +221,7 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
     // Could do something unsafe like:
     //      `vm.view = slice.from_ptr(raw_data(vm.view), len(vm.view) + 1)`
     // But then we don't have bounds checking on the full stack.
-    base, top := vm_absindex(vm, vm.view)
-    next := vm.stack_all[base:top + 1]
-    vm.view = next
+    vm_resize_view(vm, &vm.view, 1)
     if ptr, ok := poke_top(vm, -1); ok {
         ptr^ = v
     }
@@ -368,11 +382,19 @@ set_global :: proc(vm: ^VM, key: string) {
 
 
 call :: proc(vm: ^VM, n_arg, n_ret: int) {
+    base, top := vm_absindex(vm, vm.view)
+
     // -narg is the first argument, so -(narg + 1) is the function itself.
-    v, ok := poke_top(vm, -(n_arg + 1))
-    if vm_call(vm, v, n_arg, n_ret) == .Lua {
+    callable, ok := poke_top(vm, -(n_arg + 1))
+    fn_index := ptr_index(callable, vm.stack_all)
+
+    // Account for any changes in the stack pushed by native functions.
+    vm.current.window = vm.stack_all[base:top]
+    if vm_call(vm, callable, n_arg, n_ret) == .Lua {
         vm_execute(vm)
     }
+    // Point exactly up to the last return value.
+    vm.view = vm.stack_all[base:fn_index + n_ret]
 }
 
 /*

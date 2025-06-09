@@ -2,9 +2,7 @@ package lulu
 
 import "core:fmt"
 import "core:c/libc"
-
-@(private="file")
-PRINT_USE_TOSTRING :: false
+import "core:time"
 
 open_base :: proc(vm: ^VM) {
     clock :: proc(vm: ^VM, n_arg: int) -> (n_ret: int) {
@@ -13,31 +11,25 @@ open_base :: proc(vm: ^VM) {
         return 1
     }
 
+    date :: proc(vm: ^VM, n_arg: int) -> (n_ret: int) {
+        year, month, day := time.date(time.now())
+        push_number(vm, Number(year))
+        push_fstring(vm, "%s", month)
+        push_number(vm, Number(day))
+        return 3
+    }
+
     print :: proc(vm: ^VM, n_arg: int) -> (n_ret: int) {
-        when PRINT_USE_TOSTRING {
-            get_global(vm, "tostring") // ..., function: tostring
-        }
+        get_global(vm, "tostring") // ..., tostring
         for i in 1..=n_arg {
             if i > 1 {
                 fmt.print('\t')
             }
-            when PRINT_USE_TOSTRING {
-                push_value(vm, -1) // ..., tostring, tostring
-                push_value(vm, i)  // ..., tostring, tostring, arg[i]
-                call(vm, 1, 1)     // ..., tostring, tostring(arg[i])
-                fmt.print(to_string(vm, -1))
-                pop(vm, 1)
-            } else {
-                tname := type_name(vm, i)
-                switch type(vm, i) {
-                case .None, .Nil: fmt.print(tname)
-                case .Boolean:    fmt.print(to_boolean(vm, i))
-                case .Number:     fmt.print(to_number(vm, i))
-                case .String:     fmt.print(to_string(vm, i))
-                case .Table, .Function:
-                    fmt.printf("%s: %p", tname, to_pointer(vm, i))
-                }
-            }
+            push_value(vm, -1)
+            push_value(vm, i)  // ..., tostring, tostring, arg[i]
+            call(vm, 1, 1)     // ..., tostring, tostring(arg[i])
+            fmt.print(to_string(vm, -1))
+            pop(vm, 1)
         }
         fmt.println()
         return 0
@@ -46,11 +38,10 @@ open_base :: proc(vm: ^VM) {
     tostring :: proc(vm: ^VM, n_arg: int) -> (n_ret: int) {
         tname := type_name(vm, 1)
         switch type(vm, 1) {
-        case .None:    push_string(vm, tname)
-        case .Nil:     push_string(vm, tname)
-        case .Boolean: push_string(vm, "true" if to_boolean(vm, 1) else "false")
-        case .Number:  push_fstring(vm, NUMBER_FMT, to_number(vm, 1))
-        case .String:  push_string(vm, to_string(vm, 1))
+        case .None, .Nil: push_string(vm, tname)
+        case .Boolean:    push_string(vm, "true" if to_boolean(vm, 1) else "false")
+        case .Number:     push_fstring(vm, NUMBER_FMT, to_number(vm, 1))
+        case .String:     break // Already a string, nothing to do
         case .Table, .Function:
             push_fstring(vm, "%s: %p", tname, to_pointer(vm, 1))
         }
@@ -65,10 +56,11 @@ open_base :: proc(vm: ^VM) {
 
     @(static, rodata)
     functions := [?]Library_Function{
-        {name = "print",    fn = print},
-        {name = "type",     fn = base_type},
         {name = "clock",    fn = clock},
+        {name = "date",     fn = date},
+        {name = "print",    fn = print},
         {name = "tostring", fn = tostring},
+        {name = "type",     fn = base_type},
     }
 
     for entry in functions {

@@ -122,7 +122,7 @@ View_Mode :: enum {Base, Top}
 
 ```odin
 vm.view = vm.stack_all[2:4]
-vm_view_absindex(vm, vm.view) // view indexes 0 and 2 are stack indexes 2 and 4
+vm_absindex(vm, vm.view) // view indexes 0 and 2 are stack indexes 2 and 4
 ```
  */
 vm_absindex :: proc {
@@ -131,13 +131,18 @@ vm_absindex :: proc {
 }
 
 vm_absindex1 :: proc(vm: ^VM, view: []Value, $from: View_Mode) -> (i: int) {
-    return ptr_index(vm_view_ptr(vm, view, from), vm.stack_all)
+    return ptr_index(vm_get_ptr(vm, view, from), vm.stack_all)
 }
 
 vm_absindex2 :: proc(vm: ^VM, view: []Value) -> (base, top: int) {
     base = vm_absindex1(vm, view, .Base)
     top  = vm_absindex1(vm, view, .Top)
     return base, top
+}
+
+vm_resize_view :: proc(vm: ^VM, view: ^[]Value, n: int) {
+    base, top := vm_absindex(vm, vm.view)
+    view^ = vm.stack_all[base:top + n]
 }
 
 
@@ -151,7 +156,7 @@ vm_absindex2 :: proc(vm: ^VM, view: []Value) -> (base, top: int) {
 -   In that case it will point to 1 past the last valid element in the main
     stack.
  */
-vm_view_ptr :: proc(vm: ^VM, view: []Value, $from: View_Mode) -> [^]Value {
+vm_get_ptr :: proc(vm: ^VM, view: []Value, $from: View_Mode) -> [^]Value {
     when from == .Base {
         return raw_data(view)
     } else when from == .Top {
@@ -198,10 +203,6 @@ vm_destroy :: proc(vm: ^VM) {
     delete(vm.stack_all, vm.allocator)
     intern_destroy(vm, &vm.interned)
     table_destroy(vm, &vm.globals)
-
-    when DEBUG_TRACE_EXEC {
-        // objects_print_all(vm)
-    }
     object_free_all(vm)
     strings.builder_destroy(&vm.builder)
     vm.view     = {}
@@ -367,8 +368,8 @@ vm_execute :: proc(vm: ^VM, n_calls := 1) {
 
     // Rough analog to C macro
     arith_op :: proc(vm: ^VM, ip: [^]Instruction, $op: Number_Arith_Proc, ra, left, right: ^Value) {
-        vm_protect(vm, ip)
         if !value_is_number(left^) || !value_is_number(right^) {
+            vm_protect(vm, ip)
             arith_error(vm, left, right)
         }
         ra^ = value_make(op(left.number, right.number))
@@ -376,8 +377,8 @@ vm_execute :: proc(vm: ^VM, n_calls := 1) {
 
     // Rough analog to C macro
     compare_op :: proc(vm: ^VM, ip: ^[^]Instruction, $op: Number_Compare_Proc, cond: bool, left, right: ^Value) {
-        vm_protect(vm, ip^)
         if !value_is_number(left^) || !value_is_number(right^) {
+            vm_protect(vm, ip^)
             compare_error(vm, left, right)
         }
         if op(left.number, right.number) != cond {
@@ -586,12 +587,12 @@ vm_execute :: proc(vm: ^VM, n_calls := 1) {
                 incr_ip(&ip, body)
             }
         case .Call:
-            when DEBUG_TRACE_EXEC {
-                fmt.printfln("\n=== BEGIN CALL: %v ===\n", ra^)
-            }
             vm_protect(vm, ip)
             switch vm_call(vm, ra, n_arg = int(read.b), n_ret = int(read.c)) {
             case .Lua:
+                when DEBUG_TRACE_EXEC {
+                    fmt.printfln("\n=== BEGIN CALL: %v ===\n", ra^)
+                }
                 // Adjust local state
                 frame.saved_ip = ip
                 frame, window, chunk, ip = get_caller(vm)
@@ -609,12 +610,9 @@ vm_execute :: proc(vm: ^VM, n_calls := 1) {
             if read.c == 0 {
                 n_ret = int(read.b)
             } else {
-                // Resolve the variable number of expressions into a concrete
-                // one
-                unreachable("variadic returns not yet supported")
-                // No idea if this actually works
-                // _, top := vm_view_absindex(vm, vm.view)
-                // n_ret = top - ptr_index(ra, vm.stack_all)
+                // Resolve the variable number of expressions
+                top := vm_absindex(vm, vm.view, from = .Top)
+                n_ret = top - ptr_index(ra, vm.stack_all)
             }
             vm_protect(vm, ip)
             switch vm_return(vm, ra, n_ret) {
@@ -669,9 +667,6 @@ vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
         ra    := &vm.stack_all[fn_index]
         ret1  := &vm.view[get_top(vm) - n_ret] if n_ret > 0 else ra
         vm_return(vm, ret1, n_ret)
-        when DEBUG_TRACE_EXEC {
-            fmt.println("\n=== END CALL ===\n")
-        }
         return .Odin
     }
 
@@ -694,7 +689,6 @@ vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
     return .Lua
 }
 
-
 /*
 **Assumptions**
 -   This is only results in `Call_Type.Lua` except in the case of returning
@@ -711,9 +705,8 @@ vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
     frame     := vm.current
     base, top := vm_absindex(vm, vm.view)
     is_vararg := frame.n_results == VARARG
-    start     := ptr_index(ra, vm.stack_all)
-    stop      := top if is_vararg else start + n_ret
-    results   := vm.stack_all[start:stop]
+    ra_index  := ptr_index(ra, vm.stack_all)
+    results   := vm.stack_all[ra_index:top if is_vararg else ra_index + n_ret]
 
     // Overwrite stack slot of function object
     fn_index  := base - 1
@@ -725,8 +718,7 @@ vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
 
     // Less expressions than expected?
     if extra := frame.n_results - len(results) if !is_vararg else -1; extra > 0 {
-        base, top := vm_absindex(vm, final)
-        final = vm.stack_all[base:top + extra]
+        vm_resize_view(vm, &final, extra)
         // Initialize the remaining assignments to `nil`.
         for &slot in final[len(results):] {
             slot = value_make()

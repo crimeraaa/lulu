@@ -172,7 +172,7 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
     case .Leq: compare(info, "<=")
     case .Not: unary(info,  "not ")
     case .Concat:
-        print_reg(info, ip.a, " := concat(R(%i..=%i))", ip.b, ip.c)
+        print_reg(info, ip.a, " := concat(R(%i:%i))", ip.b, ip.c + 1)
     case .Len:
         unary(info, "#")
     case .Test, .Test_Set:
@@ -211,9 +211,9 @@ debug_dump_instruction :: proc(c: ^Chunk, ip: Instruction, index, left_pad: int)
         reg := ip.a
         // Have a vararg?
         if ip.c == 0 {
-            fmt.printf("return R(%i..<%i)", reg, reg + ip.b)
+            fmt.printf("return R(%i:%i)", reg, reg + ip.b)
         } else {
-            fmt.printf("return R(%i..=%i)", reg, c.stack_used);
+            fmt.printf("return R(%i:-1)", reg);
         }
     case:
         unreachable("Unknown opcode %v", ip.op)

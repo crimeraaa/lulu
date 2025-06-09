@@ -335,7 +335,7 @@ adjust_assign :: proc(c: ^Compiler, n_vars, n_exprs: int, expr: ^Expr) {
     extra := n_vars - n_exprs
 
     // `lcode.c:luaK_setreturns(FuncState *fs, expdesc *e, int nresults)`
-    if expr.type == .Call {
+    if expr_is_multiret(expr^) {
         // Include function object itself
         extra += 1
         // Stack slot of caller object will be overridden
@@ -583,8 +583,8 @@ function_call :: proc(p: ^Parser, c: ^Compiler, call: ^Expr) {
         -   We also need to tell the function call that will provide the
             variadic results that it needs to return variadics.
          */
-        if args.type == .Call {
-            compiler_set_returns(c, &args, VARARG)
+        if expr_is_multiret(args) {
+            compiler_set_vararg_return(c, &args)
             n_args = VARARG
         } else {
             // Push the last expression from `expr_list()`.
@@ -677,8 +677,13 @@ return_stmt :: proc(p: ^Parser, c: ^Compiler) {
     if !still_in_block(p) && !parser_check(p, .Semicolon) {
         base := u16(c.free_reg)
         top, count := expr_list(p, c)
-        compiler_expr_next_reg(c, &top)
-        compiler_code_return(c, reg = base, count = u16(count))
+        is_vararg := expr_is_multiret(top)
+        if is_vararg {
+            compiler_set_vararg_return(c, &top)
+        } else {
+            compiler_expr_next_reg(c, &top)
+        }
+        compiler_code_return(c, reg = base, count = u16(count), vararg = is_vararg)
     } else {
         // Don't advance; if in main block we'll check for EOF after
         // Can't assume we can safely index `c.free_reg`.
@@ -958,7 +963,7 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
     -   `lparser.c:ConsControl` in Lua 5.1.5.
      */
     Constructor :: struct {
-        table:           Expr, // table descriptor
+        table, value:    Expr, // table descriptor and last value read
         n_array, n_hash: int,
         to_store:        int, // number of array elements pending to be stored
     }
@@ -971,12 +976,11 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
      */
     array :: proc(p: ^Parser, c: ^Compiler, ctor: ^Constructor) {
         defer {
-            ctor.n_array += 1
-            ctor.to_store    += 1
+            ctor.n_array  += 1
+            ctor.to_store += 1
         }
-
-        value := expression(p, c)
-        compiler_expr_next_reg(c, &value)
+        ctor.value = expression(p, c)
+        compiler_expr_next_reg(c, &ctor.value)
     }
 
     /*
@@ -991,10 +995,10 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
         parser_consume(p, .Equals)
         rkb := compiler_expr_rk(c, &key)
 
-        value := expression(p, c)
-        rkc   := compiler_expr_rk(c, &value)
+        ctor.value = expression(p, c)
+        rkc := compiler_expr_rk(c, &ctor.value)
         compiler_code(c, .Set_Table, a = ctor.table.reg, b = rkb, c = rkc)
-        compiler_expr_pop(c, value)
+        compiler_expr_pop(c, ctor.value)
         compiler_expr_pop(c, key)
     }
 
@@ -1007,12 +1011,12 @@ constructor :: proc(p: ^Parser, c: ^Compiler) -> Expr {
 
         parser_consume(p, .Equals)
 
-        value := expression(p, c)
-        rkc := compiler_expr_rk(c, &value)
+        ctor.value = expression(p, c)
+        rkc := compiler_expr_rk(c, &ctor.value)
 
         compiler_code(c, .Set_Table, a = ctor.table.reg, b = rkb, c = rkc)
         // Reuse these registers
-        compiler_expr_pop(c, value)
+        compiler_expr_pop(c, ctor.value)
         compiler_expr_pop(c, key)
     }
 

@@ -159,6 +159,10 @@ expr_is_number :: proc(e: Expr) -> bool {
     return e.type == .Number && e.patch_true == NO_JUMP && e.patch_false == NO_JUMP
 }
 
+expr_is_multiret :: proc(e: Expr) -> bool {
+    return e.type == .Call
+}
+
 expr_has_jumps :: proc(e: Expr) -> bool {
     return e.patch_true != e.patch_false
 }

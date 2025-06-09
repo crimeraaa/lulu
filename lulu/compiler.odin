@@ -474,8 +474,8 @@ compiler_code_nil :: proc(c: ^Compiler, reg, count: u16) {
 -   Like in Lua, all functions call this even if they have explicit returns.
 -   We do not currently handle variadic (vararg) returns.
  */
-compiler_code_return :: proc(c: ^Compiler, reg, count: u16) {
-    compiler_code_ABC(c, .Return, reg, count, 0)
+compiler_code_return :: proc(c: ^Compiler, reg, count: u16, vararg := false) {
+    compiler_code_ABC(c, .Return, reg, count, u16(vararg))
 }
 
 compiler_code :: proc {
@@ -958,6 +958,10 @@ compiler_set_returns :: proc(c: ^Compiler, call: ^Expr, n: int) {
         ip := get_ip(c, call)
         ip.c = u16(n)
     }
+}
+
+compiler_set_vararg_return :: proc(c: ^Compiler, call: ^Expr) {
+    compiler_set_returns(c, call, VARARG)
 }
 
 ///=== }}} =====================================================================
