@@ -221,7 +221,7 @@ push_rawvalue :: proc(vm: ^VM, v: Value) {
     // Could do something unsafe like:
     //      `vm.view = slice.from_ptr(raw_data(vm.view), len(vm.view) + 1)`
     // But then we don't have bounds checking on the full stack.
-    vm_resize_view(vm, &vm.view, 1)
+    vm_extend_view_relative(vm, &vm.view, 1)
     if ptr, ok := poke_top(vm, -1); ok {
         ptr^ = v
     }
@@ -252,8 +252,17 @@ type_name_from_type :: proc(vm: ^VM, t: Type) -> string {
     return value_type_names[t]
 }
 
+is_none :: proc(vm: ^VM, i: int) -> bool {
+    return value_is_none(peek(vm, i))
+}
+
 is_nil :: proc(vm: ^VM, i: int) -> bool {
     return value_is_nil(peek(vm, i))
+}
+
+is_none_or_nil :: proc(vm: ^VM, i: int) -> bool {
+    v := peek(vm, i)
+    return value_is_none(v) || value_is_nil(v)
 }
 
 is_boolean :: proc(vm: ^VM, i: int) -> bool {
@@ -381,20 +390,40 @@ set_global :: proc(vm: ^VM, key: string) {
 ///=== VM MISCALLENOUS API ================================================= {{{
 
 
+// Unconditionally throws; makes no assumptions if any values were pushed.
+error :: proc(vm: ^VM) -> ! {
+    vm_throw(vm, .Runtime)
+}
+
+// Unconditionally throws and leaves an error message at the top of the stack.
+errorf :: proc(vm: ^VM, format: string, args: ..any) -> ! {
+    vm_runtime_error(vm, format, ..args)
+}
+
 call :: proc(vm: ^VM, n_arg, n_ret: int) {
-    base, top := vm_absindex(vm, vm.view)
+    assert(n_arg != VARARG && n_arg >= 0)
+    assert(n_ret != VARARG && n_ret >= 0)
 
     // -narg is the first argument, so -(narg + 1) is the function itself.
     callable, ok := poke_top(vm, -(n_arg + 1))
     fn_index := ptr_index(callable, vm.stack_all)
 
     // Account for any changes in the stack pushed by native functions.
-    vm.current.window = vm.stack_all[base:top]
+    if vm.current != nil {
+        assert(raw_data(vm.view) == raw_data(vm.current.window))
+        top := vm_absindex(vm, vm.view, from = .Top)
+        vm_extend_view_absolute(vm, &vm.current.window, top)
+    }
     if vm_call(vm, callable, n_arg, n_ret) == .Lua {
         vm_execute(vm)
     }
-    // Point exactly up to the last return value.
-    vm.view = vm.stack_all[base:fn_index + n_ret]
+
+    /*
+    **Notes** (2025-06-10):
+    -   Points exactly up to the last return value.
+    -   Concept check `function f() return "hi" end; print(f())`
+     */
+    vm_extend_view_absolute(vm, &vm.view, fn_index + n_ret)
 }
 
 /*

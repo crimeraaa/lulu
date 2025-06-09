@@ -48,21 +48,24 @@ vm_get_builder :: proc(vm: ^VM) -> (b: ^strings.Builder) {
 }
 
 vm_syntax_error :: proc(vm: ^VM, source: string, line: int, format: string, args: ..any) -> ! {
-    push_fstring(vm, "%s:%i: ", source, line)
-    push_fstring(vm, format, ..args)
-    concat(vm, 2)
+    msg := push_fstring(vm, format, ..args)
+    push_fstring(vm, "%s:%i: %s", source, line, msg)
     vm_throw(vm, .Syntax)
 }
 
 vm_runtime_error :: proc(vm: ^VM, format: string, args: ..any) -> ! {
-    chunk  := &vm.current.function.chunk
-    source := chunk.source
-    pc     := ptr_index(vm.saved_ip, chunk.code) - 1
-    line   := chunk.line[pc]
+    get_info :: proc(vm: ^VM, msg: string) {
+        fn := vm.current.function
+        if fn.is_lua {
+            chunk := &fn.chunk
+            pc    := ptr_index(vm.saved_ip, chunk.code) - 1
+            push_fstring(vm, "%s:%i: %s", chunk.source, chunk.line[pc], msg)
+        }
+        // TODO(2025-06-09): Implement `lauxlib.c:luaL_argerror()` analog
+    }
 
-    push_fstring(vm, "%s:%i: ", source, line)
-    push_fstring(vm, format, ..args)
-    concat(vm, 2)
+    msg := push_fstring(vm, format, ..args)
+    get_info(vm, msg)
     vm_throw(vm, .Runtime)
 }
 
@@ -89,9 +92,6 @@ vm_init :: proc(vm: ^VM, allocator: mem.Allocator) -> (ok: bool) {
         // stack, it may be garbage collected.
         push_string(vm, MEMORY_ERROR_STRING)
         pop(vm, 1)
-
-        push_rawvalue(vm, value_make(&vm.globals))
-        set_global(vm, "_G")
     }
 
     // Bad stuff happened; free any and all allocations we *did* make
@@ -140,9 +140,16 @@ vm_absindex2 :: proc(vm: ^VM, view: []Value) -> (base, top: int) {
     return base, top
 }
 
-vm_resize_view :: proc(vm: ^VM, view: ^[]Value, n: int) {
-    base, top := vm_absindex(vm, vm.view)
-    view^ = vm.stack_all[base:top + n]
+vm_extend_view_absolute :: proc(vm: ^VM, view: ^[]Value, index: int) {
+    assert(index >= 0)
+    base := vm_absindex(vm, view^, from = .Base)
+    view^ = vm.stack_all[base:index]
+}
+
+vm_extend_view_relative :: proc(vm: ^VM, view: ^[]Value, count: int) {
+    assert(count > 0)
+    base, top := vm_absindex(vm, view^)
+    view^ = vm.stack_all[base:top + count]
 }
 
 
@@ -606,10 +613,8 @@ vm_execute :: proc(vm: ^VM, n_calls := 1) {
             when DEBUG_TRACE_EXEC {
                 fmt.println("\n=== END CALL ===\n")
             }
-            n_ret: int
-            if read.c == 0 {
-                n_ret = int(read.b)
-            } else {
+            n_ret := int(read.b)
+            if bool(read.c) {
                 // Resolve the variable number of expressions
                 top := vm_absindex(vm, vm.view, from = .Top)
                 n_ret = top - ptr_index(ra, vm.stack_all)
@@ -671,20 +676,15 @@ vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
     }
 
     top := base + fn.chunk.stack_used
-    n_arg := n_arg
-    if is_vararg {
-        n_arg = top - base
-    }
-
     // Some parameters were not provided so they need to be initialized to nil?
-    if extra := fn.arity - n_arg; extra > 0 {
+    if extra := fn.arity - (top - base if is_vararg else n_arg); extra > 0 {
         top += extra
     }
     // Otherwise, excess parameters are implicitly overwritten when we
     // initialize the callstack.
 
     // WARNING(2025-06-06): May invalidate R(A)!
-    vm_check_stack(vm, fn.chunk.stack_used)
+    vm_check_stack(vm, top - base)
     vm_frame_push(vm, fn, vm.stack_all[base:top], n_ret)
     return .Lua
 }
@@ -693,6 +693,7 @@ vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
 **Assumptions**
 -   This is only results in `Call_Type.Lua` except in the case of returning
     from the main function.
+-   `n_ret` is a concrete return count; it cannot be `VARARG`.
 
 **Notes** (2025-06-09)
 -   Returns the call type of the *caller* for the current frame.
@@ -702,25 +703,28 @@ vm_call :: proc(vm: ^VM, ra: ^Value, n_arg, n_ret: int) -> Call_Type {
     nothing left to do.
  */
 vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
+    // `n_ret` may be vararg in `vm_call` but NOT here.
+    assert(n_ret != VARARG)
+
     frame     := vm.current
     base, top := vm_absindex(vm, vm.view)
     is_vararg := frame.n_results == VARARG
     ra_index  := ptr_index(ra, vm.stack_all)
-    results   := vm.stack_all[ra_index:top if is_vararg else ra_index + n_ret]
+    results   := vm.stack_all[ra_index:ra_index + n_ret]
 
     // Overwrite stack slot of function object
-    fn_index  := base - 1
-    final     := vm.stack_all[fn_index:fn_index + len(results)]
+    base -= 1
+    final := vm.stack_all[base:base + n_ret]
 
     for &slot, reg in final {
         slot = results[reg]
     }
 
     // Less expressions than expected?
-    if extra := frame.n_results - len(results) if !is_vararg else -1; extra > 0 {
-        vm_resize_view(vm, &final, extra)
+    if extra := frame.n_results - n_ret if !is_vararg else -1; extra > 0 {
+        vm_extend_view_relative(vm, &final, extra)
         // Initialize the remaining assignments to `nil`.
-        for &slot in final[len(results):] {
+        for &slot in final[n_ret:] {
             slot = value_make()
         }
     }
@@ -736,9 +740,8 @@ vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
         pushing of locals/temporaries beyond the varargs' registers.
      */
     if is_vararg {
-        base := vm_absindex(vm, vm.view, from = .Base)
-        top  := vm_absindex(vm, final, from = .Top)
-        vm.view = vm.stack_all[base:top]
+        top := vm_absindex(vm, final, from = .Top)
+        vm_extend_view_absolute(vm, &vm.view, top)
     }
 
     // Return from main function; no previous stack frame to restore.

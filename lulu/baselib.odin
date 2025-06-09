@@ -5,13 +5,13 @@ import "core:c/libc"
 import "core:time"
 
 open_base :: proc(vm: ^VM) {
-    clock :: proc(vm: ^VM, n_arg: int) -> (n_ret: int) {
+    clock :: proc(vm: ^VM, _: int) -> (n_ret: int) {
         now := f64(libc.clock()) / libc.CLOCKS_PER_SEC
         push_number(vm, now)
         return 1
     }
 
-    date :: proc(vm: ^VM, n_arg: int) -> (n_ret: int) {
+    date :: proc(vm: ^VM, _: int) -> (n_ret: int) {
         year, month, day := time.date(time.now())
         push_number(vm, Number(year))
         push_fstring(vm, "%s", month)
@@ -36,6 +36,12 @@ open_base :: proc(vm: ^VM) {
     }
 
     tostring :: proc(vm: ^VM, n_arg: int) -> (n_ret: int) {
+        // TODO(2025-06-09): Mimic `lauxlib.c:luaL_argerror()`
+        // Need to implement `lua_Debug` analog first though!
+        if n_arg == 0 {
+            errorf(vm, "tostring: 1 argument expected")
+        }
+
         tname := type_name(vm, 1)
         switch type(vm, 1) {
         case .None, .Nil: push_string(vm, tname)
@@ -49,6 +55,9 @@ open_base :: proc(vm: ^VM) {
     }
 
     base_type :: proc(vm: ^VM, n_arg: int) -> (n_ret: int) {
+        if n_arg == 0 {
+            errorf(vm, "type: 1 argument expected")
+        }
         tname := type_name(vm, 1)
         push_string(vm, tname)
         return 1
@@ -62,6 +71,9 @@ open_base :: proc(vm: ^VM) {
         {name = "tostring", fn = tostring},
         {name = "type",     fn = base_type},
     }
+
+    push_rawvalue(vm, value_make(&vm.globals))
+    set_global(vm, "_G")
 
     for entry in functions {
         push_function(vm, entry.fn)

@@ -73,6 +73,10 @@ value_make_function :: #force_inline proc "contextless" (f: ^Function) -> Value 
     return Value{type = .Function, object = cast(^Object)f}
 }
 
+value_is_none :: #force_inline proc "contextless" (v: Value) -> bool {
+    return v.type == .None
+}
+
 value_is_nil :: #force_inline proc "contextless" (v: Value) -> bool {
     return v.type == .Nil
 }
