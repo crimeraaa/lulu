@@ -4,23 +4,26 @@ version: '3'
 
 vars:
   MODE: '{{default "debug"}}'
-  CXX: clang++
-  CXX_FLAGS: >-
-    -std=c++17
+  CC: clang
+  CC_FLAGS: >-
+    -std=c11
     -Wall
     -Wextra
     -Wconversion
+    -DLULU_BUILD
 
   DEBUG_FLAGS: >-
     -O0
     -g
     -fsanitize=address
+
   RELEASE_FLAGS: >-
     -Werror
     -os
 
   LULU_OUT: bin/lulu
   LULU_SRC: src
+  LULU_SRC_EXT: c
 
   LUA_OUT: bin/lua
   LUA_SRC: lua/src
@@ -32,14 +35,16 @@ tasks:
     vars:
       FLAGS: >-
         {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
-        {{.CXX_FLAGS}}
-      SOURCES: [""]
+        {{.CC_FLAGS}}
+      # https://taskfile.dev/reference/schema/#variable
+      SOURCES:
+        sh: ls -x {{.LULU_SRC}}/*.{{.LULU_SRC_EXT}}
     requires:
-      vars: [MODE, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
-      - '{{.CXX}} {{.FLAGS}} -o {{.LULU_OUT}} {{.SOURCES}}'
+      vars: [MODE, CC_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+    cmds:
+      - '{{.CC}} {{.FLAGS}} -o {{.LULU_OUT}} {{.SOURCES}}'
     sources:
-      - '{{.LULU_SRC}}/*.[ch]pp'
-      - '{{.LULU_SRC}}/*.h'
+      - '{{.LULU_SRC}}/*'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:
