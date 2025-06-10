@@ -4,27 +4,23 @@ version: '3'
 
 vars:
   MODE: '{{default "debug"}}'
-  ODIN: odin
+  CXX: clang++
+  CXX_FLAGS: >-
+    -std=c++17
+    -Wall
+    -Wextra
+    -Wconversion
 
   DEBUG_FLAGS: >-
-    -debug
-    -sanitize:address
+    -O0
+    -g
+    -fsanitize=address
   RELEASE_FLAGS: >-
-    -vet
-    -o:size
+    -Werror
+    -os
 
-  LULU_MAIN_OUT: bin/lulu
-  LULU_TEST_OUT: bin/lulu.bin
-  LULU_SRC: lulu
-
-  # I am aware this is incredibly ugly
-  LULU_GLOB: '{{ "{.," }}{{.LULU_SRC}}{{ "}" }}/*.odin'
-
-  # Common flags
-  ODIN_FLAGS: >-
-    -define:LULU_USE_CONSTANT_FOLDING=true
-    -collection:lulu={{.LULU_SRC}}/
-    -collection:readline=readline/
+  LULU_OUT: bin/lulu
+  LULU_SRC: src
 
   LUA_OUT: bin/lua
   LUA_SRC: lua/src
@@ -36,38 +32,22 @@ tasks:
     vars:
       FLAGS: >-
         {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
-        {{.ODIN_FLAGS}}
+        {{.CXX_FLAGS}}
+      SOURCES: [""]
     requires:
-      vars: [MODE, ODIN_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
-    cmds:
-      - '{{.ODIN}} build . {{.FLAGS}} -define:LULU_USE_READLINE=true -out:{{.LULU_MAIN_OUT}}'
+      vars: [MODE, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+      - '{{.CXX}} {{.FLAGS}} -o {{.LULU_OUT}} {{.SOURCES}}'
     sources:
-      - 'lulu.odin'
-      - 'baselib.odin'
-      - 'input.odin'
-      - '{{.LULU_SRC}}/*.odin'
+      - '{{.LULU_SRC}}/*.[ch]pp'
+      - '{{.LULU_SRC}}/*.h'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:
     desc: Build the Lulu executable if needed, then run it.
     cmds:
       - task: build
-      - '{{.LULU_MAIN_OUT}} {{.CLI_ARGS}}'
+      - '{{.LULU_OUT}} {{.CLI_ARGS}}'
     interactive: true
-
-  test:
-    desc: Build the Lulu executable if needed and run tests on it.
-    cmds:
-      - >-
-        {{.ODIN}} test . {{.ODIN_FLAGS}}
-        -define:LULU_USE_READLINE=false
-        -define:LULU_DEBUG_PRINT_CODE=false
-        -define:LULU_DEBUG_TRACE_EXEC=false
-        -out:{{.LULU_TEST_OUT}}
-      # - '{{.LULU_TEST_OUT}} {{.CLI_ARGS}}'
-    sources:
-      - test.odin
-      - '{{.LULU_SRC}}/*.odin'
 
   build-lua:
     desc: Build the local Lua executable if needed.
