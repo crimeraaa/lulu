@@ -63,21 +63,11 @@ main :: proc() {
             return
         }
 
-        fmt.printf("returned %i values: ", lulu.get_top(vm))
-        for i in 1..=lulu.get_top(vm) {
-            if i != 1 {
-                fmt.print(", ")
-            }
-            switch lulu.type(vm, i) {
-            case .None:     fmt.print("no value") // Impossible
-            case .Nil:      fmt.print("nil")
-            case .Boolean:  fmt.print(lulu.to_boolean(vm, i))
-            case .Number:   fmt.print(lulu.to_number(vm, i))
-            case .String:   fmt.print(lulu.to_string(vm, i))
-            case .Table, .Function:
-                fmt.printf("%s: %p", lulu.type_name(vm, i), lulu.to_pointer(vm, i))
-            }
-        }
+        n_ret := lulu.get_top(vm)
+        fmt.printf("returned %i values: ", n_ret)
+        lulu.get_global(vm, "print")
+        lulu.insert(vm, 1)
+        lulu.call(vm, n_ret, 0)
         fmt.println()
     }
 
