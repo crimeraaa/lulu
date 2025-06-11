@@ -1,4 +1,4 @@
-#include "opcode.h"
+#include "opcode.hpp"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wc99-designator"

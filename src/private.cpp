@@ -6,16 +6,16 @@
 
 #include <execinfo.h> // backtrace, backtrace_symbols_fd
 #include <unistd.h>   // STD*_FILENO, write
-#include <stdio.h>    // fprintf
+#include <stdio.h>    // fprintf, sscanf
 #include <stdlib.h>   // free
 #include <string.h>   // strlen
 #include <assert.h>   // assert
 
-#include <dlfcn.h>
+#include <dlfcn.h>          // dl{open,close,sym,error}
 #include <gnu/lib-names.h>
 
-#include "private.h"
-#include "slice.h"
+#include "private.hpp"
+#include "slice.hpp"
 
 #undef lulu_assert
 
@@ -91,8 +91,7 @@ calculate_offset(String stack_frame)
         }
         // Extract the symbolic information pointed to by `address`.
         Dl_info symbol_info;
-        int status_dladdr = dladdr(address, &symbol_info);
-        if (status_dladdr != 0) {
+        if (dladdr(address, &symbol_info) != 0) {
             // Caculate total offset oof the symbol
             char *saddr = cast(char *, symbol_info.dli_saddr);
             char *fbase = cast(char *, symbol_info.dli_fbase);
@@ -165,8 +164,7 @@ print_backtrace()
 #if __x86_64__
         // Calculate the offset on x86_64, print the file and line number with
         // addr2line.
-        String stack_frame_string{s, strlen(s)};
-        void *offset_pointer = calculate_offset(stack_frame_string);
+        void *offset_pointer = calculate_offset(string_make(s));
         if (offset_pointer == nullptr) {
             write(STDERR_FILENO, errmsg, count_of(errmsg));
         } else {

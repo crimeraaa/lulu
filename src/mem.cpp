@@ -1,5 +1,5 @@
-#include "mem.h"
-#include "vm.h"
+#include "mem.hpp"
+#include "vm.hpp"
 
 void *
 mem_rawrealloc(lulu_VM &vm, void *ptr, size_t old_size, size_t new_size)

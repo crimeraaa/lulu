@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "debug.h"
+#include "debug.hpp"
 
 union Args_Extended {
     u32 bx;
@@ -63,7 +63,7 @@ debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
 
     int line = chunk_get_line(c, pc);
     // Have a previous line and it's the same as ours?
-    if (chunk_get_line(c, pc - 1) == line) {
+    if (pc > 0 && chunk_get_line(c, pc - 1) == line) {
         printf("   | ");
     } else {
         printf("%4i ", line);
@@ -78,11 +78,11 @@ debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
         break;
     case OPFORMAT_ABX:
         args.extended.bx = getarg_bx(ip);
-        printf("%-4i %-4i ", args.a, args.extended.bx);
+        printf("%-4i %-4i %-4s ", args.a, args.extended.bx, "");
         break;
     case OPFORMAT_ASBX:
         args.extended.sbx = getarg_sbx(ip);
-        printf("%-4i %-4i ", args.a, args.extended.sbx);
+        printf("%-4i %-4i %-4s ", args.a, args.extended.sbx, "");
         break;
     }
 

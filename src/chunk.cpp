@@ -1,7 +1,7 @@
 #include <stdio.h>
 
-#include "chunk.h"
-#include "debug.h"
+#include "chunk.hpp"
+#include "debug.hpp"
 
 void
 chunk_init(Chunk &c)
@@ -15,25 +15,18 @@ chunk_init(Chunk &c)
 void
 add_line(lulu_VM &vm, Chunk &c, int pc, int line)
 {
-    for (auto &info : c.line_info) {
-        // Since we're iterating forwards, we can assume that once `start_pc`
-        // is greater than ours that we won't find `line` to begin with.
-        if (info.start_pc > pc) {
-            break;
-        }
-        
-        // We found the info that's within range of us, so update it.
-        // We return because there's nothing more to do.
-        if (info.line == line && info.end_pc < pc) {
-            info.end_pc = pc;
+    // Have previous lines to go to?
+    if (len(c.line_info) > 0) {
+        Line_Info &last = c.line_info[len(c.line_info) - 1];
+        if (last.line == line) {
+            // Make sure `pc` is in range and will update things correctly.
+            lulu_assert(last.start_pc <= pc && last.end_pc < pc);
+            last.end_pc = pc;
             return;
         }
     }
-    
-    Line_Info start;
-    start.line     = line;
-    start.start_pc = pc;
-    start.end_pc   = NO_LINE;
+
+    Line_Info start{line, pc, pc};
     dynamic_push(vm, c.line_info, start);
 }
 
@@ -47,15 +40,16 @@ chunk_append(lulu_VM &vm, Chunk &c, Instruction i, int line)
 int
 chunk_get_line(const Chunk &c, int pc)
 {
-    for (const auto &info : c.line_info) {
-        // Same assumptions as in `add_line()`.
+    // Binary search
+    size_t stop = len(c.line_info);
+    for (size_t i = stop / 2; i < stop;) {
+        Line_Info info = c.line_info[i];
         if (info.start_pc > pc) {
-            break;
-        }
-
-        // Implicit negation of above: `start_pc <= pc`
-        if (pc <= info.end_pc) {
-            return info.line;            
+            i--; // Current range is greater than us, check left.
+        } else if (info.end_pc < pc) {
+            i++; // Current range is less than us, check right.
+        } else {
+            return info.line;
         }
     }
     return NO_LINE;

@@ -5,6 +5,14 @@ version: '3'
 vars:
   MODE: '{{default "debug"}}'
   CXX: clang++
+  
+  # Notes(2025-06-11):
+  #   - `-nostdinc++` just prevents us from including C++ standard ilbrary
+  #     headers, like `<string>`.
+  #   - The C standard library is still available to us though.
+  #   - `-nostdlib++` however cannot be used if we enabled ASAN because it
+  #     requires typeinfo which is only found in `libstdc++`.
+  #
   CXX_FLAGS: >-
     -std=c++17
     -Wall
@@ -12,6 +20,7 @@ vars:
     -Wconversion
     -Wpedantic
     -DLULU_BUILD
+    -nostdinc++
 
   # Notes(2025-06-11):
   #   - We can `-rdynamic` so that all symbols are in the dynamic symbol table

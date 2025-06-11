@@ -55,6 +55,14 @@ struct Slice {
 };
 
 template<class T>
+Slice<T>
+slice_make(T *data, size_t len)
+{
+    Slice <T> s{data, len};
+    return s;
+}
+
+template<class T>
 inline size_t
 len(const Slice<T> &s)
 {
@@ -95,3 +103,15 @@ copy(Slice <T> &dst, const Slice<const T> &src)
 }
 
 using String = Slice<const char>;
+
+inline String
+string_make(const char *data, size_t len)
+{
+    return {data, len};
+}
+
+inline String
+string_make(const char *cstring)
+{
+    return {cstring, strlen(cstring)};
+}

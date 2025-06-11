@@ -1,7 +1,7 @@
 #include <stdio.h>
 
-#include "vm.h"
-#include "debug.h"
+#include "vm.hpp"
+#include "debug.hpp"
 
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
@@ -13,27 +13,26 @@ vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
 void
 vm_execute(lulu_VM &vm, Chunk &c)
 {
-    const Instruction *ip = &c.code[0];
+    const Instruction *ip = raw_data(c.code);
     const auto &constants = c.constants;
     Slice<Value> window{vm.stack, cast(size_t, c.stack_used)};
-    
 
     for (auto &slot : window) {
         slot = 0.0;
     }
 
-#define GET_RK(rkb) \
-    reg_is_rk(rkb) \
-        ? constants[reg_get_k(rkb)] \
+#define GET_RK(rkb)                                                            \
+    reg_is_rk(rkb)                                                             \
+        ? constants[reg_get_k(rkb)]                                            \
         : window[getarg_b(rkb)]
 
-#define ARITH_OP(fn) \
-{ \
-    u16 b = getarg_b(i); \
-    u16 c = getarg_c(i); \
-    Value rb = GET_RK(b); \
-    Value rc = GET_RK(c); \
-    ra = fn(rb, rc); \
+#define ARITH_OP(fn)                                                           \
+{                                                                              \
+    u16 rkb = getarg_b(i);                                                     \
+    u16 rkc = getarg_c(i);                                                     \
+    Value rb = GET_RK(rkb);                                                    \
+    Value rc = GET_RK(rkc);                                                    \
+    ra = fn(rb, rc);                                                           \
 }
 
     int pad = debug_get_pad(c);

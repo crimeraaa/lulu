@@ -1,10 +1,10 @@
 #pragma once
 
 #include "lulu.h"
-#include "mem.h"
-#include "opcode.h"
-#include "dynamic.h"
-#include "value.h"
+#include "mem.hpp"
+#include "opcode.hpp"
+#include "dynamic.hpp"
+#include "value.hpp"
 
 struct Line_Info {
     int line; // Line number is stored directly in case we skip empty lines.
@@ -21,9 +21,6 @@ struct Chunk {
 
 static constexpr int NO_LINE = -1;
 
-// Disable name mangling
-extern "C" {
-
 void
 chunk_init(Chunk &c);
 
@@ -38,5 +35,3 @@ chunk_add_constant(lulu_VM &vm, Chunk &c, Value v);
 
 void
 chunk_destroy(lulu_VM &vm, Chunk &c);
-
-}; // extern "C"
