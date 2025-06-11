@@ -15,7 +15,7 @@ enum OpCode {
 
 static constexpr int OPCODE_COUNT = OP_RETURN + 1;
 
-static constexpr int
+static constexpr unsigned int
 // Operand bit sizes
 OPCODE_SIZE_B  = 9,
 OPCODE_SIZE_C  = 9,
@@ -73,7 +73,7 @@ OPCODE_MASK0_OP = BITMASK0(OPCODE_SIZE_OP, OPCODE_OFFSET_OP),
 OPCODE_MASK0_BX = BITMASK0(OPCODE_SIZE_BX, OPCODE_OFFSET_BX);
 
 static constexpr u32 OPCODE_MAX_BX  = BITMASK1(OPCODE_SIZE_BX);
-static constexpr i32 OPCODE_MAX_SBX = (OPCODE_MAX_BX >> 1);
+static constexpr i32 OPCODE_MAX_SBX = cast(i32, OPCODE_MAX_BX >> 1);
 
 enum OpFormat : u16 {
     OPFORMAT_ABC,
@@ -100,7 +100,7 @@ enum OpArg : u16 {
  *    | OpArg(B) | OpArg(B) | OpArg(A) | OpFormat |
  *    +----------+----------+----------+----------+
  */
-typedef u16 OpInfo;
+using OpInfo = u16;
 
 static constexpr OpInfo
 OPINFO_SIZE_B       = 4,
@@ -122,25 +122,25 @@ extern const char *const opcode_names[OPCODE_COUNT];
 extern const OpInfo opcode_info[OPCODE_COUNT];
 
 static inline OpFormat
-OPINFO_FMT(OpCode op)
+opinfo_fmt(OpCode op)
 {
     return cast(OpFormat, (opcode_info[op] >> OPINFO_OFFSET_FMT) & OPINFO_MASK1_FMT);
 }
 
 static inline OpArg
-OPINFO_A(OpCode op)
+opinfo_a(OpCode op)
 {
     return cast(OpArg, (opcode_info[op] >> OPINFO_OFFSET_A) & OPINFO_MASK1_A);
 }
 
 static inline OpArg
-OPINFO_B(OpCode op)
+opinfo_b(OpCode op)
 {
     return cast(OpArg, (opcode_info[op] >> OPINFO_OFFSET_B) & OPINFO_MASK1_B);
 }
 
 static inline OpArg
-OPINFO_C(OpCode op)
+opinfo_c(OpCode op)
 {
     return cast(OpArg, (opcode_info[op] >> OPINFO_OFFSET_C) & OPINFO_MASK1_C);
 }
@@ -157,28 +157,28 @@ instruction_abc(OpCode op, u8 a, u16 b, u16 c)
 static inline Instruction
 instruction_abx(OpCode op, u8 a, u32 bx)
 {
-    u16 b = cast(u16, bx >> OPCODE_SIZE_C); // shift out 'c' bits
-    u16 c = cast(u16, bx & OPCODE_MAX_C); // mask out 'b' bits
-    return instruction_abc(op, a, b, c);
+    return instruction_abc(op, a,
+        cast(u16, bx >> OPCODE_SIZE_C), // shift out 'c' bits
+        cast(u16, bx & OPCODE_MAX_C));  // mask out 'b' bits
 }
 
 static inline bool
-rk_is_rk(u16 reg)
+reg_is_rk(u16 reg)
 {
     return reg & OPCODE_BIT_RK;
 }
 
 static inline u16
-rk_make(u32 index)
+reg_to_rk(u32 index)
 {
-    assert(0 <= index && index <= OPCODE_MAX_RK);
+    lulu_assert(0 <= index && index <= OPCODE_MAX_RK);
     return cast(u16, index) | OPCODE_BIT_RK;
 }
 
 static inline u16
-rk_get_k(u16 reg)
+reg_get_k(u16 reg)
 {
-    assert(rk_is_rk(reg));
+    lulu_assert(reg_is_rk(reg));
     return reg & OPCODE_MAX_RK;
 }
 

@@ -3,12 +3,12 @@
 #include "lulu.h"
 #include "private.h"
 #include "chunk.h"
-
-#define SLICE_TYPE Value
 #include "slice.h"
 
+static constexpr int MAX_STACK = 256;
+
 struct lulu_VM {
-    Value          stack[16];
+    Value          stack[MAX_STACK];
     lulu_Allocator allocator;
     void *         allocator_data;
 };

@@ -1,51 +1,12 @@
 #pragma once
 
 #include "mem.h"
+#include "slice.h"
 
 template <class T>
-struct Dynamic {
-    T     *data;
-    size_t len;
+struct Dynamic : public Slice<T> {
     size_t cap;
-
-
-    T &operator[](size_t index)
-    {
-        if (0 <= index && index < this->len) {
-            return this->data[index];
-        }
-        __builtin_trap();
-    }
-
-    T *begin()
-    {
-        return this->data;
-    }
-
-    T *end()
-    {
-        return this->data + this->len;
-    }
-
-    const T &operator[](size_t index) const
-    {
-        if (0 <= index && index < this->len) {
-            return this->data[index];
-        }
-        __builtin_trap();
-    }
-
-    const T *begin() const noexcept
-    {
-        return this->data;
-    }
-
-    const T *end() const noexcept
-    {
-        return this->data + this->len;
-    }
 };
-
 
 template<class T>
 void
@@ -69,7 +30,7 @@ void
 dynamic_push(lulu_VM &vm, Dynamic<T> &d, T value)
 {
     if (d.len <= d.cap) {
-        size_t next = mem_next_pow2(d.cap);
+        size_t next = mem_next_size(d.cap);
         dynamic_resize(vm, d, next);
     }
     d.data[d.len++] = value;
@@ -81,4 +42,11 @@ dynamic_delete(lulu_VM &vm, Dynamic<T> &d)
 {
     mem_delete(vm, d.data, d.cap);
     dynamic_init(d);
+}
+
+template<class T>
+inline size_t
+cap(const Dynamic<T> &self)
+{
+    return self.cap;
 }

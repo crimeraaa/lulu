@@ -10,12 +10,21 @@ vars:
     -Wall
     -Wextra
     -Wconversion
+    -Wpedantic
     -DLULU_BUILD
 
+  # Notes(2025-06-11):
+  #   - We add `-rdynamic` so that all symbols are in the dynamic symbol table
+  #     and can thus be resolved when calling `backtrace()`.
+  #
+  # See:
+  #   - https://stackoverflow.com/a/6934857
   DEBUG_FLAGS: >-
     -O0
     -g
     -fsanitize=address
+    -rdynamic
+    -DLULU_DEBUG=1
 
   RELEASE_FLAGS: >-
     -Werror
@@ -36,9 +45,19 @@ tasks:
       FLAGS: >-
         {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
         {{.CXX_FLAGS}}
-      # https://taskfile.dev/reference/schema/#variable
+
+      # Note:
+      #   - Annoyingly, even with `-x` (print horizontally), `ls` STILL adds a
+      #     newline after a certain column number limit.
+      #   - We instead use `-1` so each entry is on its own line.
+      #   - We then use `tr` to manipulate the output.
+      #
+      # See:
+      #   - https://taskfile.dev/reference/schema/#variable
+      #   - https://serverfault.com/a/105841
+      #
       SOURCES:
-        sh: ls -x {{.LULU_SRC}}/*.{{.LULU_SRC_EXT}}
+        sh: ls -1 {{.LULU_SRC}}/*.{{.LULU_SRC_EXT}} | tr "\n" " "
     requires:
       vars: [MODE, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
     cmds:

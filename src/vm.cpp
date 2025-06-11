@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "vm.h"
+#include "debug.h"
 
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
@@ -15,10 +16,14 @@ vm_execute(lulu_VM &vm, Chunk &c)
     const Instruction *ip = &c.code[0];
     const auto &constants = c.constants;
     Slice<Value> window{vm.stack, cast(size_t, c.stack_used)};
+    
+    for (auto &v : window) {
+        v = 0.0;
+    }
 
 #define GET_RK(rkb) \
-    rk_is_rk(rkb) \
-        ? constants[rk_get_k(rkb)] \
+    reg_is_rk(rkb) \
+        ? constants[reg_get_k(rkb)] \
         : window[getarg_b(rkb)]
 
 #define ARITH_OP(fn) \
@@ -30,6 +35,7 @@ vm_execute(lulu_VM &vm, Chunk &c)
     ra = fn(rb, rc); \
 }
 
+    int pad = debug_get_pad(c);
     for (;;) {
         Instruction i  = *ip++;
         Value      &ra =  window[getarg_a(i)];
@@ -38,7 +44,7 @@ vm_execute(lulu_VM &vm, Chunk &c)
             printf("\t[%zu]\t" LULU_NUMBER_FMT "\n", ii, window[ii]);
         }
         printf("\n");
-        chunk_dump_instruction(c, i, cast_int(ip - c.code.data) - 1);
+        debug_disassemble_at(c, i, cast_int(ip - raw_data(c.code) - 1), pad);
 
         switch (getarg_op(i)) {
         case OP_LOAD_CONSTANT:

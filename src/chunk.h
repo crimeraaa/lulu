@@ -5,28 +5,24 @@
 #include "opcode.h"
 #include "dynamic.h"
 
-typedef lulu_Number Value;
+using Number = lulu_Number;
+using Value  = lulu_Number;
 
-typedef struct {
-    Dynamic<Instruction> code;
+struct Chunk {
     Dynamic<Value>       constants;
+    Dynamic<Instruction> code;
+    Dynamic<int>         lines;
     int                  stack_used;
-} Chunk;
+};
 
 void
 chunk_init(Chunk &c);
 
 void
-chunk_append(lulu_VM &vm, Chunk &c, Instruction i);
+chunk_append(lulu_VM &vm, Chunk &c, Instruction i, int line);
 
 u32
 chunk_add_constant(lulu_VM &vm, Chunk &c, Value v);
 
 void
 chunk_destroy(lulu_VM &vm, Chunk &c);
-
-void
-chunk_dump_all(const Chunk &c);
-
-void
-chunk_dump_instruction(const Chunk &c, Instruction ip, int pc);
