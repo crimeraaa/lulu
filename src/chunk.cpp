@@ -4,83 +4,83 @@
 #include "chunk.h"
 
 void
-chunk_init(Chunk *c)
+chunk_init(Chunk &c)
 {
-    dynamic_init(Instruction)(&c->code);
-    dynamic_init(Value)(&c->constants);
+    dynamic_init(c.code);
+    dynamic_init(c.constants);
+    c.stack_used = 2; // R(0) and R(1) must always be valid.
 }
 
 void
-chunk_append(lulu_VM *vm, Chunk *c, Instruction i)
+chunk_append(lulu_VM &vm, Chunk &c, Instruction i)
 {
-    dynamic_push(Instruction)(vm, &c->code, i);
+    dynamic_push(vm, c.code, i);
 }
 
-uint32_t
-chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
+u32
+chunk_add_constant(lulu_VM &vm, Chunk &c, Value v)
 {
-    Dynamic(Value) *a = &c->constants;
-    for (size_t i = 0, end = a->len; i < end; i++) {
-        if (dynamic_get(Value)(&a, i) == v) {
-            return cast(uint32_t, i);
+    auto &a = c.constants;
+    for (size_t i = 0, end = a.len; i < end; i++) {
+        if (a[i] == v) {
+            return cast(u32, i);
         }
     }
 
-    dynamic_push(Value)(vm, a, v);
-    return cast(uint32_t, a->len - 1);
+    dynamic_push(vm, a, v);
+    return cast(u32, a.len - 1);
 }
 
 void
-chunk_destroy(lulu_VM *vm, Chunk *c)
+chunk_destroy(lulu_VM &vm, Chunk &c)
 {
-    dynamic_delete(Instruction)(vm, &c->code);
-    dynamic_delete(Value)(vm, &c->constants);
+    dynamic_delete(vm, c.code);
+    dynamic_delete(vm, c.constants);
 }
 
 
 void
-chunk_dump_all(const Chunk *c)
+chunk_dump_all(const Chunk &c)
 {
-    Dynamic(Value) constants = c->constants;
+    const auto &constants = c.constants;
     if (constants.len > 0) {
         printf(".const:\n");
         for (size_t i = 0, end = constants.len; i < end; i++) {
-            printf("[%zu] " LULU_NUMBER_FMT "\n", i,
-                dynamic_get(Value)(&constants, i));
+            printf("[%zu] " LULU_NUMBER_FMT "\n", i, constants[i]);
         }
         printf("\n");
     }
 
-    Dynamic(Instruction) code = c->code;
+    const auto &code = c.code;
     printf(".code:\n");
     for (size_t i = 0, end = code.len; i < end; i++) {
-        chunk_dump_instruction(c, dynamic_get(Instruction)(&code, i), cast_int(i));
+        chunk_dump_instruction(c, code[i], cast_int(i));
     }
 }
 
 typedef struct {
-    OpCode   op;
-    uint8_t  a;
+    OpCode op;
+    u8     a;
     union {
-        struct {uint16_t b, c;};
-        uint32_t bx;
-        int32_t  sbx;
+        struct {u16 b, c;};
+        u32 bx;
+        i32 sbx;
     };
 } Args;
 
 static void
-print_reg(const Chunk *c, uint16_t reg)
+print_reg(const Chunk &c, u16 reg)
 {
     if (rk_is_rk(reg)) {
-        uint32_t i = rk_get_k(reg);
-        printf(LULU_NUMBER_FMT, dynamic_get(Value)(&c->constants, i));
+        u32 i = rk_get_k(reg);
+        printf(LULU_NUMBER_FMT, c.constants[i]);
     } else {
         printf("R(%i)", reg);
     }
 }
 
 static void
-arith(const Chunk *c, char op, Args args)
+arith(const Chunk &c, char op, const Args &args)
 {
     printf("; R(%i) = ", args.a);
     print_reg(c, args.b);
@@ -89,7 +89,7 @@ arith(const Chunk *c, char op, Args args)
 }
 
 void
-chunk_dump_instruction(const Chunk *c, Instruction ip, int pc)
+chunk_dump_instruction(const Chunk &c, Instruction ip, int pc)
 {
     Args   args;
     OpCode op = getarg_op(ip);

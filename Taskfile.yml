@@ -4,9 +4,9 @@ version: '3'
 
 vars:
   MODE: '{{default "debug"}}'
-  CC: clang
-  CC_FLAGS: >-
-    -std=c11
+  CXX: clang++
+  CXX_FLAGS: >-
+    -std=c++17
     -Wall
     -Wextra
     -Wconversion
@@ -23,7 +23,7 @@ vars:
 
   LULU_OUT: bin/lulu
   LULU_SRC: src
-  LULU_SRC_EXT: c
+  LULU_SRC_EXT: cpp
 
   LUA_OUT: bin/lua
   LUA_SRC: lua/src
@@ -35,14 +35,14 @@ tasks:
     vars:
       FLAGS: >-
         {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
-        {{.CC_FLAGS}}
+        {{.CXX_FLAGS}}
       # https://taskfile.dev/reference/schema/#variable
       SOURCES:
         sh: ls -x {{.LULU_SRC}}/*.{{.LULU_SRC_EXT}}
     requires:
-      vars: [MODE, CC_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+      vars: [MODE, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
     cmds:
-      - '{{.CC}} {{.FLAGS}} -o {{.LULU_OUT}} {{.SOURCES}}'
+      - '{{.CXX}} {{.FLAGS}} -o {{.LULU_OUT}} {{.SOURCES}}'
     sources:
       - '{{.LULU_SRC}}/*'
 

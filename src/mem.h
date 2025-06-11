@@ -7,20 +7,26 @@ size_t
 mem_next_pow2(size_t n);
 
 void *
-mem_realloc(lulu_VM *vm, void *ptr, size_t old_size, size_t new_size);
+mem_rawrealloc(lulu_VM &vm, void *ptr, size_t old_size, size_t new_size);
 
-// Raw Memory 'Functions'
-#define mem_raw_new(vm, size)              mem_realloc(vm, nullptr, 0, size)
-#define mem_raw_free(vm, ptr, size)        mem_realloc(vm, ptr, size, 0)
-#define mem_raw_resize(vm, type_size, ptr, prev, next) \
-    mem_realloc(vm, ptr, (type_size) * (prev), (type_size) * (next))
+template<class T>
+T *
+mem_new(lulu_VM &vm, size_t extra = 0)
+{
+    return cast(T *, mem_rawrealloc(vm, nullptr, 0, sizeof(T) + extra));
+}
 
-#define mem_raw_delete(vm, type_size, ptr, count) \
-    mem_raw_free(vm, ptr, (type_size) * (count))
+template<class T>
+T *
+mem_resize(lulu_VM &vm, T *ptr, size_t prev, size_t next)
+{
+    return cast(T *, mem_rawrealloc(vm, ptr, sizeof(T) * prev, sizeof(T) * next));
+}
 
-// Typed Memory 'Functions'
-#define mem_resize(vm, T, ptr, prev, next) \
-    cast(T *, mem_raw_resize(vm, sizeof(T), ptr, prev, next))
+template<class T>
+void
+mem_delete(lulu_VM &vm, T *ptr, size_t n)
+{
+    mem_rawrealloc(vm, ptr, sizeof(T) * n, 0);
+}
 
-#define mem_delete(vm, ptr, count) \
-    mem_raw_delete(vm, sizeof(*(ptr)), ptr, count)

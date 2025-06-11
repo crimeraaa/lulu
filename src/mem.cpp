@@ -2,9 +2,9 @@
 #include "vm.h"
 
 void *
-mem_realloc(lulu_VM *vm, void *ptr, size_t old_size, size_t new_size)
+mem_rawrealloc(lulu_VM &vm, void *ptr, size_t old_size, size_t new_size)
 {
-    return vm->allocator(vm->allocator_data, ptr, old_size, new_size);
+    return vm.allocator(vm.allocator_data, ptr, old_size, new_size);
 }
 
 size_t
