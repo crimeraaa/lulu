@@ -2,6 +2,7 @@
 
 #include "vm.hpp"
 #include "debug.hpp"
+#include "lexer.hpp"
 
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
@@ -37,21 +38,50 @@ vm_destroy(lulu_VM &vm)
     /* nothing to do (yet) */
 }
 
+struct Exec_Data {
+    String source, script;
+    Chunk  chunk;
+};
+
 Error
-vm_interpret(lulu_VM &vm, Chunk &c)
+vm_interpret(lulu_VM &vm, String source, String script)
 {
-    return vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr)
-    {
-        Chunk &c = *cast(Chunk *, user_ptr);
-        vm.chunk  = &c;
-        vm.window = slice_make(vm.stack, cast(size_t, c.stack_used));
+    Exec_Data data{source, script, {}};
+    chunk_init(data.chunk, source);
 
-        for (auto &slot : vm.window) {
-            slot = 0.0;
+    Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr){
+        unused(vm);
+
+        Exec_Data &d = *cast(Exec_Data *, user_ptr);
+        Lexer x = lexer_make(d.source, d.script);
+        int prev_line = -1;
+        for (;;) {
+            Token t = lexer_lex(x);
+            if (t.line != prev_line) {
+                printf("%4i ", t.line);
+                prev_line = t.line;
+            } else {
+                printf("   | ");
+            }
+            printf("%s: '%.*s'\n", raw_data(token_strings[t.type]),
+                cast_int(t.lexeme.len), raw_data(t.lexeme));
+
+            if (t.type == TOKEN_EOF) {
+                break;
+            }
         }
+        // vm.chunk  = &d.chunk;
+        // vm.window = slice_make(vm.stack, cast(size_t, d.chunk.stack_used));
 
-        vm_execute(vm);
-    }, &c);
+        // for (auto &slot : vm.window) {
+        //     slot = 0.0;
+        // }
+
+        // // vm_execute(vm);
+    }, &data);
+
+    chunk_destroy(vm, data.chunk);
+    return e;
 }
 
 void

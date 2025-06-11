@@ -58,34 +58,26 @@ template<class T>
 Slice<T>
 slice_make(T *data, size_t len)
 {
-    Slice <T> s{data, len};
-    return s;
+    return {data, len};
 }
 
 template<class T>
 inline size_t
-len(const Slice<T> &s)
+len(Slice<T> s)
 {
     return s.len;
 }
 
 template<class T>
 inline T *
-raw_data(Slice <T> &s)
-{
-    return s.data;
-}
-
-template<class T>
-inline const T *
-raw_data(const Slice<T> &s)
+raw_data(Slice <T> s)
 {
     return s.data;
 }
 
 template<class T>
 inline void
-copy(Slice<T> &dst, const Slice<T> &src)
+copy(Slice<T> dst, Slice<T> src)
 {
     // Clamp size to read and copy
     const size_t n = (dst.len > src.len) ? src.len : dst.len;
@@ -95,7 +87,7 @@ copy(Slice<T> &dst, const Slice<T> &src)
 // Because C++ templates aren't convoluted enough
 template<class T>
 inline void
-copy(Slice <T> &dst, const Slice<const T> &src)
+copy(Slice <T> dst, Slice<const T> src)
 {
     // Clamp size to read and copy
     const size_t n = (dst.len > src.len) ? src.len : dst.len;
@@ -114,4 +106,16 @@ inline String
 string_make(const char *cstring)
 {
     return {cstring, strlen(cstring)};
+}
+
+inline String
+string_make(Slice<char> buffer)
+{
+    return {raw_data(buffer), len(buffer)};
+}
+
+inline String
+string_slice(String s, size_t start, size_t stop)
+{
+    return {&s[start], stop - start};
 }

@@ -16,13 +16,14 @@ struct Chunk {
     Dynamic<Value>       constants;
     Dynamic<Instruction> code;
     Dynamic<Line_Info>   line_info;
+    String               source;
     int                  stack_used;
 };
 
 static constexpr int NO_LINE = -1;
 
 void
-chunk_init(Chunk &c);
+chunk_init(Chunk &c, String source);
 
 void
 chunk_append(lulu_VM &vm, Chunk &c, Instruction i, int line);

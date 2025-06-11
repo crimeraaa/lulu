@@ -35,7 +35,7 @@ void
 vm_destroy(lulu_VM &vm);
 
 Error
-vm_interpret(lulu_VM &vm, Chunk &c);
+vm_interpret(lulu_VM &vm, String source, String script);
 
 void
 vm_execute(lulu_VM &vm);

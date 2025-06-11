@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "lulu.h"
 #include "chunk.hpp"
@@ -17,32 +18,83 @@ c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
     return realloc(ptr, new_size);
 }
 
-int main(void)
+static void
+run_interactive(lulu_VM &vm)
 {
-    lulu_VM vm;
-    Chunk c;
-    vm_init(vm, &c_allocator, nullptr);
-    chunk_init(c);
+    char line[512];
+    for (;;) {
+        printf(">>> ");
+        if (fgets(line, cast_int(count_of(line)), stdin) == nullptr) {
+            printf("\n");
+            break;
+        }
 
-    u32 k1 = chunk_add_constant(vm, c, 9);
-    u32 k2 = chunk_add_constant(vm, c, 10);
-    int stack_used = 0;
-    int line = 9001;
+        size_t n = strcspn(line, "\r\n");
+        vm_interpret(vm, string_make("stdin"), string_make(line, n));
+    }
+}
 
-    chunk_append(vm, c, OP_ADD, u8(stack_used++), reg_to_rk(k1), reg_to_rk(k2), line);
+static Slice<char>
+read_file(const char *file_name)
+{
+    FILE       *file_ptr  = fopen(file_name, "rb+");
+    Slice<char> buffer{nullptr, 0}; // `goto` cannot skip over variables.
+    size_t      n_read = 0;
 
-    u32 k3 = chunk_add_constant(vm, c, 21);
-    chunk_append(vm, c, OP_CONSTANT, u8(stack_used++), k3, line);
-    chunk_append(vm, c, OP_MUL, 0, 0, 1, line);
-    chunk_append(vm, c, OP_UNM, 0, 0, 0, line);
-
-    chunk_append(vm, c, OP_RETURN, 0, 0, 0, ++line);
-    if (stack_used > c.stack_used) {
-        c.stack_used = stack_used;
+    if (file_ptr == nullptr) {
+        fprintf(stderr, "Failed to open file '%s'.\n", file_name);
+        goto cleanup_file;
     }
 
-    debug_disassemble(c);
-    vm_interpret(vm, c);
-    chunk_destroy(vm, c);
-    return 0;
+    fseek(file_ptr, 0L, SEEK_END);
+    buffer.len = cast(size_t, ftell(file_ptr)) + 1;
+    rewind(file_ptr);
+
+    buffer.data = cast(char *, malloc(buffer.len));
+    if (buffer.data == nullptr) {
+        fprintf(stderr, "Failed to allocate memory for file '%s'.\n", file_name);
+        goto cleanup_buffer;
+    }
+
+    n_read = fread(raw_data(buffer), sizeof(buffer.data[0]), buffer.len - 1, file_ptr);
+    if (n_read < buffer.len) {
+        fprintf(stderr, "Failed to read file '%s'.\n", file_name);
+cleanup_buffer:
+        free(raw_data(buffer));
+        buffer.data = nullptr;
+        buffer.len  = 0;
+        goto cleanup_file;
+    }
+
+    // `n_read` can never be >= `buffer.len + 1`
+    buffer[n_read] = '\0';
+cleanup_file:
+    fclose(file_ptr);
+    return buffer;
+}
+
+static void run_file(lulu_VM &vm, const char *file_name)
+{
+    Slice<char> script = read_file(file_name);
+    vm_interpret(vm, string_make(file_name), string_make(script));
+    free(raw_data(script));
+}
+
+
+int main(int argc, char *argv[])
+{
+    lulu_VM vm;
+    vm_init(vm, c_allocator, nullptr);
+    switch (argc) {
+    case 1:
+        run_interactive(vm);
+        break;
+    case 2:
+        run_file(vm, argv[1]);
+        break;
+    default:
+        fprintf(stderr, "Usage: %s [script]\n", argv[0]);
+        break;
+    }
+    vm_destroy(vm);
 }

@@ -19,19 +19,12 @@ dynamic_init(Dynamic<T> &d)
 
 template<class T>
 void
-dynamic_resize(lulu_VM &vm, Dynamic<T> &d, size_t cap)
-{
-    d.data = mem_resize(vm, d.data, d.cap, cap);
-    d.cap  = cap;
-}
-
-template<class T>
-void
 dynamic_push(lulu_VM &vm, Dynamic<T> &d, T value)
 {
     if (d.len <= d.cap) {
         size_t next = mem_next_size(d.cap);
-        dynamic_resize(vm, d, next);
+        d.data = mem_resize(vm, d.data, d.cap, next);
+        d.cap  = next;
     }
     d.data[d.len++] = value;
 }
@@ -46,7 +39,7 @@ dynamic_delete(lulu_VM &vm, Dynamic<T> &d)
 
 template<class T>
 inline size_t
-cap(const Dynamic<T> &self)
+cap(const Dynamic<T> d)
 {
-    return self.cap;
+    return d.cap;
 }

@@ -24,9 +24,16 @@ mem_resize(lulu_VM &vm, T *ptr, size_t prev, size_t next)
 }
 
 template<class T>
+T *
+mem_make(lulu_VM &vm, size_t count)
+{
+    return mem_resize<T>(vm, nullptr, 0, count);
+}
+
+template<class T>
 void
 mem_delete(lulu_VM &vm, T *ptr, size_t n)
 {
-    mem_rawrealloc(vm, ptr, sizeof(T) * n, 0);
+    mem_resize(vm, ptr, n, 0);
 }
 

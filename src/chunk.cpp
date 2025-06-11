@@ -4,11 +4,12 @@
 #include "debug.hpp"
 
 void
-chunk_init(Chunk &c)
+chunk_init(Chunk &c, String source)
 {
     dynamic_init(c.constants);
     dynamic_init(c.code);
     dynamic_init(c.line_info);
+    c.source     = source;
     c.stack_used = 2; // R(0) and R(1) must always be valid.
 }
 
