@@ -16,10 +16,11 @@ using i32 = int32_t;
 
 #ifdef LULU_DEBUG
 
-void lulu_assert(const char *file, const char *func, int line, bool cond, const char *expr);
+extern "C" void
+lulu_assert(const char *file, int line, bool cond, const char *expr);
 
 #define lulu_assert(expr) \
-    lulu_assert(__FILE__, __func__, __LINE__, cast(bool, expr), #expr)
+    lulu_assert(__FILE__, __LINE__, cast(bool, expr), #expr)
 
 #else
 

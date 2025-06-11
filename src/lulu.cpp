@@ -26,15 +26,15 @@ int main(void)
 
     u32 k1 = chunk_add_constant(vm, c, 9);
     u32 k2 = chunk_add_constant(vm, c, 10);
-    int stack_used = 0;
+    int stack_used = 9;
     int line = 9001;
     chunk_append(vm, c, instruction_abc(OP_ADD, u8(stack_used++), reg_to_rk(k1), reg_to_rk(k2)), line);
-
-    if (stack_used > c.stack_used) {
-        c.stack_used = stack_used;
-    }
-
     chunk_append(vm, c, instruction_abc(OP_RETURN, 0, 0, 0), line);
+
+    // if (stack_used > c.stack_used) {
+    //     c.stack_used = stack_used;
+    // }
+
     debug_disassemble(c);
     vm_execute(vm, c);
     chunk_destroy(vm, c);

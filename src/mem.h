@@ -3,11 +3,16 @@
 #include "lulu.h"
 #include "private.h"
 
+// Disable name mangling
+extern "C" {
+
 size_t
 mem_next_size(size_t n);
 
 void *
 mem_rawrealloc(lulu_VM &vm, void *ptr, size_t old_size, size_t new_size);
+
+}; // extern "C"
 
 template<class T>
 T *

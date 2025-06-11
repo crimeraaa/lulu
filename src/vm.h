@@ -13,8 +13,13 @@ struct lulu_VM {
     void *         allocator_data;
 };
 
+// Disable name mangling
+extern "C" {
+
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data);
 
 void
 vm_execute(lulu_VM &vm, Chunk &c);
+
+}; // extern "C"

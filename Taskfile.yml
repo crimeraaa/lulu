@@ -14,17 +14,20 @@ vars:
     -DLULU_BUILD
 
   # Notes(2025-06-11):
-  #   - We add `-rdynamic` so that all symbols are in the dynamic symbol table
+  #   - We can `-rdynamic` so that all symbols are in the dynamic symbol table
   #     and can thus be resolved when calling `backtrace()`.
+  #   - However, if you're using `addr2line` then you don't need it.
+  #   - You will need the dynlib library in that case though.
   #
   # See:
   #   - https://stackoverflow.com/a/6934857
+  #
   DEBUG_FLAGS: >-
     -O0
     -g
     -fsanitize=address
-    -rdynamic
     -DLULU_DEBUG=1
+    -ldl
 
   RELEASE_FLAGS: >-
     -Werror

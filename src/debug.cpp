@@ -61,9 +61,9 @@ debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
     args.a = getarg_a(ip);
     printf("[%*i] ", pad, pc);
 
-    int line = c.lines[cast(size_t, pc)];
+    int line = chunk_get_line(c, pc);
     // Have a previous line and it's the same as ours?
-    if (pc > 0 && c.lines[cast(size_t, pc -1)] == line) {
+    if (chunk_get_line(c, pc - 1) == line) {
         printf("   | ");
     } else {
         printf("%4i ", line);

@@ -17,8 +17,9 @@ vm_execute(lulu_VM &vm, Chunk &c)
     const auto &constants = c.constants;
     Slice<Value> window{vm.stack, cast(size_t, c.stack_used)};
     
-    for (auto &v : window) {
-        v = 0.0;
+
+    for (auto &slot : window) {
+        slot = 0.0;
     }
 
 #define GET_RK(rkb) \

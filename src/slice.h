@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string.h> // memmove
+
 template <class T>
 struct Slice {
     T     *data;
@@ -72,3 +74,24 @@ raw_data(const Slice<T> &s)
 {
     return s.data;
 }
+
+template<class T>
+inline void
+copy(Slice<T> &dst, const Slice<T> &src)
+{
+    // Clamp size to read and copy
+    const size_t n = (dst.len > src.len) ? src.len : dst.len;
+    memmove(dst.data, src.data, sizeof(T) * n);
+}
+
+// Because C++ templates aren't convoluted enough
+template<class T>
+inline void
+copy(Slice <T> &dst, const Slice<const T> &src)
+{
+    // Clamp size to read and copy
+    const size_t n = (dst.len > src.len) ? src.len : dst.len;
+    memmove(dst.data, src.data, sizeof(T) * n);
+}
+
+using String = Slice<const char>;
