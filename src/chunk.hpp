@@ -27,6 +27,12 @@ chunk_init(Chunk &c);
 void
 chunk_append(lulu_VM &vm, Chunk &c, Instruction i, int line);
 
+void
+chunk_append(lulu_VM &vm, Chunk &c, OpCode op, u8 a, u16 b, u16 c2, int line);
+
+void
+chunk_append(lulu_VM &vm, Chunk &c, OpCode op, u8 a, u32 bx, int line);
+
 int
 chunk_get_line(const Chunk &c, int pc);
 

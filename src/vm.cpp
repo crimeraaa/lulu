@@ -10,20 +10,60 @@ vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
     vm.allocator_data = allocator_data;
 }
 
-void
-vm_execute(lulu_VM &vm, Chunk &c)
+Error
+vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr)
 {
-    const Instruction *ip = raw_data(c.code);
-    const auto &constants = c.constants;
-    Slice<Value> window{vm.stack, cast(size_t, c.stack_used)};
+    Error_Handler next{vm.error_handler, LULU_OK};
+    // Chain new handler
+    vm.error_handler = &next;
 
-    for (auto &slot : window) {
-        slot = 0.0;
+    try {
+        fn(vm, user_ptr);
+    } catch (Error e) {
+        // What the hell?
+        lulu_assert(e != LULU_OK);
+        next.error = e;
     }
+
+    // Restore old handler
+    vm.error_handler = next.prev;
+    return next.error;
+}
+
+void
+vm_destroy(lulu_VM &vm)
+{
+    unused(vm);
+    /* nothing to do (yet) */
+}
+
+Error
+vm_interpret(lulu_VM &vm, Chunk &c)
+{
+    return vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr)
+    {
+        Chunk &c = *cast(Chunk *, user_ptr);
+        vm.chunk  = &c;
+        vm.window = slice_make(vm.stack, cast(size_t, c.stack_used));
+
+        for (auto &slot : vm.window) {
+            slot = 0.0;
+        }
+
+        vm_execute(vm);
+    }, &c);
+}
+
+void
+vm_execute(lulu_VM &vm)
+{
+    Chunk chunk = *vm.chunk;
+    const Instruction *ip = raw_data(chunk.code);
+    Slice<Value> window = vm.window;
 
 #define GET_RK(rkb)                                                            \
     reg_is_rk(rkb)                                                             \
-        ? constants[reg_get_k(rkb)]                                            \
+        ? chunk.constants[reg_get_k(rkb)]                                            \
         : window[getarg_b(rkb)]
 
 #define ARITH_OP(fn)                                                           \
@@ -35,7 +75,7 @@ vm_execute(lulu_VM &vm, Chunk &c)
     ra = fn(rb, rc);                                                           \
 }
 
-    int pad = debug_get_pad(c);
+    int pad = debug_get_pad(chunk);
     for (;;) {
         Instruction i  = *ip++;
         Value      &ra =  window[getarg_a(i)];
@@ -44,11 +84,14 @@ vm_execute(lulu_VM &vm, Chunk &c)
             printf("\t[%zu]\t" LULU_NUMBER_FMT "\n", ii, window[ii]);
         }
         printf("\n");
-        debug_disassemble_at(c, i, cast_int(ip - raw_data(c.code) - 1), pad);
+        debug_disassemble_at(chunk, i, cast_int(ip - raw_data(chunk.code) - 1), pad);
 
         switch (getarg_op(i)) {
-        case OP_LOAD_CONSTANT:
-            ra = constants[getarg_bx(i)];
+        case OP_CONSTANT:
+            ra = chunk.constants[getarg_bx(i)];
+            break;
+        case OP_UNM:
+            ra = lulu_Number_unm(window[getarg_b(i)]);
             break;
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
         case OP_SUB: ARITH_OP(lulu_Number_sub); break;

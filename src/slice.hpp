@@ -6,9 +6,9 @@ template <class T>
 struct Slice {
     T     *data;
     size_t len;
-    
+
     //=== READ-WRITE OPERATIONS ============================================ {{{
-    
+
     // Bounds-checked, mutable element access.
     T &operator[](size_t index)
     {

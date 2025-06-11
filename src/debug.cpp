@@ -33,6 +33,13 @@ print_reg(const Chunk &c, u16 reg)
 }
 
 static void
+unary(const Chunk &c, const char *op, Args args)
+{
+    printf("; R(%i) := %s", args.a, op);
+    print_reg(c, args.basic.b);
+}
+
+static void
 arith(const Chunk &c, char op, Args args)
 {
     printf("; R(%i) = ", args.a);
@@ -52,6 +59,9 @@ debug_get_pad(const Chunk &c)
     }
     return count;
 }
+
+// 4 spaces plus an extra one to separate messages.
+#define PAD4 "     "
 
 void
 debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
@@ -74,22 +84,28 @@ debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
     case OPFORMAT_ABC:
         args.basic.b = getarg_b(ip);
         args.basic.c = getarg_c(ip);
-        printf("%-4i %-4i %-4i ", args.a, args.basic.b, args.basic.c);
+        printf("%-4i %-4i ", args.a, args.basic.b);
+        if (opinfo_c(op) != OPARG_UNUSED) {
+            printf("%-4i ", args.basic.c);
+        } else {
+            printf(PAD4);
+        }
         break;
     case OPFORMAT_ABX:
         args.extended.bx = getarg_bx(ip);
-        printf("%-4i %-4i %-4s ", args.a, args.extended.bx, "");
+        printf("%-4i %-4i " PAD4, args.a, args.extended.bx);
         break;
     case OPFORMAT_ASBX:
         args.extended.sbx = getarg_sbx(ip);
-        printf("%-4i %-4i %-4s ", args.a, args.extended.sbx, "");
+        printf("%-4i %-4i " PAD4, args.a, args.extended.sbx);
         break;
     }
 
     switch (op) {
-    case OP_LOAD_CONSTANT:
+    case OP_CONSTANT:
         printf("; R(%i) := .const[%i]", args.a, getarg_bx(ip));
         break;
+    case OP_UNM: unary(c, "-", args); break;
     case OP_ADD: arith(c, '+', args); break;
     case OP_SUB: arith(c, '-', args); break;
     case OP_MUL: arith(c, '*', args); break;

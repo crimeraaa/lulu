@@ -3,14 +3,16 @@
 #include "private.hpp"
 
 enum OpCode {
-    OP_LOAD_CONSTANT,
-    OP_ADD,
-    OP_SUB,
-    OP_MUL,
-    OP_DIV,
-    OP_MOD,
-    OP_POW,
-    OP_RETURN,
+//        | Arguments |
+OP_CONSTANT, // A Bx  | R(A) := K[Bx]
+OP_UNM,      // A B   | R(A) := -R(B)
+OP_ADD,      // A B C | R(A) := RK(B) + RK(C)
+OP_SUB,      // A B C | R(A) := RK(B) - RK(C)
+OP_MUL,      // A B C | R(A) := RK(B) * RK(C)
+OP_DIV,      // A B C | R(A) := RK(B) / RK(C)
+OP_MOD,      // A B C | R(A) := RK(B) % RK(C)
+OP_POW,      // A B C | R(A) := RK(B) ^ RK(C)
+OP_RETURN,
 };
 
 static constexpr int OPCODE_COUNT = OP_RETURN + 1;

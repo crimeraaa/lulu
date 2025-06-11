@@ -29,7 +29,7 @@ parse_strings(String stack_frame, Slice<char> out_symbol, Slice<char> out_offset
 {
     String symbol{nullptr, 0};
     String offset{nullptr, 0};
-    
+
     for (const auto &ch : stack_frame) {
         switch (ch) {
         // Beginning of symbol?
@@ -48,7 +48,7 @@ parse_strings(String stack_frame, Slice<char> out_symbol, Slice<char> out_offset
             break;
         }
     }
-    
+
     copy(out_symbol, symbol);
     copy(out_offset, offset);
 }
@@ -67,15 +67,15 @@ calculate_offset(String stack_frame)
     char _buf2[25] = {0};
     Slice<char> symbol_string{_buf1, count_of(_buf1)};
     Slice<char> offset_string{_buf2, count_of(_buf2)};
-    
+
     // Parse the string obtained by `backtrace_symbols()` to get the symbol and
     // offset.
     parse_strings(stack_frame, symbol_string, offset_string);
-    
+
     // Convert the offset from a string to a pointer.
     void *offset_pointer;
     int status_sscanf = sscanf(raw_data(offset_string), "%p", &offset_pointer);
-    
+
     // Check if a symbol string was created. If yes, convert symbol string to
     // an offset.
     if (symbol_string[0] != '\0') {
@@ -103,7 +103,7 @@ calculate_offset(String stack_frame)
             print_dlerror();
         }
     }
-    
+
     return (status_sscanf != EOF) ? offset_pointer : nullptr;
 }
 
@@ -156,10 +156,10 @@ print_backtrace()
     char **array = backtrace_symbols(stack_frames_buffer, n);
 
     Slice<char *> stack_frame_strings{array, cast(size_t, n)};
-    
+
     sprintf(print_array, "\nObtained %i stack frames.\n", n);
     write(STDERR_FILENO, print_array, strlen(print_array));
-    
+
     for (const char *s : stack_frame_strings) {
 #if __x86_64__
         // Calculate the offset on x86_64, print the file and line number with

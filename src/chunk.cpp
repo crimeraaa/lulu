@@ -37,6 +37,20 @@ chunk_append(lulu_VM &vm, Chunk &c, Instruction i, int line)
     add_line(vm, c, cast_int(len(c.code) - 1), line);
 }
 
+void
+chunk_append(lulu_VM &vm, Chunk &c, OpCode op, u8 a, u16 b, u16 c2, int line)
+{
+    Instruction i = instruction_abc(op, a, b, c2);
+    chunk_append(vm, c, i, line);
+}
+
+void
+chunk_append(lulu_VM &vm, Chunk &c, OpCode op, u8 a, u32 bx, int line)
+{
+    Instruction i = instruction_abx(op, a, bx);
+    chunk_append(vm, c, i, line);
+}
+
 int
 chunk_get_line(const Chunk &c, int pc)
 {

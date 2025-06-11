@@ -5,22 +5,6 @@ version: '3'
 vars:
   MODE: '{{default "debug"}}'
   CXX: clang++
-  
-  # Notes(2025-06-11):
-  #   - `-nostdinc++` just prevents us from including C++ standard ilbrary
-  #     headers, like `<string>`.
-  #   - The C standard library is still available to us though.
-  #   - `-nostdlib++` however cannot be used if we enabled ASAN because it
-  #     requires typeinfo which is only found in `libstdc++`.
-  #
-  CXX_FLAGS: >-
-    -std=c++17
-    -Wall
-    -Wextra
-    -Wconversion
-    -Wpedantic
-    -DLULU_BUILD
-    -nostdinc++
 
   # Notes(2025-06-11):
   #   - We can `-rdynamic` so that all symbols are in the dynamic symbol table
@@ -41,41 +25,61 @@ vars:
   RELEASE_FLAGS: >-
     -Werror
     -os
+    -s
+
+  # Notes(2025-06-11):
+  #   - `-nostdinc++` just prevents us from including C++ standard ilbrary
+  #     headers, like `<string>`.
+  #   - The C standard library is still available to us though.
+  #   - `-nostdlib++` however cannot be used if we enabled ASAN because it
+  #     requires typeinfo which is only found in `libstdc++`.
+  #
+  CXX_FLAGS: >-
+    -std=c++17
+    -Wall
+    -Wextra
+    -Wconversion
+    -Wpedantic
+    -DLULU_BUILD
+    -nostdinc++
+    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
 
   LULU_OUT: bin/lulu
-  LULU_SRC: src
-  LULU_SRC_EXT: cpp
+  LULU_DIR_SRC: src
+  LULU_EXT_SRC: cpp
+
+  LULU_GLOB: '{{.LULU_DIR_SRC}}/*.[ch]pp'
+
+  # Note:
+  #   - Annoyingly, even with `-x` (print horizontally), `ls` STILL adds a
+  #     newline after a certain column number limit.
+  #   - We instead use `-1` so each entry is on its own line.
+  #   - We then use `tr` to manipulate the output.
+  #
+  # See:
+  #   - https://taskfile.dev/reference/schema/#variable
+  #   - https://serverfault.com/a/105841
+  #
+  LULU_ALL:
+    sh: ls -1 {{.LULU_GLOB}} | tr "\n" " "
+  LULU_SRC: '{{regexFindAll "[^\\s]+\\.cpp" .LULU_ALL -1 | join " "}}'
 
   LUA_OUT: bin/lua
-  LUA_SRC: lua/src
-  LUA_GLOB: '{{.LUA_SRC}}/*.[ch]'
+  LUA_DIR_SRC: lua/src
+  LUA_GLOB: '{{.LUA_DIR_SRC}}/*.[ch]'
+  LUA_SOURCES:
+    sh: ls -1 {{.LUA_GLOB}} | tr "\n" " "
 
 tasks:
   build:
     desc: Build the Lulu executable
     vars:
-      FLAGS: >-
-        {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
-        {{.CXX_FLAGS}}
-
-      # Note:
-      #   - Annoyingly, even with `-x` (print horizontally), `ls` STILL adds a
-      #     newline after a certain column number limit.
-      #   - We instead use `-1` so each entry is on its own line.
-      #   - We then use `tr` to manipulate the output.
-      #
-      # See:
-      #   - https://taskfile.dev/reference/schema/#variable
-      #   - https://serverfault.com/a/105841
-      #
-      SOURCES:
-        sh: ls -1 {{.LULU_SRC}}/*.{{.LULU_SRC_EXT}} | tr "\n" " "
     requires:
-      vars: [MODE, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+      vars: [MODE, LULU_ALL, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
     cmds:
-      - '{{.CXX}} {{.FLAGS}} -o {{.LULU_OUT}} {{.SOURCES}}'
+      - '{{.CXX}} {{.CXX_FLAGS}} -o {{.LULU_OUT}} {{.LULU_SRC}}'
     sources:
-      - '{{.LULU_SRC}}/*'
+      - '{{.LULU_GLOB}}'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:
@@ -137,9 +141,9 @@ tasks:
         -u NONE
         -c ':bufdo! %s/{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
         -c ':xa'
-    prompt: This command will potentially modify all files in '{{.LULU_GLOB}}'. Continue?
+    prompt: This command will potentially modify all files in '{{.LULU_GLOB}}' and '{{.LUA_GLOB}}'. Continue?
     cmds:
-      - '{{.VIM}} {{.VIM_FLAGS}} {{.LULU_GLOB}} {{.LUA_GLOB}}'
+      - '{{.VIM}} {{.VIM_FLAGS}} {{.LULU_ALL}} {{.LUA_SOURCES}}'
     requires:
       vars: [VIM_PATTERN, VIM_REPLACE]
     preconditions:
@@ -147,4 +151,12 @@ tasks:
 
   list:
     cmds:
-      - ls {{.LULU_GLOB}}
+      # - echo {{.LULU_ALL}}
+
+      # regex* functions: <pattern> <input> ...
+      # regexFindAll: <pattern> <input> <count>
+      - echo regexFindAll = {{regexFindAll "[^\\s.]+\\.cpp" .LULU_ALL -1 | join " "}}
+
+      # regexReplaceAll: <pattern> <input> <replacement>
+      - echo regexReplaceAll = {{regexReplaceAll "[^\\s]+\\.hpp" .LULU_ALL ""}}
+    silent: true
