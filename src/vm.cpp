@@ -1,3 +1,5 @@
+#include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
 
 #include "vm.hpp"
@@ -9,6 +11,21 @@ vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
 {
     vm.allocator      = allocator;
     vm.allocator_data = allocator_data;
+    builder_init(vm.builder);
+}
+
+Builder &
+vm_get_builder(lulu_VM &vm)
+{
+    Builder &b = vm.builder;
+    builder_reset(b);
+    return b;
+}
+
+void
+vm_destroy(lulu_VM &vm)
+{
+    builder_destroy(vm, vm.builder);
 }
 
 Error
@@ -32,10 +49,24 @@ vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr)
 }
 
 void
-vm_destroy(lulu_VM &vm)
+vm_throw(lulu_VM &vm, Error e)
 {
-    unused(vm);
-    /* nothing to do (yet) */
+    if (vm.error_handler != nullptr) {
+        throw e;
+    }
+    fprintf(stderr, "[FATAL]: Unprotected call to lulu API\n");
+    abort();
+}
+
+void
+vm_syntax_error(lulu_VM &vm, String file, int line, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    printf(STRING_FMTSPEC ":%i: ", string_fmtarg(file), line);
+    vprintf(fmt, args);
+    va_end(args);
+    vm_throw(vm, LULU_ERROR_SYNTAX);
 }
 
 struct Exec_Data {
@@ -53,7 +84,7 @@ vm_interpret(lulu_VM &vm, String source, String script)
         unused(vm);
 
         Exec_Data &d = *cast(Exec_Data *, user_ptr);
-        Lexer x = lexer_make(d.source, d.script);
+        Lexer x = lexer_make(vm, d.source, d.script);
         int prev_line = -1;
         for (;;) {
             Token t = lexer_lex(x);
@@ -63,8 +94,8 @@ vm_interpret(lulu_VM &vm, String source, String script)
             } else {
                 printf("   | ");
             }
-            printf("%s: '%.*s'\n", raw_data(token_strings[t.type]),
-                cast_int(t.lexeme.len), raw_data(t.lexeme));
+            printf("%s: '" STRING_FMTSPEC "'\n",
+                raw_data(token_strings[t.type]), string_fmtarg(t.lexeme));
 
             if (t.type == TOKEN_EOF) {
                 break;

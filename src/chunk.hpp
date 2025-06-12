@@ -1,10 +1,10 @@
 #pragma once
 
 #include "lulu.h"
-#include "mem.hpp"
 #include "opcode.hpp"
 #include "dynamic.hpp"
 #include "value.hpp"
+#include "string.hpp"
 
 struct Line_Info {
     int line; // Line number is stored directly in case we skip empty lines.

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "private.hpp"
-#include "slice.hpp"
+#include "string.hpp"
 
 enum Token_Type {
     TOKEN_INVALID,
@@ -41,9 +40,11 @@ struct Token {
 };
 
 struct Lexer {
-    String source, script;
-    size_t start, cursor;
-    int    line;
+    lulu_VM    &vm;
+    String      source, script;
+    const char *start;
+    const char *cursor;
+    int         line;
 };
 
 static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
@@ -51,7 +52,7 @@ static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
 extern const String token_strings[TOKEN_COUNT];
 
 Lexer
-lexer_make(String source, String script);
+lexer_make(lulu_VM &vm, String source, String script);
 
 Token
 lexer_lex(Lexer &x);

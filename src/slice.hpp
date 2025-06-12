@@ -7,58 +7,34 @@ struct Slice {
     T     *data;
     size_t len;
 
-    //=== READ-WRITE OPERATIONS ============================================ {{{
-
     // Bounds-checked, mutable element access.
-    T &operator[](size_t index)
+    T &operator[](size_t i)
     {
-        lulu_assert(0 <= index && index < this->len);
-        return this->data[index];
+        lulu_assert(0 <= i && i < this->len);
+        return this->data[i];
     }
-
-    // Mutable forward iterator start.
-    T *begin() noexcept
-    {
-        return this->data;
-    }
-
-    // Mutabel forward iterator stop.
-    T *end() noexcept
-    {
-        return this->data + this->len;
-    }
-
-    //=== }}} ==================================================================
-
-    //=== READ-ONLY OPERATIONS ============================================= {{{
 
     // Bounds-checked, non-mutable element access.
-    const T &operator[](size_t index) const
+    const T &operator[](size_t i) const
     {
-        lulu_assert(0 <= index && index < this->len);
-        return this->data[index];
+        lulu_assert(0 <= i && i < this->len);
+        return this->data[i];
     }
-
-    // Non-mutable forward iterator initial value.
-    const T *begin() const noexcept
-    {
-        return this->data;
-    }
-
-    // Non-mutable forward iterator final value.
-    const T *end() const noexcept
-    {
-        return this->data + this->len;
-    }
-
-    //=== }}} ==================================================================
 };
 
+
 template<class T>
-Slice<T>
+inline Slice<T>
 slice_make(T *data, size_t len)
 {
     return {data, len};
+}
+
+template<class T>
+inline Slice<T>
+slice_make(Slice <T> s, size_t start, size_t stop)
+{
+    return {&s[start], stop - start};
 }
 
 template<class T>
@@ -87,35 +63,25 @@ copy(Slice<T> dst, Slice<T> src)
 // Because C++ templates aren't convoluted enough
 template<class T>
 inline void
-copy(Slice <T> dst, Slice<const T> src)
+copy(Slice<T> dst, Slice<const T> src)
 {
     // Clamp size to read and copy
     const size_t n = (dst.len > src.len) ? src.len : dst.len;
     memmove(dst.data, src.data, sizeof(T) * n);
 }
 
-using String = Slice<const char>;
-
-inline String
-string_make(const char *data, size_t len)
+// Mutable forward iterator initial value.
+template<class T>
+inline T *
+begin(Slice <T> s)
 {
-    return {data, len};
+    return s.data;
 }
 
-inline String
-string_make(const char *cstring)
+// Mutable forward iterator final value.
+template<class T>
+inline T *
+end(Slice <T> s)
 {
-    return {cstring, strlen(cstring)};
-}
-
-inline String
-string_make(Slice<char> buffer)
-{
-    return {raw_data(buffer), len(buffer)};
-}
-
-inline String
-string_slice(String s, size_t start, size_t stop)
-{
-    return {&s[start], stop - start};
+    return s.data + s.len;
 }

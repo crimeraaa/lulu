@@ -3,7 +3,7 @@
 #include "lulu.h"
 #include "private.hpp"
 #include "chunk.hpp"
-#include "slice.hpp"
+#include "string.hpp"
 
 using Error = lulu_Error;
 
@@ -21,6 +21,7 @@ struct lulu_VM {
     void          *allocator_data;
     Chunk         *chunk;
     Error_Handler *error_handler;
+    Builder        builder;
 };
 
 using Protected_Fn = void (*)(lulu_VM &vm, void *user_ptr);
@@ -28,11 +29,22 @@ using Protected_Fn = void (*)(lulu_VM &vm, void *user_ptr);
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data);
 
-Error
-vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr);
+Builder &
+vm_get_builder(lulu_VM &vm);
 
 void
 vm_destroy(lulu_VM &vm);
+
+Error
+vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr);
+
+[[noreturn]]
+void
+vm_throw(lulu_VM &vm, Error e);
+
+[[noreturn, gnu::format(printf, 4, 5)]]
+void
+vm_syntax_error(lulu_VM &vm, String file, int line, const char *fmt, ...);
 
 Error
 vm_interpret(lulu_VM &vm, String source, String script);

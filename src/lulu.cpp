@@ -2,7 +2,6 @@
 #include <stdio.h>
 
 #include "lulu.h"
-#include "chunk.hpp"
 #include "vm.hpp"
 #include "debug.hpp"
 
@@ -39,7 +38,8 @@ read_file(const char *file_name)
 {
     FILE       *file_ptr  = fopen(file_name, "rb+");
     Slice<char> buffer{nullptr, 0}; // `goto` cannot skip over variables.
-    size_t      n_read = 0;
+    size_t      n_read    = 0;
+    long        file_size = 0;
 
     if (file_ptr == nullptr) {
         fprintf(stderr, "Failed to open file '%s'.\n", file_name);
@@ -47,17 +47,22 @@ read_file(const char *file_name)
     }
 
     fseek(file_ptr, 0L, SEEK_END);
-    buffer.len = cast(size_t, ftell(file_ptr)) + 1;
+    file_size = ftell(file_ptr);
+    if (file_size == -1L) {
+        fprintf(stderr, "Failed to determine size of file '%s'.\n", file_name);
+        goto cleanup_file;
+    }
+    buffer.len  = cast(size_t, file_size) + 1;
+    buffer.data = cast(char *, malloc(len(buffer)));
     rewind(file_ptr);
-
-    buffer.data = cast(char *, malloc(buffer.len));
-    if (buffer.data == nullptr) {
+    if (raw_data(buffer) == nullptr) {
         fprintf(stderr, "Failed to allocate memory for file '%s'.\n", file_name);
         goto cleanup_buffer;
     }
 
-    n_read = fread(raw_data(buffer), sizeof(buffer.data[0]), buffer.len - 1, file_ptr);
-    if (n_read < buffer.len) {
+    // `buffer[file_size]` is reserved for nul char so don't include it.
+    n_read = fread(raw_data(buffer), sizeof(buffer.data[0]), len(buffer) - 1, file_ptr);
+    if (n_read < len(buffer)) {
         fprintf(stderr, "Failed to read file '%s'.\n", file_name);
 cleanup_buffer:
         free(raw_data(buffer));
@@ -66,8 +71,8 @@ cleanup_buffer:
         goto cleanup_file;
     }
 
-    // `n_read` can never be >= `buffer.len + 1`
-    buffer[n_read] = '\0';
+    buffer[n_read] = '\0'; // `n_read` can never be >= `buffer.len + 1`
+    buffer.len--;          // Don't include the nul char in the final count.
 cleanup_file:
     fclose(file_ptr);
     return buffer;
@@ -76,6 +81,9 @@ cleanup_file:
 static void run_file(lulu_VM &vm, const char *file_name)
 {
     Slice<char> script = read_file(file_name);
+    if (raw_data(script) == nullptr) {
+        return;
+    }
     vm_interpret(vm, string_make(file_name), string_make(script));
     free(raw_data(script));
 }
@@ -85,6 +93,7 @@ int main(int argc, char *argv[])
 {
     lulu_VM vm;
     vm_init(vm, c_allocator, nullptr);
+    int status = 0;
     switch (argc) {
     case 1:
         run_interactive(vm);
@@ -94,7 +103,9 @@ int main(int argc, char *argv[])
         break;
     default:
         fprintf(stderr, "Usage: %s [script]\n", argv[0]);
+        status = 1;
         break;
     }
     vm_destroy(vm);
+    return status;
 }

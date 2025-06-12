@@ -15,7 +15,7 @@
 #include <gnu/lib-names.h>
 
 #include "private.hpp"
-#include "slice.hpp"
+#include "string.hpp"
 
 #undef lulu_assert
 
@@ -92,7 +92,7 @@ calculate_offset(String stack_frame)
         // Extract the symbolic information pointed to by `address`.
         Dl_info symbol_info;
         if (dladdr(address, &symbol_info) != 0) {
-            // Caculate total offset oof the symbol
+            // Caculate total offset of the symbol
             char *saddr = cast(char *, symbol_info.dli_saddr);
             char *fbase = cast(char *, symbol_info.dli_fbase);
             char *ofptr = cast(char *, offset_pointer);
@@ -148,13 +148,13 @@ addr2line_print(const void *address)
 static void
 print_backtrace()
 {
-    const char errmsg[]   = "Offset cannot be resolved; No offset present?\n\0?";
-    char print_array[100] = {0};
+    const char errmsg[] = "Offset cannot be resolved; No offset present?\n\0?";
 
     // backtrace the last calls
     int    n     = backtrace(stack_frames_buffer, count_of(stack_frames_buffer));
     char **array = backtrace_symbols(stack_frames_buffer, n);
 
+    char print_array[100] = {0};
     Slice<char *> stack_frame_strings{array, cast(size_t, n)};
 
     sprintf(print_array, "\nObtained %i stack frames.\n", n);

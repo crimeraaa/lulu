@@ -1,51 +1,56 @@
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "lexer.hpp"
+#include "vm.hpp"
+
 
 Lexer
-lexer_make(String source, String script)
+lexer_make(lulu_VM &vm, String source, String script)
 {
-    Lexer l;
-    l.source  = source;
-    l.script  = script;
-    l.start   = 0;
-    l.cursor  = 0;
-    l.line    = 1;
+    const char *ptr = raw_data(script);
+    Lexer l{vm, source, script, ptr, ptr, 1};
     return l;
 }
 
 static bool
 is_eof(const Lexer &x)
 {
-    return x.cursor >= len(x.script);
+    return x.cursor >= end(x.script);
 }
 
 static char
 peek(const Lexer &x)
 {
-    return x.script[x.cursor];
+    return *x.cursor;
 }
 
 static char
 peek_next(const Lexer &x)
 {
-    size_t i = x.cursor + 1;
-    if (i < len(x.script)) {
-        return x.script[i];
+    const char *p = x.cursor + 1;
+    // Safe to dereference?
+    if (p < end(x.script)) {
+        return *p;
     }
     return '\0';
 }
 
+/**
+ * @brief
+ *  -   Increments the cursor the returns the character we were pointing to
+ *      just before the increment.
+ */
 static char
 advance(Lexer &x)
 {
-    char prev = peek(x);
-    x.cursor++;
-    return prev;
+    return *x.cursor++;
 }
 
 static bool
 check(const Lexer &x, char ch)
 {
-    return peek(x) == ch;
+    return !is_eof(x) && peek(x) == ch;
 }
 
 static bool
@@ -58,16 +63,100 @@ match(Lexer &x, char ch)
     return found;
 }
 
+static bool
+match(Lexer &x, const char *set)
+{
+    return strchr(set, peek(x)) != nullptr;
+}
+
+static String
+get_lexeme(const Lexer &x)
+{
+    return string_make(x.start, x.cursor);
+}
+
+[[noreturn]]
+static void
+error(const Lexer &x, const char *what)
+{
+    String where = get_lexeme(x);
+    vm_syntax_error(x.vm, x.source, x.line,
+        "%s at '" STRING_FMTSPEC "'\n",
+        what, string_fmtarg(where));
+}
+
+static void
+expect(Lexer &x, char ch, const char *msg)
+{
+    if (!match(x, ch)) {
+        error(x, msg);
+    }
+}
+
+/**
+ * @note 2025-06-12
+ *  Assumptions:
+ *  1.) Assumes we just consumed a '[' character.
+ */
+static int
+get_nesting(Lexer &x)
+{
+    int count = 0;
+    while (!is_eof(x) && peek(x) == '=') {
+        count++;
+    }
+    return count;
+}
+
+static void
+skip_multiline(Lexer &x, int nest_open)
+{
+    for (;;) {
+        if (is_eof(x)) {
+            error(x, "Unterminated multiline comment");
+        }
+
+        if (match(x, ']')) {
+            int nest_close = get_nesting(x);
+            if (match(x, ']') && nest_open == nest_close) {
+                return;
+            }
+            continue;
+        }
+
+        char ch = advance(x);
+        if (ch == '\n') {
+            x.line++;
+        }
+    }
+}
+
+/**
+ * @note 2025-06-12
+ *  Assumptions:
+ *  1.) We just consumed both '-' characters.
+ *  2.) We are now pointing at the comment contents, '[', or a newline.
+ */
+static void
+skip_comment(Lexer &x)
+{
+    // Multiline comment.
+    if (match(x, '[')) {
+        int nest_open = get_nesting(x);
+        if (match(x, '[')) {
+            skip_multiline(x, nest_open);
+        }
+        // If we didn't find the 2nd '[' then we fall back to single line.
+    }
+    // Single line
+    while (!check(x, '\n')) {
+        advance(x);
+    }
+}
+
 static void
 skip_whitespace(Lexer &x)
 {
-    // On the first iteration, if we're already at eof, `peek()` would throw.
-    // This is because we're using indexes and not pointers. Although we can
-    // hold pointers to 1 past the last element, we cannot index it.
-    if (is_eof(x)) {
-        return;
-    }
-
     for (;;) {
         char ch = peek(x);
         switch (ch) {
@@ -81,14 +170,43 @@ skip_whitespace(Lexer &x)
             if (peek_next(x) != '-') {
                 return;
             }
-            while (!is_eof(x) && !check(x, '\n')) {
-                advance(x);
-            }
+            // Skip the two '-'.
+            advance(x);
+            advance(x);
+            skip_comment(x);
             break;
         default:
             return;
         }
     }
+}
+
+static char
+get_escaped(Lexer &x, char ch)
+{
+    switch (ch) {
+    case '0':   return '\0';
+    case 'a':   return '\a';
+    case 'b':   return '\b';
+    case 'f':   return '\f';
+    case 'n':   return '\n';
+    case 't':   return '\t';
+    case 'r':   return '\r';
+    case '\'':  // fall-through
+    case '\"':
+    case '\\':  return ch;
+    default:
+        break;
+    }
+
+    error(x, "Invalid escape sequence");
+}
+
+static Token
+make_token(const Lexer &x, Token_Type type)
+{
+    Token t{get_lexeme(x), type, x.line};
+    return t;
 }
 
 static bool
@@ -104,7 +222,7 @@ is_lower(char ch)
 }
 
 static bool
-is_digit(char ch)
+is_number(char ch)
 {
     return '0' <= ch && ch <= '9';
 }
@@ -118,62 +236,7 @@ is_alpha(char ch)
 static bool
 is_ident(char ch)
 {
-    return is_alpha(ch) || is_digit(ch);
-}
-
-static Token_Type
-get_type(Lexer &x, char ch)
-{
-    switch (ch) {
-    case '(': return TOKEN_OPEN_PAREN;
-    case ')': return TOKEN_CLOSE_PAREN;
-    case '{': return TOKEN_OPEN_CURLY;
-    case '}': return TOKEN_CLOSE_CURLY;
-    case '[': return TOKEN_OPEN_BRACE;
-    case ']': return TOKEN_CLOSE_BRACE;
-
-    case '+': return TOKEN_PLUS;
-    case '-': return TOKEN_DASH;
-    case '*': return TOKEN_ASTERISK;
-    case '/': return TOKEN_SLASH;
-    case '%': return TOKEN_PERCENT;
-    case '^': return TOKEN_CARET;
-
-    case '=': return match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN;
-    case '<': return match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS;
-    case '>': return match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ;
-
-    case '.':
-        if (match(x, '.')) {
-            return match(x, '.') ? TOKEN_VARARG : TOKEN_CONCAT;
-        }
-        // TODO(2025-06-12): check for numbers
-        return TOKEN_DOT;
-    case ',': return TOKEN_COMMA;
-    case ';': return TOKEN_SEMI;
-
-    case '\'':
-    case '\"':
-        while (!match(x, ch)) {
-            advance(x);
-        }
-        return TOKEN_STRING;
-    }
-
-    return TOKEN_INVALID;
-}
-
-static Token
-make_token(Lexer &x, Token_Type type)
-{
-    Token t{string_slice(x.script, x.start, x.cursor), type, x.line};
-    return t;
-}
-
-static Token
-make_eof(Lexer &x)
-{
-    return {string_slice(x.script, 0, 0), TOKEN_EOF, x.line};
+    return is_alpha(ch) || is_number(ch);
 }
 
 static void
@@ -184,28 +247,228 @@ consume_sequence(Lexer &x, bool (*predicate)(char ch))
     }
 }
 
+static Token
+make_number(Lexer &x, char first)
+{
+    if (first == '0') {
+        char ch = advance(x);
+        int base = 0;
+        switch (ch) {
+        case 'b': base = 2;  break;
+        case 'd': base = 10; break;
+        case 'o': base = 8;  break;
+        case 'x': base = 16; break;
+        default:
+            if (!is_number(ch)) {
+                error(x, "Invalid integer prefix");
+            }
+        }
+
+        // Consume everything, don't check if it's a bad number yet.
+        if (base != 0) {
+            consume_sequence(x, is_ident);
+            String s = get_lexeme(x);
+            char *last;
+            strtol(raw_data(s), &last, base);
+            if (last != end(s)) {
+                char buf[32];
+                sprintf(buf, "Invalid base-%i integer", base);
+                error(x, buf);
+            }
+            return make_token(x, TOKEN_NUMBER);
+        }
+        // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
+    }
+
+    consume_sequence(x, is_number);
+    if (match(x, "eE")) {
+        match(x, "+-"); // optional sign
+        consume_sequence(x, is_number);
+    } else {
+        // Consume '1.2.3'
+        while (match(x, '.')) {
+            consume_sequence(x, is_number);
+        }
+    }
+    consume_sequence(x, is_ident);
+
+    String s = get_lexeme(x);
+    char *last;
+    strtod(raw_data(s), &last);
+    if (last != end(s)) {
+        error(x, "Malformed number");
+    }
+    return make_token(x, TOKEN_NUMBER);
+}
+
+static Token
+make_string(Lexer &x, char q)
+{
+    lulu_VM &vm = x.vm;
+    Builder &b  = vm_get_builder(vm);
+
+    String s{x.cursor, 0};
+    while (!check(x, q) && !check(x, '\n')) {
+        char ch = advance(x);
+        if (ch == '\\') {
+            // 'flush' the string.
+            write_string(vm, b, s);
+
+            // Read the character after '\'.
+            ch = advance(x);
+            ch = get_escaped(x, ch);
+            write_char(vm, b, ch);
+
+            // Point to after the escape character.
+            s.data = x.cursor;
+            s.len  = 0;
+        }
+        s.len += 1;
+    }
+    expect(x, q, "Unterminated string");
+    write_string(vm, b, s);
+    return make_token(x, TOKEN_STRING);
+}
+
+static Token
+check_keyword(const Lexer &x, String s, Token_Type type)
+{
+    String kw = token_strings[type];
+    if (len(s) == len(kw) && memcmp(raw_data(s), raw_data(kw), len(s)) == 0) {
+        return make_token(x, type);
+    }
+    return make_token(x, TOKEN_IDENTIFIER);
+;}
+
+static Token
+make_keyword_or_identifier(const Lexer &x)
+{
+    String word = get_lexeme(x);
+
+    // If we reached this point then `word` MUST be at least of length 1.
+    switch (word[0]) {
+    case 'a': return check_keyword(x, word, TOKEN_AND);
+    case 'b': return check_keyword(x, word, TOKEN_BREAK);
+    case 'd': return check_keyword(x, word, TOKEN_DO);
+    case 'e':
+        switch (len(word)) {
+        case 3: return check_keyword(x, word, TOKEN_END);
+        case 4: return check_keyword(x, word, TOKEN_ELSE);
+        case 6: return check_keyword(x, word, TOKEN_ELSEIF);
+        }
+        break;
+    case 'f':
+        switch (len(word)) {
+        case 3: return check_keyword(x, word, TOKEN_FOR);
+        case 5: return check_keyword(x, word, TOKEN_FALSE);
+        case 8: return check_keyword(x, word, TOKEN_FUNCTION);
+        }
+        break;
+    case 'i':
+        if (len(word) != 2) {
+            break;
+        }
+        switch (word[1]) {
+        case 'f': return check_keyword(x, word, TOKEN_IF);
+        case 'n': return check_keyword(x, word, TOKEN_IN);
+        }
+        break;
+    case 'l': return check_keyword(x, word, TOKEN_LOCAL);
+    case 'n':
+        if (len(word) != 3) {
+            break;
+        }
+        switch (word[1]) {
+        case 'i': return check_keyword(x, word, TOKEN_NIL);
+        case 'o': return check_keyword(x, word, TOKEN_NOT);
+        }
+        break;
+    case 'o': return check_keyword(x, word, TOKEN_OR);
+    case 'r':
+        if (len(word) != 6) {
+            break;
+        }
+        // 'repeat' and 'return' have the same first 2 characters
+        switch (word[2]) {
+        case 't': return check_keyword(x, word, TOKEN_RETURN);
+        case 'p': return check_keyword(x, word, TOKEN_REPEAT);
+        }
+        break;
+    case 't':
+        if (len(word) != 3) {
+            break;
+        }
+        switch (word[1]) {
+        case 'h': return check_keyword(x, word, TOKEN_THEN);
+        case 'r': return check_keyword(x, word, TOKEN_TRUE);
+        }
+        break;
+    case 'u': return check_keyword(x, word, TOKEN_UNTIL);
+    case 'w': return check_keyword(x, word, TOKEN_WHILE);
+    default:
+        break;
+    }
+
+    return make_token(x, TOKEN_IDENTIFIER);
+}
+
 Token
 lexer_lex(Lexer &x)
 {
     skip_whitespace(x);
     x.start = x.cursor;
     if (is_eof(x)) {
-        return make_eof(x);
+        return make_token(x, TOKEN_EOF);
     }
 
     char ch = advance(x);
     if (is_alpha(ch)) {
         consume_sequence(x, is_ident);
-        return make_token(x, TOKEN_IDENTIFIER);
-    } else if (is_digit(ch)) {
-        consume_sequence(x, is_digit);
-        if (peek(x) == '.') {
-            consume_sequence(x, is_digit);
-        }
-        return make_token(x, TOKEN_NUMBER);
+        return make_keyword_or_identifier(x);
+    } else if (is_number(ch)) {
+        return make_number(x, ch);
     }
 
-    Token_Type type = get_type(x, ch);
+    Token_Type type = TOKEN_INVALID;
+    switch (ch) {
+    case '(': type = TOKEN_OPEN_PAREN; break;
+    case ')': type = TOKEN_CLOSE_PAREN; break;
+    case '{': type = TOKEN_OPEN_CURLY; break;
+    case '}': type = TOKEN_CLOSE_CURLY; break;
+    // TODO(2025-6-12): Allow multiline strings?
+    case '[': type = TOKEN_OPEN_BRACE; break;
+    case ']': type = TOKEN_CLOSE_BRACE; break;
+
+    case '+': type = TOKEN_PLUS; break;
+    case '-': type = TOKEN_DASH; break;
+    case '*': type = TOKEN_ASTERISK; break;
+    case '/': type = TOKEN_SLASH; break;
+    case '%': type = TOKEN_PERCENT; break;
+    case '^': type = TOKEN_CARET; break;
+
+    case '=': type = match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN; break;
+    case '<': type = match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS; break;
+    case '>': type = match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ; break;
+
+    case '.':
+        if (match(x, '.')) {
+            type = match(x, '.') ? TOKEN_VARARG : TOKEN_CONCAT;
+        } else {
+            if (is_number(peek(x))) {
+                return make_number(x, ch);
+            }
+            type = TOKEN_DOT;
+        }
+        break;
+    case ',': type = TOKEN_COMMA; break;
+    case ';': type = TOKEN_SEMI; break;
+
+    case '\'':
+    case '\"': return make_string(x, ch);
+    }
+    if (type == TOKEN_INVALID) {
+        error(x, "Unexpected character");
+    }
     return make_token(x, type);
 }
 

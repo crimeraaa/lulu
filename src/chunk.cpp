@@ -56,13 +56,21 @@ int
 chunk_get_line(const Chunk &c, int pc)
 {
     // Binary search
-    size_t stop = len(c.line_info);
-    for (size_t i = stop / 2; i < stop;) {
+    size_t left  = 0;
+    size_t right = len(c.line_info);
+    while (left < right) {
+        size_t    i    = (left + right) / 2;
         Line_Info info = c.line_info[i];
         if (info.start_pc > pc) {
-            i--; // Current range is greater than us, check left.
+            // Avoid unsigned overflow
+            if (i == 0) {
+                break;
+            }
+            // Current range is greater, ignore this right half.
+            right = i - 1;
         } else if (info.end_pc < pc) {
-            i++; // Current range is less than us, check right.
+            // Current range is less, ignore this left half.
+            left = i + 1;
         } else {
             return info.line;
         }
