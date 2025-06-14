@@ -3,13 +3,13 @@
 #include "mem.hpp"
 #include "slice.hpp"
 
-template <class T>
+template<class T>
 struct Dynamic : public Slice<T> {
     size_t cap;
 };
 
 template<class T>
-void
+inline void
 dynamic_init(Dynamic<T> &d)
 {
     d.data = nullptr;
@@ -23,7 +23,7 @@ dynamic_init(Dynamic<T> &d)
  *  - `d.len` is left untouched thus you still cannot index it.
  */
 template<class T>
-void
+inline void
 dynamic_reserve(lulu_VM &vm, Dynamic<T> &d, size_t new_cap)
 {
     d.data = mem_resize(vm, d.data, d.cap, new_cap);
@@ -41,7 +41,7 @@ dynamic_reserve(lulu_VM &vm, Dynamic<T> &d, size_t new_cap)
  *      index this range.
  */
 template<class T>
-void
+inline void
 dynamic_resize(lulu_VM &vm, Dynamic<T> &d, size_t new_len)
 {
     // Can't accomodate the new data?
@@ -52,7 +52,7 @@ dynamic_resize(lulu_VM &vm, Dynamic<T> &d, size_t new_len)
 }
 
 template<class T>
-void
+inline void
 dynamic_push(lulu_VM &vm, Dynamic<T> &d, T value)
 {
     dynamic_resize(vm, d, d.len + 1);
@@ -60,7 +60,7 @@ dynamic_push(lulu_VM &vm, Dynamic<T> &d, T value)
 }
 
 template<class T>
-T
+inline T
 dynamic_pop(Dynamic<T> &d)
 {
     T value = d[d.len - 1];
@@ -69,7 +69,7 @@ dynamic_pop(Dynamic<T> &d)
 }
 
 template<class T>
-void
+inline void
 dynamic_delete(lulu_VM &vm, Dynamic<T> &d)
 {
     mem_delete(vm, d.data, d.cap);
@@ -77,7 +77,7 @@ dynamic_delete(lulu_VM &vm, Dynamic<T> &d)
 }
 
 template<class T>
-void
+inline void
 dynamic_reset(Dynamic<T> &d)
 {
     d.len = 0;

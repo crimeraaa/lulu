@@ -19,4 +19,5 @@ typedef enum {
     LULU_OK,
     LULU_ERROR_SYNTAX,
     LULU_ERROR_RUNTIME,
+    LULU_ERROR_MEMORY,
 } lulu_Error;

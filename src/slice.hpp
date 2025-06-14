@@ -2,7 +2,7 @@
 
 #include <string.h> // memmove
 
-template <class T>
+template<class T>
 struct Slice {
     T     *data;
     size_t len;

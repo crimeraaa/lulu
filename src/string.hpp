@@ -8,10 +8,11 @@
 
 using String = Slice<const char>;
 
-#define STRING_FMTSPEC      "%.*s"
-#define string_fmtarg(s)    cast_int(len(s)), raw_data(s)
+#define STRING_FMTSPEC "%.*s"
+#define string_fmtarg(s) cast_int(len(s)), raw_data(s)
 
-struct Builder {
+struct Builder
+{
     Dynamic<char> buffer;
 };
 
@@ -73,7 +74,10 @@ void
 builder_destroy(lulu_VM &vm, Builder &b);
 
 void
-write_char(lulu_VM &vm, Builder &b, char ch);
+builder_write_char(lulu_VM &vm, Builder &b, char ch);
 
 void
-write_string(lulu_VM &vm, Builder &b, String s);
+builder_write_string(lulu_VM &vm, Builder &b, String s);
+
+String
+builder_to_string(const Builder &b);

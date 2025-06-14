@@ -2,6 +2,10 @@
 
 #include "string.hpp"
 
+/**
+ * @note 2025-06-14:
+ *  -   ORDER: Keep in sync with `token_strings`!
+ */
 enum Token_Type {
     TOKEN_INVALID,
 

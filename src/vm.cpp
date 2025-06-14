@@ -81,8 +81,6 @@ vm_interpret(lulu_VM &vm, String source, String script)
     chunk_init(data.chunk, source);
 
     Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr){
-        unused(vm);
-
         Exec_Data &d = *cast(Exec_Data *, user_ptr);
         Lexer x = lexer_make(vm, d.source, d.script);
         int prev_line = -1;

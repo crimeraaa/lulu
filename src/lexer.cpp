@@ -50,7 +50,13 @@ advance(Lexer &x)
 static bool
 check(const Lexer &x, char ch)
 {
-    return !is_eof(x) && peek(x) == ch;
+    return peek(x) == ch;
+}
+
+static bool
+check2(const Lexer &x, char first, char second)
+{
+    return check(x, first) || check(x, second);
 }
 
 static bool
@@ -64,9 +70,9 @@ match(Lexer &x, char ch)
 }
 
 static bool
-match(Lexer &x, const char *set)
+match2(Lexer &x, char first, char second)
 {
-    return strchr(set, peek(x)) != nullptr;
+    return match(x, first) || match(x, second);
 }
 
 static String
@@ -102,24 +108,29 @@ static int
 get_nesting(Lexer &x)
 {
     int count = 0;
-    while (!is_eof(x) && peek(x) == '=') {
+    while (!is_eof(x) && check(x, '=')) {
+        advance(x);
         count++;
     }
     return count;
 }
 
-static void
+static const char *
 skip_multiline(Lexer &x, int nest_open)
 {
     for (;;) {
         if (is_eof(x)) {
-            error(x, "Unterminated multiline comment");
+            error(x, "Unterminated multiline sequence");
         }
 
         if (match(x, ']')) {
+            // `x.cursor` points to the character *after* the ']', so point to
+            // the ']' itself so that when we do pointer arithmetic we can get
+            // the proper length.
+            const char *stop = x.cursor - 1;
             int nest_close = get_nesting(x);
             if (match(x, ']') && nest_open == nest_close) {
-                return;
+                return stop;
             }
             continue;
         }
@@ -145,11 +156,12 @@ skip_comment(Lexer &x)
         int nest_open = get_nesting(x);
         if (match(x, '[')) {
             skip_multiline(x, nest_open);
+            return;
         }
         // If we didn't find the 2nd '[' then we fall back to single line.
     }
     // Single line
-    while (!check(x, '\n')) {
+    while (!is_eof(x) && !check(x, '\n')) {
         advance(x);
     }
 }
@@ -193,7 +205,7 @@ get_escaped(Lexer &x, char ch)
     case 't':   return '\t';
     case 'r':   return '\r';
     case '\'':  // fall-through
-    case '\"':
+    case '\"':  // fall-through
     case '\\':  return ch;
     default:
         break;
@@ -206,6 +218,13 @@ static Token
 make_token(const Lexer &x, Token_Type type)
 {
     Token t{get_lexeme(x), type, x.line};
+    return t;
+}
+
+static Token
+make_token(const Lexer &x, Token_Type type, String lexeme)
+{
+    Token t{lexeme, type, x.line};
     return t;
 }
 
@@ -269,7 +288,7 @@ make_number(Lexer &x, char first)
             consume_sequence(x, is_ident);
             String s = get_lexeme(x);
             char *last;
-            strtol(raw_data(s), &last, base);
+            strtoul(raw_data(s), &last, base);
             if (last != end(s)) {
                 char buf[32];
                 sprintf(buf, "Invalid base-%i integer", base);
@@ -281,8 +300,8 @@ make_number(Lexer &x, char first)
     }
 
     consume_sequence(x, is_number);
-    if (match(x, "eE")) {
-        match(x, "+-"); // optional sign
+    if (match2(x, 'e', 'E')) {
+        match2(x, '+', '-'); // optional sign
         consume_sequence(x, is_number);
     } else {
         // Consume '1.2.3'
@@ -308,16 +327,16 @@ make_string(Lexer &x, char q)
     Builder &b  = vm_get_builder(vm);
 
     String s{x.cursor, 0};
-    while (!check(x, q) && !check(x, '\n')) {
+    while (!is_eof(x) && !check2(x, q, '\n')) {
         char ch = advance(x);
         if (ch == '\\') {
-            // 'flush' the string.
-            write_string(vm, b, s);
+            // 'flush' the string up to this point.
+            builder_write_string(vm, b, s);
 
             // Read the character after '\'.
             ch = advance(x);
             ch = get_escaped(x, ch);
-            write_char(vm, b, ch);
+            builder_write_char(vm, b, ch);
 
             // Point to after the escape character.
             s.data = x.cursor;
@@ -326,7 +345,7 @@ make_string(Lexer &x, char q)
         s.len += 1;
     }
     expect(x, q, "Unterminated string");
-    write_string(vm, b, s);
+    builder_write_string(vm, b, s);
     return make_token(x, TOKEN_STRING);
 }
 
@@ -435,8 +454,17 @@ lexer_lex(Lexer &x)
     case ')': type = TOKEN_CLOSE_PAREN; break;
     case '{': type = TOKEN_OPEN_CURLY; break;
     case '}': type = TOKEN_CLOSE_CURLY; break;
-    // TODO(2025-6-12): Allow multiline strings?
-    case '[': type = TOKEN_OPEN_BRACE; break;
+    case '[':
+        // Don't consume '[' nor '=' yet; need to get rid of all '=' first.
+        if (check2(x, '[', '=')) {
+            int nest_open = get_nesting(x);
+            expect(x, '[', "Expected 2nd '[' to start off multiline string");
+            const char *start = x.cursor;
+            const char *stop  = skip_multiline(x, nest_open);
+            return make_token(x, TOKEN_STRING, string_make(start, stop));
+        }
+        type = TOKEN_OPEN_BRACE;
+        break;
     case ']': type = TOKEN_CLOSE_BRACE; break;
 
     case '+': type = TOKEN_PLUS; break;
@@ -472,50 +500,33 @@ lexer_lex(Lexer &x)
     return make_token(x, type);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wc99-designator"
-
 #define STR(s)  {s, sizeof(s) - 1}
 
+/**
+ * @note 2025-06-14:
+ *  -   ORDER: Keep in sync with `Token_Type`!
+ */
 const String token_strings[TOKEN_COUNT] = {
-    [TOKEN_INVALID]     = STR("<invalid>"),
+    STR("<invalid>"),
 
     // Keywords
-    [TOKEN_AND]         = STR("and"),       [TOKEN_BREAK]       = STR("break"),
-    [TOKEN_DO]          = STR("do"),        [TOKEN_ELSE]        = STR("else"),
-    [TOKEN_ELSEIF]      = STR("elseif"),    [TOKEN_END]         = STR("end"),
-    [TOKEN_FALSE]       = STR("false"),     [TOKEN_FOR]         = STR("for"),
-    [TOKEN_FUNCTION]    = STR("function"),  [TOKEN_IF]          = STR("if"),
-    [TOKEN_IN]          = STR("in"),        [TOKEN_LOCAL]       = STR("local"),
-    [TOKEN_NIL]         = STR("nil"),       [TOKEN_NOT]         = STR("not"),
-    [TOKEN_OR]          = STR("or"),        [TOKEN_REPEAT]      = STR("repeat"),
-    [TOKEN_RETURN]      = STR("return"),    [TOKEN_THEN]        = STR("then"),
-    [TOKEN_TRUE]        = STR("true"),      [TOKEN_UNTIL]       = STR("until"),
-    [TOKEN_WHILE]       = STR("while"),
+    STR("and"), STR("break"), STR("do"), STR("else"), STR("elseif"), STR("end"),
+    STR("false"), STR("for"), STR("function"), STR("if"), STR("in"),
+    STR("local"), STR("nil"), STR("not"), STR("or"), STR("repeat"),
+    STR("return"), STR("then"), STR("true"), STR("until"), STR("while"),
 
-    [TOKEN_OPEN_PAREN]  = STR("("),         [TOKEN_CLOSE_PAREN] = STR(")"),
-    [TOKEN_OPEN_CURLY]  = STR("{"),         [TOKEN_CLOSE_CURLY] = STR("}"),
-    [TOKEN_OPEN_BRACE]  = STR("["),         [TOKEN_CLOSE_BRACE] = STR("]"),
+    // Balanced pairs
+    STR("("), STR(")"), STR("{"), STR("}"), STR("["), STR("]"),
 
-    [TOKEN_PLUS]        = STR("+"),         [TOKEN_DASH]        = STR("-"),
-    [TOKEN_ASTERISK]    = STR("*"),         [TOKEN_SLASH]       = STR("/"),
-    [TOKEN_PERCENT]     = STR("/"),         [TOKEN_CARET]       = STR("^"),
+    // Arithmetic Operators
+    STR("+"), STR("-"), STR("*"), STR("/"), STR("/"), STR("^"),
 
-    [TOKEN_EQ]          = STR("=="),        [TOKEN_NOT_EQ]      = STR("~="),
-    [TOKEN_LESS]        = STR("<"),         [TOKEN_LESS_EQ]     = STR("<="),
-    [TOKEN_GREATER]     = STR(">"),         [TOKEN_GREATER_EQ]  = STR(">="),
+    // Relational Operators
+    STR("=="), STR("~="), STR("<"), STR("<="), STR(">"), STR(">="),
 
-    [TOKEN_DOT]         = STR("."),         [TOKEN_CONCAT]      = STR(".."),
-    [TOKEN_VARARG]      = STR("..."),       [TOKEN_COMMA]       = STR(","),
-    [TOKEN_COLON]       = STR(":"),         [TOKEN_SEMI]        = STR(";"),
-    [TOKEN_ASSIGN]      = STR("="),
-
-    [TOKEN_IDENTIFIER]  = STR("<identifier>"),
-    [TOKEN_NUMBER]      = STR("<number>"),
-    [TOKEN_STRING]      = STR("<string>"),
-    [TOKEN_EOF]         = STR("<eof>"),
+    // Misc.
+    STR("."), STR(".."), STR("..."), STR(","), STR(":"), STR(";"), STR("="),
+    STR("<identifier>"), STR("<number>"), STR("<string>"), STR("<eof>"),
 };
 
 #undef STR
-
-#pragma GCC diagnostic pop
