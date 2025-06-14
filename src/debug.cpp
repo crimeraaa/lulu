@@ -124,6 +124,8 @@ void
 debug_disassemble(const Chunk &c)
 {
     const auto &constants = c.constants;
+    printf("\n=== DISASSEMBLY: BEGIN ===\n");
+    printf(".stack_used:\n%i\n", c.stack_used);
     if (constants.len > 0) {
         printf(".const:\n");
         for (size_t i = 0, end = constants.len; i < end; i++) {
@@ -138,4 +140,5 @@ debug_disassemble(const Chunk &c)
     for (size_t i = 0, end = code.len; i < end; i++) {
         debug_disassemble_at(c, code[i], cast_int(i), pad);
     }
+    printf("\n=== DISASSEMBLY: END ===\n");
 }

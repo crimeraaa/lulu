@@ -8,16 +8,18 @@ struct Slice {
     size_t len;
 
     // Bounds-checked, mutable element access.
-    T &operator[](size_t i)
+    template<class N>
+    T &operator[](N i)
     {
-        lulu_assert(0 <= i && i < this->len);
+        lulu_assert(0 <= cast(size_t, i) && cast(size_t, i) < this->len);
         return this->data[i];
     }
 
     // Bounds-checked, non-mutable element access.
-    const T &operator[](size_t i) const
+    template<class N>
+    const T &operator[](N i) const
     {
-        lulu_assert(0 <= i && i < this->len);
+        lulu_assert(0 <= cast(size_t, i) && cast(size_t, i) < this->len);
         return this->data[i];
     }
 };

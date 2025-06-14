@@ -39,6 +39,7 @@ enum Token_Type {
 
 struct Token {
     String     lexeme;
+    double     number;
     Token_Type type;
     int        line;
 };

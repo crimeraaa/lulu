@@ -4,7 +4,7 @@
 
 #include "vm.hpp"
 #include "debug.hpp"
-#include "lexer.hpp"
+#include "parser.hpp"
 
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
@@ -63,8 +63,9 @@ vm_syntax_error(lulu_VM &vm, String file, int line, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    printf(STRING_FMTSPEC ":%i: ", string_fmtarg(file), line);
-    vprintf(fmt, args);
+    fprintf(stdout,STRING_FMTSPEC ":%i: ", string_fmtarg(file), line);
+    vfprintf(stdout, fmt, args);
+    fputc('\n', stdout);
     va_end(args);
     vm_throw(vm, LULU_ERROR_SYNTAX);
 }
@@ -80,33 +81,17 @@ vm_interpret(lulu_VM &vm, String source, String script)
     Exec_Data data{source, script, {}};
     chunk_init(data.chunk, source);
 
-    Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr){
+    Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr) {
         Exec_Data &d = *cast(Exec_Data *, user_ptr);
-        Lexer x = lexer_make(vm, d.source, d.script);
-        int prev_line = -1;
-        for (;;) {
-            Token t = lexer_lex(x);
-            if (t.line != prev_line) {
-                printf("%4i ", t.line);
-                prev_line = t.line;
-            } else {
-                printf("   | ");
-            }
-            printf("%s: '" STRING_FMTSPEC "'\n",
-                raw_data(token_strings[t.type]), string_fmtarg(t.lexeme));
+        parser_program(vm, d.chunk, d.script);
+        vm.chunk  = &d.chunk;
+        vm.window = slice_make(vm.stack, cast(size_t, d.chunk.stack_used));
 
-            if (t.type == TOKEN_EOF) {
-                break;
-            }
+        for (auto &slot : vm.window) {
+            slot = 0.0;
         }
-        // vm.chunk  = &d.chunk;
-        // vm.window = slice_make(vm.stack, cast(size_t, d.chunk.stack_used));
 
-        // for (auto &slot : vm.window) {
-        //     slot = 0.0;
-        // }
-
-        // // vm_execute(vm);
+        vm_execute(vm);
     }, &data);
 
     chunk_destroy(vm, data.chunk);

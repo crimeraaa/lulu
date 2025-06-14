@@ -217,14 +217,14 @@ get_escaped(Lexer &x, char ch)
 static Token
 make_token(const Lexer &x, Token_Type type)
 {
-    Token t{get_lexeme(x), type, x.line};
+    Token t{get_lexeme(x), 0.0, type, x.line};
     return t;
 }
 
 static Token
 make_token(const Lexer &x, Token_Type type, String lexeme)
 {
-    Token t{lexeme, type, x.line};
+    Token t{lexeme, 0.0, type, x.line};
     return t;
 }
 
@@ -288,13 +288,15 @@ make_number(Lexer &x, char first)
             consume_sequence(x, is_ident);
             String s = get_lexeme(x);
             char *last;
-            strtoul(raw_data(s), &last, base);
+            unsigned long ul = strtoul(raw_data(s), &last, base);
             if (last != end(s)) {
                 char buf[32];
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
             }
-            return make_token(x, TOKEN_NUMBER);
+            Token t  = make_token(x, TOKEN_NUMBER);
+            t.number = cast(Number, ul);
+            return t;
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
@@ -313,11 +315,13 @@ make_number(Lexer &x, char first)
 
     String s = get_lexeme(x);
     char *last;
-    strtod(raw_data(s), &last);
+    Number d = strtod(raw_data(s), &last);
     if (last != end(s)) {
         error(x, "Malformed number");
     }
-    return make_token(x, TOKEN_NUMBER);
+    Token t = make_token(x, TOKEN_NUMBER);
+    t.number = d;
+    return t;
 }
 
 static Token

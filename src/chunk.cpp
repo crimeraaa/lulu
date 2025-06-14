@@ -31,25 +31,13 @@ add_line(lulu_VM &vm, Chunk &c, int pc, int line)
     dynamic_push(vm, c.line_info, start);
 }
 
-void
+int
 chunk_append(lulu_VM &vm, Chunk &c, Instruction i, int line)
 {
+    int pc = cast_int(len(c.code));
     dynamic_push(vm, c.code, i);
-    add_line(vm, c, cast_int(len(c.code) - 1), line);
-}
-
-void
-chunk_append(lulu_VM &vm, Chunk &c, OpCode op, u8 a, u16 b, u16 c2, int line)
-{
-    Instruction i = instruction_abc(op, a, b, c2);
-    chunk_append(vm, c, i, line);
-}
-
-void
-chunk_append(lulu_VM &vm, Chunk &c, OpCode op, u8 a, u32 bx, int line)
-{
-    Instruction i = instruction_abx(op, a, bx);
-    chunk_append(vm, c, i, line);
+    add_line(vm, c, pc, line);
+    return pc;
 }
 
 int
@@ -58,7 +46,11 @@ chunk_get_line(const Chunk &c, int pc)
     // Binary search
     size_t left  = 0;
     size_t right = len(c.line_info);
-    while (left < right) {
+    // left <= right would otherwise pass, yet index 0 is invalid!
+    if (right == 0) {
+        return NO_LINE;
+    }
+    while (left <= right) {
         size_t    i    = (left + right) / 2;
         Line_Info info = c.line_info[i];
         if (info.start_pc > pc) {
