@@ -18,7 +18,7 @@ expression(Parser &p, Compiler &c, Precedence limit = PREC_NONE);
 
 [[noreturn]]
 static void
-error_at(Parser &p, Token t, const char *msg)
+error_at(Parser &p, const Token &t, const char *msg)
 {
     String where = (t.type == TOKEN_EOF) ? token_strings[t.type] : t.lexeme;
     vm_syntax_error(p.vm, p.lexer.source, t.line,
@@ -32,50 +32,60 @@ error(Parser &p, const char *msg)
     error_at(p, p.consumed, msg);
 }
 
+
+/**
+ * @brief
+ *  -   Move to the next token unconditionally.
+ */
 static void
 advance(Parser &p)
 {
     p.consumed = lexer_lex(p.lexer);
 }
 
+
+/**
+ * @brief
+ *  -   Asserts that the current token is of type `expected` and advances.
+ */
 static void
-expect(Parser &p, Token_Type expected)
+consume(Parser &p, Token_Type expected)
 {
     if (p.consumed.type != expected) {
-        char buf[32];
+        // Assume our longest token is '<identifier>'.
+        char buf[64];
         sprintf(buf, "Expected '" STRING_FMTSPEC "'",
             string_fmtarg(token_strings[expected]));
         error(p, buf);
     }
+    advance(p);
 }
 
 static Expr
 prefix_expr(Parser &p, Compiler &c)
 {
-    switch (p.consumed.type) {
+    Token t = p.consumed;
+    advance(p); // Skip '<number>', '(' or '-'.
+    switch (t.type) {
     case TOKEN_NUMBER: {
-        Expr e;
-        e.type   = EXPR_NUMBER;
-        e.line   = p.consumed.line;
-        e.number = p.consumed.number;
+        Expr e{EXPR_NUMBER, t.line, {t.number}};
         return e;
     }
     case TOKEN_OPEN_PAREN: {
-        advance(p); // Skip '('.
         Expr e = expression(p, c);
-        expect(p, TOKEN_CLOSE_PAREN);
+        consume(p, TOKEN_CLOSE_PAREN);
         return e;
     }
     case TOKEN_DASH: {
-        advance(p);
+        static Expr dummy{EXPR_NUMBER, t.line, {0}};
         Expr e = expression(p, c, PREC_UNARY);
         // unary minus cannot operate on RK registers.
         compiler_expr_next_reg(c, e);
-        compiler_code_arith(c, OP_UNM, e, e);
+        compiler_code_arith(c, OP_UNM, e, dummy);
         return e;
     }
     default:
-        error(p, "Expected an expression");
+        error_at(p, t, "Expected an expression");
     }
 }
 
@@ -99,8 +109,11 @@ right_associative(OpCode op, Precedence prec)
     return b;
 }
 
-
-Binary get_binop(Token_Type type)
+/**
+ * @note 2025-06-16:
+ *  -   `OP_RETURN` is our 'invalid' binary opcode.
+ */
+Binary get_binary(Token_Type type)
 {
     switch (type) {
     case TOKEN_PLUS:     return left_associative(OP_ADD, PREC_TERMINAL);
@@ -124,21 +137,34 @@ static Expr
 expression(Parser &p, Compiler &c, Precedence limit)
 {
     Expr left = prefix_expr(p, c);
-    advance(p);
     for (;;) {
-        Binary b = get_binop(p.consumed.type);
-        if (b.op == OP_RETURN || b.left_prec < limit) {
+        Binary b = get_binary(p.consumed.type);
+        if (b.op == OP_RETURN || limit > b.left_prec) {
             break;
         }
 
         // Skip operator, point to first token of right hand side argument.
         advance(p);
 
-        // VERY important to call this *before* parsing the right hand side, if
-        // it ends up in a register we want them to be in the correct order.
-        compiler_expr_rk(c, left);
-        Expr right = expression(p, c, b.right_prec);
-        compiler_code_arith(c, b.op, left, right);
+        switch (b.op) {
+        case OP_ADD:
+        case OP_SUB:
+        case OP_MUL:
+        case OP_DIV:
+        case OP_MOD:
+        case OP_POW: {
+            // VERY important to call this *before* parsing the right hand side,
+            // if it ends up in a register we want them to be in the correct order.
+            compiler_expr_rk(c, left);
+            Expr right = expression(p, c, b.right_prec);
+            compiler_code_arith(c, b.op, left, right);
+            break;
+        }
+        default:
+            lulu_assertf(false, "Invalid binary opcode '%s'", opcode_names[b.op]);
+            break;
+        }
+
     }
     return left;
 }
@@ -152,7 +178,8 @@ parser_program(lulu_VM &vm, Chunk &chunk, String script)
     advance(p);
     Expr e = expression(p, c);
     compiler_expr_next_reg(c, e);
-    expect(p, TOKEN_EOF);
-    compiler_code(c, OP_RETURN, 0, 0, 0, p.lexer.line);
+    consume(p, TOKEN_EOF);
+    // Expression always returns 1 value
+    compiler_code(c, OP_RETURN, 0, 1, 0, p.lexer.line);
     debug_disassemble(c.chunk);
 }

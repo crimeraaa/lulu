@@ -7,6 +7,8 @@ compiler_make(lulu_VM &vm, Parser &p, Chunk &chunk)
     return c;
 }
 
+//=== BYTECODE MANIPULATION ================================================ {{{
+
 int
 compiler_code(Compiler &c, OpCode op, u8 a, u16 b, u16 c2, int line)
 {
@@ -31,6 +33,43 @@ compiler_add_number(Compiler &c, Number n)
     return compiler_add_constant(c, n);
 }
 
+//=== }}} ======================================================================
+
+//=== REGISTER MANIPULATION ================================================ {{{
+
+void
+compiler_reserve_reg(Compiler &c, u16 n)
+{
+    c.free_reg += n;
+    // TODO(2025-06-16): Turn into handle-able error rather than unrecoverable
+    lulu_assertf(c.free_reg <= MAX_REG, "More than %u registers", MAX_REG);
+    if (c.chunk.stack_used < c.free_reg) {
+        c.chunk.stack_used = c.free_reg;
+    }
+}
+
+static void
+pop_reg(Compiler &c, u8 reg)
+{
+    if (!reg_is_rk(reg)) {
+        c.free_reg -= 1;
+        // E.g. if we discharged 1 number, free_reg would be 1 and the expr.reg
+        // would be 0. So when we pop that number from its register, we expect
+        // to see free_reg == 0 again.
+        lulu_assertf(c.free_reg == reg, "Register %u cannot be popped", reg);
+    }
+}
+
+static void
+pop_expr(Compiler &c, const Expr &e)
+{
+    if (e.type == EXPR_DISCHARGED) {
+        pop_reg(c, e.reg);
+    }
+}
+
+//=== }}} ======================================================================
+
 static void
 expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
 {
@@ -46,7 +85,7 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
         break;
     }
     default:
-        lulu_assert(false && "Not yet implemented");
+        lulu_assertm(false, "Not yet implemented");
         break;
     }
     e.reg  = reg;
@@ -98,45 +137,26 @@ compiler_expr_rk(Compiler &c, Expr &e)
     default:
         break;
     }
-    // If allready discharge, don't push it again.
+    // If already discharged, don't push it again.
     return compiler_expr_any_reg(c, e);
-}
-
-void
-compiler_reserve_reg(Compiler &c, u16 n)
-{
-    c.free_reg += n;
-    lulu_assert(c.free_reg <= MAX_REG);
-    if (c.chunk.stack_used < c.free_reg) {
-        c.chunk.stack_used = c.free_reg;
-    }
-}
-
-void
-compiler_pop_reg(Compiler &c, u8 reg)
-{
-    if (!reg_is_rk(reg)) {
-        c.free_reg -= 1;
-        // E.g. if we discharged 1 number, free_reg would be 1 and the expr.reg
-        // would be 0. So when we pop that number from its register, we expect
-        // to see free_reg == 0 again.
-        lulu_assert(c.free_reg == reg);
-    }
 }
 
 void
 compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right)
 {
-    bool is_unm = (op == OP_UNM);
-    u16 rkc = (is_unm) ? 0 : compiler_expr_rk(c, right);
+    bool is_unary = (op == OP_UNM);
+
+    // When unary minus, `right` is a dummy expression for the number 0.0;
+    // don't push it because we need to do nothing when 'popping' it.
+    u16 rkc = (is_unary) ? 0 : compiler_expr_rk(c, right);
     u16 rkb = compiler_expr_rk(c, left);
 
-    // Reuse registers if any of the above were pushed.
-    if (!is_unm && right.type == EXPR_DISCHARGED) {
-        compiler_pop_reg(c, right.reg);
-    }
-    if (left.type == EXPR_DISCHARGED) {
-        compiler_pop_reg(c, left.reg);
+    if (rkc > rkb) {
+        pop_expr(c, right);
+        pop_expr(c, left);
+    } else {
+        pop_expr(c, left);
+        pop_expr(c, right);
     }
 
     int pc = compiler_code(c, op, OPCODE_MAX_A, rkb, rkc, left.line);

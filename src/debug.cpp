@@ -26,7 +26,7 @@ print_reg(const Chunk &c, u16 reg)
 {
     if (reg_is_rk(reg)) {
         u32 i = reg_get_k(reg);
-        printf(LULU_NUMBER_FMT, c.constants[i]);
+        value_print(c.constants[i]);
     } else {
         printf("R(%i)", reg);
     }
@@ -48,16 +48,21 @@ arith(const Chunk &c, char op, Args args)
     print_reg(c, args.basic.c);
 }
 
-int
-debug_get_pad(const Chunk &c)
+static int
+count_digits(size_t n)
 {
-    size_t n     = len(c.code);
-    int    count = 0;
+    int count = 0;
     while (n > 0) {
         n /= 10;
         count++;
     }
     return count;
+}
+
+int
+debug_get_pad(const Chunk &c)
+{
+    return count_digits(len(c.code));
 }
 
 // 4 spaces plus an extra one to separate messages.
@@ -103,7 +108,8 @@ debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
 
     switch (op) {
     case OP_CONSTANT:
-        printf("; R(%i) := .const[%i]", args.a, getarg_bx(ip));
+        printf("; R(%i) := ", args.a);
+        value_print(c.constants[getarg_bx(ip)]);
         break;
     case OP_UNM: unary(c, "-", args); break;
     case OP_ADD: arith(c, '+', args); break;
@@ -113,6 +119,7 @@ debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
     case OP_MOD: arith(c, '%', args); break;
     case OP_POW: arith(c, '^', args); break;
     case OP_RETURN:
+        printf("; return R(%i:%i)", args.a, cast(u16, args.a) + args.basic.b);
         break;
     }
 
@@ -126,10 +133,13 @@ debug_disassemble(const Chunk &c)
     const auto &constants = c.constants;
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
     printf(".stack_used:\n%i\n", c.stack_used);
-    if (constants.len > 0) {
+    if (len(constants) > 0) {
+        int pad = count_digits(len(constants));
         printf(".const:\n");
-        for (size_t i = 0, end = constants.len; i < end; i++) {
-            printf("[%zu] " LULU_NUMBER_FMT "\n", i, constants[i]);
+        for (size_t i = 0, end = len(constants); i < end; i++) {
+            printf("[%.*zu] ", pad, i);
+            value_print(constants[i]);
+            printf("\n");
         }
         printf("\n");
     }
@@ -137,7 +147,7 @@ debug_disassemble(const Chunk &c)
     const auto &code = c.code;
     printf(".code:\n");
     int pad = debug_get_pad(c);
-    for (size_t i = 0, end = code.len; i < end; i++) {
+    for (size_t i = 0, end = len(code); i < end; i++) {
         debug_disassemble_at(c, code[i], cast_int(i), pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");

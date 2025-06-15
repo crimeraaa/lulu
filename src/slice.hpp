@@ -11,16 +11,18 @@ struct Slice {
     template<class N>
     T &operator[](N i)
     {
-        lulu_assert(0 <= cast(size_t, i) && cast(size_t, i) < this->len);
-        return this->data[i];
+        size_t ii = cast(size_t, i);
+        lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
+        return this->data[ii];
     }
 
     // Bounds-checked, non-mutable element access.
     template<class N>
     const T &operator[](N i) const
     {
-        lulu_assert(0 <= cast(size_t, i) && cast(size_t, i) < this->len);
-        return this->data[i];
+        size_t ii = cast(size_t, i);
+        lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
+        return this->data[ii];
     }
 };
 
@@ -34,7 +36,7 @@ slice_make(T *data, size_t len)
 
 template<class T>
 inline Slice<T>
-slice_make(Slice <T> s, size_t start, size_t stop)
+slice_make(Slice<T> s, size_t start, size_t stop)
 {
     return {&s[start], stop - start};
 }
@@ -48,7 +50,7 @@ len(Slice<T> s)
 
 template<class T>
 inline T *
-raw_data(Slice <T> s)
+raw_data(Slice<T> s)
 {
     return s.data;
 }
@@ -75,7 +77,7 @@ copy(Slice<T> dst, Slice<const T> src)
 // Mutable forward iterator initial value.
 template<class T>
 inline T *
-begin(Slice <T> s)
+begin(Slice<T> s)
 {
     return s.data;
 }
@@ -83,7 +85,7 @@ begin(Slice <T> s)
 // Mutable forward iterator final value.
 template<class T>
 inline T *
-end(Slice <T> s)
+end(Slice<T> s)
 {
     return s.data + s.len;
 }

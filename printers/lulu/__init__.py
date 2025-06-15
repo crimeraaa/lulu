@@ -49,6 +49,8 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         self.__printers = {
             # Structs
             "Instruction":  opcode.InstructionPrinter,
+            # Hack because Slice<Instruction> == Slice<unsigned int>
+            "unsigned int": opcode.InstructionPrinter,
             "Token":        lexer.TokenPrinter,
             "Expr":         expr.ExprPrinter,
             "Value":        value.ValuePrinter,

@@ -6,6 +6,7 @@
 
 #include <execinfo.h> // backtrace, backtrace_symbols_fd
 #include <unistd.h>   // STD*_FILENO, write
+#include <stdarg.h>   // va_list, va_start, va_end
 #include <stdio.h>    // fprintf, sscanf
 #include <stdlib.h>   // free
 #include <string.h>   // strlen
@@ -178,13 +179,19 @@ print_backtrace()
 }
 
 void
-lulu_assert(const char *file, int line, bool cond, const char *expr)
+lulu_assert_(const char *file, int line, bool cond, const char *expr, const char *fmt, ...)
 {
     static bool have_error = false;
     if (!cond) {
         assert(!have_error && "Error in assertion handling");
         have_error = true;
         fprintf(stderr, "%s:%i: Assertion failed: %s\n", file, line, expr);
+        if (fmt != nullptr) {
+            va_list argp;
+            va_start(argp, fmt);
+            vfprintf(stderr, fmt, argp);
+            va_end(argp);
+        }
         print_backtrace();
         __builtin_trap();
     }

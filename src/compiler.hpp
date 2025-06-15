@@ -8,7 +8,7 @@ static constexpr u8 MAX_REG = OPCODE_MAX_A - 5;
 struct Compiler {
     lulu_VM &vm;
     Parser  &parser; // All compilers share the same parser.
-    Chunk   &chunk;    // Compilers do not own their chunks.
+    Chunk   &chunk;  // Compilers do not own their chunks.
     u8       free_reg;
 };
 
@@ -26,6 +26,16 @@ compiler_add_constant(Compiler &c, Value v);
 
 u32
 compiler_add_number(Compiler &c, Number n);
+
+
+/**
+ * @brief
+ *  -   Increments `c.free_reg` by `n`; asserting that it does not exceed
+ *      `MAX_REG`.
+ */
+void
+compiler_reserve_reg(Compiler &c, u16 n);
+
 
 /**
  * @brief
@@ -68,11 +78,29 @@ compiler_expr_rk(Compiler &c, Expr &e);
 u8
 compiler_expr_any_reg(Compiler &c, Expr &e);
 
-void
-compiler_reserve_reg(Compiler &c, u16 n);
 
-void
-compiler_pop_reg(Compiler &c, u8 reg);
-
+/**
+ * @details 2025-06-16:
+ *  -   Consider the expression `1 + 2*3`.
+ *
+ *  1.) We first parse `2*3`.
+ *      -   Both are constants so they are directly encoded rather than
+ *          pushed to registers first.
+ *      -   The `Expr` holding `2`, the current `left`, is set to
+ *          `RELOCABLE` holding the pc of `OP_MUL`.
+ *      -   We pop both expressions, but since neither are in registers,
+ *          nothing happens.
+ *
+ *  2.) We then parse `1 + <right>`.
+ *      -   `left` is the `Expr` holding `1`.
+ *      -   `right` is the `Expr` holding `OP_MUL` of constants `2` and `3`.
+ *      -   We call `compiler_expr_rk()` on `right`, which eventually leads
+ *          to `compiler_expr_next_reg()`.
+ *      -   This transforms `right` to `DISCHARGED` holding the first free
+ *          register, `0`. `c.free_reg` is now `1`.
+ *      -   `left` meanwhile simply holds the constant.
+ *      -   We pop both expressions, but only `right` is actually popped.
+ *          `c.free_reg` is now `0`.
+ */
 void
 compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right);

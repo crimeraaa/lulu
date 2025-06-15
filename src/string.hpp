@@ -38,6 +38,7 @@ string_make(const char *start, const char *end)
     // The standard says we can't compare 2 pointers that point to entirely
     // different objects in memory. But for x86-64 it *can* be done.
     lulu_assert(start <= end);
+    lulu_assertf(end - start >= 0, "Length of %ti less than 0", end - start);
     String s{start, cast(size_t, end - start)};
     return s;
 }

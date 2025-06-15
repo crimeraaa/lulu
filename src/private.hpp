@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stdint.h> /* uint*_t */
-#include <stddef.h> /* size_t */
+#include <stdint.h> // uint*_t
+#include <stddef.h> // size_t
 
 using u8  = uint8_t;
 using u16 = uint16_t;
@@ -16,15 +16,25 @@ using i32 = int32_t;
 
 #ifdef LULU_DEBUG
 
-extern "C" void
-lulu_assert(const char *file, int line, bool cond, const char *expr);
+[[gnu::format(printf, 5, 6)]]
+void
+lulu_assert_(const char *file, int line, bool cond, const char *expr,
+    const char *fmt, ...);
 
 #define lulu_assert(expr) \
-    lulu_assert(__FILE__, __LINE__, cast(bool, expr), #expr)
+    lulu_assert_(__FILE__, __LINE__, cast(bool, expr), #expr, nullptr)
+
+#define lulu_assertf(expr, fmt, ...) \
+    lulu_assert_(__FILE__, __LINE__, cast(bool, expr), #expr, fmt "\n", __VA_ARGS__)
+
+#define lulu_assertm(expr, msg) \
+    lulu_assertf(expr, "%s", msg)
 
 #else
 
 #define lulu_assert(expr)
+#define lulu_assertf(expr, fmt, ...)
+#define lulu_assertm(expr, msg)
 
 #endif // LULU_DEBUG
 

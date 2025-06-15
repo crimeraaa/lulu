@@ -3,7 +3,7 @@
 #include "private.hpp"
 
 enum OpCode {
-//        | Arguments |
+//        | Arguments | Effects
 OP_CONSTANT, // A Bx  | R(A) := K[Bx]
 OP_UNM,      // A B   | R(A) := -R(B)
 OP_ADD,      // A B C | R(A) := RK(B) + RK(C)
@@ -12,7 +12,7 @@ OP_MUL,      // A B C | R(A) := RK(B) * RK(C)
 OP_DIV,      // A B C | R(A) := RK(B) / RK(C)
 OP_MOD,      // A B C | R(A) := RK(B) % RK(C)
 OP_POW,      // A B C | R(A) := RK(B) ^ RK(C)
-OP_RETURN,
+OP_RETURN,   // A B C | return R(A:A+B)
 };
 
 static constexpr int OPCODE_COUNT = OP_RETURN + 1;
@@ -173,14 +173,14 @@ reg_is_rk(u16 reg)
 inline u16
 reg_to_rk(u32 index)
 {
-    lulu_assert(0 <= index && index <= OPCODE_MAX_RK);
+    lulu_assertf(index <= OPCODE_MAX_RK, "Index %u too wide for RK", index);
     return cast(u16, index) | OPCODE_BIT_RK;
 }
 
 inline u16
 reg_get_k(u16 reg)
 {
-    lulu_assert(reg_is_rk(reg));
+    lulu_assertf(reg_is_rk(reg), "Non-K register %u", reg);
     return reg & OPCODE_MAX_RK;
 }
 

@@ -10,7 +10,7 @@ using Error = lulu_Error;
 static constexpr int MAX_STACK = 256;
 
 struct Error_Handler {
-    Error_Handler *prev; // stack-allocated linked list
+    Error_Handler *prev; // Stack-allocated linked list.
     volatile Error error;
 };
 
@@ -19,7 +19,7 @@ struct lulu_VM {
     Slice<Value>   window;
     lulu_Allocator allocator;
     void          *allocator_data;
-    Chunk         *chunk;
+    Chunk         *chunk; // Not a reference because it can be reassigned.
     Error_Handler *error_handler;
     Builder        builder;
 };

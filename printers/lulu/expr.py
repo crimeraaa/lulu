@@ -4,54 +4,32 @@ from typing import Final
 NO_JUMP: Final = -1
 
 class ExprPrinter:
-    __type:        str
-    __info:        gdb.Value
-    __patch_true:  int
-    __patch_false: int
+    __type: str
+    __value: gdb.Value
 
     def __init__(self, val: gdb.Value):
-        self.__type        = str(val["type"])
-        self.__info        = val["info"]
-        self.__patch_true  = int(val["patch_true"])
-        self.__patch_false = int(val["patch_false"])
+        self.__value = val
+        self.__type  = str(val["type"])
 
     def to_string(self) -> str:
         info_name  = ""
         info_value = None
         extra      = ""
         match self.__type:
-            case "Discharged":
-                info_name  = "reg"
-                info_value = self.__info["reg"]
-            case "Need_Register":
-                info_name  = "pc"
-                info_value = self.__info["pc"]
-            case "Number":
+            case "EXPR_NUMBER":
                 info_name = "number"
-                info_value = self.__info["number"]
-            case "Constant":
+                info_value = self.__value["number"]
+            case "EXPR_CONSTANT":
                 info_name = "index"
-                info_value = self.__info["index"]
-            case "Global":
-                info_name  = "index"
-                info_value = self.__info["index"]
-            case "Local":
+                info_value = self.__value["index"]
+            case "EXPR_DISCHARGED":
                 info_name  = "reg"
-                info_value = self.__info["reg"]
-            case "Table_Index":
-                info_name  = "table(reg)"
-                info_value = self.__info["table"]["reg"]
-                extra      = f", key(reg)={self.__info['table']['key_reg']}"
-            case "Jump":
+                info_value = self.__value["reg"]
+            case "EXPR_RELOCABLE":
                 info_name  = "pc"
-                info_value = self.__info["pc"]
+                info_value = self.__value["pc"]
             case _:
                 pass
-
-        if self.__patch_true != NO_JUMP:
-            extra += f", t={self.__patch_true}"
-        if self.__patch_false != NO_JUMP:
-            extra += f", f={self.__patch_false}"
 
         if info_name and info_value is not None:
             return f"{self.__type}: {info_name}={info_value}" + extra

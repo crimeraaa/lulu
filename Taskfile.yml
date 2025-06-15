@@ -20,6 +20,8 @@ vars:
     -g
     -fsanitize=address
     -DLULU_DEBUG=1
+    -DLULU_DEBUG_PRINT_CODE
+    -DLULU_DEBUG_TRACE_EXEC
     -ldl
 
   RELEASE_FLAGS: >-
@@ -40,7 +42,7 @@ vars:
     -Wextra
     -Wconversion
     -Wpedantic
-    -DLULU_BUILD
+    -DLULU_BUILD_ALL
     -nostdinc++
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
 

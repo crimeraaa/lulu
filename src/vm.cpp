@@ -55,7 +55,7 @@ vm_throw(lulu_VM &vm, Error e)
         throw e;
     }
     fprintf(stderr, "[FATAL]: Unprotected call to lulu API\n");
-    abort();
+    throw e;
 }
 
 void
@@ -63,7 +63,7 @@ vm_syntax_error(lulu_VM &vm, String file, int line, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    fprintf(stdout,STRING_FMTSPEC ":%i: ", string_fmtarg(file), line);
+    fprintf(stdout, STRING_FMTSPEC ":%i: ", string_fmtarg(file), line);
     vfprintf(stdout, fmt, args);
     fputc('\n', stdout);
     va_end(args);
@@ -84,6 +84,11 @@ vm_interpret(lulu_VM &vm, String source, String script)
     Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr) {
         Exec_Data &d = *cast(Exec_Data *, user_ptr);
         parser_program(vm, d.chunk, d.script);
+
+        // Fixed-size stack cannot accomodate this chunk?
+        if (cast(size_t, d.chunk.stack_used) >= count_of(vm.stack)) {
+            vm_throw(vm, LULU_ERROR_MEMORY);
+        }
         vm.chunk  = &d.chunk;
         vm.window = slice_make(vm.stack, cast(size_t, d.chunk.stack_used));
 
@@ -101,34 +106,41 @@ vm_interpret(lulu_VM &vm, String source, String script)
 void
 vm_execute(lulu_VM &vm)
 {
-    Chunk chunk = *vm.chunk;
-    const Instruction *ip = raw_data(chunk.code);
-    Slice<Value> window = vm.window;
+    Chunk              chunk  = *vm.chunk;
+    const Instruction *ip     = raw_data(chunk.code);
+    Slice<Value>       window = vm.window;
 
-#define GET_RK(rkb)                                                            \
-    reg_is_rk(rkb)                                                             \
-        ? chunk.constants[reg_get_k(rkb)]                                            \
-        : window[getarg_b(rkb)]
+#define GET_RK(rk)                                                             \
+    reg_is_rk(rk)                                                              \
+        ? chunk.constants[reg_get_k(rk)]                                       \
+        : window[rk]
 
 #define ARITH_OP(fn)                                                           \
 {                                                                              \
-    u16 rkb = getarg_b(i);                                                     \
-    u16 rkc = getarg_c(i);                                                     \
-    Value rb = GET_RK(rkb);                                                    \
-    Value rc = GET_RK(rkc);                                                    \
+    u16 _b = getarg_b(i);                                                      \
+    u16 _c = getarg_c(i);                                                      \
+    Value rb = GET_RK(_b);                                                     \
+    Value rc = GET_RK(_c);                                                     \
     ra = fn(rb, rc);                                                           \
 }
 
+#ifdef LULU_DEBUG_TRACE_EXEC
     int pad = debug_get_pad(chunk);
+#endif // LULU_DEBUG_TRACE_EXEC
+
     for (;;) {
         Instruction i  = *ip++;
         Value      &ra =  window[getarg_a(i)];
 
-        for (size_t ii = 0, end = window.len; ii < end; ii++) {
-            printf("\t[%zu]\t" LULU_NUMBER_FMT "\n", ii, window[ii]);
+#ifdef LULU_DEBUG_TRACE_EXEC
+        for (size_t ii = 0, end = len(window); ii < end; ii++) {
+            printf("\t[%zu]\t", ii);
+            value_print(window[ii]);
+            printf("\n");
         }
         printf("\n");
         debug_disassemble_at(chunk, i, cast_int(ip - raw_data(chunk.code) - 1), pad);
+#endif // LULU_DEBUG_TRACE_EXEC
 
         switch (getarg_op(i)) {
         case OP_CONSTANT:
@@ -143,7 +155,23 @@ vm_execute(lulu_VM &vm)
         case OP_DIV: ARITH_OP(lulu_Number_div); break;
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
-        case OP_RETURN:
+        case OP_RETURN: {
+            /**
+             * @note 2025-06-16
+             *  Assumptions:
+             *  1.) The stack was resized properly beforehand, so that doing
+             *      pointer arithmetic is still within bounds even if we do not
+             *      explicitly check.
+             */
+            Slice<Value> args = slice_make(&ra, getarg_b(i));
+            for (auto v : args) {
+                value_print(v);
+                printf("\t");
+            }
+            printf("\n");
+            return;
+        }
+        default:
             return;
         }
     }

@@ -31,7 +31,7 @@ struct Expr {
     Expr_Type type;
     int       line;
     union {
-        Number number;
+        Number number; // Must be first member for brace initialization.
         u32    index;
         int    pc;
         u8     reg;
