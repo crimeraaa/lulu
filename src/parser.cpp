@@ -14,7 +14,7 @@ parser_make(lulu_VM &vm, String source, String script)
 
 // Forward declaration for recursive descent parsing.
 static Expr
-expression(Parser &p, Compiler &c, Precedence prec = PREC_NONE);
+expression(Parser &p, Compiler &c, Precedence limit = PREC_NONE);
 
 [[noreturn]]
 static void
@@ -66,49 +66,81 @@ prefix_expr(Parser &p, Compiler &c)
         expect(p, TOKEN_CLOSE_PAREN);
         return e;
     }
+    case TOKEN_DASH: {
+        advance(p);
+        Expr e = expression(p, c, PREC_UNARY);
+        // unary minus cannot operate on RK registers.
+        compiler_expr_next_reg(c, e);
+        compiler_code_arith(c, OP_UNM, e, e);
+        return e;
+    }
     default:
         error(p, "Expected an expression");
     }
 }
 
-static void
-arith(Parser &p, Compiler &c, Expr &left, Precedence left_prec, OpCode op, Precedence right_prec)
+struct Binary {
+    OpCode     op;
+    Precedence left_prec;
+    Precedence right_prec;
+};
+
+static constexpr Binary
+left_associative(OpCode op, Precedence prec)
 {
-    if (left_prec < right_prec) {
-        advance(p); // Skip the operator, point to first token of right
-        compiler_expr_rk(c, left);
-        Expr right = expression(p, c, right_prec);
-        compiler_code_arith(c, op, left, right);
-    }
+    Binary b{op, prec, cast(Precedence, cast_int(prec) + 1)};
+    return b;
 }
 
-static Precedence
-infix_expr(Parser &p, Compiler &c, Expr &left, Precedence prec)
+static constexpr Binary
+right_associative(OpCode op, Precedence prec)
 {
-    switch (p.consumed.type) {
-    case TOKEN_PLUS:     arith(p, c, left, prec, OP_ADD, PREC_TERMINAL); break;
-    case TOKEN_DASH:     arith(p, c, left, prec, OP_SUB, PREC_TERMINAL); break;
-    case TOKEN_ASTERISK: arith(p, c, left, prec, OP_MUL, PREC_FACTOR);   break;
-    case TOKEN_SLASH:    arith(p, c, left, prec, OP_DIV, PREC_FACTOR);   break;
-    case TOKEN_PERCENT:  arith(p, c, left, prec, OP_MOD, PREC_FACTOR);   break;
-    case TOKEN_CARET:    arith(p, c, left, prec, OP_POW, PREC_EXPONENT); break;
+    Binary b{op, prec, prec};
+    return b;
+}
+
+
+Binary get_binop(Token_Type type)
+{
+    switch (type) {
+    case TOKEN_PLUS:     return left_associative(OP_ADD, PREC_TERMINAL);
+    case TOKEN_DASH:     return left_associative(OP_SUB, PREC_TERMINAL);
+    case TOKEN_ASTERISK: return left_associative(OP_MUL, PREC_FACTOR);
+    case TOKEN_SLASH:    return left_associative(OP_DIV, PREC_FACTOR);
+    case TOKEN_PERCENT:  return left_associative(OP_MOD, PREC_FACTOR);
+    case TOKEN_CARET:    return right_associative(OP_POW, PREC_EXPONENT);
     default:
         break;
     }
-    return PREC_NONE;
+    return {OP_RETURN, PREC_NONE, PREC_NONE};
 }
+
 
 /**
  * @note 2025-06-14:
  *  -   Assumes we just consumed the first (prefix) token.
  */
 static Expr
-expression(Parser &p, Compiler &c, Precedence prec)
+expression(Parser &p, Compiler &c, Precedence limit)
 {
-    Expr e = prefix_expr(p, c);
+    Expr left = prefix_expr(p, c);
     advance(p);
-    infix_expr(p, c, e, prec);
-    return e;
+    for (;;) {
+        Binary b = get_binop(p.consumed.type);
+        if (b.op == OP_RETURN || b.left_prec < limit) {
+            break;
+        }
+
+        // Skip operator, point to first token of right hand side argument.
+        advance(p);
+
+        // VERY important to call this *before* parsing the right hand side, if
+        // it ends up in a register we want them to be in the correct order.
+        compiler_expr_rk(c, left);
+        Expr right = expression(p, c, b.right_prec);
+        compiler_code_arith(c, b.op, left, right);
+    }
+    return left;
 }
 
 void

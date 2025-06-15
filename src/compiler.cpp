@@ -40,10 +40,6 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
         compiler_code(c, OP_CONSTANT, reg, i, line);
         break;
     }
-    case EXPR_DISCHARGED: {
-        lulu_assert(false && "OP_MOVE not yet implemented");
-        break;
-    }
     case EXPR_RELOCABLE: {
         Instruction *ip = &c.chunk.code[e.pc];
         setarg_a(ip, reg);
@@ -131,11 +127,12 @@ compiler_pop_reg(Compiler &c, u8 reg)
 void
 compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right)
 {
-    u16 rkc = compiler_expr_rk(c, right);
+    bool is_unm = (op == OP_UNM);
+    u16 rkc = (is_unm) ? 0 : compiler_expr_rk(c, right);
     u16 rkb = compiler_expr_rk(c, left);
 
     // Reuse registers if any of the above were pushed.
-    if (right.type == EXPR_DISCHARGED) {
+    if (!is_unm && right.type == EXPR_DISCHARGED) {
         compiler_pop_reg(c, right.reg);
     }
     if (left.type == EXPR_DISCHARGED) {

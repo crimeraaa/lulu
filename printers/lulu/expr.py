@@ -4,16 +4,6 @@ from typing import Final
 NO_JUMP: Final = -1
 
 class ExprPrinter:
-    """
-    ```
-    struct lulu::[expr.odin]::Expr [
-        enum lulu::[expr.odin]::Expr_Type type;
-        struct lulu::[expr.odin]::Expr_Info info;
-        int jump_if_true;
-        int jump_if_false;
-    ]
-    ```
-    """
     __type:        str
     __info:        gdb.Value
     __patch_true:  int

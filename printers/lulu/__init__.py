@@ -48,18 +48,14 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         # Assuming demangled but fully-qualified names
         self.__printers = {
             # Structs
-            "lulu.Instruction":  opcode.InstructionPrinter,
-            "lulu.Token":        lexer.TokenPrinter,
-            "lulu.Expr":         expr.ExprPrinter,
-            "lulu.Value":        value.ValuePrinter,
-            "lulu.OString":      odin.StringPrinter,
+            "Instruction":  opcode.InstructionPrinter,
+            "Token":        lexer.TokenPrinter,
+            "Expr":         expr.ExprPrinter,
+            "Value":        value.ValuePrinter,
+            "String":       odin.StringPrinter,
 
             # Pointers thereof
-            "^lulu.Instruction": opcode.InstructionPrinter,
-            "^lulu.Token":       lexer.TokenPrinter,
-            "^lulu.Expr":        expr.ExprPrinter,
-            "^lulu.Value":       value.ValuePrinter,
-            "^lulu.OString":     odin.StringPrinter,
+            "Instruction *": opcode.InstructionPrinter,
         }
         super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))
 

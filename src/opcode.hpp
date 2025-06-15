@@ -48,7 +48,7 @@ using Instruction = u32;
 
 // Fills the `n` lower bits with 1's.
 // Useful when reading bit fields.
-static constexpr Instruction
+constexpr Instruction
 BITMASK1(int n)
 {
     return (1 << (n)) - 1;
@@ -56,7 +56,7 @@ BITMASK1(int n)
 
 // Set `start` up to `start + n` bits with 0's. All the rest are 1's.
 // Useful when setting bit fields.
-static constexpr Instruction
+constexpr Instruction
 BITMASK0(int start, int n)
 {
     return ~(BITMASK1(start) << (n));
@@ -123,31 +123,31 @@ OPINFO_MASK1_FMT    = BITMASK1(OPINFO_SIZE_FMT);
 extern const char *const opcode_names[OPCODE_COUNT];
 extern const OpInfo opcode_info[OPCODE_COUNT];
 
-static inline OpFormat
+inline OpFormat
 opinfo_fmt(OpCode op)
 {
     return cast(OpFormat, (opcode_info[op] >> OPINFO_OFFSET_FMT) & OPINFO_MASK1_FMT);
 }
 
-static inline OpArg
+inline OpArg
 opinfo_a(OpCode op)
 {
     return cast(OpArg, (opcode_info[op] >> OPINFO_OFFSET_A) & OPINFO_MASK1_A);
 }
 
-static inline OpArg
+inline OpArg
 opinfo_b(OpCode op)
 {
     return cast(OpArg, (opcode_info[op] >> OPINFO_OFFSET_B) & OPINFO_MASK1_B);
 }
 
-static inline OpArg
+inline OpArg
 opinfo_c(OpCode op)
 {
     return cast(OpArg, (opcode_info[op] >> OPINFO_OFFSET_C) & OPINFO_MASK1_C);
 }
 
-static inline Instruction
+inline Instruction
 instruction_abc(OpCode op, u8 a, u16 b, u16 c)
 {
     return (cast(Instruction,  c) << OPCODE_OFFSET_C)
@@ -156,7 +156,7 @@ instruction_abc(OpCode op, u8 a, u16 b, u16 c)
         |  (cast(Instruction, op) << OPCODE_OFFSET_OP);
 }
 
-static inline Instruction
+inline Instruction
 instruction_abx(OpCode op, u8 a, u32 bx)
 {
     return instruction_abc(op, a,
@@ -164,91 +164,91 @@ instruction_abx(OpCode op, u8 a, u32 bx)
         cast(u16, bx & OPCODE_MAX_C));  // mask out 'b' bits
 }
 
-static inline bool
+inline bool
 reg_is_rk(u16 reg)
 {
     return reg & OPCODE_BIT_RK;
 }
 
-static inline u16
+inline u16
 reg_to_rk(u32 index)
 {
     lulu_assert(0 <= index && index <= OPCODE_MAX_RK);
     return cast(u16, index) | OPCODE_BIT_RK;
 }
 
-static inline u16
+inline u16
 reg_get_k(u16 reg)
 {
     lulu_assert(reg_is_rk(reg));
     return reg & OPCODE_MAX_RK;
 }
 
-static inline u16
+inline u16
 getarg_c(Instruction i)
 {
     return cast(u16, (i >> OPCODE_OFFSET_C) & OPCODE_MAX_C);
 }
 
-static inline u16
+inline u16
 getarg_b(Instruction i)
 {
     return cast(u16, (i >> OPCODE_OFFSET_B) & OPCODE_MAX_B);
 }
 
-static inline u8
+inline u8
 getarg_a(Instruction i)
 {
     return cast(u8, (i >> OPCODE_OFFSET_A) & OPCODE_MAX_A);
 }
 
-static inline OpCode
+inline OpCode
 getarg_op(Instruction i)
 {
     return cast(OpCode, (i >> OPCODE_OFFSET_OP) & OPCODE_MAX_OP);
 }
 
-static inline u32
+inline u32
 getarg_bx(Instruction i)
 {
     return cast(u32, (i >> OPCODE_OFFSET_BX) & OPCODE_MAX_BX);
 }
 
-static inline i32
+inline i32
 getarg_sbx(Instruction i)
 {
     return cast(i32, getarg_bx(i)) - OPCODE_MAX_SBX;
 }
 
-static inline void
+inline void
 setarg_c(Instruction *ip, u16 c)
 {
     *ip &= OPCODE_MASK0_OP;
     *ip |= cast(Instruction, c) << OPCODE_OFFSET_C;
 }
 
-static inline void
+inline void
 setarg_b(Instruction *ip, u16 b)
 {
     *ip &= OPCODE_MASK0_B;
     *ip |= cast(Instruction, b) << OPCODE_OFFSET_B;
 }
 
-static inline void
+inline void
 setarg_a(Instruction *ip, u8 a)
 {
     *ip &= OPCODE_MASK0_A;
     *ip |= cast(Instruction, a) << OPCODE_OFFSET_A;
 }
 
-static inline void
+inline void
 setarg_bx(Instruction *ip, u32 index)
 {
     *ip &= OPCODE_MASK0_BX;
     *ip |= cast(Instruction, index) << OPCODE_OFFSET_BX;
 }
 
-static inline void
+inline void
 setarg_sbx(Instruction *ip, i32 jump)
 {
     setarg_bx(ip, cast(u32, jump + OPCODE_MAX_SBX));

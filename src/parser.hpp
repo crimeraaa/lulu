@@ -11,11 +11,12 @@ struct Parser {
     Token    consumed;
 };
 
-enum Precedence {
+enum Precedence : u8 {
     PREC_NONE,
     PREC_TERMINAL,  // + -
     PREC_FACTOR,    // * / %
     PREC_EXPONENT,  // ^
+    PREC_UNARY,     // - not #
 };
 
 enum Expr_Type {

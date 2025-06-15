@@ -2,18 +2,6 @@ import gdb # type: ignore
 from typing import Final
 
 class TokenPrinter:
-    """
-    ```
-    #define LITERAL_TAG union{f64,^OString}
-
-    struct lulu::[lexer.odin]::Token {
-        enum lulu::[lexer.odin]::Token_Type type;
-        struct string lexeme;
-        int line;
-        struct LITERAL_TAG literal;
-    }
-    ```
-    """
     __type:   Final[gdb.Value]
     __lexeme: Final[gdb.Value]
 
@@ -25,8 +13,5 @@ class TokenPrinter:
         ttype = str(self.__type)
         word  = str(self.__lexeme).strip("\'\"")
         quote = '\'' if len(word) == 1 else '\"'
-        # Keyword or operator?
-        if ttype.lower() == word or not word.isidentifier():
-            return ttype
         return f"{ttype}: {quote}{word}{quote}"
 
