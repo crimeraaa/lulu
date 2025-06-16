@@ -38,6 +38,24 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr,
 
 #endif // LULU_DEBUG
 
+// `lulu_unreachable()` must be defined regardless of `LULU_DEBUG`.
+#if defined(__GNUC__) || defined(__clang__)
+
+#define lulu_unreachable()  __builtin_unreachable()
+
+#elif defined(_MSC_VER) // ^^^ __GNUC__ || __clang__, vvv _MSC_VER
+
+#define lulu_unreachable()  __assume(false)
+
+#else // ^^^ _MSC_VER, vvv anything else
+
+[[noreturn]]
+void
+lulu_unreachable();
+
+#endif // __GNUC__ || __clang__ || _MSC_VER
+
+
 #ifndef __cplusplus
 #define nullptr NULL
 #endif // __cplusplus

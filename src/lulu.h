@@ -21,3 +21,14 @@ typedef enum {
     LULU_ERROR_RUNTIME,
     LULU_ERROR_MEMORY,
 } lulu_Error;
+
+
+/**
+ * @brief 2025-06-16
+ *  -   Chapter 18.1 of Crafting Interpreters: "Tagged Unions".
+ */
+typedef enum {
+    LULU_TYPE_NIL,
+    LULU_TYPE_BOOLEAN,
+    LULU_TYPE_NUMBER,
+} lulu_Type;

@@ -21,6 +21,9 @@ enum Precedence : u8 {
 
 enum Expr_Type {
     EXPR_NONE,
+    EXPR_NIL,        // Literal `nil`.
+    EXPR_TRUE,       // Literal `true`.
+    EXPR_FALSE,      // Literal `false`.
     EXPR_NUMBER,     // Number literal we haven't yet stored. Use `number`.
     EXPR_CONSTANT,   // Literal value stored in constants array. Use `index`.
     EXPR_RELOCABLE,  // Instruction without register A finalized- use `pc`.

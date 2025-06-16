@@ -11,6 +11,8 @@ vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
 {
     vm.allocator      = allocator;
     vm.allocator_data = allocator_data;
+    vm.chunk          = nullptr;
+    vm.saved_ip       = nullptr;
     builder_init(vm.builder);
 }
 
@@ -54,8 +56,9 @@ vm_throw(lulu_VM &vm, Error e)
     if (vm.error_handler != nullptr) {
         throw e;
     }
+    // Don't throw an unhandle-able exception, we may be in a C application!
     fprintf(stderr, "[FATAL]: Unprotected call to lulu API\n");
-    throw e;
+    abort();
 }
 
 void
@@ -68,6 +71,23 @@ vm_syntax_error(lulu_VM &vm, String file, int line, const char *fmt, ...)
     fputc('\n', stdout);
     va_end(args);
     vm_throw(vm, LULU_ERROR_SYNTAX);
+}
+
+void
+vm_runtime_error(lulu_VM &vm, const char *act, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    const Chunk &c    = *vm.chunk;
+    const int    pc   = cast_int(vm.saved_ip - raw_data(c.code) - 1);
+    const int    line = chunk_get_line(c, pc);
+
+    fprintf(stdout, STRING_FMTSPEC ":%i: Attempt to %s ",
+        string_fmtarg(c.source), line, act);
+    vfprintf(stdout, fmt, args);
+    fputc('\n', stdout);
+    va_end(args);
+    vm_throw(vm, LULU_ERROR_RUNTIME);
 }
 
 struct Exec_Data {
@@ -93,7 +113,7 @@ vm_interpret(lulu_VM &vm, String source, String script)
         vm.window = slice_make(vm.stack, cast(size_t, d.chunk.stack_used));
 
         for (auto &slot : vm.window) {
-            slot = 0.0;
+            slot = value_make();
         }
 
         vm_execute(vm);
@@ -101,6 +121,27 @@ vm_interpret(lulu_VM &vm, String source, String script)
 
     chunk_destroy(vm, data.chunk);
     return e;
+}
+
+[[noreturn]]
+static void
+type_error(lulu_VM &vm, const char *act, const Value &v)
+{
+    vm_runtime_error(vm, act, "a %s value", value_type_name(v));
+}
+
+[[noreturn]]
+static void
+arith_error(lulu_VM &vm, const Value &a, const Value &b)
+{
+    const Value &v = value_is_number(a) ? b : a;
+    type_error(vm, "perform arithmetic on", v);
+}
+
+static void
+protect(lulu_VM &vm, const Instruction *ip)
+{
+    vm.saved_ip = ip;
 }
 
 void
@@ -121,7 +162,11 @@ vm_execute(lulu_VM &vm)
     u16 _c = getarg_c(i);                                                      \
     Value rb = GET_RK(_b);                                                     \
     Value rc = GET_RK(_c);                                                     \
-    ra = fn(rb, rc);                                                           \
+    if (!value_is_number(rb) || !value_is_number(rc)) {                        \
+        protect(vm, ip);                                                       \
+        arith_error(vm, rb, rc);                                               \
+    }                                                                          \
+    ra = value_make(fn(rb.number, rc.number));                                 \
 }
 
 #ifdef LULU_DEBUG_TRACE_EXEC
@@ -146,9 +191,27 @@ vm_execute(lulu_VM &vm)
         case OP_CONSTANT:
             ra = chunk.constants[getarg_bx(i)];
             break;
-        case OP_UNM:
-            ra = lulu_Number_unm(window[getarg_b(i)]);
+        case OP_LOAD_NIL: {
+            size_t n = cast(size_t, getarg_b(i));
+            for (auto &v : slice_make(&ra, n)) {
+                v = value_make();
+            }
             break;
+        }
+        case OP_LOAD_BOOL: {
+            bool b = cast(bool, getarg_b(i));
+            ra = value_make(b);
+            break;
+        }
+        case OP_UNM: {
+            Value &rb = window[getarg_b(i)];
+            if (!value_is_number(rb)) {
+                protect(vm, ip);
+                arith_error(vm, rb, rb);
+            }
+            ra = value_make(lulu_Number_unm(rb.number));
+            break;
+        }
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
         case OP_SUB: ARITH_OP(lulu_Number_sub); break;
         case OP_MUL: ARITH_OP(lulu_Number_mul); break;
@@ -163,8 +226,8 @@ vm_execute(lulu_VM &vm)
              *      pointer arithmetic is still within bounds even if we do not
              *      explicitly check.
              */
-            Slice<Value> args = slice_make(&ra, getarg_b(i));
-            for (auto v : args) {
+            size_t n = cast(size_t, getarg_b(i));
+            for (auto v : slice_make(&ra, n)) {
                 value_print(v);
                 printf("\t");
             }
@@ -172,6 +235,7 @@ vm_execute(lulu_VM &vm)
             return;
         }
         default:
+            lulu_unreachable();
             return;
         }
     }

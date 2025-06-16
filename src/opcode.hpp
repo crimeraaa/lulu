@@ -3,16 +3,18 @@
 #include "private.hpp"
 
 enum OpCode {
-//        | Arguments | Effects
-OP_CONSTANT, // A Bx  | R(A) := K[Bx]
-OP_UNM,      // A B   | R(A) := -R(B)
-OP_ADD,      // A B C | R(A) := RK(B) + RK(C)
-OP_SUB,      // A B C | R(A) := RK(B) - RK(C)
-OP_MUL,      // A B C | R(A) := RK(B) * RK(C)
-OP_DIV,      // A B C | R(A) := RK(B) / RK(C)
-OP_MOD,      // A B C | R(A) := RK(B) % RK(C)
-OP_POW,      // A B C | R(A) := RK(B) ^ RK(C)
-OP_RETURN,   // A B C | return R(A:A+B)
+//         | Arguments | Effects
+OP_CONSTANT,  // A Bx  | R(A) := K[Bx]
+OP_LOAD_NIL,  // A B   | R(i) := nil for A <= i <= B
+OP_LOAD_BOOL, // A B   | R(A) := Bool(B)
+OP_ADD,       // A B C | R(A) := RK(B) + RK(C)
+OP_SUB,       // A B C | R(A) := RK(B) - RK(C)
+OP_MUL,       // A B C | R(A) := RK(B) * RK(C)
+OP_DIV,       // A B C | R(A) := RK(B) / RK(C)
+OP_MOD,       // A B C | R(A) := RK(B) % RK(C)
+OP_POW,       // A B C | R(A) := RK(B) ^ RK(C)
+OP_UNM,       // A B   | R(A) := -R(B)
+OP_RETURN,    // A B C | return R(A:A+B)
 };
 
 static constexpr int OPCODE_COUNT = OP_RETURN + 1;
@@ -90,8 +92,8 @@ enum OpArg : u16 {
     OPARG_CONSTANT      = 1 << 1, // 0b0010: Is a constant index only
     OPARG_REG_CONSTANT,           // 0b0011: Is a register OR a constant
     OPARG_JUMP          = 1 << 2, // 0b0100
-    OPARG_TEST,                   // 0b1000
-    OPARG_ARGC,                   // 0b1100
+    OPARG_BOOL          = 1 << 3, // 0b1000: Used as condition or load directly
+    OPARG_ARGC          = OPARG_BOOL | OPARG_JUMP,  // 0b1100
 };
 
 /**
@@ -99,7 +101,7 @@ enum OpArg : u16 {
  *    +----------+----------+----------+----------+
  *    |  13..10  |  09..06  |  05..02  |  01..00  |
  *    +----------+----------+----------+----------+
- *    | OpArg(B) | OpArg(B) | OpArg(A) | OpFormat |
+ *    | OpArg(B) | OpArg(C) | OpArg(A) | OpFormat |
  *    +----------+----------+----------+----------+
  */
 using OpInfo = u16;

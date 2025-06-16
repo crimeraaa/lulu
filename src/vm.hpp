@@ -15,13 +15,14 @@ struct Error_Handler {
 };
 
 struct lulu_VM {
-    Value          stack[MAX_STACK];
-    Slice<Value>   window;
-    lulu_Allocator allocator;
-    void          *allocator_data;
-    Chunk         *chunk; // Not a reference because it can be reassigned.
-    Error_Handler *error_handler;
-    Builder        builder;
+    Value              stack[MAX_STACK];
+    Slice<Value>       window;
+    Builder            builder;
+    lulu_Allocator     allocator;
+    void              *allocator_data;
+    Chunk             *chunk; // Not a reference because it can be reassigned.
+    Error_Handler     *error_handler;
+    const Instruction *saved_ip; // Used for error handling.
 };
 
 using Protected_Fn = void (*)(lulu_VM &vm, void *user_ptr);
@@ -45,6 +46,10 @@ vm_throw(lulu_VM &vm, Error e);
 [[noreturn, gnu::format(printf, 4, 5)]]
 void
 vm_syntax_error(lulu_VM &vm, String file, int line, const char *fmt, ...);
+
+[[noreturn, gnu::format(printf, 3, 4)]]
+void
+vm_runtime_error(lulu_VM &vm, const char *act, const char *fmt, ...);
 
 Error
 vm_interpret(lulu_VM &vm, String source, String script);

@@ -12,13 +12,60 @@ compiler_make(lulu_VM &vm, Parser &p, Chunk &chunk)
 int
 compiler_code(Compiler &c, OpCode op, u8 a, u16 b, u16 c2, int line)
 {
+    lulu_assert(opinfo_a(op) == OPARG_REG || opinfo_a(op) == OPARG_BOOL);
+    lulu_assert((opinfo_b(op) & OPARG_REG_CONSTANT)
+        || opinfo_b(op) == OPARG_ARGC);
+
+    lulu_assert((opinfo_c(op) & OPARG_REG_CONSTANT)
+        || opinfo_c(op) == OPARG_BOOL
+        || opinfo_c(op) == OPARG_UNUSED);
+
     return chunk_append(c.vm, c.chunk, instruction_abc(op, a, b, c2), line);
 }
 
 int
 compiler_code(Compiler &c, OpCode op, u8 a, u32 bx, int line)
 {
+    lulu_assert(opinfo_a(op) == OPARG_REG);
+    lulu_assert(opinfo_b(op) == OPARG_CONSTANT);
+    lulu_assert(opinfo_c(op) == OPARG_UNUSED);
     return chunk_append(c.vm, c.chunk, instruction_abx(op, a, bx), line);
+}
+
+void
+compiler_load_nil(Compiler &c, u8 reg, int n, int line)
+{
+    size_t pc = len(c.chunk.code);
+    // Stack frame is initialized to all `nil` at the start of the function, so
+    // nothing to do.
+    if (pc == 0) {
+        return;
+    }
+
+    Instruction *ip = &c.chunk.code[pc - 1];
+    u16 last_reg = cast(u16, reg) + cast(u16, n);
+    // Previous instruction may be able to be folded?
+    if (getarg_op(*ip) == OP_LOAD_NIL) {
+        u16 ra = cast(u16, getarg_a(*ip));
+        u16 rb = getarg_b(*ip);
+
+        // New argument B could be used to update the previous?
+        if (ra <= last_reg && last_reg > rb) {
+            setarg_b(ip, last_reg);
+            return;
+        }
+    }
+
+    // Can't fold; need new instruction.
+    Instruction i = instruction_abc(OP_LOAD_NIL, reg, last_reg, 0);
+    chunk_append(c.vm, c.chunk, i, line);
+}
+
+void
+compiler_load_boolean(Compiler &c, u8 reg, bool b, int line)
+{
+    Instruction i = instruction_abc(OP_LOAD_BOOL, reg, cast(u16, b), 0);
+    chunk_append(c.vm, c.chunk, i, line);
 }
 
 u32
@@ -28,9 +75,9 @@ compiler_add_constant(Compiler &c, Value v)
 }
 
 u32
-compiler_add_number(Compiler &c, Number n)
+compiler_add_constant(Compiler &c, Number n)
 {
-    return compiler_add_constant(c, n);
+    return compiler_add_constant(c, value_make(n));
 }
 
 //=== }}} ======================================================================
@@ -74,6 +121,13 @@ static void
 expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
 {
     switch (e.type) {
+    case EXPR_NIL:
+        compiler_load_nil(c, reg, 1, line);
+        break;
+    case EXPR_TRUE: // fall-through
+    case EXPR_FALSE:
+        compiler_load_boolean(c, reg, e.type == EXPR_TRUE, line);
+        break;
     case EXPR_NUMBER: {
         u32 i = compiler_add_constant(c, e.number);
         compiler_code(c, OP_CONSTANT, reg, i, line);
@@ -85,7 +139,7 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
         break;
     }
     default:
-        lulu_assertm(false, "Not yet implemented");
+        lulu_assertf(false, "Expr_Type(%i) not yet implemented", e.type);
         break;
     }
     e.reg  = reg;
@@ -109,23 +163,30 @@ compiler_expr_any_reg(Compiler &c, Expr &e)
     return compiler_expr_next_reg(c, e);
 }
 
+static u16
+value_to_rk(Compiler &c, Expr &e, Value v)
+{
+    u32 i   = compiler_add_constant(c, v);
+    e.type  = EXPR_CONSTANT;
+    e.index = i;
+
+    // `i` can be encoded directly into an RK register?
+    if (i <= cast(u32, OPCODE_MAX_RK)) {
+        // Return the bit-toggled one index.
+        return reg_to_rk(cast(u16, i));
+    }
+    // Can't fit in an RK register.
+    return cast(u16, compiler_expr_any_reg(c, e));
+}
+
 u16
 compiler_expr_rk(Compiler &c, Expr &e)
 {
     switch (e.type) {
-    case EXPR_NUMBER: {
-        u32 i = compiler_add_number(c, e.number);
-        e.type  = EXPR_CONSTANT;
-        e.index = i;
-
-        // `i` can be encoded directly into an RK register?
-        if (i <= cast(u32, OPCODE_MAX_RK)) {
-            // Index is the raw value, we return the bit-toggled one.
-            return reg_to_rk(cast(u16, i));
-        }
-        // Can't fit in an RK register.
-        break;
-    }
+    case EXPR_NIL:    return value_to_rk(c, e, value_make());
+    case EXPR_TRUE:   return value_to_rk(c, e, value_make(true));
+    case EXPR_FALSE:  return value_to_rk(c, e, value_make(false));
+    case EXPR_NUMBER: return value_to_rk(c, e, value_make(e.number));
 
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {

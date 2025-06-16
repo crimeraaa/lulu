@@ -21,11 +21,17 @@ compiler_code(Compiler &c, OpCode op, u8 a, u16 b, u16 c2, int line);
 int
 compiler_code(Compiler &c, OpCode op, u8 a, u32 bx, int line);
 
+void
+compiler_load_nil(Compiler &c, u8 reg, int n, int line);
+
+void
+compiler_load_boolean(Compiler &c, u8 reg, bool b, int line);
+
 u32
 compiler_add_constant(Compiler &c, Value v);
 
 u32
-compiler_add_number(Compiler &c, Number n);
+compiler_add_constant(Compiler &c, Number n);
 
 
 /**

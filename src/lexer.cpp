@@ -87,7 +87,7 @@ error(const Lexer &x, const char *what)
 {
     String where = get_lexeme(x);
     vm_syntax_error(x.vm, x.source, x.line,
-        "%s at '" STRING_FMTSPEC "'\n",
+        "%s at '" STRING_FMTSPEC "'",
         what, string_fmtarg(where));
 }
 
@@ -215,9 +215,9 @@ get_escaped(Lexer &x, char ch)
 }
 
 static Token
-make_token(const Lexer &x, Token_Type type)
+make_token(const Lexer &x, Token_Type type, Number n = 0)
 {
-    Token t{get_lexeme(x), 0.0, type, x.line};
+    Token t{get_lexeme(x), n, type, x.line};
     return t;
 }
 
@@ -270,46 +270,49 @@ static Token
 make_number(Lexer &x, char first)
 {
     if (first == '0') {
-        char ch = advance(x);
+        // Don't consume the (potential) prefix yet.
+        char ch = peek(x);
         int base = 0;
         switch (ch) {
         case 'b': base = 2;  break;
-        case 'd': base = 10; break;
         case 'o': base = 8;  break;
+        case 'd': base = 10; break;
         case 'x': base = 16; break;
         default:
-            if (!is_number(ch)) {
+            // If it's a number or a newline, do nothing.
+            if (is_alpha(ch)) {
+                advance(x);
                 error(x, "Invalid integer prefix");
             }
+            break;
         }
 
         // Consume everything, don't check if it's a bad number yet.
         if (base != 0) {
             consume_sequence(x, is_ident);
             String s = get_lexeme(x);
-            char *last;
-            unsigned long ul = strtoul(raw_data(s), &last, base);
+            char  *last;
+            // Skip the `0[bodx]` prefix because `strto*` doesn't support `0b`.
+            unsigned long ul = strtoul(raw_data(s) + 2, &last, base);
             if (last != end(s)) {
                 char buf[32];
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
             }
-            Token t  = make_token(x, TOKEN_NUMBER);
-            t.number = cast(Number, ul);
-            return t;
+            return make_token(x, TOKEN_NUMBER, cast(Number, ul));
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
 
     consume_sequence(x, is_number);
+    // Consume '1.2.3'
+    while (match(x, '.')) {
+        consume_sequence(x, is_number);
+    }
+    // Exponent form?
     if (match2(x, 'e', 'E')) {
         match2(x, '+', '-'); // optional sign
         consume_sequence(x, is_number);
-    } else {
-        // Consume '1.2.3'
-        while (match(x, '.')) {
-            consume_sequence(x, is_number);
-        }
     }
     consume_sequence(x, is_ident);
 
@@ -319,9 +322,7 @@ make_number(Lexer &x, char first)
     if (last != end(s)) {
         error(x, "Malformed number");
     }
-    Token t = make_token(x, TOKEN_NUMBER);
-    t.number = d;
-    return t;
+    return make_token(x, TOKEN_NUMBER, d);
 }
 
 static Token
@@ -418,7 +419,7 @@ make_keyword_or_identifier(const Lexer &x)
         }
         break;
     case 't':
-        if (len(word) != 3) {
+        if (len(word) != 4) {
             break;
         }
         switch (word[1]) {

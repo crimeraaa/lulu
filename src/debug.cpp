@@ -111,13 +111,21 @@ debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
         printf("; R(%i) := ", args.a);
         value_print(c.constants[getarg_bx(ip)]);
         break;
-    case OP_UNM: unary(c, "-", args); break;
+    case OP_LOAD_NIL: {
+        printf("; R(i) := nil for %i <= i <= %i", args.a, args.basic.b);
+        break;
+    }
+    case OP_LOAD_BOOL: {
+        printf("; R(%i) := %s", args.a, (args.basic.b) ? "true" : "false");
+        break;
+    }
     case OP_ADD: arith(c, '+', args); break;
     case OP_SUB: arith(c, '-', args); break;
     case OP_MUL: arith(c, '*', args); break;
     case OP_DIV: arith(c, '/', args); break;
     case OP_MOD: arith(c, '%', args); break;
     case OP_POW: arith(c, '^', args); break;
+    case OP_UNM: unary(c, "-", args); break;
     case OP_RETURN:
         printf("; return R(%i:%i)", args.a, cast(u16, args.a) + args.basic.b);
         break;

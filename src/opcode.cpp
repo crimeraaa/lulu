@@ -5,25 +5,27 @@
 
 // Vim:     '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
 const char *const opcode_names[OPCODE_COUNT] = {
-    [OP_CONSTANT] = "constant",
-    [OP_UNM]      = "unm",
-    [OP_ADD]      = "add",
-    [OP_SUB]      = "sub",
-    [OP_MUL]      = "mul",
-    [OP_DIV]      = "div",
-    [OP_MOD]      = "mod",
-    [OP_POW]      = "pow",
-    [OP_RETURN]   = "return",
+    [OP_CONSTANT]  = "constant",
+    [OP_LOAD_NIL]  = "load_nil",
+    [OP_LOAD_BOOL] = "load_bool",
+    [OP_ADD]       = "add",
+    [OP_SUB]       = "sub",
+    [OP_MUL]       = "mul",
+    [OP_DIV]       = "div",
+    [OP_MOD]       = "mod",
+    [OP_POW]       = "pow",
+    [OP_UNM]       = "unm",
+    [OP_RETURN]    = "return",
 };
 
 static constexpr OpInfo
 MAKE(OpFormat fmt, OpArg a, OpArg b, OpArg c)
 {
     return cast(OpInfo,
-        b << OPINFO_OFFSET_B
-        |  c   << OPINFO_OFFSET_C
-        |  a   << OPINFO_OFFSET_A
-        |  fmt << OPINFO_OFFSET_FMT);
+        (b << OPINFO_OFFSET_B)
+        |  (c   << OPINFO_OFFSET_C)
+        |  (a   << OPINFO_OFFSET_A)
+        |  (fmt << OPINFO_OFFSET_FMT));
 }
 
 static constexpr OpInfo
@@ -44,15 +46,17 @@ ARITH    = ABC(OPARG_REG, OPARG_REG_CONSTANT, OPARG_REG_CONSTANT);
 
 // Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
 const OpInfo opcode_info[OPCODE_COUNT] = {
-    [OP_CONSTANT] = CONSTANT,
-    [OP_UNM]      = ABC(OPARG_REG, OPARG_REG, OPARG_UNUSED),
-    [OP_ADD]      = ARITH,
-    [OP_SUB]      = ARITH,
-    [OP_MUL]      = ARITH,
-    [OP_DIV]      = ARITH,
-    [OP_MOD]      = ARITH,
-    [OP_POW]      = ARITH,
-    [OP_RETURN]   = ABC(OPARG_REG, OPARG_ARGC, OPARG_TEST),
+    [OP_CONSTANT]  = CONSTANT,
+    [OP_LOAD_NIL]  = ABC(OPARG_REG, OPARG_REG, OPARG_UNUSED),
+    [OP_LOAD_BOOL] = ABC(OPARG_REG, OPARG_BOOL, OPARG_UNUSED),
+    [OP_ADD]       = ARITH,
+    [OP_SUB]       = ARITH,
+    [OP_MUL]       = ARITH,
+    [OP_DIV]       = ARITH,
+    [OP_MOD]       = ARITH,
+    [OP_POW]       = ARITH,
+    [OP_UNM]       = ABC(OPARG_REG, OPARG_REG, OPARG_UNUSED),
+    [OP_RETURN]    = ABC(OPARG_REG, OPARG_ARGC, OPARG_BOOL),
 };
 
 #pragma GCC diagnostic pop

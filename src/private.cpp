@@ -198,3 +198,16 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr, const char
 }
 
 #endif // LULU_DEBUG
+
+
+#ifndef lulu_unreachable
+
+#include <assert.h> // assert
+
+void
+lulu_unreachable()
+{
+    assert(false):
+}
+
+#endif // lulu_unreachable

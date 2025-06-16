@@ -67,6 +67,18 @@ prefix_expr(Parser &p, Compiler &c)
     Token t = p.consumed;
     advance(p); // Skip '<number>', '(' or '-'.
     switch (t.type) {
+    case TOKEN_NIL: {
+        Expr e{EXPR_NIL, t.line, {}};
+        return e;
+    }
+    case TOKEN_TRUE: {
+        Expr e{EXPR_TRUE, t.line, {}};
+        return e;
+    }
+    case TOKEN_FALSE: {
+        Expr e{EXPR_FALSE, t.line, {}};
+        return e;
+    }
     case TOKEN_NUMBER: {
         Expr e{EXPR_NUMBER, t.line, {t.number}};
         return e;

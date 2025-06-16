@@ -15,4 +15,4 @@
 #define lulu_Number_pow(x, y)   pow(x, y)
 #define lulu_Number_unm(x)      (-(x))
 
-#endif /* LULU_BUILD */
+#endif /* LULU_BUILD_ALL */
