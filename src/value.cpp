@@ -12,7 +12,7 @@ value_eq(Value a, Value b)
     switch (a.type) {
     case LULU_TYPE_NIL:     return true;
     case LULU_TYPE_BOOLEAN: return a.boolean == b.boolean;
-    case LULU_TYPE_NUMBER:  return a.number == b.number;
+    case LULU_TYPE_NUMBER:  return lulu_Number_eq(a.number, b.number);
     }
     lulu_unreachable();
 }

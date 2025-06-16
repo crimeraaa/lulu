@@ -138,6 +138,14 @@ arith_error(lulu_VM &vm, const Value &a, const Value &b)
     type_error(vm, "perform arithmetic on", v);
 }
 
+[[noreturn]]
+static void
+compare_error(lulu_VM &vm, const Value &a, const Value &b)
+{
+    const Value &v = value_is_number(a) ? a : b;
+    type_error(vm, "compare", v);
+}
+
 static void
 protect(lulu_VM &vm, const Instruction *ip)
 {
@@ -156,18 +164,22 @@ vm_execute(lulu_VM &vm)
         ? chunk.constants[reg_get_k(rk)]                                       \
         : window[rk]
 
-#define ARITH_OP(fn)                                                           \
+#define BINARY_OP(number_fn, error_fn)                                         \
 {                                                                              \
-    u16 _b = getarg_b(i);                                                      \
-    u16 _c = getarg_c(i);                                                      \
-    Value rb = GET_RK(_b);                                                     \
-    Value rc = GET_RK(_c);                                                     \
+    u16   b  = getarg_b(i);                                                    \
+    u16   c  = getarg_c(i);                                                    \
+    Value rb = GET_RK(b);                                                      \
+    Value rc = GET_RK(c);                                                      \
     if (!value_is_number(rb) || !value_is_number(rc)) {                        \
         protect(vm, ip);                                                       \
-        arith_error(vm, rb, rc);                                               \
+        error_fn(vm, rb, rc);                                                  \
     }                                                                          \
-    ra = value_make(fn(rb.number, rc.number));                                 \
+    ra = value_make(number_fn(rb.number, rc.number));                          \
 }
+
+#define ARITH_OP(fn)    BINARY_OP(fn, arith_error)
+#define COMPARE_OP(fn)  BINARY_OP(fn, compare_error)
+
 
 #ifdef LULU_DEBUG_TRACE_EXEC
     int pad = debug_get_pad(chunk);
@@ -192,17 +204,31 @@ vm_execute(lulu_VM &vm)
             ra = chunk.constants[getarg_bx(i)];
             break;
         case OP_LOAD_NIL: {
-            size_t n = cast(size_t, getarg_b(i));
-            for (auto &v : slice_make(&ra, n)) {
+            Value &rb = window[getarg_b(i)];
+            for (auto &v : slice_make(&ra, &rb + 1)) {
                 v = value_make();
             }
             break;
         }
-        case OP_LOAD_BOOL: {
-            bool b = cast(bool, getarg_b(i));
-            ra = value_make(b);
+        case OP_LOAD_BOOL:
+            ra = value_make(cast(bool, getarg_b(i)));
+            break;
+        case OP_ADD: ARITH_OP(lulu_Number_add); break;
+        case OP_SUB: ARITH_OP(lulu_Number_sub); break;
+        case OP_MUL: ARITH_OP(lulu_Number_mul); break;
+        case OP_DIV: ARITH_OP(lulu_Number_div); break;
+        case OP_MOD: ARITH_OP(lulu_Number_mod); break;
+        case OP_POW: ARITH_OP(lulu_Number_pow); break;
+        case OP_EQ: {
+            u16   b  = getarg_b(i);
+            u16   c  = getarg_c(i);
+            Value rb = GET_RK(b);
+            Value rc = GET_RK(c);
+            ra = value_make(value_eq(rb, rc));
             break;
         }
+        case OP_LT:  COMPARE_OP(lulu_Number_lt); break;
+        case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
         case OP_UNM: {
             Value &rb = window[getarg_b(i)];
             if (!value_is_number(rb)) {
@@ -212,12 +238,11 @@ vm_execute(lulu_VM &vm)
             ra = value_make(lulu_Number_unm(rb.number));
             break;
         }
-        case OP_ADD: ARITH_OP(lulu_Number_add); break;
-        case OP_SUB: ARITH_OP(lulu_Number_sub); break;
-        case OP_MUL: ARITH_OP(lulu_Number_mul); break;
-        case OP_DIV: ARITH_OP(lulu_Number_div); break;
-        case OP_MOD: ARITH_OP(lulu_Number_mod); break;
-        case OP_POW: ARITH_OP(lulu_Number_pow); break;
+        case OP_NOT: {
+            Value rb = window[getarg_b(i)];
+            ra = value_make(value_is_falsy(rb));
+            break;
+        }
         case OP_RETURN: {
             /**
              * @note 2025-06-16
@@ -236,7 +261,6 @@ vm_execute(lulu_VM &vm)
         }
         default:
             lulu_unreachable();
-            return;
         }
     }
 }

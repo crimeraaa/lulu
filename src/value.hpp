@@ -77,6 +77,12 @@ value_is_number(Value v)
     return v.type == LULU_TYPE_NUMBER;
 }
 
+inline bool
+value_is_falsy(Value v)
+{
+    return value_is_nil(v) || (value_is_boolean(v) && !v.boolean);
+}
+
 bool
 value_eq(Value a, Value b);
 

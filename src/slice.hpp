@@ -36,6 +36,13 @@ slice_make(T *data, size_t len)
 
 template<class T>
 inline Slice<T>
+slice_make(T *start, T *stop)
+{
+    return {start, cast(size_t, stop - start)};
+}
+
+template<class T>
+inline Slice<T>
 slice_make(Slice<T> s, size_t start, size_t stop)
 {
     return {&s[start], stop - start};

@@ -35,6 +35,8 @@ compiler_code(Compiler &c, OpCode op, u8 a, u32 bx, int line)
 void
 compiler_load_nil(Compiler &c, u8 reg, int n, int line)
 {
+    lulu_assertm(n >= 1, "Reserving n <= 0 registers is invalid");
+
     size_t pc = len(c.chunk.code);
     // Stack frame is initialized to all `nil` at the start of the function, so
     // nothing to do.
@@ -43,7 +45,7 @@ compiler_load_nil(Compiler &c, u8 reg, int n, int line)
     }
 
     Instruction *ip = &c.chunk.code[pc - 1];
-    u16 last_reg = cast(u16, reg) + cast(u16, n);
+    u16 last_reg = cast(u16, reg) + cast(u16, n - 1);
     // Previous instruction may be able to be folded?
     if (getarg_op(*ip) == OP_LOAD_NIL) {
         u16 ra = cast(u16, getarg_a(*ip));
@@ -140,7 +142,7 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
     }
     default:
         lulu_assertf(false, "Expr_Type(%i) not yet implemented", e.type);
-        break;
+        return;
     }
     e.reg  = reg;
     e.type = EXPR_DISCHARGED;
@@ -205,11 +207,8 @@ compiler_expr_rk(Compiler &c, Expr &e)
 void
 compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right)
 {
-    bool is_unary = (op == OP_UNM);
-
-    // When unary minus, `right` is a dummy expression for the number 0.0;
-    // don't push it because we need to do nothing when 'popping' it.
-    u16 rkc = (is_unary) ? 0 : compiler_expr_rk(c, right);
+    lulu_assert(OP_ADD <= op && op <= OP_POW);
+    u16 rkc = compiler_expr_rk(c, right);
     u16 rkb = compiler_expr_rk(c, left);
 
     if (rkc > rkb) {
@@ -223,4 +222,42 @@ compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right)
     int pc = compiler_code(c, op, OPCODE_MAX_A, rkb, rkc, left.line);
     left.type = EXPR_RELOCABLE;
     left.pc   = pc;
+}
+
+void
+compiler_code_unary(Compiler &c, OpCode op, Expr &e)
+{
+    lulu_assert(OP_UNM <= op && op <= OP_NOT);
+
+    // Unary minus and unary `not` cannot operate on RK registers.
+    u8 rb = compiler_expr_next_reg(c, e);
+    pop_expr(c, e);
+
+    int pc = compiler_code(c, op, OPCODE_MAX_A, rb, 0, e.line);
+    e.type = EXPR_RELOCABLE;
+    e.pc   = pc;
+}
+
+void
+compiler_code_compare(Compiler &c, OpCode op, bool cond, Expr &left, Expr &right)
+{
+    lulu_assert(OP_EQ <= op && op <= OP_LEQ);
+
+    u16 rkc = compiler_expr_rk(c, right);
+    u16 rkb = compiler_expr_rk(c, left);
+
+    if (rkc > rkb) {
+        pop_expr(c, right);
+        pop_expr(c, left);
+    } else {
+        pop_expr(c, left);
+        pop_expr(c, right);
+    }
+    int pc    = compiler_code(c, op, OPCODE_MAX_A, rkb, rkc, left.line);
+    left.type = EXPR_RELOCABLE;
+    left.pc   = pc;
+
+    if (!cond) {
+        compiler_code_unary(c, OP_NOT, left);
+    }
 }

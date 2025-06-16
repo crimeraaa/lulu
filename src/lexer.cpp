@@ -359,10 +359,10 @@ check_keyword(const Lexer &x, String s, Token_Type type)
 {
     String kw = token_strings[type];
     if (len(s) == len(kw) && memcmp(raw_data(s), raw_data(kw), len(s)) == 0) {
-        return make_token(x, type);
+        return make_token(x, type, s);
     }
-    return make_token(x, TOKEN_IDENTIFIER);
-;}
+    return make_token(x, TOKEN_IDENTIFIER, s);
+}
 
 static Token
 make_keyword_or_identifier(const Lexer &x)
@@ -479,6 +479,10 @@ lexer_lex(Lexer &x)
     case '%': type = TOKEN_PERCENT; break;
     case '^': type = TOKEN_CARET; break;
 
+    case '~':
+        expect(x, '=', "Expected '='");
+        type = TOKEN_NOT_EQ;
+        break;
     case '=': type = match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN; break;
     case '<': type = match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS; break;
     case '>': type = match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ; break;

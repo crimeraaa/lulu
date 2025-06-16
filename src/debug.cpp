@@ -48,6 +48,15 @@ arith(const Chunk &c, char op, Args args)
     print_reg(c, args.basic.c);
 }
 
+static void
+compare(const Chunk &c, const char *op, Args args)
+{
+    printf("; R(%i) = ", args.a);
+    print_reg(c, args.basic.b);
+    printf(" %s ", op);
+    print_reg(c, args.basic.c);
+}
+
 static int
 count_digits(size_t n)
 {
@@ -125,7 +134,11 @@ debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
     case OP_DIV: arith(c, '/', args); break;
     case OP_MOD: arith(c, '%', args); break;
     case OP_POW: arith(c, '^', args); break;
+    case OP_EQ:  compare(c, "==", args); break;
+    case OP_LT:  compare(c, "<", args); break;
+    case OP_LEQ: compare(c, "<=", args); break;
     case OP_UNM: unary(c, "-", args); break;
+    case OP_NOT: unary(c, "not ", args); break;
     case OP_RETURN:
         printf("; return R(%i:%i)", args.a, cast(u16, args.a) + args.basic.b);
         break;

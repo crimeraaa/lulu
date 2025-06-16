@@ -13,6 +13,8 @@ struct Parser {
 
 enum Precedence : u8 {
     PREC_NONE,
+    PREC_EQUALITY,  // == ~=
+    PREC_COMPARISON, // < <= > >=
     PREC_TERMINAL,  // + -
     PREC_FACTOR,    // * / %
     PREC_EXPONENT,  // ^

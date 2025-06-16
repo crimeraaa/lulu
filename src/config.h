@@ -15,4 +15,8 @@
 #define lulu_Number_pow(x, y)   pow(x, y)
 #define lulu_Number_unm(x)      (-(x))
 
+#define lulu_Number_eq(x, y)    ((x) == (y))
+#define lulu_Number_lt(x, y)    ((x) < (y))
+#define lulu_Number_leq(x, y)   ((x) <= (y))
+
 #endif /* LULU_BUILD_ALL */

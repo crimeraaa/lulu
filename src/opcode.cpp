@@ -14,7 +14,11 @@ const char *const opcode_names[OPCODE_COUNT] = {
     [OP_DIV]       = "div",
     [OP_MOD]       = "mod",
     [OP_POW]       = "pow",
+    [OP_EQ]        = "eq",
+    [OP_LT]        = "lt",
+    [OP_LEQ]       = "leq",
     [OP_UNM]       = "unm",
+    [OP_NOT]       = "not",
     [OP_RETURN]    = "return",
 };
 
@@ -42,12 +46,14 @@ ABX(OpArg bx)
 
 static constexpr OpInfo
 CONSTANT = ABX(OPARG_CONSTANT),
-ARITH    = ABC(OPARG_REG, OPARG_REG_CONSTANT, OPARG_REG_CONSTANT);
+ARITH    = ABC(OPARG_REG, OPARG_REG_CONSTANT, OPARG_REG_CONSTANT),
+COMPARE  = ARITH,
+UNARY    = ABC(OPARG_REG, OPARG_REG, OPARG_UNUSED);
 
 // Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
 const OpInfo opcode_info[OPCODE_COUNT] = {
     [OP_CONSTANT]  = CONSTANT,
-    [OP_LOAD_NIL]  = ABC(OPARG_REG, OPARG_REG, OPARG_UNUSED),
+    [OP_LOAD_NIL]  = UNARY, // `nil` is not an unary operator, but whatever
     [OP_LOAD_BOOL] = ABC(OPARG_REG, OPARG_BOOL, OPARG_UNUSED),
     [OP_ADD]       = ARITH,
     [OP_SUB]       = ARITH,
@@ -55,7 +61,11 @@ const OpInfo opcode_info[OPCODE_COUNT] = {
     [OP_DIV]       = ARITH,
     [OP_MOD]       = ARITH,
     [OP_POW]       = ARITH,
-    [OP_UNM]       = ABC(OPARG_REG, OPARG_REG, OPARG_UNUSED),
+    [OP_EQ]        = COMPARE,
+    [OP_LT]        = COMPARE,
+    [OP_LEQ]       = COMPARE,
+    [OP_UNM]       = UNARY,
+    [OP_NOT]       = UNARY,
     [OP_RETURN]    = ABC(OPARG_REG, OPARG_ARGC, OPARG_BOOL),
 };
 

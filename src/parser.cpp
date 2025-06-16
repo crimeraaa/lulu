@@ -89,11 +89,13 @@ prefix_expr(Parser &p, Compiler &c)
         return e;
     }
     case TOKEN_DASH: {
-        static Expr dummy{EXPR_NUMBER, t.line, {0}};
         Expr e = expression(p, c, PREC_UNARY);
-        // unary minus cannot operate on RK registers.
-        compiler_expr_next_reg(c, e);
-        compiler_code_arith(c, OP_UNM, e, dummy);
+        compiler_code_unary(c, OP_UNM, e);
+        return e;
+    }
+    case TOKEN_NOT: {
+        Expr e = expression(p, c, PREC_UNARY);
+        compiler_code_unary(c, OP_NOT, e);
         return e;
     }
     default:
@@ -105,19 +107,20 @@ struct Binary {
     OpCode     op;
     Precedence left_prec;
     Precedence right_prec;
+    bool       cond;
 };
 
 static constexpr Binary
-left_associative(OpCode op, Precedence prec)
+left_associative(OpCode op, Precedence prec, bool cond = false)
 {
-    Binary b{op, prec, cast(Precedence, cast_int(prec) + 1)};
+    Binary b{op, prec, cast(Precedence, cast_int(prec) + 1), cond};
     return b;
 }
 
 static constexpr Binary
 right_associative(OpCode op, Precedence prec)
 {
-    Binary b{op, prec, prec};
+    Binary b{op, prec, prec, false};
     return b;
 }
 
@@ -128,16 +131,25 @@ right_associative(OpCode op, Precedence prec)
 Binary get_binary(Token_Type type)
 {
     switch (type) {
-    case TOKEN_PLUS:     return left_associative(OP_ADD, PREC_TERMINAL);
-    case TOKEN_DASH:     return left_associative(OP_SUB, PREC_TERMINAL);
-    case TOKEN_ASTERISK: return left_associative(OP_MUL, PREC_FACTOR);
-    case TOKEN_SLASH:    return left_associative(OP_DIV, PREC_FACTOR);
-    case TOKEN_PERCENT:  return left_associative(OP_MOD, PREC_FACTOR);
-    case TOKEN_CARET:    return right_associative(OP_POW, PREC_EXPONENT);
+    case TOKEN_PLUS:       return left_associative(OP_ADD,  PREC_TERMINAL);
+    case TOKEN_DASH:       return left_associative(OP_SUB,  PREC_TERMINAL);
+    case TOKEN_ASTERISK:   return left_associative(OP_MUL,  PREC_FACTOR);
+    case TOKEN_SLASH:      return left_associative(OP_DIV,  PREC_FACTOR);
+    case TOKEN_PERCENT:    return left_associative(OP_MOD,  PREC_FACTOR);
+    case TOKEN_CARET:      return right_associative(OP_POW, PREC_EXPONENT);
+    case TOKEN_EQ:         return left_associative(OP_EQ,   PREC_EQUALITY,    true);
+    case TOKEN_LESS:       return left_associative(OP_LT,   PREC_COMPARISON,  true);
+    case TOKEN_LESS_EQ:    return left_associative(OP_LEQ,  PREC_COMPARISON,  true);
+    // `x ~= y` <==> `not (x == y)`
+    // `x >  y` <==> `not (x <= y)`
+    // `x >= y` <==> `not (x <  y)`
+    case TOKEN_NOT_EQ:     return left_associative(OP_EQ,   PREC_EQUALITY,    false);
+    case TOKEN_GREATER:    return left_associative(OP_LEQ,  PREC_COMPARISON,  false);
+    case TOKEN_GREATER_EQ: return left_associative(OP_LT,   PREC_COMPARISON,  false);
     default:
         break;
     }
-    return {OP_RETURN, PREC_NONE, PREC_NONE};
+    return {OP_RETURN, PREC_NONE, PREC_NONE, false};
 }
 
 
@@ -170,6 +182,14 @@ expression(Parser &p, Compiler &c, Precedence limit)
             compiler_expr_rk(c, left);
             Expr right = expression(p, c, b.right_prec);
             compiler_code_arith(c, b.op, left, right);
+            break;
+        }
+        case OP_EQ:
+        case OP_LT:
+        case OP_LEQ: {
+            compiler_expr_rk(c, left);
+            Expr right = expression(p, c, b.right_prec);
+            compiler_code_compare(c, b.op, b.cond, left, right);
             break;
         }
         default:

@@ -2,7 +2,7 @@
 
 #include "private.hpp"
 
-enum OpCode {
+enum OpCode : u8 {
 //         | Arguments | Effects
 OP_CONSTANT,  // A Bx  | R(A) := K[Bx]
 OP_LOAD_NIL,  // A B   | R(i) := nil for A <= i <= B
@@ -13,7 +13,11 @@ OP_MUL,       // A B C | R(A) := RK(B) * RK(C)
 OP_DIV,       // A B C | R(A) := RK(B) / RK(C)
 OP_MOD,       // A B C | R(A) := RK(B) % RK(C)
 OP_POW,       // A B C | R(A) := RK(B) ^ RK(C)
+OP_EQ,        // A B C | R(A) := RK(B) == RK(C)
+OP_LT,        // A B C | R(A) := RK(B) <  RK(C)
+OP_LEQ,       // A B C | R(A) := RK(B) <= RK(C)
 OP_UNM,       // A B   | R(A) := -R(B)
+OP_NOT,       // A B   | R(A) := not R(B)
 OP_RETURN,    // A B C | return R(A:A+B)
 };
 

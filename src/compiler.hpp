@@ -21,9 +21,23 @@ compiler_code(Compiler &c, OpCode op, u8 a, u16 b, u16 c2, int line);
 int
 compiler_code(Compiler &c, OpCode op, u8 a, u32 bx, int line);
 
+
+/**
+ * @note 2025-06-16
+ *  Assumptions:
+ *  1.) If you need to push these `nil`s to registers, you should have reserved
+ *      `n` registers beforehand. This function will not reserve for you.
+ */
 void
 compiler_load_nil(Compiler &c, u8 reg, int n, int line);
 
+
+/**
+ * @note 2025-06-16
+ *  Assumptions:
+ *  1.) If you need to push the boolean to a register, you should have reserved
+ *      it beforehand. This function will not reserve for you.
+ */
 void
 compiler_load_boolean(Compiler &c, u8 reg, bool b, int line);
 
@@ -110,3 +124,9 @@ compiler_expr_any_reg(Compiler &c, Expr &e);
  */
 void
 compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right);
+
+void
+compiler_code_unary(Compiler &c, OpCode op, Expr &e);
+
+void
+compiler_code_compare(Compiler &c, OpCode op, bool cond, Expr &left, Expr &right);
