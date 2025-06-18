@@ -12,12 +12,9 @@ compiler_make(lulu_VM &vm, Parser &p, Chunk &chunk)
 int
 compiler_code(Compiler &c, OpCode op, u8 a, u16 b, u16 c2, int line)
 {
-    lulu_assert(opinfo_a(op) == OPARG_REG || opinfo_a(op) == OPARG_BOOL);
-    lulu_assert((opinfo_b(op) & OPARG_REG_CONSTANT)
-        || opinfo_b(op) == OPARG_ARGC);
-
-    lulu_assert((opinfo_c(op) & OPARG_REG_CONSTANT)
-        || opinfo_c(op) == OPARG_BOOL
+    lulu_assert(opinfo_a(op) == OPARG_REG || opinfo_a(op) == OPARG_OTHER);
+    lulu_assert((opinfo_b(op) & OPARG_REG_CONSTANT) || opinfo_b(op) == OPARG_OTHER);
+    lulu_assert((opinfo_c(op) & OPARG_REG_CONSTANT) || opinfo_c(op) == OPARG_OTHER
         || opinfo_c(op) == OPARG_UNUSED);
 
     return chunk_append(c.vm, c.chunk, instruction_abc(op, a, b, c2), line);
@@ -174,7 +171,7 @@ value_to_rk(Compiler &c, Expr &e, Value v)
 
     // `i` can be encoded directly into an RK register?
     if (i <= cast(u32, OPCODE_MAX_RK)) {
-        // Return the bit-toggled one index.
+        // Return the bit-toggled index.
         return reg_to_rk(cast(u16, i));
     }
     // Can't fit in an RK register.
@@ -238,6 +235,14 @@ compiler_code_unary(Compiler &c, OpCode op, Expr &e)
     e.pc   = pc;
 }
 
+static void
+swap(u16 *a, u16 *b)
+{
+    u16 tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
 void
 compiler_code_compare(Compiler &c, OpCode op, bool cond, Expr &left, Expr &right)
 {
@@ -253,11 +258,21 @@ compiler_code_compare(Compiler &c, OpCode op, bool cond, Expr &left, Expr &right
         pop_expr(c, left);
         pop_expr(c, right);
     }
-    int pc    = compiler_code(c, op, OPCODE_MAX_A, rkb, rkc, left.line);
+
+    // Switch order of encoded arguments so simulate greater than/equal-to.
+    // `left > right`  <=> `right < left`
+    // `left >= right` <=> `right <= left`
+    if (!cond && op != OP_EQ) {
+        swap(&rkb, &rkc);
+    }
+
+    int pc = compiler_code(c, op, OPCODE_MAX_A, rkb, rkc, left.line);
     left.type = EXPR_RELOCABLE;
     left.pc   = pc;
 
-    if (!cond) {
+    // Switching the order of arguments changes nothing in equals. To simulate
+    // not-equals, we need to flip the result of an equals.
+    if (!cond && op == OP_EQ) {
         compiler_code_unary(c, OP_NOT, left);
     }
 }

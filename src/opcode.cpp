@@ -54,7 +54,7 @@ UNARY    = ABC(OPARG_REG, OPARG_REG, OPARG_UNUSED);
 const OpInfo opcode_info[OPCODE_COUNT] = {
     [OP_CONSTANT]  = CONSTANT,
     [OP_LOAD_NIL]  = UNARY, // `nil` is not an unary operator, but whatever
-    [OP_LOAD_BOOL] = ABC(OPARG_REG, OPARG_BOOL, OPARG_UNUSED),
+    [OP_LOAD_BOOL] = ABC(OPARG_REG, OPARG_OTHER, OPARG_UNUSED),
     [OP_ADD]       = ARITH,
     [OP_SUB]       = ARITH,
     [OP_MUL]       = ARITH,
@@ -66,7 +66,7 @@ const OpInfo opcode_info[OPCODE_COUNT] = {
     [OP_LEQ]       = COMPARE,
     [OP_UNM]       = UNARY,
     [OP_NOT]       = UNARY,
-    [OP_RETURN]    = ABC(OPARG_REG, OPARG_ARGC, OPARG_BOOL),
+    [OP_RETURN]    = ABC(OPARG_REG, OPARG_OTHER, OPARG_OTHER),
 };
 
 #pragma GCC diagnostic pop

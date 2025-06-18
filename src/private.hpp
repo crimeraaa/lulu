@@ -54,8 +54,3 @@ void
 lulu_unreachable();
 
 #endif // __GNUC__ || __clang__ || _MSC_VER
-
-
-#ifndef __cplusplus
-#define nullptr NULL
-#endif // __cplusplus

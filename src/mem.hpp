@@ -40,4 +40,3 @@ mem_delete(lulu_VM &vm, T *ptr, size_t n)
 {
     mem_resize(vm, ptr, n, 0);
 }
-

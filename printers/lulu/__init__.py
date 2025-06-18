@@ -49,15 +49,14 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         self.__printers = {
             # Structs
             "Instruction":  opcode.InstructionPrinter,
-            # Hack because Slice<Instruction> == Slice<unsigned int>
-            "unsigned int": opcode.InstructionPrinter,
             "Token":        lexer.TokenPrinter,
+            "Line_Info":    lexer.LineInfoPrinter,
             "Expr":         expr.ExprPrinter,
             "Value":        value.ValuePrinter,
             "String":       odin.StringPrinter,
 
             # Pointers thereof
-            "Instruction *": opcode.InstructionPrinter,
+            # "Instruction *": opcode.InstructionPrinter,
         }
         super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))
 
@@ -68,7 +67,11 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         #
         # Curiously, running GDB on the command line doesn't show any errors.
         try:
-            tag, _ = odin.pretty_printer.demangle(val)
+            tag = val.type.name
+            if tag.startswith("Slice<"):
+                return odin.SlicePrinter(val, tag)
+            elif tag.startswith("Dynamic<"):
+                return odin.DynamicPrinter(val, tag)
             return self.__printers[tag](val)
         except:
             pass

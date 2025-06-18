@@ -186,9 +186,6 @@ vm_execute(lulu_VM &vm)
 #endif // LULU_DEBUG_TRACE_EXEC
 
     for (;;) {
-        Instruction i  = *ip++;
-        Value      &ra =  window[getarg_a(i)];
-
 #ifdef LULU_DEBUG_TRACE_EXEC
         for (size_t ii = 0, end = len(window); ii < end; ii++) {
             printf("\t[%zu]\t", ii);
@@ -196,8 +193,11 @@ vm_execute(lulu_VM &vm)
             printf("\n");
         }
         printf("\n");
-        debug_disassemble_at(chunk, i, cast_int(ip - raw_data(chunk.code) - 1), pad);
+        debug_disassemble_at(chunk, cast_int(ip - raw_data(chunk.code)), pad);
 #endif // LULU_DEBUG_TRACE_EXEC
+
+        Instruction i  = *ip++;
+        Value      &ra =  window[getarg_a(i)];
 
         switch (getarg_op(i)) {
         case OP_CONSTANT:

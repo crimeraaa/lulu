@@ -44,9 +44,7 @@ class InstructionPrinter:
     __op: str
 
     def __init__(self, ip: gdb.Value):
-        if ip.type.code == gdb.TYPE_CODE_PTR:
-            ip = ip.dereference()
-
+        ip = ip["value"]
         self.__b  = int((ip >> self.OFFSET_B) & self.MAX_B)
         self.__c  = int((ip >> self.OFFSET_C) & self.MAX_C)
         self.__a  = int((ip >> self.OFFSET_A) & self.MAX_A)

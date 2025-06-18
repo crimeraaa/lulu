@@ -13,7 +13,7 @@ chunk_init(Chunk &c, String source)
     c.stack_used = 2; // R(0) and R(1) must always be valid.
 }
 
-void
+static void
 add_line(lulu_VM &vm, Chunk &c, int pc, int line)
 {
     // Have previous lines to go to?

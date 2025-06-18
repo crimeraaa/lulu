@@ -78,9 +78,10 @@ debug_get_pad(const Chunk &c)
 #define PAD4 "     "
 
 void
-debug_disassemble_at(const Chunk &c, Instruction ip, int pc, int pad)
+debug_disassemble_at(const Chunk &c, int pc, int pad)
 {
-    Args   args;
+    Args        args;
+    Instruction ip = c.code[pc];
     OpCode op = getarg_op(ip);
     args.a = getarg_a(ip);
     printf("[%*i] ", pad, pc);
@@ -168,8 +169,8 @@ debug_disassemble(const Chunk &c)
     const auto &code = c.code;
     printf(".code:\n");
     int pad = debug_get_pad(c);
-    for (size_t i = 0, end = len(code); i < end; i++) {
-        debug_disassemble_at(c, code[i], cast_int(i), pad);
+    for (int i = 0, end = cast_int(len(code)); i < end; i++) {
+        debug_disassemble_at(c, i, pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");
 }

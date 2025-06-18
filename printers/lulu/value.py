@@ -5,9 +5,9 @@ from .. import base
 class ValuePrinter:
     """
     ```
-    struct lulu::[value.odin]::Value {
-        enum lulu::[value.odin]::Value_Type type;
-        union lulu::[value.odin]::Value_Data data;
+    struct Value {
+        Value_Type type;
+        union {...};
     }
     ```
     """
@@ -17,19 +17,16 @@ class ValuePrinter:
     def __init__(self, val: gdb.Value):
         # In GDB, enums are already pretty-printed to their names
         self.__type = str(val["type"])
-        self.__data = val["data"]
+        # No *named* union to access
+        self.__data = val
 
     def to_string(self) -> str:
         match self.__type:
-            case "Nil":     return "nil"
-            case "Boolean": return str(bool(self.__data["boolean"])).lower()
-            case "Number":  return str(float(self.__data["number"]))
-            # will (eventually) delegate to `odin.StringPrinter`
-            case "String":  return str(self.__data["object"]["ostring"].address)
+            case "LULU_TYPE_NIL":     return "nil"
+            case "LULU_TYPE_BOOLEAN": return str(bool(self.__data["boolean"]))
+            case "LULU_TYPE_NUMBER":  return str(float(self.__data["number"]))
+            case _:
+                pass
 
-        # Assuming ALL data pointers have the same representation
-        # Meaning `(void *)value.ostring == (void *)value.table` for the same
-        # `lulu::Value` instance.
-        pointer = self.__data["object"].cast(base.VOID_POINTER)
-        return f"{self.__type.lower()}: {pointer}"
+        return "unknown"
 

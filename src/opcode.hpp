@@ -23,7 +23,7 @@ OP_RETURN,    // A B C | return R(A:A+B)
 
 static constexpr int OPCODE_COUNT = OP_RETURN + 1;
 
-static constexpr unsigned int
+static constexpr u32
 // Operand bit sizes
 OPCODE_SIZE_B  = 9,
 OPCODE_SIZE_C  = 9,
@@ -50,25 +50,27 @@ OPCODE_OFFSET_BX =  OPCODE_OFFSET_C;
  *  | Arg(B) | Arg(C) | Arg(A) | OpCode |
  *  +--------+--------+--------+--------+
  */
-using Instruction = u32;
+struct Instruction {
+    u32 value;
+};
 
 // Fills the `n` lower bits with 1's.
 // Useful when reading bit fields.
-constexpr Instruction
+constexpr u32
 BITMASK1(int n)
 {
-    return (1 << (n)) - 1;
+    return cast(u32, (1 << (n)) - 1);
 }
 
 // Set `start` up to `start + n` bits with 0's. All the rest are 1's.
 // Useful when setting bit fields.
-constexpr Instruction
+constexpr u32
 BITMASK0(int start, int n)
 {
     return ~(BITMASK1(start) << (n));
 }
 
-static constexpr Instruction
+static constexpr u32
 OPCODE_MAX_B   = BITMASK1(OPCODE_SIZE_B),
 OPCODE_MAX_C   = BITMASK1(OPCODE_SIZE_C),
 OPCODE_MAX_A   = BITMASK1(OPCODE_SIZE_A),
@@ -96,8 +98,7 @@ enum OpArg : u16 {
     OPARG_CONSTANT      = 1 << 1, // 0b0010: Is a constant index only
     OPARG_REG_CONSTANT,           // 0b0011: Is a register OR a constant
     OPARG_JUMP          = 1 << 2, // 0b0100
-    OPARG_BOOL          = 1 << 3, // 0b1000: Used as condition or load directly
-    OPARG_ARGC          = OPARG_BOOL | OPARG_JUMP,  // 0b1100
+    OPARG_OTHER         = 1 << 3, // 0b1000: Used as condition or load directly
 };
 
 /**
@@ -156,10 +157,10 @@ opinfo_c(OpCode op)
 inline Instruction
 instruction_abc(OpCode op, u8 a, u16 b, u16 c)
 {
-    return (cast(Instruction,  c) << OPCODE_OFFSET_C)
-        |  (cast(Instruction,  b) << OPCODE_OFFSET_B)
-        |  (cast(Instruction,  a) << OPCODE_OFFSET_A)
-        |  (cast(Instruction, op) << OPCODE_OFFSET_OP);
+    return {(cast(u32,  c) << OPCODE_OFFSET_C)
+        |  (cast(u32,  b) << OPCODE_OFFSET_B)
+        |  (cast(u32,  a) << OPCODE_OFFSET_A)
+        |  (cast(u32, op) << OPCODE_OFFSET_OP)};
 }
 
 inline Instruction
@@ -193,31 +194,31 @@ reg_get_k(u16 reg)
 inline u16
 getarg_c(Instruction i)
 {
-    return cast(u16, (i >> OPCODE_OFFSET_C) & OPCODE_MAX_C);
+    return cast(u16, (i.value >> OPCODE_OFFSET_C) & OPCODE_MAX_C);
 }
 
 inline u16
 getarg_b(Instruction i)
 {
-    return cast(u16, (i >> OPCODE_OFFSET_B) & OPCODE_MAX_B);
+    return cast(u16, (i.value >> OPCODE_OFFSET_B) & OPCODE_MAX_B);
 }
 
 inline u8
 getarg_a(Instruction i)
 {
-    return cast(u8, (i >> OPCODE_OFFSET_A) & OPCODE_MAX_A);
+    return cast(u8, (i.value >> OPCODE_OFFSET_A) & OPCODE_MAX_A);
 }
 
 inline OpCode
 getarg_op(Instruction i)
 {
-    return cast(OpCode, (i >> OPCODE_OFFSET_OP) & OPCODE_MAX_OP);
+    return cast(OpCode, (i.value >> OPCODE_OFFSET_OP) & OPCODE_MAX_OP);
 }
 
 inline u32
 getarg_bx(Instruction i)
 {
-    return cast(u32, (i >> OPCODE_OFFSET_BX) & OPCODE_MAX_BX);
+    return cast(u32, (i.value >> OPCODE_OFFSET_BX) & OPCODE_MAX_BX);
 }
 
 inline i32
@@ -229,29 +230,29 @@ getarg_sbx(Instruction i)
 inline void
 setarg_c(Instruction *ip, u16 c)
 {
-    *ip &= OPCODE_MASK0_OP;
-    *ip |= cast(Instruction, c) << OPCODE_OFFSET_C;
+    ip->value &= OPCODE_MASK0_OP;
+    ip->value |= cast(u32, c) << OPCODE_OFFSET_C;
 }
 
 inline void
 setarg_b(Instruction *ip, u16 b)
 {
-    *ip &= OPCODE_MASK0_B;
-    *ip |= cast(Instruction, b) << OPCODE_OFFSET_B;
+    ip->value &= OPCODE_MASK0_B;
+    ip->value |= cast(u32, b) << OPCODE_OFFSET_B;
 }
 
 inline void
 setarg_a(Instruction *ip, u8 a)
 {
-    *ip &= OPCODE_MASK0_A;
-    *ip |= cast(Instruction, a) << OPCODE_OFFSET_A;
+    ip->value &= OPCODE_MASK0_A;
+    ip->value |= cast(u32, a) << OPCODE_OFFSET_A;
 }
 
 inline void
 setarg_bx(Instruction *ip, u32 index)
 {
-    *ip &= OPCODE_MASK0_BX;
-    *ip |= cast(Instruction, index) << OPCODE_OFFSET_BX;
+    ip->value &= OPCODE_MASK0_BX;
+    ip->value |= cast(u32, index) << OPCODE_OFFSET_BX;
 }
 
 inline void
