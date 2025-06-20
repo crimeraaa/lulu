@@ -5,6 +5,7 @@
 #include "vm.hpp"
 #include "debug.hpp"
 #include "parser.hpp"
+#include "object.hpp"
 
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
@@ -13,6 +14,8 @@ vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
     vm.allocator_data = allocator_data;
     vm.chunk          = nullptr;
     vm.saved_ip       = nullptr;
+    vm.objects        = nullptr;
+    intern_init(vm.intern);
     builder_init(vm.builder);
 }
 
@@ -28,6 +31,13 @@ void
 vm_destroy(lulu_VM &vm)
 {
     builder_destroy(vm, vm.builder);
+    intern_destroy(vm, vm.intern);
+
+    Object *prev;
+    for (Object *o = vm.objects; o != nullptr; o = prev) {
+        prev = o->prev;
+        object_free(vm, o);
+    }
 }
 
 Error

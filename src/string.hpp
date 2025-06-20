@@ -5,6 +5,7 @@
 #include "private.hpp"
 #include "dynamic.hpp"
 #include "value.hpp"
+#include "object.hpp"
 
 using String = Slice<const char>;
 
@@ -14,6 +15,21 @@ using String = Slice<const char>;
 struct Builder
 {
     Dynamic<char> buffer;
+};
+
+struct OString {
+    Object base;
+    size_t len;
+    u32    hash;
+    char   data[1];
+};
+
+using Intern_Entry = OString *;
+
+struct Intern {
+    Slice<Intern_Entry> table;
+    Object             *list;
+    size_t              count; // Number of slots actively used in `table`.
 };
 
 inline String
@@ -82,3 +98,15 @@ builder_write_string(lulu_VM &vm, Builder &b, String s);
 
 String
 builder_to_string(const Builder &b);
+
+void
+intern_init(Intern &t);
+
+void
+intern_destroy(lulu_VM &vm, Intern &t);
+
+OString *
+ostring_new(lulu_VM &vm, String text);
+
+void
+ostring_free(lulu_VM &vm, OString *o);

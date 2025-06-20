@@ -79,6 +79,12 @@ compiler_add_constant(Compiler &c, Number n)
     return compiler_add_constant(c, value_make(n));
 }
 
+u32
+compiler_add_constant(Compiler &c, OString *s)
+{
+    return compiler_add_constant(c, value_make(s));
+}
+
 //=== }}} ======================================================================
 
 //=== REGISTER MANIPULATION ================================================ {{{
@@ -132,6 +138,10 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
         compiler_code(c, OP_CONSTANT, reg, i, line);
         break;
     }
+    case EXPR_CONSTANT: {
+        compiler_code(c, OP_CONSTANT, reg, e.index, line);
+        break;
+    }
     case EXPR_RELOCABLE: {
         Instruction *ip = &c.chunk.code[e.pc];
         setarg_a(ip, reg);
@@ -139,6 +149,7 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
     }
     default:
         lulu_assertf(false, "Expr_Type(%i) not yet implemented", e.type);
+        lulu_unreachable();
         return;
     }
     e.reg  = reg;

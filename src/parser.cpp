@@ -83,6 +83,13 @@ prefix_expr(Parser &p, Compiler &c)
         Expr e{EXPR_NUMBER, t.line, {t.number}};
         return e;
     }
+    case TOKEN_STRING: {
+        Expr e;
+        e.type  = EXPR_CONSTANT;
+        e.line  = t.line;
+        e.index = compiler_add_constant(c, t.ostring);
+        return e;
+    }
     case TOKEN_OPEN_PAREN: {
         Expr e = expression(p, c);
         consume(p, TOKEN_CLOSE_PAREN);

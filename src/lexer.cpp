@@ -217,14 +217,22 @@ get_escaped(Lexer &x, char ch)
 static Token
 make_token(const Lexer &x, Token_Type type, Number n = 0)
 {
-    Token t{get_lexeme(x), n, type, x.line};
+    Token t{get_lexeme(x), {n}, type, x.line};
     return t;
 }
 
 static Token
 make_token(const Lexer &x, Token_Type type, String lexeme)
 {
-    Token t{lexeme, 0.0, type, x.line};
+    Token t{lexeme, {0.0}, type, x.line};
+    return t;
+}
+
+static Token
+make_token(const Lexer &x, Token_Type type, OString *ostring)
+{
+    Token t = make_token(x, type);
+    t.ostring = ostring;
     return t;
 }
 
@@ -351,7 +359,9 @@ make_string(Lexer &x, char q)
     }
     expect(x, q, "Unterminated string");
     builder_write_string(vm, b, s);
-    return make_token(x, TOKEN_STRING);
+    s = builder_to_string(b);
+    OString *o = ostring_new(vm, s);
+    return make_token(x, TOKEN_STRING, o);
 }
 
 static Token

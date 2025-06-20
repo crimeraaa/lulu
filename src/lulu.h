@@ -31,4 +31,5 @@ typedef enum {
     LULU_TYPE_NIL,
     LULU_TYPE_BOOLEAN,
     LULU_TYPE_NUMBER,
+    LULU_TYPE_STRING,
 } lulu_Type;

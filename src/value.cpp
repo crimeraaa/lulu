@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "value.hpp"
+#include "string.hpp"
 
 bool
 value_eq(Value a, Value b)
@@ -13,6 +14,7 @@ value_eq(Value a, Value b)
     case LULU_TYPE_NIL:     return true;
     case LULU_TYPE_BOOLEAN: return a.boolean == b.boolean;
     case LULU_TYPE_NUMBER:  return lulu_Number_eq(a.number, b.number);
+    case LULU_TYPE_STRING:  return a.ostring == b.ostring;
     }
     lulu_unreachable();
 }
@@ -29,6 +31,9 @@ value_print(Value v)
         break;
     case LULU_TYPE_NUMBER:
         fprintf(stdout, LULU_NUMBER_FMT, v.number);
+        break;
+    case LULU_TYPE_STRING:
+        fputs(v.ostring->data, stdout);
         break;
     }
 }

@@ -47,6 +47,9 @@ compiler_add_constant(Compiler &c, Value v);
 u32
 compiler_add_constant(Compiler &c, Number n);
 
+u32
+compiler_add_constant(Compiler &c, OString *s);
+
 
 /**
  * @brief

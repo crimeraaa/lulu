@@ -6,11 +6,15 @@
 using Type   = lulu_Type;
 using Number = lulu_Number;
 
+struct Object;
+struct OString;
+
 struct Value {
     Type type;
     union {
-        Number number;
-        bool   boolean;
+        Number   number;
+        bool     boolean;
+        OString *ostring;
     };
 };
 
@@ -27,6 +31,7 @@ value_type_name(Type t)
     case LULU_TYPE_NIL:     return "nil";
     case LULU_TYPE_BOOLEAN: return "boolean";
     case LULU_TYPE_NUMBER:  return "number";
+    case LULU_TYPE_STRING:  return "string";
     }
     lulu_unreachable();
 }
@@ -47,7 +52,8 @@ value_make()
 inline Value
 value_make(bool b)
 {
-    Value v{LULU_TYPE_BOOLEAN, {}};
+    Value v;
+    v.type    = LULU_TYPE_BOOLEAN;
     v.boolean = b;
     return v;
 }
@@ -56,6 +62,15 @@ inline Value
 value_make(Number n)
 {
     Value v{LULU_TYPE_NUMBER, {n}};
+    return v;
+}
+
+inline Value
+value_make(OString *s)
+{
+    Value v;
+    v.type    = LULU_TYPE_STRING;
+    v.ostring = s;
     return v;
 }
 
@@ -75,6 +90,12 @@ inline bool
 value_is_number(Value v)
 {
     return v.type == LULU_TYPE_NUMBER;
+}
+
+inline bool
+value_is_string(Value v)
+{
+    return v.type == LULU_TYPE_STRING;
 }
 
 inline bool

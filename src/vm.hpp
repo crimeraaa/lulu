@@ -18,11 +18,13 @@ struct lulu_VM {
     Value              stack[MAX_STACK];
     Slice<Value>       window;
     Builder            builder;
+    Intern             intern;
     lulu_Allocator     allocator;
     void              *allocator_data;
     Chunk             *chunk; // Not a reference because it can be reassigned.
     Error_Handler     *error_handler;
     const Instruction *saved_ip; // Used for error handling.
+    Object            *objects;  // Linked list of all collectable objects.
 };
 
 using Protected_Fn = void (*)(lulu_VM &vm, void *user_ptr);

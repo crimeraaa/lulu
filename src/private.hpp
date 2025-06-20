@@ -49,6 +49,8 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr,
 
 #else // ^^^ _MSC_VER, vvv anything else
 
+// Do not implement as a function-like macro `lulu_assert(false)` because
+// `lulu_assert()` itself may be empty.
 [[noreturn]]
 void
 lulu_unreachable();

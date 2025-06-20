@@ -21,6 +21,13 @@ mem_new(lulu_VM &vm, size_t extra = 0)
 }
 
 template<class T>
+inline void
+mem_free(lulu_VM &vm, T *ptr, size_t extra = 0)
+{
+    mem_rawrealloc(vm, ptr, sizeof(T) + extra, 0);
+}
+
+template<class T>
 inline T *
 mem_resize(lulu_VM &vm, T *ptr, size_t prev, size_t next)
 {
