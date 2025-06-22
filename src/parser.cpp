@@ -120,7 +120,7 @@ struct Binary {
 static constexpr Binary
 left_associative(OpCode op, Precedence prec, bool cond = false)
 {
-    Binary b{op, prec, cast(Precedence, cast_int(prec) + 1), cond};
+    Binary b{op, prec, Precedence(cast_int(prec) + 1), cond};
     return b;
 }
 
@@ -153,6 +153,7 @@ Binary get_binary(Token_Type type)
     case TOKEN_NOT_EQ:     return left_associative(OP_EQ,   PREC_EQUALITY,    false);
     case TOKEN_GREATER:    return left_associative(OP_LEQ,  PREC_COMPARISON,  false);
     case TOKEN_GREATER_EQ: return left_associative(OP_LT,   PREC_COMPARISON,  false);
+    case TOKEN_CONCAT:     return right_associative(OP_CONCAT, PREC_CONCAT);
     default:
         break;
     }
@@ -197,6 +198,13 @@ expression(Parser &p, Compiler &c, Precedence limit)
             compiler_expr_rk(c, left);
             Expr right = expression(p, c, b.right_prec);
             compiler_code_compare(c, b.op, b.cond, left, right);
+            break;
+        }
+        case OP_CONCAT: {
+            // Don't put `left` in an RK register no matter what.
+            compiler_expr_next_reg(c, left);
+            Expr right = expression(p, c, b.right_prec);
+            compiler_code_concat(c, left, right);
             break;
         }
         default:

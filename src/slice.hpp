@@ -29,21 +29,21 @@ struct Slice {
 
 template<class T>
 inline Slice<T>
-slice_make(T *data, size_t len)
+slice_slice(T *data, size_t len)
 {
     return {data, len};
 }
 
 template<class T>
 inline Slice<T>
-slice_make(T *start, T *stop)
+slice_slice(T *start, T *stop)
 {
     return {start, cast_size(stop - start)};
 }
 
 template<class T>
 inline Slice<T>
-slice_make(Slice<T> s, size_t start, size_t stop)
+slice_slice(Slice<T> s, size_t start, size_t stop)
 {
     return {&s[start], stop - start};
 }

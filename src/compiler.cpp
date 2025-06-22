@@ -42,10 +42,10 @@ compiler_load_nil(Compiler &c, u8 reg, int n, int line)
     }
 
     Instruction *ip = &c.chunk.code[pc - 1];
-    u16 last_reg = cast(u16, reg) + cast(u16, n - 1);
+    u16 last_reg = u16(reg) + u16(n - 1);
     // Previous instruction may be able to be folded?
     if (getarg_op(*ip) == OP_LOAD_NIL) {
-        u16 ra = cast(u16, getarg_a(*ip));
+        u16 ra = u16(getarg_a(*ip));
         u16 rb = getarg_b(*ip);
 
         // New argument B could be used to update the previous?
@@ -63,7 +63,7 @@ compiler_load_nil(Compiler &c, u8 reg, int n, int line)
 void
 compiler_load_boolean(Compiler &c, u8 reg, bool b, int line)
 {
-    Instruction i = instruction_abc(OP_LOAD_BOOL, reg, cast(u16, b), 0);
+    Instruction i = instruction_abc(OP_LOAD_BOOL, reg, u16(b), 0);
     chunk_append(c.vm, c.chunk, i, line);
 }
 
@@ -181,12 +181,12 @@ value_to_rk(Compiler &c, Expr &e, Value v)
     e.index = i;
 
     // `i` can be encoded directly into an RK register?
-    if (i <= cast(u32, OPCODE_MAX_RK)) {
+    if (i <= u32(OPCODE_MAX_RK)) {
         // Return the bit-toggled index.
-        return reg_to_rk(cast(u16, i));
+        return reg_to_rk(u16(i));
     }
     // Can't fit in an RK register.
-    return cast(u16, compiler_expr_any_reg(c, e));
+    return u16(compiler_expr_any_reg(c, e));
 }
 
 u16
@@ -200,8 +200,8 @@ compiler_expr_rk(Compiler &c, Expr &e)
 
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {
-        if (e.index <= cast(u32, OPCODE_MAX_RK)) {
-            return reg_to_rk(cast(u16, e.index));
+        if (e.index <= u32(OPCODE_MAX_RK)) {
+            return reg_to_rk(u16(e.index));
         }
         break;
     }
@@ -215,7 +215,7 @@ compiler_expr_rk(Compiler &c, Expr &e)
 void
 compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right)
 {
-    lulu_assert(OP_ADD <= op && op <= OP_POW);
+    lulu_assert(OP_ADD <= op && op <= OP_POW || op == OP_CONCAT);
     u16 rkc = compiler_expr_rk(c, right);
     u16 rkb = compiler_expr_rk(c, left);
 
@@ -286,4 +286,33 @@ compiler_code_compare(Compiler &c, OpCode op, bool cond, Expr &left, Expr &right
     if (!cond && op == OP_EQ) {
         compiler_code_unary(c, OP_NOT, left);
     }
+}
+
+void
+compiler_code_concat(Compiler &c, Expr &left, Expr &right)
+{
+    /**
+     * @details 2025-06-22
+     *  -   Checks if we are able to fold consecutive concats.
+     *  -   Folding is impossible with left-associavity due to argument pushing.
+     *      If `a..b..c` were parsed as `(a..b)..c`, then `(a..b)` would push
+     *      `a` and `b` emit `OP_CONCAT`. By the time we reach `c`, there is
+     *      nothing we can do to fold because the bytecode is already set.
+     *  -   `a..(b..c)` is better because we would have pushed `a`, `b` and `c`
+     *      by the time we emit `OP_CONCAT`.
+     */
+    if (right.type == EXPR_RELOCABLE) {
+        Instruction *ip = &c.chunk.code[right.pc];
+        if (getarg_op(*ip) == OP_CONCAT) {
+            lulu_assert(left.reg == getarg_b(*ip) - 1);
+            pop_expr(c, left);
+            setarg_b(ip, left.reg);
+            left.type = EXPR_RELOCABLE;
+            left.pc   = right.pc;
+            return;
+        }
+    }
+    // Don't put `right` in an RK register when in `compiler_code_arith()`.
+    compiler_expr_next_reg(c, right);
+    compiler_code_arith(c, OP_CONCAT, left, right);
 }

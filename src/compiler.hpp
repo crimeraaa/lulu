@@ -133,3 +133,6 @@ compiler_code_unary(Compiler &c, OpCode op, Expr &e);
 
 void
 compiler_code_compare(Compiler &c, OpCode op, bool cond, Expr &left, Expr &right);
+
+void
+compiler_code_concat(Compiler &c, Expr &left, Expr &right);

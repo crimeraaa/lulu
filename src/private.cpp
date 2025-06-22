@@ -94,11 +94,11 @@ calculate_offset(String stack_frame)
         Dl_info symbol_info;
         if (dladdr(address, &symbol_info) != 0) {
             // Caculate total offset of the symbol
-            char *saddr = cast(char *, symbol_info.dli_saddr);
-            char *fbase = cast(char *, symbol_info.dli_fbase);
-            char *ofptr = cast(char *, offset_pointer);
+            char *saddr = cast(char *)symbol_info.dli_saddr;
+            char *fbase = cast(char *)symbol_info.dli_fbase;
+            char *ofptr = cast(char *)offset_pointer;
 
-            offset_pointer  = cast(void *, (saddr - fbase) + ofptr);
+            offset_pointer = (saddr - fbase) + ofptr;
             dlclose(object_file);
         } else {
             print_dlerror();

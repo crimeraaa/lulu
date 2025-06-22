@@ -17,7 +17,7 @@ template<class T>
 inline T *
 mem_new(lulu_VM &vm, size_t extra = 0)
 {
-    return cast(T *, mem_rawrealloc(vm, nullptr, 0, sizeof(T) + extra));
+    return cast(T *)mem_rawrealloc(vm, nullptr, 0, sizeof(T) + extra);
 }
 
 template<class T>
@@ -31,7 +31,7 @@ template<class T>
 inline T *
 mem_resize(lulu_VM &vm, T *ptr, size_t prev, size_t next)
 {
-    return cast(T *, mem_rawrealloc(vm, ptr, sizeof(T) * prev, sizeof(T) * next));
+    return cast(T *)mem_rawrealloc(vm, ptr, sizeof(T) * prev, sizeof(T) * next);
 }
 
 template<class T>

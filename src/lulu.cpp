@@ -52,8 +52,8 @@ read_file(const char *file_name)
         fprintf(stderr, "Failed to determine size of file '%s'.\n", file_name);
         goto cleanup_file;
     }
-    buffer.len  = cast_size(file_size) + 1;
-    buffer.data = cast(char *, malloc(len(buffer)));
+    buffer.len  = (size_t)(file_size) + 1;
+    buffer.data = (char *)malloc(len(buffer));
     rewind(file_ptr);
     if (raw_data(buffer) == nullptr) {
         fprintf(stderr, "Failed to allocate memory for file '%s'.\n", file_name);

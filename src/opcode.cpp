@@ -19,14 +19,14 @@ const char *const opcode_names[OPCODE_COUNT] = {
     [OP_LEQ]       = "leq",
     [OP_UNM]       = "unm",
     [OP_NOT]       = "not",
+    [OP_CONCAT]    = "concat",
     [OP_RETURN]    = "return",
 };
 
 static constexpr OpInfo
 MAKE(OpFormat fmt, OpArg a, OpArg b, OpArg c)
 {
-    return cast(OpInfo,
-        (b << OPINFO_OFFSET_B)
+    return OpInfo((b << OPINFO_OFFSET_B)
         |  (c   << OPINFO_OFFSET_C)
         |  (a   << OPINFO_OFFSET_A)
         |  (fmt << OPINFO_OFFSET_FMT));
@@ -66,6 +66,7 @@ const OpInfo opcode_info[OPCODE_COUNT] = {
     [OP_LEQ]       = COMPARE,
     [OP_UNM]       = UNARY,
     [OP_NOT]       = UNARY,
+    [OP_CONCAT]    = ABC(OPARG_REG, OPARG_REG, OPARG_REG),
     [OP_RETURN]    = ABC(OPARG_REG, OPARG_OTHER, OPARG_OTHER),
 };
 

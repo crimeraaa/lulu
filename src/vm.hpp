@@ -58,3 +58,6 @@ vm_interpret(lulu_VM &vm, String source, String script);
 
 void
 vm_execute(lulu_VM &vm);
+
+void
+vm_concat(lulu_VM &vm, Value &ra, Slice<Value> args);

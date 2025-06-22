@@ -116,7 +116,7 @@ vm_interpret(lulu_VM &vm, String source, String script)
     chunk_init(d.chunk, source);
 
     Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr) {
-        Exec_Data &d = *cast(Exec_Data *, user_ptr);
+        Exec_Data &d = *cast(Exec_Data *)(user_ptr);
         parser_program(vm, d.chunk, d.script);
         size_t n = cast_size(d.chunk.stack_used);
 
@@ -125,7 +125,7 @@ vm_interpret(lulu_VM &vm, String source, String script)
             vm_throw(vm, LULU_ERROR_MEMORY);
         }
         vm.chunk  = &d.chunk;
-        vm.window = slice_make(vm.stack, n);
+        vm.window = slice_slice(vm.stack, n);
 
         for (auto &slot : vm.window) {
             slot = value_make();
@@ -220,13 +220,13 @@ vm_execute(lulu_VM &vm)
             break;
         case OP_LOAD_NIL: {
             Value &rb = window[getarg_b(i)];
-            for (auto &v : slice_make(&ra, &rb + 1)) {
+            for (Value &v : slice_slice(&ra, &rb + 1)) {
                 v = value_make();
             }
             break;
         }
         case OP_LOAD_BOOL:
-            ra = value_make(cast(bool, getarg_b(i)));
+            ra = value_make(bool(getarg_b(i)));
             break;
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
         case OP_SUB: ARITH_OP(lulu_Number_sub); break;
@@ -258,6 +258,13 @@ vm_execute(lulu_VM &vm)
             ra = value_make(value_is_falsy(rb));
             break;
         }
+        case OP_CONCAT: {
+            Value &rb = window[getarg_b(i)];
+            Value &rc = window[getarg_c(i)];
+            protect(vm, ip);
+            vm_concat(vm, ra, slice_slice(&rb, &rc + 1));
+            break;
+        }
         case OP_RETURN: {
             /**
              * @note 2025-06-16
@@ -267,7 +274,7 @@ vm_execute(lulu_VM &vm)
              *      explicitly check.
              */
             size_t n = cast_size(getarg_b(i));
-            for (Value v : slice_make(&ra, n)) {
+            for (Value v : slice_slice(&ra, n)) {
                 value_print(v);
                 printf("\t");
             }
@@ -278,4 +285,18 @@ vm_execute(lulu_VM &vm)
             lulu_unreachable();
         }
     }
+}
+
+void
+vm_concat(lulu_VM &vm, Value &ra, Slice<Value> args)
+{
+    Builder &b = vm_get_builder(vm);
+    for (const Value &s : args) {
+        if (!value_is_string(s)) {
+            type_error(vm, "concatentate", s);
+        }
+        builder_write_string(vm, b, ostring_to_string(s.ostring));
+    }
+    OString *o = ostring_new(vm, builder_to_string(b));
+    ra = value_make(o);
 }

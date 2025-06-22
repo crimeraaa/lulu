@@ -76,11 +76,11 @@ chunk_add_constant(lulu_VM &vm, Chunk &c, Value v)
     auto &a = c.constants;
     for (size_t i = 0, end = len(a); i < end; i++) {
         if (value_eq(v, a[i])) {
-            return cast(u32, i);
+            return u32(i);
         }
     }
     dynamic_push(vm, a, v);
-    return cast(u32, len(a) - 1);
+    return u32(len(a) - 1);
 }
 
 void

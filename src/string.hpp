@@ -25,7 +25,7 @@ struct OString {
 };
 
 // Each entry in the string table is actually a linked list.
-using Intern_Entry = OString *;
+using Intern_Entry = Object *;
 
 struct Intern {
     Slice<Intern_Entry> table;
@@ -115,5 +115,8 @@ intern_destroy(lulu_VM &vm, Intern &t);
 OString *
 ostring_new(lulu_VM &vm, String text);
 
-void
-ostring_free(lulu_VM &vm, OString *o);
+inline String
+ostring_to_string(OString *s)
+{
+    return {s->data, s->len};
+}

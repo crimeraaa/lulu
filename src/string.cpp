@@ -75,7 +75,7 @@ hash_string(String text)
 
     u32 hash = FNV1A_OFFSET;
     for (char c : text) {
-        hash ^= cast(u32, c);
+        hash ^= u32(c);
         hash *= FNV1A_PRIME;
     }
 
@@ -93,23 +93,25 @@ intern_init(Intern &t)
 void
 intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
 {
-    Slice<OString *> new_table{mem_make<OString *>(vm, new_cap), new_cap};
+    Slice<Object *> new_table{mem_make<Object *>(vm, new_cap), new_cap};
     // Zero out the new memory
     for (auto &s : new_table) {
         s = nullptr;
     }
 
     // Rehash all strings from the old table to the new table.
-    for (OString *list : t.table) {
-        OString *node = list;
+    for (Object *list : t.table) {
+        Object *node = list;
         // Rehash all children for this list.
         while (node != nullptr) {
-            size_t   i    = cast_size(node->hash) % new_cap;
-            OString *next = cast(OString *, node->base.next);
+            lulu_assert(node->type == LULU_TYPE_STRING);
+            OString *s    = cast(OString *)node;
+            size_t   i    = cast_size(s->hash) % new_cap;
+            Object  *next = node->next;
 
             // Chain this node in the new table, using the new main index.
-            node->base.next = cast(Object *, new_table[i]);
-            new_table[i]    = node;
+            node->next   = new_table[i];
+            new_table[i] = node;
 
             node = next;
         }
@@ -121,11 +123,11 @@ intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
 void
 intern_destroy(lulu_VM &vm, Intern &t)
 {
-    for (OString *list : t.table) {
-        OString *node = list;
+    for (Object *list : t.table) {
+        Object *node = list;
         while (node != nullptr) {
-            OString *next = cast(OString *, node->base.next);
-            ostring_free(vm, node);
+            Object *next = node->next;
+            object_free(vm, node);
             node = next;
         }
     }
@@ -139,22 +141,20 @@ ostring_new(lulu_VM &vm, String text)
     Intern  &t    = vm.intern;
     u32      hash = hash_string(text);
     size_t   i    = cast_size(hash) % len(t.table);
-    for (OString *node = t.table[i];
-        node != nullptr;
-        node = cast(OString *, node->base.next)) {
-        if (node->hash == hash && node->len == len(text)) {
-            String tmp{node->data, node->len};
+    for (Object *node = t.table[i]; node != nullptr; node = node->next) {
+        lulu_assert(node->type == LULU_TYPE_STRING);
+        OString *s = cast(OString *)node;
+        if (s->hash == hash) {
+            String tmp{s->data, s->len};
             if (string_eq(text, tmp)) {
-                return node;
+                return s;
             }
         }
     }
 
     // We assume that `len(t.table)` is never 0 by this point.
-    Object **list = cast(Object **, &t.table[i]);
-
     // No need to add 1 to len; `data[1]` is already embedded in the struct.
-    OString *s = object_new<OString>(vm, list, LULU_TYPE_STRING, len(text));
+    OString *s = object_new<OString>(vm, &t.table[i], LULU_TYPE_STRING, len(text));
     s->hash = hash;
     s->len  = len(text);
     memcpy(s->data, raw_data(text), len(text));
@@ -166,10 +166,4 @@ ostring_new(lulu_VM &vm, String text)
     }
     t.count++;
     return s;
-}
-
-void
-ostring_free(lulu_VM &vm, OString *o)
-{
-    mem_free(vm, o, o->len);
 }

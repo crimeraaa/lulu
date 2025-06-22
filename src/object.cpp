@@ -4,9 +4,12 @@
 void
 object_free(lulu_VM &vm, Object *o)
 {
-    unused(vm);
     switch (o->type) {
-    // strings are only managed by `Intern`.
+    case LULU_TYPE_STRING: {
+        OString *s = cast(OString *)o;
+        mem_free(vm, s, s->len);
+        break;
+    }
     default:
         lulu_unreachable();
         break;

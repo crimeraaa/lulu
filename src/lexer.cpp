@@ -307,16 +307,16 @@ make_number(Lexer &x, char first)
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
             }
-            return make_token(x, TOKEN_NUMBER, cast(Number, ul));
+            return make_token(x, TOKEN_NUMBER, Number(ul));
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
 
-    consume_sequence(x, is_number);
     // Consume '1.2.3'
-    while (match(x, '.')) {
+    do {
         consume_sequence(x, is_number);
-    }
+    } while (match(x, '.'));
+
     // Exponent form?
     if (match2(x, 'e', 'E')) {
         match2(x, '+', '-'); // optional sign

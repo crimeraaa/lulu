@@ -35,14 +35,14 @@ print_reg(const Chunk &c, u16 reg)
 static void
 unary(const Chunk &c, const char *op, Args args)
 {
-    printf("; R(%i) := %s", args.a, op);
+    printf("R(%i) := %s", args.a, op);
     print_reg(c, args.basic.b);
 }
 
 static void
 arith(const Chunk &c, char op, Args args)
 {
-    printf("; R(%i) = ", args.a);
+    printf("R(%i) = ", args.a);
     print_reg(c, args.basic.b);
     printf(" %c ", op);
     print_reg(c, args.basic.c);
@@ -51,7 +51,7 @@ arith(const Chunk &c, char op, Args args)
 static void
 compare(const Chunk &c, const char *op, Args args)
 {
-    printf("; R(%i) = ", args.a);
+    printf("R(%i) = ", args.a);
     print_reg(c, args.basic.b);
     printf(" %s ", op);
     print_reg(c, args.basic.c);
@@ -101,32 +101,32 @@ debug_disassemble_at(const Chunk &c, int pc, int pad)
         args.basic.c = getarg_c(ip);
         printf("%-4i %-4i ", args.a, args.basic.b);
         if (opinfo_c(op) != OPARG_UNUSED) {
-            printf("%-4i ", args.basic.c);
+            printf("%-4i ; ", args.basic.c);
         } else {
-            printf(PAD4);
+            printf(PAD4 "; ");
         }
         break;
     case OPFORMAT_ABX:
         args.extended.bx = getarg_bx(ip);
-        printf("%-4i %-4i " PAD4, args.a, args.extended.bx);
+        printf("%-4i %-4i " PAD4 "; ", args.a, args.extended.bx);
         break;
     case OPFORMAT_ASBX:
         args.extended.sbx = getarg_sbx(ip);
-        printf("%-4i %-4i " PAD4, args.a, args.extended.sbx);
+        printf("%-4i %-4i " PAD4 "; ", args.a, args.extended.sbx);
         break;
     }
 
     switch (op) {
     case OP_CONSTANT:
-        printf("; R(%i) := ", args.a);
+        printf("R(%i) := ", args.a);
         value_print(c.constants[getarg_bx(ip)]);
         break;
     case OP_LOAD_NIL: {
-        printf("; R(i) := nil for %i <= i <= %i", args.a, args.basic.b);
+        printf("R(i) := nil for %i <= i <= %i", args.a, args.basic.b);
         break;
     }
     case OP_LOAD_BOOL: {
-        printf("; R(%i) := %s", args.a, (args.basic.b) ? "true" : "false");
+        printf("R(%i) := %s", args.a, (args.basic.b) ? "true" : "false");
         break;
     }
     case OP_ADD: arith(c, '+', args); break;
@@ -140,8 +140,12 @@ debug_disassemble_at(const Chunk &c, int pc, int pad)
     case OP_LEQ: compare(c, "<=", args); break;
     case OP_UNM: unary(c, "-", args); break;
     case OP_NOT: unary(c, "not ", args); break;
+    case OP_CONCAT:
+        printf("R(%i) := concat(R(%i:%i))",
+            args.a, args.basic.b, args.basic.c + 1);
+        break;
     case OP_RETURN:
-        printf("; return R(%i:%i)", args.a, cast(u16, args.a) + args.basic.b);
+        printf("return R(%i:%i)", args.a, u16(args.a) + args.basic.b);
         break;
     }
 

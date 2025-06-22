@@ -8,10 +8,10 @@ using u16 = uint16_t;
 using u32 = uint32_t;
 using i32 = int32_t;
 
-#define cast(T, expr)   ((T)(expr))
-#define cast_int(expr)  cast(int, expr)
-#define cast_size(expr) cast(size_t, expr)
-#define unused(expr)    cast(void, expr)
+#define cast(T)         (T)
+#define cast_int(expr)  int(expr)
+#define cast_size(expr) size_t(expr)
+#define unused(expr)    (void)(expr)
 
 #define count_of(array) (sizeof(array) / sizeof((array)[0]))
 
@@ -23,10 +23,10 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr,
     const char *fmt, ...);
 
 #define lulu_assert(expr) \
-    lulu_assert_(__FILE__, __LINE__, cast(bool, expr), #expr, nullptr)
+    lulu_assert_(__FILE__, __LINE__, bool(expr), #expr, nullptr)
 
 #define lulu_assertf(expr, fmt, ...) \
-    lulu_assert_(__FILE__, __LINE__, cast(bool, expr), #expr, fmt "\n", __VA_ARGS__)
+    lulu_assert_(__FILE__, __LINE__, bool(expr), #expr, fmt "\n", __VA_ARGS__)
 
 #define lulu_assertm(expr, msg) \
     lulu_assertf(expr, "%s", msg)

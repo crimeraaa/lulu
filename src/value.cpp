@@ -33,7 +33,9 @@ value_print(Value v)
         fprintf(stdout, LULU_NUMBER_FMT, v.number);
         break;
     case LULU_TYPE_STRING:
+        fputc(v.ostring->len == 1 ? '\'' : '\"', stdout);
         fputs(v.ostring->data, stdout);
+        fputc(v.ostring->len == 1 ? '\'' : '\"', stdout);
         break;
     }
 }

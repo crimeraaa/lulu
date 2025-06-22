@@ -15,6 +15,7 @@ __pretty_printers = {
     "Instruction":   lopcodes.InstructionPrinter,
     "TValue":        lobject.TValuePrinter,
     "union TString": lobject.TStringPrinter,
+    "TString":       lobject.TStringPrinter,
     "Node":          lobject.NodePrinter,
     "LocVar":        lobject.LocVarPrinter,
     "Token":         llex.TokenPrinter,
@@ -23,6 +24,7 @@ __pretty_printers = {
     # Pointers thereof that never function as arrays
     "Token *":         llex.TokenPrinter,
     "union TString *": lobject.TStringPrinter,
+    "TString *":       lobject.TStringPrinter,
     "Expr *":          lparser.ExprPrinter,
 }
 
