@@ -1,9 +1,6 @@
 #include "string.hpp"
 #include "vm.hpp"
 
-static const OString
-TOMBSTONE{};
-
 void
 builder_init(Builder &b)
 {
@@ -86,101 +83,54 @@ hash_string(String text)
 }
 
 void
-intern_init(Intern &i)
+intern_init(Intern &t)
 {
-    i.table.data  = nullptr;
-    i.table.len   = 0;
-    i.list        = nullptr;
-    i.count       = 0;
+    t.table.data  = nullptr;
+    t.table.len   = 0;
+    t.count       = 0;
+}
+
+void
+intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
+{
+    Slice<OString *> new_table{mem_make<OString *>(vm, new_cap), new_cap};
+    // Zero out the new memory
+    for (auto &s : new_table) {
+        s = nullptr;
+    }
+
+    // Rehash all strings from the old table to the new table.
+    for (OString *list : t.table) {
+        OString *node = list;
+        // Rehash all children for this list.
+        while (node != nullptr) {
+            size_t   i    = cast_size(node->hash) % new_cap;
+            OString *next = cast(OString *, node->base.next);
+
+            // Chain this node in the new table, using the new main index.
+            node->base.next = cast(Object *, new_table[i]);
+            new_table[i]    = node;
+
+            node = next;
+        }
+    }
+    mem_delete(vm, raw_data(t.table), len(t.table));
+    t.table = new_table;
 }
 
 void
 intern_destroy(lulu_VM &vm, Intern &t)
 {
+    for (OString *list : t.table) {
+        OString *node = list;
+        while (node != nullptr) {
+            OString *next = cast(OString *, node->base.next);
+            ostring_free(vm, node);
+            node = next;
+        }
+    }
     mem_delete(vm, raw_data(t.table), len(t.table));
-    OString *prev;
-    for (OString *s = cast(OString *, t.list); s != nullptr; s = prev) {
-        prev = cast(OString *, s->base.prev);
-        ostring_free(vm, s);
-    }
     intern_init(t);
-}
-
-static OString *
-intern_find_string(Slice<OString *> t, String text, u32 hash)
-{
-    size_t cap = len(t);
-    if (cap == 0) {
-        return nullptr;
-    }
-    for (size_t i = cast(size_t, hash) % cap; /* empty */; i = (i + 1) % cap) {
-        OString *o = t[i];
-        if (o == nullptr) {
-            break;
-        } else if (o == &TOMBSTONE) {
-            continue;
-        }
-
-        // Compare hashes first for speed.
-        if (o->hash == hash && o->len == len(text)) {
-            if (memcmp(raw_data(text), o->data, len(text)) == 0) {
-                return o;
-            }
-        }
-    }
-    return nullptr;
-}
-
-struct Result {
-    Intern_Entry *entry;
-    bool          is_new;
-};
-
-static Result
-intern_find_ostring(Slice<OString *> t, OString *s)
-{
-    Intern_Entry *tomb = nullptr;
-    const size_t  cap = len(t);
-    for (size_t i = cast(size_t, s->hash) % cap; /* empty */; i = (i + 1) % cap) {
-        OString *s2 = t[i];
-        // This chain cannot possibly contain `s`.
-        if (s2 == nullptr) {
-            const bool    is_new = (tomb == nullptr);
-            Intern_Entry *e      = (is_new) ? &t[i] : tomb;
-            return {e, is_new};
-        } else if (s2 == &TOMBSTONE) {
-            if (tomb == nullptr) {
-                tomb = &t[i];
-            }
-            continue;
-        } else if (s2 == s) {
-            return {&t[i], true};
-        }
-    }
-    lulu_unreachable();
-}
-
-static void
-intern_resize(lulu_VM &vm, Intern &i, size_t new_cap)
-{
-    Slice<OString *> next{mem_make<OString *>(vm, new_cap), new_cap};
-    // Zero out the new memory
-    for (auto &s : next) {
-        s = nullptr;
-    }
-
-    size_t n = 0;
-    for (auto s : i.table) {
-        if (s == nullptr) {
-            continue;
-        }
-        Result r = intern_find_ostring(next, s);
-        *r.entry = s;
-        n++;
-    }
-    mem_delete(vm, raw_data(i.table), len(i.table));
-    i.table = next;
-    i.count = n;
 }
 
 OString *
@@ -188,13 +138,23 @@ ostring_new(lulu_VM &vm, String text)
 {
     Intern  &t    = vm.intern;
     u32      hash = hash_string(text);
-    OString *s    = intern_find_string(t.table, text, hash);
-    if (s != nullptr) {
-        return s;
+    size_t   i    = cast_size(hash) % len(t.table);
+    for (OString *node = t.table[i];
+        node != nullptr;
+        node = cast(OString *, node->base.next)) {
+        if (node->hash == hash && node->len == len(text)) {
+            String tmp{node->data, node->len};
+            if (string_eq(text, tmp)) {
+                return node;
+            }
+        }
     }
 
+    // We assume that `len(t.table)` is never 0 by this point.
+    Object **list = cast(Object **, &t.table[i]);
+
     // No need to add 1 to len; `data[1]` is already embedded in the struct.
-    s = object_new<OString>(vm, &t.list, LULU_TYPE_STRING, len(text));
+    OString *s = object_new<OString>(vm, list, LULU_TYPE_STRING, len(text));
     s->hash = hash;
     s->len  = len(text);
     memcpy(s->data, raw_data(text), len(text));
@@ -204,12 +164,7 @@ ostring_new(lulu_VM &vm, String text)
         size_t new_cap = mem_next_size(t.count + 1);
         intern_resize(vm, t, new_cap);
     }
-
-    Result r = intern_find_ostring(t.table, s);
-    if (r.is_new) {
-        t.count++;
-    }
-    *r.entry = s;
+    t.count++;
     return s;
 }
 

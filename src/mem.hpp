@@ -5,7 +5,7 @@
 
 /**
  * @brief
- *  -   Rounds `n` to the next multiple of 2 if it is not one already.
+ *  -   Rounds `n` to the next power of 2 if it is not one already.
  */
 size_t
 mem_next_size(size_t n);

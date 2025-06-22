@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string.h>
+#include <string.h> // strlen
 
 #include "private.hpp"
 #include "dynamic.hpp"
@@ -24,19 +24,18 @@ struct OString {
     char   data[1];
 };
 
+// Each entry in the string table is actually a linked list.
 using Intern_Entry = OString *;
 
 struct Intern {
     Slice<Intern_Entry> table;
-    Object             *list;
-    size_t              count; // Number of slots actively used in `table`.
+    size_t              count; // Total number of strings in active use.
 };
 
 inline String
 string_make(const char *cstr)
 {
     size_t n = strlen(cstr);
-    lulu_assert(cstr[n] == '\0');
     String s{cstr, n};
     return s;
 }
@@ -52,10 +51,9 @@ inline String
 string_make(const char *start, const char *end)
 {
     // The standard says we can't compare 2 pointers that point to entirely
-    // different objects in memory. But for x86-64 it *can* be done.
-    lulu_assert(start <= end);
+    // different objects in memory. So this check is not entirely portable.
     lulu_assertf(end - start >= 0, "Length of %ti less than 0", end - start);
-    String s{start, cast(size_t, end - start)};
+    String s{start, cast_size(end - start)};
     return s;
 }
 
@@ -73,6 +71,12 @@ string_slice(String s, size_t start, size_t stop)
     lulu_assert(start <= stop);
     String s2{&s[start], stop - start};
     return s2;
+}
+
+inline bool
+string_eq(String a, String b)
+{
+    return slice_eq(a, b);
 }
 
 void
@@ -101,6 +105,9 @@ builder_to_string(const Builder &b);
 
 void
 intern_init(Intern &t);
+
+void
+intern_resize(lulu_VM &vm, Intern &i, size_t new_cap);
 
 void
 intern_destroy(lulu_VM &vm, Intern &t);

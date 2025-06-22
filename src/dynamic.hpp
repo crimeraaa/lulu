@@ -33,10 +33,10 @@ dynamic_reserve(lulu_VM &vm, Dynamic<T> &d, size_t new_cap)
 
 /**
  * @brief 2025-06-12
- *  -   Allocates memory to hold `new_len` elements (or the next multiple of 2
- *      thereof).
- *  -   We clamp the size to multiples of 2 to reduce the number of consecutive
- *      reallocations.
+ *  -   Allocates memory to hold at least `new_len` elements.
+ *  -   If shrinking, no new memory is allocated but the valid indexable range
+ *      is reduced.
+ *  -   We clamp the size to reduce the number of consecutive reallocations.
  *  -   Unlike `dynamic_reserve()` this also sets `d.len` so you can safely
  *      index this range.
  */
@@ -46,7 +46,9 @@ dynamic_resize(lulu_VM &vm, Dynamic<T> &d, size_t new_len)
 {
     // Can't accomodate the new data?
     if (new_len > d.cap) {
-        dynamic_reserve(vm, d, mem_next_size(new_len));
+        // 1.5 is closest to golden ratio of 1.618
+        // (n*3) >> 1 == (n*3) / 2 == n*1.5
+        dynamic_reserve(vm, d, new_len*3 >> 1);
     }
     d.len = new_len;
 }

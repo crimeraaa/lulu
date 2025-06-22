@@ -368,7 +368,7 @@ static Token
 check_keyword(const Lexer &x, String s, Token_Type type)
 {
     String kw = token_strings[type];
-    if (len(s) == len(kw) && memcmp(raw_data(s), raw_data(kw), len(s)) == 0) {
+    if (string_eq(s, kw)) {
         return make_token(x, type, s);
     }
     return make_token(x, TOKEN_IDENTIFIER, s);

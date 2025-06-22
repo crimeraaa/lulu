@@ -6,21 +6,19 @@
 
 struct Object {
     Type    type;
-    Object *prev;
+    Object *next;
 };
-
-void
-object_link(Object **list, Object *o);
 
 void
 object_free(lulu_VM &vm, Object *o);
 
 template<class T>
-T *
+inline T *
 object_new(lulu_VM &vm, Object **list, Type type, size_t extra = 0)
 {
     T *o = mem_new<T>(vm, extra);
     o->base.type = type;
-    object_link(list, &o->base);
+    o->base.next = *list; // Chain the new object.
+    *list = &o->base;
     return o;
 }

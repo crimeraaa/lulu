@@ -39,12 +39,12 @@ parse_strings(String stack_frame, Slice<char> out_symbol, Slice<char> out_offset
             break;
         // Beginning of offset?
         case '+':
-            symbol.len  = cast(size_t, &ch - symbol.data);
+            symbol.len  = cast_size(&ch - symbol.data);
             offset.data = &ch + 1;
             break;
         // End of offset?
         case ')':
-            offset.len = cast(size_t, &ch - offset.data);
+            offset.len = cast_size(&ch - offset.data);
         default:
             break;
         }
@@ -156,7 +156,7 @@ print_backtrace()
     char **array = backtrace_symbols(stack_frames_buffer, n);
 
     char print_array[100] = {0};
-    Slice<char *> stack_frame_strings{array, cast(size_t, n)};
+    Slice<char *> stack_frame_strings{array, cast_size(n)};
 
     sprintf(print_array, "\nObtained %i stack frames.\n", n);
     write(STDERR_FILENO, print_array, strlen(print_array));

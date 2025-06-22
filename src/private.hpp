@@ -10,6 +10,7 @@ using i32 = int32_t;
 
 #define cast(T, expr)   ((T)(expr))
 #define cast_int(expr)  cast(int, expr)
+#define cast_size(expr) cast(size_t, expr)
 #define unused(expr)    cast(void, expr)
 
 #define count_of(array) (sizeof(array) / sizeof((array)[0]))

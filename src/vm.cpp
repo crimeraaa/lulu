@@ -15,8 +15,11 @@ vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
     vm.chunk          = nullptr;
     vm.saved_ip       = nullptr;
     vm.objects        = nullptr;
-    intern_init(vm.intern);
     builder_init(vm.builder);
+    intern_init(vm.intern);
+
+    // Ensure when we start interning strings we can already index.
+    intern_resize(vm, vm.intern, 32);
 }
 
 Builder &
@@ -33,10 +36,11 @@ vm_destroy(lulu_VM &vm)
     builder_destroy(vm, vm.builder);
     intern_destroy(vm, vm.intern);
 
-    Object *prev;
-    for (Object *o = vm.objects; o != nullptr; o = prev) {
-        prev = o->prev;
+    Object *o = vm.objects;
+    while (o != nullptr) {
+        Object *next = o->next;
         object_free(vm, o);
+        o = next;
     }
 }
 
@@ -108,28 +112,29 @@ struct Exec_Data {
 Error
 vm_interpret(lulu_VM &vm, String source, String script)
 {
-    Exec_Data data{source, script, {}};
-    chunk_init(data.chunk, source);
+    Exec_Data d{source, script, {}};
+    chunk_init(d.chunk, source);
 
     Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr) {
         Exec_Data &d = *cast(Exec_Data *, user_ptr);
         parser_program(vm, d.chunk, d.script);
+        size_t n = cast_size(d.chunk.stack_used);
 
         // Fixed-size stack cannot accomodate this chunk?
-        if (cast(size_t, d.chunk.stack_used) >= count_of(vm.stack)) {
+        if (n >= count_of(vm.stack)) {
             vm_throw(vm, LULU_ERROR_MEMORY);
         }
         vm.chunk  = &d.chunk;
-        vm.window = slice_make(vm.stack, cast(size_t, d.chunk.stack_used));
+        vm.window = slice_make(vm.stack, n);
 
         for (auto &slot : vm.window) {
             slot = value_make();
         }
 
         vm_execute(vm);
-    }, &data);
+    }, &d);
 
-    chunk_destroy(vm, data.chunk);
+    chunk_destroy(vm, d.chunk);
     return e;
 }
 
@@ -261,8 +266,8 @@ vm_execute(lulu_VM &vm)
              *      pointer arithmetic is still within bounds even if we do not
              *      explicitly check.
              */
-            size_t n = cast(size_t, getarg_b(i));
-            for (auto v : slice_make(&ra, n)) {
+            size_t n = cast_size(getarg_b(i));
+            for (Value v : slice_make(&ra, n)) {
                 value_print(v);
                 printf("\t");
             }

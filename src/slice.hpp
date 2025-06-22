@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string.h> // memmove
+#include <string.h> // memcmp, memmove
 
 template<class T>
 struct Slice {
@@ -11,7 +11,7 @@ struct Slice {
     template<class N>
     T &operator[](N i)
     {
-        size_t ii = cast(size_t, i);
+        size_t ii = cast_size(i);
         lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
         return this->data[ii];
     }
@@ -20,7 +20,7 @@ struct Slice {
     template<class N>
     const T &operator[](N i) const
     {
-        size_t ii = cast(size_t, i);
+        size_t ii = cast_size(i);
         lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
         return this->data[ii];
     }
@@ -38,7 +38,7 @@ template<class T>
 inline Slice<T>
 slice_make(T *start, T *stop)
 {
-    return {start, cast(size_t, stop - start)};
+    return {start, cast_size(stop - start)};
 }
 
 template<class T>
@@ -46,6 +46,16 @@ inline Slice<T>
 slice_make(Slice<T> s, size_t start, size_t stop)
 {
     return {&s[start], stop - start};
+}
+
+template<class T>
+inline bool
+slice_eq(Slice<T> a, Slice<T> b)
+{
+    if (len(a) != len(b)) {
+        return false;
+    }
+    return memcmp(raw_data(a), raw_data(b), sizeof(T) * len(a)) == 0;
 }
 
 template<class T>

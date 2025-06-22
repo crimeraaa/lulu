@@ -52,7 +52,7 @@ read_file(const char *file_name)
         fprintf(stderr, "Failed to determine size of file '%s'.\n", file_name);
         goto cleanup_file;
     }
-    buffer.len  = cast(size_t, file_size) + 1;
+    buffer.len  = cast_size(file_size) + 1;
     buffer.data = cast(char *, malloc(len(buffer)));
     rewind(file_ptr);
     if (raw_data(buffer) == nullptr) {
