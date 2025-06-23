@@ -62,7 +62,7 @@ read_file(const char *file_name)
 
     // `buffer[file_size]` is reserved for nul char so don't include it.
     n_read = fread(raw_data(buffer), sizeof(buffer.data[0]), len(buffer) - 1, file_ptr);
-    if (n_read < len(buffer)) {
+    if (n_read < len(buffer) - 1) {
         fprintf(stderr, "Failed to read file '%s'.\n", file_name);
 cleanup_buffer:
         free(raw_data(buffer));

@@ -129,6 +129,19 @@ debug_disassemble_at(const Chunk &c, int pc, int pad)
         printf("R(%i) := %s", args.a, (args.basic.b) ? "true" : "false");
         break;
     }
+    case OP_GET_GLOBAL: {
+        print_reg(c, args.a);
+        printf(" := ");
+        value_print(c.constants[getarg_bx(ip)]);
+        break;
+    }
+
+    case OP_SET_GLOBAL: {
+        OString *s = &c.constants[getarg_bx(ip)].object->ostring;
+        char     q = (s->len == 1) ? '\'' : '\"';
+        printf("_G[%c%s%c] := R(%i)", q, s->data, q, args.a);
+        break;
+    }
     case OP_ADD: arith(c, '+', args); break;
     case OP_SUB: arith(c, '-', args); break;
     case OP_MUL: arith(c, '*', args); break;

@@ -41,6 +41,22 @@ advance(Parser &p)
     p.consumed = lexer_lex(p.lexer);
 }
 
+static bool
+check(Parser &p, Token_Type expected)
+{
+    return p.consumed.type == expected;
+}
+
+static bool
+match(Parser &p, Token_Type expected)
+{
+    bool b = check(p, expected);
+    if (b) {
+        advance(p);
+    }
+    return b;
+}
+
 
 /**
  * @brief
@@ -49,21 +65,30 @@ advance(Parser &p)
 static void
 consume(Parser &p, Token_Type expected)
 {
-    if (p.consumed.type != expected) {
+    if (!match(p, expected)) {
         // Assume our longest token is '<identifier>'.
         char buf[64];
         sprintf(buf, "Expected '" STRING_FMTSPEC "'",
             string_fmtarg(token_strings[expected]));
         parser_error(p, buf);
     }
-    advance(p);
+}
+
+static Expr
+variable(Parser &p, Compiler &c, const Token &t)
+{
+    Expr e;
+    e.type  = EXPR_GLOBAL;
+    e.line  = t.line;
+    e.index = compiler_add_constant(c, ostring_new(p.vm, t.lexeme));
+    return e;
 }
 
 static Expr
 prefix_expr(Parser &p, Compiler &c)
 {
     Token t = p.consumed;
-    advance(p); // Skip '<number>', '(' or '-'.
+    advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
     switch (t.type) {
     case TOKEN_NIL: {
         Expr e{EXPR_NIL, t.line, {}};
@@ -87,6 +112,9 @@ prefix_expr(Parser &p, Compiler &c)
         e.line  = t.line;
         e.index = compiler_add_constant(c, t.ostring);
         return e;
+    }
+    case TOKEN_IDENTIFIER: {
+        return variable(p, c, t);
     }
     case TOKEN_OPEN_PAREN: {
         Expr e = expression(p, c);
@@ -215,6 +243,107 @@ expression(Parser &p, Compiler &c, Precedence limit)
     return left;
 }
 
+/**
+ * @brief
+ *  -   Pushes a comma-separated list of expressions to the stack, except for
+ *      the last one.
+ *  -   We don't push the last one to allow optimizations.
+ */
+static Expr
+expr_list(Parser &p, Compiler &c, u16 &n)
+{
+    n = 1;
+    Expr e = expression(p, c);
+    while (match(p, TOKEN_COMMA)) {
+        compiler_expr_next_reg(c, e);
+        e = expression(p, c);
+        n++;
+    }
+    return e;
+}
+
+static void
+return_stmt(Parser &p, Compiler &c, int line)
+{
+    u8   ra = u8(c.free_reg);
+    u16  n;
+    Expr e = expr_list(p, c, n);
+    compiler_expr_next_reg(c, e);
+    compiler_code(c, OP_RETURN, ra, u16(ra) + n, 0, line);
+}
+
+struct Assign {
+    Assign *prev;
+    Expr    variable;
+};
+
+static void
+assignment(Parser &p, Compiler &c, Assign *last, u16 n_vars = 1)
+{
+    if (last->variable.type != EXPR_GLOBAL) {
+        parser_error(p, "Expected an identifier");
+    }
+
+    if (match(p, TOKEN_COMMA)) {
+        Assign next{last, prefix_expr(p, c)};
+        assignment(p, c, &next, n_vars + 1);
+        return;
+    }
+
+    consume(p, TOKEN_ASSIGN);
+
+    u16 n_exprs;
+    Expr e = expr_list(p, c, n_exprs);
+    compiler_expr_next_reg(c, e);
+
+    // Need to initialize remaining variables with `nil`.
+    if (n_vars > n_exprs) {
+        u16 reg   = c.free_reg;
+        u16 n_nil = n_vars - n_exprs;
+        compiler_reserve_reg(c, n_vars - n_exprs);
+        compiler_load_nil(c, u8(reg), n_nil, e.line);
+    } else {
+        // Otherwise, just pop the extra expressions.
+        c.free_reg -= (n_exprs - n_vars);
+    }
+
+    // Assign from rightmost target going leftmost. Use assigning expressions
+    // from right to left as well.
+    for (Assign *a = last; a != nullptr; a = a->prev) {
+        Expr v = a->variable;
+        switch (v.type) {
+        case EXPR_GLOBAL:
+            compiler_code(c, OP_SET_GLOBAL, u8(c.free_reg - 1), v.index, v.line);
+            break;
+        default:
+            lulu_unreachable();
+            break;
+        }
+        c.free_reg -= 1;
+    }
+}
+
+static void
+declaration(Parser &p, Compiler &c)
+{
+    Token t = p.consumed;
+    switch (t.type) {
+    case TOKEN_IDENTIFIER: {
+        Assign a{nullptr, prefix_expr(p, c)};
+        assignment(p, c, &a);
+        break;
+    }
+    case TOKEN_RETURN:
+        advance(p);
+        return_stmt(p, c, t.line);
+        break;
+    default:
+        error_at(p, t, "Expected an expression");
+        break;
+    }
+    match(p, TOKEN_SEMI);
+}
+
 void
 parser_program(lulu_VM &vm, Chunk &chunk, String script)
 {
@@ -222,10 +351,10 @@ parser_program(lulu_VM &vm, Chunk &chunk, String script)
     Compiler c = compiler_make(vm, p, chunk);
     // Set up first token
     advance(p);
-    Expr e = expression(p, c);
-    compiler_expr_next_reg(c, e);
+    while (!check(p, TOKEN_EOF)) {
+        declaration(p, c);
+    }
     consume(p, TOKEN_EOF);
-    // Expression always returns 1 value
-    compiler_code(c, OP_RETURN, 0, 1, 0, p.lexer.line);
+    compiler_code(c, OP_RETURN, 0, 0, 0, p.lexer.line);
     debug_disassemble(c.chunk);
 }

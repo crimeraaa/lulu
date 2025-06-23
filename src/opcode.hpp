@@ -3,23 +3,25 @@
 #include "private.hpp"
 
 enum OpCode : u8 {
-//         | Arguments | Effects
-OP_CONSTANT,  // A Bx  | R(A) := K[Bx]
-OP_LOAD_NIL,  // A B   | R(i) := nil for A <= i <= B
-OP_LOAD_BOOL, // A B   | R(A) := Bool(B)
-OP_ADD,       // A B C | R(A) := RK(B) + RK(C)
-OP_SUB,       // A B C | R(A) := RK(B) - RK(C)
-OP_MUL,       // A B C | R(A) := RK(B) * RK(C)
-OP_DIV,       // A B C | R(A) := RK(B) / RK(C)
-OP_MOD,       // A B C | R(A) := RK(B) % RK(C)
-OP_POW,       // A B C | R(A) := RK(B) ^ RK(C)
-OP_EQ,        // A B C | R(A) := RK(B) == RK(C)
-OP_LT,        // A B C | R(A) := RK(B) <  RK(C)
-OP_LEQ,       // A B C | R(A) := RK(B) <= RK(C)
-OP_UNM,       // A B   | R(A) := -R(B)
-OP_NOT,       // A B   | R(A) := not R(B)
-OP_CONCAT,    // A B C | R(A) := concat(R(B:C))
-OP_RETURN,    // A B C | return R(A:A+B)
+//           | Arguments | Effects
+OP_CONSTANT,    // A Bx  | R(A) := K[Bx]
+OP_LOAD_NIL,    // A B   | R(i) := nil for A <= i <= B
+OP_LOAD_BOOL,   // A B   | R(A) := Bool(B)
+OP_GET_GLOBAL,  // A Bx  | R(A) := _G[K(Bx)]
+OP_SET_GLOBAL,  // A Bx  | _G[K(Bx)] := R(A)
+OP_ADD,         // A B C | R(A) := RK(B) + RK(C)
+OP_SUB,         // A B C | R(A) := RK(B) - RK(C)
+OP_MUL,         // A B C | R(A) := RK(B) * RK(C)
+OP_DIV,         // A B C | R(A) := RK(B) / RK(C)
+OP_MOD,         // A B C | R(A) := RK(B) % RK(C)
+OP_POW,         // A B C | R(A) := RK(B) ^ RK(C)
+OP_EQ,          // A B C | R(A) := RK(B) == RK(C)
+OP_LT,          // A B C | R(A) := RK(B) <  RK(C)
+OP_LEQ,         // A B C | R(A) := RK(B) <= RK(C)
+OP_UNM,         // A B   | R(A) := -R(B)
+OP_NOT,         // A B   | R(A) := not R(B)
+OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
+OP_RETURN,      // A B C | return R(A:A+B)
 };
 
 static constexpr int OPCODE_COUNT = OP_RETURN + 1;

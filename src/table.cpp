@@ -77,15 +77,17 @@ find_entry(Slice<Entry> entries, Value k)
     lulu_unreachable();
 }
 
-Table_Result
-table_get(Table &t, Value k)
+Value
+table_get(Table &t, Value k, bool &ok)
 {
+    ok = false;
     if (t.count > 0) {
         Entry *e = find_entry(t.entries, k);
         // If `e->key` is nil, then that means `k` does not exist in the table.
-        return {e->value, !value_is_nil(e->key)};
+        ok = !value_is_nil(e->key);
+        return e->value;
     }
-    return {Value(), false};
+    return Value();
 }
 
 void

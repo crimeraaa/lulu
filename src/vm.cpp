@@ -37,6 +37,7 @@ vm_destroy(lulu_VM &vm)
 {
     builder_destroy(vm, vm.builder);
     intern_destroy(vm, vm.intern);
+    slice_delete(vm, vm.globals.entries);
 
     Object *o = vm.objects;
     while (o != nullptr) {
@@ -230,6 +231,26 @@ vm_execute(lulu_VM &vm)
         case OP_LOAD_BOOL:
             ra = Value(bool(getarg_b(i)));
             break;
+        case OP_GET_GLOBAL: {
+            Value k = chunk.constants[getarg_bx(i)];
+
+            protect(vm, ip);
+            bool ok;
+            Value v = table_get(vm.globals, k, ok);
+            if (!ok) {
+                vm_runtime_error(vm,
+                    "read undefined variable", "'%s'",
+                    k.object->ostring.data);
+            }
+            ra = v;
+            break;
+        }
+        case OP_SET_GLOBAL: {
+            Value k = chunk.constants[getarg_bx(i)];
+            protect(vm, ip);
+            table_set(vm, vm.globals, k, ra);
+            break;
+        }
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
         case OP_SUB: ARITH_OP(lulu_Number_sub); break;
         case OP_MUL: ARITH_OP(lulu_Number_mul); break;

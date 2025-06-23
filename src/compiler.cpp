@@ -25,8 +25,8 @@ int
 compiler_code(Compiler &c, OpCode op, u8 a, u32 bx, int line)
 {
     lulu_assert(opinfo_a(op) == OPARG_REG);
-    lulu_assert(opinfo_b(op) == OPARG_CONSTANT);
-    lulu_assert(opinfo_c(op) == OPARG_UNUSED);
+    lulu_assert(opinfo_b(op) == OPARG_CONSTANT || opinfo_b(op) == OPARG_OTHER);
+    lulu_assert(opinfo_c(op) == OPARG_UNUSED || opinfo_c(op) == OPARG_OTHER);
     return chunk_append(c.vm, c.chunk, instruction_abx(op, a, bx), line);
 }
 
@@ -91,9 +91,9 @@ compiler_add_constant(Compiler &c, OString *s)
 //=== REGISTER MANIPULATION ================================================ {{{
 
 void
-compiler_reserve_reg(Compiler &c, int n)
+compiler_reserve_reg(Compiler &c, u16 n)
 {
-    c.free_reg += u16(n);
+    c.free_reg += n;
     if (c.free_reg > MAX_REG) {
         parser_error(c.parser, "Too many registers");
     }
@@ -125,8 +125,22 @@ pop_expr(Compiler &c, const Expr &e)
 //=== }}} ======================================================================
 
 static void
+discharge_vars(Compiler &c, Expr &e)
+{
+    switch (e.type) {
+    case EXPR_GLOBAL:
+        e.type = EXPR_RELOCABLE;
+        e.pc   = compiler_code(c, OP_GET_GLOBAL, OPCODE_MAX_A, e.index, e.line);
+        break;
+    default:
+        break;
+    }
+}
+
+static void
 expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
 {
+    discharge_vars(c, e);
     switch (e.type) {
     case EXPR_NIL:
         compiler_load_nil(c, reg, 1, line);

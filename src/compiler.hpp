@@ -3,7 +3,8 @@
 #include "chunk.hpp"
 #include "parser.hpp"
 
-static constexpr u8 MAX_REG = OPCODE_MAX_A - 5;
+static constexpr u8
+MAX_REG = OPCODE_MAX_A - 5;
 
 struct Compiler {
     lulu_VM &vm;
@@ -57,7 +58,7 @@ compiler_add_constant(Compiler &c, OString *s);
  *      `MAX_REG`.
  */
 void
-compiler_reserve_reg(Compiler &c, int n);
+compiler_reserve_reg(Compiler &c, u16 n);
 
 
 /**

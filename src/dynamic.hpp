@@ -75,7 +75,6 @@ inline void
 dynamic_delete(lulu_VM &vm, Dynamic<T> &d)
 {
     mem_delete(vm, d.data, d.cap);
-    dynamic_init(d);
 }
 
 template<class T>

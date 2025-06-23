@@ -12,7 +12,7 @@ object_free(lulu_VM &vm, Object *o)
     }
     case VALUE_TABLE: {
         Table *t = &o->table;
-        mem_delete(vm, raw_data(t->entries), len(t->entries));
+        slice_delete(vm, t->entries);
         break;
     }
     default:
