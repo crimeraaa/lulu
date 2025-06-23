@@ -3,6 +3,7 @@
 #include "private.hpp"
 #include "value.hpp"
 #include "mem.hpp"
+#include "slice.hpp"
 
 #define OBJECT_HEADER Value_Type type; Object *next
 
@@ -17,9 +18,20 @@ struct OString {
     char   data[1];
 };
 
+struct Entry {
+    Value key, value;
+};
+
+struct Table {
+    OBJECT_HEADER;
+    Slice<Entry> entries;
+    size_t       count;   // Number of currently active elements in `entries`.
+};
+
 union Object {
     Object_Header base;
     OString       ostring;
+    Table         table;
 };
 
 void

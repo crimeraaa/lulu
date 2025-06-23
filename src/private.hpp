@@ -15,9 +15,6 @@ using i32 = int32_t;
 
 #define count_of(array) (sizeof(array) / sizeof((array)[0]))
 
-struct OString;
-union  Object;
-
 #define STRING_FMTSPEC "%.*s"
 #define string_fmtarg(s) cast_int(len(s)), raw_data(s)
 

@@ -14,7 +14,8 @@ operator==(Value a, Value b)
     case VALUE_NIL:     return true;
     case VALUE_BOOLEAN: return a.boolean == b.boolean;
     case VALUE_NUMBER:  return lulu_Number_eq(a.number, b.number);
-    case VALUE_STRING:  return a.object == b.object;
+    case VALUE_STRING:  // fall-through
+    case VALUE_TABLE:   return a.object == b.object;
     case VALUE_CHUNK:
         break;
     }
@@ -24,7 +25,8 @@ operator==(Value a, Value b)
 void
 value_print(Value v)
 {
-    switch (v.type) {
+    Value_Type t = v.type;
+    switch (t) {
     case VALUE_NIL:
         fputs("nil", stdout);
         break;
@@ -40,6 +42,9 @@ value_print(Value v)
         fprintf(stdout, "%c%s%c", q, s->data, q);
         break;
     }
+    case VALUE_TABLE:
+        fprintf(stdout, "%s: %p", value_type_name(t), cast(void *)v.object);
+        break;
     case VALUE_CHUNK:
         lulu_unreachable();
         break;

@@ -74,6 +74,9 @@ intern_resize(lulu_VM &vm, Intern &i, size_t new_cap);
 void
 intern_destroy(lulu_VM &vm, Intern &t);
 
+u32
+hash_string(String text);
+
 OString *
 ostring_new(lulu_VM &vm, String text);
 

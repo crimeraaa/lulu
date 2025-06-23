@@ -6,11 +6,16 @@
 using Type   = lulu_Type;
 using Number = lulu_Number;
 
+union  Object;
+struct OString;
+struct Table;
+
 enum Value_Type {
     VALUE_NIL       = LULU_TYPE_NIL,
     VALUE_BOOLEAN   = LULU_TYPE_BOOLEAN,
     VALUE_NUMBER    = LULU_TYPE_NUMBER,
     VALUE_STRING    = LULU_TYPE_STRING,
+    VALUE_TABLE     = LULU_TYPE_TABLE,
 
     // Not accessible from user code.
     VALUE_CHUNK,
@@ -24,12 +29,12 @@ struct Value {
         Object  *object;
     };
 
-    Value()
+    constexpr Value()
         : type{VALUE_NIL}
         , number{0}
     {}
 
-    explicit Value(bool b)
+    constexpr explicit Value(bool b)
         : type{VALUE_BOOLEAN}
         , boolean{b}
     {}
@@ -42,6 +47,11 @@ struct Value {
     Value(OString *o)
         : type{VALUE_STRING}
         , object{cast(Object *)o}
+    {}
+
+    Value(Table *t)
+        : type{VALUE_TABLE}
+        , object{cast(Object *)t}
     {}
 };
 
@@ -63,6 +73,7 @@ value_type_name(Value_Type t)
     case VALUE_BOOLEAN: return "boolean";
     case VALUE_NUMBER:  return "number";
     case VALUE_STRING:  return "string";
+    case VALUE_TABLE:   return "table";
     case VALUE_CHUNK:
         break;
     }
@@ -97,6 +108,12 @@ inline bool
 value_is_string(Value v)
 {
     return v.type == VALUE_STRING;
+}
+
+inline bool
+value_is_table(Value v)
+{
+    return v.type == VALUE_TABLE;
 }
 
 inline bool

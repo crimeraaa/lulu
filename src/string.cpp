@@ -66,7 +66,7 @@ builder_to_string(const Builder &b)
     return String(b.buffer);
 }
 
-static u32
+u32
 hash_string(String text)
 {
     static constexpr u32
@@ -106,7 +106,7 @@ intern_clamp_index(u32 hash, size_t cap)
 void
 intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
 {
-    Slice<Object *> new_table{mem_make<Object *>(vm, new_cap), new_cap};
+    Slice<Object *> new_table = slice_make<Object *>(vm, new_cap);
     // Zero out the new memory
     for (auto &s : new_table) {
         s = nullptr;
@@ -127,7 +127,7 @@ intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
             node         = next;
         }
     }
-    mem_delete(vm, raw_data(t.table), len(t.table));
+    slice_delete(vm, t.table);
     t.table = new_table;
 }
 

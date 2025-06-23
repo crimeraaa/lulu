@@ -6,6 +6,7 @@
 #include "debug.hpp"
 #include "parser.hpp"
 #include "object.hpp"
+#include "table.hpp"
 
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
@@ -17,6 +18,7 @@ vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
     vm.objects        = nullptr;
     builder_init(vm.builder);
     intern_init(vm.intern);
+    table_init(vm.globals);
 
     // Ensure when we start interning strings we can already index.
     intern_resize(vm, vm.intern, 32);

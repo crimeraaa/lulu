@@ -4,6 +4,7 @@
 #include "private.hpp"
 #include "chunk.hpp"
 #include "string.hpp"
+#include "object.hpp"
 
 using Error = lulu_Error;
 
@@ -19,6 +20,7 @@ struct lulu_VM {
     Slice<Value>       window;
     Builder            builder;
     Intern             intern;
+    Table              globals;
     lulu_Allocator     allocator;
     void              *allocator_data;
     Chunk             *chunk; // Not a reference because it can be reassigned.

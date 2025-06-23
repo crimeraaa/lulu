@@ -32,4 +32,5 @@ typedef enum {
     LULU_TYPE_BOOLEAN,
     LULU_TYPE_NUMBER,
     LULU_TYPE_STRING,
+    LULU_TYPE_TABLE,
 } lulu_Type;
