@@ -49,5 +49,9 @@ struct Expr {
 Parser
 parser_make(lulu_VM &vm, String source, String script);
 
+[[noreturn]]
+void
+parser_error(Parser &p, const char *msg);
+
 void
 parser_program(lulu_VM &vm, Chunk &chunk, String script);

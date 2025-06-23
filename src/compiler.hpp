@@ -9,7 +9,7 @@ struct Compiler {
     lulu_VM &vm;
     Parser  &parser; // All compilers share the same parser.
     Chunk   &chunk;  // Compilers do not own their chunks.
-    u8       free_reg;
+    u16      free_reg;
 };
 
 Compiler
@@ -57,7 +57,7 @@ compiler_add_constant(Compiler &c, OString *s);
  *      `MAX_REG`.
  */
 void
-compiler_reserve_reg(Compiler &c, u16 n);
+compiler_reserve_reg(Compiler &c, int n);
 
 
 /**

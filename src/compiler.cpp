@@ -1,4 +1,5 @@
 #include "compiler.hpp"
+#include "vm.hpp"
 
 Compiler
 compiler_make(lulu_VM &vm, Parser &p, Chunk &chunk)
@@ -45,7 +46,7 @@ compiler_load_nil(Compiler &c, u8 reg, int n, int line)
     u16 last_reg = u16(reg) + u16(n - 1);
     // Previous instruction may be able to be folded?
     if (getarg_op(*ip) == OP_LOAD_NIL) {
-        u16 ra = u16(getarg_a(*ip));
+        u16 ra = getarg_a(*ip);
         u16 rb = getarg_b(*ip);
 
         // New argument B could be used to update the previous?
@@ -76,13 +77,13 @@ compiler_add_constant(Compiler &c, Value v)
 u32
 compiler_add_constant(Compiler &c, Number n)
 {
-    return compiler_add_constant(c, value_make(n));
+    return compiler_add_constant(c, Value(n));
 }
 
 u32
 compiler_add_constant(Compiler &c, OString *s)
 {
-    return compiler_add_constant(c, value_make(s));
+    return compiler_add_constant(c, Value(s));
 }
 
 //=== }}} ======================================================================
@@ -90,18 +91,19 @@ compiler_add_constant(Compiler &c, OString *s)
 //=== REGISTER MANIPULATION ================================================ {{{
 
 void
-compiler_reserve_reg(Compiler &c, u16 n)
+compiler_reserve_reg(Compiler &c, int n)
 {
-    c.free_reg += n;
-    // TODO(2025-06-16): Turn into handle-able error rather than unrecoverable
-    lulu_assertf(c.free_reg <= MAX_REG, "More than %u registers", MAX_REG);
+    c.free_reg += u16(n);
+    if (c.free_reg > MAX_REG) {
+        parser_error(c.parser, "Too many registers");
+    }
     if (c.chunk.stack_used < c.free_reg) {
         c.chunk.stack_used = c.free_reg;
     }
 }
 
 static void
-pop_reg(Compiler &c, u8 reg)
+pop_reg(Compiler &c, u16 reg)
 {
     if (!reg_is_rk(reg)) {
         c.free_reg -= 1;
@@ -116,7 +118,7 @@ static void
 pop_expr(Compiler &c, const Expr &e)
 {
     if (e.type == EXPR_DISCHARGED) {
-        pop_reg(c, e.reg);
+        pop_reg(c, u16(e.reg));
     }
 }
 
@@ -159,9 +161,10 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
 u8
 compiler_expr_next_reg(Compiler &c, Expr &e)
 {
+    u8 reg = u8(c.free_reg);
     compiler_reserve_reg(c, 1);
-    expr_to_reg(c, e, c.free_reg - 1, e.line);
-    return c.free_reg - 1;
+    expr_to_reg(c, e, reg, e.line);
+    return reg;
 }
 
 u8
@@ -183,7 +186,7 @@ value_to_rk(Compiler &c, Expr &e, Value v)
     // `i` can be encoded directly into an RK register?
     if (i <= u32(OPCODE_MAX_RK)) {
         // Return the bit-toggled index.
-        return reg_to_rk(u16(i));
+        return reg_to_rk(i);
     }
     // Can't fit in an RK register.
     return u16(compiler_expr_any_reg(c, e));
@@ -193,10 +196,10 @@ u16
 compiler_expr_rk(Compiler &c, Expr &e)
 {
     switch (e.type) {
-    case EXPR_NIL:    return value_to_rk(c, e, value_make());
-    case EXPR_TRUE:   return value_to_rk(c, e, value_make(true));
-    case EXPR_FALSE:  return value_to_rk(c, e, value_make(false));
-    case EXPR_NUMBER: return value_to_rk(c, e, value_make(e.number));
+    case EXPR_NIL:    return value_to_rk(c, e, Value());
+    case EXPR_TRUE:   return value_to_rk(c, e, Value(true));
+    case EXPR_FALSE:  return value_to_rk(c, e, Value(false));
+    case EXPR_NUMBER: return value_to_rk(c, e, Value(e.number));
 
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {

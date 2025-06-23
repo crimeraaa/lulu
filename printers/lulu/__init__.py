@@ -54,27 +54,24 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             "Expr":         expr.ExprPrinter,
             "Value":        value.ValuePrinter,
             "String":       odin.StringPrinter,
+            "OString":      value.OStringPrinter,
 
             # Pointers thereof
             # "Instruction *": opcode.InstructionPrinter,
+            "OString *":    value.OStringPrinter,
         }
         super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))
 
 
     def __call__(self, val: gdb.Value):
-        # Seems that from within the VSCode debugger an exception is silently
-        # raised and squashed while trying to print `lulu.VM`
-        #
-        # Curiously, running GDB on the command line doesn't show any errors.
-        try:
-            tag = val.type.name
-            if tag.startswith("Slice<"):
-                return odin.SlicePrinter(val, tag)
-            elif tag.startswith("Dynamic<"):
-                return odin.DynamicPrinter(val, tag)
+        # The `.type` field for pointers doesn't have a `.name` field.
+        tag = str(val.type)
+        if tag.startswith("Slice<"):
+            return odin.SlicePrinter(val, tag)
+        elif tag.startswith("Dynamic<"):
+            return odin.DynamicPrinter(val, tag)
+        elif tag in self.__printers:
             return self.__printers[tag](val)
-        except:
-            pass
         return None
 
 

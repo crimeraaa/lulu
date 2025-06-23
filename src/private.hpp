@@ -15,6 +15,12 @@ using i32 = int32_t;
 
 #define count_of(array) (sizeof(array) / sizeof((array)[0]))
 
+struct OString;
+union  Object;
+
+#define STRING_FMTSPEC "%.*s"
+#define string_fmtarg(s) cast_int(len(s)), raw_data(s)
+
 #ifdef LULU_DEBUG
 
 [[gnu::format(printf, 5, 6)]]
@@ -33,9 +39,9 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr,
 
 #else
 
-#define lulu_assert(expr)
-#define lulu_assertf(expr, fmt, ...)
-#define lulu_assertm(expr, msg)
+#define lulu_assert(expr)               ((void)0)
+#define lulu_assertf(expr, fmt, ...)    ((void)0)
+#define lulu_assertm(expr, msg)         ((void)0)
 
 #endif // LULU_DEBUG
 
@@ -53,7 +59,8 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr,
 // Do not implement as a function-like macro `lulu_assert(false)` because
 // `lulu_assert()` itself may be empty.
 [[noreturn]]
-void
-lulu_unreachable();
+inline void
+lulu_unreachable()
+{}
 
 #endif // __GNUC__ || __clang__ || _MSC_VER

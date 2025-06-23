@@ -63,7 +63,7 @@ builder_to_string(const Builder &b)
 {
     // Ensure the `builder_write_*` family worked properly.
     lulu_assert(len(b.buffer) == 0 || raw_data(b.buffer)[len(b.buffer)] == '\0');
-    return string_make(b.buffer);
+    return String(b.buffer);
 }
 
 static u32
@@ -90,6 +90,19 @@ intern_init(Intern &t)
     t.count       = 0;
 }
 
+static size_t
+intern_cap(const Intern &t)
+{
+    return len(t.table);
+}
+
+// Assumes `cap` is always a power of 2.
+static size_t
+intern_clamp_index(u32 hash, size_t cap)
+{
+    return cast_size(hash) & (cap - 1);
+}
+
 void
 intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
 {
@@ -104,16 +117,14 @@ intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
         Object *node = list;
         // Rehash all children for this list.
         while (node != nullptr) {
-            lulu_assert(node->type == LULU_TYPE_STRING);
-            OString *s    = cast(OString *)node;
-            size_t   i    = cast_size(s->hash) % new_cap;
-            Object  *next = node->next;
+            OString *s    = &node->ostring;
+            size_t   i    = intern_clamp_index(s->hash, new_cap);
+            Object  *next = s->next;
 
             // Chain this node in the new table, using the new main index.
-            node->next   = new_table[i];
+            s->next      = new_table[i];
             new_table[i] = node;
-
-            node = next;
+            node         = next;
         }
     }
     mem_delete(vm, raw_data(t.table), len(t.table));
@@ -126,7 +137,7 @@ intern_destroy(lulu_VM &vm, Intern &t)
     for (Object *list : t.table) {
         Object *node = list;
         while (node != nullptr) {
-            Object *next = node->next;
+            Object *next = node->base.next;
             object_free(vm, node);
             node = next;
         }
@@ -140,13 +151,11 @@ ostring_new(lulu_VM &vm, String text)
 {
     Intern  &t    = vm.intern;
     u32      hash = hash_string(text);
-    size_t   i    = cast_size(hash) % len(t.table);
-    for (Object *node = t.table[i]; node != nullptr; node = node->next) {
-        lulu_assert(node->type == LULU_TYPE_STRING);
-        OString *s = cast(OString *)node;
+    size_t   i    = intern_clamp_index(hash, intern_cap(t));
+    for (Object *node = t.table[i]; node != nullptr; node = node->base.next) {
+        OString *s = &node->ostring;
         if (s->hash == hash) {
-            String tmp{s->data, s->len};
-            if (string_eq(text, tmp)) {
+            if (text == String(s->data, s->len)) {
                 return s;
             }
         }
@@ -154,13 +163,13 @@ ostring_new(lulu_VM &vm, String text)
 
     // We assume that `len(t.table)` is never 0 by this point.
     // No need to add 1 to len; `data[1]` is already embedded in the struct.
-    OString *s = object_new<OString>(vm, &t.table[i], LULU_TYPE_STRING, len(text));
+    OString *s = object_new<OString>(vm, &t.table[i], VALUE_STRING, len(text));
     s->hash = hash;
     s->len  = len(text);
     memcpy(s->data, raw_data(text), len(text));
     s->data[s->len] = 0;
 
-    if (t.count + 1 > len(t.table)*3 / 4) {
+    if (t.count + 1 > intern_cap(t)*3 / 4) {
         size_t new_cap = mem_next_size(t.count + 1);
         intern_resize(vm, t, new_cap);
     }

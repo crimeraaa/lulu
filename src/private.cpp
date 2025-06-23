@@ -28,8 +28,8 @@
 static void
 parse_strings(String stack_frame, Slice<char> out_symbol, Slice<char> out_offset)
 {
-    String symbol{nullptr, 0};
-    String offset{nullptr, 0};
+    String symbol;
+    String offset;
 
     for (const auto &ch : stack_frame) {
         switch (ch) {
@@ -165,7 +165,7 @@ print_backtrace()
 #if __x86_64__
         // Calculate the offset on x86_64, print the file and line number with
         // addr2line.
-        void *offset_pointer = calculate_offset(string_make(s));
+        void *offset_pointer = calculate_offset(String(s));
         if (offset_pointer == nullptr) {
             write(STDERR_FILENO, errmsg, count_of(errmsg));
         } else {
@@ -198,15 +198,3 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr, const char
 }
 
 #endif // LULU_DEBUG
-
-#ifndef lulu_unreachable
-
-#include <assert.h>
-
-void
-lulu_unreachable()
-{
-    assert(false);
-}
-
-#endif // lulu_unreachable

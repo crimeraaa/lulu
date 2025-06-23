@@ -78,7 +78,7 @@ match2(Lexer &x, char first, char second)
 static String
 get_lexeme(const Lexer &x)
 {
-    return string_make(x.start, x.cursor);
+    return String(x.start, x.cursor);
 }
 
 [[noreturn]]
@@ -338,8 +338,7 @@ make_string(Lexer &x, char q)
 {
     lulu_VM &vm = x.vm;
     Builder &b  = vm_get_builder(vm);
-
-    String s{x.cursor, 0};
+    String   s  = String(x.cursor, 0, 0);
     while (!is_eof(x) && !check2(x, q, '\n')) {
         char ch = advance(x);
         if (ch == '\\') {
@@ -352,10 +351,10 @@ make_string(Lexer &x, char q)
             builder_write_char(vm, b, ch);
 
             // Point to after the escape character.
-            s.data = x.cursor;
-            s.len  = 0;
+            s = String(x.cursor, 0, 0);
+        } else {
+            s.len += 1;
         }
-        s.len += 1;
     }
     expect(x, q, "Unterminated string");
     builder_write_string(vm, b, s);
@@ -367,8 +366,7 @@ make_string(Lexer &x, char q)
 static Token
 check_keyword(const Lexer &x, String s, Token_Type type)
 {
-    String kw = token_strings[type];
-    if (string_eq(s, kw)) {
+    if (s == token_strings[type]) {
         return make_token(x, type, s);
     }
     return make_token(x, TOKEN_IDENTIFIER, s);
@@ -476,7 +474,7 @@ lexer_lex(Lexer &x)
             expect(x, '[', "Expected 2nd '[' to start off multiline string");
             const char *start = x.cursor;
             const char *stop  = skip_multiline(x, nest_open);
-            return make_token(x, TOKEN_STRING, string_make(start, stop));
+            return make_token(x, TOKEN_STRING, String(start, stop));
         }
         type = TOKEN_OPEN_BRACE;
         break;
@@ -519,33 +517,31 @@ lexer_lex(Lexer &x)
     return make_token(x, type);
 }
 
-#define STR(s)  {s, sizeof(s) - 1}
-
 /**
  * @note 2025-06-14:
  *  -   ORDER: Keep in sync with `Token_Type`!
  */
 const String token_strings[TOKEN_COUNT] = {
-    STR("<invalid>"),
+    "<invalid>"_s,
 
     // Keywords
-    STR("and"), STR("break"), STR("do"), STR("else"), STR("elseif"), STR("end"),
-    STR("false"), STR("for"), STR("function"), STR("if"), STR("in"),
-    STR("local"), STR("nil"), STR("not"), STR("or"), STR("repeat"),
-    STR("return"), STR("then"), STR("true"), STR("until"), STR("while"),
+    "and"_s, "break"_s, "do"_s, "else"_s, "elseif"_s, "end"_s,
+    "false"_s, "for"_s, "function"_s, "if"_s, "in"_s,
+    "local"_s, "nil"_s, "not"_s, "or"_s, "repeat"_s,
+    "return"_s, "then"_s, "true"_s, "until"_s, "while"_s,
 
     // Balanced pairs
-    STR("("), STR(")"), STR("{"), STR("}"), STR("["), STR("]"),
+    "("_s, ")"_s, "{"_s, "}"_s, "["_s, "]"_s,
 
     // Arithmetic Operators
-    STR("+"), STR("-"), STR("*"), STR("/"), STR("/"), STR("^"),
+    "+"_s, "-"_s, "*"_s, "/"_s, "/"_s, "^"_s,
 
     // Relational Operators
-    STR("=="), STR("~="), STR("<"), STR("<="), STR(">"), STR(">="),
+    "=="_s, "~="_s, "<"_s, "<="_s, ">"_s, ">="_s,
 
     // Misc.
-    STR("."), STR(".."), STR("..."), STR(","), STR(":"), STR(";"), STR("="),
-    STR("<identifier>"), STR("<number>"), STR("<string>"), STR("<eof>"),
+    "."_s, ".."_s, "..."_s, ","_s, ":"_s, ";"_s, "="_s,
+    "<identifier>"_s, "<number>"_s, "<string>"_s, "<eof>"_s,
 };
 
 #undef STR

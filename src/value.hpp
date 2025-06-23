@@ -6,32 +6,65 @@
 using Type   = lulu_Type;
 using Number = lulu_Number;
 
-struct Object;
-struct OString;
+enum Value_Type {
+    VALUE_NIL       = LULU_TYPE_NIL,
+    VALUE_BOOLEAN   = LULU_TYPE_BOOLEAN,
+    VALUE_NUMBER    = LULU_TYPE_NUMBER,
+    VALUE_STRING    = LULU_TYPE_STRING,
+
+    // Not accessible from user code.
+    VALUE_CHUNK,
+};
 
 struct Value {
-    Type type;
+    Value_Type type;
     union {
         Number   number;
         bool     boolean;
-        OString *ostring;
+        Object  *object;
     };
+
+    Value()
+        : type{VALUE_NIL}
+        , number{0}
+    {}
+
+    explicit Value(bool b)
+        : type{VALUE_BOOLEAN}
+        , boolean{b}
+    {}
+
+    explicit Value(Number n)
+        : type{VALUE_NUMBER}
+        , number{n}
+    {}
+
+    Value(OString *o)
+        : type{VALUE_STRING}
+        , object{cast(Object *)o}
+    {}
 };
 
-inline Type
+// `value_eq()`.
+bool
+operator==(Value a, Value b);
+
+inline Value_Type
 value_type(Value v)
 {
     return v.type;
 }
 
 inline const char *
-value_type_name(Type t)
+value_type_name(Value_Type t)
 {
     switch (t) {
-    case LULU_TYPE_NIL:     return "nil";
-    case LULU_TYPE_BOOLEAN: return "boolean";
-    case LULU_TYPE_NUMBER:  return "number";
-    case LULU_TYPE_STRING:  return "string";
+    case VALUE_NIL:     return "nil";
+    case VALUE_BOOLEAN: return "boolean";
+    case VALUE_NUMBER:  return "number";
+    case VALUE_STRING:  return "string";
+    case VALUE_CHUNK:
+        break;
     }
     lulu_unreachable();
 }
@@ -42,60 +75,28 @@ value_type_name(Value v)
     return value_type_name(v.type);
 }
 
-inline Value
-value_make()
-{
-    Value v{LULU_TYPE_NIL, {0}};
-    return v;
-}
-
-inline Value
-value_make(bool b)
-{
-    Value v;
-    v.type    = LULU_TYPE_BOOLEAN;
-    v.boolean = b;
-    return v;
-}
-
-inline Value
-value_make(Number n)
-{
-    Value v{LULU_TYPE_NUMBER, {n}};
-    return v;
-}
-
-inline Value
-value_make(OString *s)
-{
-    Value v;
-    v.type    = LULU_TYPE_STRING;
-    v.ostring = s;
-    return v;
-}
-
 inline bool
 value_is_nil(Value v)
 {
-    return v.type == LULU_TYPE_NIL;
+    return v.type == VALUE_NIL;
 }
 
 inline bool
 value_is_boolean(Value v)
 {
-    return v.type == LULU_TYPE_BOOLEAN;
+    return v.type == VALUE_BOOLEAN;
 }
 
 inline bool
 value_is_number(Value v)
 {
-    return v.type == LULU_TYPE_NUMBER;
+    return v.type == VALUE_NUMBER;
 }
 
 inline bool
 value_is_string(Value v)
 {
-    return v.type == LULU_TYPE_STRING;
+    return v.type == VALUE_STRING;
 }
 
 inline bool
@@ -103,9 +104,6 @@ value_is_falsy(Value v)
 {
     return value_is_nil(v) || (value_is_boolean(v) && !v.boolean);
 }
-
-bool
-value_eq(Value a, Value b);
 
 void
 value_print(Value v);

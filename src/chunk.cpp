@@ -75,7 +75,7 @@ chunk_add_constant(lulu_VM &vm, Chunk &c, Value v)
 {
     auto &a = c.constants;
     for (size_t i = 0, end = len(a); i < end; i++) {
-        if (value_eq(v, a[i])) {
+        if (v == a[i]) {
             return u32(i);
         }
     }

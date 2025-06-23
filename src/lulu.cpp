@@ -29,7 +29,7 @@ run_interactive(lulu_VM &vm)
         }
 
         size_t n = strcspn(line, "\r\n");
-        vm_interpret(vm, string_make("stdin"), string_make(line, n));
+        vm_interpret(vm, "stdin"_s, String(line, n));
     }
 }
 
@@ -37,7 +37,7 @@ static Slice<char>
 read_file(const char *file_name)
 {
     FILE       *file_ptr  = fopen(file_name, "rb+");
-    Slice<char> buffer{nullptr, 0}; // `goto` cannot skip over variables.
+    Slice<char> buffer; // `goto` cannot skip over variables.
     size_t      n_read    = 0;
     long        file_size = 0;
 
@@ -84,7 +84,7 @@ static void run_file(lulu_VM &vm, const char *file_name)
     if (raw_data(script) == nullptr) {
         return;
     }
-    vm_interpret(vm, string_make(file_name), string_make(script));
+    vm_interpret(vm, String(file_name), String(script));
     free(raw_data(script));
 }
 

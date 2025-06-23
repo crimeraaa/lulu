@@ -2,6 +2,11 @@
 
 #include <string.h> // memcmp, memmove
 
+struct Raw_Slice {
+    void  *data;
+    size_t len;
+};
+
 template<class T>
 struct Slice {
     T     *data;
@@ -24,29 +29,32 @@ struct Slice {
         lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
         return this->data[ii];
     }
+
+    Slice()
+        : data{nullptr}
+        , len{0}
+    {}
+
+    Slice(T *data, size_t len)
+        : data{data}
+        , len{len}
+    {}
+
+    Slice(T *start, T *stop)
+        : data{start}
+        , len{cast_size(stop - start)}
+    {}
+
+    Slice(T *p, size_t start, size_t stop)
+        : data{p + start}
+        , len{cast_size(stop - start)}
+    {}
+
+    Slice(Slice<T> s, size_t start, size_t stop)
+        : data{&s[start]}
+        , len{stop - start}
+    {}
 };
-
-
-template<class T>
-inline Slice<T>
-slice_slice(T *data, size_t len)
-{
-    return {data, len};
-}
-
-template<class T>
-inline Slice<T>
-slice_slice(T *start, T *stop)
-{
-    return {start, cast_size(stop - start)};
-}
-
-template<class T>
-inline Slice<T>
-slice_slice(Slice<T> s, size_t start, size_t stop)
-{
-    return {&s[start], stop - start};
-}
 
 template<class T>
 inline bool

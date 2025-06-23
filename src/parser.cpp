@@ -5,16 +5,16 @@
 #include "vm.hpp"
 #include "debug.hpp"
 
+// Forward declaration for recursive descent parsing.
+static Expr
+expression(Parser &p, Compiler &c, Precedence limit = PREC_NONE);
+
 Parser
 parser_make(lulu_VM &vm, String source, String script)
 {
     Parser p{vm, lexer_make(vm, source, script), {}};
     return p;
 }
-
-// Forward declaration for recursive descent parsing.
-static Expr
-expression(Parser &p, Compiler &c, Precedence limit = PREC_NONE);
 
 [[noreturn]]
 static void
@@ -25,13 +25,11 @@ error_at(Parser &p, const Token &t, const char *msg)
         "%s at '" STRING_FMTSPEC "'", msg, string_fmtarg(where));
 }
 
-[[noreturn]]
-static void
-error(Parser &p, const char *msg)
+void
+parser_error(Parser &p, const char *msg)
 {
     error_at(p, p.consumed, msg);
 }
-
 
 /**
  * @brief
@@ -56,7 +54,7 @@ consume(Parser &p, Token_Type expected)
         char buf[64];
         sprintf(buf, "Expected '" STRING_FMTSPEC "'",
             string_fmtarg(token_strings[expected]));
-        error(p, buf);
+        parser_error(p, buf);
     }
     advance(p);
 }
@@ -209,6 +207,7 @@ expression(Parser &p, Compiler &c, Precedence limit)
         }
         default:
             lulu_assertf(false, "Invalid binary opcode '%s'", opcode_names[b.op]);
+            lulu_unreachable();
             break;
         }
 

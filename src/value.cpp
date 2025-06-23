@@ -4,17 +4,19 @@
 #include "string.hpp"
 
 bool
-value_eq(Value a, Value b)
+operator==(Value a, Value b)
 {
     if (a.type != b.type) {
         return false;
     }
 
     switch (a.type) {
-    case LULU_TYPE_NIL:     return true;
-    case LULU_TYPE_BOOLEAN: return a.boolean == b.boolean;
-    case LULU_TYPE_NUMBER:  return lulu_Number_eq(a.number, b.number);
-    case LULU_TYPE_STRING:  return a.ostring == b.ostring;
+    case VALUE_NIL:     return true;
+    case VALUE_BOOLEAN: return a.boolean == b.boolean;
+    case VALUE_NUMBER:  return lulu_Number_eq(a.number, b.number);
+    case VALUE_STRING:  return a.object == b.object;
+    case VALUE_CHUNK:
+        break;
     }
     lulu_unreachable();
 }
@@ -23,19 +25,23 @@ void
 value_print(Value v)
 {
     switch (v.type) {
-    case LULU_TYPE_NIL:
+    case VALUE_NIL:
         fputs("nil", stdout);
         break;
-    case LULU_TYPE_BOOLEAN:
+    case VALUE_BOOLEAN:
         fputs((v.boolean) ? "true" : "false", stdout);
         break;
-    case LULU_TYPE_NUMBER:
+    case VALUE_NUMBER:
         fprintf(stdout, LULU_NUMBER_FMT, v.number);
         break;
-    case LULU_TYPE_STRING:
-        fputc(v.ostring->len == 1 ? '\'' : '\"', stdout);
-        fputs(v.ostring->data, stdout);
-        fputc(v.ostring->len == 1 ? '\'' : '\"', stdout);
+    case VALUE_STRING: {
+        OString *s = &v.object->ostring;
+        char     q = (s->len == 1) ? '\'' : '\"';
+        fprintf(stdout, "%c%s%c", q, s->data, q);
+        break;
+    }
+    case VALUE_CHUNK:
+        lulu_unreachable();
         break;
     }
 }

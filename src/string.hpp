@@ -4,79 +4,41 @@
 
 #include "private.hpp"
 #include "dynamic.hpp"
-#include "value.hpp"
 #include "object.hpp"
 
-using String = Slice<const char>;
+struct String : public Slice<const char> {
+    // Bring all inherited constructors into scope.
+    using Slice<const char>::Slice;
 
-#define STRING_FMTSPEC "%.*s"
-#define string_fmtarg(s) cast_int(len(s)), raw_data(s)
+    // Construct from a nul-terminated C string.
+    String(const char *s) : Slice(s, strlen(s))
+    {}
 
-struct Builder
-{
+    // Construct from a mutable character sequence.
+    String(Slice<char> s) : Slice(s.data, s.len)
+    {}
+};
+
+struct Builder {
     Dynamic<char> buffer;
 };
 
-struct OString {
-    Object base;
-    size_t len;
-    u32    hash;
-    char   data[1];
-};
-
-// Each entry in the string table is actually a linked list.
-using Intern_Entry = Object *;
-
 struct Intern {
-    Slice<Intern_Entry> table;
-    size_t              count; // Total number of strings in active use.
+    // Each entry in the string table is actually a linked list.
+    Slice<Object *> table;
+    size_t          count; // Total number of strings in active use.
 };
-
-inline String
-string_make(const char *cstr)
-{
-    size_t n = strlen(cstr);
-    String s{cstr, n};
-    return s;
-}
-
-inline String
-string_make(const char *data, size_t len)
-{
-    String s{data, len};
-    return s;
-}
-
-inline String
-string_make(const char *start, const char *end)
-{
-    // The standard says we can't compare 2 pointers that point to entirely
-    // different objects in memory. So this check is not entirely portable.
-    lulu_assertf(end - start >= 0, "Length of %ti less than 0", end - start);
-    String s{start, cast_size(end - start)};
-    return s;
-}
-
-inline String
-string_make(Slice<char> buffer)
-{
-    String s{raw_data(buffer), len(buffer)};
-    return s;
-}
-
-inline String
-string_slice(String s, size_t start, size_t stop)
-{
-    // Ensure the resulting length would not cause unsigned overflow.
-    lulu_assert(start <= stop);
-    String s2{&s[start], stop - start};
-    return s2;
-}
 
 inline bool
-string_eq(String a, String b)
+operator==(String a, String b)
 {
     return slice_eq(a, b);
+}
+
+inline String
+operator ""_s(const char *s, size_t n)
+{
+    return String(s, n);
 }
 
 void
@@ -118,5 +80,5 @@ ostring_new(lulu_VM &vm, String text);
 inline String
 ostring_to_string(OString *s)
 {
-    return {s->data, s->len};
+    return String(s->data, s->len);
 }

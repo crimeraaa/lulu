@@ -38,7 +38,7 @@ vm_destroy(lulu_VM &vm)
 
     Object *o = vm.objects;
     while (o != nullptr) {
-        Object *next = o->next;
+        Object *next = o->base.next;
         object_free(vm, o);
         o = next;
     }
@@ -125,10 +125,10 @@ vm_interpret(lulu_VM &vm, String source, String script)
             vm_throw(vm, LULU_ERROR_MEMORY);
         }
         vm.chunk  = &d.chunk;
-        vm.window = slice_slice(vm.stack, n);
+        vm.window = Slice(vm.stack, n);
 
         for (auto &slot : vm.window) {
-            slot = value_make();
+            slot = Value();
         }
 
         vm_execute(vm);
@@ -181,15 +181,15 @@ vm_execute(lulu_VM &vm)
 
 #define BINARY_OP(number_fn, error_fn)                                         \
 {                                                                              \
-    u16   b  = getarg_b(i);                                                    \
-    u16   c  = getarg_c(i);                                                    \
-    Value rb = GET_RK(b);                                                      \
-    Value rc = GET_RK(c);                                                      \
+    u16          b  = getarg_b(i);                                             \
+    u16          c  = getarg_c(i);                                             \
+    const Value &rb = GET_RK(b);                                               \
+    const Value &rc = GET_RK(c);                                               \
     if (!value_is_number(rb) || !value_is_number(rc)) {                        \
         protect(vm, ip);                                                       \
         error_fn(vm, rb, rc);                                                  \
     }                                                                          \
-    ra = value_make(number_fn(rb.number, rc.number));                          \
+    ra = Value(number_fn(rb.number, rc.number));                               \
 }
 
 #define ARITH_OP(fn)    BINARY_OP(fn, arith_error)
@@ -220,13 +220,13 @@ vm_execute(lulu_VM &vm)
             break;
         case OP_LOAD_NIL: {
             Value &rb = window[getarg_b(i)];
-            for (Value &v : slice_slice(&ra, &rb + 1)) {
-                v = value_make();
+            for (Value &v : Slice(&ra, &rb + 1)) {
+                v = Value();
             }
             break;
         }
         case OP_LOAD_BOOL:
-            ra = value_make(bool(getarg_b(i)));
+            ra = Value(bool(getarg_b(i)));
             break;
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
         case OP_SUB: ARITH_OP(lulu_Number_sub); break;
@@ -239,7 +239,7 @@ vm_execute(lulu_VM &vm)
             u16   c  = getarg_c(i);
             Value rb = GET_RK(b);
             Value rc = GET_RK(c);
-            ra = value_make(value_eq(rb, rc));
+            ra = Value(rb == rc);
             break;
         }
         case OP_LT:  COMPARE_OP(lulu_Number_lt); break;
@@ -250,19 +250,19 @@ vm_execute(lulu_VM &vm)
                 protect(vm, ip);
                 arith_error(vm, rb, rb);
             }
-            ra = value_make(lulu_Number_unm(rb.number));
+            ra = Value(lulu_Number_unm(rb.number));
             break;
         }
         case OP_NOT: {
             Value rb = window[getarg_b(i)];
-            ra = value_make(value_is_falsy(rb));
+            ra = Value(value_is_falsy(rb));
             break;
         }
         case OP_CONCAT: {
             Value &rb = window[getarg_b(i)];
             Value &rc = window[getarg_c(i)];
             protect(vm, ip);
-            vm_concat(vm, ra, slice_slice(&rb, &rc + 1));
+            vm_concat(vm, ra, Slice(&rb, &rc + 1));
             break;
         }
         case OP_RETURN: {
@@ -274,7 +274,7 @@ vm_execute(lulu_VM &vm)
              *      explicitly check.
              */
             size_t n = cast_size(getarg_b(i));
-            for (Value v : slice_slice(&ra, n)) {
+            for (Value v : Slice(&ra, n)) {
                 value_print(v);
                 printf("\t");
             }
@@ -295,8 +295,8 @@ vm_concat(lulu_VM &vm, Value &ra, Slice<Value> args)
         if (!value_is_string(s)) {
             type_error(vm, "concatentate", s);
         }
-        builder_write_string(vm, b, ostring_to_string(s.ostring));
+        builder_write_string(vm, b, ostring_to_string(&s.object->ostring));
     }
     OString *o = ostring_new(vm, builder_to_string(b));
-    ra = value_make(o);
+    ra = Value(o);
 }
