@@ -43,7 +43,8 @@ read_file(const char *file_name)
 
     if (file_ptr == nullptr) {
         fprintf(stderr, "Failed to open file '%s'.\n", file_name);
-        goto cleanup_file;
+        // Don't `fclose(NULL)`.
+        goto cleanup_done;
     }
 
     fseek(file_ptr, 0L, SEEK_END);
@@ -75,6 +76,7 @@ cleanup_buffer:
     buffer.len--;          // Don't include the nul char in the final count.
 cleanup_file:
     fclose(file_ptr);
+cleanup_done:
     return buffer;
 }
 

@@ -52,7 +52,7 @@ hash_value(Value v)
     lulu_unreachable();
 }
 
-static Entry *
+static Entry &
 find_entry(Slice<Entry> entries, Value k)
 {
     size_t hash = cast_size(hash_value(k));
@@ -60,34 +60,32 @@ find_entry(Slice<Entry> entries, Value k)
     Entry *tomb = nullptr;
 
     for (size_t i = hash & wrap; /* empty */; i = (i + 1) & wrap) {
-        Entry *entry = &entries[i];
-        if (value_is_nil(entry->key)) {
-            if (value_is_nil(entry->value)) {
-                return (tomb == nullptr) ? entry : tomb;
+        Entry &entry = entries[i];
+        if (value_is_nil(entry.key)) {
+            if (value_is_nil(entry.value)) {
+                return (tomb == nullptr) ? entry : *tomb;
             }
             // Track only the first tombstone we see so we can reuse it.
             if (tomb == nullptr) {
-                tomb = entry;
+                tomb = &entry;
             }
         }
-        else if (entry->key == k) {
+        else if (entry.key == k) {
             return entry;
         }
     }
     lulu_unreachable();
 }
 
-Value
-table_get(Table &t, Value k, bool &ok)
+Table_Result
+table_get(Table &t, Value k)
 {
-    ok = false;
     if (t.count > 0) {
-        Entry *e = find_entry(t.entries, k);
+        Entry &e = find_entry(t.entries, k);
         // If `e->key` is nil, then that means `k` does not exist in the table.
-        ok = !value_is_nil(e->key);
-        return e->value;
+        return {e.value, !value_is_nil(e.key)};
     }
-    return Value();
+    return {Value(), false};
 }
 
 void
@@ -97,13 +95,13 @@ table_set(lulu_VM &vm, Table &t, Value k, Value v)
         size_t n = mem_next_size(t.count + 1);
         table_resize(vm, t, n);
     }
-    Entry *e = find_entry(t.entries, k);
+    Entry &e = find_entry(t.entries, k);
     // Overwriting a completely empty entry?
-    if (value_is_nil(e->key) && value_is_nil(e->value)) {
+    if (value_is_nil(e.key) && value_is_nil(e.value)) {
         t.count++;
     }
-    e->key   = k;
-    e->value = v;
+    e.key   = k;
+    e.value = v;
 }
 
 void
@@ -112,14 +110,14 @@ table_unset(Table &t, Value k)
     if (t.count == 0) {
         return;
     }
-    Entry *e = find_entry(t.entries, k);
+    Entry &e = find_entry(t.entries, k);
     // Already empty/tombstone; nothing to do.
-    if (value_is_nil(e->key)) {
+    if (value_is_nil(e.key)) {
         return;
     }
     // Tombstones are nil keys mapping to the boolean `true`.
-    e->key   = Value();
-    e->value = Value(true);
+    e.key   = Value();
+    e.value = Value(true);
 }
 
 void
@@ -139,9 +137,9 @@ table_resize(lulu_VM &vm, Table &t, size_t new_cap)
             continue;
         }
 
-        Entry *e2 = find_entry(new_entries, e.key);
-        e2->key   = e.key;
-        e2->value = e.value;
+        Entry &e2 = find_entry(new_entries, e.key);
+        e2.key    = e.key;
+        e2.value  = e.value;
         n++;
     }
     slice_delete(vm, t.entries);

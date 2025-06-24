@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "debug.hpp"
+#include "object.hpp"
 
 union Args_Extended {
     u32 bx;

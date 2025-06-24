@@ -3,6 +3,8 @@
 #include <stdint.h> // uint*_t
 #include <stddef.h> // size_t
 
+#include "lulu.h"
+
 using u8  = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
@@ -15,8 +17,22 @@ using i32 = int32_t;
 
 #define count_of(array) (sizeof(array) / sizeof((array)[0]))
 
-#define STRING_FMTSPEC "%.*s"
+#define STRING_FMTSPEC  "%.*s"
+#define STRING_QFMTSPEC "'" STRING_FMTSPEC "'"
 #define string_fmtarg(s) cast_int(len(s)), raw_data(s)
+
+#define OBJECT_HEADER Value_Type type; Object *next
+
+enum Value_Type {
+    VALUE_NIL       = LULU_TYPE_NIL,
+    VALUE_BOOLEAN   = LULU_TYPE_BOOLEAN,
+    VALUE_NUMBER    = LULU_TYPE_NUMBER,
+    VALUE_STRING    = LULU_TYPE_STRING,
+    VALUE_TABLE     = LULU_TYPE_TABLE,
+
+    // Not accessible from user code.
+    VALUE_CHUNK,
+};
 
 #ifdef LULU_DEBUG
 
@@ -61,3 +77,6 @@ lulu_unreachable()
 {}
 
 #endif // __GNUC__ || __clang__ || _MSC_VER
+
+// comma operator shenanigans
+#define check_expr(cond, expr)  (lulu_assert(cond), expr)

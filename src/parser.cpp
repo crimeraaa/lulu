@@ -2,8 +2,9 @@
 
 #include "compiler.hpp"
 #include "parser.hpp"
-#include "vm.hpp"
 #include "debug.hpp"
+#include "table.hpp"
+#include "vm.hpp"
 
 // Forward declaration for recursive descent parsing.
 static Expr
@@ -22,7 +23,7 @@ error_at(Parser &p, const Token &t, const char *msg)
 {
     String where = (t.type == TOKEN_EOF) ? token_strings[t.type] : t.lexeme;
     vm_syntax_error(p.vm, p.lexer.source, t.line,
-        "%s at '" STRING_FMTSPEC "'", msg, string_fmtarg(where));
+        "%s at " STRING_QFMTSPEC, msg, string_fmtarg(where));
 }
 
 void
@@ -68,7 +69,7 @@ consume(Parser &p, Token_Type expected)
     if (!match(p, expected)) {
         // Assume our longest token is '<identifier>'.
         char buf[64];
-        sprintf(buf, "Expected '" STRING_FMTSPEC "'",
+        sprintf(buf, "Expected " STRING_QFMTSPEC,
             string_fmtarg(token_strings[expected]));
         parser_error(p, buf);
     }
@@ -344,11 +345,19 @@ declaration(Parser &p, Compiler &c)
     match(p, TOKEN_SEMI);
 }
 
-void
-parser_program(lulu_VM &vm, Chunk &chunk, String script)
+Chunk *
+parser_program(lulu_VM &vm, String source, String script)
 {
-    Parser   p = parser_make(vm, chunk.source, script);
-    Compiler c = compiler_make(vm, p, chunk);
+    Table *t  = table_new(vm);
+    Chunk *ch = chunk_new(vm, source, t);
+
+    // Push chunk and table to stack so that they are not collected while we
+    // are executing.
+    vm_push(vm, Value(ch));
+    vm_push(vm, Value(t));
+
+    Parser   p  = parser_make(vm, source, script);
+    Compiler c  = compiler_make(vm, p, *ch);
     // Set up first token
     advance(p);
     while (!check(p, TOKEN_EOF)) {
@@ -357,4 +366,5 @@ parser_program(lulu_VM &vm, Chunk &chunk, String script)
     consume(p, TOKEN_EOF);
     compiler_code(c, OP_RETURN, 0, 0, 0, p.lexer.line);
     debug_disassemble(c.chunk);
+    return ch;
 }

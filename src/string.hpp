@@ -4,7 +4,8 @@
 
 #include "private.hpp"
 #include "dynamic.hpp"
-#include "object.hpp"
+
+union Object;
 
 struct String : public Slice<const char> {
     // Bring all inherited constructors into scope.
@@ -21,6 +22,13 @@ struct String : public Slice<const char> {
 
 struct Builder {
     Dynamic<char> buffer;
+};
+
+struct OString {
+    OBJECT_HEADER;
+    size_t len;
+    u32    hash;
+    char   data[1];
 };
 
 struct Intern {
@@ -84,4 +92,11 @@ inline String
 ostring_to_string(OString *s)
 {
     return String(s->data, s->len);
+}
+
+inline const char *
+ostring_to_cstring(OString *s)
+{
+    lulu_assert(s->data[s->len] == '\0');
+    return s->data;
 }

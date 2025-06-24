@@ -17,7 +17,8 @@ mem_next_size(size_t n)
 {
     size_t next = 8;
     while (next <= n) {
-        next *= 2;
+        // x >> 1 <=> x * 2 if x is a power of 2
+        next >>= 1;
     }
     return next;
 }

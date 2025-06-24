@@ -6,7 +6,6 @@
 #include "debug.hpp"
 #include "parser.hpp"
 #include "object.hpp"
-#include "table.hpp"
 
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
@@ -41,6 +40,7 @@ vm_destroy(lulu_VM &vm)
 
     Object *o = vm.objects;
     while (o != nullptr) {
+        // Save becase `o` is about to be invalidated.
         Object *next = o->base.next;
         object_free(vm, o);
         o = next;
@@ -57,7 +57,6 @@ vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr)
     try {
         fn(vm, user_ptr);
     } catch (Error e) {
-        // What the hell?
         lulu_assert(e != LULU_OK);
         next.error = e;
     }
@@ -109,26 +108,27 @@ vm_runtime_error(lulu_VM &vm, const char *act, const char *fmt, ...)
 
 struct Exec_Data {
     String source, script;
-    Chunk  chunk;
 };
 
 Error
 vm_interpret(lulu_VM &vm, String source, String script)
 {
-    Exec_Data d{source, script, {}};
-    chunk_init(d.chunk, source);
-
+    Exec_Data d{source, script};
     Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr) {
+        // Reset stack for consecutive runs.
+        vm.window = Slice(vm.stack, 0, 0);
+
         Exec_Data &d = *cast(Exec_Data *)(user_ptr);
-        parser_program(vm, d.chunk, d.script);
-        size_t n = cast_size(d.chunk.stack_used);
+        Chunk *c = parser_program(vm, d.source, d.script);
+        size_t start = 2;
+        size_t stop  = start + cast_size(c->stack_used);
 
         // Fixed-size stack cannot accomodate this chunk?
-        if (n >= count_of(vm.stack)) {
+        if (stop >= count_of(vm.stack)) {
             vm_throw(vm, LULU_ERROR_MEMORY);
         }
-        vm.chunk  = &d.chunk;
-        vm.window = Slice(vm.stack, n);
+        vm.chunk  = c;
+        vm.window = Slice(vm.stack, start, stop);
 
         for (auto &slot : vm.window) {
             slot = Value();
@@ -136,8 +136,6 @@ vm_interpret(lulu_VM &vm, String source, String script)
 
         vm_execute(vm);
     }, &d);
-
-    chunk_destroy(vm, d.chunk);
     return e;
 }
 
@@ -191,8 +189,9 @@ vm_execute(lulu_VM &vm)
     if (!value_is_number(rb) || !value_is_number(rc)) {                        \
         protect(vm, ip);                                                       \
         error_fn(vm, rb, rc);                                                  \
+    } else {                                                                   \
+        ra = Value(number_fn(value_to_number(rb), value_to_number(rc)));       \
     }                                                                          \
-    ra = Value(number_fn(rb.number, rc.number));                               \
 }
 
 #define ARITH_OP(fn)    BINARY_OP(fn, arith_error)
@@ -233,16 +232,14 @@ vm_execute(lulu_VM &vm)
             break;
         case OP_GET_GLOBAL: {
             Value k = chunk.constants[getarg_bx(i)];
-
             protect(vm, ip);
-            bool ok;
-            Value v = table_get(vm.globals, k, ok);
-            if (!ok) {
-                vm_runtime_error(vm,
-                    "read undefined variable", "'%s'",
-                    k.object->ostring.data);
+
+            Table_Result r = table_get(vm.globals, k);
+            if (!r.ok) {
+                vm_runtime_error(vm, "read undefined variable",
+                    "'%s'", value_to_cstring(k));
             }
-            ra = v;
+            ra = r.value;
             break;
         }
         case OP_SET_GLOBAL: {
@@ -318,8 +315,15 @@ vm_concat(lulu_VM &vm, Value &ra, Slice<Value> args)
         if (!value_is_string(s)) {
             type_error(vm, "concatentate", s);
         }
-        builder_write_string(vm, b, ostring_to_string(&s.object->ostring));
+        builder_write_string(vm, b, value_to_string(s));
     }
     OString *o = ostring_new(vm, builder_to_string(b));
     ra = Value(o);
+}
+
+void
+vm_push(lulu_VM &vm, Value v)
+{
+    size_t i = vm.window.len++;
+    vm.window[i] = v;
 }

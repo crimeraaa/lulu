@@ -1,6 +1,5 @@
 #pragma once
 
-#include "lulu.h"
 #include "private.hpp"
 
 using Type   = lulu_Type;
@@ -9,17 +8,7 @@ using Number = lulu_Number;
 union  Object;
 struct OString;
 struct Table;
-
-enum Value_Type {
-    VALUE_NIL       = LULU_TYPE_NIL,
-    VALUE_BOOLEAN   = LULU_TYPE_BOOLEAN,
-    VALUE_NUMBER    = LULU_TYPE_NUMBER,
-    VALUE_STRING    = LULU_TYPE_STRING,
-    VALUE_TABLE     = LULU_TYPE_TABLE,
-
-    // Not accessible from user code.
-    VALUE_CHUNK,
-};
+struct Chunk;
 
 struct Value {
     Value_Type type;
@@ -39,31 +28,30 @@ struct Value {
         , boolean{b}
     {}
 
-    explicit Value(Number n)
+    constexpr explicit Value(Number n)
         : type{VALUE_NUMBER}
         , number{n}
     {}
 
-    Value(OString *o)
+    explicit Value(OString *o)
         : type{VALUE_STRING}
         , object{cast(Object *)o}
     {}
 
-    Value(Table *t)
+    explicit Value(Table *t)
         : type{VALUE_TABLE}
         , object{cast(Object *)t}
+    {}
+
+    explicit Value(Chunk *c)
+        : type{VALUE_CHUNK}
+        , object{cast(Object *)c}
     {}
 };
 
 // `value_eq()`.
 bool
 operator==(Value a, Value b);
-
-inline Value_Type
-value_type(Value v)
-{
-    return v.type;
-}
 
 inline const char *
 value_type_name(Value_Type t)
@@ -86,35 +74,27 @@ value_type_name(Value v)
     return value_type_name(v.type);
 }
 
-inline bool
-value_is_nil(Value v)
-{
-    return v.type == VALUE_NIL;
-}
+//=== VALUE TYPE INFORMATION =============================================== {{{
 
-inline bool
-value_is_boolean(Value v)
-{
-    return v.type == VALUE_BOOLEAN;
-}
+#define value_type(v)       ((v).type)
+#define value_is_nil(v)     (value_type(v) == VALUE_NIL)
+#define value_is_boolean(v) (value_type(v) == VALUE_BOOLEAN)
+#define value_is_number(v)  (value_type(v) == VALUE_NUMBER)
+#define value_is_object(v)  (value_type(v) >= VALUE_STRING)
+#define value_is_string(v)  (value_type(v) == VALUE_STRING)
+#define value_is_table(v)   (value_type(v) == VALUE_TABLE)
 
-inline bool
-value_is_number(Value v)
-{
-    return v.type == VALUE_NUMBER;
-}
+//=== }}} ======================================================================
 
-inline bool
-value_is_string(Value v)
-{
-    return v.type == VALUE_STRING;
-}
+//=== VALUE DATA PAYLOADS ================================================== {{{
 
-inline bool
-value_is_table(Value v)
-{
-    return v.type == VALUE_TABLE;
-}
+#define value_to_boolean(v) check_expr(value_is_boolean(v), (v).boolean)
+#define value_to_number(v)  check_expr(value_is_number(v), (v).number)
+#define value_to_object(v)  ((v).object)
+#define value_to_ostring(v) check_expr(value_is_string(v), &value_to_object(v)->ostring)
+#define value_to_table(v)   check_expr(value_is_table(v), &value_to_object(v)->table)
+
+//=== }}} ======================================================================
 
 inline bool
 value_is_falsy(Value v)

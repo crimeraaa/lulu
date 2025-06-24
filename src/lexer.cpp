@@ -87,7 +87,7 @@ error(const Lexer &x, const char *what)
 {
     String where = get_lexeme(x);
     vm_syntax_error(x.vm, x.source, x.line,
-        "%s at '" STRING_FMTSPEC "'",
+        "%s at " STRING_QFMTSPEC,
         what, string_fmtarg(where));
 }
 

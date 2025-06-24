@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 #include "value.hpp"
-#include "string.hpp"
+#include "object.hpp"
 
 bool
 operator==(Value a, Value b)

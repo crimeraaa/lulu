@@ -47,7 +47,7 @@ struct Slice {
 
     Slice(T *p, size_t start, size_t stop)
         : data{p + start}
-        , len{cast_size(stop - start)}
+        , len{stop - start}
     {}
 
     Slice(Slice<T> s, size_t start, size_t stop)

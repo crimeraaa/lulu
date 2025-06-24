@@ -33,8 +33,6 @@ compiler_code(Compiler &c, OpCode op, u8 a, u32 bx, int line)
 void
 compiler_load_nil(Compiler &c, u8 reg, int n, int line)
 {
-    lulu_assertm(n >= 1, "Reserving n <= 0 registers is invalid");
-
     size_t pc = len(c.chunk.code);
     // Stack frame is initialized to all `nil` at the start of the function, so
     // nothing to do.

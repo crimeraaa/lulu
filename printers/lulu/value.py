@@ -47,5 +47,9 @@ class ValuePrinter:
             case _:
                 pass
 
-        return "unknown"
+        
+        t = str(self.__type).removeprefix("VALUE_").lower()
+        p = self.__data["object"].cast(base.VOID_POINTER)
+        return f"{t}: {p}"
+
 

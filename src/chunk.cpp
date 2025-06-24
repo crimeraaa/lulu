@@ -2,15 +2,20 @@
 
 #include "chunk.hpp"
 #include "debug.hpp"
+#include "object.hpp"
+#include "vm.hpp"
 
-void
-chunk_init(Chunk &c, String source)
+Chunk *
+chunk_new(lulu_VM &vm, String source, Table *indexes)
 {
-    dynamic_init(c.constants);
-    dynamic_init(c.code);
-    dynamic_init(c.line_info);
-    c.source     = source;
-    c.stack_used = 2; // R(0) and R(1) must always be valid.
+    Chunk *c = object_new<Chunk>(vm, &vm.objects, VALUE_CHUNK);
+    dynamic_init(c->constants);
+    dynamic_init(c->code);
+    dynamic_init(c->line_info);
+    c->indexes    = indexes;
+    c->source     = source;
+    c->stack_used = 2; // R(0) and R(1) must always be valid.
+    return c;
 }
 
 static void
@@ -73,20 +78,13 @@ chunk_get_line(const Chunk &c, int pc)
 u32
 chunk_add_constant(lulu_VM &vm, Chunk &c, Value v)
 {
-    auto &a = c.constants;
-    for (size_t i = 0, end = len(a); i < end; i++) {
-        if (v == a[i]) {
-            return u32(i);
-        }
+    Table_Result r = table_get(*c.indexes, v);
+    if (r.ok) {
+        return u32(r.value.number);
     }
-    dynamic_push(vm, a, v);
-    return u32(len(a) - 1);
-}
 
-void
-chunk_destroy(lulu_VM &vm, Chunk &c)
-{
-    dynamic_delete(vm, c.constants);
-    dynamic_delete(vm, c.code);
-    dynamic_delete(vm, c.line_info);
+    Number i2 = Number(len(c.constants));
+    dynamic_push(vm, c.constants, v);
+    table_set(vm, *c.indexes, v, Value(i2));
+    return u32(i2);
 }

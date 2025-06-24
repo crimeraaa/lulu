@@ -1,6 +1,5 @@
 #pragma once
 
-#include "lulu.h"
 #include "private.hpp"
 #include "chunk.hpp"
 #include "string.hpp"
@@ -63,3 +62,13 @@ vm_execute(lulu_VM &vm);
 
 void
 vm_concat(lulu_VM &vm, Value &ra, Slice<Value> args);
+
+
+/**
+ * @note 2025-06-24
+ * Assumptions:
+ *  1.) Incrementing the VM's view length by 1 is still within bounds of the
+ *      main stack.
+ */
+void
+vm_push(lulu_VM &vm, Value v);
