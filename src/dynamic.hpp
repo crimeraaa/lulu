@@ -1,7 +1,7 @@
 #pragma once
 
-#include "mem.hpp"
 #include "slice.hpp"
+#include "mem.hpp"
 
 template<class T>
 struct Dynamic : public Slice<T> {

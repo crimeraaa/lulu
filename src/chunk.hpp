@@ -21,6 +21,7 @@ struct Chunk {
     int                  stack_used;
 };
 
+static constexpr u16 VARARG = OPCODE_MAX_B;
 static constexpr int NO_LINE = -1;
 
 Chunk *

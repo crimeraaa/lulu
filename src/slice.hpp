@@ -57,20 +57,6 @@ struct Slice {
 };
 
 template<class T>
-inline Slice<T>
-slice_make(lulu_VM &vm, size_t n)
-{
-    return Slice(mem_make<T>(vm, n), n);
-}
-
-template<class T>
-inline void
-slice_delete(lulu_VM &vm, Slice<T> s)
-{
-    mem_delete(vm, raw_data(s), len(s));
-}
-
-template<class T>
 inline bool
 slice_eq(Slice<T> a, Slice<T> b)
 {

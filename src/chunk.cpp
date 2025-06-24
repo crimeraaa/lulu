@@ -80,7 +80,7 @@ chunk_add_constant(lulu_VM &vm, Chunk &c, Value v)
 {
     Table_Result r = table_get(*c.indexes, v);
     if (r.ok) {
-        return u32(r.value.number);
+        return u32(value_to_number(r.value));
     }
 
     Number i2 = Number(len(c.constants));

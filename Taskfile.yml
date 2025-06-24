@@ -4,7 +4,7 @@ version: '3'
 
 vars:
   MODE: '{{default "debug"}}'
-  CXX: clang++
+  CXX: g++
 
   # Notes(2025-06-11):
   #   - We can `-rdynamic` so that all symbols are in the dynamic symbol table

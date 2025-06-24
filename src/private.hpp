@@ -21,7 +21,7 @@ using i32 = int32_t;
 #define STRING_QFMTSPEC "'" STRING_FMTSPEC "'"
 #define string_fmtarg(s) cast_int(len(s)), raw_data(s)
 
-#define OBJECT_HEADER Value_Type type; Object *next
+#define OBJECT_HEADER Object *next; Value_Type type
 
 enum Value_Type {
     VALUE_NIL       = LULU_TYPE_NIL,
@@ -29,6 +29,7 @@ enum Value_Type {
     VALUE_NUMBER    = LULU_TYPE_NUMBER,
     VALUE_STRING    = LULU_TYPE_STRING,
     VALUE_TABLE     = LULU_TYPE_TABLE,
+    VALUE_FUNCTION  = LULU_TYPE_FUNCTION,
 
     // Not accessible from user code.
     VALUE_CHUNK,

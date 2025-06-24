@@ -158,6 +158,24 @@ debug_disassemble_at(const Chunk &c, int pc, int pad)
         printf("R(%i) := concat(R(%i:%i))",
             args.a, args.basic.b, args.basic.c + 1);
         break;
+    case OP_CALL: {
+        u16 argc = args.basic.b;
+        u16 retc = args.basic.c;
+
+        u16 last_ret = args.a + retc;
+        if (args.a != last_ret) {
+            printf("R(%i:%i) := ", args.a, last_ret);
+        }
+
+        u16 first_arg = args.a + 1;
+        u16 last_arg  = first_arg + argc;
+        if (first_arg == last_arg) {
+            printf("R(%i)()", args.a);
+        } else {
+            printf("R(%i)(R(%i:%i))", args.a, first_arg, last_arg);
+        }
+        break;
+    }
     case OP_RETURN:
         printf("return R(%i:%i)", args.a, u16(args.a) + args.basic.b);
         break;

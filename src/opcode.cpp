@@ -1,7 +1,12 @@
 #include "opcode.hpp"
 
 #pragma GCC diagnostic push
+
+#ifdef __clang__
 #pragma GCC diagnostic ignored "-Wc99-designator"
+#else
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
 
 // Vim:     '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
 const char *const opcode_names[OPCODE_COUNT] = {
@@ -22,6 +27,7 @@ const char *const opcode_names[OPCODE_COUNT] = {
     [OP_UNM]        = "unm",
     [OP_NOT]        = "not",
     [OP_CONCAT]     = "concat",
+    [OP_CALL]       = "call",
     [OP_RETURN]     = "return",
 };
 
@@ -71,6 +77,7 @@ const OpInfo opcode_info[OPCODE_COUNT] = {
     [OP_UNM]        = UNARY,
     [OP_NOT]        = UNARY,
     [OP_CONCAT]     = ABC(OPARG_REG, OPARG_REG, OPARG_REG),
+    [OP_CALL]       = ABC(OPARG_REG, OPARG_OTHER, OPARG_OTHER),
     [OP_RETURN]     = ABC(OPARG_REG, OPARG_OTHER, OPARG_OTHER),
 };
 

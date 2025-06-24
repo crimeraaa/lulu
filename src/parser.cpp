@@ -6,6 +6,11 @@
 #include "table.hpp"
 #include "vm.hpp"
 
+struct Expr_List {
+    Expr last;
+    u16  count;
+};
+
 // Forward declaration for recursive descent parsing.
 static Expr
 expression(Parser &p, Compiler &c, Precedence limit = PREC_NONE);
@@ -75,8 +80,28 @@ consume(Parser &p, Token_Type expected)
     }
 }
 
+
+/**
+ * @brief
+ *  -   Pushes a comma-separated list of expressions to the stack, except for
+ *      the last one.
+ *  -   We don't push the last one to allow optimizations.
+ */
+static Expr_List
+expr_list(Parser &p, Compiler &c)
+{
+    Expr e = expression(p, c);
+    u16  n = 1;
+    while (match(p, TOKEN_COMMA)) {
+        compiler_expr_next_reg(c, e);
+        e = expression(p, c);
+        n++;
+    }
+    return {e, n};
+}
+
 static Expr
-variable(Parser &p, Compiler &c, const Token &t)
+resolve_variable(Parser &p, Compiler &c, const Token &t)
 {
     Expr e;
     e.type  = EXPR_GLOBAL;
@@ -115,7 +140,7 @@ prefix_expr(Parser &p, Compiler &c)
         return e;
     }
     case TOKEN_IDENTIFIER: {
-        return variable(p, c, t);
+        return resolve_variable(p, c, t);
     }
     case TOKEN_OPEN_PAREN: {
         Expr e = expression(p, c);
@@ -135,6 +160,66 @@ prefix_expr(Parser &p, Compiler &c)
     default:
         error_at(p, t, "Expected an expression");
     }
+}
+
+/**
+ * @note 2025-06-24
+ *  Assumptions:
+ *  1.) The caller `e` was pushed to a register.
+ *  2.) Our current token is the one right after `(`.
+ */
+static void
+function_call(Parser &p, Compiler &c, Expr &e)
+{
+    Expr_List args;
+    if (!check(p, TOKEN_CLOSE_PAREN)) {
+        args = expr_list(p, c);
+        compiler_set_returns(c, args.last, VARARG);
+    } else {
+        args.last.type = EXPR_NONE;
+        args.count = 0;
+    }
+    consume(p, TOKEN_CLOSE_PAREN);
+
+    lulu_assert(e.type == EXPR_DISCHARGED);
+    u16 base = e.reg;
+    if (args.last.type == EXPR_CALL) {
+        args.count = VARARG;
+    } else {
+        // Close last argument.
+        if (args.last.type != EXPR_NONE) {
+            compiler_expr_next_reg(c, args.last);
+        }
+        args.count = u16(c.free_reg - (base + 1));
+    }
+    e.type = EXPR_CALL;
+    e.pc   = compiler_code(c, OP_CALL, u8(base), args.count, 0, e.line);
+
+    // Call will remove the function and arguments.
+    c.free_reg = base;
+}
+
+
+static Expr
+primary_expr(Parser &p, Compiler &c)
+{
+    Expr e = prefix_expr(p, c);
+    for (;;) {
+        switch (p.consumed.type) {
+        case TOKEN_OPEN_PAREN: {
+            // Function to be called must be on top of the stack.
+            compiler_expr_next_reg(c, e);
+            advance(p);
+            function_call(p, c, e);
+            // We implicitly popped the function itself, so undo that.
+            compiler_reserve_reg(c, 1);
+            break;
+        }
+        default:
+            return e;
+        }
+    }
+    return e;
 }
 
 struct Binary {
@@ -195,7 +280,7 @@ Binary get_binary(Token_Type type)
 static Expr
 expression(Parser &p, Compiler &c, Precedence limit)
 {
-    Expr left = prefix_expr(p, c);
+    Expr left = primary_expr(p, c);
     for (;;) {
         Binary b = get_binary(p.consumed.type);
         if (b.op == OP_RETURN || limit > b.left_prec) {
@@ -244,39 +329,48 @@ expression(Parser &p, Compiler &c, Precedence limit)
     return left;
 }
 
-/**
- * @brief
- *  -   Pushes a comma-separated list of expressions to the stack, except for
- *      the last one.
- *  -   We don't push the last one to allow optimizations.
- */
-static Expr
-expr_list(Parser &p, Compiler &c, u16 &n)
-{
-    n = 1;
-    Expr e = expression(p, c);
-    while (match(p, TOKEN_COMMA)) {
-        compiler_expr_next_reg(c, e);
-        e = expression(p, c);
-        n++;
-    }
-    return e;
-}
-
 static void
 return_stmt(Parser &p, Compiler &c, int line)
 {
-    u8   ra = u8(c.free_reg);
-    u16  n;
-    Expr e = expr_list(p, c, n);
-    compiler_expr_next_reg(c, e);
-    compiler_code(c, OP_RETURN, ra, u16(ra) + n, 0, line);
+    const u8  ra = u8(c.free_reg);
+    Expr_List e  = expr_list(p, c);
+    compiler_expr_next_reg(c, e.last);
+    compiler_code_return(c, ra, e.count, false, line);
 }
 
 struct Assign {
     Assign *prev;
     Expr    variable;
 };
+
+static void
+adjust_assign(Compiler &c, u16 n_vars, Expr_List &e)
+{
+    int extra = cast_int(n_vars) - cast_int(e.count);
+    // The last assigning expression can have variadic returns.
+    if (e.last.type == EXPR_CALL) {
+        // Include the call itself.
+        extra++;
+        if (extra < 0) {
+            extra = 0;
+        }
+        compiler_set_returns(c, e.last, u16(extra));
+        if (extra > 1) {
+            compiler_reserve_reg(c, u16(extra - 1));
+        }
+    } else {
+        // Need to close last expression?
+        if (e.last.type != EXPR_NONE) {
+            compiler_expr_next_reg(c, e.last);
+        }
+        if (extra > 0) {
+            // Register of first uninitialized right-hand side.
+            u16 reg = c.free_reg;
+            compiler_reserve_reg(c, u16(extra));
+            compiler_load_nil(c, u8(reg), extra, e.last.line);
+        }
+    }
+}
 
 static void
 assignment(Parser &p, Compiler &c, Assign *last, u16 n_vars = 1)
@@ -293,36 +387,32 @@ assignment(Parser &p, Compiler &c, Assign *last, u16 n_vars = 1)
 
     consume(p, TOKEN_ASSIGN);
 
-    u16 n_exprs;
-    Expr e = expr_list(p, c, n_exprs);
-    compiler_expr_next_reg(c, e);
-
-    // Need to initialize remaining variables with `nil`.
-    if (n_vars > n_exprs) {
-        u16 reg   = c.free_reg;
-        u16 n_nil = n_vars - n_exprs;
-        compiler_reserve_reg(c, n_vars - n_exprs);
-        compiler_load_nil(c, u8(reg), n_nil, e.line);
+    Expr_List e    = expr_list(p, c);
+    Assign   *iter = last;
+    if (n_vars != e.count) {
+        adjust_assign(c, n_vars, e);
+        // Reuse the registers occupied by the extra values.
+        if (e.count > n_vars) {
+            c.free_reg -= u16(e.count - n_vars);
+        }
     } else {
-        // Otherwise, just pop the extra expressions.
-        c.free_reg -= (n_exprs - n_vars);
+        compiler_set_one_return(c, e.last);
+        compiler_set_variable(c, last->variable, e.last);
+        iter = iter->prev;
     }
 
     // Assign from rightmost target going leftmost. Use assigning expressions
     // from right to left as well.
-    for (Assign *a = last; a != nullptr; a = a->prev) {
-        Expr v = a->variable;
-        switch (v.type) {
-        case EXPR_GLOBAL:
-            compiler_code(c, OP_SET_GLOBAL, u8(c.free_reg - 1), v.index, v.line);
-            break;
-        default:
-            lulu_unreachable();
-            break;
-        }
-        c.free_reg -= 1;
+    while (iter != nullptr) {
+        Expr tmp;
+        tmp.type = EXPR_DISCHARGED;
+        tmp.line = -1; // No way to extract this information anymore.
+        tmp.reg  = u8(c.free_reg - 1);
+        compiler_set_variable(c, iter->variable, tmp);
+        iter = iter->prev;
     }
 }
+
 
 static void
 declaration(Parser &p, Compiler &c)
@@ -331,7 +421,14 @@ declaration(Parser &p, Compiler &c)
     switch (t.type) {
     case TOKEN_IDENTIFIER: {
         Assign a{nullptr, prefix_expr(p, c)};
-        assignment(p, c, &a);
+        if (match(p, TOKEN_OPEN_PAREN)) {
+            Expr &call = a.variable;
+            compiler_expr_next_reg(c, call);
+            function_call(p, c, call);
+            compiler_set_returns(c, call, 0);
+        } else {
+            assignment(p, c, &a);
+        }
         break;
     }
     case TOKEN_RETURN:

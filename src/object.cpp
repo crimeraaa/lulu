@@ -24,6 +24,16 @@ object_free(lulu_VM &vm, Object *o)
         mem_free(vm, c);
         break;
     }
+    case VALUE_FUNCTION: {
+        // We never allocate a `Function *` as-is!
+        Function *f = &o->function;
+        if (function_is_c(f)) {
+            mem_free(vm, &f->c);
+        } else {
+            mem_free(vm, &f->l);
+        }
+        break;
+    }
     default:
         lulu_unreachable();
         break;

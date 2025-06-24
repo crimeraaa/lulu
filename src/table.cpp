@@ -42,10 +42,11 @@ hash_value(Value v)
     switch (v.type) {
     case VALUE_NIL:
         break;
-    case VALUE_BOOLEAN: return hash_any(v.boolean);
-    case VALUE_NUMBER:  return hash_any(v.number);
-    case VALUE_STRING:  return v.object->ostring.hash;
-    case VALUE_TABLE:   return hash_any(v.object);
+    case VALUE_BOOLEAN:  return hash_any(value_to_boolean(v));
+    case VALUE_NUMBER:   return hash_any(value_to_number(v));
+    case VALUE_STRING:   return value_to_ostring(v)->hash;
+    case VALUE_TABLE:
+    case VALUE_FUNCTION: return hash_any(value_to_object(v));
     case VALUE_CHUNK:
         break;
     }

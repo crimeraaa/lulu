@@ -137,3 +137,32 @@ compiler_code_compare(Compiler &c, OpCode op, bool cond, Expr &left, Expr &right
 
 void
 compiler_code_concat(Compiler &c, Expr &left, Expr &right);
+
+void
+compiler_code_return(Compiler &c, u8 reg, u16 count, bool is_vararg, int line);
+
+
+/**
+ * @note 2025-06-24
+ *  Analogous to:
+ *  1.) `lcode.c:luaK_storevar(FuncState *fs, expdesc *var, expdesc *expr)`
+ *      in Lua 5.1.5.
+ */
+void
+compiler_set_variable(Compiler &c, Expr &var, Expr &expr);
+
+
+// Does not convert `call` to `EXPR_DISCHARGED`.
+void
+compiler_set_returns(Compiler &c, Expr &call, u16 n);
+
+/**
+ * @brief
+ *  -   If `e` represents an `OP_CALL`, then its argument C is set to 1 and
+ *      `e` itself is converted to `EXPR_DISCHARGED` to signify it is final.
+ *
+ * @note 2025-06-24
+ *  -   `lcode.c:luaK_setoneret(FuncState *fs, expdesc *e)` in Lua 5.1.5.
+ */
+void
+compiler_set_one_return(Compiler &c, Expr &e);

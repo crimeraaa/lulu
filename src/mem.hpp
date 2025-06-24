@@ -1,6 +1,7 @@
 #pragma once
 
 #include "private.hpp"
+#include "slice.hpp"
 
 /**
  * @brief
@@ -45,4 +46,32 @@ inline void
 mem_delete(lulu_VM &vm, T *ptr, size_t n)
 {
     mem_resize(vm, ptr, n, 0);
+}
+
+template<class T>
+inline Slice<T>
+slice_make(lulu_VM &vm, size_t n)
+{
+    return Slice(mem_make<T>(vm, n), n);
+}
+
+template<class T>
+inline void
+slice_delete(lulu_VM &vm, Slice<T> s)
+{
+    mem_delete(vm, raw_data(s), len(s));
+}
+
+template<class T>
+inline size_t
+ptr_index(Slice<T> s, T *p)
+{
+    return cast_size(p - raw_data(s));
+}
+
+template<class T>
+inline size_t
+ptr_index(T *data, T *ptr)
+{
+    return cast_size(ptr - data);
 }

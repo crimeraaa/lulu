@@ -130,6 +130,10 @@ discharge_vars(Compiler &c, Expr &e)
         e.type = EXPR_RELOCABLE;
         e.pc   = compiler_code(c, OP_GET_GLOBAL, OPCODE_MAX_A, e.index, e.line);
         break;
+    case EXPR_CALL: {
+        compiler_set_one_return(c, e);
+        break;
+    }
     default:
         break;
     }
@@ -161,6 +165,12 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
         setarg_a(ip, reg);
         break;
     }
+    case EXPR_DISCHARGED: {
+        if (e.reg != reg) {
+            lulu_assertm(false, "OP_MOVE not yet implemented");
+        }
+        break;
+    }
     default:
         lulu_assertf(false, "Expr_Type(%i) not yet implemented", e.type);
         lulu_unreachable();
@@ -173,6 +183,9 @@ expr_to_reg(Compiler &c, Expr &e, u8 reg, int line)
 u8
 compiler_expr_next_reg(Compiler &c, Expr &e)
 {
+    discharge_vars(c, e);
+    pop_expr(c, e);
+
     u8 reg = u8(c.free_reg);
     compiler_reserve_reg(c, 1);
     expr_to_reg(c, e, reg, e.line);
@@ -230,7 +243,7 @@ compiler_expr_rk(Compiler &c, Expr &e)
 void
 compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right)
 {
-    lulu_assert(OP_ADD <= op && op <= OP_POW || op == OP_CONCAT);
+    lulu_assert((OP_ADD <= op && op <= OP_POW) || op == OP_CONCAT);
     u16 rkc = compiler_expr_rk(c, right);
     u16 rkb = compiler_expr_rk(c, left);
 
@@ -330,4 +343,46 @@ compiler_code_concat(Compiler &c, Expr &left, Expr &right)
     // Don't put `right` in an RK register when in `compiler_code_arith()`.
     compiler_expr_next_reg(c, right);
     compiler_code_arith(c, OP_CONCAT, left, right);
+}
+
+void
+compiler_set_variable(Compiler &c, Expr &var, Expr &expr)
+{
+    switch (var.type) {
+    case EXPR_GLOBAL: {
+        u8 reg = compiler_expr_any_reg(c, expr);
+        compiler_code(c, OP_SET_GLOBAL, reg, var.index, var.line);
+        break;
+    }
+    default:
+        lulu_assertf(false, "Invalid Expr_Type(%i) to assign", var.type);
+        break;
+    }
+    pop_expr(c, var);
+}
+
+void
+compiler_code_return(Compiler &c, u8 reg, u16 count, bool is_vararg, int line)
+{
+    compiler_code(c, OP_RETURN, reg, u16(reg) + count, u16(is_vararg), line);
+}
+
+void
+compiler_set_returns(Compiler &c, Expr &call, u16 n)
+{
+    if (call.type == EXPR_CALL) {
+        Instruction *ip = &c.chunk.code[call.pc];
+        setarg_c(ip, n);
+    }
+}
+
+void
+compiler_set_one_return(Compiler &c, Expr &e)
+{
+    if (e.type == EXPR_CALL) {
+        Instruction *ip = &c.chunk.code[e.pc];
+        setarg_c(ip, 1);
+        e.type = EXPR_DISCHARGED;
+        e.reg  = getarg_a(*ip);
+    }
 }

@@ -21,6 +21,7 @@ OP_LEQ,         // A B C | R(A) := RK(B) <= RK(C)
 OP_UNM,         // A B   | R(A) := -R(B)
 OP_NOT,         // A B   | R(A) := not R(B)
 OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
+OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
 OP_RETURN,      // A B C | return R(A:A+B)
 };
 
@@ -233,7 +234,7 @@ getarg_sbx(Instruction i)
 inline void
 setarg_c(Instruction *ip, u16 c)
 {
-    ip->value &= OPCODE_MASK0_OP;
+    ip->value &= OPCODE_MASK0_C;
     ip->value |= u32(c) << OPCODE_OFFSET_C;
 }
 

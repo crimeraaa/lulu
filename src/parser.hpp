@@ -32,6 +32,7 @@ enum Expr_Type {
     EXPR_NUMBER,     // Number literal we haven't yet stored. Use `number`.
     EXPR_CONSTANT,   // Literal value stored in constants array. Use `index`.
     EXPR_GLOBAL,     // Global variable named stored in `index`.
+    EXPR_CALL,       // `OP_CALL`. Use `pc`.
     EXPR_RELOCABLE,  // Instruction without register A finalized- use `pc`.
     EXPR_DISCHARGED, // Instruction with a finalized register.
 };
