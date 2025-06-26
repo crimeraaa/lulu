@@ -338,7 +338,7 @@ make_string(Lexer &x, char q)
 {
     lulu_VM &vm = x.vm;
     Builder &b  = vm_get_builder(vm);
-    String   s  = String(x.cursor, 0, 0);
+    String   s  = String(x.cursor, x.cursor);
     while (!is_eof(x) && !check2(x, q, '\n')) {
         char ch = advance(x);
         if (ch == '\\') {
@@ -351,7 +351,7 @@ make_string(Lexer &x, char q)
             builder_write_char(vm, b, ch);
 
             // Point to after the escape character.
-            s = String(x.cursor, 0, 0);
+            s = String(x.cursor, x.cursor);
         } else {
             s.len += 1;
         }

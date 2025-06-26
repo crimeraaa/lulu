@@ -24,6 +24,7 @@ using i32 = int32_t;
 #define OBJECT_HEADER Object *next; Value_Type type
 
 enum Value_Type {
+    VALUE_NONE      = LULU_TYPE_NONE,
     VALUE_NIL       = LULU_TYPE_NIL,
     VALUE_BOOLEAN   = LULU_TYPE_BOOLEAN,
     VALUE_NUMBER    = LULU_TYPE_NUMBER,

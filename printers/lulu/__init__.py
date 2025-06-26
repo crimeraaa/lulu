@@ -66,9 +66,11 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
     def __call__(self, val: gdb.Value):
         # The `.type` field for pointers doesn't have a `.name` field.
         tag = str(val.type)
-        if tag.startswith("Slice<"):
+        # TODO(2025-06-27): Differentiate from dependent typenames, e.g.
+        # Slice<Value>::pointer
+        if tag.startswith("Slice<") and tag.endswith(">"):
             return odin.SlicePrinter(val, tag)
-        elif tag.startswith("Dynamic<"):
+        elif tag.startswith("Dynamic<") and tag.endswith(">"):
             return odin.DynamicPrinter(val, tag)
         elif tag in self.__printers:
             return self.__printers[tag](val)

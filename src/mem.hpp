@@ -50,7 +50,7 @@ mem_delete(lulu_VM &vm, T *ptr, size_t n)
 
 template<class T>
 inline Slice<T>
-slice_make(lulu_VM &vm, size_t n)
+slice_make(lulu_VM &vm, typename Slice<T>::size_type n)
 {
     return Slice(mem_make<T>(vm, n), n);
 }
@@ -63,10 +63,17 @@ slice_delete(lulu_VM &vm, Slice<T> s)
 }
 
 template<class T>
-inline size_t
-ptr_index(Slice<T> s, T *p)
+inline typename Slice<T>::size_type
+ptr_index(Slice<T> s, typename Slice<T>::pointer p)
 {
     return cast_size(p - raw_data(s));
+}
+
+template<class T, size_t N>
+inline typename Slice<T>::size_type
+ptr_index(Array<T, N> &a, typename Array<T, N>::pointer p)
+{
+    return cast_size(p - raw_data(a));
 }
 
 template<class T>

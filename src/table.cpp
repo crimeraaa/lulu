@@ -40,6 +40,7 @@ static u32
 hash_value(Value v)
 {
     switch (v.type) {
+    case VALUE_NONE:
     case VALUE_NIL:
         break;
     case VALUE_BOOLEAN:  return hash_any(value_to_boolean(v));

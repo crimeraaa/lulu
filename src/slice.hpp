@@ -2,19 +2,24 @@
 
 #include <string.h> // memcmp, memmove
 
-struct Raw_Slice {
-    void  *data;
-    size_t len;
-};
+#include "array.hpp"
 
 template<class T>
 struct Slice {
-    T     *data;
-    size_t len;
+    using value_type      = T;
+    using size_type       = size_t;
+    using pointer         = value_type *;
+    using reference       = value_type &;
+    using const_pointer   = const value_type *;
+    using const_reference = const value_type &;
+
+    pointer data;
+    size_t  len;
 
     // Bounds-checked, mutable element access.
     template<class N>
-    T &operator[](N i)
+    reference
+    operator[](N i)
     {
         size_t ii = cast_size(i);
         lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
@@ -23,7 +28,8 @@ struct Slice {
 
     // Bounds-checked, non-mutable element access.
     template<class N>
-    const T &operator[](N i) const
+    const_reference
+    operator[](N i) const
     {
         size_t ii = cast_size(i);
         lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
@@ -35,24 +41,36 @@ struct Slice {
         , len{0}
     {}
 
-    Slice(T *data, size_t len)
+    Slice(pointer data, size_type len)
         : data{data}
         , len{len}
     {}
 
-    Slice(T *start, T *stop)
+    Slice(pointer start, pointer stop)
         : data{start}
         , len{cast_size(stop - start)}
     {}
 
-    Slice(T *p, size_t start, size_t stop)
+    Slice(pointer p, size_type start, size_type stop)
         : data{p + start}
         , len{stop - start}
     {}
 
-    Slice(Slice<T> s, size_t start, size_t stop)
+    Slice(Slice<T> s, size_type start, size_type stop)
         : data{&s[start]}
         , len{stop - start}
+    {}
+
+    template<size_t N>
+    Slice(Array<T, N> &s, size_type start, size_type stop)
+        : data{&s[start]}
+        , len{stop - start}
+    {}
+
+    template<size_t N>
+    Slice(Array<T, N> &s)
+        : data{&s[0]}
+        , len{N}
     {}
 };
 
@@ -67,14 +85,14 @@ slice_eq(Slice<T> a, Slice<T> b)
 }
 
 template<class T>
-inline size_t
+inline typename Slice<T>::size_type
 len(Slice<T> s)
 {
     return s.len;
 }
 
 template<class T>
-inline T *
+inline typename Slice<T>::pointer
 raw_data(Slice<T> s)
 {
     return s.data;
@@ -85,7 +103,7 @@ inline void
 copy(Slice<T> dst, Slice<T> src)
 {
     // Clamp size to read and copy
-    const size_t n = (dst.len > src.len) ? src.len : dst.len;
+    typename Slice<T>::size_type n = (dst.len > src.len) ? src.len : dst.len;
     memmove(dst.data, src.data, sizeof(T) * n);
 }
 
@@ -95,13 +113,13 @@ inline void
 copy(Slice<T> dst, Slice<const T> src)
 {
     // Clamp size to read and copy
-    const size_t n = (dst.len > src.len) ? src.len : dst.len;
+    typename Slice<T>::size_type n = (dst.len > src.len) ? src.len : dst.len;
     memmove(dst.data, src.data, sizeof(T) * n);
 }
 
 // Mutable forward iterator initial value.
 template<class T>
-inline T *
+inline typename Slice<T>::pointer
 begin(Slice<T> s)
 {
     return s.data;
@@ -109,7 +127,7 @@ begin(Slice<T> s)
 
 // Mutable forward iterator final value.
 template<class T>
-inline T *
+inline typename Slice<T>::pointer
 end(Slice<T> s)
 {
     return s.data + s.len;

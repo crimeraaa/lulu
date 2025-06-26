@@ -1,45 +1,33 @@
-#include <stdlib.h>
-#include <stdio.h>
+#include <time.h>   // clock
+#include <stdlib.h> // malloc, free
+#include <stdio.h>  // fprintf
+#include <string.h> // strcspn
 
 #include "lulu.h"
-#include "vm.hpp"
-#include "debug.hpp"
-
-static void *
-c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
-{
-    unused(user_data);
-    unused(old_size);
-    if (new_size == 0) {
-        free(ptr);
-        return nullptr;
-    }
-    return realloc(ptr, new_size);
-}
 
 static void
-run_interactive(lulu_VM &vm)
+run_interactive(lulu_VM *vm)
 {
     char line[512];
     for (;;) {
         printf(">>> ");
-        if (fgets(line, cast_int(count_of(line)), stdin) == nullptr) {
+        if (fgets(line, (int)sizeof(line), stdin) == nullptr) {
             printf("\n");
             break;
         }
 
         size_t n = strcspn(line, "\r\n");
-        vm_interpret(vm, "stdin"_s, String(line, n));
+        lulu_load(vm, "stdin", line, n);
     }
 }
 
-static Slice<char>
-read_file(const char *file_name)
+static char *
+read_file(const char *file_name, size_t *n)
 {
-    FILE       *file_ptr  = fopen(file_name, "rb+");
-    Slice<char> buffer; // `goto` cannot skip over variables.
-    size_t      n_read    = 0;
-    long        file_size = 0;
+    FILE    *file_ptr  = fopen(file_name, "rb+");
+    char    *data = nullptr;
+    size_t   n_read    = 0;
+    long     file_size = 0;
 
     if (file_ptr == nullptr) {
         fprintf(stderr, "Failed to open file '%s'.\n", file_name);
@@ -53,48 +41,105 @@ read_file(const char *file_name)
         fprintf(stderr, "Failed to determine size of file '%s'.\n", file_name);
         goto cleanup_file;
     }
-    buffer.len  = (size_t)(file_size) + 1;
-    buffer.data = (char *)malloc(len(buffer));
+    *n  = (size_t)(file_size);
+    data = (char *)malloc(*n + 1);
     rewind(file_ptr);
-    if (raw_data(buffer) == nullptr) {
+    if (data == nullptr) {
         fprintf(stderr, "Failed to allocate memory for file '%s'.\n", file_name);
         goto cleanup_buffer;
     }
 
     // `buffer[file_size]` is reserved for nul char so don't include it.
-    n_read = fread(raw_data(buffer), sizeof(buffer.data[0]), len(buffer) - 1, file_ptr);
-    if (n_read < len(buffer) - 1) {
+    n_read = fread(data, sizeof(data[0]), *n, file_ptr);
+    if (n_read < *n) {
         fprintf(stderr, "Failed to read file '%s'.\n", file_name);
 cleanup_buffer:
-        free(raw_data(buffer));
-        buffer.data = nullptr;
-        buffer.len  = 0;
+        free(data);
+        data = nullptr;
+        *n   = 0;
         goto cleanup_file;
     }
 
-    buffer[n_read] = '\0'; // `n_read` can never be >= `buffer.len + 1`
-    buffer.len--;          // Don't include the nul char in the final count.
+    data[n_read] = '\0'; // `n_read` can never be >= `buffer.len + 1`
 cleanup_file:
     fclose(file_ptr);
 cleanup_done:
-    return buffer;
+    return data;
 }
 
-static void run_file(lulu_VM &vm, const char *file_name)
+static void run_file(lulu_VM *vm, const char *file_name)
 {
-    Slice<char> script = read_file(file_name);
-    if (raw_data(script) == nullptr) {
+    size_t script_size;
+    char *script = read_file(file_name, &script_size);
+    if (script == nullptr) {
         return;
     }
-    vm_interpret(vm, String(file_name), String(script));
-    free(raw_data(script));
+    lulu_load(vm, file_name, script, script_size);
+    free(script);
 }
 
+static int
+base_print(lulu_VM *vm, int argc)
+{
+    for (int i = 1; i <= argc; i++) {
+        if (i > 1) {
+            fputc('\t', stdout);
+        }
+        switch (lulu_type(vm, i)) {
+        case LULU_TYPE_NIL:
+            fputs("nil", stdout);
+            break;
+        case LULU_TYPE_BOOLEAN:
+            fputs(lulu_to_boolean(vm, i) ? "true" : "false", stdout);
+            break;
+        case LULU_TYPE_NUMBER:
+            fprintf(stdout, LULU_NUMBER_FMT, lulu_to_number(vm, i));
+            break;
+        case LULU_TYPE_STRING:
+            fputs(lulu_to_cstring(vm, i), stdout);
+            break;
+        case LULU_TYPE_TABLE:
+        case LULU_TYPE_FUNCTION:
+            fprintf(stdout, "%s: %p", lulu_type_name(vm, i), lulu_to_pointer(vm, i));
+            break;
+        default:
+            __builtin_unreachable();
+            break;
+        }
+    }
+    fputc('\n', stdout);
+    return 0;
+}
+
+static int
+base_clock(lulu_VM *vm, int)
+{
+    lulu_Number n = lulu_Number(clock()) / lulu_Number(CLOCKS_PER_SEC);
+    lulu_push_number(vm, n);
+    return 1;
+}
+
+static void *
+c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
+{
+    (void)user_data;
+    (void)old_size;
+    if (new_size == 0) {
+        free(ptr);
+        return nullptr;
+    }
+    return realloc(ptr, new_size);
+}
 
 int main(int argc, char *argv[])
 {
-    lulu_VM vm;
-    vm_init(vm, c_allocator, nullptr);
+    lulu_VM *vm = lulu_open(c_allocator, nullptr);
+    lulu_push_cfunction(vm, base_print);
+    lulu_set_global(vm, "print");
+
+    lulu_push_cfunction(vm, base_clock);
+    lulu_set_global(vm, "clock");
+
     int status = 0;
     switch (argc) {
     case 1:
@@ -108,6 +153,6 @@ int main(int argc, char *argv[])
         status = 1;
         break;
     }
-    vm_destroy(vm);
+    lulu_close(vm);
     return status;
 }

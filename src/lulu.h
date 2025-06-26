@@ -44,6 +44,7 @@ typedef enum {
  *  -   Chapter 18.1 of Crafting Interpreters: "Tagged Unions".
  */
 typedef enum {
+    LULU_TYPE_NONE = -1,     /* out of bounds stack index, C API use only. */
     LULU_TYPE_NIL,
     LULU_TYPE_BOOLEAN,
     LULU_TYPE_NUMBER,
@@ -51,5 +52,85 @@ typedef enum {
     LULU_TYPE_TABLE,
     LULU_TYPE_FUNCTION,
 } lulu_Type;
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+lulu_VM *
+lulu_open(lulu_Allocator allocator, void *allocator_data);
+
+void
+lulu_close(lulu_VM *vm);
+
+lulu_Error
+lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size);
+
+/*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
+
+
+lulu_Type
+lulu_type(lulu_VM *vm, int i);
+
+const char *
+lulu_type_name(lulu_VM *vm, int i);
+
+int
+lulu_is_nil(lulu_VM *vm, int i);
+
+int
+lulu_is_boolean(lulu_VM *vm, int i);
+
+int
+lulu_is_number(lulu_VM *vm, int i);
+
+int
+lulu_is_string(lulu_VM *vm, int i);
+
+int
+lulu_is_table(lulu_VM *vm, int i);
+
+int
+lulu_is_function(lulu_VM *vm, int i);
+
+bool
+lulu_to_boolean(lulu_VM *vm, int i);
+
+lulu_Number
+lulu_to_number(lulu_VM *vm, int i);
+
+const char *
+lulu_to_string(lulu_VM *vm, int i, size_t *n);
+
+#define lulu_to_cstring(vm, i)  lulu_to_string(vm, i, NULL)
+
+void *
+lulu_to_pointer(lulu_VM *vm, int i);
+
+/*=== }}} =================================================================== */
+
+void
+lulu_push_nil(lulu_VM *vm, int n);
+
+void
+lulu_push_boolean(lulu_VM *vm, int b);
+
+void
+lulu_push_number(lulu_VM *vm, lulu_Number n);
+
+void
+lulu_push_string(lulu_VM *vm, const char *s, size_t n);
+
+void
+lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf);
+
+#define lulu_push_literal(vm, s)    lulu_push_string(vm, s, sizeof(s) - 1)
+
+void
+lulu_set_global(lulu_VM *vm, const char *s);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
 #endif /* LULU_H */

@@ -5,7 +5,7 @@
 
 template<class T>
 struct Dynamic : public Slice<T> {
-    size_t cap;
+    typename Slice<T>::size_type cap;
 };
 
 template<class T>
@@ -24,7 +24,7 @@ dynamic_init(Dynamic<T> &d)
  */
 template<class T>
 inline void
-dynamic_reserve(lulu_VM &vm, Dynamic<T> &d, size_t new_cap)
+dynamic_reserve(lulu_VM &vm, Dynamic<T> &d, typename Dynamic<T>::size_type new_cap)
 {
     d.data = mem_resize(vm, d.data, d.cap, new_cap);
     d.cap  = new_cap;
@@ -42,7 +42,7 @@ dynamic_reserve(lulu_VM &vm, Dynamic<T> &d, size_t new_cap)
  */
 template<class T>
 inline void
-dynamic_resize(lulu_VM &vm, Dynamic<T> &d, size_t new_len)
+dynamic_resize(lulu_VM &vm, Dynamic<T> &d, typename Slice<T>::size_type new_len)
 {
     // Can't accomodate the new data?
     if (new_len > d.cap) {
@@ -85,7 +85,7 @@ dynamic_reset(Dynamic<T> &d)
 }
 
 template<class T>
-inline size_t
+inline typename Dynamic<T>::size_type
 cap(Dynamic<T> d)
 {
     return d.cap;

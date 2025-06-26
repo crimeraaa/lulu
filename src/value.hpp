@@ -19,8 +19,8 @@ struct Value {
         Object  *object;
     };
 
-    constexpr Value()
-        : type{VALUE_NIL}
+    constexpr Value(Value_Type t = VALUE_NIL)
+        : type{t}
         , number{0}
     {}
 
@@ -63,6 +63,7 @@ inline const char *
 value_type_name(Value_Type t)
 {
     switch (t) {
+    case VALUE_NONE:     return "no value";
     case VALUE_NIL:      return "nil";
     case VALUE_BOOLEAN:  return "boolean";
     case VALUE_NUMBER:   return "number";
@@ -84,6 +85,7 @@ value_type_name(Value v)
 //=== VALUE TYPE INFORMATION =============================================== {{{
 
 #define value_type(v)           ((v).type)
+#define value_is_none(v)        (value_type(v) == VALUE_NONE)
 #define value_is_nil(v)         (value_type(v) == VALUE_NIL)
 #define value_is_boolean(v)     (value_type(v) == VALUE_BOOLEAN)
 #define value_is_number(v)      (value_type(v) == VALUE_NUMBER)

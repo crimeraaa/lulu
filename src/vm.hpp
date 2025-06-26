@@ -27,9 +27,9 @@ enum Call_Type {
 };
 
 struct lulu_VM {
-    Value              stack[MAX_STACK];
-    Call_Frame         frames[16];
-    int                n_frames;
+    Array<Value, MAX_STACK>     stack;
+    Small_Array<Call_Frame, 16> frames;
+
     Call_Frame        *caller; // Not a reference because it can be reassigned.
     Slice<Value>       window;
     Builder            builder;
@@ -64,6 +64,9 @@ vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr);
  */
 void
 vm_push(lulu_VM &vm, Value v);
+
+Value
+vm_pop(lulu_VM &vm);
 
 void
 vm_check_stack(lulu_VM &vm, int n);

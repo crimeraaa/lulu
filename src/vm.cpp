@@ -9,28 +9,6 @@
 #include "object.hpp"
 #include "function.hpp"
 
-static int
-base_print(lulu_VM *vm, int argc)
-{
-    for (int i = 0; i < argc; i++) {
-        if (i > 0) {
-            fputc('\t', stdout);
-        }
-        Value v = vm->window[i];
-        value_print(v);
-    }
-    fputc('\n', stdout);
-    return 0;
-}
-
-static int
-base_clock(lulu_VM *vm, int)
-{
-    Number n = Number(clock()) / Number(CLOCKS_PER_SEC);
-    vm_push(*vm, Value(n));
-    return 1;
-}
-
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
 {
@@ -38,22 +16,15 @@ vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
     vm.allocator_data = allocator_data;
     vm.saved_ip       = nullptr;
     vm.objects        = nullptr;
-    vm.n_frames       = 0;
+    vm.frames.len     = 0;
+    vm.window         = Slice(vm.stack, 0, 0);
+
     builder_init(vm.builder);
     intern_init(vm.intern);
     table_init(vm.globals);
 
     // Ensure when we start interning strings we can already index.
     intern_resize(vm, vm.intern, 32);
-
-    // Register the `print` function
-    Function *f = function_new(vm, base_print);
-    OString  *s = ostring_new(vm, "print"_s);
-    table_set(vm, vm.globals, Value(s), Value(f));
-
-    f = function_new(vm, base_clock);
-    s = ostring_new(vm, "clock"_s);
-    table_set(vm, vm.globals, Value(s), Value(f));
 }
 
 Builder &
@@ -168,6 +139,15 @@ vm_push(lulu_VM &vm, Value v)
     vm.window[i] = v;
 }
 
+Value
+vm_pop(lulu_VM &vm)
+{
+    // Length update must occur AFTER the indexing to not trip up bounds check.
+    Value v = vm.window[len(vm.window) - 1];
+    vm.window.len--;
+    return v;
+}
+
 static Value *
 vm_base_ptr(lulu_VM &vm)
 {
@@ -234,17 +214,11 @@ protect(lulu_VM &vm, const Instruction *ip)
 static void
 vm_frame_push(lulu_VM &vm, Function *fn, Slice<Value> window, int expected_returned)
 {
-    if (cast_size(vm.n_frames) >= count_of(vm.frames)) {
-        vm_runtime_error(vm, "stack overflow", "%i / %zu frames",
-            vm.n_frames, count_of(vm.frames));
-    }
-
-    Call_Frame *cf = &vm.frames[vm.n_frames];
+    Call_Frame *cf         = &small_array_next(vm.frames);
     cf->function           = fn;
     cf->window             = window;
     cf->expected_returned  = expected_returned;
 
-    vm.n_frames++;
     vm.caller   = cf;
     vm.window   = window;
 
@@ -258,13 +232,9 @@ vm_frame_push(lulu_VM &vm, Function *fn, Slice<Value> window, int expected_retur
 static Call_Frame *
 vm_frame_pop(lulu_VM &vm)
 {
-    vm.n_frames--;
     // Have a previous frame to return to?
-    if (vm.n_frames > 0) {
-        Call_Frame *f = &vm.frames[vm.n_frames - 1];
-        vm.caller = f;
-        vm.window = f->window;
-        return f;
+    if (len(vm.frames) > 0) {
+        return &small_array_prev(vm.frames);
     }
     return nullptr;
 }
@@ -320,26 +290,20 @@ Call_Type
 vm_return(lulu_VM &vm, Value &ra, int actual_returned)
 {
     Call_Frame *frame = vm.caller;
-    size_t base       = vm_base_index(vm);
+    // Overwrite stack slot of function object.
+    size_t base       = vm_base_index(vm) - 1;
     size_t ra_index   = ptr_index(vm.stack, &ra);
     bool   vararg_return = (frame->expected_returned == VARARG);
 
-    // Overwrite stack slot of function object.
-    base -= 1;
-    Slice<Value> returned  = Slice(vm.stack, ra_index, ra_index + cast_size(actual_returned));
-    Slice<Value> finalized = Slice(vm.stack, base,     base + cast_size(actual_returned));
-
     // Move results to the right place.
-    for (size_t reg = 0, last = len(finalized); reg < last; reg++) {
-        finalized[reg] = returned[reg];
-    }
+    Slice<Value> results = Slice(vm.stack, base, base + cast_size(actual_returned));
+    copy(results, Slice(vm.stack, ra_index, ra_index + cast_size(actual_returned)));
 
     int extra = (vararg_return) ? -1 : frame->expected_returned - actual_returned;
-
     if (extra > 0) {
         // Need to extend `finalized` so that it also sees the extra values.
-        finalized.len += cast_size(extra);
-        for (Value &slot : Slice(&finalized[actual_returned], end(finalized))) {
+        results.len += cast_size(extra);
+        for (Value &slot : Slice(&results[actual_returned], end(results))) {
             slot = Value();
         }
     }
@@ -348,18 +312,18 @@ vm_return(lulu_VM &vm, Value &ra, int actual_returned)
     if (vararg_return) {
         // Adjust VM's stack window so that it includes the last vararg.
         // We need to revert this change as soon as we can so that
-        size_t new_top = ptr_index(vm.stack, end(finalized));
+        size_t new_top = ptr_index(vm.stack, end(results));
         vm.window = Slice(vm.stack, base, new_top);
     }
+
+    vm.caller = frame;
 
     // Returning from main function, so no previous stack frame to restore.
     // This is also important to allow the `lulu_call()` API to work properly.
     if (frame == nullptr) {
-        vm.caller = nullptr;
-        vm.window = finalized;
+        vm.window = results;
         return CALL_C;
     }
-    vm.caller = frame;
     return CALL_LUA;
 }
 

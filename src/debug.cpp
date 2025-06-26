@@ -190,7 +190,7 @@ debug_disassemble(const Chunk &c)
 {
     const auto &constants = c.constants;
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
-    printf(".stack_used:\n%i\n", c.stack_used);
+    printf(".stack_used:\n%i\n\n", c.stack_used);
     if (len(constants) > 0) {
         int pad = count_digits(len(constants));
         printf(".const:\n");
