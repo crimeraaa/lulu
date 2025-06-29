@@ -3,29 +3,29 @@
 #include "private.hpp"
 #include "chunk.hpp"
 
-#define FUNCTION_HEADER     OBJECT_HEADER; bool is_c
+#define CLOSURE_HEADER     OBJECT_HEADER; bool is_c
 
-#define function_is_c(f)    ((f)->l.is_c)
-#define function_is_lua(f)  (!function_is_c(f))
+#define closure_is_c(f)    ((f)->l.is_c)
+#define closure_is_lua(f)  (!closure_is_c(f))
 
-struct LFunction {
-    FUNCTION_HEADER;
+struct Closure_Lua {
+    CLOSURE_HEADER;
     Chunk *chunk;
     int    n_params;
 };
 
-struct CFunction {
-    FUNCTION_HEADER;
+struct Closure_C {
+    CLOSURE_HEADER;
     lulu_CFunction callback;
 };
 
-union Function {
-    LFunction l;
-    CFunction c;
+union Closure {
+    Closure_Lua l;
+    Closure_C   c;
 };
 
-Function *
-function_new(lulu_VM &vm, lulu_CFunction cf);
+Closure *
+closure_new(lulu_VM &vm, lulu_CFunction cf);
 
-Function *
-function_new(lulu_VM &vm, Chunk *c);
+Closure *
+closure_new(lulu_VM &vm, Chunk *c);

@@ -70,8 +70,14 @@ builder_write_char(lulu_VM &vm, Builder &b, char ch);
 void
 builder_write_string(lulu_VM &vm, Builder &b, String s);
 
+void
+builder_write_int(lulu_VM &vm, Builder &b, int i);
+
 String
 builder_to_string(const Builder &b);
+
+const char *
+builder_to_cstring(const Builder &b);
 
 void
 intern_init(Intern &t);

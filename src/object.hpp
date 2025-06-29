@@ -11,11 +11,11 @@
 
 #define value_to_string(v)      ostring_to_string(value_to_ostring(v))
 #define value_to_cstring(v)     ostring_to_cstring(value_to_ostring(v))
-#define value_to_cfunction(v)   (value_to_function(v)->c)
-#define value_to_lfunction(v)   (value_to_function(v)->l)
+#define value_to_c_closure(v)   (&value_to_function(v)->c)
+#define value_to_lua_closure(v) (&value_to_function(v)->l)
 
-#define value_is_cfunction(v)   function_is_c(value_to_function(v))
-#define value_is_lfunction(v)   (!value_is_cfunction(v))
+#define value_is_c_closure(v)   closure_is_c(value_to_function(v))
+#define value_is_lua_closure(v) closure_is_lua(value_to_function(v))
 
 struct Object_Header {
     OBJECT_HEADER;
@@ -26,7 +26,7 @@ union Object {
     OString       ostring;
     Table         table;
     Chunk         chunk;
-    Function      function;
+    Closure      function;
 };
 
 void

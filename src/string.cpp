@@ -1,3 +1,7 @@
+#include <stdio.h>
+#include <limits.h>
+#include <float.h>
+
 #include "string.hpp"
 #include "vm.hpp"
 
@@ -58,12 +62,28 @@ builder_write_string(lulu_VM &vm, Builder &b, String s)
     dynamic_pop(b.buffer); // Don't include nul char when calling `len()`.
 }
 
+void
+builder_write_int(lulu_VM &vm, Builder &b, int i)
+{
+    char buf[INT_WIDTH * 2];
+    int written = sprintf(buf, "%i", i);
+    builder_write_string(vm, b, Slice(buf, written));
+}
+
 String
 builder_to_string(const Builder &b)
 {
+    String s = String(b.buffer);
     // Ensure the `builder_write_*` family worked properly.
-    lulu_assert(len(b.buffer) == 0 || raw_data(b.buffer)[len(b.buffer)] == '\0');
-    return String(b.buffer);
+    lulu_assert(len(s) == 0 || raw_data(s)[len(s)] == '\0');
+    return s;
+}
+
+const char *
+builder_to_cstring(const Builder &b)
+{
+    String s = builder_to_string(b);
+    return raw_data(s);
 }
 
 u32

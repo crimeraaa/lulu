@@ -26,8 +26,8 @@ object_free(lulu_VM &vm, Object *o)
     }
     case VALUE_FUNCTION: {
         // We never allocate a `Function *` as-is!
-        Function *f = &o->function;
-        if (function_is_c(f)) {
+        Closure *f = &o->function;
+        if (closure_is_c(f)) {
             mem_free(vm, &f->c);
         } else {
             mem_free(vm, &f->l);

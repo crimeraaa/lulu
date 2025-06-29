@@ -6,6 +6,22 @@
 #include "lulu.h"
 
 static void
+run(lulu_VM *vm, const char *source, const char *script, size_t n)
+{
+    lulu_Error e = lulu_load(vm, source, script, n);
+    if (e == LULU_OK) {
+        e = lulu_pcall(vm, 0, 0);
+    }
+
+    if (e != LULU_OK) {
+        const char *msg = lulu_to_cstring(vm, -1);
+        fprintf(stderr, "%s\n", msg);
+        lulu_pop(vm, 1);
+    }
+    lulu_set_top(vm, 0);
+}
+
+static void
 run_interactive(lulu_VM *vm)
 {
     char line[512];
@@ -17,7 +33,7 @@ run_interactive(lulu_VM *vm)
         }
 
         size_t n = strcspn(line, "\r\n");
-        lulu_load(vm, "stdin", line, n);
+        run(vm, "stdin", line, n);
     }
 }
 
@@ -74,7 +90,7 @@ static void run_file(lulu_VM *vm, const char *file_name)
     if (script == nullptr) {
         return;
     }
-    lulu_load(vm, file_name, script, script_size);
+    run(vm, file_name, script, script_size);
     free(script);
 }
 

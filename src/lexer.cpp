@@ -6,10 +6,10 @@
 
 
 Lexer
-lexer_make(lulu_VM &vm, String source, String script)
+lexer_make(lulu_VM &vm, String source, String script, Builder &b)
 {
     const char *ptr = raw_data(script);
-    Lexer l{vm, source, script, ptr, ptr, 1};
+    Lexer l{vm, b, source, script, ptr, ptr, 1};
     return l;
 }
 
@@ -86,9 +86,9 @@ static void
 error(const Lexer &x, const char *what)
 {
     String where = get_lexeme(x);
-    vm_syntax_error(x.vm, x.source, x.line,
-        "%s at " STRING_QFMTSPEC,
-        what, string_fmtarg(where));
+    builder_write_string(x.vm, x.builder, where);
+    const char *s = builder_to_cstring(x.builder);
+    vm_syntax_error(x.vm, x.source, x.line, "%s at '%s'", what, s);
 }
 
 static void

@@ -9,6 +9,29 @@
 #include "object.hpp"
 #include "function.hpp"
 
+static Value *
+vm_base_ptr(lulu_VM &vm)
+{
+    return raw_data(vm.window);
+}
+
+static Value *
+vm_top_ptr(lulu_VM &vm)
+{
+    return raw_data(vm.window) + len(vm.window);
+}
+
+static size_t
+vm_base_index(lulu_VM &vm)
+{
+    return ptr_index(vm.stack, vm_base_ptr(vm));
+}
+
+static size_t
+vm_top_index(lulu_VM &vm)
+{
+    return ptr_index(vm.stack, vm_top_ptr(vm));
+}
 void
 vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
 {
@@ -58,11 +81,17 @@ vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr)
     // Chain new handler
     vm.error_handler = &next;
 
+    size_t old_base = vm_base_index(vm);
+    size_t old_top  = vm_top_index(vm);
+
     try {
         fn(vm, user_ptr);
     } catch (Error e) {
-        lulu_assert(e != LULU_OK);
         next.error = e;
+
+        Value msg = vm_pop(vm);
+        vm.window = Slice(vm.stack, old_base, old_top);
+        vm.window[old_top - 1] = msg;
     }
 
     // Restore old handler
@@ -81,15 +110,73 @@ vm_throw(lulu_VM &vm, Error e)
     abort();
 }
 
-void
-vm_syntax_error(lulu_VM &vm, String file, int line, const char *fmt, ...)
+const char *
+vm_push_fstring(lulu_VM &vm, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    fprintf(stdout, STRING_FMTSPEC ":%i: ", string_fmtarg(file), line);
-    vfprintf(stdout, fmt, args);
-    fputc('\n', stdout);
+    const char *msg = vm_push_vfstring(vm, fmt, args);
     va_end(args);
+    return msg;
+}
+
+const char *
+vm_push_vfstring(lulu_VM &vm, const char *fmt, va_list args)
+{
+    const String s      = String(fmt);
+    const char  *start  = raw_data(s);
+    const char  *cursor = start;
+
+    Builder &b = vm_get_builder(vm);
+
+    bool spec = false;
+    for (; cursor < end(s); cursor++) {
+        if (*cursor == '%' && !spec) {
+            builder_write_string(vm, b, String(start, cursor));
+            spec = true;
+            continue;
+        }
+
+        if (!spec) {
+            continue;
+        }
+
+        switch (*cursor) {
+        case 'c':
+            builder_write_char(vm, b, cast(char)va_arg(args, int));
+            break;
+        case 'd':
+        case 'i':
+            builder_write_int(vm, b, va_arg(args, int));
+            break;
+        case 's': {
+            const char *s = va_arg(args, char *);
+            builder_write_string(vm, b, (s == nullptr) ? "(null)"_s : String(s));
+            break;
+        }
+        default:
+            lulu_assertf(false, "Unsupported format specifier '%c'", *cursor);
+            lulu_unreachable();
+            break;
+        }
+        start = cursor + 1;
+        spec  = false;
+    }
+    builder_write_string(vm, b, String(start, cursor));
+
+    OString *o = ostring_new(vm, builder_to_string(b));
+    vm_push(vm, Value(o));
+    return o->data;
+}
+
+void
+vm_syntax_error(lulu_VM &vm, String source, int line, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    const char *msg = lulu_push_vfstring(&vm, fmt, args);
+    va_end(args);
+    lulu_push_fstring(&vm, "%s:%i: %s", raw_data(source), line, msg);
     vm_throw(vm, LULU_ERROR_SYNTAX);
 }
 
@@ -97,38 +184,40 @@ void
 vm_runtime_error(lulu_VM &vm, const char *act, const char *fmt, ...)
 {
     va_list args;
-    va_start(args, fmt);
     const Chunk &c    = *vm.caller->function->l.chunk;
     const int    pc   = cast_int(vm.saved_ip - raw_data(c.code) - 1);
     const int    line = chunk_get_line(c, pc);
 
-    fprintf(stdout, STRING_FMTSPEC ":%i: Attempt to %s ",
-        string_fmtarg(c.source), line, act);
-    vfprintf(stdout, fmt, args);
-    fputc('\n', stdout);
+    va_start(args, fmt);
+    const char *msg = lulu_push_vfstring(&vm, fmt, args);
     va_end(args);
+
+    lulu_push_fstring(&vm, "%s:%i: Attempt to %s %s",
+        raw_data(c.source), line, act, msg);
     vm_throw(vm, LULU_ERROR_RUNTIME);
 }
 
-struct Exec_Data {
-    String source, script;
+struct Load_Data {
+    String  source, script;
+    Builder builder;
 };
 
-Error
-vm_interpret(lulu_VM &vm, String source, String script)
+static void
+load(lulu_VM &vm, void *user_ptr)
 {
-    Exec_Data d{source, script};
-    Error e = vm_run_protected(vm, [](lulu_VM &vm, void *user_ptr) {
-        // Reset stack for consecutive runs.
-        vm.window = Slice(vm.stack, 0, 0);
+    Load_Data &d = *cast(Load_Data *)(user_ptr);
+    Chunk     *c = parser_program(vm, d.source, d.script, d.builder);
+    Closure   *f = closure_new(vm, c);
+    vm_push(vm, Value(f));
+}
 
-        Exec_Data &d = *cast(Exec_Data *)(user_ptr);
-        Chunk     *c = parser_program(vm, d.source, d.script);
-        Function  *f = function_new(vm, c);
-        vm_push(vm, Value(f));
-        vm_call(vm, vm.window[len(vm.window) - 1], 0, 0);
-        vm_execute(vm);
-    }, &d);
+Error
+vm_load(lulu_VM &vm, String source, String script)
+{
+    Load_Data d{source, script, {}};
+    builder_init(d.builder);
+    Error e = vm_run_protected(vm, load, &d);
+    builder_destroy(vm, d.builder);
     return e;
 }
 
@@ -146,30 +235,6 @@ vm_pop(lulu_VM &vm)
     Value v = vm.window[len(vm.window) - 1];
     vm.window.len--;
     return v;
-}
-
-static Value *
-vm_base_ptr(lulu_VM &vm)
-{
-    return raw_data(vm.window);
-}
-
-static Value *
-vm_top_ptr(lulu_VM &vm)
-{
-    return raw_data(vm.window) + len(vm.window);
-}
-
-static size_t
-vm_base_index(lulu_VM &vm)
-{
-    return ptr_index(vm.stack, vm_base_ptr(vm));
-}
-
-static size_t
-vm_top_index(lulu_VM &vm)
-{
-    return ptr_index(vm.stack, vm_top_ptr(vm));
 }
 
 void
@@ -212,9 +277,9 @@ protect(lulu_VM &vm, const Instruction *ip)
 }
 
 static void
-vm_frame_push(lulu_VM &vm, Function *fn, Slice<Value> window, int expected_returned)
+vm_frame_push(lulu_VM &vm, Closure *fn, Slice<Value> window, int expected_returned)
 {
-    Call_Frame *cf         = &small_array_next(vm.frames);
+    Call_Frame *cf         = &small_array_push(vm.frames);
     cf->function           = fn;
     cf->window             = window;
     cf->expected_returned  = expected_returned;
@@ -222,7 +287,7 @@ vm_frame_push(lulu_VM &vm, Function *fn, Slice<Value> window, int expected_retur
     vm.caller   = cf;
     vm.window   = window;
 
-    if (function_is_lua(fn)) {
+    if (closure_is_lua(fn)) {
         for (Value &slot : Slice(window, fn->l.n_params, len(window))) {
             slot = Value();
         }
@@ -233,8 +298,9 @@ static Call_Frame *
 vm_frame_pop(lulu_VM &vm)
 {
     // Have a previous frame to return to?
+    small_array_pop(vm.frames);
     if (len(vm.frames) > 0) {
-        return &small_array_prev(vm.frames);
+        return &vm.frames[len(vm.frames) - 1];
     }
     return nullptr;
 }
@@ -246,15 +312,15 @@ vm_call(lulu_VM &vm, Value &ra, int argc, int expected_returned)
         type_error(vm, "call", ra);
     }
 
-    Function *fn       = value_to_function(ra);
-    size_t    ra_index = ptr_index(vm.stack, &ra);
+    Closure *fn       = value_to_function(ra);
+    size_t   ra_index = ptr_index(vm.stack, &ra);
 
     // Calling function isn't included in the stack frame.
     size_t base        = ra_index + 1;
     bool   vararg_call = (argc == VARARG);
 
     // Can call directly?
-    if (function_is_c(fn)) {
+    if (closure_is_c(fn)) {
         vm_check_stack(vm, LULU_STACK_MIN);
 
         size_t top;
@@ -275,13 +341,13 @@ vm_call(lulu_VM &vm, Value &ra, int argc, int expected_returned)
     }
 
     size_t top = base + cast_size(fn->l.chunk->stack_used);
-    int extra = fn->l.n_params - ((vararg_call) ? cast_int(top) - cast_int(base) : argc);
+    int extra = fn->l.n_params - ((vararg_call) ? cast_int(top - base) : argc);
     // Some parameters weren't provided so they need to be initialized to nil?
     if (extra > 0) {
         top += cast_size(extra);
     }
     // May invalidate `ra`.
-    vm_check_stack(vm, cast_int(top) - cast_int(base));
+    vm_check_stack(vm, cast_int(top - base));
     vm_frame_push(vm, fn, Slice(vm.stack, base, top), expected_returned);
     return CALL_LUA;
 }
@@ -308,14 +374,7 @@ vm_return(lulu_VM &vm, Value &ra, int actual_returned)
         }
     }
 
-    frame = vm_frame_pop(vm);
-    if (vararg_return) {
-        // Adjust VM's stack window so that it includes the last vararg.
-        // We need to revert this change as soon as we can so that
-        size_t new_top = ptr_index(vm.stack, end(results));
-        vm.window = Slice(vm.stack, base, new_top);
-    }
-
+    frame     = vm_frame_pop(vm);
     vm.caller = frame;
 
     // Returning from main function, so no previous stack frame to restore.
@@ -323,6 +382,15 @@ vm_return(lulu_VM &vm, Value &ra, int actual_returned)
     if (frame == nullptr) {
         vm.window = results;
         return CALL_C;
+    }
+
+    if (vararg_return) {
+        // Adjust VM's stack window so that it includes the last vararg.
+        // We need to revert this change as soon as we can so that
+        size_t new_top = ptr_index(vm.stack, end(results));
+        vm.window = Slice(vm.stack, base, new_top);
+    } else {
+        vm.window = frame->window;
     }
     return CALL_LUA;
 }

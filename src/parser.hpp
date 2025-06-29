@@ -9,6 +9,7 @@ struct Parser {
     lulu_VM &vm;
     Lexer    lexer;
     Token    consumed;
+    Builder &builder;
 };
 
 enum Precedence : u8 {
@@ -49,11 +50,11 @@ struct Expr {
 };
 
 Parser
-parser_make(lulu_VM &vm, String source, String script);
+parser_make(lulu_VM &vm, String source, String script, Builder &b);
 
 [[noreturn]]
 void
 parser_error(Parser &p, const char *msg);
 
 Chunk *
-parser_program(lulu_VM &vm, String source, String script);
+parser_program(lulu_VM &vm, String source, String script, Builder &b);

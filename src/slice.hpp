@@ -6,33 +6,28 @@
 
 template<class T>
 struct Slice {
-    using value_type      = T;
-    using size_type       = size_t;
-    using pointer         = value_type *;
-    using reference       = value_type &;
-    using const_pointer   = const value_type *;
-    using const_reference = const value_type &;
+    using size_type = size_t;
 
-    pointer data;
-    size_t  len;
+    T        *data;
+    size_type len;
 
     // Bounds-checked, mutable element access.
     template<class N>
-    reference
+    T &
     operator[](N i)
     {
-        size_t ii = cast_size(i);
-        lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
+        size_type ii = cast(size_type)i;
+        lulu_assertf(ii < this->len, "Out of bounds index %zu / %zu", ii, this->len);
         return this->data[ii];
     }
 
     // Bounds-checked, non-mutable element access.
     template<class N>
-    const_reference
+    const T &
     operator[](N i) const
     {
-        size_t ii = cast_size(i);
-        lulu_assertf(ii < this->len, "Out of bounds index %zu", ii);
+        size_type ii = cast(size_type)i;
+        lulu_assertf(ii < this->len, "Out of bounds index %zu / %zu", ii, this->len);
         return this->data[ii];
     }
 
@@ -41,17 +36,17 @@ struct Slice {
         , len{0}
     {}
 
-    Slice(pointer data, size_type len)
+    Slice(T *data, size_type len)
         : data{data}
         , len{len}
     {}
 
-    Slice(pointer start, pointer stop)
+    Slice(T *start, T *stop)
         : data{start}
         , len{cast_size(stop - start)}
     {}
 
-    Slice(pointer p, size_type start, size_type stop)
+    Slice(T *p, size_type start, size_type stop)
         : data{p + start}
         , len{stop - start}
     {}
@@ -92,7 +87,7 @@ len(Slice<T> s)
 }
 
 template<class T>
-inline typename Slice<T>::pointer
+inline T *
 raw_data(Slice<T> s)
 {
     return s.data;
@@ -119,7 +114,7 @@ copy(Slice<T> dst, Slice<const T> src)
 
 // Mutable forward iterator initial value.
 template<class T>
-inline typename Slice<T>::pointer
+inline T *
 begin(Slice<T> s)
 {
     return s.data;
@@ -127,7 +122,7 @@ begin(Slice<T> s)
 
 // Mutable forward iterator final value.
 template<class T>
-inline typename Slice<T>::pointer
+inline T *
 end(Slice<T> s)
 {
     return s.data + s.len;

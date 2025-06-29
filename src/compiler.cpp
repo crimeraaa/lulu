@@ -358,7 +358,7 @@ compiler_set_variable(Compiler &c, Expr &var, Expr &expr)
         lulu_assertf(false, "Invalid Expr_Type(%i) to assign", var.type);
         break;
     }
-    pop_expr(c, var);
+    pop_expr(c, expr);
 }
 
 void

@@ -2,13 +2,10 @@
 
 #include "private.hpp"
 
-using Type   = lulu_Type;
-using Number = lulu_Number;
-
 union  Object;
 struct OString;
 struct Table;
-union  Function;
+union  Closure;
 struct Chunk;
 
 struct Value {
@@ -44,7 +41,7 @@ struct Value {
         , object{cast(Object *)t}
     {}
 
-    explicit Value(Function *f)
+    explicit Value(Closure *f)
         : type{VALUE_FUNCTION}
         , object{cast(Object *)f}
     {}
@@ -84,7 +81,12 @@ value_type_name(Value v)
 
 //=== VALUE TYPE INFORMATION =============================================== {{{
 
-#define value_type(v)           ((v).type)
+constexpr Value_Type
+value_type(Value v)
+{
+    return v.type;
+}
+
 #define value_is_none(v)        (value_type(v) == VALUE_NONE)
 #define value_is_nil(v)         (value_type(v) == VALUE_NIL)
 #define value_is_boolean(v)     (value_type(v) == VALUE_BOOLEAN)

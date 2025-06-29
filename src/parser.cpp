@@ -16,9 +16,9 @@ static Expr
 expression(Parser &p, Compiler &c, Precedence limit = PREC_NONE);
 
 Parser
-parser_make(lulu_VM &vm, String source, String script)
+parser_make(lulu_VM &vm, String source, String script, Builder &b)
 {
-    Parser p{vm, lexer_make(vm, source, script), {}};
+    Parser p{vm, lexer_make(vm, source, script, b), {}, b};
     return p;
 }
 
@@ -27,8 +27,9 @@ static void
 error_at(Parser &p, const Token &t, const char *msg)
 {
     String where = (t.type == TOKEN_EOF) ? token_strings[t.type] : t.lexeme;
-    vm_syntax_error(p.vm, p.lexer.source, t.line,
-        "%s at " STRING_QFMTSPEC, msg, string_fmtarg(where));
+    builder_write_string(p.vm, p.builder, where);
+    const char *s = builder_to_cstring(p.builder);
+    vm_syntax_error(p.vm, p.lexer.source, t.line, "%s at '%s'", msg, s);
 }
 
 void
@@ -406,7 +407,7 @@ assignment(Parser &p, Compiler &c, Assign *last, u16 n_vars = 1)
     while (iter != nullptr) {
         Expr tmp;
         tmp.type = EXPR_DISCHARGED;
-        tmp.line = -1; // No way to extract this information anymore.
+        tmp.line = iter->variable.line; // Probably correct
         tmp.reg  = u8(c.free_reg - 1);
         compiler_set_variable(c, iter->variable, tmp);
         iter = iter->prev;
@@ -443,7 +444,7 @@ declaration(Parser &p, Compiler &c)
 }
 
 Chunk *
-parser_program(lulu_VM &vm, String source, String script)
+parser_program(lulu_VM &vm, String source, String script, Builder &b)
 {
     Table *t  = table_new(vm);
     Chunk *ch = chunk_new(vm, source, t);
@@ -453,8 +454,8 @@ parser_program(lulu_VM &vm, String source, String script)
     vm_push(vm, Value(ch));
     vm_push(vm, Value(t));
 
-    Parser   p  = parser_make(vm, source, script);
-    Compiler c  = compiler_make(vm, p, *ch);
+    Parser   p = parser_make(vm, source, script, b);
+    Compiler c = compiler_make(vm, p, *ch);
     // Set up first token
     advance(p);
     while (!check(p, TOKEN_EOF)) {
@@ -463,5 +464,9 @@ parser_program(lulu_VM &vm, String source, String script)
     consume(p, TOKEN_EOF);
     compiler_code(c, OP_RETURN, 0, 0, 0, p.lexer.line);
     debug_disassemble(c.chunk);
+
+    vm_pop(vm);
+    vm_pop(vm);
+
     return ch;
 }

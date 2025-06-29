@@ -1,6 +1,7 @@
 #ifndef LULU_H
 #define LULU_H
 
+#include <stdarg.h>
 #include <stddef.h>
 
 #include "config.h"
@@ -63,8 +64,32 @@ lulu_open(lulu_Allocator allocator, void *allocator_data);
 void
 lulu_close(lulu_VM *vm);
 
+
+/**
+ * @brief
+ *  -   Compiles the string `script` into a Lua function, which is pushed to
+ *      the top of the stack.
+ */
 lulu_Error
 lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size);
+
+
+/**
+ * @brief
+ *  -   Calls the Lua or C function at the stack index `-(n_args + 1)` and
+ *      adjusts the current VM call frame by `n_rets`.
+ */
+void
+lulu_call(lulu_VM *vm, int n_args, int n_rets);
+
+
+/**
+ * @brief
+ *  -   Wraps `lulu_call()` in a protected call so that we may catch any thrown
+ *      exceptions.
+ */
+lulu_Error
+lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
 
 /*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
 
@@ -109,6 +134,13 @@ lulu_to_pointer(lulu_VM *vm, int i);
 
 /*=== }}} =================================================================== */
 
+
+void
+lulu_set_top(lulu_VM *vm, int i);
+
+void
+lulu_pop(lulu_VM *vm, int n);
+
 void
 lulu_push_nil(lulu_VM *vm, int n);
 
@@ -121,6 +153,13 @@ lulu_push_number(lulu_VM *vm, lulu_Number n);
 void
 lulu_push_string(lulu_VM *vm, const char *s, size_t n);
 
+[[gnu::format(printf, 2, 3)]]
+const char *
+lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
+
+const char *
+lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
+
 void
 lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf);
 
@@ -130,7 +169,7 @@ void
 lulu_set_global(lulu_VM *vm, const char *s);
 
 #ifdef __cplusplus
-}
+} /* extern "C" */
 #endif /* __cplusplus */
 
 #endif /* LULU_H */

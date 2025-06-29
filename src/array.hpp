@@ -4,23 +4,18 @@
 
 template<class T, size_t N>
 struct Array {
-    using value_type      = T;
-    using size_type       = size_t;
-    using pointer         = value_type *;
-    using reference       = value_type &;
-    using const_pointer   = const value_type *;
-    using const_reference = const value_type &;
+    using size_type = size_t;
 
-    value_type data[N];
+    T data[N];
 
-    reference
+    T &
     operator[](size_type i)
     {
         lulu_assertf(i < N, "Out of bounds index %zu / %zu", i, N);
         return this->data[i];
     }
 
-    const_reference
+    const T &
     operator[](size_type i) const
     {
         lulu_assertf(i < N, "Out of bounds index %zu / %zu", i, N);
@@ -29,7 +24,7 @@ struct Array {
 };
 
 template<class T, size_t N>
-inline typename Array<T, N>::size_type
+inline size_t
 len(const Array<T, N> &a)
 {
     unused(a);
@@ -37,7 +32,7 @@ len(const Array<T, N> &a)
 }
 
 template<class T, size_t N>
-inline typename Array<T, N>::pointer
+inline T *
 raw_data(Array<T, N> &a)
 {
     return a.data;
@@ -49,14 +44,14 @@ struct Small_Array : public Array<T, N> {
 };
 
 template<class T, size_t N>
-constexpr typename Small_Array<T, N>::size_type
+constexpr size_t
 len(const Small_Array<T, N> &sa)
 {
     return sa.len;
 }
 
 template<class T, size_t N>
-constexpr typename Small_Array<T, N>::size_type
+constexpr size_t
 cap(const Small_Array<T, N> &sa)
 {
     unused(sa);
@@ -64,15 +59,15 @@ cap(const Small_Array<T, N> &sa)
 }
 
 template<class T, size_t N>
-inline typename Small_Array<T, N>::reference
-small_array_next(Small_Array<T, N> &sa)
+inline T &
+small_array_push(Small_Array<T, N> &sa)
 {
     return sa[sa.len++];
 }
 
 template<class T, size_t N>
-inline typename Small_Array<T, N>::reference
-small_array_prev(Small_Array<T, N> &sa)
+inline void
+small_array_pop(Small_Array<T, N> &sa)
 {
-    return sa[--sa.len];
+    sa.len--;
 }

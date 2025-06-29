@@ -16,7 +16,7 @@ struct Error_Handler {
 
 struct Call_Frame {
     Slice<Value>       window;
-    Function          *function;
+    Closure           *function;
     const Instruction *saved_ip;
     int                expected_returned;
 };
@@ -53,8 +53,16 @@ vm_get_builder(lulu_VM &vm);
 void
 vm_destroy(lulu_VM &vm);
 
+
+/**
+ * @brief
+ *  -   Wraps a call to `fn(vm, user_ptr)` with a try-catch block.
+ *  -   In case of errors, the error message, as a string, is left on the
+ *      top of the stack.
+ */
 Error
 vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr);
+
 
 /**
  * @note 2025-06-24
@@ -75,9 +83,15 @@ vm_check_stack(lulu_VM &vm, int n);
 void
 vm_throw(lulu_VM &vm, Error e);
 
+const char *
+vm_push_fstring(lulu_VM &vm, const char *fmt, ...);
+
+const char *
+vm_push_vfstring(lulu_VM &vm, const char *fmt, va_list args);
+
 [[noreturn, gnu::format(printf, 4, 5)]]
 void
-vm_syntax_error(lulu_VM &vm, String file, int line, const char *fmt, ...);
+vm_syntax_error(lulu_VM &vm, String source, int line, const char *fmt, ...);
 
 [[noreturn, gnu::format(printf, 3, 4)]]
 void
@@ -101,7 +115,7 @@ Call_Type
 vm_return(lulu_VM &vm, Value &ra, int actual_returned);
 
 Error
-vm_interpret(lulu_VM &vm, String source, String script);
+vm_load(lulu_VM &vm, String source, String script);
 
 void
 vm_execute(lulu_VM &vm);
