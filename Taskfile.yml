@@ -94,6 +94,8 @@ tasks:
       - '{{.CXX}} -xc++ -L{{.USER_WORKING_DIR}}/bin {{.CXX_FLAGS}} -o {{.LULU_OUT}} {{.LULU_DIR_SRC}}/lulu.c -llulu'
     sources:
       - '{{.LULU_GLOB}}'
+      - '{{.LULU_DIR_SRC}}/lulu.c'
+      - '{{.LULU_DIR_SRC}}/lulu.h'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:

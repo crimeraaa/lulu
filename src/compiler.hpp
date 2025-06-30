@@ -13,14 +13,14 @@ struct Compiler {
     u16      free_reg;
 };
 
-Compiler
+LULU_FUNC Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk);
 
-int
-compiler_code(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line);
+LULU_FUNC int
+compiler_code_abc(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line);
 
-int
-compiler_code(Compiler *c, OpCode op, u8 a, u32 bx, int line);
+LULU_FUNC int
+compiler_code_abx(Compiler *c, OpCode op, u8 a, u32 bx, int line);
 
 
 /**
@@ -29,7 +29,7 @@ compiler_code(Compiler *c, OpCode op, u8 a, u32 bx, int line);
  *  1.) If you need to push these `nil`s to registers, you should have reserved
  *      `n` registers beforehand. This function will not reserve for you.
  */
-void
+LULU_FUNC void
 compiler_load_nil(Compiler *c, u8 reg, int n, int line);
 
 
@@ -39,17 +39,17 @@ compiler_load_nil(Compiler *c, u8 reg, int n, int line);
  *  1.) If you need to push the boolean to a register, you should have reserved
  *      it beforehand. This function will not reserve for you.
  */
-void
+LULU_FUNC void
 compiler_load_boolean(Compiler *c, u8 reg, bool b, int line);
 
-u32
-compiler_add_constant(Compiler *c, Value v);
+LULU_FUNC u32
+compiler_add_value(Compiler *c, Value v);
 
-u32
-compiler_add_constant(Compiler *c, Number n);
+LULU_FUNC u32
+compiler_add_number(Compiler *c, Number n);
 
-u32
-compiler_add_constant(Compiler *c, OString *s);
+LULU_FUNC u32
+compiler_add_ostring(Compiler *c, OString *s);
 
 
 /**
@@ -57,7 +57,7 @@ compiler_add_constant(Compiler *c, OString *s);
  *  -   Increments `c.free_reg` by `n`; asserting that it does not exceed
  *      `MAX_REG`.
  */
-void
+LULU_FUNC void
 compiler_reserve_reg(Compiler *c, u16 n);
 
 
@@ -69,7 +69,7 @@ compiler_reserve_reg(Compiler *c, u16 n);
  * @returns
  *  -   The register we pushed `e` to.
  */
-u8
+LULU_FUNC u8
 compiler_expr_next_reg(Compiler *c, Expr *e);
 
 
@@ -86,7 +86,7 @@ compiler_expr_next_reg(Compiler *c, Expr *e);
  * @returns
  *  -   The RK register of `e`, otherwise a normal register.
  */
-u16
+LULU_FUNC u16
 compiler_expr_rk(Compiler *c, Expr *e);
 
 
@@ -99,7 +99,7 @@ compiler_expr_rk(Compiler *c, Expr *e);
  * @returns
  *  -   The register `e` resides in.
  */
-u8
+LULU_FUNC u8
 compiler_expr_any_reg(Compiler *c, Expr *e);
 
 
@@ -126,19 +126,19 @@ compiler_expr_any_reg(Compiler *c, Expr *e);
  *      -   We pop both expressions, but only `right` is actually popped.
  *          `c.free_reg` is now `0`.
  */
-void
+LULU_FUNC void
 compiler_code_arith(Compiler *c, OpCode op, Expr *left, Expr *right);
 
-void
+LULU_FUNC void
 compiler_code_unary(Compiler *c, OpCode op, Expr *e);
 
-void
+LULU_FUNC void
 compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *left, Expr *right);
 
-void
+LULU_FUNC void
 compiler_code_concat(Compiler *c, Expr *left, Expr *right);
 
-void
+LULU_FUNC void
 compiler_code_return(Compiler *c, u8 reg, u16 count, bool is_vararg, int line);
 
 
@@ -148,12 +148,12 @@ compiler_code_return(Compiler *c, u8 reg, u16 count, bool is_vararg, int line);
  *  1.) `lcode.c:luaK_storevar(FuncState *fs, expdesc *var, expdesc *expr)`
  *      in Lua 5.1.5.
  */
-void
+LULU_FUNC void
 compiler_set_variable(Compiler *c, Expr *var, Expr *expr);
 
 
 // Does not convert `call` to `EXPR_DISCHARGED`.
-void
+LULU_FUNC void
 compiler_set_returns(Compiler *c, Expr *call, u16 n);
 
 /**
@@ -164,5 +164,5 @@ compiler_set_returns(Compiler *c, Expr *call, u16 n);
  * @note 2025-06-24
  *  -   `lcode.c:luaK_setoneret(FuncState *fs, expdesc *e)` in Lua 5.1.5.
  */
-void
+LULU_FUNC void
 compiler_set_one_return(Compiler *c, Expr *e);

@@ -13,20 +13,20 @@ struct Table {
     size_t       count;   // Number of currently active elements in `entries`.
 };
 
-Table *
+LULU_FUNC Table *
 table_new(lulu_VM *vm, size_t n = 0);
 
-void
+LULU_FUNC void
 table_init(Table *t);
 
-bool
+LULU_FUNC bool
 table_get(Table *t, Value k, Value *out);
 
-void
+LULU_FUNC void
 table_set(lulu_VM *vm, Table *t, Value k, Value v);
 
-void
+LULU_FUNC void
 table_unset(Table *t, Value k);
 
-void
+LULU_FUNC void
 table_resize(lulu_VM *vm, Table *t, size_t new_cap);

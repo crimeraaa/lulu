@@ -11,7 +11,7 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk)
 //=== BYTECODE MANIPULATION ================================================ {{{
 
 int
-compiler_code(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line)
+compiler_code_abc(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line)
 {
     lulu_assert(opinfo_a(op) == OPARG_REG || opinfo_a(op) == OPARG_OTHER);
     lulu_assert((opinfo_b(op) & OPARG_REG_CONSTANT) || opinfo_b(op) == OPARG_OTHER);
@@ -22,7 +22,7 @@ compiler_code(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line)
 }
 
 int
-compiler_code(Compiler *c, OpCode op, u8 a, u32 bx, int line)
+compiler_code_abx(Compiler *c, OpCode op, u8 a, u32 bx, int line)
 {
     lulu_assert(opinfo_a(op) == OPARG_REG);
     lulu_assert(opinfo_b(op) == OPARG_CONSTANT || opinfo_b(op) == OPARG_OTHER);
@@ -67,21 +67,21 @@ compiler_load_boolean(Compiler *c, u8 reg, bool b, int line)
 }
 
 u32
-compiler_add_constant(Compiler *c, Value v)
+compiler_add_value(Compiler *c, Value v)
 {
     return chunk_add_constant(c->vm, c->chunk, v);
 }
 
 u32
-compiler_add_constant(Compiler *c, Number n)
+compiler_add_number(Compiler *c, Number n)
 {
-    return compiler_add_constant(c, Value(n));
+    return compiler_add_value(c, Value(n));
 }
 
 u32
-compiler_add_constant(Compiler *c, OString *s)
+compiler_add_ostring(Compiler *c, OString *s)
 {
-    return compiler_add_constant(c, Value(s));
+    return compiler_add_value(c, Value(s));
 }
 
 //=== }}} ======================================================================
@@ -128,7 +128,7 @@ discharge_vars(Compiler *c, Expr *e)
     switch (e->type) {
     case EXPR_GLOBAL:
         e->type = EXPR_RELOCABLE;
-        e->pc   = compiler_code(c, OP_GET_GLOBAL, OPCODE_MAX_A, e->index, e->line);
+        e->pc   = compiler_code_abx(c, OP_GET_GLOBAL, OPCODE_MAX_A, e->index, e->line);
         break;
     case EXPR_CALL:
         compiler_set_one_return(c, e);
@@ -151,12 +151,12 @@ expr_to_reg(Compiler *c, Expr *e, u8 reg, int line)
         compiler_load_boolean(c, reg, e->type == EXPR_TRUE, line);
         break;
     case EXPR_NUMBER: {
-        u32 i = compiler_add_constant(c, e->number);
-        compiler_code(c, OP_CONSTANT, reg, i, line);
+        u32 i = compiler_add_number(c, e->number);
+        compiler_code_abx(c, OP_CONSTANT, reg, i, line);
         break;
     }
     case EXPR_CONSTANT: {
-        compiler_code(c, OP_CONSTANT, reg, e->index, line);
+        compiler_code_abx(c, OP_CONSTANT, reg, e->index, line);
         break;
     }
     case EXPR_RELOCABLE: {
@@ -203,7 +203,7 @@ compiler_expr_any_reg(Compiler *c, Expr *e)
 static u16
 value_to_rk(Compiler *c, Expr *e, Value v)
 {
-    u32 i   = compiler_add_constant(c, v);
+    u32 i   = compiler_add_value(c, v);
     e->type  = EXPR_CONSTANT;
     e->index = i;
 
@@ -254,7 +254,7 @@ compiler_code_arith(Compiler *c, OpCode op, Expr *left, Expr *right)
         pop_expr(c, right);
     }
 
-    int pc = compiler_code(c, op, OPCODE_MAX_A, rkb, rkc, left->line);
+    int pc = compiler_code_abc(c, op, OPCODE_MAX_A, rkb, rkc, left->line);
     left->type = EXPR_RELOCABLE;
     left->pc   = pc;
 }
@@ -268,7 +268,7 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
     u8 rb = compiler_expr_next_reg(c, e);
     pop_expr(c, e);
 
-    int pc = compiler_code(c, op, OPCODE_MAX_A, rb, 0, e->line);
+    int pc = compiler_code_abc(c, op, OPCODE_MAX_A, rb, 0, e->line);
     e->type = EXPR_RELOCABLE;
     e->pc   = pc;
 }
@@ -304,7 +304,7 @@ compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *left, Expr *right
         swap(&rkb, &rkc);
     }
 
-    int pc = compiler_code(c, op, OPCODE_MAX_A, rkb, rkc, left->line);
+    int pc = compiler_code_abc(c, op, OPCODE_MAX_A, rkb, rkc, left->line);
     left->type = EXPR_RELOCABLE;
     left->pc   = pc;
 
@@ -350,7 +350,7 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
     switch (var->type) {
     case EXPR_GLOBAL: {
         u8 reg = compiler_expr_any_reg(c, expr);
-        compiler_code(c, OP_SET_GLOBAL, reg, var->index, var->line);
+        compiler_code_abx(c, OP_SET_GLOBAL, reg, var->index, var->line);
         break;
     }
     default:
@@ -363,7 +363,7 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
 void
 compiler_code_return(Compiler *c, u8 reg, u16 count, bool is_vararg, int line)
 {
-    compiler_code(c, OP_RETURN, reg, u16(reg) + count, u16(is_vararg), line);
+    compiler_code_abc(c, OP_RETURN, reg, u16(reg) + count, u16(is_vararg), line);
 }
 
 void

@@ -12,9 +12,46 @@ typedef LULU_NUMBER_TYPE lulu_Number;
 
 #ifdef __cplusplus
 #define LULU_API    extern "C"
-#else
+#else   /* ^^^ __cplusplus, vvv !__cplusplus */
 #define LULU_API    extern
 #endif /* __cplusplus */
+
+
+/**
+ * @brief LULU_PRIVATE
+ *  -   This controls the visibility of symbols when building as a
+ *      shared library.
+ *  -   This is also useful to prevent exporting of constructors/member
+ *      methods, e.g. `struct VM { LULU_PRIVATE void push();};`
+ *  -   You cannot use `LULU_FUNC` in those cases which is why it is useful to
+ *      have this as a separate macro.
+ *
+ * @brief LULU_FUNC
+ * -    This controls the visibility of externally visible functions, if
+ *      possible.
+ * -    That is, you can define a function like so:
+ *      `LULU_FUNC extern void f();`
+ *  -   `f` will not be exported but it is still visible to all functions within
+ *      the library that include `f`'s header.
+ *
+ * @brief LULU_DATA
+ *  -   Similar to `LULU_FUNC`, but intended for data.
+ *  -   e.g. `LULU_DATA const char *const tokens[TOKEN_COUNT];`
+ */
+#if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) \
+    && defined(__ELF__)
+
+#define LULU_PRIVATE    __attribute__ ((__visibility__ ("hidden")))
+#define LULU_FUNC       LULU_PRIVATE extern
+#define LULU_DATA       LULU_FUNC
+
+#else /* ^^^ __GNUC__ && __ELF__, vvv otherwise */
+
+#define LULU_PRIVATE
+#define LULU_FUNC       extern
+#define LULU_DATA       extern
+
+#endif /* __GNUC__ */
 
 typedef void *
 (*lulu_Allocator)(void *context, void *ptr, size_t old_size, size_t new_size);
@@ -64,7 +101,7 @@ typedef enum {
 
 typedef struct {
     const char    *name;
-    lulu_CFunction function; 
+    lulu_CFunction function;
 } lulu_Register;
 
 LULU_API lulu_VM *
@@ -196,7 +233,7 @@ lulu_push_string(lulu_VM *vm, const char *s);
 
 LULU_API const char *
 #if defined(__GNUC__) || defined(__clang__)
-__attribute__((format (printf, 2, 3)))
+__attribute__ ((format (printf, 2, 3)))
 #endif
 lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
 

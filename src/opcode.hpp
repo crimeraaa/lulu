@@ -131,43 +131,46 @@ OPINFO_MASK1_C      = BITMASK1(OPINFO_SIZE_C),
 OPINFO_MASK1_A      = BITMASK1(OPINFO_SIZE_A),
 OPINFO_MASK1_FMT    = BITMASK1(OPINFO_SIZE_FMT);
 
-extern const char *const opcode_names[OPCODE_COUNT];
-extern const OpInfo opcode_info[OPCODE_COUNT];
+LULU_DATA const char *const
+opcode_names[OPCODE_COUNT];
 
-inline OpFormat
+LULU_DATA const OpInfo
+opcode_info[OPCODE_COUNT];
+
+LULU_FUNC inline OpFormat
 opinfo_fmt(OpCode op)
 {
     return OpFormat((opcode_info[op] >> OPINFO_OFFSET_FMT) & OPINFO_MASK1_FMT);
 }
 
-inline OpArg
+LULU_FUNC inline OpArg
 opinfo_a(OpCode op)
 {
     return OpArg((opcode_info[op] >> OPINFO_OFFSET_A) & OPINFO_MASK1_A);
 }
 
-inline OpArg
+LULU_FUNC inline OpArg
 opinfo_b(OpCode op)
 {
     return OpArg((opcode_info[op] >> OPINFO_OFFSET_B) & OPINFO_MASK1_B);
 }
 
-inline OpArg
+LULU_FUNC inline OpArg
 opinfo_c(OpCode op)
 {
     return OpArg((opcode_info[op] >> OPINFO_OFFSET_C) & OPINFO_MASK1_C);
 }
 
-inline Instruction
+LULU_FUNC inline Instruction
 instruction_abc(OpCode op, u8 a, u16 b, u16 c)
 {
-    return {(u32( c) << OPCODE_OFFSET_C)
-        |  (u32( b) << OPCODE_OFFSET_B)
-        |  (u32( a) << OPCODE_OFFSET_A)
+    return {(u32(c) << OPCODE_OFFSET_C)
+        |  (u32(b) << OPCODE_OFFSET_B)
+        |  (u32(a) << OPCODE_OFFSET_A)
         |  (u32(op) << OPCODE_OFFSET_OP)};
 }
 
-inline Instruction
+LULU_FUNC inline Instruction
 instruction_abx(OpCode op, u8 a, u32 bx)
 {
     return instruction_abc(op, a,
@@ -175,91 +178,91 @@ instruction_abx(OpCode op, u8 a, u32 bx)
         u16(bx & OPCODE_MAX_C));  // mask out 'b' bits
 }
 
-inline bool
+LULU_FUNC inline bool
 reg_is_rk(u16 reg)
 {
     return reg & OPCODE_BIT_RK;
 }
 
-inline u16
+LULU_FUNC inline u16
 reg_to_rk(u32 index)
 {
     lulu_assertf(index <= OPCODE_MAX_RK, "Index %u too wide for RK", index);
     return u16(index) | OPCODE_BIT_RK;
 }
 
-inline u16
+LULU_FUNC inline u16
 reg_get_k(u16 reg)
 {
     lulu_assertf(reg_is_rk(reg), "Non-K register %u", reg);
     return reg & OPCODE_MAX_RK;
 }
 
-inline u16
+LULU_FUNC inline u16
 getarg_c(Instruction i)
 {
     return u16((i.value >> OPCODE_OFFSET_C) & OPCODE_MAX_C);
 }
 
-inline u16
+LULU_FUNC inline u16
 getarg_b(Instruction i)
 {
     return u16((i.value >> OPCODE_OFFSET_B) & OPCODE_MAX_B);
 }
 
-inline u8
+LULU_FUNC inline u8
 getarg_a(Instruction i)
 {
     return u8((i.value >> OPCODE_OFFSET_A) & OPCODE_MAX_A);
 }
 
-inline OpCode
+LULU_FUNC inline OpCode
 getarg_op(Instruction i)
 {
     return OpCode((i.value >> OPCODE_OFFSET_OP) & OPCODE_MAX_OP);
 }
 
-inline u32
+LULU_FUNC inline u32
 getarg_bx(Instruction i)
 {
     return u32((i.value >> OPCODE_OFFSET_BX) & OPCODE_MAX_BX);
 }
 
-inline i32
+LULU_FUNC inline i32
 getarg_sbx(Instruction i)
 {
     return i32(getarg_bx(i)) - OPCODE_MAX_SBX;
 }
 
-inline void
+LULU_FUNC inline void
 setarg_c(Instruction *ip, u16 c)
 {
     ip->value &= OPCODE_MASK0_C;
     ip->value |= u32(c) << OPCODE_OFFSET_C;
 }
 
-inline void
+LULU_FUNC inline void
 setarg_b(Instruction *ip, u16 b)
 {
     ip->value &= OPCODE_MASK0_B;
     ip->value |= u32(b) << OPCODE_OFFSET_B;
 }
 
-inline void
+LULU_FUNC inline void
 setarg_a(Instruction *ip, u8 a)
 {
     ip->value &= OPCODE_MASK0_A;
     ip->value |= u32(a) << OPCODE_OFFSET_A;
 }
 
-inline void
+LULU_FUNC inline void
 setarg_bx(Instruction *ip, u32 index)
 {
     ip->value &= OPCODE_MASK0_BX;
     ip->value |= u32(index) << OPCODE_OFFSET_BX;
 }
 
-inline void
+LULU_FUNC inline void
 setarg_sbx(Instruction *ip, i32 jump)
 {
     setarg_bx(ip, u32(jump + OPCODE_MAX_SBX));

@@ -24,8 +24,8 @@ union Closure {
     Closure_C   c;
 };
 
-Closure *
+LULU_FUNC Closure *
 closure_new(lulu_VM *vm, lulu_CFunction cf);
 
-Closure *
+LULU_FUNC Closure *
 closure_new(lulu_VM *vm, Chunk *c);

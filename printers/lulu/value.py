@@ -3,7 +3,7 @@ from .. import base
 
 class OStringPrinter:
     __value: gdb.Value
-    
+
     def __init__(self, v: gdb.Value):
         if v.type.code != gdb.TYPE_CODE_PTR:
             v = v.address
@@ -14,7 +14,7 @@ class OStringPrinter:
         s = self.__value["data"].cast(base.CONST_CHAR_POINTER)
         n = int(self.__value["len"])
         return s.string(length = n)
-    
+
     def display_hint(self) -> str:
         return "string"
 
@@ -47,7 +47,7 @@ class ValuePrinter:
             case _:
                 pass
 
-        
+
         t = str(self.__type).removeprefix("VALUE_").lower()
         p = self.__data["object"].cast(base.VOID_POINTER)
         return f"{t}: {p}"

@@ -109,7 +109,7 @@ resolve_variable(Parser *p, Compiler *c, const Token *t)
     Expr e;
     e.type  = EXPR_GLOBAL;
     e.line  = t->line;
-    e.index = compiler_add_constant(c, ostring_new(p->vm, t->lexeme));
+    e.index = compiler_add_ostring(c, ostring_new(p->vm, t->lexeme));
     return e;
 }
 
@@ -139,7 +139,7 @@ prefix_expr(Parser *p, Compiler *c)
         Expr e;
         e.type  = EXPR_CONSTANT;
         e.line  = t.line;
-        e.index = compiler_add_constant(c, t.ostring);
+        e.index = compiler_add_ostring(c, t.ostring);
         return e;
     }
     case TOKEN_IDENTIFIER: {
@@ -196,7 +196,7 @@ function_call(Parser *p, Compiler *c, Expr *e)
         args.count = u16(c->free_reg - (base + 1));
     }
     e->type = EXPR_CALL;
-    e->pc   = compiler_code(c, OP_CALL, u8(base), args.count, 0, e->line);
+    e->pc   = compiler_code_abc(c, OP_CALL, u8(base), args.count, 0, e->line);
 
     // By default, remove the arguments but not the function's register.
     // This allows use to 'reserve' the register.
@@ -249,7 +249,8 @@ right_associative(OpCode op, Precedence prec)
  * @note 2025-06-16:
  *  -   `OP_RETURN` is our 'invalid' binary opcode.
  */
-Binary get_binary(Token_Type type)
+static Binary
+get_binary(Token_Type type)
 {
     switch (type) {
     case TOKEN_PLUS:       return left_associative(OP_ADD,  PREC_TERMINAL);
@@ -463,7 +464,7 @@ parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
         declaration(&p, &c);
     }
     consume(&p, TOKEN_EOF);
-    compiler_code(&c, OP_RETURN, 0, 0, 0, p.lexer.line);
+    compiler_code_abc(&c, OP_RETURN, 0, 0, 0, p.lexer.line);
     debug_disassemble(c.chunk);
 
     vm_pop(vm);

@@ -96,7 +96,7 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         tag = self.__resolve_typename(v)
         if not tag:
             raise ValueError(f"{v.type} could not be resolved to a string")
-        
+
         # TODO(2025-06-27): Differentiate from dependent typenames, e.g.
         # Slice<Value>::pointer
         if tag.startswith("Slice<") and tag.endswith(">"):

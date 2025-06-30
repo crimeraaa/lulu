@@ -89,7 +89,7 @@ debug_disassemble_at(const Chunk *c, int pc, int pad)
     Instruction ip = c->code[pc];
     OpCode op = getarg_op(ip);
     args.a = getarg_a(ip);
-    printf("[%*i] ", pad, pc);
+    printf("[%0*i] ", pad, pc);
 
     int line = chunk_get_line(c, pc);
     // Have a previous line and it's the same as ours?

@@ -8,6 +8,7 @@ struct Array {
 
     T data[N];
 
+    LULU_PRIVATE
     T &
     operator[](size_type i)
     {
@@ -15,6 +16,7 @@ struct Array {
         return this->data[i];
     }
 
+    LULU_PRIVATE
     const T &
     operator[](size_type i) const
     {
@@ -24,6 +26,7 @@ struct Array {
 };
 
 template<class T, size_t N>
+LULU_FUNC
 inline typename Array<T, N>::size_type
 len(const Array<T, N> &a)
 {
@@ -32,6 +35,7 @@ len(const Array<T, N> &a)
 }
 
 template<class T, size_t N>
+LULU_FUNC
 inline T *
 raw_data(Array<T, N> &a)
 {
@@ -44,6 +48,7 @@ struct Small_Array : public Array<T, N> {
 };
 
 template<class T, size_t N>
+LULU_FUNC
 constexpr typename Array<T, N>::size_type
 len(const Small_Array<T, N> &sa)
 {
@@ -51,6 +56,7 @@ len(const Small_Array<T, N> &sa)
 }
 
 template<class T, size_t N>
+LULU_FUNC
 constexpr typename Array<T, N>::size_type
 cap(const Small_Array<T, N> &sa)
 {
@@ -59,6 +65,7 @@ cap(const Small_Array<T, N> &sa)
 }
 
 template<class T, size_t N>
+LULU_FUNC
 inline T &
 small_array_push(Small_Array<T, N> &sa)
 {
@@ -66,6 +73,7 @@ small_array_push(Small_Array<T, N> &sa)
 }
 
 template<class T, size_t N>
+LULU_FUNC
 inline void
 small_array_pop(Small_Array<T, N> &sa)
 {

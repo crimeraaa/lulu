@@ -18,7 +18,7 @@ class ExprPrinter:
     def __init__(self, val: gdb.Value):
         self.__value = val
         self.__type  = str(val["type"]).removeprefix("EXPR_").lower()
-    
+
     def to_string(self) -> str:
         key = self.__INFO[self.__type] if self.__type in self.__INFO else None
         if key:

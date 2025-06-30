@@ -58,10 +58,11 @@ struct Lexer {
 
 static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
 
-extern const LString token_strings[TOKEN_COUNT];
+LULU_DATA const LString
+token_strings[TOKEN_COUNT];
 
-Lexer
+LULU_FUNC Lexer
 lexer_make(lulu_VM *vm, LString source, LString script, Builder *b);
 
-Token
+LULU_FUNC Token
 lexer_lex(Lexer *x);

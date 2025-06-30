@@ -2,11 +2,11 @@
 
 #include "chunk.hpp"
 
-void
+LULU_FUNC void
 debug_disassemble(const Chunk *c);
 
-int
+LULU_FUNC int
 debug_get_pad(const Chunk *c);
 
-void
+LULU_FUNC void
 debug_disassemble_at(const Chunk *c, int pc, int pad);

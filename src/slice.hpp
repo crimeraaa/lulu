@@ -13,6 +13,7 @@ struct Slice {
 
     // Bounds-checked, mutable element access.
     template<class N>
+    LULU_PRIVATE
     T &
     operator[](N i)
     {
@@ -23,6 +24,7 @@ struct Slice {
 
     // Bounds-checked, non-mutable element access.
     template<class N>
+    LULU_PRIVATE
     const T &
     operator[](N i) const
     {
@@ -31,42 +33,49 @@ struct Slice {
         return this->data[ii];
     }
 
+    LULU_PRIVATE
     constexpr
     Slice()
         : data{nullptr}
         , len{0}
     {}
 
+    LULU_PRIVATE
     constexpr
     Slice(T *data, size_type len)
         : data{data}
         , len{len}
     {}
 
+    LULU_PRIVATE
     constexpr
     Slice(T *start, T *stop)
         : data{start}
         , len{cast_size(stop - start)}
     {}
 
+    LULU_PRIVATE
     constexpr
     Slice(T *p, size_type start, size_type stop)
         : data{p + start}
         , len{stop - start}
     {}
 
+    LULU_PRIVATE
     Slice(Slice<T> s, size_type start, size_type stop)
         : data{&s[start]}
         , len{stop - start}
     {}
 
     template<size_t N>
+    LULU_PRIVATE
     Slice(Array<T, N> &s, size_type start, size_type stop)
         : data{&s[start]}
         , len{stop - start}
     {}
 
     template<size_t N>
+    LULU_PRIVATE
     Slice(Array<T, N> &s)
         : data{&s[0]}
         , len{N}
@@ -74,7 +83,7 @@ struct Slice {
 };
 
 template<class T>
-inline bool
+LULU_FUNC inline bool
 slice_eq(Slice<T> a, Slice<T> b)
 {
     if (len(a) != len(b)) {
@@ -84,21 +93,21 @@ slice_eq(Slice<T> a, Slice<T> b)
 }
 
 template<class T>
-constexpr typename Slice<T>::size_type
+LULU_FUNC constexpr typename Slice<T>::size_type
 len(Slice<T> s)
 {
     return s.len;
 }
 
 template<class T>
-constexpr T *
+LULU_FUNC constexpr T *
 raw_data(Slice<T> s)
 {
     return s.data;
 }
 
 template<class T>
-inline void
+LULU_FUNC inline void
 copy(Slice<T> dst, Slice<T> src)
 {
     // Clamp size to read and copy
@@ -108,7 +117,7 @@ copy(Slice<T> dst, Slice<T> src)
 
 // Because C++ templates aren't convoluted enough
 template<class T>
-inline void
+LULU_FUNC inline void
 copy(Slice<T> dst, Slice<const T> src)
 {
     // Clamp size to read and copy
@@ -118,7 +127,7 @@ copy(Slice<T> dst, Slice<const T> src)
 
 // Mutable forward iterator initial value.
 template<class T>
-constexpr T *
+LULU_FUNC constexpr T *
 begin(Slice<T> s)
 {
     return s.data;
@@ -126,7 +135,7 @@ begin(Slice<T> s)
 
 // Mutable forward iterator final value.
 template<class T>
-constexpr T *
+LULU_FUNC constexpr T *
 end(Slice<T> s)
 {
     return s.data + s.len;

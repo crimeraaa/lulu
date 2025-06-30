@@ -43,7 +43,7 @@ enum Value_Type {
 #ifdef LULU_DEBUG
 
 [[gnu::format(printf, 5, 6)]]
-void
+LULU_FUNC void
 lulu_assert_(const char *file, int line, bool cond, const char *expr,
     const char *fmt, ...);
 
@@ -78,7 +78,7 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr,
 // Do not implement as a function-like macro `lulu_assert(false)` because
 // `lulu_assert()` itself may be empty.
 [[noreturn]]
-inline void
+LULU_FUNC inline void
 lulu_unreachable()
 {}
 

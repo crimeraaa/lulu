@@ -47,12 +47,12 @@ struct Expr {
     };
 };
 
-Parser
+LULU_FUNC Parser
 parser_make(lulu_VM *vm, LString source, LString script, Builder *b);
 
 [[noreturn]]
-void
+LULU_FUNC void
 parser_error(Parser *p, const char *msg);
 
-Chunk *
+LULU_FUNC Chunk *
 parser_program(lulu_VM *vm, LString source, LString script, Builder *b);

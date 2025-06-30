@@ -12,10 +12,12 @@ struct LString : public Slice<const char> {
     using Slice<const char>::Slice;
 
     // Construct from a nul-terminated C string.
+    LULU_PRIVATE
     LString(const char *s) : Slice(s, strlen(s))
     {}
 
     // Construct from a mutable character sequence.
+    LULU_PRIVATE
     LString(Slice<char> s) : Slice(s.data, s.len)
     {}
 };
@@ -37,76 +39,76 @@ struct Intern {
     size_t          count; // Total number of strings in active use.
 };
 
-inline bool
+LULU_FUNC inline bool
 operator==(LString a, LString b)
 {
     return slice_eq(a, b);
 }
 
-inline LString
+LULU_FUNC inline LString
 operator ""_s(const char *s, size_t n)
 {
     return LString(s, n);
 }
 
-void
+LULU_FUNC void
 builder_init(Builder *b);
 
-size_t
+LULU_FUNC size_t
 builder_len(const Builder *b);
 
-size_t
+LULU_FUNC size_t
 builder_cap(const Builder *b);
 
-void
+LULU_FUNC void
 builder_reset(Builder *b);
 
-void
+LULU_FUNC void
 builder_destroy(lulu_VM *vm, Builder *b);
 
-void
+LULU_FUNC void
 builder_write_string(lulu_VM *vm, Builder *b, LString s);
 
-void
+LULU_FUNC void
 builder_write_char(lulu_VM *vm, Builder *b, char ch);
 
-void
+LULU_FUNC void
 builder_write_int(lulu_VM *vm, Builder *b, int i);
 
-void
+LULU_FUNC void
 builder_write_number(lulu_VM *vm, Builder *b, Number n);
 
-void
+LULU_FUNC void
 builder_write_pointer(lulu_VM *vm, Builder *b, void *p);
 
-LString
+LULU_FUNC LString
 builder_to_string(const Builder *b);
 
-const char *
+LULU_FUNC const char *
 builder_to_cstring(const Builder *b);
 
-void
+LULU_FUNC void
 intern_init(Intern *t);
 
-void
+LULU_FUNC void
 intern_resize(lulu_VM *vm, Intern *i, size_t new_cap);
 
-void
+LULU_FUNC void
 intern_destroy(lulu_VM *vm, Intern *t);
 
-u32
+LULU_FUNC u32
 hash_string(LString text);
 
-OString *
+LULU_FUNC OString *
 ostring_new(lulu_VM *vm, LString text);
 
-inline LString
+LULU_FUNC inline LString
 ostring_to_string(OString *s)
 {
     return LString(s->data, s->len);
 }
 
-inline const char *
+LULU_FUNC inline const char *
 ostring_to_cstring(OString *s)
 {
     lulu_assert(s->data[s->len] == '\0');

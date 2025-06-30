@@ -9,7 +9,7 @@ struct Dynamic : public Slice<T> {
 };
 
 template<class T>
-inline void
+LULU_FUNC inline void
 dynamic_init(Dynamic<T> *d)
 {
     d->data = nullptr;
@@ -23,6 +23,7 @@ dynamic_init(Dynamic<T> *d)
  *  - `d.len` is left untouched thus you still cannot index it.
  */
 template<class T>
+LULU_FUNC
 inline void
 dynamic_reserve(lulu_VM *vm, Dynamic<T> *d, typename Dynamic<T>::size_type new_cap)
 {
@@ -41,6 +42,7 @@ dynamic_reserve(lulu_VM *vm, Dynamic<T> *d, typename Dynamic<T>::size_type new_c
  *      index this range.
  */
 template<class T>
+LULU_FUNC
 inline void
 dynamic_resize(lulu_VM *vm, Dynamic<T> *d, typename Slice<T>::size_type new_len)
 {
@@ -54,6 +56,7 @@ dynamic_resize(lulu_VM *vm, Dynamic<T> *d, typename Slice<T>::size_type new_len)
 }
 
 template<class T>
+LULU_FUNC
 inline void
 dynamic_push(lulu_VM *vm, Dynamic<T> *d, T value)
 {
@@ -62,6 +65,7 @@ dynamic_push(lulu_VM *vm, Dynamic<T> *d, T value)
 }
 
 template<class T>
+LULU_FUNC
 inline T
 dynamic_pop(Dynamic<T> *d)
 {
@@ -71,6 +75,7 @@ dynamic_pop(Dynamic<T> *d)
 }
 
 template<class T>
+LULU_FUNC
 inline void
 dynamic_delete(lulu_VM *vm, Dynamic<T> *d)
 {
@@ -78,6 +83,7 @@ dynamic_delete(lulu_VM *vm, Dynamic<T> *d)
 }
 
 template<class T>
+LULU_FUNC
 inline void
 dynamic_reset(Dynamic<T> *d)
 {
@@ -85,6 +91,7 @@ dynamic_reset(Dynamic<T> *d)
 }
 
 template<class T>
+LULU_FUNC
 inline typename Dynamic<T>::size_type
 cap(const Dynamic<T> &d)
 {

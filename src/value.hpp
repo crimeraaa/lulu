@@ -17,48 +17,56 @@ struct Value {
         void    *pointer; // light userdata.
     };
 
+    LULU_PRIVATE
     constexpr
     Value(Value_Type t = VALUE_NIL)
         : type{t}
         , number{0}
     {}
 
+    LULU_PRIVATE
     constexpr explicit
     Value(bool b)
         : type{VALUE_BOOLEAN}
         , boolean{b}
     {}
 
+    LULU_PRIVATE
     constexpr explicit
     Value(Number n)
         : type{VALUE_NUMBER}
         , number{n}
     {}
 
+    LULU_PRIVATE
     constexpr explicit
     Value(void *p)
         : type{VALUE_USERDATA}
         , pointer{p}
     {}
 
+    LULU_PRIVATE
     explicit
     Value(OString *o)
         : type{VALUE_STRING}
         , object{cast(Object *)o}
     {}
 
+    LULU_PRIVATE
     explicit
     Value(Table *t)
         : type{VALUE_TABLE}
         , object{cast(Object *)t}
     {}
 
+    LULU_PRIVATE
     explicit
     Value(Closure *f)
         : type{VALUE_FUNCTION}
         , object{cast(Object *)f}
     {}
 
+    LULU_PRIVATE
     explicit
     Value(Chunk *c)
         : type{VALUE_CHUNK}
@@ -67,10 +75,10 @@ struct Value {
 };
 
 // `value_eq()`.
-bool
+LULU_FUNC bool
 operator==(Value a, Value b);
 
-inline const char *
+LULU_FUNC inline const char *
 value_type_name(Value_Type t)
 {
     switch (t) {
@@ -88,7 +96,7 @@ value_type_name(Value_Type t)
     lulu_unreachable();
 }
 
-inline const char *
+LULU_FUNC inline const char *
 value_type_name(Value v)
 {
     return value_type_name(v.type);
@@ -96,12 +104,7 @@ value_type_name(Value v)
 
 //=== VALUE TYPE INFORMATION =============================================== {{{
 
-constexpr Value_Type
-value_type(Value v)
-{
-    return v.type;
-}
-
+#define value_type(v)           ((v).type)
 #define value_is_none(v)        (value_type(v) == VALUE_NONE)
 #define value_is_nil(v)         (value_type(v) == VALUE_NIL)
 #define value_is_boolean(v)     (value_type(v) == VALUE_BOOLEAN)
@@ -116,21 +119,21 @@ value_type(Value v)
 
 //=== VALUE DATA PAYLOADS ================================================== {{{
 
-#define value_to_boolean(v)         ((v).boolean)
-#define value_to_number(v)          ((v).number)
-#define value_to_userdata(v)  ((v).pointer)
-#define value_to_object(v)          ((v).object)
-#define value_to_ostring(v)         (&value_to_object(v)->ostring)
-#define value_to_table(v)           (&value_to_object(v)->table)
-#define value_to_function(v)        (&value_to_object(v)->function)
+#define value_to_boolean(v)     ((v).boolean)
+#define value_to_number(v)      ((v).number)
+#define value_to_userdata(v)    ((v).pointer)
+#define value_to_object(v)      ((v).object)
+#define value_to_ostring(v)     (&value_to_object(v)->ostring)
+#define value_to_table(v)       (&value_to_object(v)->table)
+#define value_to_function(v)    (&value_to_object(v)->function)
 
 //=== }}} ======================================================================
 
-inline bool
+LULU_FUNC inline bool
 value_is_falsy(Value v)
 {
     return value_is_nil(v) || (value_is_boolean(v) && !value_to_boolean(v));
 }
 
-void
+LULU_FUNC void
 value_print(Value v);

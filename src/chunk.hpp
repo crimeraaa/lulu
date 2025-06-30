@@ -24,14 +24,14 @@ struct Chunk {
 static constexpr u16 VARARG = OPCODE_MAX_B;
 static constexpr int NO_LINE = -1;
 
-Chunk *
+LULU_FUNC Chunk *
 chunk_new(lulu_VM *vm, LString source, Table *indexes);
 
-int
+LULU_FUNC int
 chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line);
 
-int
+LULU_FUNC int
 chunk_get_line(const Chunk *c, int pc);
 
-u32
+LULU_FUNC u32
 chunk_add_constant(lulu_VM *vm, Chunk *c, Value v);

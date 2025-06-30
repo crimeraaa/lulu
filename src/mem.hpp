@@ -7,13 +7,14 @@
  * @brief
  *  -   Rounds `n` to the next power of 2 if it is not one already.
  */
-size_t
+LULU_FUNC size_t
 mem_next_size(size_t n);
 
-void *
+LULU_FUNC void *
 mem_rawrealloc(lulu_VM *vm, void *ptr, size_t old_size, size_t new_size);
 
 template<class T>
+LULU_FUNC
 inline T *
 mem_new(lulu_VM *vm, size_t extra = 0)
 {
@@ -21,6 +22,7 @@ mem_new(lulu_VM *vm, size_t extra = 0)
 }
 
 template<class T>
+LULU_FUNC
 inline void
 mem_free(lulu_VM *vm, T *ptr, size_t extra = 0)
 {
@@ -28,6 +30,7 @@ mem_free(lulu_VM *vm, T *ptr, size_t extra = 0)
 }
 
 template<class T>
+LULU_FUNC
 inline T *
 mem_resize(lulu_VM *vm, T *ptr, size_t prev, size_t next)
 {
@@ -35,6 +38,7 @@ mem_resize(lulu_VM *vm, T *ptr, size_t prev, size_t next)
 }
 
 template<class T>
+LULU_FUNC
 inline T *
 mem_make(lulu_VM *vm, size_t count)
 {
@@ -42,6 +46,7 @@ mem_make(lulu_VM *vm, size_t count)
 }
 
 template<class T>
+LULU_FUNC
 inline void
 mem_delete(lulu_VM *vm, T *ptr, size_t n)
 {
@@ -49,6 +54,7 @@ mem_delete(lulu_VM *vm, T *ptr, size_t n)
 }
 
 template<class T>
+LULU_FUNC
 inline Slice<T>
 slice_make(lulu_VM *vm, typename Slice<T>::size_type n)
 {
@@ -56,6 +62,7 @@ slice_make(lulu_VM *vm, typename Slice<T>::size_type n)
 }
 
 template<class T>
+LULU_FUNC
 inline void
 slice_delete(lulu_VM *vm, Slice<T> s)
 {
@@ -63,6 +70,7 @@ slice_delete(lulu_VM *vm, Slice<T> s)
 }
 
 template<class T>
+LULU_FUNC
 inline typename Slice<T>::size_type
 ptr_index(Slice<T> s, T *p)
 {
@@ -70,6 +78,7 @@ ptr_index(Slice<T> s, T *p)
 }
 
 template<class T, size_t N>
+LULU_FUNC
 inline typename Slice<T>::size_type
 ptr_index(Array<T, N> &a, T *p)
 {
@@ -77,6 +86,7 @@ ptr_index(Array<T, N> &a, T *p)
 }
 
 template<class T>
+LULU_FUNC
 inline size_t
 ptr_index(T *data, T *ptr)
 {
