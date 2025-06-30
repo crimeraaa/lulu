@@ -1,11 +1,4 @@
-#include <stdio.h>
-
-#include "lulu.h"
-
-#include "value.hpp"
-#include "object.hpp"
 #include "vm.hpp"
-#include "table.hpp"
 
 // Do not make `constexpr`; must have an address in order to be a reference.
 static Value
@@ -26,8 +19,8 @@ lulu_VM *
 lulu_open(lulu_Allocator allocator, void *allocator_data)
 {
     static lulu_VM vm;
-    vm_init(&vm, allocator, allocator_data);
-    return &vm;
+    bool ok = vm_init(&vm, allocator, allocator_data);
+    return (ok) ? &vm : nullptr;
 }
 
 void
@@ -39,7 +32,7 @@ lulu_close(lulu_VM *vm)
 lulu_Error
 lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size)
 {
-    lulu_Error e = vm_load(vm, String(source), String(script, script_size));
+    lulu_Error e = vm_load(vm, LString(source), LString(script, script_size));
     return e;
 }
 
@@ -51,7 +44,7 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets)
     // Account for any changes in the stack made by unprotected main function
     // or C functions.
     Call_Frame *caller = vm->caller;
-    if (caller != nullptr && closure_is_c(caller->function)) {
+    if (caller != nullptr) {
         // Ensure both slices have the same underlying data.
         lulu_assert(raw_data(vm->window) == raw_data(caller->window));
         caller->window = vm->window;
@@ -117,9 +110,9 @@ LULU_API void
 lulu_register(lulu_VM *vm, const lulu_Register *library, size_t n)
 {
     for (size_t i = 0; i < n; i++) {
-        OString *s = ostring_new(vm, String(library[i].name));
+        OString *s = ostring_new(vm, LString(library[i].name));
         Closure *f = closure_new(vm, library[i].function);
-        table_set(vm, vm->globals, Value(s), Value(f));
+        table_set(vm, &vm->globals, Value(s), Value(f));
     }
 }
 
@@ -203,7 +196,7 @@ lulu_to_number(lulu_VM *vm, int i)
 }
 
 const char *
-lulu_to_string(lulu_VM *vm, int i, size_t *n)
+lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 {
     Value v = value_at(vm, i);
     if (value_is_string(v)) {
@@ -282,16 +275,16 @@ lulu_push_userdata(lulu_VM *vm, void *p)
 }
 
 void
-lulu_push_string(lulu_VM *vm, const char *s, size_t n)
+lulu_push_lstring(lulu_VM *vm, const char *s, size_t n)
 {
-    OString *o = ostring_new(vm, String(s, n));
+    OString *o = ostring_new(vm, LString(s, n));
     vm_push(vm, Value(o));
 }
 
 void
-lulu_push_cstring(lulu_VM *vm, const char *s)
+lulu_push_string(lulu_VM *vm, const char *s)
 {
-    return lulu_push_string(vm, s, strlen(s));
+    return lulu_push_lstring(vm, s, strlen(s));
 }
 
 const char *
@@ -330,11 +323,11 @@ lulu_push_value(lulu_VM *vm, int i)
 int
 lulu_get_global(lulu_VM *vm, const char *s)
 {
-    OString *o = ostring_new(vm, String(s));
+    OString *o = ostring_new(vm, LString(s));
     Value k = Value(o);
 
-    bool  ok;
-    Value v = table_get(vm->globals, k, &ok);
+    Value v;
+    bool  ok = table_get(&vm->globals, k, &v);
     vm_push(vm, v);
     return cast_int(ok);
 }
@@ -342,9 +335,9 @@ lulu_get_global(lulu_VM *vm, const char *s)
 void
 lulu_set_global(lulu_VM *vm, const char *s)
 {
-    OString *o = ostring_new(vm, String(s));
+    OString *o = ostring_new(vm, LString(s));
     Value    v = vm_pop(vm);
-    table_set(vm, vm->globals, Value(o), v);
+    table_set(vm, &vm->globals, Value(o), v);
 }
 
 void

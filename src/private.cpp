@@ -26,10 +26,10 @@
  *      symbol name and the offset.
  */
 static void
-parse_strings(String stack_frame, Slice<char> out_symbol, Slice<char> out_offset)
+parse_strings(LString stack_frame, Slice<char> out_symbol, Slice<char> out_offset)
 {
-    String symbol;
-    String offset;
+    LString symbol;
+    LString offset;
 
     for (const auto &ch : stack_frame) {
         switch (ch) {
@@ -62,7 +62,7 @@ print_dlerror()
 }
 
 static void *
-calculate_offset(String stack_frame)
+calculate_offset(LString stack_frame)
 {
     char _buf1[75] = {0};
     char _buf2[25] = {0};
@@ -165,7 +165,7 @@ print_backtrace()
 #if __x86_64__
         // Calculate the offset on x86_64, print the file and line number with
         // addr2line.
-        void *offset_pointer = calculate_offset(String(s));
+        void *offset_pointer = calculate_offset(LString(s));
         if (offset_pointer == nullptr) {
             write(STDERR_FILENO, errmsg, count_of(errmsg));
         } else {

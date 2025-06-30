@@ -6,7 +6,7 @@
 
 
 Lexer
-lexer_make(lulu_VM *vm, String source, String script, Builder &b)
+lexer_make(lulu_VM *vm, LString source, LString script, Builder *b)
 {
     const char *ptr = raw_data(script);
     Lexer l{vm, b, source, script, ptr, ptr, 1};
@@ -14,23 +14,23 @@ lexer_make(lulu_VM *vm, String source, String script, Builder &b)
 }
 
 static bool
-is_eof(const Lexer &x)
+is_eof(const Lexer *x)
 {
-    return x.cursor >= end(x.script);
+    return x->cursor >= end(x->script);
 }
 
 static char
-peek(const Lexer &x)
+peek(const Lexer *x)
 {
-    return *x.cursor;
+    return *x->cursor;
 }
 
 static char
-peek_next(const Lexer &x)
+peek_next(const Lexer *x)
 {
-    const char *p = x.cursor + 1;
+    const char *p = x->cursor + 1;
     // Safe to dereference?
-    if (p < end(x.script)) {
+    if (p < end(x->script)) {
         return *p;
     }
     return '\0';
@@ -42,25 +42,25 @@ peek_next(const Lexer &x)
  *      just before the increment.
  */
 static char
-advance(Lexer &x)
+advance(Lexer *x)
 {
-    return *x.cursor++;
+    return *x->cursor++;
 }
 
 static bool
-check(const Lexer &x, char ch)
+check(const Lexer *x, char ch)
 {
     return peek(x) == ch;
 }
 
 static bool
-check2(const Lexer &x, char first, char second)
+check2(const Lexer *x, char first, char second)
 {
     return check(x, first) || check(x, second);
 }
 
 static bool
-match(Lexer &x, char ch)
+match(Lexer *x, char ch)
 {
     bool found = check(x, ch);
     if (found) {
@@ -70,29 +70,29 @@ match(Lexer &x, char ch)
 }
 
 static bool
-match2(Lexer &x, char first, char second)
+match2(Lexer *x, char first, char second)
 {
     return match(x, first) || match(x, second);
 }
 
-static String
-get_lexeme(const Lexer &x)
+static LString
+get_lexeme(const Lexer *x)
 {
-    return String(x.start, x.cursor);
+    return LString(x->start, x->cursor);
 }
 
 [[noreturn]]
 static void
-error(const Lexer &x, const char *what)
+error(const Lexer *x, const char *what)
 {
-    String where = get_lexeme(x);
-    builder_write_string(x.vm, x.builder, where);
-    const char *s = builder_to_cstring(x.builder);
-    vm_syntax_error(x.vm, x.source, x.line, "%s at '%s'", what, s);
+    LString where = get_lexeme(x);
+    builder_write_string(x->vm, x->builder, where);
+    const char *s = builder_to_cstring(x->builder);
+    vm_syntax_error(x->vm, x->source, x->line, "%s at '%s'", what, s);
 }
 
 static void
-expect(Lexer &x, char ch, const char *msg)
+expect(Lexer *x, char ch, const char *msg)
 {
     if (!match(x, ch)) {
         error(x, msg);
@@ -105,7 +105,7 @@ expect(Lexer &x, char ch, const char *msg)
  *  1.) Assumes we just consumed a '[' character.
  */
 static int
-get_nesting(Lexer &x)
+get_nesting(Lexer *x)
 {
     int count = 0;
     while (!is_eof(x) && check(x, '=')) {
@@ -116,7 +116,7 @@ get_nesting(Lexer &x)
 }
 
 static const char *
-skip_multiline(Lexer &x, int nest_open)
+skip_multiline(Lexer *x, int nest_open)
 {
     for (;;) {
         if (is_eof(x)) {
@@ -124,10 +124,10 @@ skip_multiline(Lexer &x, int nest_open)
         }
 
         if (match(x, ']')) {
-            // `x.cursor` points to the character *after* the ']', so point to
+            // `x->cursor` points to the character *after* the ']', so point to
             // the ']' itself so that when we do pointer arithmetic we can get
             // the proper length.
-            const char *stop = x.cursor - 1;
+            const char *stop = x->cursor - 1;
             int nest_close = get_nesting(x);
             if (match(x, ']') && nest_open == nest_close) {
                 return stop;
@@ -137,7 +137,7 @@ skip_multiline(Lexer &x, int nest_open)
 
         char ch = advance(x);
         if (ch == '\n') {
-            x.line++;
+            x->line++;
         }
     }
 }
@@ -149,7 +149,7 @@ skip_multiline(Lexer &x, int nest_open)
  *  2.) We are now pointing at the comment contents, '[', or a newline.
  */
 static void
-skip_comment(Lexer &x)
+skip_comment(Lexer *x)
 {
     // Multiline comment.
     if (match(x, '[')) {
@@ -167,12 +167,12 @@ skip_comment(Lexer &x)
 }
 
 static void
-skip_whitespace(Lexer &x)
+skip_whitespace(Lexer *x)
 {
     for (;;) {
         char ch = peek(x);
         switch (ch) {
-        case '\n': x.line++; // fall-through
+        case '\n': x->line++; // fall-through
         case ' ':
         case '\r':
         case '\t':
@@ -194,7 +194,7 @@ skip_whitespace(Lexer &x)
 }
 
 static char
-get_escaped(Lexer &x, char ch)
+get_escaped(Lexer *x, char ch)
 {
     switch (ch) {
     case '0':   return '\0';
@@ -215,21 +215,21 @@ get_escaped(Lexer &x, char ch)
 }
 
 static Token
-make_token(const Lexer &x, Token_Type type, Number n = 0)
+make_token(const Lexer *x, Token_Type type, Number n = 0)
 {
-    Token t{get_lexeme(x), {n}, type, x.line};
+    Token t{get_lexeme(x), {n}, type, x->line};
     return t;
 }
 
 static Token
-make_token(const Lexer &x, Token_Type type, String lexeme)
+make_token(const Lexer *x, Token_Type type, LString lexeme)
 {
-    Token t{lexeme, {0.0}, type, x.line};
+    Token t{lexeme, {0.0}, type, x->line};
     return t;
 }
 
 static Token
-make_token(const Lexer &x, Token_Type type, OString *ostring)
+make_token(const Lexer *x, Token_Type type, OString *ostring)
 {
     Token t = make_token(x, type);
     t.ostring = ostring;
@@ -267,7 +267,7 @@ is_ident(char ch)
 }
 
 static void
-consume_sequence(Lexer &x, bool (*predicate)(char ch))
+consume_sequence(Lexer *x, bool (*predicate)(char ch))
 {
     while (!is_eof(x) && predicate(peek(x))) {
         advance(x);
@@ -275,7 +275,7 @@ consume_sequence(Lexer &x, bool (*predicate)(char ch))
 }
 
 static Token
-make_number(Lexer &x, char first)
+make_number(Lexer *x, char first)
 {
     if (first == '0') {
         // Don't consume the (potential) prefix yet.
@@ -298,7 +298,7 @@ make_number(Lexer &x, char first)
         // Consume everything, don't check if it's a bad number yet.
         if (base != 0) {
             consume_sequence(x, is_ident);
-            String s = get_lexeme(x);
+            LString s = get_lexeme(x);
             char  *last;
             // Skip the `0[bodx]` prefix because `strto*` doesn't support `0b`.
             unsigned long ul = strtoul(raw_data(s) + 2, &last, base);
@@ -324,7 +324,7 @@ make_number(Lexer &x, char first)
     }
     consume_sequence(x, is_ident);
 
-    String s = get_lexeme(x);
+    LString s = get_lexeme(x);
     char *last;
     Number d = strtod(raw_data(s), &last);
     if (last != end(s)) {
@@ -334,11 +334,11 @@ make_number(Lexer &x, char first)
 }
 
 static Token
-make_string(Lexer &x, char q)
+make_string(Lexer *x, char q)
 {
-    lulu_VM *vm = x.vm;
-    Builder &b  = vm_get_builder(vm);
-    String   s  = String(x.cursor, x.cursor);
+    lulu_VM *vm = x->vm;
+    Builder *b  = vm_get_builder(vm);
+    LString  s  = LString(x->cursor, x->cursor);
     while (!is_eof(x) && !check2(x, q, '\n')) {
         char ch = advance(x);
         if (ch == '\\') {
@@ -351,7 +351,7 @@ make_string(Lexer &x, char q)
             builder_write_char(vm, b, ch);
 
             // Point to after the escape character.
-            s = String(x.cursor, x.cursor);
+            s = LString(x->cursor, x->cursor);
         } else {
             s.len += 1;
         }
@@ -364,7 +364,7 @@ make_string(Lexer &x, char q)
 }
 
 static Token
-check_keyword(const Lexer &x, String s, Token_Type type)
+check_keyword(const Lexer *x, LString s, Token_Type type)
 {
     if (s == token_strings[type]) {
         return make_token(x, type, s);
@@ -373,9 +373,9 @@ check_keyword(const Lexer &x, String s, Token_Type type)
 }
 
 static Token
-make_keyword_or_identifier(const Lexer &x)
+make_keyword_or_identifier(const Lexer *x)
 {
-    String word = get_lexeme(x);
+    LString word = get_lexeme(x);
 
     // If we reached this point then `word` MUST be at least of length 1.
     switch (word[0]) {
@@ -445,10 +445,10 @@ make_keyword_or_identifier(const Lexer &x)
 }
 
 Token
-lexer_lex(Lexer &x)
+lexer_lex(Lexer *x)
 {
     skip_whitespace(x);
-    x.start = x.cursor;
+    x->start = x->cursor;
     if (is_eof(x)) {
         return make_token(x, TOKEN_EOF);
     }
@@ -472,9 +472,9 @@ lexer_lex(Lexer &x)
         if (check2(x, '[', '=')) {
             int nest_open = get_nesting(x);
             expect(x, '[', "Expected 2nd '[' to start off multiline string");
-            const char *start = x.cursor;
+            const char *start = x->cursor;
             const char *stop  = skip_multiline(x, nest_open);
-            return make_token(x, TOKEN_STRING, String(start, stop));
+            return make_token(x, TOKEN_STRING, LString(start, stop));
         }
         type = TOKEN_OPEN_BRACE;
         break;
@@ -521,7 +521,7 @@ lexer_lex(Lexer &x)
  * @note 2025-06-14:
  *  -   ORDER: Keep in sync with `Token_Type`!
  */
-const String token_strings[TOKEN_COUNT] = {
+const LString token_strings[TOKEN_COUNT] = {
     "<invalid>"_s,
 
     // Keywords

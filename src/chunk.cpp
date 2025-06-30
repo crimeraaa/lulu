@@ -6,12 +6,12 @@
 #include "vm.hpp"
 
 Chunk *
-chunk_new(lulu_VM *vm, String source, Table *indexes)
+chunk_new(lulu_VM *vm, LString source, Table *indexes)
 {
     Chunk *c = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
-    dynamic_init(c->constants);
-    dynamic_init(c->code);
-    dynamic_init(c->line_info);
+    dynamic_init(&c->constants);
+    dynamic_init(&c->code);
+    dynamic_init(&c->line_info);
     c->indexes    = indexes;
     c->source     = source;
     c->stack_used = 2; // R(0) and R(1) must always be valid.
@@ -19,45 +19,45 @@ chunk_new(lulu_VM *vm, String source, Table *indexes)
 }
 
 static void
-add_line(lulu_VM *vm, Chunk &c, int pc, int line)
+add_line(lulu_VM *vm, Chunk *c, int pc, int line)
 {
     // Have previous lines to go to?
-    if (len(c.line_info) > 0) {
-        Line_Info &last = c.line_info[len(c.line_info) - 1];
-        if (last.line == line) {
+    if (len(c->line_info) > 0) {
+        Line_Info *last = &c->line_info[len(c->line_info) - 1];
+        if (last->line == line) {
             // Make sure `pc` is in range and will update things correctly.
-            lulu_assert(last.start_pc <= pc && last.end_pc < pc);
-            last.end_pc = pc;
+            lulu_assert(last->start_pc <= pc && last->end_pc < pc);
+            last->end_pc = pc;
             return;
         }
     }
 
     Line_Info start{line, pc, pc};
-    dynamic_push(vm, c.line_info, start);
+    dynamic_push(vm, &c->line_info, start);
 }
 
 int
-chunk_append(lulu_VM *vm, Chunk &c, Instruction i, int line)
+chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line)
 {
-    int pc = cast_int(len(c.code));
-    dynamic_push(vm, c.code, i);
+    int pc = cast_int(len(c->code));
+    dynamic_push(vm, &c->code, i);
     add_line(vm, c, pc, line);
     return pc;
 }
 
 int
-chunk_get_line(const Chunk &c, int pc)
+chunk_get_line(const Chunk *c, int pc)
 {
     // Binary search
     size_t left  = 0;
-    size_t right = len(c.line_info);
+    size_t right = len(c->line_info);
     // left <= right would otherwise pass, yet index 0 is invalid!
     if (right == 0) {
         return NO_LINE;
     }
     while (left <= right) {
         size_t    i    = (left + right) / 2;
-        Line_Info info = c.line_info[i];
+        Line_Info info = c->line_info[i];
         if (info.start_pc > pc) {
             // Avoid unsigned overflow
             if (i == 0) {
@@ -76,16 +76,15 @@ chunk_get_line(const Chunk &c, int pc)
 }
 
 u32
-chunk_add_constant(lulu_VM *vm, Chunk &c, Value v)
+chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
 {
-    bool  ok;
-    Value i = table_get(*c.indexes, v, &ok);
-    if (ok) {
+    Value i;
+    if (table_get(c->indexes, v, &i)) {
         return u32(value_to_number(i));
     }
 
-    Number i2 = Number(len(c.constants));
-    dynamic_push(vm, c.constants, v);
-    table_set(vm, *c.indexes, v, Value(i2));
+    Number i2 = Number(len(c->constants));
+    dynamic_push(vm, &c->constants, v);
+    table_set(vm, c->indexes, v, Value(i2));
     return u32(i2);
 }

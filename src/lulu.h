@@ -161,7 +161,7 @@ LULU_API lulu_Number
 lulu_to_number(lulu_VM *vm, int i);
 
 LULU_API const char *
-lulu_to_string(lulu_VM *vm, int i, size_t *n);
+lulu_to_lstring(lulu_VM *vm, int i, size_t *n);
 
 LULU_API void *
 lulu_to_pointer(lulu_VM *vm, int i);
@@ -189,10 +189,10 @@ LULU_API void
 lulu_push_userdata(lulu_VM *vm, void *p);
 
 LULU_API void
-lulu_push_string(lulu_VM *vm, const char *s, size_t n);
+lulu_push_lstring(lulu_VM *vm, const char *s, size_t n);
 
 LULU_API void
-lulu_push_cstring(lulu_VM *vm, const char *s);
+lulu_push_string(lulu_VM *vm, const char *s);
 
 LULU_API const char *
 #if defined(__GNUC__) || defined(__clang__)
@@ -252,7 +252,7 @@ lulu_set_global(lulu_VM *vm, const char *s);
 LULU_API void
 lulu_concat(lulu_VM *vm, int n);
 
-#define lulu_to_cstring(vm, i)      lulu_to_string(vm, i, NULL)
-#define lulu_push_literal(vm, s)    lulu_push_string(vm, s, sizeof(s) - 1)
+#define lulu_to_string(vm, i)       lulu_to_lstring(vm, i, NULL)
+#define lulu_push_literal(vm, s)    lulu_push_lstring(vm, s, sizeof(s) - 1)
 
 #endif /* LULU_H */

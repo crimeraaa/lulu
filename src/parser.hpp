@@ -1,15 +1,13 @@
 #pragma once
 
 #include "lexer.hpp"
-
-// Defined in `compiler.hpp`.
-struct Compiler;
+#include "chunk.hpp"
 
 struct Parser {
     lulu_VM *vm;
     Lexer    lexer;
     Token    consumed;
-    Builder &builder;
+    Builder *builder;
 };
 
 enum Precedence : u8 {
@@ -50,11 +48,11 @@ struct Expr {
 };
 
 Parser
-parser_make(lulu_VM *vm, String source, String script, Builder &b);
+parser_make(lulu_VM *vm, LString source, LString script, Builder *b);
 
 [[noreturn]]
 void
-parser_error(Parser &p, const char *msg);
+parser_error(Parser *p, const char *msg);
 
 Chunk *
-parser_program(lulu_VM *vm, String source, String script, Builder &b);
+parser_program(lulu_VM *vm, LString source, LString script, Builder *b);

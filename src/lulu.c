@@ -14,7 +14,7 @@ run(lulu_VM *vm, const char *source, const char *script, size_t n)
     }
 
     if (e != LULU_OK) {
-        const char *msg = lulu_to_cstring(vm, -1);
+        const char *msg = lulu_to_string(vm, -1);
         fprintf(stderr, "%s\n", msg);
         /* lulu_{load,pcall} leave an error message on the top of the stack */
         lulu_pop(vm, 1);
@@ -110,7 +110,7 @@ base_tostring(lulu_VM *vm, int argc)
         lulu_push_literal(vm, "nil");
         break;
     case LULU_TYPE_BOOLEAN:
-        lulu_push_cstring(vm, lulu_to_boolean(vm, 1) ? "true" : "false");
+        lulu_push_string(vm, lulu_to_boolean(vm, 1) ? "true" : "false");
         break;
     case LULU_TYPE_NUMBER:
         lulu_push_fstring(vm, "%f", lulu_to_number(vm, 1));
@@ -147,7 +147,7 @@ base_print(lulu_VM *vm, int argc)
         lulu_push_value(vm, -1); /* ..., tostring, tostring, */
         lulu_push_value(vm, i);  /* ..., tostring, tostring, arg[i] */
         lulu_call(vm, 1, 1);     /* ..., tostring, tostring(arg[i]) */
-        fprintf(stdout, "%s", lulu_to_cstring(vm, -1));
+        fprintf(stdout, "%s", lulu_to_string(vm, -1));
         lulu_pop(vm, 1);         /* ..., tostring */
     }
     fputc('\n', stdout);
@@ -221,9 +221,13 @@ int main(int argc, char *argv[])
     lulu_Error e;
 
     vm = lulu_open(c_allocator, NULL);
-    e  = lulu_c_pcall(vm, protected_main, &d);
-    lulu_close(vm);
+    if (vm == NULL) {
+        fprintf(stderr, "Failed to allocate memory for lulu\n");
+        return 2;
+    }
 
+    e = lulu_c_pcall(vm, protected_main, &d);
+    lulu_close(vm);
     if (e == LULU_OK && d.status == EXIT_SUCCESS) {
         return EXIT_SUCCESS;
     } else if (e == LULU_ERROR_MEMORY) {

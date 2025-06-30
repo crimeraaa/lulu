@@ -1,9 +1,8 @@
 #include <stdio.h>
 
-#include "compiler.hpp"
 #include "parser.hpp"
+#include "compiler.hpp"
 #include "debug.hpp"
-#include "table.hpp"
 #include "vm.hpp"
 
 struct Expr_List {
@@ -13,10 +12,10 @@ struct Expr_List {
 
 // Forward declaration for recursive descent parsing.
 static Expr
-expression(Parser &p, Compiler &c, Precedence limit = PREC_NONE);
+expression(Parser *p, Compiler *c, Precedence limit = PREC_NONE);
 
 Parser
-parser_make(lulu_VM *vm, String source, String script, Builder &b)
+parser_make(lulu_VM *vm, LString source, LString script, Builder *b)
 {
     Parser p{vm, lexer_make(vm, source, script, b), {}, b};
     return p;
@@ -24,21 +23,21 @@ parser_make(lulu_VM *vm, String source, String script, Builder &b)
 
 [[noreturn]]
 static void
-error_at(Parser &p, const Token &t, const char *msg)
+error_at(Parser *p, const Token *t, const char *msg)
 {
-    String where = (t.type == TOKEN_EOF) ? token_strings[t.type] : t.lexeme;
+    LString where = (t->type == TOKEN_EOF) ? token_strings[t->type] : t->lexeme;
 
     // It is highly important we use a separate string builder from VM, because
     // we don't want it to conflict when writing the formatted string.
-    builder_write_string(p.vm, p.builder, where);
-    const char *s = builder_to_cstring(p.builder);
-    vm_syntax_error(p.vm, p.lexer.source, t.line, "%s at '%s'", msg, s);
+    builder_write_string(p->vm, p->builder, where);
+    const char *s = builder_to_cstring(p->builder);
+    vm_syntax_error(p->vm, p->lexer.source, t->line, "%s at '%s'", msg, s);
 }
 
 void
-parser_error(Parser &p, const char *msg)
+parser_error(Parser *p, const char *msg)
 {
-    error_at(p, p.consumed, msg);
+    error_at(p, &p->consumed, msg);
 }
 
 /**
@@ -46,19 +45,19 @@ parser_error(Parser &p, const char *msg)
  *  -   Move to the next token unconditionally.
  */
 static void
-advance(Parser &p)
+advance(Parser *p)
 {
-    p.consumed = lexer_lex(p.lexer);
+    p->consumed = lexer_lex(&p->lexer);
 }
 
 static bool
-check(Parser &p, Token_Type expected)
+check(Parser *p, Token_Type expected)
 {
-    return p.consumed.type == expected;
+    return p->consumed.type == expected;
 }
 
 static bool
-match(Parser &p, Token_Type expected)
+match(Parser *p, Token_Type expected)
 {
     bool b = check(p, expected);
     if (b) {
@@ -73,7 +72,7 @@ match(Parser &p, Token_Type expected)
  *  -   Asserts that the current token is of type `expected` and advances.
  */
 static void
-consume(Parser &p, Token_Type expected)
+consume(Parser *p, Token_Type expected)
 {
     if (!match(p, expected)) {
         // Assume our longest token is '<identifier>'.
@@ -92,12 +91,12 @@ consume(Parser &p, Token_Type expected)
  *  -   We don't push the last one to allow optimizations.
  */
 static Expr_List
-expr_list(Parser &p, Compiler &c)
+expr_list(Parser *p, Compiler *c)
 {
     Expr e = expression(p, c);
     u16  n = 1;
     while (match(p, TOKEN_COMMA)) {
-        compiler_expr_next_reg(c, e);
+        compiler_expr_next_reg(c, &e);
         e = expression(p, c);
         n++;
     }
@@ -105,19 +104,19 @@ expr_list(Parser &p, Compiler &c)
 }
 
 static Expr
-resolve_variable(Parser &p, Compiler &c, const Token &t)
+resolve_variable(Parser *p, Compiler *c, const Token *t)
 {
     Expr e;
     e.type  = EXPR_GLOBAL;
-    e.line  = t.line;
-    e.index = compiler_add_constant(c, ostring_new(p.vm, t.lexeme));
+    e.line  = t->line;
+    e.index = compiler_add_constant(c, ostring_new(p->vm, t->lexeme));
     return e;
 }
 
 static Expr
-prefix_expr(Parser &p, Compiler &c)
+prefix_expr(Parser *p, Compiler *c)
 {
-    Token t = p.consumed;
+    Token t = p->consumed;
     advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
     switch (t.type) {
     case TOKEN_NIL: {
@@ -144,7 +143,7 @@ prefix_expr(Parser &p, Compiler &c)
         return e;
     }
     case TOKEN_IDENTIFIER: {
-        return resolve_variable(p, c, t);
+        return resolve_variable(p, c, &t);
     }
     case TOKEN_OPEN_PAREN: {
         Expr e = expression(p, c);
@@ -153,16 +152,16 @@ prefix_expr(Parser &p, Compiler &c)
     }
     case TOKEN_DASH: {
         Expr e = expression(p, c, PREC_UNARY);
-        compiler_code_unary(c, OP_UNM, e);
+        compiler_code_unary(c, OP_UNM, &e);
         return e;
     }
     case TOKEN_NOT: {
         Expr e = expression(p, c, PREC_UNARY);
-        compiler_code_unary(c, OP_NOT, e);
+        compiler_code_unary(c, OP_NOT, &e);
         return e;
     }
     default:
-        error_at(p, t, "Expected an expression");
+        error_at(p, &t, "Expected an expression");
     }
 }
 
@@ -173,50 +172,49 @@ prefix_expr(Parser &p, Compiler &c)
  *  2.) Our current token is the one right after `(`.
  */
 static void
-function_call(Parser &p, Compiler &c, Expr &e)
+function_call(Parser *p, Compiler *c, Expr *e)
 {
     Expr_List args;
     if (!check(p, TOKEN_CLOSE_PAREN)) {
         args = expr_list(p, c);
-        compiler_set_returns(c, args.last, VARARG);
+        compiler_set_returns(c, &args.last, VARARG);
     } else {
         args.last.type = EXPR_NONE;
         args.count = 0;
     }
     consume(p, TOKEN_CLOSE_PAREN);
 
-    lulu_assert(e.type == EXPR_DISCHARGED);
-    u16 base = e.reg;
+    lulu_assert(e->type == EXPR_DISCHARGED);
+    u16 base = e->reg;
     if (args.last.type == EXPR_CALL) {
         args.count = VARARG;
     } else {
         // Close last argument.
         if (args.last.type != EXPR_NONE) {
-            compiler_expr_next_reg(c, args.last);
+            compiler_expr_next_reg(c, &args.last);
         }
-        args.count = u16(c.free_reg - (base + 1));
+        args.count = u16(c->free_reg - (base + 1));
     }
-    e.type = EXPR_CALL;
-    e.pc   = compiler_code(c, OP_CALL, u8(base), args.count, 0, e.line);
+    e->type = EXPR_CALL;
+    e->pc   = compiler_code(c, OP_CALL, u8(base), args.count, 0, e->line);
 
-    // Call will remove the function and arguments.
-    c.free_reg = base;
+    // By default, remove the arguments but not the function's register.
+    // This allows use to 'reserve' the register.
+    c->free_reg = base + 1;
 }
 
 
 static Expr
-primary_expr(Parser &p, Compiler &c)
+primary_expr(Parser *p, Compiler *c)
 {
     Expr e = prefix_expr(p, c);
     for (;;) {
-        switch (p.consumed.type) {
+        switch (p->consumed.type) {
         case TOKEN_OPEN_PAREN: {
             // Function to be called must be on top of the stack.
-            compiler_expr_next_reg(c, e);
+            compiler_expr_next_reg(c, &e);
             advance(p);
-            function_call(p, c, e);
-            // We implicitly popped the function itself, so undo that.
-            compiler_reserve_reg(c, 1);
+            function_call(p, c, &e);
             break;
         }
         default:
@@ -282,16 +280,16 @@ Binary get_binary(Token_Type type)
  *  -   Assumes we just consumed the first (prefix) token.
  */
 static Expr
-expression(Parser &p, Compiler &c, Precedence limit)
+expression(Parser *p, Compiler *c, Precedence limit)
 {
     Expr left = primary_expr(p, c);
     for (;;) {
-        Binary b = get_binary(p.consumed.type);
+        Binary b = get_binary(p->consumed.type);
         if (b.op == OP_RETURN || limit > b.left_prec) {
             break;
         }
 
-        // Skip operator, point to first token of right hand side argument.
+        // Skip operator, point to first token of right hand side argument->
         advance(p);
 
         switch (b.op) {
@@ -303,24 +301,24 @@ expression(Parser &p, Compiler &c, Precedence limit)
         case OP_POW: {
             // VERY important to call this *before* parsing the right hand side,
             // if it ends up in a register we want them to be in the correct order.
-            compiler_expr_rk(c, left);
+            compiler_expr_rk(c, &left);
             Expr right = expression(p, c, b.right_prec);
-            compiler_code_arith(c, b.op, left, right);
+            compiler_code_arith(c, b.op, &left, &right);
             break;
         }
         case OP_EQ:
         case OP_LT:
         case OP_LEQ: {
-            compiler_expr_rk(c, left);
+            compiler_expr_rk(c, &left);
             Expr right = expression(p, c, b.right_prec);
-            compiler_code_compare(c, b.op, b.cond, left, right);
+            compiler_code_compare(c, b.op, b.cond, &left, &right);
             break;
         }
         case OP_CONCAT: {
             // Don't put `left` in an RK register no matter what.
-            compiler_expr_next_reg(c, left);
+            compiler_expr_next_reg(c, &left);
             Expr right = expression(p, c, b.right_prec);
-            compiler_code_concat(c, left, right);
+            compiler_code_concat(c, &left, &right);
             break;
         }
         default:
@@ -334,11 +332,11 @@ expression(Parser &p, Compiler &c, Precedence limit)
 }
 
 static void
-return_stmt(Parser &p, Compiler &c, int line)
+return_stmt(Parser *p, Compiler *c, int line)
 {
-    const u8  ra = u8(c.free_reg);
+    const u8  ra = u8(c->free_reg);
     Expr_List e  = expr_list(p, c);
-    compiler_expr_next_reg(c, e.last);
+    compiler_expr_next_reg(c, &e.last);
     compiler_code_return(c, ra, e.count, false, line);
 }
 
@@ -348,36 +346,36 @@ struct Assign {
 };
 
 static void
-adjust_assign(Compiler &c, u16 n_vars, Expr_List &e)
+adjust_assign(Compiler *c, u16 n_vars, Expr_List *e)
 {
-    int extra = cast_int(n_vars) - cast_int(e.count);
+    int extra = cast_int(n_vars) - cast_int(e->count);
     // The last assigning expression can have variadic returns.
-    if (e.last.type == EXPR_CALL) {
+    if (e->last.type == EXPR_CALL) {
         // Include the call itself.
         extra++;
         if (extra < 0) {
             extra = 0;
         }
-        compiler_set_returns(c, e.last, u16(extra));
+        compiler_set_returns(c, &e->last, u16(extra));
         if (extra > 1) {
             compiler_reserve_reg(c, u16(extra - 1));
         }
     } else {
         // Need to close last expression?
-        if (e.last.type != EXPR_NONE) {
-            compiler_expr_next_reg(c, e.last);
+        if (e->last.type != EXPR_NONE) {
+            compiler_expr_next_reg(c, &e->last);
         }
         if (extra > 0) {
             // Register of first uninitialized right-hand side.
-            u16 reg = c.free_reg;
+            u16 reg = c->free_reg;
             compiler_reserve_reg(c, u16(extra));
-            compiler_load_nil(c, u8(reg), extra, e.last.line);
+            compiler_load_nil(c, u8(reg), extra, e->last.line);
         }
     }
 }
 
 static void
-assignment(Parser &p, Compiler &c, Assign *last, u16 n_vars = 1)
+assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
 {
     // Check the result of `expression()`.
     if (last->variable.type != EXPR_GLOBAL) {
@@ -395,14 +393,14 @@ assignment(Parser &p, Compiler &c, Assign *last, u16 n_vars = 1)
     Expr_List e    = expr_list(p, c);
     Assign   *iter = last;
     if (n_vars != e.count) {
-        adjust_assign(c, n_vars, e);
+        adjust_assign(c, n_vars, &e);
         // Reuse the registers occupied by the extra values.
         if (e.count > n_vars) {
-            c.free_reg -= u16(e.count - n_vars);
+            c->free_reg -= u16(e.count - n_vars);
         }
     } else {
-        compiler_set_one_return(c, e.last);
-        compiler_set_variable(c, last->variable, e.last);
+        compiler_set_one_return(c, &e.last);
+        compiler_set_variable(c, &last->variable, &e.last);
         iter = iter->prev;
     }
 
@@ -412,23 +410,24 @@ assignment(Parser &p, Compiler &c, Assign *last, u16 n_vars = 1)
         Expr tmp;
         tmp.type = EXPR_DISCHARGED;
         tmp.line = iter->variable.line; // Probably correct
-        tmp.reg  = u8(c.free_reg - 1);
-        compiler_set_variable(c, iter->variable, tmp);
+        tmp.reg  = u8(c->free_reg - 1);
+        compiler_set_variable(c, &iter->variable, &tmp);
         iter = iter->prev;
     }
 }
 
 
 static void
-declaration(Parser &p, Compiler &c)
+declaration(Parser *p, Compiler *c)
 {
-    Token t = p.consumed;
+    Token t = p->consumed;
     switch (t.type) {
     case TOKEN_IDENTIFIER: {
         Assign a{nullptr, expression(p, c)};
         // Differentiate `f().field = ...` and `f()`.
         if (a.variable.type == EXPR_CALL) {
-            compiler_set_returns(c, a.variable, 0);
+            compiler_set_returns(c, &a.variable, 0);
+            c->free_reg -= 1;
         } else {
             assignment(p, c, &a);
         }
@@ -439,14 +438,14 @@ declaration(Parser &p, Compiler &c)
         return_stmt(p, c, t.line);
         break;
     default:
-        error_at(p, t, "Expected an expression");
+        error_at(p, &t, "Expected an expression");
         break;
     }
     match(p, TOKEN_SEMI);
 }
 
 Chunk *
-parser_program(lulu_VM *vm, String source, String script, Builder &b)
+parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
 {
     Table *t  = table_new(vm);
     Chunk *ch = chunk_new(vm, source, t);
@@ -457,14 +456,14 @@ parser_program(lulu_VM *vm, String source, String script, Builder &b)
     vm_push(vm, Value(t));
 
     Parser   p = parser_make(vm, source, script, b);
-    Compiler c = compiler_make(vm, p, *ch);
+    Compiler c = compiler_make(vm, &p, ch);
     // Set up first token
-    advance(p);
-    while (!check(p, TOKEN_EOF)) {
-        declaration(p, c);
+    advance(&p);
+    while (!check(&p, TOKEN_EOF)) {
+        declaration(&p, &c);
     }
-    consume(p, TOKEN_EOF);
-    compiler_code(c, OP_RETURN, 0, 0, 0, p.lexer.line);
+    consume(&p, TOKEN_EOF);
+    compiler_code(&c, OP_RETURN, 0, 0, 0, p.lexer.line);
     debug_disassemble(c.chunk);
 
     vm_pop(vm);

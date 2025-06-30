@@ -1,8 +1,6 @@
 #pragma once
 
 #include "private.hpp"
-#include "chunk.hpp"
-#include "string.hpp"
 #include "object.hpp"
 
 using Error = lulu_Error;
@@ -44,10 +42,10 @@ struct lulu_VM {
 
 using Protected_Fn = void (*)(lulu_VM *vm, void *user_ptr);
 
-void
+bool
 vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data);
 
-Builder &
+Builder *
 vm_get_builder(lulu_VM *vm);
 
 void
@@ -103,7 +101,7 @@ void
 vm_throw(lulu_VM *vm, Error e);
 
 const char *
-vm_push_string(lulu_VM *vm, String s);
+vm_push_string(lulu_VM *vm, LString s);
 
 const char *
 vm_push_fstring(lulu_VM *vm, const char *fmt, ...);
@@ -113,7 +111,7 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 
 [[noreturn, gnu::format(printf, 4, 5)]]
 void
-vm_syntax_error(lulu_VM *vm, String source, int line, const char *fmt, ...);
+vm_syntax_error(lulu_VM *vm, LString source, int line, const char *fmt, ...);
 
 [[noreturn, gnu::format(printf, 3, 4)]]
 void
@@ -147,7 +145,7 @@ Call_Type
 vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned);
 
 Error
-vm_load(lulu_VM *vm, String source, String script);
+vm_load(lulu_VM *vm, LString source, LString script);
 
 void
 vm_execute(lulu_VM *vm);

@@ -38,7 +38,7 @@ enum Token_Type {
 };
 
 struct Token {
-    String     lexeme;
+    LString     lexeme;
     union {
         double   number;
         OString *ostring;
@@ -49,8 +49,8 @@ struct Token {
 
 struct Lexer {
     lulu_VM    *vm;
-    Builder    &builder;
-    String      source, script;
+    Builder    *builder;
+    LString     source, script;
     const char *start;
     const char *cursor;
     int         line;
@@ -58,10 +58,10 @@ struct Lexer {
 
 static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
 
-extern const String token_strings[TOKEN_COUNT];
+extern const LString token_strings[TOKEN_COUNT];
 
 Lexer
-lexer_make(lulu_VM *vm, String source, String script, Builder &b);
+lexer_make(lulu_VM *vm, LString source, LString script, Builder *b);
 
 Token
-lexer_lex(Lexer &x);
+lexer_lex(Lexer *x);

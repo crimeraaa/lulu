@@ -7,16 +7,16 @@
 
 union Object;
 
-struct String : public Slice<const char> {
+struct LString : public Slice<const char> {
     // Bring all inherited constructors into scope.
     using Slice<const char>::Slice;
 
     // Construct from a nul-terminated C string.
-    String(const char *s) : Slice(s, strlen(s))
+    LString(const char *s) : Slice(s, strlen(s))
     {}
 
     // Construct from a mutable character sequence.
-    String(Slice<char> s) : Slice(s.data, s.len)
+    LString(Slice<char> s) : Slice(s.data, s.len)
     {}
 };
 
@@ -38,71 +38,72 @@ struct Intern {
 };
 
 inline bool
-operator==(String a, String b)
+operator==(LString a, LString b)
 {
     return slice_eq(a, b);
 }
 
-inline String
+inline LString
 operator ""_s(const char *s, size_t n)
 {
-    return String(s, n);
+    return LString(s, n);
 }
 
 void
-builder_init(Builder &b);
+builder_init(Builder *b);
 
 size_t
-builder_len(const Builder &b);
+builder_len(const Builder *b);
 
 size_t
-builder_cap(const Builder &b);
+builder_cap(const Builder *b);
 
 void
-builder_reset(Builder &b);
+builder_reset(Builder *b);
 
 void
-builder_destroy(lulu_VM *vm, Builder &b);
-void
-builder_write_string(lulu_VM *vm, Builder &b, String s);
+builder_destroy(lulu_VM *vm, Builder *b);
 
 void
-builder_write_char(lulu_VM *vm, Builder &b, char ch);
+builder_write_string(lulu_VM *vm, Builder *b, LString s);
 
 void
-builder_write_int(lulu_VM *vm, Builder &b, int i);
+builder_write_char(lulu_VM *vm, Builder *b, char ch);
 
 void
-builder_write_number(lulu_VM *vm, Builder &b, Number n);
+builder_write_int(lulu_VM *vm, Builder *b, int i);
 
 void
-builder_write_pointer(lulu_VM *vm, Builder &b, void *p);
+builder_write_number(lulu_VM *vm, Builder *b, Number n);
 
-String
-builder_to_string(const Builder &b);
+void
+builder_write_pointer(lulu_VM *vm, Builder *b, void *p);
+
+LString
+builder_to_string(const Builder *b);
 
 const char *
-builder_to_cstring(const Builder &b);
+builder_to_cstring(const Builder *b);
 
 void
-intern_init(Intern &t);
+intern_init(Intern *t);
 
 void
-intern_resize(lulu_VM *vm, Intern &i, size_t new_cap);
+intern_resize(lulu_VM *vm, Intern *i, size_t new_cap);
 
 void
-intern_destroy(lulu_VM *vm, Intern &t);
+intern_destroy(lulu_VM *vm, Intern *t);
 
 u32
-hash_string(String text);
+hash_string(LString text);
 
 OString *
-ostring_new(lulu_VM *vm, String text);
+ostring_new(lulu_VM *vm, LString text);
 
-inline String
+inline LString
 ostring_to_string(OString *s)
 {
-    return String(s->data, s->len);
+    return LString(s->data, s->len);
 }
 
 inline const char *

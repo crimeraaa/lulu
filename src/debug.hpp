@@ -3,10 +3,10 @@
 #include "chunk.hpp"
 
 void
-debug_disassemble(const Chunk &c);
+debug_disassemble(const Chunk *c);
 
 int
-debug_get_pad(const Chunk &c);
+debug_get_pad(const Chunk *c);
 
 void
-debug_disassemble_at(const Chunk &c, int pc, int pad);
+debug_disassemble_at(const Chunk *c, int pc, int pad);

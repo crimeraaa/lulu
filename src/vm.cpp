@@ -1,13 +1,9 @@
-#include <stdarg.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <float.h>  // DBL_DECIMAL_DIG
+#include <stdlib.h> // abort
+#include <stdio.h>  // fprintf, stderr
 
 #include "vm.hpp"
 #include "debug.hpp"
 #include "parser.hpp"
-#include "object.hpp"
-#include "function.hpp"
 
 size_t
 vm_absindex(lulu_VM *vm, Value *v)
@@ -39,7 +35,24 @@ vm_top_absindex(lulu_VM *vm)
     return ptr_index(vm->stack, vm_top_ptr(vm));
 }
 
-void
+// Hack because macro names can't be used with user-defined literals,
+// e.g. `LULU_MEMORY_ERROR_STRING _s` is invalid.
+#define STR(x)  #x ##_s
+
+static void
+required_allocations(lulu_VM *vm, void *)
+{
+    // Ensure when we start interning strings we can already index.
+    intern_resize(vm, &vm->intern, 32);
+
+    // TODO(2025-06-30): Mark the memory error string as "immortal"?
+    OString *o = ostring_new(vm, STR(LULU_MEMORY_ERROR_STRING));
+    unused(o);
+}
+
+#undef STR
+
+bool
 vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
 {
     vm->allocator      = allocator;
@@ -49,18 +62,21 @@ vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
     vm->frames.len     = 0;
     vm->window         = Slice(vm->stack, 0, 0);
 
-    builder_init(vm->builder);
-    intern_init(vm->intern);
-    table_init(vm->globals);
-
-    // Ensure when we start interning strings we can already index.
-    intern_resize(vm, vm->intern, 32);
+    builder_init(&vm->builder);
+    intern_init(&vm->intern);
+    table_init(&vm->globals);
+    Error e = vm_run_protected(vm, required_allocations, nullptr);
+    bool ok = (e == LULU_OK);
+    if (!ok) {
+        vm_destroy(vm);
+    }
+    return ok;
 }
 
-Builder &
+Builder *
 vm_get_builder(lulu_VM *vm)
 {
-    Builder &b = vm->builder;
+    Builder *b = &vm->builder;
     builder_reset(b);
     return b;
 }
@@ -68,8 +84,8 @@ vm_get_builder(lulu_VM *vm)
 void
 vm_destroy(lulu_VM *vm)
 {
-    builder_destroy(vm, vm->builder);
-    intern_destroy(vm, vm->intern);
+    builder_destroy(vm, &vm->builder);
+    intern_destroy(vm, &vm->intern);
     slice_delete(vm, vm->globals.entries);
 
     Object *o = vm->objects;
@@ -96,8 +112,9 @@ vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr)
     } catch (Error e) {
         next.error = e;
 
-        Value msg = vm_pop(vm);
-        vm->window  = Slice(vm->stack, old_base, old_top);
+        // TODO(2025-06-30): Check if `LULU_ERROR_MEMORY` works properly here
+        Value msg  = vm_pop(vm);
+        vm->window = Slice(vm->stack, old_base, old_top);
         vm_push(vm, msg);
     }
 
@@ -118,7 +135,7 @@ vm_throw(lulu_VM *vm, Error e)
 }
 
 const char *
-vm_push_string(lulu_VM *vm, String s)
+vm_push_string(lulu_VM *vm, LString s)
 {
     OString *o = ostring_new(vm, s);
     vm_push(vm, Value(o));
@@ -138,16 +155,16 @@ vm_push_fstring(lulu_VM *vm, const char *fmt, ...)
 const char *
 vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 {
-    const String s      = String(fmt);
+    const LString s      = LString(fmt);
     const char  *start  = raw_data(s);
     const char  *cursor = start;
 
-    Builder &b = vm_get_builder(vm);
+    Builder *b = vm_get_builder(vm);
 
     bool spec = false;
     for (; cursor < end(s); cursor++) {
         if (*cursor == '%' && !spec) {
-            builder_write_string(vm, b, String(start, cursor));
+            builder_write_string(vm, b, LString(start, cursor));
             spec = true;
             continue;
         }
@@ -169,7 +186,7 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
             break;
         case 's': {
             const char *s = va_arg(args, char *);
-            builder_write_string(vm, b, (s == nullptr) ? "(null)"_s : String(s));
+            builder_write_string(vm, b, (s == nullptr) ? "(null)"_s : LString(s));
             break;
         }
         case 'p':
@@ -183,12 +200,12 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
         start = cursor + 1;
         spec  = false;
     }
-    builder_write_string(vm, b, String(start, cursor));
+    builder_write_string(vm, b, LString(start, cursor));
     return vm_push_string(vm, builder_to_string(b));
 }
 
 void
-vm_syntax_error(lulu_VM *vm, String source, int line, const char *fmt, ...)
+vm_syntax_error(lulu_VM *vm, LString source, int line, const char *fmt, ...)
 {
     va_list args;
     vm_push_string(vm, source);
@@ -207,11 +224,11 @@ void
 vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...)
 {
     va_list args;
-    const Chunk &c    = *vm->caller->function->l.chunk;
-    const int    pc   = cast_int(vm->saved_ip - raw_data(c.code) - 1);
+    const Chunk *c    = vm->caller->function->l.chunk;
+    const int    pc   = cast_int(vm->saved_ip - raw_data(c->code) - 1);
     const int    line = chunk_get_line(c, pc);
 
-    vm_push_string(vm, c.source);
+    vm_push_string(vm, c->source);
     vm_push_fstring(vm, ":%i: Attempt to %s ", line, act);
 
     va_start(args, fmt);
@@ -224,7 +241,7 @@ vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...)
 }
 
 struct Load_Data {
-    String  source, script;
+    LString source, script;
     Builder builder;
 };
 
@@ -232,18 +249,18 @@ static void
 load(lulu_VM *vm, void *user_ptr)
 {
     Load_Data &d = *cast(Load_Data *)(user_ptr);
-    Chunk     *c = parser_program(vm, d.source, d.script, d.builder);
+    Chunk     *c = parser_program(vm, d.source, d.script, &d.builder);
     Closure   *f = closure_new(vm, c);
     vm_push(vm, Value(f));
 }
 
 Error
-vm_load(lulu_VM *vm, String source, String script)
+vm_load(lulu_VM *vm, LString source, LString script)
 {
     Load_Data d{source, script, {}};
-    builder_init(d.builder);
+    builder_init(&d.builder);
     Error e = vm_run_protected(vm, load, &d);
-    builder_destroy(vm, d.builder);
+    builder_destroy(vm, &d.builder);
     return e;
 }
 
@@ -458,7 +475,7 @@ vm_execute(lulu_VM *vm)
 
 
 #ifdef LULU_DEBUG_TRACE_EXEC
-    int pad = debug_get_pad(chunk);
+    int pad = debug_get_pad(&chunk);
 #endif // LULU_DEBUG_TRACE_EXEC
 
     for (;;) {
@@ -469,7 +486,7 @@ vm_execute(lulu_VM *vm)
             printf("\n");
         }
         printf("\n");
-        debug_disassemble_at(chunk, cast_int(ip - raw_data(chunk.code)), pad);
+        debug_disassemble_at(&chunk, cast_int(ip - raw_data(chunk.code)), pad);
 #endif // LULU_DEBUG_TRACE_EXEC
 
         Instruction i  = *ip++;
@@ -491,11 +508,9 @@ vm_execute(lulu_VM *vm)
             break;
         case OP_GET_GLOBAL: {
             Value k = chunk.constants[getarg_bx(i)];
+            Value v;
             protect(vm, ip);
-
-            bool  ok;
-            Value v = table_get(vm->globals, k, &ok);
-            if (!ok) {
+            if (!table_get(&vm->globals, k, &v)) {
                 vm_runtime_error(vm, "read undefined variable",
                     "'%s'", value_to_ostring(k)->data);
             }
@@ -505,7 +520,7 @@ vm_execute(lulu_VM *vm)
         case OP_SET_GLOBAL: {
             Value k = chunk.constants[getarg_bx(i)];
             protect(vm, ip);
-            table_set(vm, vm->globals, k, ra);
+            table_set(vm, &vm->globals, k, ra);
             break;
         }
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
@@ -564,7 +579,7 @@ vm_execute(lulu_VM *vm)
 void
 vm_concat(lulu_VM *vm, Value &ra, Slice<Value> args)
 {
-    Builder &b = vm_get_builder(vm);
+    Builder *b = vm_get_builder(vm);
     for (const Value &s : args) {
         if (!value_is_string(s)) {
             type_error(vm, "concatentate", s);

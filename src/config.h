@@ -4,6 +4,9 @@
 #define LULU_NUMBER_TYPE    double
 #define LULU_NUMBER_FMT     "%.14g"
 
+#define LULU_MEMORY_ERROR_STRING    "out of memory"
+
+
 /**
  * @brief 2025-06-24
  *  -   Number of stack slots available to all C functions.

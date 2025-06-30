@@ -61,11 +61,13 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             "Line_Info":    lexer.LineInfoPrinter,
             "Expr":         expr.ExprPrinter,
             "Value":        value.ValuePrinter,
-            "String":       odin.StringPrinter,
+            "LString":      odin.StringPrinter,
             "OString":      value.OStringPrinter,
 
             # Pointers thereof
             # "Instruction *": opcode.InstructionPrinter,
+            "Token *":      lexer.TokenPrinter,
+            "Expr *":       expr.ExprPrinter,
             "OString *":    value.OStringPrinter,
         }
         super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))

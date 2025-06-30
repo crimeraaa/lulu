@@ -8,19 +8,19 @@ MAX_REG = OPCODE_MAX_A - 5;
 
 struct Compiler {
     lulu_VM *vm;
-    Parser  &parser; // All compilers share the same parser.
-    Chunk   &chunk;  // Compilers do not own their chunks.
+    Parser  *parser; // All compilers share the same parser.
+    Chunk   *chunk;  // Compilers do not own their chunks.
     u16      free_reg;
 };
 
 Compiler
-compiler_make(lulu_VM *vm, Parser &p, Chunk &chunk);
+compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk);
 
 int
-compiler_code(Compiler &c, OpCode op, u8 a, u16 b, u16 c2, int line);
+compiler_code(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line);
 
 int
-compiler_code(Compiler &c, OpCode op, u8 a, u32 bx, int line);
+compiler_code(Compiler *c, OpCode op, u8 a, u32 bx, int line);
 
 
 /**
@@ -30,7 +30,7 @@ compiler_code(Compiler &c, OpCode op, u8 a, u32 bx, int line);
  *      `n` registers beforehand. This function will not reserve for you.
  */
 void
-compiler_load_nil(Compiler &c, u8 reg, int n, int line);
+compiler_load_nil(Compiler *c, u8 reg, int n, int line);
 
 
 /**
@@ -40,16 +40,16 @@ compiler_load_nil(Compiler &c, u8 reg, int n, int line);
  *      it beforehand. This function will not reserve for you.
  */
 void
-compiler_load_boolean(Compiler &c, u8 reg, bool b, int line);
+compiler_load_boolean(Compiler *c, u8 reg, bool b, int line);
 
 u32
-compiler_add_constant(Compiler &c, Value v);
+compiler_add_constant(Compiler *c, Value v);
 
 u32
-compiler_add_constant(Compiler &c, Number n);
+compiler_add_constant(Compiler *c, Number n);
 
 u32
-compiler_add_constant(Compiler &c, OString *s);
+compiler_add_constant(Compiler *c, OString *s);
 
 
 /**
@@ -58,7 +58,7 @@ compiler_add_constant(Compiler &c, OString *s);
  *      `MAX_REG`.
  */
 void
-compiler_reserve_reg(Compiler &c, u16 n);
+compiler_reserve_reg(Compiler *c, u16 n);
 
 
 /**
@@ -70,7 +70,7 @@ compiler_reserve_reg(Compiler &c, u16 n);
  *  -   The register we pushed `e` to.
  */
 u8
-compiler_expr_next_reg(Compiler &c, Expr &e);
+compiler_expr_next_reg(Compiler *c, Expr *e);
 
 
 /**
@@ -87,7 +87,7 @@ compiler_expr_next_reg(Compiler &c, Expr &e);
  *  -   The RK register of `e`, otherwise a normal register.
  */
 u16
-compiler_expr_rk(Compiler &c, Expr &e);
+compiler_expr_rk(Compiler *c, Expr *e);
 
 
 /**
@@ -100,7 +100,7 @@ compiler_expr_rk(Compiler &c, Expr &e);
  *  -   The register `e` resides in.
  */
 u8
-compiler_expr_any_reg(Compiler &c, Expr &e);
+compiler_expr_any_reg(Compiler *c, Expr *e);
 
 
 /**
@@ -127,19 +127,19 @@ compiler_expr_any_reg(Compiler &c, Expr &e);
  *          `c.free_reg` is now `0`.
  */
 void
-compiler_code_arith(Compiler &c, OpCode op, Expr &left, Expr &right);
+compiler_code_arith(Compiler *c, OpCode op, Expr *left, Expr *right);
 
 void
-compiler_code_unary(Compiler &c, OpCode op, Expr &e);
+compiler_code_unary(Compiler *c, OpCode op, Expr *e);
 
 void
-compiler_code_compare(Compiler &c, OpCode op, bool cond, Expr &left, Expr &right);
+compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *left, Expr *right);
 
 void
-compiler_code_concat(Compiler &c, Expr &left, Expr &right);
+compiler_code_concat(Compiler *c, Expr *left, Expr *right);
 
 void
-compiler_code_return(Compiler &c, u8 reg, u16 count, bool is_vararg, int line);
+compiler_code_return(Compiler *c, u8 reg, u16 count, bool is_vararg, int line);
 
 
 /**
@@ -149,12 +149,12 @@ compiler_code_return(Compiler &c, u8 reg, u16 count, bool is_vararg, int line);
  *      in Lua 5.1.5.
  */
 void
-compiler_set_variable(Compiler &c, Expr &var, Expr &expr);
+compiler_set_variable(Compiler *c, Expr *var, Expr *expr);
 
 
 // Does not convert `call` to `EXPR_DISCHARGED`.
 void
-compiler_set_returns(Compiler &c, Expr &call, u16 n);
+compiler_set_returns(Compiler *c, Expr *call, u16 n);
 
 /**
  * @brief
@@ -165,4 +165,4 @@ compiler_set_returns(Compiler &c, Expr &call, u16 n);
  *  -   `lcode.c:luaK_setoneret(FuncState *fs, expdesc *e)` in Lua 5.1.5.
  */
 void
-compiler_set_one_return(Compiler &c, Expr &e);
+compiler_set_one_return(Compiler *c, Expr *e);

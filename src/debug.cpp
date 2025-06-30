@@ -23,25 +23,25 @@ struct Args {
 };
 
 static void
-print_reg(const Chunk &c, u16 reg)
+print_reg(const Chunk *c, u16 reg)
 {
     if (reg_is_rk(reg)) {
         u32 i = reg_get_k(reg);
-        value_print(c.constants[i]);
+        value_print(c->constants[i]);
     } else {
         printf("R(%i)", reg);
     }
 }
 
 static void
-unary(const Chunk &c, const char *op, Args args)
+unary(const Chunk *c, const char *op, Args args)
 {
     printf("R(%i) := %s", args.a, op);
     print_reg(c, args.basic.b);
 }
 
 static void
-arith(const Chunk &c, char op, Args args)
+arith(const Chunk *c, char op, Args args)
 {
     printf("R(%i) = ", args.a);
     print_reg(c, args.basic.b);
@@ -50,7 +50,7 @@ arith(const Chunk &c, char op, Args args)
 }
 
 static void
-compare(const Chunk &c, const char *op, Args args)
+compare(const Chunk *c, const char *op, Args args)
 {
     printf("R(%i) = ", args.a);
     print_reg(c, args.basic.b);
@@ -70,23 +70,23 @@ count_digits(size_t n)
 }
 
 int
-debug_get_pad(const Chunk &c)
+debug_get_pad(const Chunk *c)
 {
     // Should be impossible, but just in case
-    if (len(c.code) == 0) {
+    if (len(c->code) == 0) {
         return 0;
     }
-    return count_digits(len(c.code) - 1);
+    return count_digits(len(c->code) - 1);
 }
 
 // 4 spaces plus an extra one to separate messages.
 #define PAD4 "     "
 
 void
-debug_disassemble_at(const Chunk &c, int pc, int pad)
+debug_disassemble_at(const Chunk *c, int pc, int pad)
 {
     Args        args;
-    Instruction ip = c.code[pc];
+    Instruction ip = c->code[pc];
     OpCode op = getarg_op(ip);
     args.a = getarg_a(ip);
     printf("[%*i] ", pad, pc);
@@ -124,7 +124,7 @@ debug_disassemble_at(const Chunk &c, int pc, int pad)
     switch (op) {
     case OP_CONSTANT:
         printf("R(%i) := ", args.a);
-        value_print(c.constants[getarg_bx(ip)]);
+        value_print(c->constants[getarg_bx(ip)]);
         break;
     case OP_LOAD_NIL: {
         printf("R(i) := nil for %i <= i <= %i", args.a, args.basic.b);
@@ -137,12 +137,12 @@ debug_disassemble_at(const Chunk &c, int pc, int pad)
     case OP_GET_GLOBAL: {
         print_reg(c, args.a);
         printf(" := ");
-        value_print(c.constants[getarg_bx(ip)]);
+        value_print(c->constants[getarg_bx(ip)]);
         break;
     }
 
     case OP_SET_GLOBAL: {
-        OString *s = &c.constants[getarg_bx(ip)].object->ostring;
+        OString *s = &c->constants[getarg_bx(ip)].object->ostring;
         char     q = (s->len == 1) ? '\'' : '\"';
         printf("_G[%c%s%c] := R(%i)", q, s->data, q, args.a);
         break;
@@ -190,11 +190,11 @@ debug_disassemble_at(const Chunk &c, int pc, int pad)
 
 
 void
-debug_disassemble(const Chunk &c)
+debug_disassemble(const Chunk *c)
 {
-    const auto &constants = c.constants;
+    const Dynamic<Value> &constants = c->constants;
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
-    printf(".stack_used:\n%i\n\n", c.stack_used);
+    printf(".stack_used:\n%i\n\n", c->stack_used);
     if (len(constants) > 0) {
         int pad = count_digits(len(constants));
         printf(".const:\n");
@@ -206,10 +206,9 @@ debug_disassemble(const Chunk &c)
         printf("\n");
     }
 
-    const auto &code = c.code;
     printf(".code:\n");
     int pad = debug_get_pad(c);
-    for (int i = 0, end = cast_int(len(code)); i < end; i++) {
+    for (int i = 0, end = cast_int(len(c->code)); i < end; i++) {
         debug_disassemble_at(c, i, pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");

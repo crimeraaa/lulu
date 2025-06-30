@@ -17,7 +17,7 @@ struct Chunk {
     Dynamic<Instruction> code;
     Dynamic<Line_Info>   line_info;
     Table               *indexes;   // Maps values to indexes in `constants`.
-    String               source;
+    LString              source;
     int                  stack_used;
 };
 
@@ -25,13 +25,13 @@ static constexpr u16 VARARG = OPCODE_MAX_B;
 static constexpr int NO_LINE = -1;
 
 Chunk *
-chunk_new(lulu_VM *vm, String source, Table *indexes);
+chunk_new(lulu_VM *vm, LString source, Table *indexes);
 
 int
-chunk_append(lulu_VM *vm, Chunk &c, Instruction i, int line);
+chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line);
 
 int
-chunk_get_line(const Chunk &c, int pc);
+chunk_get_line(const Chunk *c, int pc);
 
 u32
-chunk_add_constant(lulu_VM *vm, Chunk &c, Value v);
+chunk_add_constant(lulu_VM *vm, Chunk *c, Value v);
