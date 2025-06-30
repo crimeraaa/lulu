@@ -1,5 +1,4 @@
 import gdb # type: ignore
-from typing import Final
 from .. import base
 
 class OStringPrinter:
@@ -40,10 +39,11 @@ class ValuePrinter:
 
     def to_string(self) -> str:
         match int(self.__type):
-            case 0: return "nil"
-            case 1: return str(bool(self.__data["boolean"]))
-            case 2: return str(float(self.__data["number"]))
-            case 3: return str(self.__data["object"]["ostring"].address)
+            case -1: return "none"
+            case 0:  return "nil"
+            case 1:  return str(bool(self.__data["boolean"]))
+            case 2:  return str(float(self.__data["number"]))
+            case 4:  return str(self.__data["object"]["ostring"].address)
             case _:
                 pass
 

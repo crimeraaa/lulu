@@ -53,6 +53,25 @@ vm_get_builder(lulu_VM *vm);
 void
 vm_destroy(lulu_VM *vm);
 
+Value *
+vm_base_ptr(lulu_VM *vm);
+
+Value *
+vm_top_ptr(lulu_VM *vm);
+
+
+/**
+ * @brief
+ *  -   Gets the absolute index of `v` in `vm->stack`.
+ */
+size_t
+vm_absindex(lulu_VM *vm, Value *v);
+
+size_t
+vm_base_absindex(lulu_VM *vm);
+
+size_t
+vm_top_absindex(lulu_VM *vm);
 
 /**
  * @brief

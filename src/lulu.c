@@ -96,34 +96,55 @@ static void run_file(lulu_VM *vm, const char *file_name)
 }
 
 static int
+base_tostring(lulu_VM *vm, int argc)
+{
+    if (argc != 1) {
+        lulu_push_fstring(vm, "Expected 1 argument to `tostring`, got %i", argc);
+        lulu_error(vm);
+        return 1;
+    }
+    switch (lulu_type(vm, 1)) {
+    case LULU_TYPE_NIL:
+        lulu_push_literal(vm, "nil");
+        break;
+    case LULU_TYPE_BOOLEAN:
+        lulu_push_cstring(vm, lulu_to_boolean(vm, 1) ? "true" : "false");
+        break;
+    case LULU_TYPE_NUMBER:
+        lulu_push_fstring(vm, "%f", lulu_to_number(vm, 1));
+        break;
+    case LULU_TYPE_STRING:
+        /* Nothing to do */
+        break;
+    case LULU_TYPE_USERDATA:
+    case LULU_TYPE_TABLE:
+    case LULU_TYPE_FUNCTION: {
+        const char *s = lulu_type_name(vm, 1);
+        void *p = lulu_to_pointer(vm, 1);
+        lulu_push_fstring(vm, "%s: %p", s, p);
+        break;
+    }
+    default:
+        __builtin_unreachable();
+        break;
+    }
+    return 1;
+}
+
+static int
 base_print(lulu_VM *vm, int argc)
 {
     int i;
+    lulu_get_global(vm, "tostring"); /* ..., tostring */
     for (i = 1; i <= argc; i++) {
         if (i > 1) {
             fputc('\t', stdout);
         }
-        switch (lulu_type(vm, i)) {
-        case LULU_TYPE_NIL:
-            fputs("nil", stdout);
-            break;
-        case LULU_TYPE_BOOLEAN:
-            fputs(lulu_to_boolean(vm, i) ? "true" : "false", stdout);
-            break;
-        case LULU_TYPE_NUMBER:
-            fprintf(stdout, LULU_NUMBER_FMT, lulu_to_number(vm, i));
-            break;
-        case LULU_TYPE_STRING:
-            fputs(lulu_to_cstring(vm, i), stdout);
-            break;
-        case LULU_TYPE_TABLE:
-        case LULU_TYPE_FUNCTION:
-            fprintf(stdout, "%s: %p", lulu_type_name(vm, i), lulu_to_pointer(vm, i));
-            break;
-        default:
-            __builtin_unreachable();
-            break;
-        }
+        lulu_push_value(vm, -1); /* ..., tostring, tostring, */
+        lulu_push_value(vm, i);  /* ..., tostring, tostring, arg[i] */
+        lulu_call(vm, 1, 1);     /* ..., tostring, tostring(arg[i]) */
+        fprintf(stdout, "%s", lulu_to_cstring(vm, -1));
+        lulu_pop(vm, 1);         /* ..., tostring */
     }
     fputc('\n', stdout);
     return 0;
@@ -151,17 +172,20 @@ c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
     return realloc(ptr, new_size);
 }
 
+static const lulu_Register
+baselib[] = {
+    {"clock",    base_clock},
+    {"tostring", base_tostring},
+    {"print",    base_print},
+};
+
 int main(int argc, char *argv[])
 {
     lulu_VM *vm;
     int      status = 0;
 
     vm = lulu_open(c_allocator, NULL);
-    lulu_push_cfunction(vm, base_print);
-    lulu_set_global(vm, "print");
-
-    lulu_push_cfunction(vm, base_clock);
-    lulu_set_global(vm, "clock");
+    lulu_register(vm, baselib, sizeof(baselib) / sizeof(baselib[0]));
 
     switch (argc) {
     case 1:

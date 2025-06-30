@@ -63,15 +63,20 @@ builder_reset(Builder &b);
 
 void
 builder_destroy(lulu_VM *vm, Builder &b);
+void
+builder_write_string(lulu_VM *vm, Builder &b, String s);
 
 void
 builder_write_char(lulu_VM *vm, Builder &b, char ch);
 
 void
-builder_write_string(lulu_VM *vm, Builder &b, String s);
+builder_write_int(lulu_VM *vm, Builder &b, int i);
 
 void
-builder_write_int(lulu_VM *vm, Builder &b, int i);
+builder_write_number(lulu_VM *vm, Builder &b, Number n);
+
+void
+builder_write_pointer(lulu_VM *vm, Builder &b, void *p);
 
 String
 builder_to_string(const Builder &b);

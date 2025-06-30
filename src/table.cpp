@@ -43,6 +43,7 @@ hash_value(Value v)
         break;
     case VALUE_BOOLEAN:  return hash_any(value_to_boolean(v));
     case VALUE_NUMBER:   return hash_any(value_to_number(v));
+    case VALUE_USERDATA: return hash_any(value_to_userdata(v));
     case VALUE_STRING:   return value_to_ostring(v)->hash;
     case VALUE_TABLE:
     case VALUE_FUNCTION: return hash_any(value_to_object(v));
@@ -88,15 +89,21 @@ find_entry(Slice<Entry> entries, Value k)
     lulu_unreachable();
 }
 
-Table_Result
-table_get(Table &t, Value k)
+Value
+table_get(Table &t, Value k, bool *ok)
 {
     if (t.count > 0) {
         Entry &e = find_entry(t.entries, k);
         // If `e->key` is nil, then that means `k` does not exist in the table.
-        return {e.value, !value_is_nil(e.key)};
+        if (ok != nullptr) {
+            *ok = !value_is_nil(e.key);
+        }
+        return e.value;
     }
-    return {Value(), false};
+    if (ok != nullptr) {
+        *ok = false;
+    }
+    return Value();
 }
 
 void

@@ -1,6 +1,6 @@
-#include <stdio.h>
-#include <limits.h>
-#include <float.h>
+#include <stdio.h>  // sprintf
+#include <limits.h> // INT_WIDTH
+#include <float.h>  // DBL_DECIMAL_GI
 
 #include "string.hpp"
 #include "vm.hpp"
@@ -36,13 +36,6 @@ builder_destroy(lulu_VM *vm, Builder &b)
 }
 
 void
-builder_write_char(lulu_VM *vm, Builder &b, char ch)
-{
-    String s{&ch, 1};
-    builder_write_string(vm, b, s);
-}
-
-void
 builder_write_string(lulu_VM *vm, Builder &b, String s)
 {
     // Nothing to do?
@@ -63,10 +56,33 @@ builder_write_string(lulu_VM *vm, Builder &b, String s)
 }
 
 void
+builder_write_char(lulu_VM *vm, Builder &b, char ch)
+{
+    String s{&ch, 1};
+    builder_write_string(vm, b, s);
+}
+
+void
 builder_write_int(lulu_VM *vm, Builder &b, int i)
 {
     char buf[INT_WIDTH * 2];
-    int written = sprintf(buf, "%i", i);
+    int  written = sprintf(buf, "%i", i);
+    builder_write_string(vm, b, Slice(buf, cast_size(written)));
+}
+
+void
+builder_write_number(lulu_VM *vm, Builder &b, Number n)
+{
+    char buf[DBL_DECIMAL_DIG * 2];
+    int  written = sprintf(buf, LULU_NUMBER_FMT, n);
+    builder_write_string(vm, b, Slice(buf, cast_size(written)));
+}
+
+void
+builder_write_pointer(lulu_VM *vm, Builder &b, void *p)
+{
+    char buf[sizeof(p) * CHAR_BIT];
+    int  written = sprintf(buf, "%p", p);
     builder_write_string(vm, b, Slice(buf, cast_size(written)));
 }
 

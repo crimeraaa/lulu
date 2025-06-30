@@ -11,14 +11,16 @@ operator==(Value a, Value b)
     }
 
     switch (a.type) {
-    case VALUE_NONE:        break;
-    case VALUE_NIL:         return true;
-    case VALUE_BOOLEAN:     return value_to_boolean(a) == value_to_boolean(b);
-    case VALUE_NUMBER:      return lulu_Number_eq(value_to_number(a), value_to_number(b));
-    case VALUE_STRING:      // fall-through
+    case VALUE_NONE:     break;
+    case VALUE_NIL:      return true;
+    case VALUE_BOOLEAN:  return value_to_boolean(a) == value_to_boolean(b);
+    case VALUE_NUMBER:   return lulu_Number_eq(value_to_number(a), value_to_number(b));
+    case VALUE_USERDATA: return value_to_userdata(a) == value_to_userdata(b);
+    case VALUE_STRING:   // fall-through
     case VALUE_TABLE:
-    case VALUE_FUNCTION:    return value_to_object(a) == value_to_object(b);
-    case VALUE_CHUNK:       break;
+    case VALUE_FUNCTION: return value_to_object(a) == value_to_object(b);
+    case VALUE_CHUNK:
+        break;
     }
     lulu_unreachable();
 }
@@ -37,6 +39,11 @@ value_print(Value v)
     case VALUE_NUMBER:
         fprintf(stdout, LULU_NUMBER_FMT, value_to_number(v));
         break;
+    case VALUE_USERDATA: {
+        void *p = value_to_userdata(v);
+        fprintf(stdout, "%s: %p", value_type_name(t), p);
+        break;
+    }
     case VALUE_STRING: {
         OString *s = value_to_ostring(v);
         char     q = (s->len == 1) ? '\'' : '\"';
@@ -44,9 +51,11 @@ value_print(Value v)
         break;
     }
     case VALUE_TABLE:
-    case VALUE_FUNCTION:
-        fprintf(stdout, "%s: %p", value_type_name(t), cast(void *)value_to_object(v));
+    case VALUE_FUNCTION: {
+        void *p = value_to_object(v);
+        fprintf(stdout, "%s: %p", value_type_name(t), p);
         break;
+    }
     case VALUE_NONE:
     case VALUE_CHUNK:
         lulu_unreachable();

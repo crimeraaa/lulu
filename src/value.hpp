@@ -14,6 +14,7 @@ struct Value {
         Number   number;
         bool     boolean;
         Object  *object;
+        void    *pointer; // light userdata.
     };
 
     constexpr
@@ -32,6 +33,12 @@ struct Value {
     Value(Number n)
         : type{VALUE_NUMBER}
         , number{n}
+    {}
+
+    constexpr explicit
+    Value(void *p)
+        : type{VALUE_USERDATA}
+        , pointer{p}
     {}
 
     explicit
@@ -67,13 +74,14 @@ inline const char *
 value_type_name(Value_Type t)
 {
     switch (t) {
-    case VALUE_NONE:     return "no value";
-    case VALUE_NIL:      return "nil";
-    case VALUE_BOOLEAN:  return "boolean";
-    case VALUE_NUMBER:   return "number";
-    case VALUE_STRING:   return "string";
-    case VALUE_TABLE:    return "table";
-    case VALUE_FUNCTION: return "function";
+    case VALUE_NONE:        return "no value";
+    case VALUE_NIL:         return "nil";
+    case VALUE_BOOLEAN:     return "boolean";
+    case VALUE_NUMBER:      return "number";
+    case VALUE_USERDATA:    return "lightuserdata";
+    case VALUE_STRING:      return "string";
+    case VALUE_TABLE:       return "table";
+    case VALUE_FUNCTION:    return "function";
     case VALUE_CHUNK:
         break;
     }
@@ -98,6 +106,7 @@ value_type(Value v)
 #define value_is_nil(v)         (value_type(v) == VALUE_NIL)
 #define value_is_boolean(v)     (value_type(v) == VALUE_BOOLEAN)
 #define value_is_number(v)      (value_type(v) == VALUE_NUMBER)
+#define value_is_userdata(v)    (value_type(v) == VALUE_USERDATA)
 #define value_is_object(v)      (value_type(v) >= VALUE_STRING)
 #define value_is_string(v)      (value_type(v) == VALUE_STRING)
 #define value_is_table(v)       (value_type(v) == VALUE_TABLE)
@@ -107,12 +116,13 @@ value_type(Value v)
 
 //=== VALUE DATA PAYLOADS ================================================== {{{
 
-#define value_to_boolean(v)     ((v).boolean)
-#define value_to_number(v)      ((v).number)
-#define value_to_object(v)      ((v).object)
-#define value_to_ostring(v)     (&value_to_object(v)->ostring)
-#define value_to_table(v)       (&value_to_object(v)->table)
-#define value_to_function(v)    (&value_to_object(v)->function)
+#define value_to_boolean(v)         ((v).boolean)
+#define value_to_number(v)          ((v).number)
+#define value_to_userdata(v)  ((v).pointer)
+#define value_to_object(v)          ((v).object)
+#define value_to_ostring(v)         (&value_to_object(v)->ostring)
+#define value_to_table(v)           (&value_to_object(v)->table)
+#define value_to_function(v)        (&value_to_object(v)->function)
 
 //=== }}} ======================================================================
 

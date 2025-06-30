@@ -46,9 +46,24 @@ lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_siz
 void
 lulu_call(lulu_VM *vm, int n_args, int n_rets)
 {
-    Value &ra = value_at(vm, -(n_args + 1));
-    vm_call(vm, ra, n_args, n_rets);
+    Value &fn = value_at(vm, -(n_args + 1));
 
+    // Account for any changes in the stack made by unprotected main function
+    // or C functions.
+    Call_Frame *caller = vm->caller;
+    if (caller != nullptr && closure_is_c(caller->function)) {
+        // Ensure both slices have the same underlying data.
+        lulu_assert(raw_data(vm->window) == raw_data(caller->window));
+        caller->window = vm->window;
+    }
+
+    // `vm_call_fini()` may adjust `vm->window` in a different way than wanted.
+    size_t base    = vm_base_absindex(vm);
+    size_t new_top = vm_absindex(vm, &fn) + cast_size(n_rets);
+    vm_call(vm, fn, n_args, n_rets);
+
+    // `fn` may be dangling at this point!
+    vm->window = Slice(vm->stack, base, new_top);
 }
 
 struct PCall_Data {
@@ -69,6 +84,24 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
     lulu_Error e = vm_run_protected(vm, pcall, &d);
     return e;
 }
+
+LULU_API void
+lulu_error(lulu_VM *vm)
+{
+    vm_throw(vm, LULU_ERROR_RUNTIME);
+}
+
+LULU_API void
+lulu_register(lulu_VM *vm, const lulu_Register *library, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        OString *s = ostring_new(vm, String(library[i].name));
+        Closure *f = closure_new(vm, library[i].function);
+        table_set(vm, vm->globals, Value(s), Value(f));
+    }
+}
+
+/*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
 
 lulu_Type
 lulu_type(lulu_VM *vm, int i)
@@ -103,6 +136,12 @@ lulu_is_number(lulu_VM *vm, int i)
 }
 
 int
+lulu_is_userdata(lulu_VM *vm, int i)
+{
+    return value_is_userdata(value_at(vm, i));
+}
+
+int
 lulu_is_string(lulu_VM *vm, int i)
 {
     return value_is_string(value_at(vm, i));
@@ -120,6 +159,9 @@ lulu_is_function(lulu_VM *vm, int i)
     return value_is_function(value_at(vm, i));
 }
 
+/*=== }}} =================================================================== */
+
+/*=== STACK MANIPULATION FUNCTIONS ====================================== {{{ */
 
 int
 lulu_to_boolean(lulu_VM *vm, int i)
@@ -156,8 +198,12 @@ void *
 lulu_to_pointer(lulu_VM *vm, int i)
 {
     Value v = value_at(vm, i);
-    if (value_is_object(v)) {
-        return value_to_object(v);
+    switch (v.type) {
+    case VALUE_TABLE:       return value_to_table(v);
+    case VALUE_FUNCTION:    return value_to_function(v);
+    case VALUE_USERDATA:    return value_to_userdata(v);
+    default:
+        break;
     }
     return nullptr;
 }
@@ -208,10 +254,22 @@ lulu_push_number(lulu_VM *vm, lulu_Number n)
 }
 
 void
+lulu_push_userdata(lulu_VM *vm, void *p)
+{
+    vm_push(vm, Value(p));
+}
+
+void
 lulu_push_string(lulu_VM *vm, const char *s, size_t n)
 {
     OString *o = ostring_new(vm, String(s, n));
     vm_push(vm, Value(o));
+}
+
+void
+lulu_push_cstring(lulu_VM *vm, const char *s)
+{
+    return lulu_push_string(vm, s, strlen(s));
 }
 
 const char *
@@ -235,6 +293,28 @@ lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf)
 {
     Closure *f = closure_new(vm, cf);
     vm_push(vm, Value(f));
+}
+
+void
+lulu_push_value(lulu_VM *vm, int i)
+{
+    Value v = value_at(vm, i);
+    vm_push(vm, v);
+}
+
+/*=== }}} =================================================================== */
+
+
+int
+lulu_get_global(lulu_VM *vm, const char *s)
+{
+    OString *o = ostring_new(vm, String(s));
+    Value k = Value(o);
+
+    bool  ok;
+    Value v = table_get(vm->globals, k, &ok);
+    vm_push(vm, v);
+    return cast_int(ok);
 }
 
 void

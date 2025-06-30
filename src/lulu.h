@@ -53,14 +53,20 @@ typedef enum {
  *  -   Chapter 18.1 of Crafting Interpreters: "Tagged Unions".
  */
 typedef enum {
-    LULU_TYPE_NONE = -1,    /* out of bounds stack index, C API use only. */
+    LULU_TYPE_NONE = -1,    /* out of bounds stack index, C API only. */
     LULU_TYPE_NIL,
     LULU_TYPE_BOOLEAN,
     LULU_TYPE_NUMBER,
+    LULU_TYPE_USERDATA,     /* a non-collectible C pointer. */
     LULU_TYPE_STRING,
     LULU_TYPE_TABLE,
-    LULU_TYPE_FUNCTION      /* may be a Lua or C function. */
+    LULU_TYPE_FUNCTION,     /* may be a Lua or C function. */
 } lulu_Type;
+
+typedef struct {
+    const char    *name;
+    lulu_CFunction function; 
+} lulu_Register;
 
 LULU_API lulu_VM *
 lulu_open(lulu_Allocator allocator, void *allocator_data);
@@ -95,6 +101,12 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets);
 LULU_API lulu_Error
 lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
 
+LULU_API void
+lulu_error(lulu_VM *vm);
+
+LULU_API void
+lulu_register(lulu_VM *vm, const lulu_Register *library, size_t n);
+
 /*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
 
 
@@ -114,6 +126,9 @@ LULU_API int
 lulu_is_number(lulu_VM *vm, int i);
 
 LULU_API int
+lulu_is_userdata(lulu_VM *vm, int i);
+
+LULU_API int
 lulu_is_string(lulu_VM *vm, int i);
 
 LULU_API int
@@ -131,13 +146,10 @@ lulu_to_number(lulu_VM *vm, int i);
 LULU_API const char *
 lulu_to_string(lulu_VM *vm, int i, size_t *n);
 
-#define lulu_to_cstring(vm, i)  lulu_to_string(vm, i, NULL)
-
 LULU_API void *
 lulu_to_pointer(lulu_VM *vm, int i);
 
 /*=== }}} =================================================================== */
-
 
 /*=== STACK MANIPULATION FUNCTIONS ====================================== {{{ */
 
@@ -157,7 +169,13 @@ LULU_API void
 lulu_push_number(lulu_VM *vm, lulu_Number n);
 
 LULU_API void
+lulu_push_userdata(lulu_VM *vm, void *p);
+
+LULU_API void
 lulu_push_string(lulu_VM *vm, const char *s, size_t n);
+
+LULU_API void
+lulu_push_cstring(lulu_VM *vm, const char *s);
 
 LULU_API const char *
 #if defined(__GNUC__) || defined(__clang__)
@@ -171,13 +189,35 @@ lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 LULU_API void
 lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf);
 
-#define lulu_push_literal(vm, s)    lulu_push_string(vm, s, sizeof(s) - 1)
 
+/**
+ * @brief
+ *  -   Pushes a copy of the value at stack index `i` to the top of the stack.
+ */
 LULU_API void
-lulu_set_global(lulu_VM *vm, const char *s);
+lulu_push_value(lulu_VM *vm, int i);
 
 /*=== }}} =================================================================== */
 
+
+/**
+ * @brief
+ *  -   Gets the key `s` from the VM globals table and pushes it to the current
+ *      top of the stack.
+ *
+ * @return
+ *  -   `0` if `s` does not exist in the globals table, else `1`.
+ */
+LULU_API int
+lulu_get_global(lulu_VM *vm, const char *s);
+
+/**
+ * @brief
+ *  -   Sets the global variable with key `s` to the current top of the stack.
+ *  -   The value is popped.
+ */
+LULU_API void
+lulu_set_global(lulu_VM *vm, const char *s);
 
 /**
  * @brief
@@ -192,5 +232,8 @@ lulu_set_global(lulu_VM *vm, const char *s);
  */
 LULU_API void
 lulu_concat(lulu_VM *vm, int n);
+
+#define lulu_to_cstring(vm, i)      lulu_to_string(vm, i, NULL)
+#define lulu_push_literal(vm, s)    lulu_push_string(vm, s, sizeof(s) - 1)
 
 #endif /* LULU_H */
