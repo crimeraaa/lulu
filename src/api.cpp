@@ -85,6 +85,28 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
     return e;
 }
 
+struct C_PCall_Data {
+    lulu_CFunction function;
+    void          *function_data;
+};
+
+static void
+c_pcall(lulu_VM *vm, void *user_ptr)
+{
+    C_PCall_Data *d = cast(C_PCall_Data *)user_ptr;
+    lulu_push_cfunction(vm, d->function);
+    lulu_push_userdata(vm, d->function_data);
+    lulu_call(vm, 1, 0);
+}
+
+LULU_API lulu_Error
+lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
+{
+    C_PCall_Data d{function, function_data};
+    lulu_Error e = vm_run_protected(vm, c_pcall, &d);
+    return e;
+}
+
 LULU_API void
 lulu_error(lulu_VM *vm)
 {

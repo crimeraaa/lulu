@@ -23,10 +23,9 @@ typedef void *
 /**
  * @param argc
  *  -   Number of arguments pushed to the stack for this function call.
- *  -   If zero, then index 1 is free.
- *  -   If non-zero, then index 1 up to and including `argc` is occupied.
- *  -   You may choose to ignore it by not giving it a name, e.g.
- *      `int my_func(lulu_VM *vm, int)`.
+ *  -   If zero, then no stack slots are currently occupied by any arguments.
+ *  -   If non-zero, then index 1 up to and including `argc` are occupied.
+ *  -   You may choose to ignore it.
  *
  * @return
  *  -   The number of values pushed to the stack that will be used by the
@@ -86,8 +85,17 @@ lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_siz
 
 /**
  * @brief
- *  -   Calls the Lua or C function at the stack index `-(n_args + 1)` and
- *      adjusts the current VM call frame by `n_rets`.
+ *  -   Calls the Lua or C function at the stack index `-(n_args + 1)`
+ *      with arguments from `(nargs)` up to and including `-1`.
+ *
+ * @note 2025-06-30
+ *  -   The function and its arguments are popped when done.
+ *  -   The return values, if any, are moved to where the function originally
+ *      was.
+ *  -   That is, the `-(n_args + 1)` stack slot, up to the `n_ret` slot above
+ *      it, is overwritten.
+ *  -   If the function returned less than `n_rets` values then remaining
+ *      slots are set to `nil`.
  */
 LULU_API void
 lulu_call(lulu_VM *vm, int n_args, int n_rets);
@@ -100,6 +108,15 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets);
  */
 LULU_API lulu_Error
 lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
+
+
+/**
+ * @brief
+ *  -   Wraps the call `function(vm, function_data)` in a protected call
+ *      so that we may catch any thrown exceptions.
+ */
+LULU_API lulu_Error
+lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data);
 
 LULU_API void
 lulu_error(lulu_VM *vm);
@@ -211,6 +228,7 @@ lulu_push_value(lulu_VM *vm, int i);
 LULU_API int
 lulu_get_global(lulu_VM *vm, const char *s);
 
+
 /**
  * @brief
  *  -   Sets the global variable with key `s` to the current top of the stack.
@@ -218,6 +236,7 @@ lulu_get_global(lulu_VM *vm, const char *s);
  */
 LULU_API void
 lulu_set_global(lulu_VM *vm, const char *s);
+
 
 /**
  * @brief

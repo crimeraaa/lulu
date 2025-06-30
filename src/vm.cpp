@@ -395,7 +395,7 @@ vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned)
 {
     Call_Frame *frame = vm->caller;
     bool vararg_return = (frame->expected_returned == VARARG);
-    
+
     // Move results to the right place- overwrites calling function object.
     Slice<Value> results = Slice(vm_base_ptr(vm) - 1, cast_size(actual_returned));
     copy(results, Slice(&ra, cast_size(actual_returned)));

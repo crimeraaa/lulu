@@ -84,15 +84,17 @@ cleanup_done:
     return data;
 }
 
-static void run_file(lulu_VM *vm, const char *file_name)
+static int
+run_file(lulu_VM *vm, const char *file_name)
 {
     size_t script_size;
     char *script = read_file(file_name, &script_size);
     if (script == NULL) {
-        return;
+        return EXIT_FAILURE;
     }
     run(vm, file_name, script, script_size);
     free(script);
+    return EXIT_SUCCESS;
 }
 
 static int
@@ -119,8 +121,10 @@ base_tostring(lulu_VM *vm, int argc)
     case LULU_TYPE_USERDATA:
     case LULU_TYPE_TABLE:
     case LULU_TYPE_FUNCTION: {
-        const char *s = lulu_type_name(vm, 1);
-        void *p = lulu_to_pointer(vm, 1);
+        const char *s;
+        void *p;
+        s = lulu_type_name(vm, 1);
+        p = lulu_to_pointer(vm, 1);
         lulu_push_fstring(vm, "%s: %p", s, p);
         break;
     }
@@ -160,6 +164,44 @@ base_clock(lulu_VM *vm, int argc)
     return 1;
 }
 
+static const lulu_Register
+baselib[] = {
+    {"clock",    base_clock},
+    {"tostring", base_tostring},
+    {"print",    base_print},
+};
+
+typedef struct {
+    char **argv;
+    int    argc;
+    int    status;
+} Main_Data;
+
+static int
+protected_main(lulu_VM *vm, int argc)
+{
+    Main_Data *d;
+    (void)argc;
+    d = (Main_Data *)lulu_to_pointer(vm, 1);
+
+    /* stack can be cleared at this point, `Main_Data` is a C type so it
+    cannot be collected no matter what. */
+    lulu_register(vm, baselib, sizeof(baselib) / sizeof(baselib[0]));
+    switch (d->argc) {
+    case 1:
+        run_interactive(vm);
+        break;
+    case 2:
+        d->status = run_file(vm, d->argv[1]);
+        break;
+    default:
+        fprintf(stderr, "Usage: %s [script]\n", d->argv[0]);
+        d->status = EXIT_FAILURE;
+        break;
+    }
+    return 0;
+}
+
 static void *
 c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
 {
@@ -172,33 +214,20 @@ c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
     return realloc(ptr, new_size);
 }
 
-static const lulu_Register
-baselib[] = {
-    {"clock",    base_clock},
-    {"tostring", base_tostring},
-    {"print",    base_print},
-};
-
 int main(int argc, char *argv[])
 {
-    lulu_VM *vm;
-    int      status = 0;
+    Main_Data  d = {argv, argc, EXIT_SUCCESS};
+    lulu_VM   *vm;
+    lulu_Error e;
 
     vm = lulu_open(c_allocator, NULL);
-    lulu_register(vm, baselib, sizeof(baselib) / sizeof(baselib[0]));
-
-    switch (argc) {
-    case 1:
-        run_interactive(vm);
-        break;
-    case 2:
-        run_file(vm, argv[1]);
-        break;
-    default:
-        fprintf(stderr, "Usage: %s [script]\n", argv[0]);
-        status = 1;
-        break;
-    }
+    e  = lulu_c_pcall(vm, protected_main, &d);
     lulu_close(vm);
-    return status;
+
+    if (e == LULU_OK && d.status == EXIT_SUCCESS) {
+        return EXIT_SUCCESS;
+    } else if (e == LULU_ERROR_MEMORY) {
+        return 2;
+    }
+    return EXIT_FAILURE;
 }
