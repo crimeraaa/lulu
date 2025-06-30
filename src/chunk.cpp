@@ -6,9 +6,9 @@
 #include "vm.hpp"
 
 Chunk *
-chunk_new(lulu_VM &vm, String source, Table *indexes)
+chunk_new(lulu_VM *vm, String source, Table *indexes)
 {
-    Chunk *c = object_new<Chunk>(vm, &vm.objects, VALUE_CHUNK);
+    Chunk *c = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
     dynamic_init(c->constants);
     dynamic_init(c->code);
     dynamic_init(c->line_info);
@@ -19,7 +19,7 @@ chunk_new(lulu_VM &vm, String source, Table *indexes)
 }
 
 static void
-add_line(lulu_VM &vm, Chunk &c, int pc, int line)
+add_line(lulu_VM *vm, Chunk &c, int pc, int line)
 {
     // Have previous lines to go to?
     if (len(c.line_info) > 0) {
@@ -37,7 +37,7 @@ add_line(lulu_VM &vm, Chunk &c, int pc, int line)
 }
 
 int
-chunk_append(lulu_VM &vm, Chunk &c, Instruction i, int line)
+chunk_append(lulu_VM *vm, Chunk &c, Instruction i, int line)
 {
     int pc = cast_int(len(c.code));
     dynamic_push(vm, c.code, i);
@@ -76,7 +76,7 @@ chunk_get_line(const Chunk &c, int pc)
 }
 
 u32
-chunk_add_constant(lulu_VM &vm, Chunk &c, Value v)
+chunk_add_constant(lulu_VM *vm, Chunk &c, Value v)
 {
     Table_Result r = table_get(*c.indexes, v);
     if (r.ok) {

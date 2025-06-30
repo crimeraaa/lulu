@@ -24,7 +24,7 @@ struct Array {
 };
 
 template<class T, size_t N>
-inline size_t
+inline typename Array<T, N>::size_type
 len(const Array<T, N> &a)
 {
     unused(a);
@@ -44,14 +44,14 @@ struct Small_Array : public Array<T, N> {
 };
 
 template<class T, size_t N>
-constexpr size_t
+constexpr typename Array<T, N>::size_type
 len(const Small_Array<T, N> &sa)
 {
     return sa.len;
 }
 
 template<class T, size_t N>
-constexpr size_t
+constexpr typename Array<T, N>::size_type
 cap(const Small_Array<T, N> &sa)
 {
     unused(sa);

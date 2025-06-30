@@ -6,7 +6,7 @@
 struct Compiler;
 
 struct Parser {
-    lulu_VM &vm;
+    lulu_VM *vm;
     Lexer    lexer;
     Token    consumed;
     Builder &builder;
@@ -50,11 +50,11 @@ struct Expr {
 };
 
 Parser
-parser_make(lulu_VM &vm, String source, String script, Builder &b);
+parser_make(lulu_VM *vm, String source, String script, Builder &b);
 
 [[noreturn]]
 void
 parser_error(Parser &p, const char *msg);
 
 Chunk *
-parser_program(lulu_VM &vm, String source, String script, Builder &b);
+parser_program(lulu_VM *vm, String source, String script, Builder &b);

@@ -1,7 +1,7 @@
-#include <time.h>   // clock
-#include <stdlib.h> // malloc, free
-#include <stdio.h>  // fprintf
-#include <string.h> // strcspn
+#include <time.h>   /* clock */
+#include <stdlib.h> /* malloc, free */
+#include <stdio.h>  /* fprintf */
+#include <string.h> /* strcspn */
 
 #include "lulu.h"
 
@@ -16,8 +16,10 @@ run(lulu_VM *vm, const char *source, const char *script, size_t n)
     if (e != LULU_OK) {
         const char *msg = lulu_to_cstring(vm, -1);
         fprintf(stderr, "%s\n", msg);
+        /* lulu_{load,pcall} leave an error message on the top of the stack */
         lulu_pop(vm, 1);
     }
+    /* LULU_RUNTIME_ERROR leaves the main function on top of the stack */
     lulu_set_top(vm, 0);
 }
 
@@ -27,13 +29,12 @@ run_interactive(lulu_VM *vm)
     char line[512];
     for (;;) {
         printf(">>> ");
-        if (fgets(line, (int)sizeof(line), stdin) == nullptr) {
+        if (fgets(line, (int)sizeof(line), stdin) == NULL) {
             printf("\n");
             break;
         }
 
-        size_t n = strcspn(line, "\r\n");
-        run(vm, "stdin", line, n);
+        run(vm, "stdin", line, strcspn(line, "\r\n"));
     }
 }
 
@@ -41,13 +42,13 @@ static char *
 read_file(const char *file_name, size_t *n)
 {
     FILE    *file_ptr  = fopen(file_name, "rb+");
-    char    *data = nullptr;
+    char    *data      = NULL;
     size_t   n_read    = 0;
     long     file_size = 0;
 
-    if (file_ptr == nullptr) {
+    if (file_ptr == NULL) {
         fprintf(stderr, "Failed to open file '%s'.\n", file_name);
-        // Don't `fclose(NULL)`.
+        /* Don't `fclose(NULL)`. */
         goto cleanup_done;
     }
 
@@ -60,23 +61,23 @@ read_file(const char *file_name, size_t *n)
     *n  = (size_t)(file_size);
     data = (char *)malloc(*n + 1);
     rewind(file_ptr);
-    if (data == nullptr) {
+    if (data == NULL) {
         fprintf(stderr, "Failed to allocate memory for file '%s'.\n", file_name);
         goto cleanup_buffer;
     }
 
-    // `buffer[file_size]` is reserved for nul char so don't include it.
+    /* `buffer[file_size]` is reserved for nul char so don't include it. */
     n_read = fread(data, sizeof(data[0]), *n, file_ptr);
     if (n_read < *n) {
         fprintf(stderr, "Failed to read file '%s'.\n", file_name);
 cleanup_buffer:
         free(data);
-        data = nullptr;
+        data = NULL;
         *n   = 0;
         goto cleanup_file;
     }
 
-    data[n_read] = '\0'; // `n_read` can never be >= `buffer.len + 1`
+    data[n_read] = '\0'; /* `n_read` can never be >= `buffer.len + 1` */
 cleanup_file:
     fclose(file_ptr);
 cleanup_done:
@@ -87,7 +88,7 @@ static void run_file(lulu_VM *vm, const char *file_name)
 {
     size_t script_size;
     char *script = read_file(file_name, &script_size);
-    if (script == nullptr) {
+    if (script == NULL) {
         return;
     }
     run(vm, file_name, script, script_size);
@@ -97,7 +98,8 @@ static void run_file(lulu_VM *vm, const char *file_name)
 static int
 base_print(lulu_VM *vm, int argc)
 {
-    for (int i = 1; i <= argc; i++) {
+    int i;
+    for (i = 1; i <= argc; i++) {
         if (i > 1) {
             fputc('\t', stdout);
         }
@@ -128,9 +130,11 @@ base_print(lulu_VM *vm, int argc)
 }
 
 static int
-base_clock(lulu_VM *vm, int)
+base_clock(lulu_VM *vm, int argc)
 {
-    lulu_Number n = lulu_Number(clock()) / lulu_Number(CLOCKS_PER_SEC);
+    lulu_Number n;
+    (void)argc;
+    n = (lulu_Number)clock() / (lulu_Number)CLOCKS_PER_SEC;
     lulu_push_number(vm, n);
     return 1;
 }
@@ -142,21 +146,23 @@ c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
     (void)old_size;
     if (new_size == 0) {
         free(ptr);
-        return nullptr;
+        return NULL;
     }
     return realloc(ptr, new_size);
 }
 
 int main(int argc, char *argv[])
 {
-    lulu_VM *vm = lulu_open(c_allocator, nullptr);
+    lulu_VM *vm;
+    int      status = 0;
+
+    vm = lulu_open(c_allocator, NULL);
     lulu_push_cfunction(vm, base_print);
     lulu_set_global(vm, "print");
 
     lulu_push_cfunction(vm, base_clock);
     lulu_set_global(vm, "clock");
 
-    int status = 0;
     switch (argc) {
     case 1:
         run_interactive(vm);

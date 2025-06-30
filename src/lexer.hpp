@@ -48,7 +48,7 @@ struct Token {
 };
 
 struct Lexer {
-    lulu_VM    &vm;
+    lulu_VM    *vm;
     Builder    &builder;
     String      source, script;
     const char *start;
@@ -61,7 +61,7 @@ static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
 extern const String token_strings[TOKEN_COUNT];
 
 Lexer
-lexer_make(lulu_VM &vm, String source, String script, Builder &b);
+lexer_make(lulu_VM *vm, String source, String script, Builder &b);
 
 Token
 lexer_lex(Lexer &x);

@@ -2,7 +2,7 @@
 #include "vm.hpp"
 
 Compiler
-compiler_make(lulu_VM &vm, Parser &p, Chunk &chunk)
+compiler_make(lulu_VM *vm, Parser &p, Chunk &chunk)
 {
     Compiler c{vm, p, chunk, 0};
     return c;

@@ -31,21 +31,25 @@ struct Slice {
         return this->data[ii];
     }
 
+    constexpr
     Slice()
         : data{nullptr}
         , len{0}
     {}
 
+    constexpr
     Slice(T *data, size_type len)
         : data{data}
         , len{len}
     {}
 
+    constexpr
     Slice(T *start, T *stop)
         : data{start}
         , len{cast_size(stop - start)}
     {}
 
+    constexpr
     Slice(T *p, size_type start, size_type stop)
         : data{p + start}
         , len{stop - start}
@@ -80,14 +84,14 @@ slice_eq(Slice<T> a, Slice<T> b)
 }
 
 template<class T>
-inline typename Slice<T>::size_type
+constexpr typename Slice<T>::size_type
 len(Slice<T> s)
 {
     return s.len;
 }
 
 template<class T>
-inline T *
+constexpr T *
 raw_data(Slice<T> s)
 {
     return s.data;
@@ -114,7 +118,7 @@ copy(Slice<T> dst, Slice<const T> src)
 
 // Mutable forward iterator initial value.
 template<class T>
-inline T *
+constexpr T *
 begin(Slice<T> s)
 {
     return s.data;
@@ -122,7 +126,7 @@ begin(Slice<T> s)
 
 // Mutable forward iterator final value.
 template<class T>
-inline T *
+constexpr T *
 end(Slice<T> s)
 {
     return s.data + s.len;

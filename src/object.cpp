@@ -2,7 +2,7 @@
 #include "vm.hpp"
 
 void
-object_free(lulu_VM &vm, Object *o)
+object_free(lulu_VM *vm, Object *o)
 {
     switch (o->base.type) {
     case VALUE_STRING: {

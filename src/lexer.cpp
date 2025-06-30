@@ -6,7 +6,7 @@
 
 
 Lexer
-lexer_make(lulu_VM &vm, String source, String script, Builder &b)
+lexer_make(lulu_VM *vm, String source, String script, Builder &b)
 {
     const char *ptr = raw_data(script);
     Lexer l{vm, b, source, script, ptr, ptr, 1};
@@ -336,7 +336,7 @@ make_number(Lexer &x, char first)
 static Token
 make_string(Lexer &x, char q)
 {
-    lulu_VM &vm = x.vm;
+    lulu_VM *vm = x.vm;
     Builder &b  = vm_get_builder(vm);
     String   s  = String(x.cursor, x.cursor);
     while (!is_eof(x) && !check2(x, q, '\n')) {
@@ -543,5 +543,3 @@ const String token_strings[TOKEN_COUNT] = {
     "."_s, ".."_s, "..."_s, ","_s, ":"_s, ";"_s, "="_s,
     "<identifier>"_s, "<number>"_s, "<string>"_s, "<eof>"_s,
 };
-
-#undef STR

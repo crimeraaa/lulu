@@ -10,6 +10,12 @@ typedef struct lulu_VM lulu_VM;
 
 typedef LULU_NUMBER_TYPE lulu_Number;
 
+#ifdef __cplusplus
+#define LULU_API    extern "C"
+#else
+#define LULU_API    extern
+#endif /* __cplusplus */
+
 typedef void *
 (*lulu_Allocator)(void *context, void *ptr, size_t old_size, size_t new_size);
 
@@ -19,6 +25,8 @@ typedef void *
  *  -   Number of arguments pushed to the stack for this function call.
  *  -   If zero, then index 1 is free.
  *  -   If non-zero, then index 1 up to and including `argc` is occupied.
+ *  -   You may choose to ignore it by not giving it a name, e.g.
+ *      `int my_func(lulu_VM *vm, int)`.
  *
  * @return
  *  -   The number of values pushed to the stack that will be used by the
@@ -36,7 +44,7 @@ typedef enum {
     LULU_OK,
     LULU_ERROR_SYNTAX,
     LULU_ERROR_RUNTIME,
-    LULU_ERROR_MEMORY,
+    LULU_ERROR_MEMORY
 } lulu_Error;
 
 
@@ -45,23 +53,19 @@ typedef enum {
  *  -   Chapter 18.1 of Crafting Interpreters: "Tagged Unions".
  */
 typedef enum {
-    LULU_TYPE_NONE = -1,     /* out of bounds stack index, C API use only. */
+    LULU_TYPE_NONE = -1,    /* out of bounds stack index, C API use only. */
     LULU_TYPE_NIL,
     LULU_TYPE_BOOLEAN,
     LULU_TYPE_NUMBER,
     LULU_TYPE_STRING,
     LULU_TYPE_TABLE,
-    LULU_TYPE_FUNCTION,
+    LULU_TYPE_FUNCTION      /* may be a Lua or C function. */
 } lulu_Type;
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-lulu_VM *
+LULU_API lulu_VM *
 lulu_open(lulu_Allocator allocator, void *allocator_data);
 
-void
+LULU_API void
 lulu_close(lulu_VM *vm);
 
 
@@ -70,7 +74,7 @@ lulu_close(lulu_VM *vm);
  *  -   Compiles the string `script` into a Lua function, which is pushed to
  *      the top of the stack.
  */
-lulu_Error
+LULU_API lulu_Error
 lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size);
 
 
@@ -79,7 +83,7 @@ lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_siz
  *  -   Calls the Lua or C function at the stack index `-(n_args + 1)` and
  *      adjusts the current VM call frame by `n_rets`.
  */
-void
+LULU_API void
 lulu_call(lulu_VM *vm, int n_args, int n_rets);
 
 
@@ -88,88 +92,105 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets);
  *  -   Wraps `lulu_call()` in a protected call so that we may catch any thrown
  *      exceptions.
  */
-lulu_Error
+LULU_API lulu_Error
 lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
 
 /*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
 
 
-lulu_Type
+LULU_API lulu_Type
 lulu_type(lulu_VM *vm, int i);
 
-const char *
+LULU_API const char *
 lulu_type_name(lulu_VM *vm, int i);
 
-int
+LULU_API int
 lulu_is_nil(lulu_VM *vm, int i);
 
-int
+LULU_API int
 lulu_is_boolean(lulu_VM *vm, int i);
 
-int
+LULU_API int
 lulu_is_number(lulu_VM *vm, int i);
 
-int
+LULU_API int
 lulu_is_string(lulu_VM *vm, int i);
 
-int
+LULU_API int
 lulu_is_table(lulu_VM *vm, int i);
 
-int
+LULU_API int
 lulu_is_function(lulu_VM *vm, int i);
 
-bool
+LULU_API int
 lulu_to_boolean(lulu_VM *vm, int i);
 
-lulu_Number
+LULU_API lulu_Number
 lulu_to_number(lulu_VM *vm, int i);
 
-const char *
+LULU_API const char *
 lulu_to_string(lulu_VM *vm, int i, size_t *n);
 
 #define lulu_to_cstring(vm, i)  lulu_to_string(vm, i, NULL)
 
-void *
+LULU_API void *
 lulu_to_pointer(lulu_VM *vm, int i);
 
 /*=== }}} =================================================================== */
 
 
-void
+/*=== STACK MANIPULATION FUNCTIONS ====================================== {{{ */
+
+LULU_API void
 lulu_set_top(lulu_VM *vm, int i);
 
-void
+LULU_API void
 lulu_pop(lulu_VM *vm, int n);
 
-void
+LULU_API void
 lulu_push_nil(lulu_VM *vm, int n);
 
-void
+LULU_API void
 lulu_push_boolean(lulu_VM *vm, int b);
 
-void
+LULU_API void
 lulu_push_number(lulu_VM *vm, lulu_Number n);
 
-void
+LULU_API void
 lulu_push_string(lulu_VM *vm, const char *s, size_t n);
 
-[[gnu::format(printf, 2, 3)]]
-const char *
+LULU_API const char *
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((format (printf, 2, 3)))
+#endif
 lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
 
-const char *
+LULU_API const char *
 lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 
-void
+LULU_API void
 lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf);
 
 #define lulu_push_literal(vm, s)    lulu_push_string(vm, s, sizeof(s) - 1)
 
-void
+LULU_API void
 lulu_set_global(lulu_VM *vm, const char *s);
 
-#ifdef __cplusplus
-} /* extern "C" */
-#endif /* __cplusplus */
+/*=== }}} =================================================================== */
+
+
+/**
+ * @brief
+ *  -   Perform string concatenation on the `-(n)` up to and including `-1`
+ *      stack indexes.
+ *  -   The `-(n)`th slot is overwritten with the result.
+ *
+ * @note 2025-06-30
+ *  Assumptions:
+ *  1.) The stack has at least `n` elements such that doing pointer arithmetic
+ *      is vaild.
+ */
+LULU_API void
+lulu_concat(lulu_VM *vm, int n);
 
 #endif /* LULU_H */

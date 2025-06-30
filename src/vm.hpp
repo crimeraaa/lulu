@@ -42,16 +42,16 @@ struct lulu_VM {
     Object            *objects;  // Linked list of all collectable objects.
 };
 
-using Protected_Fn = void (*)(lulu_VM &vm, void *user_ptr);
+using Protected_Fn = void (*)(lulu_VM *vm, void *user_ptr);
 
 void
-vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data);
+vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data);
 
 Builder &
-vm_get_builder(lulu_VM &vm);
+vm_get_builder(lulu_VM *vm);
 
 void
-vm_destroy(lulu_VM &vm);
+vm_destroy(lulu_VM *vm);
 
 
 /**
@@ -61,7 +61,7 @@ vm_destroy(lulu_VM &vm);
  *      top of the stack.
  */
 Error
-vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr);
+vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr);
 
 
 /**
@@ -71,37 +71,50 @@ vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr);
  *      main stack.
  */
 void
-vm_push(lulu_VM &vm, Value v);
+vm_push(lulu_VM *vm, Value v);
 
 Value
-vm_pop(lulu_VM &vm);
+vm_pop(lulu_VM *vm);
 
 void
-vm_check_stack(lulu_VM &vm, int n);
+vm_check_stack(lulu_VM *vm, int n);
 
 [[noreturn]]
 void
-vm_throw(lulu_VM &vm, Error e);
+vm_throw(lulu_VM *vm, Error e);
 
 const char *
-vm_push_fstring(lulu_VM &vm, const char *fmt, ...);
+vm_push_string(lulu_VM *vm, String s);
 
 const char *
-vm_push_vfstring(lulu_VM &vm, const char *fmt, va_list args);
+vm_push_fstring(lulu_VM *vm, const char *fmt, ...);
+
+const char *
+vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 
 [[noreturn, gnu::format(printf, 4, 5)]]
 void
-vm_syntax_error(lulu_VM &vm, String source, int line, const char *fmt, ...);
+vm_syntax_error(lulu_VM *vm, String source, int line, const char *fmt, ...);
 
 [[noreturn, gnu::format(printf, 3, 4)]]
 void
-vm_runtime_error(lulu_VM &vm, const char *act, const char *fmt, ...);
+vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...);
 
 void
-vm_concat(lulu_VM &vm, Value &ra, Slice<Value> args);
+vm_concat(lulu_VM *vm, Value &ra, Slice<Value> args);
 
+void
+vm_call(lulu_VM *vm, Value &ra, int n_args, int n_rets);
+
+
+/**
+ * @brief
+ *  -   Prepares a function call for the Lua or C function at `ra`.
+ *  -   If it is a C function, it is called directly.
+ *  -   Otherwise, if it is a Lua function, it can be called by `vm_execute()`.
+ */
 Call_Type
-vm_call(lulu_VM &vm, Value &ra, int argc, int expected_returned);
+vm_call_init(lulu_VM *vm, Value &ra, int argc, int expected_returned);
 
 
 /**
@@ -112,10 +125,10 @@ vm_call(lulu_VM &vm, Value &ra, int argc, int expected_returned);
  *      explicitly check.
  */
 Call_Type
-vm_return(lulu_VM &vm, Value &ra, int actual_returned);
+vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned);
 
 Error
-vm_load(lulu_VM &vm, String source, String script);
+vm_load(lulu_VM *vm, String source, String script);
 
 void
-vm_execute(lulu_VM &vm);
+vm_execute(lulu_VM *vm);

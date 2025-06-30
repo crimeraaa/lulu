@@ -16,7 +16,7 @@ static Expr
 expression(Parser &p, Compiler &c, Precedence limit = PREC_NONE);
 
 Parser
-parser_make(lulu_VM &vm, String source, String script, Builder &b)
+parser_make(lulu_VM *vm, String source, String script, Builder &b)
 {
     Parser p{vm, lexer_make(vm, source, script, b), {}, b};
     return p;
@@ -27,6 +27,9 @@ static void
 error_at(Parser &p, const Token &t, const char *msg)
 {
     String where = (t.type == TOKEN_EOF) ? token_strings[t.type] : t.lexeme;
+
+    // It is highly important we use a separate string builder from VM, because
+    // we don't want it to conflict when writing the formatted string.
     builder_write_string(p.vm, p.builder, where);
     const char *s = builder_to_cstring(p.builder);
     vm_syntax_error(p.vm, p.lexer.source, t.line, "%s at '%s'", msg, s);
@@ -376,12 +379,13 @@ adjust_assign(Compiler &c, u16 n_vars, Expr_List &e)
 static void
 assignment(Parser &p, Compiler &c, Assign *last, u16 n_vars = 1)
 {
+    // Check the result of `expression()`.
     if (last->variable.type != EXPR_GLOBAL) {
         parser_error(p, "Expected an identifier");
     }
 
     if (match(p, TOKEN_COMMA)) {
-        Assign next{last, prefix_expr(p, c)};
+        Assign next{last, expression(p, c)};
         assignment(p, c, &next, n_vars + 1);
         return;
     }
@@ -421,12 +425,10 @@ declaration(Parser &p, Compiler &c)
     Token t = p.consumed;
     switch (t.type) {
     case TOKEN_IDENTIFIER: {
-        Assign a{nullptr, prefix_expr(p, c)};
-        if (match(p, TOKEN_OPEN_PAREN)) {
-            Expr &call = a.variable;
-            compiler_expr_next_reg(c, call);
-            function_call(p, c, call);
-            compiler_set_returns(c, call, 0);
+        Assign a{nullptr, expression(p, c)};
+        // Differentiate `f().field = ...` and `f()`.
+        if (a.variable.type == EXPR_CALL) {
+            compiler_set_returns(c, a.variable, 0);
         } else {
             assignment(p, c, &a);
         }
@@ -444,7 +446,7 @@ declaration(Parser &p, Compiler &c)
 }
 
 Chunk *
-parser_program(lulu_VM &vm, String source, String script, Builder &b)
+parser_program(lulu_VM *vm, String source, String script, Builder &b)
 {
     Table *t  = table_new(vm);
     Chunk *ch = chunk_new(vm, source, t);

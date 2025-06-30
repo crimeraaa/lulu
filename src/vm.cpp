@@ -10,62 +10,62 @@
 #include "function.hpp"
 
 static Value *
-vm_base_ptr(lulu_VM &vm)
+vm_base_ptr(lulu_VM *vm)
 {
-    return raw_data(vm.window);
+    return raw_data(vm->window);
 }
 
 static Value *
-vm_top_ptr(lulu_VM &vm)
+vm_top_ptr(lulu_VM *vm)
 {
-    return raw_data(vm.window) + len(vm.window);
+    return raw_data(vm->window) + len(vm->window);
 }
 
 static size_t
-vm_base_index(lulu_VM &vm)
+vm_base_index(lulu_VM *vm)
 {
-    return ptr_index(vm.stack, vm_base_ptr(vm));
+    return ptr_index(vm->stack, vm_base_ptr(vm));
 }
 
 static size_t
-vm_top_index(lulu_VM &vm)
+vm_top_index(lulu_VM *vm)
 {
-    return ptr_index(vm.stack, vm_top_ptr(vm));
+    return ptr_index(vm->stack, vm_top_ptr(vm));
 }
 void
-vm_init(lulu_VM &vm, lulu_Allocator allocator, void *allocator_data)
+vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
 {
-    vm.allocator      = allocator;
-    vm.allocator_data = allocator_data;
-    vm.saved_ip       = nullptr;
-    vm.objects        = nullptr;
-    vm.frames.len     = 0;
-    vm.window         = Slice(vm.stack, 0, 0);
+    vm->allocator      = allocator;
+    vm->allocator_data = allocator_data;
+    vm->saved_ip       = nullptr;
+    vm->objects        = nullptr;
+    vm->frames.len     = 0;
+    vm->window         = Slice(vm->stack, 0, 0);
 
-    builder_init(vm.builder);
-    intern_init(vm.intern);
-    table_init(vm.globals);
+    builder_init(vm->builder);
+    intern_init(vm->intern);
+    table_init(vm->globals);
 
     // Ensure when we start interning strings we can already index.
-    intern_resize(vm, vm.intern, 32);
+    intern_resize(vm, vm->intern, 32);
 }
 
 Builder &
-vm_get_builder(lulu_VM &vm)
+vm_get_builder(lulu_VM *vm)
 {
-    Builder &b = vm.builder;
+    Builder &b = vm->builder;
     builder_reset(b);
     return b;
 }
 
 void
-vm_destroy(lulu_VM &vm)
+vm_destroy(lulu_VM *vm)
 {
-    builder_destroy(vm, vm.builder);
-    intern_destroy(vm, vm.intern);
-    slice_delete(vm, vm.globals.entries);
+    builder_destroy(vm, vm->builder);
+    intern_destroy(vm, vm->intern);
+    slice_delete(vm, vm->globals.entries);
 
-    Object *o = vm.objects;
+    Object *o = vm->objects;
     while (o != nullptr) {
         // Save becase `o` is about to be invalidated.
         Object *next = o->base.next;
@@ -75,11 +75,11 @@ vm_destroy(lulu_VM &vm)
 }
 
 Error
-vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr)
+vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr)
 {
-    Error_Handler next{vm.error_handler, LULU_OK};
+    Error_Handler next{vm->error_handler, LULU_OK};
     // Chain new handler
-    vm.error_handler = &next;
+    vm->error_handler = &next;
 
     size_t old_base = vm_base_index(vm);
     size_t old_top  = vm_top_index(vm);
@@ -90,19 +90,19 @@ vm_run_protected(lulu_VM &vm, Protected_Fn fn, void *user_ptr)
         next.error = e;
 
         Value msg = vm_pop(vm);
-        vm.window = Slice(vm.stack, old_base, old_top);
-        vm.window[old_top - 1] = msg;
+        vm->window  = Slice(vm->stack, old_base, old_top);
+        vm_push(vm, msg);
     }
 
     // Restore old handler
-    vm.error_handler = next.prev;
+    vm->error_handler = next.prev;
     return next.error;
 }
 
 void
-vm_throw(lulu_VM &vm, Error e)
+vm_throw(lulu_VM *vm, Error e)
 {
-    if (vm.error_handler != nullptr) {
+    if (vm->error_handler != nullptr) {
         throw e;
     }
     // Don't throw an unhandle-able exception, we may be in a C application!
@@ -111,7 +111,15 @@ vm_throw(lulu_VM &vm, Error e)
 }
 
 const char *
-vm_push_fstring(lulu_VM &vm, const char *fmt, ...)
+vm_push_string(lulu_VM *vm, String s)
+{
+    OString *o = ostring_new(vm, s);
+    vm_push(vm, Value(o));
+    return o->data;
+}
+
+const char *
+vm_push_fstring(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -121,7 +129,7 @@ vm_push_fstring(lulu_VM &vm, const char *fmt, ...)
 }
 
 const char *
-vm_push_vfstring(lulu_VM &vm, const char *fmt, va_list args)
+vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 {
     const String s      = String(fmt);
     const char  *start  = raw_data(s);
@@ -163,37 +171,42 @@ vm_push_vfstring(lulu_VM &vm, const char *fmt, va_list args)
         spec  = false;
     }
     builder_write_string(vm, b, String(start, cursor));
-
-    OString *o = ostring_new(vm, builder_to_string(b));
-    vm_push(vm, Value(o));
-    return o->data;
+    return vm_push_string(vm, builder_to_string(b));
 }
 
 void
-vm_syntax_error(lulu_VM &vm, String source, int line, const char *fmt, ...)
+vm_syntax_error(lulu_VM *vm, String source, int line, const char *fmt, ...)
 {
     va_list args;
+    vm_push_string(vm, source);
+    vm_push_fstring(vm, ":%i: ", line);
+
     va_start(args, fmt);
-    const char *msg = lulu_push_vfstring(&vm, fmt, args);
+    vm_push_vfstring(vm, fmt, args);
     va_end(args);
-    lulu_push_fstring(&vm, "%s:%i: %s", raw_data(source), line, msg);
+
+    lulu_concat(vm, 3);
+
     vm_throw(vm, LULU_ERROR_SYNTAX);
 }
 
 void
-vm_runtime_error(lulu_VM &vm, const char *act, const char *fmt, ...)
+vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...)
 {
     va_list args;
-    const Chunk &c    = *vm.caller->function->l.chunk;
-    const int    pc   = cast_int(vm.saved_ip - raw_data(c.code) - 1);
+    const Chunk &c    = *vm->caller->function->l.chunk;
+    const int    pc   = cast_int(vm->saved_ip - raw_data(c.code) - 1);
     const int    line = chunk_get_line(c, pc);
 
+    vm_push_string(vm, c.source);
+    vm_push_fstring(vm, ":%i: Attempt to %s ", line, act);
+
     va_start(args, fmt);
-    const char *msg = lulu_push_vfstring(&vm, fmt, args);
+    vm_push_vfstring(vm, fmt, args);
     va_end(args);
 
-    lulu_push_fstring(&vm, "%s:%i: Attempt to %s %s",
-        raw_data(c.source), line, act, msg);
+    lulu_concat(vm, 3);
+
     vm_throw(vm, LULU_ERROR_RUNTIME);
 }
 
@@ -203,7 +216,7 @@ struct Load_Data {
 };
 
 static void
-load(lulu_VM &vm, void *user_ptr)
+load(lulu_VM *vm, void *user_ptr)
 {
     Load_Data &d = *cast(Load_Data *)(user_ptr);
     Chunk     *c = parser_program(vm, d.source, d.script, d.builder);
@@ -212,7 +225,7 @@ load(lulu_VM &vm, void *user_ptr)
 }
 
 Error
-vm_load(lulu_VM &vm, String source, String script)
+vm_load(lulu_VM *vm, String source, String script)
 {
     Load_Data d{source, script, {}};
     builder_init(d.builder);
@@ -222,41 +235,41 @@ vm_load(lulu_VM &vm, String source, String script)
 }
 
 void
-vm_push(lulu_VM &vm, Value v)
+vm_push(lulu_VM *vm, Value v)
 {
-    size_t i = vm.window.len++;
-    vm.window[i] = v;
+    size_t i = vm->window.len++;
+    vm->window[i] = v;
 }
 
 Value
-vm_pop(lulu_VM &vm)
+vm_pop(lulu_VM *vm)
 {
     // Length update must occur AFTER the indexing to not trip up bounds check.
-    Value v = vm.window[len(vm.window) - 1];
-    vm.window.len--;
+    Value v = vm->window[len(vm->window) - 1];
+    vm->window.len--;
     return v;
 }
 
 void
-vm_check_stack(lulu_VM &vm, int n)
+vm_check_stack(lulu_VM *vm, int n)
 {
     size_t stop = vm_top_index(vm) + cast_size(n);
-    if (stop >= count_of(vm.stack)) {
+    if (stop >= count_of(vm->stack)) {
         vm_runtime_error(vm, "stack overflow", "%zu / %zu stack slots",
-            stop, count_of(vm.stack));
+            stop, count_of(vm->stack));
     }
 }
 
 [[noreturn]]
 static void
-type_error(lulu_VM &vm, const char *act, const Value &v)
+type_error(lulu_VM *vm, const char *act, const Value &v)
 {
     vm_runtime_error(vm, act, "a %s value", value_type_name(v));
 }
 
 [[noreturn]]
 static void
-arith_error(lulu_VM &vm, const Value &a, const Value &b)
+arith_error(lulu_VM *vm, const Value &a, const Value &b)
 {
     const Value &v = value_is_number(a) ? b : a;
     type_error(vm, "perform arithmetic on", v);
@@ -264,28 +277,28 @@ arith_error(lulu_VM &vm, const Value &a, const Value &b)
 
 [[noreturn]]
 static void
-compare_error(lulu_VM &vm, const Value &a, const Value &b)
+compare_error(lulu_VM *vm, const Value &a, const Value &b)
 {
     const Value &v = value_is_number(a) ? a : b;
     type_error(vm, "compare", v);
 }
 
 static void
-protect(lulu_VM &vm, const Instruction *ip)
+protect(lulu_VM *vm, const Instruction *ip)
 {
-    vm.saved_ip = ip;
+    vm->saved_ip = ip;
 }
 
 static void
-vm_frame_push(lulu_VM &vm, Closure *fn, Slice<Value> window, int expected_returned)
+vm_frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
 {
-    Call_Frame *cf         = &small_array_push(vm.frames);
+    Call_Frame *cf         = &small_array_push(vm->frames);
     cf->function           = fn;
     cf->window             = window;
     cf->expected_returned  = expected_returned;
 
-    vm.caller   = cf;
-    vm.window   = window;
+    vm->caller   = cf;
+    vm->window   = window;
 
     if (closure_is_lua(fn)) {
         for (Value &slot : Slice(window, fn->l.n_params, len(window))) {
@@ -295,25 +308,34 @@ vm_frame_push(lulu_VM &vm, Closure *fn, Slice<Value> window, int expected_return
 }
 
 static Call_Frame *
-vm_frame_pop(lulu_VM &vm)
+vm_frame_pop(lulu_VM *vm)
 {
     // Have a previous frame to return to?
-    small_array_pop(vm.frames);
-    if (len(vm.frames) > 0) {
-        return &vm.frames[len(vm.frames) - 1];
+    small_array_pop(vm->frames);
+    if (len(vm->frames) > 0) {
+        return &vm->frames[len(vm->frames) - 1];
     }
     return nullptr;
 }
 
+void
+vm_call(lulu_VM *vm, Value &ra, int n_args, int n_rets)
+{
+    Call_Type t  = vm_call_init(vm, ra, n_args, n_rets);
+    if (t == CALL_LUA) {
+        vm_execute(vm);
+    }
+}
+
 Call_Type
-vm_call(lulu_VM &vm, Value &ra, int argc, int expected_returned)
+vm_call_init(lulu_VM *vm, Value &ra, int argc, int expected_returned)
 {
     if (!value_is_function(ra)) {
         type_error(vm, "call", ra);
     }
 
     Closure *fn       = value_to_function(ra);
-    size_t   ra_index = ptr_index(vm.stack, &ra);
+    size_t   ra_index = ptr_index(vm->stack, &ra);
 
     // Calling function isn't included in the stack frame.
     size_t base        = ra_index + 1;
@@ -330,13 +352,13 @@ vm_call(lulu_VM &vm, Value &ra, int argc, int expected_returned)
         } else {
             top = base + cast_size(argc);
         }
-        vm_frame_push(vm, fn, Slice(vm.stack, base, top), expected_returned);
-        int actual_returned = fn->c.callback(&vm, argc);
+        vm_frame_push(vm, fn, Slice(vm->stack, base, top), expected_returned);
+        int actual_returned = fn->c.callback(vm, argc);
 
         Value &first_ret = (actual_returned > 0)
-            ? vm.window[len(vm.window) - cast_size(actual_returned)]
-            : vm.stack[ra_index];
-        vm_return(vm, first_ret, actual_returned);
+            ? vm->window[len(vm->window) - cast_size(actual_returned)]
+            : vm->stack[ra_index];
+        vm_call_fini(vm, first_ret, actual_returned);
         return CALL_C;
     }
 
@@ -348,22 +370,22 @@ vm_call(lulu_VM &vm, Value &ra, int argc, int expected_returned)
     }
     // May invalidate `ra`.
     vm_check_stack(vm, cast_int(top - base));
-    vm_frame_push(vm, fn, Slice(vm.stack, base, top), expected_returned);
+    vm_frame_push(vm, fn, Slice(vm->stack, base, top), expected_returned);
     return CALL_LUA;
 }
 
 Call_Type
-vm_return(lulu_VM &vm, Value &ra, int actual_returned)
+vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned)
 {
-    Call_Frame *frame = vm.caller;
+    Call_Frame *frame = vm->caller;
     // Overwrite stack slot of function object.
     size_t base       = vm_base_index(vm) - 1;
-    size_t ra_index   = ptr_index(vm.stack, &ra);
+    size_t ra_index   = ptr_index(vm->stack, &ra);
     bool   vararg_return = (frame->expected_returned == VARARG);
 
     // Move results to the right place.
-    Slice<Value> results = Slice(vm.stack, base, base + cast_size(actual_returned));
-    copy(results, Slice(vm.stack, ra_index, ra_index + cast_size(actual_returned)));
+    Slice<Value> results = Slice(vm->stack, base, base + cast_size(actual_returned));
+    copy(results, Slice(vm->stack, ra_index, ra_index + cast_size(actual_returned)));
 
     int extra = (vararg_return) ? -1 : frame->expected_returned - actual_returned;
     if (extra > 0) {
@@ -375,32 +397,32 @@ vm_return(lulu_VM &vm, Value &ra, int actual_returned)
     }
 
     frame     = vm_frame_pop(vm);
-    vm.caller = frame;
+    vm->caller = frame;
 
     // Returning from main function, so no previous stack frame to restore.
     // This is also important to allow the `lulu_call()` API to work properly.
     if (frame == nullptr) {
-        vm.window = results;
+        vm->window = results;
         return CALL_C;
     }
 
     if (vararg_return) {
         // Adjust VM's stack window so that it includes the last vararg.
         // We need to revert this change as soon as we can so that
-        size_t new_top = ptr_index(vm.stack, end(results));
-        vm.window = Slice(vm.stack, base, new_top);
+        size_t new_top = ptr_index(vm->stack, end(results));
+        vm->window = Slice(vm->stack, base, new_top);
     } else {
-        vm.window = frame->window;
+        vm->window = frame->window;
     }
     return CALL_LUA;
 }
 
 void
-vm_execute(lulu_VM &vm)
+vm_execute(lulu_VM *vm)
 {
-    Chunk              chunk  = *vm.caller->function->l.chunk;
+    Chunk              chunk  = *vm->caller->function->l.chunk;
     const Instruction *ip     = raw_data(chunk.code);
-    Slice<Value>       window = vm.window;
+    Slice<Value>       window = vm->window;
 
 #define GET_RK(rk)                                                             \
     reg_is_rk(rk)                                                              \
@@ -461,7 +483,7 @@ vm_execute(lulu_VM &vm)
             Value k = chunk.constants[getarg_bx(i)];
             protect(vm, ip);
 
-            Table_Result r = table_get(vm.globals, k);
+            Table_Result r = table_get(vm->globals, k);
             if (!r.ok) {
                 vm_runtime_error(vm, "read undefined variable",
                     "'%s'", value_to_cstring(k));
@@ -472,7 +494,7 @@ vm_execute(lulu_VM &vm)
         case OP_SET_GLOBAL: {
             Value k = chunk.constants[getarg_bx(i)];
             protect(vm, ip);
-            table_set(vm, vm.globals, k, ra);
+            table_set(vm, vm->globals, k, ra);
             break;
         }
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
@@ -514,12 +536,12 @@ vm_execute(lulu_VM &vm)
         }
         case OP_CALL: {
             protect(vm, ip);
-            vm_call(vm, ra, cast_int(getarg_b(i)), cast_int(getarg_c(i)));
+            vm_call_init(vm, ra, cast_int(getarg_b(i)), cast_int(getarg_c(i)));
             break;
         }
         case OP_RETURN: {
             protect(vm, ip);
-            vm_return(vm, ra, cast_int(getarg_b(i)));
+            vm_call_fini(vm, ra, cast_int(getarg_b(i)));
             return;
         }
         default:
@@ -529,7 +551,7 @@ vm_execute(lulu_VM &vm)
 }
 
 void
-vm_concat(lulu_VM &vm, Value &ra, Slice<Value> args)
+vm_concat(lulu_VM *vm, Value &ra, Slice<Value> args)
 {
     Builder &b = vm_get_builder(vm);
     for (const Value &s : args) {

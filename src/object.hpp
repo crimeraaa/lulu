@@ -30,11 +30,11 @@ union Object {
 };
 
 void
-object_free(lulu_VM &vm, Object *o);
+object_free(lulu_VM *vm, Object *o);
 
 template<class T>
 inline T *
-object_new(lulu_VM &vm, Object **list, Value_Type type, size_t extra = 0)
+object_new(lulu_VM *vm, Object **list, Value_Type type, size_t extra = 0)
 {
     T *o = mem_new<T>(vm, extra);
     o->type = type;

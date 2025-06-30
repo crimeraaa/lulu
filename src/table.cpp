@@ -2,9 +2,9 @@
 #include "vm.hpp"
 
 Table *
-table_new(lulu_VM &vm, size_t n)
+table_new(lulu_VM *vm, size_t n)
 {
-    Table *t = object_new<Table>(vm, &vm.objects, VALUE_TABLE);
+    Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
     table_init(*t);
     if (n > 0) {
         table_resize(vm, *t, n);
@@ -30,10 +30,8 @@ template<class T>
 static u32
 hash_any(T v)
 {
-    // Can't use union approach; is undefined in C++ (but not C).
-    char buf[sizeof(T)];
-    memcpy(buf, &v, sizeof(T));
-    return hash_string(String(buf, sizeof(buf)));
+    // Aliasing a `T` with a `char *` is defined behavior.
+    return hash_string(String(cast(char *)&v, sizeof(T)));
 }
 
 static u32
@@ -54,6 +52,17 @@ hash_value(Value v)
     lulu_unreachable();
 }
 
+
+/**
+ * @brief
+ *  -   Finds the table entry with key matching `k`, or the first free entry.
+ *
+ * @note 2025-6-30
+ *  Assumptions:
+ *  1.) `len(entries)`, a.k.a. the table capacity, is non-zero at this point.
+ *  1.1.) In `table_get()` we explicitly check if it's nonzero.
+ *  1.2.) In `table_set()` we resize beforehand.
+ */
 static Entry &
 find_entry(Slice<Entry> entries, Value k)
 {
@@ -91,7 +100,7 @@ table_get(Table &t, Value k)
 }
 
 void
-table_set(lulu_VM &vm, Table &t, Value k, Value v)
+table_set(lulu_VM *vm, Table &t, Value k, Value v)
 {
     if (t.count + 1 > table_cap(t)*3 / 4) {
         size_t n = mem_next_size(t.count + 1);
@@ -123,7 +132,7 @@ table_unset(Table &t, Value k)
 }
 
 void
-table_resize(lulu_VM &vm, Table &t, size_t new_cap)
+table_resize(lulu_VM *vm, Table &t, size_t new_cap)
 {
     Slice<Entry> new_entries = slice_make<Entry>(vm, new_cap);
     for (Entry &e : new_entries) {

@@ -24,7 +24,7 @@ dynamic_init(Dynamic<T> &d)
  */
 template<class T>
 inline void
-dynamic_reserve(lulu_VM &vm, Dynamic<T> &d, typename Dynamic<T>::size_type new_cap)
+dynamic_reserve(lulu_VM *vm, Dynamic<T> &d, typename Dynamic<T>::size_type new_cap)
 {
     d.data = mem_resize(vm, d.data, d.cap, new_cap);
     d.cap  = new_cap;
@@ -42,7 +42,7 @@ dynamic_reserve(lulu_VM &vm, Dynamic<T> &d, typename Dynamic<T>::size_type new_c
  */
 template<class T>
 inline void
-dynamic_resize(lulu_VM &vm, Dynamic<T> &d, typename Slice<T>::size_type new_len)
+dynamic_resize(lulu_VM *vm, Dynamic<T> &d, typename Slice<T>::size_type new_len)
 {
     // Can't accomodate the new data?
     if (new_len > d.cap) {
@@ -55,7 +55,7 @@ dynamic_resize(lulu_VM &vm, Dynamic<T> &d, typename Slice<T>::size_type new_len)
 
 template<class T>
 inline void
-dynamic_push(lulu_VM &vm, Dynamic<T> &d, T value)
+dynamic_push(lulu_VM *vm, Dynamic<T> &d, T value)
 {
     dynamic_resize(vm, d, d.len + 1);
     d[d.len - 1] = value;
@@ -72,7 +72,7 @@ dynamic_pop(Dynamic<T> &d)
 
 template<class T>
 inline void
-dynamic_delete(lulu_VM &vm, Dynamic<T> &d)
+dynamic_delete(lulu_VM *vm, Dynamic<T> &d)
 {
     mem_delete(vm, d.data, d.cap);
 }

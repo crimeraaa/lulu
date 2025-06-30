@@ -7,14 +7,14 @@ static constexpr u8
 MAX_REG = OPCODE_MAX_A - 5;
 
 struct Compiler {
-    lulu_VM &vm;
+    lulu_VM *vm;
     Parser  &parser; // All compilers share the same parser.
     Chunk   &chunk;  // Compilers do not own their chunks.
     u16      free_reg;
 };
 
 Compiler
-compiler_make(lulu_VM &vm, Parser &p, Chunk &chunk);
+compiler_make(lulu_VM *vm, Parser &p, Chunk &chunk);
 
 int
 compiler_code(Compiler &c, OpCode op, u8 a, u16 b, u16 c2, int line);

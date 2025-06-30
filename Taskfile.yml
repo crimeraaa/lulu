@@ -4,6 +4,7 @@ version: '3'
 
 vars:
   MODE: '{{default "debug"}}'
+  CC: gcc
   CXX: g++
 
   # Notes(2025-06-11):
@@ -29,6 +30,12 @@ vars:
     -os
     -s
 
+  CC_FLAGS: >-
+    -Wall
+    -Wextra
+    -Wconversion
+    -Wpedantic
+
   # Notes(2025-06-11):
   #   - `-nostdinc++` just prevents us from including C++ standard ilbrary
   #     headers, like `<string>`.
@@ -47,6 +54,8 @@ vars:
     {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
 
   LULU_OUT: bin/lulu
+  LULU_SHARED: bin/liblulu.so
+  LULU_STATIC: bin/liblulu.a
   LULU_DIR_SRC: src
   LULU_EXT_SRC: cpp
 
@@ -64,7 +73,7 @@ vars:
   #
   LULU_ALL:
     sh: ls -1 {{.LULU_GLOB}} | tr "\n" " "
-  LULU_SRC: '{{regexFindAll "[^\\s]+\\.cpp" .LULU_ALL -1 | join " "}}'
+  LULU_CXX_SRC: '{{regexFindAll "[^\\s]+\\.cpp" .LULU_ALL -1 | join " "}}'
 
   LUA_OUT: bin/lua
   LUA_DIR_SRC: lua/src
@@ -78,8 +87,11 @@ tasks:
     vars:
     requires:
       vars: [MODE, LULU_ALL, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+    # For now, because we link ASAN, we can't compile `lulu.c` as C because
+    # `liblulu.so` links to the C++ version of ASAN.
     cmds:
-      - '{{.CXX}} {{.CXX_FLAGS}} -o {{.LULU_OUT}} {{.LULU_SRC}}'
+      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
+      - '{{.CXX}} -xc++ -L{{.USER_WORKING_DIR}}/bin {{.CXX_FLAGS}} -o {{.LULU_OUT}} {{.LULU_DIR_SRC}}/lulu.c -llulu'
     sources:
       - '{{.LULU_GLOB}}'
 

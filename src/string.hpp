@@ -62,16 +62,16 @@ void
 builder_reset(Builder &b);
 
 void
-builder_destroy(lulu_VM &vm, Builder &b);
+builder_destroy(lulu_VM *vm, Builder &b);
 
 void
-builder_write_char(lulu_VM &vm, Builder &b, char ch);
+builder_write_char(lulu_VM *vm, Builder &b, char ch);
 
 void
-builder_write_string(lulu_VM &vm, Builder &b, String s);
+builder_write_string(lulu_VM *vm, Builder &b, String s);
 
 void
-builder_write_int(lulu_VM &vm, Builder &b, int i);
+builder_write_int(lulu_VM *vm, Builder &b, int i);
 
 String
 builder_to_string(const Builder &b);
@@ -83,16 +83,16 @@ void
 intern_init(Intern &t);
 
 void
-intern_resize(lulu_VM &vm, Intern &i, size_t new_cap);
+intern_resize(lulu_VM *vm, Intern &i, size_t new_cap);
 
 void
-intern_destroy(lulu_VM &vm, Intern &t);
+intern_destroy(lulu_VM *vm, Intern &t);
 
 u32
 hash_string(String text);
 
 OString *
-ostring_new(lulu_VM &vm, String text);
+ostring_new(lulu_VM *vm, String text);
 
 inline String
 ostring_to_string(OString *s)

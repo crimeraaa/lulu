@@ -16,37 +16,44 @@ struct Value {
         Object  *object;
     };
 
-    constexpr Value(Value_Type t = VALUE_NIL)
+    constexpr
+    Value(Value_Type t = VALUE_NIL)
         : type{t}
         , number{0}
     {}
 
-    constexpr explicit Value(bool b)
+    constexpr explicit
+    Value(bool b)
         : type{VALUE_BOOLEAN}
         , boolean{b}
     {}
 
-    constexpr explicit Value(Number n)
+    constexpr explicit
+    Value(Number n)
         : type{VALUE_NUMBER}
         , number{n}
     {}
 
-    explicit Value(OString *o)
+    explicit
+    Value(OString *o)
         : type{VALUE_STRING}
         , object{cast(Object *)o}
     {}
 
-    explicit Value(Table *t)
+    explicit
+    Value(Table *t)
         : type{VALUE_TABLE}
         , object{cast(Object *)t}
     {}
 
-    explicit Value(Closure *f)
+    explicit
+    Value(Closure *f)
         : type{VALUE_FUNCTION}
         , object{cast(Object *)f}
     {}
 
-    explicit Value(Chunk *c)
+    explicit
+    Value(Chunk *c)
         : type{VALUE_CHUNK}
         , object{cast(Object *)c}
     {}

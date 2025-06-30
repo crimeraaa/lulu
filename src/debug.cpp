@@ -72,7 +72,11 @@ count_digits(size_t n)
 int
 debug_get_pad(const Chunk &c)
 {
-    return count_digits(len(c.code));
+    // Should be impossible, but just in case
+    if (len(c.code) == 0) {
+        return 0;
+    }
+    return count_digits(len(c.code) - 1);
 }
 
 // 4 spaces plus an extra one to separate messages.

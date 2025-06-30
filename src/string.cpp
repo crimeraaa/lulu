@@ -30,20 +30,20 @@ builder_reset(Builder &b)
 }
 
 void
-builder_destroy(lulu_VM &vm, Builder &b)
+builder_destroy(lulu_VM *vm, Builder &b)
 {
     dynamic_delete(vm, b.buffer);
 }
 
 void
-builder_write_char(lulu_VM &vm, Builder &b, char ch)
+builder_write_char(lulu_VM *vm, Builder &b, char ch)
 {
     String s{&ch, 1};
     builder_write_string(vm, b, s);
 }
 
 void
-builder_write_string(lulu_VM &vm, Builder &b, String s)
+builder_write_string(lulu_VM *vm, Builder &b, String s)
 {
     // Nothing to do?
     if (len(s) == 0) {
@@ -63,11 +63,11 @@ builder_write_string(lulu_VM &vm, Builder &b, String s)
 }
 
 void
-builder_write_int(lulu_VM &vm, Builder &b, int i)
+builder_write_int(lulu_VM *vm, Builder &b, int i)
 {
     char buf[INT_WIDTH * 2];
     int written = sprintf(buf, "%i", i);
-    builder_write_string(vm, b, Slice(buf, written));
+    builder_write_string(vm, b, Slice(buf, cast_size(written)));
 }
 
 String
@@ -124,7 +124,7 @@ intern_clamp_index(u32 hash, size_t cap)
 }
 
 void
-intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
+intern_resize(lulu_VM *vm, Intern &t, size_t new_cap)
 {
     Slice<Object *> new_table = slice_make<Object *>(vm, new_cap);
     // Zero out the new memory
@@ -139,12 +139,11 @@ intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
         while (node != nullptr) {
             OString *s    = &node->ostring;
             size_t   i    = intern_clamp_index(s->hash, new_cap);
-            Object  *next = s->next;
 
             // Chain this node in the new table, using the new main index.
             s->next      = new_table[i];
             new_table[i] = node;
-            node         = next;
+            node         = s->next;
         }
     }
     slice_delete(vm, t.table);
@@ -152,7 +151,7 @@ intern_resize(lulu_VM &vm, Intern &t, size_t new_cap)
 }
 
 void
-intern_destroy(lulu_VM &vm, Intern &t)
+intern_destroy(lulu_VM *vm, Intern &t)
 {
     for (Object *list : t.table) {
         Object *node = list;
@@ -167,9 +166,9 @@ intern_destroy(lulu_VM &vm, Intern &t)
 }
 
 OString *
-ostring_new(lulu_VM &vm, String text)
+ostring_new(lulu_VM *vm, String text)
 {
-    Intern  &t    = vm.intern;
+    Intern  &t    = vm->intern;
     u32      hash = hash_string(text);
     size_t   i    = intern_clamp_index(hash, intern_cap(t));
     for (Object *node = t.table[i]; node != nullptr; node = node->base.next) {
