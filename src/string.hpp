@@ -12,12 +12,10 @@ struct LString : public Slice<const char> {
     using Slice<const char>::Slice;
 
     // Construct from a nul-terminated C string.
-    LULU_PRIVATE
     LString(const char *s) : Slice(s, strlen(s))
     {}
 
     // Construct from a mutable character sequence.
-    LULU_PRIVATE
     LString(Slice<char> s) : Slice(s.data, s.len)
     {}
 };

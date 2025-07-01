@@ -7,51 +7,40 @@
 #include "config.h"
 
 typedef struct lulu_VM lulu_VM;
-
 typedef LULU_NUMBER_TYPE lulu_Number;
 
+
+/**
+ * @brief LULU_API
+ *  -   Defines the name linkage for functions.
+ *  -   C++ by default uses 'name-mangling', which allows multiple declarations
+ *      of the same function name to have different parameter lists.
+ *  -   Name mangling makes it impossible for C relilably link to C++.
+ *  -   So using `extern "C"` specifies that, when compiling with a C++
+ *      compiler, no name mangling should occur.
+ *  -   Thus C programs can properly link to our shared library.
+ */
 #ifdef __cplusplus
-#define LULU_API    extern "C"
-#else   /* ^^^ __cplusplus, vvv !__cplusplus */
-#define LULU_API    extern
+#define LULU_API    extern "C" LULU_PUBLIC
+#else   /* ^^^ __cplusplus, vvv otherwise */
+#define LULU_API    extern LULU_PUBLIC
 #endif /* __cplusplus */
 
 
 /**
- * @brief LULU_PRIVATE
- *  -   This controls the visibility of symbols when building as a
- *      shared library.
- *  -   This is also useful to prevent exporting of constructors/member
- *      methods, e.g. `struct VM { LULU_PRIVATE void push();};`
- *  -   You cannot use `LULU_FUNC` in those cases which is why it is useful to
- *      have this as a separate macro.
- *
  * @brief LULU_FUNC
- * -    This controls the visibility of externally visible functions, if
- *      possible.
- * -    That is, you can define a function like so:
- *      `LULU_FUNC extern void f();`
- *  -   `f` will not be exported but it is still visible to all functions within
- *      the library that include `f`'s header.
+ * -    This controls the visibility of externally visible functions that are
+ *      not part of the API.
+ * -    That is, you can define a function like so: `LULU_FUNC void f();`
+ *  -   `f` will not be exported but it is still visible to all functions
+ *      within the library that include `f`'s header.
  *
  * @brief LULU_DATA
  *  -   Similar to `LULU_FUNC`, but intended for data.
  *  -   e.g. `LULU_DATA const char *const tokens[TOKEN_COUNT];`
  */
-#if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) \
-    && defined(__ELF__)
-
-#define LULU_PRIVATE    __attribute__ ((__visibility__ ("hidden")))
-#define LULU_FUNC       LULU_PRIVATE extern
+#define LULU_FUNC       extern LULU_PRIVATE
 #define LULU_DATA       LULU_FUNC
-
-#else /* ^^^ __GNUC__ && __ELF__, vvv otherwise */
-
-#define LULU_PRIVATE
-#define LULU_FUNC       extern
-#define LULU_DATA       extern
-
-#endif /* __GNUC__ */
 
 typedef void *
 (*lulu_Allocator)(void *context, void *ptr, size_t old_size, size_t new_size);
@@ -96,7 +85,7 @@ typedef enum {
     LULU_TYPE_USERDATA,     /* a non-collectible C pointer. */
     LULU_TYPE_STRING,
     LULU_TYPE_TABLE,
-    LULU_TYPE_FUNCTION,     /* may be a Lua or C function. */
+    LULU_TYPE_FUNCTION      /* may be a Lua or C function. */
 } lulu_Type;
 
 typedef struct {
@@ -155,7 +144,16 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
 LULU_API lulu_Error
 lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data);
 
-LULU_API void
+
+/**
+ * @brief
+ *  -   Throws a runtime error no matter what.
+ *
+ * @note 2025-07-01
+ *  -   This function never returns, but as in the Lua 5.1 API a common idiom
+ *      within C functions is to do `return lulu_error();`
+ */
+LULU_API int
 lulu_error(lulu_VM *vm);
 
 LULU_API void
@@ -169,6 +167,9 @@ lulu_type(lulu_VM *vm, int i);
 
 LULU_API const char *
 lulu_type_name(lulu_VM *vm, int i);
+
+LULU_API int
+lulu_is_none(lulu_VM *vm, int i);
 
 LULU_API int
 lulu_is_nil(lulu_VM *vm, int i);

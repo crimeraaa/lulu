@@ -17,56 +17,48 @@ struct Value {
         void    *pointer; // light userdata.
     };
 
-    LULU_PRIVATE
     constexpr
     Value(Value_Type t = VALUE_NIL)
         : type{t}
         , number{0}
     {}
 
-    LULU_PRIVATE
     constexpr explicit
     Value(bool b)
         : type{VALUE_BOOLEAN}
         , boolean{b}
     {}
 
-    LULU_PRIVATE
     constexpr explicit
     Value(Number n)
         : type{VALUE_NUMBER}
         , number{n}
     {}
 
-    LULU_PRIVATE
     constexpr explicit
     Value(void *p)
         : type{VALUE_USERDATA}
         , pointer{p}
     {}
 
-    LULU_PRIVATE
     explicit
     Value(OString *o)
         : type{VALUE_STRING}
         , object{cast(Object *)o}
     {}
 
-    LULU_PRIVATE
     explicit
     Value(Table *t)
         : type{VALUE_TABLE}
         , object{cast(Object *)t}
     {}
 
-    LULU_PRIVATE
     explicit
     Value(Closure *f)
         : type{VALUE_FUNCTION}
         , object{cast(Object *)f}
     {}
 
-    LULU_PRIVATE
     explicit
     Value(Chunk *c)
         : type{VALUE_CHUNK}

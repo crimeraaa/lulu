@@ -15,6 +15,61 @@
  */
 #define LULU_STACK_MIN      8
 
+
+/**
+ * @brief
+ *  -   These macros control the visibility of symbols when building as a
+ *      shared library.
+ *
+ * @brief LULU_PUBLIC
+ *  -   Symbols with this attribute are exported.
+ *  -   E.g. `LULU_PUBLIC lulu_VM *lulu_open();` can be called even from
+ *      outside the shared library.
+ *  -   This is useful if compiling with hidden visibility by default, e.g.
+ *      the `-fvisibility=hidden` flag in GCC and Clang.
+ *
+ * @brief LULU_PRIVATE
+ *  -   Symbols with this attribute are never exported no matter what.
+ *  -   E.g. `LULU_PRIVATE size_t mem_next_size(size_t n);` is callable
+ *      only within the shared library.
+ *  -   If the user defines an externally visibible symbol with the same name,
+ *      there will be no name conflilct and thus no linkage error.
+ */
+#if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) \
+    && defined(__ELF__)
+
+/* visibility only matters when building the shared library. */
+#ifdef LULU_BUILD_ALL
+#define LULU_PUBLIC     __attribute__ ((__visibility__ ("default")))
+#define LULU_PRIVATE    __attribute__ ((__visibility__ ("hidden")))
+#else   /* ^^^ LULU_BUILD_ALL, otherwise */
+#define LULU_PUBLIC
+#define LULU_PRIVATE
+#endif  /* LULU_BUILD_ALL */
+
+#elif defined(_MSC_VER) /* ^^^ __GNUC__, vvv _MSC_VER */
+
+#if defined(LULU_BUILD_ALL)
+#define LULU_PUBLIC     __declspec(dllexport)
+#else   /* ^^^ LULU_BUILD_ALL, vvv otherwise */
+#define LULU_PUBLIC     __declspec(dllimport)
+#endif /* LULU_BUILD_ALL */
+
+/**
+ * @brief
+ *  -   On Windows, when building DLLs, functions not marked with
+ *      `__declspec(dllexport)` are hidden automatically.
+ */
+#define LULU_PRIVATE
+
+#else /* ^^^ (__GNUC__ && __ELF__) || _MSC_VER, vvv otherwise */
+
+#define LULU_PUBLIC
+#define LULU_PRIVATE
+
+#endif /* (__GNUC__ && __ELF__) || _MSC_VER */
+
+
 #ifdef LULU_BUILD_ALL
 
 #include <math.h>

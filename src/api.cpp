@@ -20,7 +20,11 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
 {
     static lulu_VM vm;
     bool ok = vm_init(&vm, allocator, allocator_data);
-    return (ok) ? &vm : nullptr;
+    if (!ok) {
+        vm_destroy(&vm);
+        return nullptr;
+    }
+    return &vm;
 }
 
 void
@@ -100,10 +104,11 @@ lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
     return e;
 }
 
-LULU_API void
+LULU_API int
 lulu_error(lulu_VM *vm)
 {
     vm_throw(vm, LULU_ERROR_RUNTIME);
+    return 0;
 }
 
 LULU_API void
@@ -112,6 +117,7 @@ lulu_register(lulu_VM *vm, const lulu_Register *library, size_t n)
     for (size_t i = 0; i < n; i++) {
         OString *s = ostring_new(vm, LString(library[i].name));
         Closure *f = closure_new(vm, library[i].function);
+        // TODO(2025-07-01): Ensure key and value are not collected!
         table_set(vm, &vm->globals, Value(s), Value(f));
     }
 }
@@ -130,6 +136,12 @@ const char *
 lulu_type_name(lulu_VM *vm, int i)
 {
     return value_type_name(cast(Value_Type)lulu_type(vm, i));
+}
+
+int
+lulu_is_none(lulu_VM *vm, int i)
+{
+    return value_is_none(value_at(vm, i));
 }
 
 int

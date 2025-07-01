@@ -4,8 +4,8 @@ version: '3'
 
 vars:
   MODE: '{{default "debug"}}'
-  CC: gcc
-  CXX: g++
+  CC: clang
+  CXX: clang++
 
   # Notes(2025-06-11):
   #   - We can `-rdynamic` so that all symbols are in the dynamic symbol table
@@ -27,8 +27,9 @@ vars:
 
   RELEASE_FLAGS: >-
     -Werror
-    -os
-    -s
+    -Os
+    -g
+  # -s
 
   CC_FLAGS: >-
     -Wall
@@ -45,19 +46,36 @@ vars:
   #
   CXX_FLAGS: >-
     -std=c++17
-    -Wall
-    -Wextra
-    -Wconversion
-    -Wpedantic
+    {{.CC_FLAGS}}
     -DLULU_BUILD_ALL
     -nostdinc++
-    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
+    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{else if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
 
   LULU_OUT: bin/lulu
   LULU_SHARED: bin/liblulu.so
   LULU_STATIC: bin/liblulu.a
   LULU_DIR_SRC: src
-  LULU_EXT_SRC: cpp
+
+  LULU_DEBUG_EXE_CMD: >-
+    {{.CXX}}
+    -xc++
+    {{.CXX_FLAGS}}
+
+  LULU_RELEASE_EXE_CMD: >-
+    {{.CC}}
+    -std=c89
+    {{.CC_FLAGS}}
+    {{.RELEASE_FLAGS}}
+
+  # If compiling in debug mode, we linked ASAN to the C++ shared library.
+  # So we need to compile `lulu.c` as C++ with the same flags to ensure we link
+  # the correct ASAN runtime.
+  LULU_EXE_CMD: >-
+    {{if eq .MODE "debug"}}{{.LULU_DEBUG_EXE_CMD}}{{else if eq .MODE "release"}}{{.LULU_RELEASE_EXE_CMD}}{{end}}
+    -L{{.USER_WORKING_DIR}}/bin
+    -o {{.LULU_OUT}}
+    {{.LULU_DIR_SRC}}/lulu.c
+    -llulu
 
   LULU_GLOB: '{{.LULU_DIR_SRC}}/*.[ch]pp'
 
@@ -87,11 +105,9 @@ tasks:
     vars:
     requires:
       vars: [MODE, LULU_ALL, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
-    # For now, because we link ASAN, we can't compile `lulu.c` as C because
-    # `liblulu.so` links to the C++ version of ASAN.
     cmds:
-      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
-      - '{{.CXX}} -xc++ -L{{.USER_WORKING_DIR}}/bin {{.CXX_FLAGS}} -o {{.LULU_OUT}} {{.LULU_DIR_SRC}}/lulu.c -llulu'
+      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -fvisibility=hidden -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
+      - '{{.LULU_EXE_CMD}}'
     sources:
       - '{{.LULU_GLOB}}'
       - '{{.LULU_DIR_SRC}}/lulu.c'

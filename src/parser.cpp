@@ -465,7 +465,10 @@ parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
     }
     consume(&p, TOKEN_EOF);
     compiler_code_abc(&c, OP_RETURN, 0, 0, 0, p.lexer.line);
+
+#ifdef LULU_DEBUG_PRINT_CODE
     debug_disassemble(c.chunk);
+#endif // LULU_DEBUG_PRINT_CODE
 
     vm_pop(vm);
     vm_pop(vm);

@@ -216,9 +216,13 @@ c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
 
 int main(int argc, char *argv[])
 {
-    Main_Data  d = {argv, argc, EXIT_SUCCESS};
+    Main_Data  d;
     lulu_VM   *vm;
     lulu_Error e;
+    /* In C89, brace initialization requires all constant expressions. */
+    d.argv   = argv;
+    d.argc   = argc;
+    d.status = EXIT_SUCCESS;
 
     vm = lulu_open(c_allocator, NULL);
     if (vm == NULL) {

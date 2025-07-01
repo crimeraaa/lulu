@@ -7,6 +7,7 @@ mem_rawrealloc(lulu_VM *vm, void *ptr, size_t old_size, size_t new_size)
     void *next = vm->allocator(vm->allocator_data, ptr, old_size, new_size);
     // Allocation request, that wasn't attempting to free, failed?
     if (next == nullptr && new_size != 0) {
+        vm_push_string(vm, LString(LULU_MEMORY_ERROR_STRING));
         vm_throw(vm, LULU_ERROR_MEMORY);
     }
     return next;

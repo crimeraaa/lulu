@@ -35,10 +35,6 @@ vm_top_absindex(lulu_VM *vm)
     return ptr_index(vm->stack, vm_top_ptr(vm));
 }
 
-// Hack because macro names can't be used with user-defined literals,
-// e.g. `LULU_MEMORY_ERROR_STRING _s` is invalid.
-#define STR(x)  #x ##_s
-
 static void
 required_allocations(lulu_VM *vm, void *)
 {
@@ -46,11 +42,9 @@ required_allocations(lulu_VM *vm, void *)
     intern_resize(vm, &vm->intern, 32);
 
     // TODO(2025-06-30): Mark the memory error string as "immortal"?
-    OString *o = ostring_new(vm, STR(LULU_MEMORY_ERROR_STRING));
+    OString *o = ostring_new(vm, LString(LULU_MEMORY_ERROR_STRING));
     unused(o);
 }
-
-#undef STR
 
 bool
 vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
@@ -66,11 +60,7 @@ vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
     intern_init(&vm->intern);
     table_init(&vm->globals);
     Error e = vm_run_protected(vm, required_allocations, nullptr);
-    bool ok = (e == LULU_OK);
-    if (!ok) {
-        vm_destroy(vm);
-    }
-    return ok;
+    return e == LULU_OK;
 }
 
 Builder *
@@ -90,7 +80,7 @@ vm_destroy(lulu_VM *vm)
 
     Object *o = vm->objects;
     while (o != nullptr) {
-        // Save becase `o` is about to be invalidated.
+        // Save because `o` is about to be invalidated.
         Object *next = o->base.next;
         object_free(vm, o);
         o = next;
@@ -331,7 +321,7 @@ vm_frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_return
     vm->window   = window;
 
     if (closure_is_lua(fn)) {
-        for (Value &slot : Slice(window, fn->l.n_params, len(window))) {
+        for (Value &slot : Slice(window, cast_size(fn->l.n_params), len(window))) {
             slot = Value();
         }
     }

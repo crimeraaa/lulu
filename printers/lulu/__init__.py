@@ -82,6 +82,9 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
                 if tag is None:
                     return str(v.type)
                 return tag + " *"
+            case gdb.TYPE_CODE_TYPEDEF:
+                t = v.type.strip_typedefs()
+                return self.__resolve_typename(v.cast(t))
             case gdb.TYPE_CODE_REF:
                 # e.g. `lulu_VM &` is a reference to `lulu_VM`,
                 # `Object *&` is a reference to `Object *`.
@@ -90,12 +93,11 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
                 return str(v.type)
             case _:
                 # Only structs, unions and enums can have tags, so use `name`.
-                return v.type.name
+                t = v.type.unqualified()
+                return t.name or str(t)
 
     def __call__(self, v: gdb.Value):
         tag = self.__resolve_typename(v)
-        if not tag:
-            raise ValueError(f"{v.type} could not be resolved to a string")
 
         # TODO(2025-06-27): Differentiate from dependent typenames, e.g.
         # Slice<Value>::pointer
