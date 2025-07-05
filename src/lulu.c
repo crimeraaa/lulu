@@ -10,7 +10,8 @@ run(lulu_VM *vm, const char *source, const char *script, size_t n)
 {
     lulu_Error e = lulu_load(vm, source, script, n);
     if (e == LULU_OK) {
-        e = lulu_pcall(vm, 0, 0);
+        /* main function was pushed */
+        e = lulu_pcall(vm, 0, LULU_MULTRET);
     }
 
     if (e != LULU_OK) {
@@ -18,6 +19,14 @@ run(lulu_VM *vm, const char *source, const char *script, size_t n)
         fprintf(stderr, "%s\n", msg);
         /* lulu_{load,pcall} leave an error message on the top of the stack */
         lulu_pop(vm, 1);
+    } else {
+        /* successful call, so main function was overwritten with returns */
+        int n = lulu_get_top(vm);
+        if (n > 0) {
+            lulu_get_global(vm, "print");
+            lulu_insert(vm, 1);
+            lulu_call(vm, n, 0);
+        }
     }
     /* LULU_RUNTIME_ERROR leaves the main function on top of the stack */
     lulu_set_top(vm, 0);
@@ -102,8 +111,7 @@ base_tostring(lulu_VM *vm, int argc)
 {
     if (argc != 1) {
         lulu_push_fstring(vm, "Expected 1 argument to `tostring`, got %i", argc);
-        lulu_error(vm);
-        return 1;
+        return lulu_error(vm);
     }
     switch (lulu_type(vm, 1)) {
     case LULU_TYPE_NIL:
@@ -129,7 +137,11 @@ base_tostring(lulu_VM *vm, int argc)
         break;
     }
     default:
+#if defined(__GNUC__) || defined(__clang__)
         __builtin_unreachable();
+#elif defined(_MSC_VER)
+        __assume(false);
+#endif
         break;
     }
     return 1;
@@ -186,6 +198,7 @@ protected_main(lulu_VM *vm, int argc)
 
     /* stack can be cleared at this point, `Main_Data` is a C type so it
     cannot be collected no matter what. */
+    lulu_set_top(vm, 0);
     lulu_register(vm, baselib, sizeof(baselib) / sizeof(baselib[0]));
     switch (d->argc) {
     case 1:

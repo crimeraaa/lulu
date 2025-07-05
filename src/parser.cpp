@@ -224,55 +224,83 @@ primary_expr(Parser *p, Compiler *c)
     return e;
 }
 
-struct Binary {
-    OpCode     op;
-    Precedence left_prec;
-    Precedence right_prec;
-    bool       cond;
+struct Binary_Prec {
+    Precedence left, right;
 };
 
-static constexpr Binary
-left_associative(OpCode op, Precedence prec, bool cond = false)
+static constexpr Binary_Prec
+left_assoc(Precedence prec)
 {
-    Binary b{op, prec, Precedence(cast_int(prec) + 1), cond};
-    return b;
+    return {prec, Precedence(cast_int(prec) + 1)};
 }
 
-static constexpr Binary
-right_associative(OpCode op, Precedence prec)
+static constexpr Binary_Prec
+right_assoc(Precedence prec)
 {
-    Binary b{op, prec, prec, false};
-    return b;
+    return {prec, prec};
 }
+
+static Binary_Prec
+binary_precs[] = {
+    /* BINARY_NONE */   left_assoc(PREC_NONE),
+    /* BINARY_ADD */    left_assoc(PREC_TERMINAL),
+    /* BINARY_SUB */    left_assoc(PREC_TERMINAL),
+    /* BINARY_MUL */    left_assoc(PREC_FACTOR),
+    /* BINARY_DIV */    left_assoc(PREC_FACTOR),
+    /* BINARY_MOD */    left_assoc(PREC_FACTOR),
+    /* BINARY_POW */    right_assoc(PREC_EXPONENT),
+    /* BINARY_EQ */     left_assoc(PREC_COMPARISON),
+    /* BINARY_LT */     left_assoc(PREC_COMPARISON),
+    /* BINARY_LEQ */    left_assoc(PREC_COMPARISON),
+    /* BINARY_NEQ */    left_assoc(PREC_COMPARISON),
+    /* BINARY_GEQ */    left_assoc(PREC_COMPARISON),
+    /* BINARY_GT */     left_assoc(PREC_COMPARISON),
+    /* BINARY_CONCAT */ right_assoc(PREC_CONCAT),
+};
+
+static OpCode
+binary_opcodes[] = {
+    /* BINARY_NONE */   OP_RETURN,
+    /* BINARY_ADD */    OP_ADD,
+    /* BINARY_SUB */    OP_SUB,
+    /* BINARY_MUL */    OP_MUL,
+    /* BINARY_DIV */    OP_DIV,
+    /* BINARY_MOD */    OP_MOD,
+    /* BINARY_POW */    OP_POW,
+    /* BINARY_EQ */     OP_EQ,
+    /* BINARY_LT */     OP_LT,
+    /* BINARY_LEQ */    OP_LEQ,
+    /* BINARY_NEQ */    OP_EQ,
+    /* BINARY_GEQ */    OP_LEQ,
+    /* BINARY_GT */     OP_LT,
+    /* BINARY_CONCAT */ OP_CONCAT,
+};
 
 /**
  * @note 2025-06-16:
  *  -   `OP_RETURN` is our 'invalid' binary opcode.
  */
-static Binary
+static Binary_Type
 get_binary(Token_Type type)
 {
     switch (type) {
-    case TOKEN_PLUS:       return left_associative(OP_ADD,  PREC_TERMINAL);
-    case TOKEN_DASH:       return left_associative(OP_SUB,  PREC_TERMINAL);
-    case TOKEN_ASTERISK:   return left_associative(OP_MUL,  PREC_FACTOR);
-    case TOKEN_SLASH:      return left_associative(OP_DIV,  PREC_FACTOR);
-    case TOKEN_PERCENT:    return left_associative(OP_MOD,  PREC_FACTOR);
-    case TOKEN_CARET:      return right_associative(OP_POW, PREC_EXPONENT);
-    case TOKEN_EQ:         return left_associative(OP_EQ,   PREC_EQUALITY,    true);
-    case TOKEN_LESS:       return left_associative(OP_LT,   PREC_COMPARISON,  true);
-    case TOKEN_LESS_EQ:    return left_associative(OP_LEQ,  PREC_COMPARISON,  true);
-    // `x ~= y` <==> `not (x == y)`
-    // `x >  y` <==> `not (x <= y)`
-    // `x >= y` <==> `not (x <  y)`
-    case TOKEN_NOT_EQ:     return left_associative(OP_EQ,   PREC_EQUALITY,    false);
-    case TOKEN_GREATER:    return left_associative(OP_LEQ,  PREC_COMPARISON,  false);
-    case TOKEN_GREATER_EQ: return left_associative(OP_LT,   PREC_COMPARISON,  false);
-    case TOKEN_CONCAT:     return right_associative(OP_CONCAT, PREC_CONCAT);
+    case TOKEN_PLUS:       return BINARY_ADD;
+    case TOKEN_DASH:       return BINARY_SUB;
+    case TOKEN_ASTERISK:   return BINARY_MUL;
+    case TOKEN_SLASH:      return BINARY_DIV;
+    case TOKEN_PERCENT:    return BINARY_MOD;
+    case TOKEN_CARET:      return BINARY_POW;
+    case TOKEN_EQ:         return BINARY_EQ;
+    case TOKEN_NOT_EQ:     return BINARY_NEQ;
+    case TOKEN_LESS:       return BINARY_LT;
+    case TOKEN_LESS_EQ:    return BINARY_LEQ;
+    case TOKEN_GREATER:    return BINARY_GT;
+    case TOKEN_GREATER_EQ: return BINARY_GEQ;
+    case TOKEN_CONCAT:     return BINARY_CONCAT;
     default:
         break;
     }
-    return {OP_RETURN, PREC_NONE, PREC_NONE, false};
+    return BINARY_NONE;
 }
 
 
@@ -285,45 +313,49 @@ expression(Parser *p, Compiler *c, Precedence limit)
 {
     Expr left = primary_expr(p, c);
     for (;;) {
-        Binary b = get_binary(p->consumed.type);
-        if (b.op == OP_RETURN || limit > b.left_prec) {
+        Binary_Type b = get_binary(p->consumed.type);
+        if (b == BINARY_NONE || limit > binary_precs[b].left) {
             break;
         }
 
         // Skip operator, point to first token of right hand side argument->
         advance(p);
 
-        switch (b.op) {
-        case OP_ADD:
-        case OP_SUB:
-        case OP_MUL:
-        case OP_DIV:
-        case OP_MOD:
-        case OP_POW: {
+        bool cond = true;
+        switch (b) {
+        case BINARY_ADD:
+        case BINARY_SUB:
+        case BINARY_MUL:
+        case BINARY_DIV:
+        case BINARY_MOD:
+        case BINARY_POW: {
             // VERY important to call this *before* parsing the right hand side,
             // if it ends up in a register we want them to be in the correct order.
             compiler_expr_rk(c, &left);
-            Expr right = expression(p, c, b.right_prec);
-            compiler_code_arith(c, b.op, &left, &right);
+            Expr right = expression(p, c, binary_precs[b].right);
+            compiler_code_arith(c, binary_opcodes[b], &left, &right);
             break;
         }
-        case OP_EQ:
-        case OP_LT:
-        case OP_LEQ: {
+        case BINARY_NEQ: // fall-through
+        case BINARY_GT:  // fall-through
+        case BINARY_GEQ: cond = false;
+        case BINARY_EQ:  // fall-through
+        case BINARY_LT:  // fall-through
+        case BINARY_LEQ: {
             compiler_expr_rk(c, &left);
-            Expr right = expression(p, c, b.right_prec);
-            compiler_code_compare(c, b.op, b.cond, &left, &right);
+            Expr right = expression(p, c, binary_precs[b].right);
+            compiler_code_compare(c, binary_opcodes[b], cond, &left, &right);
             break;
         }
-        case OP_CONCAT: {
+        case BINARY_CONCAT: {
             // Don't put `left` in an RK register no matter what.
             compiler_expr_next_reg(c, &left);
-            Expr right = expression(p, c, b.right_prec);
+            Expr right = expression(p, c, binary_precs[b].right);
             compiler_code_concat(c, &left, &right);
             break;
         }
         default:
-            lulu_assertf(false, "Invalid binary opcode '%s'", opcode_names[b.op]);
+            lulu_assertf(false, "Invalid Binary_Type(%i)", b);
             lulu_unreachable();
             break;
         }
@@ -338,7 +370,7 @@ return_stmt(Parser *p, Compiler *c, int line)
     const u8  ra = u8(c->free_reg);
     Expr_List e  = expr_list(p, c);
     compiler_expr_next_reg(c, &e.last);
-    compiler_code_return(c, ra, e.count, false, line);
+    compiler_code_return(c, ra, e.count, /* is_vararg */ false, line);
 }
 
 struct Assign {

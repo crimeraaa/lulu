@@ -116,6 +116,15 @@ copy(Slice<T> dst, Slice<const T> src)
     memmove(dst.data, src.data, sizeof(T) * n);
 }
 
+template<class T>
+LULU_FUNC constexpr void
+fill(Slice<T> s, T init)
+{
+    for (T &v : s) {
+        v = init;
+    }
+}
+
 // Mutable forward iterator initial value.
 template<class T>
 LULU_FUNC constexpr T *

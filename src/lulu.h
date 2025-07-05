@@ -42,6 +42,16 @@ typedef LULU_NUMBER_TYPE lulu_Number;
 #define LULU_FUNC       extern LULU_PRIVATE
 #define LULU_DATA       LULU_FUNC
 
+
+/**
+ * @brief
+ *  -   Argument to `lulu_call()` and `lulu_pcall()` to indicate that an
+ *      unknown number of values will be returned by this particular function
+ *      call.
+ */
+#define LULU_MULTRET    (-1)
+
+
 typedef void *
 (*lulu_Allocator)(void *context, void *ptr, size_t old_size, size_t new_size);
 
@@ -208,8 +218,30 @@ lulu_to_pointer(lulu_VM *vm, int i);
 
 /*=== STACK MANIPULATION FUNCTIONS ====================================== {{{ */
 
+
+LULU_API int
+lulu_get_top(lulu_VM *vm);
+
 LULU_API void
 lulu_set_top(lulu_VM *vm, int i);
+
+
+/**
+ * @brief
+ *  -   Moves the value at the current top of the stack to stack index `i`,
+ *      shifting all elements above it up by one index.
+ */
+LULU_API void
+lulu_insert(lulu_VM *vm, int i);
+
+
+/**
+ * @brief
+ *  -   Removes the value at the stack index `i`, shift all elements above it
+ *      down by one index.
+ */
+LULU_API void
+lulu_remove(lulu_VM *vm, int i);
 
 LULU_API void
 lulu_pop(lulu_VM *vm, int n);

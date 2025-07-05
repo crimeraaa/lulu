@@ -144,9 +144,7 @@ intern_resize(lulu_VM *vm, Intern *t, size_t new_cap)
 {
     Slice<Object *> new_table = slice_make<Object *>(vm, new_cap);
     // Zero out the new memory
-    for (Object *&s : new_table) {
-        s = nullptr;
-    }
+    fill(new_table, cast(Object *)nullptr);
 
     // Rehash all strings from the old table to the new table.
     for (Object *list : t->table) {

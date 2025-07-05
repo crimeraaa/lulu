@@ -4,7 +4,7 @@
 static Value
 VALUE_NONE_{VALUE_NONE};
 
-static Value &
+static constexpr Value &
 value_at(lulu_VM *vm, int i)
 {
     // Not valid in any way
@@ -44,23 +44,7 @@ void
 lulu_call(lulu_VM *vm, int n_args, int n_rets)
 {
     Value &fn = value_at(vm, -(n_args + 1));
-
-    // Account for any changes in the stack made by unprotected main function
-    // or C functions.
-    Call_Frame *caller = vm->caller;
-    if (caller != nullptr) {
-        // Ensure both slices have the same underlying data.
-        lulu_assert(raw_data(vm->window) == raw_data(caller->window));
-        caller->window = vm->window;
-    }
-
-    // `vm_call_fini()` may adjust `vm->window` in a different way than wanted.
-    size_t base    = vm_base_absindex(vm);
-    size_t new_top = vm_absindex(vm, &fn) + cast_size(n_rets);
-    vm_call(vm, fn, n_args, n_rets);
-
-    // `fn` may be dangling at this point!
-    vm->window = Slice(vm->stack, base, new_top);
+    vm_call(vm, fn, n_args, (n_rets == LULU_MULTRET) ? VARARG : n_rets);
 }
 
 struct PCall_Data {
@@ -70,8 +54,8 @@ struct PCall_Data {
 static void
 pcall(lulu_VM *vm, void *user_ptr)
 {
-    PCall_Data &d = *cast(PCall_Data *)user_ptr;
-    lulu_call(vm, d.n_args, d.n_rets);
+    PCall_Data *d = cast(PCall_Data *)user_ptr;
+    lulu_call(vm, d->n_args, d->n_rets);
 }
 
 lulu_Error
@@ -235,6 +219,12 @@ lulu_to_pointer(lulu_VM *vm, int i)
     return nullptr;
 }
 
+int
+lulu_get_top(lulu_VM *vm)
+{
+    return cast_int(len(vm->window));
+}
+
 void
 lulu_set_top(lulu_VM *vm, int i)
 {
@@ -243,14 +233,37 @@ lulu_set_top(lulu_VM *vm, int i)
         size_t old_stop  = old_start + len(vm->window);
         size_t new_stop  = old_start + cast_size(i);
         if (new_stop > old_stop) {
-            for (Value &v : Slice(vm->stack, old_stop, new_stop)) {
-                v = Value();
-            }
+            // If growing the window, initialize the new region to nil.
+            Slice<Value> extra{vm->stack, old_stop, new_stop};
+            fill(extra, Value());
         }
         vm->window = Slice(vm->stack, old_start, new_stop);
     } else {
         lulu_pop(vm, -i);
     }
+}
+
+void
+lulu_insert(lulu_VM *vm, int i)
+{
+    Value *start = &value_at(vm, i);
+    // Copy by value as this stack slot is about to be replaced.
+    Value v = value_at(vm, -1);
+    Slice<Value> dst{start + 1, end(vm->window)};
+    Slice<Value> src{start,     len(dst)};
+    copy(dst, src);
+    *start = v;
+}
+
+void
+lulu_remove(lulu_VM *vm, int i)
+{
+    Value *start = &value_at(vm, i);
+    Value *stop  = &value_at(vm, -1);
+    Slice<Value> dst{start,     stop - 1};
+    Slice<Value> src{start + 1, len(dst)};
+    copy(dst, src);
+    lulu_pop(vm, 1);
 }
 
 void

@@ -1,6 +1,9 @@
 #include "table.hpp"
 #include "vm.hpp"
 
+static constexpr Entry
+EMPTY_ENTRY = {Value(), Value()};
+
 Table *
 table_new(lulu_VM *vm, size_t n)
 {
@@ -138,10 +141,8 @@ void
 table_resize(lulu_VM *vm, Table *t, size_t new_cap)
 {
     Slice<Entry> new_entries = slice_make<Entry>(vm, new_cap);
-    for (Entry &e : new_entries) {
-        e.key   = Value();
-        e.value = Value();
-    }
+    // Initialize all key-value pairs to nil-nil.
+    fill(new_entries, EMPTY_ENTRY);
 
     size_t n = 0;
     // Rehash all the old elements into the new entries table.
