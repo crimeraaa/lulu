@@ -1,16 +1,21 @@
 #pragma once
 
+#include "small_array.hpp"
 #include "chunk.hpp"
 #include "parser.hpp"
 
 static constexpr u8
 MAX_REG = OPCODE_MAX_A - 5;
 
+static constexpr int
+MAX_LOCALS = 250;
+
 struct Compiler {
     lulu_VM *vm;
     Parser  *parser; // All compilers share the same parser.
     Chunk   *chunk;  // Compilers do not own their chunks.
     u16      free_reg;
+    Small_Array<u16, MAX_LOCALS> active; // Indexes are also local registers.
 };
 
 LULU_FUNC Compiler
@@ -166,3 +171,20 @@ compiler_set_returns(Compiler *c, Expr *call, u16 n);
  */
 LULU_FUNC void
 compiler_set_one_return(Compiler *c, Expr *e);
+
+
+/**
+ * @brief
+ *  -   Finds the index of the `len(c->active) - 1` up to and including `limit`
+ *      numbered local.
+ *
+ * @param limit
+ *  -   The last index where we will check the `c->active` array.
+ *  -   This is useful to enforce scoping rules, so that this is still valid:
+ *      `local x; do local x; end;`
+ */
+LULU_FUNC bool
+compiler_get_local(Compiler *c, int limit, OString *id, u8 *reg);
+
+LULU_FUNC u16
+compiler_add_local(Compiler *c, OString *id);

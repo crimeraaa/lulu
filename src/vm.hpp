@@ -1,5 +1,6 @@
 #pragma once
 
+#include "small_array.hpp"
 #include "private.hpp"
 #include "object.hpp"
 

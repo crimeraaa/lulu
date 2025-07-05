@@ -47,28 +47,48 @@ struct Slice {
     Slice(T *start, T *stop)
         : data{start}
         , len{cast_size(stop - start)}
-    {}
+    {
+        // Comparison of 2 unrelated pointers is not standard
+        lulu_assert(start <= stop);
+    }
 
     constexpr
     Slice(T *p, size_type start, size_type stop)
         : data{p + start}
         , len{stop - start}
-    {}
+    {
+        lulu_assert(start <= stop);
+    }
 
     Slice(Slice<T> s, size_type start, size_type stop)
-        : data{&s[start]}
+        : data{s.data + start}
         , len{stop - start}
-    {}
+    {
+        // Invalid usage.
+        lulu_assert(start <= stop);
+        lulu_assert(0 <= start && start <= s.len);
+        lulu_assert(0 <= stop && stop <= s.len);
+        // Invalid result length.
+        lulu_assert(stop - start <= s.len);
+    }
 
     template<size_t N>
     Slice(Array<T, N> &s, size_type start, size_type stop)
-        : data{&s[start]}
+        : data{&s.data[0] + start}
         , len{stop - start}
-    {}
+    {
+        // Invalid usage.
+        lulu_assert(start <= stop);
+        lulu_assert(0 <= start && start <= N);
+        lulu_assert(0 <= stop && stop <= N);
+        // Invalid result length.
+        lulu_assert(stop - start <= N);
+    }
 
     template<size_t N>
+    constexpr
     Slice(Array<T, N> &s)
-        : data{&s[0]}
+        : data{&s.data[0]}
         , len{N}
     {}
 };

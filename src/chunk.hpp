@@ -11,11 +11,18 @@ struct Line_Info {
     int end_pc;
 };
 
+struct Local {
+    OString *identifier;
+    int      start_pc;
+    int      end_pc;
+};
+
 struct Chunk {
     OBJECT_HEADER;
     Dynamic<Value>       constants;
     Dynamic<Instruction> code;
     Dynamic<Line_Info>   line_info;
+    Dynamic<Local>       locals;    // Information of ALL locals in the function.
     Table               *indexes;   // Maps values to indexes in `constants`.
     LString              source;
     int                  stack_used;
@@ -35,3 +42,6 @@ chunk_get_line(const Chunk *c, int pc);
 
 LULU_FUNC u32
 chunk_add_constant(lulu_VM *vm, Chunk *c, Value v);
+
+LULU_FUNC u16
+chunk_add_local(lulu_VM *vm, Chunk *c, OString *id);

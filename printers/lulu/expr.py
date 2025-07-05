@@ -8,6 +8,7 @@ class ExprPrinter:
         "number":      "number",
         "constant":    "index",
         "global":      "index",
+        "local":       "reg",
         "call":        "pc",
         "relocable":   "pc",
         "discharged":  "reg",

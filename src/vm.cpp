@@ -238,8 +238,8 @@ struct Load_Data {
 static void
 load(lulu_VM *vm, void *user_ptr)
 {
-    Load_Data &d = *cast(Load_Data *)(user_ptr);
-    Chunk     *c = parser_program(vm, d.source, d.script, &d.builder);
+    Load_Data *d = cast(Load_Data *)(user_ptr);
+    Chunk     *c = parser_program(vm, d->source, d->script, &d->builder);
     Closure   *f = closure_new(vm, c);
     vm_push(vm, Value(f));
 }
@@ -312,12 +312,13 @@ protect(lulu_VM *vm, const Instruction *ip)
 static void
 vm_frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
 {
-    Call_Frame *cf         = &small_array_push(vm->frames);
-    cf->function           = fn;
-    cf->window             = window;
-    cf->expected_returned  = expected_returned;
+    Call_Frame cf;
+    cf.function           = fn;
+    cf.window             = window;
+    cf.expected_returned  = expected_returned;
+    small_array_push(&vm->frames, cf);
 
-    vm->caller   = cf;
+    vm->caller   = small_array_get_ptr(&vm->frames, small_array_len(vm->frames) - 1);
     vm->window   = window;
 
     if (closure_is_lua(fn)) {
@@ -331,10 +332,10 @@ static Call_Frame *
 vm_frame_pop(lulu_VM *vm)
 {
     // Have a previous frame to return to?
-    small_array_pop(vm->frames);
+    small_array_pop(&vm->frames);
     Call_Frame *frame = nullptr;
-    if (len(vm->frames) > 0) {
-        frame      = &vm->frames[len(vm->frames) - 1];
+    if (small_array_len(vm->frames) > 0) {
+        frame      = small_array_get_ptr(&vm->frames, small_array_len(vm->frames) - 1);
         vm->window = frame->window;
     }
     vm->caller = frame;
@@ -531,6 +532,11 @@ vm_execute(lulu_VM *vm)
             Value k = chunk.constants[getarg_bx(i)];
             protect(vm, ip);
             table_set(vm, &vm->globals, k, ra);
+            break;
+        }
+        case OP_MOVE: {
+            Value &rb = window[getarg_b(i)];
+            ra = rb;
             break;
         }
         case OP_ADD: ARITH_OP(lulu_Number_add); break;

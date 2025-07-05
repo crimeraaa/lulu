@@ -12,6 +12,7 @@ chunk_new(lulu_VM *vm, LString source, Table *indexes)
     dynamic_init(&c->constants);
     dynamic_init(&c->code);
     dynamic_init(&c->line_info);
+    dynamic_init(&c->locals);
     c->indexes    = indexes;
     c->source     = source;
     c->stack_used = 2; // R(0) and R(1) must always be valid.
@@ -87,4 +88,17 @@ chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
     dynamic_push(vm, &c->constants, v);
     table_set(vm, c->indexes, v, Value(i2));
     return u32(i2);
+}
+
+LULU_FUNC u16
+chunk_add_local(lulu_VM *vm, Chunk *c, OString *id)
+{
+    Local local;
+    local.identifier = id;
+    local.start_pc   = 0;
+    local.end_pc     = 0;
+
+    u16 i = cast(u16)len(c->locals);
+    dynamic_push(vm, &c->locals, local);
+    return i;
 }

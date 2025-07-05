@@ -5,19 +5,63 @@
 #include "debug.hpp"
 #include "vm.hpp"
 
+struct Block {
+    Block *prev; // Stack-allocated linked list.
+    u16    active_count;
+    bool   breakable;
+};
+
 struct Expr_List {
     Expr last;
     u16  count;
 };
 
+static constexpr Expr
+EXPR_EMPTY = {EXPR_NONE, /* line */ 0, /* <unnamed>::number */ {0}};
+
 // Forward declaration for recursive descent parsing.
 static Expr
 expression(Parser *p, Compiler *c, Precedence limit = PREC_NONE);
 
+static void
+declaration(Parser *p, Compiler *c);
+
+static void
+block_push(Parser *p, Compiler *c, Block *b, bool breakable)
+{
+    b->prev         = p->block;
+    b->active_count = cast(u16)small_array_len(c->active);
+    b->breakable    = breakable;
+
+    // Chain
+    p->block = b;
+}
+
+static void
+block_pop(Parser *p, Compiler *c)
+{
+    Block *b = p->block;
+    Slice<u16> active = small_array_slice(c->active);
+    size_t n = len(active);
+    int pc = cast_int(len(c->chunk->code));
+    for (u16 index : Slice(active, cast_size(b->active_count), n)) {
+        Local *local  = &c->chunk->locals[index];
+        local->end_pc = pc;
+    }
+    small_array_resize(&c->active, b->active_count);
+    c->free_reg = b->active_count;
+    p->block    = b->prev;
+}
+
 Parser
 parser_make(lulu_VM *vm, LString source, LString script, Builder *b)
 {
-    Parser p{vm, lexer_make(vm, source, script, b), {}, b};
+    Parser p;
+    p.vm       = vm;
+    p.lexer    = lexer_make(vm, source, script, b);
+    p.consumed = {};
+    p.builder  = b;
+    p.block    = nullptr;
     return p;
 }
 
@@ -77,8 +121,7 @@ consume(Parser *p, Token_Type expected)
     if (!match(p, expected)) {
         // Assume our longest token is '<identifier>'.
         char buf[64];
-        sprintf(buf, "Expected " STRING_QFMTSPEC,
-            string_fmtarg(token_strings[expected]));
+        sprintf(buf, "Expected '%s'", raw_data(token_strings[expected]));
         parser_error(p, buf);
     }
 }
@@ -107,9 +150,17 @@ static Expr
 resolve_variable(Parser *p, Compiler *c, const Token *t)
 {
     Expr e;
-    e.type  = EXPR_GLOBAL;
-    e.line  = t->line;
-    e.index = compiler_add_ostring(c, ostring_new(p->vm, t->lexeme));
+    u8 reg;
+    OString *id = ostring_new(p->vm, t->lexeme);
+    if (compiler_get_local(c, /* limit */ 0, id, &reg)) {
+        e.type = EXPR_LOCAL;
+        e.reg  = reg;
+        e.line = t->line;
+    } else {
+        e.type  = EXPR_GLOBAL;
+        e.line  = t->line;
+        e.index = compiler_add_ostring(c, id);
+    }
     return e;
 }
 
@@ -120,19 +171,31 @@ prefix_expr(Parser *p, Compiler *c)
     advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
     switch (t.type) {
     case TOKEN_NIL: {
-        Expr e{EXPR_NIL, t.line, {}};
+        Expr e;
+        e.type   = EXPR_NIL;
+        e.line   = t.line;
+        e.number = 0;
         return e;
     }
     case TOKEN_TRUE: {
-        Expr e{EXPR_TRUE, t.line, {}};
+        Expr e;
+        e.type   = EXPR_TRUE;
+        e.line   = t.line;
+        e.number = 0;
         return e;
     }
     case TOKEN_FALSE: {
-        Expr e{EXPR_FALSE, t.line, {}};
+        Expr e;
+        e.type   = EXPR_FALSE;
+        e.line   = t.line;
+        e.number = 0;
         return e;
     }
     case TOKEN_NUMBER: {
-        Expr e{EXPR_NUMBER, t.line, {t.number}};
+        Expr e;
+        e.type   = EXPR_NUMBER;
+        e.line   = t.line;
+        e.number = t.number;
         return e;
     }
     case TOKEN_STRING: {
@@ -174,13 +237,10 @@ prefix_expr(Parser *p, Compiler *c)
 static void
 function_call(Parser *p, Compiler *c, Expr *e)
 {
-    Expr_List args;
+    Expr_List args{EXPR_EMPTY, 0};
     if (!check(p, TOKEN_CLOSE_PAREN)) {
         args = expr_list(p, c);
         compiler_set_returns(c, &args.last, VARARG);
-    } else {
-        args.last.type = EXPR_NONE;
-        args.count = 0;
     }
     consume(p, TOKEN_CLOSE_PAREN);
 
@@ -240,9 +300,9 @@ right_assoc(Precedence prec)
     return {prec, prec};
 }
 
-static Binary_Prec
+static const Binary_Prec
 binary_precs[] = {
-    /* BINARY_NONE */   left_assoc(PREC_NONE),
+    /* BINARY_NONE */   {PREC_NONE, PREC_NONE},
     /* BINARY_ADD */    left_assoc(PREC_TERMINAL),
     /* BINARY_SUB */    left_assoc(PREC_TERMINAL),
     /* BINARY_MUL */    left_assoc(PREC_FACTOR),
@@ -258,7 +318,7 @@ binary_precs[] = {
     /* BINARY_CONCAT */ right_assoc(PREC_CONCAT),
 };
 
-static OpCode
+static const OpCode
 binary_opcodes[] = {
     /* BINARY_NONE */   OP_RETURN,
     /* BINARY_ADD */    OP_ADD,
@@ -367,10 +427,17 @@ expression(Parser *p, Compiler *c, Precedence limit)
 static void
 return_stmt(Parser *p, Compiler *c, int line)
 {
-    const u8  ra = u8(c->free_reg);
+    u8        ra = u8(c->free_reg);
     Expr_List e  = expr_list(p, c);
-    compiler_expr_next_reg(c, &e.last);
-    compiler_code_return(c, ra, e.count, /* is_vararg */ false, line);
+    bool is_vararg = false;
+    // if (e.last.type == EXPR_CALL) {
+    //     compiler_set_returns(c, &e.last, VARARG);
+    //     ra        = cast(u8)small_array_len(c->active);
+    //     is_vararg = true;
+    // } else {
+        compiler_expr_next_reg(c, &e.last);
+    // }
+    compiler_code_return(c, ra, e.count, is_vararg, line);
 }
 
 struct Assign {
@@ -379,7 +446,7 @@ struct Assign {
 };
 
 static void
-adjust_assign(Compiler *c, u16 n_vars, Expr_List *e)
+assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
 {
     int extra = cast_int(n_vars) - cast_int(e->count);
     // The last assigning expression can have variadic returns.
@@ -393,17 +460,19 @@ adjust_assign(Compiler *c, u16 n_vars, Expr_List *e)
         if (extra > 1) {
             compiler_reserve_reg(c, u16(extra - 1));
         }
-    } else {
-        // Need to close last expression?
-        if (e->last.type != EXPR_NONE) {
-            compiler_expr_next_reg(c, &e->last);
-        }
-        if (extra > 0) {
-            // Register of first uninitialized right-hand side.
-            u16 reg = c->free_reg;
-            compiler_reserve_reg(c, u16(extra));
-            compiler_load_nil(c, u8(reg), extra, e->last.line);
-        }
+        return;
+    }
+
+    // Need to close last expression?
+    if (e->last.type != EXPR_NONE) {
+        compiler_expr_next_reg(c, &e->last);
+    }
+
+    if (extra > 0) {
+        // Register of first uninitialized right-hand side.
+        u16 reg = c->free_reg;
+        compiler_reserve_reg(c, u16(extra));
+        compiler_load_nil(c, u8(reg), extra, e->last.line);
     }
 }
 
@@ -411,7 +480,7 @@ static void
 assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
 {
     // Check the result of `expression()`.
-    if (last->variable.type != EXPR_GLOBAL) {
+    if (last->variable.type != EXPR_GLOBAL && last->variable.type != EXPR_LOCAL) {
         parser_error(p, "Expected an identifier");
     }
 
@@ -426,7 +495,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
     Expr_List e    = expr_list(p, c);
     Assign   *iter = last;
     if (n_vars != e.count) {
-        adjust_assign(c, n_vars, &e);
+        assign_adjust(c, n_vars, &e);
         // Reuse the registers occupied by the extra values.
         if (e.count > n_vars) {
             c->free_reg -= u16(e.count - n_vars);
@@ -449,27 +518,95 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
     }
 }
 
+static void
+local_push(Parser *p, Compiler *c, const Token *t)
+{
+    u8 reg;
+    OString *id = ostring_new(p->vm, t->lexeme);
+    if (compiler_get_local(c, cast_int(p->block->active_count), id, &reg)) {
+        error_at(p, t, "Shadowing of local variable");
+    }
+    u16 index = chunk_add_local(p->vm, c->chunk, id);
+    small_array_push(&c->active, index);
+}
+
+static void
+local_adjust(Compiler *c, u16 n)
+{
+    // `lparser.c:adjust_locals()`
+    int    pc    = cast_int(len(c->chunk->code));
+    size_t start = small_array_len(c->active);
+
+    small_array_resize(&c->active, start + cast_size(n));
+    Slice<u16> active = small_array_slice(c->active);
+    for (u16 index : Slice(active, start, len(active))) {
+        Local *local = &c->chunk->locals[index];
+        local->start_pc = pc;
+    }
+}
+
+static void
+local_stmt(Parser *p, Compiler *c)
+{
+    u16 n = 0;
+    do {
+        Token t = p->consumed;
+        consume(p, TOKEN_IDENTIFIER);
+        local_push(p, c, &t);
+        n++;
+    } while (match(p, TOKEN_COMMA));
+    // Prevent lookup of uninitiallized local variables, e.g. `local x = x`;
+    small_array_resize(&c->active, small_array_len(c->active) - n);
+
+    Expr_List args{EXPR_EMPTY, 0};
+    if (match(p, TOKEN_ASSIGN)) {
+        args = expr_list(p, c);
+    }
+
+    assign_adjust(c, n, &args);
+    local_adjust(c, n);
+}
+
+static void
+do_block(Parser *p, Compiler *c)
+{
+    Block b;
+    block_push(p, c, &b, /* breakable */ false);
+    while (!check(p, TOKEN_END) && !check(p, TOKEN_EOF)) {
+        declaration(p, c);
+    }
+    block_pop(p, c);
+    consume(p, TOKEN_END);
+}
 
 static void
 declaration(Parser *p, Compiler *c)
 {
     Token t = p->consumed;
     switch (t.type) {
+    case TOKEN_DO: {
+        advance(p); // skip `do`
+        do_block(p, c);
+        break;
+    }
+    case TOKEN_LOCAL:
+        advance(p); // skip `local`
+        local_stmt(p, c);
+        break;
+    case TOKEN_RETURN:
+        advance(p);
+        return_stmt(p, c, t.line);
+        break;
     case TOKEN_IDENTIFIER: {
         Assign a{nullptr, expression(p, c)};
         // Differentiate `f().field = ...` and `f()`.
         if (a.variable.type == EXPR_CALL) {
             compiler_set_returns(c, &a.variable, 0);
-            c->free_reg -= 1;
         } else {
             assignment(p, c, &a);
         }
         break;
     }
-    case TOKEN_RETURN:
-        advance(p);
-        return_stmt(p, c, t.line);
-        break;
     default:
         error_at(p, &t, "Expected an expression");
         break;
@@ -492,9 +629,15 @@ parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
     Compiler c = compiler_make(vm, &p, ch);
     // Set up first token
     advance(&p);
+
+    Block bl;
+    block_push(&p, &c, &bl, /* breakable */ false);
     while (!check(&p, TOKEN_EOF)) {
         declaration(&p, &c);
+        c.free_reg = cast(u16)small_array_len(c.active);
     }
+    block_pop(&p, &c);
+
     consume(&p, TOKEN_EOF);
     compiler_code_abc(&c, OP_RETURN, 0, 0, 0, p.lexer.line);
 

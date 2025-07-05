@@ -21,6 +21,7 @@ object_free(lulu_VM *vm, Object *o)
         dynamic_delete(vm, &c->constants);
         dynamic_delete(vm, &c->code);
         dynamic_delete(vm, &c->line_info);
+        dynamic_delete(vm, &c->locals);
         mem_free(vm, c);
         break;
     }

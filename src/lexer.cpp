@@ -8,9 +8,15 @@
 Lexer
 lexer_make(lulu_VM *vm, LString source, LString script, Builder *b)
 {
-    const char *ptr = raw_data(script);
-    Lexer l{vm, b, source, script, ptr, ptr, 1};
-    return l;
+    Lexer x;
+    x.vm      = vm;
+    x.builder = b;
+    x.source  = source;
+    x.script  = script;
+    x.cursor  = raw_data(script);
+    x.start   = raw_data(script);
+    x.line    = 1;
+    return x;
 }
 
 static bool

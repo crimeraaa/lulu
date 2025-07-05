@@ -186,12 +186,17 @@ lulu_assert_(const char *file, int line, bool cond, const char *expr, const char
         assert(!have_error && "Error in assertion handling");
         have_error = true;
         fprintf(stderr, "%s:%i: Assertion failed: %s\n", file, line, expr);
+        fflush(stderr);
+
         if (fmt != nullptr) {
             va_list argp;
             va_start(argp, fmt);
             vfprintf(stderr, fmt, argp);
             va_end(argp);
         }
+        // invoke ASAN
+        *cast(int *)SIZE_MAX = 1;
+
         print_backtrace();
         __builtin_trap();
     }

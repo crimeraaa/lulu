@@ -23,39 +23,47 @@ struct Args {
 };
 
 static void
-print_reg(const Chunk *c, u16 reg)
+print_reg(const Chunk *c, u16 reg, int pc)
 {
     if (reg_is_rk(reg)) {
         u32 i = reg_get_k(reg);
         value_print(c->constants[i]);
+        return;
+    }
+
+    const char *id = debug_get_local(c, cast_int(reg + 1), pc);
+    if (id != nullptr) {
+        printf("local %s", id);
     } else {
         printf("R(%i)", reg);
     }
 }
 
 static void
-unary(const Chunk *c, const char *op, Args args)
+unary(const Chunk *c, const char *op, Args args, int pc)
 {
-    printf("R(%i) := %s", args.a, op);
-    print_reg(c, args.basic.b);
+    print_reg(c, args.a, pc);
+    printf(" := %s", op);
+    print_reg(c, args.basic.b, pc);
 }
 
 static void
-arith(const Chunk *c, char op, Args args)
+arith(const Chunk *c, char op, Args args, int pc)
 {
-    printf("R(%i) = ", args.a);
-    print_reg(c, args.basic.b);
+    print_reg(c, args.a, pc);
+    printf(" := ");
+    print_reg(c, args.basic.b, pc);
     printf(" %c ", op);
-    print_reg(c, args.basic.c);
+    print_reg(c, args.basic.c, pc);
 }
 
 static void
-compare(const Chunk *c, const char *op, Args args)
+compare(const Chunk *c, const char *op, Args args, int pc)
 {
     printf("R(%i) = ", args.a);
-    print_reg(c, args.basic.b);
+    print_reg(c, args.basic.b, pc);
     printf(" %s ", op);
-    print_reg(c, args.basic.c);
+    print_reg(c, args.basic.c, pc);
 }
 
 static int
@@ -135,7 +143,7 @@ debug_disassemble_at(const Chunk *c, int pc, int pad)
         break;
     }
     case OP_GET_GLOBAL: {
-        print_reg(c, args.a);
+        print_reg(c, args.a, pc);
         printf(" := ");
         value_print(c->constants[getarg_bx(ip)]);
         break;
@@ -147,17 +155,25 @@ debug_disassemble_at(const Chunk *c, int pc, int pad)
         printf("_G[%c%s%c] := R(%i)", q, s->data, q, args.a);
         break;
     }
-    case OP_ADD: arith(c, '+', args); break;
-    case OP_SUB: arith(c, '-', args); break;
-    case OP_MUL: arith(c, '*', args); break;
-    case OP_DIV: arith(c, '/', args); break;
-    case OP_MOD: arith(c, '%', args); break;
-    case OP_POW: arith(c, '^', args); break;
-    case OP_EQ:  compare(c, "==", args); break;
-    case OP_LT:  compare(c, "<", args); break;
-    case OP_LEQ: compare(c, "<=", args); break;
-    case OP_UNM: unary(c, "-", args); break;
-    case OP_NOT: unary(c, "not ", args); break;
+    case OP_MOVE: {
+        u16 a = getarg_a(ip);
+        u16 b = getarg_b(ip);
+        print_reg(c, a, pc);
+        printf(" := ");
+        print_reg(c, b, pc);
+        break;
+    }
+    case OP_ADD: arith(c, '+', args, pc); break;
+    case OP_SUB: arith(c, '-', args, pc); break;
+    case OP_MUL: arith(c, '*', args, pc); break;
+    case OP_DIV: arith(c, '/', args, pc); break;
+    case OP_MOD: arith(c, '%', args, pc); break;
+    case OP_POW: arith(c, '^', args, pc); break;
+    case OP_EQ:  compare(c, "==", args, pc); break;
+    case OP_LT:  compare(c, "<", args, pc); break;
+    case OP_LEQ: compare(c, "<=", args, pc); break;
+    case OP_UNM: unary(c, "-", args, pc); break;
+    case OP_NOT: unary(c, "not ", args, pc); break;
     case OP_CONCAT:
         printf("R(%i) := concat(R(%i:%i))",
             args.a, args.basic.b, args.basic.c + 1);
@@ -188,19 +204,29 @@ debug_disassemble_at(const Chunk *c, int pc, int pad)
     printf("\n");
 }
 
-
 void
 debug_disassemble(const Chunk *c)
 {
-    const Dynamic<Value> &constants = c->constants;
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
     printf(".stack_used:\n%i\n\n", c->stack_used);
-    if (len(constants) > 0) {
-        int pad = count_digits(len(constants));
+    if (len(c->locals) > 0) {
+        int pad = count_digits(len(c->locals));
+        printf(".local:\n");
+        for (size_t i = 0, n = len(c->locals); i < n; i++) {
+            Local local = c->locals[i];
+            const char *id = ostring_to_cstring(local.identifier);
+            printf("[%.*zu] '%s': start=%i, end=%i\n",
+                pad, i, id, local.start_pc, local.end_pc);
+        }
+        printf("\n");
+    }
+
+    if (len(c->constants) > 0) {
+        int pad = count_digits(len(c->constants));
         printf(".const:\n");
-        for (size_t i = 0, end = len(constants); i < end; i++) {
+        for (size_t i = 0, n = len(c->constants); i < n; i++) {
             printf("[%.*zu] ", pad, i);
-            value_print(constants[i]);
+            value_print(c->constants[i]);
             printf("\n");
         }
         printf("\n");
@@ -208,8 +234,31 @@ debug_disassemble(const Chunk *c)
 
     printf(".code:\n");
     int pad = debug_get_pad(c);
-    for (int i = 0, end = cast_int(len(c->code)); i < end; i++) {
+    for (int i = 0, n = cast_int(len(c->code)); i < n; i++) {
         debug_disassemble_at(c, i, pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");
+}
+
+LULU_FUNC const char *
+debug_get_local(const Chunk *c, int local_number, int pc)
+{
+    int counter = local_number;
+    for (Local local : c->locals) {
+        // nth local cannot possible be active at this point, and we assume
+        // that all succeeding locals won't be either.
+        if (local.start_pc > pc) {
+            break;
+        }
+
+        // Local is valid in this range?
+        if (pc <= local.end_pc) {
+            counter--;
+            // We iterated the correct number of times for this scope?
+            if (counter == 0) {
+                return ostring_to_cstring(local.identifier);
+            }
+        }
+    }
+    return nullptr;
 }

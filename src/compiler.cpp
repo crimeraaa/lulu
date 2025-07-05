@@ -4,7 +4,12 @@
 Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk)
 {
-    Compiler c{vm, p, chunk, 0};
+    Compiler c;
+    c.vm       = vm;
+    c.parser   = p;
+    c.chunk    = chunk;
+    c.free_reg = 0;
+    c.active.len = 0;
     return c;
 }
 
@@ -55,15 +60,13 @@ compiler_load_nil(Compiler *c, u8 reg, int n, int line)
     }
 
     // Can't fold; need new instruction.
-    Instruction i = instruction_abc(OP_LOAD_NIL, reg, last_reg, 0);
-    chunk_append(c->vm, c->chunk, i, line);
+    compiler_code_abc(c, OP_LOAD_NIL, reg, last_reg, 0, line);
 }
 
 void
 compiler_load_boolean(Compiler *c, u8 reg, bool b, int line)
 {
-    Instruction i = instruction_abc(OP_LOAD_BOOL, reg, u16(b), 0);
-    chunk_append(c->vm, c->chunk, i, line);
+    compiler_code_abc(c, OP_LOAD_BOOL, reg, u16(b), 0, line);
 }
 
 u32
@@ -103,7 +106,8 @@ compiler_reserve_reg(Compiler *c, u16 n)
 static void
 pop_reg(Compiler *c, u16 reg)
 {
-    if (!reg_is_rk(reg)) {
+    // `reg` is not a constant index nor a local register?
+    if (!reg_is_rk(reg) && reg >= cast(u16)small_array_len(c->active)) {
         c->free_reg -= 1;
         // e.g. if we discharged 1 number, free_reg would be 1 and the expr.reg
         // would be 0. So when we pop that number from its register, we expect
@@ -129,6 +133,10 @@ discharge_vars(Compiler *c, Expr *e)
     case EXPR_GLOBAL:
         e->type = EXPR_RELOCABLE;
         e->pc   = compiler_code_abx(c, OP_GET_GLOBAL, OPCODE_MAX_A, e->index, e->line);
+        break;
+    case EXPR_LOCAL:
+        // locals are already in registers
+        e->type = EXPR_DISCHARGED;
         break;
     case EXPR_CALL:
         compiler_set_one_return(c, e);
@@ -166,7 +174,7 @@ expr_to_reg(Compiler *c, Expr *e, u8 reg, int line)
     }
     case EXPR_DISCHARGED: {
         if (e->reg != reg) {
-            lulu_assertm(false, "OP_MOVE not yet implemented");
+            compiler_code_abc(c, OP_MOVE, reg, e->reg, 0, line);
         }
         break;
     }
@@ -353,8 +361,14 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
         compiler_code_abx(c, OP_SET_GLOBAL, reg, var->index, var->line);
         break;
     }
+    case EXPR_LOCAL: {
+        u8 reg = compiler_expr_any_reg(c, expr);
+        compiler_code_abc(c, OP_MOVE, var->reg, reg, 0, var->line);
+        break;
+    }
     default:
         lulu_assertf(false, "Invalid Expr_Type(%i) to assign", var->type);
+        lulu_unreachable();
         break;
     }
     pop_expr(c, expr);
@@ -363,7 +377,7 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
 void
 compiler_code_return(Compiler *c, u8 reg, u16 count, bool is_vararg, int line)
 {
-    compiler_code_abc(c, OP_RETURN, reg, u16(reg) + count, u16(is_vararg), line);
+    compiler_code_abc(c, OP_RETURN, reg, count, u16(is_vararg), line);
 }
 
 void
@@ -384,4 +398,24 @@ compiler_set_one_return(Compiler *c, Expr *e)
         e->type = EXPR_DISCHARGED;
         e->reg  = getarg_a(*ip);
     }
+}
+
+bool
+compiler_get_local(Compiler *c, int limit, OString *id, u8 *reg)
+{
+    for (int r = cast_int(small_array_len(c->active) - 1); r >= limit; r--) {
+        Local *local = &c->chunk->locals[small_array_get(c->active, cast_size(r))];
+        if (local->identifier == id) {
+            *reg = cast(u8)r;
+            return true;
+        }
+    }
+    *reg = 0;
+    return false;
+}
+
+LULU_FUNC u16
+compiler_add_local(Compiler *c, OString *id)
+{
+    return chunk_add_local(c->vm, c->chunk, id);
 }

@@ -8,18 +8,22 @@ struct Array {
 
     T data[N];
 
+    template<class I>
     T &
-    operator[](size_type i)
+    operator[](I i)
     {
-        lulu_assertf(i < N, "Out of bounds index %zu / %zu", i, N);
-        return this->data[i];
+        size_type ii = cast(size_type)i;
+        lulu_assertf(ii < N, "Out of bounds index %zu / %zu", ii, N);
+        return this->data[ii];
     }
 
+    template<class I>
     const T &
     operator[](size_type i) const
     {
-        lulu_assertf(i < N, "Out of bounds index %zu / %zu", i, N);
-        return this->data[i];
+        size_type ii = cast(size_type)i;
+        lulu_assertf(ii < N, "Out of bounds index %zu / %zu", ii, N);
+        return this->data[ii];
     }
 };
 
@@ -36,38 +40,4 @@ LULU_FUNC inline T *
 raw_data(Array<T, N> &a)
 {
     return a.data;
-}
-
-template<class T, size_t N>
-struct Small_Array : public Array<T, N> {
-    size_t len;
-};
-
-template<class T, size_t N>
-LULU_FUNC constexpr typename Array<T, N>::size_type
-len(const Small_Array<T, N> &sa)
-{
-    return sa.len;
-}
-
-template<class T, size_t N>
-LULU_FUNC constexpr typename Array<T, N>::size_type
-cap(const Small_Array<T, N> &sa)
-{
-    unused(sa);
-    return N;
-}
-
-template<class T, size_t N>
-LULU_FUNC inline T &
-small_array_push(Small_Array<T, N> &sa)
-{
-    return sa[sa.len++];
-}
-
-template<class T, size_t N>
-LULU_FUNC inline void
-small_array_pop(Small_Array<T, N> &sa)
-{
-    sa.len--;
 }

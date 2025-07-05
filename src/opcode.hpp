@@ -9,6 +9,7 @@ OP_LOAD_NIL,    // A B   | R(i) := nil for A <= i <= B
 OP_LOAD_BOOL,   // A B   | R(A) := Bool(B)
 OP_GET_GLOBAL,  // A Bx  | R(A) := _G[K(Bx)]
 OP_SET_GLOBAL,  // A Bx  | _G[K(Bx)] := R(A)
+OP_MOVE,        // A B   | R(A) := R(B)
 OP_ADD,         // A B C | R(A) := RK(B) + RK(C)
 OP_SUB,         // A B C | R(A) := RK(B) - RK(C)
 OP_MUL,         // A B C | R(A) := RK(B) * RK(C)
