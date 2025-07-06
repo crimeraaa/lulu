@@ -81,9 +81,11 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
                 if tag is None:
                     return str(v.type)
                 return tag + " *"
-            case gdb.TYPE_CODE_TYPEDEF:
-                t = v.type.strip_typedefs()
-                return self.__resolve_typename(v.cast(t))
+
+            # NOTE: Messes with `using LString = Slice<const char>;`.
+            # case gdb.TYPE_CODE_TYPEDEF:
+            #     t = v.type.strip_typedefs()
+            #     return self.__resolve_typename(v.cast(t))
             case gdb.TYPE_CODE_REF:
                 # e.g. `lulu_VM &` is a reference to `lulu_VM`,
                 # `Object *&` is a reference to `Object *`.

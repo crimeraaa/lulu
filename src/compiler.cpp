@@ -79,13 +79,13 @@ compiler_add_value(Compiler *c, Value v)
 u32
 compiler_add_number(Compiler *c, Number n)
 {
-    return compiler_add_value(c, Value(n));
+    return compiler_add_value(c, value_make_number(n));
 }
 
 u32
 compiler_add_ostring(Compiler *c, OString *s)
 {
-    return compiler_add_value(c, Value(s));
+    return compiler_add_value(c, value_make_string(s));
 }
 
 //=== }}} ======================================================================
@@ -222,7 +222,7 @@ compiler_expr_any_reg(Compiler *c, Expr *e)
 static u16
 value_to_rk(Compiler *c, Expr *e, Value v)
 {
-    u32 i   = compiler_add_value(c, v);
+    u32 i    = compiler_add_value(c, v);
     e->type  = EXPR_CONSTANT;
     e->index = i;
 
@@ -239,14 +239,14 @@ u16
 compiler_expr_rk(Compiler *c, Expr *e)
 {
     switch (e->type) {
-    case EXPR_NIL:    return value_to_rk(c, e, Value());
-    case EXPR_TRUE:   return value_to_rk(c, e, Value(true));
-    case EXPR_FALSE:  return value_to_rk(c, e, Value(false));
-    case EXPR_NUMBER: return value_to_rk(c, e, Value(e->number));
+    case EXPR_NIL:    return value_to_rk(c, e, nil);
+    case EXPR_TRUE:   return value_to_rk(c, e, value_make_boolean(true));
+    case EXPR_FALSE:  return value_to_rk(c, e, value_make_boolean(false));
+    case EXPR_NUMBER: return value_to_rk(c, e, value_make_number(e->number));
 
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {
-        if (e->index <= u32(OPCODE_MAX_RK)) {
+        if (e->index <= OPCODE_MAX_RK) {
             return reg_to_rk(u16(e->index));
         }
         break;

@@ -7,18 +7,19 @@
 
 union Object;
 
-struct LString : public Slice<const char> {
-    // Bring all inherited constructors into scope.
-    using Slice<const char>::Slice;
+using LString = Slice<const char>;
 
-    // Construct from a nul-terminated C string.
-    LString(const char *s) : Slice(s, strlen(s))
-    {}
+LULU_FUNC inline LString
+lstring_from_cstring(const char *s)
+{
+    return {s, strlen(s)};
+}
 
-    // Construct from a mutable character sequence.
-    LString(Slice<char> s) : Slice(s.data, s.len)
-    {}
-};
+LULU_FUNC inline LString
+lstring_from_slice(Slice<char> s)
+{
+    return {raw_data(s), len(s)};
+}
 
 struct Builder {
     Dynamic<char> buffer;
@@ -46,7 +47,7 @@ operator==(LString a, LString b)
 LULU_FUNC inline LString
 operator ""_s(const char *s, size_t n)
 {
-    return LString(s, n);
+    return {s, n};
 }
 
 LULU_FUNC void
@@ -103,7 +104,7 @@ ostring_new(lulu_VM *vm, LString text);
 LULU_FUNC inline LString
 ostring_to_string(OString *s)
 {
-    return LString(s->data, s->len);
+    return {s->data, s->len};
 }
 
 LULU_FUNC inline const char *

@@ -67,7 +67,8 @@ builder_write_int(lulu_VM *vm, Builder *b, int i)
 {
     char buf[INT_WIDTH * 2];
     int  written = sprintf(buf, "%i", i);
-    builder_write_string(vm, b, Slice(buf, cast_size(written)));
+    LString s{buf, cast_size(written)};
+    builder_write_string(vm, b, s);
 }
 
 void
@@ -75,7 +76,8 @@ builder_write_number(lulu_VM *vm, Builder *b, Number n)
 {
     char buf[DBL_DECIMAL_DIG * 2];
     int  written = sprintf(buf, LULU_NUMBER_FMT, n);
-    builder_write_string(vm, b, Slice(buf, cast_size(written)));
+    LString s{buf, cast_size(written)};
+    builder_write_string(vm, b, s);
 }
 
 void
@@ -83,13 +85,14 @@ builder_write_pointer(lulu_VM *vm, Builder *b, void *p)
 {
     char buf[sizeof(p) * CHAR_BIT];
     int  written = sprintf(buf, "%p", p);
-    builder_write_string(vm, b, Slice(buf, cast_size(written)));
+    LString s{buf, cast_size(written)};
+    builder_write_string(vm, b, s);
 }
 
 LString
 builder_to_string(const Builder *b)
 {
-    LString s = LString(b->buffer);
+    LString s = lstring_from_slice(b->buffer);
     // Ensure the `builder_write_*` family worked properly.
     lulu_assert(len(s) == 0 || raw_data(s)[len(s)] == '\0');
     return s;
@@ -191,7 +194,8 @@ ostring_new(lulu_VM *vm, LString text)
     for (Object *node = t->table[i]; node != nullptr; node = node->base.next) {
         OString *s = &node->ostring;
         if (s->hash == hash) {
-            if (text == LString(s->data, s->len)) {
+            LString ls{s->data, s->len};
+            if (text == ls) {
                 return s;
             }
         }

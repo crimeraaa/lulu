@@ -165,7 +165,7 @@ print_backtrace()
 #if __x86_64__
         // Calculate the offset on x86_64, print the file and line number with
         // addr2line.
-        void *offset_pointer = calculate_offset(LString(s));
+        void *offset_pointer = calculate_offset(lstring_from_cstring(s));
         if (offset_pointer == nullptr) {
             write(STDERR_FILENO, errmsg, count_of(errmsg));
         } else {

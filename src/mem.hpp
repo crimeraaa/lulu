@@ -60,7 +60,8 @@ template<class T>
 LULU_FUNC inline Slice<T>
 slice_make(lulu_VM *vm, typename Slice<T>::size_type n)
 {
-    return Slice(mem_make<T>(vm, n), n);
+    Slice<T> s{mem_make<T>(vm, n), n};
+    return s;
 }
 
 template<class T>

@@ -2,7 +2,7 @@
 
 // Do not make `constexpr`; must have an address in order to be a reference.
 static Value
-VALUE_NONE_{VALUE_NONE};
+VALUE_NONE_{VALUE_NONE, {0}};
 
 static constexpr Value &
 value_at(lulu_VM *vm, int i)
@@ -36,7 +36,7 @@ lulu_close(lulu_VM *vm)
 lulu_Error
 lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size)
 {
-    lulu_Error e = vm_load(vm, LString(source), LString(script, script_size));
+    lulu_Error e = vm_load(vm, lstring_from_cstring(source), {script, script_size});
     return e;
 }
 
@@ -55,7 +55,8 @@ static void
 pcall(lulu_VM *vm, void *user_ptr)
 {
     PCall_Data *d = cast(PCall_Data *)user_ptr;
-    lulu_call(vm, d->n_args, d->n_rets);
+    Value &fn = value_at(vm, -(d->n_args + 1));
+    vm_call(vm, fn, d->n_args, (d->n_rets == LULU_MULTRET) ? VARARG : d->n_rets);
 }
 
 lulu_Error
@@ -80,7 +81,7 @@ c_pcall(lulu_VM *vm, void *user_ptr)
     lulu_call(vm, 1, 0);
 }
 
-LULU_API lulu_Error
+lulu_Error
 lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
 {
     C_PCall_Data d{function, function_data};
@@ -88,21 +89,21 @@ lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
     return e;
 }
 
-LULU_API int
+int
 lulu_error(lulu_VM *vm)
 {
     vm_throw(vm, LULU_ERROR_RUNTIME);
     return 0;
 }
 
-LULU_API void
+void
 lulu_register(lulu_VM *vm, const lulu_Register *library, size_t n)
 {
     for (size_t i = 0; i < n; i++) {
-        OString *s = ostring_new(vm, LString(library[i].name));
+        OString *s = ostring_new(vm, lstring_from_cstring(library[i].name));
         Closure *f = closure_new(vm, library[i].function);
         // TODO(2025-07-01): Ensure key and value are not collected!
-        table_set(vm, &vm->globals, Value(s), Value(f));
+        table_set(vm, &vm->globals, value_make_string(s), value_make_function(f));
     }
 }
 
@@ -234,10 +235,10 @@ lulu_set_top(lulu_VM *vm, int i)
         size_t new_stop  = old_start + cast_size(i);
         if (new_stop > old_stop) {
             // If growing the window, initialize the new region to nil.
-            Slice<Value> extra{vm->stack, old_stop, new_stop};
-            fill(extra, Value());
+            Slice<Value> extra = slice_array(vm->stack, old_stop, new_stop);
+            fill(extra, nil);
         }
-        vm->window = Slice(vm->stack, old_start, new_stop);
+        vm->window = slice_array(vm->stack, old_start, new_stop);
     } else {
         lulu_pop(vm, -i);
     }
@@ -249,8 +250,8 @@ lulu_insert(lulu_VM *vm, int i)
     Value *start = &value_at(vm, i);
     // Copy by value as this stack slot is about to be replaced.
     Value v = value_at(vm, -1);
-    Slice<Value> dst{start + 1, end(vm->window)};
-    Slice<Value> src{start,     len(dst)};
+    Slice<Value> dst = slice_pointer(start + 1, end(vm->window));
+    Slice<Value> src{start, len(dst)};
     copy(dst, src);
     *start = v;
 }
@@ -260,7 +261,7 @@ lulu_remove(lulu_VM *vm, int i)
 {
     Value *start = &value_at(vm, i);
     Value *stop  = &value_at(vm, -1);
-    Slice<Value> dst{start,     stop - 1};
+    Slice<Value> dst = slice_pointer(start, stop - 1);
     Slice<Value> src{start + 1, len(dst)};
     copy(dst, src);
     lulu_pop(vm, 1);
@@ -270,40 +271,41 @@ void
 lulu_pop(lulu_VM *vm, int n)
 {
     size_t i = len(vm->window) - cast_size(n);
-    vm->window = Slice(vm->window, 0, i);
+    vm->window = slice_slice(vm->window, 0, i);
 }
 
 void
 lulu_push_nil(lulu_VM *vm, int n)
 {
     for (int i = 0; i < n; i++) {
-        vm_push(vm, Value());
+        vm_push(vm, nil);
     }
 }
 
 void
 lulu_push_boolean(lulu_VM *vm, int b)
 {
-    vm_push(vm, Value(bool(b)));
+    vm_push(vm, value_make_boolean(bool(b)));
 }
 
 void
 lulu_push_number(lulu_VM *vm, lulu_Number n)
 {
-    vm_push(vm, Value(n));
+    vm_push(vm, value_make_number(n));
 }
 
 void
 lulu_push_userdata(lulu_VM *vm, void *p)
 {
-    vm_push(vm, Value(p));
+    vm_push(vm, value_make_userdata(p));
 }
 
 void
 lulu_push_lstring(lulu_VM *vm, const char *s, size_t n)
 {
-    OString *o = ostring_new(vm, LString(s, n));
-    vm_push(vm, Value(o));
+    LString ls{s, n};
+    OString *o = ostring_new(vm, ls);
+    vm_push(vm, value_make_string(o));
 }
 
 void
@@ -332,7 +334,7 @@ void
 lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf)
 {
     Closure *f = closure_new(vm, cf);
-    vm_push(vm, Value(f));
+    vm_push(vm, value_make_function(f));
 }
 
 void
@@ -348,8 +350,8 @@ lulu_push_value(lulu_VM *vm, int i)
 int
 lulu_get_global(lulu_VM *vm, const char *s)
 {
-    OString *o = ostring_new(vm, LString(s));
-    Value k = Value(o);
+    OString *o = ostring_new(vm, lstring_from_cstring(s));
+    Value k = value_make_string(o);
 
     Value v;
     bool  ok = table_get(&vm->globals, k, &v);
@@ -360,9 +362,9 @@ lulu_get_global(lulu_VM *vm, const char *s)
 void
 lulu_set_global(lulu_VM *vm, const char *s)
 {
-    OString *o = ostring_new(vm, LString(s));
+    OString *o = ostring_new(vm, lstring_from_cstring(s));
     Value    v = vm_pop(vm);
-    table_set(vm, &vm->globals, Value(o), v);
+    table_set(vm, &vm->globals, value_make_string(o), v);
 }
 
 void
@@ -383,7 +385,7 @@ lulu_concat(lulu_VM *vm, int n)
     // with this.
     lulu_assert(!value_is_none(first));
 
-    vm_concat(vm, first, Slice(&first, &last + 1));
+    vm_concat(vm, first, slice_pointer(&first, &last + 1));
     // Pop all arguments except the first one- the one we replaced.
     lulu_pop(vm, n - 1);
 }

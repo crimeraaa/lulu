@@ -28,12 +28,12 @@ template<class T, size_t N>
 LULU_FUNC Slice<T>
 small_array_slice(Small_Array<T, N> &sa)
 {
-    return Slice(sa.data, 0, sa.len);
+    return slice_array(sa.data, 0, sa.len);
 }
 
 template<class T, size_t N>
 LULU_FUNC T
-small_array_get(Small_Array<T, N> &sa, typename Array<T, N>::size_type index)
+small_array_get(const Small_Array<T, N> &sa, typename Array<T, N>::size_type index)
 {
     return sa.data[index];
 }

@@ -16,55 +16,70 @@ struct Value {
         Object  *object;
         void    *pointer; // light userdata.
     };
-
-    constexpr
-    Value(Value_Type t = VALUE_NIL)
-        : type{t}
-        , number{0}
-    {}
-
-    constexpr explicit
-    Value(bool b)
-        : type{VALUE_BOOLEAN}
-        , boolean{b}
-    {}
-
-    constexpr explicit
-    Value(Number n)
-        : type{VALUE_NUMBER}
-        , number{n}
-    {}
-
-    constexpr explicit
-    Value(void *p)
-        : type{VALUE_USERDATA}
-        , pointer{p}
-    {}
-
-    explicit
-    Value(OString *o)
-        : type{VALUE_STRING}
-        , object{cast(Object *)o}
-    {}
-
-    explicit
-    Value(Table *t)
-        : type{VALUE_TABLE}
-        , object{cast(Object *)t}
-    {}
-
-    explicit
-    Value(Closure *f)
-        : type{VALUE_FUNCTION}
-        , object{cast(Object *)f}
-    {}
-
-    explicit
-    Value(Chunk *c)
-        : type{VALUE_CHUNK}
-        , object{cast(Object *)c}
-    {}
 };
+
+constexpr Value
+nil{VALUE_NIL, {0}};
+
+LULU_FUNC constexpr Value
+value_make_boolean(bool b)
+{
+    Value v{VALUE_BOOLEAN, {0}};
+    v.boolean = b;
+    return v;
+}
+
+LULU_FUNC constexpr Value
+value_make_number(Number n)
+{
+    Value v{VALUE_NUMBER, {0}};
+    v.number = n;
+    return v;
+}
+
+LULU_FUNC constexpr Value
+value_make_userdata(void *p)
+{
+    Value v{VALUE_USERDATA, {0}};
+    v.pointer = p;
+    return v;
+}
+
+LULU_FUNC inline Value
+value_make_string(OString *s)
+{
+    Value v;
+    v.type   = VALUE_STRING;
+    v.object = cast(Object *)s;
+    return v;
+}
+
+LULU_FUNC inline Value
+value_make_table(Table *t)
+{
+    Value v;
+    v.type   = VALUE_TABLE;
+    v.object = cast(Object *)t;
+    return v;
+}
+
+LULU_FUNC inline Value
+value_make_function(Closure *f)
+{
+    Value v;
+    v.type   = VALUE_FUNCTION;
+    v.object = cast(Object *)f;
+    return v;
+}
+
+LULU_FUNC inline Value
+value_make_chunk(Chunk *c)
+{
+    Value v;
+    v.type   = VALUE_CHUNK;
+    v.object = cast(Object *)c;
+    return v;
+}
 
 // `value_eq()`.
 LULU_FUNC bool

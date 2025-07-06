@@ -47,7 +47,7 @@ block_pop(Parser *p, Compiler *c)
     Slice<u16> active = small_array_slice(c->active);
     size_t n = len(active);
     int pc = cast_int(len(c->chunk->code));
-    for (u16 index : Slice(active, cast_size(b->active_count), n)) {
+    for (u16 index : slice_slice(active, cast_size(b->active_count), n)) {
         Local *local  = &c->chunk->locals[index];
         local->end_pc = pc;
     }
@@ -390,6 +390,7 @@ primary_expr(Parser *p, Compiler *c)
 
             Expr k;
             k.type  = EXPR_CONSTANT;
+            k.line  = t.line;
             k.index = compiler_add_ostring(c, ostring_new(p->vm, t.lexeme));
             compiler_get_table(c, &e, &k);
             break;
@@ -665,7 +666,7 @@ local_adjust(Compiler *c, u16 n)
 
     small_array_resize(&c->active, start + cast_size(n));
     Slice<u16> active = small_array_slice(c->active);
-    for (u16 index : Slice(active, start, len(active))) {
+    for (u16 index : slice_slice(active, start, len(active))) {
         Local *local = &c->chunk->locals[index];
         local->start_pc = pc;
     }
@@ -748,8 +749,8 @@ parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
 
     // Push chunk and table to stack so that they are not collected while we
     // are executing.
-    vm_push(vm, Value(ch));
-    vm_push(vm, Value(t));
+    vm_push(vm, value_make_chunk(ch));
+    vm_push(vm, value_make_table(t));
 
     Parser   p = parser_make(vm, source, script, b);
     Compiler c = compiler_make(vm, &p, ch);

@@ -86,11 +86,11 @@ chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
 
     Number i2 = Number(len(c->constants));
     dynamic_push(vm, &c->constants, v);
-    table_set(vm, c->indexes, v, Value(i2));
+    table_set(vm, c->indexes, v, value_make_number(i2));
     return u32(i2);
 }
 
-LULU_FUNC u16
+u16
 chunk_add_local(lulu_VM *vm, Chunk *c, OString *id)
 {
     Local local;

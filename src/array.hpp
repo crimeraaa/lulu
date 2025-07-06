@@ -19,7 +19,7 @@ struct Array {
 
     template<class I>
     const T &
-    operator[](size_type i) const
+    operator[](I i) const
     {
         size_type ii = cast(size_type)i;
         lulu_assertf(ii < N, "Out of bounds index %zu / %zu", ii, N);

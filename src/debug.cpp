@@ -258,7 +258,7 @@ debug_disassemble(const Chunk *c)
     printf("\n=== DISASSEMBLY: END ===\n");
 }
 
-LULU_FUNC const char *
+const char *
 debug_get_local(const Chunk *c, int local_number, int pc)
 {
     int counter = local_number;

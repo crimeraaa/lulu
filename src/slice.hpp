@@ -30,68 +30,41 @@ struct Slice {
         lulu_assertf(ii < this->len, "Out of bounds index %zu / %zu", ii, this->len);
         return this->data[ii];
     }
-
-    constexpr
-    Slice()
-        : data{nullptr}
-        , len{0}
-    {}
-
-    constexpr
-    Slice(T *data, size_type len)
-        : data{data}
-        , len{len}
-    {}
-
-    constexpr
-    Slice(T *start, T *stop)
-        : data{start}
-        , len{cast_size(stop - start)}
-    {
-        // Comparison of 2 unrelated pointers is not standard
-        lulu_assert(start <= stop);
-    }
-
-    constexpr
-    Slice(T *p, size_type start, size_type stop)
-        : data{p + start}
-        , len{stop - start}
-    {
-        lulu_assert(start <= stop);
-    }
-
-    Slice(Slice<T> s, size_type start, size_type stop)
-        : data{s.data + start}
-        , len{stop - start}
-    {
-        // Invalid usage.
-        lulu_assert(start <= stop);
-        lulu_assert(0 <= start && start <= s.len);
-        lulu_assert(0 <= stop && stop <= s.len);
-        // Invalid result length.
-        lulu_assert(stop - start <= s.len);
-    }
-
-    template<size_t N>
-    Slice(Array<T, N> &s, size_type start, size_type stop)
-        : data{&s.data[0] + start}
-        , len{stop - start}
-    {
-        // Invalid usage.
-        lulu_assert(start <= stop);
-        lulu_assert(0 <= start && start <= N);
-        lulu_assert(0 <= stop && stop <= N);
-        // Invalid result length.
-        lulu_assert(stop - start <= N);
-    }
-
-    template<size_t N>
-    constexpr
-    Slice(Array<T, N> &s)
-        : data{&s.data[0]}
-        , len{N}
-    {}
 };
+
+template<class T>
+LULU_FUNC inline Slice<T>
+slice_pointer(T *start, T *stop)
+{
+    Slice<T> s{start, cast(typename Slice<T>::size_type)(stop - start)};
+    // Problem: comparison of 2 unrelated pointers is not standard!
+    lulu_assertf(start <= stop, "start=%p > stop=%p", cast(void *)start, cast(void *)stop);
+    return s;
+}
+
+template<class T>
+LULU_FUNC inline Slice<T>
+slice_slice(Slice<T> &s, typename Slice<T>::size_type start, typename Slice<T>::size_type stop)
+{
+    Slice<T> s2{&s.data[start], stop - start};
+    lulu_assertf(len(s2) <= len(s), "len(s2)=%zu > len(s)=%zu", len(s2), len(s));
+    lulu_assertf(start <= len(s), "start=%zu > %zu", start, len(s));
+    lulu_assertf(stop <= len(s), "stop=%zu > %zu", stop, len(s));
+    lulu_assertf(start <= stop, "start=%zu > stop=%zu", start, stop);
+    return s2;
+}
+
+template<class T, auto N>
+LULU_FUNC inline Slice<T>
+slice_array(Array<T, N> &a, typename Slice<T>::size_type start, typename Slice<T>::size_type stop)
+{
+    Slice<T> s{&a.data[start], stop - start};
+    lulu_assertf(len(s) <= N, "len(s)=%zu > N=%zu", len(s), N);
+    lulu_assertf(start <= N, "start=%zu > N=%zu", start, N);
+    lulu_assertf(stop <= N, "stop=%zu > N=%zu", stop, N);
+    lulu_assertf(start <= stop, "start=%zu > stop=%zu", start, stop);
+    return s;
+}
 
 template<class T>
 LULU_FUNC inline bool

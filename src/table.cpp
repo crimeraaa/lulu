@@ -2,7 +2,7 @@
 #include "vm.hpp"
 
 static constexpr Entry
-EMPTY_ENTRY = {Value(), Value()};
+EMPTY_ENTRY = {nil, nil};
 
 Table *
 table_new(lulu_VM *vm, size_t n_hash, size_t n_array)
@@ -35,7 +35,8 @@ static u32
 hash_any(T v)
 {
     // Aliasing a `T` with a `char *` is defined behavior.
-    return hash_string(LString(cast(char *)&v, sizeof(T)));
+    LString s{cast(char *)&v, sizeof(T)};
+    return hash_string(s);
 }
 
 static u32
@@ -102,7 +103,7 @@ table_get(Table *t, Value k, Value *out)
         // If `e->key` is nil, then that means `k` does not exist in the table.
         return !value_is_nil(e->key);
     }
-    *out = Value();
+    *out = nil;
     return false;
 }
 
@@ -134,8 +135,8 @@ table_unset(Table *t, Value k)
         return;
     }
     // Tombstones are nil keys mapping to the boolean `true`.
-    e->key   = Value();
-    e->value = Value(true);
+    e->key   = nil;
+    e->value = value_make_boolean(true);
 }
 
 void

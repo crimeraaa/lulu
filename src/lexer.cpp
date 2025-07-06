@@ -84,7 +84,7 @@ match2(Lexer *x, char first, char second)
 static LString
 get_lexeme(const Lexer *x)
 {
-    return LString(x->start, x->cursor);
+    return slice_pointer(x->start, x->cursor);
 }
 
 [[noreturn]]
@@ -344,7 +344,7 @@ make_string(Lexer *x, char q)
 {
     lulu_VM *vm = x->vm;
     Builder *b  = vm_get_builder(vm);
-    LString  s  = LString(x->cursor, x->cursor);
+    LString  s{x->cursor, 0};
     while (!is_eof(x) && !check2(x, q, '\n')) {
         char ch = advance(x);
         if (ch == '\\') {
@@ -357,7 +357,7 @@ make_string(Lexer *x, char q)
             builder_write_char(vm, b, ch);
 
             // Point to after the escape character.
-            s = LString(x->cursor, x->cursor);
+            s = {x->cursor, 0};
         } else {
             s.len += 1;
         }
@@ -480,7 +480,7 @@ lexer_lex(Lexer *x)
             expect(x, '[', "Expected 2nd '[' to start off multiline string");
             const char *start = x->cursor;
             const char *stop  = skip_multiline(x, nest_open);
-            return make_token(x, TOKEN_STRING, LString(start, stop));
+            return make_token(x, TOKEN_STRING, slice_pointer(start, stop));
         }
         type = TOKEN_OPEN_BRACE;
         break;
