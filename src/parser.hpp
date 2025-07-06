@@ -54,7 +54,7 @@ enum Expr_Type {
 };
 
 struct Expr_Table {
-    u8  reg;
+    u16 reg;
     u16 field_rk;
 };
 
@@ -63,10 +63,10 @@ struct Expr {
     int       line;
     union {
         Number     number; // Must be first member for brace initialization.
-        u32        index;
-        int        pc;
-        u8         reg;
+        isize      pc;
         Expr_Table table;
+        u32        index;
+        u16        reg;
     };
 };
 

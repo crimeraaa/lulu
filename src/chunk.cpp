@@ -20,7 +20,7 @@ chunk_new(lulu_VM *vm, LString source, Table *indexes)
 }
 
 static void
-add_line(lulu_VM *vm, Chunk *c, int pc, int line)
+add_line(lulu_VM *vm, Chunk *c, isize pc, int line)
 {
     // Have previous lines to go to?
     if (len(c->line_info) > 0) {
@@ -37,33 +37,29 @@ add_line(lulu_VM *vm, Chunk *c, int pc, int line)
     dynamic_push(vm, &c->line_info, start);
 }
 
-int
+isize
 chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line)
 {
-    int pc = cast_int(len(c->code));
+    isize pc = len(c->code);
     dynamic_push(vm, &c->code, i);
     add_line(vm, c, pc, line);
     return pc;
 }
 
 int
-chunk_get_line(const Chunk *c, int pc)
+chunk_get_line(const Chunk *c, isize pc)
 {
     // Binary search
-    size_t left  = 0;
-    size_t right = len(c->line_info);
+    isize left  = 0;
+    isize right = len(c->line_info);
     // left <= right would otherwise pass, yet index 0 is invalid!
     if (right == 0) {
         return NO_LINE;
     }
     while (left <= right) {
-        size_t    i    = (left + right) / 2;
+        isize     i    = (left + right) / 2;
         Line_Info info = c->line_info[i];
         if (info.start_pc > pc) {
-            // Avoid unsigned overflow
-            if (i == 0) {
-                break;
-            }
             // Current range is greater, ignore this right half.
             right = i - 1;
         } else if (info.end_pc < pc) {
@@ -81,16 +77,16 @@ chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
 {
     Value i;
     if (table_get(c->indexes, v, &i)) {
-        return u32(value_to_number(i));
+        return cast(u32)value_to_number(i);
     }
 
-    Number i2 = Number(len(c->constants));
+    Number i2 = cast(Number)len(c->constants);
     dynamic_push(vm, &c->constants, v);
     table_set(vm, c->indexes, v, value_make_number(i2));
-    return u32(i2);
+    return cast(u32)i2;
 }
 
-u16
+isize
 chunk_add_local(lulu_VM *vm, Chunk *c, OString *id)
 {
     Local local;
@@ -98,7 +94,7 @@ chunk_add_local(lulu_VM *vm, Chunk *c, OString *id)
     local.start_pc   = 0;
     local.end_pc     = 0;
 
-    u16 i = cast(u16)len(c->locals);
+    isize i = len(c->locals);
     dynamic_push(vm, &c->locals, local);
     return i;
 }

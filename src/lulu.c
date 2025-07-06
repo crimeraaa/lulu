@@ -1,7 +1,7 @@
 #include <time.h>   /* clock */
 #include <stdlib.h> /* malloc, free */
 #include <stdio.h>  /* fprintf */
-#include <string.h> /* strcspn */
+#include <string.h> /* strcspn, strlen */
 
 #include "lulu.h"
 
@@ -67,7 +67,7 @@ read_file(const char *file_name, size_t *n)
         fprintf(stderr, "Failed to determine size of file '%s'.\n", file_name);
         goto cleanup_file;
     }
-    *n  = (size_t)(file_size);
+    *n   = (size_t)(file_size);
     data = (char *)malloc(*n + 1);
     rewind(file_ptr);
     if (data == NULL) {
@@ -109,11 +109,13 @@ run_file(lulu_VM *vm, const char *file_name)
 static int
 base_tostring(lulu_VM *vm, int argc)
 {
+    lulu_Type t;
     if (argc != 1) {
         lulu_push_fstring(vm, "Expected 1 argument to `tostring`, got %i", argc);
         return lulu_error(vm);
     }
-    switch (lulu_type(vm, 1)) {
+    t = lulu_type(vm, 1);
+    switch (t) {
     case LULU_TYPE_NIL:
         lulu_push_literal(vm, "nil");
         break;
@@ -131,7 +133,7 @@ base_tostring(lulu_VM *vm, int argc)
     case LULU_TYPE_FUNCTION: {
         const char *s;
         void *p;
-        s = lulu_type_name(vm, 1);
+        s = lulu_type_name(vm, t);
         p = lulu_to_pointer(vm, 1);
         lulu_push_fstring(vm, "%s: %p", s, p);
         break;
@@ -142,7 +144,7 @@ base_tostring(lulu_VM *vm, int argc)
 #elif defined(_MSC_VER)
         __assume(false);
 #endif
-        break;
+        return 0;
     }
     return 1;
 }
@@ -176,11 +178,29 @@ base_clock(lulu_VM *vm, int argc)
     return 1;
 }
 
+static int
+base_type(lulu_VM *vm, int argc)
+{
+    lulu_Type   t;
+    const char *s;
+    size_t      n;
+    if (argc != 1) {
+        lulu_push_fstring(vm, "Expected 1 argument to 'type', got %i", argc);
+        return lulu_error(vm);
+    }
+    t = lulu_type(vm, 1);
+    s = lulu_type_name(vm, t);
+    n = strlen(s);
+    lulu_push_lstring(vm, s, n);
+    return 1;
+}
+
 static const lulu_Register
 baselib[] = {
     {"clock",    base_clock},
     {"tostring", base_tostring},
     {"print",    base_print},
+    {"type",     base_type}
 };
 
 typedef struct {

@@ -9,14 +9,14 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk)
     c.parser   = p;
     c.chunk    = chunk;
     c.free_reg = 0;
-    c.active.len = 0;
+    small_array_init(&c.active);
     return c;
 }
 
 //=== BYTECODE MANIPULATION ================================================ {{{
 
-int
-compiler_code_abc(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line)
+isize
+compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 {
     lulu_assert(opinfo_a(op) == OPARG_REGK || opinfo_a(op) == OPARG_OTHER);
     lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER);
@@ -27,8 +27,8 @@ compiler_code_abc(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line)
     return chunk_append(c->vm, c->chunk, instruction_abc(op, a, b, c2), line);
 }
 
-int
-compiler_code_abx(Compiler *c, OpCode op, u8 a, u32 bx, int line)
+isize
+compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line)
 {
     lulu_assert(opinfo_a(op) == OPARG_REGK);
     lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER);
@@ -37,9 +37,9 @@ compiler_code_abx(Compiler *c, OpCode op, u8 a, u32 bx, int line)
 }
 
 void
-compiler_load_nil(Compiler *c, u8 reg, int n, int line)
+compiler_load_nil(Compiler *c, u16 reg, int n, int line)
 {
-    size_t pc = len(c->chunk->code);
+    isize pc = len(c->chunk->code);
     // Stack frame is initialized to all `nil` at the start of the function, so
     // nothing to do.
     if (pc == 0) {
@@ -47,7 +47,7 @@ compiler_load_nil(Compiler *c, u8 reg, int n, int line)
     }
 
     Instruction *ip = &c->chunk->code[pc - 1];
-    u16 last_reg = u16(reg) + u16(n - 1);
+    u16 last_reg = reg + cast(u16)(n - 1);
     // Previous instruction may be able to be folded?
     if (getarg_op(*ip) == OP_LOAD_NIL) {
         u16 ra = getarg_a(*ip);
@@ -65,9 +65,9 @@ compiler_load_nil(Compiler *c, u8 reg, int n, int line)
 }
 
 void
-compiler_load_boolean(Compiler *c, u8 reg, bool b, int line)
+compiler_load_boolean(Compiler *c, u16 reg, bool b, int line)
 {
-    compiler_code_abc(c, OP_LOAD_BOOL, reg, u16(b), 0, line);
+    compiler_code_abc(c, OP_LOAD_BOOL, reg, cast(u16)b, 0, line);
 }
 
 u32
@@ -121,7 +121,7 @@ static void
 pop_expr(Compiler *c, const Expr *e)
 {
     if (e->type == EXPR_DISCHARGED) {
-        pop_reg(c, u16(e->reg));
+        pop_reg(c, e->reg);
     }
 }
 
@@ -140,7 +140,7 @@ discharge_vars(Compiler *c, Expr *e)
         e->type = EXPR_DISCHARGED;
         break;
     case EXPR_INDEXED: {
-        u16 t = cast(u16)e->table.reg;
+        u16 t = e->table.reg;
         u16 k = e->table.field_rk;
         e->type = EXPR_RELOCABLE;
         e->pc   = compiler_code_abc(c, OP_GET_TABLE, OPCODE_MAX_A, t, k, e->line);
@@ -158,7 +158,7 @@ discharge_vars(Compiler *c, Expr *e)
 }
 
 static void
-expr_to_reg(Compiler *c, Expr *e, u8 reg, int line)
+expr_to_reg(Compiler *c, Expr *e, u16 reg, int line)
 {
     discharge_vars(c, e);
     switch (e->type) {
@@ -198,19 +198,19 @@ expr_to_reg(Compiler *c, Expr *e, u8 reg, int line)
     e->type = EXPR_DISCHARGED;
 }
 
-u8
+u16
 compiler_expr_next_reg(Compiler *c, Expr *e)
 {
     discharge_vars(c, e);
     pop_expr(c, e);
 
-    u8 reg = u8(c->free_reg);
+    u16 reg = c->free_reg;
     compiler_reserve_reg(c, 1);
     expr_to_reg(c, e, reg, e->line);
     return reg;
 }
 
-u8
+u16
 compiler_expr_any_reg(Compiler *c, Expr *e)
 {
     if (e->type == EXPR_DISCHARGED) {
@@ -227,12 +227,12 @@ value_to_rk(Compiler *c, Expr *e, Value v)
     e->index = i;
 
     // `i` can be encoded directly into an RK register?
-    if (i <= u32(OPCODE_MAX_RK)) {
+    if (i <= OPCODE_MAX_RK) {
         // Return the bit-toggled index.
         return reg_to_rk(i);
     }
     // Can't fit in an RK register.
-    return u16(compiler_expr_any_reg(c, e));
+    return compiler_expr_any_reg(c, e);
 }
 
 u16
@@ -247,7 +247,7 @@ compiler_expr_rk(Compiler *c, Expr *e)
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {
         if (e->index <= OPCODE_MAX_RK) {
-            return reg_to_rk(u16(e->index));
+            return reg_to_rk(cast(u16)e->index);
         }
         break;
     }
@@ -273,9 +273,8 @@ compiler_code_arith(Compiler *c, OpCode op, Expr *left, Expr *right)
         pop_expr(c, right);
     }
 
-    int pc = compiler_code_abc(c, op, OPCODE_MAX_A, rkb, rkc, left->line);
     left->type = EXPR_RELOCABLE;
-    left->pc   = pc;
+    left->pc   = compiler_code_abc(c, op, OPCODE_MAX_A, rkb, rkc, left->line);
 }
 
 void
@@ -284,12 +283,11 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
     lulu_assert(OP_UNM <= op && op <= OP_NOT);
 
     // Unary minus and unary `not` cannot operate on RK registers.
-    u8 rb = compiler_expr_next_reg(c, e);
+    u16 rb = compiler_expr_next_reg(c, e);
     pop_expr(c, e);
 
-    int pc = compiler_code_abc(c, op, OPCODE_MAX_A, rb, 0, e->line);
     e->type = EXPR_RELOCABLE;
-    e->pc   = pc;
+    e->pc   = compiler_code_abc(c, op, OPCODE_MAX_A, rb, 0, e->line);
 }
 
 static void
@@ -323,9 +321,8 @@ compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *left, Expr *right
         swap(&rkb, &rkc);
     }
 
-    int pc = compiler_code_abc(c, op, OPCODE_MAX_A, rkb, rkc, left->line);
     left->type = EXPR_RELOCABLE;
-    left->pc   = pc;
+    left->pc   = compiler_code_abc(c, op, OPCODE_MAX_A, rkb, rkc, left->line);
 
     // Switching the order of arguments changes nothing in equals. To simulate
     // not-equals, we need to flip the result of an equals.
@@ -368,17 +365,17 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
 {
     switch (var->type) {
     case EXPR_GLOBAL: {
-        u8 reg = compiler_expr_any_reg(c, expr);
+        u16 reg = compiler_expr_any_reg(c, expr);
         compiler_code_abx(c, OP_SET_GLOBAL, reg, var->index, var->line);
         break;
     }
     case EXPR_LOCAL: {
-        u8 reg = compiler_expr_any_reg(c, expr);
+        u16 reg = compiler_expr_any_reg(c, expr);
         compiler_code_abc(c, OP_MOVE, var->reg, reg, 0, var->line);
         break;
     }
     case EXPR_INDEXED: {
-        u8  t = var->table.reg;
+        u16 t = var->table.reg;
         u16 k = var->table.field_rk;
         u16 v = compiler_expr_rk(c, expr);
         compiler_code_abc(c, OP_SET_TABLE, t, k, v, var->line);
@@ -393,9 +390,9 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
 }
 
 void
-compiler_code_return(Compiler *c, u8 reg, u16 count, bool is_vararg, int line)
+compiler_code_return(Compiler *c, u16 reg, u16 count, bool is_vararg, int line)
 {
-    compiler_code_abc(c, OP_RETURN, reg, count, u16(is_vararg), line);
+    compiler_code_abc(c, OP_RETURN, reg, count, cast(u16)is_vararg, line);
 }
 
 void
@@ -419,23 +416,17 @@ compiler_set_one_return(Compiler *c, Expr *e)
 }
 
 bool
-compiler_get_local(Compiler *c, int limit, OString *id, u8 *reg)
+compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg)
 {
-    for (int r = cast_int(small_array_len(c->active) - 1); r >= limit; r--) {
-        Local *local = &c->chunk->locals[small_array_get(c->active, cast_size(r))];
+    for (isize r = small_array_len(c->active) - 1; r >= cast_isize(limit); r--) {
+        Local *local = &c->chunk->locals[small_array_get(c->active, r)];
         if (local->identifier == id) {
-            *reg = cast(u8)r;
+            *reg = cast(u16)r;
             return true;
         }
     }
     *reg = 0;
     return false;
-}
-
-u16
-compiler_add_local(Compiler *c, OString *id)
-{
-    return chunk_add_local(c->vm, c->chunk, id);
 }
 
 void

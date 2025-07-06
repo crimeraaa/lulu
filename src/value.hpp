@@ -81,9 +81,8 @@ value_make_chunk(Chunk *c)
     return v;
 }
 
-// `value_eq()`.
 LULU_FUNC bool
-operator==(Value a, Value b);
+value_eq(Value a, Value b);
 
 LULU_FUNC inline const char *
 value_type_name(Value_Type t)
@@ -126,13 +125,13 @@ value_type_name(Value v)
 
 //=== VALUE DATA PAYLOADS ================================================== {{{
 
-#define value_to_boolean(v)     ((v).boolean)
-#define value_to_number(v)      ((v).number)
-#define value_to_userdata(v)    ((v).pointer)
+#define value_to_boolean(v)     check_expr(value_is_boolean(v),  (v).boolean)
+#define value_to_number(v)      check_expr(value_is_number(v),   (v).number)
+#define value_to_userdata(v)    check_expr(value_is_userdata(v), (v).pointer)
 #define value_to_object(v)      ((v).object)
-#define value_to_ostring(v)     (&value_to_object(v)->ostring)
-#define value_to_table(v)       (&value_to_object(v)->table)
-#define value_to_function(v)    (&value_to_object(v)->function)
+#define value_to_ostring(v)     check_expr(value_is_string(v),   &value_to_object(v)->ostring)
+#define value_to_table(v)       check_expr(value_is_table(v),    &value_to_object(v)->table)
+#define value_to_function(v)    check_expr(value_is_function(v), &value_to_object(v)->function)
 
 //=== }}} ======================================================================
 

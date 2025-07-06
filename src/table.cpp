@@ -5,11 +5,11 @@ static constexpr Entry
 EMPTY_ENTRY = {nil, nil};
 
 Table *
-table_new(lulu_VM *vm, size_t n_hash, size_t n_array)
+table_new(lulu_VM *vm, isize n_hash, isize n_array)
 {
     Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
     table_init(t);
-    size_t total = n_hash + n_array;
+    isize total = n_hash + n_array;
     if (total > 0) {
         table_resize(vm, t, mem_next_pow2(total));
     }
@@ -24,7 +24,7 @@ table_init(Table *t)
     t->count        = 0;
 }
 
-static size_t
+static isize
 table_cap(const Table *t)
 {
     return len(t->entries);
@@ -72,11 +72,11 @@ hash_value(Value v)
 static Entry *
 find_entry(Slice<Entry> entries, Value k)
 {
-    size_t hash = cast_size(hash_value(k));
-    size_t wrap = len(entries) - 1;
+    usize  hash = cast_usize(hash_value(k));
+    usize  wrap = cast_usize(len(entries)) - 1;
     Entry *tomb = nullptr;
 
-    for (size_t i = hash & wrap; /* empty */; i = (i + 1) & wrap) {
+    for (usize i = hash & wrap; /* empty */; i = (i + 1) & wrap) {
         Entry *entry = &entries[i];
         if (value_is_nil(entry->key)) {
             if (value_is_nil(entry->value)) {
@@ -87,7 +87,7 @@ find_entry(Slice<Entry> entries, Value k)
                 tomb = entry;
             }
         }
-        else if (entry->key == k) {
+        else if (value_eq(k, entry->key)) {
             return entry;
         }
     }
@@ -111,7 +111,7 @@ void
 table_set(lulu_VM *vm, Table *t, Value k, Value v)
 {
     if (t->count + 1 > table_cap(t)*3 / 4) {
-        size_t n = mem_next_pow2(t->count + 1);
+        isize n = mem_next_pow2(t->count + 1);
         table_resize(vm, t, n);
     }
     Entry *e = find_entry(t->entries, k);
@@ -140,13 +140,13 @@ table_unset(Table *t, Value k)
 }
 
 void
-table_resize(lulu_VM *vm, Table *t, size_t new_cap)
+table_resize(lulu_VM *vm, Table *t, isize new_cap)
 {
     Slice<Entry> new_entries = slice_make<Entry>(vm, new_cap);
     // Initialize all key-value pairs to nil-nil.
     fill(new_entries, EMPTY_ENTRY);
 
-    size_t n = 0;
+    isize n = 0;
     // Rehash all the old elements into the new entries table.
     for (Entry e : t->entries) {
         // Skip empty entries and tombstones.

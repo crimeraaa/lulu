@@ -39,12 +39,12 @@ parse_strings(LString stack_frame, Slice<char> out_symbol, Slice<char> out_offse
             break;
         // Beginning of offset?
         case '+':
-            symbol.len  = cast_size(&ch - symbol.data);
+            symbol.len  = cast_isize(&ch - symbol.data);
             offset.data = &ch + 1;
             break;
         // End of offset?
         case ')':
-            offset.len = cast_size(&ch - offset.data);
+            offset.len = cast_isize(&ch - offset.data);
         default:
             break;
         }
@@ -156,7 +156,7 @@ print_backtrace()
     char **array = backtrace_symbols(stack_frames_buffer, n);
 
     char print_array[100] = {0};
-    Slice<char *> stack_frame_strings{array, cast_size(n)};
+    Slice<char *> stack_frame_strings{array, cast_isize(n)};
 
     sprintf(print_array, "\nObtained %i stack frames.\n", n);
     write(STDERR_FILENO, print_array, strlen(print_array));
@@ -167,7 +167,7 @@ print_backtrace()
         // addr2line.
         void *offset_pointer = calculate_offset(lstring_from_cstring(s));
         if (offset_pointer == nullptr) {
-            write(STDERR_FILENO, errmsg, count_of(errmsg));
+            write(STDERR_FILENO, errmsg, cast_usize(count_of(errmsg)));
         } else {
             addr2line_print(offset_pointer);
         }

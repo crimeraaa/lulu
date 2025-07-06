@@ -11,13 +11,13 @@ builder_init(Builder *b)
     dynamic_init(&b->buffer);
 }
 
-size_t
+isize
 builder_len(const Builder *b)
 {
     return len(b->buffer);
 }
 
-size_t
+isize
 builder_cap(const Builder *b)
 {
     return cap(b->buffer);
@@ -36,21 +36,21 @@ builder_destroy(lulu_VM *vm, Builder *b)
 }
 
 void
-builder_write_string(lulu_VM *vm, Builder *b, LString s)
+builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
 {
     // Nothing to do?
     if (len(s) == 0) {
         return;
     }
 
-    size_t old_len = builder_len(b);
-    size_t new_len = old_len + len(s) + 1; // Include nul char for allocation.
+    isize old_len = builder_len(b);
+    isize new_len = old_len + len(s) + 1; // Include nul char for allocation.
 
     dynamic_resize(vm, &b->buffer, new_len);
 
     // Append the new data. For our purposes we assume that `b->buffer.data`
     // and `s.data` never alias. This is not a generic function.
-    memcpy(&b->buffer[old_len], raw_data(s), len(s));
+    memcpy(&b->buffer[old_len], raw_data(s), cast_usize(len(s)));
     b->buffer[new_len - 1] = '\0';
     dynamic_pop(&b->buffer); // Don't include nul char when calling `len()`.
 }
@@ -59,7 +59,7 @@ void
 builder_write_char(lulu_VM *vm, Builder *b, char ch)
 {
     LString s{&ch, 1};
-    builder_write_string(vm, b, s);
+    builder_write_lstring(vm, b, s);
 }
 
 void
@@ -67,8 +67,9 @@ builder_write_int(lulu_VM *vm, Builder *b, int i)
 {
     char buf[INT_WIDTH * 2];
     int  written = sprintf(buf, "%i", i);
-    LString s{buf, cast_size(written)};
-    builder_write_string(vm, b, s);
+    lulu_assert(written >= 1);
+    LString s{buf, cast_isize(written)};
+    builder_write_lstring(vm, b, s);
 }
 
 void
@@ -76,8 +77,9 @@ builder_write_number(lulu_VM *vm, Builder *b, Number n)
 {
     char buf[DBL_DECIMAL_DIG * 2];
     int  written = sprintf(buf, LULU_NUMBER_FMT, n);
-    LString s{buf, cast_size(written)};
-    builder_write_string(vm, b, s);
+    lulu_assert(written >= 1);
+    LString s{buf, cast_isize(written)};
+    builder_write_lstring(vm, b, s);
 }
 
 void
@@ -85,8 +87,9 @@ builder_write_pointer(lulu_VM *vm, Builder *b, void *p)
 {
     char buf[sizeof(p) * CHAR_BIT];
     int  written = sprintf(buf, "%p", p);
-    LString s{buf, cast_size(written)};
-    builder_write_string(vm, b, s);
+    lulu_assert(written >= 1);
+    LString s{buf, cast_isize(written)};
+    builder_write_lstring(vm, b, s);
 }
 
 LString
@@ -114,7 +117,7 @@ hash_string(LString text)
 
     u32 hash = FNV1A_OFFSET;
     for (char c : text) {
-        hash ^= u32(c);
+        hash ^= cast(u32)c;
         hash *= FNV1A_PRIME;
     }
 
@@ -129,21 +132,22 @@ intern_init(Intern *t)
     t->count       = 0;
 }
 
-static size_t
+static isize
 intern_cap(const Intern *t)
 {
     return len(t->table);
 }
 
 // Assumes `cap` is always a power of 2.
-static size_t
-intern_clamp_index(u32 hash, size_t cap)
+// The result must be unsigned in order to have sane bitwise operations.
+static usize
+intern_clamp_index(u32 hash, isize cap)
 {
-    return cast_size(hash) & (cap - 1);
+    return cast_usize(hash) & cast_usize(cap - 1);
 }
 
 void
-intern_resize(lulu_VM *vm, Intern *t, size_t new_cap)
+intern_resize(lulu_VM *vm, Intern *t, isize new_cap)
 {
     Slice<Object *> new_table = slice_make<Object *>(vm, new_cap);
     // Zero out the new memory
@@ -155,7 +159,7 @@ intern_resize(lulu_VM *vm, Intern *t, size_t new_cap)
         // Rehash all children for this list.
         while (node != nullptr) {
             OString *s = &node->ostring;
-            size_t   i = intern_clamp_index(s->hash, new_cap);
+            usize    i = intern_clamp_index(s->hash, new_cap);
 
             // Save because it's about to be replaced.
             Object *next  = s->next;
@@ -190,12 +194,12 @@ ostring_new(lulu_VM *vm, LString text)
 {
     Intern  *t    = &vm->intern;
     u32      hash = hash_string(text);
-    size_t   i    = intern_clamp_index(hash, intern_cap(t));
+    usize    i    = intern_clamp_index(hash, intern_cap(t));
     for (Object *node = t->table[i]; node != nullptr; node = node->base.next) {
         OString *s = &node->ostring;
         if (s->hash == hash) {
             LString ls{s->data, s->len};
-            if (text == ls) {
+            if (slice_eq(text, ls)) {
                 return s;
             }
         }
@@ -206,11 +210,11 @@ ostring_new(lulu_VM *vm, LString text)
     OString *s = object_new<OString>(vm, &t->table[i], VALUE_STRING, len(text));
     s->hash = hash;
     s->len  = len(text);
-    memcpy(s->data, raw_data(text), len(text));
     s->data[s->len] = 0;
+    memcpy(s->data, raw_data(text), cast_usize(len(text)));
 
     if (t->count + 1 > intern_cap(t)*3 / 4) {
-        size_t new_cap = mem_next_pow2(t->count + 1);
+        isize new_cap = mem_next_pow2(t->count + 1);
         intern_resize(vm, t, new_cap);
     }
     t->count++;

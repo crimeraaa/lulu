@@ -9,13 +9,8 @@
 #include "chunk.hpp"
 #include "function.hpp"
 
-#define value_to_string(v)      ostring_to_string(value_to_ostring(v))
+#define value_to_lstring(v)     ostring_to_lstring(value_to_ostring(v))
 #define value_to_cstring(v)     ostring_to_cstring(value_to_ostring(v))
-#define value_to_c_closure(v)   (&value_to_function(v)->c)
-#define value_to_lua_closure(v) (&value_to_function(v)->l)
-
-#define value_is_c_closure(v)   closure_is_c(value_to_function(v))
-#define value_is_lua_closure(v) closure_is_lua(value_to_function(v))
 
 struct Object_Header {
     OBJECT_HEADER;
@@ -34,7 +29,7 @@ object_free(lulu_VM *vm, Object *o);
 
 template<class T>
 LULU_FUNC inline T *
-object_new(lulu_VM *vm, Object **list, Value_Type type, size_t extra = 0)
+object_new(lulu_VM *vm, Object **list, Value_Type type, isize extra = 0)
 {
     T *o = mem_new<T>(vm, extra);
     o->type = type;

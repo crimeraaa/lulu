@@ -7,58 +7,62 @@
  * @brief
  *  -   Rounds `n` to the next power of 2 if it is not one already.
  */
-LULU_FUNC size_t
-mem_next_pow2(size_t n);
+LULU_FUNC isize
+mem_next_pow2(isize n);
 
 
 /**
  * @brief
  *  -   Rounds `n` to the next fibonacci term, if it is not one already.
  */
-size_t
-mem_next_fib(size_t n);
+isize
+mem_next_fib(isize n);
 
 LULU_FUNC void *
-mem_rawrealloc(lulu_VM *vm, void *ptr, size_t old_size, size_t new_size);
+mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
 
 template<class T>
 LULU_FUNC inline T *
-mem_new(lulu_VM *vm, size_t extra = 0)
+mem_new(lulu_VM *vm, isize extra = 0)
 {
-    return cast(T *)mem_rawrealloc(vm, nullptr, 0, sizeof(T) + extra);
+    usize size = sizeof(T) + cast_usize(extra);
+    return cast(T *)mem_rawrealloc(vm, nullptr, 0, size);
 }
 
 template<class T>
 LULU_FUNC inline void
-mem_free(lulu_VM *vm, T *ptr, size_t extra = 0)
+mem_free(lulu_VM *vm, T *ptr, isize extra = 0)
 {
-    mem_rawrealloc(vm, ptr, sizeof(T) + extra, 0);
+    usize size = sizeof(T) + cast_usize(extra);
+    mem_rawrealloc(vm, ptr, size, 0);
 }
 
 template<class T>
 LULU_FUNC inline T *
-mem_resize(lulu_VM *vm, T *ptr, size_t prev, size_t next)
+mem_resize(lulu_VM *vm, T *ptr, isize prev, isize next)
 {
-    return cast(T *)mem_rawrealloc(vm, ptr, sizeof(T) * prev, sizeof(T) * next);
+    usize prev_size = sizeof(T) * cast_usize(prev);
+    usize next_size = sizeof(T) * cast_usize(next);
+    return cast(T *)mem_rawrealloc(vm, ptr, prev_size, next_size);
 }
 
 template<class T>
 LULU_FUNC inline T *
-mem_make(lulu_VM *vm, size_t count)
+mem_make(lulu_VM *vm, isize count)
 {
     return mem_resize<T>(vm, nullptr, 0, count);
 }
 
 template<class T>
 LULU_FUNC inline void
-mem_delete(lulu_VM *vm, T *ptr, size_t n)
+mem_delete(lulu_VM *vm, T *ptr, isize n)
 {
     mem_resize(vm, ptr, n, 0);
 }
 
 template<class T>
 LULU_FUNC inline Slice<T>
-slice_make(lulu_VM *vm, typename Slice<T>::size_type n)
+slice_make(lulu_VM *vm, isize n)
 {
     Slice<T> s{mem_make<T>(vm, n), n};
     return s;
@@ -72,22 +76,29 @@ slice_delete(lulu_VM *vm, Slice<T> s)
 }
 
 template<class T>
-LULU_FUNC inline typename Slice<T>::size_type
+LULU_FUNC inline isize
 ptr_index(Slice<T> s, T *p)
 {
-    return cast_size(p - raw_data(s));
-}
-
-template<class T, size_t N>
-LULU_FUNC inline typename Slice<T>::size_type
-ptr_index(Array<T, N> &a, T *p)
-{
-    return cast_size(p - raw_data(a));
+    return cast_isize(p - raw_data(s));
 }
 
 template<class T>
-LULU_FUNC inline size_t
+LULU_FUNC inline isize
+ptr_index(Slice<T> s, const T *p)
+{
+    return cast_isize(p - raw_data(s));
+}
+
+template<class T, isize N>
+LULU_FUNC inline isize
+ptr_index(Array<T, N> &a, T *p)
+{
+    return cast_isize(p - raw_data(a));
+}
+
+template<class T>
+LULU_FUNC inline isize
 ptr_index(T *data, T *ptr)
 {
-    return cast_size(ptr - data);
+    return cast_isize(ptr - data);
 }

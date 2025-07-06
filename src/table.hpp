@@ -10,11 +10,11 @@ struct Entry {
 struct Table {
     OBJECT_HEADER;
     Slice<Entry> entries;
-    size_t       count;   // Number of currently active elements in `entries`.
+    isize       count;   // Number of currently active elements in `entries`.
 };
 
 LULU_FUNC Table *
-table_new(lulu_VM *vm, size_t n_hash, size_t n_array);
+table_new(lulu_VM *vm, isize n_hash, isize n_array);
 
 LULU_FUNC void
 table_init(Table *t);
@@ -29,4 +29,4 @@ LULU_FUNC void
 table_unset(Table *t, Value k);
 
 LULU_FUNC void
-table_resize(lulu_VM *vm, Table *t, size_t new_cap);
+table_resize(lulu_VM *vm, Table *t, isize new_cap);

@@ -2,18 +2,18 @@
 
 #include "private.hpp"
 
-template<class T, size_t N>
+template<class T, isize N>
 struct Array {
-    using size_type = size_t;
-
     T data[N];
 
     template<class I>
     T &
     operator[](I i)
     {
-        size_type ii = cast(size_type)i;
-        lulu_assertf(ii < N, "Out of bounds index %zu / %zu", ii, N);
+        isize ii = cast_isize(i);
+        lulu_assertf(ii < N,
+            "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
+            ii, N);
         return this->data[ii];
     }
 
@@ -21,21 +21,23 @@ struct Array {
     const T &
     operator[](I i) const
     {
-        size_type ii = cast(size_type)i;
-        lulu_assertf(ii < N, "Out of bounds index %zu / %zu", ii, N);
+        isize ii = cast_isize(i);
+        lulu_assertf(ii < N,
+            "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
+            ii, N);
         return this->data[ii];
     }
 };
 
-template<class T, size_t N>
-LULU_FUNC inline typename Array<T, N>::size_type
+template<class T, auto N>
+LULU_FUNC inline isize
 len(const Array<T, N> &a)
 {
     unused(a);
     return N;
 }
 
-template<class T, size_t N>
+template<class T, auto N>
 LULU_FUNC inline T *
 raw_data(Array<T, N> &a)
 {

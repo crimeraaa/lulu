@@ -6,15 +6,15 @@
 #include "string.hpp"
 
 struct Line_Info {
-    int line; // Line number is stored directly in case we skip empty lines.
-    int start_pc;
-    int end_pc;
+    int   line; // Line number is stored directly in case we skip empty lines.
+    isize start_pc;
+    isize end_pc;
 };
 
 struct Local {
     OString *identifier;
-    int      start_pc;
-    int      end_pc;
+    isize    start_pc;
+    isize    end_pc;
 };
 
 struct Chunk {
@@ -34,14 +34,14 @@ static constexpr int NO_LINE = -1;
 LULU_FUNC Chunk *
 chunk_new(lulu_VM *vm, LString source, Table *indexes);
 
-LULU_FUNC int
+LULU_FUNC isize
 chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line);
 
 LULU_FUNC int
-chunk_get_line(const Chunk *c, int pc);
+chunk_get_line(const Chunk *c, isize pc);
 
 LULU_FUNC u32
 chunk_add_constant(lulu_VM *vm, Chunk *c, Value v);
 
-LULU_FUNC u16
+LULU_FUNC isize
 chunk_add_local(lulu_VM *vm, Chunk *c, OString *id);

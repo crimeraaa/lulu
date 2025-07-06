@@ -11,7 +11,7 @@ value_at(lulu_VM *vm, int i)
     lulu_assert(i != 0);
 
     // Resolve 1-based relative index
-    size_t ii = (i > 0) ? cast_size(i) - 1 : len(vm->window) - cast_size(-i);
+    isize ii = (i > 0) ? cast_isize(i) - 1 : len(vm->window) - cast_isize(-i);
     return (ii < len(vm->window)) ? vm->window[ii] : VALUE_NONE_;
 }
 
@@ -36,7 +36,8 @@ lulu_close(lulu_VM *vm)
 lulu_Error
 lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size)
 {
-    lulu_Error e = vm_load(vm, lstring_from_cstring(source), {script, script_size});
+    LString lscript{script, cast_isize(script_size)};
+    lulu_Error e = vm_load(vm, lstring_from_cstring(source), lscript);
     return e;
 }
 
@@ -118,9 +119,10 @@ lulu_type(lulu_VM *vm, int i)
 }
 
 const char *
-lulu_type_name(lulu_VM *vm, int i)
+lulu_type_name(lulu_VM *vm, lulu_Type t)
 {
-    return value_type_name(cast(Value_Type)lulu_type(vm, i));
+    unused(vm);
+    return value_type_name(cast(Value_Type)t);
 }
 
 int
@@ -199,7 +201,7 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
     if (value_is_string(v)) {
         OString *s = value_to_ostring(v);
         if (n != nullptr) {
-            *n = s->len;
+            *n = cast_usize(s->len);
         }
         return s->data;
     }
@@ -230,9 +232,9 @@ void
 lulu_set_top(lulu_VM *vm, int i)
 {
     if (i >= 0) {
-        size_t old_start = ptr_index(vm->stack, raw_data(vm->window));
-        size_t old_stop  = old_start + len(vm->window);
-        size_t new_stop  = old_start + cast_size(i);
+        isize old_start = ptr_index(vm->stack, raw_data(vm->window));
+        isize old_stop  = old_start + len(vm->window);
+        isize new_stop  = old_start + cast_isize(i);
         if (new_stop > old_stop) {
             // If growing the window, initialize the new region to nil.
             Slice<Value> extra = slice_array(vm->stack, old_stop, new_stop);
@@ -270,7 +272,7 @@ lulu_remove(lulu_VM *vm, int i)
 void
 lulu_pop(lulu_VM *vm, int n)
 {
-    size_t i = len(vm->window) - cast_size(n);
+    isize i = len(vm->window) - cast_isize(n);
     vm->window = slice_slice(vm->window, 0, i);
 }
 
@@ -285,7 +287,7 @@ lulu_push_nil(lulu_VM *vm, int n)
 void
 lulu_push_boolean(lulu_VM *vm, int b)
 {
-    vm_push(vm, value_make_boolean(bool(b)));
+    vm_push(vm, value_make_boolean(cast(bool)b));
 }
 
 void
@@ -303,7 +305,7 @@ lulu_push_userdata(lulu_VM *vm, void *p)
 void
 lulu_push_lstring(lulu_VM *vm, const char *s, size_t n)
 {
-    LString ls{s, n};
+    LString ls{s, cast_isize(n)};
     OString *o = ostring_new(vm, ls);
     vm_push(vm, value_make_string(o));
 }
@@ -376,7 +378,7 @@ lulu_concat(lulu_VM *vm, int n)
     case 1: return; // Nothing we can sensibly do, other than conversion.
     }
 
-    lulu_assert(len(vm->window) >= cast_size(n));
+    lulu_assert(len(vm->window) >= cast_isize(n));
 
     Value &first = value_at(vm, -n);
     Value &last  = value_at(vm, -1);

@@ -176,7 +176,7 @@ LULU_API lulu_Type
 lulu_type(lulu_VM *vm, int i);
 
 LULU_API const char *
-lulu_type_name(lulu_VM *vm, int i);
+lulu_type_name(lulu_VM *vm, lulu_Type t);
 
 LULU_API int
 lulu_is_none(lulu_VM *vm, int i);

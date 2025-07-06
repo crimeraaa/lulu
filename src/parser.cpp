@@ -17,10 +17,10 @@ struct Expr_List {
 };
 
 static constexpr Expr
-EXPR_EMPTY = {EXPR_NONE, /* line */ 0, /* <unnamed>::number */ {0}};
+DEFAULT_EXPR = {EXPR_NONE, /* line */ 0, /* <unnamed>::number */ {0}};
 
 static constexpr Token
-TOKEN_EMPTY = {{}, {0}, TOKEN_INVALID, 0};
+DEFAULT_TOKEN = {{}, {0}, TOKEN_INVALID, 0};
 
 // Forward declaration for recursive descent parsing.
 static Expr
@@ -43,13 +43,11 @@ block_push(Parser *p, Compiler *c, Block *b, bool breakable)
 static void
 block_pop(Parser *p, Compiler *c)
 {
-    Block *b = p->block;
+    Block     *b      = p->block;
     Slice<u16> active = small_array_slice(c->active);
-    size_t n = len(active);
-    int pc = cast_int(len(c->chunk->code));
-    for (u16 index : slice_slice(active, cast_size(b->active_count), n)) {
-        Local *local  = &c->chunk->locals[index];
-        local->end_pc = pc;
+    isize      pc     = len(c->chunk->code);
+    for (u16 index : slice_slice(active, cast_isize(b->active_count), len(active))) {
+        c->chunk->locals[index].end_pc = pc;
     }
     small_array_resize(&c->active, b->active_count);
     c->free_reg = b->active_count;
@@ -62,8 +60,8 @@ parser_make(lulu_VM *vm, LString source, LString script, Builder *b)
     Parser p;
     p.vm        = vm;
     p.lexer     = lexer_make(vm, source, script, b);
-    p.consumed  = TOKEN_EMPTY;
-    p.lookahead = TOKEN_EMPTY;
+    p.consumed  = DEFAULT_TOKEN;
+    p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
     p.block     = nullptr;
     return p;
@@ -77,7 +75,7 @@ error_at(Parser *p, const Token *t, const char *msg)
 
     // It is highly important we use a separate string builder from VM, because
     // we don't want it to conflict when writing the formatted string.
-    builder_write_string(p->vm, p->builder, where);
+    builder_write_lstring(p->vm, p->builder, where);
     const char *s = builder_to_cstring(p->builder);
     vm_syntax_error(p->vm, p->lexer.source, t->line, "%s at '%s'", msg, s);
 }
@@ -98,18 +96,19 @@ advance(Parser *p)
     // Have a lookahead token to discharge?
     if (p->lookahead.type != TOKEN_INVALID) {
         p->consumed  = p->lookahead;
-        p->lookahead = TOKEN_EMPTY;
+        p->lookahead = DEFAULT_TOKEN;
     } else {
         p->consumed = lexer_lex(&p->lexer);
     }
 }
 
-static void
+static Token_Type
 lookahead(Parser *p)
 {
     // Do not call `lookahead` multiple times in a row.
     lulu_assert(p->lookahead.type == TOKEN_INVALID);
     p->lookahead = lexer_lex(&p->lexer);
+    return p->lookahead.type;
 }
 
 static bool
@@ -167,7 +166,7 @@ static Expr
 resolve_variable(Parser *p, Compiler *c, const Token *t)
 {
     Expr e;
-    u8 reg;
+    u16 reg;
     OString *id = ostring_new(p->vm, t->lexeme);
     if (compiler_get_local(c, /* limit */ 0, id, &reg)) {
         e.type = EXPR_LOCAL;
@@ -205,7 +204,7 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
     }
 
     consume(p, TOKEN_ASSIGN);
-    u16 rkb  = compiler_expr_rk(c, &k);
+    u16 rkb = compiler_expr_rk(c, &k);
 
     ctor->value = expression(p, c);
     u16 rkc = compiler_expr_rk(c, &ctor->value);
@@ -220,12 +219,12 @@ static Expr
 constructor(Parser *p, Compiler *c, int line)
 {
     Constructor ctor;
-    int pc = compiler_code_abc(c, OP_NEW_TABLE, OPCODE_MAX_A, 0, 0, line);
+    isize pc = compiler_code_abc(c, OP_NEW_TABLE, OPCODE_MAX_A, 0, 0, line);
 
     ctor.table.type = EXPR_RELOCABLE;
     ctor.table.line = line;
     ctor.table.pc   = pc;
-    ctor.value      = EXPR_EMPTY;
+    ctor.value      = DEFAULT_EXPR;
     ctor.n_hash     = 0;
     ctor.n_array    = 0;
 
@@ -234,8 +233,7 @@ constructor(Parser *p, Compiler *c, int line)
         // Don't consume yet, `ctor_field()` needs <identifier> or '['.
         switch (p->consumed.type) {
         case TOKEN_IDENTIFIER: {
-            lookahead(p);
-            if (p->lookahead.type == TOKEN_ASSIGN) {
+            if (lookahead(p) == TOKEN_ASSIGN) {
                 ctor_field(p, c, &ctor);
             } else {
                 parser_error(p, "Array constructors not yet supported");
@@ -341,7 +339,7 @@ prefix_expr(Parser *p, Compiler *c)
 static void
 function_call(Parser *p, Compiler *c, Expr *e)
 {
-    Expr_List args{EXPR_EMPTY, 0};
+    Expr_List args{DEFAULT_EXPR, 0};
     if (!check(p, TOKEN_CLOSE_PAREN)) {
         args = expr_list(p, c);
         compiler_set_returns(c, &args.last, VARARG);
@@ -357,10 +355,10 @@ function_call(Parser *p, Compiler *c, Expr *e)
         if (args.last.type != EXPR_NONE) {
             compiler_expr_next_reg(c, &args.last);
         }
-        args.count = u16(c->free_reg - (base + 1));
+        args.count = c->free_reg - (base + 1);
     }
     e->type = EXPR_CALL;
-    e->pc   = compiler_code_abc(c, OP_CALL, u8(base), args.count, 0, e->line);
+    e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 0, e->line);
 
     // By default, remove the arguments but not the function's register.
     // This allows use to 'reserve' the register.
@@ -554,7 +552,7 @@ expression(Parser *p, Compiler *c, Precedence limit)
 static void
 return_stmt(Parser *p, Compiler *c, int line)
 {
-    u8        ra = u8(c->free_reg);
+    u16       ra = c->free_reg;
     Expr_List e  = expr_list(p, c);
     bool is_vararg = false;
     // if (e.last.type == EXPR_CALL) {
@@ -583,9 +581,9 @@ assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
         if (extra < 0) {
             extra = 0;
         }
-        compiler_set_returns(c, &e->last, u16(extra));
+        compiler_set_returns(c, &e->last, cast(u16)extra);
         if (extra > 1) {
-            compiler_reserve_reg(c, u16(extra - 1));
+            compiler_reserve_reg(c, cast(u16)(extra - 1));
         }
         return;
     }
@@ -598,13 +596,13 @@ assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
     if (extra > 0) {
         // Register of first uninitialized right-hand side.
         u16 reg = c->free_reg;
-        compiler_reserve_reg(c, u16(extra));
-        compiler_load_nil(c, u8(reg), extra, e->last.line);
+        compiler_reserve_reg(c, cast(u16)extra);
+        compiler_load_nil(c, reg, extra, e->last.line);
     }
 }
 
 static void
-assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
+assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars)
 {
     // Check the result of `expression()`.
     if (last->variable.type < EXPR_GLOBAL || last->variable.type > EXPR_INDEXED) {
@@ -625,7 +623,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
         assign_adjust(c, n_vars, &e);
         // Reuse the registers occupied by the extra values.
         if (e.count > n_vars) {
-            c->free_reg -= u16(e.count - n_vars);
+            c->free_reg -= e.count - n_vars;
         }
     } else {
         compiler_set_one_return(c, &e.last);
@@ -639,7 +637,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
         Expr tmp;
         tmp.type = EXPR_DISCHARGED;
         tmp.line = iter->variable.line; // Probably correct
-        tmp.reg  = u8(c->free_reg - 1);
+        tmp.reg  = c->free_reg - 1;
         compiler_set_variable(c, &iter->variable, &tmp);
         iter = iter->prev;
     }
@@ -648,27 +646,34 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
 static void
 local_push(Parser *p, Compiler *c, const Token *t)
 {
-    u8 reg;
+    u16 reg;
     OString *id = ostring_new(p->vm, t->lexeme);
-    if (compiler_get_local(c, cast_int(p->block->active_count), id, &reg)) {
+    if (compiler_get_local(c, p->block->active_count, id, &reg)) {
         error_at(p, t, "Shadowing of local variable");
     }
-    u16 index = chunk_add_local(p->vm, c->chunk, id);
-    small_array_push(&c->active, index);
+    isize index = chunk_add_local(p->vm, c->chunk, id);
+    // Resulting index wouldn't fit as an element in the active array?
+    if (index > MAX_TOTAL_LOCALS) {
+        error_at(p, t, "Too many overall local variables");
+    }
+    // Pushing to active array would go out of bounds?
+    if (small_array_len(c->active) + 1 > MAX_ACTIVE_LOCALS) {
+        error_at(p, t, "Too many active local variables");
+    }
+    small_array_push(&c->active, cast(u16)index);
 }
 
 static void
 local_adjust(Compiler *c, u16 n)
 {
     // `lparser.c:adjust_locals()`
-    int    pc    = cast_int(len(c->chunk->code));
-    size_t start = small_array_len(c->active);
+    isize pc    = len(c->chunk->code);
+    isize start = small_array_len(c->active);
 
-    small_array_resize(&c->active, start + cast_size(n));
+    small_array_resize(&c->active, start + cast_isize(n));
     Slice<u16> active = small_array_slice(c->active);
     for (u16 index : slice_slice(active, start, len(active))) {
-        Local *local = &c->chunk->locals[index];
-        local->start_pc = pc;
+        c->chunk->locals[index].start_pc = pc;
     }
 }
 
@@ -683,9 +688,9 @@ local_stmt(Parser *p, Compiler *c)
         n++;
     } while (match(p, TOKEN_COMMA));
     // Prevent lookup of uninitialized local variables, e.g. `local x = x`;
-    small_array_resize(&c->active, small_array_len(c->active) - n);
+    small_array_resize(&c->active, small_array_len(c->active) - cast_isize(n));
 
-    Expr_List args{EXPR_EMPTY, 0};
+    Expr_List args{DEFAULT_EXPR, 0};
     if (match(p, TOKEN_ASSIGN)) {
         args = expr_list(p, c);
     }
@@ -730,7 +735,7 @@ declaration(Parser *p, Compiler *c)
         if (a.variable.type == EXPR_CALL) {
             compiler_set_returns(c, &a.variable, 0);
         } else {
-            assignment(p, c, &a);
+            assignment(p, c, &a, /* n_vars */ 1);
         }
         break;
     }

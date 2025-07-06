@@ -7,25 +7,26 @@
 static constexpr u8
 MAX_REG = OPCODE_MAX_A - 5;
 
-static constexpr int
-MAX_LOCALS = 250;
+static constexpr isize
+MAX_ACTIVE_LOCALS = 200,
+MAX_TOTAL_LOCALS  = UINT16_MAX;
 
 struct Compiler {
     lulu_VM *vm;
     Parser  *parser; // All compilers share the same parser.
     Chunk   *chunk;  // Compilers do not own their chunks.
     u16      free_reg;
-    Small_Array<u16, MAX_LOCALS> active; // Indexes are also local registers.
+    Small_Array<u16, MAX_ACTIVE_LOCALS> active; // Indexes are local registers.
 };
 
 LULU_FUNC Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk);
 
-LULU_FUNC int
-compiler_code_abc(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line);
+LULU_FUNC isize
+compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line);
 
-LULU_FUNC int
-compiler_code_abx(Compiler *c, OpCode op, u8 a, u32 bx, int line);
+LULU_FUNC isize
+compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line);
 
 
 /**
@@ -35,7 +36,7 @@ compiler_code_abx(Compiler *c, OpCode op, u8 a, u32 bx, int line);
  *      `n` registers beforehand. This function will not reserve for you.
  */
 LULU_FUNC void
-compiler_load_nil(Compiler *c, u8 reg, int n, int line);
+compiler_load_nil(Compiler *c, u16 reg, int n, int line);
 
 
 /**
@@ -45,7 +46,7 @@ compiler_load_nil(Compiler *c, u8 reg, int n, int line);
  *      it beforehand. This function will not reserve for you.
  */
 LULU_FUNC void
-compiler_load_boolean(Compiler *c, u8 reg, bool b, int line);
+compiler_load_boolean(Compiler *c, u16 reg, bool b, int line);
 
 LULU_FUNC u32
 compiler_add_value(Compiler *c, Value v);
@@ -74,7 +75,7 @@ compiler_reserve_reg(Compiler *c, u16 n);
  * @returns
  *  -   The register we pushed `e` to.
  */
-LULU_FUNC u8
+LULU_FUNC u16
 compiler_expr_next_reg(Compiler *c, Expr *e);
 
 
@@ -104,7 +105,7 @@ compiler_expr_rk(Compiler *c, Expr *e);
  * @returns
  *  -   The register `e` resides in.
  */
-LULU_FUNC u8
+LULU_FUNC u16
 compiler_expr_any_reg(Compiler *c, Expr *e);
 
 
@@ -144,7 +145,7 @@ LULU_FUNC void
 compiler_code_concat(Compiler *c, Expr *left, Expr *right);
 
 LULU_FUNC void
-compiler_code_return(Compiler *c, u8 reg, u16 count, bool is_vararg, int line);
+compiler_code_return(Compiler *c, u16 reg, u16 count, bool is_vararg, int line);
 
 
 /**
@@ -184,10 +185,7 @@ compiler_set_one_return(Compiler *c, Expr *e);
  *      `local x; do local x; end;`
  */
 LULU_FUNC bool
-compiler_get_local(Compiler *c, int limit, OString *id, u8 *reg);
-
-LULU_FUNC u16
-compiler_add_local(Compiler *c, OString *id);
+compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg);
 
 LULU_FUNC void
 compiler_get_table(Compiler *c, Expr *t, Expr *k);

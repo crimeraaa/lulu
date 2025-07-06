@@ -3,65 +3,72 @@
 #include "array.hpp"
 #include "slice.hpp"
 
-template<class T, size_t N>
+template<class T, isize N>
 struct Small_Array {
     Array<T, N> data;
-    size_t      len;
+    isize       len;
 };
 
-template<class T, size_t N>
-LULU_FUNC constexpr typename Array<T, N>::size_type
+template<class T, auto N>
+LULU_FUNC void
+small_array_init(Small_Array<T, N> *sa)
+{
+    sa->len = 0;
+}
+
+template<class T, auto N>
+LULU_FUNC constexpr isize
 small_array_len(const Small_Array<T, N> &sa)
 {
     return sa.len;
 }
 
-template<class T, size_t N>
-LULU_FUNC constexpr typename Array<T, N>::size_type
+template<class T, auto N>
+LULU_FUNC constexpr isize
 small_array_cap(const Small_Array<T, N> &sa)
 {
     unused(sa);
     return N;
 }
 
-template<class T, size_t N>
+template<class T, auto N>
 LULU_FUNC Slice<T>
 small_array_slice(Small_Array<T, N> &sa)
 {
     return slice_array(sa.data, 0, sa.len);
 }
 
-template<class T, size_t N>
+template<class T, auto N>
 LULU_FUNC T
-small_array_get(const Small_Array<T, N> &sa, typename Array<T, N>::size_type index)
+small_array_get(const Small_Array<T, N> &sa, isize index)
 {
     return sa.data[index];
 }
 
-template<class T, size_t N>
+template<class T, auto N>
 LULU_FUNC T *
-small_array_get_ptr(Small_Array<T, N> *sa, typename Array<T, N>::size_type index)
+small_array_get_ptr(Small_Array<T, N> *sa, isize index)
 {
     return &sa->data[index];
 }
 
-template<class T, size_t N>
+template<class T, auto N>
 LULU_FUNC inline void
 small_array_push(Small_Array<T, N> *sa, T value)
 {
     sa->data[sa->len++] = value;
 }
 
-template<class T, size_t N>
+template<class T, auto N>
 LULU_FUNC constexpr void
 small_array_pop(Small_Array<T, N> *sa)
 {
     sa->len--;
 }
 
-template<class T, size_t N>
+template<class T, auto N>
 LULU_FUNC constexpr void
-small_array_resize(Small_Array<T, N> *sa, size_t n)
+small_array_resize(Small_Array<T, N> *sa, isize n)
 {
     sa->len = n;
 }

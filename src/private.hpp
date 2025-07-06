@@ -10,16 +10,36 @@ using u16 = uint16_t;
 using u32 = uint32_t;
 using i32 = int32_t;
 
-#define cast(T)         (T)
-#define cast_int(expr)  int(expr)
-#define cast_size(expr) size_t(expr)
-#define unused(expr)    (void)(expr)
 
-#define count_of(array) (sizeof(array) / sizeof((array)[0]))
+/**
+ * @brief
+ *  -   Theoretically, this is not enough to represent the full address space.
+ *  -   However in practice most of the address space is invalid anyway.
+ *  -   E.g. on a 64 bit machine, a platform may only use 48 bits per address,
+ *      so signed 64 bit sizes are overkill as it will be impossible to commit
+ *      even 1 quadrillion bytes (~50 bits) of memory.
+ *  -   So we assume that this type is more than adequate for our purposes.
+ */
+using isize = ptrdiff_t;
 
-#define STRING_FMTSPEC  "%.*s"
-#define STRING_QFMTSPEC "'" STRING_FMTSPEC "'"
-#define string_fmtarg(s) cast_int(len(s)), raw_data(s)
+/**
+ * @brief
+ *  -   Only used for consistency with C standard library functions and
+ *      allocation functions.
+ *  -   Prefer `isize` otherwise.
+ */
+using usize = size_t;
+
+#define ISIZE_FMTSPEC       "ti"
+
+#define cast(T)             (T)
+#define cast_int(expr)      int(expr)
+#define cast_isize(expr)    isize(expr)
+#define cast_usize(expr)    usize(expr)
+#define unused(expr)        (void)(expr)
+
+#define size_of(expr)   isize(sizeof(expr))
+#define count_of(array) isize(sizeof(array) / sizeof((array)[0]))
 
 #define OBJECT_HEADER Object *next; Value_Type type
 

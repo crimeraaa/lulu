@@ -63,13 +63,13 @@ vm_top_ptr(lulu_VM *vm);
  * @brief
  *  -   Gets the absolute index of `v` in `vm->stack`.
  */
-LULU_FUNC size_t
+LULU_FUNC isize
 vm_absindex(lulu_VM *vm, Value *v);
 
-LULU_FUNC size_t
+LULU_FUNC isize
 vm_base_absindex(lulu_VM *vm);
 
-LULU_FUNC size_t
+LULU_FUNC isize
 vm_top_absindex(lulu_VM *vm);
 
 /**
@@ -149,4 +149,4 @@ LULU_FUNC Error
 vm_load(lulu_VM *vm, LString source, LString script);
 
 LULU_FUNC void
-vm_execute(lulu_VM *vm);
+vm_execute(lulu_VM *vm, int n_calls);

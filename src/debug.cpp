@@ -15,7 +15,7 @@ struct Args_Basic {
 // As space efficient as we can be without violating the standard, but like
 // who cares?
 struct Args {
-    u8 a;
+    u16 a;
     union {
         Args_Extended extended;
         Args_Basic    basic;
@@ -23,7 +23,7 @@ struct Args {
 };
 
 static void
-print_reg(const Chunk *c, u16 reg, int pc)
+print_reg(const Chunk *c, u16 reg, isize pc)
 {
     if (reg_is_rk(reg)) {
         u32 i = reg_get_k(reg);
@@ -40,7 +40,7 @@ print_reg(const Chunk *c, u16 reg, int pc)
 }
 
 static void
-unary(const Chunk *c, const char *op, Args args, int pc)
+unary(const Chunk *c, const char *op, Args args, isize pc)
 {
     print_reg(c, args.a, pc);
     printf(" := %s", op);
@@ -48,7 +48,7 @@ unary(const Chunk *c, const char *op, Args args, int pc)
 }
 
 static void
-arith(const Chunk *c, char op, Args args, int pc)
+arith(const Chunk *c, char op, Args args, isize pc)
 {
     print_reg(c, args.a, pc);
     printf(" := ");
@@ -58,7 +58,7 @@ arith(const Chunk *c, char op, Args args, int pc)
 }
 
 static void
-compare(const Chunk *c, const char *op, Args args, int pc)
+compare(const Chunk *c, const char *op, Args args, isize pc)
 {
     printf("R(%i) = ", args.a);
     print_reg(c, args.basic.b, pc);
@@ -67,7 +67,7 @@ compare(const Chunk *c, const char *op, Args args, int pc)
 }
 
 static int
-count_digits(size_t n)
+count_digits(isize n)
 {
     int count = 0;
     while (n > 0) {
@@ -82,7 +82,7 @@ debug_get_pad(const Chunk *c)
 {
     // Should be impossible, but just in case
     if (len(c->code) == 0) {
-        return 0;
+        return 1;
     }
     return count_digits(len(c->code) - 1);
 }
@@ -91,13 +91,13 @@ debug_get_pad(const Chunk *c)
 #define PAD4 "     "
 
 void
-debug_disassemble_at(const Chunk *c, int pc, int pad)
+debug_disassemble_at(const Chunk *c, isize pc, int pad)
 {
     Args        args;
     Instruction ip = c->code[pc];
     OpCode op = getarg_op(ip);
     args.a = getarg_a(ip);
-    printf("[%0*i] ", pad, pc);
+    printf("[%0*" ISIZE_FMTSPEC "] ", pad, pc);
 
     int line = chunk_get_line(c, pc);
     // Have a previous line and it's the same as ours?
@@ -201,21 +201,26 @@ debug_disassemble_at(const Chunk *c, int pc, int pad)
         u16 retc = args.basic.c;
 
         u16 last_ret = args.a + retc;
-        if (args.a != last_ret) {
+        if (retc == VARARG) {
+            printf("R(%i:) := ", args.a);
+        } else if (args.a != last_ret) {
             printf("R(%i:%i) := ", args.a, last_ret);
         }
 
         u16 first_arg = args.a + 1;
         u16 last_arg  = first_arg + argc;
+        printf("R(%i)", args.a);
         if (first_arg == last_arg) {
-            printf("R(%i)()", args.a);
+            printf("()");
+        } else if (argc == VARARG) {
+            printf("(R(%i:))", first_arg);
         } else {
-            printf("R(%i)(R(%i:%i))", args.a, first_arg, last_arg);
+            printf("(R(%i:%i))", first_arg, last_arg);
         }
         break;
     }
     case OP_RETURN:
-        printf("return R(%i:%i)", args.a, u16(args.a) + args.basic.b);
+        printf("return R(%i:%i)", args.a, args.a + args.basic.b);
         break;
     }
 
@@ -230,10 +235,10 @@ debug_disassemble(const Chunk *c)
     if (len(c->locals) > 0) {
         int pad = count_digits(len(c->locals));
         printf(".local:\n");
-        for (size_t i = 0, n = len(c->locals); i < n; i++) {
+        for (isize i = 0, n = len(c->locals); i < n; i++) {
             Local local = c->locals[i];
             const char *id = ostring_to_cstring(local.identifier);
-            printf("[%.*zu] '%s': start=%i, end=%i\n",
+            printf("[%.*" ISIZE_FMTSPEC "] '%s': start=%" ISIZE_FMTSPEC ", end=%" ISIZE_FMTSPEC "\n",
                 pad, i, id, local.start_pc, local.end_pc);
         }
         printf("\n");
@@ -242,8 +247,8 @@ debug_disassemble(const Chunk *c)
     if (len(c->constants) > 0) {
         int pad = count_digits(len(c->constants));
         printf(".const:\n");
-        for (size_t i = 0, n = len(c->constants); i < n; i++) {
-            printf("[%.*zu] ", pad, i);
+        for (isize i = 0, n = len(c->constants); i < n; i++) {
+            printf("[%.*" ISIZE_FMTSPEC "] ", pad, i);
             value_print(c->constants[i]);
             printf("\n");
         }
@@ -252,14 +257,14 @@ debug_disassemble(const Chunk *c)
 
     printf(".code:\n");
     int pad = debug_get_pad(c);
-    for (int i = 0, n = cast_int(len(c->code)); i < n; i++) {
+    for (isize i = 0, n = len(c->code); i < n; i++) {
         debug_disassemble_at(c, i, pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");
 }
 
 const char *
-debug_get_local(const Chunk *c, int local_number, int pc)
+debug_get_local(const Chunk *c, int local_number, isize pc)
 {
     int counter = local_number;
     for (Local local : c->locals) {

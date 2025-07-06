@@ -92,7 +92,7 @@ static void
 error(const Lexer *x, const char *what)
 {
     LString where = get_lexeme(x);
-    builder_write_string(x->vm, x->builder, where);
+    builder_write_lstring(x->vm, x->builder, where);
     const char *s = builder_to_cstring(x->builder);
     vm_syntax_error(x->vm, x->source, x->line, "%s at '%s'", what, s);
 }
@@ -313,7 +313,7 @@ make_number(Lexer *x, char first)
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
             }
-            return make_token(x, TOKEN_NUMBER, Number(ul));
+            return make_token(x, TOKEN_NUMBER, cast(Number)ul);
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
@@ -349,7 +349,7 @@ make_string(Lexer *x, char q)
         char ch = advance(x);
         if (ch == '\\') {
             // 'flush' the string up to this point.
-            builder_write_string(vm, b, s);
+            builder_write_lstring(vm, b, s);
 
             // Read the character after '\'.
             ch = advance(x);
@@ -363,7 +363,7 @@ make_string(Lexer *x, char q)
         }
     }
     expect(x, q, "Unterminated string");
-    builder_write_string(vm, b, s);
+    builder_write_lstring(vm, b, s);
     s = builder_to_string(b);
     OString *o = ostring_new(vm, s);
     return make_token(x, TOKEN_STRING, o);
@@ -372,7 +372,7 @@ make_string(Lexer *x, char q)
 static Token
 check_keyword(const Lexer *x, LString s, Token_Type type)
 {
-    if (s == token_strings[type]) {
+    if (slice_eq(s, token_strings[type])) {
         return make_token(x, type, s);
     }
     return make_token(x, TOKEN_IDENTIFIER, s);
