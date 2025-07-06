@@ -9,6 +9,9 @@ OP_LOAD_NIL,    // A B   | R(i) := nil for A <= i <= B
 OP_LOAD_BOOL,   // A B   | R(A) := Bool(B)
 OP_GET_GLOBAL,  // A Bx  | R(A) := _G[K(Bx)]
 OP_SET_GLOBAL,  // A Bx  | _G[K(Bx)] := R(A)
+OP_NEW_TABLE,   // A B C | R(A) := {} ; #hash = B, #array = C
+OP_GET_TABLE,   // A B C | R(A) := R(B)[RK(C)]
+OP_SET_TABLE,   // A B C | R(A)[RK(B)] := RK(C)
 OP_MOVE,        // A B   | R(A) := R(B)
 OP_ADD,         // A B C | R(A) := RK(B) + RK(C)
 OP_SUB,         // A B C | R(A) := RK(B) - RK(C)
@@ -98,12 +101,10 @@ enum OpFormat : u16 {
 
 // A bit space inefficient but I find this easier to reason about.
 enum OpArg : u16 {
-    OPARG_UNUSED,       // 0b0000
-    OPARG_REG           = 1 << 0, // 0b0001: Is a register only
-    OPARG_CONSTANT      = 1 << 1, // 0b0010: Is a constant index only
-    OPARG_REG_CONSTANT,           // 0b0011: Is a register OR a constant
-    OPARG_JUMP          = 1 << 2, // 0b0100
-    OPARG_OTHER         = 1 << 3, // 0b1000: Used as condition or load directly
+    OPARG_UNUSED,   // 0b0000
+    OPARG_REGK,     // 0b0001: Is a register or a constant
+    OPARG_JUMP,     // 0b0010: Is a jump offset
+    OPARG_OTHER,    // 0b0011: Used as condition, count or boolean
 };
 
 /**

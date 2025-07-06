@@ -5,12 +5,13 @@ static constexpr Entry
 EMPTY_ENTRY = {Value(), Value()};
 
 Table *
-table_new(lulu_VM *vm, size_t n)
+table_new(lulu_VM *vm, size_t n_hash, size_t n_array)
 {
     Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
     table_init(t);
-    if (n > 0) {
-        table_resize(vm, t, n);
+    size_t total = n_hash + n_array;
+    if (total > 0) {
+        table_resize(vm, t, mem_next_pow2(total));
     }
     return t;
 }
@@ -109,7 +110,7 @@ void
 table_set(lulu_VM *vm, Table *t, Value k, Value v)
 {
     if (t->count + 1 > table_cap(t)*3 / 4) {
-        size_t n = mem_next_size(t->count + 1);
+        size_t n = mem_next_pow2(t->count + 1);
         table_resize(vm, t, n);
     }
     Entry *e = find_entry(t->entries, k);

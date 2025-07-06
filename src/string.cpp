@@ -206,7 +206,7 @@ ostring_new(lulu_VM *vm, LString text)
     s->data[s->len] = 0;
 
     if (t->count + 1 > intern_cap(t)*3 / 4) {
-        size_t new_cap = mem_next_size(t->count + 1);
+        size_t new_cap = mem_next_pow2(t->count + 1);
         intern_resize(vm, t, new_cap);
     }
     t->count++;

@@ -18,9 +18,10 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk)
 int
 compiler_code_abc(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line)
 {
-    lulu_assert(opinfo_a(op) == OPARG_REG || opinfo_a(op) == OPARG_OTHER);
-    lulu_assert((opinfo_b(op) & OPARG_REG_CONSTANT) || opinfo_b(op) == OPARG_OTHER);
-    lulu_assert((opinfo_c(op) & OPARG_REG_CONSTANT) || opinfo_c(op) == OPARG_OTHER
+    lulu_assert(opinfo_a(op) == OPARG_REGK || opinfo_a(op) == OPARG_OTHER);
+    lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER);
+    lulu_assert(opinfo_c(op) == OPARG_REGK
+        || opinfo_c(op) == OPARG_OTHER
         || opinfo_c(op) == OPARG_UNUSED);
 
     return chunk_append(c->vm, c->chunk, instruction_abc(op, a, b, c2), line);
@@ -29,8 +30,8 @@ compiler_code_abc(Compiler *c, OpCode op, u8 a, u16 b, u16 c2, int line)
 int
 compiler_code_abx(Compiler *c, OpCode op, u8 a, u32 bx, int line)
 {
-    lulu_assert(opinfo_a(op) == OPARG_REG);
-    lulu_assert(opinfo_b(op) == OPARG_CONSTANT || opinfo_b(op) == OPARG_OTHER);
+    lulu_assert(opinfo_a(op) == OPARG_REGK);
+    lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER);
     lulu_assert(opinfo_c(op) == OPARG_UNUSED || opinfo_c(op) == OPARG_OTHER);
     return chunk_append(c->vm, c->chunk, instruction_abx(op, a, bx), line);
 }
@@ -138,6 +139,16 @@ discharge_vars(Compiler *c, Expr *e)
         // locals are already in registers
         e->type = EXPR_DISCHARGED;
         break;
+    case EXPR_INDEXED: {
+        u16 t = cast(u16)e->table.reg;
+        u16 k = e->table.field_rk;
+        e->type = EXPR_RELOCABLE;
+        e->pc   = compiler_code_abc(c, OP_GET_TABLE, OPCODE_MAX_A, t, k, e->line);
+        // We can reuse these registers as they're no longer needed (for now).
+        pop_reg(c, k);
+        pop_reg(c, t);
+        break;
+    }
     case EXPR_CALL:
         compiler_set_one_return(c, e);
         break;
@@ -366,6 +377,13 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
         compiler_code_abc(c, OP_MOVE, var->reg, reg, 0, var->line);
         break;
     }
+    case EXPR_INDEXED: {
+        u8  t = var->table.reg;
+        u16 k = var->table.field_rk;
+        u16 v = compiler_expr_rk(c, expr);
+        compiler_code_abc(c, OP_SET_TABLE, t, k, v, var->line);
+        break;
+    }
     default:
         lulu_assertf(false, "Invalid Expr_Type(%i) to assign", var->type);
         lulu_unreachable();
@@ -414,8 +432,17 @@ compiler_get_local(Compiler *c, int limit, OString *id, u8 *reg)
     return false;
 }
 
-LULU_FUNC u16
+u16
 compiler_add_local(Compiler *c, OString *id)
 {
     return chunk_add_local(c->vm, c->chunk, id);
+}
+
+void
+compiler_get_table(Compiler *c, Expr *t, Expr *k)
+{
+    u16 rkb = compiler_expr_rk(c, k);
+    t->type           = EXPR_INDEXED;
+    t->table.reg      = t->reg;
+    t->table.field_rk = rkb;
 }

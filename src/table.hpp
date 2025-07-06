@@ -14,7 +14,7 @@ struct Table {
 };
 
 LULU_FUNC Table *
-table_new(lulu_VM *vm, size_t n = 0);
+table_new(lulu_VM *vm, size_t n_hash, size_t n_array);
 
 LULU_FUNC void
 table_init(Table *t);

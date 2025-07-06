@@ -43,7 +43,9 @@ required_allocations(lulu_VM *vm, void *)
 
     // TODO(2025-06-30): Mark the memory error string as "immortal"?
     OString *o = ostring_new(vm, LString(LULU_MEMORY_ERROR_STRING));
-    unused(o);
+
+    o = ostring_new(vm, "_G"_s);
+    table_set(vm, &vm->globals, Value(o), Value(&vm->globals));
 }
 
 bool
@@ -214,12 +216,19 @@ void
 vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...)
 {
     va_list args;
-    const Chunk *c    = vm->caller->function->l.chunk;
-    const int    pc   = cast_int(vm->saved_ip - raw_data(c->code) - 1);
-    const int    line = chunk_get_line(c, pc);
-
-    vm_push_string(vm, c->source);
-    vm_push_fstring(vm, ":%i: Attempt to %s ", line, act);
+    Call_Frame *cf = vm->caller;
+    Closure    *f  = cf->function;
+    if (closure_is_lua(f)) {
+        Chunk *c    = f->l.chunk;
+        int    pc   = cast_int(vm->saved_ip - raw_data(c->code) - 1);
+        int    line = chunk_get_line(c, pc);
+        vm_push_string(vm, c->source);
+        vm_push_fstring(vm, ":%i: ", line);
+        lulu_concat(vm, 2);
+    } else {
+        vm_push_string(vm, "[C]: "_s);
+    }
+    vm_push_fstring(vm, "Attempt to %s ", act);
 
     va_start(args, fmt);
     vm_push_vfstring(vm, fmt, args);
@@ -532,6 +541,41 @@ vm_execute(lulu_VM *vm)
             Value k = chunk.constants[getarg_bx(i)];
             protect(vm, ip);
             table_set(vm, &vm->globals, k, ra);
+            break;
+        }
+        case OP_NEW_TABLE: {
+            size_t n_hash  = cast_size(getarg_b(i));
+            size_t n_array = cast_size(getarg_c(i));
+            Table *t = table_new(vm, n_hash, n_array);
+            ra = Value(t);
+            break;
+        }
+        case OP_GET_TABLE: {
+            Value &t = window[getarg_b(i)];
+            Value &k = GET_RK(getarg_c(i));
+            protect(vm, ip);
+            if (!value_is_table(t)) {
+                type_error(vm, "index", t);
+            } else if (value_is_nil(k)) {
+                // t[nil] is not stored, but return `nil` anyway.
+                ra = Value();
+            } else {
+                Value v;
+                table_get(value_to_table(t), k, &v);
+                ra = v;
+            }
+            break;
+        }
+        case OP_SET_TABLE: {
+            Value &k = GET_RK(getarg_b(i));
+            Value &v = GET_RK(getarg_c(i));
+            protect(vm, ip);
+            if (!value_is_table(ra)) {
+                type_error(vm, "index", ra);
+            } else if (value_is_nil(k)) {
+                type_error(vm, "index", k);
+            }
+            table_set(vm, value_to_table(ra), k, v);
             break;
         }
         case OP_MOVE: {

@@ -10,6 +10,7 @@ struct Parser {
     lulu_VM *vm;
     Lexer    lexer;
     Token    consumed;
+    Token    lookahead; // Used only in `parser.cpp:constructor()`.
     Builder *builder;
     Block   *block;
 };
@@ -46,19 +47,26 @@ enum Expr_Type {
     EXPR_CONSTANT,   // Literal value stored in constants array. Use `index`.
     EXPR_GLOBAL,     // Global variable named stored in `index`.
     EXPR_LOCAL,      // Local variable register stored in `reg`.
+    EXPR_INDEXED,    // Table register in `table.reg` and key RK in `table.field_rk`.
     EXPR_CALL,       // `OP_CALL`. Use `pc`.
     EXPR_RELOCABLE,  // Instruction without register A finalized- use `pc`.
     EXPR_DISCHARGED, // Instruction with a finalized register.
+};
+
+struct Expr_Table {
+    u8  reg;
+    u16 field_rk;
 };
 
 struct Expr {
     Expr_Type type;
     int       line;
     union {
-        Number number; // Must be first member for brace initialization.
-        u32    index;
-        int    pc;
-        u8     reg;
+        Number     number; // Must be first member for brace initialization.
+        u32        index;
+        int        pc;
+        u8         reg;
+        Expr_Table table;
     };
 };
 

@@ -46,16 +46,7 @@ dynamic_resize(lulu_VM *vm, Dynamic<T> *d, typename Slice<T>::size_type new_len)
 {
     // Can't accomodate the new data?
     if (new_len > d->cap) {
-        // Use 8 as the first size for slight optimization.
-        size_t n = 8;
-
-        // Get closest golden ratio term
-        while (n < new_len) {
-            // 1.5 is closest to golden ratio of 1.618...
-            // (n*3) >> 1 == (n*3) / 2 == n*1.5
-            n = (n*3) >> 1;
-        }
-        dynamic_reserve(vm, d, n);
+        dynamic_reserve(vm, d, mem_next_fib(new_len));
     }
     d->len = new_len;
 }

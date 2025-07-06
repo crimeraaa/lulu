@@ -188,3 +188,6 @@ compiler_get_local(Compiler *c, int limit, OString *id, u8 *reg);
 
 LULU_FUNC u16
 compiler_add_local(Compiler *c, OString *id);
+
+LULU_FUNC void
+compiler_get_table(Compiler *c, Expr *t, Expr *k);

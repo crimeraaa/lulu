@@ -19,6 +19,9 @@ struct Expr_List {
 static constexpr Expr
 EXPR_EMPTY = {EXPR_NONE, /* line */ 0, /* <unnamed>::number */ {0}};
 
+static constexpr Token
+TOKEN_EMPTY = {{}, {0}, TOKEN_INVALID, 0};
+
 // Forward declaration for recursive descent parsing.
 static Expr
 expression(Parser *p, Compiler *c, Precedence limit = PREC_NONE);
@@ -57,11 +60,12 @@ Parser
 parser_make(lulu_VM *vm, LString source, LString script, Builder *b)
 {
     Parser p;
-    p.vm       = vm;
-    p.lexer    = lexer_make(vm, source, script, b);
-    p.consumed = {};
-    p.builder  = b;
-    p.block    = nullptr;
+    p.vm        = vm;
+    p.lexer     = lexer_make(vm, source, script, b);
+    p.consumed  = TOKEN_EMPTY;
+    p.lookahead = TOKEN_EMPTY;
+    p.builder   = b;
+    p.block     = nullptr;
     return p;
 }
 
@@ -91,7 +95,21 @@ parser_error(Parser *p, const char *msg)
 static void
 advance(Parser *p)
 {
-    p->consumed = lexer_lex(&p->lexer);
+    // Have a lookahead token to discharge?
+    if (p->lookahead.type != TOKEN_INVALID) {
+        p->consumed  = p->lookahead;
+        p->lookahead = TOKEN_EMPTY;
+    } else {
+        p->consumed = lexer_lex(&p->lexer);
+    }
+}
+
+static void
+lookahead(Parser *p)
+{
+    // Do not call `lookahead` multiple times in a row.
+    lulu_assert(p->lookahead.type == TOKEN_INVALID);
+    p->lookahead = lexer_lex(&p->lexer);
 }
 
 static bool
@@ -109,7 +127,6 @@ match(Parser *p, Token_Type expected)
     }
     return b;
 }
-
 
 /**
  * @brief
@@ -164,6 +181,90 @@ resolve_variable(Parser *p, Compiler *c, const Token *t)
     return e;
 }
 
+struct Constructor {
+    Expr table; // Information on the OP_NEW_TABLE itself.
+    Expr value;
+    int  n_hash;
+    int  n_array;
+};
+
+static void
+ctor_field(Parser *p, Compiler *c, Constructor *ctor)
+{
+    u16   reg = c->free_reg;
+    Token t   = p->consumed;
+    Expr k;
+    if (match(p, TOKEN_IDENTIFIER)) {
+        k.type  = EXPR_CONSTANT;
+        k.line  = t.line;
+        k.index = compiler_add_ostring(c, ostring_new(p->vm, t.lexeme));
+    } else {
+        consume(p, TOKEN_OPEN_BRACE);
+        k = expression(p, c);
+        consume(p, TOKEN_CLOSE_BRACE);
+    }
+
+    consume(p, TOKEN_ASSIGN);
+    u16 rkb  = compiler_expr_rk(c, &k);
+
+    ctor->value = expression(p, c);
+    u16 rkc = compiler_expr_rk(c, &ctor->value);
+    compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc, ctor->value.line);
+
+    // 'pop' whatever registers we used
+    c->free_reg = reg;
+    ctor->n_hash++;
+}
+
+static Expr
+constructor(Parser *p, Compiler *c, int line)
+{
+    Constructor ctor;
+    int pc = compiler_code_abc(c, OP_NEW_TABLE, OPCODE_MAX_A, 0, 0, line);
+
+    ctor.table.type = EXPR_RELOCABLE;
+    ctor.table.line = line;
+    ctor.table.pc   = pc;
+    ctor.value      = EXPR_EMPTY;
+    ctor.n_hash     = 0;
+    ctor.n_array    = 0;
+
+    compiler_expr_next_reg(c, &ctor.table);
+    while (!check(p, TOKEN_CLOSE_CURLY)) {
+        // Don't consume yet, `ctor_field()` needs <identifier> or '['.
+        switch (p->consumed.type) {
+        case TOKEN_IDENTIFIER: {
+            lookahead(p);
+            if (p->lookahead.type == TOKEN_ASSIGN) {
+                ctor_field(p, c, &ctor);
+            } else {
+                parser_error(p, "Array constructors not yet supported");
+            }
+            break;
+        }
+        case TOKEN_OPEN_BRACE:
+            ctor_field(p, c, &ctor);
+            break;
+        default:
+            parser_error(p, "Array constructors not yet supported");
+            break;
+        }
+
+        // Even if we match one, if '}' follows, the loop ends anyway.
+        // E.g. try `t = {x=9, y=10,}`.
+        if (!match(p, TOKEN_COMMA)) {
+            break;
+        }
+    }
+
+    consume(p, TOKEN_CLOSE_CURLY);
+
+    Instruction *ip = &c->chunk->code[pc];
+    setarg_b(ip, cast(u16)ctor.n_hash);
+    setarg_c(ip, cast(u16)ctor.n_array);
+    return ctor.table;
+}
+
 static Expr
 prefix_expr(Parser *p, Compiler *c)
 {
@@ -212,6 +313,9 @@ prefix_expr(Parser *p, Compiler *c)
         Expr e = expression(p, c);
         consume(p, TOKEN_CLOSE_PAREN);
         return e;
+    }
+    case TOKEN_OPEN_CURLY: {
+        return constructor(p, c, t.line);
     }
     case TOKEN_DASH: {
         Expr e = expression(p, c, PREC_UNARY);
@@ -275,6 +379,28 @@ primary_expr(Parser *p, Compiler *c)
             compiler_expr_next_reg(c, &e);
             advance(p);
             function_call(p, c, &e);
+            break;
+        }
+        case TOKEN_DOT: {
+            // Table must in some register.
+            compiler_expr_any_reg(c, &e);
+            advance(p); // Skip '.'.
+            Token t = p->consumed;
+            consume(p, TOKEN_IDENTIFIER);
+
+            Expr k;
+            k.type  = EXPR_CONSTANT;
+            k.index = compiler_add_ostring(c, ostring_new(p->vm, t.lexeme));
+            compiler_get_table(c, &e, &k);
+            break;
+        }
+        case TOKEN_OPEN_BRACE: {
+            // Table must be in some register.
+            compiler_expr_any_reg(c, &e);
+            advance(p); // Skip '['.
+            Expr k = expression(p, c);
+            consume(p, TOKEN_CLOSE_BRACE);
+            compiler_get_table(c, &e, &k);
             break;
         }
         default:
@@ -480,8 +606,8 @@ static void
 assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars = 1)
 {
     // Check the result of `expression()`.
-    if (last->variable.type != EXPR_GLOBAL && last->variable.type != EXPR_LOCAL) {
-        parser_error(p, "Expected an identifier");
+    if (last->variable.type < EXPR_GLOBAL || last->variable.type > EXPR_INDEXED) {
+        parser_error(p, "Expected an assignable expression");
     }
 
     if (match(p, TOKEN_COMMA)) {
@@ -555,7 +681,7 @@ local_stmt(Parser *p, Compiler *c)
         local_push(p, c, &t);
         n++;
     } while (match(p, TOKEN_COMMA));
-    // Prevent lookup of uninitiallized local variables, e.g. `local x = x`;
+    // Prevent lookup of uninitialized local variables, e.g. `local x = x`;
     small_array_resize(&c->active, small_array_len(c->active) - n);
 
     Expr_List args{EXPR_EMPTY, 0};
@@ -617,7 +743,7 @@ declaration(Parser *p, Compiler *c)
 Chunk *
 parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
 {
-    Table *t  = table_new(vm);
+    Table *t  = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
     Chunk *ch = chunk_new(vm, source, t);
 
     // Push chunk and table to stack so that they are not collected while we

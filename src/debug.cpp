@@ -132,7 +132,7 @@ debug_disassemble_at(const Chunk *c, int pc, int pad)
     switch (op) {
     case OP_CONSTANT:
         printf("R(%i) := ", args.a);
-        value_print(c->constants[getarg_bx(ip)]);
+        value_print(c->constants[args.extended.bx]);
         break;
     case OP_LOAD_NIL: {
         printf("R(i) := nil for %i <= i <= %i", args.a, args.basic.b);
@@ -142,27 +142,45 @@ debug_disassemble_at(const Chunk *c, int pc, int pad)
         printf("R(%i) := %s", args.a, (args.basic.b) ? "true" : "false");
         break;
     }
-    case OP_GET_GLOBAL: {
+    case OP_GET_GLOBAL:
         print_reg(c, args.a, pc);
         printf(" := ");
-        value_print(c->constants[getarg_bx(ip)]);
+        value_print(c->constants[args.extended.bx]);
         break;
-    }
 
     case OP_SET_GLOBAL: {
-        OString *s = &c->constants[getarg_bx(ip)].object->ostring;
+        OString *s = value_to_ostring(c->constants[args.extended.bx]);
         char     q = (s->len == 1) ? '\'' : '\"';
-        printf("_G[%c%s%c] := R(%i)", q, s->data, q, args.a);
+        printf("_G[%c%s%c] := R(%i)", q, ostring_to_cstring(s), q, args.a);
         break;
     }
-    case OP_MOVE: {
-        u16 a = getarg_a(ip);
-        u16 b = getarg_b(ip);
-        print_reg(c, a, pc);
+    case OP_NEW_TABLE: {
+        print_reg(c, args.a, pc);
+        printf(" := {}; #hash = %i, #array = %i", args.basic.b, args.basic.c);
+        break;
+    }
+    case OP_GET_TABLE: {
+        print_reg(c, args.a, pc);
         printf(" := ");
-        print_reg(c, b, pc);
+        print_reg(c, args.basic.b, pc);
+        printf("[");
+        print_reg(c, args.basic.c, pc);
+        printf("]");
         break;
     }
+    case OP_SET_TABLE: {
+        print_reg(c, args.a, pc);
+        printf("[");
+        print_reg(c, args.basic.b, pc);
+        printf("] := ");
+        print_reg(c, args.basic.c, pc);
+        break;
+    }
+    case OP_MOVE:
+        print_reg(c, args.a, pc);
+        printf(" := ");
+        print_reg(c, args.basic.b, pc);
+        break;
     case OP_ADD: arith(c, '+', args, pc); break;
     case OP_SUB: arith(c, '-', args, pc); break;
     case OP_MUL: arith(c, '*', args, pc); break;

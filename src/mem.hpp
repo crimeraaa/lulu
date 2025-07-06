@@ -8,7 +8,15 @@
  *  -   Rounds `n` to the next power of 2 if it is not one already.
  */
 LULU_FUNC size_t
-mem_next_size(size_t n);
+mem_next_pow2(size_t n);
+
+
+/**
+ * @brief
+ *  -   Rounds `n` to the next fibonacci term, if it is not one already.
+ */
+size_t
+mem_next_fib(size_t n);
 
 LULU_FUNC void *
 mem_rawrealloc(lulu_VM *vm, void *ptr, size_t old_size, size_t new_size);
