@@ -16,31 +16,48 @@ struct Value {
         Object  *object;
         void    *pointer; // light userdata.
     };
+
+    constexpr
+    Value(Value_Type t = VALUE_NIL)
+        : type{t}
+        , number{0}
+    {}
+
+    constexpr
+    Value(bool b)
+        : type{VALUE_BOOLEAN}
+        , boolean{b}
+    {}
+
+    constexpr
+    Value(Number n)
+        : type{VALUE_NUMBER}
+        , number{n}
+    {}
+
+    constexpr void
+    operator=(bool b)
+    {
+        this->type    = VALUE_BOOLEAN;
+        this->boolean = b;
+    }
+
+    constexpr void
+    operator=(Number n)
+    {
+        this->type   = VALUE_NUMBER;
+        this->number = n;
+    }
 };
 
 constexpr Value
-nil{VALUE_NIL, {0}};
-
-LULU_FUNC constexpr Value
-value_make_boolean(bool b)
-{
-    Value v{VALUE_BOOLEAN, {0}};
-    v.boolean = b;
-    return v;
-}
-
-LULU_FUNC constexpr Value
-value_make_number(Number n)
-{
-    Value v{VALUE_NUMBER, {0}};
-    v.number = n;
-    return v;
-}
+nil = {};
 
 LULU_FUNC constexpr Value
 value_make_userdata(void *p)
 {
-    Value v{VALUE_USERDATA, {0}};
+    Value v;
+    v.type    = VALUE_USERDATA;
     v.pointer = p;
     return v;
 }
@@ -82,7 +99,7 @@ value_make_chunk(Chunk *c)
 }
 
 LULU_FUNC bool
-value_eq(Value a, Value b);
+operator==(Value a, Value b);
 
 LULU_FUNC inline const char *
 value_type_name(Value_Type t)
@@ -110,28 +127,93 @@ value_type_name(Value v)
 
 //=== VALUE TYPE INFORMATION =============================================== {{{
 
-#define value_type(v)           ((v).type)
-#define value_is_none(v)        (value_type(v) == VALUE_NONE)
-#define value_is_nil(v)         (value_type(v) == VALUE_NIL)
-#define value_is_boolean(v)     (value_type(v) == VALUE_BOOLEAN)
-#define value_is_number(v)      (value_type(v) == VALUE_NUMBER)
-#define value_is_userdata(v)    (value_type(v) == VALUE_USERDATA)
-#define value_is_object(v)      (value_type(v) >= VALUE_STRING)
-#define value_is_string(v)      (value_type(v) == VALUE_STRING)
-#define value_is_table(v)       (value_type(v) == VALUE_TABLE)
-#define value_is_function(v)    (value_type(v) == VALUE_FUNCTION)
+LULU_FUNC constexpr Value_Type
+value_type(Value v)
+{
+    return v.type;
+}
+
+LULU_FUNC constexpr bool
+value_is_none(Value v)
+{
+    return value_type(v) == VALUE_NONE;
+}
+
+LULU_FUNC constexpr bool
+value_is_nil(Value v)
+{
+    return value_type(v) == VALUE_NIL;
+}
+
+LULU_FUNC constexpr bool
+value_is_boolean(Value v)
+{
+    return value_type(v) == VALUE_BOOLEAN;
+}
+
+LULU_FUNC constexpr bool
+value_is_number(Value v)
+{
+    return value_type(v) == VALUE_NUMBER;
+}
+
+LULU_FUNC constexpr bool
+value_is_userdata(Value v)
+{
+    return value_type(v) == VALUE_USERDATA;
+}
+
+LULU_FUNC constexpr bool
+value_is_object(Value v)
+{
+    return value_type(v) >= VALUE_STRING;
+}
+
+LULU_FUNC constexpr bool
+value_is_string(Value v)
+{
+    return value_type(v) == VALUE_STRING;
+}
+
+LULU_FUNC constexpr bool
+value_is_table(Value v)
+{
+    return value_type(v) == VALUE_TABLE;
+}
+
+LULU_FUNC constexpr bool
+value_is_function(Value v)
+{
+    return value_type(v) == VALUE_FUNCTION;
+}
 
 //=== }}} ======================================================================
 
 //=== VALUE DATA PAYLOADS ================================================== {{{
 
-#define value_to_boolean(v)     check_expr(value_is_boolean(v),  (v).boolean)
-#define value_to_number(v)      check_expr(value_is_number(v),   (v).number)
-#define value_to_userdata(v)    check_expr(value_is_userdata(v), (v).pointer)
-#define value_to_object(v)      ((v).object)
-#define value_to_ostring(v)     check_expr(value_is_string(v),   &value_to_object(v)->ostring)
-#define value_to_table(v)       check_expr(value_is_table(v),    &value_to_object(v)->table)
-#define value_to_function(v)    check_expr(value_is_function(v), &value_to_object(v)->function)
+LULU_FUNC inline bool
+value_to_boolean(Value v)
+{
+    return check_expr(value_is_boolean(v), v.boolean);
+}
+
+LULU_FUNC inline Number
+value_to_number(Value v)
+{
+    return check_expr(value_is_number(v), v.number);
+}
+
+LULU_FUNC inline void *
+value_to_userdata(Value v)
+{
+    return check_expr(value_is_userdata(v), v.pointer);
+}
+
+LULU_FUNC inline Object *
+value_to_object(Value v)
+{
+    return check_expr(value_is_object(v), v.object);
+}
 
 //=== }}} ======================================================================
 

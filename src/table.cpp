@@ -87,7 +87,7 @@ find_entry(Slice<Entry> entries, Value k)
                 tomb = entry;
             }
         }
-        else if (value_eq(k, entry->key)) {
+        else if (k == entry->key) {
             return entry;
         }
     }
@@ -136,7 +136,7 @@ table_unset(Table *t, Value k)
     }
     // Tombstones are nil keys mapping to the boolean `true`.
     e->key   = nil;
-    e->value = value_make_boolean(true);
+    e->value = true;
 }
 
 void

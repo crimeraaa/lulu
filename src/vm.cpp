@@ -483,6 +483,7 @@ vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned)
 void
 vm_execute(lulu_VM *vm, int n_calls)
 {
+    // Copy by value for speed.
     Chunk              chunk  = *vm->caller->function->l.chunk;
     const Instruction *ip     = raw_data(chunk.code);
     Slice<Value>       window = vm->window;
@@ -492,7 +493,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         ? chunk.constants[reg_get_k(rk)]                                       \
         : window[rk]
 
-#define BINARY_OP(number_fn, value_fn, error_fn)                               \
+#define BINARY_OP(number_fn, error_fn)                                         \
 {                                                                              \
     u16          b  = getarg_b(i);                                             \
     u16          c  = getarg_c(i);                                             \
@@ -502,12 +503,12 @@ vm_execute(lulu_VM *vm, int n_calls)
         protect(vm, ip);                                                       \
         error_fn(vm, rb, rc);                                                  \
     } else {                                                                   \
-        ra = value_fn(number_fn(value_to_number(rb), value_to_number(rc)));    \
+        ra = number_fn(value_to_number(rb), value_to_number(rc));              \
     }                                                                          \
 }
 
-#define ARITH_OP(fn)    BINARY_OP(fn, value_make_number, arith_error)
-#define COMPARE_OP(fn)  BINARY_OP(fn, value_make_boolean, compare_error)
+#define ARITH_OP(fn)    BINARY_OP(fn, arith_error)
+#define COMPARE_OP(fn)  BINARY_OP(fn, compare_error)
 
 
 #ifdef LULU_DEBUG_TRACE_EXEC
@@ -515,18 +516,26 @@ vm_execute(lulu_VM *vm, int n_calls)
 #endif // LULU_DEBUG_TRACE_EXEC
 
     for (;;) {
+        Instruction i  = *ip++;
+        Value      &ra =  window[getarg_a(i)];
+
 #ifdef LULU_DEBUG_TRACE_EXEC
-        for (isize ii = 0, end = len(window); ii < end; ii++) {
-            printf("\t[%" ISIZE_FMTSPEC "]\t", ii);
-            value_print(window[ii]);
+        // We already incremented `ip`, so subtract 1 to get the original.
+        isize pc = cast_isize(ptr_index(chunk.code, ip)) - 1;
+
+        for (isize reg = 0, end = len(window); reg < end; reg++) {
+            printf("\t[%" ISIZE_FMTSPEC "]\t", reg);
+            value_print(window[reg]);
+
+            const char *id = chunk_get_local(&chunk, cast_int(reg + 1), pc);
+            if (id != nullptr) {
+                printf(" ; local %s", id);
+            }
             printf("\n");
         }
         printf("\n");
-        debug_disassemble_at(&chunk, cast_int(ip - raw_data(chunk.code)), pad);
+        debug_disassemble_at(&chunk, i, pc, pad);
 #endif // LULU_DEBUG_TRACE_EXEC
-
-        Instruction i  = *ip++;
-        Value      &ra =  window[getarg_a(i)];
 
         switch (getarg_op(i)) {
         case OP_CONSTANT:
@@ -539,7 +548,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_LOAD_BOOL:
-            ra = value_make_boolean(cast(bool)getarg_b(i));
+            ra = cast(bool)getarg_b(i);
             break;
         case OP_GET_GLOBAL: {
             Value k = chunk.constants[getarg_bx(i)];
@@ -607,7 +616,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             u16   c  = getarg_c(i);
             Value rb = GET_RK(b);
             Value rc = GET_RK(c);
-            ra = value_make_boolean(value_eq(rb, rc));
+            ra = (rb == rc);
             break;
         }
         case OP_LT:  COMPARE_OP(lulu_Number_lt); break;
@@ -618,12 +627,12 @@ vm_execute(lulu_VM *vm, int n_calls)
                 protect(vm, ip);
                 arith_error(vm, rb, rb);
             }
-            ra = value_make_number(lulu_Number_unm(value_to_number(rb)));
+            ra = lulu_Number_unm(value_to_number(rb));
             break;
         }
         case OP_NOT: {
             Value rb = window[getarg_b(i)];
-            ra = value_make_boolean(value_is_falsy(rb));
+            ra = value_is_falsy(rb);
             break;
         }
         case OP_CONCAT: {

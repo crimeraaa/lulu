@@ -31,7 +31,7 @@ print_reg(const Chunk *c, u16 reg, isize pc)
         return;
     }
 
-    const char *id = debug_get_local(c, cast_int(reg + 1), pc);
+    const char *id = chunk_get_local(c, cast_int(reg + 1), pc);
     if (id != nullptr) {
         printf("local %s", id);
     } else {
@@ -91,10 +91,9 @@ debug_get_pad(const Chunk *c)
 #define PAD4 "     "
 
 void
-debug_disassemble_at(const Chunk *c, isize pc, int pad)
+debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
 {
     Args        args;
-    Instruction ip = c->code[pc];
     OpCode op = getarg_op(ip);
     args.a = getarg_a(ip);
     printf("[%0*" ISIZE_FMTSPEC "] ", pad, pc);
@@ -135,7 +134,7 @@ debug_disassemble_at(const Chunk *c, isize pc, int pad)
         value_print(c->constants[args.extended.bx]);
         break;
     case OP_LOAD_NIL: {
-        printf("R(i) := nil for %i <= i <= %i", args.a, args.basic.b);
+        printf("R(%i:%i) := nil ", args.a, args.basic.b + 1);
         break;
     }
     case OP_LOAD_BOOL: {
@@ -151,7 +150,8 @@ debug_disassemble_at(const Chunk *c, isize pc, int pad)
     case OP_SET_GLOBAL: {
         OString *s = value_to_ostring(c->constants[args.extended.bx]);
         char     q = (s->len == 1) ? '\'' : '\"';
-        printf("_G[%c%s%c] := R(%i)", q, ostring_to_cstring(s), q, args.a);
+        printf("_G[%c%s%c] := ", q, ostring_to_cstring(s), q);
+        print_reg(c, args.a, pc);
         break;
     }
     case OP_NEW_TABLE: {
@@ -193,8 +193,8 @@ debug_disassemble_at(const Chunk *c, isize pc, int pad)
     case OP_UNM: unary(c, "-", args, pc); break;
     case OP_NOT: unary(c, "not ", args, pc); break;
     case OP_CONCAT:
-        printf("R(%i) := concat(R(%i:%i))",
-            args.a, args.basic.b, args.basic.c + 1);
+        print_reg(c, args.a, pc);
+        printf(" := concat(R(%i:%i))", args.basic.b, args.basic.c + 1);
         break;
     case OP_CALL: {
         u16 argc = args.basic.b;
@@ -236,10 +236,9 @@ debug_disassemble(const Chunk *c)
         int pad = count_digits(len(c->locals));
         printf(".local:\n");
         for (isize i = 0, n = len(c->locals); i < n; i++) {
-            Local local = c->locals[i];
-            const char *id = ostring_to_cstring(local.identifier);
+            const char *id = ostring_to_cstring(c->locals[i].identifier);
             printf("[%.*" ISIZE_FMTSPEC "] '%s': start=%" ISIZE_FMTSPEC ", end=%" ISIZE_FMTSPEC "\n",
-                pad, i, id, local.start_pc, local.end_pc);
+                pad, i, id, c->locals[i].start_pc, c->locals[i].end_pc);
         }
         printf("\n");
     }
@@ -258,30 +257,7 @@ debug_disassemble(const Chunk *c)
     printf(".code:\n");
     int pad = debug_get_pad(c);
     for (isize i = 0, n = len(c->code); i < n; i++) {
-        debug_disassemble_at(c, i, pad);
+        debug_disassemble_at(c, c->code[i], i, pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");
-}
-
-const char *
-debug_get_local(const Chunk *c, int local_number, isize pc)
-{
-    int counter = local_number;
-    for (Local local : c->locals) {
-        // nth local cannot possible be active at this point, and we assume
-        // that all succeeding locals won't be either.
-        if (local.start_pc > pc) {
-            break;
-        }
-
-        // Local is valid in this range?
-        if (pc <= local.end_pc) {
-            counter--;
-            // We iterated the correct number of times for this scope?
-            if (counter == 0) {
-                return ostring_to_cstring(local.identifier);
-            }
-        }
-    }
-    return nullptr;
 }

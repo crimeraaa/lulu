@@ -45,3 +45,14 @@ chunk_add_constant(lulu_VM *vm, Chunk *c, Value v);
 
 LULU_FUNC isize
 chunk_add_local(lulu_VM *vm, Chunk *c, OString *id);
+
+
+/**
+ * @param local_number
+ *      The 1-based index of the local we want to get.
+ *
+ * @param pc
+ *      The index of the instruction where `local_number` is valid.
+ */
+LULU_FUNC const char *
+chunk_get_local(const Chunk *c, int local_number, isize pc);

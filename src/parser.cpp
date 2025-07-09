@@ -6,8 +6,8 @@
 #include "vm.hpp"
 
 struct Block {
-    Block *prev; // Stack-allocated linked list.
-    u16    active_count;
+    Block *prev;         // Stack-allocated linked list.
+    u16    active_count; // Number of initialized locals at the time of pushing.
     bool   breakable;
 };
 
@@ -52,6 +52,29 @@ block_pop(Parser *p, Compiler *c)
     small_array_resize(&c->active, b->active_count);
     c->free_reg = b->active_count;
     p->block    = b->prev;
+}
+
+/**
+ * @brief
+ *  -   Checks if we hit a token that 'terminates' a block.
+ *
+ * @note 2025-07-10
+ *  -   We do not check for correctness, this is just a convenience function
+ *      acting as a lookup table.
+ *  -   It is the caller's responsibility to consume/expect a particular token
+ *      and throw an error if not met.
+ */
+static bool
+block_continue(Parser *p)
+{
+    switch (p->consumed.type) {
+    case TOKEN_END:
+    case TOKEN_EOF:
+        return false;
+    default:
+        break;
+    }
+    return true;
 }
 
 Parser
@@ -553,15 +576,19 @@ static void
 return_stmt(Parser *p, Compiler *c, int line)
 {
     u16       ra = c->free_reg;
-    Expr_List e  = expr_list(p, c);
-    bool is_vararg = false;
-    // if (e.last.type == EXPR_CALL) {
-    //     compiler_set_returns(c, &e.last, VARARG);
-    //     ra        = cast(u8)small_array_len(c->active);
-    //     is_vararg = true;
-    // } else {
+    bool      is_vararg = false;
+    Expr_List e{DEFAULT_EXPR, 0};
+    if (block_continue(p) && !check(p, TOKEN_SEMI)) {
+        e = expr_list(p, c);
+        // if (e.last.type == EXPR_CALL) {
+        //     compiler_set_returns(c, &e.last, VARARG);
+        //     ra        = cast(u8)small_array_len(c->active);
+        //     is_vararg = true;
+        // } else {
         compiler_expr_next_reg(c, &e.last);
-    // }
+        // }
+    }
+
     compiler_code_return(c, ra, e.count, is_vararg, line);
 }
 
@@ -652,14 +679,14 @@ local_push(Parser *p, Compiler *c, const Token *t)
         error_at(p, t, "Shadowing of local variable");
     }
     isize index = chunk_add_local(p->vm, c->chunk, id);
+
     // Resulting index wouldn't fit as an element in the active array?
-    if (index > MAX_TOTAL_LOCALS) {
-        error_at(p, t, "Too many overall local variables");
-    }
+    compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
+
     // Pushing to active array would go out of bounds?
-    if (small_array_len(c->active) + 1 > MAX_ACTIVE_LOCALS) {
-        error_at(p, t, "Too many active local variables");
-    }
+    compiler_check_limit(c, small_array_len(c->active) + 1, MAX_ACTIVE_LOCALS,
+        "active local variables");
+
     small_array_push(&c->active, cast(u16)index);
 }
 
@@ -704,7 +731,7 @@ do_block(Parser *p, Compiler *c)
 {
     Block b;
     block_push(p, c, &b, /* breakable */ false);
-    while (!check(p, TOKEN_END) && !check(p, TOKEN_EOF)) {
+    while (block_continue(p)) {
         declaration(p, c);
     }
     block_pop(p, c);
@@ -764,7 +791,7 @@ parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
 
     Block bl;
     block_push(&p, &c, &bl, /* breakable */ false);
-    while (!check(&p, TOKEN_EOF)) {
+    while (block_continue(&p)) {
         declaration(&p, &c);
         c.free_reg = cast(u16)small_array_len(c.active);
     }

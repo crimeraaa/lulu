@@ -2,7 +2,7 @@
 
 // Do not make `constexpr`; must have an address in order to be a reference.
 static Value
-VALUE_NONE_{VALUE_NONE, {0}};
+VALUE_NONE_{VALUE_NONE};
 
 static constexpr Value &
 value_at(lulu_VM *vm, int i)
@@ -287,13 +287,13 @@ lulu_push_nil(lulu_VM *vm, int n)
 void
 lulu_push_boolean(lulu_VM *vm, int b)
 {
-    vm_push(vm, value_make_boolean(cast(bool)b));
+    vm_push(vm, cast(bool)b);
 }
 
 void
 lulu_push_number(lulu_VM *vm, lulu_Number n)
 {
-    vm_push(vm, value_make_number(n));
+    vm_push(vm, n);
 }
 
 void

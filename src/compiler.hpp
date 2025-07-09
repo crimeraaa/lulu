@@ -4,7 +4,7 @@
 #include "chunk.hpp"
 #include "parser.hpp"
 
-static constexpr u8
+static constexpr u16
 MAX_REG = OPCODE_MAX_A - 5;
 
 static constexpr isize
@@ -12,15 +12,28 @@ MAX_ACTIVE_LOCALS = 200,
 MAX_TOTAL_LOCALS  = UINT16_MAX;
 
 struct Compiler {
-    lulu_VM *vm;
-    Parser  *parser; // All compilers share the same parser.
-    Chunk   *chunk;  // Compilers do not own their chunks.
-    u16      free_reg;
+    lulu_VM  *vm;
+    Compiler *prev;   // Have an enclosing function?
+    Parser   *parser; // All compilers share the same parser.
+    Chunk    *chunk;  // Compilers do not own their chunks.
+    u16       free_reg;
     Small_Array<u16, MAX_ACTIVE_LOCALS> active; // Indexes are local registers.
 };
 
 LULU_FUNC Compiler
-compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk);
+compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Compiler *enclosing = nullptr);
+
+LULU_FUNC void
+compiler_error_limit(Compiler *c, isize limit, const char *what);
+
+template<class T>
+LULU_FUNC inline void
+compiler_check_limit(Compiler *c, T count, T limit, const char *what)
+{
+    if (count > limit) {
+        compiler_error_limit(c, cast(isize)limit, what);
+    }
+}
 
 LULU_FUNC isize
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line);

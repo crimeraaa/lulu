@@ -4,7 +4,7 @@
 #include "object.hpp"
 
 bool
-value_eq(Value a, Value b)
+operator==(Value a, Value b)
 {
     if (a.type != b.type) {
         return false;

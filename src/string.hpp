@@ -105,6 +105,5 @@ ostring_to_lstring(OString *s)
 LULU_FUNC inline const char *
 ostring_to_cstring(OString *s)
 {
-    lulu_assert(s->data[s->len] == '\0');
-    return s->data;
+    return check_expr(s->data[s->len] == '\0', s->data);
 }

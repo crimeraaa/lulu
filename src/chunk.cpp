@@ -82,7 +82,7 @@ chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
 
     Number i2 = cast(Number)len(c->constants);
     dynamic_push(vm, &c->constants, v);
-    table_set(vm, c->indexes, v, value_make_number(i2));
+    table_set(vm, c->indexes, v, i2);
     return cast(u32)i2;
 }
 
@@ -97,4 +97,27 @@ chunk_add_local(lulu_VM *vm, Chunk *c, OString *id)
     isize i = len(c->locals);
     dynamic_push(vm, &c->locals, local);
     return i;
+}
+
+const char *
+chunk_get_local(const Chunk *c, int local_number, isize pc)
+{
+    int counter = local_number;
+    for (Local local : c->locals) {
+        // nth local cannot possible be active at this point, and we assume
+        // that all succeeding locals won't be either.
+        if (local.start_pc > pc) {
+            break;
+        }
+
+        // Local is valid in this range?
+        if (pc <= local.end_pc) {
+            counter--;
+            // We iterated the correct number of times for this scope?
+            if (counter == 0) {
+                return ostring_to_cstring(local.identifier);
+            }
+        }
+    }
+    return nullptr;
 }

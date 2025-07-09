@@ -1,16 +1,28 @@
+#include <stdio.h>  // sprintf
+
 #include "compiler.hpp"
 #include "vm.hpp"
 
 Compiler
-compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk)
+compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Compiler *enclosing)
 {
     Compiler c;
     c.vm       = vm;
+    c.prev     = enclosing;
     c.parser   = p;
     c.chunk    = chunk;
     c.free_reg = 0;
     small_array_init(&c.active);
     return c;
+}
+
+void
+compiler_error_limit(Compiler *c, isize limit, const char *what)
+{
+    const char *who = (c->prev == nullptr) ? "script" : "function";
+    char buf[128];
+    sprintf(buf, "%s uses more than %" ISIZE_FMTSPEC " %s", who, limit, what);
+    parser_error(c->parser, buf);
 }
 
 //=== BYTECODE MANIPULATION ================================================ {{{
@@ -79,7 +91,7 @@ compiler_add_value(Compiler *c, Value v)
 u32
 compiler_add_number(Compiler *c, Number n)
 {
-    return compiler_add_value(c, value_make_number(n));
+    return compiler_add_value(c, n);
 }
 
 u32
@@ -96,9 +108,7 @@ void
 compiler_reserve_reg(Compiler *c, u16 n)
 {
     c->free_reg += n;
-    if (c->free_reg > MAX_REG) {
-        parser_error(c->parser, "Too many registers");
-    }
+    compiler_check_limit(c, c->free_reg, MAX_REG, "registers");
     if (c->chunk->stack_used < c->free_reg) {
         c->chunk->stack_used = c->free_reg;
     }
@@ -213,6 +223,7 @@ compiler_expr_next_reg(Compiler *c, Expr *e)
 u16
 compiler_expr_any_reg(Compiler *c, Expr *e)
 {
+    discharge_vars(c, e);
     if (e->type == EXPR_DISCHARGED) {
         return e->reg;
     }
@@ -240,9 +251,9 @@ compiler_expr_rk(Compiler *c, Expr *e)
 {
     switch (e->type) {
     case EXPR_NIL:    return value_to_rk(c, e, nil);
-    case EXPR_TRUE:   return value_to_rk(c, e, value_make_boolean(true));
-    case EXPR_FALSE:  return value_to_rk(c, e, value_make_boolean(false));
-    case EXPR_NUMBER: return value_to_rk(c, e, value_make_number(e->number));
+    case EXPR_TRUE:   return value_to_rk(c, e, true);
+    case EXPR_FALSE:  return value_to_rk(c, e, false);
+    case EXPR_NUMBER: return value_to_rk(c, e, e->number);
 
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {
@@ -370,8 +381,11 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
         break;
     }
     case EXPR_LOCAL: {
-        u16 reg = compiler_expr_any_reg(c, expr);
-        compiler_code_abc(c, OP_MOVE, var->reg, reg, 0, var->line);
+        // Pop if temporary register.
+        pop_expr(c, expr);
+
+        // Set destination register or code `OP_MOVE`.
+        expr_to_reg(c, expr, var->reg, var->line);
         break;
     }
     case EXPR_INDEXED: {
