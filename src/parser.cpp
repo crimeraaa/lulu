@@ -70,6 +70,8 @@ static bool
 block_continue(Parser *p)
 {
     switch (p->consumed.type) {
+    case TOKEN_ELSE:
+    case TOKEN_ELSEIF:
     case TOKEN_END:
     case TOKEN_EOF:
         return false;
@@ -202,6 +204,14 @@ expr_list(Parser *p, Compiler *c)
     return {e, n};
 }
 
+static u32
+constant_string(Parser *p, Compiler *c, const Token *t)
+{
+    OString *s = ostring_new(p->vm, t->lexeme);
+    u32      i = compiler_add_ostring(c, s);
+    return i;
+}
+
 static Expr
 resolve_variable(Parser *p, Compiler *c, const Token *t)
 {
@@ -236,7 +246,7 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
     if (match(p, TOKEN_IDENTIFIER)) {
         k.type  = EXPR_CONSTANT;
         k.line  = t.line;
-        k.index = compiler_add_ostring(c, ostring_new(p->vm, t.lexeme));
+        k.index = constant_string(p, c, &t);
     } else {
         consume(p, TOKEN_OPEN_BRACE);
         k = expression(p, c);
@@ -248,7 +258,8 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
 
     ctor->value = expression(p, c);
     u16 rkc = compiler_expr_rk(c, &ctor->value);
-    compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc, ctor->value.line);
+    compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc,
+        ctor->value.line);
 
     // 'pop' whatever registers we used
     c->free_reg = reg;
@@ -429,7 +440,7 @@ primary_expr(Parser *p, Compiler *c)
             Expr k;
             k.type  = EXPR_CONSTANT;
             k.line  = t.line;
-            k.index = compiler_add_ostring(c, ostring_new(p->vm, t.lexeme));
+            k.index = constant_string(p, c, &t);
             compiler_get_table(c, &e, &k);
             break;
         }
@@ -751,7 +762,6 @@ do_block(Parser *p, Compiler *c)
 {
     Block b;
     block_push(p, c, &b, /* breakable */ false);
-    recurse_push(p, c);
     while (block_continue(p)) {
         declaration(p, c);
     }
@@ -760,13 +770,38 @@ do_block(Parser *p, Compiler *c)
 }
 
 static void
+if_stmt(Parser *p, Compiler *c)
+{
+    Expr cond = expression(p, c);
+    consume(p, TOKEN_THEN);
+    compiler_code_if(c, &cond);
+    if (block_continue(p)) {
+        declaration(p, c);
+    }
+    if (match(p, TOKEN_ELSEIF)) {
+        parser_error(p, "'elseif' statements not yet implemented");
+    }
+    if (match(p, TOKEN_ELSE)) {
+        parser_error(p, "'else' statements not yet implemented");
+    }
+    consume(p, TOKEN_END);
+    compiler_jump_patch(c, &cond);
+}
+
+static void
 declaration(Parser *p, Compiler *c)
 {
+    recurse_push(p, c);
     Token t = p->consumed;
     switch (t.type) {
     case TOKEN_DO: {
         advance(p); // skip `do`
         do_block(p, c);
+        break;
+    }
+    case TOKEN_IF: {
+        advance(p); // skip 'if'
+        if_stmt(p, c);
         break;
     }
     case TOKEN_LOCAL:
@@ -791,6 +826,7 @@ declaration(Parser *p, Compiler *c)
         parser_error_at(p, &t, "Expected an expression");
         break;
     }
+    recurse_pop(p);
     match(p, TOKEN_SEMI);
 }
 

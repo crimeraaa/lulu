@@ -35,7 +35,7 @@ print_reg(const Chunk *c, u16 reg, isize pc)
     if (id != nullptr) {
         printf("local %s", id);
     } else {
-        printf("R(%i)", reg);
+        printf("R(%u)", reg);
     }
 }
 
@@ -60,7 +60,7 @@ arith(const Chunk *c, char op, Args args, isize pc)
 static void
 compare(const Chunk *c, const char *op, Args args, isize pc)
 {
-    printf("R(%i) = ", args.a);
+    printf("R(%u) = ", args.a);
     print_reg(c, args.basic.b, pc);
     printf(" %s ", op);
     print_reg(c, args.basic.c, pc);
@@ -130,15 +130,15 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
 
     switch (op) {
     case OP_CONSTANT:
-        printf("R(%i) := ", args.a);
+        printf("R(%u) := ", args.a);
         value_print(c->constants[args.extended.bx]);
         break;
     case OP_LOAD_NIL: {
-        printf("R(%i:%i) := nil ", args.a, args.basic.b + 1);
+        printf("R(%u:%u) := nil ", args.a, args.basic.b + 1);
         break;
     }
     case OP_LOAD_BOOL: {
-        printf("R(%i) := %s", args.a, (args.basic.b) ? "true" : "false");
+        printf("R(%u) := %s", args.a, (args.basic.b) ? "true" : "false");
         break;
     }
     case OP_GET_GLOBAL:
@@ -156,7 +156,7 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     }
     case OP_NEW_TABLE: {
         print_reg(c, args.a, pc);
-        printf(" := {}; #hash = %i, #array = %i", args.basic.b, args.basic.c);
+        printf(" := {}; #hash = %u, #array = %u", args.basic.b, args.basic.c);
         break;
     }
     case OP_GET_TABLE: {
@@ -194,33 +194,46 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     case OP_NOT: unary(c, "not ", args, pc); break;
     case OP_CONCAT:
         print_reg(c, args.a, pc);
-        printf(" := concat(R(%i:%i))", args.basic.b, args.basic.c + 1);
+        printf(" := concat(R(%u:%u))", args.basic.b, args.basic.c + 1);
         break;
+    case OP_TEST: {
+        printf("if Bool(");
+        print_reg(c, args.a, pc);
+        printf(") != %s then ip += 1 ; goto .code[%" ISIZE_FMTSPEC "]",
+            (args.basic.c) ? "true" : "false", pc + 1);
+        break;
+    }
+    case OP_JUMP: {
+        i32 offset = args.extended.sbx;
+        printf("ip += %i ; goto .code[%" ISIZE_FMTSPEC "]",
+                offset, (pc + 1) + cast_isize(offset));
+        break;
+    }
     case OP_CALL: {
         u16 argc = args.basic.b;
         u16 retc = args.basic.c;
 
         u16 last_ret = args.a + retc;
         if (retc == VARARG) {
-            printf("R(%i:) := ", args.a);
+            printf("R(%u:) := ", args.a);
         } else if (args.a != last_ret) {
-            printf("R(%i:%i) := ", args.a, last_ret);
+            printf("R(%u:%u) := ", args.a, last_ret);
         }
 
         u16 first_arg = args.a + 1;
         u16 last_arg  = first_arg + argc;
-        printf("R(%i)", args.a);
+        printf("R(%u)", args.a);
         if (first_arg == last_arg) {
             printf("()");
         } else if (argc == VARARG) {
-            printf("(R(%i:))", first_arg);
+            printf("(R(%u:))", first_arg);
         } else {
-            printf("(R(%i:%i))", first_arg, last_arg);
+            printf("(R(%u:%u))", first_arg, last_arg);
         }
         break;
     }
     case OP_RETURN:
-        printf("return R(%i:%i)", args.a, args.a + args.basic.b);
+        printf("return R(%u:%u)", args.a, args.a + args.basic.b);
         break;
     }
 

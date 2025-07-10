@@ -642,6 +642,21 @@ vm_execute(lulu_VM *vm, int n_calls)
             vm_concat(vm, ra, slice_pointer(&rb, &rc + 1));
             break;
         }
+        case OP_TEST: {
+            bool c    = cast(bool)getarg_c(i);
+            bool test = (!value_is_falsy(ra) == c);
+            // If test fails, skip the next instruction (assuming it's a jump)
+            if (!test) {
+                lulu_assert(getarg_op(*ip) == OP_JUMP);
+                ip++;
+            }
+            break;
+        }
+        case OP_JUMP: {
+            i32 offset = getarg_sbx(i);
+            ip += offset;
+            break;
+        }
         case OP_CALL: {
             int argc              = cast_int(getarg_b(i));
             int expected_returned = cast_int(getarg_c(i));

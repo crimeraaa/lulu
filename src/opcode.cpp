@@ -23,6 +23,8 @@ const char *const opcode_names[OPCODE_COUNT] = {
     /* OP_UNM */        "unm",
     /* OP_NOT */        "not",
     /* OP_CONCAT */     "concat",
+    /* OP_TEST */       "test",
+    /* OP_JUMP */       "jump",
     /* OP_CALL */       "call",
     /* OP_RETURN */     "return",
 };
@@ -79,6 +81,8 @@ const OpInfo opcode_info[OPCODE_COUNT] = {
     /* OP_UNM */        UNARY,
     /* OP_NOT */        UNARY,
     /* OP_CONCAT */     ABC(OPARG_REGK, OPARG_REGK,   OPARG_REGK),
+    /* OP_TEST */       ABC(OPARG_REGK, OPARG_UNUSED, OPARG_OTHER),
+    /* OP_JUMP */       MAKE(OPFORMAT_ASBX, OPARG_UNUSED, OPARG_JUMP, OPARG_UNUSED),
     /* OP_CALL */       FUNC_LIKE,
     /* OP_RETURN */     FUNC_LIKE,
 };

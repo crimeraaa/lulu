@@ -11,6 +11,9 @@ static constexpr isize
 MAX_ACTIVE_LOCALS = 200,
 MAX_TOTAL_LOCALS  = UINT16_MAX;
 
+static constexpr i32
+NO_JUMP = -1;
+
 struct Compiler {
     lulu_VM  *vm;
     Compiler *prev;   // Have an enclosing function?
@@ -210,3 +213,21 @@ compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg);
 
 LULU_FUNC void
 compiler_get_table(Compiler *c, Expr *t, Expr *k);
+
+
+/**
+ * @brief
+ *  -   Creates a new jump list. That is, `sBx` is `-1` meaning this is the
+ *      start (bottom) of the list.
+ *
+ * @return
+ *  -   The `pc` of the new jump list. Use this to fill an `Expr`.
+ */
+LULU_FUNC isize
+compiler_jump_new(Compiler *c, int line);
+
+LULU_FUNC void
+compiler_jump_patch(Compiler *c, Expr *jump);
+
+LULU_FUNC void
+compiler_code_if(Compiler *c, Expr *cond);

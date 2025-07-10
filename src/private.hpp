@@ -1,7 +1,8 @@
 #pragma once
 
-#include <stdint.h> // uint*_t
-#include <stddef.h> // size_t
+#include <stdint.h>     // [u]int*_t
+#include <stddef.h>     // size_t
+#include <inttypes.h>   // PRI* macros
 
 #include "lulu.h"
 

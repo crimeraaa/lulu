@@ -31,10 +31,8 @@ isize
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 {
     lulu_assert(opinfo_a(op) == OPARG_REGK || opinfo_a(op) == OPARG_OTHER);
-    lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER);
-    lulu_assert(opinfo_c(op) == OPARG_REGK
-        || opinfo_c(op) == OPARG_OTHER
-        || opinfo_c(op) == OPARG_UNUSED);
+    lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER || b == 0);
+    lulu_assert(opinfo_c(op) == OPARG_REGK || opinfo_c(op) == OPARG_OTHER || c2 == 0);
 
     return chunk_append(c->vm, c->chunk, instruction_abc(op, a, b, c2), line);
 }
@@ -44,7 +42,7 @@ compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line)
 {
     lulu_assert(opinfo_a(op) == OPARG_REGK);
     lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER);
-    lulu_assert(opinfo_c(op) == OPARG_UNUSED || opinfo_c(op) == OPARG_OTHER);
+    lulu_assert(opinfo_c(op) == OPARG_UNUSED);
     return chunk_append(c->vm, c->chunk, instruction_abx(op, a, bx), line);
 }
 
@@ -450,3 +448,30 @@ compiler_get_table(Compiler *c, Expr *t, Expr *k)
     t->table.reg      = t->reg;
     t->table.field_rk = rkb;
 }
+
+isize
+compiler_jump_new(Compiler *c, int line)
+{
+    Instruction i = instruction_asbx(OP_JUMP, 0, NO_JUMP);
+    return chunk_append(c->vm, c->chunk, i, line);
+}
+
+void
+compiler_jump_patch(Compiler *c, Expr *jump)
+{
+    Instruction *ip     = &c->chunk->code[jump->pc];
+    i32          offset = cast(i32)(len(c->chunk->code) - jump->pc - 1);
+    setarg_sbx(ip, offset);
+}
+
+void
+compiler_code_if(Compiler *c, Expr *cond)
+{
+    u16 ra = compiler_expr_any_reg(c, cond);
+    pop_expr(c, cond);
+    compiler_code_abc(c, OP_TEST, ra, 0, 0, cond->line);
+
+    cond->type = EXPR_JUMP;
+    cond->pc   = compiler_jump_new(c, cond->line);
+}
+

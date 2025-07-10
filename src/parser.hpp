@@ -52,6 +52,7 @@ enum Expr_Type {
     EXPR_GLOBAL,     // Global variable named stored in `index`.
     EXPR_LOCAL,      // Local variable register stored in `reg`.
     EXPR_INDEXED,    // Table register in `table.reg` and key RK in `table.field_rk`.
+    EXPR_JUMP,       // An `OP_JUMP` chain. Use `pc`.
     EXPR_CALL,       // `OP_CALL`. Use `pc`.
     EXPR_RELOCABLE,  // Instruction without register A finalized- use `pc`.
     EXPR_DISCHARGED, // Instruction with a finalized register.

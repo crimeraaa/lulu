@@ -25,6 +25,8 @@ OP_LEQ,         // A B C | R(A) := RK(B) <= RK(C)
 OP_UNM,         // A B   | R(A) := -R(B)
 OP_NOT,         // A B   | R(A) := not R(B)
 OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
+OP_TEST,        // A   C | if Bool(R(A)) ~= Bool(C) then pc++
+OP_JUMP,        // sBx   | ip += sBx
 OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
 OP_RETURN,      // A B C | return R(A:A+B)
 };
@@ -178,6 +180,12 @@ instruction_abx(OpCode op, u16 a, u32 bx)
     u16 b = cast(u16)(bx >> OPCODE_SIZE_C); // shift out 'c' bits
     u16 c = cast(u16)(bx & OPCODE_MAX_C);   // mask out 'b' bits
     return instruction_abc(op, a, b, c);
+}
+
+LULU_FUNC constexpr Instruction
+instruction_asbx(OpCode op, u16 a, i32 bx)
+{
+    return instruction_abx(op, a, cast(u32)(bx + OPCODE_MAX_SBX));
 }
 
 LULU_FUNC constexpr bool
