@@ -30,7 +30,7 @@ struct Array {
 };
 
 template<class T, auto N>
-LULU_FUNC inline isize
+LULU_FUNC constexpr isize
 len(const Array<T, N> &a)
 {
     unused(a);
@@ -38,7 +38,7 @@ len(const Array<T, N> &a)
 }
 
 template<class T, auto N>
-LULU_FUNC inline T *
+LULU_FUNC constexpr T *
 raw_data(Array<T, N> &a)
 {
     return a.data;

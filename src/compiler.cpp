@@ -17,12 +17,12 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Compiler *enclosing)
 }
 
 void
-compiler_error_limit(Compiler *c, isize limit, const char *what)
+compiler_error_limit(Compiler *c, isize limit, const char *what, const Token *where)
 {
     const char *who = (c->prev == nullptr) ? "script" : "function";
     char buf[128];
     sprintf(buf, "%s uses more than %" ISIZE_FMTSPEC " %s", who, limit, what);
-    parser_error(c->parser, buf);
+    parser_error_at(c->parser, where, buf);
 }
 
 //=== BYTECODE MANIPULATION ================================================ {{{
@@ -439,7 +439,6 @@ compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg)
             return true;
         }
     }
-    *reg = 0;
     return false;
 }
 

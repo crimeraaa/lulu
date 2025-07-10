@@ -12,7 +12,7 @@ value_at(lulu_VM *vm, int i)
 
     // Resolve 1-based relative index
     isize ii = (i > 0) ? cast_isize(i) - 1 : len(vm->window) - cast_isize(-i);
-    return (ii < len(vm->window)) ? vm->window[ii] : VALUE_NONE_;
+    return (0 <= ii && ii < len(vm->window)) ? vm->window[ii] : VALUE_NONE_;
 }
 
 lulu_VM *

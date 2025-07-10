@@ -62,15 +62,15 @@ enum Value_Type {
 
 #ifdef LULU_DEBUG
 
-[[gnu::format(printf, 4, 5)]]
+[[noreturn, gnu::format(printf, 4, 5)]]
 LULU_FUNC void
-lulu_assert_(const char *file, int line, const char *expr, const char *fmt, ...);
+lulu_assert_impl(const char *file, int line, const char *expr, const char *fmt, ...);
 
 #define lulu_assert(expr) \
-    (expr) ? ((void)0) : lulu_assert_(__FILE__, __LINE__, #expr, nullptr)
+    (expr) ? ((void)0) : lulu_assert_impl(__FILE__, __LINE__, #expr, nullptr)
 
 #define lulu_assertf(expr, fmt, ...) \
-    (expr) ? ((void)0) : lulu_assert_(__FILE__, __LINE__, #expr, fmt "\n", __VA_ARGS__)
+    (expr) ? ((void)0) : lulu_assert_impl(__FILE__, __LINE__, #expr, fmt "\n", __VA_ARGS__)
 
 #define lulu_assertln(expr, msg) \
     lulu_assertf(expr, "%s", msg)

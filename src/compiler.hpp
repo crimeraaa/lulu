@@ -23,15 +23,19 @@ struct Compiler {
 LULU_FUNC Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Compiler *enclosing = nullptr);
 
+[[noreturn]]
 LULU_FUNC void
-compiler_error_limit(Compiler *c, isize limit, const char *what);
+compiler_error_limit(Compiler *c, isize limit, const char *what, const Token *where);
 
 template<class T>
 LULU_FUNC inline void
-compiler_check_limit(Compiler *c, T count, T limit, const char *what)
+compiler_check_limit(Compiler *c, T count, T limit, const char *what, const Token *where = nullptr)
 {
     if (count > limit) {
-        compiler_error_limit(c, cast(isize)limit, what);
+        if (where == nullptr) {
+            where = &c->parser->consumed;
+        }
+        compiler_error_limit(c, cast(isize)limit, what, where);
     }
 }
 
@@ -196,6 +200,10 @@ compiler_set_one_return(Compiler *c, Expr *e);
  *  -   The last index where we will check the `c->active` array.
  *  -   This is useful to enforce scoping rules, so that this is still valid:
  *      `local x; do local x; end;`
+ *
+ * @note 2025-07-10
+ *  -   If the local was not found, then `*reg` was not set. It is not safe to
+ *      read in such case.
  */
 LULU_FUNC bool
 compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg);

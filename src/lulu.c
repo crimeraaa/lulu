@@ -75,7 +75,7 @@ read_file(const char *file_name, size_t *n)
         goto cleanup_buffer;
     }
 
-    /* `buffer[file_size]` is reserved for nul char so don't include it. */
+    /* `data[file_size]` is reserved for nul char so don't include it. */
     n_read = fread(data, sizeof(data[0]), *n, file_ptr);
     if (n_read < *n) {
         fprintf(stderr, "Failed to read file '%s'.\n", file_name);

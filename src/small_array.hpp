@@ -10,7 +10,7 @@ struct Small_Array {
 };
 
 template<class T, auto N>
-LULU_FUNC void
+LULU_FUNC constexpr void
 small_array_init(Small_Array<T, N> *sa)
 {
     sa->len = 0;
@@ -32,21 +32,21 @@ small_array_cap(const Small_Array<T, N> &sa)
 }
 
 template<class T, auto N>
-LULU_FUNC Slice<T>
+LULU_FUNC inline Slice<T>
 small_array_slice(Small_Array<T, N> &sa)
 {
     return slice_array(sa.data, 0, sa.len);
 }
 
 template<class T, auto N>
-LULU_FUNC T
+LULU_FUNC inline T
 small_array_get(const Small_Array<T, N> &sa, isize index)
 {
     return sa.data[index];
 }
 
 template<class T, auto N>
-LULU_FUNC T *
+LULU_FUNC inline T *
 small_array_get_ptr(Small_Array<T, N> *sa, isize index)
 {
     return &sa->data[index];

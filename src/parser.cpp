@@ -6,8 +6,8 @@
 #include "vm.hpp"
 
 struct Block {
-    Block *prev;         // Stack-allocated linked list.
-    u16    active_count; // Number of initialized locals at the time of pushing.
+    Block *prev;      // Stack-allocated linked list.
+    u16    n_locals;  // Number of initialized locals at the time of pushing.
     bool   breakable;
 };
 
@@ -32,9 +32,9 @@ declaration(Parser *p, Compiler *c);
 static void
 block_push(Parser *p, Compiler *c, Block *b, bool breakable)
 {
-    b->prev         = p->block;
-    b->active_count = cast(u16)small_array_len(c->active);
-    b->breakable    = breakable;
+    b->prev      = p->block;
+    b->n_locals  = cast(u16)small_array_len(c->active);
+    b->breakable = breakable;
 
     // Chain
     p->block = b;
@@ -45,12 +45,14 @@ block_pop(Parser *p, Compiler *c)
 {
     Block     *b      = p->block;
     Slice<u16> active = small_array_slice(c->active);
-    isize      pc     = len(c->chunk->code);
-    for (u16 index : slice_slice(active, cast_isize(b->active_count), len(active))) {
+
+    // Finalize all the locals' information before popping them.
+    isize pc = len(c->chunk->code);
+    for (u16 index : slice_slice(active, cast_isize(b->n_locals), len(active))) {
         c->chunk->locals[index].end_pc = pc;
     }
-    small_array_resize(&c->active, b->active_count);
-    c->free_reg = b->active_count;
+    small_array_resize(&c->active, b->n_locals);
+    c->free_reg = b->n_locals;
     p->block    = b->prev;
 }
 
@@ -77,6 +79,20 @@ block_continue(Parser *p)
     return true;
 }
 
+static void
+recurse_push(Parser *p, Compiler *c)
+{
+    compiler_check_limit(c, p->n_calls, PARSER_MAX_RECURSE, "recursive C calls");
+    p->n_calls++;
+}
+
+static void
+recurse_pop(Parser *p)
+{
+    p->n_calls--;
+    lulu_assert(p->n_calls >= 0);
+}
+
 Parser
 parser_make(lulu_VM *vm, LString source, LString script, Builder *b)
 {
@@ -87,12 +103,18 @@ parser_make(lulu_VM *vm, LString source, LString script, Builder *b)
     p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
     p.block     = nullptr;
+    p.n_calls   = 0;
     return p;
 }
 
-[[noreturn]]
-static void
-error_at(Parser *p, const Token *t, const char *msg)
+void
+parser_error(Parser *p, const char *msg)
+{
+    parser_error_at(p, &p->consumed, msg);
+}
+
+void
+parser_error_at(Parser *p, const Token *t, const char *msg)
 {
     LString where = (t->type == TOKEN_EOF) ? token_strings[t->type] : t->lexeme;
 
@@ -101,12 +123,6 @@ error_at(Parser *p, const Token *t, const char *msg)
     builder_write_lstring(p->vm, p->builder, where);
     const char *s = builder_to_cstring(p->builder);
     vm_syntax_error(p->vm, p->lexer.source, t->line, "%s at '%s'", msg, s);
-}
-
-void
-parser_error(Parser *p, const char *msg)
-{
-    error_at(p, &p->consumed, msg);
 }
 
 /**
@@ -130,8 +146,9 @@ lookahead(Parser *p)
 {
     // Do not call `lookahead` multiple times in a row.
     lulu_assert(p->lookahead.type == TOKEN_INVALID);
-    p->lookahead = lexer_lex(&p->lexer);
-    return p->lookahead.type;
+    Token t = lexer_lex(&p->lexer);
+    p->lookahead = t;
+    return t.type;
 }
 
 static bool
@@ -193,8 +210,8 @@ resolve_variable(Parser *p, Compiler *c, const Token *t)
     OString *id = ostring_new(p->vm, t->lexeme);
     if (compiler_get_local(c, /* limit */ 0, id, &reg)) {
         e.type = EXPR_LOCAL;
-        e.reg  = reg;
         e.line = t->line;
+        e.reg  = reg;
     } else {
         e.type  = EXPR_GLOBAL;
         e.line  = t->line;
@@ -349,7 +366,7 @@ prefix_expr(Parser *p, Compiler *c)
         return e;
     }
     default:
-        error_at(p, &t, "Expected an expression");
+        parser_error_at(p, &t, "Expected an expression");
     }
 }
 
@@ -519,6 +536,7 @@ get_binary(Token_Type type)
 static Expr
 expression(Parser *p, Compiler *c, Precedence limit)
 {
+    recurse_push(p, c);
     Expr left = primary_expr(p, c);
     for (;;) {
         Binary_Type b = get_binary(p->consumed.type);
@@ -569,6 +587,7 @@ expression(Parser *p, Compiler *c, Precedence limit)
         }
 
     }
+    recurse_pop(p);
     return left;
 }
 
@@ -675,17 +694,18 @@ local_push(Parser *p, Compiler *c, const Token *t)
 {
     u16 reg;
     OString *id = ostring_new(p->vm, t->lexeme);
-    if (compiler_get_local(c, p->block->active_count, id, &reg)) {
-        error_at(p, t, "Shadowing of local variable");
+    if (compiler_get_local(c, p->block->n_locals, id, &reg)) {
+        parser_error_at(p, t, "Shadowing of local variable");
     }
     isize index = chunk_add_local(p->vm, c->chunk, id);
 
     // Resulting index wouldn't fit as an element in the active array?
-    compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
+    compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables",
+        t);
 
     // Pushing to active array would go out of bounds?
     compiler_check_limit(c, small_array_len(c->active) + 1, MAX_ACTIVE_LOCALS,
-        "active local variables");
+        "active local variables", t);
 
     small_array_push(&c->active, cast(u16)index);
 }
@@ -731,6 +751,7 @@ do_block(Parser *p, Compiler *c)
 {
     Block b;
     block_push(p, c, &b, /* breakable */ false);
+    recurse_push(p, c);
     while (block_continue(p)) {
         declaration(p, c);
     }
@@ -767,7 +788,7 @@ declaration(Parser *p, Compiler *c)
         break;
     }
     default:
-        error_at(p, &t, "Expected an expression");
+        parser_error_at(p, &t, "Expected an expression");
         break;
     }
     match(p, TOKEN_SEMI);
@@ -798,7 +819,8 @@ parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
     block_pop(&p, &c);
 
     consume(&p, TOKEN_EOF);
-    compiler_code_abc(&c, OP_RETURN, 0, 0, 0, p.lexer.line);
+    compiler_code_return(&c, /* reg */ 0, /* count */ 0, /* is_vararg */ false,
+        p.lexer.line);
 
 #ifdef LULU_DEBUG_PRINT_CODE
     debug_disassemble(c.chunk);
