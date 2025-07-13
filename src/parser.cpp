@@ -743,13 +743,14 @@ static void
 local_start(Compiler *c, u16 n)
 {
     // `lparser.c:adjust_locals()`
-    isize pc    = len(c->chunk->code);
-    isize start = small_array_len(c->active);
+    isize  pc    = len(c->chunk->code);
+    isize  start = small_array_len(c->active);
 
     small_array_resize(&c->active, start + cast_isize(n));
-    Slice<u16> active = small_array_slice(c->active);
+    Slice<u16>   active = small_array_slice(c->active);
+    Slice<Local> locals = slice_slice(c->chunk->locals);
     for (u16 index : slice_slice(active, start, len(active))) {
-        c->chunk->locals[index].start_pc = pc;
+        locals[index].start_pc = pc;
     }
 }
 
@@ -789,10 +790,19 @@ enum Branch {
 };
 
 static void
-branch_skip(Parser *p)
+branch_skip(Parser *p, Compiler *c)
 {
-    while (block_continue(p)) {
-        advance(p);
+    // Parse and emit bytecode the bytecode for this branch to ensure its
+    // correctness, but since we never execute it we can toss it out by allowing
+    // it to be overwritten.
+    Chunk *ch        = c->chunk;
+    isize  last_line = len(ch->lines);
+    isize  last_pc   = len(ch->code);
+    block(p, c);
+    dynamic_resize(c->vm, &ch->code, last_pc);
+    dynamic_resize(c->vm, &ch->lines, last_line);
+    if (last_pc > 0) {
+        ch->lines[last_line - 1].end_pc = last_pc;
     }
 }
 
@@ -803,20 +813,19 @@ if_cond(Parser *p, Compiler *c, Branch *b)
     consume(p, TOKEN_THEN);
 
     // Some previous branch always runs, so this is dead code, even if `cond`
-    // itself represents a truthy condition- this is never reached.
+    // itself represents a truthy condition, this is never reached.
     if (*b == BRANCH_TRUTHY) {
-        branch_skip(p);
-        // Necessary to ensure correct behavior within `compiler_jump_*()`.
-        cond.pc = NO_JUMP;
-        return cond;
+        goto dead_code;
     }
 
     switch (cond.type) {
     case EXPR_NIL:
     case EXPR_FALSE:
-        // Always dead code.
+        // Falsy conditions always result in dead code.
         *b = BRANCH_FALSY;
-        branch_skip(p);
+dead_code:
+        branch_skip(p, c);
+        // Necessary to ensure correct behavior within `compiler_jump_*()`.
         cond.pc = NO_JUMP;
         return cond;
     case EXPR_TRUE:
@@ -864,7 +873,7 @@ if_stmt(Parser *p, Compiler *c)
             block(p, c);
             break;
         case BRANCH_TRUTHY:
-            branch_skip(p);
+            branch_skip(p, c);
             break;
         }
     } else {
@@ -899,7 +908,6 @@ declaration(Parser *p, Compiler *c)
         return_stmt(p, c, t.line);
         break;
     case TOKEN_IDENTIFIER: {
-        Token  t = p->consumed;
         Assign a{nullptr, expression(p, c)};
         // Differentiate `f().field = ...` and `f()`.
         if (a.variable.type == EXPR_CALL) {

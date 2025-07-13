@@ -275,26 +275,28 @@ folded_arith(OpCode op, Expr *left, const Expr *right)
         return false;
     }
 
-    Number n;
+    Number a, b, n;
+    a = left->number;
+    b = right->number;
     switch (op) {
-    case OP_ADD: n = lulu_Number_add(left->number, right->number); break;
-    case OP_SUB: n = lulu_Number_sub(left->number, right->number); break;
-    case OP_MUL: n = lulu_Number_mul(left->number, right->number); break;
+    case OP_ADD: n = lulu_Number_add(a, b); break;
+    case OP_SUB: n = lulu_Number_sub(a, b); break;
+    case OP_MUL: n = lulu_Number_mul(a, b); break;
     case OP_DIV:
         // Do not divide by 0.
-        if (right->number == cast(Number)0) {
+        if (b == cast(Number)0) {
             return false;
         }
-        n = lulu_Number_div(left->number, right->number);
+        n = lulu_Number_div(a, b);
         break;
     case OP_MOD:
         // Do not divide by 0.
-        if (right->number == cast(Number)0) {
+        if (b == cast(Number)0) {
             return false;
         }
-        n = lulu_Number_mod(left->number, right->number);
+        n = lulu_Number_mod(a, b);
         break;
-    case OP_POW: n = lulu_Number_pow(left->number, right->number); break;
+    case OP_POW: n = lulu_Number_pow(a, b); break;
     default:
         lulu_unreachable();
         return false;
@@ -367,14 +369,6 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
 }
 
 static void
-swap(u16 *a, u16 *b)
-{
-    u16 tmp = *a;
-    *a = *b;
-    *b = tmp;
-}
-
-static void
 expr_bool(Expr *e, bool b)
 {
     e->type = (b) ? EXPR_TRUE : EXPR_FALSE;
@@ -383,34 +377,42 @@ expr_bool(Expr *e, bool b)
 static bool
 folded_compare(OpCode op, bool cond, Expr *left, Expr *right)
 {
-    if (!(expr_is_number(left) && expr_is_number(right)) && op != OP_EQ) {
-        return false;
-    }
-
-    bool b;
-    switch (op) {
-    case OP_EQ:
-        if (left->type != right->type || !expr_is_literal(left)) {
+    bool result;
+    if (op == OP_EQ) {
+        if (left->type != right->type && !expr_is_literal(left)) {
             return false;
         }
+
         switch (left->type) {
-        case EXPR_NIL:
-        case EXPR_TRUE:
-        case EXPR_FALSE:    b = true; break;
-        case EXPR_NUMBER:   b = lulu_Number_eq(left->number, right->number); break;
+        case EXPR_NIL:      // fall-through
+        case EXPR_TRUE:     // fall-through
+        case EXPR_FALSE:    result = true; break;
+        case EXPR_NUMBER:   result = lulu_Number_eq(left->number, right->number); break;
         case EXPR_CONSTANT: return false; // To be safe, must be a runtime op.
         default:
             lulu_unreachable();
             break;
         }
-        break;
-    case OP_LT:  b = lulu_Number_lt(left->number, right->number);  break;
-    case OP_LEQ: b = lulu_Number_leq(left->number, right->number); break;
-    default:
-        lulu_unreachable();
-        break;
+
+        if (!cond) {
+            result = !result;
+        }
+    } else {
+        if (!expr_is_number(left) || !expr_is_number(right)) {
+            return false;
+        }
+        Number a, b;
+        if (cond) {
+            a = left->number;
+            b = right->number;
+        } else {
+            a = right->number;
+            b = left->number;
+        }
+        result = (op == OP_LT) ? lulu_Number_lt(a, b) : lulu_Number_leq(a, b);
     }
-    expr_bool(left, (cond) ? b : !b);
+
+    expr_bool(left, result);
     return true;
 }
 
@@ -565,44 +567,59 @@ compiler_jump_new(Compiler *c, int line)
     return chunk_append(c->vm, c->chunk, i, line);
 }
 
+static isize
+isize_abs(isize i)
+{
+    return (i >= 0) ? i : -i;
+}
+
 void
 compiler_jump_add(Compiler *c, isize *pc, int line)
 {
     isize next = compiler_jump_new(c, line);
     // No list yet?
-    if (*pc == NO_JUMP) {
+    if (*pc == cast_isize(NO_JUMP)) {
         *pc = next;
         return;
     }
 
     // `*pc` points to the start of the jump list, so loop for the first
     // `OP_JUMP` with `sBx == NO_JUMP`.
-    isize list = *pc;
+    isize              list = *pc;
+    Slice<Instruction> code = slice_slice(c->chunk->code);
     for (;;) {
-        Instruction *ip = &c->chunk->code[list];
-        i32 jump = getarg_sbx(*ip);
-        if (jump == NO_JUMP) {
-            i32 offset = cast(i32)(cast_isize(next) - list);
-            setarg_sbx(ip, offset);
+        Instruction *ip = &code[list];
+        lulu_assert(getarg_op(*ip) == OP_JUMP);
+
+        i32 offset = getarg_sbx(*ip);
+        if (offset == NO_JUMP) {
+            isize i = next - list;
+            compiler_check_limit(c, isize_abs(i), cast_isize(OPCODE_MAX_SBX),
+                "jump offset");
+            setarg_sbx(ip, cast(i32)i);
             break;
         }
 
-        list += cast_isize(jump);
+        list += cast_isize(offset);
     }
 }
 
 void
 compiler_jump_patch(Compiler *c, isize pc)
 {
-    if (pc == NO_JUMP) {
+    if (pc == cast_isize(NO_JUMP)) {
         return;
     }
 
+    Slice<Instruction> code    = slice_slice(c->chunk->code);
+    const isize        last_pc = len(code) - 1;
     for (;;) {
-        Instruction *ip = &c->chunk->code[pc];
+        Instruction *ip = &code[pc];
+        lulu_assert(getarg_op(*ip) == OP_JUMP);
+
         // `len(code)` is always 1-based, so we subtract 1 to get the `pc` of the
         // last instruction we wrote.
-        i32 offset = cast(i32)((len(c->chunk->code) - 1) - pc);
+        i32 offset = cast(i32)(last_pc - pc);
         i32 next   = getarg_sbx(*ip);
         setarg_sbx(ip, offset);
 
@@ -610,7 +627,7 @@ compiler_jump_patch(Compiler *c, isize pc)
             break;
         }
 
-        pc += next;
+        pc += cast_isize(next);
     }
 }
 

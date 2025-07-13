@@ -11,7 +11,7 @@ chunk_new(lulu_VM *vm, LString source, Table *indexes)
     Chunk *c = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
     dynamic_init(&c->constants);
     dynamic_init(&c->code);
-    dynamic_init(&c->line_info);
+    dynamic_init(&c->lines);
     dynamic_init(&c->locals);
     c->indexes    = indexes;
     c->source     = source;
@@ -23,8 +23,9 @@ static void
 add_line(lulu_VM *vm, Chunk *c, isize pc, int line)
 {
     // Have previous lines to go to?
-    if (len(c->line_info) > 0) {
-        Line_Info *last = &c->line_info[len(c->line_info) - 1];
+    isize n = len(c->lines);
+    if (n > 0) {
+        Line_Info *last = &c->lines[n - 1];
         if (last->line == line) {
             // Make sure `pc` is in range and will update things correctly.
             lulu_assert(last->start_pc <= pc && last->end_pc < pc);
@@ -34,7 +35,7 @@ add_line(lulu_VM *vm, Chunk *c, isize pc, int line)
     }
 
     Line_Info start{line, pc, pc};
-    dynamic_push(vm, &c->line_info, start);
+    dynamic_push(vm, &c->lines, start);
 }
 
 isize
@@ -51,14 +52,14 @@ chunk_get_line(const Chunk *c, isize pc)
 {
     // Binary search
     isize left  = 0;
-    isize right = len(c->line_info);
+    isize right = len(c->lines);
     // left <= right would otherwise pass, yet index 0 is invalid!
     if (right == 0) {
         return NO_LINE;
     }
     while (left <= right) {
         isize     i    = (left + right) / 2;
-        Line_Info info = c->line_info[i];
+        Line_Info info = c->lines[i];
         if (info.start_pc > pc) {
             // Current range is greater, ignore this right half.
             right = i - 1;

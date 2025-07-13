@@ -61,6 +61,15 @@ enum Value_Type {
     VALUE_CHUNK,
 };
 
+template<class T>
+LULU_FUNC inline void
+swap(T *a, T *b)
+{
+    T tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
 #ifdef LULU_DEBUG
 
 [[noreturn, gnu::format(printf, 4, 5)]]

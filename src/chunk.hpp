@@ -21,7 +21,7 @@ struct Chunk {
     OBJECT_HEADER;
     Dynamic<Value>       constants;
     Dynamic<Instruction> code;
-    Dynamic<Line_Info>   line_info;
+    Dynamic<Line_Info>   lines;
     Dynamic<Local>       locals;    // Information of ALL locals in the function.
     Table               *indexes;   // Maps values to indexes in `constants`.
     LString              source;

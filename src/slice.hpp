@@ -48,6 +48,13 @@ slice_pointer(T *start, T *stop)
 
 template<class T>
 LULU_FUNC inline Slice<T>
+slice_slice(Slice<T> &s)
+{
+    return {s.data, s.len};
+}
+
+template<class T>
+LULU_FUNC inline Slice<T>
 slice_slice(Slice<T> &s, isize start, isize stop)
 {
     Slice<T> s2{&s.data[start], stop - start};
