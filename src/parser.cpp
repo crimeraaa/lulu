@@ -675,16 +675,18 @@ assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
 }
 
 static void
-assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars)
+assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 {
     // Check the result of `expression()`.
     if (last->variable.type < EXPR_GLOBAL || last->variable.type > EXPR_INDEXED) {
-        parser_error(p, "Expected an assignable expression");
+        parser_error_at(p, t, "Expected an assignable expression");
     }
 
     if (match(p, TOKEN_COMMA)) {
+        // Previous one is not needed anymore.
+        *t = p->consumed;
         Assign next{last, expression(p, c)};
-        assignment(p, c, &next, n_vars + 1);
+        assignment(p, c, &next, n_vars + 1, t);
         return;
     }
 
@@ -780,11 +782,52 @@ do_block(Parser *p, Compiler *c)
     consume(p, TOKEN_END);
 }
 
+enum Branch {
+    BRANCH_DEFAULT, // Condition can only be resolved at runtime.
+    BRANCH_TRUTHY,  // Condition is known to be always truthy.
+    BRANCH_FALSY,   // Condition is known to be always falsy.
+};
+
+static void
+branch_skip(Parser *p)
+{
+    while (block_continue(p)) {
+        advance(p);
+    }
+}
+
 static Expr
-if_cond(Parser *p, Compiler *c)
+if_cond(Parser *p, Compiler *c, Branch *b)
 {
     Expr cond = expression(p, c);
     consume(p, TOKEN_THEN);
+
+    // Some previous branch always runs, so this is dead code, even if `cond`
+    // itself represents a truthy condition- this is never reached.
+    if (*b == BRANCH_TRUTHY) {
+        branch_skip(p);
+        // Necessary to ensure correct behavior within `compiler_jump_*()`.
+        cond.pc = NO_JUMP;
+        return cond;
+    }
+
+    switch (cond.type) {
+    case EXPR_NIL:
+    case EXPR_FALSE:
+        // Always dead code.
+        *b = BRANCH_FALSY;
+        branch_skip(p);
+        cond.pc = NO_JUMP;
+        return cond;
+    case EXPR_TRUE:
+    case EXPR_NUMBER:
+    case EXPR_CONSTANT:
+        *b = BRANCH_TRUTHY;
+        break;
+    default:
+        *b = BRANCH_DEFAULT;
+        break;
+    }
     compiler_code_if(c, &cond);
     block(p, c);
     return cond;
@@ -793,25 +836,37 @@ if_cond(Parser *p, Compiler *c)
 static void
 if_stmt(Parser *p, Compiler *c)
 {
-    Expr  cond      = if_cond(p, c);
-    isize else_jump = NO_JUMP;
-    int   line      = p->consumed.line;
+    Branch branch    = BRANCH_DEFAULT;
+    Expr   cond      = if_cond(p, c, &branch);
+    isize  else_jump = NO_JUMP;
+    int    line      = p->consumed.line;
 
     while (match(p, TOKEN_ELSEIF)) {
-        // All `if` and `elseif` will jump over the same `else` block.
-        compiler_jump_add(c, &else_jump, line);
+        if (branch == BRANCH_DEFAULT) {
+            // All `if` and `elseif` will jump over the same `else` block.
+            compiler_jump_add(c, &else_jump, line);
 
-        // A false test must jump to here to try the next `elseif` block.
-        compiler_jump_patch(c, cond.pc);
+            // A false test must jump to here to try the next `elseif` block.
+            compiler_jump_patch(c, cond.pc);
+        }
 
-        cond = if_cond(p, c);
+        cond = if_cond(p, c, &branch);
         line = p->consumed.line;
     }
 
     if (match(p, TOKEN_ELSE)) {
-        compiler_jump_add(c, &else_jump, line);
-        compiler_jump_patch(c, cond.pc);
-        block(p, c);
+        switch (branch) {
+        case BRANCH_DEFAULT:
+            compiler_jump_add(c, &else_jump, line);
+            compiler_jump_patch(c, cond.pc);
+            // Fall-through
+        case BRANCH_FALSY:
+            block(p, c);
+            break;
+        case BRANCH_TRUTHY:
+            branch_skip(p);
+            break;
+        }
     } else {
         compiler_jump_patch(c, cond.pc);
     }
@@ -844,12 +899,13 @@ declaration(Parser *p, Compiler *c)
         return_stmt(p, c, t.line);
         break;
     case TOKEN_IDENTIFIER: {
+        Token  t = p->consumed;
         Assign a{nullptr, expression(p, c)};
         // Differentiate `f().field = ...` and `f()`.
         if (a.variable.type == EXPR_CALL) {
             compiler_set_returns(c, &a.variable, 0);
         } else {
-            assignment(p, c, &a, /* n_vars */ 1);
+            assignment(p, c, &a, /* n_vars */ 1, &t);
         }
         break;
     }
