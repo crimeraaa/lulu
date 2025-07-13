@@ -3,23 +3,42 @@
 #include "private.hpp"
 #include "slice.hpp"
 
+LULU_FUNC void *
+mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
+
+
 /**
  * @brief
  *  -   Rounds `n` to the next power of 2 if it is not one already.
  */
-LULU_FUNC isize
-mem_next_pow2(isize n);
+LULU_FUNC inline isize
+mem_next_pow2(isize n)
+{
+    isize next = 8;
+    while (next <= n) {
+        // x << 1 <=> x * 2 if x is a power of 2
+        next <<= 1;
+    }
+    return next;
+}
 
 
 /**
  * @brief
  *  -   Rounds `n` to the next fibonacci term, if it is not one already.
  */
-isize
-mem_next_fib(isize n);
-
-LULU_FUNC void *
-mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
+LULU_FUNC inline isize
+mem_next_fib(isize n)
+{
+    // Use 8 at the first size for optimization.
+    isize next = 8;
+    while (next <= n) {
+        // (x*3) >> 1 <=> (x*3) / 2 <=> x*1.5
+        // 1.5 is the closest approximation of the Fibonacci factor of 1.618...
+        next = (next * 3) >> 1;
+    }
+    return next;
+}
 
 template<class T>
 LULU_FUNC inline T *

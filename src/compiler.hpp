@@ -11,16 +11,29 @@ static constexpr isize
 MAX_ACTIVE_LOCALS = 200,
 MAX_TOTAL_LOCALS  = UINT16_MAX;
 
+
+/**
+ * @details 2025-07-13
+ *  When used as a jump offset, this marks the start of a jump list because
+ *  of the following properties.
+ *
+ *  1.) It is an invalid `pc`, because `pc >= 0`.
+ *  2.) It is an infinite loop, because the `ip` at the point the instructions
+ *      are dispatched are already incremented. So adding `-1` essentially
+ *      undoes the increment, bringing us back to `OP_JUMP`.
+ */
 static constexpr i32
 NO_JUMP = -1;
 
+using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
+
 struct Compiler {
-    lulu_VM  *vm;
-    Compiler *prev;   // Have an enclosing function?
-    Parser   *parser; // All compilers share the same parser.
-    Chunk    *chunk;  // Compilers do not own their chunks.
-    u16       free_reg;
-    Small_Array<u16, MAX_ACTIVE_LOCALS> active; // Indexes are local registers.
+    lulu_VM     *vm;
+    Compiler    *prev;   // Have an enclosing function?
+    Parser      *parser; // All compilers share the same parser.
+    Chunk       *chunk;  // Compilers do not own their chunks.
+    u16          free_reg;
+    Active_Array active; // Indexes are local registers.
 };
 
 LULU_FUNC Compiler
@@ -217,8 +230,8 @@ compiler_get_table(Compiler *c, Expr *t, Expr *k);
 
 /**
  * @brief
- *  -   Creates a new jump list. That is, `sBx` is `-1` meaning this is the
- *      start (bottom) of the list.
+ *  -   Unconditionally creates a new jump.
+ *  -   That is, `sBx` is `-1` meaning this is the start (bottom) of the list.
  *
  * @return
  *  -   The `pc` of the new jump list. Use this to fill an `Expr`.
@@ -226,8 +239,18 @@ compiler_get_table(Compiler *c, Expr *t, Expr *k);
 LULU_FUNC isize
 compiler_jump_new(Compiler *c, int line);
 
+
+/**
+ * @brief
+ *  -   Chains a new jump to the jump list pointed at `*pc`.
+ *  -   `*pc` must be the start of a jump list, or it will be initialized to
+ *      a new one.
+ */
 LULU_FUNC void
-compiler_jump_patch(Compiler *c, Expr *jump);
+compiler_jump_add(Compiler *c, isize *pc, int line);
+
+LULU_FUNC void
+compiler_jump_patch(Compiler *c, isize pc);
 
 LULU_FUNC void
 compiler_code_if(Compiler *c, Expr *cond);

@@ -39,17 +39,17 @@ OPCODE_SIZE_B  = 9,
 OPCODE_SIZE_C  = 9,
 OPCODE_SIZE_A  = 8,
 OPCODE_SIZE_OP = 6,
-OPCODE_SIZE_BX = (OPCODE_SIZE_B + OPCODE_SIZE_C),
+OPCODE_SIZE_BX = OPCODE_SIZE_B + OPCODE_SIZE_C,
 
 // RK bit manipulation
-OPCODE_BIT_RK   = (1 << (OPCODE_SIZE_B - 1)),
-OPCODE_MAX_RK   = (OPCODE_BIT_RK - 1),
+OPCODE_BIT_RK   = 1 << (OPCODE_SIZE_B - 1),
+OPCODE_MAX_RK   = OPCODE_BIT_RK - 1,
 
 // Starting bit indexes
 OPCODE_OFFSET_OP =  0,
-OPCODE_OFFSET_A  =  (OPCODE_OFFSET_OP + OPCODE_SIZE_OP),
-OPCODE_OFFSET_C  =  (OPCODE_OFFSET_A + OPCODE_SIZE_A),
-OPCODE_OFFSET_B  =  (OPCODE_OFFSET_C + OPCODE_SIZE_C),
+OPCODE_OFFSET_A  =  OPCODE_OFFSET_OP + OPCODE_SIZE_OP,
+OPCODE_OFFSET_C  =  OPCODE_OFFSET_A + OPCODE_SIZE_A,
+OPCODE_OFFSET_B  =  OPCODE_OFFSET_C + OPCODE_SIZE_C,
 OPCODE_OFFSET_BX =  OPCODE_OFFSET_C;
 
 /**
@@ -66,7 +66,7 @@ struct Instruction {
 
 // Fills the `n` lower bits with 1's.
 // Useful when reading bit fields.
-constexpr u32
+LULU_FUNC constexpr u32
 BITMASK1(int n)
 {
     return (1 << cast(u32)n) - 1;
@@ -74,7 +74,7 @@ BITMASK1(int n)
 
 // Set `start` up to `start + n` bits with 0's. All the rest are 1's.
 // Useful when setting bit fields.
-constexpr u32
+LULU_FUNC constexpr u32
 BITMASK0(int start, int n)
 {
     return ~(BITMASK1(start) << (n));
@@ -239,38 +239,39 @@ getarg_bx(Instruction i)
 LULU_FUNC constexpr i32
 getarg_sbx(Instruction i)
 {
+    // We assume the cast is safe, because `[s]Bx` arguments are only 24 bits.
     return cast(i32)getarg_bx(i) - OPCODE_MAX_SBX;
 }
 
-LULU_FUNC constexpr void
+LULU_FUNC inline void
 setarg_c(Instruction *ip, u16 c)
 {
     ip->value &= OPCODE_MASK0_C;
     ip->value |= cast(u32)c << OPCODE_OFFSET_C;
 }
 
-LULU_FUNC constexpr void
+LULU_FUNC inline void
 setarg_b(Instruction *ip, u16 b)
 {
     ip->value &= OPCODE_MASK0_B;
     ip->value |= cast(u32)b << OPCODE_OFFSET_B;
 }
 
-LULU_FUNC constexpr void
+LULU_FUNC inline void
 setarg_a(Instruction *ip, u16 a)
 {
     ip->value &= OPCODE_MASK0_A;
     ip->value |= cast(u32)a << OPCODE_OFFSET_A;
 }
 
-LULU_FUNC constexpr void
+LULU_FUNC inline void
 setarg_bx(Instruction *ip, u32 index)
 {
     ip->value &= OPCODE_MASK0_BX;
     ip->value |= cast(u32)index << OPCODE_OFFSET_BX;
 }
 
-LULU_FUNC constexpr void
+LULU_FUNC inline void
 setarg_sbx(Instruction *ip, i32 jump)
 {
     setarg_bx(ip, cast(u32)(jump + OPCODE_MAX_SBX));

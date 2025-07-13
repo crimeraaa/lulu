@@ -25,10 +25,12 @@ enum Call_Type {
     CALL_C,
 };
 
-struct lulu_VM {
-    Array<Value, MAX_STACK>     stack;
-    Small_Array<Call_Frame, 16> frames;
+using Stack_Array = Array<Value, MAX_STACK>;
+using Frame_Array = Small_Array<Call_Frame, 16>;
 
+struct lulu_VM {
+    Stack_Array        stack;
+    Frame_Array        frames;
     Call_Frame        *caller; // Not a reference because it can be reassigned.
     Slice<Value>       window;
     Builder            builder;

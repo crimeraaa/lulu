@@ -93,7 +93,7 @@ debug_get_pad(const Chunk *c)
 void
 debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
 {
-    Args        args;
+    Args   args;
     OpCode op = getarg_op(ip);
     args.a = getarg_a(ip);
     printf("[%0*" ISIZE_FMTSPEC "] ", pad, pc);
@@ -133,14 +133,12 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         printf("R(%u) := ", args.a);
         value_print(c->constants[args.extended.bx]);
         break;
-    case OP_LOAD_NIL: {
+    case OP_LOAD_NIL:
         printf("R(%u:%u) := nil ", args.a, args.basic.b + 1);
         break;
-    }
-    case OP_LOAD_BOOL: {
+    case OP_LOAD_BOOL:
         printf("R(%u) := %s", args.a, (args.basic.b) ? "true" : "false");
         break;
-    }
     case OP_GET_GLOBAL:
         print_reg(c, args.a, pc);
         printf(" := ");
@@ -196,15 +194,16 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         print_reg(c, args.a, pc);
         printf(" := concat(R(%u:%u))", args.basic.b, args.basic.c + 1);
         break;
-    case OP_TEST: {
+    case OP_TEST:
         printf("if Bool(");
         print_reg(c, args.a, pc);
-        printf(") != %s then ip += 1 ; goto .code[%" ISIZE_FMTSPEC "]",
-            (args.basic.c) ? "true" : "false", pc + 1);
-        break;
-    }
+        printf(") != %s then ", (args.basic.c) ? "true" : "false");
+        args.extended.sbx = 1;
+        // fall-through
     case OP_JUMP: {
         i32 offset = args.extended.sbx;
+        // we add 1 because by the time an instruction is being decoded, the
+        // `ip` would have been incremented already.
         printf("ip += %i ; goto .code[%" ISIZE_FMTSPEC "]",
                 offset, (pc + 1) + cast_isize(offset));
         break;

@@ -56,6 +56,7 @@ block_pop(Parser *p, Compiler *c)
     p->block    = b->prev;
 }
 
+
 /**
  * @brief
  *  -   Checks if we hit a token that 'terminates' a block.
@@ -79,6 +80,17 @@ block_continue(Parser *p)
         break;
     }
     return true;
+}
+
+static void
+block(Parser *p, Compiler *c, bool breakable = false)
+{
+    Block b;
+    block_push(p, c, &b, breakable);
+    while (block_continue(p)) {
+        declaration(p, c);
+    }
+    block_pop(p, c);
 }
 
 static void
@@ -566,9 +578,11 @@ expression(Parser *p, Compiler *c, Precedence limit)
         case BINARY_DIV:
         case BINARY_MOD:
         case BINARY_POW: {
-            // VERY important to call this *before* parsing the right hand side,
-            // if it ends up in a register we want them to be in the correct order.
-            compiler_expr_rk(c, &left);
+            // VERY important to call this *before* parsing the right side,
+            // if it ends up in a register we want them to be in order.
+            if (!expr_is_number(&left)) {
+                compiler_expr_rk(c, &left);
+            }
             Expr right = expression(p, c, binary_precs[b].right);
             compiler_code_arith(c, binary_opcodes[b], &left, &right);
             break;
@@ -579,7 +593,9 @@ expression(Parser *p, Compiler *c, Precedence limit)
         case BINARY_EQ:  // fall-through
         case BINARY_LT:  // fall-through
         case BINARY_LEQ: {
-            compiler_expr_rk(c, &left);
+            if (!expr_is_literal(&left)) {
+                compiler_expr_rk(c, &left);
+            }
             Expr right = expression(p, c, binary_precs[b].right);
             compiler_code_compare(c, binary_opcodes[b], cond, &left, &right);
             break;
@@ -722,7 +738,7 @@ local_push(Parser *p, Compiler *c, const Token *t)
 }
 
 static void
-local_adjust(Compiler *c, u16 n)
+local_start(Compiler *c, u16 n)
 {
     // `lparser.c:adjust_locals()`
     isize pc    = len(c->chunk->code);
@@ -754,38 +770,53 @@ local_stmt(Parser *p, Compiler *c)
     }
 
     assign_adjust(c, n, &args);
-    local_adjust(c, n);
+    local_start(c, n);
 }
 
 static void
 do_block(Parser *p, Compiler *c)
 {
-    Block b;
-    block_push(p, c, &b, /* breakable */ false);
-    while (block_continue(p)) {
-        declaration(p, c);
-    }
-    block_pop(p, c);
+    block(p, c);
     consume(p, TOKEN_END);
+}
+
+static Expr
+if_cond(Parser *p, Compiler *c)
+{
+    Expr cond = expression(p, c);
+    consume(p, TOKEN_THEN);
+    compiler_code_if(c, &cond);
+    block(p, c);
+    return cond;
 }
 
 static void
 if_stmt(Parser *p, Compiler *c)
 {
-    Expr cond = expression(p, c);
-    consume(p, TOKEN_THEN);
-    compiler_code_if(c, &cond);
-    if (block_continue(p)) {
-        declaration(p, c);
+    Expr  cond      = if_cond(p, c);
+    isize else_jump = NO_JUMP;
+    int   line      = p->consumed.line;
+
+    while (match(p, TOKEN_ELSEIF)) {
+        // All `if` and `elseif` will jump over the same `else` block.
+        compiler_jump_add(c, &else_jump, line);
+
+        // A false test must jump to here to try the next `elseif` block.
+        compiler_jump_patch(c, cond.pc);
+
+        cond = if_cond(p, c);
+        line = p->consumed.line;
     }
-    if (match(p, TOKEN_ELSEIF)) {
-        parser_error(p, "'elseif' statements not yet implemented");
-    }
+
     if (match(p, TOKEN_ELSE)) {
-        parser_error(p, "'else' statements not yet implemented");
+        compiler_jump_add(c, &else_jump, line);
+        compiler_jump_patch(c, cond.pc);
+        block(p, c);
+    } else {
+        compiler_jump_patch(c, cond.pc);
     }
     consume(p, TOKEN_END);
-    compiler_jump_patch(c, &cond);
+    compiler_jump_patch(c, else_jump);
 }
 
 static void

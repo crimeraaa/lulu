@@ -133,8 +133,6 @@ pop_expr(Compiler *c, const Expr *e)
     }
 }
 
-//=== }}} ======================================================================
-
 static void
 discharge_vars(Compiler *c, Expr *e)
 {
@@ -173,8 +171,8 @@ expr_to_reg(Compiler *c, Expr *e, u16 reg, int line)
     case EXPR_NIL:
         compiler_load_nil(c, reg, 1, line);
         break;
-    case EXPR_TRUE: // fall-through
     case EXPR_FALSE:
+    case EXPR_TRUE: // fall-through
         compiler_load_boolean(c, reg, e->type == EXPR_TRUE, line);
         break;
     case EXPR_NUMBER: {
@@ -249,8 +247,8 @@ compiler_expr_rk(Compiler *c, Expr *e)
 {
     switch (e->type) {
     case EXPR_NIL:    return value_to_rk(c, e, nil);
-    case EXPR_TRUE:   return value_to_rk(c, e, true);
     case EXPR_FALSE:  return value_to_rk(c, e, false);
+    case EXPR_TRUE:   return value_to_rk(c, e, true);
     case EXPR_NUMBER: return value_to_rk(c, e, e->number);
 
     // May reach here if we previously called this.
@@ -267,10 +265,52 @@ compiler_expr_rk(Compiler *c, Expr *e)
     return compiler_expr_any_reg(c, e);
 }
 
+//=== }}} ======================================================================
+
+static bool
+folded_arith(OpCode op, Expr *left, const Expr *right)
+{
+    // At least one argument is not a number literal?
+    if (left->type != EXPR_NUMBER || right->type != EXPR_NUMBER) {
+        return false;
+    }
+
+    Number n;
+    switch (op) {
+    case OP_ADD: n = lulu_Number_add(left->number, right->number); break;
+    case OP_SUB: n = lulu_Number_sub(left->number, right->number); break;
+    case OP_MUL: n = lulu_Number_mul(left->number, right->number); break;
+    case OP_DIV:
+        // Do not divide by 0.
+        if (right->number == cast(Number)0) {
+            return false;
+        }
+        n = lulu_Number_div(left->number, right->number);
+        break;
+    case OP_MOD:
+        // Do not divide by 0.
+        if (right->number == cast(Number)0) {
+            return false;
+        }
+        n = lulu_Number_mod(left->number, right->number);
+        break;
+    case OP_POW: n = lulu_Number_pow(left->number, right->number); break;
+    default:
+        lulu_unreachable();
+        return false;
+    }
+    left->number = n;
+    return true;
+}
+
 void
 compiler_code_arith(Compiler *c, OpCode op, Expr *left, Expr *right)
 {
     lulu_assert((OP_ADD <= op && op <= OP_POW) || op == OP_CONCAT);
+    if (folded_arith(op, left, right)) {
+        return;
+    }
+
     u16 rkc = compiler_expr_rk(c, right);
     u16 rkb = compiler_expr_rk(c, left);
 
@@ -291,6 +331,33 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
 {
     lulu_assert(OP_UNM <= op && op <= OP_NOT);
 
+    switch (op) {
+    case OP_UNM:
+        if (expr_is_number(e)) {
+            e->number = lulu_Number_unm(e->number);
+            return;
+        }
+        break;
+    case OP_NOT:
+        switch (e->type) {
+        case EXPR_NIL:
+        case EXPR_FALSE:
+            e->type = EXPR_TRUE;
+            return;
+        case EXPR_TRUE:
+        case EXPR_NUMBER:
+        case EXPR_CONSTANT:
+            e->type = EXPR_FALSE;
+            return;
+        default:
+            break;
+        }
+        break;
+    default:
+        lulu_unreachable();
+        break;
+    }
+
     // Unary minus and unary `not` cannot operate on RK registers.
     u16 rb = compiler_expr_next_reg(c, e);
     pop_expr(c, e);
@@ -307,11 +374,53 @@ swap(u16 *a, u16 *b)
     *b = tmp;
 }
 
+static void
+expr_bool(Expr *e, bool b)
+{
+    e->type = (b) ? EXPR_TRUE : EXPR_FALSE;
+}
+
+static bool
+folded_compare(OpCode op, bool cond, Expr *left, Expr *right)
+{
+    if (!(expr_is_number(left) && expr_is_number(right)) && op != OP_EQ) {
+        return false;
+    }
+
+    bool b;
+    switch (op) {
+    case OP_EQ:
+        if (left->type != right->type || !expr_is_literal(left)) {
+            return false;
+        }
+        switch (left->type) {
+        case EXPR_NIL:
+        case EXPR_TRUE:
+        case EXPR_FALSE:    b = true; break;
+        case EXPR_NUMBER:   b = lulu_Number_eq(left->number, right->number); break;
+        case EXPR_CONSTANT: return false; // To be safe, must be a runtime op.
+        default:
+            lulu_unreachable();
+            break;
+        }
+        break;
+    case OP_LT:  b = lulu_Number_lt(left->number, right->number);  break;
+    case OP_LEQ: b = lulu_Number_leq(left->number, right->number); break;
+    default:
+        lulu_unreachable();
+        break;
+    }
+    expr_bool(left, (cond) ? b : !b);
+    return true;
+}
+
 void
 compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *left, Expr *right)
 {
     lulu_assert(OP_EQ <= op && op <= OP_LEQ);
-
+    if (folded_compare(op, cond, left, right)) {
+        return;
+    }
     u16 rkc = compiler_expr_rk(c, right);
     u16 rkb = compiler_expr_rk(c, left);
 
@@ -457,16 +566,65 @@ compiler_jump_new(Compiler *c, int line)
 }
 
 void
-compiler_jump_patch(Compiler *c, Expr *jump)
+compiler_jump_add(Compiler *c, isize *pc, int line)
 {
-    Instruction *ip     = &c->chunk->code[jump->pc];
-    i32          offset = cast(i32)(len(c->chunk->code) - jump->pc - 1);
-    setarg_sbx(ip, offset);
+    isize next = compiler_jump_new(c, line);
+    // No list yet?
+    if (*pc == NO_JUMP) {
+        *pc = next;
+        return;
+    }
+
+    // `*pc` points to the start of the jump list, so loop for the first
+    // `OP_JUMP` with `sBx == NO_JUMP`.
+    isize list = *pc;
+    for (;;) {
+        Instruction *ip = &c->chunk->code[list];
+        i32 jump = getarg_sbx(*ip);
+        if (jump == NO_JUMP) {
+            i32 offset = cast(i32)(cast_isize(next) - list);
+            setarg_sbx(ip, offset);
+            break;
+        }
+
+        list += cast_isize(jump);
+    }
+}
+
+void
+compiler_jump_patch(Compiler *c, isize pc)
+{
+    if (pc == NO_JUMP) {
+        return;
+    }
+
+    for (;;) {
+        Instruction *ip = &c->chunk->code[pc];
+        // `len(code)` is always 1-based, so we subtract 1 to get the `pc` of the
+        // last instruction we wrote.
+        i32 offset = cast(i32)((len(c->chunk->code) - 1) - pc);
+        i32 next   = getarg_sbx(*ip);
+        setarg_sbx(ip, offset);
+
+        if (next == NO_JUMP) {
+            break;
+        }
+
+        pc += next;
+    }
 }
 
 void
 compiler_code_if(Compiler *c, Expr *cond)
 {
+    // Save bytecode for conditions that are always truthy.
+    if (EXPR_TRUE <= cond->type && cond->type <= EXPR_CONSTANT) {
+        // Needed so that we can call `compiler_jump_*` without constantly
+        // checking the expression type.
+        cond->pc = NO_JUMP;
+        return;
+    }
+    // Condition may be pushed to a temporary register.
     u16 ra = compiler_expr_any_reg(c, cond);
     pop_expr(c, cond);
     compiler_code_abc(c, OP_TEST, ra, 0, 0, cond->line);

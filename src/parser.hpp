@@ -45,8 +45,8 @@ enum Binary_Type {
 enum Expr_Type {
     EXPR_NONE,
     EXPR_NIL,        // Literal `nil`.
-    EXPR_TRUE,       // Literal `true`.
     EXPR_FALSE,      // Literal `false`.
+    EXPR_TRUE,       // Literal `true`.
     EXPR_NUMBER,     // Number literal we haven't yet stored. Use `number`.
     EXPR_CONSTANT,   // Literal value stored in constants array. Use `index`.
     EXPR_GLOBAL,     // Global variable named stored in `index`.
@@ -74,6 +74,18 @@ struct Expr {
         u16        reg;
     };
 };
+
+LULU_FUNC inline bool
+expr_is_literal(const Expr *e)
+{
+    return EXPR_NIL <= e->type && e->type <= EXPR_CONSTANT;
+}
+
+LULU_FUNC inline bool
+expr_is_number(const Expr *e)
+{
+    return e->type == EXPR_NUMBER;
+}
 
 LULU_FUNC Parser
 parser_make(lulu_VM *vm, LString source, LString script, Builder *b);
