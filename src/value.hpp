@@ -212,7 +212,7 @@ value_to_userdata(Value v)
 LULU_FUNC inline Object *
 value_to_object(Value v)
 {
-    return check_expr(value_is_object(v), v.object);
+    return v.object;
 }
 
 //=== }}} ======================================================================

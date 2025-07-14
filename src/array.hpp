@@ -11,7 +11,7 @@ struct Array {
     operator[](I i)
     {
         isize ii = cast_isize(i);
-        lulu_assertf(ii < N,
+        lulu_assertf(0 <= ii && ii < N,
             "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
             ii, N);
         return this->data[ii];
@@ -22,7 +22,7 @@ struct Array {
     operator[](I i) const
     {
         isize ii = cast_isize(i);
-        lulu_assertf(ii < N,
+        lulu_assertf(0 <= ii && ii < N,
             "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
             ii, N);
         return this->data[ii];

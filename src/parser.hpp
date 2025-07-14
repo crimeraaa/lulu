@@ -21,8 +21,8 @@ struct Parser {
 
 enum Precedence : u8 {
     PREC_NONE,
-    PREC_AND,
     PREC_OR,
+    PREC_AND,
     PREC_EQUALITY,  // == ~=
     PREC_COMPARISON, // < <= > >=
     PREC_CONCAT,    // ..
@@ -34,6 +34,7 @@ enum Precedence : u8 {
 
 enum Binary_Type {
     BINARY_NONE,                        // PREC_NONE
+    BINARY_AND, BINARY_OR,              // PREC_AND, PREC_OR
     BINARY_ADD, BINARY_SUB,             // PREC_TERMINAL
     BINARY_MUL, BINARY_DIV, BINARY_MOD, // PREC_FACTOR
     BINARY_POW,                         // PREC_EXPONENT
@@ -66,6 +67,8 @@ struct Expr_Table {
 struct Expr {
     Expr_Type type;
     int       line;
+    isize     patch_true;
+    isize     patch_false;
     union {
         Number     number; // Must be first member for brace initialization.
         isize      pc;
@@ -85,6 +88,24 @@ LULU_FUNC inline bool
 expr_is_number(const Expr *e)
 {
     return e->type == EXPR_NUMBER;
+}
+
+LULU_FUNC inline bool
+expr_is_truthy(const Expr *e)
+{
+    return EXPR_TRUE <= e->type && e->type <= EXPR_CONSTANT;
+}
+
+LULU_FUNC inline bool
+expr_is_falsy(const Expr *e)
+{
+    return EXPR_NIL <= e->type && e->type <= EXPR_FALSE;
+}
+
+LULU_FUNC inline bool
+expr_has_jumps(const Expr *e)
+{
+    return e->patch_true != e->patch_false;
 }
 
 LULU_FUNC Parser

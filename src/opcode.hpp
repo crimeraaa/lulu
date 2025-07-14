@@ -26,6 +26,7 @@ OP_UNM,         // A B   | R(A) := -R(B)
 OP_NOT,         // A B   | R(A) := not R(B)
 OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
 OP_TEST,        // A   C | if Bool(R(A)) ~= Bool(C) then pc++
+OP_TEST_SET,    // A B C | if Bool(R(A)) ~= Bool(C) then pc++ else R(A) := R(B)
 OP_JUMP,        // sBx   | ip += sBx
 OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
 OP_RETURN,      // A B C | return R(A:A+B)
@@ -95,34 +96,33 @@ OPCODE_MASK0_BX = BITMASK0(OPCODE_SIZE_BX, OPCODE_OFFSET_BX);
 static constexpr u32 OPCODE_MAX_BX  = BITMASK1(OPCODE_SIZE_BX);
 static constexpr i32 OPCODE_MAX_SBX = cast(i32)(OPCODE_MAX_BX >> 1);
 
-enum OpFormat : u16 {
+enum OpFormat : u8 {
     OPFORMAT_ABC,
     OPFORMAT_ABX,
     OPFORMAT_ASBX,
 };
 
-// A bit space inefficient but I find this easier to reason about.
-enum OpArg : u16 {
-    OPARG_UNUSED,   // 0b0000
-    OPARG_REGK,     // 0b0001: Is a register or a constant
-    OPARG_JUMP,     // 0b0010: Is a jump offset
-    OPARG_OTHER,    // 0b0011: Used as condition, count or boolean
+enum OpArg : u8 {
+    OPARG_UNUSED,   // 0b00
+    OPARG_REGK,     // 0b01: Is a register or a constant
+    OPARG_JUMP,     // 0b10: Is a jump offset
+    OPARG_OTHER,    // 0b11: Used as condition, count or boolean
 };
 
 /**
  * @details 2025-06-10
  *    +----------+----------+----------+----------+
- *    |  13..10  |  09..06  |  05..02  |  01..00  |
+ *    |  06..05  |  04..03  |  02..02  |  01..00  |
  *    +----------+----------+----------+----------+
- *    | OpArg(B) | OpArg(C) | OpArg(A) | OpFormat |
+ *    | OpArg(B) | OpArg(C) |  bool(A) | OpFormat |
  *    +----------+----------+----------+----------+
  */
-using OpInfo = u16;
+using OpInfo = u8;
 
 static constexpr OpInfo
-OPINFO_SIZE_B       = 4,
-OPINFO_SIZE_C       = 4,
-OPINFO_SIZE_A       = 4,
+OPINFO_SIZE_B       = 2,
+OPINFO_SIZE_C       = 2,
+OPINFO_SIZE_A       = 1,
 OPINFO_SIZE_FMT     = 2,
 
 OPINFO_OFFSET_FMT   = 0,
@@ -141,16 +141,17 @@ opcode_names[OPCODE_COUNT];
 LULU_DATA const OpInfo
 opcode_info[OPCODE_COUNT];
 
-LULU_FUNC constexpr OpFormat
+LULU_FUNC inline OpFormat
 opinfo_fmt(OpCode op)
 {
     return cast(OpFormat)((opcode_info[op] >> OPINFO_OFFSET_FMT) & OPINFO_MASK1_FMT);
 }
 
-LULU_FUNC inline OpArg
+// Is register A a destination register?
+LULU_FUNC inline bool
 opinfo_a(OpCode op)
 {
-    return cast(OpArg)((opcode_info[op] >> OPINFO_OFFSET_A) & OPINFO_MASK1_A);
+    return cast(bool)((opcode_info[op] >> OPINFO_OFFSET_A) & OPINFO_MASK1_A);
 }
 
 LULU_FUNC inline OpArg

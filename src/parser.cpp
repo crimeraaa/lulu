@@ -17,10 +17,50 @@ struct Expr_List {
 };
 
 static constexpr Expr
-DEFAULT_EXPR = {EXPR_NONE, /* line */ 0, /* <unnamed>::number */ {0}};
+DEFAULT_EXPR = {EXPR_NONE,
+    /* line */ 0,
+    /* patch_true */ -1,
+    /* patch_false */ -1,
+    /* <unnamed>::number */ {0}};
 
 static constexpr Token
 DEFAULT_TOKEN = {{}, {0}, TOKEN_INVALID, 0};
+
+static Expr
+expr_make(Expr_Type type, int line)
+{
+    Expr e;
+    e.type        = type;
+    e.line        = line;
+    e.patch_true  = NO_JUMP;
+    e.patch_false = NO_JUMP;
+    e.number      = 0;
+    return e;
+}
+
+static Expr
+expr_make_number(Number n, int line)
+{
+    Expr e = expr_make(EXPR_NUMBER, line);
+    e.number = n;
+    return e;
+}
+
+static Expr
+expr_make_reg(Expr_Type type, u16 reg, int line)
+{
+    Expr e = expr_make(type, line);
+    e.reg = reg;
+    return e;
+}
+
+static Expr
+expr_make_index(Expr_Type type, u32 index, int line)
+{
+    Expr e = expr_make(type, line);
+    e.index = index;
+    return e;
+}
 
 // Forward declaration for recursive descent parsing.
 static Expr
@@ -231,13 +271,10 @@ resolve_variable(Parser *p, Compiler *c, const Token *t)
     u16 reg;
     OString *id = ostring_new(p->vm, t->lexeme);
     if (compiler_get_local(c, /* limit */ 0, id, &reg)) {
-        e.type = EXPR_LOCAL;
-        e.line = t->line;
-        e.reg  = reg;
+        e = expr_make_reg(EXPR_LOCAL, reg, t->line);
     } else {
-        e.type  = EXPR_GLOBAL;
-        e.line  = t->line;
-        e.index = compiler_add_ostring(c, id);
+        u32 i = compiler_add_ostring(c, id);
+        e = expr_make_index(EXPR_GLOBAL, i, t->line);
     }
     return e;
 }
@@ -256,9 +293,8 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
     Token t   = p->consumed;
     Expr k;
     if (match(p, TOKEN_IDENTIFIER)) {
-        k.type  = EXPR_CONSTANT;
-        k.line  = t.line;
-        k.index = constant_string(p, c, &t);
+        u32 i = constant_string(p, c, &t);
+        k = expr_make_index(EXPR_CONSTANT, i, t.line);
     } else {
         consume(p, TOKEN_OPEN_BRACE);
         k = expression(p, c);
@@ -332,40 +368,13 @@ prefix_expr(Parser *p, Compiler *c)
     Token t = p->consumed;
     advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
     switch (t.type) {
-    case TOKEN_NIL: {
-        Expr e;
-        e.type   = EXPR_NIL;
-        e.line   = t.line;
-        e.number = 0;
-        return e;
-    }
-    case TOKEN_TRUE: {
-        Expr e;
-        e.type   = EXPR_TRUE;
-        e.line   = t.line;
-        e.number = 0;
-        return e;
-    }
-    case TOKEN_FALSE: {
-        Expr e;
-        e.type   = EXPR_FALSE;
-        e.line   = t.line;
-        e.number = 0;
-        return e;
-    }
-    case TOKEN_NUMBER: {
-        Expr e;
-        e.type   = EXPR_NUMBER;
-        e.line   = t.line;
-        e.number = t.number;
-        return e;
-    }
+    case TOKEN_NIL:    return expr_make(EXPR_NIL, t.line);
+    case TOKEN_TRUE:   return expr_make(EXPR_TRUE, t.line);
+    case TOKEN_FALSE:  return expr_make(EXPR_FALSE, t.line);
+    case TOKEN_NUMBER: return expr_make_number(t.number, t.line);
     case TOKEN_STRING: {
-        Expr e;
-        e.type  = EXPR_CONSTANT;
-        e.line  = t.line;
-        e.index = compiler_add_ostring(c, t.ostring);
-        return e;
+        u32 i = compiler_add_ostring(c, t.ostring);
+        return expr_make_index(EXPR_CONSTANT, i, t.line);
     }
     case TOKEN_IDENTIFIER: {
         return resolve_variable(p, c, &t);
@@ -449,10 +458,8 @@ primary_expr(Parser *p, Compiler *c)
             Token t = p->consumed;
             consume(p, TOKEN_IDENTIFIER);
 
-            Expr k;
-            k.type  = EXPR_CONSTANT;
-            k.line  = t.line;
-            k.index = constant_string(p, c, &t);
+            u32  i = constant_string(p, c, &t);
+            Expr k = expr_make_index(EXPR_CONSTANT, i, t.line);
             compiler_get_table(c, &e, &k);
             break;
         }
@@ -491,6 +498,8 @@ right_assoc(Precedence prec)
 static const Binary_Prec
 binary_precs[] = {
     /* BINARY_NONE */   {PREC_NONE, PREC_NONE},
+    /* BINARY_AND */    left_assoc(PREC_AND),
+    /* BINARY_OR */     left_assoc(PREC_OR),
     /* BINARY_ADD */    left_assoc(PREC_TERMINAL),
     /* BINARY_SUB */    left_assoc(PREC_TERMINAL),
     /* BINARY_MUL */    left_assoc(PREC_FACTOR),
@@ -509,6 +518,8 @@ binary_precs[] = {
 static const OpCode
 binary_opcodes[] = {
     /* BINARY_NONE */   OP_RETURN,
+    /* BINARY_AND */    OP_TEST,
+    /* BINARY_OR */     OP_TEST,
     /* BINARY_ADD */    OP_ADD,
     /* BINARY_SUB */    OP_SUB,
     /* BINARY_MUL */    OP_MUL,
@@ -532,6 +543,8 @@ static Binary_Type
 get_binary(Token_Type type)
 {
     switch (type) {
+    case TOKEN_AND:        return BINARY_AND;
+    case TOKEN_OR:         return BINARY_OR;
     case TOKEN_PLUS:       return BINARY_ADD;
     case TOKEN_DASH:       return BINARY_SUB;
     case TOKEN_ASTERISK:   return BINARY_MUL;
@@ -549,6 +562,73 @@ get_binary(Token_Type type)
         break;
     }
     return BINARY_NONE;
+}
+
+static void
+arith(Parser *p, Compiler *c, Expr *left, Binary_Type b)
+{
+    // VERY important to call this *before* parsing the right side,
+    // if it ends up in a register we want them to be in order.
+    if (!expr_is_number(left)) {
+        compiler_expr_rk(c, left);
+    }
+    Expr right = expression(p, c, binary_precs[b].right);
+    compiler_code_arith(c, binary_opcodes[b], left, &right);
+}
+
+static void
+compare(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
+{
+    if (!expr_is_literal(left)) {
+        compiler_expr_rk(c, left);
+    }
+    Expr right = expression(p, c, binary_precs[b].right);
+    compiler_code_compare(c, binary_opcodes[b], cond, left, &right);
+}
+
+enum Fold {
+    FOLD_NONE,
+    FOLD_TRUTHY,
+    FOLD_FALSY,
+};
+
+[[maybe_unused]]
+static Fold
+get_logical_fold(Expr *e, bool cond)
+{
+    switch (e->type) {
+    case EXPR_NIL:
+    case EXPR_FALSE:
+        // falsy   and any      => falsy
+        // truthy  and falsy    => falsy
+        // falsy   and truthy   => falsy
+        // falsy1  and falsy2   => falsy1
+        // truthy1 and truthy2  => truthy2
+        if (!cond) {
+            return FOLD_FALSY;
+        }
+        break;
+    case EXPR_TRUE:
+    case EXPR_NUMBER:
+    case EXPR_CONSTANT:
+        // truthy and any => truthy
+        if (cond) {
+            return FOLD_TRUTHY;
+        }
+        break;
+    default:
+        break;
+    }
+    return FOLD_NONE;
+}
+
+static void
+logical(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
+{
+    compiler_logical_new(c, left, cond);
+
+    Expr right = expression(p, c, binary_precs[b].right);
+    compiler_logical_patch(c, left, &right);
 }
 
 
@@ -572,34 +652,28 @@ expression(Parser *p, Compiler *c, Precedence limit)
 
         bool cond = true;
         switch (b) {
+        case BINARY_AND:
+            logical(p, c, &left, b, true);
+            break;
+        case BINARY_OR:
+            logical(p, c, &left, b, false);
+            break;
         case BINARY_ADD:
         case BINARY_SUB:
         case BINARY_MUL:
         case BINARY_DIV:
         case BINARY_MOD:
-        case BINARY_POW: {
-            // VERY important to call this *before* parsing the right side,
-            // if it ends up in a register we want them to be in order.
-            if (!expr_is_number(&left)) {
-                compiler_expr_rk(c, &left);
-            }
-            Expr right = expression(p, c, binary_precs[b].right);
-            compiler_code_arith(c, binary_opcodes[b], &left, &right);
+        case BINARY_POW:
+            arith(p, c, &left, b);
             break;
-        }
         case BINARY_NEQ: // fall-through
         case BINARY_GT:  // fall-through
         case BINARY_GEQ: cond = false;
         case BINARY_EQ:  // fall-through
         case BINARY_LT:  // fall-through
-        case BINARY_LEQ: {
-            if (!expr_is_literal(&left)) {
-                compiler_expr_rk(c, &left);
-            }
-            Expr right = expression(p, c, binary_precs[b].right);
-            compiler_code_compare(c, binary_opcodes[b], cond, &left, &right);
+        case BINARY_LEQ:
+            compare(p, c, &left, b, cond);
             break;
-        }
         case BINARY_CONCAT: {
             // Don't put `left` in an RK register no matter what.
             compiler_expr_next_reg(c, &left);
@@ -709,10 +783,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
     // Assign from rightmost target going leftmost. Use assigning expressions
     // from right to left as well.
     while (iter != nullptr) {
-        Expr tmp;
-        tmp.type = EXPR_DISCHARGED;
-        tmp.line = iter->variable.line; // Probably correct
-        tmp.reg  = c->free_reg - 1;
+        Expr tmp = expr_make_reg(EXPR_DISCHARGED, c->free_reg - 1, iter->variable.line);
         compiler_set_variable(c, &iter->variable, &tmp);
         iter = iter->prev;
     }

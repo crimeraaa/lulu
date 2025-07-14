@@ -24,22 +24,23 @@ const char *const opcode_names[OPCODE_COUNT] = {
     /* OP_NOT */        "not",
     /* OP_CONCAT */     "concat",
     /* OP_TEST */       "test",
+    /* OP_TEST_SET */   "test_set",
     /* OP_JUMP */       "jump",
     /* OP_CALL */       "call",
     /* OP_RETURN */     "return",
 };
 
 static constexpr OpInfo
-MAKE(OpFormat fmt, OpArg a, OpArg b, OpArg c)
+MAKE(OpFormat fmt, bool a, OpArg b, OpArg c)
 {
     return OpInfo((b << OPINFO_OFFSET_B)
-        |  (c   << OPINFO_OFFSET_C)
-        |  (a   << OPINFO_OFFSET_A)
+        |  (c << OPINFO_OFFSET_C)
+        |  (cast(u8)a << OPINFO_OFFSET_A)
         |  (fmt << OPINFO_OFFSET_FMT));
 }
 
 static constexpr OpInfo
-ABC(OpArg a, OpArg b, OpArg c)
+ABC(bool a, OpArg b, OpArg c)
 {
     return MAKE(OPFORMAT_ABC, a, b, c);
 }
@@ -47,27 +48,27 @@ ABC(OpArg a, OpArg b, OpArg c)
 static constexpr OpInfo
 ABX(OpArg bx)
 {
-    return MAKE(OPFORMAT_ABX, OPARG_REGK, bx, OPARG_UNUSED);
+    return MAKE(OPFORMAT_ABX, true, bx, OPARG_UNUSED);
 }
 
 static constexpr OpInfo
 CONSTANT  = ABX(OPARG_REGK),
-ARITH     = ABC(OPARG_REGK, OPARG_REGK, OPARG_REGK),
+ARITH     = ABC(true, OPARG_REGK, OPARG_REGK),
 COMPARE   = ARITH,
-UNARY     = ABC(OPARG_REGK, OPARG_REGK, OPARG_UNUSED),
-FUNC_LIKE = ABC(OPARG_REGK, OPARG_OTHER, OPARG_OTHER),
+UNARY     = ABC(true, OPARG_REGK, OPARG_UNUSED),
+FUNC_LIKE = ABC(true, OPARG_OTHER, OPARG_OTHER),
 MOVE_LIKE = UNARY;
 
 // Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
 const OpInfo opcode_info[OPCODE_COUNT] = {
     /* OP_CONSTANT */   CONSTANT,
     /* OP_LOAD_NIL */   MOVE_LIKE,
-    /* OP_LOAD_BOOL */  ABC(OPARG_REGK, OPARG_OTHER, OPARG_UNUSED),
+    /* OP_LOAD_BOOL */  ABC(true, OPARG_OTHER, OPARG_UNUSED),
     /* OP_GET_GLOBAL */ CONSTANT,
     /* OP_SET_GLOBAL */ CONSTANT,
-    /* OP_NEW_TABLE */  ABC(OPARG_REGK, OPARG_OTHER, OPARG_OTHER),
+    /* OP_NEW_TABLE */  ABC(true, OPARG_OTHER, OPARG_OTHER),
     /* OP_GET_TABLE */  ARITH,
-    /* OP_SET_TABLE */  ARITH,
+    /* OP_SET_TABLE */  ABC(false, OPARG_REGK, OPARG_REGK),
     /* OP_MOVE */       MOVE_LIKE,
     /* OP_ADD */        ARITH,
     /* OP_SUB */        ARITH,
@@ -80,9 +81,10 @@ const OpInfo opcode_info[OPCODE_COUNT] = {
     /* OP_LEQ */        COMPARE,
     /* OP_UNM */        UNARY,
     /* OP_NOT */        UNARY,
-    /* OP_CONCAT */     ABC(OPARG_REGK, OPARG_REGK,   OPARG_REGK),
-    /* OP_TEST */       ABC(OPARG_REGK, OPARG_UNUSED, OPARG_OTHER),
-    /* OP_JUMP */       MAKE(OPFORMAT_ASBX, OPARG_UNUSED, OPARG_JUMP, OPARG_UNUSED),
+    /* OP_CONCAT */     ARITH,
+    /* OP_TEST */       ABC(false, OPARG_REGK, OPARG_OTHER),
+    /* OP_TEST_SET */   ABC(true,  OPARG_REGK, OPARG_OTHER),
+    /* OP_JUMP */       MAKE(OPFORMAT_ASBX, false, OPARG_JUMP, OPARG_UNUSED),
     /* OP_CALL */       FUNC_LIKE,
     /* OP_RETURN */     FUNC_LIKE,
 };

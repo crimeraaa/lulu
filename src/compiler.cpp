@@ -30,7 +30,8 @@ compiler_error_limit(Compiler *c, isize limit, const char *what, const Token *wh
 isize
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 {
-    lulu_assert(opinfo_a(op) == OPARG_REGK || opinfo_a(op) == OPARG_OTHER);
+    // Not necessary
+    // lulu_assert(opinfo_a(op) || a == 0);
     lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER || b == 0);
     lulu_assert(opinfo_c(op) == OPARG_REGK || opinfo_c(op) == OPARG_OTHER || c2 == 0);
 
@@ -40,7 +41,7 @@ compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 isize
 compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line)
 {
-    lulu_assert(opinfo_a(op) == OPARG_REGK);
+    lulu_assert(opinfo_a(op));
     lulu_assert(opinfo_b(op) == OPARG_REGK || opinfo_b(op) == OPARG_OTHER);
     lulu_assert(opinfo_c(op) == OPARG_UNUSED);
     return chunk_append(c->vm, c->chunk, instruction_abx(op, a, bx), line);
@@ -196,9 +197,16 @@ expr_to_reg(Compiler *c, Expr *e, u16 reg, int line)
         break;
     }
     default:
-        lulu_assertf(false, "Expr_Type(%i) not yet implemented", e->type);
+        lulu_assertf(e->type == EXPR_NONE || e->type == EXPR_JUMP,
+            "Expr_Type(%i) not yet implemented", e->type);
         lulu_unreachable();
         return;
+    }
+    if (expr_has_jumps(e)) {
+        isize pc = (e->patch_true == NO_JUMP) ? e->patch_false : e->patch_true;
+        Instruction *ip = &c->chunk->code[pc - 1];
+        lulu_assert(getarg_op(*ip) == OP_TEST_SET);
+        setarg_a(ip, reg);
     }
     e->reg  = reg;
     e->type = EXPR_DISCHARGED;
@@ -578,7 +586,7 @@ compiler_jump_add(Compiler *c, isize *pc, int line)
 {
     isize next = compiler_jump_new(c, line);
     // No list yet?
-    if (*pc == cast_isize(NO_JUMP)) {
+    if (*pc == NO_JUMP) {
         *pc = next;
         return;
     }
@@ -607,7 +615,7 @@ compiler_jump_add(Compiler *c, isize *pc, int line)
 void
 compiler_jump_patch(Compiler *c, isize pc)
 {
-    if (pc == cast_isize(NO_JUMP)) {
+    if (pc == NO_JUMP) {
         return;
     }
 
@@ -650,3 +658,68 @@ compiler_code_if(Compiler *c, Expr *cond)
     cond->pc   = compiler_jump_new(c, cond->line);
 }
 
+[[maybe_unused]]
+static isize
+get_logical_jump(Compiler *c, Expr *e, bool cond)
+{
+    discharge_vars(c, e);
+    switch (e->type) {
+    case EXPR_NIL:
+    case EXPR_FALSE:
+        if (!cond) {
+            return NO_JUMP;
+        }
+        break;
+    case EXPR_TRUE:
+    case EXPR_NUMBER:
+    case EXPR_CONSTANT:
+        if (cond) {
+            return NO_JUMP;
+        }
+        break;
+    default:
+        break;
+    }
+    return NO_JUMP;
+}
+
+void
+compiler_logical_new(Compiler *c, Expr *left, bool cond)
+{
+    u16 reg = compiler_expr_any_reg(c, left);
+    // discharge_vars(c, left);
+    pop_expr(c, left);
+
+    compiler_code_abc(c, OP_TEST_SET, OPCODE_MAX_A, reg,
+        cast(u16)!cond, left->line);
+
+    if (cond) {
+        lulu_assert(left->patch_false == NO_JUMP);
+        compiler_jump_add(c, &left->patch_false, left->line);
+        compiler_jump_patch(c, left->patch_true);
+        left->patch_true = NO_JUMP;
+    } else {
+        lulu_assert(left->patch_true == NO_JUMP);
+        compiler_jump_add(c, &left->patch_true, left->line);
+        compiler_jump_patch(c, left->patch_false);
+        left->patch_false = NO_JUMP;
+    }
+}
+
+void
+compiler_logical_patch(Compiler *c, Expr *left, Expr *right)
+{
+    // lulu_assert(left->type == EXPR_JUMP);
+    lulu_assert(expr_has_jumps(left));
+
+    compiler_expr_any_reg(c, right);
+    // pop_expr(c, right);
+
+    isize pc = (left->patch_true == NO_JUMP) ? left->patch_false : left->patch_true;
+    compiler_jump_patch(c, pc);
+
+    // Replace the contents of `left` with `right` so we know what to assign with.
+    right->patch_true  = left->patch_true;
+    right->patch_false = left->patch_false;
+    *left = *right;
+}

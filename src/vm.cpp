@@ -537,7 +537,8 @@ vm_execute(lulu_VM *vm, int n_calls)
         debug_disassemble_at(&chunk, i, pc, pad);
 #endif // LULU_DEBUG_TRACE_EXEC
 
-        switch (getarg_op(i)) {
+        OpCode op = getarg_op(i);
+        switch (op) {
         case OP_CONSTANT:
             ra = chunk.constants[getarg_bx(i)];
             break;
@@ -642,13 +643,18 @@ vm_execute(lulu_VM *vm, int n_calls)
             vm_concat(vm, ra, slice_pointer(&rb, &rc + 1));
             break;
         }
-        case OP_TEST: {
-            bool c    = cast(bool)getarg_c(i);
-            bool test = (!value_is_falsy(ra) == c);
+        case OP_TEST:
+        case OP_TEST_SET: {
+            bool cond = cast(bool)getarg_c(i);
+            bool test = (!value_is_falsy(ra) == cond);
             // If test fails, skip the next instruction (assuming it's a jump)
             if (!test) {
                 lulu_assert(getarg_op(*ip) == OP_JUMP);
                 ip++;
+            } else if (op == OP_TEST_SET) {
+                u16   i2 = getarg_b(i);
+                Value rb = window[i2];
+                ra = rb;
             }
             break;
         }

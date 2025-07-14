@@ -195,11 +195,21 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         printf(" := concat(R(%u:%u))", args.basic.b, args.basic.c + 1);
         break;
     case OP_TEST:
-        printf("if Bool(");
+    case OP_TEST_SET: {
+        // Concept check: given `C == 0`, when do we skip the next instruction?
+        // How about for `C == 1`?
+        printf("if %sBool(", (args.basic.c) ? "not " : "");
         print_reg(c, args.a, pc);
-        printf(") != %s then ", (args.basic.c) ? "true" : "false");
-        args.extended.sbx = 1;
-        // fall-through
+        printf(") then ip += 1");
+        if (op == OP_TEST_SET) {
+            printf(" else ");
+            print_reg(c, args.a, pc);
+            printf(" := ");
+            print_reg(c, args.basic.b, pc);
+        }
+        printf(" ; goto .code[%" ISIZE_FMTSPEC "]", (pc + 1) + 1);
+        break;
+    }
     case OP_JUMP: {
         i32 offset = args.extended.sbx;
         // we add 1 because by the time an instruction is being decoded, the

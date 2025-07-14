@@ -12,6 +12,7 @@ class ExprPrinter:
         "call":        "pc",
         "relocable":   "pc",
         "discharged":  "reg",
+        "jump":        "pc",
     }
     __type:  str
     __value: gdb.Value

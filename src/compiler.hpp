@@ -22,8 +22,7 @@ MAX_TOTAL_LOCALS  = UINT16_MAX;
  *      are dispatched are already incremented. So adding `-1` essentially
  *      undoes the increment, bringing us back to `OP_JUMP`.
  */
-static constexpr i32
-NO_JUMP = -1;
+#define NO_JUMP     -1
 
 using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
 
@@ -254,3 +253,9 @@ compiler_jump_patch(Compiler *c, isize pc);
 
 LULU_FUNC void
 compiler_code_if(Compiler *c, Expr *cond);
+
+LULU_FUNC void
+compiler_logical_new(Compiler *c, Expr *left, bool cond);
+
+LULU_FUNC void
+compiler_logical_patch(Compiler *c, Expr *left, Expr *right);
