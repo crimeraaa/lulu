@@ -25,8 +25,8 @@ struct Args {
 static void
 print_reg(const Chunk *c, u16 reg, isize pc)
 {
-    if (reg_is_rk(reg)) {
-        u32 i = reg_get_k(reg);
+    if (Instruction::reg_is_rk(reg)) {
+        u32 i = Instruction::reg_get_k(reg);
         value_print(c->constants[i]);
         return;
     }
@@ -94,8 +94,8 @@ void
 debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
 {
     Args   args;
-    OpCode op = getarg_op(ip);
-    args.a = getarg_a(ip);
+    OpCode op = ip.op();
+    args.a = ip.a();
     printf("[%0*" ISIZE_FMTSPEC "] ", pad, pc);
 
     int line = chunk_get_line(c, pc);
@@ -107,23 +107,23 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     }
 
     printf("%-16s ", opcode_names[op]);
-    switch (opinfo_fmt(op)) {
+    switch (opinfo[op].fmt()) {
     case OPFORMAT_ABC:
-        args.basic.b = getarg_b(ip);
-        args.basic.c = getarg_c(ip);
+        args.basic.b = ip.b();
+        args.basic.c = ip.c();
         printf("%-4i %-4i ", args.a, args.basic.b);
-        if (opinfo_c(op) != OPARG_UNUSED) {
+        if (opinfo[op].c() != OPARG_UNUSED) {
             printf("%-4i ; ", args.basic.c);
         } else {
             printf(PAD4 "; ");
         }
         break;
     case OPFORMAT_ABX:
-        args.extended.bx = getarg_bx(ip);
+        args.extended.bx = ip.bx();
         printf("%-4i %-4i " PAD4 "; ", args.a, args.extended.bx);
         break;
     case OPFORMAT_ASBX:
-        args.extended.sbx = getarg_sbx(ip);
+        args.extended.sbx = ip.sbx();
         printf("%-4i %-4i " PAD4 "; ", args.a, args.extended.sbx);
         break;
     }
@@ -199,15 +199,14 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         // Concept check: given `C == 0`, when do we skip the next instruction?
         // How about for `C == 1`?
         printf("if %sBool(", (args.basic.c) ? "not " : "");
-        print_reg(c, args.a, pc);
-        printf(") then ip += 1");
+        print_reg(c, (op == OP_TEST) ? args.a : args.basic.b, pc);
+        printf(") then goto .code[%" ISIZE_FMTSPEC "]", (pc + 1) + 1);
         if (op == OP_TEST_SET) {
             printf(" else ");
             print_reg(c, args.a, pc);
             printf(" := ");
             print_reg(c, args.basic.b, pc);
         }
-        printf(" ; goto .code[%" ISIZE_FMTSPEC "]", (pc + 1) + 1);
         break;
     }
     case OP_JUMP: {

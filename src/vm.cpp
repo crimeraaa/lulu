@@ -489,14 +489,14 @@ vm_execute(lulu_VM *vm, int n_calls)
     Slice<Value>       window = vm->window;
 
 #define GET_RK(rk)                                                             \
-    reg_is_rk(rk)                                                              \
-        ? chunk.constants[reg_get_k(rk)]                                       \
+    Instruction::reg_is_rk(rk)                                                 \
+        ? chunk.constants[Instruction::reg_get_k(rk)]                          \
         : window[rk]
 
 #define BINARY_OP(number_fn, error_fn)                                         \
 {                                                                              \
-    u16          b  = getarg_b(i);                                             \
-    u16          c  = getarg_c(i);                                             \
+    u16          b  = i.b();                                                   \
+    u16          c  = i.c();                                                   \
     const Value &rb = GET_RK(b);                                               \
     const Value &rc = GET_RK(c);                                               \
     if (!value_is_number(rb) || !value_is_number(rc)) {                        \
@@ -517,7 +517,7 @@ vm_execute(lulu_VM *vm, int n_calls)
 
     for (;;) {
         Instruction i  = *ip++;
-        Value      &ra =  window[getarg_a(i)];
+        Value      &ra =  window[i.a()];
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.
@@ -537,22 +537,22 @@ vm_execute(lulu_VM *vm, int n_calls)
         debug_disassemble_at(&chunk, i, pc, pad);
 #endif // LULU_DEBUG_TRACE_EXEC
 
-        OpCode op = getarg_op(i);
+        OpCode op = i.op();
         switch (op) {
         case OP_CONSTANT:
-            ra = chunk.constants[getarg_bx(i)];
+            ra = chunk.constants[i.bx()];
             break;
         case OP_LOAD_NIL: {
-            Value &rb = window[getarg_b(i)];
+            Value &rb = window[i.b()];
             Slice<Value> dst = slice_pointer(&ra, &rb + 1);
             fill(dst, nil);
             break;
         }
         case OP_LOAD_BOOL:
-            ra = cast(bool)getarg_b(i);
+            ra = cast(bool)i.b();
             break;
         case OP_GET_GLOBAL: {
-            Value k = chunk.constants[getarg_bx(i)];
+            Value k = chunk.constants[i.bx()];
             Value v;
             protect(vm, ip);
             if (!table_get(&vm->globals, k, &v)) {
@@ -563,21 +563,21 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_SET_GLOBAL: {
-            Value k = chunk.constants[getarg_bx(i)];
+            Value k = chunk.constants[i.bx()];
             protect(vm, ip);
             table_set(vm, &vm->globals, k, ra);
             break;
         }
         case OP_NEW_TABLE: {
-            isize n_hash  = cast_isize(getarg_b(i));
-            isize n_array = cast_isize(getarg_c(i));
+            isize n_hash  = cast_isize(i.b());
+            isize n_array = cast_isize(i.c());
             Table *t = table_new(vm, n_hash, n_array);
             ra = value_make_table(t);
             break;
         }
         case OP_GET_TABLE: {
-            Value &t = window[getarg_b(i)];
-            Value &k = GET_RK(getarg_c(i));
+            Value &t = window[i.b()];
+            Value &k = GET_RK(i.c());
             protect(vm, ip);
             if (!value_is_table(t)) {
                 type_error(vm, "index", t);
@@ -590,8 +590,8 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_SET_TABLE: {
-            Value &k = GET_RK(getarg_b(i));
-            Value &v = GET_RK(getarg_c(i));
+            Value &k = GET_RK(i.b());
+            Value &v = GET_RK(i.c());
             protect(vm, ip);
             if (!value_is_table(ra)) {
                 type_error(vm, "index", ra);
@@ -602,7 +602,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_MOVE: {
-            Value &rb = window[getarg_b(i)];
+            Value &rb = window[i.b()];
             ra = rb;
             break;
         }
@@ -613,8 +613,8 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_EQ: {
-            u16   b  = getarg_b(i);
-            u16   c  = getarg_c(i);
+            u16   b  = i.b();
+            u16   c  = i.c();
             Value rb = GET_RK(b);
             Value rc = GET_RK(c);
             ra = (rb == rc);
@@ -623,7 +623,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_LT:  COMPARE_OP(lulu_Number_lt); break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
         case OP_UNM: {
-            Value &rb = window[getarg_b(i)];
+            Value &rb = window[i.b()];
             if (!value_is_number(rb)) {
                 protect(vm, ip);
                 arith_error(vm, rb, rb);
@@ -632,40 +632,47 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_NOT: {
-            Value rb = window[getarg_b(i)];
+            Value rb = window[i.b()];
             ra = value_is_falsy(rb);
             break;
         }
         case OP_CONCAT: {
-            Value &rb = window[getarg_b(i)];
-            Value &rc = window[getarg_c(i)];
+            Value &rb = window[i.b()];
+            Value &rc = window[i.c()];
             protect(vm, ip);
             vm_concat(vm, ra, slice_pointer(&rb, &rc + 1));
             break;
         }
-        case OP_TEST:
-        case OP_TEST_SET: {
-            bool cond = cast(bool)getarg_c(i);
+        case OP_TEST: {
+            bool cond = cast(bool)i.c();
             bool test = (!value_is_falsy(ra) == cond);
             // If test fails, skip the next instruction (assuming it's a jump)
             if (!test) {
-                lulu_assert(getarg_op(*ip) == OP_JUMP);
+                lulu_assert(ip->op() == OP_JUMP);
                 ip++;
-            } else if (op == OP_TEST_SET) {
-                u16   i2 = getarg_b(i);
-                Value rb = window[i2];
+            }
+            break;
+        }
+        case OP_TEST_SET: {
+            bool  cond = cast(bool)i.c();
+            Value rb   = window[i.b()];
+            bool  test = (!value_is_falsy(rb) == cond);
+            if (!test) {
+                lulu_assert(ip->op() == OP_JUMP);
+                ip++;
+            } else {
                 ra = rb;
             }
             break;
         }
         case OP_JUMP: {
-            i32 offset = getarg_sbx(i);
+            i32 offset = i.sbx();
             ip += offset;
             break;
         }
         case OP_CALL: {
-            int argc              = cast_int(getarg_b(i));
-            int expected_returned = cast_int(getarg_c(i));
+            int argc              = cast_int(i.b());
+            int expected_returned = cast_int(i.c());
             protect(vm, ip);
 
             Call_Type t = vm_call_init(vm, ra, argc, expected_returned);
@@ -675,7 +682,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_RETURN: {
-            int actual_returned = cast_int(getarg_b(i));
+            int actual_returned = cast_int(i.b());
             protect(vm, ip);
             vm_call_fini(vm, ra, actual_returned);
             n_calls--;

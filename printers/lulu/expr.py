@@ -9,10 +9,10 @@ class ExprPrinter:
         "constant":    "index",
         "global":      "index",
         "local":       "reg",
-        "call":        "pc",
         "relocable":   "pc",
         "discharged":  "reg",
         "jump":        "pc",
+        "call":        "pc",
     }
     __type:  str
     __value: gdb.Value
@@ -23,7 +23,16 @@ class ExprPrinter:
 
     def to_string(self) -> str:
         key = self.__INFO[self.__type] if self.__type in self.__INFO else None
+        s = self.__type
         if key:
-            return f"{self.__type}: {key}={self.__value[key]}"
-        return self.__type
+            s = f"{self.__type}: {key}={self.__value[key]}"
+            
+        pt = self.__value["patch_true"]
+        if pt != -1:
+            s += f", pt={pt}"
+
+        pf = self.__value["patch_false"]
+        if pf != -1:
+            s += f", pf={pf}"
+        return s
 

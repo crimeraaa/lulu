@@ -5,7 +5,8 @@
 #include "parser.hpp"
 
 static constexpr u16
-MAX_REG = OPCODE_MAX_A - 5;
+NO_REG  = Instruction::MAX_A, // MUST fit in 8 bits for bit manipulation.
+MAX_REG = Instruction::MAX_A - 5;
 
 static constexpr isize
 MAX_ACTIVE_LOCALS = 200,
@@ -34,6 +35,48 @@ struct Compiler {
     u16          free_reg;
     Active_Array active; // Indexes are local registers.
 };
+
+LULU_FUNC inline Instruction *
+get_code(Compiler *c, isize pc)
+{
+    return &c->chunk->code[pc];
+}
+
+LULU_FUNC inline Expr
+expr_make(Expr_Type type, int line)
+{
+    Expr e;
+    e.type        = type;
+    e.line        = line;
+    e.patch_true  = NO_JUMP;
+    e.patch_false = NO_JUMP;
+    e.number      = 0;
+    return e;
+}
+
+LULU_FUNC inline Expr
+expr_make_number(Number n, int line)
+{
+    Expr e = expr_make(EXPR_NUMBER, line);
+    e.number = n;
+    return e;
+}
+
+LULU_FUNC inline Expr
+expr_make_reg(Expr_Type type, u16 reg, int line)
+{
+    Expr e = expr_make(type, line);
+    e.reg = reg;
+    return e;
+}
+
+LULU_FUNC inline Expr
+expr_make_index(Expr_Type type, u32 index, int line)
+{
+    Expr e = expr_make(type, line);
+    e.index = index;
+    return e;
+}
 
 LULU_FUNC Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Compiler *enclosing = nullptr);
@@ -241,21 +284,18 @@ compiler_jump_new(Compiler *c, int line);
 
 /**
  * @brief
- *  -   Chains a new jump to the jump list pointed at `*pc`.
- *  -   `*pc` must be the start of a jump list, or it will be initialized to
+ *  -   Chains a new jump to the jump list pointed at `*list`.
+ *  -   `*list` must be the start of a jump list, or it will be initialized to
  *      a new one.
  */
 LULU_FUNC void
-compiler_jump_add(Compiler *c, isize *pc, int line);
+compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
 
 LULU_FUNC void
-compiler_jump_patch(Compiler *c, isize pc);
-
-LULU_FUNC void
-compiler_code_if(Compiler *c, Expr *cond);
+compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP, u16 reg = NO_REG);
 
 LULU_FUNC void
 compiler_logical_new(Compiler *c, Expr *left, bool cond);
 
 LULU_FUNC void
-compiler_logical_patch(Compiler *c, Expr *left, Expr *right);
+compiler_logical_patch(Compiler *c, Expr *left, Expr *right, bool cond);

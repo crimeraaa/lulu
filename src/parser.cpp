@@ -26,42 +26,6 @@ DEFAULT_EXPR = {EXPR_NONE,
 static constexpr Token
 DEFAULT_TOKEN = {{}, {0}, TOKEN_INVALID, 0};
 
-static Expr
-expr_make(Expr_Type type, int line)
-{
-    Expr e;
-    e.type        = type;
-    e.line        = line;
-    e.patch_true  = NO_JUMP;
-    e.patch_false = NO_JUMP;
-    e.number      = 0;
-    return e;
-}
-
-static Expr
-expr_make_number(Number n, int line)
-{
-    Expr e = expr_make(EXPR_NUMBER, line);
-    e.number = n;
-    return e;
-}
-
-static Expr
-expr_make_reg(Expr_Type type, u16 reg, int line)
-{
-    Expr e = expr_make(type, line);
-    e.reg = reg;
-    return e;
-}
-
-static Expr
-expr_make_index(Expr_Type type, u32 index, int line)
-{
-    Expr e = expr_make(type, line);
-    e.index = index;
-    return e;
-}
-
 // Forward declaration for recursive descent parsing.
 static Expr
 expression(Parser *p, Compiler *c, Precedence limit = PREC_NONE);
@@ -318,7 +282,7 @@ static Expr
 constructor(Parser *p, Compiler *c, int line)
 {
     Constructor ctor;
-    isize pc = compiler_code_abc(c, OP_NEW_TABLE, OPCODE_MAX_A, 0, 0, line);
+    isize pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0, line);
 
     ctor.table.type = EXPR_RELOCABLE;
     ctor.table.line = line;
@@ -356,9 +320,9 @@ constructor(Parser *p, Compiler *c, int line)
 
     consume(p, TOKEN_CLOSE_CURLY);
 
-    Instruction *ip = &c->chunk->code[pc];
-    setarg_b(ip, cast(u16)ctor.n_hash);
-    setarg_c(ip, cast(u16)ctor.n_array);
+    Instruction *ip = get_code(c, pc);
+    ip->set_b(cast(u16)ctor.n_hash);
+    ip->set_c(cast(u16)ctor.n_array);
     return ctor.table;
 }
 
@@ -586,49 +550,13 @@ compare(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
     compiler_code_compare(c, binary_opcodes[b], cond, left, &right);
 }
 
-enum Fold {
-    FOLD_NONE,
-    FOLD_TRUTHY,
-    FOLD_FALSY,
-};
-
-[[maybe_unused]]
-static Fold
-get_logical_fold(Expr *e, bool cond)
-{
-    switch (e->type) {
-    case EXPR_NIL:
-    case EXPR_FALSE:
-        // falsy   and any      => falsy
-        // truthy  and falsy    => falsy
-        // falsy   and truthy   => falsy
-        // falsy1  and falsy2   => falsy1
-        // truthy1 and truthy2  => truthy2
-        if (!cond) {
-            return FOLD_FALSY;
-        }
-        break;
-    case EXPR_TRUE:
-    case EXPR_NUMBER:
-    case EXPR_CONSTANT:
-        // truthy and any => truthy
-        if (cond) {
-            return FOLD_TRUTHY;
-        }
-        break;
-    default:
-        break;
-    }
-    return FOLD_NONE;
-}
-
 static void
 logical(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
 {
     compiler_logical_new(c, left, cond);
 
     Expr right = expression(p, c, binary_precs[b].right);
-    compiler_logical_patch(c, left, &right);
+    compiler_logical_patch(c, left, &right, cond);
 }
 
 
@@ -854,61 +782,12 @@ do_block(Parser *p, Compiler *c)
     consume(p, TOKEN_END);
 }
 
-enum Branch {
-    BRANCH_DEFAULT, // Condition can only be resolved at runtime.
-    BRANCH_TRUTHY,  // Condition is known to be always truthy.
-    BRANCH_FALSY,   // Condition is known to be always falsy.
-};
-
-static void
-branch_skip(Parser *p, Compiler *c)
-{
-    // Parse and emit bytecode the bytecode for this branch to ensure its
-    // correctness, but since we never execute it we can toss it out by allowing
-    // it to be overwritten.
-    Chunk *ch        = c->chunk;
-    isize  last_line = len(ch->lines);
-    isize  last_pc   = len(ch->code);
-    block(p, c);
-    dynamic_resize(c->vm, &ch->code, last_pc);
-    dynamic_resize(c->vm, &ch->lines, last_line);
-    if (last_pc > 0) {
-        ch->lines[last_line - 1].end_pc = last_pc;
-    }
-}
-
 static Expr
-if_cond(Parser *p, Compiler *c, Branch *b)
+if_cond(Parser *p, Compiler *c)
 {
     Expr cond = expression(p, c);
     consume(p, TOKEN_THEN);
-
-    // Some previous branch always runs, so this is dead code, even if `cond`
-    // itself represents a truthy condition, this is never reached.
-    if (*b == BRANCH_TRUTHY) {
-        goto dead_code;
-    }
-
-    switch (cond.type) {
-    case EXPR_NIL:
-    case EXPR_FALSE:
-        // Falsy conditions always result in dead code.
-        *b = BRANCH_FALSY;
-dead_code:
-        branch_skip(p, c);
-        // Necessary to ensure correct behavior within `compiler_jump_*()`.
-        cond.pc = NO_JUMP;
-        return cond;
-    case EXPR_TRUE:
-    case EXPR_NUMBER:
-    case EXPR_CONSTANT:
-        *b = BRANCH_TRUTHY;
-        break;
-    default:
-        *b = BRANCH_DEFAULT;
-        break;
-    }
-    compiler_code_if(c, &cond);
+    compiler_logical_new(c, &cond, true);
     block(p, c);
     return cond;
 }
@@ -916,39 +795,26 @@ dead_code:
 static void
 if_stmt(Parser *p, Compiler *c)
 {
-    Branch branch    = BRANCH_DEFAULT;
-    Expr   cond      = if_cond(p, c, &branch);
+    Expr   cond      = if_cond(p, c);
     isize  else_jump = NO_JUMP;
     int    line      = p->consumed.line;
 
     while (match(p, TOKEN_ELSEIF)) {
-        if (branch == BRANCH_DEFAULT) {
-            // All `if` and `elseif` will jump over the same `else` block.
-            compiler_jump_add(c, &else_jump, line);
+        // All `if` and `elseif` will jump over the same `else` block.
+        compiler_jump_add(c, &else_jump, compiler_jump_new(c, line));
 
-            // A false test must jump to here to try the next `elseif` block.
-            compiler_jump_patch(c, cond.pc);
-        }
-
-        cond = if_cond(p, c, &branch);
+        // A false test must jump to here to try the next `elseif` block.
+        compiler_jump_patch(c, cond.patch_false);
+        cond = if_cond(p, c);
         line = p->consumed.line;
     }
 
     if (match(p, TOKEN_ELSE)) {
-        switch (branch) {
-        case BRANCH_DEFAULT:
-            compiler_jump_add(c, &else_jump, line);
-            compiler_jump_patch(c, cond.pc);
-            // Fall-through
-        case BRANCH_FALSY:
-            block(p, c);
-            break;
-        case BRANCH_TRUTHY:
-            branch_skip(p, c);
-            break;
-        }
+        compiler_jump_add(c, &else_jump, compiler_jump_new(c, line));
+        compiler_jump_patch(c, cond.patch_false);
+        block(p, c);
     } else {
-        compiler_jump_patch(c, cond.pc);
+        compiler_jump_add(c, &else_jump, cond.patch_false);
     }
     consume(p, TOKEN_END);
     compiler_jump_patch(c, else_jump);

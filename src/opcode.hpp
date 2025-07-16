@@ -26,44 +26,13 @@ OP_UNM,         // A B   | R(A) := -R(B)
 OP_NOT,         // A B   | R(A) := not R(B)
 OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
 OP_TEST,        // A   C | if Bool(R(A)) ~= Bool(C) then pc++
-OP_TEST_SET,    // A B C | if Bool(R(A)) ~= Bool(C) then pc++ else R(A) := R(B)
+OP_TEST_SET,    // A B C | if Bool(R(B)) ~= Bool(C) then pc++ else R(A) := R(B)
 OP_JUMP,        // sBx   | ip += sBx
 OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
 OP_RETURN,      // A B C | return R(A:A+B)
 };
 
 static constexpr int OPCODE_COUNT = OP_RETURN + 1;
-
-static constexpr u32
-// Operand bit sizes
-OPCODE_SIZE_B  = 9,
-OPCODE_SIZE_C  = 9,
-OPCODE_SIZE_A  = 8,
-OPCODE_SIZE_OP = 6,
-OPCODE_SIZE_BX = OPCODE_SIZE_B + OPCODE_SIZE_C,
-
-// RK bit manipulation
-OPCODE_BIT_RK   = 1 << (OPCODE_SIZE_B - 1),
-OPCODE_MAX_RK   = OPCODE_BIT_RK - 1,
-
-// Starting bit indexes
-OPCODE_OFFSET_OP =  0,
-OPCODE_OFFSET_A  =  OPCODE_OFFSET_OP + OPCODE_SIZE_OP,
-OPCODE_OFFSET_C  =  OPCODE_OFFSET_A + OPCODE_SIZE_A,
-OPCODE_OFFSET_B  =  OPCODE_OFFSET_C + OPCODE_SIZE_C,
-OPCODE_OFFSET_BX =  OPCODE_OFFSET_C;
-
-/**
- * @details 2025-06-10
- *  +--------+--------+--------+--------+
- *  | 31..23 | 22..14 | 13..06 | 05:00  |
- *  +--------+--------+--------+--------+
- *  | Arg(B) | Arg(C) | Arg(A) | OpCode |
- *  +--------+--------+--------+--------+
- */
-struct Instruction {
-    u32 value;
-};
 
 // Fills the `n` lower bits with 1's.
 // Useful when reading bit fields.
@@ -81,20 +50,178 @@ BITMASK0(int start, int n)
     return ~(BITMASK1(start) << (n));
 }
 
-static constexpr u32
-OPCODE_MAX_B   = BITMASK1(OPCODE_SIZE_B),
-OPCODE_MAX_C   = BITMASK1(OPCODE_SIZE_C),
-OPCODE_MAX_A   = BITMASK1(OPCODE_SIZE_A),
-OPCODE_MAX_OP  = BITMASK1(OPCODE_SIZE_OP),
+/**
+ * @details 2025-06-10
+ *  +--------+--------+--------+--------+
+ *  | 31..23 | 22..14 | 13..06 | 05:00  |
+ *  +--------+--------+--------+--------+
+ *  | Arg(B) | Arg(C) | Arg(A) | OpCode |
+ *  +--------+--------+--------+--------+
+ */
+struct Instruction {
+    u32 value;
 
-OPCODE_MASK0_B  = BITMASK0(OPCODE_SIZE_B, OPCODE_OFFSET_B),
-OPCODE_MASK0_C  = BITMASK0(OPCODE_SIZE_C, OPCODE_OFFSET_C),
-OPCODE_MASK0_A  = BITMASK0(OPCODE_SIZE_A, OPCODE_OFFSET_A),
-OPCODE_MASK0_OP = BITMASK0(OPCODE_SIZE_OP, OPCODE_OFFSET_OP),
-OPCODE_MASK0_BX = BITMASK0(OPCODE_SIZE_BX, OPCODE_OFFSET_BX);
+    static constexpr u32
+    // Operand bit sizes
+    SIZE_B  = 9,
+    SIZE_C  = 9,
+    SIZE_A  = 8,
+    SIZE_OP = 6,
+    SIZE_BX = SIZE_B + SIZE_C,
 
-static constexpr u32 OPCODE_MAX_BX  = BITMASK1(OPCODE_SIZE_BX);
-static constexpr i32 OPCODE_MAX_SBX = cast(i32)(OPCODE_MAX_BX >> 1);
+    // RK bit manipulation
+    BIT_RK   = 1 << (SIZE_B - 1),
+    MAX_RK   = BIT_RK - 1,
+
+    // Starting bit indexes
+    OFFSET_OP =  0,
+    OFFSET_A  =  OFFSET_OP + SIZE_OP,
+    OFFSET_C  =  OFFSET_A + SIZE_A,
+    OFFSET_B  =  OFFSET_C + SIZE_C,
+    OFFSET_BX =  OFFSET_C;
+
+    static constexpr u32
+    MAX_B   = BITMASK1(SIZE_B),
+    MAX_C   = BITMASK1(SIZE_C),
+    MAX_A   = BITMASK1(SIZE_A),
+    MAX_OP  = BITMASK1(SIZE_OP),
+
+    MASK0_B  = BITMASK0(SIZE_B, OFFSET_B),
+    MASK0_C  = BITMASK0(SIZE_C, OFFSET_C),
+    MASK0_A  = BITMASK0(SIZE_A, OFFSET_A),
+    MASK0_OP = BITMASK0(SIZE_OP, OFFSET_OP),
+    MASK0_BX = BITMASK0(SIZE_BX, OFFSET_BX);
+
+    static constexpr u32 MAX_BX  = BITMASK1(SIZE_BX);
+    static constexpr i32 MAX_SBX = cast(i32)(MAX_BX >> 1);
+
+    static constexpr Instruction
+    make_abc(OpCode op, u16 a, u16 b, u16 c)
+    {
+        return {(cast(u32)b  << OFFSET_B)
+            |   (cast(u32)c  << OFFSET_C)
+            |   (cast(u32)a  << OFFSET_A)
+            |   (cast(u32)op << OFFSET_OP)};
+    }
+
+    static constexpr Instruction
+    make_abx(OpCode op, u16 a, u32 bx)
+    {
+        u16 b = cast(u16)(bx >> SIZE_C); // shift out `c` bits
+        u16 c = cast(u16)(bx & MAX_C);   // mask out `b` bits
+        return make_abc(op, a, b, c);
+    }
+
+    static constexpr Instruction
+    make_asbx(OpCode op, u16 a, i32 sbx)
+    {
+        return make_abx(op, a, cast(u32)(sbx + MAX_SBX));
+    }
+
+    OpCode
+    op() const noexcept
+    {
+        return cast(OpCode)this->extract<OFFSET_OP, MAX_OP>();
+    }
+
+    u16
+    a() const noexcept
+    {
+        return cast(u16)this->extract<OFFSET_A, MAX_A>();
+    }
+
+    u16
+    b() const noexcept
+    {
+        return cast(u16)this->extract<OFFSET_B, MAX_B>();
+    }
+
+    u16
+    c() const noexcept
+    {
+        return cast(u16)this->extract<OFFSET_C, MAX_C>();
+    }
+
+    u32
+    bx() const noexcept
+    {
+        return this->extract<OFFSET_BX, MAX_BX>();
+    }
+
+    i32
+    sbx() const noexcept
+    {
+        // NOTE(2025-07-16): We assume the cast is safe because [s]bx is a
+        // i24/u24, so all valid values of either un/signed should fit
+        // in even an i32.
+        return cast(i32)this->bx() - MAX_SBX;
+    }
+
+    void
+    set_a(u16 a) noexcept
+    {
+        this->set<OFFSET_A, MASK0_A>(cast(u32)a);
+    }
+
+    void
+    set_b(u16 b) noexcept
+    {
+        this->set<OFFSET_B, MASK0_B>(cast(u32)b);
+    }
+
+    void
+    set_c(u16 c) noexcept
+    {
+        this->set<OFFSET_C, MASK0_C>(cast(u32)c);
+    }
+
+    void
+    set_bx(u32 bx) noexcept
+    {
+        this->set<OFFSET_BX, MASK0_BX>(bx);
+    }
+
+    void
+    set_sbx(i32 sbx) noexcept
+    {
+        this->set<OFFSET_BX, MASK0_BX>(cast(u32)(sbx + MAX_SBX));
+    }
+
+    static bool
+    reg_is_rk(u16 reg)
+    {
+        return reg & BIT_RK;
+    }
+
+    static u16
+    reg_to_rk(u32 index)
+    {
+        return cast(u16)index | BIT_RK;
+    }
+
+    static u16
+    reg_get_k(u16 reg)
+    {
+        return reg & MAX_RK;
+    }
+
+
+private:
+    template<u32 OFFSET, u32 MASK1>
+    constexpr u32
+    extract() const noexcept
+    {
+        return (this->value >> OFFSET) & MASK1;
+    }
+
+    template<u32 OFFSET, u32 MASK0>
+    constexpr void
+    set(u32 arg) noexcept
+    {
+        this->value &= MASK0; // Clear previous bits of argument.
+        this->value |= (arg << OFFSET); // Shift new argument into correct position.
+    }
+};
 
 enum OpFormat : u8 {
     OPFORMAT_ABC,
@@ -112,168 +239,75 @@ enum OpArg : u8 {
 /**
  * @details 2025-06-10
  *    +----------+----------+----------+----------+
- *    |  06..05  |  04..03  |  02..02  |  01..00  |
+ *    | 06..06   |  05..04  |  03..02  |  01..00  |
  *    +----------+----------+----------+----------+
- *    | OpArg(B) | OpArg(C) |  bool(A) | OpFormat |
+ *    | bool(A)  | OpArg(B) | OpArg(C) | OpFormat |
  *    +----------+----------+----------+----------+
  */
-using OpInfo = u8;
+struct OpInfo {
+    u8 value;
 
-static constexpr OpInfo
-OPINFO_SIZE_B       = 2,
-OPINFO_SIZE_C       = 2,
-OPINFO_SIZE_A       = 1,
-OPINFO_SIZE_FMT     = 2,
+    static constexpr u8
+    SIZE_TEST    = 1,
+    SIZE_A       = 1,
+    SIZE_B       = 2,
+    SIZE_C       = 2,
+    SIZE_FMT     = 2,
 
-OPINFO_OFFSET_FMT   = 0,
-OPINFO_OFFSET_A     = (OPINFO_OFFSET_FMT + OPINFO_SIZE_FMT),
-OPINFO_OFFSET_C     = (OPINFO_OFFSET_A + OPINFO_SIZE_A),
-OPINFO_OFFSET_B     = (OPINFO_OFFSET_C + OPINFO_SIZE_C),
+    OFFSET_FMT   = 0,
+    OFFSET_C     = OFFSET_FMT + SIZE_FMT,
+    OFFSET_B     = OFFSET_C + SIZE_C,
+    OFFSET_A     = OFFSET_B + SIZE_B,
+    OFFSET_TEST  = OFFSET_A + SIZE_A,
 
-OPINFO_MASK1_B      = BITMASK1(OPINFO_SIZE_B),
-OPINFO_MASK1_C      = BITMASK1(OPINFO_SIZE_C),
-OPINFO_MASK1_A      = BITMASK1(OPINFO_SIZE_A),
-OPINFO_MASK1_FMT    = BITMASK1(OPINFO_SIZE_FMT);
+    MASK1_TEST   = BITMASK1(SIZE_TEST),
+    MASK1_A      = BITMASK1(SIZE_A),
+    MASK1_B      = BITMASK1(SIZE_B),
+    MASK1_C      = BITMASK1(SIZE_C),
+    MASK1_FMT    = BITMASK1(SIZE_FMT);
+
+    OpFormat
+    fmt() const noexcept
+    {
+        return cast(OpFormat)this->extract<OFFSET_FMT, MASK1_FMT>();
+    }
+
+    bool
+    test() const noexcept
+    {
+        return cast(bool)this->extract<OFFSET_TEST, MASK1_TEST>();
+    }
+
+    // A is used as a destination register?
+    bool
+    a() const noexcept
+    {
+        return cast(bool)this->extract<OFFSET_A, MASK1_A>();
+    }
+
+    OpArg
+    b() const noexcept
+    {
+        return cast(OpArg)this->extract<OFFSET_B, MASK1_B>();
+    }
+
+    OpArg
+    c() const noexcept
+    {
+        return cast(OpArg)this->extract<OFFSET_C, MASK1_C>();
+    }
+
+private:
+    template<u8 OFFSET, u8 MASK1>
+    u8
+    extract() const noexcept
+    {
+        return (this->value >> OFFSET) & MASK1;
+    }
+};
 
 LULU_DATA const char *const
 opcode_names[OPCODE_COUNT];
 
 LULU_DATA const OpInfo
-opcode_info[OPCODE_COUNT];
-
-LULU_FUNC inline OpFormat
-opinfo_fmt(OpCode op)
-{
-    return cast(OpFormat)((opcode_info[op] >> OPINFO_OFFSET_FMT) & OPINFO_MASK1_FMT);
-}
-
-// Is register A a destination register?
-LULU_FUNC inline bool
-opinfo_a(OpCode op)
-{
-    return cast(bool)((opcode_info[op] >> OPINFO_OFFSET_A) & OPINFO_MASK1_A);
-}
-
-LULU_FUNC inline OpArg
-opinfo_b(OpCode op)
-{
-    return cast(OpArg)((opcode_info[op] >> OPINFO_OFFSET_B) & OPINFO_MASK1_B);
-}
-
-LULU_FUNC inline OpArg
-opinfo_c(OpCode op)
-{
-    return cast(OpArg)((opcode_info[op] >> OPINFO_OFFSET_C) & OPINFO_MASK1_C);
-}
-
-LULU_FUNC constexpr Instruction
-instruction_abc(OpCode op, u16 a, u16 b, u16 c)
-{
-    return {(cast(u32)c  << OPCODE_OFFSET_C)
-        |   (cast(u32)b  << OPCODE_OFFSET_B)
-        |   (cast(u32)a  << OPCODE_OFFSET_A)
-        |   (cast(u32)op << OPCODE_OFFSET_OP)};
-}
-
-LULU_FUNC constexpr Instruction
-instruction_abx(OpCode op, u16 a, u32 bx)
-{
-    u16 b = cast(u16)(bx >> OPCODE_SIZE_C); // shift out 'c' bits
-    u16 c = cast(u16)(bx & OPCODE_MAX_C);   // mask out 'b' bits
-    return instruction_abc(op, a, b, c);
-}
-
-LULU_FUNC constexpr Instruction
-instruction_asbx(OpCode op, u16 a, i32 bx)
-{
-    return instruction_abx(op, a, cast(u32)(bx + OPCODE_MAX_SBX));
-}
-
-LULU_FUNC constexpr bool
-reg_is_rk(u16 reg)
-{
-    return reg & OPCODE_BIT_RK;
-}
-
-LULU_FUNC constexpr u16
-reg_to_rk(u32 index)
-{
-    return cast(u16)index | OPCODE_BIT_RK;
-}
-
-LULU_FUNC constexpr u16
-reg_get_k(u16 reg)
-{
-    return reg & OPCODE_MAX_RK;
-}
-
-LULU_FUNC constexpr u16
-getarg_c(Instruction i)
-{
-    return cast(u16)((i.value >> OPCODE_OFFSET_C) & OPCODE_MAX_C);
-}
-
-LULU_FUNC constexpr u16
-getarg_b(Instruction i)
-{
-    return cast(u16)((i.value >> OPCODE_OFFSET_B) & OPCODE_MAX_B);
-}
-
-LULU_FUNC constexpr u16
-getarg_a(Instruction i)
-{
-    return cast(u16)((i.value >> OPCODE_OFFSET_A) & OPCODE_MAX_A);
-}
-
-LULU_FUNC constexpr OpCode
-getarg_op(Instruction i)
-{
-    return cast(OpCode)((i.value >> OPCODE_OFFSET_OP) & OPCODE_MAX_OP);
-}
-
-LULU_FUNC constexpr u32
-getarg_bx(Instruction i)
-{
-    return cast(u32)((i.value >> OPCODE_OFFSET_BX) & OPCODE_MAX_BX);
-}
-
-LULU_FUNC constexpr i32
-getarg_sbx(Instruction i)
-{
-    // We assume the cast is safe, because `[s]Bx` arguments are only 24 bits.
-    return cast(i32)getarg_bx(i) - OPCODE_MAX_SBX;
-}
-
-LULU_FUNC inline void
-setarg_c(Instruction *ip, u16 c)
-{
-    ip->value &= OPCODE_MASK0_C;
-    ip->value |= cast(u32)c << OPCODE_OFFSET_C;
-}
-
-LULU_FUNC inline void
-setarg_b(Instruction *ip, u16 b)
-{
-    ip->value &= OPCODE_MASK0_B;
-    ip->value |= cast(u32)b << OPCODE_OFFSET_B;
-}
-
-LULU_FUNC inline void
-setarg_a(Instruction *ip, u16 a)
-{
-    ip->value &= OPCODE_MASK0_A;
-    ip->value |= cast(u32)a << OPCODE_OFFSET_A;
-}
-
-LULU_FUNC inline void
-setarg_bx(Instruction *ip, u32 index)
-{
-    ip->value &= OPCODE_MASK0_BX;
-    ip->value |= cast(u32)index << OPCODE_OFFSET_BX;
-}
-
-LULU_FUNC inline void
-setarg_sbx(Instruction *ip, i32 jump)
-{
-    setarg_bx(ip, cast(u32)(jump + OPCODE_MAX_SBX));
-}
+opinfo[OPCODE_COUNT];

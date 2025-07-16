@@ -31,44 +31,48 @@ const char *const opcode_names[OPCODE_COUNT] = {
 };
 
 static constexpr OpInfo
-MAKE(OpFormat fmt, bool a, OpArg b, OpArg c)
+MAKE(OpFormat fmt, bool test, bool a, OpArg b, OpArg c)
 {
-    return OpInfo((b << OPINFO_OFFSET_B)
-        |  (c << OPINFO_OFFSET_C)
-        |  (cast(u8)a << OPINFO_OFFSET_A)
-        |  (fmt << OPINFO_OFFSET_FMT));
+    // Unsure why, but each `x << y` here results in type `int` regardless of
+    // the cast. Yet this is not true in `Instruction::make_*()`.
+    auto n = (cast(u8)test << OpInfo::OFFSET_TEST)
+          | (cast(u8)a    << OpInfo::OFFSET_A)
+          | (cast(u8)b    << OpInfo::OFFSET_B)
+          | (cast(u8)c    << OpInfo::OFFSET_C)
+          | (cast(u8)fmt  << OpInfo::OFFSET_FMT);
+
+    return {cast(u8)n};
 }
 
 static constexpr OpInfo
-ABC(bool a, OpArg b, OpArg c)
+ABC(bool test, bool a, OpArg b, OpArg c)
 {
-    return MAKE(OPFORMAT_ABC, a, b, c);
+    return MAKE(OPFORMAT_ABC, test, a, b, c);
 }
 
 static constexpr OpInfo
-ABX(OpArg bx)
+ABX(bool a, OpArg bx)
 {
-    return MAKE(OPFORMAT_ABX, true, bx, OPARG_UNUSED);
+    return MAKE(OPFORMAT_ABX, /* test */ false, a, bx, OPARG_UNUSED);
 }
 
 static constexpr OpInfo
-CONSTANT  = ABX(OPARG_REGK),
-ARITH     = ABC(true, OPARG_REGK, OPARG_REGK),
+ARITH     = ABC(/* test */ false, /* a */ true, OPARG_REGK, OPARG_REGK),
 COMPARE   = ARITH,
-UNARY     = ABC(true, OPARG_REGK, OPARG_UNUSED),
-FUNC_LIKE = ABC(true, OPARG_OTHER, OPARG_OTHER),
+UNARY     = ABC(/* test */ false, /* a */ true, OPARG_REGK, OPARG_UNUSED),
+FUNC_LIKE = ABC(/* test */ false, /* a */ true, OPARG_OTHER, OPARG_OTHER),
 MOVE_LIKE = UNARY;
 
 // Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
-const OpInfo opcode_info[OPCODE_COUNT] = {
-    /* OP_CONSTANT */   CONSTANT,
+const OpInfo opinfo[OPCODE_COUNT] = {
+    /* OP_CONSTANT */   ABX(/* a */ true, OPARG_REGK),
     /* OP_LOAD_NIL */   MOVE_LIKE,
-    /* OP_LOAD_BOOL */  ABC(true, OPARG_OTHER, OPARG_UNUSED),
-    /* OP_GET_GLOBAL */ CONSTANT,
-    /* OP_SET_GLOBAL */ CONSTANT,
-    /* OP_NEW_TABLE */  ABC(true, OPARG_OTHER, OPARG_OTHER),
+    /* OP_LOAD_BOOL */  ABC(/* test */ false, /* a */ true, OPARG_OTHER, OPARG_UNUSED),
+    /* OP_GET_GLOBAL */ ABX(/* a */ true, OPARG_REGK),
+    /* OP_SET_GLOBAL */ ABX(/* a */ false, OPARG_REGK),
+    /* OP_NEW_TABLE */  ABC(/* test */ false, /* a */ true, OPARG_OTHER, OPARG_OTHER),
     /* OP_GET_TABLE */  ARITH,
-    /* OP_SET_TABLE */  ABC(false, OPARG_REGK, OPARG_REGK),
+    /* OP_SET_TABLE */  ABC(/* test */ false, /* a */ false, OPARG_REGK, OPARG_REGK),
     /* OP_MOVE */       MOVE_LIKE,
     /* OP_ADD */        ARITH,
     /* OP_SUB */        ARITH,
@@ -82,9 +86,9 @@ const OpInfo opcode_info[OPCODE_COUNT] = {
     /* OP_UNM */        UNARY,
     /* OP_NOT */        UNARY,
     /* OP_CONCAT */     ARITH,
-    /* OP_TEST */       ABC(false, OPARG_REGK, OPARG_OTHER),
-    /* OP_TEST_SET */   ABC(true,  OPARG_REGK, OPARG_OTHER),
-    /* OP_JUMP */       MAKE(OPFORMAT_ASBX, false, OPARG_JUMP, OPARG_UNUSED),
+    /* OP_TEST */       ABC(/* test */ true, /* a */ false, OPARG_REGK, OPARG_OTHER),
+    /* OP_TEST_SET */   ABC(/* test */ true, /* a */ true, OPARG_REGK, OPARG_OTHER),
+    /* OP_JUMP */       MAKE(OPFORMAT_ASBX, /* test */ false, /* a */ false, OPARG_JUMP, OPARG_UNUSED),
     /* OP_CALL */       FUNC_LIKE,
     /* OP_RETURN */     FUNC_LIKE,
 };
