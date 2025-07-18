@@ -85,6 +85,12 @@ expr_is_literal(const Expr *e)
 }
 
 LULU_FUNC inline bool
+expr_is_boolean(const Expr *e)
+{
+    return EXPR_NIL <= e->type && e->type <= EXPR_TRUE;
+}
+
+LULU_FUNC inline bool
 expr_is_number(const Expr *e)
 {
     return e->type == EXPR_NUMBER;

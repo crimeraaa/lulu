@@ -112,6 +112,3 @@ lulu_unreachable()
 {}
 
 #endif // __GNUC__ || __clang__ || _MSC_VER
-
-// comma operator shenanigans
-#define check_expr(cond, expr)  (lulu_assert(cond), expr)

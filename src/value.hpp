@@ -194,19 +194,22 @@ value_is_function(Value v)
 LULU_FUNC inline bool
 value_to_boolean(Value v)
 {
-    return check_expr(value_is_boolean(v), v.boolean);
+    lulu_assert(value_is_boolean(v));
+    return v.boolean;
 }
 
 LULU_FUNC inline Number
 value_to_number(Value v)
 {
-    return check_expr(value_is_number(v), v.number);
+    lulu_assert(value_is_number(v));
+    return v.number;
 }
 
 LULU_FUNC inline void *
 value_to_userdata(Value v)
 {
-    return check_expr(value_is_userdata(v), v.pointer);
+    lulu_assert(value_is_userdata(v));
+    return v.pointer;
 }
 
 LULU_FUNC inline Object *

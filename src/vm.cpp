@@ -493,7 +493,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         ? chunk.constants[Instruction::reg_get_k(rk)]                          \
         : window[rk]
 
-#define BINARY_OP(number_fn, error_fn)                                         \
+#define BINARY_OP(number_fn, error_fn, result_fn)                              \
 {                                                                              \
     u16          b  = i.b();                                                   \
     u16          c  = i.c();                                                   \
@@ -503,13 +503,20 @@ vm_execute(lulu_VM *vm, int n_calls)
         protect(vm, ip);                                                       \
         error_fn(vm, rb, rc);                                                  \
     } else {                                                                   \
-        ra = number_fn(value_to_number(rb), value_to_number(rc));              \
+        result_fn(number_fn(value_to_number(rb), value_to_number(rc)));        \
     }                                                                          \
 }
 
-#define ARITH_OP(fn)    BINARY_OP(fn, arith_error)
-#define COMPARE_OP(fn)  BINARY_OP(fn, compare_error)
+#define DO_JUMP(offset)                                                        \
+{                                                                              \
+    ip += offset;                                                              \
+}
 
+#define ARITH_RESULT(n)     ra = n
+#define ARITH_OP(fn)        BINARY_OP(fn, arith_error, ARITH_RESULT)
+
+#define COMPARE_RESULT(b)   if (b == cast(bool)i.a()) { DO_JUMP(ip->sbx()); }
+#define COMPARE_OP(fn)      BINARY_OP(fn, compare_error, COMPARE_RESULT)
 
 #ifdef LULU_DEBUG_TRACE_EXEC
     int pad = debug_get_pad(&chunk);
@@ -550,6 +557,9 @@ vm_execute(lulu_VM *vm, int n_calls)
         }
         case OP_LOAD_BOOL:
             ra = cast(bool)i.b();
+            if (cast(bool)i.c()) {
+                ip++;
+            }
             break;
         case OP_GET_GLOBAL: {
             Value k = chunk.constants[i.bx()];
@@ -613,15 +623,30 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_EQ: {
-            u16   b  = i.b();
-            u16   c  = i.c();
-            Value rb = GET_RK(b);
-            Value rc = GET_RK(c);
-            ra = (rb == rc);
+            bool  cond = cast(bool)i.a();
+            u16   b    = i.b();
+            u16   c    = i.c();
+            Value rkb  = GET_RK(b);
+            Value rkc  = GET_RK(c);
+
+            protect(vm, ip);
+            if ((rkb == rkc) == cond) {
+                lulu_assert(ip->op() == OP_JUMP);
+                DO_JUMP(ip->sbx());
+            }
+            ip++;
             break;
         }
-        case OP_LT:  COMPARE_OP(lulu_Number_lt); break;
-        case OP_LEQ: COMPARE_OP(lulu_Number_leq); break;
+        case OP_LT: {
+            COMPARE_OP(lulu_Number_lt);
+            ip++;
+            break;
+        }
+        case OP_LEQ: {
+            COMPARE_OP(lulu_Number_leq);
+            ip++;
+            break;
+        }
         case OP_UNM: {
             Value &rb = window[i.b()];
             if (!value_is_number(rb)) {
@@ -646,28 +671,29 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_TEST: {
             bool cond = cast(bool)i.c();
             bool test = (!value_is_falsy(ra) == cond);
-            // If test fails, skip the next instruction (assuming it's a jump)
-            if (!test) {
+            if (test) {
                 lulu_assert(ip->op() == OP_JUMP);
-                ip++;
+                DO_JUMP(ip->sbx());
             }
+            // If test fails, skip the next instruction (assuming it's a jump)
+            ip++;
             break;
         }
         case OP_TEST_SET: {
             bool  cond = cast(bool)i.c();
             Value rb   = window[i.b()];
             bool  test = (!value_is_falsy(rb) == cond);
-            if (!test) {
+            if (test) {
                 lulu_assert(ip->op() == OP_JUMP);
-                ip++;
+                DO_JUMP(ip->sbx());
             } else {
                 ra = rb;
             }
+            ip++;
             break;
         }
         case OP_JUMP: {
-            i32 offset = i.sbx();
-            ip += offset;
+            DO_JUMP(i.sbx());
             break;
         }
         case OP_CALL: {

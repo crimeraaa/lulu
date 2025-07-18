@@ -28,7 +28,15 @@ add_line(lulu_VM *vm, Chunk *c, isize pc, int line)
         Line_Info *last = &c->lines[n - 1];
         if (last->line == line) {
             // Make sure `pc` is in range and will update things correctly.
-            lulu_assert(last->start_pc <= pc && last->end_pc < pc);
+            lulu_assertf(last->start_pc <= pc,
+                "start_pc=%" ISIZE_FMTSPEC "> pc=%" ISIZE_FMTSPEC,
+                last->start_pc, pc);
+
+            // Use `<=` in case we popped an instruction.
+            lulu_assertf(last->end_pc <= pc,
+                "end_pc=%" ISIZE_FMTSPEC "> pc=%" ISIZE_FMTSPEC,
+                last->end_pc, pc);
+
             last->end_pc = pc;
             return;
         }

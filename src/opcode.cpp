@@ -1,7 +1,7 @@
 #include "opcode.hpp"
 
 // Vim:     '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
-const char *const opcode_names[OPCODE_COUNT] = {
+const char *const opnames[OPCODE_COUNT] = {
     /* OP_CONSTANT */   "constant",
     /* OP_LOAD_NIL */   "load_nil",
     /* OP_LOAD_BOOL */  "load_bool",
@@ -57,17 +57,17 @@ ABX(bool a, OpArg bx)
 }
 
 static constexpr OpInfo
-ARITH     = ABC(/* test */ false, /* a */ true, OPARG_REGK, OPARG_REGK),
-COMPARE   = ARITH,
-UNARY     = ABC(/* test */ false, /* a */ true, OPARG_REGK, OPARG_UNUSED),
-FUNC_LIKE = ABC(/* test */ false, /* a */ true, OPARG_OTHER, OPARG_OTHER),
+ARITH     = ABC(/* test */ false, /* a */ true,  OPARG_REGK,  OPARG_REGK),
+COMPARE   = ABC(/* test */ true,  /* a */ false, OPARG_REGK,  OPARG_REGK),
+UNARY     = ABC(/* test */ false, /* a */ true,  OPARG_REGK,  OPARG_UNUSED),
+FUNC_LIKE = ABC(/* test */ false, /* a */ true,  OPARG_OTHER, OPARG_OTHER),
 MOVE_LIKE = UNARY;
 
 // Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
 const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_CONSTANT */   ABX(/* a */ true, OPARG_REGK),
     /* OP_LOAD_NIL */   MOVE_LIKE,
-    /* OP_LOAD_BOOL */  ABC(/* test */ false, /* a */ true, OPARG_OTHER, OPARG_UNUSED),
+    /* OP_LOAD_BOOL */  ABC(/* test */ false, /* a */ true, OPARG_REGK, OPARG_REGK),
     /* OP_GET_GLOBAL */ ABX(/* a */ true, OPARG_REGK),
     /* OP_SET_GLOBAL */ ABX(/* a */ false, OPARG_REGK),
     /* OP_NEW_TABLE */  ABC(/* test */ false, /* a */ true, OPARG_OTHER, OPARG_OTHER),

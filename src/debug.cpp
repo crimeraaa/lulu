@@ -57,13 +57,29 @@ arith(const Chunk *c, char op, Args args, isize pc)
     print_reg(c, args.basic.c, pc);
 }
 
+static isize
+jump_to(isize pc, i32 offset = 1)
+{
+    return (pc + 1) + cast(isize)offset;
+}
+
+static isize
+jump_to(const Chunk *c, isize jump_pc)
+{
+    Instruction i = c->code[jump_pc];
+    lulu_assert(i.op() == OP_JUMP);
+    return jump_to(jump_pc, i.sbx());
+}
+
 static void
 compare(const Chunk *c, const char *op, Args args, isize pc)
 {
-    printf("R(%u) = ", args.a);
     print_reg(c, args.basic.b, pc);
     printf(" %s ", op);
     print_reg(c, args.basic.c, pc);
+
+    printf(" ; goto .code[%" ISIZE_FMTSPEC " if %s else %" ISIZE_FMTSPEC "]",
+        jump_to(pc, 1), (args.a) ? "true" : "false", jump_to(c, pc + 1));
 }
 
 static int
@@ -106,7 +122,7 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         printf("%4i ", line);
     }
 
-    printf("%-16s ", opcode_names[op]);
+    printf("%-16s ", opnames[op]);
     switch (opinfo[op].fmt()) {
     case OPFORMAT_ABC:
         args.basic.b = ip.b();
@@ -138,6 +154,9 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         break;
     case OP_LOAD_BOOL:
         printf("R(%u) := %s", args.a, (args.basic.b) ? "true" : "false");
+        if (args.basic.c) {
+            printf(" then goto [%" ISIZE_FMTSPEC "]", jump_to(pc));
+        }
         break;
     case OP_GET_GLOBAL:
         print_reg(c, args.a, pc);
@@ -186,7 +205,7 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     case OP_MOD: arith(c, '%', args, pc); break;
     case OP_POW: arith(c, '^', args, pc); break;
     case OP_EQ:  compare(c, "==", args, pc); break;
-    case OP_LT:  compare(c, "<", args, pc); break;
+    case OP_LT:  compare(c, "<",  args, pc); break;
     case OP_LEQ: compare(c, "<=", args, pc); break;
     case OP_UNM: unary(c, "-", args, pc); break;
     case OP_NOT: unary(c, "not ", args, pc); break;
@@ -194,27 +213,29 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         print_reg(c, args.a, pc);
         printf(" := concat(R(%u:%u))", args.basic.b, args.basic.c + 1);
         break;
-    case OP_TEST:
-    case OP_TEST_SET: {
+    case OP_TEST: {
         // Concept check: given `C == 0`, when do we skip the next instruction?
         // How about for `C == 1`?
-        printf("if %sBool(", (args.basic.c) ? "not " : "");
-        print_reg(c, (op == OP_TEST) ? args.a : args.basic.b, pc);
-        printf(") then goto .code[%" ISIZE_FMTSPEC "]", (pc + 1) + 1);
-        if (op == OP_TEST_SET) {
-            printf(" else ");
-            print_reg(c, args.a, pc);
-            printf(" := ");
-            print_reg(c, args.basic.b, pc);
-        }
+        printf("if %s", (args.basic.c) ? "not " : "");
+        print_reg(c, args.a, pc);
+        printf(" then goto .code[%" ISIZE_FMTSPEC "]", jump_to(pc));
+        break;
+    }
+    case OP_TEST_SET: {
+        printf("if %s", (args.basic.c) ? "" : "not ");
+        print_reg(c, args.basic.b, pc);
+        printf(" then ");
+        print_reg(c, args.a, pc);
+        printf(" := ");
+        print_reg(c, args.basic.b, pc);
+        printf(" else goto .code[%" ISIZE_FMTSPEC "]", jump_to(pc));
         break;
     }
     case OP_JUMP: {
         i32 offset = args.extended.sbx;
         // we add 1 because by the time an instruction is being decoded, the
         // `ip` would have been incremented already.
-        printf("ip += %i ; goto .code[%" ISIZE_FMTSPEC "]",
-                offset, (pc + 1) + cast_isize(offset));
+        printf("ip += %i ; goto [%" ISIZE_FMTSPEC "]", offset, jump_to(pc, offset));
         break;
     }
     case OP_CALL: {

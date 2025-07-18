@@ -32,6 +32,7 @@ struct Compiler {
     Compiler    *prev;   // Have an enclosing function?
     Parser      *parser; // All compilers share the same parser.
     Chunk       *chunk;  // Compilers do not own their chunks.
+    isize        last_target;
     u16          free_reg;
     Active_Array active; // Indexes are local registers.
 };
@@ -237,6 +238,7 @@ compiler_set_variable(Compiler *c, Expr *var, Expr *expr);
 LULU_FUNC void
 compiler_set_returns(Compiler *c, Expr *call, u16 n);
 
+
 /**
  * @brief
  *  -   If `e` represents an `OP_CALL`, then its argument C is set to 1 and
@@ -294,6 +296,19 @@ compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
 LULU_FUNC void
 compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP, u16 reg = NO_REG);
 
+
+/**
+ * @param cond
+ *  -   When the resulting register of `left` as a boolean equals this, then
+ *      the succeeding jump is not skipped (and thus performed).
+ *  -   E.g. `if` statements will set this to false so that the jump to the
+ *      next `elseif`/`else`/`end` is performed.
+ *
+ *  @note 2025-07-18
+ *  -   We assume that the instruction before `OP_JUMP` is an instruction
+ *      with a 'test' mode (e.g. `OP_TEST` or `OP_TEST_SET`) which may do `ip++`
+ *      to skip over the jump.
+ */
 LULU_FUNC void
 compiler_logical_new(Compiler *c, Expr *left, bool cond);
 

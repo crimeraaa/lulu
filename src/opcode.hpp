@@ -6,7 +6,7 @@ enum OpCode : u8 {
 //           | Arguments | Effects
 OP_CONSTANT,    // A Bx  | R(A) := K[Bx]
 OP_LOAD_NIL,    // A B   | R(i) := nil for A <= i <= B
-OP_LOAD_BOOL,   // A B   | R(A) := Bool(B)
+OP_LOAD_BOOL,   // A B C | R(A) := Bool(B); if Bool(C) then ip++
 OP_GET_GLOBAL,  // A Bx  | R(A) := _G[K(Bx)]
 OP_SET_GLOBAL,  // A Bx  | _G[K(Bx)] := R(A)
 OP_NEW_TABLE,   // A B C | R(A) := {} ; #hash = B, #array = C
@@ -19,14 +19,14 @@ OP_MUL,         // A B C | R(A) := RK(B) * RK(C)
 OP_DIV,         // A B C | R(A) := RK(B) / RK(C)
 OP_MOD,         // A B C | R(A) := RK(B) % RK(C)
 OP_POW,         // A B C | R(A) := RK(B) ^ RK(C)
-OP_EQ,          // A B C | R(A) := RK(B) == RK(C)
-OP_LT,          // A B C | R(A) := RK(B) <  RK(C)
-OP_LEQ,         // A B C | R(A) := RK(B) <= RK(C)
+OP_EQ,          // A B C | if ((RK(B) == RK(C)) != Bool(A)) then ip++
+OP_LT,          // A B C | if ((RK(B) <  RK(C)) != Bool(A)) then ip++
+OP_LEQ,         // A B C | if ((RK(B) <= RK(C)) != Bool(A)) then ip++
 OP_UNM,         // A B   | R(A) := -R(B)
 OP_NOT,         // A B   | R(A) := not R(B)
 OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
-OP_TEST,        // A   C | if Bool(R(A)) ~= Bool(C) then pc++
-OP_TEST_SET,    // A B C | if Bool(R(B)) ~= Bool(C) then pc++ else R(A) := R(B)
+OP_TEST,        // A   C | if Bool(R(A)) == Bool(C) then ip++
+OP_TEST_SET,    // A B C | if Bool(R(B)) == Bool(C) then R(A) := R(B) else ip++
 OP_JUMP,        // sBx   | ip += sBx
 OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
 OP_RETURN,      // A B C | return R(A:A+B)
@@ -307,7 +307,7 @@ private:
 };
 
 LULU_DATA const char *const
-opcode_names[OPCODE_COUNT];
+opnames[OPCODE_COUNT];
 
 LULU_DATA const OpInfo
 opinfo[OPCODE_COUNT];

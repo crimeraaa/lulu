@@ -24,7 +24,8 @@ union Object {
 LULU_FUNC inline OString *
 value_to_ostring(Value v)
 {
-    return check_expr(value_is_string(v), &value_to_object(v)->ostring);
+    lulu_assert(value_is_string(v));
+    return &value_to_object(v)->ostring;
 }
 
 LULU_FUNC inline LString
@@ -42,13 +43,15 @@ value_to_cstring(Value v)
 LULU_FUNC inline Table *
 value_to_table(Value v)
 {
-    return check_expr(value_is_table(v), &value_to_object(v)->table);
+    lulu_assert(value_is_table(v));
+    return &value_to_object(v)->table;
 }
 
 LULU_FUNC inline Closure *
 value_to_function(Value v)
 {
-    return check_expr(value_is_function(v), &value_to_object(v)->function);
+    lulu_assert(value_is_function(v));
+    return &value_to_object(v)->function;
 }
 
 LULU_FUNC void
