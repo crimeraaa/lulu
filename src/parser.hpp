@@ -9,7 +9,20 @@ struct Block;
 constexpr int
 PARSER_MAX_RECURSE = 250;
 
-struct Parser {
+
+/**
+ * @details 2025-07-13
+ *  When used as a jump offset, this marks the start of a jump list because
+ *  of the following properties.
+ *
+ *  1.) It is an invalid `pc`, because `pc >= 0`.
+ *  2.) It is an infinite loop, because the `ip` at the point the instructions
+ *      are dispatched are already incremented. So adding `-1` essentially
+ *      undoes the increment, bringing us back to `OP_JUMP`.
+ */
+#define NO_JUMP     -1
+
+struct LULU_PRIVATE Parser {
     lulu_VM *vm;
     Lexer    lexer;
     Token    consumed;
@@ -64,7 +77,7 @@ struct Expr_Table {
     u16 field_rk;
 };
 
-struct Expr {
+struct LULU_PRIVATE Expr {
     Expr_Type type;
     int       line;
     isize     patch_true;
@@ -76,43 +89,81 @@ struct Expr {
         u32        index;
         u16        reg;
     };
+
+    static constexpr Expr
+    make(Expr_Type type, int line)
+    {
+        Expr e{
+            /* type */              type,
+            /* line */              line,
+            /* patch_true */        NO_JUMP,
+            /* patch_false */       NO_JUMP,
+            /* <unnamed>::number */ {0},
+        };
+        return e;
+    }
+
+    static constexpr Expr
+    make_number(Number n, int line)
+    {
+        Expr e = make(EXPR_NUMBER, line);
+        e.number = n;
+        return e;
+    }
+
+    static constexpr Expr
+    make_reg(Expr_Type type, u16 reg, int line)
+    {
+        Expr e = make(type, line);
+        e.reg = reg;
+        return e;
+    }
+
+    static constexpr inline Expr
+    make_index(Expr_Type type, u32 index, int line)
+    {
+        Expr e = make(type, line);
+        e.index = index;
+        return e;
+    }
+
+    bool
+    is_literal() const noexcept
+    {
+        return EXPR_NIL <= this->type && this->type <= EXPR_CONSTANT;
+    }
+
+    // For constant folding purposes, `nil` is also considered a boolean.
+    bool
+    is_boolean() const noexcept
+    {
+        return EXPR_NIL <= this->type && this->type <= EXPR_TRUE;
+    }
+
+    bool
+    is_number() const noexcept
+    {
+        return this->type == EXPR_NUMBER;
+    }
+
+    bool
+    is_truthy() const noexcept
+    {
+        return EXPR_TRUE <= this->type && this->type <= EXPR_CONSTANT;
+    }
+
+    bool
+    is_falsy() const noexcept
+    {
+        return EXPR_NIL <= this->type && this->type <= EXPR_FALSE;
+    }
+
+    bool
+    has_jumps() const noexcept
+    {
+        return this->patch_true != this->patch_false;
+    }
 };
-
-LULU_FUNC inline bool
-expr_is_literal(const Expr *e)
-{
-    return EXPR_NIL <= e->type && e->type <= EXPR_CONSTANT;
-}
-
-LULU_FUNC inline bool
-expr_is_boolean(const Expr *e)
-{
-    return EXPR_NIL <= e->type && e->type <= EXPR_TRUE;
-}
-
-LULU_FUNC inline bool
-expr_is_number(const Expr *e)
-{
-    return e->type == EXPR_NUMBER;
-}
-
-LULU_FUNC inline bool
-expr_is_truthy(const Expr *e)
-{
-    return EXPR_TRUE <= e->type && e->type <= EXPR_CONSTANT;
-}
-
-LULU_FUNC inline bool
-expr_is_falsy(const Expr *e)
-{
-    return EXPR_NIL <= e->type && e->type <= EXPR_FALSE;
-}
-
-LULU_FUNC inline bool
-expr_has_jumps(const Expr *e)
-{
-    return e->patch_true != e->patch_false;
-}
 
 LULU_FUNC Parser
 parser_make(lulu_VM *vm, LString source, LString script, Builder *b);

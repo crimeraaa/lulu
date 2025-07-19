@@ -223,14 +223,14 @@ get_escaped(Lexer *x, char ch)
 static Token
 make_token(const Lexer *x, Token_Type type, Number n = 0)
 {
-    Token t{get_lexeme(x), {n}, type, x->line};
+    Token t = Token::make(type, x->line, get_lexeme(x), n);
     return t;
 }
 
 static Token
 make_token(const Lexer *x, Token_Type type, LString lexeme)
 {
-    Token t{lexeme, {0.0}, type, x->line};
+    Token t = Token::make(type, x->line, lexeme, 0.0);
     return t;
 }
 

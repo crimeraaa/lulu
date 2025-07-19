@@ -31,7 +31,7 @@ object_free(lulu_VM *vm, Object *o)
         if (closure_is_c(f)) {
             mem_free(vm, &f->c);
         } else {
-            mem_free(vm, &f->l);
+            mem_free(vm, &f->lua);
         }
         break;
     }

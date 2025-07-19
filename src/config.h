@@ -40,9 +40,12 @@
 
 /* visibility only matters when building the shared library. */
 #ifdef LULU_BUILD_ALL
+
 #define LULU_PUBLIC     __attribute__ ((__visibility__ ("default")))
 #define LULU_PRIVATE    __attribute__ ((__visibility__ ("hidden")))
+
 #else   /* ^^^ LULU_BUILD_ALL, otherwise */
+
 #define LULU_PUBLIC
 #define LULU_PRIVATE
 #endif  /* LULU_BUILD_ALL */

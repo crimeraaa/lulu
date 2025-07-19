@@ -4,7 +4,7 @@ version: '3'
 
 vars:
   MODE: '{{default "debug"}}'
-  CC: clang
+  CC:  clang
   CXX: clang++
 
   # Notes(2025-06-11):
@@ -34,8 +34,8 @@ vars:
   CC_FLAGS: >-
     -Wall
     -Wextra
-    -Wconversion
     -Wpedantic
+  # -Wconversion
 
   # Notes(2025-06-11):
   #   - `-nostdinc++` just prevents us from including C++ standard ilbrary
@@ -106,7 +106,9 @@ tasks:
     requires:
       vars: [MODE, LULU_ALL, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
     cmds:
-      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -fvisibility=hidden -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
+      # NOTE: -fvisibility=hidden does not export AN global identifier/function
+      # in the resulting shared library.
+      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
       - '{{.LULU_EXE_CMD}}'
     sources:
       - '{{.LULU_GLOB}}'

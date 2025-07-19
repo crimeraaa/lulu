@@ -8,12 +8,12 @@ using Error = lulu_Error;
 
 static constexpr int MAX_STACK = 256;
 
-struct Error_Handler {
+struct LULU_PRIVATE Error_Handler {
     Error_Handler *prev; // Stack-allocated linked list.
     volatile Error error;
 };
 
-struct Call_Frame {
+struct LULU_PRIVATE Call_Frame {
     Slice<Value>       window;
     Closure           *function;
     const Instruction *saved_ip;
@@ -28,7 +28,7 @@ enum Call_Type {
 using Stack_Array = Array<Value, MAX_STACK>;
 using Frame_Array = Small_Array<Call_Frame, 16>;
 
-struct lulu_VM {
+struct LULU_PUBLIC lulu_VM {
     Stack_Array        stack;
     Frame_Array        frames;
     Call_Frame        *caller; // Not a reference because it can be reassigned.

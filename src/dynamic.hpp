@@ -4,8 +4,8 @@
 #include "mem.hpp"
 
 template<class T>
-struct Dynamic : public Slice<T> {
-    isize cap;
+struct LULU_PRIVATE Dynamic : public Slice<T> {
+    isize cap = 0;
 };
 
 template<class T>
@@ -20,7 +20,7 @@ dynamic_init(Dynamic<T> *d)
 /**
  * @brief
  *  - Allocates memory to hold `new_cap` elements and sets `d.cap`.
- *  - `d.len` is left untouched thus you still cannot index it.
+ *  - `d->len` is left untouched thus you still cannot index it.
  */
 template<class T>
 LULU_FUNC inline void
@@ -37,7 +37,7 @@ dynamic_reserve(lulu_VM *vm, Dynamic<T> *d, isize new_cap)
  *  -   If shrinking, no new memory is allocated but the valid indexable range
  *      is reduced.
  *  -   We clamp the size to reduce the number of consecutive reallocations.
- *  -   Unlike `dynamic_reserve()` this also sets `d.len` so you can safely
+ *  -   Unlike `reserve()` this also sets `d.len` so you can safely
  *      index this range.
  */
 template<class T>
@@ -60,12 +60,10 @@ dynamic_push(lulu_VM *vm, Dynamic<T> *d, T value)
 }
 
 template<class T>
-LULU_FUNC inline T
+LULU_FUNC inline void
 dynamic_pop(Dynamic<T> *d)
 {
-    T value = (*d)[d->len - 1];
     d->len -= 1;
-    return value;
 }
 
 template<class T>
@@ -88,3 +86,4 @@ cap(const Dynamic<T> &d)
 {
     return d.cap;
 }
+

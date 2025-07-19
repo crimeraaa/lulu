@@ -40,7 +40,7 @@ typedef LULU_NUMBER_TYPE lulu_Number;
  *  -   e.g. `LULU_DATA const char *const tokens[TOKEN_COUNT];`
  */
 #define LULU_FUNC       extern LULU_PRIVATE
-#define LULU_DATA       LULU_FUNC
+#define LULU_DATA       extern LULU_PRIVATE
 
 
 /**

@@ -3,8 +3,8 @@
 // Vim:     '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
 const char *const opnames[OPCODE_COUNT] = {
     /* OP_CONSTANT */   "constant",
-    /* OP_LOAD_NIL */   "load_nil",
-    /* OP_LOAD_BOOL */  "load_bool",
+    /* OP_NIL */        "nil",
+    /* OP_BOOL */       "bool",
     /* OP_GET_GLOBAL */ "get_global",
     /* OP_SET_GLOBAL */ "set_global",
     /* OP_NEW_TABLE */  "new_table",
@@ -66,8 +66,8 @@ MOVE_LIKE = UNARY;
 // Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
 const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_CONSTANT */   ABX(/* a */ true, OPARG_REGK),
-    /* OP_LOAD_NIL */   MOVE_LIKE,
-    /* OP_LOAD_BOOL */  ABC(/* test */ false, /* a */ true, OPARG_REGK, OPARG_REGK),
+    /* OP_NIL */        MOVE_LIKE,
+    /* OP_BOOL */       ABC(/* test */ false, /* a */ true, OPARG_REGK, OPARG_REGK),
     /* OP_GET_GLOBAL */ ABX(/* a */ true, OPARG_REGK),
     /* OP_SET_GLOBAL */ ABX(/* a */ false, OPARG_REGK),
     /* OP_NEW_TABLE */  ABC(/* test */ false, /* a */ true, OPARG_OTHER, OPARG_OTHER),
@@ -86,8 +86,8 @@ const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_UNM */        UNARY,
     /* OP_NOT */        UNARY,
     /* OP_CONCAT */     ARITH,
-    /* OP_TEST */       ABC(/* test */ true, /* a */ false, OPARG_REGK, OPARG_OTHER),
-    /* OP_TEST_SET */   ABC(/* test */ true, /* a */ true, OPARG_REGK, OPARG_OTHER),
+    /* OP_TEST */       ABC(/* test */ true, /* a */ false, OPARG_UNUSED, OPARG_OTHER),
+    /* OP_TEST_SET */   ABC(/* test */ true, /* a */ true,  OPARG_REGK,   OPARG_OTHER),
     /* OP_JUMP */       MAKE(OPFORMAT_ASBX, /* test */ false, /* a */ false, OPARG_JUMP, OPARG_UNUSED),
     /* OP_CALL */       FUNC_LIKE,
     /* OP_RETURN */     FUNC_LIKE,

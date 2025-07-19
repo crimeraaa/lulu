@@ -42,16 +42,16 @@ hash_any(T v)
 static u32
 hash_value(Value v)
 {
-    switch (v.type) {
+    switch (v.type()) {
     case VALUE_NONE:
     case VALUE_NIL:
         break;
-    case VALUE_BOOLEAN:  return hash_any(value_to_boolean(v));
-    case VALUE_NUMBER:   return hash_any(value_to_number(v));
-    case VALUE_USERDATA: return hash_any(value_to_userdata(v));
-    case VALUE_STRING:   return value_to_ostring(v)->hash;
+    case VALUE_BOOLEAN:  return hash_any(v.to_boolean());
+    case VALUE_NUMBER:   return hash_any(v.to_number());
+    case VALUE_USERDATA: return hash_any(v.to_userdata());
+    case VALUE_STRING:   return v.to_ostring()->hash;
     case VALUE_TABLE:
-    case VALUE_FUNCTION: return hash_any(value_to_object(v));
+    case VALUE_FUNCTION: return hash_any(v.to_object());
     case VALUE_CHUNK:
         break;
     }
@@ -78,8 +78,8 @@ find_entry(Slice<Entry> entries, Value k)
 
     for (usize i = hash & wrap; /* empty */; i = (i + 1) & wrap) {
         Entry *entry = &entries[i];
-        if (value_is_nil(entry->key)) {
-            if (value_is_nil(entry->value)) {
+        if (entry->key.is_nil()) {
+            if (entry->value.is_nil()) {
                 return (tomb == nullptr) ? entry : tomb;
             }
             // Track only the first tombstone we see so we can reuse it.
@@ -101,7 +101,7 @@ table_get(Table *t, Value k, Value *out)
         Entry *e = find_entry(t->entries, k);
         *out = e->value;
         // If `e->key` is nil, then that means `k` does not exist in the table.
-        return !value_is_nil(e->key);
+        return !e->key.is_nil();
     }
     *out = nil;
     return false;
@@ -116,7 +116,7 @@ table_set(lulu_VM *vm, Table *t, Value k, Value v)
     }
     Entry *e = find_entry(t->entries, k);
     // Overwriting a completely empty entry?
-    if (value_is_nil(e->key) && value_is_nil(e->value)) {
+    if (e->key.is_nil() && e->value.is_nil()) {
         t->count++;
     }
     e->key   = k;
@@ -131,7 +131,7 @@ table_unset(Table *t, Value k)
     }
     Entry *e = find_entry(t->entries, k);
     // Already empty/tombstone; nothing to do.
-    if (value_is_nil(e->key)) {
+    if (e->key.is_nil()) {
         return;
     }
     // Tombstones are nil keys mapping to the boolean `true`.
@@ -150,7 +150,7 @@ table_resize(lulu_VM *vm, Table *t, isize new_cap)
     // Rehash all the old elements into the new entries table.
     for (Entry e : t->entries) {
         // Skip empty entries and tombstones.
-        if (value_is_nil(e.key)) {
+        if (e.key.is_nil()) {
             continue;
         }
 

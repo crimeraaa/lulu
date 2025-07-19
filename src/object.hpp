@@ -9,49 +9,63 @@
 #include "chunk.hpp"
 #include "function.hpp"
 
-struct Object_Header {
-    OBJECT_HEADER;
+union LULU_PRIVATE Object {
+    struct Header {
+        OBJECT_HEADER;
+    };
+
+    Header  base;
+    OString ostring;
+    Table   table;
+    Chunk   chunk;
+    Closure function;
 };
 
-union Object {
-    Object_Header base;
-    OString       ostring;
-    Table         table;
-    Chunk         chunk;
-    Closure      function;
-};
-
-LULU_FUNC inline OString *
-value_to_ostring(Value v)
+inline OString *
+Value::to_ostring() const
 {
-    lulu_assert(value_is_string(v));
-    return &value_to_object(v)->ostring;
+    lulu_assert(this->is_string());
+    return &this->to_object()->ostring;
 }
 
-LULU_FUNC inline LString
-value_to_lstring(Value v)
+inline LString
+Value::to_lstring() const
 {
-    return ostring_to_lstring(value_to_ostring(v));
+    return this->to_ostring()->to_lstring();
 }
 
-LULU_FUNC inline const char *
-value_to_cstring(Value v)
+inline const char *
+Value::to_cstring() const
 {
-    return ostring_to_cstring(value_to_ostring(v));
+    return this->to_ostring()->to_cstring();
 }
 
-LULU_FUNC inline Table *
-value_to_table(Value v)
+inline Table *
+Value::to_table() const
 {
-    lulu_assert(value_is_table(v));
-    return &value_to_object(v)->table;
+    lulu_assert(this->is_table());
+    return &this->to_object()->table;
 }
 
-LULU_FUNC inline Closure *
-value_to_function(Value v)
+inline Closure *
+Value::to_function() const
 {
-    lulu_assert(value_is_function(v));
-    return &value_to_object(v)->function;
+    lulu_assert(this->is_function());
+    return &this->to_object()->function;
+}
+
+inline void *
+Value::to_pointer() const
+{
+    switch (this->type()) {
+    case VALUE_USERDATA:    return this->to_userdata();
+    case VALUE_TABLE:       return this->to_table();
+    case VALUE_FUNCTION:    return this->to_function();
+
+    default:
+        break;
+    }
+    return nullptr;
 }
 
 LULU_FUNC void

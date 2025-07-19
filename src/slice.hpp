@@ -2,12 +2,13 @@
 
 #include <string.h> // memcmp, memmove
 
-#include "array.hpp"
+#include "private.hpp"
 
 template<class T>
-struct Slice {
-    T    *data;
-    isize len;
+struct LULU_PRIVATE
+Slice {
+    T    *data = nullptr;
+    isize len  = 0;
 
     // Bounds-checked, mutable element access.
     template<class N>
@@ -32,30 +33,20 @@ struct Slice {
             ii, this->len);
         return this->data[ii];
     }
+
 };
 
 template<class T>
 LULU_FUNC inline Slice<T>
-slice_pointer(T *start, T *stop)
+slice(Slice<T> s)
 {
-    Slice<T> s{start, cast_isize(stop - start)};
-    // Problem: comparison of 2 unrelated pointers is not standard!
-    lulu_assertf(start <= stop,
-        "start=%p > stop=%p",
-        cast(void *)start, cast(void *)stop);
-    return s;
+    return {raw_data(s), len(s)};
 }
 
+// Similar to `slice[:]` in Odin and `list[:]` in Python.
 template<class T>
 LULU_FUNC inline Slice<T>
-slice_slice(Slice<T> &s)
-{
-    return {s.data, s.len};
-}
-
-template<class T>
-LULU_FUNC inline Slice<T>
-slice_slice(Slice<T> &s, isize start, isize stop)
+slice(Slice<T> s, isize start, isize stop)
 {
     Slice<T> s2{&s.data[start], stop - start};
     lulu_assertf(0 <= len(s2) && len(s2) <= len(s),
@@ -76,9 +67,64 @@ slice_slice(Slice<T> &s, isize start, isize stop)
     return s2;
 }
 
+// Similar to `slice[start:]` in Odin and `list[start:] in Python.
+template<class T>
+LULU_FUNC inline Slice<T>
+slice_from(Slice<T> s, isize start)
+{
+    return slice(s, start, len(s));
+}
+
+// Similar to `slice[:stop]` in Odin and `list[:stop]` in Python.
+template<class T>
+LULU_FUNC inline Slice<T>
+slice_until(Slice<T> s, isize stop)
+{
+    return slice(s, 0, stop);
+}
+
+template<class T, isize N>
+struct LULU_PRIVATE
+Array {
+    T data[N];
+
+    template<class I>
+    T &
+    operator[](I i)
+    {
+        isize ii = cast_isize(i);
+        lulu_assertf(0 <= ii && ii < N,
+            "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
+            ii, N);
+        return this->data[ii];
+    }
+
+    template<class I>
+    const T &
+    operator[](I i) const
+    {
+        isize ii = cast_isize(i);
+        lulu_assertf(0 <= ii && ii < N,
+            "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
+            ii, N);
+        return this->data[ii];
+    }
+
+};
+
+// `array[:]` in Odin.
 template<class T, auto N>
 LULU_FUNC inline Slice<T>
-slice_array(Array<T, N> &a, isize start, isize stop)
+slice(Array<T, N> &a)
+{
+    Slice<T> s{a.data, N};
+    return s;
+}
+
+// `array[start:stop]` in Odin.
+template<class T, auto N>
+LULU_FUNC inline Slice<T>
+slice(Array<T, N> &a, isize start, isize stop)
 {
     Slice<T> s{&a.data[start], stop - start};
     lulu_assertf(0 <= len(s) && len(s) <= N,
@@ -99,15 +145,58 @@ slice_array(Array<T, N> &a, isize start, isize stop)
     return s;
 }
 
+// `array[start:]` in Odin.
+template<class T, auto N>
+LULU_FUNC inline Slice<T>
+slice_from(Array<T, N> &a, isize start)
+{
+    return slice(a, start, len(a));
+}
+
+// `array[:stop]` in Odin.
+template<class T, auto N>
+LULU_FUNC inline Slice<T>
+slice_until(Array<T, N> &a, isize stop)
+{
+    return slice(a, 0, stop);
+}
+
+template<class T, auto N>
+LULU_FUNC constexpr isize
+len(const Array<T, N> &a)
+{
+    unused(a);
+    return N;
+}
+
+template<class T, auto N>
+LULU_FUNC constexpr T *
+raw_data(Array<T, N> &a)
+{
+    return a.data;
+}
+
 template<class T>
 LULU_FUNC inline bool
 slice_eq(Slice<T> a, Slice<T> b)
 {
-    if (len(a) != len(b)) {
+    if (a.len != b.len) {
         return false;
     }
-    usize size = sizeof(T) * cast_usize(len(a));
-    return memcmp(raw_data(a), raw_data(b), size) == 0;
+    usize size = sizeof(T) * cast_usize(a.len);
+    return memcmp(a.data, b.data, size) == 0;
+}
+
+template<class T>
+LULU_FUNC inline Slice<T>
+slice_pointer(T *start, T *stop)
+{
+    Slice<T> s{start, cast_isize(stop - start)};
+    // Problem: comparison of 2 unrelated pointers is not standard!
+    lulu_assertf(start <= stop,
+        "start=%p > stop=%p",
+        cast(void *)start, cast(void *)stop);
+    return s;
 }
 
 template<class T>

@@ -37,17 +37,29 @@ enum Token_Type {
     TOKEN_EOF,
 };
 
-struct Token {
+struct LULU_PRIVATE Token {
+    Token_Type  type;
+    int         line;
     LString     lexeme;
     union {
         double   number;
         OString *ostring;
     };
-    Token_Type type;
-    int        line;
+
+    static constexpr Token
+    make(Token_Type type, int line, LString lexeme = {}, Number number = 0)
+    {
+        Token t{
+            /* type */              type,
+            /* line */              line,
+            /* lexeme */            lexeme,
+            /* <unnamed>::number */ {number},
+        };
+        return t;
+    }
 };
 
-struct Lexer {
+struct LULU_PRIVATE Lexer {
     lulu_VM    *vm;
     Builder    *builder;
     LString     source, script;

@@ -3,14 +3,14 @@
 #include "string.hpp"
 #include "value.hpp"
 
-struct Entry {
+struct LULU_PRIVATE Entry {
     Value key, value;
 };
 
-struct Table {
+struct LULU_PRIVATE Table {
     OBJECT_HEADER;
     Slice<Entry> entries;
-    isize       count;   // Number of currently active elements in `entries`.
+    isize        count;   // Number of currently active elements in `entries`.
 };
 
 LULU_FUNC Table *

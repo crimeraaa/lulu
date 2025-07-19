@@ -4,21 +4,21 @@
 #include "object.hpp"
 
 bool
-operator==(Value a, Value b)
+Value::operator==(Value b) const
 {
-    if (a.type != b.type) {
+    if (this->type() != b.type()) {
         return false;
     }
 
-    switch (a.type) {
+    switch (this->type()) {
     case VALUE_NONE:     break;
     case VALUE_NIL:      return true;
-    case VALUE_BOOLEAN:  return value_to_boolean(a) == value_to_boolean(b);
-    case VALUE_NUMBER:   return lulu_Number_eq(value_to_number(a), value_to_number(b));
-    case VALUE_USERDATA: return value_to_userdata(a) == value_to_userdata(b);
+    case VALUE_BOOLEAN:  return this->to_boolean() == b.to_boolean();
+    case VALUE_NUMBER:   return lulu_Number_eq(this->to_number(), b.to_number());
+    case VALUE_USERDATA: return this->to_userdata() == b.to_userdata();
     case VALUE_STRING:   // fall-through
     case VALUE_TABLE:
-    case VALUE_FUNCTION: return value_to_object(a) == value_to_object(b);
+    case VALUE_FUNCTION: return this->to_object() == b.to_object();
     case VALUE_CHUNK:
         break;
     }
@@ -28,33 +28,30 @@ operator==(Value a, Value b)
 void
 value_print(Value v)
 {
-    Value_Type t = v.type;
+    Value_Type t = v.type();
     switch (t) {
     case VALUE_NIL:
         fputs("nil", stdout);
         break;
     case VALUE_BOOLEAN:
-        fputs(value_to_boolean(v) ? "true" : "false", stdout);
+        fputs(v.to_boolean() ? "true" : "false", stdout);
         break;
     case VALUE_NUMBER:
-        fprintf(stdout, LULU_NUMBER_FMT, value_to_number(v));
+        fprintf(stdout, LULU_NUMBER_FMT, v.to_number());
         break;
-    case VALUE_USERDATA: {
-        void *p = value_to_userdata(v);
-        fprintf(stdout, "%s: %p", value_type_name(t), p);
+    case VALUE_USERDATA:
+print_pointer:
+        fprintf(stdout, "%s: %p", Value::type_name(t), v.to_pointer());
         break;
-    }
     case VALUE_STRING: {
-        OString *s = value_to_ostring(v);
+        OString *s = v.to_ostring();
         char     q = (s->len == 1) ? '\'' : '\"';
         fprintf(stdout, "%c%s%c", q, s->data, q);
         break;
     }
     case VALUE_TABLE:
     case VALUE_FUNCTION: {
-        void *p = value_to_object(v);
-        fprintf(stdout, "%s: %p", value_type_name(t), p);
-        break;
+        goto print_pointer;
     }
     case VALUE_NONE:
     case VALUE_CHUNK:

@@ -13,25 +13,14 @@ MAX_ACTIVE_LOCALS = 200,
 MAX_TOTAL_LOCALS  = UINT16_MAX;
 
 
-/**
- * @details 2025-07-13
- *  When used as a jump offset, this marks the start of a jump list because
- *  of the following properties.
- *
- *  1.) It is an invalid `pc`, because `pc >= 0`.
- *  2.) It is an infinite loop, because the `ip` at the point the instructions
- *      are dispatched are already incremented. So adding `-1` essentially
- *      undoes the increment, bringing us back to `OP_JUMP`.
- */
-#define NO_JUMP     -1
+struct LULU_PRIVATE Compiler {
+    using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
 
-using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
-
-struct Compiler {
     lulu_VM     *vm;
     Compiler    *prev;   // Have an enclosing function?
     Parser      *parser; // All compilers share the same parser.
     Chunk       *chunk;  // Compilers do not own their chunks.
+    isize        pc;     // Index of first free instruction: `len(chunk->code)`.
     isize        last_target;
     u16          free_reg;
     Active_Array active; // Indexes are local registers.
@@ -41,42 +30,6 @@ LULU_FUNC inline Instruction *
 get_code(Compiler *c, isize pc)
 {
     return &c->chunk->code[pc];
-}
-
-LULU_FUNC inline Expr
-expr_make(Expr_Type type, int line)
-{
-    Expr e;
-    e.type        = type;
-    e.line        = line;
-    e.patch_true  = NO_JUMP;
-    e.patch_false = NO_JUMP;
-    e.number      = 0;
-    return e;
-}
-
-LULU_FUNC inline Expr
-expr_make_number(Number n, int line)
-{
-    Expr e = expr_make(EXPR_NUMBER, line);
-    e.number = n;
-    return e;
-}
-
-LULU_FUNC inline Expr
-expr_make_reg(Expr_Type type, u16 reg, int line)
-{
-    Expr e = expr_make(type, line);
-    e.reg = reg;
-    return e;
-}
-
-LULU_FUNC inline Expr
-expr_make_index(Expr_Type type, u32 index, int line)
-{
-    Expr e = expr_make(type, line);
-    e.index = index;
-    return e;
 }
 
 LULU_FUNC Compiler
@@ -253,12 +206,12 @@ compiler_set_one_return(Compiler *c, Expr *e);
 
 /**
  * @brief
- *  -   Finds the index of the `len(c->active) - 1` up to and including `limit`
- *      numbered local.
+ *  -   Finds the index of the `small_array_len(c->active) - 1` up to and
+ *      including the `limit`-numbered local.
  *
  * @param limit
- *  -   The last index where we will check the `c->active` array.
- *  -   This is useful to enforce scoping rules, so that this is still valid:
+ *      The last index where we will check the `c->active` array.
+ *      This is useful to enforce scoping rules, so that this is still valid:
  *      `local x; do local x; end;`
  *
  * @note 2025-07-10
@@ -299,15 +252,24 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP, u16 reg 
 
 /**
  * @param cond
- *  -   When the resulting register of `left` as a boolean equals this, then
- *      the succeeding jump is not skipped (and thus performed).
- *  -   E.g. `if` statements will set this to false so that the jump to the
- *      next `elseif`/`else`/`end` is performed.
+ *      When the resulting register of `left` as a boolean equals this, then
+ *      the succeeding jump is skipped.
+ *
+ *      E.g. consider `if` statements and `and` expressions. If `left` is
+ *      truthy, since `cond == true`, then the jump is skipped so that the
+ *      block/right-hand expression is executed.
+ *
+ *      Otherwise, `right` is falsy when `cond == true`, so the jump is not
+ *      skipped so we jump over the block/right-hand expression.
  *
  *  @note 2025-07-18
  *  -   We assume that the instruction before `OP_JUMP` is an instruction
  *      with a 'test' mode (e.g. `OP_TEST` or `OP_TEST_SET`) which may do `ip++`
  *      to skip over the jump.
+ *
+ * @note 2025-07-19
+ *  -   Analogous to `lcode.c:luaK_goif{true,false}(FuncState *fs, expdesc *e)`
+ *      in Lua 5.1.5.
  */
 LULU_FUNC void
 compiler_logical_new(Compiler *c, Expr *left, bool cond);

@@ -5,22 +5,22 @@
 
 #define CLOSURE_HEADER     OBJECT_HEADER; bool is_c
 
-#define closure_is_c(f)    ((f)->l.is_c)
+#define closure_is_c(f)    ((f)->lua.is_c)
 #define closure_is_lua(f)  (!closure_is_c(f))
 
-struct Closure_Lua {
+struct LULU_PRIVATE Closure_Lua {
     CLOSURE_HEADER;
     Chunk *chunk;
     int    n_params;
 };
 
-struct Closure_C {
+struct LULU_PRIVATE Closure_C {
     CLOSURE_HEADER;
     lulu_CFunction callback;
 };
 
-union Closure {
-    Closure_Lua l;
+union LULU_PRIVATE Closure {
+    Closure_Lua lua;
     Closure_C   c;
 };
 

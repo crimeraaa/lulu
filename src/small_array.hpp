@@ -1,29 +1,50 @@
 #pragma once
 
-#include "array.hpp"
 #include "slice.hpp"
 
 template<class T, isize N>
-struct Small_Array {
+struct LULU_PRIVATE Small_Array {
     Array<T, N> data;
     isize       len;
 };
 
 template<class T, auto N>
 LULU_FUNC constexpr void
-small_array_init(Small_Array<T, N> *sa)
+small_array_clear(Small_Array<T, N> *sa)
 {
     sa->len = 0;
 }
 
 template<class T, auto N>
+LULU_FUNC inline void
+small_array_resize(Small_Array<T, N> *sa, isize n)
+{
+    lulu_assert(0 <= n && n <= N);
+    sa->len = n;
+}
+
+template<class T, auto N>
+LULU_FUNC inline void
+small_array_push(Small_Array<T, N> *sa, T v)
+{
+    sa->data[sa->len++] = v;
+}
+
+template<class T, auto N>
+LULU_FUNC inline void
+small_array_pop(Small_Array<T, N> *sa)
+{
+    sa->len--;
+}
+
+template<class T, isize N>
 LULU_FUNC constexpr isize
 small_array_len(const Small_Array<T, N> &sa)
 {
     return sa.len;
 }
 
-template<class T, auto N>
+template<class T, isize N>
 LULU_FUNC constexpr isize
 small_array_cap(const Small_Array<T, N> &sa)
 {
@@ -31,44 +52,23 @@ small_array_cap(const Small_Array<T, N> &sa)
     return N;
 }
 
-template<class T, auto N>
-LULU_FUNC inline Slice<T>
-small_array_slice(Small_Array<T, N> &sa)
-{
-    return slice_array(sa.data, 0, sa.len);
-}
-
-template<class T, auto N>
+template<class T, isize N>
 LULU_FUNC inline T
-small_array_get(const Small_Array<T, N> &sa, isize index)
+small_array_get(const Small_Array<T, N> &sa, isize i)
 {
-    return sa.data[index];
+    return sa.data[i];
 }
 
 template<class T, auto N>
 LULU_FUNC inline T *
-small_array_get_ptr(Small_Array<T, N> *sa, isize index)
+small_array_get_ptr(Small_Array<T, N> *sa, isize i)
 {
-    return &sa->data[index];
+    return &sa->data[i];
 }
 
-template<class T, auto N>
-LULU_FUNC inline void
-small_array_push(Small_Array<T, N> *sa, T value)
+template<class T, isize N>
+LULU_FUNC inline Slice<T>
+small_array_slice(Small_Array<T, N> &sa)
 {
-    sa->data[sa->len++] = value;
-}
-
-template<class T, auto N>
-LULU_FUNC constexpr void
-small_array_pop(Small_Array<T, N> *sa)
-{
-    sa->len--;
-}
-
-template<class T, auto N>
-LULU_FUNC constexpr void
-small_array_resize(Small_Array<T, N> *sa, isize n)
-{
-    sa->len = n;
+    return slice(sa.data, 0, sa.len);
 }

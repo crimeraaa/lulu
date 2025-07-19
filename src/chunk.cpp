@@ -9,6 +9,7 @@ Chunk *
 chunk_new(lulu_VM *vm, LString source, Table *indexes)
 {
     Chunk *c = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
+    // Because `c` is heap-allocated, we must explicitly 'construct' the members.
     dynamic_init(&c->constants);
     dynamic_init(&c->code);
     dynamic_init(&c->lines);
@@ -86,7 +87,7 @@ chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
 {
     Value i;
     if (table_get(c->indexes, v, &i)) {
-        return cast(u32)value_to_number(i);
+        return cast(u32)i.to_number();
     }
 
     Number i2 = cast(Number)len(c->constants);
@@ -124,7 +125,7 @@ chunk_get_local(const Chunk *c, int local_number, isize pc)
             counter--;
             // We iterated the correct number of times for this scope?
             if (counter == 0) {
-                return ostring_to_cstring(local.identifier);
+                return local.identifier->to_cstring();
             }
         }
     }

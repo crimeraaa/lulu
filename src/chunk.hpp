@@ -5,19 +5,19 @@
 #include "value.hpp"
 #include "string.hpp"
 
-struct Line_Info {
+struct LULU_PRIVATE Line_Info {
     int   line; // Line number is stored directly in case we skip empty lines.
     isize start_pc;
     isize end_pc;
 };
 
-struct Local {
+struct LULU_PRIVATE Local {
     OString *identifier;
     isize    start_pc;
     isize    end_pc;
 };
 
-struct Chunk {
+struct LULU_PRIVATE Chunk {
     OBJECT_HEADER;
     Dynamic<Value>       constants;
     Dynamic<Instruction> code;

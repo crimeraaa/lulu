@@ -32,10 +32,11 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Compiler *enclosing)
     c.vm          = vm;
     c.prev        = enclosing;
     c.parser      = p;
-    c.last_target = -1;
+    c.pc          = 0;
+    c.last_target = NO_JUMP;
     c.chunk       = chunk;
     c.free_reg    = 0;
-    small_array_init(&c.active);
+    small_array_clear(&c.active);
     return c;
 }
 
@@ -50,14 +51,29 @@ compiler_error_limit(Compiler *c, isize limit, const char *what, const Token *wh
 
 //=== BYTECODE MANIPULATION ================================================ {{{
 
+static isize
+code_push(Compiler *c, Instruction i, int line)
+{
+    lulu_assert(c->pc == len(c->chunk->code));
+    c->pc++;
+    return chunk_append(c->vm, c->chunk, i, line);
+}
+
+static void
+code_pop(Compiler *c)
+{
+    c->pc--;
+    dynamic_pop(&c->chunk->code);
+    lulu_assert(c->pc == len(c->chunk->code));
+}
+
 isize
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 {
     // lulu_assert(opinfo[op].a() && a <= Instruction::MAX_A || a == 0);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER || b == 0);
     lulu_assert(opinfo[op].c() == OPARG_REGK || opinfo[op].c() == OPARG_OTHER || c2 == 0);
-
-    return chunk_append(c->vm, c->chunk, Instruction::make_abc(op, a, b, c2), line);
+    return code_push(c, Instruction::make_abc(op, a, b, c2), line);
 }
 
 isize
@@ -66,22 +82,21 @@ compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line)
     // lulu_assert(opinfo[op].a() && a <= Instruction::MAX_A || a == 0);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER);
     lulu_assert(opinfo[op].c() == OPARG_UNUSED);
-    return chunk_append(c->vm, c->chunk, Instruction::make_abx(op, a, bx), line);
+    return code_push(c, Instruction::make_abx(op, a, bx), line);
 }
 
 void
 compiler_load_nil(Compiler *c, u16 reg, int n, int line)
 {
-    isize pc = len(c->chunk->code);
+    isize pc = c->pc;
 
     // No potential jumps up to this point?
     if (pc > c->last_target) {
         // Stack frame is initialized to all `nil` at the start of the function,
         // so nothing to do.
         if (pc == 0) {
-            // Since `pc == 0` at this point, we assume any locals here are
-            // also implicitly initialized to `nil`.
-            if (cast(isize)n >= small_array_len(c->active)) {
+            // Concept check: `local x; local y;`
+            if (cast(isize)reg >= small_array_len(c->active)) {
                 return;
             }
         }
@@ -90,7 +105,7 @@ compiler_load_nil(Compiler *c, u16 reg, int n, int line)
     Instruction *ip = get_code(c, pc - 1);
     u16 last_reg = reg + cast(u16)(n - 1);
     // Previous instruction may be able to be folded?
-    if (ip->op() == OP_LOAD_NIL) {
+    if (ip->op() == OP_NIL) {
         u16 ra = ip->a();
         u16 rb = ip->b();
 
@@ -102,13 +117,13 @@ compiler_load_nil(Compiler *c, u16 reg, int n, int line)
     }
 
     // Can't fold; need new instruction.
-    compiler_code_abc(c, OP_LOAD_NIL, reg, last_reg, 0, line);
+    compiler_code_abc(c, OP_NIL, reg, last_reg, 0, line);
 }
 
 void
 compiler_load_boolean(Compiler *c, u16 reg, bool b, int line)
 {
-    compiler_code_abc(c, OP_LOAD_BOOL, reg, cast(u16)b, 0, line);
+    compiler_code_abc(c, OP_BOOL, reg, cast(u16)b, 0, line);
 }
 
 u32
@@ -126,7 +141,7 @@ compiler_add_number(Compiler *c, Number n)
 u32
 compiler_add_ostring(Compiler *c, OString *s)
 {
-    return compiler_add_value(c, value_make_string(s));
+    return compiler_add_value(c, Value::make_string(s));
 }
 
 //=== }}} ======================================================================
@@ -237,7 +252,7 @@ discharge_to_reg(Compiler *c, Expr *e, u16 reg, int line)
     }
     default:
         lulu_assertf(e->type == EXPR_NONE || e->type == EXPR_JUMP,
-            "Expr_Type(%i) not yet implemented", e->type);
+            "Expr_Type(%i) cannot be discharged", e->type);
         return;
     }
     e->type = EXPR_DISCHARGED;
@@ -262,10 +277,10 @@ need_value(Compiler *c, isize jump_pc)
 {
     while (jump_pc != NO_JUMP) {
         const isize  next_pc = jump_get(c, jump_pc);
-        Instruction *test_ip = jump_get_control(c, jump_pc);
+        Instruction *ctrl_ip = jump_get_control(c, jump_pc);
         // `OP_TEST_SET` already uses R(A) for its value; other opcodes do not
         // have a destination register yet.
-        if (test_ip->op() != OP_TEST_SET) {
+        if (ctrl_ip->op() != OP_TEST_SET) {
             return true;
         }
         jump_pc = next_pc;
@@ -276,9 +291,8 @@ need_value(Compiler *c, isize jump_pc)
 static isize
 label_get(Compiler *c)
 {
-    isize pc = len(c->chunk->code);
-    c->last_target = pc;
-    return pc;
+    c->last_target = c->pc;
+    return c->pc;
 
 }
 
@@ -286,7 +300,7 @@ static isize
 label_code(Compiler *c, u16 reg, bool b, bool do_jump, int line)
 {
     label_get(c);
-    return compiler_code_abc(c, OP_LOAD_BOOL, reg, cast(u16)b, cast(u16)do_jump, line);
+    return compiler_code_abc(c, OP_BOOL, reg, cast(u16)b, cast(u16)do_jump, line);
 }
 
 static void
@@ -298,7 +312,7 @@ expr_to_reg(Compiler *c, Expr *e, u16 reg, int line)
     if (is_jump) {
         compiler_jump_add(c, &e->patch_true, e->pc);
     }
-    if (expr_has_jumps(e)) {
+    if (e->has_jumps()) {
         isize load_true  = NO_JUMP;
         isize load_false = NO_JUMP;
         if (need_value(c, e->patch_true) || need_value(c, e->patch_false)) {
@@ -310,7 +324,10 @@ expr_to_reg(Compiler *c, Expr *e, u16 reg, int line)
         compiler_jump_patch(c, e->patch_false, load_false, reg);
         compiler_jump_patch(c, e->patch_true,  load_true,  reg);
     }
-    *e = expr_make_reg(EXPR_DISCHARGED, reg, line);
+
+    // If any jumps were present, they were discharged above. We can safely
+    // reset them.
+    *e = Expr::make_reg(EXPR_DISCHARGED, reg, line);
 }
 
 u16
@@ -331,7 +348,7 @@ compiler_expr_any_reg(Compiler *c, Expr *e)
 {
     discharge_vars(c, e, e->line);
     if (e->type == EXPR_DISCHARGED) {
-        if (!expr_has_jumps(e)) {
+        if (!e->has_jumps()) {
             return e->reg;
         }
         lulu_assertln(false, "Expr with jumps not yet implemented");
@@ -449,7 +466,7 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
     switch (op) {
     case OP_UNM:
         // Constant folding
-        if (expr_is_number(e)) {
+        if (e->is_number()) {
             e->number = lulu_Number_unm(e->number);
             return;
         }
@@ -509,13 +526,13 @@ folded_compare(OpCode op, bool cond, Expr *left, Expr *right)
     bool result;
     if (op == OP_EQ) {
         // Can only fold literal expressions: `nil`, `true`, `false`, `<number>`
-        if (!expr_is_literal(left) || !expr_is_literal(right)) {
+        if (!left->is_literal() || !right->is_literal()) {
             return false;
         }
 
         if (left->type != right->type) {
             // Trivially comparable?
-            if (expr_is_boolean(left) && expr_is_boolean(right)) {
+            if (left->is_boolean() && right->is_boolean()) {
                 expr_bool(left, false);
                 return true;
             }
@@ -543,7 +560,7 @@ folded_compare(OpCode op, bool cond, Expr *left, Expr *right)
             result = !result;
         }
     } else {
-        if (!expr_is_number(left) || !expr_is_number(right)) {
+        if (!left->is_number() || !right->is_number()) {
             return false;
         }
         Number a, b;
@@ -704,7 +721,7 @@ isize
 compiler_jump_new(Compiler *c, int line)
 {
     constexpr Instruction i = Instruction::make_asbx(OP_JUMP, 0, NO_JUMP);
-    return chunk_append(c->vm, c->chunk, i, line);
+    return code_push(c, i, line);
 }
 
 void
@@ -797,10 +814,9 @@ jump_get_control(Compiler *c, isize jump_pc)
     Instruction *ip = get_code(c, jump_pc);
     lulu_assert(ip->op() == OP_JUMP);
     if (jump_pc >= 1) {
-        Instruction *ctrl = ip - 1;
-        // only `OP_TEST{SET}`
-        if (opinfo[ctrl->op()].test()) {
-            return ctrl;
+        Instruction *ctrl_ip = ip - 1;
+        if (opinfo[ctrl_ip->op()].test()) {
+            return ctrl_ip;
         }
     }
     return ip;
@@ -817,8 +833,8 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target, u16 reg)
         // Do not subtract 1; we want to skip over the latest instruction.
         target = label_get(c);
     }
-    lulu_assertln(jump_pc != target, "Likely infinite loop");
     for (;;) {
+        // Save because `jump_set()` will overwrite the original value.
         isize next = jump_get(c, jump_pc);
         test_reg_patch(c, jump_pc, reg);
         jump_set(c, jump_pc, target);
@@ -831,14 +847,14 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target, u16 reg)
 }
 
 static isize
-get_logical_target(Compiler *c, Expr *left, bool cond)
+logical_target_get(Compiler *c, Expr *left, bool cond)
 {
     int line = left->line;
     discharge_vars(c, left, line);
     switch (left->type) {
     case EXPR_NIL:
     case EXPR_FALSE:
-        // left-hand side of `and`
+        // left-hand side of `and` is always falsy?
         if (!cond) {
             return NO_JUMP;
         }
@@ -846,7 +862,7 @@ get_logical_target(Compiler *c, Expr *left, bool cond)
     case EXPR_TRUE:
     case EXPR_NUMBER:
     case EXPR_CONSTANT:
-        // left-hand side of `or`
+        // left-hand side of `or` is always truthy?
         if (cond) {
             return NO_JUMP;
         }
@@ -860,17 +876,25 @@ get_logical_target(Compiler *c, Expr *left, bool cond)
         break;
     }
 
-    // lcode.c:jumponcond(FuncState *fs, expdesc *e, int cond)
-    // if (left->type == EXPR_RELOCABLE) {
-    //     Instruction *ip = get_code(c, left->pc);
-    //     if (ip->op() == OP_NOT) {
-    //         // Remove previous `OP_NOT`
-    //         dynamic_pop(&c->chunk->code);
-
-    //         // Replace with a test
-    //         return jump_if(c, OP_TEST, ip->b(), 0, cast(u16)cond, line);
-    //     }
-    // }
+    /**
+     * @note
+     *  -   See `lcode.c:jumponcond(FuncState *fs, expdesc *e, int cond)` in
+     *      Lua 5.1.5.
+     *
+     * @note 2025-07-19
+     *  -   In `lcode.c:luaK_goiftrue()`, `jumponcond()` is called with parameter
+     *      `cond == 0`.
+     *  -   So to simulate that, we don't negate `cond` when folding `OP_NOT`
+     *      and we do negatie it when emitting `OP_TEST_SET`.
+     */
+    if (left->type == EXPR_RELOCABLE) {
+        Instruction ip = *get_code(c, left->pc);
+        if (ip.op() == OP_NOT) {
+            // Remove previous `OP_NOT`, replace it with a jump-test pair.
+            code_pop(c);
+            return jump_if(c, OP_TEST, ip.b(), 0, cast(u16)cond, line);
+        }
+    }
 
     u16 rb = discharge_any_reg(c, left, line);
     pop_expr(c, left);
@@ -889,7 +913,6 @@ get_logical_target(Compiler *c, Expr *left, bool cond)
 static isize
 jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 {
-    // TODO(2025-07-18): Verify why we need to invert `cond`?
     compiler_code_abc(c, op, a, b, c2, line);
     return compiler_jump_new(c, line);
 }
@@ -897,7 +920,7 @@ jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 void
 compiler_logical_new(Compiler *c, Expr *left, bool cond)
 {
-    isize jump_pc = get_logical_target(c, left, cond);
+    isize jump_pc = logical_target_get(c, left, cond);
 
     if (cond) {
         lulu_assert(left->patch_false == NO_JUMP);

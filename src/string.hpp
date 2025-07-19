@@ -22,21 +22,34 @@ lstring_from_slice(Slice<char> s)
     return {raw_data(s), len(s)};
 }
 
-struct Builder {
+struct LULU_PRIVATE Builder {
     Dynamic<char> buffer;
 };
 
-struct OString {
+struct LULU_PRIVATE OString {
     OBJECT_HEADER;
     isize len;
     u32   hash;
     char  data[1];
+
+    LString
+    to_lstring() const noexcept
+    {
+        return {this->data, this->len};
+    }
+
+    const char *
+    to_cstring() const
+    {
+        lulu_assert(this->data[this->len] == '\0');
+        return this->data;
+    }
 };
 
-struct Intern {
+struct LULU_PRIVATE Intern {
     // Each entry in the string table is actually a linked list.
     Slice<Object *> table;
-    isize          count; // Total number of strings in active use.
+    isize           count; // Total number of strings in active use.
 };
 
 LULU_FUNC inline LString
@@ -95,16 +108,3 @@ hash_string(LString text);
 
 LULU_FUNC OString *
 ostring_new(lulu_VM *vm, LString text);
-
-LULU_FUNC inline LString
-ostring_to_lstring(OString *s)
-{
-    return {s->data, s->len};
-}
-
-LULU_FUNC inline const char *
-ostring_to_cstring(OString *s)
-{
-    lulu_assert(s->data[s->len] == '\0');
-    return s->data;
-}

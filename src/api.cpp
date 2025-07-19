@@ -48,7 +48,7 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets)
     vm_call(vm, fn, n_args, (n_rets == LULU_MULTRET) ? VARARG : n_rets);
 }
 
-struct PCall_Data {
+struct LULU_PRIVATE PCall_Data {
     int n_args, n_rets;
 };
 
@@ -68,7 +68,7 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
     return e;
 }
 
-struct C_PCall_Data {
+struct LULU_PRIVATE C_PCall_Data {
     lulu_CFunction function;
     void          *function_data;
 };
@@ -104,7 +104,7 @@ lulu_register(lulu_VM *vm, const lulu_Register *library, size_t n)
         OString *s = ostring_new(vm, lstring_from_cstring(library[i].name));
         Closure *f = closure_new(vm, library[i].function);
         // TODO(2025-07-01): Ensure key and value are not collected!
-        table_set(vm, &vm->globals, value_make_string(s), value_make_function(f));
+        table_set(vm, &vm->globals, Value::make_string(s), Value::make_function(f));
     }
 }
 
@@ -113,7 +113,7 @@ lulu_register(lulu_VM *vm, const lulu_Register *library, size_t n)
 lulu_Type
 lulu_type(lulu_VM *vm, int i)
 {
-    Value_Type t = value_type(value_at(vm, i));
+    Value_Type t = value_at(vm, i).type();
     lulu_assertf(VALUE_NONE <= t && t <= VALUE_FUNCTION, "Got Value_Type(%i)", t);
     return cast(lulu_Type)t;
 }
@@ -122,55 +122,55 @@ const char *
 lulu_type_name(lulu_VM *vm, lulu_Type t)
 {
     unused(vm);
-    return value_type_name(cast(Value_Type)t);
+    return Value::type_name(cast(Value_Type)t);
 }
 
 int
 lulu_is_none(lulu_VM *vm, int i)
 {
-    return value_is_none(value_at(vm, i));
+    return value_at(vm, i).is_none();
 }
 
 int
 lulu_is_nil(lulu_VM *vm, int i)
 {
-    return value_is_nil(value_at(vm, i));
+    return value_at(vm, i).is_nil();
 }
 
 int
 lulu_is_boolean(lulu_VM *vm, int i)
 {
-    return value_is_boolean(value_at(vm, i));
+    return value_at(vm, i).is_boolean();
 }
 
 int
 lulu_is_number(lulu_VM *vm, int i)
 {
-    return value_is_number(value_at(vm, i));
+    return value_at(vm, i).is_number();
 }
 
 int
 lulu_is_userdata(lulu_VM *vm, int i)
 {
-    return value_is_userdata(value_at(vm, i));
+    return value_at(vm, i).is_userdata();
 }
 
 int
 lulu_is_string(lulu_VM *vm, int i)
 {
-    return value_is_string(value_at(vm, i));
+    return value_at(vm, i).is_string();
 }
 
 int
 lulu_is_table(lulu_VM *vm, int i)
 {
-    return value_is_table(value_at(vm, i));
+    return value_at(vm, i).is_table();
 }
 
 int
 lulu_is_function(lulu_VM *vm, int i)
 {
-    return value_is_function(value_at(vm, i));
+    return value_at(vm, i).is_function();
 }
 
 /*=== }}} =================================================================== */
@@ -180,16 +180,15 @@ lulu_is_function(lulu_VM *vm, int i)
 int
 lulu_to_boolean(lulu_VM *vm, int i)
 {
-    Value v = value_at(vm, i);
-    return !value_is_falsy(v);
+    return !value_at(vm, i).is_falsy();
 }
 
 lulu_Number
 lulu_to_number(lulu_VM *vm, int i)
 {
     Value v = value_at(vm, i);
-    if (value_is_number(v)) {
-        return value_to_number(v);
+    if (v.is_number()) {
+        return v.to_number();
     }
     return 0;
 }
@@ -198,12 +197,12 @@ const char *
 lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 {
     Value v = value_at(vm, i);
-    if (value_is_string(v)) {
-        OString *s = value_to_ostring(v);
+    if (v.is_string()) {
+        OString *s = v.to_ostring();
         if (n != nullptr) {
             *n = cast_usize(s->len);
         }
-        return s->data;
+        return s->to_cstring();
     }
     return nullptr;
 }
@@ -211,15 +210,7 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 void *
 lulu_to_pointer(lulu_VM *vm, int i)
 {
-    Value v = value_at(vm, i);
-    switch (v.type) {
-    case VALUE_TABLE:       return value_to_table(v);
-    case VALUE_FUNCTION:    return value_to_function(v);
-    case VALUE_USERDATA:    return value_to_userdata(v);
-    default:
-        break;
-    }
-    return nullptr;
+    return value_at(vm, i).to_pointer();
 }
 
 int
@@ -237,10 +228,10 @@ lulu_set_top(lulu_VM *vm, int i)
         isize new_stop  = old_start + cast_isize(i);
         if (new_stop > old_stop) {
             // If growing the window, initialize the new region to nil.
-            Slice<Value> extra = slice_array(vm->stack, old_stop, new_stop);
+            auto extra = slice(vm->stack, old_stop, new_stop);
             fill(extra, nil);
         }
-        vm->window = slice_array(vm->stack, old_start, new_stop);
+        vm->window = slice(vm->stack, old_start, new_stop);
     } else {
         lulu_pop(vm, -i);
     }
@@ -252,8 +243,8 @@ lulu_insert(lulu_VM *vm, int i)
     Value *start = &value_at(vm, i);
     // Copy by value as this stack slot is about to be replaced.
     Value v = value_at(vm, -1);
-    Slice<Value> dst = slice_pointer(start + 1, end(vm->window));
-    Slice<Value> src{start, len(dst)};
+    auto dst = slice_pointer(start + 1, end(vm->window));
+    auto src = slice_from(dst, ptr_index(dst, start));
     copy(dst, src);
     *start = v;
 }
@@ -263,8 +254,8 @@ lulu_remove(lulu_VM *vm, int i)
 {
     Value *start = &value_at(vm, i);
     Value *stop  = &value_at(vm, -1);
-    Slice<Value> dst = slice_pointer(start, stop - 1);
-    Slice<Value> src{start + 1, len(dst)};
+    auto dst = slice_pointer(start, stop - 1);
+    auto src = slice_from(dst, ptr_index(dst, start) + 1);
     copy(dst, src);
     lulu_pop(vm, 1);
 }
@@ -273,7 +264,7 @@ void
 lulu_pop(lulu_VM *vm, int n)
 {
     isize i = len(vm->window) - cast_isize(n);
-    vm->window = slice_slice(vm->window, 0, i);
+    vm->window = slice_until(vm->window, i);
 }
 
 void
@@ -299,7 +290,7 @@ lulu_push_number(lulu_VM *vm, lulu_Number n)
 void
 lulu_push_userdata(lulu_VM *vm, void *p)
 {
-    vm_push(vm, value_make_userdata(p));
+    vm_push(vm, Value::make_userdata(p));
 }
 
 void
@@ -307,7 +298,7 @@ lulu_push_lstring(lulu_VM *vm, const char *s, size_t n)
 {
     LString ls{s, cast_isize(n)};
     OString *o = ostring_new(vm, ls);
-    vm_push(vm, value_make_string(o));
+    vm_push(vm, Value::make_string(o));
 }
 
 void
@@ -336,7 +327,7 @@ void
 lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf)
 {
     Closure *f = closure_new(vm, cf);
-    vm_push(vm, value_make_function(f));
+    vm_push(vm, Value::make_function(f));
 }
 
 void
@@ -353,7 +344,7 @@ int
 lulu_get_global(lulu_VM *vm, const char *s)
 {
     OString *o = ostring_new(vm, lstring_from_cstring(s));
-    Value k = value_make_string(o);
+    Value k = Value::make_string(o);
 
     Value v;
     bool  ok = table_get(&vm->globals, k, &v);
@@ -366,7 +357,7 @@ lulu_set_global(lulu_VM *vm, const char *s)
 {
     OString *o = ostring_new(vm, lstring_from_cstring(s));
     Value    v = vm_pop(vm);
-    table_set(vm, &vm->globals, value_make_string(o), v);
+    table_set(vm, &vm->globals, Value::make_string(o), v);
 }
 
 void
@@ -385,7 +376,7 @@ lulu_concat(lulu_VM *vm, int n)
 
     // `value_at()` returned a sentinel value? We can't properly form a slice
     // with this.
-    lulu_assert(!value_is_none(first));
+    lulu_assert(!first.is_none());
 
     vm_concat(vm, first, slice_pointer(&first, &last + 1));
     // Pop all arguments except the first one- the one we replaced.

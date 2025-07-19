@@ -185,7 +185,7 @@ intern_destroy(lulu_VM *vm, Intern *t)
             node = next;
         }
     }
-    mem_delete(vm, raw_data(t->table), len(t->table));
+    slice_delete(vm, t->table);
     intern_init(t);
 }
 

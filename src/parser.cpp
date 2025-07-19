@@ -5,26 +5,22 @@
 #include "debug.hpp"
 #include "vm.hpp"
 
-struct Block {
+struct LULU_PRIVATE Block {
     Block *prev;      // Stack-allocated linked list.
     u16    n_locals;  // Number of initialized locals at the time of pushing.
     bool   breakable;
 };
 
-struct Expr_List {
+struct LULU_PRIVATE Expr_List {
     Expr last;
     u16  count;
 };
 
 static constexpr Expr
-DEFAULT_EXPR = {EXPR_NONE,
-    /* line */ 0,
-    /* patch_true */ -1,
-    /* patch_false */ -1,
-    /* <unnamed>::number */ {0}};
+DEFAULT_EXPR = Expr::make(EXPR_NONE, /* line */ 0);
 
 static constexpr Token
-DEFAULT_TOKEN = {{}, {0}, TOKEN_INVALID, 0};
+DEFAULT_TOKEN = Token::make(TOKEN_INVALID, /* line */ 0);
 
 // Forward declaration for recursive descent parsing.
 static Expr
@@ -51,8 +47,8 @@ block_pop(Parser *p, Compiler *c)
     Slice<u16> active = small_array_slice(c->active);
 
     // Finalize all the locals' information before popping them.
-    isize pc = len(c->chunk->code);
-    for (u16 index : slice_slice(active, cast_isize(b->n_locals), len(active))) {
+    isize pc = c->pc;
+    for (u16 index : slice_from(active, cast_isize(b->n_locals))) {
         c->chunk->locals[index].end_pc = pc;
     }
     small_array_resize(&c->active, b->n_locals);
@@ -235,15 +231,15 @@ resolve_variable(Parser *p, Compiler *c, const Token *t)
     u16 reg;
     OString *id = ostring_new(p->vm, t->lexeme);
     if (compiler_get_local(c, /* limit */ 0, id, &reg)) {
-        e = expr_make_reg(EXPR_LOCAL, reg, t->line);
+        e = Expr::make_reg(EXPR_LOCAL, reg, t->line);
     } else {
         u32 i = compiler_add_ostring(c, id);
-        e = expr_make_index(EXPR_GLOBAL, i, t->line);
+        e = Expr::make_index(EXPR_GLOBAL, i, t->line);
     }
     return e;
 }
 
-struct Constructor {
+struct LULU_PRIVATE Constructor {
     Expr table; // Information on the OP_NEW_TABLE itself.
     Expr value;
     int  n_hash;
@@ -258,7 +254,7 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
     Expr k;
     if (match(p, TOKEN_IDENTIFIER)) {
         u32 i = constant_string(p, c, &t);
-        k = expr_make_index(EXPR_CONSTANT, i, t.line);
+        k = Expr::make_index(EXPR_CONSTANT, i, t.line);
     } else {
         consume(p, TOKEN_OPEN_BRACE);
         k = expression(p, c);
@@ -332,13 +328,13 @@ prefix_expr(Parser *p, Compiler *c)
     Token t = p->consumed;
     advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
     switch (t.type) {
-    case TOKEN_NIL:    return expr_make(EXPR_NIL, t.line);
-    case TOKEN_TRUE:   return expr_make(EXPR_TRUE, t.line);
-    case TOKEN_FALSE:  return expr_make(EXPR_FALSE, t.line);
-    case TOKEN_NUMBER: return expr_make_number(t.number, t.line);
+    case TOKEN_NIL:    return Expr::make(EXPR_NIL, t.line);
+    case TOKEN_TRUE:   return Expr::make(EXPR_TRUE, t.line);
+    case TOKEN_FALSE:  return Expr::make(EXPR_FALSE, t.line);
+    case TOKEN_NUMBER: return Expr::make_number(t.number, t.line);
     case TOKEN_STRING: {
         u32 i = compiler_add_ostring(c, t.ostring);
-        return expr_make_index(EXPR_CONSTANT, i, t.line);
+        return Expr::make_index(EXPR_CONSTANT, i, t.line);
     }
     case TOKEN_IDENTIFIER: {
         return resolve_variable(p, c, &t);
@@ -391,7 +387,9 @@ function_call(Parser *p, Compiler *c, Expr *e)
         if (args.last.type != EXPR_NONE) {
             compiler_expr_next_reg(c, &args.last);
         }
-        args.count = c->free_reg - (base + 1);
+        // g++ warns that `c->free_reg - (base + 1)` converts to `int` in the
+        // subtraction.
+        args.count = cast(u16)(c->free_reg - (base + 1));
     }
     e->type = EXPR_CALL;
     e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 0, e->line);
@@ -423,7 +421,7 @@ primary_expr(Parser *p, Compiler *c)
             consume(p, TOKEN_IDENTIFIER);
 
             u32  i = constant_string(p, c, &t);
-            Expr k = expr_make_index(EXPR_CONSTANT, i, t.line);
+            Expr k = Expr::make_index(EXPR_CONSTANT, i, t.line);
             compiler_get_table(c, &e, &k);
             break;
         }
@@ -533,7 +531,7 @@ arith(Parser *p, Compiler *c, Expr *left, Binary_Type b)
 {
     // VERY important to call this *before* parsing the right side,
     // if it ends up in a register we want them to be in order.
-    if (!expr_is_number(left)) {
+    if (!left->is_number()) {
         compiler_expr_rk(c, left);
     }
     Expr right = expression(p, c, binary_precs[b].right);
@@ -543,7 +541,7 @@ arith(Parser *p, Compiler *c, Expr *left, Binary_Type b)
 static void
 compare(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
 {
-    if (!expr_is_literal(left)) {
+    if (!left->is_literal()) {
         compiler_expr_rk(c, left);
     }
     Expr right = expression(p, c, binary_precs[b].right);
@@ -575,7 +573,7 @@ expression(Parser *p, Compiler *c, Precedence limit)
             break;
         }
 
-        // Skip operator, point to first token of right hand side argument->
+        // Skip operator, point to first token of right hand side argument.
         advance(p);
 
         bool cond = true;
@@ -594,11 +592,11 @@ expression(Parser *p, Compiler *c, Precedence limit)
         case BINARY_POW:
             arith(p, c, &left, b);
             break;
-        case BINARY_NEQ: // fall-through
-        case BINARY_GT:  // fall-through
-        case BINARY_GEQ: cond = false;
-        case BINARY_EQ:  // fall-through
-        case BINARY_LT:  // fall-through
+        case BINARY_NEQ: // fallthrough
+        case BINARY_GT:  // fallthrough
+        case BINARY_GEQ: cond = false; // fallthrough
+        case BINARY_EQ:  // fallthrough
+        case BINARY_LT:  // fallthrough
         case BINARY_LEQ:
             compare(p, c, &left, b, cond);
             break;
@@ -640,7 +638,7 @@ return_stmt(Parser *p, Compiler *c, int line)
     compiler_code_return(c, ra, e.count, is_vararg, line);
 }
 
-struct Assign {
+struct LULU_PRIVATE Assign {
     Assign *prev;
     Expr    variable;
 };
@@ -711,7 +709,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
     // Assign from rightmost target going leftmost. Use assigning expressions
     // from right to left as well.
     while (iter != nullptr) {
-        Expr tmp = expr_make_reg(EXPR_DISCHARGED, c->free_reg - 1, iter->variable.line);
+        Expr tmp = Expr::make_reg(EXPR_DISCHARGED, c->free_reg - 1, iter->variable.line);
         compiler_set_variable(c, &iter->variable, &tmp);
         iter = iter->prev;
     }
@@ -742,13 +740,13 @@ static void
 local_start(Compiler *c, u16 n)
 {
     // `lparser.c:adjust_locals()`
-    isize  pc    = len(c->chunk->code);
-    isize  start = small_array_len(c->active);
+    isize pc    = c->pc;
+    isize start = small_array_len(c->active);
 
     small_array_resize(&c->active, start + cast_isize(n));
     Slice<u16>   active = small_array_slice(c->active);
-    Slice<Local> locals = slice_slice(c->chunk->locals);
-    for (u16 index : slice_slice(active, start, len(active))) {
+    Slice<Local> locals = slice(c->chunk->locals);
+    for (u16 index : slice_from(active, start)) {
         locals[index].start_pc = pc;
     }
 }
@@ -870,8 +868,8 @@ parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
 
     // Push chunk and table to stack so that they are not collected while we
     // are executing.
-    vm_push(vm, value_make_chunk(ch));
-    vm_push(vm, value_make_table(t));
+    vm_push(vm, Value::make_chunk(ch));
+    vm_push(vm, Value::make_table(t));
 
     Parser   p = parser_make(vm, source, script, b);
     Compiler c = compiler_make(vm, &p, ch);
