@@ -1,6 +1,12 @@
 #include "opcode.hpp"
 
-// Vim:     '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
+/**
+ * @note 2025-07-19:
+ *  -   Keep in sync with `OpCode`!
+ *
+ * @details
+ *  -   Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
+ */
 const char *const opnames[OPCODE_COUNT] = {
     /* OP_CONSTANT */   "constant",
     /* OP_NIL */        "nil",
@@ -63,7 +69,13 @@ UNARY     = ABC(/* test */ false, /* a */ true,  OPARG_REGK,  OPARG_UNUSED),
 FUNC_LIKE = ABC(/* test */ false, /* a */ true,  OPARG_OTHER, OPARG_OTHER),
 MOVE_LIKE = UNARY;
 
-// Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
+/**
+ * @note 2025--07-19
+ *  -   ORDER: Keep in sync with `OpCode`!
+ *
+ * @details 2025-07-19
+ *  -   Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
+ */
 const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_CONSTANT */   ABX(/* a */ true, OPARG_REGK),
     /* OP_NIL */        MOVE_LIKE,

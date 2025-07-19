@@ -57,8 +57,8 @@ read_file(const char *file_name, size_t *n)
 
     if (file_ptr == NULL) {
         fprintf(stderr, "Failed to open file '%s'.\n", file_name);
-        /* Don't `fclose(NULL)`. */
-        goto cleanup_done;
+        /* Don't call `fclose(NULL)`. */
+        return NULL;
     }
 
     fseek(file_ptr, 0L, SEEK_END);
@@ -89,7 +89,6 @@ cleanup_buffer:
     data[n_read] = '\0'; /* `n_read` can never be >= `buffer.len + 1` */
 cleanup_file:
     fclose(file_ptr);
-cleanup_done:
     return data;
 }
 
@@ -219,7 +218,10 @@ protected_main(lulu_VM *vm, int argc)
     /* stack can be cleared at this point, `Main_Data` is a C type so it
     cannot be collected no matter what. */
     lulu_set_top(vm, 0);
-    lulu_register(vm, baselib, sizeof(baselib) / sizeof(baselib[0]));
+    
+    lulu_push_value(vm, LULU_GLOBALS_INDEX);
+    lulu_set_global(vm, "_G");
+    lulu_register_library(vm, baselib, sizeof(baselib) / sizeof(baselib[0]));
     switch (d->argc) {
     case 1:
         run_interactive(vm);

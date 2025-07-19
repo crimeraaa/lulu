@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include <stdio.h>  // sprintf
 
 #include "parser.hpp"
 #include "compiler.hpp"
@@ -894,6 +894,5 @@ parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
 
     vm_pop(vm);
     vm_pop(vm);
-
     return ch;
 }

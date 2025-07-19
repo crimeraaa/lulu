@@ -33,9 +33,9 @@ struct LULU_PUBLIC lulu_VM {
     Frame_Array        frames;
     Call_Frame        *caller; // Not a reference because it can be reassigned.
     Slice<Value>       window;
+    Value              globals;
     Builder            builder;
     Intern             intern;
-    Table              globals;
     lulu_Allocator     allocator;
     void              *allocator_data;
     Error_Handler     *error_handler;
@@ -138,8 +138,8 @@ vm_call_init(lulu_VM *vm, Value &ra, int argc, int expected_returned);
 
 
 /**
- * @note 2025-06-16
- *  Assumptions:
+ * @note(2025-06-16) Assumptions
+ *
  *  1.) The stack was resized properly beforehand, so that doing
  *      pointer arithmetic is still within bounds even if we do not
  *      explicitly check.
@@ -149,6 +149,12 @@ vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned);
 
 LULU_FUNC Error
 vm_load(lulu_VM *vm, LString source, LString script);
+
+LULU_FUNC bool
+vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out);
+
+LULU_FUNC void
+vm_table_set(lulu_VM *vm, const Value *t, Value k, Value v);
 
 LULU_FUNC void
 vm_execute(lulu_VM *vm, int n_calls);

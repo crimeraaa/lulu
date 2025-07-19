@@ -2,18 +2,40 @@
 
 // Do not make `constexpr`; must have an address in order to be a reference.
 static Value
-VALUE_NONE_{VALUE_NONE};
+none{VALUE_NONE};
 
-static constexpr Value &
+static Value &
 value_at(lulu_VM *vm, int i)
 {
     // Not valid in any way
     lulu_assert(i != 0);
 
-    // Resolve 1-based relative index
-    isize ii = (i > 0) ? cast_isize(i) - 1 : len(vm->window) - cast_isize(-i);
-    return (0 <= ii && ii < len(vm->window)) ? vm->window[ii] : VALUE_NONE_;
+    // Resolve 1-based relative index.
+    if (i > 0) {
+        return vm->window[cast_isize(i) - 1];
+    } else if (i > LULU_PSEUDO_INDEX) {
+        return vm->window[len(vm->window) - cast_isize(-i)];
+    }
+
+    // Not in range of the window; try a pseudo index.
+    switch (i) {
+    case LULU_GLOBALS_INDEX:
+        return vm->globals;
+    default:
+        break;
+    }
+    return none;
 }
+
+static Value *
+value_at_stack(lulu_VM *vm, int i)
+{
+    Value *start = &value_at(vm, i);
+    lulu_assert(start != &none);
+    lulu_assertf(i > LULU_PSEUDO_INDEX, "Got pseudo-index %i", i);
+    return start;
+}
+
 
 lulu_VM *
 lulu_open(lulu_Allocator allocator, void *allocator_data)
@@ -48,14 +70,14 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets)
     vm_call(vm, fn, n_args, (n_rets == LULU_MULTRET) ? VARARG : n_rets);
 }
 
-struct LULU_PRIVATE PCall_Data {
+struct LULU_PRIVATE PCall {
     int n_args, n_rets;
 };
 
 static void
 pcall(lulu_VM *vm, void *user_ptr)
 {
-    PCall_Data *d = cast(PCall_Data *)user_ptr;
+    PCall *d = cast(PCall *)user_ptr;
     Value &fn = value_at(vm, -(d->n_args + 1));
     vm_call(vm, fn, d->n_args, (d->n_rets == LULU_MULTRET) ? VARARG : d->n_rets);
 }
@@ -63,12 +85,12 @@ pcall(lulu_VM *vm, void *user_ptr)
 lulu_Error
 lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
 {
-    PCall_Data d{n_args, n_rets};
+    PCall d{n_args, n_rets};
     lulu_Error e = vm_run_protected(vm, pcall, &d);
     return e;
 }
 
-struct LULU_PRIVATE C_PCall_Data {
+struct LULU_PRIVATE C_PCall {
     lulu_CFunction function;
     void          *function_data;
 };
@@ -76,7 +98,7 @@ struct LULU_PRIVATE C_PCall_Data {
 static void
 c_pcall(lulu_VM *vm, void *user_ptr)
 {
-    C_PCall_Data *d = cast(C_PCall_Data *)user_ptr;
+    C_PCall *d = cast(C_PCall *)user_ptr;
     lulu_push_cfunction(vm, d->function);
     lulu_push_userdata(vm, d->function_data);
     lulu_call(vm, 1, 0);
@@ -85,7 +107,7 @@ c_pcall(lulu_VM *vm, void *user_ptr)
 lulu_Error
 lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
 {
-    C_PCall_Data d{function, function_data};
+    C_PCall d{function, function_data};
     lulu_Error e = vm_run_protected(vm, c_pcall, &d);
     return e;
 }
@@ -98,13 +120,11 @@ lulu_error(lulu_VM *vm)
 }
 
 void
-lulu_register(lulu_VM *vm, const lulu_Register *library, size_t n)
+lulu_register_library(lulu_VM *vm, const lulu_Register *library, size_t n)
 {
     for (size_t i = 0; i < n; i++) {
-        OString *s = ostring_new(vm, lstring_from_cstring(library[i].name));
-        Closure *f = closure_new(vm, library[i].function);
         // TODO(2025-07-01): Ensure key and value are not collected!
-        table_set(vm, &vm->globals, Value::make_string(s), Value::make_function(f));
+        lulu_register(vm, library[i].name, library[i].function);
     }
 }
 
@@ -240,11 +260,12 @@ lulu_set_top(lulu_VM *vm, int i)
 void
 lulu_insert(lulu_VM *vm, int i)
 {
-    Value *start = &value_at(vm, i);
+    Value *start = value_at_stack(vm, i);
+
     // Copy by value as this stack slot is about to be replaced.
     Value v = value_at(vm, -1);
     auto dst = slice_pointer(start + 1, end(vm->window));
-    auto src = slice_from(dst, ptr_index(dst, start));
+    auto src = slice_pointer_len(start, len(dst));
     copy(dst, src);
     *start = v;
 }
@@ -252,10 +273,10 @@ lulu_insert(lulu_VM *vm, int i)
 void
 lulu_remove(lulu_VM *vm, int i)
 {
-    Value *start = &value_at(vm, i);
+    Value *start = value_at_stack(vm, i);
     Value *stop  = &value_at(vm, -1);
     auto dst = slice_pointer(start, stop - 1);
-    auto src = slice_from(dst, ptr_index(dst, start) + 1);
+    auto src = slice_pointer_len(start + 1, len(dst));
     copy(dst, src);
     lulu_pop(vm, 1);
 }
@@ -297,8 +318,8 @@ void
 lulu_push_lstring(lulu_VM *vm, const char *s, size_t n)
 {
     LString ls{s, cast_isize(n)};
-    OString *o = ostring_new(vm, ls);
-    vm_push(vm, Value::make_string(o));
+    OString *os = ostring_new(vm, ls);
+    vm_push(vm, Value::make_string(os));
 }
 
 void
@@ -341,23 +362,58 @@ lulu_push_value(lulu_VM *vm, int i)
 
 
 int
-lulu_get_global(lulu_VM *vm, const char *s)
+lulu_get_table(lulu_VM *vm, int table_index)
 {
-    OString *o = ostring_new(vm, lstring_from_cstring(s));
-    Value k = Value::make_string(o);
+    Value &t = value_at(vm, table_index);
+    Value &k = value_at(vm, -1);
+    if (t.is_table()) {
+        // No need to push, `k` can be overwritten.
+        bool ok = vm_table_get(vm, &t, k, &k);
+        return ok;
+    }
+    return false;
+}
 
-    Value v;
-    bool  ok = table_get(&vm->globals, k, &v);
-    vm_push(vm, v);
-    return cast_int(ok);
+int
+lulu_get_field(lulu_VM *vm, int table_index, const char *key)
+{
+    Value &t = value_at(vm, table_index);
+    Value  k = Value::make_string(ostring_from_cstring(vm, key));
+
+    // Unlike `lulu_get_table()`, we need to explicitly push `t[k]` because
+    // `k` does not exist in the stack and thus cannot be replaced.
+    if (t.is_table()) {
+        Value v;
+        bool ok = table_get(t.to_table(), k, &v);
+        vm_push(vm, v);
+        return ok;
+    }
+    return false;
 }
 
 void
-lulu_set_global(lulu_VM *vm, const char *s)
+lulu_set_table(lulu_VM *vm, int table_index)
 {
-    OString *o = ostring_new(vm, lstring_from_cstring(s));
-    Value    v = vm_pop(vm);
-    table_set(vm, &vm->globals, Value::make_string(o), v);
+    Value &t = value_at(vm, table_index);
+    if (t.is_table()) {
+        // key and value are popped, in order
+        Value v = vm_pop(vm);
+        Value k = vm_pop(vm);
+        vm_table_set(vm, &t, k, v);
+    }
+}
+
+void
+lulu_set_field(lulu_VM *vm, int table_index, const char *key)
+{
+    Value &t = value_at(vm, table_index);
+    Value  k = Value::make_string(ostring_from_cstring(vm, key));
+    if (t.is_table()) {
+        // The value is popped implicitly. We have no way to tell if key is in
+        // the stack.
+        Value v = vm_pop(vm);
+        vm_table_set(vm, &t, k, v);
+    }
 }
 
 void
@@ -379,6 +435,7 @@ lulu_concat(lulu_VM *vm, int n)
     lulu_assert(!first.is_none());
 
     vm_concat(vm, first, slice_pointer(&first, &last + 1));
+
     // Pop all arguments except the first one- the one we replaced.
     lulu_pop(vm, n - 1);
 }

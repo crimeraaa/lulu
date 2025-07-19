@@ -12,10 +12,9 @@ static constexpr isize
 MAX_ACTIVE_LOCALS = 200,
 MAX_TOTAL_LOCALS  = UINT16_MAX;
 
+using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
 
 struct LULU_PRIVATE Compiler {
-    using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
-
     lulu_VM     *vm;
     Compiler    *prev;   // Have an enclosing function?
     Parser      *parser; // All compilers share the same parser.

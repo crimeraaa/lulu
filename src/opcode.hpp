@@ -95,7 +95,7 @@ struct LULU_PRIVATE Instruction {
     static constexpr u32 MAX_BX  = BITMASK1(SIZE_BX);
     static constexpr i32 MAX_SBX = cast(i32)(MAX_BX >> 1);
 
-    static constexpr  Instruction
+    static constexpr Instruction
     make_abc(OpCode op, u16 a, u16 b, u16 c)
     {
         return {(cast(u32)b  << OFFSET_B)
@@ -104,7 +104,7 @@ struct LULU_PRIVATE Instruction {
             |   (cast(u32)op << OFFSET_OP)};
     }
 
-    static constexpr  Instruction
+    static constexpr Instruction
     make_abx(OpCode op, u16 a, u32 bx)
     {
         u16 b = cast(u16)(bx >> SIZE_C); // shift out `c` bits
@@ -112,43 +112,43 @@ struct LULU_PRIVATE Instruction {
         return make_abc(op, a, b, c);
     }
 
-    static constexpr  Instruction
+    static constexpr Instruction
     make_asbx(OpCode op, u16 a, i32 sbx)
     {
         return make_abx(op, a, cast(u32)(sbx + MAX_SBX));
     }
 
-     OpCode
+    OpCode
     op() const noexcept
     {
         return cast(OpCode)this->extract<OFFSET_OP, MAX_OP>();
     }
 
-     u16
+    u16
     a() const noexcept
     {
         return cast(u16)this->extract<OFFSET_A, MAX_A>();
     }
 
-     u16
+    u16
     b() const noexcept
     {
         return cast(u16)this->extract<OFFSET_B, MAX_B>();
     }
 
-     u16
+    u16
     c() const noexcept
     {
         return cast(u16)this->extract<OFFSET_C, MAX_C>();
     }
 
-     u32
+    u32
     bx() const noexcept
     {
         return this->extract<OFFSET_BX, MAX_BX>();
     }
 
-     i32
+    i32
     sbx() const noexcept
     {
         // NOTE(2025-07-16): We assume the cast is safe because [s]bx is a
@@ -157,49 +157,49 @@ struct LULU_PRIVATE Instruction {
         return cast(i32)this->bx() - MAX_SBX;
     }
 
-     void
+    void
     set_a(u16 a) noexcept
     {
         this->set<OFFSET_A, MASK0_A>(cast(u32)a);
     }
 
-     void
+    void
     set_b(u16 b) noexcept
     {
         this->set<OFFSET_B, MASK0_B>(cast(u32)b);
     }
 
-     void
+    void
     set_c(u16 c) noexcept
     {
         this->set<OFFSET_C, MASK0_C>(cast(u32)c);
     }
 
-     void
+    void
     set_bx(u32 bx) noexcept
     {
         this->set<OFFSET_BX, MASK0_BX>(bx);
     }
 
-     void
+    void
     set_sbx(i32 sbx) noexcept
     {
         this->set<OFFSET_BX, MASK0_BX>(cast(u32)(sbx + MAX_SBX));
     }
 
-    static  bool
+    static bool
     reg_is_rk(u16 reg)
     {
         return reg & BIT_RK;
     }
 
-    static  u16
+    static u16
     reg_to_rk(u32 index)
     {
         return cast(u16)index | BIT_RK;
     }
 
-    static  u16
+    static u16
     reg_get_k(u16 reg)
     {
         return reg & MAX_RK;
@@ -208,14 +208,14 @@ struct LULU_PRIVATE Instruction {
 
 private:
     template<u32 OFFSET, u32 MASK1>
-    constexpr  u32
+    constexpr u32
     extract() const noexcept
     {
         return (this->value >> OFFSET) & MASK1;
     }
 
     template<u32 OFFSET, u32 MASK0>
-    constexpr  void
+    constexpr void
     set(u32 arg) noexcept
     {
         this->value &= MASK0; // Clear previous bits of argument.
@@ -306,8 +306,17 @@ private:
     }
 };
 
+/**
+ * @note 2025--07-19
+ *  -   ORDER: Keep in sync with `OpCode`!
+ */
 LULU_DATA const char *const
 opnames[OPCODE_COUNT];
 
+
+/**
+ * @note 2025--07-19
+ *  -   ORDER: Keep in sync with `OpCode`!
+ */
 LULU_DATA const OpInfo
 opinfo[OPCODE_COUNT];

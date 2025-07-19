@@ -221,23 +221,31 @@ get_escaped(Lexer *x, char ch)
 }
 
 static Token
-make_token(const Lexer *x, Token_Type type, Number n = 0)
+make_token(const Lexer *x, Token_Type type)
 {
-    Token t = Token::make(type, x->line, get_lexeme(x), n);
+    Token t = Token::make(type, x->line, get_lexeme(x), 0);
     return t;
 }
 
 static Token
-make_token(const Lexer *x, Token_Type type, LString lexeme)
+make_token_number(const Lexer *x, Number n)
 {
-    Token t = Token::make(type, x->line, lexeme, 0.0);
+    Token t = make_token(x, TOKEN_NUMBER);
+    t.number = n;
     return t;
 }
 
 static Token
-make_token(const Lexer *x, Token_Type type, OString *ostring)
+make_token_lexeme(const Lexer *x, Token_Type type, LString lexeme)
 {
-    Token t = make_token(x, type);
+    Token t = Token::make(type, x->line, lexeme, 0);
+    return t;
+}
+
+static Token
+make_token_ostring(const Lexer *x, OString *ostring)
+{
+    Token t = make_token(x, TOKEN_STRING);
     t.ostring = ostring;
     return t;
 }
@@ -313,7 +321,7 @@ make_number(Lexer *x, char first)
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
             }
-            return make_token(x, TOKEN_NUMBER, cast(Number)ul);
+            return make_token_number(x, cast(Number)ul);
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
@@ -336,7 +344,7 @@ make_number(Lexer *x, char first)
     if (last != end(s)) {
         error(x, "Malformed number");
     }
-    return make_token(x, TOKEN_NUMBER, d);
+    return make_token_number(x, d);
 }
 
 static Token
@@ -366,16 +374,16 @@ make_string(Lexer *x, char q)
     builder_write_lstring(vm, b, s);
     s = builder_to_string(b);
     OString *o = ostring_new(vm, s);
-    return make_token(x, TOKEN_STRING, o);
+    return make_token_ostring(x, o);
 }
 
 static Token
 check_keyword(const Lexer *x, LString s, Token_Type type)
 {
     if (slice_eq(s, token_strings[type])) {
-        return make_token(x, type, s);
+        return make_token_lexeme(x, type, s);
     }
-    return make_token(x, TOKEN_IDENTIFIER, s);
+    return make_token_lexeme(x, TOKEN_IDENTIFIER, s);
 }
 
 static Token
@@ -480,7 +488,7 @@ lexer_lex(Lexer *x)
             expect(x, '[', "Expected 2nd '[' to start off multiline string");
             const char *start = x->cursor;
             const char *stop  = skip_multiline(x, nest_open);
-            return make_token(x, TOKEN_STRING, slice_pointer(start, stop));
+            return make_token_lexeme(x, TOKEN_STRING, slice_pointer(start, stop));
         }
         type = TOKEN_OPEN_BRACE;
         break;

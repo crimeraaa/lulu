@@ -11,89 +11,101 @@ struct Chunk;
 struct LULU_PRIVATE Value {
 
 private:
+    // Later on, if we decide to incorporate NaN-boxing/Pointer-tagging, we can
+    // use macros to change what members are to be included in the struct.
     Value_Type m_type;
     union {
-        Number   number;
-        bool     boolean;
-        Object  *object;
-        void    *pointer; // light userdata.
+        Number   m_number;
+        bool     m_boolean;
+        Object  *m_object;
+        void    *m_pointer; // light userdata.
     };
 
 public:
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     constexpr
     Value(Value_Type t = VALUE_NIL)
         : m_type{t}
-        , number{0}
+        , m_number{0}
     {}
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     constexpr
     Value(bool b)
         : m_type{VALUE_BOOLEAN}
-        , boolean{b}
+        , m_boolean{b}
     {}
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     constexpr
     Value(Number n)
         : m_type{VALUE_NUMBER}
-        , number{n}
+        , m_number{n}
     {}
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     constexpr void
     operator=(bool b)
     {
         this->m_type    = VALUE_BOOLEAN;
-        this->boolean = b;
+        this->m_boolean = b;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     constexpr void
     operator=(Number n)
     {
         this->m_type   = VALUE_NUMBER;
-        this->number = n;
+        this->m_number = n;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static constexpr Value
     make_userdata(void *p)
     {
         Value v;
-        v.m_type    = VALUE_USERDATA;
-        v.pointer = p;
+        v.m_type  = VALUE_USERDATA;
+        v.m_pointer = p;
         return v;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
     make_string(OString *s)
     {
         Value v;
-        v.m_type   = VALUE_STRING;
-        v.object = cast(Object *)s;
+        v.m_type = VALUE_STRING;
+        v.m_object = cast(Object *)s;
         return v;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
     make_table(Table *t)
     {
         Value v;
-        v.m_type = VALUE_TABLE;
-        v.object = cast(Object *)t;
+        v.m_type   = VALUE_TABLE;
+        v.m_object = cast(Object *)t;
         return v;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
     make_function(Closure *f)
     {
         Value v;
-        v.m_type = VALUE_FUNCTION;
-        v.object = cast(Object *)f;
+        v.m_type   = VALUE_FUNCTION;
+        v.m_object = cast(Object *)f;
         return v;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
     make_chunk(Chunk *c)
     {
         Value v;
         v.m_type = VALUE_CHUNK;
-        v.object = cast(Object *)c;
+        v.m_object = cast(Object *)c;
         return v;
     }
 
@@ -118,7 +130,10 @@ public:
         case VALUE_CHUNK:
             break;
         }
+        // You cannot, and should not, call this function with payloads of
+        // non-user facing types, such as `Chunk *`.
         lulu_unreachable();
+        return nullptr;
     }
 
     const char *
@@ -127,6 +142,7 @@ public:
         return Value::type_name(this->type());
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     constexpr Value_Type
     type() const noexcept
     {
@@ -191,31 +207,35 @@ public:
 
     //=== VALUE DATA PAYLOADS ============================================== {{{
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     bool
     to_boolean() const
     {
         lulu_assert(this->is_boolean());
-        return this->boolean;
+        return this->m_boolean;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     Number
     to_number() const
     {
         lulu_assert(this->is_number());
-        return this->number;
+        return this->m_number;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     void *
     to_userdata() const
     {
         lulu_assert(this->is_userdata());
-        return this->pointer;
+        return this->m_pointer;
     }
 
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     Object *
     to_object() const noexcept
     {
-        return this->object;
+        return this->m_object;
     }
 
     //=== }}} ==================================================================

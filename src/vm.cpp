@@ -42,10 +42,10 @@ required_allocations(lulu_VM *vm, void *)
     intern_resize(vm, &vm->intern, 32);
 
     // TODO(2025-06-30): Mark the memory error string as "immortal"?
-    OString *o = ostring_new(vm, lstring_from_cstring(LULU_MEMORY_ERROR_STRING));
-
-    o = ostring_new(vm, "_G"_s);
-    table_set(vm, &vm->globals, Value::make_string(o), Value::make_table(&vm->globals));
+    OString *o = ostring_from_cstring(vm, LULU_MEMORY_ERROR_STRING);
+    unused(o);
+    Table *t = table_new(vm, 8, 0);
+    vm->globals = Value::make_table(t);
 }
 
 bool
@@ -58,10 +58,10 @@ vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
     vm->saved_ip       = nullptr;
     vm->objects        = nullptr;
     vm->window         = slice(vm->stack, 0, 0);
+    vm->globals        = nil;
 
     builder_init(&vm->builder);
     intern_init(&vm->intern);
-    table_init(&vm->globals);
     Error e = vm_run_protected(vm, required_allocations, nullptr);
     return e == LULU_OK;
 }
@@ -79,7 +79,6 @@ vm_destroy(lulu_VM *vm)
 {
     builder_destroy(vm, &vm->builder);
     intern_destroy(vm, &vm->intern);
-    slice_delete(vm, vm->globals.entries);
 
     Object *o = vm->objects;
     while (o != nullptr) {
@@ -481,6 +480,31 @@ vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned)
     return CALL_LUA;
 }
 
+bool
+vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out)
+{
+    if (t->is_table()) {
+        // do a primitive get (`rawget`)
+        // @todo(2025-07-20): Check `v` is `nil` and lookup `index` metamethod
+        Value v;
+        bool  ok = table_get(t->to_table(), k, &v);
+        *out = v;
+        return ok;
+    }
+    type_error(vm, "index", *t);
+    return false;
+}
+
+void
+vm_table_set(lulu_VM *vm, const Value *t, Value k, Value v)
+{
+    if (t->is_table()) {
+        table_set(vm, t->to_table(), k, v);
+        return;
+    }
+    type_error(vm, "index", *t);
+}
+
 void
 vm_execute(lulu_VM *vm, int n_calls)
 {
@@ -496,10 +520,8 @@ vm_execute(lulu_VM *vm, int n_calls)
 
 #define BINARY_OP(number_fn, error_fn, result_fn)                              \
 {                                                                              \
-    u16    b  = i.b();                                                         \
-    u16    c  = i.c();                                                         \
-    Value &rb = GET_RK(b);                                                     \
-    Value &rc = GET_RK(c);                                                     \
+    u16 b = i.b(), c = i.c();                                                  \
+    Value &rb = GET_RK(b), &rc = GET_RK(c);                                    \
     if (!rb.is_number() || !rc.is_number()) {                                  \
         protect(vm, ip);                                                       \
         error_fn(vm, rb, rc);                                                  \
@@ -510,13 +532,20 @@ vm_execute(lulu_VM *vm, int n_calls)
 
 #define DO_JUMP(offset)                                                        \
 {                                                                              \
-    ip += offset;                                                              \
+    ip += (offset);                                                            \
 }
 
 #define ARITH_RESULT(n)     ra = n
 #define ARITH_OP(fn)        BINARY_OP(fn, arith_error, ARITH_RESULT)
 
-#define COMPARE_RESULT(b)   if (b == cast(bool)i.a()) { DO_JUMP(ip->sbx()); }
+#define COMPARE_RESULT(b)                                                      \
+{                                                                              \
+    if (b == cast(bool)i.a()) {                                                \
+        DO_JUMP(ip->sbx())                                                     \
+    }                                                                          \
+    ip++;                                                                      \
+}
+
 #define COMPARE_OP(fn)      BINARY_OP(fn, compare_error, COMPARE_RESULT)
 
 #ifdef LULU_DEBUG_TRACE_EXEC
@@ -566,7 +595,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             Value k = chunk.constants[i.bx()];
             Value v;
             protect(vm, ip);
-            if (!table_get(&vm->globals, k, &v)) {
+            if (!table_get(vm->globals.to_table(), k, &v)) {
                 const char *s = k.to_cstring();
                 vm_runtime_error(vm, "read undefined variable", "'%s'", s);
             }
@@ -576,7 +605,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_SET_GLOBAL: {
             Value k = chunk.constants[i.bx()];
             protect(vm, ip);
-            table_set(vm, &vm->globals, k, ra);
+            table_set(vm, vm->globals.to_table(), k, ra);
             break;
         }
         case OP_NEW_TABLE: {
@@ -601,8 +630,10 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_SET_TABLE: {
-            Value &k = GET_RK(i.b());
-            Value &v = GET_RK(i.c());
+            u16    b = i.b();
+            u16    c = i.c();
+            Value &k = GET_RK(b);
+            Value &v = GET_RK(c);
             protect(vm, ip);
             if (!ra.is_table()) {
                 type_error(vm, "index", ra);
@@ -640,12 +671,10 @@ vm_execute(lulu_VM *vm, int n_calls)
         }
         case OP_LT: {
             COMPARE_OP(lulu_Number_lt);
-            ip++;
             break;
         }
         case OP_LEQ: {
             COMPARE_OP(lulu_Number_leq);
-            ip++;
             break;
         }
         case OP_UNM: {
@@ -672,11 +701,16 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_TEST: {
             bool cond = cast(bool)i.c();
             bool test = (!ra.is_falsy() == cond);
+
+            // Ensure the next instruction is a jump before actually performing
+            // it or skipping it.
+            lulu_assert(ip->op() == OP_JUMP);
             if (test) {
-                lulu_assert(ip->op() == OP_JUMP);
                 DO_JUMP(ip->sbx());
             }
-            // If test fails, skip the next instruction (assuming it's a jump)
+
+            // If `DO_JUMP()` wasn't called then `ip` still points to `OP_JUMP`,
+            // so increment to skip over it.
             ip++;
             break;
         }
@@ -684,9 +718,9 @@ vm_execute(lulu_VM *vm, int n_calls)
             bool  cond = cast(bool)i.c();
             Value rb   = window[i.b()];
             bool  test = (!rb.is_falsy() == cond);
+            lulu_assert(ip->op() == OP_JUMP);
             if (test) {
                 ra = rb;
-                lulu_assert(ip->op() == OP_JUMP);
                 DO_JUMP(ip->sbx());
             }
             ip++;

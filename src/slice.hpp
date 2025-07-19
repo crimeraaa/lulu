@@ -200,6 +200,14 @@ slice_pointer(T *start, T *stop)
 }
 
 template<class T>
+LULU_FUNC inline Slice<T>
+slice_pointer_len(T *data, isize n)
+{
+    Slice<T> s{data, n};
+    return s;
+}
+
+template<class T>
 LULU_FUNC constexpr isize
 len(Slice<T> s)
 {

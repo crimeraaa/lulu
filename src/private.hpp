@@ -61,6 +61,9 @@ enum Value_Type {
     VALUE_CHUNK,
 };
 
+static constexpr int
+VALUE_TYPE_COUNT = VALUE_CHUNK + 1;
+
 template<class T>
 LULU_FUNC inline void
 swap(T *a, T *b)

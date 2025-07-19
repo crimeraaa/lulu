@@ -108,3 +108,10 @@ hash_string(LString text);
 
 LULU_FUNC OString *
 ostring_new(lulu_VM *vm, LString text);
+
+LULU_FUNC inline OString *
+ostring_from_cstring(lulu_VM *vm, const char *s)
+{
+    LString ls = lstring_from_cstring(s);
+    return ostring_new(vm, ls);
+}
