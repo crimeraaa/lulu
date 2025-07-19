@@ -297,25 +297,29 @@ vm_check_stack(lulu_VM *vm, int n)
 
 [[noreturn]]
 static void
-type_error(lulu_VM *vm, const char *act, const Value &v)
+type_error(lulu_VM *vm, const char *act, const Value *v)
 {
-    vm_runtime_error(vm, act, "a %s value", v.type_name());
+    vm_runtime_error(vm, act, "a %s value", v->type_name());
 }
 
 [[noreturn]]
 static void
-arith_error(lulu_VM *vm, const Value &a, const Value &b)
+arith_error(lulu_VM *vm, const Value *a, const Value *b)
 {
-    const Value &v = a.is_number() ? b : a;
+    const Value *v = a->is_number() ? b : a;
     type_error(vm, "perform arithmetic on", v);
 }
 
 [[noreturn]]
 static void
-compare_error(lulu_VM *vm, const Value &a, const Value &b)
+compare_error(lulu_VM *vm, const Value *a, const Value *b)
 {
-    const Value &v = a.is_number() ? a : b;
-    type_error(vm, "compare", v);
+    if (a->type() != b->type()) {
+        vm_runtime_error(vm, "compare", "%s with %s", a->type_name(), b->type_name());
+    } else {
+        const Value *v = a->is_number() ? a : b;
+        type_error(vm, "compare", v);
+    }
 }
 
 static void
@@ -366,7 +370,7 @@ vm_frame_pop(lulu_VM *vm)
 }
 
 void
-vm_call(lulu_VM *vm, Value &ra, int n_args, int n_rets)
+vm_call(lulu_VM *vm, Value *ra, int n_args, int n_rets)
 {
     // Account for any changes in the stack made by unprotected main function
     // or C functions.
@@ -380,7 +384,7 @@ vm_call(lulu_VM *vm, Value &ra, int n_args, int n_rets)
 
     // `vm_call_fini()` may adjust `vm->window` in a different way than wanted.
     isize base    = vm_base_absindex(vm);
-    isize new_top = vm_absindex(vm, &ra) + cast_isize(n_rets);
+    isize new_top = vm_absindex(vm, ra) + cast_isize(n_rets);
 
     Call_Type t = vm_call_init(vm, ra, n_args, n_rets);
     if (t == CALL_LUA) {
@@ -395,14 +399,14 @@ vm_call(lulu_VM *vm, Value &ra, int n_args, int n_rets)
 }
 
 Call_Type
-vm_call_init(lulu_VM *vm, Value &ra, int argc, int expected_returned)
+vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
 {
-    if (!ra.is_function()) {
+    if (!ra->is_function()) {
         type_error(vm, "call", ra);
     }
 
-    Closure *fn       = ra.to_function();
-    isize    fn_index = ptr_index(vm->stack, &ra);
+    Closure *fn       = ra->to_function();
+    isize    fn_index = ptr_index(vm->stack, ra);
 
     // Calling function isn't included in the stack frame.
     isize base        = fn_index + 1;
@@ -422,9 +426,9 @@ vm_call_init(lulu_VM *vm, Value &ra, int argc, int expected_returned)
         vm_frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
         int actual_returned = fn->c.callback(vm, argc);
 
-        Value &first_ret = (actual_returned > 0)
-            ? vm->window[len(vm->window) - cast_isize(actual_returned)]
-            : vm->stack[fn_index];
+        Value *first_ret = (actual_returned > 0)
+            ? &vm->window[len(vm->window) - cast_isize(actual_returned)]
+            : &vm->stack[fn_index];
         vm_call_fini(vm, first_ret, actual_returned);
         return CALL_C;
     }
@@ -442,14 +446,14 @@ vm_call_init(lulu_VM *vm, Value &ra, int argc, int expected_returned)
 }
 
 Call_Type
-vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned)
+vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned)
 {
     Call_Frame *frame = vm->caller;
     bool vararg_return = (frame->expected_returned == VARARG);
 
     // Move results to the right place- overwrites calling function object.
     Slice<Value> results{vm_base_ptr(vm) - 1, cast_isize(actual_returned)};
-    Slice<Value> tmp{&ra, cast_isize(actual_returned)};
+    Slice<Value> tmp{ra, cast_isize(actual_returned)};
     copy(results, tmp);
 
     int extra = frame->expected_returned - actual_returned;
@@ -484,6 +488,12 @@ bool
 vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out)
 {
     if (t->is_table()) {
+        // `table_get()` works under the assumption `k` is non-`nil`.
+        if (k.is_nil()) {
+            *out = nil;
+            return false;
+        }
+
         // do a primitive get (`rawget`)
         // @todo(2025-07-20): Check `v` is `nil` and lookup `index` metamethod
         Value v;
@@ -491,18 +501,21 @@ vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out)
         *out = v;
         return ok;
     }
-    type_error(vm, "index", *t);
+    type_error(vm, "index", t);
     return false;
 }
 
 void
-vm_table_set(lulu_VM *vm, const Value *t, Value k, Value v)
+vm_table_set(lulu_VM *vm, const Value *t, const Value *k, Value v)
 {
     if (t->is_table()) {
-        table_set(vm, t->to_table(), k, v);
+        if (k->is_nil()) {
+            type_error(vm, "index", k);
+        }
+        table_set(vm, t->to_table(), *k, v);
         return;
     }
-    type_error(vm, "index", *t);
+    type_error(vm, "index", t);
 }
 
 void
@@ -515,18 +528,18 @@ vm_execute(lulu_VM *vm, int n_calls)
 
 #define GET_RK(rk)                                                             \
     Instruction::reg_is_rk(rk)                                                 \
-        ? chunk.constants[Instruction::reg_get_k(rk)]                          \
-        : window[rk]
+        ? &chunk.constants[Instruction::reg_get_k(rk)]                         \
+        : &window[rk]
 
 #define BINARY_OP(number_fn, error_fn, result_fn)                              \
 {                                                                              \
     u16 b = i.b(), c = i.c();                                                  \
-    Value &rb = GET_RK(b), &rc = GET_RK(c);                                    \
-    if (!rb.is_number() || !rc.is_number()) {                                  \
+    Value *rb = GET_RK(b), *rc = GET_RK(c);                                    \
+    if (!rb->is_number() || !rc->is_number()) {                                \
         protect(vm, ip);                                                       \
         error_fn(vm, rb, rc);                                                  \
     } else {                                                                   \
-        result_fn(number_fn(rb.to_number(), rc.to_number()));                  \
+        result_fn(number_fn(rb->to_number(), rc->to_number()));                \
     }                                                                          \
 }
 
@@ -535,7 +548,7 @@ vm_execute(lulu_VM *vm, int n_calls)
     ip += (offset);                                                            \
 }
 
-#define ARITH_RESULT(n)     ra = n
+#define ARITH_RESULT(n)     *ra = n
 #define ARITH_OP(fn)        BINARY_OP(fn, arith_error, ARITH_RESULT)
 
 #define COMPARE_RESULT(b)                                                      \
@@ -554,7 +567,7 @@ vm_execute(lulu_VM *vm, int n_calls)
 
     for (;;) {
         Instruction i  = *ip++;
-        Value      &ra =  window[i.a()];
+        Value      *ra = &window[i.a()];
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.
@@ -577,16 +590,16 @@ vm_execute(lulu_VM *vm, int n_calls)
         OpCode op = i.op();
         switch (op) {
         case OP_CONSTANT:
-            ra = chunk.constants[i.bx()];
+            *ra = chunk.constants[i.bx()];
             break;
         case OP_NIL: {
-            Value &rb = window[i.b()];
-            Slice<Value> dst = slice_pointer(&ra, &rb + 1);
+            Value *rb = &window[i.b()];
+            Slice<Value> dst = slice_pointer(ra, rb + 1);
             fill(dst, nil);
             break;
         }
         case OP_BOOL:
-            ra = cast(bool)i.b();
+            *ra = cast(bool)i.b();
             if (cast(bool)i.c()) {
                 ip++;
             }
@@ -599,53 +612,41 @@ vm_execute(lulu_VM *vm, int n_calls)
                 const char *s = k.to_cstring();
                 vm_runtime_error(vm, "read undefined variable", "'%s'", s);
             }
-            ra = v;
+            *ra = v;
             break;
         }
         case OP_SET_GLOBAL: {
             Value k = chunk.constants[i.bx()];
             protect(vm, ip);
-            table_set(vm, vm->globals.to_table(), k, ra);
+            table_set(vm, vm->globals.to_table(), k, *ra);
             break;
         }
         case OP_NEW_TABLE: {
             isize n_hash  = cast_isize(i.b());
             isize n_array = cast_isize(i.c());
             Table *t = table_new(vm, n_hash, n_array);
-            ra = Value::make_table(t);
+            *ra = Value::make_table(t);
             break;
         }
         case OP_GET_TABLE: {
-            Value &t = window[i.b()];
-            Value &k = GET_RK(i.c());
+            Value *t = &window[i.b()];
+            Value *k = GET_RK(i.c());
             protect(vm, ip);
-            if (!t.is_table()) {
-                type_error(vm, "index", t);
-            } else if (k.is_nil()) {
-                // t[nil] is not stored, but return `nil` anyway.
-                ra = nil;
-            } else {
-                table_get(t.to_table(), k, &ra);
-            }
+            vm_table_get(vm, t, *k, ra);
             break;
         }
         case OP_SET_TABLE: {
             u16    b = i.b();
             u16    c = i.c();
-            Value &k = GET_RK(b);
-            Value &v = GET_RK(c);
+            Value *k = GET_RK(b);
+            Value *v = GET_RK(c);
             protect(vm, ip);
-            if (!ra.is_table()) {
-                type_error(vm, "index", ra);
-            } else if (k.is_nil()) {
-                type_error(vm, "index", k);
-            }
-            table_set(vm, ra.to_table(), k, v);
+            vm_table_set(vm, ra, k, *v);
             break;
         }
         case OP_MOVE: {
-            Value &rb = window[i.b()];
-            ra = rb;
+            Value rb = window[i.b()];
+            *ra = rb;
             break;
         }
         case OP_ADD: ARITH_OP(lulu_Number_add); break;
@@ -655,11 +656,11 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_MOD: ARITH_OP(lulu_Number_mod); break;
         case OP_POW: ARITH_OP(lulu_Number_pow); break;
         case OP_EQ: {
-            bool  cond = cast(bool)i.a();
-            u16   b    = i.b();
-            u16   c    = i.c();
-            Value rkb  = GET_RK(b);
-            Value rkc  = GET_RK(c);
+            bool   cond = cast(bool)i.a();
+            u16    b    = i.b();
+            u16    c    = i.c();
+            Value *rkb  = GET_RK(b);
+            Value *rkc  = GET_RK(c);
 
             protect(vm, ip);
             if ((rkb == rkc) == cond) {
@@ -678,29 +679,29 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_UNM: {
-            Value &rb = window[i.b()];
-            if (!rb.is_number()) {
+            Value *rb = &window[i.b()];
+            if (!rb->is_number()) {
                 protect(vm, ip);
                 arith_error(vm, rb, rb);
             }
-            ra = lulu_Number_unm(rb.to_number());
+            *ra = lulu_Number_unm(rb->to_number());
             break;
         }
         case OP_NOT: {
             Value rb = window[i.b()];
-            ra = rb.is_falsy();
+            *ra = rb.is_falsy();
             break;
         }
         case OP_CONCAT: {
-            Value &rb = window[i.b()];
-            Value &rc = window[i.c()];
+            Value *rb = &window[i.b()];
+            Value *rc = &window[i.c()];
             protect(vm, ip);
-            vm_concat(vm, ra, slice_pointer(&rb, &rc + 1));
+            vm_concat(vm, ra, slice_pointer(rb, rc + 1));
             break;
         }
         case OP_TEST: {
             bool cond = cast(bool)i.c();
-            bool test = (!ra.is_falsy() == cond);
+            bool test = (!ra->is_falsy() == cond);
 
             // Ensure the next instruction is a jump before actually performing
             // it or skipping it.
@@ -720,7 +721,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             bool  test = (!rb.is_falsy() == cond);
             lulu_assert(ip->op() == OP_JUMP);
             if (test) {
-                ra = rb;
+                *ra = rb;
                 DO_JUMP(ip->sbx());
             }
             ip++;
@@ -758,15 +759,15 @@ vm_execute(lulu_VM *vm, int n_calls)
 }
 
 void
-vm_concat(lulu_VM *vm, Value &ra, Slice<Value> args)
+vm_concat(lulu_VM *vm, Value *ra, Slice<Value> args)
 {
     Builder *b = vm_get_builder(vm);
     for (const Value &s : args) {
         if (!s.is_string()) {
-            type_error(vm, "concatentate", s);
+            type_error(vm, "concatentate", &s);
         }
         builder_write_lstring(vm, b, s.to_lstring());
     }
     OString *o = ostring_new(vm, builder_to_string(b));
-    ra = Value::make_string(o);
+    *ra = Value::make_string(o);
 }

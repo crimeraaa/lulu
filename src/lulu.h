@@ -4,7 +4,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 
-#include "config.h"
+#include "lulu_config.h"
 
 typedef struct lulu_VM lulu_VM;
 typedef LULU_NUMBER_TYPE lulu_Number;
@@ -110,11 +110,6 @@ typedef enum {
     LULU_TYPE_FUNCTION      /* may be a Lua or C function. */
 } lulu_Type;
 
-typedef struct {
-    const char    *name;
-    lulu_CFunction function;
-} lulu_Register;
-
 LULU_API lulu_VM *
 lulu_open(lulu_Allocator allocator, void *allocator_data);
 
@@ -194,9 +189,6 @@ lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data);
  */
 LULU_API int
 lulu_error(lulu_VM *vm);
-
-LULU_API void
-lulu_register_library(lulu_VM *vm, const lulu_Register *library, size_t n);
 
 
 /*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
@@ -568,24 +560,39 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash);
  *  -   Pops `key` from the stack and pushes `table[key]` in its place.
  *
  * @param table_index
- *  -   The relative stack index of the table we wish to index.
+ *  -   The relative/pseudo stack index of the table we wish to index.
+ * 
+ * @return
+ *      `1` if the key existed in the table, meaning its value was pushed.
+ *      `0` otherwise, meaning `nil` was pushed.
  *
  * @note(2025-07-20) Assumptions
  *
  *  1.) The key to be used is at relative stack index `-1`.
+ *  2.) It is possible for `table[key]` to exist (e.g. mapped previously) but
+ *      for it to map to `nil. E.g. `t[k] = 1; ...; t[k] = nil;`
  */
 int
 lulu_get_table(lulu_VM *vm, int table_index);
+
 
 /**
  * @brief
  *  -   Pushes `table[key]` to the stack.
  *
  * @param table_index
- *      The relative stack index of the table we wish to index.
+ *      The relative/psuedo stack index of the table we wish to index.
  *
  * @param key
  *      A nul-terminated C string representing the field name we wish to get.
+ *
+ * @return
+ *      `1` if `key` existed in the table, meaning `table[key]` was pushed.
+ *      `0` otherwise, meaning `nil` was pushed.
+ *
+ * @note(2025-07-20)
+ *  -   It is possible for `table[key]` to have been mapped previously and
+ *      to map to `nil`.
  */
 LULU_API int
 lulu_get_field(lulu_VM *vm, int table_index, const char *key);
@@ -593,7 +600,7 @@ lulu_get_field(lulu_VM *vm, int table_index, const char *key);
 
 /**
  * @param table_index
- *      The relative stack index of the table we wish to set.
+ *      The relative/psuedo stack index of the table we wish to set.
  *
  * @note(2025-07-20) Assumptions
  *
@@ -606,7 +613,7 @@ lulu_set_table(lulu_VM *vm, int table_index);
 
 /**
  * @param table_index
- *      The relative stack index of the table we wish to set.
+ *      The relative/psuedo stack index of the table we wish to set.
  *
  * @param key
  *      A nul-terminated C string representing the field we wish to set.

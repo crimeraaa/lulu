@@ -121,10 +121,10 @@ LULU_FUNC void
 vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...);
 
 LULU_FUNC void
-vm_concat(lulu_VM *vm, Value &ra, Slice<Value> args);
+vm_concat(lulu_VM *vm, Value *ra, Slice<Value> args);
 
 LULU_FUNC void
-vm_call(lulu_VM *vm, Value &ra, int n_args, int n_rets);
+vm_call(lulu_VM *vm, Value *ra, int n_args, int n_rets);
 
 
 /**
@@ -134,7 +134,7 @@ vm_call(lulu_VM *vm, Value &ra, int n_args, int n_rets);
  *  -   Otherwise, if it is a Lua function, it can be called by `vm_execute()`.
  */
 LULU_FUNC Call_Type
-vm_call_init(lulu_VM *vm, Value &ra, int argc, int expected_returned);
+vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned);
 
 
 /**
@@ -145,7 +145,7 @@ vm_call_init(lulu_VM *vm, Value &ra, int argc, int expected_returned);
  *      explicitly check.
  */
 LULU_FUNC Call_Type
-vm_call_fini(lulu_VM *vm, Value &ra, int actual_returned);
+vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned);
 
 LULU_FUNC Error
 vm_load(lulu_VM *vm, LString source, LString script);
@@ -154,7 +154,7 @@ LULU_FUNC bool
 vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out);
 
 LULU_FUNC void
-vm_table_set(lulu_VM *vm, const Value *t, Value k, Value v);
+vm_table_set(lulu_VM *vm, const Value *t, const Value *k, Value v);
 
 LULU_FUNC void
 vm_execute(lulu_VM *vm, int n_calls);

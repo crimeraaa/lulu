@@ -4,7 +4,7 @@
 static Value
 none{VALUE_NONE};
 
-static Value &
+static Value *
 value_at(lulu_VM *vm, int i)
 {
     // Not valid in any way
@@ -12,25 +12,25 @@ value_at(lulu_VM *vm, int i)
 
     // Resolve 1-based relative index.
     if (i > 0) {
-        return vm->window[cast_isize(i) - 1];
+        return &vm->window[cast_isize(i) - 1];
     } else if (i > LULU_PSEUDO_INDEX) {
-        return vm->window[len(vm->window) - cast_isize(-i)];
+        return &vm->window[len(vm->window) - cast_isize(-i)];
     }
 
     // Not in range of the window; try a pseudo index.
     switch (i) {
     case LULU_GLOBALS_INDEX:
-        return vm->globals;
+        return &vm->globals;
     default:
         break;
     }
-    return none;
+    return &none;
 }
 
 static Value *
 value_at_stack(lulu_VM *vm, int i)
 {
-    Value *start = &value_at(vm, i);
+    Value *start = value_at(vm, i);
     lulu_assert(start != &none);
     lulu_assertf(i > LULU_PSEUDO_INDEX, "Got pseudo-index %i", i);
     return start;
@@ -66,7 +66,7 @@ lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_siz
 void
 lulu_call(lulu_VM *vm, int n_args, int n_rets)
 {
-    Value &fn = value_at(vm, -(n_args + 1));
+    Value *fn = value_at(vm, -(n_args + 1));
     vm_call(vm, fn, n_args, (n_rets == LULU_MULTRET) ? VARARG : n_rets);
 }
 
@@ -78,7 +78,7 @@ static void
 pcall(lulu_VM *vm, void *user_ptr)
 {
     PCall *d = cast(PCall *)user_ptr;
-    Value &fn = value_at(vm, -(d->n_args + 1));
+    Value *fn = value_at(vm, -(d->n_args + 1));
     vm_call(vm, fn, d->n_args, (d->n_rets == LULU_MULTRET) ? VARARG : d->n_rets);
 }
 
@@ -119,21 +119,12 @@ lulu_error(lulu_VM *vm)
     return 0;
 }
 
-void
-lulu_register_library(lulu_VM *vm, const lulu_Register *library, size_t n)
-{
-    for (size_t i = 0; i < n; i++) {
-        // TODO(2025-07-01): Ensure key and value are not collected!
-        lulu_register(vm, library[i].name, library[i].function);
-    }
-}
-
 /*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
 
 lulu_Type
 lulu_type(lulu_VM *vm, int i)
 {
-    Value_Type t = value_at(vm, i).type();
+    Value_Type t = value_at(vm, i)->type();
     lulu_assertf(VALUE_NONE <= t && t <= VALUE_FUNCTION, "Got Value_Type(%i)", t);
     return cast(lulu_Type)t;
 }
@@ -148,49 +139,49 @@ lulu_type_name(lulu_VM *vm, lulu_Type t)
 int
 lulu_is_none(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).is_none();
+    return value_at(vm, i)->is_none();
 }
 
 int
 lulu_is_nil(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).is_nil();
+    return value_at(vm, i)->is_nil();
 }
 
 int
 lulu_is_boolean(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).is_boolean();
+    return value_at(vm, i)->is_boolean();
 }
 
 int
 lulu_is_number(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).is_number();
+    return value_at(vm, i)->is_number();
 }
 
 int
 lulu_is_userdata(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).is_userdata();
+    return value_at(vm, i)->is_userdata();
 }
 
 int
 lulu_is_string(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).is_string();
+    return value_at(vm, i)->is_string();
 }
 
 int
 lulu_is_table(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).is_table();
+    return value_at(vm, i)->is_table();
 }
 
 int
 lulu_is_function(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).is_function();
+    return value_at(vm, i)->is_function();
 }
 
 /*=== }}} =================================================================== */
@@ -200,15 +191,15 @@ lulu_is_function(lulu_VM *vm, int i)
 int
 lulu_to_boolean(lulu_VM *vm, int i)
 {
-    return !value_at(vm, i).is_falsy();
+    return !value_at(vm, i)->is_falsy();
 }
 
 lulu_Number
 lulu_to_number(lulu_VM *vm, int i)
 {
-    Value v = value_at(vm, i);
-    if (v.is_number()) {
-        return v.to_number();
+    Value *v = value_at(vm, i);
+    if (v->is_number()) {
+        return v->to_number();
     }
     return 0;
 }
@@ -216,9 +207,9 @@ lulu_to_number(lulu_VM *vm, int i)
 const char *
 lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 {
-    Value v = value_at(vm, i);
-    if (v.is_string()) {
-        OString *s = v.to_ostring();
+    Value *v = value_at(vm, i);
+    if (v->is_string()) {
+        OString *s = v->to_ostring();
         if (n != nullptr) {
             *n = cast_usize(s->len);
         }
@@ -230,7 +221,7 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 void *
 lulu_to_pointer(lulu_VM *vm, int i)
 {
-    return value_at(vm, i).to_pointer();
+    return value_at(vm, i)->to_pointer();
 }
 
 int
@@ -253,6 +244,7 @@ lulu_set_top(lulu_VM *vm, int i)
         }
         vm->window = slice(vm->stack, old_start, new_stop);
     } else {
+        lulu_assert(value_at_stack(vm, i));
         lulu_pop(vm, -i);
     }
 }
@@ -263,7 +255,7 @@ lulu_insert(lulu_VM *vm, int i)
     Value *start = value_at_stack(vm, i);
 
     // Copy by value as this stack slot is about to be replaced.
-    Value v = value_at(vm, -1);
+    Value v = *value_at(vm, -1);
     auto dst = slice_pointer(start + 1, end(vm->window));
     auto src = slice_pointer_len(start, len(dst));
     copy(dst, src);
@@ -274,7 +266,7 @@ void
 lulu_remove(lulu_VM *vm, int i)
 {
     Value *start = value_at_stack(vm, i);
-    Value *stop  = &value_at(vm, -1);
+    Value *stop  = value_at(vm, -1);
     auto dst = slice_pointer(start, stop - 1);
     auto src = slice_pointer_len(start + 1, len(dst));
     copy(dst, src);
@@ -354,21 +346,27 @@ lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf)
 void
 lulu_push_value(lulu_VM *vm, int i)
 {
-    Value v = value_at(vm, i);
-    vm_push(vm, v);
+    Value *v = value_at(vm, i);
+    vm_push(vm, *v);
 }
 
 /*=== }}} =================================================================== */
 
+void
+lulu_new_table(lulu_VM *vm, int n_array, int n_hash)
+{
+    Table *t = table_new(vm, cast_isize(n_array), cast_isize(n_hash));
+    vm_push(vm, Value::make_table(t));
+}
 
 int
 lulu_get_table(lulu_VM *vm, int table_index)
 {
-    Value &t = value_at(vm, table_index);
-    Value &k = value_at(vm, -1);
-    if (t.is_table()) {
+    Value *t = value_at(vm, table_index);
+    Value *k = value_at(vm, -1);
+    if (t->is_table()) {
         // No need to push, `k` can be overwritten.
-        bool ok = vm_table_get(vm, &t, k, &k);
+        bool ok = vm_table_get(vm, t, *k, k);
         return ok;
     }
     return false;
@@ -377,14 +375,14 @@ lulu_get_table(lulu_VM *vm, int table_index)
 int
 lulu_get_field(lulu_VM *vm, int table_index, const char *key)
 {
-    Value &t = value_at(vm, table_index);
+    Value *t = value_at(vm, table_index);
     Value  k = Value::make_string(ostring_from_cstring(vm, key));
 
     // Unlike `lulu_get_table()`, we need to explicitly push `t[k]` because
     // `k` does not exist in the stack and thus cannot be replaced.
-    if (t.is_table()) {
+    if (t->is_table()) {
         Value v;
-        bool ok = table_get(t.to_table(), k, &v);
+        bool  ok = table_get(t->to_table(), k, &v);
         vm_push(vm, v);
         return ok;
     }
@@ -394,25 +392,25 @@ lulu_get_field(lulu_VM *vm, int table_index, const char *key)
 void
 lulu_set_table(lulu_VM *vm, int table_index)
 {
-    Value &t = value_at(vm, table_index);
-    if (t.is_table()) {
-        // key and value are popped, in order
-        Value v = vm_pop(vm);
-        Value k = vm_pop(vm);
-        vm_table_set(vm, &t, k, v);
+    Value *t = value_at(vm, table_index);
+    if (t->is_table()) {
+        Value *k = value_at(vm, -2);
+        Value *v = value_at(vm, -1);
+        vm_table_set(vm, t, k, *v);
+        lulu_pop(vm, 2);
     }
 }
 
 void
 lulu_set_field(lulu_VM *vm, int table_index, const char *key)
 {
-    Value &t = value_at(vm, table_index);
+    Value *t = value_at(vm, table_index);
     Value  k = Value::make_string(ostring_from_cstring(vm, key));
-    if (t.is_table()) {
+    if (t->is_table()) {
         // The value is popped implicitly. We have no way to tell if key is in
         // the stack.
         Value v = vm_pop(vm);
-        vm_table_set(vm, &t, k, v);
+        vm_table_set(vm, t, &k, v);
     }
 }
 
@@ -427,14 +425,14 @@ lulu_concat(lulu_VM *vm, int n)
 
     lulu_assert(len(vm->window) >= cast_isize(n));
 
-    Value &first = value_at(vm, -n);
-    Value &last  = value_at(vm, -1);
+    Value *first = value_at(vm, -n);
+    Value *last  = value_at(vm, -1);
 
     // `value_at()` returned a sentinel value? We can't properly form a slice
     // with this.
-    lulu_assert(!first.is_none());
+    lulu_assert(!first->is_none());
 
-    vm_concat(vm, first, slice_pointer(&first, &last + 1));
+    vm_concat(vm, first, slice_pointer(first, last + 1));
 
     // Pop all arguments except the first one- the one we replaced.
     lulu_pop(vm, n - 1);

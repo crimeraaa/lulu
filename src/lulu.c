@@ -4,6 +4,7 @@
 #include <string.h> /* strcspn, strlen */
 
 #include "lulu.h"
+#include "lulu_auxlib.h"
 
 static void
 run(lulu_VM *vm, const char *source, const char *script, size_t n)
@@ -106,12 +107,37 @@ run_file(lulu_VM *vm, const char *file_name)
 }
 
 static int
+base_clock(lulu_VM *vm, int argc)
+{
+    lulu_Number n;
+    (void)argc;
+    n = (lulu_Number)clock() / (lulu_Number)CLOCKS_PER_SEC;
+    lulu_push_number(vm, n);
+    return 1;
+}
+
+static int
+base_type(lulu_VM *vm, int argc)
+{
+    lulu_Type   t;
+    const char *s;
+    size_t      n;
+    if (argc != 1) {
+        return lulu_errorf(vm, "Expected 1 argument to 'type', got %i", argc);
+    }
+    t = lulu_type(vm, 1);
+    s = lulu_type_name(vm, t);
+    n = strlen(s);
+    lulu_push_lstring(vm, s, n);
+    return 1;
+}
+
+static int
 base_tostring(lulu_VM *vm, int argc)
 {
     lulu_Type t;
     if (argc != 1) {
-        lulu_push_fstring(vm, "Expected 1 argument to `tostring`, got %i", argc);
-        return lulu_error(vm);
+        return lulu_errorf(vm, "Expected 1 argument to `tostring`, got %i", argc);
     }
     t = lulu_type(vm, 1);
     switch (t) {
@@ -167,33 +193,6 @@ base_print(lulu_VM *vm, int argc)
     return 0;
 }
 
-static int
-base_clock(lulu_VM *vm, int argc)
-{
-    lulu_Number n;
-    (void)argc;
-    n = (lulu_Number)clock() / (lulu_Number)CLOCKS_PER_SEC;
-    lulu_push_number(vm, n);
-    return 1;
-}
-
-static int
-base_type(lulu_VM *vm, int argc)
-{
-    lulu_Type   t;
-    const char *s;
-    size_t      n;
-    if (argc != 1) {
-        lulu_push_fstring(vm, "Expected 1 argument to 'type', got %i", argc);
-        return lulu_error(vm);
-    }
-    t = lulu_type(vm, 1);
-    s = lulu_type_name(vm, t);
-    n = strlen(s);
-    lulu_push_lstring(vm, s, n);
-    return 1;
-}
-
 static const lulu_Register
 baselib[] = {
     {"clock",    base_clock},
@@ -208,6 +207,8 @@ typedef struct {
     int    status;
 } Main_Data;
 
+#define count_of(array) (sizeof(array) / sizeof((array)[0]))
+
 static int
 protected_main(lulu_VM *vm, int argc)
 {
@@ -221,7 +222,8 @@ protected_main(lulu_VM *vm, int argc)
     
     lulu_push_value(vm, LULU_GLOBALS_INDEX);
     lulu_set_global(vm, "_G");
-    lulu_register_library(vm, baselib, sizeof(baselib) / sizeof(baselib[0]));
+    lulu_set_library(vm, NULL, baselib, count_of(baselib));
+    lulu_set_library(vm, "base", baselib, count_of(baselib));
     switch (d->argc) {
     case 1:
         run_interactive(vm);
