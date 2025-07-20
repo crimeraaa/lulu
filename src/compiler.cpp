@@ -461,7 +461,7 @@ compiler_code_arith(Compiler *c, OpCode op, Expr *left, Expr *right)
 void
 compiler_code_unary(Compiler *c, OpCode op, Expr *e)
 {
-    lulu_assert(OP_UNM <= op && op <= OP_NOT);
+    lulu_assert(OP_UNM <= op && op <= OP_LEN);
 
     switch (op) {
     case OP_UNM:
@@ -500,6 +500,9 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
         default:
             break;
         }
+        break;
+    case OP_LEN:
+        // Cannot possibly fold no matter what.
         break;
     default:
         lulu_unreachable();

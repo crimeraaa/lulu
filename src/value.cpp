@@ -4,7 +4,7 @@
 #include "object.hpp"
 
 bool
-Value::operator==(Value b) const
+Value::operator==(const Value &b) const
 {
     if (this->type() != b.type()) {
         return false;
@@ -26,7 +26,7 @@ Value::operator==(Value b) const
 }
 
 void
-value_print(Value v)
+value_print(const Value &v)
 {
     Value_Type t = v.type();
     switch (t) {

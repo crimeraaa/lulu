@@ -1,9 +1,50 @@
 #ifndef LULU_CONFIG_H
 #define LULU_CONFIG_H
 
+#include <limits.h>     /* CHAR_BIT, INT_WIDTH */
+
 #define LULU_NUMBER_TYPE    double
 #define LULU_NUMBER_FMT     "%.14g"
 
+/**
+ * @brief Consider the format string `"%.14g"`.
+ *
+ *  -   According to `man 3 printf`, since our given precision is 14, we have
+ *      that many decimal digits. We must also add 1 for the decimal (radix)
+ *      point `.`. This brings us to at least size 15.
+ *
+ * -    If the exponent of the given value is +/-4 of the given precision,
+ *      then the `e` style is used, e.g. in `6.023e24`. Thus, we need to also
+ *      consider the `e` specifier, a possible sign `[+-]`, the exponent.
+ *      This brings us to at least size 17.
+ *
+ *  -   To be safe we simply use the would-be size of the binary representation
+ *      as it is assumed to be more than enough for a decimal representation.
+ */
+#define LULU_NUMBER_BUFSIZE     (sizeof(double) * CHAR_BIT)
+
+
+/**
+ * @brief
+ *  -   The size of the fixed array in `lulu_auxlib.h:lulu_Buffer`. This allows
+ *      us to 'hold' onto as much data as we can before we absolute have to
+ *      'flush' it (i.e. pushing the resulting string to the top of the stack).
+ *
+ * @note(2025-07-20)
+ * 
+ * -    This requires `stdio.h` to be included beforehand; we do not include
+ *      it for you in this header to avoid unnecessary namespace pollution.
+ */
+#define LULU_BUFFER_BUFISZE     BUFSIZ
+
+
+/**
+ * @brief
+ *  -   The message pushed to the top of the stack when a memory allocation
+ *      request cannot be fulfilled. It is interned on VM startup, so if
+ *      `lulu_open()` returned a non-`NULL` pointer then it can be safely
+ *      assumed that this string will always be retrievable.
+ */
 #define LULU_MEMORY_ERROR_STRING    "out of memory"
 
 
@@ -73,6 +114,17 @@
 #endif /* (__GNUC__ && __ELF__) || _MSC_VER */
 
 
+#if defined(__GNUC__) || defined(__clang__)
+
+#define LULU_ATTR_PRINTF(fmt, arg) \
+    __attribute__ ((__format__ (printf, fmt, arg)))
+
+#else /* ^^^ __GNUC__ || __clang__, vvv otherwise */
+
+#define LULU_ATTR_PRINTF(fmt, arg)
+
+#endif /* __GNUC__ || __clang__ */
+
 #ifdef LULU_BUILD_ALL
 
 #include <math.h>
@@ -91,4 +143,10 @@
 
 #endif /* LULU_BUILD_ALL */
 
+/**=== LOCAL REDEFINITIONS ================================================= {{{
+ * You can `#undef` any of the above macros and redefine them to your liking.
+ *=========================================================================== */
+
+
+/*=== }}} =================================================================== */
 #endif /* LULU_CONFIG_H */

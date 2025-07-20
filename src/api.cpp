@@ -317,7 +317,11 @@ lulu_push_lstring(lulu_VM *vm, const char *s, size_t n)
 void
 lulu_push_string(lulu_VM *vm, const char *s)
 {
-    return lulu_push_lstring(vm, s, strlen(s));
+    if (s == nullptr) {
+        lulu_push_nil(vm, 1);
+    } else {
+        lulu_push_lstring(vm, s, strlen(s));
+    }
 }
 
 const char *

@@ -62,10 +62,10 @@ LULU_FUNC void
 builder_init(Builder *b);
 
 LULU_FUNC isize
-builder_len(const Builder *b);
+builder_len(const Builder &b);
 
 LULU_FUNC isize
-builder_cap(const Builder *b);
+builder_cap(const Builder &b);
 
 LULU_FUNC void
 builder_reset(Builder *b);
@@ -76,8 +76,12 @@ builder_destroy(lulu_VM *vm, Builder *b);
 LULU_FUNC void
 builder_write_lstring(lulu_VM *vm, Builder *b, LString s);
 
-LULU_FUNC void
-builder_write_char(lulu_VM *vm, Builder *b, char ch);
+LULU_FUNC inline void
+builder_write_char(lulu_VM *vm, Builder *b, char ch)
+{
+    LString ls{&ch, 1};
+    builder_write_lstring(vm, b, ls);
+}
 
 LULU_FUNC void
 builder_write_int(lulu_VM *vm, Builder *b, int i);
@@ -89,10 +93,10 @@ LULU_FUNC void
 builder_write_pointer(lulu_VM *vm, Builder *b, void *p);
 
 LULU_FUNC LString
-builder_to_string(const Builder *b);
+builder_to_string(const Builder &b);
 
 LULU_FUNC const char *
-builder_to_cstring(const Builder *b);
+builder_to_cstring(const Builder &b);
 
 LULU_FUNC void
 intern_init(Intern *t);

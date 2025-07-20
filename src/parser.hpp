@@ -45,17 +45,6 @@ enum Precedence : u8 {
     PREC_UNARY,     // - not #
 };
 
-enum Binary_Type {
-    BINARY_NONE,                        // PREC_NONE
-    BINARY_AND, BINARY_OR,              // PREC_AND, PREC_OR
-    BINARY_ADD, BINARY_SUB,             // PREC_TERMINAL
-    BINARY_MUL, BINARY_DIV, BINARY_MOD, // PREC_FACTOR
-    BINARY_POW,                         // PREC_EXPONENT
-    BINARY_EQ,  BINARY_LT, BINARY_LEQ,  // PREC_COMPARISON, cond=true
-    BINARY_NEQ, BINARY_GT, BINARY_GEQ,  // PREC_COMPARISON, cond=false
-    BINARY_CONCAT,                      // PREC_CONCAT
-};
-
 enum Expr_Type {
     EXPR_NONE,
     EXPR_NIL,        // Literal `nil`.

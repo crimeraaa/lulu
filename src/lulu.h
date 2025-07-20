@@ -517,9 +517,7 @@ lulu_push_string(lulu_VM *vm, const char *s);
  *      No precision, widths, or any modifiers are implemented.
  */
 LULU_API const char *
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__ ((__format__ (__printf__, 2, 3)))
-#endif
+LULU_ATTR_PRINTF(2, 3)
 lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
 
 
@@ -572,7 +570,7 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash);
  *  2.) It is possible for `table[key]` to exist (e.g. mapped previously) but
  *      for it to map to `nil. E.g. `t[k] = 1; ...; t[k] = nil;`
  */
-int
+LULU_API int
 lulu_get_table(lulu_VM *vm, int table_index);
 
 

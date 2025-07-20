@@ -73,8 +73,9 @@ static void
 compare(const Chunk *c, const char *op, Args args, isize pc)
 {
     print_reg(c, args.abc.b, pc, " %s ", op);
-    print_reg(c, args.abc.c, pc, " ; goto .code[%" ISIZE_FMTSPEC " if %s else %" ISIZE_FMTSPEC "]",
-        jump_to(pc, 1), (args.a) ? "true" : "false", jump_get(c, pc + 1));
+    print_reg(c, args.abc.c, pc,
+        " ; goto .code[%" ISIZE_FMTSPEC " if %s else %" ISIZE_FMTSPEC "]",
+        jump_to(pc, 1), (args.a) ? "false" : "true", jump_get(c, pc + 1));
 }
 
 static int
@@ -208,6 +209,7 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     case OP_LEQ: compare(c, "<=", args, pc); break;
     case OP_UNM: unary(c, "-", args, pc); break;
     case OP_NOT: unary(c, "not ", args, pc); break;
+    case OP_LEN: unary(c, "#", args, pc); break;
     case OP_CONCAT:
         print_reg(c, args.a, pc, " := concat(R(%u:%u))", args.abc.b, args.abc.c + 1);
         break;

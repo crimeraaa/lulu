@@ -93,7 +93,7 @@ error(const Lexer *x, const char *what)
 {
     LString where = get_lexeme(x);
     builder_write_lstring(x->vm, x->builder, where);
-    const char *s = builder_to_cstring(x->builder);
+    const char *s = builder_to_cstring(*x->builder);
     vm_syntax_error(x->vm, x->source, x->line, "%s at '%s'", what, s);
 }
 
@@ -372,7 +372,7 @@ make_string(Lexer *x, char q)
     }
     expect(x, q, "Unterminated string");
     builder_write_lstring(vm, b, s);
-    s = builder_to_string(b);
+    s = builder_to_string(*b);
     OString *o = ostring_new(vm, s);
     return make_token_ostring(x, o);
 }
@@ -509,6 +509,7 @@ lexer_lex(Lexer *x)
     case '<': type = match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS; break;
     case '>': type = match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ; break;
 
+    case '#': type = TOKEN_POUND; break;
     case '.':
         if (match(x, '.')) {
             type = match(x, '.') ? TOKEN_VARARG : TOKEN_CONCAT;
@@ -554,6 +555,6 @@ const LString token_strings[TOKEN_COUNT] = {
     "=="_s, "~="_s, "<"_s, "<="_s, ">"_s, ">="_s,
 
     // Misc.
-    "."_s, ".."_s, "..."_s, ","_s, ":"_s, ";"_s, "="_s,
+    "#"_s, "."_s, ".."_s, "..."_s, ","_s, ":"_s, ";"_s, "="_s,
     "<identifier>"_s, "<number>"_s, "<string>"_s, "<eof>"_s,
 };

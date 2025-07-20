@@ -1,6 +1,4 @@
 #include <stdio.h>  // sprintf
-#include <limits.h> // INT_WIDTH
-#include <float.h>  // DBL_DECIMAL_GI
 
 #include "string.hpp"
 #include "vm.hpp"
@@ -12,15 +10,15 @@ builder_init(Builder *b)
 }
 
 isize
-builder_len(const Builder *b)
+builder_len(const Builder &b)
 {
-    return len(b->buffer);
+    return len(b.buffer);
 }
 
 isize
-builder_cap(const Builder *b)
+builder_cap(const Builder &b)
 {
-    return cap(b->buffer);
+    return cap(b.buffer);
 }
 
 void
@@ -43,7 +41,7 @@ builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
         return;
     }
 
-    isize old_len = builder_len(b);
+    isize old_len = builder_len(*b);
     isize new_len = old_len + len(s) + 1; // Include nul char for allocation.
 
     dynamic_resize(vm, &b->buffer, new_len);
@@ -55,56 +53,60 @@ builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
     dynamic_pop(&b->buffer); // Don't include nul char when calling `len()`.
 }
 
-void
-builder_write_char(lulu_VM *vm, Builder *b, char ch)
+
+/**
+ * @note(2025-07-20)
+ *
+ *  -   `Fmt` must be an existing entity, e.g. `static const char fmt[] = "%i";`
+ *      rather than a string literal because of course C++ templates don't let
+ *      you do it.
+ */
+template<auto Bufsize, const char *Fmt, class Arg>
+static void
+_builder_write(lulu_VM *vm, Builder *b, Arg arg)
 {
-    LString s{&ch, 1};
-    builder_write_lstring(vm, b, s);
+    Array<char, Bufsize> buf;
+
+    isize written = cast_isize(sprintf(raw_data(buf), Fmt, arg));
+    lulu_assert(1 <= written && written < len(buf));
+
+    LString ls{raw_data(buf), written};
+    builder_write_lstring(vm, b, ls);
 }
 
 void
 builder_write_int(lulu_VM *vm, Builder *b, int i)
 {
-    char buf[INT_WIDTH * 2];
-    int  written = sprintf(buf, "%i", i);
-    lulu_assert(written >= 1);
-    LString s{buf, cast_isize(written)};
-    builder_write_lstring(vm, b, s);
+    static constexpr const char fmt[] = "%i";
+    _builder_write<INT_WIDTH * 2, fmt>(vm, b, i);
 }
 
 void
 builder_write_number(lulu_VM *vm, Builder *b, Number n)
 {
-    char buf[DBL_DECIMAL_DIG * 2];
-    int  written = sprintf(buf, LULU_NUMBER_FMT, n);
-    lulu_assert(written >= 1);
-    LString s{buf, cast_isize(written)};
-    builder_write_lstring(vm, b, s);
+    static constexpr const char fmt[] = LULU_NUMBER_FMT;
+    _builder_write<LULU_NUMBER_BUFSIZE, fmt>(vm, b, n);
 }
 
 void
 builder_write_pointer(lulu_VM *vm, Builder *b, void *p)
 {
-    char buf[sizeof(p) * CHAR_BIT];
-    int  written = sprintf(buf, "%p", p);
-    lulu_assert(written >= 1);
-    LString s{buf, cast_isize(written)};
-    builder_write_lstring(vm, b, s);
+    static constexpr const char fmt[] = "%p";
+    _builder_write<sizeof(p) * CHAR_BIT, fmt>(vm, b, p);
 }
 
 LString
-builder_to_string(const Builder *b)
+builder_to_string(const Builder &b)
 {
-    LString s = lstring_from_slice(b->buffer);
-    // Ensure the `builder_write_*` family worked properly.
-    lulu_assert(len(s) == 0 || raw_data(s)[len(s)] == '\0');
-    return s;
+    return lstring_from_slice(b.buffer);
 }
 
 const char *
-builder_to_cstring(const Builder *b)
+builder_to_cstring(const Builder &b)
 {
     LString s = builder_to_string(b);
+    // Ensure the `builder_write_*` family worked properly.
+    lulu_assert(len(s) == 0 || raw_data(s)[len(s)] == '\0');
     return raw_data(s);
 }
 

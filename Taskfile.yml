@@ -27,7 +27,7 @@ vars:
 
   RELEASE_FLAGS: >-
     -Werror
-    -Os
+    -O1
     -g
   # -s
 

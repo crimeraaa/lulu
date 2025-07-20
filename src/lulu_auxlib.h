@@ -1,6 +1,8 @@
 #ifndef LULU_AUXILLIARY_H
 #define LULU_AUXILLIARY_H
 
+#include <stdio.h>
+
 #include "lulu.h"
 
 /**=== AUXILLIARY LIBRARY ================================================== {{{
@@ -16,11 +18,36 @@ typedef struct {
     lulu_CFunction function;
 } lulu_Register;
 
+typedef struct {
+    lulu_VM *vm;
+    size_t   cursor; /* Index of current position in the buffer. */
+    int      pushed; /* How many things have were pushed onto the stack? */
+    char     data[LULU_BUFFER_BUFISZE];
+} lulu_Buffer;
+
+#define lulu_type_name_at(vm, i)    lulu_type_name(vm, lulu_type(vm, i))
+
+LULU_API void
+lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b);
+
+LULU_API void
+lulu_buffer_write_char(lulu_Buffer *b, char ch);
+
+LULU_API void
+lulu_buffer_write_string(lulu_Buffer *b, const char *s);
+
+LULU_API void
+lulu_buffer_write_lstring(lulu_Buffer *b, const char *s, size_t n);
+
+LULU_API void
+lulu_buffer_finish(lulu_Buffer *b);
 
 LULU_API int
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__ ((__format__ (__printf__, 2, 3)))
-#endif
+LULU_ATTR_PRINTF(4, 5)
+lulu_arg_error(lulu_VM *vm, int argn, const char *whom, const char *fmt, ...);
+
+LULU_API int
+LULU_ATTR_PRINTF(2, 3)
 lulu_errorf(lulu_VM *vm, const char *fmt, ...);
 
 
@@ -37,7 +64,7 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...);
  */
 LULU_API void
 lulu_set_library(lulu_VM *vm, const char *libname,
-    const lulu_Register *library, size_t n);
+    const lulu_Register *library, int n);
 
 /*=== }}} =================================================================== */
 

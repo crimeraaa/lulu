@@ -110,7 +110,7 @@ public:
     }
 
     bool
-    operator==(Value other) const;
+    operator==(const Value &other) const;
 
 
     //=== VALUE TYPE INFORMATION =========================================== {{{
@@ -269,4 +269,4 @@ constexpr Value
 nil = {};
 
 LULU_FUNC void
-value_print(Value v);
+value_print(const Value &v);

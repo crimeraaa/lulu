@@ -27,6 +27,7 @@ enum Token_Type {
     TOKEN_LESS, TOKEN_LESS_EQ,          // < <=
     TOKEN_GREATER, TOKEN_GREATER_EQ,    // > >=
 
+    TOKEN_POUND, // #
     TOKEN_DOT, TOKEN_CONCAT, TOKEN_VARARG, // . .. ...
     TOKEN_COMMA, TOKEN_COLON, TOKEN_SEMI,  // , : ;
 

@@ -135,7 +135,7 @@ parser_error_at(Parser *p, const Token *t, const char *msg)
     // It is highly important we use a separate string builder from VM, because
     // we don't want it to conflict when writing the formatted string.
     builder_write_lstring(p->vm, p->builder, where);
-    const char *s = builder_to_cstring(p->builder);
+    const char *s = builder_to_cstring(*p->builder);
     vm_syntax_error(p->vm, p->lexer.source, t->line, "%s at '%s'", msg, s);
 }
 
@@ -327,6 +327,8 @@ prefix_expr(Parser *p, Compiler *c)
 {
     Token t = p->consumed;
     advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
+
+    OpCode unary_op;
     switch (t.type) {
     case TOKEN_NIL:    return Expr::make(EXPR_NIL, t.line);
     case TOKEN_TRUE:   return Expr::make(EXPR_TRUE, t.line);
@@ -347,14 +349,13 @@ prefix_expr(Parser *p, Compiler *c)
     case TOKEN_OPEN_CURLY: {
         return constructor(p, c, t.line);
     }
-    case TOKEN_DASH: {
+    case TOKEN_DASH:    unary_op = OP_UNM; goto code_unary;
+    case TOKEN_NOT:     unary_op = OP_NOT; goto code_unary;
+    case TOKEN_POUND:   unary_op = OP_LEN;
+// Diabolical
+code_unary: {
         Expr e = expression(p, c, PREC_UNARY);
-        compiler_code_unary(c, OP_UNM, &e);
-        return e;
-    }
-    case TOKEN_NOT: {
-        Expr e = expression(p, c, PREC_UNARY);
-        compiler_code_unary(c, OP_NOT, &e);
+        compiler_code_unary(c, unary_op, &e);
         return e;
     }
     default:
@@ -440,6 +441,17 @@ primary_expr(Parser *p, Compiler *c)
     }
     return e;
 }
+
+enum Binary_Type {
+    BINARY_NONE,                        // PREC_NONE
+    BINARY_AND, BINARY_OR,              // PREC_AND, PREC_OR
+    BINARY_ADD, BINARY_SUB,             // PREC_TERMINAL
+    BINARY_MUL, BINARY_DIV, BINARY_MOD, // PREC_FACTOR
+    BINARY_POW,                         // PREC_EXPONENT
+    BINARY_EQ,  BINARY_LT, BINARY_LEQ,  // PREC_COMPARISON, cond=true
+    BINARY_NEQ, BINARY_GT, BINARY_GEQ,  // PREC_COMPARISON, cond=false
+    BINARY_CONCAT,                      // PREC_CONCAT
+};
 
 struct Binary_Prec {
     Precedence left, right;

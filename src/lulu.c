@@ -201,29 +201,128 @@ baselib[] = {
     {"type",     base_type}
 };
 
+static int
+string_len(lulu_VM *vm, int argc)
+{
+    size_t n;
+    const char *s = lulu_to_lstring(vm, 1, &n);
+    (void)argc;
+    if (s == NULL) {
+        return lulu_arg_error(vm, 1, "len", "expected 'string', got '%s'",
+            lulu_type_name_at(vm, 1));
+    }
+    
+    lulu_push_number(vm, (lulu_Number)n);
+    return 1;
+}
+
+static int
+string_format(lulu_VM *vm, int argc)
+{
+    char spec;
+    int  argn; /* Index 0 is never valid, index 1 is the format string. */
+    size_t n;
+    lulu_Buffer buffer;
+    const char *fmt, *start, *it;
+
+    argn = 1;
+    fmt  = lulu_to_lstring(vm, argn, &n);
+    if (fmt == NULL) {
+        return lulu_arg_error(vm, argn, "tostring",
+            "expected 'string' but got %s", lulu_type_name_at(vm, 1));
+    }
+    
+    lulu_buffer_init(vm, &buffer);
+    
+    spec  = 0;
+    argn  = 2;
+    start = fmt;
+    for (it = fmt; it < fmt + n; it++) {
+        /* 'Flush' the string before the specifier. */
+        if (*it == '%' && !spec) {
+            spec = 1;
+            lulu_buffer_write_lstring(&buffer, start, (size_t)(it - start));
+            continue;
+        }
+        
+        if (!spec) {
+            continue;
+        }
+        
+        spec = *it;
+        switch (spec) {
+        case '%':
+            lulu_buffer_write_char(&buffer, '%');
+            break;
+        case 's': {
+            size_t      l;
+            const char *s = lulu_to_lstring(vm, argn, &l);
+            if (s == NULL) {
+                return lulu_arg_error(vm, argn, "string.format",
+                    "expected 'string', got' %s'", lulu_type_name_at(vm, argn)); 
+            }
+            lulu_buffer_write_lstring(&buffer, s, l);
+            break;
+        }
+
+        default:
+            return lulu_arg_error(vm, argn, "string.format",
+                "unknown format specifier '%c'", spec);
+        }
+        spec  = 0;
+        start = it + 1;
+        argn++;
+    }
+    
+    if (argn < argc) {
+        return lulu_errorf(vm, "#spec=%i but #args=%i in 'string.format'",
+                argn, argc);
+    }
+
+    lulu_buffer_write_lstring(&buffer, start, (size_t)(it - start));
+    lulu_buffer_finish(&buffer);
+    return 1;
+}
+
+static const lulu_Register
+stringlib[] = {
+    {"len",     string_len},
+    {"format",  string_format}
+};
+
 typedef struct {
     char **argv;
     int    argc;
     int    status;
 } Main_Data;
 
-#define count_of(array) (sizeof(array) / sizeof((array)[0]))
+#define count_of(array) (int)(sizeof(array) / sizeof((array)[0]))
 
 static int
 protected_main(lulu_VM *vm, int argc)
 {
+    int i;
     Main_Data *d;
     (void)argc;
     d = (Main_Data *)lulu_to_pointer(vm, 1);
 
-    /* stack can be cleared at this point, `Main_Data` is a C type so it
-    cannot be collected no matter what. */
-    lulu_set_top(vm, 0);
-    
     lulu_push_value(vm, LULU_GLOBALS_INDEX);
     lulu_set_global(vm, "_G");
-    lulu_set_library(vm, NULL, baselib, count_of(baselib));
-    lulu_set_library(vm, "base", baselib, count_of(baselib));
+
+    lulu_set_library(vm, "base",   baselib, count_of(baselib));
+    lulu_set_library(vm, "string", stringlib, count_of(stringlib));
+    lulu_get_global(vm, "base"); /* base */
+    
+    /* copy `base.*` into `_G.*` */
+    for (i = 0; i < count_of(baselib); i++) {
+        const char *s = baselib[i].name;
+        size_t      n = strlen(s);
+        lulu_push_lstring(vm, s, n); /* base, key */
+        lulu_get_table(vm, -2);      /* base, base[key] */
+        lulu_set_global(vm, s);      /* base ; _G[key] = base[key] */
+    }
+    
+    lulu_set_top(vm, 0);
     switch (d->argc) {
     case 1:
         run_interactive(vm);

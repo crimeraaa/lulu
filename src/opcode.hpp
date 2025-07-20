@@ -24,6 +24,7 @@ OP_LT,          // A B C | if ((RK(B) <  RK(C)) != Bool(A)) then ip++
 OP_LEQ,         // A B C | if ((RK(B) <= RK(C)) != Bool(A)) then ip++
 OP_UNM,         // A B   | R(A) := -R(B)
 OP_NOT,         // A B   | R(A) := not R(B)
+OP_LEN,         // A B   | R(A) := len(R(B))
 OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
 OP_TEST,        // A   C | if Bool(R(A)) == Bool(C) then ip++
 OP_TEST_SET,    // A B C | if Bool(R(B)) == Bool(C) then R(A) := R(B) else ip++

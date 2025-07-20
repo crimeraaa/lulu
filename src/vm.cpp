@@ -198,7 +198,7 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
         spec  = false;
     }
     builder_write_lstring(vm, b, slice_pointer(start, cursor));
-    return vm_push_string(vm, builder_to_string(b));
+    return vm_push_string(vm, builder_to_string(*b));
 }
 
 void
@@ -526,13 +526,13 @@ vm_execute(lulu_VM *vm, int n_calls)
     const Instruction *ip     = raw_data(chunk.code);
     Slice<Value>       window = vm->window;
 
-#define GET_RK(rk)                                                             \
+#define GET_RK(rk) (                                                           \
     Instruction::reg_is_rk(rk)                                                 \
         ? &chunk.constants[Instruction::reg_get_k(rk)]                         \
-        : &window[rk]
+        : &window[rk]                                                          \
+)
 
-#define BINARY_OP(number_fn, error_fn, result_fn)                              \
-{                                                                              \
+#define BINARY_OP(number_fn, error_fn, result_fn) {                                                                              \
     u16 b = i.b(), c = i.c();                                                  \
     Value *rb = GET_RK(b), *rc = GET_RK(c);                                    \
     if (!rb->is_number() || !rc->is_number()) {                                \
@@ -659,8 +659,8 @@ vm_execute(lulu_VM *vm, int n_calls)
             bool   cond = cast(bool)i.a();
             u16    b    = i.b();
             u16    c    = i.c();
-            Value *rkb  = GET_RK(b);
-            Value *rkc  = GET_RK(c);
+            Value  rkb  = *GET_RK(b);
+            Value  rkc  = *GET_RK(c);
 
             protect(vm, ip);
             if ((rkb == rkc) == cond) {
@@ -690,6 +690,14 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_NOT: {
             Value rb = window[i.b()];
             *ra = rb.is_falsy();
+            break;
+        }
+        case OP_LEN: {
+            if (!ra->is_string()) {
+                protect(vm, ip);
+                type_error(vm, "get length of", ra);
+            }
+            *ra = cast(Number)ra->to_ostring()->len;
             break;
         }
         case OP_CONCAT: {
@@ -768,6 +776,6 @@ vm_concat(lulu_VM *vm, Value *ra, Slice<Value> args)
         }
         builder_write_lstring(vm, b, s.to_lstring());
     }
-    OString *o = ostring_new(vm, builder_to_string(b));
+    OString *o = ostring_new(vm, builder_to_string(*b));
     *ra = Value::make_string(o);
 }
