@@ -110,7 +110,7 @@ stringlib[] = {
     {"format",  _string_format}
 };
 
-int
+LULU_API int
 lulu_open_string(lulu_VM *vm, int argc)
 {
     const char *libname = lulu_to_string(vm, 1);

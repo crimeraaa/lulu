@@ -2,14 +2,9 @@ import gdb # type: ignore
 from .. import base
 from typing import Callable
 
-VALUE_NIL       = 0
-VALUE_BOOLEAN   = 1
-VALUE_NUMBER    = 2
-VALUE_STRING    = 3
-VALUE_TABLE     = 4
-VALUE_FUNCTION  = 5
-VALUE_USERDATA  = 6
-VALUE_CHUNK     = 7
+Value_Type = gdb.lookup_type("Value_Type")
+
+VALUE_LIGHTUSERDATA = Value_Type["VALUE_LIGHTUSERDATA"]
 
 class OStringPrinter:
     __value: gdb.Value
@@ -42,11 +37,12 @@ class ValuePrinter:
     __data: gdb.Value
     
 
-    __TOSTRING: dict[int, Callable[[gdb.Value], str]] = {
-        VALUE_NIL:      lambda _: "nil",
-        VALUE_BOOLEAN:  lambda data: str(bool(data["m_boolean"])),
-        VALUE_NUMBER:   lambda data: str(float(data["m_number"])),
-        VALUE_STRING:   lambda data: str(data["m_object"]["ostring"].address),
+    __TOSTRING: dict[str, Callable[[gdb.Value], str]] = {
+        "nil":      lambda _: "nil",
+        "boolean":  lambda data: str(bool(data["m_boolean"])),
+        "number":   lambda data: str(float(data["m_number"])),
+        "string":   lambda data: str(data["m_object"]["ostring"].address),
+        "integer":  lambda data: str(int(data["m_integer"])),
     }
 
     def __init__(self, val: gdb.Value):
@@ -56,12 +52,11 @@ class ValuePrinter:
         self.__data = val
 
     def to_string(self) -> str:
-        tv = int(self.__type)
-        if tv in self.__TOSTRING:
-            return self.__TOSTRING[tv](self.__data)
-
         t = str(self.__type).removeprefix("VALUE_").lower()
-        if self.__type == VALUE_USERDATA:
+        if t in self.__TOSTRING:
+            return self.__TOSTRING[t](self.__data)
+
+        if self.__type == VALUE_LIGHTUSERDATA:
             p = self.__data["m_pointer"]
         else:
             p = self.__data["m_object"].cast(base.VOID_POINTER)

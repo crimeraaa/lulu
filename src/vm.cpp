@@ -535,7 +535,7 @@ vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out)
 }
 
 void
-vm_table_set(lulu_VM *vm, const Value *t, const Value *k, Value v)
+vm_table_set(lulu_VM *vm, const Value *t, const Value *k, const Value &v)
 {
     if (t->is_table()) {
         if (k->is_nil()) {

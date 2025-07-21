@@ -50,20 +50,23 @@ using Type   = lulu_Type;
 using Number = lulu_Number;
 
 enum Value_Type {
-    VALUE_NIL       = LULU_TYPE_NIL,
-    VALUE_BOOLEAN   = LULU_TYPE_BOOLEAN,
-    VALUE_NUMBER    = LULU_TYPE_NUMBER,
-    VALUE_STRING    = LULU_TYPE_STRING,
-    VALUE_TABLE     = LULU_TYPE_TABLE,
-    VALUE_FUNCTION  = LULU_TYPE_FUNCTION,
-    VALUE_USERDATA  = LULU_TYPE_USERDATA,
+    VALUE_NIL           = LULU_TYPE_NIL,
+    VALUE_BOOLEAN       = LULU_TYPE_BOOLEAN,
+    VALUE_LIGHTUSERDATA = LULU_TYPE_LIGHTUSERDATA,
+    VALUE_NUMBER        = LULU_TYPE_NUMBER,
+    VALUE_STRING        = LULU_TYPE_STRING,
+    VALUE_TABLE         = LULU_TYPE_TABLE,
+    VALUE_FUNCTION      = LULU_TYPE_FUNCTION,
 
     // Not accessible from user code.
-    VALUE_CHUNK,
+    VALUE_INTEGER, VALUE_CHUNK,
 };
 
+static constexpr Value_Type
+VALUE_TYPE_LAST = VALUE_FUNCTION;
+
 static constexpr int
-VALUE_TYPE_COUNT = VALUE_USERDATA + 1;
+VALUE_TYPE_COUNT = VALUE_TYPE_LAST + 1;
 
 template<class T>
 LULU_FUNC inline void

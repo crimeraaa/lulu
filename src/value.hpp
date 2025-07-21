@@ -15,10 +15,11 @@ private:
     // use macros to change what members are to be included in the struct.
     Value_Type m_type;
     union {
-        Number   m_number;
-        bool     m_boolean;
-        Object  *m_object;
-        void    *m_pointer; // light userdata.
+        Number       m_number;
+        lulu_Integer m_integer;
+        bool         m_boolean;
+        Object      *m_object;
+        void        *m_pointer; // light userdata.
     };
 
 public:
@@ -38,6 +39,20 @@ public:
         Value v{};
         v.m_type   = VALUE_NUMBER;
         v.m_number = n;
+        return v;
+    }
+
+    /**
+     * @brief
+     *      Internal use only. This is just to allow us to store integers
+     *      without needing to convert to/from `lulu_Number`.
+     */
+    static constexpr Value
+    make_integer(lulu_Integer i)
+    {
+        Value v{};
+        v.m_type    = VALUE_INTEGER;
+        v.m_integer = i;
         return v;
     }
 
@@ -76,7 +91,7 @@ public:
     make_userdata(void *p)
     {
         Value v;
-        v.m_type   = VALUE_USERDATA;
+        v.m_type    = VALUE_LIGHTUSERDATA;
         v.m_pointer = p;
         return v;
     }
@@ -140,7 +155,7 @@ public:
     type_name() const
     {
         Value_Type t = this->type();
-        lulu_assert(VALUE_NIL <= t && t <= VALUE_USERDATA);
+        lulu_assert(VALUE_NIL <= t && t <= VALUE_FUNCTION);
         return Value::type_names[t];
     }
 
@@ -169,10 +184,22 @@ public:
         return this->type() == VALUE_NUMBER;
     }
 
+
+    /**
+     * @brief
+     *      Internal use only. This is just to allow us to store integers
+     *      without needing to convert to/from `lulu_Number`.
+     */
+    constexpr bool
+    is_integer() const noexcept
+    {
+        return this->type() == VALUE_INTEGER;
+    }
+
     constexpr bool
     is_userdata() const noexcept
     {
-        return this->type() == VALUE_USERDATA;
+        return this->type() == VALUE_LIGHTUSERDATA;
     }
 
     constexpr bool
@@ -217,6 +244,21 @@ public:
     {
         lulu_assert(this->is_number());
         return this->m_number;
+    }
+
+    /**
+     * @brief
+     *      Internal use only. This is just to allow us to store integers
+     *      without needing to convert to/from `lulu_Number`.
+     *
+     * @note(2025-07-19)
+     *      Affected by Nan-boxing/pointer-tagging.
+     */
+    lulu_Integer
+    to_integer() const
+    {
+        lulu_assert(this->is_integer());
+        return this->m_integer;
     }
 
     // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging

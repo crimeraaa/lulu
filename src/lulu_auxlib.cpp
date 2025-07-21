@@ -2,7 +2,7 @@
 
 #include "lulu_auxlib.h"
 
-void
+LULU_API void
 lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b)
 {
     b->vm     = vm;
@@ -76,13 +76,11 @@ _buffer_adjust_stack(lulu_Buffer *b)
 
         // Accumulator length for all the temporaries we will concatenate.
         // Starts with the one currently on the top of the stack.
-        size_t acc_len;
-        lulu_to_lstring(vm, -1, &acc_len);
+        size_t acc_len = lulu_obj_len(vm, -1);
 
         // Assumes that since `b->pushed > 1`, we have at least 2 strings.
         do {
-            size_t here_len;
-            lulu_to_lstring(vm, -(to_concat + 1), &here_len);
+            size_t here_len = lulu_obj_len(vm, -(to_concat + 1));
 
             // We have too many strings OR our
             // length
@@ -132,24 +130,22 @@ _buffer_append(lulu_Buffer *b, const char *s, size_t n)
 }
 
 
-void
+LULU_API void
 lulu_write_char(lulu_Buffer *b, char ch)
 {
     if (b->cursor >= _buffer_cap(*b)) {
         _buffer_prep(b);
     }
-    // if ((b->cursor < _buffer_cap(*b)) || _buffer_prep(b)) {
-        b->data[b->cursor++] = ch;
-    // }
+    b->data[b->cursor++] = ch;
 }
 
-void
+LULU_API void
 lulu_write_string(lulu_Buffer *b, const char *s)
 {
     lulu_write_lstring(b, s, strlen(s));
 }
 
-void
+LULU_API void
 lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n)
 {
     // Number of unwritten chars in `s`.
@@ -160,7 +156,7 @@ lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n)
     }
 }
 
-void
+LULU_API void
 lulu_finish_string(lulu_Buffer *b)
 {
     _buffer_flushed(b);
@@ -168,13 +164,13 @@ lulu_finish_string(lulu_Buffer *b)
     b->pushed = 1;
 }
 
-int
+LULU_API int
 lulu_arg_error(lulu_VM *vm, int argn, const char *whom, const char *msg)
 {
     return lulu_errorf(vm, "Bad argument #%i to '%s': %s", argn, whom, msg);
 }
 
-int
+LULU_API int
 lulu_type_error(lulu_VM *vm, int argn, const char *whom, const char *type_name)
 {
     const char *msg = lulu_push_fstring(vm, "'%s' expected, got '%s'",
@@ -198,7 +194,7 @@ _type_error(lulu_VM *vm, int argn, const char *whom, lulu_Type tag)
 #endif
 }
 
-void
+LULU_API void
 lulu_check_type(lulu_VM *vm, int argn, lulu_Type type, const char *whom)
 {
     if (lulu_type(vm, argn) != type) {
@@ -206,7 +202,7 @@ lulu_check_type(lulu_VM *vm, int argn, lulu_Type type, const char *whom)
     }
 }
 
-int
+LULU_API int
 lulu_check_boolean(lulu_VM *vm, int argn, const char *whom)
 {
     if (!lulu_is_boolean(vm, argn)) {
@@ -215,7 +211,7 @@ lulu_check_boolean(lulu_VM *vm, int argn, const char *whom)
     return lulu_to_boolean(vm, argn);
 }
 
-lulu_Number
+LULU_API lulu_Number
 lulu_check_number(lulu_VM *vm, int argn, const char *whom)
 {
     lulu_Number d = lulu_to_number(vm, argn);
@@ -225,7 +221,7 @@ lulu_check_number(lulu_VM *vm, int argn, const char *whom)
     return d;
 }
 
-const char *
+LULU_API const char *
 lulu_check_lstring(lulu_VM *vm, int argn, size_t *n, const char *whom)
 {
     const char *s = lulu_to_lstring(vm, argn, n);
@@ -235,7 +231,7 @@ lulu_check_lstring(lulu_VM *vm, int argn, size_t *n, const char *whom)
     return s;
 }
 
-int
+LULU_API int
 lulu_errorf(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
@@ -245,7 +241,7 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...)
     return lulu_error(vm);
 }
 
-void
+LULU_API void
 lulu_set_library(lulu_VM *vm, const char *libname,
     const lulu_Register *library, int n)
 {

@@ -186,7 +186,7 @@ LULU_FUNC bool
 vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out);
 
 LULU_FUNC void
-vm_table_set(lulu_VM *vm, const Value *t, const Value *k, Value v);
+vm_table_set(lulu_VM *vm, const Value *t, const Value *k, const Value &v);
 
 LULU_FUNC void
 vm_execute(lulu_VM *vm, int n_calls);

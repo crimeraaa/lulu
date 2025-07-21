@@ -1,8 +1,14 @@
 #ifndef LULU_CONFIG_H
 #define LULU_CONFIG_H
 
+#include <limits.h>
+#include <stddef.h>
+
+
 #define LULU_NUMBER_TYPE    double
 #define LULU_NUMBER_FMT     "%.14g"
+#define LULU_INTEGER_TYPE   ptrdiff_t
+
 
 /**
  * @brief Consider the format string `"%.14g"`.
@@ -148,7 +154,7 @@
  *=========================================================================== */
 
 /* #undef LULU_BUFFER_BUFSIZE
-#define LULU_BUFFER_BUFSIZE 8 */
+#define LULU_BUFFER_BUFSIZE 16 */
 
 /*=== }}} =================================================================== */
 

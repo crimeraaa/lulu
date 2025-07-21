@@ -50,7 +50,7 @@ _base_tostring(lulu_VM *vm, int argc)
     case LULU_TYPE_STRING:
         /* Nothing to do; is already a string so leave it as is. */
         break;
-    case LULU_TYPE_USERDATA:
+    case LULU_TYPE_LIGHTUSERDATA:
     case LULU_TYPE_TABLE:
     case LULU_TYPE_FUNCTION: {
         const char *s;
@@ -115,7 +115,7 @@ baselib[] = {
     {"type",        _base_type},
 };
 
-int
+LULU_API int
 lulu_open_base(lulu_VM *vm, int argc)
 {
     int i;

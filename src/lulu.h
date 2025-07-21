@@ -8,6 +8,7 @@
 
 typedef struct lulu_VM lulu_VM;
 typedef LULU_NUMBER_TYPE lulu_Number;
+typedef LULU_INTEGER_TYPE lulu_Integer;
 
 
 /**
@@ -100,14 +101,14 @@ typedef enum {
  *  -   Chapter 18.1 of Crafting Interpreters: "Tagged Unions".
  */
 typedef enum {
-    LULU_TYPE_NONE = -1,    /* out of bounds stack index, C API only. */
+    LULU_TYPE_NONE = -1 ,       /* out of bounds stack index, C API only. */
     LULU_TYPE_NIL,
     LULU_TYPE_BOOLEAN,
+    LULU_TYPE_LIGHTUSERDATA,    /* A non-collectible C pointer. */
     LULU_TYPE_NUMBER,
     LULU_TYPE_STRING,
     LULU_TYPE_TABLE,
-    LULU_TYPE_FUNCTION,     /* A Lua or C function. */
-    LULU_TYPE_USERDATA      /* a C pointer. May be `light` or `full`. */
+    LULU_TYPE_FUNCTION          /* A Lua or C function. */
 } lulu_Type;
 
 LULU_API lulu_VM *
@@ -356,6 +357,21 @@ lulu_to_number(lulu_VM *vm, int i);
 
 
 /**
+ * @return
+ *      The `number` representation of the value at the relative stack index
+ *      `i`, or else `0`. The same conversion rules in `lulu_to_number()` apply.
+ *
+ * @note(2025-07-21)
+ *
+ *  -   If the value at `i` is a number but cannot be accurately represented
+ *      as a `lulu_Integer` (e.g. because it is a floating-point type), then
+ *      the result is truncated in some unspecified way.
+ */
+LULU_API lulu_Integer
+lulu_to_integer(lulu_VM *vm, int i);
+
+
+/**
  * @brief
  *      Converts the value at relative stack index `i` to a `string`, if
  *      possible.
@@ -488,6 +504,19 @@ lulu_push_boolean(lulu_VM *vm, int b);
  */
 LULU_API void
 lulu_push_number(lulu_VM *vm, lulu_Number n);
+
+
+/**
+ * @brief
+ *  -   Pushes `i` to the top of the stack as a `number` value.
+ *
+ * @note(2025-07-21)
+ *
+ *  -   If `i` cannot be represented accurately as a `lulu_Number`, it may
+ *      be truncated (e.g. when `lulu_Number` is floating-point type).
+ */
+LULU_API void
+lulu_push_integer(lulu_VM *vm, lulu_Integer i);
 
 
 /**
@@ -669,6 +698,14 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key);
 LULU_API void
 lulu_concat(lulu_VM *vm, int n);
 
+
+/**
+ * @brief
+ *      Gets the length of the value at the relative stack index `i`. Only
+ *      works for values of type `string` and `table`.
+ */
+LULU_API size_t
+lulu_obj_len(lulu_VM *vm, int i);
 
 /** HELPER MACROS ======================================================= {{{ */
 

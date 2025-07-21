@@ -45,12 +45,13 @@ _hash_value(Value v)
     switch (v.type()) {
     case VALUE_NIL:
         break;
-    case VALUE_BOOLEAN:  return _hash_any(v.to_boolean());
-    case VALUE_NUMBER:   return _hash_any(v.to_number());
-    case VALUE_USERDATA: return _hash_any(v.to_userdata());
-    case VALUE_STRING:   return v.to_ostring()->hash;
-    case VALUE_TABLE:
-    case VALUE_FUNCTION: return _hash_any(v.to_object());
+    case VALUE_BOOLEAN:         return _hash_any(v.to_boolean());
+    case VALUE_NUMBER:          return _hash_any(v.to_number());
+    case VALUE_LIGHTUSERDATA:   return _hash_any(v.to_userdata());
+    case VALUE_STRING:          return v.to_ostring()->hash;
+    case VALUE_TABLE:           // fallthrough
+    case VALUE_FUNCTION:        return _hash_any(v.to_object());
+    case VALUE_INTEGER:
     case VALUE_CHUNK:
         break;
     }

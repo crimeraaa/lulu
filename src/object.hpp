@@ -58,9 +58,9 @@ inline void *
 Value::to_pointer() const
 {
     switch (this->type()) {
-    case VALUE_USERDATA:    return this->to_userdata();
-    case VALUE_TABLE:       return this->to_table();
-    case VALUE_FUNCTION:    return this->to_function();
+    case VALUE_LIGHTUSERDATA:   return this->to_userdata();
+    case VALUE_TABLE:           return this->to_table();
+    case VALUE_FUNCTION:        return this->to_function();
 
     default:
         break;
