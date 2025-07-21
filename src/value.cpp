@@ -3,6 +3,17 @@
 #include "value.hpp"
 #include "object.hpp"
 
+const char *const
+Value::type_names[] = {
+    /* VALUE_NIL */         "nil",
+    /* VALUE_BOOLEAN */     "boolean",
+    /* VALUE_NUMBER */      "number",
+    /* VALUE_STRING */      "string",
+    /* VALUE_TABLE */       "table",
+    /* VALUE_FUNCTION */    "function",
+    /* VALUE_USERDATA */    "userdata",
+};
+
 bool
 Value::operator==(const Value &b) const
 {
@@ -11,7 +22,6 @@ Value::operator==(const Value &b) const
     }
 
     switch (this->type()) {
-    case VALUE_NONE:     break;
     case VALUE_NIL:      return true;
     case VALUE_BOOLEAN:  return this->to_boolean() == b.to_boolean();
     case VALUE_NUMBER:   return lulu_Number_eq(this->to_number(), b.to_number());
@@ -41,7 +51,7 @@ value_print(const Value &v)
         break;
     case VALUE_USERDATA:
 print_pointer:
-        fprintf(stdout, "%s: %p", Value::type_name(t), v.to_pointer());
+        fprintf(stdout, "%s: %p", Value::type_names[t], v.to_pointer());
         break;
     case VALUE_STRING: {
         OString *s = v.to_ostring();
@@ -53,7 +63,6 @@ print_pointer:
     case VALUE_FUNCTION: {
         goto print_pointer;
     }
-    case VALUE_NONE:
     case VALUE_CHUNK:
         lulu_unreachable();
         break;

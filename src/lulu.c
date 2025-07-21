@@ -1,7 +1,6 @@
-#include <time.h>   /* clock */
-#include <stdlib.h> /* malloc, free */
 #include <stdio.h>  /* fprintf */
-#include <string.h> /* strcspn, strlen */
+#include <stdlib.h> /* malloc, free */
+#include <string.h> /* strcspn */
 
 #include "lulu.h"
 #include "lulu_auxlib.h"
@@ -34,7 +33,7 @@ run(lulu_VM *vm, const char *source, const char *script, size_t n)
 }
 
 static void
-run_interactive(lulu_VM *vm)
+_run_interactive(lulu_VM *vm)
 {
     char line[512];
     for (;;) {
@@ -49,7 +48,7 @@ run_interactive(lulu_VM *vm)
 }
 
 static char *
-read_file(const char *file_name, size_t *n)
+_read_file(const char *file_name, size_t *n)
 {
     FILE    *file_ptr  = fopen(file_name, "rb+");
     char    *data      = NULL;
@@ -94,10 +93,10 @@ cleanup_file:
 }
 
 static int
-run_file(lulu_VM *vm, const char *file_name)
+_run_file(lulu_VM *vm, const char *file_name)
 {
     size_t script_size;
-    char *script = read_file(file_name, &script_size);
+    char *script = _read_file(file_name, &script_size);
     if (script == NULL) {
         return EXIT_FAILURE;
     }
@@ -105,190 +104,6 @@ run_file(lulu_VM *vm, const char *file_name)
     free(script);
     return EXIT_SUCCESS;
 }
-
-static int
-base_clock(lulu_VM *vm, int argc)
-{
-    lulu_Number n;
-    (void)argc;
-    n = (lulu_Number)clock() / (lulu_Number)CLOCKS_PER_SEC;
-    lulu_push_number(vm, n);
-    return 1;
-}
-
-static int
-base_type(lulu_VM *vm, int argc)
-{
-    lulu_Type   t;
-    const char *s;
-    size_t      n;
-    if (argc != 1) {
-        return lulu_errorf(vm, "Expected 1 argument to 'type', got %i", argc);
-    }
-    t = lulu_type(vm, 1);
-    s = lulu_type_name(vm, t);
-    n = strlen(s);
-    lulu_push_lstring(vm, s, n);
-    return 1;
-}
-
-static int
-base_tostring(lulu_VM *vm, int argc)
-{
-    lulu_Type t;
-    if (argc != 1) {
-        return lulu_errorf(vm, "Expected 1 argument to `tostring`, got %i", argc);
-    }
-    t = lulu_type(vm, 1);
-    switch (t) {
-    case LULU_TYPE_NIL:
-        lulu_push_literal(vm, "nil");
-        break;
-    case LULU_TYPE_BOOLEAN:
-        lulu_push_string(vm, lulu_to_boolean(vm, 1) ? "true" : "false");
-        break;
-    case LULU_TYPE_NUMBER:
-        lulu_push_fstring(vm, "%f", lulu_to_number(vm, 1));
-        break;
-    case LULU_TYPE_STRING:
-        /* Nothing to do */
-        break;
-    case LULU_TYPE_USERDATA:
-    case LULU_TYPE_TABLE:
-    case LULU_TYPE_FUNCTION: {
-        const char *s;
-        void *p;
-        s = lulu_type_name(vm, t);
-        p = lulu_to_pointer(vm, 1);
-        lulu_push_fstring(vm, "%s: %p", s, p);
-        break;
-    }
-    default:
-#if defined(__GNUC__) || defined(__clang__)
-        __builtin_unreachable();
-#elif defined(_MSC_VER)
-        __assume(false);
-#endif
-        return 0;
-    }
-    return 1;
-}
-
-static int
-base_print(lulu_VM *vm, int argc)
-{
-    int i;
-    lulu_get_global(vm, "tostring"); /* ..., tostring */
-    for (i = 1; i <= argc; i++) {
-        if (i > 1) {
-            fputc('\t', stdout);
-        }
-        lulu_push_value(vm, -1); /* ..., tostring, tostring, */
-        lulu_push_value(vm, i);  /* ..., tostring, tostring, arg[i] */
-        lulu_call(vm, 1, 1);     /* ..., tostring, tostring(arg[i]) */
-        fprintf(stdout, "%s", lulu_to_string(vm, -1));
-        lulu_pop(vm, 1);         /* ..., tostring */
-    }
-    fputc('\n', stdout);
-    return 0;
-}
-
-static const lulu_Register
-baselib[] = {
-    {"clock",    base_clock},
-    {"tostring", base_tostring},
-    {"print",    base_print},
-    {"type",     base_type}
-};
-
-static int
-string_len(lulu_VM *vm, int argc)
-{
-    size_t n;
-    const char *s = lulu_to_lstring(vm, 1, &n);
-    (void)argc;
-    if (s == NULL) {
-        return lulu_arg_error(vm, 1, "len", "expected 'string', got '%s'",
-            lulu_type_name_at(vm, 1));
-    }
-    
-    lulu_push_number(vm, (lulu_Number)n);
-    return 1;
-}
-
-static int
-string_format(lulu_VM *vm, int argc)
-{
-    char spec;
-    int  argn; /* Index 0 is never valid, index 1 is the format string. */
-    size_t n;
-    lulu_Buffer buffer;
-    const char *fmt, *start, *it;
-
-    argn = 1;
-    fmt  = lulu_to_lstring(vm, argn, &n);
-    if (fmt == NULL) {
-        return lulu_arg_error(vm, argn, "tostring",
-            "expected 'string' but got %s", lulu_type_name_at(vm, 1));
-    }
-    
-    lulu_buffer_init(vm, &buffer);
-    
-    spec  = 0;
-    argn  = 2;
-    start = fmt;
-    for (it = fmt; it < fmt + n; it++) {
-        /* 'Flush' the string before the specifier. */
-        if (*it == '%' && !spec) {
-            spec = 1;
-            lulu_buffer_write_lstring(&buffer, start, (size_t)(it - start));
-            continue;
-        }
-        
-        if (!spec) {
-            continue;
-        }
-        
-        spec = *it;
-        switch (spec) {
-        case '%':
-            lulu_buffer_write_char(&buffer, '%');
-            break;
-        case 's': {
-            size_t      l;
-            const char *s = lulu_to_lstring(vm, argn, &l);
-            if (s == NULL) {
-                return lulu_arg_error(vm, argn, "string.format",
-                    "expected 'string', got' %s'", lulu_type_name_at(vm, argn)); 
-            }
-            lulu_buffer_write_lstring(&buffer, s, l);
-            break;
-        }
-
-        default:
-            return lulu_arg_error(vm, argn, "string.format",
-                "unknown format specifier '%c'", spec);
-        }
-        spec  = 0;
-        start = it + 1;
-        argn++;
-    }
-    
-    if (argn < argc) {
-        return lulu_errorf(vm, "#spec=%i but #args=%i in 'string.format'",
-                argn, argc);
-    }
-
-    lulu_buffer_write_lstring(&buffer, start, (size_t)(it - start));
-    lulu_buffer_finish(&buffer);
-    return 1;
-}
-
-static const lulu_Register
-stringlib[] = {
-    {"len",     string_len},
-    {"format",  string_format}
-};
 
 typedef struct {
     char **argv;
@@ -299,36 +114,20 @@ typedef struct {
 #define count_of(array) (int)(sizeof(array) / sizeof((array)[0]))
 
 static int
-protected_main(lulu_VM *vm, int argc)
+_protected_main(lulu_VM *vm, int argc)
 {
-    int i;
     Main_Data *d;
     (void)argc;
     d = (Main_Data *)lulu_to_pointer(vm, 1);
 
-    lulu_push_value(vm, LULU_GLOBALS_INDEX);
-    lulu_set_global(vm, "_G");
-
-    lulu_set_library(vm, "base",   baselib, count_of(baselib));
-    lulu_set_library(vm, "string", stringlib, count_of(stringlib));
-    lulu_get_global(vm, "base"); /* base */
-    
-    /* copy `base.*` into `_G.*` */
-    for (i = 0; i < count_of(baselib); i++) {
-        const char *s = baselib[i].name;
-        size_t      n = strlen(s);
-        lulu_push_lstring(vm, s, n); /* base, key */
-        lulu_get_table(vm, -2);      /* base, base[key] */
-        lulu_set_global(vm, s);      /* base ; _G[key] = base[key] */
-    }
-    
+    lulu_open_libs(vm);
     lulu_set_top(vm, 0);
     switch (d->argc) {
     case 1:
-        run_interactive(vm);
+        _run_interactive(vm);
         break;
     case 2:
-        d->status = run_file(vm, d->argv[1]);
+        d->status = _run_file(vm, d->argv[1]);
         break;
     default:
         fprintf(stderr, "Usage: %s [script]\n", d->argv[0]);
@@ -339,7 +138,7 @@ protected_main(lulu_VM *vm, int argc)
 }
 
 static void *
-c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
+_c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
 {
     (void)user_data;
     (void)old_size;
@@ -360,13 +159,13 @@ int main(int argc, char *argv[])
     d.argc   = argc;
     d.status = EXIT_SUCCESS;
 
-    vm = lulu_open(c_allocator, NULL);
+    vm = lulu_open(_c_allocator, NULL);
     if (vm == NULL) {
         fprintf(stderr, "Failed to allocate memory for lulu\n");
         return 2;
     }
 
-    e = lulu_c_pcall(vm, protected_main, &d);
+    e = lulu_c_pcall(vm, _protected_main, &d);
     lulu_close(vm);
     if (e == LULU_OK && d.status == EXIT_SUCCESS) {
         return EXIT_SUCCESS;

@@ -92,7 +92,7 @@ chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
 
     Number i2 = cast(Number)len(c->constants);
     dynamic_push(vm, &c->constants, v);
-    table_set(vm, c->indexes, v, i2);
+    table_set(vm, c->indexes, v, Value::make_number(i2));
     return cast(u32)i2;
 }
 

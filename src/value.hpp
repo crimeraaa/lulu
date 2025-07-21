@@ -8,8 +8,8 @@ struct Table;
 union  Closure;
 struct Chunk;
 
-struct LULU_PRIVATE Value {
-
+struct LULU_PRIVATE
+Value {
 private:
     // Later on, if we decide to incorporate NaN-boxing/Pointer-tagging, we can
     // use macros to change what members are to be included in the struct.
@@ -22,50 +22,22 @@ private:
     };
 
 public:
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
-    constexpr
-    Value(Value_Type t = VALUE_NIL)
-        : m_type{t}
-        , m_number{0}
-    {}
-
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
-    constexpr
-    Value(bool b)
-        : m_type{VALUE_BOOLEAN}
-        , m_boolean{b}
-    {}
-
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
-    constexpr
-    Value(Number n)
-        : m_type{VALUE_NUMBER}
-        , m_number{n}
-    {}
-
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
-    constexpr void
-    operator=(bool b)
-    {
-        this->m_type    = VALUE_BOOLEAN;
-        this->m_boolean = b;
-    }
-
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
-    constexpr void
-    operator=(Number n)
-    {
-        this->m_type   = VALUE_NUMBER;
-        this->m_number = n;
-    }
-
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static constexpr Value
-    make_userdata(void *p)
+    make_boolean(bool b)
     {
-        Value v;
-        v.m_type  = VALUE_USERDATA;
-        v.m_pointer = p;
+        Value v{};
+        v.m_type    = VALUE_BOOLEAN;
+        v.m_boolean = b;
+        return v;
+    }
+
+    // @note 2025-07-21 Affected by Nan-boxing/Pointer-tagging
+    static constexpr Value
+    make_number(Number n)
+    {
+        Value v{};
+        v.m_type   = VALUE_NUMBER;
+        v.m_number = n;
         return v;
     }
 
@@ -101,6 +73,16 @@ public:
 
     // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
+    make_userdata(void *p)
+    {
+        Value v;
+        v.m_type   = VALUE_USERDATA;
+        v.m_pointer = p;
+        return v;
+    }
+
+    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
+    static Value
     make_chunk(Chunk *c)
     {
         Value v;
@@ -109,37 +91,57 @@ public:
         return v;
     }
 
+    void
+    set_boolean(bool b) noexcept
+    {
+        *this = this->make_boolean(b);
+    }
+
+    void
+    set_number(Number d) noexcept
+    {
+        *this = this->make_number(d);
+    }
+
+    void
+    set_string(OString *os) noexcept
+    {
+        *this = this->make_string(os);
+    }
+
+    void
+    set_table(Table *t) noexcept
+    {
+        *this = this->make_table(t);
+    }
+
+    void
+    set_function(Closure *f) noexcept
+    {
+        *this = this->make_function(f);
+    }
+
+    void
+    set_userdata(void *p) noexcept
+    {
+        *this = this->make_userdata(p);
+    }
+
     bool
     operator==(const Value &other) const;
 
 
     //=== VALUE TYPE INFORMATION =========================================== {{{
 
-    static const char *
-    type_name(Value_Type t)
-    {
-        switch (t) {
-        case VALUE_NONE:        return "no value";
-        case VALUE_NIL:         return "nil";
-        case VALUE_BOOLEAN:     return "boolean";
-        case VALUE_NUMBER:      return "number";
-        case VALUE_USERDATA:    return "lightuserdata";
-        case VALUE_STRING:      return "string";
-        case VALUE_TABLE:       return "table";
-        case VALUE_FUNCTION:    return "function";
-        case VALUE_CHUNK:
-            break;
-        }
-        // You cannot, and should not, call this function with payloads of
-        // non-user facing types, such as `Chunk *`.
-        lulu_unreachable();
-        return nullptr;
-    }
+    static const char *const
+    type_names[VALUE_TYPE_COUNT];
 
     const char *
     type_name() const
     {
-        return Value::type_name(this->type());
+        Value_Type t = this->type();
+        lulu_assert(VALUE_NIL <= t && t <= VALUE_USERDATA);
+        return Value::type_names[t];
     }
 
     // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
@@ -147,12 +149,6 @@ public:
     type() const noexcept
     {
         return this->m_type;
-    }
-
-    constexpr bool
-    is_none() const noexcept
-    {
-        return this->type() == VALUE_NONE;
     }
 
     constexpr bool
@@ -266,7 +262,10 @@ public:
 };
 
 constexpr Value
-nil = {};
+nil{};
+
+// Did we default construct `nil` properly?
+static_assert(nil.type() == VALUE_NIL);
 
 LULU_FUNC void
 value_print(const Value &v);

@@ -104,10 +104,10 @@ typedef enum {
     LULU_TYPE_NIL,
     LULU_TYPE_BOOLEAN,
     LULU_TYPE_NUMBER,
-    LULU_TYPE_USERDATA,     /* a non-collectible C pointer. */
     LULU_TYPE_STRING,
     LULU_TYPE_TABLE,
-    LULU_TYPE_FUNCTION      /* may be a Lua or C function. */
+    LULU_TYPE_FUNCTION,     /* A Lua or C function. */
+    LULU_TYPE_USERDATA      /* a C pointer. May be `light` or `full`. */
 } lulu_Type;
 
 LULU_API lulu_VM *
@@ -132,7 +132,7 @@ lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_siz
  *      with arguments from `(nargs)` up to and including `-1`.
  *
  * @note(2025-06-30)
- *  
+ *
  *  -   The function and its arguments are popped when done.
  *
  *  -   The return values, if any, are moved to where the function originally
@@ -230,7 +230,7 @@ lulu_type_name(lulu_VM *vm, lulu_Type t);
  *
  * @note(2025-07-19)
  *
- *  -   Only indexes outside the current stack frame are type `none`. Only 
+ *  -   Only indexes outside the current stack frame are type `none`. Only
  *      C functions can see them because of their unsafe capability to request
  *      any stack index.
  */
@@ -269,12 +269,8 @@ lulu_is_boolean(lulu_VM *vm, int i);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is a `number`, else `0`.
- *
- * @todo(2025-07-20)
- *
- *  -   Lua also consider `string` which, when parsed, represents a valid
- *      number as also being of type `number`. Should we also do that?
+ *  -   `1` if the value at relative stack index `i` is a `number` or a
+ *      `string` which represents a valid number, or else `0`.
  */
 LULU_API int
 lulu_is_number(lulu_VM *vm, int i);
@@ -285,7 +281,7 @@ lulu_is_number(lulu_VM *vm, int i);
  *  -   `1` if the value at relative stack index `i` is a `userdata`, else `0`.
  *
  * @note(2025-07-20)
- * 
+ *
  *  -   `userdata` are generally safe to cast to pointers of some type `T`.
  *      A good example is the callback function of `lulu_c_pcall()`, whose
  *      1 and only argument is the userdata to be used.
@@ -299,7 +295,8 @@ lulu_is_userdata(lulu_VM *vm, int i);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is a `string`, else `0`.
+ *  -   `1` if the value at relative stack index `i` is a `string` or a
+ *      `number` (which is always convertible to a string), else `0`.
  *
  * @todo(2025-07-20)
  *
@@ -345,7 +342,7 @@ lulu_to_boolean(lulu_VM *vm, int i);
  * @return
  *  -   The `number` representation at the relative stack index `i` or else `0`.
  *
- *  -   `number` is ready directly while `string` is checked then parsed.
+ *  -   `number` is read directly while `string` is checked then parsed.
  *      All other types return `0`.
  *
  * @note(2025-07-20)
@@ -359,12 +356,20 @@ lulu_to_number(lulu_VM *vm, int i);
 
 
 /**
+ * @brief
+ *      Converts the value at relative stack index `i` to a `string`, if
+ *      possible.
+ *
+ *      Values of type `string` are read directly, while values of type
+ *      `number` are replaced with their string representation. All other
+ *      types are unchanged.
+ *
  * @param n
  *      Optional out-parameter which stores the resulting string's length,
  *      if the value was indeed a string. Pass `NULL` to ignore.
  *
  * @return
- *  -   The nul-terminated string at relative stack index `i`, or else `NULL`.
+ *      The nul-terminated string at relative stack index `i`, or else `NULL`.
  */
 LULU_API const char *
 lulu_to_lstring(lulu_VM *vm, int i, size_t *n);
@@ -372,19 +377,21 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n);
 
 /**
  * @return
- *      The `void *` representation at relative stack index `i`, or else `NULL`.
+ *      The `void *` representation at relative stack index `i`, or else
+ *      `NULL`.
  *
  * @note(2025-07-20)
  *
- *  -   `NULL` may be returned if the value cannot be suitably converted to a
+ *      `NULL` may be returned if the value cannot be suitably converted to a
  *      pointer. The only convertible types are either `userdata` or 'true'
  *      objects such as `table` or `function`.
  *
- *  -   `string` is not a 'true' object because it is immmutable and always
+ *      `string` is not a 'true' object because it is immmutable and always
  *      passed by value conceptually.
  */
 LULU_API void *
 lulu_to_pointer(lulu_VM *vm, int i);
+
 
 /*=== }}} =================================================================== */
 
@@ -559,7 +566,7 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash);
  *
  * @param table_index
  *  -   The relative/pseudo stack index of the table we wish to index.
- * 
+ *
  * @return
  *      `1` if the key existed in the table, meaning its value was pushed.
  *      `0` otherwise, meaning `nil` was pushed.

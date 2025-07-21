@@ -10,35 +10,43 @@ lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b)
     b->pushed = 0;
 }
 
+
+/**
+ * @return
+ *      The number of characters currently stored in the buffer.
+ */
 static size_t
 _buffer_len(const lulu_Buffer &b)
 {
     return b.cursor;
 }
 
+
+/**
+ * @return
+ *      The total number of characters that could be stored in the buffer.
+ */
 static constexpr size_t
 _buffer_cap(const lulu_Buffer &b)
 {
     return sizeof(b.data);
 }
 
+
+/**
+ * @return
+ *      The number of free slots in the buffer.
+ */
 static size_t
 _buffer_rem(const lulu_Buffer &b)
 {
     return _buffer_cap(b) - _buffer_len(b);
 }
 
-[[maybe_unused]]
-static const char *
-_buffer_end(const lulu_Buffer &b)
-{
-    return &b.data[0] + sizeof(b.data);
-}
-
 static bool
 _buffer_flushed(lulu_Buffer *b)
 {
-    size_t n = b->cursor;
+    size_t n = _buffer_len(*b);
     // Nothing to put on the stack?
     if (n == 0) {
         return false;
@@ -49,25 +57,6 @@ _buffer_flushed(lulu_Buffer *b)
     return true;
 }
 
-
-/**
- * @return
- *      The number of unwritten `char` in `s`.
- */
-static size_t
-_buffer_append(lulu_Buffer *b, const char *s, size_t n)
-{
-    // How many indexes left are available?
-    size_t rem = _buffer_rem(*b);
-
-    // Clamp size to copy. May be 0.
-    size_t to_write = (n > rem) ? rem : n;
-
-    // We assume that `b->buffer` and `s` never alias.
-    memcpy(&b->data[b->cursor], s, to_write);
-    b->cursor += to_write;
-    return n - to_write;
-}
 
 static constexpr int LIMIT = LULU_STACK_MIN / 2;
 
@@ -84,15 +73,21 @@ _buffer_adjust_stack(lulu_Buffer *b)
     if (b->pushed > 1) {
         lulu_VM *vm = b->vm;
         int to_concat = 1; // Number of levels to concatenate.
-        size_t top_len;
-        lulu_to_lstring(vm, -1, &top_len);
 
-        // Assumes that since `b->pushed > 1`, we have more strings.
+        // Accumulator length for all the temporaries we will concatenate.
+        // Starts with the one currently on the top of the stack.
+        size_t acc_len;
+        lulu_to_lstring(vm, -1, &acc_len);
+
+        // Assumes that since `b->pushed > 1`, we have at least 2 strings.
         do {
             size_t here_len;
             lulu_to_lstring(vm, -(to_concat + 1), &here_len);
-            if (b->pushed - to_concat + 1 >= LIMIT || top_len > here_len) {
-                top_len += here_len;
+
+            // We have too many strings OR our
+            // length
+            if (b->pushed - to_concat + 1 >= LIMIT || acc_len > here_len) {
+                acc_len += here_len;
                 to_concat++;
             } else {
                 break;
@@ -103,44 +98,70 @@ _buffer_adjust_stack(lulu_Buffer *b)
     }
 }
 
-static char *
+static void
 _buffer_prep(lulu_Buffer *b)
 {
     if (_buffer_flushed(b)) {
         _buffer_adjust_stack(b);
     }
-    return b->data;
 }
 
 
-void
-lulu_buffer_write_char(lulu_Buffer *b, char ch)
+/**
+ * @return
+ *      The number of written characters.
+ */
+static size_t
+_buffer_append(lulu_Buffer *b, const char *s, size_t n)
 {
-    if ((b->cursor < _buffer_cap(*b)) || _buffer_prep(b)) {
-        b->data[b->cursor++] = ch;
-    }
-}
-
-void
-lulu_buffer_write_string(lulu_Buffer *b, const char *s)
-{
-    lulu_buffer_write_lstring(b, s, strlen(s));
-}
-
-void
-lulu_buffer_write_lstring(lulu_Buffer *b, const char *s, size_t n)
-{
-    for (;;) {
-        size_t extra = _buffer_append(b, s, n);
-        if (extra == 0) {
-            break;
-        }
+    // Resulting length would overflow the buffer?
+    if (_buffer_len(*b) + n >= _buffer_cap(*b)) {
         _buffer_prep(b);
     }
+
+    // How many indexes left are available?
+    size_t rem = _buffer_rem(*b);
+
+    // Clamp size to copy. May be 0.
+    size_t to_write = (n > rem) ? rem : n;
+
+    // We assume that `b->buffer` and `s` never alias.
+    memcpy(&b->data[b->cursor], s, to_write);
+    b->cursor += to_write;
+    return to_write;
+}
+
+
+void
+lulu_write_char(lulu_Buffer *b, char ch)
+{
+    if (b->cursor >= _buffer_cap(*b)) {
+        _buffer_prep(b);
+    }
+    // if ((b->cursor < _buffer_cap(*b)) || _buffer_prep(b)) {
+        b->data[b->cursor++] = ch;
+    // }
 }
 
 void
-lulu_buffer_finish(lulu_Buffer *b)
+lulu_write_string(lulu_Buffer *b, const char *s)
+{
+    lulu_write_lstring(b, s, strlen(s));
+}
+
+void
+lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n)
+{
+    // Number of unwritten chars in `s`.
+    for (size_t rem = n; rem != 0;) {
+        size_t written = _buffer_append(b, s, rem);
+        s   += written;
+        rem -= written;
+    }
+}
+
+void
+lulu_finish_string(lulu_Buffer *b)
 {
     _buffer_flushed(b);
     lulu_concat(b->vm, b->pushed);
@@ -148,17 +169,70 @@ lulu_buffer_finish(lulu_Buffer *b)
 }
 
 int
-lulu_arg_error(lulu_VM *vm, int argn, const char *whom, const char *fmt, ...)
+lulu_arg_error(lulu_VM *vm, int argn, const char *whom, const char *msg)
 {
-    const char *msg = lulu_push_fstring(vm, "Bad argument #%i to '%s'", argn, whom);
-    if (fmt != nullptr) {
-        va_list args;
-        va_start(args, fmt);
-        const char *msg2 = lulu_push_vfstring(vm, fmt, args);
-        va_end(args);
-        return lulu_errorf(vm, "%s: %s", msg, msg2);
+    return lulu_errorf(vm, "Bad argument #%i to '%s': %s", argn, whom, msg);
+}
+
+int
+lulu_type_error(lulu_VM *vm, int argn, const char *whom, const char *type_name)
+{
+    const char *msg = lulu_push_fstring(vm, "'%s' expected, got '%s'",
+        type_name, lulu_type_name_at(vm, argn));
+    return lulu_arg_error(vm, argn, whom, msg);
+}
+
+[[noreturn]]
+static void
+_type_error(lulu_VM *vm, int argn, const char *whom, lulu_Type tag)
+{
+    const char *s = lulu_type_name(vm, tag);
+    lulu_type_error(vm, argn, whom, s);
+
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin_unreachable();
+#elif defined(_MSC_VER)
+    __assume(false);
+#else
+#error Please add your compiler's `__builtin_unreachable()` equivalent.
+#endif
+}
+
+void
+lulu_check_type(lulu_VM *vm, int argn, lulu_Type type, const char *whom)
+{
+    if (lulu_type(vm, argn) != type) {
+        _type_error(vm, argn, whom, type);
     }
-    return lulu_error(vm);
+}
+
+int
+lulu_check_boolean(lulu_VM *vm, int argn, const char *whom)
+{
+    if (!lulu_is_boolean(vm, argn)) {
+        _type_error(vm, argn, whom, LULU_TYPE_BOOLEAN);
+    }
+    return lulu_to_boolean(vm, argn);
+}
+
+lulu_Number
+lulu_check_number(lulu_VM *vm, int argn, const char *whom)
+{
+    lulu_Number d = lulu_to_number(vm, argn);
+    if (d == 0 && !lulu_is_number(vm, argn)) {
+        _type_error(vm, argn, whom, LULU_TYPE_NUMBER);
+    }
+    return d;
+}
+
+const char *
+lulu_check_lstring(lulu_VM *vm, int argn, size_t *n, const char *whom)
+{
+    const char *s = lulu_to_lstring(vm, argn, n);
+    if (s == nullptr) {
+        lulu_type_error(vm, argn, whom, "string");
+    }
+    return s;
 }
 
 int
@@ -175,9 +249,7 @@ void
 lulu_set_library(lulu_VM *vm, const char *libname,
     const lulu_Register *library, int n)
 {
-    if (libname == nullptr) {
-        lulu_push_value(vm, LULU_GLOBALS_INDEX);
-    } else {
+    if (libname != nullptr) {
         lulu_get_global(vm, libname);
         // _G[libname] doesn't exist yet?
         if (lulu_is_nil(vm, -1)) {
@@ -190,10 +262,26 @@ lulu_set_library(lulu_VM *vm, const char *libname,
             lulu_set_global(vm, libname);
         }
     }
+
     for (int i = 0; i < n; i++) {
         // TODO(2025-07-01): Ensure key and value are not collected!
         lulu_push_cfunction(vm, library[i].function);
         lulu_set_field(vm, -2, library[i].name);
     }
-    lulu_pop(vm, 1);
+}
+
+static const lulu_Register
+libs[] = {
+    {LULU_BASE_LIB_NAME,   lulu_open_base},
+    {LULU_STRING_LIB_NAME, lulu_open_string},
+};
+
+LULU_API void
+lulu_open_libs(lulu_VM *vm)
+{
+    for (int i = 0; i < lulu_count_library(libs); i++) {
+        lulu_push_cfunction(vm, libs[i].function);
+        lulu_push_string(vm, libs[i].name);
+        lulu_call(vm, 1, 0);
+    }
 }

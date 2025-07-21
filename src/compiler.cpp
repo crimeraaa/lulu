@@ -135,7 +135,7 @@ compiler_add_value(Compiler *c, Value v)
 u32
 compiler_add_number(Compiler *c, Number n)
 {
-    return compiler_add_value(c, n);
+    return compiler_add_value(c, Value::make_number(n));
 }
 
 u32
@@ -377,9 +377,9 @@ compiler_expr_rk(Compiler *c, Expr *e)
 {
     switch (e->type) {
     case EXPR_NIL:    return value_to_rk(c, e, nil);
-    case EXPR_FALSE:  return value_to_rk(c, e, false);
-    case EXPR_TRUE:   return value_to_rk(c, e, true);
-    case EXPR_NUMBER: return value_to_rk(c, e, e->number);
+    case EXPR_FALSE:  return value_to_rk(c, e, Value::make_boolean(true));
+    case EXPR_TRUE:   return value_to_rk(c, e, Value::make_boolean(false));
+    case EXPR_NUMBER: return value_to_rk(c, e, Value::make_number(e->number));
 
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {

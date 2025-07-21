@@ -179,7 +179,8 @@ print_backtrace()
 }
 
 void
-lulu_assert_impl(const char *file, int line, const char *expr, const char *fmt, ...)
+lulu_assert_fail(const char *file, int line, const char *expr, const char *fmt, ...)
+throw()
 {
     static bool have_error = false;
     assert(!have_error && "Error in assertion handling");

@@ -1,7 +1,75 @@
+#include <stdlib.h> // strtod, strtoul
 #include <stdio.h>  // sprintf
+#include <limits.h> // INT_WIDTH
 
 #include "string.hpp"
 #include "vm.hpp"
+
+static int
+_get_base(LString s)
+{
+    // Have a leading `'0'`?
+    if (len(s) > 2 && s[0] == '0') {
+        switch (s[1]) {
+        case 'b':
+        case 'B': return 2;
+
+        case 'o':
+        case 'O': return 8;
+
+        case 'd':
+        case 'D': return 10;
+
+        case 'x':
+        case 'X': return 16;
+
+        default:
+            break;
+        }
+    }
+    return 0;
+}
+
+bool
+lstring_to_number(LString s, Number *out, int base)
+{
+    // Need to detect the base prefix?
+    if (base == 0) {
+        base = _get_base(s);
+        // Skip the `0[bBoOdDxX]` prefix because `strto*` doesn't support `0b`.
+        if (base) {
+            // s = s[2:]
+            s = slice_from(s, 2);
+        }
+    }
+
+    Number d;
+    char  *last;
+    // Parsing a prefixed integer?
+    if (base != 0) {
+        unsigned long ul = strtoul(raw_data(s), &last, base);
+        d = cast(Number)ul;
+    }
+    // Parsing a non-prefixed number.
+    else {
+        d = strtod(raw_data(s), &last);
+    }
+
+    if (last != end(s)) {
+        return false;
+    }
+    *out = d;
+    return true;
+}
+
+LString
+number_to_lstring(Number n, Number_Buffer &buf)
+{
+    isize written = cast_isize(sprintf(raw_data(buf), LULU_NUMBER_FMT, n));
+    lulu_assert(1 <= written && written < size_of(buf));
+    LString ls{raw_data(buf), written};
+    return ls;
+}
 
 void
 builder_init(Builder *b)
@@ -135,7 +203,7 @@ intern_init(Intern *t)
 }
 
 static isize
-intern_cap(const Intern *t)
+_intern_cap(const Intern *t)
 {
     return len(t->table);
 }
@@ -143,7 +211,7 @@ intern_cap(const Intern *t)
 // Assumes `cap` is always a power of 2.
 // The result must be unsigned in order to have sane bitwise operations.
 static usize
-intern_clamp_index(u32 hash, isize cap)
+_intern_clamp_index(u32 hash, isize cap)
 {
     return cast_usize(hash) & cast_usize(cap - 1);
 }
@@ -161,7 +229,7 @@ intern_resize(lulu_VM *vm, Intern *t, isize new_cap)
         // Rehash all children for this list.
         while (node != nullptr) {
             OString *s = &node->ostring;
-            usize    i = intern_clamp_index(s->hash, new_cap);
+            usize    i = _intern_clamp_index(s->hash, new_cap);
 
             // Save because it's about to be replaced.
             Object *next  = s->next;
@@ -196,7 +264,7 @@ ostring_new(lulu_VM *vm, LString text)
 {
     Intern  *t    = &vm->intern;
     u32      hash = hash_string(text);
-    usize    i    = intern_clamp_index(hash, intern_cap(t));
+    usize    i    = _intern_clamp_index(hash, _intern_cap(t));
     for (Object *node = t->table[i]; node != nullptr; node = node->base.next) {
         OString *s = &node->ostring;
         if (s->hash == hash) {
@@ -215,7 +283,7 @@ ostring_new(lulu_VM *vm, LString text)
     s->data[s->len] = 0;
     memcpy(s->data, raw_data(text), cast_usize(len(text)));
 
-    if (t->count + 1 > intern_cap(t)*3 / 4) {
+    if (t->count + 1 > _intern_cap(t)*3 / 4) {
         isize new_cap = mem_next_pow2(t->count + 1);
         intern_resize(vm, t, new_cap);
     }

@@ -6,6 +6,8 @@
 
 #include "lulu.h"
 
+#define TOKEN_PASTE(x, y)   x##y
+
 using u8  = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
@@ -48,21 +50,20 @@ using Type   = lulu_Type;
 using Number = lulu_Number;
 
 enum Value_Type {
-    VALUE_NONE      = LULU_TYPE_NONE,
     VALUE_NIL       = LULU_TYPE_NIL,
     VALUE_BOOLEAN   = LULU_TYPE_BOOLEAN,
-    VALUE_USERDATA  = LULU_TYPE_USERDATA,
     VALUE_NUMBER    = LULU_TYPE_NUMBER,
     VALUE_STRING    = LULU_TYPE_STRING,
     VALUE_TABLE     = LULU_TYPE_TABLE,
     VALUE_FUNCTION  = LULU_TYPE_FUNCTION,
+    VALUE_USERDATA  = LULU_TYPE_USERDATA,
 
     // Not accessible from user code.
     VALUE_CHUNK,
 };
 
 static constexpr int
-VALUE_TYPE_COUNT = VALUE_CHUNK + 1;
+VALUE_TYPE_COUNT = VALUE_USERDATA + 1;
 
 template<class T>
 LULU_FUNC inline void
@@ -77,13 +78,14 @@ swap(T *a, T *b)
 
 [[noreturn, gnu::format(printf, 4, 5)]]
 LULU_FUNC void
-lulu_assert_impl(const char *file, int line, const char *expr, const char *fmt, ...);
+lulu_assert_fail(const char *file, int line, const char *expr, const char *fmt, ...)
+throw();
 
 #define lulu_assert(expr) \
-    (expr) ? ((void)0) : lulu_assert_impl(__FILE__, __LINE__, #expr, nullptr)
+    (expr) ? ((void)0) : lulu_assert_fail(__FILE__, __LINE__, #expr, nullptr)
 
 #define lulu_assertf(expr, fmt, ...) \
-    (expr) ? ((void)0) : lulu_assert_impl(__FILE__, __LINE__, #expr, fmt "\n", __VA_ARGS__)
+    (expr) ? ((void)0) : lulu_assert_fail(__FILE__, __LINE__, #expr, fmt "\n", __VA_ARGS__)
 
 #define lulu_assertln(expr, msg) \
     lulu_assertf(expr, "%s", msg)

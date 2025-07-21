@@ -2,14 +2,13 @@ import gdb # type: ignore
 from .. import base
 from typing import Callable
 
-VALUE_NONE      = -1
 VALUE_NIL       = 0
 VALUE_BOOLEAN   = 1
 VALUE_NUMBER    = 2
-VALUE_USERDATA  = 3
-VALUE_STRING    = 4
-VALUE_TABLE     = 5
-VALUE_FUNCTION  = 6
+VALUE_STRING    = 3
+VALUE_TABLE     = 4
+VALUE_FUNCTION  = 5
+VALUE_USERDATA  = 6
 VALUE_CHUNK     = 7
 
 class OStringPrinter:
@@ -44,7 +43,6 @@ class ValuePrinter:
     
 
     __TOSTRING: dict[int, Callable[[gdb.Value], str]] = {
-        VALUE_NONE:     lambda _: "none",
         VALUE_NIL:      lambda _: "nil",
         VALUE_BOOLEAN:  lambda data: str(bool(data["m_boolean"])),
         VALUE_NUMBER:   lambda data: str(float(data["m_number"])),

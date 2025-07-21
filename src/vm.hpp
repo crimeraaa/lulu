@@ -103,6 +103,38 @@ vm_check_stack(lulu_VM *vm, int n);
 LULU_FUNC void
 vm_throw(lulu_VM *vm, Error e);
 
+
+/**
+ * @return
+ *  -   `true` if `v` is already a number or a string convertible to a number,
+ *      or else `false.
+ *
+ *  -   If `true` then `*out` is assigned.
+ *
+ * @note(2025-07-21) Assumptions
+ *
+ *  1.) `v` was checked if it was of type `number` beforehand.
+ *
+ *  2.) This function only deals with conversion of non-`number` values
+ *      (i.e. `string`) to `number`.
+ *
+ *  3.) `v` and `out` do not alias.
+ */
+LULU_FUNC bool
+vm_to_number(const Value *v, Value *out);
+
+
+/**
+ * @note(2025-07-21) Assumptions
+ *
+ *  1.) `v` was checked to be of type `string` beforehand.
+ *
+ *  2.) This function only ever deals with conversion of non-`string`
+ *      (i.e. `number`) to `string`.
+ */
+LULU_FUNC bool
+vm_to_string(lulu_VM *vm, Value *in_out);
+
 LULU_FUNC const char *
 vm_push_string(lulu_VM *vm, LString s);
 

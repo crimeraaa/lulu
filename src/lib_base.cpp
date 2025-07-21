@@ -1,0 +1,141 @@
+#include <string.h>
+#include <time.h>
+
+#include "lulu_auxlib.h"
+
+static int
+_base_clock(lulu_VM *vm, int argc)
+{
+    lulu_Number n;
+    (void)argc;
+    n = (lulu_Number)clock() / (lulu_Number)CLOCKS_PER_SEC;
+    lulu_push_number(vm, n);
+    return 1;
+}
+
+static int
+_base_type(lulu_VM *vm, int argc)
+{
+    lulu_Type   t;
+    const char *s;
+    size_t      n;
+    if (argc == 0) {
+        return lulu_type_error(vm, 1, "type", "any");
+    }
+    t = lulu_type(vm, 1);
+    s = lulu_type_name(vm, t);
+    n = strlen(s);
+    lulu_push_lstring(vm, s, n);
+    return 1;
+}
+
+static int
+_base_tostring(lulu_VM *vm, int argc)
+{
+    lulu_Type t;
+    if (argc == 0) {
+        return lulu_type_error(vm, 1, "tostring", "any");
+    }
+    t = lulu_type(vm, 1);
+    switch (t) {
+    case LULU_TYPE_NIL:
+        lulu_push_literal(vm, "nil");
+        break;
+    case LULU_TYPE_BOOLEAN:
+        lulu_push_string(vm, lulu_to_boolean(vm, 1) ? "true" : "false");
+        break;
+    case LULU_TYPE_NUMBER:
+        lulu_push_fstring(vm, "%f", lulu_to_number(vm, 1));
+        break;
+    case LULU_TYPE_STRING:
+        /* Nothing to do; is already a string so leave it as is. */
+        break;
+    case LULU_TYPE_USERDATA:
+    case LULU_TYPE_TABLE:
+    case LULU_TYPE_FUNCTION: {
+        const char *s;
+        void *p;
+        s = lulu_type_name(vm, t);
+        p = lulu_to_pointer(vm, 1);
+        lulu_push_fstring(vm, "%s: %p", s, p);
+        break;
+    }
+    default:
+#if defined(__GNUC__) || defined(__clang__)
+        __builtin_unreachable();
+#elif defined(_MSC_VER)
+        __assume(false);
+#endif
+        return 0;
+    }
+    return 1;
+}
+
+static int
+_base_tonumber(lulu_VM *vm, int argc)
+{
+    lulu_Number n;
+    if (argc == 0) {
+        return lulu_type_error(vm, 1, "tonumber", "any");
+    }
+    n = lulu_to_number(vm, 1);
+    if (n == 0 && !lulu_is_number(vm, 1)) {
+        lulu_push_nil(vm, 1);
+    } else {
+        lulu_push_number(vm, n);
+    }
+    return 1;
+}
+
+static int
+_base_print(lulu_VM *vm, int argc)
+{
+    int i;
+    lulu_get_global(vm, "tostring"); /* ..., tostring */
+    for (i = 1; i <= argc; i++) {
+        if (i > 1) {
+            fputc('\t', stdout);
+        }
+        lulu_push_value(vm, -1); /* ..., tostring, tostring, */
+        lulu_push_value(vm, i);  /* ..., tostring, tostring, arg[i] */
+        lulu_call(vm, 1, 1);     /* ..., tostring, tostring(arg[i]) */
+        fprintf(stdout, "%s", lulu_to_string(vm, -1));
+        lulu_pop(vm, 1);         /* ..., tostring */
+    }
+    fputc('\n', stdout);
+    return 0;
+}
+
+static const lulu_Register
+baselib[] = {
+    {"clock",       _base_clock},
+    {"tostring",    _base_tostring},
+    {"tonumber",    _base_tonumber},
+    {"print",       _base_print},
+    {"type",        _base_type},
+};
+
+int
+lulu_open_base(lulu_VM *vm, int argc)
+{
+    int i;
+    const char *libname = lulu_to_string(vm, 1);
+    (void)argc;
+
+    /* expose _G to user */
+    lulu_push_value(vm, LULU_GLOBALS_INDEX);
+    lulu_set_global(vm, "_G");
+
+    /* Stack: base */
+    lulu_set_library(vm, libname, baselib, lulu_count_library(baselib));
+
+    /* copy `base` into `_G`. */
+    for (i = 0; i < lulu_count_library(baselib); i++) {
+        const char *s = baselib[i].name;
+        size_t      n = strlen(s);
+        lulu_push_lstring(vm, s, n); /* base, key */
+        lulu_get_table(vm, -2);      /* base, base[key] */
+        lulu_set_global(vm, s);      /* base ; _G[key] = base[key] */
+    }
+    return 1;
+}

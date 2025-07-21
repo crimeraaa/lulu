@@ -2,23 +2,28 @@
 
 // Do not make `constexpr`; must have an address in order to be a reference.
 static Value
-none{VALUE_NONE};
+none = nil;
 
 static Value *
 value_at(lulu_VM *vm, int i)
 {
-    // Not valid in any way
-    lulu_assert(i != 0);
-
     // Resolve 1-based relative index.
-    if (i > 0) {
-        return &vm->window[cast_isize(i) - 1];
-    } else if (i > LULU_PSEUDO_INDEX) {
-        return &vm->window[len(vm->window) - cast_isize(-i)];
+    isize ii = cast_isize(i);
+    if (ii > 0) {
+        ii--;
+        if (0 <= ii && ii < len(vm->window)) {
+            return &vm->window[ii];
+        }
+        return &none;
+    } else if (ii > LULU_PSEUDO_INDEX) {
+        // Not valid in any way
+        lulu_assert(ii != 0);
+        lulu_assert(0 <= len(vm->window) + ii);
+        return &vm->window[len(vm->window) + ii];
     }
 
     // Not in range of the window; try a pseudo index.
-    switch (i) {
+    switch (ii) {
     case LULU_GLOBALS_INDEX:
         return &vm->globals;
     default:
@@ -124,8 +129,13 @@ lulu_error(lulu_VM *vm)
 lulu_Type
 lulu_type(lulu_VM *vm, int i)
 {
-    Value_Type t = value_at(vm, i)->type();
-    lulu_assertf(VALUE_NONE <= t && t <= VALUE_FUNCTION, "Got Value_Type(%i)", t);
+    const Value *v = value_at(vm, i);
+    if (v == &none) {
+        return LULU_TYPE_NONE;
+    }
+
+    Value_Type t = v->type();
+    lulu_assertf(VALUE_NIL <= t && t <= VALUE_USERDATA, "Got Value_Type(%i)", t);
     return cast(lulu_Type)t;
 }
 
@@ -133,13 +143,14 @@ const char *
 lulu_type_name(lulu_VM *vm, lulu_Type t)
 {
     unused(vm);
-    return Value::type_name(cast(Value_Type)t);
+    return (t == LULU_TYPE_NONE) ? "no value" : Value::type_names[t];
 }
 
 int
 lulu_is_none(lulu_VM *vm, int i)
 {
-    return value_at(vm, i)->is_none();
+    const Value *v = value_at(vm, i);
+    return (v == &none);
 }
 
 int
@@ -157,7 +168,9 @@ lulu_is_boolean(lulu_VM *vm, int i)
 int
 lulu_is_number(lulu_VM *vm, int i)
 {
-    return value_at(vm, i)->is_number();
+    const Value *v = value_at(vm, i);
+    Value tmp;
+    return vm_to_number(v, &tmp);
 }
 
 int
@@ -169,7 +182,9 @@ lulu_is_userdata(lulu_VM *vm, int i)
 int
 lulu_is_string(lulu_VM *vm, int i)
 {
-    return value_at(vm, i)->is_string();
+    // `number` is always convertible to a string.
+    Value_Type t = value_at(vm, i)->type();
+    return t == VALUE_NUMBER || t == VALUE_STRING;
 }
 
 int
@@ -197,9 +212,12 @@ lulu_to_boolean(lulu_VM *vm, int i)
 lulu_Number
 lulu_to_number(lulu_VM *vm, int i)
 {
+    Value tmp;
     Value *v = value_at(vm, i);
     if (v->is_number()) {
         return v->to_number();
+    } else if (vm_to_number(v, &tmp)) {
+        return tmp.to_number();
     }
     return 0;
 }
@@ -208,14 +226,21 @@ const char *
 lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 {
     Value *v = value_at(vm, i);
-    if (v->is_string()) {
-        OString *s = v->to_ostring();
-        if (n != nullptr) {
-            *n = cast_usize(s->len);
+    if (!v->is_string()) {
+        bool ok = vm_to_string(vm, v);
+        if (!ok)  {
+            if (n != nullptr) {
+                *n = 0;
+            }
+            return nullptr;
         }
-        return s->to_cstring();
+        // Otherwise, conversion success.
     }
-    return nullptr;
+    OString *s = v->to_ostring();
+    if (n != nullptr) {
+        *n = cast_usize(s->len);
+    }
+    return s->to_cstring();
 }
 
 void *
@@ -291,13 +316,13 @@ lulu_push_nil(lulu_VM *vm, int n)
 void
 lulu_push_boolean(lulu_VM *vm, int b)
 {
-    vm_push(vm, cast(bool)b);
+    vm_push(vm, Value::make_boolean(cast(bool)b));
 }
 
 void
 lulu_push_number(lulu_VM *vm, lulu_Number n)
 {
-    vm_push(vm, n);
+    vm_push(vm, Value::make_number(n));
 }
 
 void
@@ -380,7 +405,7 @@ int
 lulu_get_field(lulu_VM *vm, int table_index, const char *key)
 {
     Value *t = value_at(vm, table_index);
-    Value  k = Value::make_string(ostring_from_cstring(vm, key));
+    Value  k = t->make_string(ostring_from_cstring(vm, key));
 
     // Unlike `lulu_get_table()`, we need to explicitly push `t[k]` because
     // `k` does not exist in the stack and thus cannot be replaced.
@@ -421,7 +446,6 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key)
 void
 lulu_concat(lulu_VM *vm, int n)
 {
-
     switch (n) {
     case 0: lulu_push_literal(vm, ""); return;
     case 1: return; // Nothing we can sensibly do, other than conversion.
@@ -434,7 +458,7 @@ lulu_concat(lulu_VM *vm, int n)
 
     // `value_at()` returned a sentinel value? We can't properly form a slice
     // with this.
-    lulu_assert(!first->is_none());
+    lulu_assert(first != &none);
 
     vm_concat(vm, first, slice_pointer(first, last + 1));
 

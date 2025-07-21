@@ -9,6 +9,23 @@ union Object;
 
 using LString = Slice<const char>;
 
+using Number_Buffer = Array<char, LULU_NUMBER_BUFSIZE>;
+
+/**
+ * @param base
+ *      If zero, tries to detect any potential base prefixes in the form of the
+ *      regular expression `^0[bBoOdDxX]`.
+ *
+ * @return
+ *      `true` if `s` was successfully parsed into a `Number` and `*out` was
+ *      assigned, otherwise `false`.
+ */
+LULU_FUNC bool
+lstring_to_number(LString s, Number *out, int base = 0);
+
+LULU_FUNC LString
+number_to_lstring(Number n, Number_Buffer &buf);
+
 LULU_FUNC inline LString
 lstring_from_cstring(const char *s)
 {
@@ -57,6 +74,8 @@ operator ""_s(const char *s, size_t n)
 {
     return {s, cast_isize(n)};
 }
+
+#define lstring_literal(lit)    TOKEN_PASTE(lit, _s)
 
 LULU_FUNC void
 builder_init(Builder *b);

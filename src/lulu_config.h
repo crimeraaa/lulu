@@ -1,8 +1,6 @@
 #ifndef LULU_CONFIG_H
 #define LULU_CONFIG_H
 
-#include <limits.h>     /* CHAR_BIT, INT_WIDTH */
-
 #define LULU_NUMBER_TYPE    double
 #define LULU_NUMBER_FMT     "%.14g"
 
@@ -17,11 +15,8 @@
  *      then the `e` style is used, e.g. in `6.023e24`. Thus, we need to also
  *      consider the `e` specifier, a possible sign `[+-]`, the exponent.
  *      This brings us to at least size 17.
- *
- *  -   To be safe we simply use the would-be size of the binary representation
- *      as it is assumed to be more than enough for a decimal representation.
  */
-#define LULU_NUMBER_BUFSIZE     (sizeof(double) * CHAR_BIT)
+#define LULU_NUMBER_BUFSIZE     32
 
 
 /**
@@ -31,11 +26,11 @@
  *      'flush' it (i.e. pushing the resulting string to the top of the stack).
  *
  * @note(2025-07-20)
- * 
+ *
  * -    This requires `stdio.h` to be included beforehand; we do not include
  *      it for you in this header to avoid unnecessary namespace pollution.
  */
-#define LULU_BUFFER_BUFISZE     BUFSIZ
+#define LULU_BUFFER_BUFSIZE     BUFSIZ
 
 
 /**
@@ -55,6 +50,10 @@
  *      thus you do not need to worry about stack overflow.
  */
 #define LULU_STACK_MIN      8
+
+
+#define LULU_BASE_LIB_NAME          "base"
+#define LULU_STRING_LIB_NAME        "string"
 
 
 /**
@@ -89,6 +88,7 @@
 
 #define LULU_PUBLIC
 #define LULU_PRIVATE
+
 #endif  /* LULU_BUILD_ALL */
 
 #elif defined(_MSC_VER) /* ^^^ __GNUC__, vvv _MSC_VER */
@@ -111,7 +111,7 @@
 #define LULU_PUBLIC
 #define LULU_PRIVATE
 
-#endif /* (__GNUC__ && __ELF__) || _MSC_VER */
+#endif /* LULU_PUBLIC, LULU_PRIVATE */
 
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -123,7 +123,7 @@
 
 #define LULU_ATTR_PRINTF(fmt, arg)
 
-#endif /* __GNUC__ || __clang__ */
+#endif /* LULU_ATTR_PRINTF */
 
 #ifdef LULU_BUILD_ALL
 
@@ -147,6 +147,9 @@
  * You can `#undef` any of the above macros and redefine them to your liking.
  *=========================================================================== */
 
+/* #undef LULU_BUFFER_BUFSIZE
+#define LULU_BUFFER_BUFSIZE 8 */
 
 /*=== }}} =================================================================== */
+
 #endif /* LULU_CONFIG_H */

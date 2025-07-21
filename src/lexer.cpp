@@ -313,15 +313,13 @@ make_number(Lexer *x, char first)
         if (base != 0) {
             consume_sequence(x, is_ident);
             LString s = get_lexeme(x);
-            char  *last;
-            // Skip the `0[bodx]` prefix because `strto*` doesn't support `0b`.
-            unsigned long ul = strtoul(raw_data(s) + 2, &last, base);
-            if (last != end(s)) {
+            Number d;
+            if (!lstring_to_number(s, &d, base)) {
                 char buf[32];
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
             }
-            return make_token_number(x, cast(Number)ul);
+            return make_token_number(x, d);
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
@@ -339,9 +337,8 @@ make_number(Lexer *x, char first)
     consume_sequence(x, is_ident);
 
     LString s = get_lexeme(x);
-    char *last;
-    Number d = strtod(raw_data(s), &last);
-    if (last != end(s)) {
+    Number d;
+    if (!lstring_to_number(s, &d)) {
         error(x, "Malformed number");
     }
     return make_token_number(x, d);

@@ -42,10 +42,10 @@ required_allocations(lulu_VM *vm, void *)
     intern_resize(vm, &vm->intern, 32);
 
     // TODO(2025-06-30): Mark the memory error string as "immortal"?
-    OString *o = ostring_from_cstring(vm, LULU_MEMORY_ERROR_STRING);
+    OString *o = ostring_new(vm, lstring_literal(LULU_MEMORY_ERROR_STRING));
     unused(o);
     Table *t = table_new(vm, 8, 0);
-    vm->globals = Value::make_table(t);
+    vm->globals.set_table(t);
 }
 
 bool
@@ -128,6 +128,35 @@ vm_throw(lulu_VM *vm, Error e)
     // Don't throw an unhandle-able exception, we may be in a C application!
     fprintf(stderr, "[FATAL]: Unprotected call to lulu API\n");
     abort();
+}
+
+bool
+vm_to_number(const Value *v, Value *out)
+{
+    // Try to parse the string.
+    if (v->is_string()) {
+        LString ls = v->to_lstring();
+        Number d;
+        if (lstring_to_number(ls, &d)) {
+            out->set_number(d);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
+vm_to_string(lulu_VM *vm, Value *in_out)
+{
+    if (in_out->is_number()) {
+        Number_Buffer buf;
+        LString  ls = number_to_lstring(in_out->to_number(), buf);
+        OString *os = ostring_new(vm, ls);
+        // @todo(2025-07-21): Check GC!
+        in_out->set_string(os);
+        return true;
+    }
+    return false;
 }
 
 const char *
@@ -548,7 +577,7 @@ vm_execute(lulu_VM *vm, int n_calls)
     ip += (offset);                                                            \
 }
 
-#define ARITH_RESULT(n)     *ra = n
+#define ARITH_RESULT(n)     ra->set_number(n)
 #define ARITH_OP(fn)        BINARY_OP(fn, arith_error, ARITH_RESULT)
 
 #define COMPARE_RESULT(b)                                                      \
@@ -599,7 +628,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_BOOL:
-            *ra = cast(bool)i.b();
+            ra->set_boolean(cast(bool)i.b());
             if (cast(bool)i.c()) {
                 ip++;
             }
@@ -625,7 +654,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             isize n_hash  = cast_isize(i.b());
             isize n_array = cast_isize(i.c());
             Table *t = table_new(vm, n_hash, n_array);
-            *ra = Value::make_table(t);
+            ra->set_table(t);
             break;
         }
         case OP_GET_TABLE: {
@@ -684,12 +713,12 @@ vm_execute(lulu_VM *vm, int n_calls)
                 protect(vm, ip);
                 arith_error(vm, rb, rb);
             }
-            *ra = lulu_Number_unm(rb->to_number());
+            ra->set_number(lulu_Number_unm(rb->to_number()));
             break;
         }
         case OP_NOT: {
             Value rb = window[i.b()];
-            *ra = rb.is_falsy();
+            ra->set_boolean(rb.is_falsy());
             break;
         }
         case OP_LEN: {
@@ -697,7 +726,7 @@ vm_execute(lulu_VM *vm, int n_calls)
                 protect(vm, ip);
                 type_error(vm, "get length of", ra);
             }
-            *ra = cast(Number)ra->to_ostring()->len;
+            ra->set_number(cast(Number)ra->to_ostring()->len);
             break;
         }
         case OP_CONCAT: {
@@ -776,6 +805,6 @@ vm_concat(lulu_VM *vm, Value *ra, Slice<Value> args)
         }
         builder_write_lstring(vm, b, s.to_lstring());
     }
-    OString *o = ostring_new(vm, builder_to_string(*b));
-    *ra = Value::make_string(o);
+    OString *os = ostring_new(vm, builder_to_string(*b));
+    ra->set_string(os);
 }
