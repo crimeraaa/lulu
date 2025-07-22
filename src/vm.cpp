@@ -44,7 +44,7 @@ _required_allocations(lulu_VM *vm, void *)
     // TODO(2025-06-30): Mark the memory error string as "immortal"?
     OString *o = ostring_new(vm, lstring_literal(LULU_MEMORY_ERROR_STRING));
     unused(o);
-    Table *t = table_new(vm, 8, 0);
+    Table *t = table_new(vm, /* n_hash */ 8, /* n_array */ 0);
     vm->globals.set_table(t);
 }
 

@@ -89,22 +89,26 @@ compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line)
 void
 compiler_load_nil(Compiler *c, u16 reg, int n, int line)
 {
-    isize pc = c->pc;
+    Instruction *ip       = nullptr;
+    const u16    last_reg = reg + cast(u16)(n - 1);
 
     // No potential jumps up to this point?
+    isize pc = c->pc;
     if (pc > c->last_target) {
         // Stack frame is initialized to all `nil` at the start of the function,
         // so nothing to do.
         if (pc == 0) {
-            // Concept check: `local x; local y;`
+            // Target register is a new local?
             if (cast(isize)reg >= small_array_len(c->active)) {
                 return;
             }
-        }
+            // Target register is an existing local.
+            // Concept check: `local x; x = nil`
+        } 
+        goto no_fold;
     }
 
-    Instruction *ip = get_code(c, pc - 1);
-    u16 last_reg = reg + cast(u16)(n - 1);
+    ip = get_code(c, pc - 1);
     // Previous instruction may be able to be folded?
     if (ip->op() == OP_NIL) {
         u16 ra = ip->a();
@@ -118,6 +122,7 @@ compiler_load_nil(Compiler *c, u16 reg, int n, int line)
     }
 
     // Can't fold; need new instruction.
+no_fold:
     compiler_code_abc(c, OP_NIL, reg, last_reg, 0, line);
 }
 
@@ -135,7 +140,7 @@ _add_constant(Compiler *c, const Value &k, const Value &v)
         return cast(u32)i.to_integer();
     }
     u32 n = chunk_add_constant(c->vm, c->chunk, v);
-    i = Value::make_integer(cast(lulu_Integer)n);
+    i = i.make_integer(cast(lulu_Integer)n);
     table_set(c->vm, c->indexes, k, i);
     return n;
 }

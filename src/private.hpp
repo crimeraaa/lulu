@@ -58,6 +58,8 @@ using usize = size_t;
 #endif
 
 #endif // restrict
+
+
 #define OBJECT_HEADER Object *next; Value_Type type
 
 using Type   = lulu_Type;
