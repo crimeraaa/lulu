@@ -6,7 +6,7 @@ static int
 _string_len(lulu_VM *vm, int argc)
 {
     size_t n;
-    lulu_check_lstring(vm, 1, &n, "string.len");
+    lulu_check_lstring(vm, 1, &n);
     (void)argc;
     lulu_push_number(vm, (lulu_Number)n);
     return 1;
@@ -24,7 +24,7 @@ _string_format(lulu_VM *vm, int argc)
     const char *start, *it, *end;
 
     argn  = 1;
-    start = lulu_check_lstring(vm, argn, &n, "string.format");
+    start = lulu_check_lstring(vm, argn, &n);
 
     lulu_buffer_init(vm, &b);
 
@@ -47,7 +47,7 @@ _string_format(lulu_VM *vm, int argc)
 
         /* first iteration: argn=2 > argc=2 -> false */
         if (argn > argc) {
-            return lulu_arg_error(vm, argn, "string.format", "no value");
+            return lulu_arg_error(vm, argn, "no value");
         }
 
         start       = it + 1;
@@ -60,12 +60,12 @@ _string_format(lulu_VM *vm, int argc)
             /* skip flushing the buffer */
             continue;
         case 'c': {
-            int ch = (int)lulu_check_number(vm, argn, "string.format");
+            int ch = (int)lulu_check_number(vm, argn);
             if (CHAR_MIN <= ch && ch <= CHAR_MAX) {
                 written = sprintf(fmt_item, fmt_spec, ch);
             } else {
                 sprintf(fmt_item, "unknown character '%c'", ch);
-                return lulu_arg_error(vm, argn, "string.format", fmt_item);
+                return lulu_arg_error(vm, argn, fmt_item);
             }
             break;
         }
@@ -73,19 +73,19 @@ _string_format(lulu_VM *vm, int argc)
         case 'i': case 'I':
         case 'o': case 'O':
         case 'x': case 'X': {
-            int i = (int)lulu_check_number(vm, argn, "string.format");
+            int i = (int)lulu_check_number(vm, argn);
             written = sprintf(fmt_item, fmt_spec, i);
             break;
         }
         case 'f': case 'F':
         case 'g': case 'G': {
-            lulu_Number n = lulu_check_number(vm, argn, "string.format");
+            lulu_Number n = lulu_check_number(vm, argn);
             written = sprintf(fmt_item, fmt_spec, n);
             break;
         }
         case 's': {
             size_t      l;
-            const char *s = lulu_check_lstring(vm, argn, &l, "string.format");
+            const char *s = lulu_check_lstring(vm, argn, &l);
             lulu_write_lstring(&b, s, l);
             /* skip flushing the buffer */
             continue;
@@ -93,7 +93,7 @@ _string_format(lulu_VM *vm, int argc)
 
         default:
             sprintf(fmt_item, "unknown format specifier '%%%c'", *it);
-            return lulu_arg_error(vm, argn, "string.format", fmt_item);
+            return lulu_arg_error(vm, argn, fmt_item);
         }
 
         lulu_write_lstring(&b, fmt_item, (size_t)written);

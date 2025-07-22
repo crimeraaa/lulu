@@ -36,7 +36,7 @@ class ValuePrinter:
     """
     __type: gdb.Value
     __data: gdb.Value
-    
+
 
     __TOSTRING: dict[str, Callable[[gdb.Value], str]] = {
         "nil":      lambda _: "nil",

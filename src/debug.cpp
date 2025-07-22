@@ -392,31 +392,30 @@ _get_rk_name(const Chunk *c, u16 regk)
 static const char *
 _get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
 {
-    Closure *f = cf->function;
-    if (closure_is_lua(f)) {
-        Chunk *c  = f->lua.chunk;
+    if (cf->is_lua()) {
+        const Chunk *p = cf->to_lua();
 
         // `ip` always points to the instruction after the decoded one, so
         // subtract 1 to get the culprit.
-        isize pc = ptr_index(c->code, vm->saved_ip) - 1;
+        isize pc = ptr_index(p->code, vm->saved_ip) - 1;
 
         // Add 1 to `reg` because we want to use 1-based counting. E.g.
         // the very first local is 1 rather than 0.
-        *id = chunk_get_local(c, reg + 1, pc);
+        *id = chunk_get_local(p, reg + 1, pc);
         if (*id != nullptr) {
             return "local";
         }
-        Instruction i = _get_variable_ip(c, pc, reg);
+        Instruction i = _get_variable_ip(p, pc, reg);
         switch (i.op()) {
         case OP_GET_GLOBAL: {
             u32 g = i.bx();
-            lulu_assert(c->constants[g].is_string());
-            *id = c->constants[g].to_cstring();
+            lulu_assert(p->constants[g].is_string());
+            *id = p->constants[g].to_cstring();
             return "global";
         }
         case OP_GET_TABLE: {
             u16 rkc = i.c(); // RK(C) is the desired field.
-            *id = _get_rk_name(c, rkc);
+            *id = _get_rk_name(p, rkc);
             return "field";
         }
         default:
@@ -471,4 +470,114 @@ debug_compare_error(lulu_VM *vm, const Value *a, const Value *b)
     } else {
         vm_runtime_error(vm, "Attempt to compare %s with %s", tname, b->type_name());
     }
+}
+
+static void
+_get_func_info(lulu_Debug *ar, Closure *f)
+{
+    if (closure_is_c(f)) {
+        ar->source            = "=[C]";
+        ar->scope             = "C";
+        ar->line_defined      = -1;
+        ar->last_line_defined = -1;
+    } else {
+        Chunk *p = f->lua.chunk;
+        ar->source            = p->source->to_cstring();
+        ar->scope             = (p->line_defined == 0) ? "main" : "lua";
+        ar->line_defined      = p->line_defined;
+        ar->last_line_defined = p->last_line_defined;
+    }
+}
+
+
+/**
+ * @brief
+ *      Gets the index of the current instruction, which is equivalent to
+ *      `vm->saved_ip - 1`. Recall that `ip` always points to the instruction
+ *      after the one we just decoded.
+ */
+static isize
+_get_pc(lulu_VM *vm, Call_Frame *cf)
+{
+    if (!cf->is_lua()) {
+        return -1;
+    }
+    if (cf == raw_data(vm->frames.data)) {
+        cf->saved_ip = vm->saved_ip;
+    }
+    // Subtract 1 because ip always points to after the desired instruction.
+    return cf->saved_ip - raw_data(cf->to_lua()->code) - 1;
+}
+
+static const char *
+_get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
+{
+    // The parent caller of this function MUST be lua.
+    if (!(cf - 1)->is_lua()) {
+        return nullptr;
+    }
+    // Point to parent caller (the call*ing* function).
+    cf--;
+    isize pc = _get_pc(vm, cf);
+    Instruction i = cf->to_lua()->code[pc];
+    if (i.op() == OP_CALL) {
+        return _get_obj_name(vm, cf, i.a(), name);
+    }
+    // No useful name can be found.
+    return nullptr;
+}
+
+static int
+_get_line(lulu_VM *vm, Call_Frame *cf)
+{
+    isize pc = _get_pc(vm, cf);
+    // Not a lua function, so no line information?
+    if (pc < 0) {
+        return -1;
+    }
+    return chunk_get_line(cf->to_lua(), pc);
+}
+
+static void
+_get_info(lulu_VM *vm, lulu_Debug *ar, Closure *f, Call_Frame *cf)
+{
+    // (S)
+    _get_func_info(ar, f);
+
+    // (l)
+    ar->current_line = (cf) ? _get_line(vm, cf) : -1;
+
+    // (n)
+    ar->name_what = (cf) ? _get_func_name(vm, cf, &ar->name) : nullptr;
+    if (ar->name_what == nullptr) {
+        ar->name_what = ""; // Not found.
+        ar->name      = nullptr;
+    }
+}
+
+LULU_API int
+lulu_get_info(lulu_VM *vm, lulu_Debug *ar)
+{
+    lulu_assert(ar->_cf_index != 0);
+    Call_Frame *cf = small_array_get_ptr(&vm->frames, ar->_cf_index);
+    _get_info(vm, ar, cf->function, cf);
+    return 1;
+}
+
+LULU_API int
+lulu_get_stack(lulu_VM *vm, int level, lulu_Debug *ar)
+{
+    const Call_Frame *cf = vm->caller;
+    const Call_Frame *base = raw_data(vm->frames.data);
+    int counter = level;
+    for (; counter > 0 && cf > base; cf--) {
+        counter--;
+    }
+
+    // Level found?
+    if (counter == 0 && cf > base) {
+        ar->_cf_index = cast(int)(cf - base);
+        return 1;
+    }
+    return 0;
 }

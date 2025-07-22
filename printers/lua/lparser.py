@@ -49,7 +49,7 @@ class ExprPrinter:
 
         self.__jump("patch_true", args)
         self.__jump("patch_false", args)
-        
+
         # Remove ": " if not needed
         if len(args) == 2:
             args.pop(1)

@@ -6,7 +6,7 @@
 #include "vm.hpp"
 
 Chunk *
-chunk_new(lulu_VM *vm, const LString &source)
+chunk_new(lulu_VM *vm, OString *source)
 {
     Chunk *c = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
     // Because `c` is heap-allocated, we must explicitly 'construct' the members.
@@ -15,6 +15,8 @@ chunk_new(lulu_VM *vm, const LString &source)
     dynamic_init(&c->lines);
     dynamic_init(&c->locals);
     c->source     = source;
+    c->line_defined = 0;
+    c->last_line_defined  = 0;
     c->stack_used = 2; // R(0) and R(1) must always be valid.
     return c;
 }

@@ -31,7 +31,7 @@ class ExprPrinter:
                 s += f"{self.__table('reg')}, {self.__table('field_rk')}"
             else:
                 s += f"{key}={self.__value[key]}"
-            
+
         s += self.__patch("patch_true")
         s += self.__patch("patch_false")
         return s

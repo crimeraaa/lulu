@@ -256,20 +256,17 @@ vm_syntax_error(lulu_VM *vm, const LString &source, int line, const char *fmt, .
 void
 vm_runtime_error(lulu_VM *vm, const char *fmt, ...)
 {
-    va_list args;
     Call_Frame *cf = vm->caller;
-    Closure    *f  = cf->function;
-    if (closure_is_lua(f)) {
-        Chunk *c    = f->lua.chunk;
-        isize  pc   = ptr_index(c->code, vm->saved_ip) - 1;
-        int    line = chunk_get_line(c, pc);
-        vm_push_string(vm, c->source);
-        vm_push_fstring(vm, ":%i: ", line);
-        lulu_concat(vm, 2);
+    if (cf->is_lua()) {
+        const Chunk *p = cf->to_lua();
+        isize  pc   = ptr_index(p->code, vm->saved_ip) - 1;
+        int    line = chunk_get_line(p, pc);
+        vm_push_fstring(vm, "%s:%i: ", p->source->to_cstring(), line);
     } else {
         vm_push_string(vm, "[C]: "_s);
     }
 
+    va_list args;
     va_start(args, fmt);
     vm_push_vfstring(vm, fmt, args);
     va_end(args);

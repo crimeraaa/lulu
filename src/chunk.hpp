@@ -22,16 +22,20 @@ struct LULU_PRIVATE Chunk {
     Dynamic<Value>       constants;
     Dynamic<Instruction> code;
     Dynamic<Line_Info>   lines;
-    Dynamic<Local>       locals;    // Information of ALL locals in the function.
-    LString              source;
-    int                  stack_used;
+    Dynamic<Local>       locals; // Information of ALL locals in the function.
+
+    // Debug/VM information
+    OString *source;
+    int line_defined;
+    int last_line_defined;
+    int stack_used;
 };
 
 static constexpr u16 VARARG = Instruction::MAX_B;
 static constexpr int NO_LINE = -1;
 
 LULU_FUNC Chunk *
-chunk_new(lulu_VM *vm, const LString &source);
+chunk_new(lulu_VM *vm, OString *source);
 
 LULU_FUNC isize
 chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line);

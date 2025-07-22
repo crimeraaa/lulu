@@ -43,13 +43,22 @@ LULU_API void
 lulu_finish_string(lulu_Buffer *b);
 
 LULU_API int
-lulu_arg_error(lulu_VM *vm, int argn, const char *whom, const char *msg);
+lulu_arg_error(lulu_VM *vm, int argn, const char *msg);
 
 LULU_API int
-lulu_type_error(lulu_VM *vm, int argn, const char *whom, const char *type_name);
+lulu_type_error(lulu_VM *vm, int argn, const char *type_name);
 
 LULU_API void
-lulu_check_type(lulu_VM *vm, int argn, lulu_Type type, const char *whom);
+lulu_check_type(lulu_VM *vm, int argn, lulu_Type type);
+
+
+/**
+ * @brief
+ *      Asserts that the value at stack slot `argn` has a value, including
+ *      `nil`. Will throw if `argn` is out of bounds of the stack.
+ */
+LULU_API void
+lulu_check_any(lulu_VM *vm, int argn);
 
 /**
  * @brief
@@ -62,7 +71,7 @@ lulu_check_type(lulu_VM *vm, int argn, lulu_Type type, const char *whom);
  *      be misleading as 'negative' arguments are confusing conceptually.
  */
 LULU_API int
-lulu_check_boolean(lulu_VM *vm, int argn, const char *whom);
+lulu_check_boolean(lulu_VM *vm, int argn);
 
 
 /**
@@ -76,7 +85,7 @@ lulu_check_boolean(lulu_VM *vm, int argn, const char *whom);
  *      successful.
  */
 LULU_API lulu_Number
-lulu_check_number(lulu_VM *vm, int argn, const char *whom);
+lulu_check_number(lulu_VM *vm, int argn);
 
 
 /**
@@ -90,10 +99,9 @@ lulu_check_number(lulu_VM *vm, int argn, const char *whom);
  *      successful.
  */
 LULU_API const char *
-lulu_check_lstring(lulu_VM *vm, int argn, size_t *n, const char *whom);
+lulu_check_lstring(lulu_VM *vm, int argn, size_t *n);
 
-#define lulu_check_string(vm, whom, argn) \
-    lulu_check_lstring(vm, whom, argn, NULL)
+#define lulu_check_string(vm, argn) lulu_check_lstring(vm, argn, NULL)
 
 
 LULU_API int

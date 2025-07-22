@@ -2,6 +2,22 @@
 
 #include "lulu_auxlib.h"
 
+
+LULU_API void
+lulu_where(lulu_VM *vm, int level)
+{
+    lulu_Debug ar;
+    if (lulu_get_stack(vm, level, &ar)) {
+        lulu_get_info(vm, &ar);
+        if (ar.current_line > 0) {
+            lulu_push_fstring(vm, "%s:%i: ", ar.source, ar.current_line);
+            return;
+        }
+    }
+    // Otherwise, no information available.
+    lulu_push_literal(vm, "");
+}
+
 LULU_API void
 lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b)
 {
@@ -164,25 +180,31 @@ lulu_finish_string(lulu_Buffer *b)
 }
 
 LULU_API int
-lulu_arg_error(lulu_VM *vm, int argn, const char *whom, const char *msg)
+lulu_arg_error(lulu_VM *vm, int argn, const char *msg)
 {
-    return lulu_errorf(vm, "Bad argument #%i to '%s': %s", argn, whom, msg);
+    lulu_Debug ar;
+    // Use level `0` because this function is only ever called by C functions.
+    if (!lulu_get_stack(vm, 0, &ar)) {
+        return lulu_errorf(vm, "Bad argument #%i (%s)", argn, msg);
+    }
+    lulu_get_info(vm, &ar);
+    return lulu_errorf(vm, "Bad argument #%i to '%s' (%s)", argn, ar.name, msg);
 }
 
 LULU_API int
-lulu_type_error(lulu_VM *vm, int argn, const char *whom, const char *type_name)
+lulu_type_error(lulu_VM *vm, int argn, const char *type_name)
 {
     const char *msg = lulu_push_fstring(vm, "'%s' expected, got '%s'",
         type_name, lulu_type_name_at(vm, argn));
-    return lulu_arg_error(vm, argn, whom, msg);
+    return lulu_arg_error(vm, argn, msg);
 }
 
 [[noreturn]]
 static void
-_type_error(lulu_VM *vm, int argn, const char *whom, lulu_Type tag)
+_type_error(lulu_VM *vm, int argn, lulu_Type tag)
 {
     const char *s = lulu_type_name(vm, tag);
-    lulu_type_error(vm, argn, whom, s);
+    lulu_type_error(vm, argn, s);
 
 #if defined(__GNUC__) || defined(__clang__)
     __builtin_unreachable();
@@ -194,38 +216,46 @@ _type_error(lulu_VM *vm, int argn, const char *whom, lulu_Type tag)
 }
 
 LULU_API void
-lulu_check_type(lulu_VM *vm, int argn, lulu_Type type, const char *whom)
+lulu_check_any(lulu_VM *vm, int argn)
+{
+    if (lulu_is_none(vm, argn)) {
+        lulu_arg_error(vm, argn, "value expected");
+    }
+}
+
+LULU_API void
+lulu_check_type(lulu_VM *vm, int argn, lulu_Type type)
 {
     if (lulu_type(vm, argn) != type) {
-        _type_error(vm, argn, whom, type);
+        _type_error(vm, argn, type);
     }
 }
 
 LULU_API int
-lulu_check_boolean(lulu_VM *vm, int argn, const char *whom)
+lulu_check_boolean(lulu_VM *vm, int argn)
 {
     if (!lulu_is_boolean(vm, argn)) {
-        _type_error(vm, argn, whom, LULU_TYPE_BOOLEAN);
+        _type_error(vm, argn, LULU_TYPE_BOOLEAN);
     }
     return lulu_to_boolean(vm, argn);
 }
 
 LULU_API lulu_Number
-lulu_check_number(lulu_VM *vm, int argn, const char *whom)
+lulu_check_number(lulu_VM *vm, int argn)
 {
     lulu_Number d = lulu_to_number(vm, argn);
     if (d == 0 && !lulu_is_number(vm, argn)) {
-        _type_error(vm, argn, whom, LULU_TYPE_NUMBER);
+        _type_error(vm, argn, LULU_TYPE_NUMBER);
     }
     return d;
 }
 
 LULU_API const char *
-lulu_check_lstring(lulu_VM *vm, int argn, size_t *n, const char *whom)
+lulu_check_lstring(lulu_VM *vm, int argn, size_t *n)
 {
     const char *s = lulu_to_lstring(vm, argn, n);
     if (s == nullptr) {
-        lulu_type_error(vm, argn, whom, "string");
+        lulu_type_error(vm, argn, "string");
     }
     return s;
 }
@@ -235,8 +265,10 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
+    lulu_where(vm, 1);
     lulu_push_vfstring(vm, fmt, args);
     va_end(args);
+    lulu_concat(vm, 2);
     return lulu_error(vm);
 }
 

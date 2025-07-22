@@ -6,8 +6,9 @@
 
 #include "lulu_config.h"
 
-typedef struct lulu_VM lulu_VM;
-typedef LULU_NUMBER_TYPE lulu_Number;
+typedef struct lulu_VM    lulu_VM;
+typedef struct lulu_Debug lulu_Debug;
+typedef LULU_NUMBER_TYPE  lulu_Number;
 typedef LULU_INTEGER_TYPE lulu_Integer;
 
 
@@ -710,6 +711,23 @@ lulu_concat(lulu_VM *vm, int n);
 LULU_API size_t
 lulu_obj_len(lulu_VM *vm, int i);
 
+
+/**
+ * @param level
+ *      How far up the call stack you wish to get the debug information of.
+ *      `0` is the caller of this function (e.g. a C function),
+ *      `1` is the caller of caller (e.g. Lua main function calling C) etc.
+ *
+ * @return
+ *      `1` if successfully filled in `*ar` else `0`.
+ */
+LULU_API int
+lulu_get_stack(lulu_VM *vm, int level, lulu_Debug *ar);
+
+LULU_API int
+lulu_get_info(lulu_VM *vm, lulu_Debug *ar);
+
+
 /** HELPER MACROS ======================================================= {{{ */
 
 /**
@@ -750,5 +768,23 @@ lulu_obj_len(lulu_VM *vm, int i);
     (lulu_push_cfunction(vm, cfunction), lulu_set_global(vm, name))
 
 /*== }}} ==================================================================== */
+
+
+/**
+ * @brief
+ *      An activation record.
+ */
+struct lulu_Debug {
+    const char *name;       /* variable name for this function. */
+    const char *name_what;  /* `Lua`, `C`, `main` */
+    const char *scope;      /* `global`, `local`, `field` */
+    const char *source;     /* file name where we originated from. */
+    int current_line;       /* line number at point of execution. */
+    int line_defined;       /* first line in source code (opt.) */
+    int last_line_defined;  /* last line in source code (opt.) */
+
+    /* private to implementation. No poking around! */
+    int _cf_index;
+};
 
 #endif /* LULU_H */

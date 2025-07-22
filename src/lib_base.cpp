@@ -19,9 +19,10 @@ _base_type(lulu_VM *vm, int argc)
     lulu_Type   t;
     const char *s;
     size_t      n;
-    if (argc == 0) {
-        return lulu_type_error(vm, 1, "type", "any");
-    }
+
+    (void)argc;
+    lulu_check_any(vm, 1);
+
     t = lulu_type(vm, 1);
     s = lulu_type_name(vm, t);
     n = strlen(s);
@@ -33,9 +34,9 @@ static int
 _base_tostring(lulu_VM *vm, int argc)
 {
     lulu_Type t;
-    if (argc == 0) {
-        return lulu_type_error(vm, 1, "tostring", "any");
-    }
+    (void)argc;
+    lulu_check_any(vm, 1);
+
     t = lulu_type(vm, 1);
     switch (t) {
     case LULU_TYPE_NIL:
@@ -75,9 +76,10 @@ static int
 _base_tonumber(lulu_VM *vm, int argc)
 {
     lulu_Number n;
-    if (argc == 0) {
-        return lulu_type_error(vm, 1, "tonumber", "any");
-    }
+    (void)argc;
+    lulu_check_any(vm, 1);
+
+    /* Convert first, ask questions later */
     n = lulu_to_number(vm, 1);
     if (n == 0 && !lulu_is_number(vm, 1)) {
         lulu_push_nil(vm, 1);

@@ -18,6 +18,32 @@ struct LULU_PRIVATE Call_Frame {
     Closure           *function;
     const Instruction *saved_ip;
     int                expected_returned;
+
+    bool
+    is_c() const noexcept
+    {
+        return closure_is_c(this->function);
+    }
+
+    bool
+    is_lua() const noexcept
+    {
+        return closure_is_lua(this->function);
+    }
+
+    lulu_CFunction
+    to_c() const
+    {
+        lulu_assert(this->is_c());
+        return this->function->c.callback;
+    }
+
+    const Chunk *
+    to_lua() const
+    {
+        lulu_assert(this->is_lua());
+        return this->function->lua.chunk;
+    }
 };
 
 enum Call_Type {

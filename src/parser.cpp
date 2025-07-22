@@ -877,7 +877,7 @@ parser_program(lulu_VM *vm, const LString &source, const LString &script,
     Builder *b)
 {
     Table *t  = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
-    Chunk *ch = chunk_new(vm, source);
+    Chunk *ch = chunk_new(vm, ostring_new(vm, source));
 
     // Push chunk and table to stack so that they are not collected while we
     // are executing.

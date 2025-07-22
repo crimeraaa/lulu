@@ -111,7 +111,7 @@ ptr_index(const Slice<T> &s, const T *p)
 
 template<class T, isize N>
 LULU_FUNC inline isize
-ptr_index(const Array<T, N> &a, T *p)
+ptr_index(const Array<T, N> &a, const T *p)
 {
     return cast_isize(p - raw_data(a));
 }

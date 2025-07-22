@@ -104,7 +104,7 @@ compiler_load_nil(Compiler *c, u16 reg, int n, int line)
             }
             // Target register is an existing local.
             // Concept check: `local x; x = nil`
-        } 
+        }
         goto no_fold;
     }
 
