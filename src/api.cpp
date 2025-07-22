@@ -80,7 +80,7 @@ struct LULU_PRIVATE PCall {
 };
 
 static void
-pcall(lulu_VM *vm, void *user_ptr)
+_pcall(lulu_VM *vm, void *user_ptr)
 {
     PCall *d = cast(PCall *)user_ptr;
     Value *fn = _value_at(vm, -(d->n_args + 1));
@@ -91,7 +91,7 @@ LULU_API lulu_Error
 lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
 {
     PCall d{n_args, n_rets};
-    lulu_Error e = vm_run_protected(vm, pcall, &d);
+    lulu_Error e = vm_run_protected(vm, _pcall, &d);
     return e;
 }
 
@@ -101,7 +101,7 @@ struct LULU_PRIVATE C_PCall {
 };
 
 static void
-c_pcall(lulu_VM *vm, void *user_ptr)
+_c_pcall(lulu_VM *vm, void *user_ptr)
 {
     C_PCall *d = cast(C_PCall *)user_ptr;
     lulu_push_cfunction(vm, d->function);
@@ -113,7 +113,7 @@ LULU_API lulu_Error
 lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
 {
     C_PCall d{function, function_data};
-    lulu_Error e = vm_run_protected(vm, c_pcall, &d);
+    lulu_Error e = vm_run_protected(vm, _c_pcall, &d);
     return e;
 }
 

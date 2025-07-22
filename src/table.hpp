@@ -20,13 +20,13 @@ LULU_FUNC void
 table_init(Table *t);
 
 LULU_FUNC bool
-table_get(Table *t, Value k, Value *out);
+table_get(Table *t, const Value &k, Value *out);
 
 LULU_FUNC void
-table_set(lulu_VM *vm, Table *t, Value k, Value v);
+table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v);
 
 LULU_FUNC void
-table_unset(Table *t, Value k);
+table_unset(Table *t, const Value &k);
 
 LULU_FUNC void
 table_resize(lulu_VM *vm, Table *t, isize new_cap);

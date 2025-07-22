@@ -48,7 +48,7 @@ struct LULU_PRIVATE Token {
     };
 
     static constexpr Token
-    make(Token_Type type, int line, LString lexeme = {}, Number number = 0)
+    make(Token_Type type, int line, const LString &lexeme = {}, Number number = 0)
     {
         Token t{
             /* type */              type,
@@ -75,7 +75,7 @@ LULU_DATA const LString
 token_strings[TOKEN_COUNT];
 
 LULU_FUNC Lexer
-lexer_make(lulu_VM *vm, LString source, LString script, Builder *b);
+lexer_make(lulu_VM *vm, const LString &source, const LString &script, Builder *b);
 
 LULU_FUNC Token
 lexer_lex(Lexer *x);

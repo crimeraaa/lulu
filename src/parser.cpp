@@ -107,8 +107,8 @@ recurse_pop(Parser *p)
     lulu_assert(p->n_calls >= 0);
 }
 
-Parser
-parser_make(lulu_VM *vm, LString source, LString script, Builder *b)
+static Parser
+_parser_make(lulu_VM *vm, const LString &source, const LString &script, Builder *b)
 {
     Parser p;
     p.vm        = vm;
@@ -620,7 +620,7 @@ expression(Parser *p, Compiler *c, Precedence limit)
             break;
         }
         default:
-            lulu_assertf(false, "Invalid Binary_Type(%i)", b);
+            lulu_panicf("Invalid Binary_Type(%i)", b);
             lulu_unreachable();
             break;
         }
@@ -792,20 +792,20 @@ do_block(Parser *p, Compiler *c)
     consume(p, TOKEN_END);
 }
 
-static Expr
+static isize
 if_cond(Parser *p, Compiler *c)
 {
     Expr cond = expression(p, c);
     consume(p, TOKEN_THEN);
     compiler_logical_new(c, &cond, true);
     block(p, c);
-    return cond;
+    return cond.patch_false;
 }
 
 static void
 if_stmt(Parser *p, Compiler *c)
 {
-    Expr   cond      = if_cond(p, c);
+    isize  then_jump = if_cond(p, c);
     isize  else_jump = NO_JUMP;
     int    line      = p->consumed.line;
 
@@ -814,17 +814,17 @@ if_stmt(Parser *p, Compiler *c)
         compiler_jump_add(c, &else_jump, compiler_jump_new(c, line));
 
         // A false test must jump to here to try the next `elseif` block.
-        compiler_jump_patch(c, cond.patch_false);
-        cond = if_cond(p, c);
+        compiler_jump_patch(c, then_jump);
+        then_jump = if_cond(p, c);
         line = p->consumed.line;
     }
 
     if (match(p, TOKEN_ELSE)) {
         compiler_jump_add(c, &else_jump, compiler_jump_new(c, line));
-        compiler_jump_patch(c, cond.patch_false);
+        compiler_jump_patch(c, then_jump);
         block(p, c);
     } else {
-        compiler_jump_add(c, &else_jump, cond.patch_false);
+        compiler_jump_add(c, &else_jump, then_jump);
     }
     consume(p, TOKEN_END);
     compiler_jump_patch(c, else_jump);
@@ -873,18 +873,19 @@ declaration(Parser *p, Compiler *c)
 }
 
 Chunk *
-parser_program(lulu_VM *vm, LString source, LString script, Builder *b)
+parser_program(lulu_VM *vm, const LString &source, const LString &script,
+    Builder *b)
 {
     Table *t  = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
-    Chunk *ch = chunk_new(vm, source, t);
+    Chunk *ch = chunk_new(vm, source);
 
     // Push chunk and table to stack so that they are not collected while we
     // are executing.
     vm_push(vm, Value::make_chunk(ch));
     vm_push(vm, Value::make_table(t));
 
-    Parser   p = parser_make(vm, source, script, b);
-    Compiler c = compiler_make(vm, &p, ch);
+    Parser   p = _parser_make(vm, source, script, b);
+    Compiler c = compiler_make(vm, &p, ch, t);
     // Set up first token
     advance(&p);
 

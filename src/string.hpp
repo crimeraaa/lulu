@@ -21,7 +21,7 @@ using Number_Buffer = Array<char, LULU_NUMBER_BUFSIZE>;
  *      assigned, otherwise `false`.
  */
 LULU_FUNC bool
-lstring_to_number(LString s, Number *out, int base = 0);
+lstring_to_number(const LString &s, Number *out, int base = 0);
 
 LULU_FUNC LString
 number_to_lstring(Number n, Number_Buffer &buf);
@@ -34,7 +34,7 @@ lstring_from_cstring(const char *s)
 }
 
 LULU_FUNC inline LString
-lstring_from_slice(Slice<char> s)
+lstring_from_slice(const Slice<char> &s)
 {
     return {raw_data(s), len(s)};
 }
@@ -96,7 +96,7 @@ LULU_FUNC void
 builder_write_char(lulu_VM *vm, Builder *b, char ch);
 
 LULU_FUNC void
-builder_write_lstring(lulu_VM *vm, Builder *b, LString s);
+builder_write_lstring(lulu_VM *vm, Builder *b, const LString &s);
 
 LULU_FUNC void
 builder_write_int(lulu_VM *vm, Builder *b, int i);
@@ -123,10 +123,10 @@ LULU_FUNC void
 intern_destroy(lulu_VM *vm, Intern *t);
 
 LULU_FUNC u32
-hash_string(LString text);
+hash_string(const LString &text);
 
 LULU_FUNC OString *
-ostring_new(lulu_VM *vm, LString text);
+ostring_new(lulu_VM *vm, const LString &text);
 
 LULU_FUNC inline OString *
 ostring_from_cstring(lulu_VM *vm, const char *s)

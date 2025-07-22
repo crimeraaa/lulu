@@ -40,7 +40,7 @@ _hash_any(T v)
 }
 
 static u32
-_hash_value(Value v)
+_hash_value(const Value &v)
 {
     switch (v.type()) {
     case VALUE_NIL:
@@ -55,6 +55,7 @@ _hash_value(Value v)
     case VALUE_CHUNK:
         break;
     }
+    lulu_panicf("Non-hashable Value_Type(%i)", v.type());
     lulu_unreachable();
 }
 
@@ -70,7 +71,7 @@ _hash_value(Value v)
  *  1.2.) In `table_set()` we resize beforehand.
  */
 static Entry *
-_find_entry(Slice<Entry> entries, Value k)
+_find_entry(Slice<Entry> entries, const Value &k)
 {
     usize  hash = cast_usize(_hash_value(k));
     usize  wrap = cast_usize(len(entries)) - 1;
@@ -95,7 +96,7 @@ _find_entry(Slice<Entry> entries, Value k)
 }
 
 bool
-table_get(Table *t, Value k, Value *out)
+table_get(Table *t, const Value &k, Value *out)
 {
     if (t->count > 0) {
         Entry *e = _find_entry(t->entries, k);
@@ -108,7 +109,7 @@ table_get(Table *t, Value k, Value *out)
 }
 
 void
-table_set(lulu_VM *vm, Table *t, Value k, Value v)
+table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
 {
     if (t->count + 1 > _table_cap(t)*3 / 4) {
         isize n = mem_next_pow2(t->count + 1);
@@ -124,7 +125,7 @@ table_set(lulu_VM *vm, Table *t, Value k, Value v)
 }
 
 void
-table_unset(Table *t, Value k)
+table_unset(Table *t, const Value &k)
 {
     if (t->count == 0) {
         return;

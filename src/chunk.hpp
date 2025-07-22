@@ -23,7 +23,6 @@ struct LULU_PRIVATE Chunk {
     Dynamic<Instruction> code;
     Dynamic<Line_Info>   lines;
     Dynamic<Local>       locals;    // Information of ALL locals in the function.
-    Table               *indexes;   // Maps values to indexes in `constants`.
     LString              source;
     int                  stack_used;
 };
@@ -32,7 +31,7 @@ static constexpr u16 VARARG = Instruction::MAX_B;
 static constexpr int NO_LINE = -1;
 
 LULU_FUNC Chunk *
-chunk_new(lulu_VM *vm, LString source, Table *indexes);
+chunk_new(lulu_VM *vm, const LString &source);
 
 LULU_FUNC isize
 chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line);
@@ -40,8 +39,16 @@ chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line);
 LULU_FUNC int
 chunk_get_line(const Chunk *c, isize pc);
 
+
+/**
+ * @param v
+ *      The value we wish to push to the `c->constants` dynamic array.
+ *
+ * @return
+ *      The index of `v` in the constants array.
+ */
 LULU_FUNC u32
-chunk_add_constant(lulu_VM *vm, Chunk *c, Value v);
+chunk_add_constant(lulu_VM *vm, Chunk *c, const Value &v);
 
 LULU_FUNC isize
 chunk_add_local(lulu_VM *vm, Chunk *c, OString *id);

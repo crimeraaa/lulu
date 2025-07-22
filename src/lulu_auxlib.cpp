@@ -240,6 +240,8 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...)
     return lulu_error(vm);
 }
 
+#undef lulu_set_library
+
 LULU_API void
 lulu_set_library(lulu_VM *vm, const char *libname,
     const lulu_Register *library, int n)

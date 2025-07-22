@@ -41,6 +41,9 @@ struct LULU_PUBLIC lulu_VM {
     Error_Handler     *error_handler;
     const Instruction *saved_ip; // Used for error handling.
     Object            *objects;  // Linked list of all collectable objects.
+
+    LULU_PRIVATE
+    lulu_VM() = default;
 };
 
 using Protected_Fn = void (*)(lulu_VM *vm, void *user_ptr);
@@ -91,7 +94,7 @@ vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr);
  *      main stack.
  */
 LULU_FUNC void
-vm_push(lulu_VM *vm, Value v);
+vm_push(lulu_VM *vm, const Value &v);
 
 LULU_FUNC Value
 vm_pop(lulu_VM *vm);
@@ -113,12 +116,10 @@ vm_throw(lulu_VM *vm, Error e);
  *
  * @note(2025-07-21) Assumptions
  *
- *  1.) `v` was checked if it was of type `number` beforehand.
- *
- *  2.) This function only deals with conversion of non-`number` values
+ *  1.) This function only deals with conversion of non-`number` values
  *      (i.e. `string`) to `number`.
  *
- *  3.) `v` and `out` do not alias.
+ *  2.) `v` and `out` do not alias.
  */
 LULU_FUNC bool
 vm_to_number(const Value *restrict v, Value *restrict out);
@@ -127,16 +128,14 @@ vm_to_number(const Value *restrict v, Value *restrict out);
 /**
  * @note(2025-07-21) Assumptions
  *
- *  1.) `v` was checked to be of type `string` beforehand.
- *
- *  2.) This function only ever deals with conversion of non-`string`
+ *  1.) This function only ever deals with conversion of non-`string`
  *      (i.e. `number`) to `string`.
  */
 LULU_FUNC bool
 vm_to_string(lulu_VM *vm, Value *in_out);
 
 LULU_FUNC const char *
-vm_push_string(lulu_VM *vm, LString s);
+vm_push_string(lulu_VM *vm, const LString &s);
 
 LULU_FUNC const char *
 vm_push_fstring(lulu_VM *vm, const char *fmt, ...);
@@ -146,7 +145,7 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 
 [[noreturn, gnu::format(printf, 4, 5)]]
 LULU_FUNC void
-vm_syntax_error(lulu_VM *vm, LString source, int line, const char *fmt, ...);
+vm_syntax_error(lulu_VM *vm, const LString &source, int line, const char *fmt, ...);
 
 [[noreturn, gnu::format(printf, 2, 3)]]
 LULU_FUNC void
@@ -180,7 +179,7 @@ LULU_FUNC Call_Type
 vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned);
 
 LULU_FUNC Error
-vm_load(lulu_VM *vm, LString source, LString script);
+vm_load(lulu_VM *vm, const LString &source, const LString &script);
 
 LULU_FUNC bool
 vm_table_get(lulu_VM *vm, const Value *t, const Value &k, Value *out);

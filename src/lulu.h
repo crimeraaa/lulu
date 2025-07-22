@@ -603,6 +603,7 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash);
  * @note(2025-07-20) Assumptions
  *
  *  1.) The key to be used is at relative stack index `-1`.
+ *
  *  2.) It is possible for `table[key]` to exist (e.g. mapped previously) but
  *      for it to map to `nil. E.g. `t[k] = 1; ...; t[k] = nil;`
  */
@@ -654,8 +655,8 @@ lulu_set_table(lulu_VM *vm, int table_index);
  *
  * @note(2025-07-20) Assumptions
  *
- *  1.) The value to be used is at the relative stack index `-1`.
- *  2.) When this operation is done, the value is popped.
+ *  1.) The value to be used is at the relative stack index `-1`. When this
+ *      operation is done, the value is popped.
  */
 LULU_API void
 lulu_set_field(lulu_VM *vm, int table_index, const char *key);
@@ -676,9 +677,8 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key);
 
 /**
  * @brief
- *  -   Sets the global variable with key `s` to the current top of the stack.
- *
- *  -   The value is then popped.
+ *      Sets the global variable with key `s` to the current top of the stack.
+ *      The value is then popped.
  */
 #define lulu_set_global(vm, key)    lulu_set_field(vm, LULU_GLOBALS_INDEX, key)
 
@@ -703,6 +703,9 @@ lulu_concat(lulu_VM *vm, int n);
  * @brief
  *      Gets the length of the value at the relative stack index `i`. Only
  *      works for values of type `string` and `table`.
+ *
+ * @return
+ *      The length of the object, else `0`.
  */
 LULU_API size_t
 lulu_obj_len(lulu_VM *vm, int i);

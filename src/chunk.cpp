@@ -6,7 +6,7 @@
 #include "vm.hpp"
 
 Chunk *
-chunk_new(lulu_VM *vm, LString source, Table *indexes)
+chunk_new(lulu_VM *vm, const LString &source)
 {
     Chunk *c = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
     // Because `c` is heap-allocated, we must explicitly 'construct' the members.
@@ -14,7 +14,6 @@ chunk_new(lulu_VM *vm, LString source, Table *indexes)
     dynamic_init(&c->code);
     dynamic_init(&c->lines);
     dynamic_init(&c->locals);
-    c->indexes    = indexes;
     c->source     = source;
     c->stack_used = 2; // R(0) and R(1) must always be valid.
     return c;
@@ -83,17 +82,11 @@ chunk_get_line(const Chunk *c, isize pc)
 }
 
 u32
-chunk_add_constant(lulu_VM *vm, Chunk *c, Value v)
+chunk_add_constant(lulu_VM *vm, Chunk *c, const Value &v)
 {
-    Value i;
-    if (table_get(c->indexes, v, &i)) {
-        return cast(u32)i.to_integer();
-    }
-
-    lulu_Integer i2 = len(c->constants);
+    lulu_Integer i = len(c->constants);
     dynamic_push(vm, &c->constants, v);
-    table_set(vm, c->indexes, v, Value::make_integer(i2));
-    return cast(u32)i2;
+    return cast(u32)i;
 }
 
 isize

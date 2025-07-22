@@ -17,7 +17,7 @@ struct Args {
 
 [[gnu::format(printf, 4, 5)]]
 static void
-print_reg(const Chunk *c, u16 reg, isize pc, const char *fmt = nullptr, ...)
+_print_reg(const Chunk *c, u16 reg, isize pc, const char *fmt = nullptr, ...)
 {
     if (Instruction::reg_is_k(reg)) {
         u32 i = Instruction::reg_get_k(reg);
@@ -40,22 +40,22 @@ print_reg(const Chunk *c, u16 reg, isize pc, const char *fmt = nullptr, ...)
 }
 
 static void
-unary(const Chunk *c, const char *op, Args args, isize pc)
+_unary(const Chunk *c, const char *op, Args args, isize pc)
 {
-    print_reg(c, args.a, pc, " := %s", op);
-    print_reg(c, args.abc.b, pc);
+    _print_reg(c, args.a, pc, " := %s", op);
+    _print_reg(c, args.abc.b, pc);
 }
 
 static void
-arith(const Chunk *c, char op, Args args, isize pc)
+_arith(const Chunk *c, char op, Args args, isize pc)
 {
-    print_reg(c, args.a, pc, " := ");
-    print_reg(c, args.abc.b, pc, " %c ", op);
-    print_reg(c, args.abc.c, pc);
+    _print_reg(c, args.a, pc, " := ");
+    _print_reg(c, args.abc.b, pc, " %c ", op);
+    _print_reg(c, args.abc.c, pc);
 }
 
 static isize
-jump_to(isize pc, i32 offset)
+_jump_to(isize pc, i32 offset)
 {
     // we add 1 because by the time an instruction is being decoded, the
     // `ip` would have been incremented already.
@@ -63,24 +63,24 @@ jump_to(isize pc, i32 offset)
 }
 
 static isize
-jump_get(const Chunk *c, isize jump_pc)
+_jump_get(const Chunk *c, isize jump_pc)
 {
     Instruction i = c->code[jump_pc];
     lulu_assert(i.op() == OP_JUMP);
-    return jump_to(jump_pc, i.sbx());
+    return _jump_to(jump_pc, i.sbx());
 }
 
 static void
-compare(const Chunk *c, const char *op, Args args, isize pc)
+_compare(const Chunk *c, const char *op, Args args, isize pc)
 {
-    print_reg(c, args.abc.b, pc, " %s ", op);
-    print_reg(c, args.abc.c, pc,
+    _print_reg(c, args.abc.b, pc, " %s ", op);
+    _print_reg(c, args.abc.c, pc,
         " ; goto .code[%" ISIZE_FMTSPEC " if %s else %" ISIZE_FMTSPEC "]",
-        jump_to(pc, 1), (args.a) ? "false" : "true", jump_get(c, pc + 1));
+        _jump_to(pc, 1), (args.a) ? "false" : "true", _jump_get(c, pc + 1));
 }
 
 static int
-count_digits(isize n)
+_count_digits(isize n)
 {
     int count = 0;
     while (n > 0) {
@@ -97,7 +97,7 @@ debug_get_pad(const Chunk *c)
     if (len(c->code) == 0) {
         return 1;
     }
-    return count_digits(len(c->code) - 1);
+    return _count_digits(len(c->code) - 1);
 }
 
 // 4 spaces plus an extra one to separate messages.
@@ -162,13 +162,13 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         }
         break;
     case OP_BOOL:
-        print_reg(c, args.a, pc, " := %s", (args.abc.b) ? "true" : "false");
+        _print_reg(c, args.a, pc, " := %s", (args.abc.b) ? "true" : "false");
         if (args.abc.c) {
-            printf("; goto .code[%" ISIZE_FMTSPEC "]", jump_to(pc, 1));
+            printf("; goto .code[%" ISIZE_FMTSPEC "]", _jump_to(pc, 1));
         }
         break;
     case OP_GET_GLOBAL:
-        print_reg(c, args.a, pc, " := ");
+        _print_reg(c, args.a, pc, " := ");
         value_print(c->constants[args.bx]);
         break;
 
@@ -176,62 +176,62 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         OString *s = c->constants[args.bx].to_ostring();
         char     q = (s->len == 1) ? '\'' : '\"';
         printf("_G[%c%s%c] := ", q, s->to_cstring(), q);
-        print_reg(c, args.a, pc);
+        _print_reg(c, args.a, pc);
         break;
     }
     case OP_NEW_TABLE: {
-        print_reg(c, args.a, pc, " := {}; #hash = %u, #array = %u", args.abc.b, args.abc.c);
+        _print_reg(c, args.a, pc, " := {}; #hash = %u, #array = %u", args.abc.b, args.abc.c);
         break;
     }
     case OP_GET_TABLE: {
-        print_reg(c, args.a, pc, " := ");
-        print_reg(c, args.abc.b, pc, "[");
-        print_reg(c, args.abc.c, pc, "]");
+        _print_reg(c, args.a, pc, " := ");
+        _print_reg(c, args.abc.b, pc, "[");
+        _print_reg(c, args.abc.c, pc, "]");
         break;
     }
     case OP_SET_TABLE: {
-        print_reg(c, args.a, pc, "[");
-        print_reg(c, args.abc.b, pc, "] := ");
-        print_reg(c, args.abc.c, pc);
+        _print_reg(c, args.a, pc, "[");
+        _print_reg(c, args.abc.b, pc, "] := ");
+        _print_reg(c, args.abc.c, pc);
         break;
     }
     case OP_MOVE:
-        print_reg(c, args.a, pc, " := ");
-        print_reg(c, args.abc.b, pc);
+        _print_reg(c, args.a, pc, " := ");
+        _print_reg(c, args.abc.b, pc);
         break;
-    case OP_ADD: arith(c, '+', args, pc); break;
-    case OP_SUB: arith(c, '-', args, pc); break;
-    case OP_MUL: arith(c, '*', args, pc); break;
-    case OP_DIV: arith(c, '/', args, pc); break;
-    case OP_MOD: arith(c, '%', args, pc); break;
-    case OP_POW: arith(c, '^', args, pc); break;
-    case OP_EQ:  compare(c, "==", args, pc); break;
-    case OP_LT:  compare(c, "<",  args, pc); break;
-    case OP_LEQ: compare(c, "<=", args, pc); break;
-    case OP_UNM: unary(c, "-", args, pc); break;
-    case OP_NOT: unary(c, "not ", args, pc); break;
-    case OP_LEN: unary(c, "#", args, pc); break;
+    case OP_ADD: _arith(c, '+', args, pc); break;
+    case OP_SUB: _arith(c, '-', args, pc); break;
+    case OP_MUL: _arith(c, '*', args, pc); break;
+    case OP_DIV: _arith(c, '/', args, pc); break;
+    case OP_MOD: _arith(c, '%', args, pc); break;
+    case OP_POW: _arith(c, '^', args, pc); break;
+    case OP_EQ:  _compare(c, "==", args, pc); break;
+    case OP_LT:  _compare(c, "<",  args, pc); break;
+    case OP_LEQ: _compare(c, "<=", args, pc); break;
+    case OP_UNM: _unary(c, "-", args, pc); break;
+    case OP_NOT: _unary(c, "not ", args, pc); break;
+    case OP_LEN: _unary(c, "#", args, pc); break;
     case OP_CONCAT:
-        print_reg(c, args.a, pc, " := concat(R(%u:%u))", args.abc.b, args.abc.c + 1);
+        _print_reg(c, args.a, pc, " := concat(R(%u:%u))", args.abc.b, args.abc.c + 1);
         break;
     case OP_TEST: {
-        printf("goto .code[%" ISIZE_FMTSPEC " if %s", jump_to(pc, 1), (args.abc.c) ? "not " : "");
-        print_reg(c, args.a, pc, " else %" ISIZE_FMTSPEC "]", jump_get(c, pc + 1));
+        printf("goto .code[%" ISIZE_FMTSPEC " if %s", _jump_to(pc, 1), (args.abc.c) ? "not " : "");
+        _print_reg(c, args.a, pc, " else %" ISIZE_FMTSPEC "]", _jump_get(c, pc + 1));
         break;
     }
     case OP_TEST_SET: {
         printf("if %s", (args.abc.c) ? "" : "not ");
-        print_reg(c, args.abc.b, pc, " then ");
-        print_reg(c, args.a, pc, " := ");
-        print_reg(c, args.abc.b, pc,
+        _print_reg(c, args.abc.b, pc, " then ");
+        _print_reg(c, args.a, pc, " := ");
+        _print_reg(c, args.abc.b, pc,
             "; goto .code[%" ISIZE_FMTSPEC "]; else goto .code[%" ISIZE_FMTSPEC "]",
-            jump_get(c, pc + 1),
-            jump_to(pc, 1));
+            _jump_get(c, pc + 1),
+            _jump_to(pc, 1));
         break;
     }
     case OP_JUMP: {
         i32 offset = args.sbx;
-        printf("ip += %i ; goto .code[%" ISIZE_FMTSPEC "]", offset, jump_to(pc, offset));
+        printf("ip += %i ; goto .code[%" ISIZE_FMTSPEC "]", offset, _jump_to(pc, offset));
         break;
     }
     case OP_CALL: {
@@ -271,7 +271,7 @@ debug_disassemble(const Chunk *c)
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
     printf(".stack_used:\n%i\n\n", c->stack_used);
     if (len(c->locals) > 0) {
-        int pad = count_digits(len(c->locals));
+        int pad = _count_digits(len(c->locals));
         printf(".local:\n");
         for (isize i = 0, n = len(c->locals); i < n; i++) {
             const char *id = c->locals[i].identifier->to_cstring();
@@ -282,7 +282,7 @@ debug_disassemble(const Chunk *c)
     }
 
     if (len(c->constants) > 0) {
-        int pad = count_digits(len(c->constants));
+        int pad = _count_digits(len(c->constants));
         printf(".const:\n");
         for (isize i = 0, n = len(c->constants); i < n; i++) {
             printf("[%.*" ISIZE_FMTSPEC "] ", pad, i);
@@ -349,6 +349,7 @@ _get_variable_ip(const Chunk *p, isize target_pc, int reg)
             // anyway and we don't need to retrieve variables nor jump anywhere.
             break;
         default:
+            lulu_panicf("Invalid OpFormat(%i)", info.fmt());
             lulu_unreachable();
             break;
         }

@@ -19,6 +19,7 @@ struct LULU_PRIVATE Compiler {
     Compiler    *prev;   // Have an enclosing function?
     Parser      *parser; // All compilers share the same parser.
     Chunk       *chunk;  // Compilers do not own their chunks.
+    Table       *indexes; // Maps values to indexes in `chunk.constants`.
     isize        pc;     // Index of first free instruction: `len(chunk->code)`.
     isize        last_target;
     u16          free_reg;
@@ -32,7 +33,8 @@ get_code(Compiler *c, isize pc)
 }
 
 LULU_FUNC Compiler
-compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Compiler *enclosing = nullptr);
+compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Table *indexes,
+    Compiler *enclosing = nullptr);
 
 [[noreturn]]
 LULU_FUNC void
@@ -75,9 +77,6 @@ compiler_load_nil(Compiler *c, u16 reg, int n, int line);
  */
 LULU_FUNC void
 compiler_load_boolean(Compiler *c, u16 reg, bool b, int line);
-
-LULU_FUNC u32
-compiler_add_value(Compiler *c, Value v);
 
 LULU_FUNC u32
 compiler_add_number(Compiler *c, Number n);

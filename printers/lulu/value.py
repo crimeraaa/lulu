@@ -4,7 +4,8 @@ from typing import Callable
 
 Value_Type = gdb.lookup_type("Value_Type")
 
-VALUE_LIGHTUSERDATA = Value_Type["VALUE_LIGHTUSERDATA"]
+# Can't compare `gdb.Value` to `gdb.Field`, get enum value instead
+VALUE_LIGHTUSERDATA = Value_Type["VALUE_LIGHTUSERDATA"].enumval
 
 class OStringPrinter:
     __value: gdb.Value

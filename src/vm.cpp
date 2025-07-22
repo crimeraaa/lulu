@@ -36,7 +36,7 @@ vm_top_absindex(lulu_VM *vm)
 }
 
 static void
-required_allocations(lulu_VM *vm, void *)
+_required_allocations(lulu_VM *vm, void *)
 {
     // Ensure when we start interning strings we can already index.
     intern_resize(vm, &vm->intern, 32);
@@ -62,7 +62,7 @@ vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
 
     builder_init(&vm->builder);
     intern_init(&vm->intern);
-    Error e = vm_run_protected(vm, required_allocations, nullptr);
+    Error e = vm_run_protected(vm, _required_allocations, nullptr);
     return e == LULU_OK;
 }
 
@@ -167,7 +167,7 @@ vm_to_string(lulu_VM *vm, Value *in_out)
 }
 
 const char *
-vm_push_string(lulu_VM *vm, LString s)
+vm_push_string(lulu_VM *vm, const LString &s)
 {
     OString *o = ostring_new(vm, s);
     vm_push(vm, Value::make_string(o));
@@ -226,7 +226,7 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
             builder_write_pointer(vm, b, va_arg(args, void *));
             break;
         default:
-            lulu_assertf(false, "Unsupported format specifier '%c'", *cursor);
+            lulu_panicf("Unsupported format specifier '%c'", *cursor);
             lulu_unreachable();
             break;
         }
@@ -238,7 +238,7 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 }
 
 void
-vm_syntax_error(lulu_VM *vm, LString source, int line, const char *fmt, ...)
+vm_syntax_error(lulu_VM *vm, const LString &source, int line, const char *fmt, ...)
 {
     va_list args;
     vm_push_string(vm, source);
@@ -285,7 +285,7 @@ struct LULU_PRIVATE Load_Data {
 };
 
 static void
-load(lulu_VM *vm, void *user_ptr)
+_load(lulu_VM *vm, void *user_ptr)
 {
     Load_Data *d = cast(Load_Data *)(user_ptr);
     Chunk     *c = parser_program(vm, d->source, d->script, &d->builder);
@@ -294,17 +294,17 @@ load(lulu_VM *vm, void *user_ptr)
 }
 
 Error
-vm_load(lulu_VM *vm, LString source, LString script)
+vm_load(lulu_VM *vm, const LString &source, const LString &script)
 {
     Load_Data d{source, script, {}};
     builder_init(&d.builder);
-    Error e = vm_run_protected(vm, load, &d);
+    Error e = vm_run_protected(vm, _load, &d);
     builder_destroy(vm, &d.builder);
     return e;
 }
 
 void
-vm_push(lulu_VM *vm, Value v)
+vm_push(lulu_VM *vm, const Value &v)
 {
     isize i = vm->window.len++;
     vm->window[i] = v;
@@ -336,7 +336,7 @@ _protect(lulu_VM *vm, const Instruction *ip)
 }
 
 static void
-vm_frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
+_frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
 {
     // Before transferring control to the new caller, inform the previous
     // caller of where we last left off.
@@ -362,7 +362,7 @@ vm_frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_return
 }
 
 static Call_Frame *
-vm_frame_pop(lulu_VM *vm)
+_frame_pop(lulu_VM *vm)
 {
     // Have a previous frame to return to?
     small_array_pop(&vm->frames);
@@ -430,7 +430,7 @@ vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
         } else {
             top = base + cast_isize(argc);
         }
-        vm_frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
+        _frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
         int actual_returned = fn->c.callback(vm, argc);
 
         Value *first_ret = (actual_returned > 0)
@@ -448,7 +448,7 @@ vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
     }
     // May invalidate `ra`.
     vm_check_stack(vm, cast_int(top - base));
-    vm_frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
+    _frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
     return CALL_LUA;
 }
 
@@ -473,7 +473,7 @@ vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned)
         fill(remaining, nil);
     }
 
-    frame = vm_frame_pop(vm);
+    frame = _frame_pop(vm);
 
     // In an unprotected call, so no previous stack frame to restore.
     // This allows the `lulu_call()` API to work properly in such cases.
@@ -547,6 +547,7 @@ _arith(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc
         case MT_POW: ra->set_number(lulu_Number_pow(x, y)); break;
         case MT_UNM: ra->set_number(lulu_Number_unm(x));    break;
         default:
+            lulu_panicf("Invalid Metamethod(%i)", mt);
             lulu_unreachable();
             break;
         }
@@ -566,6 +567,7 @@ _compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *r
         case MT_LT:  ra->set_number(lulu_Number_lt(x, y)); break;
         case MT_LEQ: ra->set_number(lulu_Number_leq(x, y)); break;
         default:
+            lulu_panicf("Invalid Metamethod(%i)", mt);
             lulu_unreachable();
             break;
         }
@@ -813,6 +815,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         default:
+            lulu_panicf("Invalid OpCode(%i)", op);
             lulu_unreachable();
         }
     }

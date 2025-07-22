@@ -6,7 +6,7 @@
 #include "vm.hpp"
 
 static int
-_get_base(LString s)
+_get_base(const LString &s)
 {
     // Have a leading `'0'`?
     if (len(s) > 2 && s[0] == '0') {
@@ -31,15 +31,16 @@ _get_base(LString s)
 }
 
 bool
-lstring_to_number(LString s, Number *out, int base)
+lstring_to_number(const LString &s, Number *out, int base)
 {
+    LString s2 = s;
     // Need to detect the base prefix?
     if (base == 0) {
         base = _get_base(s);
         // Skip the `0[bBoOdDxX]` prefix because `strto*` doesn't support `0b`.
         if (base) {
-            // s = s[2:]
-            s = slice_from(s, 2);
+            // s2 = s2[2:]
+            s2 = slice_from(s2, 2);
         }
     }
 
@@ -47,15 +48,15 @@ lstring_to_number(LString s, Number *out, int base)
     char  *last;
     // Parsing a prefixed integer?
     if (base != 0) {
-        unsigned long ul = strtoul(raw_data(s), &last, base);
+        unsigned long ul = strtoul(raw_data(s2), &last, base);
         d = cast(Number)ul;
     }
     // Parsing a non-prefixed number.
     else {
-        d = strtod(raw_data(s), &last);
+        d = strtod(raw_data(s2), &last);
     }
 
-    if (last != end(s)) {
+    if (last != end(s2)) {
         return false;
     }
     *out = d;
@@ -108,7 +109,7 @@ builder_write_char(lulu_VM *vm, Builder *b, char ch)
 }
 
 void
-builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
+builder_write_lstring(lulu_VM *vm, Builder *b, const LString &s)
 {
     // Nothing to do?
     if (len(s) == 0) {
@@ -185,7 +186,7 @@ builder_to_cstring(const Builder &b)
 }
 
 u32
-hash_string(LString text)
+hash_string(const LString &text)
 {
     static constexpr u32
     FNV1A_OFFSET = 0x811c9dc5,
@@ -266,7 +267,7 @@ intern_destroy(lulu_VM *vm, Intern *t)
 }
 
 OString *
-ostring_new(lulu_VM *vm, LString text)
+ostring_new(lulu_VM *vm, const LString &text)
 {
     Intern  *t    = &vm->intern;
     u32      hash = hash_string(text);

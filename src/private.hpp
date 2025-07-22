@@ -107,6 +107,15 @@ throw();
 #define lulu_assertln(expr, msg) \
     lulu_assertf(expr, "%s", msg)
 
+#define lulu_panic() \
+    lulu_assert_fail(SOURCE_CODE_LOCATION, nullptr);
+
+#define lulu_panicf(fmt, ...) \
+    lulu_assert_fail(SOURCE_CODE_LOCATION, nullptr, fmt "\n", __VA_ARGS__)
+
+#define lulu_panicln(msg) \
+    lulu_panicf("%s", msg)
+
 #else
 
 #define lulu_assert(expr)               ((void)0)
