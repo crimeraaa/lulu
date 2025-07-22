@@ -5,9 +5,6 @@
 
 #define CLOSURE_HEADER     OBJECT_HEADER; bool is_c
 
-#define closure_is_c(f)    ((f)->lua.is_c)
-#define closure_is_lua(f)  (!closure_is_c(f))
-
 struct LULU_PRIVATE Closure_Lua {
     CLOSURE_HEADER;
     Chunk *chunk;
@@ -29,3 +26,15 @@ closure_new(lulu_VM *vm, lulu_CFunction cf);
 
 LULU_FUNC Closure *
 closure_new(lulu_VM *vm, Chunk *c);
+
+LULU_FUNC inline bool
+closure_is_c(Closure *f)
+{
+    return f->lua.is_c;
+}
+
+LULU_FUNC inline bool
+closure_is_lua(Closure *f)
+{
+    return !closure_is_c(f);
+}

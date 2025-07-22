@@ -77,7 +77,7 @@ vars:
     {{.LULU_DIR_SRC}}/lulu.c
     -llulu
 
-  LULU_GLOB: '{{.LULU_DIR_SRC}}/*.{cpp,hpp,h}'
+  LULU_GLOB: '{{.LULU_DIR_SRC}}/*.{[ch]pp,h}'
 
   # Note:
   #   - Annoyingly, even with `-x` (print horizontally), `ls` STILL adds a

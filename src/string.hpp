@@ -93,14 +93,10 @@ LULU_FUNC void
 builder_destroy(lulu_VM *vm, Builder *b);
 
 LULU_FUNC void
-builder_write_lstring(lulu_VM *vm, Builder *b, LString s);
+builder_write_char(lulu_VM *vm, Builder *b, char ch);
 
-LULU_FUNC inline void
-builder_write_char(lulu_VM *vm, Builder *b, char ch)
-{
-    LString ls{&ch, 1};
-    builder_write_lstring(vm, b, ls);
-}
+LULU_FUNC void
+builder_write_lstring(lulu_VM *vm, Builder *b, LString s);
 
 LULU_FUNC void
 builder_write_int(lulu_VM *vm, Builder *b, int i);

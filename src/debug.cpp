@@ -2,6 +2,7 @@
 
 #include "debug.hpp"
 #include "object.hpp"
+#include "vm.hpp"
 
 struct Args {
     struct ABC {u16 b, c;};
@@ -18,7 +19,7 @@ struct Args {
 static void
 print_reg(const Chunk *c, u16 reg, isize pc, const char *fmt = nullptr, ...)
 {
-    if (Instruction::reg_is_rk(reg)) {
+    if (Instruction::reg_is_k(reg)) {
         u32 i = Instruction::reg_get_k(reg);
         value_print(c->constants[i]);
     } else {
@@ -297,4 +298,176 @@ debug_disassemble(const Chunk *c)
         debug_disassemble_at(c, c->code[i], i, pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");
+}
+
+/**
+ * @brief
+ *      Symbolically executes all instructions in `c->code[:target_pc]`.
+ *      That is, we go through each instruction and examine what its
+ *      side-effects would be to determine the glocal/local variable
+ *      or table field that caused an error.
+ *
+ * @param c
+ *      Where the bytecode is found.
+ *
+ * @param target_pc
+ *      The index of the instruction that caused the error to be raised,
+ *      e.g. `OP_ADD` when one of the operands is a non-number.
+ *
+ * @param reg
+ *      The index in the VM stack of the value that caused the error.
+ *      e.g. this could be the RK(B) in an `OP_ADD`.
+ *
+ * @return
+ *      The `Instruction` that retrieved a culrpit variable, or else
+ *      the neutral `OP_RETURN`.
+ */
+static Instruction
+_get_variable_ip(const Chunk *p, isize target_pc, int reg)
+{
+    // Store position of last instruction that changed `reg`, defaulting
+    // to the final 'neutral' return.
+    isize last_pc = len(p->code) - 1;
+
+    // If `target_pc` is `OP_ADD` then don't pseudo-execute it, as from this
+    // point there is no more information we could possibly get.
+    for (isize pc = 0; pc < target_pc; pc++) {
+        Instruction i = p->code[pc];
+        OpCode op = i.op();
+
+        int a = cast_int(i.a());
+        int b = 0;
+
+        OpInfo info = opinfo[op];
+        switch (info.fmt()) {
+        case OPFORMAT_ABC:
+            b = cast_int(i.b());
+            break;
+        case OPFORMAT_ABX:
+        case OPFORMAT_ASBX:
+            // Nothing else to be done; we will check the instruction mode
+            // anyway and we don't need to retrieve variables nor jump anywhere.
+            break;
+        default:
+            lulu_unreachable();
+            break;
+        }
+
+        // This instruction uses R(A) as a destination?
+        if (info.a()) {
+            // `R(reg)` was changed by this instruction?
+            if (reg == a) {
+                last_pc = pc;
+            }
+        }
+
+        switch (op) {
+        case OP_NIL:
+            //  `reg` is part of the range `a` up to `b`, which is set here?
+            if (a <= reg && reg <= cast_int(b)) {
+                last_pc = pc;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    return p->code[last_pc];
+}
+
+static const char *
+_get_rk_name(const Chunk *c, u16 regk)
+{
+    if (Instruction::reg_is_k(regk)) {
+        u32   i = Instruction::reg_get_k(regk);
+        Value v = c->constants[i];
+        if (v.is_string()) {
+            return v.to_cstring();
+        }
+    }
+    return "?";
+}
+
+static const char *
+_get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
+{
+    Closure *f = cf->function;
+    if (closure_is_lua(f)) {
+        Chunk *c  = f->lua.chunk;
+
+        // `ip` always points to the instruction after the decoded one, so
+        // subtract 1 to get the culprit.
+        isize pc = ptr_index(c->code, vm->saved_ip) - 1;
+
+        // Add 1 to `reg` because we want to use 1-based counting. E.g.
+        // the very first local is 1 rather than 0.
+        *id = chunk_get_local(c, reg + 1, pc);
+        if (*id != nullptr) {
+            return "local";
+        }
+        Instruction i = _get_variable_ip(c, pc, reg);
+        switch (i.op()) {
+        case OP_GET_GLOBAL: {
+            u32 g = i.bx();
+            lulu_assert(c->constants[g].is_string());
+            *id = c->constants[g].to_cstring();
+            return "global";
+        }
+        case OP_GET_TABLE: {
+            u16 rkc = i.c(); // RK(C) is the desired field.
+            *id = _get_rk_name(c, rkc);
+            return "field";
+        }
+        default:
+            break;
+        }
+    }
+
+    // No useful name found.
+    return nullptr;
+}
+
+void
+debug_type_error(lulu_VM *vm, const char *act, const Value *v)
+{
+    const char *id    = nullptr;
+    const char *scope = nullptr;
+    const char *tname = v->type_name();
+
+    isize i;
+    // `v` is currently inside the stack?
+    if (ptr_index_safe(vm->window, v, &i)) {
+        scope = _get_obj_name(vm, vm->caller, cast_int(i), &id);
+    }
+
+    if (scope != nullptr) {
+        vm_runtime_error(vm, "Attempt to %s %s '%s' (a %s value)",
+            act, scope, id, tname);
+    } else {
+        vm_runtime_error(vm, "Attempt to %s a %s value", act, tname);
+    }
+}
+
+void
+debug_arith_error(lulu_VM *vm, const Value *a, const Value *b)
+{
+    const Value *v = a->is_number() ? b : a;
+    debug_type_error(vm, "perform arithmetic on", v);
+}
+
+void
+debug_compare_error(lulu_VM *vm, const Value *a, const Value *b)
+{
+    const char *tname = a->type_name();
+    if (a->type() == b->type()) {
+        /**
+         * @note(2025-07-22)
+         *      Not as helpful as the other error messages, but printing
+         *      out a messages that can have 0 up to 2 variables is surprisingly
+         *      tricky!
+         */
+        vm_runtime_error(vm, "Attempt to compare 2 %s values", tname);
+    } else {
+        vm_runtime_error(vm, "Attempt to compare %s with %s", tname, b->type_name());
+    }
 }

@@ -94,30 +94,40 @@ slice_delete(lulu_VM *vm, Slice<T> s)
     mem_delete(vm, raw_data(s), len(s));
 }
 
-template<class T>
-LULU_FUNC inline isize
-ptr_index(Slice<T> s, T *p)
-{
-    return cast_isize(p - raw_data(s));
-}
 
+/**
+ * @warning(2025-07-22)
+ *
+ *  1.) Assumes `p` indeed points to something within `raw_data(s)`. Otherwise
+ *      it is undefined behavior to perform pointer arithmetic on 2 unrelated
+ *      pointers.
+ */
 template<class T>
 LULU_FUNC inline isize
-ptr_index(Slice<T> s, const T *p)
+ptr_index(const Slice<T> &s, const T *p)
 {
     return cast_isize(p - raw_data(s));
 }
 
 template<class T, isize N>
 LULU_FUNC inline isize
-ptr_index(Array<T, N> &a, T *p)
+ptr_index(const Array<T, N> &a, T *p)
 {
     return cast_isize(p - raw_data(a));
 }
 
 template<class T>
-LULU_FUNC inline isize
-ptr_index(T *data, T *ptr)
+LULU_FUNC inline bool
+ptr_index_safe(const Slice<T> &s, const T *p, isize *out)
 {
-    return cast_isize(ptr - data);
+    auto addr_start = cast(uintptr_t)begin(s);
+    auto addr_stop  = cast(uintptr_t)end(s);
+    auto addr_test  = cast(uintptr_t)p;
+
+    // Integer representation of `p` is within the array?
+    if (addr_start <= addr_test && addr_test < addr_stop) {
+        *out = ptr_index(s, p);
+        return true;
+    }
+    return false;
 }

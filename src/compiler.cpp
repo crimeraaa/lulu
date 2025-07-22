@@ -162,7 +162,7 @@ static void
 pop_reg(Compiler *c, u16 reg)
 {
     // `reg` is not a constant index nor a local register?
-    if (!Instruction::reg_is_rk(reg) && reg >= cast(u16)small_array_len(c->active)) {
+    if (!Instruction::reg_is_k(reg) && reg >= cast(u16)small_array_len(c->active)) {
         c->free_reg -= 1;
         // e.g. if we discharged 1 number, free_reg would be 1 and the expr.reg
         // would be 0. So when we pop that number from its register, we expect

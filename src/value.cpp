@@ -65,9 +65,8 @@ print_pointer:
         break;
     }
     case VALUE_TABLE:
-    case VALUE_FUNCTION: {
+    case VALUE_FUNCTION:
         goto print_pointer;
-    }
     case VALUE_INTEGER:
     case VALUE_CHUNK:
         lulu_unreachable();

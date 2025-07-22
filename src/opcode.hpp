@@ -33,7 +33,12 @@ OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
 OP_RETURN,      // A B C | return R(A:A+B)
 };
 
-static constexpr int OPCODE_COUNT = OP_RETURN + 1;
+constexpr OpCode
+OPCODE_FIRST = OP_CONSTANT,
+OPCODE_LAST  = OP_RETURN;
+
+constexpr int
+OPCODE_COUNT = OP_RETURN + 1;
 
 // Fills the `n` lower bits with 1's.
 // Useful when reading bit fields.
@@ -189,7 +194,7 @@ struct LULU_PRIVATE Instruction {
     }
 
     static bool
-    reg_is_rk(u16 reg)
+    reg_is_k(u16 reg)
     {
         return reg & BIT_RK;
     }

@@ -13,10 +13,10 @@ Value {
 private:
     // Later on, if we decide to incorporate NaN-boxing/Pointer-tagging, we can
     // use macros to change what members are to be included in the struct.
-    Value_Type m_type;
+    Value_Type m_type = VALUE_NIL;
     union {
+        lulu_Integer m_integer = 0;
         Number       m_number;
-        lulu_Integer m_integer;
         bool         m_boolean;
         Object      *m_object;
         void        *m_pointer; // light userdata.
@@ -101,7 +101,7 @@ public:
     make_chunk(Chunk *c)
     {
         Value v;
-        v.m_type = VALUE_CHUNK;
+        v.m_type   = VALUE_CHUNK;
         v.m_object = cast(Object *)c;
         return v;
     }
@@ -305,9 +305,6 @@ public:
 
 constexpr Value
 nil{};
-
-// Did we default construct `nil` properly?
-static_assert(nil.type() == VALUE_NIL);
 
 LULU_FUNC void
 value_print(const Value &v);

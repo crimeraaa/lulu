@@ -102,6 +102,12 @@ builder_destroy(lulu_VM *vm, Builder *b)
 }
 
 void
+builder_write_char(lulu_VM *vm, Builder *b, char ch)
+{
+    dynamic_push(vm, &b->buffer, ch);
+}
+
+void
 builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
 {
     // Nothing to do?

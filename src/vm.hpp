@@ -121,7 +121,7 @@ vm_throw(lulu_VM *vm, Error e);
  *  3.) `v` and `out` do not alias.
  */
 LULU_FUNC bool
-vm_to_number(const Value *v, Value *out);
+vm_to_number(const Value *restrict v, Value *restrict out);
 
 
 /**
@@ -148,9 +148,9 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 LULU_FUNC void
 vm_syntax_error(lulu_VM *vm, LString source, int line, const char *fmt, ...);
 
-[[noreturn, gnu::format(printf, 3, 4)]]
+[[noreturn, gnu::format(printf, 2, 3)]]
 LULU_FUNC void
-vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...);
+vm_runtime_error(lulu_VM *vm, const char *fmt, ...);
 
 LULU_FUNC void
 vm_concat(lulu_VM *vm, Value *ra, Slice<Value> args);
@@ -183,7 +183,7 @@ LULU_FUNC Error
 vm_load(lulu_VM *vm, LString source, LString script);
 
 LULU_FUNC bool
-vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out);
+vm_table_get(lulu_VM *vm, const Value *t, const Value &k, Value *out);
 
 LULU_FUNC void
 vm_table_set(lulu_VM *vm, const Value *t, const Value *k, const Value &v);

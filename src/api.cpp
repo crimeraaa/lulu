@@ -156,7 +156,9 @@ lulu_is_none(lulu_VM *vm, int i)
 LULU_API int
 lulu_is_nil(lulu_VM *vm, int i)
 {
-    return _value_at(vm, i)->is_nil();
+    const Value *v = _value_at(vm, i);
+    // Account for `none` also having tag `VALUE_NIL`
+    return (v != &none) && v->is_nil();
 }
 
 LULU_API int
@@ -232,16 +234,14 @@ LULU_API const char *
 lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 {
     Value *v = _value_at(vm, i);
-    if (!v->is_string()) {
-        bool ok = vm_to_string(vm, v);
-        if (!ok)  {
-            if (n != nullptr) {
-                *n = 0;
-            }
-            return nullptr;
+    if (!vm_to_string(vm, v))  {
+        if (n != nullptr) {
+            *n = 0;
         }
-        // Otherwise, conversion success.
+        return nullptr;
     }
+
+    // Otherwise, conversion success.
     OString *s = v->to_ostring();
     if (n != nullptr) {
         *n = cast_usize(s->len);
@@ -475,12 +475,8 @@ lulu_concat(lulu_VM *vm, int n)
 
     lulu_assert(2 <= n && cast_isize(n) <= len(vm->window));
 
-    Value *first = _value_at(vm, -n);
+    Value *first = _value_at_stack(vm, -n);
     Value *last  = _value_at(vm, -1);
-
-    // `value_at()` returned a sentinel value? We can't properly form a slice
-    // with this.
-    lulu_assert(first != &none);
 
     vm_concat(vm, first, slice_pointer(first, last + 1));
 

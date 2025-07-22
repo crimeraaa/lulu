@@ -131,10 +131,15 @@ vm_throw(lulu_VM *vm, Error e)
 }
 
 bool
-vm_to_number(const Value *v, Value *out)
+vm_to_number(const Value *restrict v, Value *restrict out)
 {
+    // Nothing to do?
+    if (v->is_number()) {
+        out->set_number(v->to_number());
+        return true;
+    }
     // Try to parse the string.
-    if (v->is_string()) {
+    else if (v->is_string()) {
         LString ls = v->to_lstring();
         Number d;
         if (lstring_to_number(ls, &d)) {
@@ -148,7 +153,9 @@ vm_to_number(const Value *v, Value *out)
 bool
 vm_to_string(lulu_VM *vm, Value *in_out)
 {
-    if (in_out->is_number()) {
+    if (in_out->is_string()) {
+        return true;
+    } else if (in_out->is_number()) {
         Number_Buffer buf;
         LString  ls = number_to_lstring(in_out->to_number(), buf);
         OString *os = ostring_new(vm, ls);
@@ -247,7 +254,7 @@ vm_syntax_error(lulu_VM *vm, LString source, int line, const char *fmt, ...)
 }
 
 void
-vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...)
+vm_runtime_error(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
     Call_Frame *cf = vm->caller;
@@ -262,13 +269,12 @@ vm_runtime_error(lulu_VM *vm, const char *act, const char *fmt, ...)
     } else {
         vm_push_string(vm, "[C]: "_s);
     }
-    vm_push_fstring(vm, "Attempt to %s ", act);
 
     va_start(args, fmt);
     vm_push_vfstring(vm, fmt, args);
     va_end(args);
 
-    lulu_concat(vm, 3);
+    lulu_concat(vm, 2);
 
     vm_throw(vm, LULU_ERROR_RUNTIME);
 }
@@ -318,41 +324,13 @@ vm_check_stack(lulu_VM *vm, int n)
 {
     isize stop = vm_top_absindex(vm) + cast_isize(n);
     if (stop >= count_of(vm->stack)) {
-        vm_runtime_error(vm, "stack overflow",
-            "%" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC " stack slots",
+        vm_runtime_error(vm, "Stack overflow: %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC " stack slots used",
             stop, count_of(vm->stack));
     }
 }
 
-[[noreturn]]
 static void
-type_error(lulu_VM *vm, const char *act, const Value *v)
-{
-    vm_runtime_error(vm, act, "a %s value", v->type_name());
-}
-
-[[noreturn]]
-static void
-arith_error(lulu_VM *vm, const Value *a, const Value *b)
-{
-    const Value *v = a->is_number() ? b : a;
-    type_error(vm, "perform arithmetic on", v);
-}
-
-[[noreturn]]
-static void
-compare_error(lulu_VM *vm, const Value *a, const Value *b)
-{
-    if (a->type() != b->type()) {
-        vm_runtime_error(vm, "compare", "%s with %s", a->type_name(), b->type_name());
-    } else {
-        const Value *v = a->is_number() ? a : b;
-        type_error(vm, "compare", v);
-    }
-}
-
-static void
-protect(lulu_VM *vm, const Instruction *ip)
+_protect(lulu_VM *vm, const Instruction *ip)
 {
     vm->saved_ip = ip;
 }
@@ -431,7 +409,7 @@ Call_Type
 vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
 {
     if (!ra->is_function()) {
-        type_error(vm, "call", ra);
+        debug_type_error(vm, "call", ra);
     }
 
     Closure *fn       = ra->to_function();
@@ -514,7 +492,7 @@ vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned)
 }
 
 bool
-vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out)
+vm_table_get(lulu_VM *vm, const Value *t, const Value &k, Value *out)
 {
     if (t->is_table()) {
         // `table_get()` works under the assumption `k` is non-`nil`.
@@ -530,7 +508,7 @@ vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out)
         *out = v;
         return ok;
     }
-    type_error(vm, "index", t);
+    debug_type_error(vm, "index", t);
     return false;
 }
 
@@ -538,13 +516,62 @@ void
 vm_table_set(lulu_VM *vm, const Value *t, const Value *k, const Value &v)
 {
     if (t->is_table()) {
+        // `table_set` assumes that we never use `nil` as a key.
         if (k->is_nil()) {
-            type_error(vm, "index", k);
+            debug_type_error(vm, "index using", k);
         }
         table_set(vm, t->to_table(), *k, v);
         return;
     }
-    type_error(vm, "index", t);
+    debug_type_error(vm, "index", t);
+}
+
+enum Metamethod {
+    MT_ADD, MT_SUB, MT_MUL, MT_DIV, MT_MOD, MT_POW, MT_UNM, // Arithmetic
+    MT_LT, MT_LEQ, // Comparison
+};
+
+static void
+_arith(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
+{
+    Value tmp_b, tmp_c;
+    if (vm_to_number(rkb, &tmp_b) && vm_to_number(rkc, &tmp_c)) {
+        Number x = tmp_b.to_number();
+        Number y = tmp_c.to_number();
+        switch (mt) {
+        case MT_ADD: ra->set_number(lulu_Number_add(x, y)); break;
+        case MT_SUB: ra->set_number(lulu_Number_sub(x, y)); break;
+        case MT_MUL: ra->set_number(lulu_Number_mul(x, y)); break;
+        case MT_DIV: ra->set_number(lulu_Number_div(x, y)); break;
+        case MT_MOD: ra->set_number(lulu_Number_mod(x, y)); break;
+        case MT_POW: ra->set_number(lulu_Number_pow(x, y)); break;
+        case MT_UNM: ra->set_number(lulu_Number_unm(x));    break;
+        default:
+            lulu_unreachable();
+            break;
+        }
+        return;
+    }
+    debug_arith_error(vm, rkb, rkc);
+}
+
+static void
+_compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
+{
+    Value tmp_b, tmp_c;
+    if (vm_to_number(rkb, &tmp_b) && vm_to_number(rkc, &tmp_c)) {
+        Number x = tmp_b.to_number();
+        Number y = tmp_c.to_number();
+        switch (mt) {
+        case MT_LT:  ra->set_number(lulu_Number_lt(x, y)); break;
+        case MT_LEQ: ra->set_number(lulu_Number_leq(x, y)); break;
+        default:
+            lulu_unreachable();
+            break;
+        }
+        return;
+    }
+    debug_compare_error(vm, rkb, rkc);
 }
 
 void
@@ -556,19 +583,19 @@ vm_execute(lulu_VM *vm, int n_calls)
     Slice<Value>       window = vm->window;
 
 #define GET_RK(rk) (                                                           \
-    Instruction::reg_is_rk(rk)                                                 \
+    Instruction::reg_is_k(rk)                                                  \
         ? &chunk.constants[Instruction::reg_get_k(rk)]                         \
         : &window[rk]                                                          \
 )
 
-#define BINARY_OP(number_fn, error_fn, result_fn) {                                                                              \
+#define BINARY_OP(number_fn, on_error_fn, metamethod, result_fn) {             \
     u16 b = i.b(), c = i.c();                                                  \
-    Value *rb = GET_RK(b), *rc = GET_RK(c);                                    \
-    if (!rb->is_number() || !rc->is_number()) {                                \
-        protect(vm, ip);                                                       \
-        error_fn(vm, rb, rc);                                                  \
-    } else {                                                                   \
+    const Value *rb = GET_RK(b), *rc = GET_RK(c);                              \
+    if (rb->is_number() && rc->is_number()) {                                  \
         result_fn(number_fn(rb->to_number(), rc->to_number()));                \
+    } else {                                                                   \
+        _protect(vm, ip);                                                      \
+        on_error_fn(vm, metamethod, ra, rb, rc);                               \
     }                                                                          \
 }
 
@@ -578,7 +605,7 @@ vm_execute(lulu_VM *vm, int n_calls)
 }
 
 #define ARITH_RESULT(n)     ra->set_number(n)
-#define ARITH_OP(fn)        BINARY_OP(fn, arith_error, ARITH_RESULT)
+#define ARITH_OP(fn, mt)    BINARY_OP(fn, _arith, mt, ARITH_RESULT)
 
 #define COMPARE_RESULT(b)                                                      \
 {                                                                              \
@@ -588,7 +615,7 @@ vm_execute(lulu_VM *vm, int n_calls)
     ip++;                                                                      \
 }
 
-#define COMPARE_OP(fn)      BINARY_OP(fn, compare_error, COMPARE_RESULT)
+#define COMPARE_OP(fn, mt)  BINARY_OP(fn, _compare, mt, COMPARE_RESULT)
 
 #ifdef LULU_DEBUG_TRACE_EXEC
     int pad = debug_get_pad(&chunk);
@@ -622,8 +649,8 @@ vm_execute(lulu_VM *vm, int n_calls)
             *ra = chunk.constants[i.bx()];
             break;
         case OP_NIL: {
-            Value *rb = &window[i.b()];
-            Slice<Value> dst = slice_pointer(ra, rb + 1);
+            Value *rb  = &window[i.b()];
+            auto   dst = slice_pointer(ra, rb + 1);
             fill(dst, nil);
             break;
         }
@@ -636,17 +663,17 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_GET_GLOBAL: {
             Value k = chunk.constants[i.bx()];
             Value v;
-            protect(vm, ip);
             if (!table_get(vm->globals.to_table(), k, &v)) {
                 const char *s = k.to_cstring();
-                vm_runtime_error(vm, "read undefined variable", "'%s'", s);
+                _protect(vm, ip);
+                vm_runtime_error(vm, "Attempt to read undefined variable '%s'", s);
             }
             *ra = v;
             break;
         }
         case OP_SET_GLOBAL: {
             Value k = chunk.constants[i.bx()];
-            protect(vm, ip);
+            _protect(vm, ip);
             table_set(vm, vm->globals.to_table(), k, *ra);
             break;
         }
@@ -660,7 +687,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_GET_TABLE: {
             Value *t = &window[i.b()];
             Value *k = GET_RK(i.c());
-            protect(vm, ip);
+            _protect(vm, ip);
             vm_table_get(vm, t, *k, ra);
             break;
         }
@@ -669,7 +696,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             u16    c = i.c();
             Value *k = GET_RK(b);
             Value *v = GET_RK(c);
-            protect(vm, ip);
+            _protect(vm, ip);
             vm_table_set(vm, ra, k, *v);
             break;
         }
@@ -678,12 +705,12 @@ vm_execute(lulu_VM *vm, int n_calls)
             *ra = rb;
             break;
         }
-        case OP_ADD: ARITH_OP(lulu_Number_add); break;
-        case OP_SUB: ARITH_OP(lulu_Number_sub); break;
-        case OP_MUL: ARITH_OP(lulu_Number_mul); break;
-        case OP_DIV: ARITH_OP(lulu_Number_div); break;
-        case OP_MOD: ARITH_OP(lulu_Number_mod); break;
-        case OP_POW: ARITH_OP(lulu_Number_pow); break;
+        case OP_ADD: ARITH_OP(lulu_Number_add, MT_ADD); break;
+        case OP_SUB: ARITH_OP(lulu_Number_sub, MT_SUB); break;
+        case OP_MUL: ARITH_OP(lulu_Number_mul, MT_MUL); break;
+        case OP_DIV: ARITH_OP(lulu_Number_div, MT_DIV); break;
+        case OP_MOD: ARITH_OP(lulu_Number_mod, MT_MOD); break;
+        case OP_POW: ARITH_OP(lulu_Number_pow, MT_POW); break;
         case OP_EQ: {
             bool   cond = cast(bool)i.a();
             u16    b    = i.b();
@@ -691,7 +718,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             Value  rkb  = *GET_RK(b);
             Value  rkc  = *GET_RK(c);
 
-            protect(vm, ip);
+            _protect(vm, ip);
             if ((rkb == rkc) == cond) {
                 lulu_assert(ip->op() == OP_JUMP);
                 DO_JUMP(ip->sbx());
@@ -699,21 +726,17 @@ vm_execute(lulu_VM *vm, int n_calls)
             ip++;
             break;
         }
-        case OP_LT: {
-            COMPARE_OP(lulu_Number_lt);
-            break;
-        }
-        case OP_LEQ: {
-            COMPARE_OP(lulu_Number_leq);
-            break;
-        }
+        case OP_LT:  COMPARE_OP(lulu_Number_lt,  MT_LT); break;
+        case OP_LEQ: COMPARE_OP(lulu_Number_leq, MT_LEQ); break;
         case OP_UNM: {
             Value *rb = &window[i.b()];
-            if (!rb->is_number()) {
-                protect(vm, ip);
-                arith_error(vm, rb, rb);
+            if (rb->is_number()) {
+                Number n = rb->to_number();
+                ra->set_number(lulu_Number_unm(n));
+            } else {
+                _protect(vm, ip);
+                _arith(vm, MT_UNM, ra, rb, rb);
             }
-            ra->set_number(lulu_Number_unm(rb->to_number()));
             break;
         }
         case OP_NOT: {
@@ -723,8 +746,8 @@ vm_execute(lulu_VM *vm, int n_calls)
         }
         case OP_LEN: {
             if (!ra->is_string()) {
-                protect(vm, ip);
-                type_error(vm, "get length of", ra);
+                _protect(vm, ip);
+                debug_type_error(vm, "get length of", ra);
             }
             ra->set_number(cast(Number)ra->to_ostring()->len);
             break;
@@ -732,7 +755,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_CONCAT: {
             Value *rb = &window[i.b()];
             Value *rc = &window[i.c()];
-            protect(vm, ip);
+            _protect(vm, ip);
             vm_concat(vm, ra, slice_pointer(rb, rc + 1));
             break;
         }
@@ -771,7 +794,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_CALL: {
             int argc              = cast_int(i.b());
             int expected_returned = cast_int(i.c());
-            protect(vm, ip);
+            _protect(vm, ip);
 
             Call_Type t = vm_call_init(vm, ra, argc, expected_returned);
             if (t == CALL_LUA) {
@@ -781,7 +804,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         }
         case OP_RETURN: {
             int actual_returned = cast_int(i.b());
-            protect(vm, ip);
+            _protect(vm, ip);
             vm_call_fini(vm, ra, actual_returned);
             n_calls--;
             if (n_calls == 0) {
@@ -799,9 +822,9 @@ void
 vm_concat(lulu_VM *vm, Value *ra, Slice<Value> args)
 {
     Builder *b = vm_get_builder(vm);
-    for (const Value &s : args) {
-        if (!s.is_string()) {
-            type_error(vm, "concatentate", &s);
+    for (Value &s : args) {
+        if (!vm_to_string(vm, &s)) {
+            debug_type_error(vm, "concatentate", &s);
         }
         builder_write_lstring(vm, b, s.to_lstring());
     }

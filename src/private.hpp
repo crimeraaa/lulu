@@ -6,7 +6,10 @@
 
 #include "lulu.h"
 
-#define TOKEN_PASTE(x, y)   x##y
+#define TOKEN_PASTE(x, y)       x##y
+#define X__TOKEN_STRINGIFY(x)    #x
+#define TOKEN_STRINGIFY(x)      X__TOKEN_STRINGIFY(x)
+#define SOURCE_CODE_LOCATION    __FILE__ ":" TOKEN_STRINGIFY(__LINE__)
 
 using u8  = uint8_t;
 using u16 = uint16_t;
@@ -44,6 +47,17 @@ using usize = size_t;
 #define size_of(expr)   isize(sizeof(expr))
 #define count_of(array) isize(sizeof(array) / sizeof((array)[0]))
 
+#ifndef restrict
+
+#if defined(__GNUC__) || defined(__clang__)
+#define restrict    __restrict__
+#elif defined(_MSC_VER) // ^^^ __GNUC__ || __clang___, vvv _MSC_VER
+#define restrict    __restrict
+#else // ^^^ _MSC_VER, vvv else
+#define restrict
+#endif
+
+#endif // restrict
 #define OBJECT_HEADER Object *next; Value_Type type
 
 using Type   = lulu_Type;
@@ -79,16 +93,16 @@ swap(T *a, T *b)
 
 #ifdef LULU_DEBUG
 
-[[noreturn, gnu::format(printf, 4, 5)]]
+[[noreturn, gnu::format(printf, 3, 4)]]
 LULU_FUNC void
-lulu_assert_fail(const char *file, int line, const char *expr, const char *fmt, ...)
+lulu_assert_fail(const char *where, const char *expr, const char *fmt, ...)
 throw();
 
 #define lulu_assert(expr) \
-    (expr) ? ((void)0) : lulu_assert_fail(__FILE__, __LINE__, #expr, nullptr)
+    (expr) ? ((void)0) : lulu_assert_fail(SOURCE_CODE_LOCATION, #expr, nullptr)
 
 #define lulu_assertf(expr, fmt, ...) \
-    (expr) ? ((void)0) : lulu_assert_fail(__FILE__, __LINE__, #expr, fmt "\n", __VA_ARGS__)
+    (expr) ? ((void)0) : lulu_assert_fail(SOURCE_CODE_LOCATION, #expr, fmt "\n", __VA_ARGS__)
 
 #define lulu_assertln(expr, msg) \
     lulu_assertf(expr, "%s", msg)

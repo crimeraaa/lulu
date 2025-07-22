@@ -179,13 +179,13 @@ print_backtrace()
 }
 
 void
-lulu_assert_fail(const char *file, int line, const char *expr, const char *fmt, ...)
+lulu_assert_fail(const char *where, const char *expr, const char *fmt, ...)
 throw()
 {
     static bool have_error = false;
     assert(!have_error && "Error in assertion handling");
     have_error = true;
-    fprintf(stderr, "%s:%i: Assertion failed: %s\n", file, line, expr);
+    fprintf(stderr, "%s: Assertion failed: %s\n", where, expr);
     if (fmt != nullptr) {
         va_list argp;
         va_start(argp, fmt);

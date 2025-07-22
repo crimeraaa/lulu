@@ -82,8 +82,7 @@ _buffer_adjust_stack(lulu_Buffer *b)
         do {
             size_t here_len = lulu_obj_len(vm, -(to_concat + 1));
 
-            // We have too many strings OR our
-            // length
+            // We have too many strings OR our total length exceeds this one?
             if (b->pushed - to_concat + 1 >= LIMIT || acc_len > here_len) {
                 acc_len += here_len;
                 to_concat++;
