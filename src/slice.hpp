@@ -19,7 +19,7 @@ Slice {
     {
         isize ii = cast_isize(i);
         lulu_assertf(0 <= ii && ii < this->len,
-            "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
+            "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
             ii, this->len);
         return this->data[ii];
     }
@@ -31,7 +31,7 @@ Slice {
     {
         isize ii = cast_isize(i);
         lulu_assertf(0 <= ii && ii < this->len,
-            "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
+            "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
             ii, this->len);
         return this->data[ii];
     }
@@ -51,19 +51,19 @@ slice(Slice<T> &s, isize start, isize stop)
 {
     Slice<T> s2{&s.data[start], stop - start};
     lulu_assertf(0 <= len(s2) && len(s2) <= len(s),
-        "invalid result length: len(s2)=%" ISIZE_FMTSPEC " > len(s)=%" ISIZE_FMTSPEC,
+        "invalid result length: len(s2)=%" ISIZE_FMT " > len(s)=%" ISIZE_FMT,
         len(s2), len(s));
 
     lulu_assertf(0 <= start && start <= len(s),
-        "invalid start index: start=%" ISIZE_FMTSPEC " > %" ISIZE_FMTSPEC,
+        "invalid start index: start=%" ISIZE_FMT " > %" ISIZE_FMT,
         start, len(s));
 
     lulu_assertf(0 <= stop && stop <= len(s),
-        "invalid stop index: stop=%" ISIZE_FMTSPEC " > %" ISIZE_FMTSPEC,
+        "invalid stop index: stop=%" ISIZE_FMT " > %" ISIZE_FMT,
         stop, len(s));
 
     lulu_assertf(start <= stop,
-        "invalid start-stop pair: start=%" ISIZE_FMTSPEC " > stop=%" ISIZE_FMTSPEC,
+        "invalid start-stop pair: start=%" ISIZE_FMT " > stop=%" ISIZE_FMT,
         start, stop);
     return s2;
 }
@@ -220,7 +220,7 @@ Array {
     {
         isize ii = cast_isize(i);
         lulu_assertf(0 <= ii && ii < N,
-            "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
+            "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
             ii, N);
         return this->data[ii];
     }
@@ -231,7 +231,7 @@ Array {
     {
         isize ii = cast_isize(i);
         lulu_assertf(0 <= ii && ii < N,
-            "Out of bounds index %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC,
+            "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
             ii, N);
         return this->data[ii];
     }

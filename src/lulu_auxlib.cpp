@@ -8,9 +8,9 @@ lulu_where(lulu_VM *vm, int level)
 {
     lulu_Debug ar;
     if (lulu_get_stack(vm, level, &ar)) {
-        lulu_get_info(vm, &ar);
-        if (ar.current_line > 0) {
-            lulu_push_fstring(vm, "%s:%i: ", ar.source, ar.current_line);
+        lulu_get_info(vm, "Sl", &ar);
+        if (ar.currentline > 0) {
+            lulu_push_fstring(vm, "%s:%i: ", ar.source, ar.currentline);
             return;
         }
     }
@@ -187,7 +187,7 @@ lulu_arg_error(lulu_VM *vm, int argn, const char *msg)
     if (!lulu_get_stack(vm, 0, &ar)) {
         return lulu_errorf(vm, "Bad argument #%i (%s)", argn, msg);
     }
-    lulu_get_info(vm, &ar);
+    lulu_get_info(vm, "n", &ar);
     return lulu_errorf(vm, "Bad argument #%i to '%s' (%s)", argn, ar.name, msg);
 }
 

@@ -23,7 +23,6 @@
 #include "ltable.h"
 #include "lzio.h"
 
-
 #define next(ls) (ls->character = zgetc(ls->z))
 #define currIsNewline(ls)	(ls->character == '\n' || ls->character == '\r')
 
@@ -46,6 +45,22 @@ const char *const luaX_tokens [] = {
 #define save_and_next(ls) (save(ls, ls->character), next(ls))
 
 
+#undef next
+#undef zgetc
+
+static int zgetc(ZIO *z)
+{
+  /* Note that we are comparing the value BEFORE the increment. */
+  if (z->n-- > 0) {
+    return char2int(*z->p++);
+  }
+  return luaZ_fill(z);
+}
+
+static void next (LexState *ls) {
+  ls->character = zgetc(ls->z);
+}
+
 static void save (LexState *lex, int c) {
   Mbuffer *b = lex->buff;
   if (b->n + 1 > b->buffsize) {
@@ -56,6 +71,13 @@ static void save (LexState *lex, int c) {
     luaZ_resizebuffer(lex->L, b, newsize);
   }
   b->buffer[b->n++] = cast(char, c);
+}
+
+#undef save_and_next
+
+static void save_and_next (LexState *lex) {
+  save(lex, lex->character);
+  next(lex->z);
 }
 
 

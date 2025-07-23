@@ -75,7 +75,7 @@ _compare(const Chunk *c, const char *op, Args args, isize pc)
 {
     _print_reg(c, args.abc.b, pc, " %s ", op);
     _print_reg(c, args.abc.c, pc,
-        " ; goto .code[%" ISIZE_FMTSPEC " if %s else %" ISIZE_FMTSPEC "]",
+        " ; goto .code[%" ISIZE_FMT " if %s else %" ISIZE_FMT "]",
         _jump_to(pc, 1), (args.a) ? "false" : "true", _jump_get(c, pc + 1));
 }
 
@@ -109,7 +109,7 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     Args   args;
     OpCode op = ip.op();
     args.a = ip.a();
-    printf("[%0*" ISIZE_FMTSPEC "] ", pad, pc);
+    printf("[%0*" ISIZE_FMT "] ", pad, pc);
 
     int line = chunk_get_line(c, pc);
     // Have a previous line and it's the same as ours?
@@ -164,7 +164,7 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     case OP_BOOL:
         _print_reg(c, args.a, pc, " := %s", (args.abc.b) ? "true" : "false");
         if (args.abc.c) {
-            printf("; goto .code[%" ISIZE_FMTSPEC "]", _jump_to(pc, 1));
+            printf("; goto .code[%" ISIZE_FMT "]", _jump_to(pc, 1));
         }
         break;
     case OP_GET_GLOBAL:
@@ -215,8 +215,8 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         _print_reg(c, args.a, pc, " := concat(R(%u:%u))", args.abc.b, args.abc.c + 1);
         break;
     case OP_TEST: {
-        printf("goto .code[%" ISIZE_FMTSPEC " if %s", _jump_to(pc, 1), (args.abc.c) ? "not " : "");
-        _print_reg(c, args.a, pc, " else %" ISIZE_FMTSPEC "]", _jump_get(c, pc + 1));
+        printf("goto .code[%" ISIZE_FMT " if %s", _jump_to(pc, 1), (args.abc.c) ? "not " : "");
+        _print_reg(c, args.a, pc, " else %" ISIZE_FMT "]", _jump_get(c, pc + 1));
         break;
     }
     case OP_TEST_SET: {
@@ -224,14 +224,14 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         _print_reg(c, args.abc.b, pc, " then ");
         _print_reg(c, args.a, pc, " := ");
         _print_reg(c, args.abc.b, pc,
-            "; goto .code[%" ISIZE_FMTSPEC "]; else goto .code[%" ISIZE_FMTSPEC "]",
+            "; goto .code[%" ISIZE_FMT "]; else goto .code[%" ISIZE_FMT "]",
             _jump_get(c, pc + 1),
             _jump_to(pc, 1));
         break;
     }
     case OP_JUMP: {
         i32 offset = args.sbx;
-        printf("ip += %i ; goto .code[%" ISIZE_FMTSPEC "]", offset, _jump_to(pc, offset));
+        printf("ip += %i ; goto .code[%" ISIZE_FMT "]", offset, _jump_to(pc, offset));
         break;
     }
     case OP_CALL: {
@@ -275,7 +275,7 @@ debug_disassemble(const Chunk *c)
         printf(".local:\n");
         for (isize i = 0, n = len(c->locals); i < n; i++) {
             const char *id = c->locals[i].identifier->to_cstring();
-            printf("[%.*" ISIZE_FMTSPEC "] '%s': start=%" ISIZE_FMTSPEC ", end=%" ISIZE_FMTSPEC "\n",
+            printf("[%.*" ISIZE_FMT "] '%s': start=%" ISIZE_FMT ", end=%" ISIZE_FMT "\n",
                 pad, i, id, c->locals[i].start_pc, c->locals[i].end_pc);
         }
         printf("\n");
@@ -285,7 +285,7 @@ debug_disassemble(const Chunk *c)
         int pad = _count_digits(len(c->constants));
         printf(".const:\n");
         for (isize i = 0, n = len(c->constants); i < n; i++) {
-            printf("[%.*" ISIZE_FMTSPEC "] ", pad, i);
+            printf("[%.*" ISIZE_FMT "] ", pad, i);
             value_print(c->constants[i]);
             printf("\n");
         }
@@ -476,16 +476,16 @@ static void
 _get_func_info(lulu_Debug *ar, Closure *f)
 {
     if (closure_is_c(f)) {
-        ar->source            = "=[C]";
-        ar->scope             = "C";
-        ar->line_defined      = -1;
-        ar->last_line_defined = -1;
+        ar->source          = "=[C]";
+        ar->namewhat        = "C";
+        ar->linedefined     = -1;
+        ar->lastlinedefined = -1;
     } else {
         Chunk *p = f->lua.chunk;
-        ar->source            = p->source->to_cstring();
-        ar->scope             = (p->line_defined == 0) ? "main" : "lua";
-        ar->line_defined      = p->line_defined;
-        ar->last_line_defined = p->last_line_defined;
+        ar->source          = p->source->to_cstring();
+        ar->namewhat        = (p->line_defined == 0) ? "main" : "lua";
+        ar->linedefined     = p->line_defined;
+        ar->lastlinedefined = p->last_line_defined;
     }
 }
 
@@ -497,7 +497,7 @@ _get_func_info(lulu_Debug *ar, Closure *f)
  *      after the one we just decoded.
  */
 static isize
-_get_pc(lulu_VM *vm, Call_Frame *cf)
+_get_current_pc(lulu_VM *vm, Call_Frame *cf)
 {
     if (!cf->is_lua()) {
         return -1;
@@ -518,7 +518,7 @@ _get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
     }
     // Point to parent caller (the call*ing* function).
     cf--;
-    isize pc = _get_pc(vm, cf);
+    isize pc = _get_current_pc(vm, cf);
     Instruction i = cf->to_lua()->code[pc];
     if (i.op() == OP_CALL) {
         return _get_obj_name(vm, cf, i.a(), name);
@@ -530,7 +530,7 @@ _get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
 static int
 _get_line(lulu_VM *vm, Call_Frame *cf)
 {
-    isize pc = _get_pc(vm, cf);
+    isize pc = _get_current_pc(vm, cf);
     // Not a lua function, so no line information?
     if (pc < 0) {
         return -1;
@@ -538,29 +538,43 @@ _get_line(lulu_VM *vm, Call_Frame *cf)
     return chunk_get_line(cf->to_lua(), pc);
 }
 
-static void
-_get_info(lulu_VM *vm, lulu_Debug *ar, Closure *f, Call_Frame *cf)
+static bool
+_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar, Closure *f,
+    Call_Frame *cf)
 {
-    // (S)
-    _get_func_info(ar, f);
-
-    // (l)
-    ar->current_line = (cf) ? _get_line(vm, cf) : -1;
-
-    // (n)
-    ar->name_what = (cf) ? _get_func_name(vm, cf, &ar->name) : nullptr;
-    if (ar->name_what == nullptr) {
-        ar->name_what = ""; // Not found.
-        ar->name      = nullptr;
+    bool status = true;
+    for (const char *it = options; *it != '\0'; it++) {
+        switch (*it) {
+        case 'S':
+            _get_func_info(ar, f);
+            break;
+        case 'l':
+            ar->currentline = (cf) ? _get_line(vm, cf) : -1;
+            break;
+        case 'n':
+            ar->namewhat = (cf) ? _get_func_name(vm, cf, &ar->name) : nullptr;
+            if (ar->namewhat == nullptr) {
+                ar->namewhat = ""; // Not found.
+                ar->name     = nullptr;
+            }
+            break;
+        default:
+            lulu_panicf("Invalid debug option '%c'.", *it);
+            status = false;
+            break;
+        }
     }
+
+
+    return status;
 }
 
 LULU_API int
-lulu_get_info(lulu_VM *vm, lulu_Debug *ar)
+lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar)
 {
     lulu_assert(ar->_cf_index != 0);
     Call_Frame *cf = small_array_get_ptr(&vm->frames, ar->_cf_index);
-    _get_info(vm, ar, cf->function, cf);
+    _get_info(vm, options, ar, cf->function, cf);
     return 1;
 }
 

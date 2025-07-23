@@ -46,7 +46,7 @@ compiler_error_limit(Compiler *c, isize limit, const char *what, const Token *wh
 {
     const char *who = (c->prev == nullptr) ? "script" : "function";
     char buf[128];
-    sprintf(buf, "%s uses more than %" ISIZE_FMTSPEC " %s", who, limit, what);
+    sprintf(buf, "%s uses more than %" ISIZE_FMT " %s", who, limit, what);
     parser_error_at(c->parser, where, buf);
 }
 

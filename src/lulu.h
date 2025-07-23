@@ -724,8 +724,17 @@ lulu_obj_len(lulu_VM *vm, int i);
 LULU_API int
 lulu_get_stack(lulu_VM *vm, int level, lulu_Debug *ar);
 
+
+/**
+ * @param options
+ *      A nul-terminated string consisting of any combination of these
+ *      characters:
+ *      `'n'` (to select `name` and `namewhat`).
+ *      `'S'` (to select `source`, `what` and `linedefined`)
+ *      `'l'` (to select `currentline`)
+ */
 LULU_API int
-lulu_get_info(lulu_VM *vm, lulu_Debug *ar);
+lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 
 /** HELPER MACROS ======================================================= {{{ */
@@ -773,15 +782,22 @@ lulu_get_info(lulu_VM *vm, lulu_Debug *ar);
 /**
  * @brief
  *      An activation record.
+ *
+ * @link
+ *      https://www.lua.org/pil/23.1.html
+ *
+ * @note(2025-07-23)
+ *      For consistency, we name the fields exactly as they would appear in
+ *      the table returned by `debug.getinfo()`.
  */
 struct lulu_Debug {
-    const char *name;       /* variable name for this function. */
-    const char *name_what;  /* `Lua`, `C`, `main` */
-    const char *scope;      /* `global`, `local`, `field` */
-    const char *source;     /* file name where we originated from. */
-    int current_line;       /* line number at point of execution. */
-    int line_defined;       /* first line in source code (opt.) */
-    int last_line_defined;  /* last line in source code (opt.) */
+    const char *name;       /* (n) variable name for this function. */
+    const char *namewhat;   /* (n) `"global"`, `"local"`, `"field"` or `""` */
+    const char *what;       /* (S) `Lua`, `C`, `main` */
+    const char *source;     /* (S) file name where we originated from. */
+    int currentline;        /* (l) line number at point of calling.*/
+    int linedefined;        /* (S) first line in source code (opt.) */
+    int lastlinedefined;    /* (S) last line in source code (opt.) */
 
     /* private to implementation. No poking around! */
     int _cf_index;

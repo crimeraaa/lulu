@@ -43,7 +43,7 @@ _run_interactive(lulu_VM *vm)
             break;
         }
 
-        run(vm, "stdin", line, strcspn(line, "\r\n"));
+        run(vm, "=stdin", line, strcspn(line, "\r\n"));
     }
 }
 
@@ -96,7 +96,7 @@ static int
 _run_file(lulu_VM *vm, const char *file_name)
 {
     size_t script_size;
-    char *script = _read_file(file_name, &script_size);
+    char  *script = _read_file(file_name, &script_size);
     if (script == NULL) {
         return EXIT_FAILURE;
     }
@@ -110,8 +110,6 @@ typedef struct {
     int    argc;
     int    status;
 } Main_Data;
-
-#define count_of(array) (int)(sizeof(array) / sizeof((array)[0]))
 
 static int
 _protected_main(lulu_VM *vm, int argc)

@@ -261,7 +261,12 @@ vm_runtime_error(lulu_VM *vm, const char *fmt, ...)
         const Chunk *p = cf->to_lua();
         isize  pc   = ptr_index(p->code, vm->saved_ip) - 1;
         int    line = chunk_get_line(p, pc);
-        vm_push_fstring(vm, "%s:%i: ", p->source->to_cstring(), line);
+
+        const char *source = p->source->to_cstring();
+        if (source[0] == '=' || source[0] == '@') {
+            source++;
+        }
+        vm_push_fstring(vm, "%s:%i: ", source, line);
     } else {
         vm_push_string(vm, "[C]: "_s);
     }
@@ -321,7 +326,7 @@ vm_check_stack(lulu_VM *vm, int n)
 {
     isize stop = vm_top_absindex(vm) + cast_isize(n);
     if (stop >= count_of(vm->stack)) {
-        vm_runtime_error(vm, "Stack overflow: %" ISIZE_FMTSPEC " / %" ISIZE_FMTSPEC " stack slots used",
+        vm_runtime_error(vm, "Stack overflow: %" ISIZE_FMT " / %" ISIZE_FMT " stack slots used",
             stop, count_of(vm->stack));
     }
 }
@@ -515,12 +520,12 @@ vm_table_set(lulu_VM *vm, const Value *t, const Value *k, const Value &v)
     if (t->is_table()) {
         // `table_set` assumes that we never use `nil` as a key.
         if (k->is_nil()) {
-            debug_type_error(vm, "index using", k);
+            debug_type_error(vm, "set index using", k);
         }
         table_set(vm, t->to_table(), *k, v);
         return;
     }
-    debug_type_error(vm, "index", t);
+    debug_type_error(vm, "set index of", t);
 }
 
 enum Metamethod {
@@ -576,14 +581,13 @@ _compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *r
 void
 vm_execute(lulu_VM *vm, int n_calls)
 {
-    // Copy by value for speed.
-    Chunk              chunk  = *vm->caller->function->lua.chunk;
-    const Instruction *ip     = raw_data(chunk.code);
+    const Chunk       *chunk  = vm->caller->to_lua();
+    const Instruction *ip     = raw_data(chunk->code);
     Slice<Value>       window = vm->window;
 
 #define GET_RK(rk) (                                                           \
     Instruction::reg_is_k(rk)                                                  \
-        ? &chunk.constants[Instruction::reg_get_k(rk)]                         \
+        ? &chunk->constants[Instruction::reg_get_k(rk)]                         \
         : &window[rk]                                                          \
 )
 
@@ -617,7 +621,7 @@ vm_execute(lulu_VM *vm, int n_calls)
 #define COMPARE_OP(fn, mt)  BINARY_OP(fn, _compare, mt, COMPARE_RESULT)
 
 #ifdef LULU_DEBUG_TRACE_EXEC
-    int pad = debug_get_pad(&chunk);
+    int pad = debug_get_pad(chunk);
 #endif // LULU_DEBUG_TRACE_EXEC
 
     for (;;) {
@@ -626,26 +630,26 @@ vm_execute(lulu_VM *vm, int n_calls)
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.
-        isize pc = cast_isize(ptr_index(chunk.code, ip)) - 1;
+        isize pc = cast_isize(ptr_index(chunk->code, ip)) - 1;
 
         for (isize reg = 0, n = len(window); reg < n; reg++) {
-            printf("\t[%" ISIZE_FMTSPEC "]\t", reg);
+            printf("\t[%" ISIZE_FMT "]\t", reg);
             value_print(window[reg]);
 
-            const char *id = chunk_get_local(&chunk, cast_int(reg + 1), pc);
+            const char *id = chunk_get_local(chunk, cast_int(reg + 1), pc);
             if (id != nullptr) {
                 printf(" ; local %s", id);
             }
             printf("\n");
         }
         printf("\n");
-        debug_disassemble_at(&chunk, i, pc, pad);
+        debug_disassemble_at(chunk, i, pc, pad);
 #endif // LULU_DEBUG_TRACE_EXEC
 
         OpCode op = i.op();
         switch (op) {
         case OP_CONSTANT:
-            *ra = chunk.constants[i.bx()];
+            *ra = chunk->constants[i.bx()];
             break;
         case OP_NIL: {
             Value *rb  = &window[i.b()];
@@ -660,7 +664,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             }
             break;
         case OP_GET_GLOBAL: {
-            Value k = chunk.constants[i.bx()];
+            Value k = chunk->constants[i.bx()];
             Value v;
             if (!table_get(vm->globals.to_table(), k, &v)) {
                 const char *s = k.to_cstring();
@@ -671,7 +675,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_SET_GLOBAL: {
-            Value k = chunk.constants[i.bx()];
+            Value k = chunk->constants[i.bx()];
             _protect(vm, ip);
             table_set(vm, vm->globals.to_table(), k, *ra);
             break;
@@ -684,17 +688,18 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_GET_TABLE: {
-            Value *t = &window[i.b()];
-            Value *k = GET_RK(i.c());
+            u16 c = i.c();
+            const Value *t = &window[i.b()];
+            const Value *k = GET_RK(c);
             _protect(vm, ip);
             vm_table_get(vm, t, *k, ra);
             break;
         }
         case OP_SET_TABLE: {
-            u16    b = i.b();
-            u16    c = i.c();
-            Value *k = GET_RK(b);
-            Value *v = GET_RK(c);
+            u16 b = i.b();
+            u16 c = i.c();
+            const Value *k = GET_RK(b);
+            const Value *v = GET_RK(c);
             _protect(vm, ip);
             vm_table_set(vm, ra, k, *v);
             break;
@@ -711,11 +716,11 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_MOD: ARITH_OP(lulu_Number_mod, MT_MOD); break;
         case OP_POW: ARITH_OP(lulu_Number_pow, MT_POW); break;
         case OP_EQ: {
-            bool   cond = cast(bool)i.a();
-            u16    b    = i.b();
-            u16    c    = i.c();
-            Value  rkb  = *GET_RK(b);
-            Value  rkc  = *GET_RK(c);
+            bool  cond = cast(bool)i.a();
+            u16   b    = i.b();
+            u16   c    = i.c();
+            Value rkb  = *GET_RK(b);
+            Value rkc  = *GET_RK(c);
 
             _protect(vm, ip);
             if ((rkb == rkc) == cond) {

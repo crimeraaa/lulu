@@ -36,7 +36,7 @@ using isize = ptrdiff_t;
  */
 using usize = size_t;
 
-#define ISIZE_FMTSPEC       "ti"
+#define ISIZE_FMT           "ti"
 
 #define cast(T)             (T)
 #define cast_int(expr)      int(expr)
@@ -123,6 +123,9 @@ throw();
 #define lulu_assert(expr)               ((void)0)
 #define lulu_assertf(expr, fmt, ...)    ((void)0)
 #define lulu_assertln(expr, msg)        ((void)0)
+#define lulu_panic()                    ((void)0)
+#define lulu_panicf(fmt, ...)           ((void)0)
+#define lulu_panicln(msg)               ((void)0)
 
 #endif // LULU_DEBUG
 
