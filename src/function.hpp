@@ -25,7 +25,7 @@ LULU_FUNC Closure *
 closure_new(lulu_VM *vm, lulu_CFunction cf);
 
 LULU_FUNC Closure *
-closure_new(lulu_VM *vm, Chunk *c);
+closure_new(lulu_VM *vm, Chunk *p);
 
 LULU_FUNC inline bool
 closure_is_c(Closure *f)

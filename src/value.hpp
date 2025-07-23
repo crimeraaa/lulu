@@ -98,11 +98,11 @@ public:
 
     // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
-    make_chunk(Chunk *c)
+    make_chunk(Chunk *p)
     {
         Value v;
         v.m_type   = VALUE_CHUNK;
-        v.m_object = cast(Object *)c;
+        v.m_object = cast(Object *)p;
         return v;
     }
 

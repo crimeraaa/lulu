@@ -6,7 +6,7 @@
 
 
 Lexer
-lexer_make(lulu_VM *vm, const LString &source, const LString &script, Builder *b)
+lexer_make(lulu_VM *vm, OString *source, const LString &script, Builder *b)
 {
     Lexer x;
     x.vm      = vm;

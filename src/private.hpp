@@ -44,8 +44,8 @@ using usize = size_t;
 #define cast_usize(expr)    usize(expr)
 #define unused(expr)        (void)(expr)
 
-#define size_of(expr)   isize(sizeof(expr))
-#define count_of(array) isize(sizeof(array) / sizeof((array)[0]))
+#define size_of(expr)       isize(sizeof(expr))
+#define count_of(array)     isize(sizeof(array) / sizeof((array)[0]))
 
 #ifndef restrict
 
@@ -110,7 +110,7 @@ throw();
     lulu_assertf(expr, "%s", msg)
 
 #define lulu_panic() \
-    lulu_assert_fail(SOURCE_CODE_LOCATION, nullptr);
+    lulu_assert_fail(SOURCE_CODE_LOCATION, nullptr, nullptr);
 
 #define lulu_panicf(fmt, ...) \
     lulu_assert_fail(SOURCE_CODE_LOCATION, nullptr, fmt "\n", __VA_ARGS__)

@@ -20,7 +20,7 @@ LULU_FUNC void
 table_init(Table *t);
 
 LULU_FUNC bool
-table_get(Table *t, const Value &k, Value *out);
+table_get(Table *t, const Value &restrict k, Value *restrict out);
 
 LULU_FUNC void
 table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v);

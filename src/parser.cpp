@@ -108,7 +108,7 @@ recurse_pop(Parser *p)
 }
 
 static Parser
-_parser_make(lulu_VM *vm, const LString &source, const LString &script, Builder *b)
+_parser_make(lulu_VM *vm, OString *source, const LString &script, Builder *b)
 {
     Parser p;
     p.vm        = vm;
@@ -873,11 +873,10 @@ declaration(Parser *p, Compiler *c)
 }
 
 Chunk *
-parser_program(lulu_VM *vm, const LString &source, const LString &script,
-    Builder *b)
+parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b)
 {
     Table *t  = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
-    Chunk *ch = chunk_new(vm, ostring_new(vm, source));
+    Chunk *ch = chunk_new(vm, source);
 
     // Push chunk and table to stack so that they are not collected while we
     // are executing.

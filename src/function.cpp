@@ -12,11 +12,11 @@ closure_new(lulu_VM *vm, lulu_CFunction cf)
 }
 
 Closure *
-closure_new(lulu_VM *vm, Chunk *c)
+closure_new(lulu_VM *vm, Chunk *p)
 {
     Closure_Lua *f = object_new<Closure_Lua>(vm, &vm->objects, VALUE_FUNCTION);
     f->is_c     = false;
-    f->chunk    = c;
+    f->chunk    = p;
     f->n_params = 0;
     return cast(Closure *)f;
 }

@@ -42,7 +42,8 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Table *indexes,
 }
 
 void
-compiler_error_limit(Compiler *c, isize limit, const char *what, const Token *where)
+compiler_error_limit(Compiler *c, isize limit, const char *what,
+    const Token *where)
 {
     const char *who = (c->prev == nullptr) ? "script" : "function";
     char buf[128];
@@ -414,7 +415,7 @@ compiler_expr_rk(Compiler *c, Expr *e)
 //=== }}} ======================================================================
 
 static bool
-_arith_folded(OpCode op, Expr *left, const Expr *right)
+_arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
 {
     // At least one argument is not a number literal?
     if (left->type != EXPR_NUMBER || right->type != EXPR_NUMBER) {
@@ -452,7 +453,8 @@ _arith_folded(OpCode op, Expr *left, const Expr *right)
 }
 
 void
-compiler_code_arith(Compiler *c, OpCode op, Expr *left, Expr *right)
+compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
+    Expr *restrict right)
 {
     lulu_assert((OP_ADD <= op && op <= OP_POW) || op == OP_CONCAT);
     if (_arith_folded(op, left, right)) {
@@ -540,7 +542,7 @@ _expr_bool(Expr *e, bool b)
 }
 
 static bool
-_compare_folded(OpCode op, bool cond, Expr *left, Expr *right)
+_compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
 {
     bool result;
     if (op == OP_EQ) {
@@ -598,7 +600,8 @@ _compare_folded(OpCode op, bool cond, Expr *left, Expr *right)
 }
 
 void
-compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *left, Expr *right)
+compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
+    Expr *restrict right)
 {
     lulu_assert(OP_EQ <= op && op <= OP_LEQ);
     if (_compare_folded(op, cond, left, right)) {
@@ -628,7 +631,7 @@ compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *left, Expr *right
 }
 
 void
-compiler_code_concat(Compiler *c, Expr *left, Expr *right)
+compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right)
 {
     /**
      * @details 2025-06-22
@@ -657,7 +660,7 @@ compiler_code_concat(Compiler *c, Expr *left, Expr *right)
 }
 
 void
-compiler_set_variable(Compiler *c, Expr *var, Expr *expr)
+compiler_set_variable(Compiler *c, Expr *restrict var, Expr *restrict expr)
 {
     switch (var->type) {
     case EXPR_GLOBAL: {
@@ -728,7 +731,7 @@ compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg)
 }
 
 void
-compiler_get_table(Compiler *c, Expr *t, Expr *k)
+compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k)
 {
     u16 rkb = compiler_expr_rk(c, k);
     t->type           = EXPR_INDEXED;
@@ -959,7 +962,8 @@ compiler_logical_new(Compiler *c, Expr *left, bool cond)
 }
 
 void
-compiler_logical_patch(Compiler *c, Expr *left, Expr *right, bool cond)
+compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
+    bool cond)
 {
     _discharge_vars(c, right, right->line);
 

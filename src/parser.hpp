@@ -163,4 +163,4 @@ LULU_FUNC void
 parser_error_at(Parser *p, const Token *t, const char *msg);
 
 LULU_FUNC Chunk *
-parser_program(lulu_VM *vm, const LString &source, const LString &script, Builder *b);
+parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b);

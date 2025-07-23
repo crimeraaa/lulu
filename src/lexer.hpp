@@ -63,7 +63,8 @@ struct LULU_PRIVATE Token {
 struct LULU_PRIVATE Lexer {
     lulu_VM    *vm;
     Builder    *builder;
-    LString     source, script;
+    OString    *source;
+    LString     script;
     const char *start;
     const char *cursor;
     int         line;
@@ -75,7 +76,7 @@ LULU_DATA const LString
 token_strings[TOKEN_COUNT];
 
 LULU_FUNC Lexer
-lexer_make(lulu_VM *vm, const LString &source, const LString &script, Builder *b);
+lexer_make(lulu_VM *vm, OString *source, const LString &script, Builder *b);
 
 LULU_FUNC Token
 lexer_lex(Lexer *x);

@@ -5,11 +5,10 @@
 #include "vm.hpp"
 
 struct Args {
-    struct ABC {u16 b, c;};
-
-    u16 a;
+    isize pc;
+    u16 a, b;
     union {
-        ABC abc;
+        u16 c;
         u32 bx;
         i32 sbx;
     };
@@ -17,13 +16,13 @@ struct Args {
 
 [[gnu::format(printf, 4, 5)]]
 static void
-_print_reg(const Chunk *c, u16 reg, isize pc, const char *fmt = nullptr, ...)
+_print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
 {
     if (Instruction::reg_is_k(reg)) {
         u32 i = Instruction::reg_get_k(reg);
-        value_print(c->constants[i]);
+        value_print(p->constants[i]);
     } else {
-        const char *id = chunk_get_local(c, cast_int(reg + 1), pc);
+        const char *id = chunk_get_local(p, cast_int(reg + 1), pc);
         if (id != nullptr) {
             printf("local %s", id);
         } else {
@@ -40,18 +39,20 @@ _print_reg(const Chunk *c, u16 reg, isize pc, const char *fmt = nullptr, ...)
 }
 
 static void
-_unary(const Chunk *c, const char *op, Args args, isize pc)
+_unary(const Chunk *p, const char *op, const Args &args)
 {
-    _print_reg(c, args.a, pc, " := %s", op);
-    _print_reg(c, args.abc.b, pc);
+    isize pc = args.pc;
+    _print_reg(p, args.a, pc, " := %s", op);
+    _print_reg(p, args.b, pc);
 }
 
 static void
-_arith(const Chunk *c, char op, Args args, isize pc)
+_arith(const Chunk *p, char op, const Args &args)
 {
-    _print_reg(c, args.a, pc, " := ");
-    _print_reg(c, args.abc.b, pc, " %c ", op);
-    _print_reg(c, args.abc.c, pc);
+    isize pc = args.pc;
+    _print_reg(p, args.a, pc, " := ");
+    _print_reg(p, args.b, pc, " %c ", op);
+    _print_reg(p, args.c, pc);
 }
 
 static isize
@@ -63,20 +64,21 @@ _jump_to(isize pc, i32 offset)
 }
 
 static isize
-_jump_get(const Chunk *c, isize jump_pc)
+_jump_get(const Chunk *p, isize jump_pc)
 {
-    Instruction i = c->code[jump_pc];
+    Instruction i = p->code[jump_pc];
     lulu_assert(i.op() == OP_JUMP);
     return _jump_to(jump_pc, i.sbx());
 }
 
 static void
-_compare(const Chunk *c, const char *op, Args args, isize pc)
+_compare(const Chunk *p, const char *op, const Args &args)
 {
-    _print_reg(c, args.abc.b, pc, " %s ", op);
-    _print_reg(c, args.abc.c, pc,
+    isize pc = args.pc;
+    _print_reg(p, args.b, pc, " %s ", op);
+    _print_reg(p, args.c, pc,
         " ; goto .code[%" ISIZE_FMT " if %s else %" ISIZE_FMT "]",
-        _jump_to(pc, 1), (args.a) ? "false" : "true", _jump_get(c, pc + 1));
+        _jump_to(pc, 1), (args.a) ? "false" : "true", _jump_get(p, pc + 1));
 }
 
 static int
@@ -91,29 +93,30 @@ _count_digits(isize n)
 }
 
 int
-debug_get_pad(const Chunk *c)
+debug_get_pad(const Chunk *p)
 {
     // Should be impossible, but just in case
-    if (len(c->code) == 0) {
+    if (len(p->code) == 0) {
         return 1;
     }
-    return _count_digits(len(c->code) - 1);
+    return _count_digits(len(p->code) - 1);
 }
 
 // 4 spaces plus an extra one to separate messages.
 #define PAD4 "     "
 
 void
-debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
+debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
 {
     Args   args;
     OpCode op = ip.op();
-    args.a = ip.a();
+    args.pc = pc;
+    args.a  = ip.a();
     printf("[%0*" ISIZE_FMT "] ", pad, pc);
 
-    int line = chunk_get_line(c, pc);
+    int line = chunk_get_line(p, pc);
     // Have a previous line and it's the same as ours?
-    if (pc > 0 && chunk_get_line(c, pc - 1) == line) {
+    if (pc > 0 && chunk_get_line(p, pc - 1) == line) {
         printf("   | ");
     } else {
         printf("%4i ", line);
@@ -122,18 +125,18 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     printf("%-16s ", opnames[op]);
     switch (opinfo[op].fmt()) {
     case OPFORMAT_ABC:
-        args.abc.b = ip.b();
-        args.abc.c = ip.c();
+        args.b = ip.b();
+        args.c = ip.c();
         printf("%-4u ", args.a);
 
         if (opinfo[op].b() != OPARG_UNUSED) {
-            printf("%-4u ", args.abc.b);
+            printf("%-4u ", args.b);
         } else {
             printf(PAD4);
         }
 
         if (opinfo[op].c() != OPARG_UNUSED) {
-            printf("%-4u ; ", args.abc.c);
+            printf("%-4u ; ", args.c);
         } else {
             printf(PAD4 "; ");
         }
@@ -152,80 +155,80 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
     switch (op) {
     case OP_CONSTANT:
         printf("R(%u) := ", args.a);
-        value_print(c->constants[args.bx]);
+        value_print(p->constants[args.bx]);
         break;
     case OP_NIL:
-        if (args.a == args.abc.b) {
+        if (args.a == args.b) {
             printf("R(%u) := nil", args.a);
         } else {
-            printf("R(%u:%u) := nil", args.a, args.abc.b + 1);
+            printf("R(%u:%u) := nil", args.a, args.b + 1);
         }
         break;
     case OP_BOOL:
-        _print_reg(c, args.a, pc, " := %s", (args.abc.b) ? "true" : "false");
-        if (args.abc.c) {
+        _print_reg(p, args.a, pc, " := %s", (args.b) ? "true" : "false");
+        if (args.c) {
             printf("; goto .code[%" ISIZE_FMT "]", _jump_to(pc, 1));
         }
         break;
     case OP_GET_GLOBAL:
-        _print_reg(c, args.a, pc, " := ");
-        value_print(c->constants[args.bx]);
+        _print_reg(p, args.a, pc, " := ");
+        value_print(p->constants[args.bx]);
         break;
 
     case OP_SET_GLOBAL: {
-        OString *s = c->constants[args.bx].to_ostring();
+        OString *s = p->constants[args.bx].to_ostring();
         char     q = (s->len == 1) ? '\'' : '\"';
         printf("_G[%c%s%c] := ", q, s->to_cstring(), q);
-        _print_reg(c, args.a, pc);
+        _print_reg(p, args.a, pc);
         break;
     }
     case OP_NEW_TABLE: {
-        _print_reg(c, args.a, pc, " := {}; #hash = %u, #array = %u", args.abc.b, args.abc.c);
+        _print_reg(p, args.a, pc, " := {}; #hash = %u, #array = %u", args.b, args.c);
         break;
     }
     case OP_GET_TABLE: {
-        _print_reg(c, args.a, pc, " := ");
-        _print_reg(c, args.abc.b, pc, "[");
-        _print_reg(c, args.abc.c, pc, "]");
+        _print_reg(p, args.a, pc, " := ");
+        _print_reg(p, args.b, pc, "[");
+        _print_reg(p, args.c, pc, "]");
         break;
     }
     case OP_SET_TABLE: {
-        _print_reg(c, args.a, pc, "[");
-        _print_reg(c, args.abc.b, pc, "] := ");
-        _print_reg(c, args.abc.c, pc);
+        _print_reg(p, args.a, pc, "[");
+        _print_reg(p, args.b, pc, "] := ");
+        _print_reg(p, args.c, pc);
         break;
     }
     case OP_MOVE:
-        _print_reg(c, args.a, pc, " := ");
-        _print_reg(c, args.abc.b, pc);
+        _print_reg(p, args.a, pc, " := ");
+        _print_reg(p, args.b, pc);
         break;
-    case OP_ADD: _arith(c, '+', args, pc); break;
-    case OP_SUB: _arith(c, '-', args, pc); break;
-    case OP_MUL: _arith(c, '*', args, pc); break;
-    case OP_DIV: _arith(c, '/', args, pc); break;
-    case OP_MOD: _arith(c, '%', args, pc); break;
-    case OP_POW: _arith(c, '^', args, pc); break;
-    case OP_EQ:  _compare(c, "==", args, pc); break;
-    case OP_LT:  _compare(c, "<",  args, pc); break;
-    case OP_LEQ: _compare(c, "<=", args, pc); break;
-    case OP_UNM: _unary(c, "-", args, pc); break;
-    case OP_NOT: _unary(c, "not ", args, pc); break;
-    case OP_LEN: _unary(c, "#", args, pc); break;
+    case OP_ADD: _arith(p, '+', args); break;
+    case OP_SUB: _arith(p, '-', args); break;
+    case OP_MUL: _arith(p, '*', args); break;
+    case OP_DIV: _arith(p, '/', args); break;
+    case OP_MOD: _arith(p, '%', args); break;
+    case OP_POW: _arith(p, '^', args); break;
+    case OP_EQ:  _compare(p, "==", args); break;
+    case OP_LT:  _compare(p, "<",  args); break;
+    case OP_LEQ: _compare(p, "<=", args); break;
+    case OP_UNM: _unary(p, "-", args); break;
+    case OP_NOT: _unary(p, "not ", args); break;
+    case OP_LEN: _unary(p, "#", args); break;
     case OP_CONCAT:
-        _print_reg(c, args.a, pc, " := concat(R(%u:%u))", args.abc.b, args.abc.c + 1);
+        _print_reg(p, args.a, pc, " := concat(R(%u:%u))", args.b, args.c + 1);
         break;
     case OP_TEST: {
-        printf("goto .code[%" ISIZE_FMT " if %s", _jump_to(pc, 1), (args.abc.c) ? "not " : "");
-        _print_reg(c, args.a, pc, " else %" ISIZE_FMT "]", _jump_get(c, pc + 1));
+        printf("goto .code[%" ISIZE_FMT " if %s", _jump_to(pc, 1), (args.c) ? "not " : "");
+        _print_reg(p, args.a, pc, " else %" ISIZE_FMT "]", _jump_get(p, pc + 1));
         break;
     }
     case OP_TEST_SET: {
-        printf("if %s", (args.abc.c) ? "" : "not ");
-        _print_reg(c, args.abc.b, pc, " then ");
-        _print_reg(c, args.a, pc, " := ");
-        _print_reg(c, args.abc.b, pc,
+        printf("if %s", (args.c) ? "" : "not ");
+        _print_reg(p, args.b, pc, " then ");
+        _print_reg(p, args.a, pc, " := ");
+        _print_reg(p, args.b, pc,
             "; goto .code[%" ISIZE_FMT "]; else goto .code[%" ISIZE_FMT "]",
-            _jump_get(c, pc + 1),
+            _jump_get(p, pc + 1),
             _jump_to(pc, 1));
         break;
     }
@@ -235,8 +238,8 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         break;
     }
     case OP_CALL: {
-        u16 argc = args.abc.b;
-        u16 retc = args.abc.c;
+        u16 argc = args.b;
+        u16 retc = args.c;
 
         u16 last_ret = args.a + retc;
         if (retc == VARARG) {
@@ -258,7 +261,7 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
         break;
     }
     case OP_RETURN:
-        printf("return R(%u:%u)", args.a, args.a + args.abc.b);
+        printf("return R(%u:%u)", args.a, args.a + args.b);
         break;
     }
 
@@ -266,36 +269,36 @@ debug_disassemble_at(const Chunk *c, Instruction ip, isize pc, int pad)
 }
 
 void
-debug_disassemble(const Chunk *c)
+debug_disassemble(const Chunk *p)
 {
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
-    printf(".stack_used:\n%i\n\n", c->stack_used);
-    if (len(c->locals) > 0) {
-        int pad = _count_digits(len(c->locals));
+    printf(".stack_used:\n%i\n\n", p->stack_used);
+    if (len(p->locals) > 0) {
+        int pad = _count_digits(len(p->locals));
         printf(".local:\n");
-        for (isize i = 0, n = len(c->locals); i < n; i++) {
-            const char *id = c->locals[i].identifier->to_cstring();
+        for (isize i = 0, n = len(p->locals); i < n; i++) {
+            const char *id = p->locals[i].identifier->to_cstring();
             printf("[%.*" ISIZE_FMT "] '%s': start=%" ISIZE_FMT ", end=%" ISIZE_FMT "\n",
-                pad, i, id, c->locals[i].start_pc, c->locals[i].end_pc);
+                pad, i, id, p->locals[i].start_pc, p->locals[i].end_pc);
         }
         printf("\n");
     }
 
-    if (len(c->constants) > 0) {
-        int pad = _count_digits(len(c->constants));
+    if (len(p->constants) > 0) {
+        int pad = _count_digits(len(p->constants));
         printf(".const:\n");
-        for (isize i = 0, n = len(c->constants); i < n; i++) {
+        for (isize i = 0, n = len(p->constants); i < n; i++) {
             printf("[%.*" ISIZE_FMT "] ", pad, i);
-            value_print(c->constants[i]);
+            value_print(p->constants[i]);
             printf("\n");
         }
         printf("\n");
     }
 
     printf(".code:\n");
-    int pad = debug_get_pad(c);
-    for (isize i = 0, n = len(c->code); i < n; i++) {
-        debug_disassemble_at(c, c->code[i], i, pad);
+    int pad = debug_get_pad(p);
+    for (isize i = 0, n = len(p->code); i < n; i++) {
+        debug_disassemble_at(p, p->code[i], i, pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");
 }
@@ -377,11 +380,11 @@ _get_variable_ip(const Chunk *p, isize target_pc, int reg)
 }
 
 static const char *
-_get_rk_name(const Chunk *c, u16 regk)
+_get_rk_name(const Chunk *p, u16 regk)
 {
     if (Instruction::reg_is_k(regk)) {
         u32   i = Instruction::reg_get_k(regk);
-        Value v = c->constants[i];
+        Value v = p->constants[i];
         if (v.is_string()) {
             return v.to_cstring();
         }
@@ -408,9 +411,9 @@ _get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
         Instruction i = _get_variable_ip(p, pc, reg);
         switch (i.op()) {
         case OP_GET_GLOBAL: {
-            u32 g = i.bx();
-            lulu_assert(p->constants[g].is_string());
-            *id = p->constants[g].to_cstring();
+            Value k = p->constants[i.bx()];
+            lulu_assert(k.is_string());
+            *id = k.to_cstring();
             return "global";
         }
         case OP_GET_TABLE: {

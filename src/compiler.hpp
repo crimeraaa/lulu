@@ -38,11 +38,13 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Table *indexes,
 
 [[noreturn]]
 LULU_FUNC void
-compiler_error_limit(Compiler *c, isize limit, const char *what, const Token *where);
+compiler_error_limit(Compiler *c, isize limit, const char *what,
+    const Token *where);
 
 template<class T>
 LULU_FUNC inline void
-compiler_check_limit(Compiler *c, T count, T limit, const char *what, const Token *where = nullptr)
+compiler_check_limit(Compiler *c, T count, T limit, const char *what,
+    const Token *where = nullptr)
 {
     if (count > limit) {
         if (where == nullptr) {
@@ -160,16 +162,18 @@ compiler_expr_any_reg(Compiler *c, Expr *e);
  *          `c.free_reg` is now `0`.
  */
 LULU_FUNC void
-compiler_code_arith(Compiler *c, OpCode op, Expr *left, Expr *right);
+compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
+    Expr *restrict right);
 
 LULU_FUNC void
 compiler_code_unary(Compiler *c, OpCode op, Expr *e);
 
 LULU_FUNC void
-compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *left, Expr *right);
+compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
+    Expr *restrict right);
 
 LULU_FUNC void
-compiler_code_concat(Compiler *c, Expr *left, Expr *right);
+compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right);
 
 LULU_FUNC void
 compiler_code_return(Compiler *c, u16 reg, u16 count, bool is_vararg, int line);
@@ -182,7 +186,7 @@ compiler_code_return(Compiler *c, u16 reg, u16 count, bool is_vararg, int line);
  *      in Lua 5.1.5.
  */
 LULU_FUNC void
-compiler_set_variable(Compiler *c, Expr *var, Expr *expr);
+compiler_set_variable(Compiler *c, Expr *restrict var, Expr *restrict expr);
 
 
 // Does not convert `call` to `EXPR_DISCHARGED`.
@@ -220,7 +224,7 @@ LULU_FUNC bool
 compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg);
 
 LULU_FUNC void
-compiler_get_table(Compiler *c, Expr *t, Expr *k);
+compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k);
 
 
 /**
@@ -245,7 +249,8 @@ LULU_FUNC void
 compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
 
 LULU_FUNC void
-compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP, u16 reg = NO_REG);
+compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP,
+    u16 reg = NO_REG);
 
 
 /**
@@ -273,4 +278,5 @@ LULU_FUNC void
 compiler_logical_new(Compiler *c, Expr *left, bool cond);
 
 LULU_FUNC void
-compiler_logical_patch(Compiler *c, Expr *left, Expr *right, bool cond);
+compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
+    bool cond);

@@ -8,26 +8,26 @@
 Chunk *
 chunk_new(lulu_VM *vm, OString *source)
 {
-    Chunk *c = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
+    Chunk *p = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
     // Because `c` is heap-allocated, we must explicitly 'construct' the members.
-    dynamic_init(&c->constants);
-    dynamic_init(&c->code);
-    dynamic_init(&c->lines);
-    dynamic_init(&c->locals);
-    c->source     = source;
-    c->line_defined = 0;
-    c->last_line_defined  = 0;
-    c->stack_used = 2; // R(0) and R(1) must always be valid.
-    return c;
+    dynamic_init(&p->constants);
+    dynamic_init(&p->code);
+    dynamic_init(&p->lines);
+    dynamic_init(&p->locals);
+    p->source     = source;
+    p->line_defined = 0;
+    p->last_line_defined  = 0;
+    p->stack_used = 2; // R(0) and R(1) must always be valid.
+    return p;
 }
 
 static void
-add_line(lulu_VM *vm, Chunk *c, isize pc, int line)
+add_line(lulu_VM *vm, Chunk *p, isize pc, int line)
 {
     // Have previous lines to go to?
-    isize n = len(c->lines);
+    isize n = len(p->lines);
     if (n > 0) {
-        Line_Info *last = &c->lines[n - 1];
+        Line_Info *last = &p->lines[n - 1];
         if (last->line == line) {
             // Make sure `pc` is in range and will update things correctly.
             lulu_assertf(last->start_pc <= pc,
@@ -45,31 +45,31 @@ add_line(lulu_VM *vm, Chunk *c, isize pc, int line)
     }
 
     Line_Info start{line, pc, pc};
-    dynamic_push(vm, &c->lines, start);
+    dynamic_push(vm, &p->lines, start);
 }
 
 isize
-chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line)
+chunk_append(lulu_VM *vm, Chunk *p, Instruction i, int line)
 {
-    isize pc = len(c->code);
-    dynamic_push(vm, &c->code, i);
-    add_line(vm, c, pc, line);
+    isize pc = len(p->code);
+    dynamic_push(vm, &p->code, i);
+    add_line(vm, p, pc, line);
     return pc;
 }
 
 int
-chunk_get_line(const Chunk *c, isize pc)
+chunk_get_line(const Chunk *p, isize pc)
 {
     // Binary search
     isize left  = 0;
-    isize right = len(c->lines);
+    isize right = len(p->lines);
     // left <= right would otherwise pass, yet index 0 is invalid!
     if (right == 0) {
         return NO_LINE;
     }
     while (left <= right) {
         isize     i    = (left + right) / 2;
-        Line_Info info = c->lines[i];
+        Line_Info info = p->lines[i];
         if (info.start_pc > pc) {
             // Current range is greater, ignore this right half.
             right = i - 1;
@@ -84,31 +84,31 @@ chunk_get_line(const Chunk *c, isize pc)
 }
 
 u32
-chunk_add_constant(lulu_VM *vm, Chunk *c, const Value &v)
+chunk_add_constant(lulu_VM *vm, Chunk *p, const Value &v)
 {
-    lulu_Integer i = len(c->constants);
-    dynamic_push(vm, &c->constants, v);
+    lulu_Integer i = len(p->constants);
+    dynamic_push(vm, &p->constants, v);
     return cast(u32)i;
 }
 
 isize
-chunk_add_local(lulu_VM *vm, Chunk *c, OString *id)
+chunk_add_local(lulu_VM *vm, Chunk *p, OString *id)
 {
     Local local;
     local.identifier = id;
     local.start_pc   = 0;
     local.end_pc     = 0;
 
-    isize i = len(c->locals);
-    dynamic_push(vm, &c->locals, local);
+    isize i = len(p->locals);
+    dynamic_push(vm, &p->locals, local);
     return i;
 }
 
 const char *
-chunk_get_local(const Chunk *c, int local_number, isize pc)
+chunk_get_local(const Chunk *p, int local_number, isize pc)
 {
     int counter = local_number;
-    for (Local local : c->locals) {
+    for (Local local : p->locals) {
         // nth local cannot possible be active at this point, and we assume
         // that all succeeding locals won't be either.
         if (local.start_pc > pc) {

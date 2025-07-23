@@ -43,7 +43,7 @@ _run_interactive(lulu_VM *vm)
             break;
         }
 
-        run(vm, "=stdin", line, strcspn(line, "\r\n"));
+        run(vm, "stdin", line, strcspn(line, "\r\n"));
     }
 }
 

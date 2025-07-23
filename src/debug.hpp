@@ -3,13 +3,13 @@
 #include "chunk.hpp"
 
 LULU_FUNC void
-debug_disassemble(const Chunk *c);
+debug_disassemble(const Chunk *p);
 
 LULU_FUNC int
-debug_get_pad(const Chunk *c);
+debug_get_pad(const Chunk *p);
 
 LULU_FUNC void
-debug_disassemble_at(const Chunk *c, Instruction ip, isize index, int pad);
+debug_disassemble_at(const Chunk *p, Instruction ip, isize index, int pad);
 
 [[noreturn]]
 LULU_FUNC void

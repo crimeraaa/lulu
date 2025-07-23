@@ -6,7 +6,7 @@
 #include "parser.hpp"
 
 isize
-vm_absindex(lulu_VM *vm, Value *v)
+vm_absindex(lulu_VM *vm, const Value *v)
 {
     return ptr_index(vm->stack, v);
 }
@@ -238,17 +238,16 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 }
 
 void
-vm_syntax_error(lulu_VM *vm, const LString &source, int line, const char *fmt, ...)
+vm_syntax_error(lulu_VM *vm, OString *source, int line, const char *fmt, ...)
 {
     va_list args;
-    vm_push_string(vm, source);
-    vm_push_fstring(vm, ":%i: ", line);
+    vm_push_fstring(vm, "%s:%i: ", source->to_cstring(), line);
 
     va_start(args, fmt);
     vm_push_vfstring(vm, fmt, args);
     va_end(args);
 
-    lulu_concat(vm, 3);
+    lulu_concat(vm, 2);
 
     vm_throw(vm, LULU_ERROR_SYNTAX);
 }
@@ -261,12 +260,7 @@ vm_runtime_error(lulu_VM *vm, const char *fmt, ...)
         const Chunk *p = cf->to_lua();
         isize  pc   = ptr_index(p->code, vm->saved_ip) - 1;
         int    line = chunk_get_line(p, pc);
-
-        const char *source = p->source->to_cstring();
-        if (source[0] == '=' || source[0] == '@') {
-            source++;
-        }
-        vm_push_fstring(vm, "%s:%i: ", source, line);
+        vm_push_fstring(vm, "%s:%i: ", p->source->to_cstring(), line);
     } else {
         vm_push_string(vm, "[C]: "_s);
     }
@@ -289,9 +283,11 @@ struct LULU_PRIVATE Load_Data {
 static void
 _load(lulu_VM *vm, void *user_ptr)
 {
-    Load_Data *d = cast(Load_Data *)(user_ptr);
-    Chunk     *c = parser_program(vm, d->source, d->script, &d->builder);
-    Closure   *f = closure_new(vm, c);
+    Load_Data *d      = cast(Load_Data *)(user_ptr);
+    OString   *source = ostring_new(vm, d->source);
+
+    Chunk   *p = parser_program(vm, source, d->script, &d->builder);
+    Closure *f = closure_new(vm, p);
     vm_push(vm, Value::make_function(f));
 }
 
@@ -587,7 +583,7 @@ vm_execute(lulu_VM *vm, int n_calls)
 
 #define GET_RK(rk) (                                                           \
     Instruction::reg_is_k(rk)                                                  \
-        ? &chunk->constants[Instruction::reg_get_k(rk)]                         \
+        ? &chunk->constants[Instruction::reg_get_k(rk)]                        \
         : &window[rk]                                                          \
 )
 

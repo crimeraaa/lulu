@@ -17,12 +17,12 @@ object_free(lulu_VM *vm, Object *o)
         break;
     }
     case VALUE_CHUNK: {
-        Chunk *c = &o->chunk;
-        dynamic_delete(vm, &c->constants);
-        dynamic_delete(vm, &c->code);
-        dynamic_delete(vm, &c->lines);
-        dynamic_delete(vm, &c->locals);
-        mem_free(vm, c);
+        Chunk *p = &o->chunk;
+        dynamic_delete(vm, &p->constants);
+        dynamic_delete(vm, &p->code);
+        dynamic_delete(vm, &p->lines);
+        dynamic_delete(vm, &p->locals);
+        mem_free(vm, p);
         break;
     }
     case VALUE_FUNCTION: {

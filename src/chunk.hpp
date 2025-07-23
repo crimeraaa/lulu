@@ -38,10 +38,10 @@ LULU_FUNC Chunk *
 chunk_new(lulu_VM *vm, OString *source);
 
 LULU_FUNC isize
-chunk_append(lulu_VM *vm, Chunk *c, Instruction i, int line);
+chunk_append(lulu_VM *vm, Chunk *p, Instruction i, int line);
 
 LULU_FUNC int
-chunk_get_line(const Chunk *c, isize pc);
+chunk_get_line(const Chunk *p, isize pc);
 
 
 /**
@@ -52,10 +52,10 @@ chunk_get_line(const Chunk *c, isize pc);
  *      The index of `v` in the constants array.
  */
 LULU_FUNC u32
-chunk_add_constant(lulu_VM *vm, Chunk *c, const Value &v);
+chunk_add_constant(lulu_VM *vm, Chunk *p, const Value &v);
 
 LULU_FUNC isize
-chunk_add_local(lulu_VM *vm, Chunk *c, OString *id);
+chunk_add_local(lulu_VM *vm, Chunk *p, OString *id);
 
 
 /**
@@ -66,4 +66,4 @@ chunk_add_local(lulu_VM *vm, Chunk *c, OString *id);
  *      The index of the instruction where `local_number` is valid.
  */
 LULU_FUNC const char *
-chunk_get_local(const Chunk *c, int local_number, isize pc);
+chunk_get_local(const Chunk *p, int local_number, isize pc);

@@ -96,7 +96,7 @@ _find_entry(Slice<Entry> entries, const Value &k)
 }
 
 bool
-table_get(Table *t, const Value &k, Value *out)
+table_get(Table *t, const Value &restrict k, Value *restrict out)
 {
     if (t->count > 0) {
         Entry *e = _find_entry(t->entries, k);
