@@ -33,7 +33,7 @@ run(lulu_VM *vm, const char *source, const char *script, size_t n)
 }
 
 static void
-_run_interactive(lulu_VM *vm)
+run_interactive(lulu_VM *vm)
 {
     char line[512];
     for (;;) {
@@ -48,7 +48,7 @@ _run_interactive(lulu_VM *vm)
 }
 
 static char *
-_read_file(const char *file_name, size_t *n)
+read_file(const char *file_name, size_t *n)
 {
     FILE    *file_ptr  = fopen(file_name, "rb+");
     char    *data      = NULL;
@@ -93,10 +93,10 @@ cleanup_file:
 }
 
 static int
-_run_file(lulu_VM *vm, const char *file_name)
+run_file(lulu_VM *vm, const char *file_name)
 {
     size_t script_size;
-    char  *script = _read_file(file_name, &script_size);
+    char  *script = read_file(file_name, &script_size);
     if (script == NULL) {
         return EXIT_FAILURE;
     }
@@ -112,7 +112,7 @@ typedef struct {
 } Main_Data;
 
 static int
-_protected_main(lulu_VM *vm, int argc)
+protected_main(lulu_VM *vm, int argc)
 {
     Main_Data *d;
     (void)argc;
@@ -122,10 +122,10 @@ _protected_main(lulu_VM *vm, int argc)
     lulu_set_top(vm, 0);
     switch (d->argc) {
     case 1:
-        _run_interactive(vm);
+        run_interactive(vm);
         break;
     case 2:
-        d->status = _run_file(vm, d->argv[1]);
+        d->status = run_file(vm, d->argv[1]);
         break;
     default:
         fprintf(stderr, "Usage: %s [script]\n", d->argv[0]);
@@ -136,7 +136,7 @@ _protected_main(lulu_VM *vm, int argc)
 }
 
 static void *
-_c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
+c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
 {
     (void)user_data;
     (void)old_size;
@@ -157,13 +157,13 @@ int main(int argc, char *argv[])
     d.argc   = argc;
     d.status = EXIT_SUCCESS;
 
-    vm = lulu_open(_c_allocator, NULL);
+    vm = lulu_open(c_allocator, NULL);
     if (vm == NULL) {
         fprintf(stderr, "Failed to allocate memory for lulu\n");
         return 2;
     }
 
-    e = lulu_c_pcall(vm, _protected_main, &d);
+    e = lulu_c_pcall(vm, protected_main, &d);
     lulu_close(vm);
     if (e == LULU_OK && d.status == EXIT_SUCCESS) {
         return EXIT_SUCCESS;

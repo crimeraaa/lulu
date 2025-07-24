@@ -303,7 +303,7 @@ public:
     to_pointer() const;
 };
 
-constexpr Value
+constexpr inline Value
 nil{};
 
 LULU_FUNC void

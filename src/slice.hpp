@@ -44,6 +44,13 @@ slice(Slice<T> &s)
     return {raw_data(s), len(s)};
 }
 
+template<class T>
+LULU_FUNC constexpr Slice<const T>
+slice_const(const Slice<T> &s)
+{
+    return {raw_data(s), len(s)};
+}
+
 // Similar to `slice[:]` in Odin and `list[:]` in Python.
 template<class T>
 LULU_FUNC inline Slice<T>

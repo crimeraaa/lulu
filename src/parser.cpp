@@ -108,7 +108,7 @@ recurse_pop(Parser *p)
 }
 
 static Parser
-_parser_make(lulu_VM *vm, OString *source, const LString &script, Builder *b)
+parser_make(lulu_VM *vm, OString *source, const LString &script, Builder *b)
 {
     Parser p;
     p.vm        = vm;
@@ -883,7 +883,7 @@ parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b)
     vm_push(vm, Value::make_chunk(ch));
     vm_push(vm, Value::make_table(t));
 
-    Parser   p = _parser_make(vm, source, script, b);
+    Parser   p = parser_make(vm, source, script, b);
     Compiler c = compiler_make(vm, &p, ch, t);
     // Set up first token
     advance(&p);

@@ -228,71 +228,11 @@ lulu_type_name(lulu_VM *vm, lulu_Type t);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is `none` else `0`.
- *
- * @note(2025-07-19)
- *
- *  -   Only indexes outside the current stack frame are type `none`. Only
- *      C functions can see them because of their unsafe capability to request
- *      any stack index.
- */
-LULU_API int
-lulu_is_none(lulu_VM *vm, int i);
-
-
-/**
- * @return
- *  -   `1` if the value at relative stack index `i` is `nil`, else `0`.
- *
- * @note(2025-07-19)
- *
- *  -   For C functions called from Lua, since function arity (parameter count)
- *      is not known beforehand, arguments are not default-initalized to `nil`
- *      if not provided as the implementation has no way of knowing how many
- *      arguments you wanted.
- *
- *  -   Thus, to check for arguments that were not provided at all from a Lua
- *      function, use `lulu_is_none()`.
- *
- *  -   C functions called from C (as in `lulu_pcall()`) do know how many
- *      arguments to expect because they were explicitly passed.
- */
-LULU_API int
-lulu_is_nil(lulu_VM *vm, int i);
-
-
-/**
- * @return
- *  -   `1` if the value at relative stack index `i` is a `boolean`, else `0`.
- */
-LULU_API int
-lulu_is_boolean(lulu_VM *vm, int i);
-
-
-/**
- * @return
  *  -   `1` if the value at relative stack index `i` is a `number` or a
  *      `string` which represents a valid number, or else `0`.
  */
 LULU_API int
 lulu_is_number(lulu_VM *vm, int i);
-
-
-/**
- * @return
- *  -   `1` if the value at relative stack index `i` is a `userdata`, else `0`.
- *
- * @note(2025-07-20)
- *
- *  -   `userdata` are generally safe to cast to pointers of some type `T`.
- *      A good example is the callback function of `lulu_c_pcall()`, whose
- *      1 and only argument is the userdata to be used.
- *
- *  -   Of course, the safety of casting to and from `void *` cannot be
- *      guaranteed by your compiler, much less `lulu`.
- */
-LULU_API int
-lulu_is_userdata(lulu_VM *vm, int i);
 
 
 /**
@@ -310,22 +250,6 @@ lulu_is_userdata(lulu_VM *vm, int i);
  */
 LULU_API int
 lulu_is_string(lulu_VM *vm, int i);
-
-
-/**
- * @return
- *  -   `1` if the value at relative stack index `i` is a `table`, else `0`.
- */
-LULU_API int
-lulu_is_table(lulu_VM *vm, int i);
-
-
-/**
- * @return
- *  -   `1` if the value at relative stack index `i` is a `function`, else `0`.
- */
-LULU_API int
-lulu_is_function(lulu_VM *vm, int i);
 
 
 /**
@@ -738,6 +662,85 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 
 /** HELPER MACROS ======================================================= {{{ */
+
+
+/**
+ * @return
+ *  -   `1` if the value at relative stack index `i` is `nil`, else `0`.
+ *
+ * @note(2025-07-19)
+ *
+ *  -   For C functions called from Lua, since function arity (parameter count)
+ *      is not known beforehand, arguments are not default-initalized to `nil`
+ *      if not provided as the implementation has no way of knowing how many
+ *      arguments you wanted.
+ *
+ *  -   Thus, to check for arguments that were not provided at all from a Lua
+ *      function, use `lulu_is_none()`.
+ *
+ *  -   C functions called from C (as in `lulu_pcall()`) do know how many
+ *      arguments to expect because they were explicitly passed.
+ */
+#define lulu_is_nil(vm, i)          (lulu_type(vm, i) == LULU_TYPE_NIL)
+
+
+/**
+ * @return
+ *  -   `1` if the value at relative stack index `i` is `none` else `0`.
+ *
+ * @note(2025-07-19)
+ *
+ *  -   Only indexes outside the current stack frame are type `none`. Only
+ *      C functions can see them because of their unsafe capability to request
+ *      any stack index.
+ */
+#define lulu_is_none(vm, i)         (lulu_type(vm, i) == LULU_TYPE_NONE)
+
+
+/**
+ * @return
+ *      `1` if the value at relative stack index `i` is `none` or `nil`,
+ *      else `0`.
+ */
+#define lulu_is_none_or_nil(vm, i)  (lulu_type(vm, i) <= LULU_TYPE_NIL)
+
+
+/**
+ * @return
+ *  -   `1` if the value at relative stack index `i` is a `boolean`, else `0`.
+ */
+#define lulu_is_boolean(vm, i)      (lulu_type(vm, i) == LULU_TYPE_BOOLEAN)
+
+
+/**
+ * @return
+ *  -   `1` if the value at relative stack index `i` is a `userdata`, else `0`.
+ *
+ * @note(2025-07-20)
+ *
+ *  -   `userdata` are generally safe to cast to pointers of some type `T`.
+ *      A good example is the callback function of `lulu_c_pcall()`, whose
+ *      1 and only argument is the userdata to be used.
+ *
+ *  -   Of course, the safety of casting to and from `void *` cannot be
+ *      guaranteed by your compiler, much less `lulu`.
+ */
+#define lulu_is_userdata(vm, i)     (lulu_type(vm, i) == LULU_TYPE_LIGHTUSERDATA)
+
+
+/**
+ * @return
+ *  -   `1` if the value at relative stack index `i` is a `table`, else `0`.
+ */
+#define lulu_is_table(vm, i)        (lulu_type(vm, i) == LULU_TYPE_TABLE)
+
+
+/**
+ * @return
+ *  -   `1` if the value at relative stack index `i` is a `function`, else `0`.
+ */
+#define lulu_is_function(vm, i)     (lulu_type(vm, i) == LULU_TYPE_FUNCTION)
+
 
 /**
  * @brief

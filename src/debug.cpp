@@ -16,7 +16,7 @@ struct Args {
 
 [[gnu::format(printf, 4, 5)]]
 static void
-_print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
+print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
 {
     if (Instruction::reg_is_k(reg)) {
         u32 i = Instruction::reg_get_k(reg);
@@ -39,24 +39,24 @@ _print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
 }
 
 static void
-_unary(const Chunk *p, const char *op, const Args &args)
+unary(const Chunk *p, const char *op, const Args &args)
 {
     isize pc = args.pc;
-    _print_reg(p, args.a, pc, " := %s", op);
-    _print_reg(p, args.b, pc);
+    print_reg(p, args.a, pc, " := %s", op);
+    print_reg(p, args.b, pc);
 }
 
 static void
-_arith(const Chunk *p, char op, const Args &args)
+arith(const Chunk *p, char op, const Args &args)
 {
     isize pc = args.pc;
-    _print_reg(p, args.a, pc, " := ");
-    _print_reg(p, args.b, pc, " %c ", op);
-    _print_reg(p, args.c, pc);
+    print_reg(p, args.a, pc, " := ");
+    print_reg(p, args.b, pc, " %c ", op);
+    print_reg(p, args.c, pc);
 }
 
 static isize
-_jump_to(isize pc, i32 offset)
+jump_resolve(isize pc, i32 offset)
 {
     // we add 1 because by the time an instruction is being decoded, the
     // `ip` would have been incremented already.
@@ -64,25 +64,25 @@ _jump_to(isize pc, i32 offset)
 }
 
 static isize
-_jump_get(const Chunk *p, isize jump_pc)
+jump_get(const Chunk *p, isize jump_pc)
 {
     Instruction i = p->code[jump_pc];
     lulu_assert(i.op() == OP_JUMP);
-    return _jump_to(jump_pc, i.sbx());
+    return jump_resolve(jump_pc, i.sbx());
 }
 
 static void
-_compare(const Chunk *p, const char *op, const Args &args)
+compare(const Chunk *p, const char *op, const Args &args)
 {
     isize pc = args.pc;
-    _print_reg(p, args.b, pc, " %s ", op);
-    _print_reg(p, args.c, pc,
+    print_reg(p, args.b, pc, " %s ", op);
+    print_reg(p, args.c, pc,
         " ; goto .code[%" ISIZE_FMT " if %s else %" ISIZE_FMT "]",
-        _jump_to(pc, 1), (args.a) ? "false" : "true", _jump_get(p, pc + 1));
+        jump_resolve(pc, 1), (args.a) ? "false" : "true", jump_get(p, pc + 1));
 }
 
 static int
-_count_digits(isize n)
+count_digits(isize n)
 {
     int count = 0;
     while (n > 0) {
@@ -99,7 +99,7 @@ debug_get_pad(const Chunk *p)
     if (len(p->code) == 0) {
         return 1;
     }
-    return _count_digits(len(p->code) - 1);
+    return count_digits(len(p->code) - 1);
 }
 
 // 4 spaces plus an extra one to separate messages.
@@ -165,13 +165,13 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         }
         break;
     case OP_BOOL:
-        _print_reg(p, args.a, pc, " := %s", (args.b) ? "true" : "false");
+        print_reg(p, args.a, pc, " := %s", (args.b) ? "true" : "false");
         if (args.c) {
-            printf("; goto .code[%" ISIZE_FMT "]", _jump_to(pc, 1));
+            printf("; goto .code[%" ISIZE_FMT "]", jump_resolve(pc, 1));
         }
         break;
     case OP_GET_GLOBAL:
-        _print_reg(p, args.a, pc, " := ");
+        print_reg(p, args.a, pc, " := ");
         value_print(p->constants[args.bx]);
         break;
 
@@ -179,62 +179,62 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         OString *s = p->constants[args.bx].to_ostring();
         char     q = (s->len == 1) ? '\'' : '\"';
         printf("_G[%c%s%c] := ", q, s->to_cstring(), q);
-        _print_reg(p, args.a, pc);
+        print_reg(p, args.a, pc);
         break;
     }
     case OP_NEW_TABLE: {
-        _print_reg(p, args.a, pc, " := {}; #hash = %u, #array = %u", args.b, args.c);
+        print_reg(p, args.a, pc, " := {}; #hash = %u, #array = %u", args.b, args.c);
         break;
     }
     case OP_GET_TABLE: {
-        _print_reg(p, args.a, pc, " := ");
-        _print_reg(p, args.b, pc, "[");
-        _print_reg(p, args.c, pc, "]");
+        print_reg(p, args.a, pc, " := ");
+        print_reg(p, args.b, pc, "[");
+        print_reg(p, args.c, pc, "]");
         break;
     }
     case OP_SET_TABLE: {
-        _print_reg(p, args.a, pc, "[");
-        _print_reg(p, args.b, pc, "] := ");
-        _print_reg(p, args.c, pc);
+        print_reg(p, args.a, pc, "[");
+        print_reg(p, args.b, pc, "] := ");
+        print_reg(p, args.c, pc);
         break;
     }
     case OP_MOVE:
-        _print_reg(p, args.a, pc, " := ");
-        _print_reg(p, args.b, pc);
+        print_reg(p, args.a, pc, " := ");
+        print_reg(p, args.b, pc);
         break;
-    case OP_ADD: _arith(p, '+', args); break;
-    case OP_SUB: _arith(p, '-', args); break;
-    case OP_MUL: _arith(p, '*', args); break;
-    case OP_DIV: _arith(p, '/', args); break;
-    case OP_MOD: _arith(p, '%', args); break;
-    case OP_POW: _arith(p, '^', args); break;
-    case OP_EQ:  _compare(p, "==", args); break;
-    case OP_LT:  _compare(p, "<",  args); break;
-    case OP_LEQ: _compare(p, "<=", args); break;
-    case OP_UNM: _unary(p, "-", args); break;
-    case OP_NOT: _unary(p, "not ", args); break;
-    case OP_LEN: _unary(p, "#", args); break;
+    case OP_ADD: arith(p, '+', args); break;
+    case OP_SUB: arith(p, '-', args); break;
+    case OP_MUL: arith(p, '*', args); break;
+    case OP_DIV: arith(p, '/', args); break;
+    case OP_MOD: arith(p, '%', args); break;
+    case OP_POW: arith(p, '^', args); break;
+    case OP_EQ:  compare(p, "==", args); break;
+    case OP_LT:  compare(p, "<",  args); break;
+    case OP_LEQ: compare(p, "<=", args); break;
+    case OP_UNM: unary(p, "-", args); break;
+    case OP_NOT: unary(p, "not ", args); break;
+    case OP_LEN: unary(p, "#", args); break;
     case OP_CONCAT:
-        _print_reg(p, args.a, pc, " := concat(R(%u:%u))", args.b, args.c + 1);
+        print_reg(p, args.a, pc, " := concat(R(%u:%u))", args.b, args.c + 1);
         break;
     case OP_TEST: {
-        printf("goto .code[%" ISIZE_FMT " if %s", _jump_to(pc, 1), (args.c) ? "not " : "");
-        _print_reg(p, args.a, pc, " else %" ISIZE_FMT "]", _jump_get(p, pc + 1));
+        printf("goto .code[%" ISIZE_FMT " if %s", jump_resolve(pc, 1), (args.c) ? "not " : "");
+        print_reg(p, args.a, pc, " else %" ISIZE_FMT "]", jump_get(p, pc + 1));
         break;
     }
     case OP_TEST_SET: {
         printf("if %s", (args.c) ? "" : "not ");
-        _print_reg(p, args.b, pc, " then ");
-        _print_reg(p, args.a, pc, " := ");
-        _print_reg(p, args.b, pc,
+        print_reg(p, args.b, pc, " then ");
+        print_reg(p, args.a, pc, " := ");
+        print_reg(p, args.b, pc,
             "; goto .code[%" ISIZE_FMT "]; else goto .code[%" ISIZE_FMT "]",
-            _jump_get(p, pc + 1),
-            _jump_to(pc, 1));
+            jump_get(p, pc + 1),
+            jump_resolve(pc, 1));
         break;
     }
     case OP_JUMP: {
         i32 offset = args.sbx;
-        printf("ip += %i ; goto .code[%" ISIZE_FMT "]", offset, _jump_to(pc, offset));
+        printf("ip += %i ; goto .code[%" ISIZE_FMT "]", offset, jump_resolve(pc, offset));
         break;
     }
     case OP_CALL: {
@@ -274,7 +274,7 @@ debug_disassemble(const Chunk *p)
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
     printf(".stack_used:\n%i\n\n", p->stack_used);
     if (len(p->locals) > 0) {
-        int pad = _count_digits(len(p->locals));
+        int pad = count_digits(len(p->locals));
         printf(".local:\n");
         for (isize i = 0, n = len(p->locals); i < n; i++) {
             const char *id = p->locals[i].identifier->to_cstring();
@@ -285,7 +285,7 @@ debug_disassemble(const Chunk *p)
     }
 
     if (len(p->constants) > 0) {
-        int pad = _count_digits(len(p->constants));
+        int pad = count_digits(len(p->constants));
         printf(".const:\n");
         for (isize i = 0, n = len(p->constants); i < n; i++) {
             printf("[%.*" ISIZE_FMT "] ", pad, i);
@@ -326,7 +326,7 @@ debug_disassemble(const Chunk *p)
  *      the neutral `OP_RETURN`.
  */
 static Instruction
-_get_variable_ip(const Chunk *p, isize target_pc, int reg)
+get_variable_ip(const Chunk *p, isize target_pc, int reg)
 {
     // Store position of last instruction that changed `reg`, defaulting
     // to the final 'neutral' return.
@@ -380,7 +380,7 @@ _get_variable_ip(const Chunk *p, isize target_pc, int reg)
 }
 
 static const char *
-_get_rk_name(const Chunk *p, u16 regk)
+get_rk_name(const Chunk *p, u16 regk)
 {
     if (Instruction::reg_is_k(regk)) {
         u32   i = Instruction::reg_get_k(regk);
@@ -393,7 +393,7 @@ _get_rk_name(const Chunk *p, u16 regk)
 }
 
 static const char *
-_get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
+get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
 {
     if (cf->is_lua()) {
         const Chunk *p = cf->to_lua();
@@ -408,7 +408,7 @@ _get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
         if (*id != nullptr) {
             return "local";
         }
-        Instruction i = _get_variable_ip(p, pc, reg);
+        Instruction i = get_variable_ip(p, pc, reg);
         switch (i.op()) {
         case OP_GET_GLOBAL: {
             Value k = p->constants[i.bx()];
@@ -418,7 +418,7 @@ _get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
         }
         case OP_GET_TABLE: {
             u16 rkc = i.c(); // RK(C) is the desired field.
-            *id = _get_rk_name(p, rkc);
+            *id = get_rk_name(p, rkc);
             return "field";
         }
         default:
@@ -440,7 +440,7 @@ debug_type_error(lulu_VM *vm, const char *act, const Value *v)
     isize i;
     // `v` is currently inside the stack?
     if (ptr_index_safe(vm->window, v, &i)) {
-        scope = _get_obj_name(vm, vm->caller, cast_int(i), &id);
+        scope = get_obj_name(vm, vm->caller, cast_int(i), &id);
     }
 
     if (scope != nullptr) {
@@ -476,7 +476,7 @@ debug_compare_error(lulu_VM *vm, const Value *a, const Value *b)
 }
 
 static void
-_get_func_info(lulu_Debug *ar, Closure *f)
+get_func_info(lulu_Debug *ar, Closure *f)
 {
     if (closure_is_c(f)) {
         ar->source          = "=[C]";
@@ -500,7 +500,7 @@ _get_func_info(lulu_Debug *ar, Closure *f)
  *      after the one we just decoded.
  */
 static isize
-_get_current_pc(lulu_VM *vm, Call_Frame *cf)
+get_current_pc(lulu_VM *vm, Call_Frame *cf)
 {
     if (!cf->is_lua()) {
         return -1;
@@ -513,7 +513,7 @@ _get_current_pc(lulu_VM *vm, Call_Frame *cf)
 }
 
 static const char *
-_get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
+get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
 {
     // The parent caller of this function MUST be lua.
     if (!(cf - 1)->is_lua()) {
@@ -521,19 +521,19 @@ _get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
     }
     // Point to parent caller (the call*ing* function).
     cf--;
-    isize pc = _get_current_pc(vm, cf);
+    isize pc = get_current_pc(vm, cf);
     Instruction i = cf->to_lua()->code[pc];
     if (i.op() == OP_CALL) {
-        return _get_obj_name(vm, cf, i.a(), name);
+        return get_obj_name(vm, cf, i.a(), name);
     }
     // No useful name can be found.
     return nullptr;
 }
 
 static int
-_get_line(lulu_VM *vm, Call_Frame *cf)
+get_line(lulu_VM *vm, Call_Frame *cf)
 {
-    isize pc = _get_current_pc(vm, cf);
+    isize pc = get_current_pc(vm, cf);
     // Not a lua function, so no line information?
     if (pc < 0) {
         return -1;
@@ -542,20 +542,20 @@ _get_line(lulu_VM *vm, Call_Frame *cf)
 }
 
 static bool
-_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar, Closure *f,
+get_info(lulu_VM *vm, const char *options, lulu_Debug *ar, Closure *f,
     Call_Frame *cf)
 {
     bool status = true;
     for (const char *it = options; *it != '\0'; it++) {
         switch (*it) {
         case 'S':
-            _get_func_info(ar, f);
+            get_func_info(ar, f);
             break;
         case 'l':
-            ar->currentline = (cf) ? _get_line(vm, cf) : -1;
+            ar->currentline = (cf) ? get_line(vm, cf) : -1;
             break;
         case 'n':
-            ar->namewhat = (cf) ? _get_func_name(vm, cf, &ar->name) : nullptr;
+            ar->namewhat = (cf) ? get_func_name(vm, cf, &ar->name) : nullptr;
             if (ar->namewhat == nullptr) {
                 ar->namewhat = ""; // Not found.
                 ar->name     = nullptr;
@@ -577,7 +577,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar)
 {
     lulu_assert(ar->_cf_index != 0);
     Call_Frame *cf = small_array_get_ptr(&vm->frames, ar->_cf_index);
-    _get_info(vm, options, ar, cf->function, cf);
+    get_info(vm, options, ar, cf->function, cf);
     return 1;
 }
 

@@ -26,7 +26,7 @@
  *      symbol name and the offset.
  */
 static void
-_parse_strings(const LString &stack_frame, Slice<char> &out_symbol,
+parse_strings(const LString &stack_frame, Slice<char> &out_symbol,
     Slice<char> &out_offset)
 {
     LString symbol;
@@ -56,14 +56,14 @@ _parse_strings(const LString &stack_frame, Slice<char> &out_symbol,
 }
 
 static void
-_print_dlerror()
+print_dlerror()
 {
     const char *errmsg = dlerror();
     write(STDERR_FILENO, errmsg, strlen(errmsg));
 }
 
 static void *
-_calculate_offset(const LString &stack_frame)
+calculate_offset(const LString &stack_frame)
 {
     char _buf1[75] = {0};
     char _buf2[25] = {0};
@@ -72,7 +72,7 @@ _calculate_offset(const LString &stack_frame)
 
     // Parse the string obtained by `backtrace_symbols()` to get the symbol and
     // offset.
-    _parse_strings(stack_frame, symbol_string, offset_string);
+    parse_strings(stack_frame, symbol_string, offset_string);
 
     // Convert the offset from a string to a pointer.
     void *offset_pointer;
@@ -83,13 +83,13 @@ _calculate_offset(const LString &stack_frame)
     if (symbol_string[0] != '\0') {
         void *object_file = dlopen(NULL, RTLD_LAZY);
         if (object_file == nullptr) {
-            _print_dlerror();
+            print_dlerror();
         }
 
         // Convert the symbol string to an address.
         void *address = dlsym(object_file, raw_data(symbol_string));
         if (address == nullptr) {
-            _print_dlerror();
+            print_dlerror();
         }
         // Extract the symbolic information pointed to by `address`.
         Dl_info symbol_info;
@@ -102,7 +102,7 @@ _calculate_offset(const LString &stack_frame)
             offset_pointer = (saddr - fbase) + ofptr;
             dlclose(object_file);
         } else {
-            _print_dlerror();
+            print_dlerror();
         }
     }
 
@@ -117,7 +117,7 @@ static void *stack_frames_buffer[STACK_FRAMES_BUFFER_SIZE];
 static char  execution_filename[32] = "bin/liblulu.so";
 
 static void
-_addr2line_print(const void *address)
+addr2line_print(const void *address)
 {
     char command[512] = {0};
 
@@ -148,7 +148,7 @@ _addr2line_print(const void *address)
  *  - https://stackoverflow.com/a/55511761
  */
 static void
-_print_backtrace()
+print_backtrace()
 {
     const char errmsg[] = "Offset cannot be resolved; No offset present?\n\0?";
 
@@ -166,11 +166,11 @@ _print_backtrace()
 #if __x86_64__
         // Calculate the offset on x86_64, print the file and line number with
         // addr2line.
-        void *offset_pointer = _calculate_offset(lstring_from_cstring(s));
+        void *offset_pointer = calculate_offset(lstring_from_cstring(s));
         if (offset_pointer == nullptr) {
             write(STDERR_FILENO, errmsg, cast_usize(count_of(errmsg)));
         } else {
-            _addr2line_print(offset_pointer);
+            addr2line_print(offset_pointer);
         }
 #elif __arm__
 #error nah
@@ -202,7 +202,7 @@ throw()
     // invoke ASAN
     *cast(volatile int *)SIZE_MAX = 1;
 
-    _print_backtrace();
+    print_backtrace();
     __builtin_trap();
 }
 

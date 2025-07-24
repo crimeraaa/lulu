@@ -36,7 +36,7 @@ vm_top_absindex(lulu_VM *vm)
 }
 
 static void
-_required_allocations(lulu_VM *vm, void *)
+required_allocations(lulu_VM *vm, void *)
 {
     // Ensure when we start interning strings we can already index.
     intern_resize(vm, &vm->intern, 32);
@@ -62,7 +62,7 @@ vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
 
     builder_init(&vm->builder);
     intern_init(&vm->intern);
-    Error e = vm_run_protected(vm, _required_allocations, nullptr);
+    Error e = vm_run_protected(vm, required_allocations, nullptr);
     return e == LULU_OK;
 }
 
@@ -141,7 +141,7 @@ vm_to_number(const Value *restrict v, Value *restrict out)
     // Try to parse the string.
     else if (v->is_string()) {
         LString ls = v->to_lstring();
-        Number d;
+        Number  d = 0;
         if (lstring_to_number(ls, &d)) {
             out->set_number(d);
             return true;
@@ -281,7 +281,7 @@ struct LULU_PRIVATE Load_Data {
 };
 
 static void
-_load(lulu_VM *vm, void *user_ptr)
+load(lulu_VM *vm, void *user_ptr)
 {
     Load_Data *d      = cast(Load_Data *)(user_ptr);
     OString   *source = ostring_new(vm, d->source);
@@ -296,7 +296,7 @@ vm_load(lulu_VM *vm, const LString &source, const LString &script)
 {
     Load_Data d{source, script, {}};
     builder_init(&d.builder);
-    Error e = vm_run_protected(vm, _load, &d);
+    Error e = vm_run_protected(vm, load, &d);
     builder_destroy(vm, &d.builder);
     return e;
 }
@@ -328,13 +328,13 @@ vm_check_stack(lulu_VM *vm, int n)
 }
 
 static void
-_protect(lulu_VM *vm, const Instruction *ip)
+protect(lulu_VM *vm, const Instruction *ip)
 {
     vm->saved_ip = ip;
 }
 
 static void
-_frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
+frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
 {
     // Before transferring control to the new caller, inform the previous
     // caller of where we last left off.
@@ -360,7 +360,7 @@ _frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned
 }
 
 static Call_Frame *
-_frame_pop(lulu_VM *vm)
+frame_pop(lulu_VM *vm)
 {
     // Have a previous frame to return to?
     small_array_pop(&vm->frames);
@@ -428,7 +428,7 @@ vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
         } else {
             top = base + cast_isize(argc);
         }
-        _frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
+        frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
         int actual_returned = fn->c.callback(vm, argc);
 
         Value *first_ret = (actual_returned > 0)
@@ -446,7 +446,7 @@ vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
     }
     // May invalidate `ra`.
     vm_check_stack(vm, cast_int(top - base));
-    _frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
+    frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
     return CALL_LUA;
 }
 
@@ -471,7 +471,7 @@ vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned)
         fill(remaining, nil);
     }
 
-    frame = _frame_pop(vm);
+    frame = frame_pop(vm);
 
     // In an unprotected call, so no previous stack frame to restore.
     // This allows the `lulu_call()` API to work properly in such cases.
@@ -530,7 +530,7 @@ enum Metamethod {
 };
 
 static void
-_arith(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
+arith(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
 {
     Value tmp_b, tmp_c;
     if (vm_to_number(rkb, &tmp_b) && vm_to_number(rkc, &tmp_c)) {
@@ -555,7 +555,7 @@ _arith(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc
 }
 
 static void
-_compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
+compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
 {
     Value tmp_b, tmp_c;
     if (vm_to_number(rkb, &tmp_b) && vm_to_number(rkc, &tmp_c)) {
@@ -577,13 +577,14 @@ _compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *r
 void
 vm_execute(lulu_VM *vm, int n_calls)
 {
-    const Chunk       *chunk  = vm->caller->to_lua();
-    const Instruction *ip     = raw_data(chunk->code);
-    Slice<Value>       window = vm->window;
+    const Chunk       *chunk     = vm->caller->to_lua();
+    const Instruction *ip        = raw_data(chunk->code);
+    Slice<const Value> constants = slice_const(chunk->constants);
+    Slice<Value>       window    = vm->window;
 
 #define GET_RK(rk) (                                                           \
     Instruction::reg_is_k(rk)                                                  \
-        ? &chunk->constants[Instruction::reg_get_k(rk)]                        \
+        ? &constants[Instruction::reg_get_k(rk)]                               \
         : &window[rk]                                                          \
 )
 
@@ -593,7 +594,7 @@ vm_execute(lulu_VM *vm, int n_calls)
     if (rb->is_number() && rc->is_number()) {                                  \
         result_fn(number_fn(rb->to_number(), rc->to_number()));                \
     } else {                                                                   \
-        _protect(vm, ip);                                                      \
+        protect(vm, ip);                                                       \
         on_error_fn(vm, metamethod, ra, rb, rc);                               \
     }                                                                          \
 }
@@ -604,7 +605,7 @@ vm_execute(lulu_VM *vm, int n_calls)
 }
 
 #define ARITH_RESULT(n)     ra->set_number(n)
-#define ARITH_OP(fn, mt)    BINARY_OP(fn, _arith, mt, ARITH_RESULT)
+#define ARITH_OP(fn, mt)    BINARY_OP(fn, arith, mt, ARITH_RESULT)
 
 #define COMPARE_RESULT(b)                                                      \
 {                                                                              \
@@ -614,7 +615,7 @@ vm_execute(lulu_VM *vm, int n_calls)
     ip++;                                                                      \
 }
 
-#define COMPARE_OP(fn, mt)  BINARY_OP(fn, _compare, mt, COMPARE_RESULT)
+#define COMPARE_OP(fn, mt)  BINARY_OP(fn, compare, mt, COMPARE_RESULT)
 
 #ifdef LULU_DEBUG_TRACE_EXEC
     int pad = debug_get_pad(chunk);
@@ -645,7 +646,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         OpCode op = i.op();
         switch (op) {
         case OP_CONSTANT:
-            *ra = chunk->constants[i.bx()];
+            *ra = constants[i.bx()];
             break;
         case OP_NIL: {
             Value *rb  = &window[i.b()];
@@ -660,19 +661,19 @@ vm_execute(lulu_VM *vm, int n_calls)
             }
             break;
         case OP_GET_GLOBAL: {
-            Value k = chunk->constants[i.bx()];
+            Value k = constants[i.bx()];
             Value v;
             if (!table_get(vm->globals.to_table(), k, &v)) {
                 const char *s = k.to_cstring();
-                _protect(vm, ip);
+                protect(vm, ip);
                 vm_runtime_error(vm, "Attempt to read undefined variable '%s'", s);
             }
             *ra = v;
             break;
         }
         case OP_SET_GLOBAL: {
-            Value k = chunk->constants[i.bx()];
-            _protect(vm, ip);
+            Value k = constants[i.bx()];
+            protect(vm, ip);
             table_set(vm, vm->globals.to_table(), k, *ra);
             break;
         }
@@ -687,7 +688,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             u16 c = i.c();
             const Value *t = &window[i.b()];
             const Value *k = GET_RK(c);
-            _protect(vm, ip);
+            protect(vm, ip);
             vm_table_get(vm, t, *k, ra);
             break;
         }
@@ -696,7 +697,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             u16 c = i.c();
             const Value *k = GET_RK(b);
             const Value *v = GET_RK(c);
-            _protect(vm, ip);
+            protect(vm, ip);
             vm_table_set(vm, ra, k, *v);
             break;
         }
@@ -718,7 +719,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             Value rkb  = *GET_RK(b);
             Value rkc  = *GET_RK(c);
 
-            _protect(vm, ip);
+            protect(vm, ip);
             if ((rkb == rkc) == cond) {
                 lulu_assert(ip->op() == OP_JUMP);
                 DO_JUMP(ip->sbx());
@@ -734,8 +735,8 @@ vm_execute(lulu_VM *vm, int n_calls)
                 Number n = rb->to_number();
                 ra->set_number(lulu_Number_unm(n));
             } else {
-                _protect(vm, ip);
-                _arith(vm, MT_UNM, ra, rb, rb);
+                protect(vm, ip);
+                arith(vm, MT_UNM, ra, rb, rb);
             }
             break;
         }
@@ -746,7 +747,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         }
         case OP_LEN: {
             if (!ra->is_string()) {
-                _protect(vm, ip);
+                protect(vm, ip);
                 debug_type_error(vm, "get length of", ra);
             }
             ra->set_number(cast(Number)ra->to_ostring()->len);
@@ -755,7 +756,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_CONCAT: {
             Value *rb = &window[i.b()];
             Value *rc = &window[i.c()];
-            _protect(vm, ip);
+            protect(vm, ip);
             vm_concat(vm, ra, slice_pointer(rb, rc + 1));
             break;
         }
@@ -794,7 +795,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_CALL: {
             int argc              = cast_int(i.b());
             int expected_returned = cast_int(i.c());
-            _protect(vm, ip);
+            protect(vm, ip);
 
             Call_Type t = vm_call_init(vm, ra, argc, expected_returned);
             if (t == CALL_LUA) {
@@ -804,7 +805,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         }
         case OP_RETURN: {
             int actual_returned = cast_int(i.b());
-            _protect(vm, ip);
+            protect(vm, ip);
             vm_call_fini(vm, ra, actual_returned);
             n_calls--;
             if (n_calls == 0) {

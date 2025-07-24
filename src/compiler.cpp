@@ -4,22 +4,22 @@
 #include "vm.hpp"
 
 static isize
-_jump_get(Compiler *c, isize jump_pc);
+jump_get(Compiler *c, isize jump_pc);
 
 static void
-_jump_set(Compiler *c, isize jump_pc, isize target_pc);
+jump_set(Compiler *c, isize jump_pc, isize target_pc);
 
 static void
-_jump_invert(Compiler *c, Expr *e);
+jump_invert(Compiler *c, Expr *e);
 
 static Instruction *
-_jump_get_control(Compiler *c, isize jump_pc);
+jump_get_control(Compiler *c, isize jump_pc);
 
 static isize
-_jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line);
+jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line);
 
 static isize
-_isize_abs(isize i)
+isize_abs(isize i)
 {
     return (i >= 0) ? i : -i;
 }
@@ -54,7 +54,7 @@ compiler_error_limit(Compiler *c, isize limit, const char *what,
 //=== BYTECODE MANIPULATION ================================================ {{{
 
 static isize
-_code_push(Compiler *c, Instruction i, int line)
+code_push(Compiler *c, Instruction i, int line)
 {
     lulu_assert(c->pc == len(c->chunk->code));
     c->pc++;
@@ -62,7 +62,7 @@ _code_push(Compiler *c, Instruction i, int line)
 }
 
 static void
-_code_pop(Compiler *c)
+code_pop(Compiler *c)
 {
     c->pc--;
     dynamic_pop(&c->chunk->code);
@@ -75,7 +75,7 @@ compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
     // lulu_assert(opinfo[op].a() && a <= Instruction::MAX_A || a == 0);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER || b == 0);
     lulu_assert(opinfo[op].c() == OPARG_REGK || opinfo[op].c() == OPARG_OTHER || c2 == 0);
-    return _code_push(c, Instruction::make_abc(op, a, b, c2), line);
+    return code_push(c, Instruction::make_abc(op, a, b, c2), line);
 }
 
 isize
@@ -84,7 +84,7 @@ compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line)
     // lulu_assert(opinfo[op].a() && a <= Instruction::MAX_A || a == 0);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER);
     lulu_assert(opinfo[op].c() == OPARG_UNUSED);
-    return _code_push(c, Instruction::make_abx(op, a, bx), line);
+    return code_push(c, Instruction::make_abx(op, a, bx), line);
 }
 
 void
@@ -134,7 +134,7 @@ compiler_load_boolean(Compiler *c, u16 reg, bool b, int line)
 }
 
 static u32
-_add_constant(Compiler *c, const Value &k, const Value &v)
+add_constant(Compiler *c, const Value &k, const Value &v)
 {
     Value i;
     if (table_get(c->indexes, k, &i)) {
@@ -150,14 +150,14 @@ u32
 compiler_add_number(Compiler *c, Number n)
 {
     Value v = Value::make_number(n);
-    return _add_constant(c, v, v);
+    return add_constant(c, v, v);
 }
 
 u32
 compiler_add_ostring(Compiler *c, OString *s)
 {
     Value v = Value::make_string(s);
-    return _add_constant(c, v, v);
+    return add_constant(c, v, v);
 }
 
 //=== }}} ======================================================================
@@ -175,7 +175,7 @@ compiler_reserve_reg(Compiler *c, u16 n)
 }
 
 static void
-_pop_reg(Compiler *c, u16 reg)
+pop_reg(Compiler *c, u16 reg)
 {
     // `reg` is not a constant index nor a local register?
     if (!Instruction::reg_is_k(reg) && reg >= cast(u16)small_array_len(c->active)) {
@@ -188,10 +188,10 @@ _pop_reg(Compiler *c, u16 reg)
 }
 
 static void
-_pop_expr(Compiler *c, const Expr *e)
+pop_expr(Compiler *c, const Expr *e)
 {
     if (e->type == EXPR_DISCHARGED) {
-        _pop_reg(c, e->reg);
+        pop_reg(c, e->reg);
     }
 }
 
@@ -205,7 +205,7 @@ _pop_expr(Compiler *c, const Expr *e)
  *      register is not yet set.
  */
 static void
-_discharge_vars(Compiler *c, Expr *e, int line)
+discharge_vars(Compiler *c, Expr *e, int line)
 {
     switch (e->type) {
     case EXPR_GLOBAL:
@@ -222,8 +222,8 @@ _discharge_vars(Compiler *c, Expr *e, int line)
         e->type = EXPR_RELOCABLE;
         e->pc   = compiler_code_abc(c, OP_GET_TABLE, NO_REG, t, k, line);
         // We can reuse these registers as they're no longer needed (for now).
-        _pop_reg(c, k);
-        _pop_reg(c, t);
+        pop_reg(c, k);
+        pop_reg(c, t);
         break;
     }
     case EXPR_CALL:
@@ -235,9 +235,9 @@ _discharge_vars(Compiler *c, Expr *e, int line)
 }
 
 static void
-_discharge_to_reg(Compiler *c, Expr *e, u16 reg, int line)
+discharge_to_reg(Compiler *c, Expr *e, u16 reg, int line)
 {
-    _discharge_vars(c, e, line);
+    discharge_vars(c, e, line);
     switch (e->type) {
     case EXPR_NIL:
         compiler_load_nil(c, reg, 1, line);
@@ -276,24 +276,24 @@ _discharge_to_reg(Compiler *c, Expr *e, u16 reg, int line)
 }
 
 static u16
-_discharge_any_reg(Compiler *c, Expr *e, int line)
+discharge_any_reg(Compiler *c, Expr *e, int line)
 {
     if (e->type == EXPR_DISCHARGED) {
         return e->reg;
     }
     u16 reg = c->free_reg;
     compiler_reserve_reg(c, 1);
-    _discharge_to_reg(c, e, reg, line);
+    discharge_to_reg(c, e, reg, line);
     return reg;
 }
 
 // see `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.5.
 static bool
-_need_value(Compiler *c, isize jump_pc)
+need_value(Compiler *c, isize jump_pc)
 {
     while (jump_pc != NO_JUMP) {
-        const isize  next_pc = _jump_get(c, jump_pc);
-        Instruction *ctrl_ip = _jump_get_control(c, jump_pc);
+        const isize  next_pc = jump_get(c, jump_pc);
+        Instruction *ctrl_ip = jump_get_control(c, jump_pc);
         // `OP_TEST_SET` already uses R(A) for its value; other opcodes do not
         // have a destination register yet.
         if (ctrl_ip->op() != OP_TEST_SET) {
@@ -305,7 +305,7 @@ _need_value(Compiler *c, isize jump_pc)
 }
 
 static isize
-_label_get(Compiler *c)
+label_get(Compiler *c)
 {
     c->last_target = c->pc;
     return c->pc;
@@ -313,17 +313,17 @@ _label_get(Compiler *c)
 }
 
 static isize
-_label_code(Compiler *c, u16 reg, bool b, bool do_jump, int line)
+label_code(Compiler *c, u16 reg, bool b, bool do_jump, int line)
 {
-    _label_get(c);
+    label_get(c);
     return compiler_code_abc(c, OP_BOOL, reg, cast(u16)b, cast(u16)do_jump, line);
 }
 
 static void
-_expr_to_reg(Compiler *c, Expr *e, u16 reg, int line)
+expr_to_reg(Compiler *c, Expr *e, u16 reg, int line)
 {
     bool is_jump = (e->type == EXPR_JUMP);
-    _discharge_to_reg(c, e, reg, line);
+    discharge_to_reg(c, e, reg, line);
     // comparison instruction itself is part of the truthy patch list.
     if (is_jump) {
         compiler_jump_add(c, &e->patch_true, e->pc);
@@ -331,10 +331,10 @@ _expr_to_reg(Compiler *c, Expr *e, u16 reg, int line)
     if (e->has_jumps()) {
         isize load_true  = NO_JUMP;
         isize load_false = NO_JUMP;
-        if (_need_value(c, e->patch_true) || _need_value(c, e->patch_false)) {
+        if (need_value(c, e->patch_true) || need_value(c, e->patch_false)) {
             isize jump_pc = (is_jump) ? NO_JUMP : compiler_jump_new(c, line);
-            load_false = _label_code(c, reg, /* b */ false, /* do_jump */ true,  line);
-            load_true  = _label_code(c, reg, /* b */ true,  /* do_jump */ false, line);
+            load_false = label_code(c, reg, /* b */ false, /* do_jump */ true,  line);
+            load_true  = label_code(c, reg, /* b */ true,  /* do_jump */ false, line);
             compiler_jump_patch(c, jump_pc);
         }
         compiler_jump_patch(c, e->patch_false, load_false, reg);
@@ -350,19 +350,19 @@ u16
 compiler_expr_next_reg(Compiler *c, Expr *e)
 {
     int line = e->line;
-    _discharge_vars(c, e, line);
-    _pop_expr(c, e);
+    discharge_vars(c, e, line);
+    pop_expr(c, e);
 
     u16 reg = c->free_reg;
     compiler_reserve_reg(c, 1);
-    _expr_to_reg(c, e, reg, line);
+    expr_to_reg(c, e, reg, line);
     return reg;
 }
 
 u16
 compiler_expr_any_reg(Compiler *c, Expr *e)
 {
-    _discharge_vars(c, e, e->line);
+    discharge_vars(c, e, e->line);
     if (e->type == EXPR_DISCHARGED) {
         if (!e->has_jumps()) {
             return e->reg;
@@ -373,10 +373,12 @@ compiler_expr_any_reg(Compiler *c, Expr *e)
 }
 
 static u16
-_value_to_rk(Compiler *c, Expr *e, const Value &v)
+value_to_rk(Compiler *c, Expr *e, const Value &v)
 {
-    Value k  = (v == nil) ? Value::make_table(c->indexes) : v;
-    u32   i  = _add_constant(c, k, v);
+    // Pointer comparisons are faster than dedicated functions calls, and
+    // the compiler will sort out the location for `constexpr inline` anyway.
+    Value k  = (&v == &nil) ? Value::make_table(c->indexes) : v;
+    u32   i  = add_constant(c, k, v);
     e->type  = EXPR_CONSTANT;
     e->index = i;
 
@@ -393,10 +395,10 @@ u16
 compiler_expr_rk(Compiler *c, Expr *e)
 {
     switch (e->type) {
-    case EXPR_NIL:    return _value_to_rk(c, e, nil);
-    case EXPR_FALSE:  return _value_to_rk(c, e, Value::make_boolean(true));
-    case EXPR_TRUE:   return _value_to_rk(c, e, Value::make_boolean(false));
-    case EXPR_NUMBER: return _value_to_rk(c, e, Value::make_number(e->number));
+    case EXPR_NIL:    return value_to_rk(c, e, nil);
+    case EXPR_FALSE:  return value_to_rk(c, e, Value::make_boolean(true));
+    case EXPR_TRUE:   return value_to_rk(c, e, Value::make_boolean(false));
+    case EXPR_NUMBER: return value_to_rk(c, e, Value::make_number(e->number));
 
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {
@@ -415,7 +417,7 @@ compiler_expr_rk(Compiler *c, Expr *e)
 //=== }}} ======================================================================
 
 static bool
-_arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
+arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
 {
     // At least one argument is not a number literal?
     if (left->type != EXPR_NUMBER || right->type != EXPR_NUMBER) {
@@ -457,7 +459,7 @@ compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
     Expr *restrict right)
 {
     lulu_assert((OP_ADD <= op && op <= OP_POW) || op == OP_CONCAT);
-    if (_arith_folded(op, left, right)) {
+    if (arith_folded(op, left, right)) {
         return;
     }
 
@@ -465,11 +467,11 @@ compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
     u16 rkb = compiler_expr_rk(c, left);
 
     if (rkc > rkb) {
-        _pop_expr(c, right);
-        _pop_expr(c, left);
+        pop_expr(c, right);
+        pop_expr(c, left);
     } else {
-        _pop_expr(c, left);
-        _pop_expr(c, right);
+        pop_expr(c, left);
+        pop_expr(c, right);
     }
 
     left->type = EXPR_RELOCABLE;
@@ -513,7 +515,7 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
         }
         case EXPR_JUMP:
             // Only occurs for comparisons, `OP_{EQ,LT,LEQ}`.
-            _jump_invert(c, e);
+            jump_invert(c, e);
             return;
         default:
             break;
@@ -529,20 +531,20 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
 
     // Unary minus and unary `not` cannot operate on RK registers.
     u16 rb = compiler_expr_next_reg(c, e);
-    _pop_expr(c, e);
+    pop_expr(c, e);
 
     e->type = EXPR_RELOCABLE;
     e->pc   = compiler_code_abc(c, op, NO_REG, rb, 0, e->line);
 }
 
 static void
-_expr_bool(Expr *e, bool b)
+expr_bool(Expr *e, bool b)
 {
     e->type = (b) ? EXPR_TRUE : EXPR_FALSE;
 }
 
 static bool
-_compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
+compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
 {
     bool result;
     if (op == OP_EQ) {
@@ -554,7 +556,7 @@ _compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
         if (left->type != right->type) {
             // Trivially comparable?
             if (left->is_boolean() && right->is_boolean()) {
-                _expr_bool(left, false);
+                expr_bool(left, false);
                 return true;
             }
             // Don't fold; must be a runtime comparison (e.g. for strings).
@@ -595,7 +597,7 @@ _compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
         result = (op == OP_LT) ? lulu_Number_lt(a, b) : lulu_Number_leq(a, b);
     }
 
-    _expr_bool(left, result);
+    expr_bool(left, result);
     return true;
 }
 
@@ -604,18 +606,18 @@ compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
     Expr *restrict right)
 {
     lulu_assert(OP_EQ <= op && op <= OP_LEQ);
-    if (_compare_folded(op, cond, left, right)) {
+    if (compare_folded(op, cond, left, right)) {
         return;
     }
     u16 rkc = compiler_expr_rk(c, right);
     u16 rkb = compiler_expr_rk(c, left);
 
     if (rkc > rkb) {
-        _pop_expr(c, right);
-        _pop_expr(c, left);
+        pop_expr(c, right);
+        pop_expr(c, left);
     } else {
-        _pop_expr(c, left);
-        _pop_expr(c, right);
+        pop_expr(c, left);
+        pop_expr(c, right);
     }
 
     // Switch order of encoded arguments so simulate greater than/equal-to.
@@ -627,7 +629,7 @@ compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
     }
 
     left->type = EXPR_JUMP;
-    left->pc   = _jump_if(c, op, cast(u16)cond, rkb, rkc, left->line);
+    left->pc   = jump_if(c, op, cast(u16)cond, rkb, rkc, left->line);
 }
 
 void
@@ -647,7 +649,7 @@ compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right)
         Instruction *ip = get_code(c, right->pc);
         if (ip->op() == OP_CONCAT) {
             lulu_assert(left->reg == ip->b() - 1);
-            _pop_expr(c, left);
+            pop_expr(c, left);
             ip->set_b(left->reg);
             left->type = EXPR_RELOCABLE;
             left->pc   = right->pc;
@@ -670,10 +672,10 @@ compiler_set_variable(Compiler *c, Expr *restrict var, Expr *restrict expr)
     }
     case EXPR_LOCAL: {
         // Pop if temporary register.
-        _pop_expr(c, expr);
+        pop_expr(c, expr);
 
         // Set destination register or code `OP_MOVE`.
-        _expr_to_reg(c, expr, var->reg, var->line);
+        expr_to_reg(c, expr, var->reg, var->line);
         break;
     }
     case EXPR_INDEXED: {
@@ -688,7 +690,7 @@ compiler_set_variable(Compiler *c, Expr *restrict var, Expr *restrict expr)
         lulu_unreachable();
         break;
     }
-    _pop_expr(c, expr);
+    pop_expr(c, expr);
 }
 
 void
@@ -743,7 +745,7 @@ isize
 compiler_jump_new(Compiler *c, int line)
 {
     constexpr Instruction i = Instruction::make_asbx(OP_JUMP, 0, NO_JUMP);
-    return _code_push(c, i, line);
+    return code_push(c, i, line);
 }
 
 void
@@ -763,9 +765,9 @@ compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc)
     // added so we can chain `jump_pc` into it.
     isize pc = *list_pc;
     for (;;) {
-        isize next = _jump_get(c, pc);
+        isize next = jump_get(c, pc);
         if (next == NO_JUMP) {
-            _jump_set(c, pc, jump_pc);
+            jump_set(c, pc, jump_pc);
             break;
         }
         pc = next;
@@ -774,7 +776,7 @@ compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc)
 
 // Get the `pc` of the relative target in `jump_pc`, or `NO_JUMP`.
 static isize
-_jump_get(Compiler *c, isize jump_pc)
+jump_get(Compiler *c, isize jump_pc)
 {
     Instruction i = *get_code(c, jump_pc);
     lulu_assertf(i.op() == OP_JUMP, "Got opcode '%s'", opnames[i.op()]);
@@ -786,7 +788,7 @@ _jump_get(Compiler *c, isize jump_pc)
 }
 
 static void
-_jump_set(Compiler *c, isize jump_pc, isize target_pc)
+jump_set(Compiler *c, isize jump_pc, isize target_pc)
 {
     Instruction *ip = get_code(c, jump_pc);
     lulu_assert(ip->op() == OP_JUMP);
@@ -794,16 +796,16 @@ _jump_set(Compiler *c, isize jump_pc, isize target_pc)
     isize offset = target_pc - (jump_pc + 1);
     lulu_assert(offset != NO_JUMP);
 
-    compiler_check_limit(c, _isize_abs(offset), cast_isize(Instruction::MAX_SBX),
+    compiler_check_limit(c, isize_abs(offset), cast_isize(Instruction::MAX_SBX),
         "jump offset");
 
     ip->set_sbx(cast(i32)offset);
 }
 
 static void
-_jump_invert(Compiler *c, Expr *e)
+jump_invert(Compiler *c, Expr *e)
 {
-    Instruction *ip = _jump_get_control(c, e->pc);
+    Instruction *ip = jump_get_control(c, e->pc);
     lulu_assert(opinfo[ip->op()].test());
     // Must be a comparison in order to flip argument A.
     lulu_assert(ip->op() != OP_TEST_SET && ip->op() != OP_TEST);
@@ -813,9 +815,9 @@ _jump_invert(Compiler *c, Expr *e)
 }
 
 static bool
-_test_reg_patch(Compiler *c, isize jump_pc, u16 reg)
+test_reg_patch(Compiler *c, isize jump_pc, u16 reg)
 {
-    Instruction *ip = _jump_get_control(c, jump_pc);
+    Instruction *ip = jump_get_control(c, jump_pc);
     if (ip->op() != OP_TEST_SET) {
         return false;
     }
@@ -831,7 +833,7 @@ _test_reg_patch(Compiler *c, isize jump_pc, u16 reg)
 }
 
 static Instruction *
-_jump_get_control(Compiler *c, isize jump_pc)
+jump_get_control(Compiler *c, isize jump_pc)
 {
     Instruction *ip = get_code(c, jump_pc);
     lulu_assert(ip->op() == OP_JUMP);
@@ -853,13 +855,13 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target, u16 reg)
 
     if (target == NO_JUMP) {
         // Do not subtract 1; we want to skip over the latest instruction.
-        target = _label_get(c);
+        target = label_get(c);
     }
     for (;;) {
         // Save because `jump_set()` will overwrite the original value.
-        isize next = _jump_get(c, jump_pc);
-        _test_reg_patch(c, jump_pc, reg);
-        _jump_set(c, jump_pc, target);
+        isize next = jump_get(c, jump_pc);
+        test_reg_patch(c, jump_pc, reg);
+        jump_set(c, jump_pc, target);
         if (next == NO_JUMP) {
             break;
         }
@@ -869,10 +871,10 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target, u16 reg)
 }
 
 static isize
-_logical_target_get(Compiler *c, Expr *left, bool cond)
+logical_target_get(Compiler *c, Expr *left, bool cond)
 {
     int line = left->line;
-    _discharge_vars(c, left, line);
+    discharge_vars(c, left, line);
     switch (left->type) {
     case EXPR_NIL:
     case EXPR_FALSE:
@@ -891,7 +893,7 @@ _logical_target_get(Compiler *c, Expr *left, bool cond)
         break;
     case EXPR_JUMP:
         if (cond) {
-            _jump_invert(c, left);
+            jump_invert(c, left);
         }
         return left->pc;
     default:
@@ -913,14 +915,14 @@ _logical_target_get(Compiler *c, Expr *left, bool cond)
         Instruction ip = *get_code(c, left->pc);
         if (ip.op() == OP_NOT) {
             // Remove previous `OP_NOT`, replace it with a jump-test pair.
-            _code_pop(c);
-            return _jump_if(c, OP_TEST, ip.b(), 0, cast(u16)cond, line);
+            code_pop(c);
+            return jump_if(c, OP_TEST, ip.b(), 0, cast(u16)cond, line);
         }
     }
 
-    u16 rb = _discharge_any_reg(c, left, line);
-    _pop_expr(c, left);
-    return _jump_if(c, OP_TEST_SET, NO_REG, rb, cast(u16)!cond, line);
+    u16 rb = discharge_any_reg(c, left, line);
+    pop_expr(c, left);
+    return jump_if(c, OP_TEST_SET, NO_REG, rb, cast(u16)!cond, line);
 }
 
 
@@ -933,7 +935,7 @@ _logical_target_get(Compiler *c, Expr *left, bool cond)
  *      int C)` in Lua 5.1.5.
  */
 static isize
-_jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
+jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 {
     compiler_code_abc(c, op, a, b, c2, line);
     return compiler_jump_new(c, line);
@@ -942,7 +944,7 @@ _jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 void
 compiler_logical_new(Compiler *c, Expr *left, bool cond)
 {
-    isize jump_pc = _logical_target_get(c, left, cond);
+    isize jump_pc = logical_target_get(c, left, cond);
 
     if (cond) {
         lulu_assert(left->patch_false == NO_JUMP);
@@ -965,7 +967,7 @@ void
 compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
     bool cond)
 {
-    _discharge_vars(c, right, right->line);
+    discharge_vars(c, right, right->line);
 
     /**
      * @brief

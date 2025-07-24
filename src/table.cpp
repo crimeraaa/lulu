@@ -25,14 +25,14 @@ table_init(Table *t)
 }
 
 static isize
-_table_cap(const Table *t)
+table_cap(const Table *t)
 {
     return len(t->entries);
 }
 
 template<class T>
 static u32
-_hash_any(T v)
+hash_any(T v)
 {
     // Aliasing a `T` with a `char *` is defined behavior.
     LString s{cast(char *)&v, sizeof(T)};
@@ -40,17 +40,17 @@ _hash_any(T v)
 }
 
 static u32
-_hash_value(const Value &v)
+hash_value(const Value &v)
 {
     switch (v.type()) {
     case VALUE_NIL:
         break;
-    case VALUE_BOOLEAN:         return _hash_any(v.to_boolean());
-    case VALUE_NUMBER:          return _hash_any(v.to_number());
-    case VALUE_LIGHTUSERDATA:   return _hash_any(v.to_userdata());
+    case VALUE_BOOLEAN:         return hash_any(v.to_boolean());
+    case VALUE_NUMBER:          return hash_any(v.to_number());
+    case VALUE_LIGHTUSERDATA:   return hash_any(v.to_userdata());
     case VALUE_STRING:          return v.to_ostring()->hash;
     case VALUE_TABLE:           // fallthrough
-    case VALUE_FUNCTION:        return _hash_any(v.to_object());
+    case VALUE_FUNCTION:        return hash_any(v.to_object());
     case VALUE_INTEGER:
     case VALUE_CHUNK:
         break;
@@ -71,9 +71,9 @@ _hash_value(const Value &v)
  *  1.2.) In `table_set()` we resize beforehand.
  */
 static Entry *
-_find_entry(Slice<Entry> entries, const Value &k)
+find_entry(Slice<Entry> entries, const Value &k)
 {
-    usize  hash = cast_usize(_hash_value(k));
+    usize  hash = cast_usize(hash_value(k));
     usize  wrap = cast_usize(len(entries)) - 1;
     Entry *tomb = nullptr;
 
@@ -99,7 +99,7 @@ bool
 table_get(Table *t, const Value &restrict k, Value *restrict out)
 {
     if (t->count > 0) {
-        Entry *e = _find_entry(t->entries, k);
+        Entry *e = find_entry(t->entries, k);
         *out = e->value;
         // If `e->key` is nil, then that means `k` does not exist in the table.
         return !e->key.is_nil();
@@ -111,11 +111,11 @@ table_get(Table *t, const Value &restrict k, Value *restrict out)
 void
 table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
 {
-    if (t->count + 1 > _table_cap(t)*3 / 4) {
+    if (t->count + 1 > table_cap(t)*3 / 4) {
         isize n = mem_next_pow2(t->count + 1);
         table_resize(vm, t, n);
     }
-    Entry *e = _find_entry(t->entries, k);
+    Entry *e = find_entry(t->entries, k);
     // Overwriting a completely empty entry?
     if (e->key.is_nil() && e->value.is_nil()) {
         t->count++;
@@ -130,7 +130,7 @@ table_unset(Table *t, const Value &k)
     if (t->count == 0) {
         return;
     }
-    Entry *e = _find_entry(t->entries, k);
+    Entry *e = find_entry(t->entries, k);
     // Already empty/tombstone; nothing to do.
     if (e->key.is_nil()) {
         return;
@@ -155,7 +155,7 @@ table_resize(lulu_VM *vm, Table *t, isize new_cap)
             continue;
         }
 
-        Entry *e2 = _find_entry(new_entries, e.key);
+        Entry *e2 = find_entry(new_entries, e.key);
         e2->key   = e.key;
         e2->value = e.value;
         n++;

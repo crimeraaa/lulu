@@ -4,7 +4,7 @@
 #include "lulu_auxlib.h"
 
 static int
-_base_clock(lulu_VM *vm, int argc)
+base_clock(lulu_VM *vm, int argc)
 {
     lulu_Number n;
     (void)argc;
@@ -14,7 +14,7 @@ _base_clock(lulu_VM *vm, int argc)
 }
 
 static int
-_base_type(lulu_VM *vm, int argc)
+base_type(lulu_VM *vm, int argc)
 {
     lulu_Type   t;
     const char *s;
@@ -31,7 +31,7 @@ _base_type(lulu_VM *vm, int argc)
 }
 
 static int
-_base_tostring(lulu_VM *vm, int argc)
+base_tostring(lulu_VM *vm, int argc)
 {
     lulu_Type t;
     (void)argc;
@@ -45,35 +45,25 @@ _base_tostring(lulu_VM *vm, int argc)
     case LULU_TYPE_BOOLEAN:
         lulu_push_string(vm, lulu_to_boolean(vm, 1) ? "true" : "false");
         break;
-    case LULU_TYPE_NUMBER:
-        lulu_push_fstring(vm, "%f", lulu_to_number(vm, 1));
-        break;
-    case LULU_TYPE_STRING:
-        /* Nothing to do; is already a string so leave it as is. */
-        break;
-    case LULU_TYPE_LIGHTUSERDATA:
-    case LULU_TYPE_TABLE:
-    case LULU_TYPE_FUNCTION: {
-        const char *s;
-        void *p;
-        s = lulu_type_name(vm, t);
-        p = lulu_to_pointer(vm, 1);
-        lulu_push_fstring(vm, "%s: %p", s, p);
+    case LULU_TYPE_NUMBER: {
+        size_t n;
+        const char *s = lulu_to_lstring(vm, 1, &n);
+        lulu_push_lstring(vm, s, n);
         break;
     }
+    case LULU_TYPE_STRING:
+        /* Already a string, so nothing to do. */
+        break;
     default:
-#if defined(__GNUC__) || defined(__clang__)
-        __builtin_unreachable();
-#elif defined(_MSC_VER)
-        __assume(false);
-#endif
-        return 0;
+        lulu_push_fstring(vm, "%s: %p",
+            lulu_type_name_at(vm, 1), lulu_to_pointer(vm, 1));
+        break;
     }
     return 1;
 }
 
 static int
-_base_tonumber(lulu_VM *vm, int argc)
+base_tonumber(lulu_VM *vm, int argc)
 {
     lulu_Number n;
     (void)argc;
@@ -90,7 +80,7 @@ _base_tonumber(lulu_VM *vm, int argc)
 }
 
 static int
-_base_print(lulu_VM *vm, int argc)
+base_print(lulu_VM *vm, int argc)
 {
     int i;
     lulu_get_global(vm, "tostring"); /* ..., tostring */
@@ -110,11 +100,11 @@ _base_print(lulu_VM *vm, int argc)
 
 static const lulu_Register
 baselib[] = {
-    {"clock",       _base_clock},
-    {"tostring",    _base_tostring},
-    {"tonumber",    _base_tonumber},
-    {"print",       _base_print},
-    {"type",        _base_type},
+    {"clock",       base_clock},
+    {"tostring",    base_tostring},
+    {"tonumber",    base_tonumber},
+    {"print",       base_print},
+    {"type",        base_type},
 };
 
 LULU_API int

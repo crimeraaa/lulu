@@ -5,7 +5,7 @@ static Value
 none = nil;
 
 static Value *
-_value_at(lulu_VM *vm, int i)
+value_at(lulu_VM *vm, int i)
 {
     // Resolve 1-based relative index.
     isize ii = cast_isize(i);
@@ -33,9 +33,9 @@ _value_at(lulu_VM *vm, int i)
 }
 
 static Value *
-_value_at_stack(lulu_VM *vm, int i)
+value_at_stack(lulu_VM *vm, int i)
 {
-    Value *start = _value_at(vm, i);
+    Value *start = value_at(vm, i);
     lulu_assert(start != &none);
     lulu_assertf(i > LULU_PSEUDO_INDEX, "Got pseudo-index %i", i);
     return start;
@@ -71,7 +71,7 @@ lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_siz
 LULU_API void
 lulu_call(lulu_VM *vm, int n_args, int n_rets)
 {
-    Value *fn = _value_at(vm, -(n_args + 1));
+    Value *fn = value_at(vm, -(n_args + 1));
     vm_call(vm, fn, n_args, (n_rets == LULU_MULTRET) ? VARARG : n_rets);
 }
 
@@ -80,10 +80,10 @@ struct LULU_PRIVATE PCall {
 };
 
 static void
-_pcall(lulu_VM *vm, void *user_ptr)
+pcall(lulu_VM *vm, void *user_ptr)
 {
     PCall *d = cast(PCall *)user_ptr;
-    Value *fn = _value_at(vm, -(d->n_args + 1));
+    Value *fn = value_at(vm, -(d->n_args + 1));
     vm_call(vm, fn, d->n_args, (d->n_rets == LULU_MULTRET) ? VARARG : d->n_rets);
 }
 
@@ -91,7 +91,7 @@ LULU_API lulu_Error
 lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
 {
     PCall d{n_args, n_rets};
-    lulu_Error e = vm_run_protected(vm, _pcall, &d);
+    lulu_Error e = vm_run_protected(vm, pcall, &d);
     return e;
 }
 
@@ -101,7 +101,7 @@ struct LULU_PRIVATE C_PCall {
 };
 
 static void
-_c_pcall(lulu_VM *vm, void *user_ptr)
+c_pcall(lulu_VM *vm, void *user_ptr)
 {
     C_PCall *d = cast(C_PCall *)user_ptr;
     lulu_push_cfunction(vm, d->function);
@@ -113,7 +113,7 @@ LULU_API lulu_Error
 lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
 {
     C_PCall d{function, function_data};
-    lulu_Error e = vm_run_protected(vm, _c_pcall, &d);
+    lulu_Error e = vm_run_protected(vm, c_pcall, &d);
     return e;
 }
 
@@ -129,7 +129,7 @@ lulu_error(lulu_VM *vm)
 LULU_API lulu_Type
 lulu_type(lulu_VM *vm, int i)
 {
-    const Value *v = _value_at(vm, i);
+    const Value *v = value_at(vm, i);
     if (v == &none) {
         return LULU_TYPE_NONE;
     }
@@ -147,58 +147,19 @@ lulu_type_name(lulu_VM *vm, lulu_Type t)
 }
 
 LULU_API int
-lulu_is_none(lulu_VM *vm, int i)
-{
-    const Value *v = _value_at(vm, i);
-    return (v == &none);
-}
-
-LULU_API int
-lulu_is_nil(lulu_VM *vm, int i)
-{
-    const Value *v = _value_at(vm, i);
-    // Account for `none` also having tag `VALUE_NIL`
-    return (v != &none) && v->is_nil();
-}
-
-LULU_API int
-lulu_is_boolean(lulu_VM *vm, int i)
-{
-    return _value_at(vm, i)->is_boolean();
-}
-
-LULU_API int
 lulu_is_number(lulu_VM *vm, int i)
 {
-    const Value *v = _value_at(vm, i);
+    const Value *v = value_at(vm, i);
     Value tmp;
     return vm_to_number(v, &tmp);
-}
-
-LULU_API int
-lulu_is_userdata(lulu_VM *vm, int i)
-{
-    return _value_at(vm, i)->is_userdata();
 }
 
 LULU_API int
 lulu_is_string(lulu_VM *vm, int i)
 {
     // `number` is always convertible to a string.
-    Value_Type t = _value_at(vm, i)->type();
+    Value_Type t = value_at(vm, i)->type();
     return t == VALUE_NUMBER || t == VALUE_STRING;
-}
-
-LULU_API int
-lulu_is_table(lulu_VM *vm, int i)
-{
-    return _value_at(vm, i)->is_table();
-}
-
-LULU_API int
-lulu_is_function(lulu_VM *vm, int i)
-{
-    return _value_at(vm, i)->is_function();
 }
 
 /*=== }}} =================================================================== */
@@ -208,14 +169,14 @@ lulu_is_function(lulu_VM *vm, int i)
 LULU_API int
 lulu_to_boolean(lulu_VM *vm, int i)
 {
-    return !_value_at(vm, i)->is_falsy();
+    return !value_at(vm, i)->is_falsy();
 }
 
 LULU_API lulu_Number
 lulu_to_number(lulu_VM *vm, int i)
 {
     Value tmp;
-    Value *v = _value_at(vm, i);
+    Value *v = value_at(vm, i);
     if (v->is_number()) {
         return v->to_number();
     } else if (vm_to_number(v, &tmp)) {
@@ -233,7 +194,7 @@ lulu_to_integer(lulu_VM *vm, int i)
 LULU_API const char *
 lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 {
-    Value *v = _value_at(vm, i);
+    Value *v = value_at(vm, i);
     if (!vm_to_string(vm, v))  {
         if (n != nullptr) {
             *n = 0;
@@ -252,7 +213,7 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 LULU_API void *
 lulu_to_pointer(lulu_VM *vm, int i)
 {
-    return _value_at(vm, i)->to_pointer();
+    return value_at(vm, i)->to_pointer();
 }
 
 LULU_API int
@@ -275,7 +236,7 @@ lulu_set_top(lulu_VM *vm, int i)
         }
         vm->window = slice(vm->stack, old_start, new_stop);
     } else {
-        lulu_assert(_value_at_stack(vm, i));
+        lulu_assert(value_at_stack(vm, i));
         lulu_pop(vm, -i);
     }
 }
@@ -283,10 +244,10 @@ lulu_set_top(lulu_VM *vm, int i)
 LULU_API void
 lulu_insert(lulu_VM *vm, int i)
 {
-    Value *start = _value_at_stack(vm, i);
+    Value *start = value_at_stack(vm, i);
 
     // Copy by value as this stack slot is about to be replaced.
-    Value v = *_value_at(vm, -1);
+    Value v = *value_at(vm, -1);
     auto dst = slice_pointer(start + 1, end(vm->window));
     auto src = slice_pointer_len(start, len(dst));
     copy(dst, src);
@@ -296,8 +257,8 @@ lulu_insert(lulu_VM *vm, int i)
 LULU_API void
 lulu_remove(lulu_VM *vm, int i)
 {
-    Value *start = _value_at_stack(vm, i);
-    Value *stop  = _value_at(vm, -1);
+    Value *start = value_at_stack(vm, i);
+    Value *stop  = value_at(vm, -1);
     auto dst = slice_pointer(start, stop - 1);
     auto src = slice_pointer_len(start + 1, len(dst));
     copy(dst, src);
@@ -387,7 +348,7 @@ lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf)
 LULU_API void
 lulu_push_value(lulu_VM *vm, int i)
 {
-    Value *v = _value_at(vm, i);
+    Value *v = value_at(vm, i);
     vm_push(vm, *v);
 }
 
@@ -403,8 +364,8 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash)
 LULU_API int
 lulu_get_table(lulu_VM *vm, int table_index)
 {
-    Value *t = _value_at(vm, table_index);
-    Value *k = _value_at(vm, -1);
+    Value *t = value_at(vm, table_index);
+    Value *k = value_at(vm, -1);
     if (t->is_table()) {
         // No need to push, `k` can be overwritten.
         bool ok = vm_table_get(vm, t, *k, k);
@@ -416,7 +377,7 @@ lulu_get_table(lulu_VM *vm, int table_index)
 LULU_API int
 lulu_get_field(lulu_VM *vm, int table_index, const char *key)
 {
-    Value *t = _value_at(vm, table_index);
+    Value *t = value_at(vm, table_index);
     Value  k = t->make_string(ostring_from_cstring(vm, key));
 
     // Unlike `lulu_get_table()`, we need to explicitly push `t[k]` because
@@ -433,10 +394,10 @@ lulu_get_field(lulu_VM *vm, int table_index, const char *key)
 LULU_API void
 lulu_set_table(lulu_VM *vm, int table_index)
 {
-    Value *t = _value_at(vm, table_index);
+    Value *t = value_at(vm, table_index);
     if (t->is_table()) {
-        Value *k = _value_at(vm, -2);
-        Value *v = _value_at(vm, -1);
+        Value *k = value_at(vm, -2);
+        Value *v = value_at(vm, -1);
         vm_table_set(vm, t, k, *v);
         lulu_pop(vm, 2);
     }
@@ -445,7 +406,7 @@ lulu_set_table(lulu_VM *vm, int table_index)
 LULU_API void
 lulu_set_field(lulu_VM *vm, int table_index, const char *key)
 {
-    Value *t = _value_at(vm, table_index);
+    Value *t = value_at(vm, table_index);
     Value  k = Value::make_string(ostring_from_cstring(vm, key));
     if (t->is_table()) {
         // The value is popped implicitly. We have no way to tell if key is in
@@ -458,7 +419,7 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key)
 LULU_API size_t
 lulu_obj_len(lulu_VM *vm, int i)
 {
-    const Value *v = _value_at(vm, i);
+    const Value *v = value_at(vm, i);
     if (v->is_string()) {
         return v->to_ostring()->len;
     }
@@ -475,8 +436,8 @@ lulu_concat(lulu_VM *vm, int n)
 
     lulu_assert(2 <= n && cast_isize(n) <= len(vm->window));
 
-    Value *first = _value_at_stack(vm, -n);
-    Value *last  = _value_at(vm, -1);
+    Value *first = value_at_stack(vm, -n);
+    Value *last  = value_at(vm, -1);
 
     vm_concat(vm, first, slice_pointer(first, last + 1));
 

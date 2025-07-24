@@ -25,8 +25,6 @@ typedef struct {
     char     data[LULU_BUFFER_BUFSIZE];
 } lulu_Buffer;
 
-#define lulu_type_name_at(vm, i)    lulu_type_name(vm, lulu_type(vm, i))
-
 LULU_API void
 lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b);
 
@@ -90,6 +88,24 @@ lulu_check_number(lulu_VM *vm, int argn);
 
 /**
  * @brief
+ *      Asserts that the absolute stack slot `argn` is of type `number` or
+ *      a `string` that can be parsed into a number. If neither condition is
+ *      met, then an error is thrown and an error message is pushed.
+ *
+ * @return
+ *      The `number` representation of the value at stack slot `argn`,
+ *      converted to an integer, when successful.
+ *
+ * @note(2025-07-24)
+ *      If the `number` value cannot be fully represented as an integer then
+ *      it is truncated in some unspecified way.
+ */
+LULU_API lulu_Integer
+lulu_check_integer(lulu_VM *vm, int argn);
+
+
+/**
+ * @brief
  *  -   Asserts that the stack slot `argn` is of type `string` or a `number`
  *      which is then converted to a string. If it is not, then an error is
  *      thrown and an error message is pushed.
@@ -101,7 +117,34 @@ lulu_check_number(lulu_VM *vm, int argn);
 LULU_API const char *
 lulu_check_lstring(lulu_VM *vm, int argn, size_t *n);
 
-#define lulu_check_string(vm, argn) lulu_check_lstring(vm, argn, NULL)
+
+/**
+ * @param def
+ *      The default value to use if the stack slot `argn` is invalid (i.e.
+ *      out of bounds or `nil`).
+ */
+LULU_API lulu_Number
+lulu_opt_number(lulu_VM *vm, int argn, lulu_Number def);
+
+/**
+ * @param def
+ *      The default value to use if the stack slot `argn` is invalid (i.e.
+ *      out of bounds) or `nil`.
+ */
+LULU_API lulu_Integer
+lulu_opt_integer(lulu_VM *vm, int argn, lulu_Integer def);
+
+
+/**
+ * @param def
+ *      The default value to use if the stack slot `argn` is invalid (i.e.
+ *      out of bounds) or `nil`.
+ *
+ * @param n
+ *      Optional out-parameter to contain the string length.
+ */
+LULU_API const char *
+lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n);
 
 
 LULU_API int
@@ -129,6 +172,17 @@ lulu_set_library(lulu_VM *vm, const char *libname,
     const lulu_Register *library, int n);
 
 
+
+/*=== }}} =================================================================== */
+
+/*=== HELPER MACROS ===================================================== {{{ */
+
+
+#define lulu_type_name_at(vm, i)        lulu_type_name(vm, lulu_type(vm, i))
+#define lulu_check_string(vm, argn)     lulu_check_lstring(vm, argn, NULL)
+#define lulu_opt_string(vm, argn, def)  lulu_opt_lstring(vm, argn, def, NULL)
+
+
 /**
  * @brief
  *      Because the count is explicitly passed to `lulu_set_library()`, use
@@ -137,9 +191,7 @@ lulu_set_library(lulu_VM *vm, const char *libname,
  */
 #define lulu_count_library(libs)    (int)(sizeof(libs) / sizeof(libs[0]))
 
-
 /*=== }}} =================================================================== */
-
 
 LULU_API void
 lulu_open_libs(lulu_VM *vm);

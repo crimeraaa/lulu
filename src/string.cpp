@@ -6,7 +6,7 @@
 #include "vm.hpp"
 
 static int
-_get_base(const LString &s)
+get_base(const LString &s)
 {
     // Have a leading `'0'`?
     if (len(s) > 2 && s[0] == '0') {
@@ -36,7 +36,7 @@ lstring_to_number(const LString &s, Number *out, int base)
     LString s2 = s;
     // Need to detect the base prefix?
     if (base == 0) {
-        base = _get_base(s);
+        base = get_base(s);
         // Skip the `0[bBoOdDxX]` prefix because `strto*` doesn't support `0b`.
         if (base) {
             // s2 = s2[2:]
@@ -138,7 +138,7 @@ builder_write_lstring(lulu_VM *vm, Builder *b, const LString &s)
  */
 template<auto Bufsize, const char *Fmt, class Arg>
 static void
-_builder_write(lulu_VM *vm, Builder *b, Arg arg)
+builder_write(lulu_VM *vm, Builder *b, Arg arg)
 {
     Array<char, Bufsize> buf;
 
@@ -153,21 +153,21 @@ void
 builder_write_int(lulu_VM *vm, Builder *b, int i)
 {
     static constexpr const char fmt[] = "%i";
-    _builder_write<INT_WIDTH * 2, fmt>(vm, b, i);
+    builder_write<INT_WIDTH * 2, fmt>(vm, b, i);
 }
 
 void
 builder_write_number(lulu_VM *vm, Builder *b, Number n)
 {
     static constexpr const char fmt[] = LULU_NUMBER_FMT;
-    _builder_write<LULU_NUMBER_BUFSIZE, fmt>(vm, b, n);
+    builder_write<LULU_NUMBER_BUFSIZE, fmt>(vm, b, n);
 }
 
 void
 builder_write_pointer(lulu_VM *vm, Builder *b, void *p)
 {
     static constexpr const char fmt[] = "%p";
-    _builder_write<sizeof(p) * CHAR_BIT, fmt>(vm, b, p);
+    builder_write<sizeof(p) * CHAR_BIT, fmt>(vm, b, p);
 }
 
 LString
@@ -210,7 +210,7 @@ intern_init(Intern *t)
 }
 
 static isize
-_intern_cap(const Intern *t)
+intern_cap(const Intern *t)
 {
     return len(t->table);
 }
@@ -218,7 +218,7 @@ _intern_cap(const Intern *t)
 // Assumes `cap` is always a power of 2.
 // The result must be unsigned in order to have sane bitwise operations.
 static usize
-_intern_clamp_index(u32 hash, isize cap)
+intern_clamp_index(u32 hash, isize cap)
 {
     return cast_usize(hash) & cast_usize(cap - 1);
 }
@@ -236,7 +236,7 @@ intern_resize(lulu_VM *vm, Intern *t, isize new_cap)
         // Rehash all children for this list.
         while (node != nullptr) {
             OString *s = &node->ostring;
-            usize    i = _intern_clamp_index(s->hash, new_cap);
+            usize    i = intern_clamp_index(s->hash, new_cap);
 
             // Save because it's about to be replaced.
             Object *next  = s->next;
@@ -271,7 +271,7 @@ ostring_new(lulu_VM *vm, const LString &text)
 {
     Intern  *t    = &vm->intern;
     u32      hash = hash_string(text);
-    usize    i    = _intern_clamp_index(hash, _intern_cap(t));
+    usize    i    = intern_clamp_index(hash, intern_cap(t));
     for (Object *node = t->table[i]; node != nullptr; node = node->base.next) {
         OString *s = &node->ostring;
         if (s->hash == hash) {
@@ -290,7 +290,7 @@ ostring_new(lulu_VM *vm, const LString &text)
     s->data[s->len] = 0;
     memcpy(s->data, raw_data(text), cast_usize(len(text)));
 
-    if (t->count + 1 > _intern_cap(t)*3 / 4) {
+    if (t->count + 1 > intern_cap(t)*3 / 4) {
         isize new_cap = mem_next_pow2(t->count + 1);
         intern_resize(vm, t, new_cap);
     }

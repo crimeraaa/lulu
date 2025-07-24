@@ -20,19 +20,19 @@ lexer_make(lulu_VM *vm, OString *source, const LString &script, Builder *b)
 }
 
 static bool
-_is_eof(const Lexer *x)
+is_eof(const Lexer *x)
 {
     return x->cursor >= end(x->script);
 }
 
 static char
-_peek(const Lexer *x)
+peek(const Lexer *x)
 {
     return *x->cursor;
 }
 
 static char
-_peek_next(const Lexer *x)
+peek_next(const Lexer *x)
 {
     const char *p = x->cursor + 1;
     // Safe to dereference?
@@ -48,37 +48,37 @@ _peek_next(const Lexer *x)
  *      just before the increment.
  */
 static char
-_advance(Lexer *x)
+advance(Lexer *x)
 {
     return *x->cursor++;
 }
 
 static bool
-_check(const Lexer *x, char ch)
+check(const Lexer *x, char ch)
 {
-    return _peek(x) == ch;
+    return peek(x) == ch;
 }
 
 static bool
-_check2(const Lexer *x, char first, char second)
+check2(const Lexer *x, char first, char second)
 {
-    return _check(x, first) || _check(x, second);
+    return check(x, first) || check(x, second);
 }
 
 static bool
-_match(Lexer *x, char ch)
+match(Lexer *x, char ch)
 {
-    bool found = _check(x, ch);
+    bool found = check(x, ch);
     if (found) {
-        _advance(x);
+        advance(x);
     }
     return found;
 }
 
 static bool
-_match2(Lexer *x, char first, char second)
+match2(Lexer *x, char first, char second)
 {
-    return _match(x, first) || _match(x, second);
+    return match(x, first) || match(x, second);
 }
 
 static LString
@@ -89,7 +89,7 @@ get_lexeme(const Lexer *x)
 
 [[noreturn]]
 static void
-_error(const Lexer *x, const char *what)
+error(const Lexer *x, const char *what)
 {
     LString where = get_lexeme(x);
     builder_write_lstring(x->vm, x->builder, where);
@@ -98,10 +98,10 @@ _error(const Lexer *x, const char *what)
 }
 
 static void
-_expect(Lexer *x, char ch, const char *msg)
+expect(Lexer *x, char ch, const char *msg)
 {
-    if (!_match(x, ch)) {
-        _error(x, msg);
+    if (!match(x, ch)) {
+        error(x, msg);
     }
 }
 
@@ -111,37 +111,37 @@ _expect(Lexer *x, char ch, const char *msg)
  *  1.) Assumes we just consumed a '[' character.
  */
 static int
-_get_nesting(Lexer *x)
+get_nesting(Lexer *x)
 {
     int count = 0;
-    while (!_is_eof(x) && _check(x, '=')) {
-        _advance(x);
+    while (!is_eof(x) && check(x, '=')) {
+        advance(x);
         count++;
     }
     return count;
 }
 
 static const char *
-_skip_multiline(Lexer *x, int nest_open)
+skip_multiline(Lexer *x, int nest_open)
 {
     for (;;) {
-        if (_is_eof(x)) {
-            _error(x, "Unterminated multiline sequence");
+        if (is_eof(x)) {
+            error(x, "Unterminated multiline sequence");
         }
 
-        if (_match(x, ']')) {
+        if (match(x, ']')) {
             // `x->cursor` points to the character *after* the ']', so point to
             // the ']' itself so that when we do pointer arithmetic we can get
             // the proper length.
             const char *stop = x->cursor - 1;
-            int nest_close = _get_nesting(x);
-            if (_match(x, ']') && nest_open == nest_close) {
+            int nest_close = get_nesting(x);
+            if (match(x, ']') && nest_open == nest_close) {
                 return stop;
             }
             continue;
         }
 
-        char ch = _advance(x);
+        char ch = advance(x);
         if (ch == '\n') {
             x->line++;
         }
@@ -155,43 +155,43 @@ _skip_multiline(Lexer *x, int nest_open)
  *  2.) We are now pointing at the comment contents, '[', or a newline.
  */
 static void
-_skip_comment(Lexer *x)
+skip_comment(Lexer *x)
 {
     // Multiline comment.
-    if (_match(x, '[')) {
-        int nest_open = _get_nesting(x);
-        if (_match(x, '[')) {
-            _skip_multiline(x, nest_open);
+    if (match(x, '[')) {
+        int nest_open = get_nesting(x);
+        if (match(x, '[')) {
+            skip_multiline(x, nest_open);
             return;
         }
         // If we didn't find the 2nd '[' then we fall back to single line.
     }
     // Single line
-    while (!_is_eof(x) && !_check(x, '\n')) {
-        _advance(x);
+    while (!is_eof(x) && !check(x, '\n')) {
+        advance(x);
     }
 }
 
 static void
-_skip_whitespace(Lexer *x)
+skip_whitespace(Lexer *x)
 {
     for (;;) {
-        char ch = _peek(x);
+        char ch = peek(x);
         switch (ch) {
         case '\n': x->line++; // fall-through
         case ' ':
         case '\r':
         case '\t':
-            _advance(x);
+            advance(x);
             break;
         case '-':
-            if (_peek_next(x) != '-') {
+            if (peek_next(x) != '-') {
                 return;
             }
             // Skip the two '-'.
-            _advance(x);
-            _advance(x);
-            _skip_comment(x);
+            advance(x);
+            advance(x);
+            skip_comment(x);
             break;
         default:
             return;
@@ -200,7 +200,7 @@ _skip_whitespace(Lexer *x)
 }
 
 static char
-_get_escaped(Lexer *x, char ch)
+get_escaped(Lexer *x, char ch)
 {
     switch (ch) {
     case '0':   return '\0';
@@ -217,83 +217,83 @@ _get_escaped(Lexer *x, char ch)
         break;
     }
 
-    _error(x, "Invalid escape sequence");
+    error(x, "Invalid escape sequence");
 }
 
 static Token
-_make_token(const Lexer *x, Token_Type type)
+make_token(const Lexer *x, Token_Type type)
 {
     Token t = Token::make(type, x->line, get_lexeme(x), 0);
     return t;
 }
 
 static Token
-_make_token_number(const Lexer *x, Number n)
+make_token_number(const Lexer *x, Number n)
 {
-    Token t = _make_token(x, TOKEN_NUMBER);
+    Token t = make_token(x, TOKEN_NUMBER);
     t.number = n;
     return t;
 }
 
 static Token
-_make_token_lexeme(const Lexer *x, Token_Type type, const LString &lexeme)
+make_token_lexeme(const Lexer *x, Token_Type type, const LString &lexeme)
 {
     Token t = Token::make(type, x->line, lexeme, 0);
     return t;
 }
 
 static Token
-_make_token_ostring(const Lexer *x, OString *ostring)
+make_token_ostring(const Lexer *x, OString *ostring)
 {
-    Token t = _make_token(x, TOKEN_STRING);
+    Token t = make_token(x, TOKEN_STRING);
     t.ostring = ostring;
     return t;
 }
 
 static bool
-_is_upper(char ch)
+is_upper(char ch)
 {
     return 'A' <= ch && ch <= 'Z';
 }
 
 static bool
-_is_lower(char ch)
+is_lower(char ch)
 {
     return 'a' <= ch && ch <= 'z';
 }
 
 static bool
-_is_number(char ch)
+is_number(char ch)
 {
     return '0' <= ch && ch <= '9';
 }
 
 static bool
-_is_alpha(char ch)
+is_alpha(char ch)
 {
-    return _is_upper(ch) || _is_lower(ch) || ch == '_';
+    return is_upper(ch) || is_lower(ch) || ch == '_';
 }
 
 static bool
-_is_ident(char ch)
+is_ident(char ch)
 {
-    return _is_alpha(ch) || _is_number(ch);
+    return is_alpha(ch) || is_number(ch);
 }
 
 static void
-_consume_sequence(Lexer *x, bool (*predicate)(char ch))
+consume_sequence(Lexer *x, bool (*predicate)(char ch))
 {
-    while (!_is_eof(x) && predicate(_peek(x))) {
-        _advance(x);
+    while (!is_eof(x) && predicate(peek(x))) {
+        advance(x);
     }
 }
 
 static Token
-_make_number(Lexer *x, char first)
+make_number(Lexer *x, char first)
 {
     if (first == '0') {
         // Don't consume the (potential) prefix yet.
-        char ch = _peek(x);
+        char ch = peek(x);
         int base = 0;
         switch (ch) {
         case 'b': base = 2;  break;
@@ -302,63 +302,63 @@ _make_number(Lexer *x, char first)
         case 'x': base = 16; break;
         default:
             // If it's a number or a newline, do nothing.
-            if (_is_alpha(ch)) {
-                _advance(x);
-                _error(x, "Invalid integer prefix");
+            if (is_alpha(ch)) {
+                advance(x);
+                error(x, "Invalid integer prefix");
             }
             break;
         }
 
         // Consume everything, don't check if it's a bad number yet.
         if (base != 0) {
-            _consume_sequence(x, _is_ident);
+            consume_sequence(x, is_ident);
             LString s = get_lexeme(x);
-            Number d;
+            Number d = 0;
             if (!lstring_to_number(s, &d, base)) {
                 char buf[32];
                 sprintf(buf, "Invalid base-%i integer", base);
-                _error(x, buf);
+                error(x, buf);
             }
-            return _make_token_number(x, d);
+            return make_token_number(x, d);
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
 
     // Consume '1.2.3'
     do {
-        _consume_sequence(x, _is_number);
-    } while (_match(x, '.'));
+        consume_sequence(x, is_number);
+    } while (match(x, '.'));
 
     // Exponent form?
-    if (_match2(x, 'e', 'E')) {
-        _match2(x, '+', '-'); // optional sign
-        _consume_sequence(x, _is_number);
+    if (match2(x, 'e', 'E')) {
+        match2(x, '+', '-'); // optional sign
+        consume_sequence(x, is_number);
     }
-    _consume_sequence(x, _is_ident);
+    consume_sequence(x, is_ident);
 
     LString s = get_lexeme(x);
-    Number d;
+    Number  d = 0;
     if (!lstring_to_number(s, &d)) {
-        _error(x, "Malformed number");
+        error(x, "Malformed number");
     }
-    return _make_token_number(x, d);
+    return make_token_number(x, d);
 }
 
 static Token
-_make_string(Lexer *x, char q)
+make_string(Lexer *x, char q)
 {
     lulu_VM *vm = x->vm;
     Builder *b  = vm_get_builder(vm);
     LString  s{x->cursor, 0};
-    while (!_is_eof(x) && !_check2(x, q, '\n')) {
-        char ch = _advance(x);
+    while (!is_eof(x) && !check2(x, q, '\n')) {
+        char ch = advance(x);
         if (ch == '\\') {
             // 'flush' the string up to this point.
             builder_write_lstring(vm, b, s);
 
             // Read the character after '\'.
-            ch = _advance(x);
-            ch = _get_escaped(x, ch);
+            ch = advance(x);
+            ch = get_escaped(x, ch);
             builder_write_char(vm, b, ch);
 
             // Point to after the escape character.
@@ -367,44 +367,44 @@ _make_string(Lexer *x, char q)
             s.len += 1;
         }
     }
-    _expect(x, q, "Unterminated string");
+    expect(x, q, "Unterminated string");
     builder_write_lstring(vm, b, s);
     s = builder_to_string(*b);
     OString *o = ostring_new(vm, s);
-    return _make_token_ostring(x, o);
+    return make_token_ostring(x, o);
 }
 
 static Token
-_check_keyword(const Lexer *x, const LString &s, Token_Type type)
+check_keyword(const Lexer *x, const LString &s, Token_Type type)
 {
     if (slice_eq(s, token_strings[type])) {
-        return _make_token_lexeme(x, type, s);
+        return make_token_lexeme(x, type, s);
     }
-    return _make_token_lexeme(x, TOKEN_IDENTIFIER, s);
+    return make_token_lexeme(x, TOKEN_IDENTIFIER, s);
 }
 
 static Token
-_make_keyword_or_identifier(const Lexer *x)
+make_keyword_or_identifier(const Lexer *x)
 {
     LString word = get_lexeme(x);
 
     // If we reached this point then `word` MUST be at least of length 1.
     switch (word[0]) {
-    case 'a': return _check_keyword(x, word, TOKEN_AND);
-    case 'b': return _check_keyword(x, word, TOKEN_BREAK);
-    case 'd': return _check_keyword(x, word, TOKEN_DO);
+    case 'a': return check_keyword(x, word, TOKEN_AND);
+    case 'b': return check_keyword(x, word, TOKEN_BREAK);
+    case 'd': return check_keyword(x, word, TOKEN_DO);
     case 'e':
         switch (len(word)) {
-        case 3: return _check_keyword(x, word, TOKEN_END);
-        case 4: return _check_keyword(x, word, TOKEN_ELSE);
-        case 6: return _check_keyword(x, word, TOKEN_ELSEIF);
+        case 3: return check_keyword(x, word, TOKEN_END);
+        case 4: return check_keyword(x, word, TOKEN_ELSE);
+        case 6: return check_keyword(x, word, TOKEN_ELSEIF);
         }
         break;
     case 'f':
         switch (len(word)) {
-        case 3: return _check_keyword(x, word, TOKEN_FOR);
-        case 5: return _check_keyword(x, word, TOKEN_FALSE);
-        case 8: return _check_keyword(x, word, TOKEN_FUNCTION);
+        case 3: return check_keyword(x, word, TOKEN_FOR);
+        case 5: return check_keyword(x, word, TOKEN_FALSE);
+        case 8: return check_keyword(x, word, TOKEN_FUNCTION);
         }
         break;
     case 'i':
@@ -412,29 +412,29 @@ _make_keyword_or_identifier(const Lexer *x)
             break;
         }
         switch (word[1]) {
-        case 'f': return _check_keyword(x, word, TOKEN_IF);
-        case 'n': return _check_keyword(x, word, TOKEN_IN);
+        case 'f': return check_keyword(x, word, TOKEN_IF);
+        case 'n': return check_keyword(x, word, TOKEN_IN);
         }
         break;
-    case 'l': return _check_keyword(x, word, TOKEN_LOCAL);
+    case 'l': return check_keyword(x, word, TOKEN_LOCAL);
     case 'n':
         if (len(word) != 3) {
             break;
         }
         switch (word[1]) {
-        case 'i': return _check_keyword(x, word, TOKEN_NIL);
-        case 'o': return _check_keyword(x, word, TOKEN_NOT);
+        case 'i': return check_keyword(x, word, TOKEN_NIL);
+        case 'o': return check_keyword(x, word, TOKEN_NOT);
         }
         break;
-    case 'o': return _check_keyword(x, word, TOKEN_OR);
+    case 'o': return check_keyword(x, word, TOKEN_OR);
     case 'r':
         if (len(word) != 6) {
             break;
         }
         // 'repeat' and 'return' have the same first 2 characters
         switch (word[2]) {
-        case 't': return _check_keyword(x, word, TOKEN_RETURN);
-        case 'p': return _check_keyword(x, word, TOKEN_REPEAT);
+        case 't': return check_keyword(x, word, TOKEN_RETURN);
+        case 'p': return check_keyword(x, word, TOKEN_REPEAT);
         }
         break;
     case 't':
@@ -442,34 +442,34 @@ _make_keyword_or_identifier(const Lexer *x)
             break;
         }
         switch (word[1]) {
-        case 'h': return _check_keyword(x, word, TOKEN_THEN);
-        case 'r': return _check_keyword(x, word, TOKEN_TRUE);
+        case 'h': return check_keyword(x, word, TOKEN_THEN);
+        case 'r': return check_keyword(x, word, TOKEN_TRUE);
         }
         break;
-    case 'u': return _check_keyword(x, word, TOKEN_UNTIL);
-    case 'w': return _check_keyword(x, word, TOKEN_WHILE);
+    case 'u': return check_keyword(x, word, TOKEN_UNTIL);
+    case 'w': return check_keyword(x, word, TOKEN_WHILE);
     default:
         break;
     }
 
-    return _make_token(x, TOKEN_IDENTIFIER);
+    return make_token(x, TOKEN_IDENTIFIER);
 }
 
 Token
 lexer_lex(Lexer *x)
 {
-    _skip_whitespace(x);
+    skip_whitespace(x);
     x->start = x->cursor;
-    if (_is_eof(x)) {
-        return _make_token(x, TOKEN_EOF);
+    if (is_eof(x)) {
+        return make_token(x, TOKEN_EOF);
     }
 
-    char ch = _advance(x);
-    if (_is_alpha(ch)) {
-        _consume_sequence(x, _is_ident);
-        return _make_keyword_or_identifier(x);
-    } else if (_is_number(ch)) {
-        return _make_number(x, ch);
+    char ch = advance(x);
+    if (is_alpha(ch)) {
+        consume_sequence(x, is_ident);
+        return make_keyword_or_identifier(x);
+    } else if (is_number(ch)) {
+        return make_number(x, ch);
     }
 
     Token_Type type = TOKEN_INVALID;
@@ -480,12 +480,12 @@ lexer_lex(Lexer *x)
     case '}': type = TOKEN_CLOSE_CURLY; break;
     case '[':
         // Don't consume '[' nor '=' yet; need to get rid of all '=' first.
-        if (_check2(x, '[', '=')) {
-            int nest_open = _get_nesting(x);
-            _expect(x, '[', "Expected 2nd '[' to start off multiline string");
+        if (check2(x, '[', '=')) {
+            int nest_open = get_nesting(x);
+            expect(x, '[', "Expected 2nd '[' to start off multiline string");
             const char *start = x->cursor;
-            const char *stop  = _skip_multiline(x, nest_open);
-            return _make_token_lexeme(x, TOKEN_STRING, slice_pointer(start, stop));
+            const char *stop  = skip_multiline(x, nest_open);
+            return make_token_lexeme(x, TOKEN_STRING, slice_pointer(start, stop));
         }
         type = TOKEN_OPEN_BRACE;
         break;
@@ -499,20 +499,20 @@ lexer_lex(Lexer *x)
     case '^': type = TOKEN_CARET; break;
 
     case '~':
-        _expect(x, '=', "Expected '='");
+        expect(x, '=', "Expected '='");
         type = TOKEN_NOT_EQ;
         break;
-    case '=': type = _match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN; break;
-    case '<': type = _match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS; break;
-    case '>': type = _match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ; break;
+    case '=': type = match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN; break;
+    case '<': type = match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS; break;
+    case '>': type = match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ; break;
 
     case '#': type = TOKEN_POUND; break;
     case '.':
-        if (_match(x, '.')) {
-            type = _match(x, '.') ? TOKEN_VARARG : TOKEN_CONCAT;
+        if (match(x, '.')) {
+            type = match(x, '.') ? TOKEN_VARARG : TOKEN_CONCAT;
         } else {
-            if (_is_number(_peek(x))) {
-                return _make_number(x, ch);
+            if (is_number(peek(x))) {
+                return make_number(x, ch);
             }
             type = TOKEN_DOT;
         }
@@ -521,12 +521,12 @@ lexer_lex(Lexer *x)
     case ';': type = TOKEN_SEMI; break;
 
     case '\'':
-    case '\"': return _make_string(x, ch);
+    case '\"': return make_string(x, ch);
     }
     if (type == TOKEN_INVALID) {
-        _error(x, "Unexpected character");
+        error(x, "Unexpected character");
     }
-    return _make_token(x, type);
+    return make_token(x, type);
 }
 
 /**

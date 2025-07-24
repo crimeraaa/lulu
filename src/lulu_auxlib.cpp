@@ -32,7 +32,7 @@ lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b)
  *      The number of characters currently stored in the buffer.
  */
 static size_t
-_buffer_len(const lulu_Buffer &b)
+buffer_len(const lulu_Buffer &b)
 {
     return b.cursor;
 }
@@ -43,7 +43,7 @@ _buffer_len(const lulu_Buffer &b)
  *      The total number of characters that could be stored in the buffer.
  */
 static constexpr size_t
-_buffer_cap(const lulu_Buffer &b)
+buffer_cap(const lulu_Buffer &b)
 {
     return sizeof(b.data);
 }
@@ -54,15 +54,15 @@ _buffer_cap(const lulu_Buffer &b)
  *      The number of free slots in the buffer.
  */
 static size_t
-_buffer_rem(const lulu_Buffer &b)
+buffer_rem(const lulu_Buffer &b)
 {
-    return _buffer_cap(b) - _buffer_len(b);
+    return buffer_cap(b) - buffer_len(b);
 }
 
 static bool
-_buffer_flushed(lulu_Buffer *b)
+buffer_flushed(lulu_Buffer *b)
 {
-    size_t n = _buffer_len(*b);
+    size_t n = buffer_len(*b);
     // Nothing to put on the stack?
     if (n == 0) {
         return false;
@@ -83,7 +83,7 @@ static constexpr int LIMIT = LULU_STACK_MIN / 2;
  *      we do not overflow the VM stack.
  */
 static void
-_buffer_adjust_stack(lulu_Buffer *b)
+buffer_adjust_stack(lulu_Buffer *b)
 {
     // More than 1 string previously pushed, so we need to manage them.
     if (b->pushed > 1) {
@@ -112,10 +112,10 @@ _buffer_adjust_stack(lulu_Buffer *b)
 }
 
 static void
-_buffer_prep(lulu_Buffer *b)
+buffer_prep(lulu_Buffer *b)
 {
-    if (_buffer_flushed(b)) {
-        _buffer_adjust_stack(b);
+    if (buffer_flushed(b)) {
+        buffer_adjust_stack(b);
     }
 }
 
@@ -125,15 +125,15 @@ _buffer_prep(lulu_Buffer *b)
  *      The number of written characters.
  */
 static size_t
-_buffer_append(lulu_Buffer *b, const char *s, size_t n)
+buffer_append(lulu_Buffer *b, const char *s, size_t n)
 {
     // Resulting length would overflow the buffer?
-    if (_buffer_len(*b) + n >= _buffer_cap(*b)) {
-        _buffer_prep(b);
+    if (buffer_len(*b) + n >= buffer_cap(*b)) {
+        buffer_prep(b);
     }
 
     // How many indexes left are available?
-    size_t rem = _buffer_rem(*b);
+    size_t rem = buffer_rem(*b);
 
     // Clamp size to copy. May be 0.
     size_t to_write = (n > rem) ? rem : n;
@@ -148,8 +148,8 @@ _buffer_append(lulu_Buffer *b, const char *s, size_t n)
 LULU_API void
 lulu_write_char(lulu_Buffer *b, char ch)
 {
-    if (b->cursor >= _buffer_cap(*b)) {
-        _buffer_prep(b);
+    if (b->cursor >= buffer_cap(*b)) {
+        buffer_prep(b);
     }
     b->data[b->cursor++] = ch;
 }
@@ -165,7 +165,7 @@ lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n)
 {
     // Number of unwritten chars in `s`.
     for (size_t rem = n; rem != 0;) {
-        size_t written = _buffer_append(b, s, rem);
+        size_t written = buffer_append(b, s, rem);
         s   += written;
         rem -= written;
     }
@@ -174,7 +174,7 @@ lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n)
 LULU_API void
 lulu_finish_string(lulu_Buffer *b)
 {
-    _buffer_flushed(b);
+    buffer_flushed(b);
     lulu_concat(b->vm, b->pushed);
     b->pushed = 1;
 }
@@ -201,7 +201,7 @@ lulu_type_error(lulu_VM *vm, int argn, const char *type_name)
 
 [[noreturn]]
 static void
-_type_error(lulu_VM *vm, int argn, lulu_Type tag)
+type_error(lulu_VM *vm, int argn, lulu_Type tag)
 {
     const char *s = lulu_type_name(vm, tag);
     lulu_type_error(vm, argn, s);
@@ -227,7 +227,7 @@ LULU_API void
 lulu_check_type(lulu_VM *vm, int argn, lulu_Type type)
 {
     if (lulu_type(vm, argn) != type) {
-        _type_error(vm, argn, type);
+        type_error(vm, argn, type);
     }
 }
 
@@ -235,7 +235,7 @@ LULU_API int
 lulu_check_boolean(lulu_VM *vm, int argn)
 {
     if (!lulu_is_boolean(vm, argn)) {
-        _type_error(vm, argn, LULU_TYPE_BOOLEAN);
+        type_error(vm, argn, LULU_TYPE_BOOLEAN);
     }
     return lulu_to_boolean(vm, argn);
 }
@@ -245,9 +245,19 @@ lulu_check_number(lulu_VM *vm, int argn)
 {
     lulu_Number d = lulu_to_number(vm, argn);
     if (d == 0 && !lulu_is_number(vm, argn)) {
-        _type_error(vm, argn, LULU_TYPE_NUMBER);
+        type_error(vm, argn, LULU_TYPE_NUMBER);
     }
     return d;
+}
+
+LULU_API lulu_Integer
+lulu_check_integer(lulu_VM *vm, int argn)
+{
+    lulu_Integer i = lulu_to_integer(vm, argn);
+    if (i == 0 && !lulu_is_number(vm, argn)) {
+        type_error(vm, argn, LULU_TYPE_NUMBER);
+    }
+    return i;
 }
 
 LULU_API const char *
@@ -258,6 +268,36 @@ lulu_check_lstring(lulu_VM *vm, int argn, size_t *n)
         lulu_type_error(vm, argn, "string");
     }
     return s;
+}
+
+LULU_API lulu_Number
+lulu_opt_number(lulu_VM *vm, int argn, lulu_Number def)
+{
+    if (lulu_is_none_or_nil(vm, argn)) {
+        return def;
+    }
+    return lulu_check_number(vm, argn);
+}
+
+LULU_API lulu_Integer
+lulu_opt_integer(lulu_VM *vm, int argn, lulu_Integer def)
+{
+    if (lulu_is_none_or_nil(vm, argn)) {
+        return def;
+    }
+    return lulu_check_integer(vm, argn);
+}
+
+LULU_API const char *
+lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n)
+{
+    if (lulu_is_none_or_nil(vm, argn)) {
+        if (n != nullptr) {
+            *n = (def != nullptr) ? strlen(def) : 0;
+        }
+        return def;
+    }
+    return lulu_check_lstring(vm, argn, n);
 }
 
 LULU_API int

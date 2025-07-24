@@ -1,14 +1,104 @@
-#include <limits.h>     // CHAR_{MIN,MAX}
+#include <limits.h>     /* CHAR_{MIN,MAX} */
+#include <string.h>     /* memchr */
 
 #include "lulu_auxlib.h"
 
+#define cast(T)         (T)
+#define unused(expr)    (void)(expr)
+
 static int
-_string_len(lulu_VM *vm, int argc)
+string_len(lulu_VM *vm, int)
 {
-    size_t n;
+    size_t n = 0;
     lulu_check_lstring(vm, 1, &n);
-    (void)argc;
-    lulu_push_number(vm, (lulu_Number)n);
+    lulu_push_number(vm, cast(lulu_Integer)n);
+    return 1;
+}
+
+static lulu_Integer
+resolve_index(lulu_Integer i, lulu_Integer n)
+{
+    /**
+     * @brief
+     *      Relative string position, so resolve to back of the string.
+     *      e.g. if n == 3 and i == -1
+     *      then i = i + (n+1)
+     *      then i = -1 + 4
+     *      then i = 3
+     */
+    if (i < 0) {
+        i += n + 1;
+    }
+    return (i > 0) ? i - 1 : 0;
+}
+
+static const char *
+get_lstring(lulu_VM *vm, int argn, lulu_Integer *n)
+{
+    size_t tmp = 0;
+    const char *s = lulu_check_lstring(vm, argn, &tmp);
+    *n = cast(lulu_Integer)tmp;
+    return s;
+}
+
+static int
+string_sub(lulu_VM *vm, int)
+{
+    lulu_Integer n     = 0;
+    const char  *s     = get_lstring(vm, 1, &n);
+    lulu_Integer start = lulu_check_integer(vm, 2);
+    lulu_Integer stop  = lulu_opt_integer(vm, 3, /* def */ n);
+
+    start = resolve_index(start, n);
+    stop  = resolve_index(stop, n);
+
+    /* clamp ranges */
+    if (start <= 0) {
+        start = 0;
+    }
+    if (stop > n) {
+        stop = n;
+    }
+    if (start <= stop) {
+        /* Add 1 to length because `s[stop]` is inclusive. */
+        lulu_push_lstring(vm, s + start, stop - start + 1);
+    } else {
+        lulu_push_literal(vm, "");
+    }
+    return 1;
+}
+
+static int
+string_find(lulu_VM *vm, int)
+{
+    lulu_Integer s_len = 0, p_len = 0;
+    const char *s = get_lstring(vm, 1, &s_len);
+    const char *p = get_lstring(vm, 2, &p_len);
+
+    lulu_Integer start  = lulu_opt_integer(vm, 3, /* def */ 0);
+    for (start = resolve_index(start, s_len); start < s_len; start++) {
+        /* Pattern could not possibly fit from this point onwards? */
+        if (start + p_len > s_len) {
+            break;
+        }
+
+        lulu_Integer stop = start;
+        for (lulu_Integer i = 0; i < p_len; i++) {
+            if (s[stop] != p[i]) {
+                break;
+            }
+            stop++;
+        }
+
+        /* Almost correct, but gives different results when `p == ""`. */
+        if (stop != start) {
+            lulu_push_integer(vm, start + 1);
+            lulu_push_integer(vm, stop);
+            return 2;
+        }
+    }
+
+    lulu_push_nil(vm, 1);
     return 1;
 }
 
@@ -16,7 +106,7 @@ _string_len(lulu_VM *vm, int argc)
 #define FMTSPEC_BUFSIZE     32
 
 static int
-_string_format(lulu_VM *vm, int argc)
+string_format(lulu_VM *vm, int argc)
 {
     int argn; /* Index 0 is never valid, index 1 is the format string. */
     size_t n;
@@ -36,7 +126,7 @@ _string_format(lulu_VM *vm, int argc)
 
         /* 'Flush' the string before the specifier. */
         if (*it == '%') {
-            lulu_write_lstring(&b, start, (size_t)(it - start));
+            lulu_write_lstring(&b, start, cast(size_t)(it - start));
             it++;
         } else {
             continue;
@@ -60,11 +150,11 @@ _string_format(lulu_VM *vm, int argc)
             /* skip flushing the buffer */
             continue;
         case 'c': {
-            int ch = (int)lulu_check_number(vm, argn);
+            int ch = cast(int)lulu_check_number(vm, argn);
             if (CHAR_MIN <= ch && ch <= CHAR_MAX) {
                 written = sprintf(fmt_item, fmt_spec, ch);
             } else {
-                sprintf(fmt_item, "unknown character '%c'", ch);
+                sprintf(fmt_item, "unknown character code '%i'", ch);
                 return lulu_arg_error(vm, argn, fmt_item);
             }
             break;
@@ -73,7 +163,7 @@ _string_format(lulu_VM *vm, int argc)
         case 'i': case 'I':
         case 'o': case 'O':
         case 'x': case 'X': {
-            int i = (int)lulu_check_number(vm, argn);
+            int i = cast(int)lulu_check_integer(vm, argn);
             written = sprintf(fmt_item, fmt_spec, i);
             break;
         }
@@ -84,7 +174,7 @@ _string_format(lulu_VM *vm, int argc)
             break;
         }
         case 's': {
-            size_t      l;
+            size_t      l = 0;
             const char *s = lulu_check_lstring(vm, argn, &l);
             lulu_write_lstring(&b, s, l);
             /* skip flushing the buffer */
@@ -96,25 +186,26 @@ _string_format(lulu_VM *vm, int argc)
             return lulu_arg_error(vm, argn, fmt_item);
         }
 
-        lulu_write_lstring(&b, fmt_item, (size_t)written);
+        lulu_write_lstring(&b, fmt_item, cast(size_t)written);
     }
 
-    lulu_write_lstring(&b, start, (size_t)(it - start));
+    lulu_write_lstring(&b, start, cast(size_t)(it - start));
     lulu_finish_string(&b);
     return 1;
 }
 
 static const lulu_Register
 stringlib[] = {
-    {"len",     _string_len},
-    {"format",  _string_format}
+    {"len",     string_len},
+    {"find",    string_find},
+    {"sub",     string_sub},
+    {"format",  string_format}
 };
 
 LULU_API int
-lulu_open_string(lulu_VM *vm, int argc)
+lulu_open_string(lulu_VM *vm, int)
 {
     const char *libname = lulu_to_string(vm, 1);
-    (void)argc;
     lulu_set_library(vm, libname, stringlib, lulu_count_library(stringlib));
     return 1;
 }
