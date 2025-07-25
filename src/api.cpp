@@ -124,7 +124,7 @@ lulu_error(lulu_VM *vm)
     return 0;
 }
 
-/*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
+/*=== TYPE QUERY FUNCTIONS ========================================== {{{ */
 
 LULU_API lulu_Type
 lulu_type(lulu_VM *vm, int i)
@@ -162,9 +162,9 @@ lulu_is_string(lulu_VM *vm, int i)
     return t == VALUE_NUMBER || t == VALUE_STRING;
 }
 
-/*=== }}} =================================================================== */
+/*=== }}} =============================================================== */
 
-/*=== STACK MANIPULATION FUNCTIONS ====================================== {{{ */
+/*=== STACK MANIPULATION FUNCTIONS ================================== {{{ */
 
 LULU_API int
 lulu_to_boolean(lulu_VM *vm, int i)
@@ -352,7 +352,7 @@ lulu_push_value(lulu_VM *vm, int i)
     vm_push(vm, *v);
 }
 
-/*=== }}} =================================================================== */
+/*=== }}} =============================================================== */
 
 LULU_API void
 lulu_new_table(lulu_VM *vm, int n_array, int n_hash)

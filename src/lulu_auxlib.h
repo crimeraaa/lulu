@@ -5,7 +5,7 @@
 
 #include "lulu.h"
 
-/**=== AUXILLIARY LIBRARY ================================================== {{{
+/**=== AUXILLIARY LIBRARY ============================================== {{{
  *
  * Everything that follows is implemented purely in terms of the API.
  * You could very much reimplement these how you like; they are implemented
@@ -173,9 +173,9 @@ lulu_set_library(lulu_VM *vm, const char *libname,
 
 
 
-/*=== }}} =================================================================== */
+/*=== }}} =============================================================== */
 
-/*=== HELPER MACROS ===================================================== {{{ */
+/*=== HELPER MACROS ================================================= {{{ */
 
 
 #define lulu_type_name_at(vm, i)        lulu_type_name(vm, lulu_type(vm, i))
@@ -191,15 +191,15 @@ lulu_set_library(lulu_VM *vm, const char *libname,
  */
 #define lulu_count_library(libs)    (int)(sizeof(libs) / sizeof(libs[0]))
 
-/*=== }}} =================================================================== */
+/*=== }}} =============================================================== */
 
 LULU_API void
 lulu_open_libs(lulu_VM *vm);
 
 LULU_API int
-lulu_open_base(lulu_VM *vm, int argc);
+lulu_open_base(lulu_VM *vm);
 
 LULU_API int
-lulu_open_string(lulu_VM *vm, int argc);
+lulu_open_string(lulu_VM *vm);
 
 #endif /* LULU_AUXILLIARY_H */

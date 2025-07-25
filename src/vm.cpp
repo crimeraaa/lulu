@@ -429,7 +429,7 @@ vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
             top = base + cast_isize(argc);
         }
         frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
-        int actual_returned = fn->c.callback(vm, argc);
+        int actual_returned = fn->c.callback(vm);
 
         Value *first_ret = (actual_returned > 0)
             ? &vm->window[len(vm->window) - cast_isize(actual_returned)]

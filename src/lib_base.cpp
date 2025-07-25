@@ -1,40 +1,33 @@
 #include <string.h>
-#include <time.h>
 
 #include "lulu_auxlib.h"
 
 static int
-base_clock(lulu_VM *vm, int argc)
+base_assert(lulu_VM *vm)
 {
-    lulu_Number n;
-    (void)argc;
-    n = (lulu_Number)clock() / (lulu_Number)CLOCKS_PER_SEC;
-    lulu_push_number(vm, n);
-    return 1;
-}
-
-static int
-base_type(lulu_VM *vm, int argc)
-{
-    lulu_Type   t;
-    const char *s;
-    size_t      n;
-
-    (void)argc;
+    int argc = lulu_get_top(vm);
     lulu_check_any(vm, 1);
+    if (lulu_to_boolean(vm, 1) == 0) {
+        /* Minor optimization: retrieve message only when throwing. */
+        const char *msg = lulu_opt_string(vm, 2, "assertion failed!");
+        return lulu_errorf(vm, "%s", msg);
+    }
+    /* Return all arguments (even the error message, if any!) */
+    return argc;
+}
 
-    t = lulu_type(vm, 1);
-    s = lulu_type_name(vm, t);
-    n = strlen(s);
-    lulu_push_lstring(vm, s, n);
+static int
+base_type(lulu_VM *vm)
+{
+    lulu_check_any(vm, 1);
+    lulu_push_string(vm, lulu_type_name_at(vm, 1));
     return 1;
 }
 
 static int
-base_tostring(lulu_VM *vm, int argc)
+base_tostring(lulu_VM *vm)
 {
     lulu_Type t;
-    (void)argc;
     lulu_check_any(vm, 1);
 
     t = lulu_type(vm, 1);
@@ -46,7 +39,7 @@ base_tostring(lulu_VM *vm, int argc)
         lulu_push_string(vm, lulu_to_boolean(vm, 1) ? "true" : "false");
         break;
     case LULU_TYPE_NUMBER: {
-        size_t n;
+        size_t n = 0;
         const char *s = lulu_to_lstring(vm, 1, &n);
         lulu_push_lstring(vm, s, n);
         break;
@@ -63,10 +56,9 @@ base_tostring(lulu_VM *vm, int argc)
 }
 
 static int
-base_tonumber(lulu_VM *vm, int argc)
+base_tonumber(lulu_VM *vm)
 {
     lulu_Number n;
-    (void)argc;
     lulu_check_any(vm, 1);
 
     /* Convert first, ask questions later */
@@ -80,9 +72,10 @@ base_tonumber(lulu_VM *vm, int argc)
 }
 
 static int
-base_print(lulu_VM *vm, int argc)
+base_print(lulu_VM *vm)
 {
     int i;
+    int argc = lulu_get_top(vm);
     lulu_get_global(vm, "tostring"); /* ..., tostring */
     for (i = 1; i <= argc; i++) {
         if (i > 1) {
@@ -100,7 +93,7 @@ base_print(lulu_VM *vm, int argc)
 
 static const lulu_Register
 baselib[] = {
-    {"clock",       base_clock},
+    {"assert",      base_assert},
     {"tostring",    base_tostring},
     {"tonumber",    base_tonumber},
     {"print",       base_print},
@@ -108,11 +101,10 @@ baselib[] = {
 };
 
 LULU_API int
-lulu_open_base(lulu_VM *vm, int argc)
+lulu_open_base(lulu_VM *vm)
 {
     int i;
     const char *libname = lulu_to_string(vm, 1);
-    (void)argc;
 
     /* expose _G to user */
     lulu_push_value(vm, LULU_GLOBALS_INDEX);

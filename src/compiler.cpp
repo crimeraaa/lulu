@@ -51,7 +51,7 @@ compiler_error_limit(Compiler *c, isize limit, const char *what,
     parser_error_at(c->parser, where, buf);
 }
 
-//=== BYTECODE MANIPULATION ================================================ {{{
+//=== BYTECODE MANIPULATION ============================================ {{{
 
 static isize
 code_push(Compiler *c, Instruction i, int line)
@@ -160,9 +160,9 @@ compiler_add_ostring(Compiler *c, OString *s)
     return add_constant(c, v, v);
 }
 
-//=== }}} ======================================================================
+//=== }}} ==================================================================
 
-//=== REGISTER MANIPULATION ================================================ {{{
+//=== REGISTER MANIPULATION ============================================ {{{
 
 void
 compiler_reserve_reg(Compiler *c, u16 n)
@@ -414,7 +414,7 @@ compiler_expr_rk(Compiler *c, Expr *e)
     return compiler_expr_any_reg(c, e);
 }
 
-//=== }}} ======================================================================
+//=== }}} ==================================================================
 
 static bool
 arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
@@ -902,14 +902,14 @@ logical_target_get(Compiler *c, Expr *left, bool cond)
 
     /**
      * @note
-     *  -   See `lcode.c:jumponcond(FuncState *fs, expdesc *e, int cond)` in
+     *      See `lcode.c:jumponcond(FuncState *fs, expdesc *e, int cond)` in
      *      Lua 5.1.5.
      *
      * @note 2025-07-19
-     *  -   In `lcode.c:luaK_goiftrue()`, `jumponcond()` is called with parameter
-     *      `cond == 0`.
-     *  -   So to simulate that, we don't negate `cond` when folding `OP_NOT`
-     *      and we do negatie it when emitting `OP_TEST_SET`.
+     *      In `lcode.c:luaK_goiftrue()`, `jumponcond()` is called with
+     *      parameter `cond == 0`. So to simulate that, we don't negate
+     *      `cond` when folding `OP_NOT` and we do negatie it when emitting
+     *      `OP_TEST_SET`.
      */
     if (left->type == EXPR_RELOCABLE) {
         Instruction ip = *get_code(c, left->pc);
@@ -928,11 +928,11 @@ logical_target_get(Compiler *c, Expr *left, bool cond)
 
 /**
  * @brief
- *  -   Emits an `OP_TEST{SET}`-`OP_JUMP` pair.
+ *      Emits an `OP_TEST{SET}`-`OP_JUMP` pair.
  *
- * @note 2025-07-18
- *  -   Analogous to `lcode.c:condjump(FuncState *fs, OpCode op, int A, int B,
- *      int C)` in Lua 5.1.5.
+ * @note(2025-07-18)
+ *      Analogous to `lcode.c:condjump(FuncState *fs, OpCode op, int A,
+ *      int B, int C)` in Lua 5.1.5.
  */
 static isize
 jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
@@ -971,13 +971,13 @@ compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
 
     /**
      * @brief
-     *  -   Copy whatever patch list is in `left` to `right`.
-     *  -   This is so we can discharge it later if we have multiple logicals
-     *      in a row, e.g. `x and y or z`.
+     *      Copy whatever patch list is in `left` to `right`.
+     *      This is so we can discharge it later if we have multiple
+     *      logicals in a row, e.g. `x and y or z`.
      *
      * @note 2025-07-18
-     *  -   We cannot assume `expr_has_jumps(left)` because the condition may
-     *      be folded and thus the patch list is set to `NO_JUMP`.
+     *      We cannot assume `expr_has_jumps(left)` because the condition
+     *      may be folded and thus the patch list is set to `NO_JUMP`.
      */
     if (cond) {
         lulu_assert(left->patch_true == NO_JUMP);
@@ -987,6 +987,7 @@ compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
         compiler_jump_add(c, &right->patch_true, left->patch_true);
     }
 
-    // Replace the contents of `left` with `right` so we know what to assign with.
+    // Replace the contents of `left` with `right` so we know what to
+    // assign with.
     *left = *right;
 }

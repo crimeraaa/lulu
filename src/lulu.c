@@ -112,12 +112,9 @@ typedef struct {
 } Main_Data;
 
 static int
-protected_main(lulu_VM *vm, int argc)
+protected_main(lulu_VM *vm)
 {
-    Main_Data *d;
-    (void)argc;
-    d = (Main_Data *)lulu_to_pointer(vm, 1);
-
+    Main_Data *d = (Main_Data *)lulu_to_pointer(vm, 1);
     lulu_open_libs(vm);
     lulu_set_top(vm, 0);
     switch (d->argc) {

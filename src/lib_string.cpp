@@ -1,3 +1,4 @@
+#include <ctype.h>      /* is* */
 #include <limits.h>     /* CHAR_{MIN,MAX} */
 #include <string.h>     /* memchr */
 
@@ -5,15 +6,6 @@
 
 #define cast(T)         (T)
 #define unused(expr)    (void)(expr)
-
-static int
-string_len(lulu_VM *vm, int)
-{
-    size_t n = 0;
-    lulu_check_lstring(vm, 1, &n);
-    lulu_push_number(vm, cast(lulu_Integer)n);
-    return 1;
-}
 
 static lulu_Integer
 resolve_index(lulu_Integer i, lulu_Integer n)
@@ -42,7 +34,53 @@ get_lstring(lulu_VM *vm, int argn, lulu_Integer *n)
 }
 
 static int
-string_sub(lulu_VM *vm, int)
+string_byte(lulu_VM *vm)
+{
+    lulu_Integer i = 0, n = 0;
+    const char  *s = get_lstring(vm, 1, &n);
+    lulu_Integer start = lulu_opt_integer(vm, 2, /* def */ 1);
+    lulu_Integer stop  = lulu_opt_integer(vm, 3, /* def */ start);
+
+    start = resolve_index(start, n);
+    stop  = resolve_index(stop, n);
+    /* Use `<=` because `stop` is inclusive. */
+    for (i = start; i <= stop; i++) {
+        lulu_push_integer(vm, cast(lulu_Integer)s[i]);
+    }
+    return cast(int)(stop - start + 1);
+}
+
+static int
+string_char(lulu_VM *vm)
+{
+    int argc = lulu_get_top(vm);
+    int i;
+    lulu_Buffer b;
+    lulu_buffer_init(vm, &b);
+    for (i = 1; i <= argc; i++) {
+        int  n  = cast(int)lulu_to_integer(vm, i);
+        char ch = cast(char)n;
+        /* Roundtrip causes overflow? */
+        if (cast(int)ch != n) {
+            return lulu_arg_error(vm, i, "invalid character code");
+        }
+        lulu_write_char(&b, ch);
+    }
+    lulu_finish_string(&b);
+    return 1;
+}
+
+static int
+string_len(lulu_VM *vm)
+{
+    lulu_Integer n;
+    get_lstring(vm, 1, &n);
+    lulu_push_integer(vm, n);
+    return 1;
+}
+
+static int
+string_sub(lulu_VM *vm)
 {
     lulu_Integer n     = 0;
     const char  *s     = get_lstring(vm, 1, &n);
@@ -69,7 +107,54 @@ string_sub(lulu_VM *vm, int)
 }
 
 static int
-string_find(lulu_VM *vm, int)
+string_rep(lulu_VM *vm)
+{
+    lulu_Buffer b;
+    lulu_Integer i, j;
+
+    size_t       n = 0;
+    const char  *s = lulu_check_lstring(vm, 1, &n);
+    j = lulu_check_integer(vm, 2);
+    lulu_buffer_init(vm, &b);
+    for (i = 0; i < j; i++) {
+        lulu_write_lstring(&b, s, n);
+    }
+    lulu_finish_string(&b);
+    return 1;
+}
+
+static int
+string_lower(lulu_VM *vm)
+{
+    lulu_Buffer b;
+    size_t      i, n = 0;
+    const char *s = lulu_check_lstring(vm, 1, &n);
+
+    lulu_buffer_init(vm, &b);
+    for (i = 0; i < n; i++) {
+        lulu_write_char(&b, cast(char)tolower(s[i]));
+    }
+    lulu_finish_string(&b);
+    return 1;
+}
+
+static int
+string_upper(lulu_VM *vm)
+{
+    lulu_Buffer b;
+    size_t      i, n = 0;
+    const char *s = lulu_check_lstring(vm, 1, &n);
+
+    lulu_buffer_init(vm, &b);
+    for (i = 0; i < n; i++) {
+        lulu_write_char(&b, cast(char)toupper(s[i]));
+    }
+    lulu_finish_string(&b);
+    return 1;
+}
+
+static int
+string_find(lulu_VM *vm)
 {
     lulu_Integer s_len = 0, p_len = 0;
     const char *s = get_lstring(vm, 1, &s_len);
@@ -106,13 +191,14 @@ string_find(lulu_VM *vm, int)
 #define FMTSPEC_BUFSIZE     32
 
 static int
-string_format(lulu_VM *vm, int argc)
+string_format(lulu_VM *vm)
 {
-    int argn; /* Index 0 is never valid, index 1 is the format string. */
-    size_t n;
+    int argc, argn; /* Index 0 is never valid, index 1 is the format string. */
+    size_t n = 0;
     lulu_Buffer b;
     const char *start, *it, *end;
 
+    argc  = lulu_get_top(vm);
     argn  = 1;
     start = lulu_check_lstring(vm, argn, &n);
 
@@ -196,14 +282,19 @@ string_format(lulu_VM *vm, int argc)
 
 static const lulu_Register
 stringlib[] = {
-    {"len",     string_len},
+    {"byte",    string_byte},
+    {"char",    string_char},
     {"find",    string_find},
+    {"format",  string_format},
+    {"len",     string_len},
+    {"lower",   string_lower},
+    {"rep",     string_rep},
     {"sub",     string_sub},
-    {"format",  string_format}
+    {"upper",   string_upper}
 };
 
 LULU_API int
-lulu_open_string(lulu_VM *vm, int)
+lulu_open_string(lulu_VM *vm)
 {
     const char *libname = lulu_to_string(vm, 1);
     lulu_set_library(vm, libname, stringlib, lulu_count_library(stringlib));

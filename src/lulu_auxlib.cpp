@@ -265,7 +265,7 @@ lulu_check_lstring(lulu_VM *vm, int argn, size_t *n)
 {
     const char *s = lulu_to_lstring(vm, argn, n);
     if (s == nullptr) {
-        lulu_type_error(vm, argn, "string");
+        type_error(vm, argn, LULU_TYPE_STRING);
     }
     return s;
 }

@@ -14,25 +14,26 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
 
 /**
  * @brief
- *  -   'pseudo' indexes are never valid relative stack indexes. That is, no
- *      negative relative stack index should ever be less than this.
+ *      'pseudo' indexes are never valid relative stack indexes. That is,
+ *      no negative relative stack index should ever be less than this.
  *
- *  -   Instead, they allow us to manipulate specific parts of the VM, such as
- *      the globals table. In Lua they also allow us to poke at the registry,
- *      the environment, and upvalues.
+ *      Instead, they allow us to manipulate specific parts of the VM, such
+ *      as the globals table. In Lua they also allow us to poke at the
+ *      registry, the environment, and upvalues.
  */
 #define LULU_PSEUDO_INDEX   (-15000)
 #define LULU_GLOBALS_INDEX  (LULU_PSEUDO_INDEX)
 
 /**
  * @brief LULU_API
- *  -   Defines the name linkage for functions.
- *  -   C++ by default uses 'name-mangling', which allows multiple declarations
- *      of the same function name to have different parameter lists.
- *  -   Name mangling makes it impossible for C relilably link to C++.
- *  -   So using `extern "C"` specifies that, when compiling with a C++
- *      compiler, no name mangling should occur.
- *  -   Thus C programs can properly link to our shared library.
+ *      Defines the name linkage for functions. C++ by default uses
+ *      'name-mangling', which allows multiple declarations of the same
+ *      function name to have different parameter lists.
+ *
+ *      Name mangling makes it impossible for C relilably link to C++.
+ *      So using `extern "C"` specifies that, when compiling with a C++
+ *      compiler, no name mangling should occur. Thus C programs can
+ *      properly link to our shared library.
  */
 #ifdef __cplusplus
 #define LULU_API    extern "C" LULU_PUBLIC
@@ -43,15 +44,16 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
 
 /**
  * @brief LULU_FUNC
- * -    This controls the visibility of externally visible functions that are
- *      not part of the API.
- * -    That is, you can define a function like so: `LULU_FUNC void f();`
- *  -   `f` will not be exported but it is still visible to all functions
+ *      This controls the visibility of externally visible functions that
+ *      are not part of the API.
+ *
+ *      That is, you can define a function like so: `LULU_FUNC void f();`
+ *      `f` will not be exported but it is still visible to all functions
  *      within the library that include `f`'s header.
  *
  * @brief LULU_DATA
- *  -   Similar to `LULU_FUNC`, but intended for data.
- *  -   e.g. `LULU_DATA const char *const tokens[TOKEN_COUNT];`
+ *      Similar to `LULU_FUNC`, but intended for data. e.g.
+ *      `LULU_DATA const char *const tokens[TOKEN_COUNT];`
  */
 #define LULU_FUNC       extern LULU_PRIVATE
 #define LULU_DATA       extern LULU_PRIVATE
@@ -59,9 +61,9 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
 
 /**
  * @brief
- *  -   Argument to `lulu_call()` and `lulu_pcall()` to indicate that an
- *      unknown number of values will be returned by this particular function
- *      call.
+ *      Argument to `lulu_call()` and `lulu_pcall()` to indicate that
+ *      an unknown number of values will be returned by this particular
+ *      function call.
  */
 #define LULU_MULTRET    (-1)
 
@@ -71,18 +73,12 @@ typedef void *
 
 
 /**
- * @param argc
- *  -   Number of arguments pushed to the stack for this function call.
- *  -   If zero, then no stack slots are currently occupied by any arguments.
- *  -   If non-zero, then index 1 up to and including `argc` are occupied.
- *  -   You may choose to ignore it.
- *
  * @return
  *  -   The number of values pushed to the stack that will be used by the
  *      caller.
  */
 typedef int
-(*lulu_CFunction)(lulu_VM *vm, int argc);
+(*lulu_CFunction)(lulu_VM *vm);
 
 
 /**
@@ -121,8 +117,8 @@ lulu_close(lulu_VM *vm);
 
 /**
  * @brief
- *  -   Compiles the string `script` into a Lua function, which is pushed to
- *      the top of the stack.
+ *      Compiles the string `script` into a Lua function, which is pushed
+ *      to the top of the stack.
  */
 LULU_API lulu_Error
 lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size);
@@ -130,18 +126,18 @@ lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_siz
 
 /**
  * @brief
- *  -   Calls the Lua or C function at the relative stack index `-(n_args + 1)`
- *      with arguments from `(nargs)` up to and including `-1`.
+ *      Calls the Lua or C function at the relative stack index
+ *      `-(n_args + 1)` with arguments from `(nargs)` up to and
+ *      including `-1`.
  *
  * @note(2025-06-30)
+ *      The function and its arguments are popped when done.
  *
- *  -   The function and its arguments are popped when done.
+ *      The return values, if any, are moved to where the function
+ *      originally was. That is, the `-(n_args + 1)` stack slot, up to the
+ *      `n_ret` slot above it, is overwritten.
  *
- *  -   The return values, if any, are moved to where the function originally
- *      was. That is, the `-(n_args + 1)` stack slot, up to the `n_ret` slot
- *      above it, is overwritten.
- *
- *  -   If the function returned less than `n_rets` values then remaining
+ *      If the function returned less than `n_rets` values then remaining
  *      slots are set to `nil`.
  */
 LULU_API void
@@ -193,7 +189,7 @@ LULU_API int
 lulu_error(lulu_VM *vm);
 
 
-/*=== TYPE QUERY FUNCTIONS ============================================== {{{ */
+/*=== TYPE QUERY FUNCTIONS ========================================== {{{ */
 
 
 /**
@@ -334,9 +330,9 @@ LULU_API void *
 lulu_to_pointer(lulu_VM *vm, int i);
 
 
-/*=== }}} =================================================================== */
+/*=== }}} =============================================================== */
 
-/*=== STACK MANIPULATION FUNCTIONS ====================================== {{{ */
+/*=== STACK MANIPULATION FUNCTIONS ================================= {{{ */
 
 
 /**
@@ -507,7 +503,7 @@ lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf);
 LULU_API void
 lulu_push_value(lulu_VM *vm, int i);
 
-/*=== }}} =================================================================== */
+/*=== }}} =============================================================== */
 
 
 LULU_API void
@@ -661,7 +657,7 @@ LULU_API int
 lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 
-/** HELPER MACROS ======================================================= {{{ */
+/** HELPER MACROS =================================================== {{{ */
 
 
 /**
@@ -779,7 +775,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 #define lulu_register(vm, name, cfunction) \
     (lulu_push_cfunction(vm, cfunction), lulu_set_global(vm, name))
 
-/*== }}} ==================================================================== */
+/*== }}} ================================================================ */
 
 
 /**
