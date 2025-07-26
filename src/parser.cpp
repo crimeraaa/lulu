@@ -6,9 +6,10 @@
 #include "vm.hpp"
 
 struct LULU_PRIVATE Block {
-    Block *prev;      // Stack-allocated linked list.
-    u16    n_locals;  // Number of initialized locals at the time of pushing.
-    bool   breakable;
+    Block *prev;        // Stack-allocated linked list.
+    isize  break_list;  // Jump list of `break` statements.
+    u16    n_locals;    // Number of initialized locals at the time of pushing.
+    bool   breakable;   // Is `break` valid for this block?
 };
 
 struct LULU_PRIVATE Expr_List {
@@ -32,9 +33,12 @@ declaration(Parser *p, Compiler *c);
 static void
 block_push(Parser *p, Compiler *c, Block *b, bool breakable)
 {
-    b->prev      = p->block;
-    b->n_locals  = cast(u16)small_array_len(c->active);
-    b->breakable = breakable;
+    lulu_assert(cast_isize(c->free_reg) == small_array_len(c->active));
+
+    b->prev       = p->block;
+    b->break_list = NO_JUMP;
+    b->n_locals   = cast(u16)small_array_len(c->active);
+    b->breakable  = breakable;
 
     // Chain
     p->block = b;
@@ -52,6 +56,7 @@ block_pop(Parser *p, Compiler *c)
         c->chunk->locals[index].end_pc = pc;
     }
     small_array_resize(&c->active, b->n_locals);
+    compiler_jump_patch(c, b->break_list);
     c->free_reg = b->n_locals;
     p->block    = b->prev;
 }
@@ -83,10 +88,10 @@ block_continue(Parser *p)
 }
 
 static void
-block(Parser *p, Compiler *c, bool breakable = false)
+block(Parser *p, Compiler *c)
 {
     Block b;
-    block_push(p, c, &b, breakable);
+    block_push(p, c, &b, /* breakable */ false);
     while (block_continue(p)) {
         declaration(p, c);
     }
@@ -189,10 +194,22 @@ static void
 consume(Parser *p, Token_Type expected)
 {
     if (!match(p, expected)) {
-        // Assume our longest token is '<identifier>'.
-        char buf[64];
-        sprintf(buf, "Expected '%s'", raw_data(token_strings[expected]));
-        parser_error(p, buf);
+        const char *msg = vm_push_fstring(p->vm, "Expected '%s'",
+            raw_data(token_strings[expected]));
+        parser_error(p, msg);
+    }
+}
+
+
+static void
+consume_to_close(Parser *p, Token_Type expected, Token_Type to_close, int line)
+{
+    if (!match(p, expected)) {
+        const char *msg = vm_push_fstring(p->vm,
+            "Expected '%s' (to close '%s' at line %i)",
+            raw_data(token_strings[expected]), raw_data(token_strings[to_close]),
+            line);
+        parser_error(p, msg);
     }
 }
 
@@ -785,21 +802,25 @@ local_stmt(Parser *p, Compiler *c)
     local_start(c, n);
 }
 
-static void
-do_block(Parser *p, Compiler *c)
+static isize
+cond(Parser *p, Compiler *c)
 {
-    block(p, c);
-    consume(p, TOKEN_END);
+    Expr cond = expression(p, c);
+    // All 'falses' are equal here.
+    if (cond.type == EXPR_NIL) {
+        cond.type = EXPR_FALSE;
+    }
+    compiler_logical_new(c, &cond, true);
+    return cond.patch_false;
 }
 
 static isize
 if_cond(Parser *p, Compiler *c)
 {
-    Expr cond = expression(p, c);
+    isize pc = cond(p, c);
     consume(p, TOKEN_THEN);
-    compiler_logical_new(c, &cond, true);
     block(p, c);
-    return cond.patch_false;
+    return pc;
 }
 
 static void
@@ -831,24 +852,74 @@ if_stmt(Parser *p, Compiler *c)
 }
 
 static void
+while_stmt(Parser *p, Compiler *c, int line)
+{
+    isize init_pc = compiler_label_get(c);
+    isize exit_pc = cond(p, c);
+    consume(p, TOKEN_DO);
+    recurse_push(p, c);
+
+    // All `break` should go to this block, not the one in `block()`.
+    Block b;
+    block_push(p, c, &b, /* breakable */ true);
+    block(p, c);
+    consume_to_close(p, TOKEN_END, TOKEN_WHILE, line);
+    recurse_pop(p);
+
+    // Goto start whenever we reach here.
+    line = c->parser->consumed.line;
+    compiler_jump_patch(c, compiler_jump_new(c, line), init_pc);
+
+    // Resolve breaks only after the unconditional jump was emitted.
+    block_pop(p, c);
+
+    // If condition is falsy, goto here.
+    compiler_jump_patch(c, exit_pc);
+
+
+}
+
+static void
+break_stmt(Parser *p, Compiler *c, int line)
+{
+    Block *b = p->block;
+    while (b != nullptr && !b->breakable) {
+        b = b->prev;
+    }
+
+    if (b == nullptr) {
+        parser_error(p, "No block to 'break'");
+    }
+    compiler_jump_add(c, &b->break_list, compiler_jump_new(c, line));
+}
+
+static void
 declaration(Parser *p, Compiler *c)
 {
     recurse_push(p, c);
     Token t = p->consumed;
     switch (t.type) {
-    case TOKEN_DO: {
-        advance(p); // skip `do`
-        do_block(p, c);
+    case TOKEN_BREAK: {
+        advance(p); // skip 'break'
+        break_stmt(p, c, t.line);
         break;
     }
-    case TOKEN_IF: {
+    case TOKEN_DO:
+        advance(p); // skip `do`
+        block(p, c);
+        consume_to_close(p, TOKEN_END, TOKEN_DO, t.line);
+        break;
+    case TOKEN_IF:
         advance(p); // skip 'if'
         if_stmt(p, c);
         break;
-    }
     case TOKEN_LOCAL:
         advance(p); // skip `local`
         local_stmt(p, c);
+        break;
+    case TOKEN_WHILE:
+        advance(p); // skip 'while'
+        while_stmt(p, c, t.line);
         break;
     case TOKEN_RETURN:
         advance(p);

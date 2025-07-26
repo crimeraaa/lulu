@@ -304,8 +304,8 @@ need_value(Compiler *c, isize jump_pc)
     return false;
 }
 
-static isize
-label_get(Compiler *c)
+isize
+compiler_label_get(Compiler *c)
 {
     c->last_target = c->pc;
     return c->pc;
@@ -315,7 +315,7 @@ label_get(Compiler *c)
 static isize
 label_code(Compiler *c, u16 reg, bool b, bool do_jump, int line)
 {
-    label_get(c);
+    compiler_label_get(c);
     return compiler_code_abc(c, OP_BOOL, reg, cast(u16)b, cast(u16)do_jump, line);
 }
 
@@ -855,7 +855,7 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target, u16 reg)
 
     if (target == NO_JUMP) {
         // Do not subtract 1; we want to skip over the latest instruction.
-        target = label_get(c);
+        target = compiler_label_get(c);
     }
     for (;;) {
         // Save because `jump_set()` will overwrite the original value.

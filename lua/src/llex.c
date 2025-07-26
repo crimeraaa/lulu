@@ -77,7 +77,7 @@ static void save (LexState *lex, int c) {
 
 static void save_and_next (LexState *lex) {
   save(lex, lex->character);
-  next(lex->z);
+  next(lex);
 }
 
 

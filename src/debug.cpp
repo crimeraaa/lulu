@@ -148,7 +148,7 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         break;
     case OPFORMAT_ASBX:
         args.sbx = ip.sbx();
-        printf("%-4u %-4u " PAD4 "; ", args.a, args.sbx);
+        printf("%-4u %-4i " PAD4 "; ", args.a, args.sbx);
         break;
     }
 

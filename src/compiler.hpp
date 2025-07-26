@@ -253,6 +253,25 @@ compiler_jump_new(Compiler *c, int line);
 LULU_FUNC void
 compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
 
+
+/**
+ * @brief
+ *      This function is 'overloaded' to do the jobs of multiple separate
+ *      functions from `lcode.c` in Lua 5.1.5.
+ *
+ *      1.) `luaK_patchtohere()` - leave `target` and `reg` to defaults.
+ *          This is useful to patch a jump list to `c->pc` as in emulating
+ *          `if` and `while` conditions.
+ *
+ *      2.) `luaK_patchlist()` - provide `target` but not `reg`.
+ *          This is useful in emulating the unconditional jump of a `while`
+ *          or a `for` loop.
+ *
+ *      3.) `lcode.c:patchlistaux()` - provide `target` and `reg`.
+ *          This is only useful within `compiler.cpp`; it is how
+ *          logical operators (along with their register allocations)
+ *          are implemented.
+ */
 LULU_FUNC void
 compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP,
     u16 reg = NO_REG);
@@ -285,3 +304,12 @@ compiler_logical_new(Compiler *c, Expr *left, bool cond);
 LULU_FUNC void
 compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
     bool cond);
+
+
+/**
+ * @brief
+ *      Marks `c->pc` as a 'jump' target and returns it. This is useful to
+ *      prevent bad optimizations when calling `compiler_code_nil()`.
+ */
+LULU_FUNC isize
+compiler_label_get(Compiler *c);
