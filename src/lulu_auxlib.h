@@ -37,6 +37,8 @@ lulu_write_string(lulu_Buffer *b, const char *s);
 LULU_API void
 lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n);
 
+#define lulu_write_literal(b, s)  lulu_write_lstring(b, s, sizeof(s) - 1)
+
 LULU_API void
 lulu_finish_string(lulu_Buffer *b);
 
