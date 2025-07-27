@@ -210,8 +210,14 @@ get_escaped(Lexer *x, char ch)
     case 'n':   return '\n';
     case 't':   return '\t';
     case 'r':   return '\r';
-    case '\'':  // fall-through
-    case '\"':  // fall-through
+    case 'v':   return '\v';
+
+    // Concept check:
+    // `print("Hi\
+    // mom!");`
+    case '\n':
+    case '\'':
+    case '\"':
     case '\\':  return ch;
     default:
         break;

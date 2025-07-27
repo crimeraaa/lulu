@@ -9,8 +9,8 @@
 
 typedef unsigned char uchar;
 
-static lulu_Integer
-resolve_index(lulu_Integer i, lulu_Integer n)
+static size_t
+resolve_index(lulu_Integer i, size_t n)
 {
     /**
      * @brief
@@ -23,28 +23,16 @@ resolve_index(lulu_Integer i, lulu_Integer n)
     if (i < 0) {
         i += n + 1;
     }
-    return (i > 0) ? i - 1 : 0;
-}
-
-static const char *
-get_lstring(lulu_VM *vm, int argn, lulu_Integer *n)
-{
-    size_t tmp = 0;
-    const char *s = lulu_check_lstring(vm, argn, &tmp);
-    *n = cast(lulu_Integer)tmp;
-    return s;
+    return cast(size_t)((i > 0) ? i - 1 : 0);
 }
 
 static int
 string_byte(lulu_VM *vm)
 {
-    lulu_Integer i = 0, n = 0;
-    const char  *s = get_lstring(vm, 1, &n);
-    lulu_Integer start = lulu_opt_integer(vm, 2, /* def */ 1);
-    lulu_Integer stop  = lulu_opt_integer(vm, 3, /* def */ start);
-
-    start = resolve_index(start, n);
-    stop  = resolve_index(stop, n);
+    size_t i = 0, n = 0;
+    const char *s = lulu_check_lstring(vm, 1, &n);
+    size_t start = resolve_index(lulu_opt_integer(vm, 2, /* def */ 1), n);
+    size_t stop  = resolve_index(lulu_opt_integer(vm, 3, /* def */ start), n);
     /* Use `<=` because `stop` is inclusive. */
     for (i = start; i <= stop; i++) {
         lulu_push_integer(vm, cast(lulu_Integer)s[i]);
@@ -77,25 +65,21 @@ string_char(lulu_VM *vm)
 static int
 string_len(lulu_VM *vm)
 {
-    lulu_Integer n;
-    get_lstring(vm, 1, &n);
-    lulu_push_integer(vm, n);
+    size_t n;
+    lulu_check_lstring(vm, 1, &n);
+    lulu_push_integer(vm, cast(lulu_Integer)n);
     return 1;
 }
 
 static int
 string_sub(lulu_VM *vm)
 {
-    lulu_Integer n     = 0;
-    const char  *s     = get_lstring(vm, 1, &n);
-    lulu_Integer start = lulu_check_integer(vm, 2);
-    lulu_Integer stop  = lulu_opt_integer(vm, 3, /* def */ n);
-
-    start = resolve_index(start, n);
-    stop  = resolve_index(stop, n);
-
+    size_t       n = 0;
+    const char  *s = lulu_check_lstring(vm, 1, &n);
+    size_t start = resolve_index(lulu_check_integer(vm, 2), n);
+    size_t stop  = resolve_index(lulu_opt_integer(vm, 3, /* def */ n), n);
     /* clamp ranges */
-    if (start <= 0) {
+    if (start >= n) {
         start = 0;
     }
     if (stop > n) {
@@ -160,19 +144,19 @@ string_upper(lulu_VM *vm)
 static int
 string_find(lulu_VM *vm)
 {
-    lulu_Integer s_len = 0, p_len = 0;
-    const char *s = get_lstring(vm, 1, &s_len);
-    const char *p = get_lstring(vm, 2, &p_len);
+    size_t s_len = 0, p_len = 0;
+    const char *s = lulu_check_lstring(vm, 1, &s_len);
+    const char *p = lulu_check_lstring(vm, 2, &p_len);
 
-    lulu_Integer start  = lulu_opt_integer(vm, 3, /* def */ 0);
-    for (start = resolve_index(start, s_len); start < s_len; start++) {
+    size_t start = resolve_index(lulu_opt_integer(vm, 3, /* def */ 0), s_len);
+    for (; start < s_len; start++) {
         /* Pattern could not possibly fit from this point onwards? */
         if (start + p_len > s_len) {
             break;
         }
 
-        lulu_Integer stop = start;
-        for (lulu_Integer i = 0; i < p_len; i++) {
+        size_t stop = start;
+        for (size_t i = 0; i < p_len; i++) {
             if (s[stop] != p[i]) {
                 break;
             }
@@ -282,24 +266,22 @@ add_quoted(lulu_VM *vm, lulu_Buffer *b, int argn)
     size_t i = 0, n = 0;
     const char *s = lulu_check_lstring(vm, argn, &n);
     lulu_write_char(b, '\"');
-
     for (i = 0; i < n; i++) {
         char ch = s[i];
         switch (ch) {
+        case '\0': ch = '0'; goto write_escaped;
+        case '\a': ch = 'a'; goto write_escaped;
+        case '\b': ch = 'b'; goto write_escaped;
+        case '\f': ch = 'f'; goto write_escaped;
+        case '\t': ch = 't'; goto write_escaped;
+        case '\n': ch = 'n'; goto write_escaped;
+        case '\v': ch = 'v'; goto write_escaped;
+        case '\r': ch = 'r'; goto write_escaped;
         case '\"':
         case '\\':
+            write_escaped:
             lulu_write_char(b, '\\');
-            lulu_write_char(b, ch);
-            break;
-        case '\n':
-            lulu_write_literal(b, "\\n");
-            break;
-        case '\r':
-            lulu_write_literal(b, "\\r");
-            break;
-        case '\0':
-            lulu_write_literal(b, "\\0");
-            break;
+            [[fallthrough]];
         default:
             lulu_write_char(b, ch);
             break;

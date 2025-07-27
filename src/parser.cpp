@@ -621,11 +621,13 @@ expression(Parser *p, Compiler *c, Precedence limit)
         case BINARY_POW:
             arith(p, c, &left, b);
             break;
-        case BINARY_NEQ: // fallthrough
-        case BINARY_GT:  // fallthrough
-        case BINARY_GEQ: cond = false; // fallthrough
-        case BINARY_EQ:  // fallthrough
-        case BINARY_LT:  // fallthrough
+        case BINARY_NEQ:
+        case BINARY_GT:
+        case BINARY_GEQ:
+            cond = false;
+            [[fallthrough]];
+        case BINARY_EQ:
+        case BINARY_LT:
         case BINARY_LEQ:
             compare(p, c, &left, b, cond);
             break;
@@ -875,8 +877,6 @@ while_stmt(Parser *p, Compiler *c, int line)
 
     // If condition is falsy, goto here.
     compiler_jump_patch(c, exit_pc);
-
-
 }
 
 static void

@@ -49,7 +49,7 @@ hash_value(const Value &v)
     case VALUE_NUMBER:          return hash_any(v.to_number());
     case VALUE_LIGHTUSERDATA:   return hash_any(v.to_userdata());
     case VALUE_STRING:          return v.to_ostring()->hash;
-    case VALUE_TABLE:           // fallthrough
+    case VALUE_TABLE:           [[fallthrough]];
     case VALUE_FUNCTION:        return hash_any(v.to_object());
     case VALUE_INTEGER:
     case VALUE_CHUNK:
