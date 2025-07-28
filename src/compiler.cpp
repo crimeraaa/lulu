@@ -72,7 +72,6 @@ code_pop(Compiler *c)
 isize
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 {
-    // lulu_assert(opinfo[op].a() && a <= Instruction::MAX_A || a == 0);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER || b == 0);
     lulu_assert(opinfo[op].c() == OPARG_REGK || opinfo[op].c() == OPARG_OTHER || c2 == 0);
     return code_push(c, Instruction::make_abc(op, a, b, c2), line);
@@ -81,10 +80,17 @@ compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 isize
 compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line)
 {
-    // lulu_assert(opinfo[op].a() && a <= Instruction::MAX_A || a == 0);
+    lulu_assert(opinfo[op].fmt() == OPFORMAT_ABX);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER);
     lulu_assert(opinfo[op].c() == OPARG_UNUSED);
     return code_push(c, Instruction::make_abx(op, a, bx), line);
+}
+
+isize
+compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx, int line)
+{
+    lulu_assert(opinfo[op].fmt() == OPFORMAT_ASBX);
+    return code_push(c, Instruction::make_asbx(op, a, sbx), line);
 }
 
 void
@@ -744,8 +750,7 @@ compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k)
 isize
 compiler_jump_new(Compiler *c, int line)
 {
-    constexpr Instruction i = Instruction::make_asbx(OP_JUMP, 0, NO_JUMP);
-    return code_push(c, i, line);
+    return compiler_code_asbx(c, OP_JUMP, 0, NO_JUMP, line);
 }
 
 void
@@ -779,7 +784,8 @@ static isize
 jump_get(Compiler *c, isize jump_pc)
 {
     Instruction i = *get_code(c, jump_pc);
-    lulu_assertf(i.op() == OP_JUMP, "Got opcode '%s'", opnames[i.op()]);
+    lulu_assertf(OP_JUMP <= i.op() && i.op() <= OP_FOR_LOOP,
+        "Got opcode '%s'", opnames[i.op()]);
     i32 offset = i.sbx();
     if (offset == NO_JUMP) {
         return NO_JUMP;
@@ -791,7 +797,7 @@ static void
 jump_set(Compiler *c, isize jump_pc, isize target_pc)
 {
     Instruction *ip = get_code(c, jump_pc);
-    lulu_assert(ip->op() == OP_JUMP);
+    lulu_assert(OP_JUMP <= ip->op() && ip->op() <= OP_FOR_LOOP);
 
     isize offset = target_pc - (jump_pc + 1);
     lulu_assert(offset != NO_JUMP);
@@ -836,7 +842,7 @@ static Instruction *
 jump_get_control(Compiler *c, isize jump_pc)
 {
     Instruction *ip = get_code(c, jump_pc);
-    lulu_assert(ip->op() == OP_JUMP);
+    lulu_assert(OP_JUMP <= ip->op() && ip->op() <= OP_FOR_LOOP);
     if (jump_pc >= 1) {
         Instruction *ctrl_ip = ip - 1;
         if (opinfo[ctrl_ip->op()].test()) {

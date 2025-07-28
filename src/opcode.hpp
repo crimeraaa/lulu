@@ -4,6 +4,7 @@
 
 enum OpCode : u8 {
 //           | Arguments | Effects
+OP_MOVE,        // A B   | R(A) := R(B)
 OP_CONSTANT,    // A Bx  | R(A) := K[Bx]
 OP_NIL,         // A B   | R(i) := nil for A <= i <= B
 OP_BOOL,        // A B C | R(A) := Bool(B); if Bool(C) then ip++
@@ -12,7 +13,6 @@ OP_SET_GLOBAL,  // A Bx  | _G[K(Bx)] := R(A)
 OP_NEW_TABLE,   // A B C | R(A) := {} ; #hash = B, #array = C
 OP_GET_TABLE,   // A B C | R(A) := R(B)[RK(C)]
 OP_SET_TABLE,   // A B C | R(A)[RK(B)] := RK(C)
-OP_MOVE,        // A B   | R(A) := R(B)
 OP_ADD,         // A B C | R(A) := RK(B) + RK(C)
 OP_SUB,         // A B C | R(A) := RK(B) - RK(C)
 OP_MUL,         // A B C | R(A) := RK(B) * RK(C)
@@ -29,6 +29,8 @@ OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
 OP_TEST,        // A   C | if Bool(R(A)) == Bool(C) then ip++
 OP_TEST_SET,    // A B C | if Bool(R(B)) == Bool(C) then R(A) := R(B) else ip++
 OP_JUMP,        // sBx   | ip += sBx
+OP_FOR_PREP,    // A sBx | R(A) -= R(A+2) ; ip += sBx
+OP_FOR_LOOP,    // A sBx | R(A) += R(A+2) ; if R(A) < R(A+1) then ip += sBx; R(A+3) := R(A)
 OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
 OP_RETURN,      // A B C | return R(A:A+B)
 };

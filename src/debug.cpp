@@ -153,6 +153,10 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
     }
 
     switch (op) {
+    case OP_MOVE:
+        print_reg(p, args.a, pc, " := ");
+        print_reg(p, args.b, pc);
+        break;
     case OP_CONSTANT:
         printf("R(%u) := ", args.a);
         value_print(p->constants[args.bx]);
@@ -198,10 +202,6 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         print_reg(p, args.c, pc);
         break;
     }
-    case OP_MOVE:
-        print_reg(p, args.a, pc, " := ");
-        print_reg(p, args.b, pc);
-        break;
     case OP_ADD: arith(p, '+', args); break;
     case OP_SUB: arith(p, '-', args); break;
     case OP_MUL: arith(p, '*', args); break;
@@ -232,9 +232,20 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
             jump_resolve(pc, 1));
         break;
     }
+    case OP_FOR_PREP: {
+        i32 offset = ip.sbx();
+        printf("goto .code[%" ISIZE_FMT "]", jump_resolve(pc, offset));
+        break;
+    }
+    case OP_FOR_LOOP: {
+        i32 offset = ip.sbx();
+        printf("goto .code[%" ISIZE_FMT "] if loop", jump_resolve(pc, offset));
+        break;
+    }
     case OP_JUMP: {
         i32 offset = args.sbx;
-        printf("ip += %i ; goto .code[%" ISIZE_FMT "]", offset, jump_resolve(pc, offset));
+        printf("ip += %i ; goto .code[%" ISIZE_FMT "]",
+            offset, jump_resolve(pc, offset));
         break;
     }
     case OP_CALL: {
@@ -302,6 +313,7 @@ debug_disassemble(const Chunk *p)
     }
     printf("\n=== DISASSEMBLY: END ===\n");
 }
+
 
 /**
  * @brief
@@ -372,6 +384,15 @@ get_variable_ip(const Chunk *p, isize target_pc, int reg)
                 last_pc = pc;
             }
             break;
+        case OP_JUMP: {
+            isize target = cast_isize(pc) + 1 + cast_isize(b);
+            // jump goes forward and does not skip `last_pc`?
+            if (pc <= target && target <= last_pc) {
+                // Skip unnecessary code.
+                pc += cast_isize(b);
+            }
+            break;
+        }
         default:
             break;
         }

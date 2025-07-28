@@ -60,6 +60,9 @@ compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line);
 LULU_FUNC isize
 compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line);
 
+LULU_FUNC isize
+compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx, int line);
+
 
 /**
  * @note(2025-06-16)

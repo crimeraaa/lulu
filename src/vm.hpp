@@ -135,20 +135,14 @@ vm_throw(lulu_VM *vm, Error e);
 
 /**
  * @return
- *  -   `true` if `v` is already a number or a string convertible to a number,
- *      or else `false.
+ *      `true` if `v` is already a number or a string convertible to a number,
+ *      or else `false. If `true` then `*out` is assigned.
  *
- *  -   If `true` then `*out` is assigned.
- *
- * @note(2025-07-21) Assumptions
- *
- *  1.) This function only deals with conversion of non-`number` values
- *      (i.e. `string`) to `number`.
- *
- *  2.) `v` and `out` do not alias.
+ * @note(2025-07-28)
+ *      `v` and `out` may alias.
  */
 LULU_FUNC bool
-vm_to_number(const Value *restrict v, Value *restrict out);
+vm_to_number(const Value *v, Value *out);
 
 
 /**

@@ -8,6 +8,7 @@
  *  -   Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
  */
 const char *const opnames[OPCODE_COUNT] = {
+    /* OP_MOVE */       "move",
     /* OP_CONSTANT */   "constant",
     /* OP_NIL */        "nil",
     /* OP_BOOL */       "bool",
@@ -16,7 +17,6 @@ const char *const opnames[OPCODE_COUNT] = {
     /* OP_NEW_TABLE */  "new_table",
     /* OP_GET_TABLE */  "get_table",
     /* OP_SET_TABLE */  "set_table",
-    /* OP_MOVE */       "move",
     /* OP_ADD */        "add",
     /* OP_SUB */        "sub",
     /* OP_MUL */        "mul",
@@ -33,6 +33,8 @@ const char *const opnames[OPCODE_COUNT] = {
     /* OP_TEST */       "test",
     /* OP_TEST_SET */   "test_set",
     /* OP_JUMP */       "jump",
+    /* OP_FOR_PREP */   "for_prep",
+    /* OP_FOR_LOOP */   "for_loop",
     /* OP_CALL */       "call",
     /* OP_RETURN */     "return",
 };
@@ -68,7 +70,8 @@ ARITH     = ABC(/* test */ false, /* a */ true,  OPARG_REGK,  OPARG_REGK),
 COMPARE   = ABC(/* test */ true,  /* a */ false, OPARG_REGK,  OPARG_REGK),
 UNARY     = ABC(/* test */ false, /* a */ true,  OPARG_REGK,  OPARG_UNUSED),
 FUNC_LIKE = ABC(/* test */ false, /* a */ true,  OPARG_OTHER, OPARG_OTHER),
-MOVE_LIKE = UNARY;
+MOVE_LIKE = UNARY,
+FOR_LIKE  = MAKE(OPFORMAT_ASBX, /* test */ true, /* a */ true, OPARG_JUMP, OPARG_UNUSED);
 
 /**
  * @note 2025--07-19
@@ -78,6 +81,7 @@ MOVE_LIKE = UNARY;
  *  -   Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
  */
 const OpInfo opinfo[OPCODE_COUNT] = {
+    /* OP_MOVE */       MOVE_LIKE,
     /* OP_CONSTANT */   ABX(/* a */ true, OPARG_REGK),
     /* OP_NIL */        MOVE_LIKE,
     /* OP_BOOL */       ABC(/* test */ false, /* a */ true, OPARG_REGK, OPARG_REGK),
@@ -86,7 +90,6 @@ const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_NEW_TABLE */  ABC(/* test */ false, /* a */ true, OPARG_OTHER, OPARG_OTHER),
     /* OP_GET_TABLE */  ARITH,
     /* OP_SET_TABLE */  ABC(/* test */ false, /* a */ false, OPARG_REGK, OPARG_REGK),
-    /* OP_MOVE */       MOVE_LIKE,
     /* OP_ADD */        ARITH,
     /* OP_SUB */        ARITH,
     /* OP_MUL */        ARITH,
@@ -103,6 +106,8 @@ const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_TEST */       ABC(/* test */ true, /* a */ false, OPARG_UNUSED, OPARG_OTHER),
     /* OP_TEST_SET */   ABC(/* test */ true, /* a */ true,  OPARG_REGK,   OPARG_OTHER),
     /* OP_JUMP */       MAKE(OPFORMAT_ASBX, /* test */ false, /* a */ false, OPARG_JUMP, OPARG_UNUSED),
+    /* OP_FOR_PREP */   FOR_LIKE,
+    /* OP_FOR_LOOP */   FOR_LIKE,
     /* OP_CALL */       FUNC_LIKE,
     /* OP_RETURN */     FUNC_LIKE,
 };

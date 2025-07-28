@@ -28,9 +28,6 @@ static Expr
 expression(Parser *p, Compiler *c, Precedence limit = PREC_NONE);
 
 static void
-declaration(Parser *p, Compiler *c);
-
-static void
 chunk(Parser *p, Compiler *c);
 
 static void
@@ -83,6 +80,7 @@ block_continue(Parser *p)
     case TOKEN_ELSEIF:
     case TOKEN_END:
     case TOKEN_EOF:
+    case TOKEN_UNTIL:
         return false;
     default:
         break;
@@ -242,414 +240,6 @@ constant_string(Parser *p, Compiler *c, const Token *t)
     OString *s = ostring_new(p->vm, t->lexeme);
     u32      i = compiler_add_ostring(c, s);
     return i;
-}
-
-static Expr
-resolve_variable(Parser *p, Compiler *c, const Token *t)
-{
-    Expr e;
-    u16 reg;
-    OString *id = ostring_new(p->vm, t->lexeme);
-    if (compiler_get_local(c, /* limit */ 0, id, &reg)) {
-        e = Expr::make_reg(EXPR_LOCAL, reg, t->line);
-    } else {
-        u32 i = compiler_add_ostring(c, id);
-        e = Expr::make_index(EXPR_GLOBAL, i, t->line);
-    }
-    return e;
-}
-
-struct LULU_PRIVATE Constructor {
-    Expr table; // Information on the OP_NEW_TABLE itself.
-    Expr value;
-    int  n_hash;
-    int  n_array;
-};
-
-static void
-ctor_field(Parser *p, Compiler *c, Constructor *ctor)
-{
-    u16   reg = c->free_reg;
-    Token t   = p->consumed;
-    Expr k;
-    if (match(p, TOKEN_IDENTIFIER)) {
-        u32 i = constant_string(p, c, &t);
-        k = Expr::make_index(EXPR_CONSTANT, i, t.line);
-    } else {
-        consume(p, TOKEN_OPEN_BRACE);
-        k = expression(p, c);
-        consume(p, TOKEN_CLOSE_BRACE);
-    }
-
-    consume(p, TOKEN_ASSIGN);
-    u16 rkb = compiler_expr_rk(c, &k);
-
-    ctor->value = expression(p, c);
-    u16 rkc = compiler_expr_rk(c, &ctor->value);
-    compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc,
-        ctor->value.line);
-
-    // 'pop' whatever registers we used
-    c->free_reg = reg;
-    ctor->n_hash++;
-}
-
-static Expr
-constructor(Parser *p, Compiler *c, int line)
-{
-    Constructor ctor;
-    isize pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0, line);
-
-    ctor.table.type = EXPR_RELOCABLE;
-    ctor.table.line = line;
-    ctor.table.pc   = pc;
-    ctor.value      = DEFAULT_EXPR;
-    ctor.n_hash     = 0;
-    ctor.n_array    = 0;
-
-    compiler_expr_next_reg(c, &ctor.table);
-    while (!check(p, TOKEN_CLOSE_CURLY)) {
-        // Don't consume yet, `ctor_field()` needs <identifier> or '['.
-        switch (p->consumed.type) {
-        case TOKEN_IDENTIFIER: {
-            if (lookahead(p) == TOKEN_ASSIGN) {
-                ctor_field(p, c, &ctor);
-            } else {
-                parser_error(p, "Array constructors not yet supported");
-            }
-            break;
-        }
-        case TOKEN_OPEN_BRACE:
-            ctor_field(p, c, &ctor);
-            break;
-        default:
-            parser_error(p, "Array constructors not yet supported");
-            break;
-        }
-
-        // Even if we match one, if '}' follows, the loop ends anyway.
-        // E.g. try `t = {x=9, y=10,}`.
-        if (!match(p, TOKEN_COMMA)) {
-            break;
-        }
-    }
-
-    consume(p, TOKEN_CLOSE_CURLY);
-
-    Instruction *ip = get_code(c, pc);
-    ip->set_b(cast(u16)ctor.n_hash);
-    ip->set_c(cast(u16)ctor.n_array);
-    return ctor.table;
-}
-
-static Expr
-prefix_expr(Parser *p, Compiler *c)
-{
-    Token t = p->consumed;
-    advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
-
-    OpCode unary_op;
-    switch (t.type) {
-    case TOKEN_NIL:    return Expr::make(EXPR_NIL, t.line);
-    case TOKEN_TRUE:   return Expr::make(EXPR_TRUE, t.line);
-    case TOKEN_FALSE:  return Expr::make(EXPR_FALSE, t.line);
-    case TOKEN_NUMBER: return Expr::make_number(t.number, t.line);
-    case TOKEN_STRING: {
-        u32 i = compiler_add_ostring(c, t.ostring);
-        return Expr::make_index(EXPR_CONSTANT, i, t.line);
-    }
-    case TOKEN_IDENTIFIER: {
-        return resolve_variable(p, c, &t);
-    }
-    case TOKEN_OPEN_PAREN: {
-        Expr e = expression(p, c);
-        consume(p, TOKEN_CLOSE_PAREN);
-        return e;
-    }
-    case TOKEN_OPEN_CURLY: {
-        return constructor(p, c, t.line);
-    }
-    case TOKEN_DASH:    unary_op = OP_UNM; goto code_unary;
-    case TOKEN_NOT:     unary_op = OP_NOT; goto code_unary;
-    case TOKEN_POUND:   unary_op = OP_LEN;
-// Diabolical
-code_unary: {
-        Expr e = expression(p, c, PREC_UNARY);
-        compiler_code_unary(c, unary_op, &e);
-        return e;
-    }
-    default:
-        parser_error_at(p, &t, "Expected an expression");
-    }
-}
-
-/**
- * @note 2025-06-24
- *  Assumptions:
- *  1.) The caller `e` was pushed to a register.
- *  2.) Our current token is the one right after `(`.
- */
-static void
-function_call(Parser *p, Compiler *c, Expr *e)
-{
-    Expr_List args{DEFAULT_EXPR, 0};
-    if (!check(p, TOKEN_CLOSE_PAREN)) {
-        args = expr_list(p, c);
-        compiler_set_returns(c, &args.last, VARARG);
-    }
-    consume(p, TOKEN_CLOSE_PAREN);
-
-    lulu_assert(e->type == EXPR_DISCHARGED);
-    u16 base = e->reg;
-    if (args.last.type == EXPR_CALL) {
-        args.count = VARARG;
-    } else {
-        // Close last argument.
-        if (args.last.type != EXPR_NONE) {
-            compiler_expr_next_reg(c, &args.last);
-        }
-        // g++ warns that `c->free_reg - (base + 1)` converts to `int` in the
-        // subtraction.
-        args.count = cast(u16)(c->free_reg - (base + 1));
-    }
-    e->type = EXPR_CALL;
-    e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 0, e->line);
-
-    // By default, remove the arguments but not the function's register.
-    // This allows use to 'reserve' the register.
-    c->free_reg = base + 1;
-}
-
-
-static Expr
-primary_expr(Parser *p, Compiler *c)
-{
-    Expr e = prefix_expr(p, c);
-    for (;;) {
-        switch (p->consumed.type) {
-        case TOKEN_OPEN_PAREN: {
-            // Function to be called must be on top of the stack.
-            compiler_expr_next_reg(c, &e);
-            advance(p);
-            function_call(p, c, &e);
-            break;
-        }
-        case TOKEN_DOT: {
-            // Table must in some register.
-            compiler_expr_any_reg(c, &e);
-            advance(p); // Skip '.'.
-            Token t = p->consumed;
-            consume(p, TOKEN_IDENTIFIER);
-
-            u32  i = constant_string(p, c, &t);
-            Expr k = Expr::make_index(EXPR_CONSTANT, i, t.line);
-            compiler_get_table(c, &e, &k);
-            break;
-        }
-        case TOKEN_OPEN_BRACE: {
-            // Table must be in some register.
-            compiler_expr_any_reg(c, &e);
-            advance(p); // Skip '['.
-            Expr k = expression(p, c);
-            consume(p, TOKEN_CLOSE_BRACE);
-            compiler_get_table(c, &e, &k);
-            break;
-        }
-        default:
-            return e;
-        }
-    }
-    return e;
-}
-
-enum Binary_Type {
-    BINARY_NONE,                        // PREC_NONE
-    BINARY_AND, BINARY_OR,              // PREC_AND, PREC_OR
-    BINARY_ADD, BINARY_SUB,             // PREC_TERMINAL
-    BINARY_MUL, BINARY_DIV, BINARY_MOD, // PREC_FACTOR
-    BINARY_POW,                         // PREC_EXPONENT
-    BINARY_EQ,  BINARY_LT, BINARY_LEQ,  // PREC_COMPARISON, cond=true
-    BINARY_NEQ, BINARY_GT, BINARY_GEQ,  // PREC_COMPARISON, cond=false
-    BINARY_CONCAT,                      // PREC_CONCAT
-};
-
-struct Binary_Prec {
-    Precedence left, right;
-};
-
-static constexpr Binary_Prec
-left_assoc(Precedence prec)
-{
-    return {prec, Precedence(cast_int(prec) + 1)};
-}
-
-static constexpr Binary_Prec
-right_assoc(Precedence prec)
-{
-    return {prec, prec};
-}
-
-static const Binary_Prec
-binary_precs[] = {
-    /* BINARY_NONE */   {PREC_NONE, PREC_NONE},
-    /* BINARY_AND */    left_assoc(PREC_AND),
-    /* BINARY_OR */     left_assoc(PREC_OR),
-    /* BINARY_ADD */    left_assoc(PREC_TERMINAL),
-    /* BINARY_SUB */    left_assoc(PREC_TERMINAL),
-    /* BINARY_MUL */    left_assoc(PREC_FACTOR),
-    /* BINARY_DIV */    left_assoc(PREC_FACTOR),
-    /* BINARY_MOD */    left_assoc(PREC_FACTOR),
-    /* BINARY_POW */    right_assoc(PREC_EXPONENT),
-    /* BINARY_EQ */     left_assoc(PREC_COMPARISON),
-    /* BINARY_LT */     left_assoc(PREC_COMPARISON),
-    /* BINARY_LEQ */    left_assoc(PREC_COMPARISON),
-    /* BINARY_NEQ */    left_assoc(PREC_COMPARISON),
-    /* BINARY_GEQ */    left_assoc(PREC_COMPARISON),
-    /* BINARY_GT */     left_assoc(PREC_COMPARISON),
-    /* BINARY_CONCAT */ right_assoc(PREC_CONCAT),
-};
-
-static const OpCode
-binary_opcodes[] = {
-    /* BINARY_NONE */   OP_RETURN,
-    /* BINARY_AND */    OP_TEST,
-    /* BINARY_OR */     OP_TEST,
-    /* BINARY_ADD */    OP_ADD,
-    /* BINARY_SUB */    OP_SUB,
-    /* BINARY_MUL */    OP_MUL,
-    /* BINARY_DIV */    OP_DIV,
-    /* BINARY_MOD */    OP_MOD,
-    /* BINARY_POW */    OP_POW,
-    /* BINARY_EQ */     OP_EQ,
-    /* BINARY_LT */     OP_LT,
-    /* BINARY_LEQ */    OP_LEQ,
-    /* BINARY_NEQ */    OP_EQ,
-    /* BINARY_GEQ */    OP_LEQ,
-    /* BINARY_GT */     OP_LT,
-    /* BINARY_CONCAT */ OP_CONCAT,
-};
-
-/**
- * @note 2025-06-16:
- *  -   `OP_RETURN` is our 'invalid' binary opcode.
- */
-static Binary_Type
-get_binary(Token_Type type)
-{
-    switch (type) {
-    case TOKEN_AND:        return BINARY_AND;
-    case TOKEN_OR:         return BINARY_OR;
-    case TOKEN_PLUS:       return BINARY_ADD;
-    case TOKEN_DASH:       return BINARY_SUB;
-    case TOKEN_ASTERISK:   return BINARY_MUL;
-    case TOKEN_SLASH:      return BINARY_DIV;
-    case TOKEN_PERCENT:    return BINARY_MOD;
-    case TOKEN_CARET:      return BINARY_POW;
-    case TOKEN_EQ:         return BINARY_EQ;
-    case TOKEN_NOT_EQ:     return BINARY_NEQ;
-    case TOKEN_LESS:       return BINARY_LT;
-    case TOKEN_LESS_EQ:    return BINARY_LEQ;
-    case TOKEN_GREATER:    return BINARY_GT;
-    case TOKEN_GREATER_EQ: return BINARY_GEQ;
-    case TOKEN_CONCAT:     return BINARY_CONCAT;
-    default:
-        break;
-    }
-    return BINARY_NONE;
-}
-
-static void
-arith(Parser *p, Compiler *c, Expr *left, Binary_Type b)
-{
-    // VERY important to call this *before* parsing the right side,
-    // if it ends up in a register we want them to be in order.
-    if (!left->is_number()) {
-        compiler_expr_rk(c, left);
-    }
-    Expr right = expression(p, c, binary_precs[b].right);
-    compiler_code_arith(c, binary_opcodes[b], left, &right);
-}
-
-static void
-compare(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
-{
-    if (!left->is_literal()) {
-        compiler_expr_rk(c, left);
-    }
-    Expr right = expression(p, c, binary_precs[b].right);
-    compiler_code_compare(c, binary_opcodes[b], cond, left, &right);
-}
-
-static void
-logical(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
-{
-    compiler_logical_new(c, left, cond);
-
-    Expr right = expression(p, c, binary_precs[b].right);
-    compiler_logical_patch(c, left, &right, cond);
-}
-
-
-/**
- * @note 2025-06-14:
- *  -   Assumes we just consumed the first (prefix) token.
- */
-static Expr
-expression(Parser *p, Compiler *c, Precedence limit)
-{
-    recurse_push(p, c);
-    Expr left = primary_expr(p, c);
-    for (;;) {
-        Binary_Type b = get_binary(p->consumed.type);
-        if (b == BINARY_NONE || limit > binary_precs[b].left) {
-            break;
-        }
-
-        // Skip operator, point to first token of right hand side argument.
-        advance(p);
-
-        bool cond = true;
-        switch (b) {
-        case BINARY_AND:
-            logical(p, c, &left, b, true);
-            break;
-        case BINARY_OR:
-            logical(p, c, &left, b, false);
-            break;
-        case BINARY_ADD:
-        case BINARY_SUB:
-        case BINARY_MUL:
-        case BINARY_DIV:
-        case BINARY_MOD:
-        case BINARY_POW:
-            arith(p, c, &left, b);
-            break;
-        case BINARY_NEQ:
-        case BINARY_GT:
-        case BINARY_GEQ:
-            cond = false;
-            [[fallthrough]];
-        case BINARY_EQ:
-        case BINARY_LT:
-        case BINARY_LEQ:
-            compare(p, c, &left, b, cond);
-            break;
-        case BINARY_CONCAT: {
-            // Don't put `left` in an RK register no matter what.
-            compiler_expr_next_reg(c, &left);
-            Expr right = expression(p, c, binary_precs[b].right);
-            compiler_code_concat(c, &left, &right);
-            break;
-        }
-        default:
-            lulu_panicf("Invalid Binary_Type(%i)", b);
-            lulu_unreachable();
-            break;
-        }
-
-    }
-    recurse_pop(p);
-    return left;
 }
 
 static void
@@ -870,24 +460,40 @@ while_stmt(Parser *p, Compiler *c, int line)
     isize init_pc = compiler_label_get(c);
     isize exit_pc = cond(p, c);
     consume(p, TOKEN_DO);
-    recurse_push(p, c);
 
-    // All `break` should go to this block, not the one in `block()`.
+    // All `break` should go here, not in `block()`.
     Block b;
     block_push(p, c, &b, /* breakable */ true);
     block(p, c);
+
+    int end_line = c->parser->consumed.line;
     consume_to_close(p, TOKEN_END, TOKEN_WHILE, line);
-    recurse_pop(p);
 
     // Goto start whenever we reach here.
-    line = c->parser->consumed.line;
-    compiler_jump_patch(c, compiler_jump_new(c, line), init_pc);
+    compiler_jump_patch(c, compiler_jump_new(c, end_line), init_pc);
+
+    // If condition is falsy, goto here (current pc).
+    compiler_jump_patch(c, exit_pc);
 
     // Resolve breaks only after the unconditional jump was emitted.
     block_pop(p, c);
 
-    // If condition is falsy, goto here.
-    compiler_jump_patch(c, exit_pc);
+}
+
+static void
+repeat_stmt(Parser *p, Compiler *c, int line)
+{
+    Block b;
+    block_push(p, c, &b, /* breakable */ true);
+
+    isize body_pc = compiler_label_get(c);
+    block(p, c);
+    consume_to_close(p, TOKEN_UNTIL, TOKEN_REPEAT, line);
+
+    isize jump_pc = cond(p, c);
+    compiler_jump_patch(c, jump_pc, body_pc);
+
+    block_pop(p, c);
 }
 
 static Expr
@@ -920,9 +526,6 @@ for_incr(Parser *p, Compiler *c, int line)
 static void
 for_stmt(Parser *p, Compiler *c, int line)
 {
-    // Save number of registers to restore when done.
-    u16 reg = c->free_reg;
-
     Block b;
     block_push(p, c, &b, /* breakable */ true);
 
@@ -930,38 +533,37 @@ for_stmt(Parser *p, Compiler *c, int line)
     consume(p, TOKEN_IDENTIFIER);
     consume(p, TOKEN_ASSIGN);
 
-    Expr init = expr_immediate(p, c);
+    Expr index = expr_immediate(p, c);
     consume(p, TOKEN_COMMA);
 
-    Expr cond = expr_immediate(p, c);
-    Expr incr = for_incr(p, c, cond.line);
+    Expr limit = expr_immediate(p, c);
+    Expr incr = for_incr(p, c, limit.line);
     consume(p, TOKEN_DO);
 
-    local_push(p, c, &t);
-    local_push_literal(p, c, lstring_literal("(for condition)"), cond.line);
+    // The next 3 locals are internal state used by the interpreter; the user
+    // has no way of modifying them (save for the potential debug library).
+    local_push_literal(p, c, lstring_literal("(for index)"), index.line);
+    local_push_literal(p, c, lstring_literal("(for limit)"), limit.line);
     local_push_literal(p, c, lstring_literal("(for increment)"), incr.line);
-    local_start(c, 3);
 
-    // Hack because we want to save `init` for the `OP_ADD`.
-    Expr _exit = init;
-    isize enter_pc = compiler_label_get(c);
-    compiler_code_compare(c, OP_LT, /* cond */ false, &_exit, &cond);
+    // This is the user-facing (the 'external') index. It mirrors the
+    // internal for-index and is implicitly pushed/update as needed.
+    local_push(p, c, &t);
+    c->free_reg += 1;
+    local_start(c, 4);
 
+    isize prep_pc = compiler_code_asbx(c, OP_FOR_PREP, index.reg, NO_JUMP, incr.line);
     block(p, c);
+
+    // Line at the point of 'end' which is a good enough approximation for
+    // the increment and unconditional jump.
+    int end_line = p->consumed.line;
     consume_to_close(p, TOKEN_END, TOKEN_FOR, line);
 
-    // @todo(2025-07-28) Add `OP_FOR_PREP`
-    u16 index_reg = init.reg;
-    compiler_code_arith(c, OP_ADD, &init, &incr);
-    c->chunk->code[init.pc].set_a(index_reg);
-
-    compiler_jump_patch(c, compiler_jump_new(c, line), enter_pc);
-
+    isize loop_pc = compiler_code_asbx(c, OP_FOR_LOOP, index.reg, NO_JUMP, end_line);
+    compiler_jump_patch(c, prep_pc, loop_pc);       // goto `OP_FOR_LOOP`
+    compiler_jump_patch(c, loop_pc, prep_pc + 1);   // goto <loop-body>
     block_pop(p, c);
-    compiler_jump_patch(c, _exit.pc);
-
-    // Pop all registers used for above.
-    c->free_reg = reg;
 }
 
 static void
@@ -981,7 +583,6 @@ break_stmt(Parser *p, Compiler *c, int line)
 static void
 declaration(Parser *p, Compiler *c)
 {
-    recurse_push(p, c);
     Token t = p->consumed;
     switch (t.type) {
     case TOKEN_BREAK: {
@@ -1010,8 +611,12 @@ declaration(Parser *p, Compiler *c)
         advance(p); // skip 'while'
         while_stmt(p, c, t.line);
         break;
+    case TOKEN_REPEAT:
+        advance(p); // skip 'repeat'
+        repeat_stmt(p, c, t.line);
+        break;
     case TOKEN_RETURN:
-        advance(p);
+        advance(p); // skip 'return'
         return_stmt(p, c, t.line);
         break;
     case TOKEN_IDENTIFIER: {
@@ -1028,13 +633,13 @@ declaration(Parser *p, Compiler *c)
         parser_error_at(p, &t, "Expected an expression");
         break;
     }
-    recurse_pop(p);
     match(p, TOKEN_SEMI);
 }
 
 static void
 chunk(Parser *p, Compiler *c)
 {
+    recurse_push(p, c);
     while (block_continue(p)) {
         declaration(p, c);
 
@@ -1059,6 +664,7 @@ chunk(Parser *p, Compiler *c)
          */
         c->free_reg = cast(u16)small_array_len(c->active);
     }
+    recurse_pop(p);
 }
 
 Chunk *
@@ -1089,3 +695,409 @@ parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b)
     vm_pop(vm);
     return ch;
 }
+
+//=== EXPRESSION PARSING =================================================== {{{
+
+static Expr
+resolve_variable(Parser *p, Compiler *c, const Token *t)
+{
+    Expr e;
+    u16 reg;
+    OString *id = ostring_new(p->vm, t->lexeme);
+    if (compiler_get_local(c, /* limit */ 0, id, &reg)) {
+        e = Expr::make_reg(EXPR_LOCAL, reg, t->line);
+    } else {
+        u32 i = compiler_add_ostring(c, id);
+        e = Expr::make_index(EXPR_GLOBAL, i, t->line);
+    }
+    return e;
+}
+
+struct LULU_PRIVATE Constructor {
+    Expr table; // Information on the OP_NEW_TABLE itself.
+    Expr value;
+    int  n_hash;
+    int  n_array;
+};
+
+static void
+ctor_field(Parser *p, Compiler *c, Constructor *ctor)
+{
+    u16   reg = c->free_reg;
+    Token t   = p->consumed;
+    Expr k;
+    if (match(p, TOKEN_IDENTIFIER)) {
+        u32 i = constant_string(p, c, &t);
+        k = Expr::make_index(EXPR_CONSTANT, i, t.line);
+    } else {
+        consume(p, TOKEN_OPEN_BRACE);
+        k = expression(p, c);
+        consume(p, TOKEN_CLOSE_BRACE);
+    }
+
+    consume(p, TOKEN_ASSIGN);
+    u16 rkb = compiler_expr_rk(c, &k);
+
+    ctor->value = expression(p, c);
+    u16 rkc = compiler_expr_rk(c, &ctor->value);
+    compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc,
+        ctor->value.line);
+
+    // 'pop' whatever registers we used
+    c->free_reg = reg;
+    ctor->n_hash++;
+}
+
+static Expr
+constructor(Parser *p, Compiler *c, int line)
+{
+    Constructor ctor;
+    isize pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0, line);
+
+    ctor.table.type = EXPR_RELOCABLE;
+    ctor.table.line = line;
+    ctor.table.pc   = pc;
+    ctor.value      = DEFAULT_EXPR;
+    ctor.n_hash     = 0;
+    ctor.n_array    = 0;
+
+    compiler_expr_next_reg(c, &ctor.table);
+    while (!check(p, TOKEN_CLOSE_CURLY)) {
+        // Don't consume yet, `ctor_field()` needs <identifier> or '['.
+        switch (p->consumed.type) {
+        case TOKEN_IDENTIFIER: {
+            if (lookahead(p) == TOKEN_ASSIGN) {
+                ctor_field(p, c, &ctor);
+            } else {
+                parser_error(p, "Array constructors not yet supported");
+            }
+            break;
+        }
+        case TOKEN_OPEN_BRACE:
+            ctor_field(p, c, &ctor);
+            break;
+        default:
+            parser_error(p, "Array constructors not yet supported");
+            break;
+        }
+
+        // Even if we match one, if '}' follows, the loop ends anyway.
+        // E.g. try `t = {x=9, y=10,}`.
+        if (!match(p, TOKEN_COMMA)) {
+            break;
+        }
+    }
+
+    consume(p, TOKEN_CLOSE_CURLY);
+
+    Instruction *ip = get_code(c, pc);
+    ip->set_b(cast(u16)ctor.n_hash);
+    ip->set_c(cast(u16)ctor.n_array);
+    return ctor.table;
+}
+
+/**
+ * @note 2025-06-24
+ *  Assumptions:
+ *  1.) The caller `e` was pushed to a register.
+ *  2.) Our current token is the one right after `(`.
+ */
+static void
+function_call(Parser *p, Compiler *c, Expr *e)
+{
+    Expr_List args{DEFAULT_EXPR, 0};
+    if (!check(p, TOKEN_CLOSE_PAREN)) {
+        args = expr_list(p, c);
+        compiler_set_returns(c, &args.last, VARARG);
+    }
+    consume(p, TOKEN_CLOSE_PAREN);
+
+    lulu_assert(e->type == EXPR_DISCHARGED);
+    u16 base = e->reg;
+    if (args.last.type == EXPR_CALL) {
+        args.count = VARARG;
+    } else {
+        // Close last argument.
+        if (args.last.type != EXPR_NONE) {
+            compiler_expr_next_reg(c, &args.last);
+        }
+        // g++ warns that `c->free_reg - (base + 1)` converts to `int` in the
+        // subtraction.
+        args.count = cast(u16)(c->free_reg - (base + 1));
+    }
+    e->type = EXPR_CALL;
+    e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 0, e->line);
+
+    // By default, remove the arguments but not the function's register.
+    // This allows use to 'reserve' the register.
+    c->free_reg = base + 1;
+}
+
+static Expr
+prefix_expr(Parser *p, Compiler *c)
+{
+    Token t = p->consumed;
+    advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
+
+    OpCode unary_op;
+    switch (t.type) {
+    case TOKEN_NIL:    return Expr::make(EXPR_NIL, t.line);
+    case TOKEN_TRUE:   return Expr::make(EXPR_TRUE, t.line);
+    case TOKEN_FALSE:  return Expr::make(EXPR_FALSE, t.line);
+    case TOKEN_NUMBER: return Expr::make_number(t.number, t.line);
+    case TOKEN_STRING: {
+        u32 i = compiler_add_ostring(c, t.ostring);
+        return Expr::make_index(EXPR_CONSTANT, i, t.line);
+    }
+    case TOKEN_IDENTIFIER: {
+        return resolve_variable(p, c, &t);
+    }
+    case TOKEN_OPEN_PAREN: {
+        Expr e = expression(p, c);
+        consume(p, TOKEN_CLOSE_PAREN);
+        return e;
+    }
+    case TOKEN_OPEN_CURLY: {
+        return constructor(p, c, t.line);
+    }
+    case TOKEN_DASH:    unary_op = OP_UNM; goto code_unary;
+    case TOKEN_NOT:     unary_op = OP_NOT; goto code_unary;
+    case TOKEN_POUND:   unary_op = OP_LEN;
+// Diabolical
+code_unary: {
+        Expr e = expression(p, c, PREC_UNARY);
+        compiler_code_unary(c, unary_op, &e);
+        return e;
+    }
+    default:
+        parser_error_at(p, &t, "Expected an expression");
+    }
+}
+static Expr
+primary_expr(Parser *p, Compiler *c)
+{
+    Expr e = prefix_expr(p, c);
+    for (;;) {
+        switch (p->consumed.type) {
+        case TOKEN_OPEN_PAREN: {
+            // Function to be called must be on top of the stack.
+            compiler_expr_next_reg(c, &e);
+            advance(p);
+            function_call(p, c, &e);
+            break;
+        }
+        case TOKEN_DOT: {
+            // Table must in some register.
+            compiler_expr_any_reg(c, &e);
+            advance(p); // Skip '.'.
+            Token t = p->consumed;
+            consume(p, TOKEN_IDENTIFIER);
+
+            u32  i = constant_string(p, c, &t);
+            Expr k = Expr::make_index(EXPR_CONSTANT, i, t.line);
+            compiler_get_table(c, &e, &k);
+            break;
+        }
+        case TOKEN_OPEN_BRACE: {
+            // Table must be in some register.
+            compiler_expr_any_reg(c, &e);
+            advance(p); // Skip '['.
+            Expr k = expression(p, c);
+            consume(p, TOKEN_CLOSE_BRACE);
+            compiler_get_table(c, &e, &k);
+            break;
+        }
+        default:
+            return e;
+        }
+    }
+    return e;
+}
+
+enum Binary_Type {
+    BINARY_NONE,                        // PREC_NONE
+    BINARY_AND, BINARY_OR,              // PREC_AND, PREC_OR
+    BINARY_ADD, BINARY_SUB,             // PREC_TERMINAL
+    BINARY_MUL, BINARY_DIV, BINARY_MOD, // PREC_FACTOR
+    BINARY_POW,                         // PREC_EXPONENT
+    BINARY_EQ,  BINARY_LT, BINARY_LEQ,  // PREC_COMPARISON, cond=true
+    BINARY_NEQ, BINARY_GT, BINARY_GEQ,  // PREC_COMPARISON, cond=false
+    BINARY_CONCAT,                      // PREC_CONCAT
+};
+
+struct Binary_Prec {
+    Precedence left, right;
+};
+
+static constexpr Binary_Prec
+left_assoc(Precedence prec)
+{
+    return {prec, Precedence(cast_int(prec) + 1)};
+}
+
+static constexpr Binary_Prec
+right_assoc(Precedence prec)
+{
+    return {prec, prec};
+}
+
+static const Binary_Prec
+binary_precs[] = {
+    /* BINARY_NONE */   {PREC_NONE, PREC_NONE},
+    /* BINARY_AND */    left_assoc(PREC_AND),
+    /* BINARY_OR */     left_assoc(PREC_OR),
+    /* BINARY_ADD */    left_assoc(PREC_TERMINAL),
+    /* BINARY_SUB */    left_assoc(PREC_TERMINAL),
+    /* BINARY_MUL */    left_assoc(PREC_FACTOR),
+    /* BINARY_DIV */    left_assoc(PREC_FACTOR),
+    /* BINARY_MOD */    left_assoc(PREC_FACTOR),
+    /* BINARY_POW */    right_assoc(PREC_EXPONENT),
+    /* BINARY_EQ */     left_assoc(PREC_COMPARISON),
+    /* BINARY_LT */     left_assoc(PREC_COMPARISON),
+    /* BINARY_LEQ */    left_assoc(PREC_COMPARISON),
+    /* BINARY_NEQ */    left_assoc(PREC_COMPARISON),
+    /* BINARY_GEQ */    left_assoc(PREC_COMPARISON),
+    /* BINARY_GT */     left_assoc(PREC_COMPARISON),
+    /* BINARY_CONCAT */ right_assoc(PREC_CONCAT),
+};
+
+static const OpCode
+binary_opcodes[] = {
+    /* BINARY_NONE */   OP_RETURN,
+    /* BINARY_AND */    OP_TEST,
+    /* BINARY_OR */     OP_TEST,
+    /* BINARY_ADD */    OP_ADD,
+    /* BINARY_SUB */    OP_SUB,
+    /* BINARY_MUL */    OP_MUL,
+    /* BINARY_DIV */    OP_DIV,
+    /* BINARY_MOD */    OP_MOD,
+    /* BINARY_POW */    OP_POW,
+    /* BINARY_EQ */     OP_EQ,
+    /* BINARY_LT */     OP_LT,
+    /* BINARY_LEQ */    OP_LEQ,
+    /* BINARY_NEQ */    OP_EQ,
+    /* BINARY_GEQ */    OP_LEQ,
+    /* BINARY_GT */     OP_LT,
+    /* BINARY_CONCAT */ OP_CONCAT,
+};
+
+static Binary_Type
+get_binary(Token_Type type)
+{
+    switch (type) {
+    case TOKEN_AND:        return BINARY_AND;
+    case TOKEN_OR:         return BINARY_OR;
+    case TOKEN_PLUS:       return BINARY_ADD;
+    case TOKEN_DASH:       return BINARY_SUB;
+    case TOKEN_ASTERISK:   return BINARY_MUL;
+    case TOKEN_SLASH:      return BINARY_DIV;
+    case TOKEN_PERCENT:    return BINARY_MOD;
+    case TOKEN_CARET:      return BINARY_POW;
+    case TOKEN_EQ:         return BINARY_EQ;
+    case TOKEN_NOT_EQ:     return BINARY_NEQ;
+    case TOKEN_LESS:       return BINARY_LT;
+    case TOKEN_LESS_EQ:    return BINARY_LEQ;
+    case TOKEN_GREATER:    return BINARY_GT;
+    case TOKEN_GREATER_EQ: return BINARY_GEQ;
+    case TOKEN_CONCAT:     return BINARY_CONCAT;
+    default:
+        break;
+    }
+    return BINARY_NONE;
+}
+
+static void
+arith(Parser *p, Compiler *c, Expr *left, Binary_Type b)
+{
+    // VERY important to call this *before* parsing the right side,
+    // if it ends up in a register we want them to be in order.
+    if (!left->is_number()) {
+        compiler_expr_rk(c, left);
+    }
+    Expr right = expression(p, c, binary_precs[b].right);
+    compiler_code_arith(c, binary_opcodes[b], left, &right);
+}
+
+static void
+compare(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
+{
+    if (!left->is_literal()) {
+        compiler_expr_rk(c, left);
+    }
+    Expr right = expression(p, c, binary_precs[b].right);
+    compiler_code_compare(c, binary_opcodes[b], cond, left, &right);
+}
+
+static void
+logical(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
+{
+    compiler_logical_new(c, left, cond);
+
+    Expr right = expression(p, c, binary_precs[b].right);
+    compiler_logical_patch(c, left, &right, cond);
+}
+
+
+/**
+ * @note 2025-06-14:
+ *  -   Assumes we just consumed the first (prefix) token.
+ */
+static Expr
+expression(Parser *p, Compiler *c, Precedence limit)
+{
+    recurse_push(p, c);
+    Expr left = primary_expr(p, c);
+    for (;;) {
+        Binary_Type b = get_binary(p->consumed.type);
+        if (b == BINARY_NONE || limit > binary_precs[b].left) {
+            break;
+        }
+
+        // Skip operator, point to first token of right hand side argument.
+        advance(p);
+
+        bool cond = true;
+        switch (b) {
+        case BINARY_AND:
+            logical(p, c, &left, b, true);
+            break;
+        case BINARY_OR:
+            logical(p, c, &left, b, false);
+            break;
+        case BINARY_ADD:
+        case BINARY_SUB:
+        case BINARY_MUL:
+        case BINARY_DIV:
+        case BINARY_MOD:
+        case BINARY_POW:
+            arith(p, c, &left, b);
+            break;
+        case BINARY_NEQ:
+        case BINARY_GT:
+        case BINARY_GEQ:
+            cond = false;
+            [[fallthrough]];
+        case BINARY_EQ:
+        case BINARY_LT:
+        case BINARY_LEQ:
+            compare(p, c, &left, b, cond);
+            break;
+        case BINARY_CONCAT: {
+            // Don't put `left` in an RK register no matter what.
+            compiler_expr_next_reg(c, &left);
+            Expr right = expression(p, c, binary_precs[b].right);
+            compiler_code_concat(c, &left, &right);
+            break;
+        }
+        default:
+            lulu_panicf("Invalid Binary_Type(%i)", b);
+            lulu_unreachable();
+            break;
+        }
+
+    }
+    recurse_pop(p);
+    return left;
+}
+
+//=== }}} ======================================================================

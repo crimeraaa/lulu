@@ -131,7 +131,7 @@ vm_throw(lulu_VM *vm, Error e)
 }
 
 bool
-vm_to_number(const Value *restrict v, Value *restrict out)
+vm_to_number(const Value *v, Value *out)
 {
     // Nothing to do?
     if (v->is_number()) {
@@ -589,7 +589,7 @@ vm_execute(lulu_VM *vm, int n_calls)
 )
 
 #define BINARY_OP(number_fn, on_error_fn, metamethod, result_fn) {             \
-    u16 b = i.b(), c = i.c();                                                  \
+    u16 b = inst.b(), c = inst.c();                                            \
     const Value *rb = GET_RK(b), *rc = GET_RK(c);                              \
     if (rb->is_number() && rc->is_number()) {                                  \
         result_fn(number_fn(rb->to_number(), rc->to_number()));                \
@@ -609,7 +609,7 @@ vm_execute(lulu_VM *vm, int n_calls)
 
 #define COMPARE_RESULT(b)                                                      \
 {                                                                              \
-    if (b == cast(bool)i.a()) {                                                \
+    if (b == cast(bool)inst.a()) {                                             \
         DO_JUMP(ip->sbx())                                                     \
     }                                                                          \
     ip++;                                                                      \
@@ -622,8 +622,8 @@ vm_execute(lulu_VM *vm, int n_calls)
 #endif // LULU_DEBUG_TRACE_EXEC
 
     for (;;) {
-        Instruction i  = *ip++;
-        Value      *ra = &window[i.a()];
+        Instruction inst = *ip++;
+        Value      *ra   = &window[inst.a()];
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.
@@ -640,28 +640,33 @@ vm_execute(lulu_VM *vm, int n_calls)
             printf("\n");
         }
         printf("\n");
-        debug_disassemble_at(chunk, i, pc, pad);
+        debug_disassemble_at(chunk, inst, pc, pad);
 #endif // LULU_DEBUG_TRACE_EXEC
 
-        OpCode op = i.op();
+        OpCode op = inst.op();
         switch (op) {
+        case OP_MOVE: {
+            Value rb = window[inst.b()];
+            *ra = rb;
+            break;
+        }
         case OP_CONSTANT:
-            *ra = constants[i.bx()];
+            *ra = constants[inst.bx()];
             break;
         case OP_NIL: {
-            Value *rb  = &window[i.b()];
+            Value *rb  = &window[inst.b()];
             auto   dst = slice_pointer(ra, rb + 1);
             fill(dst, nil);
             break;
         }
         case OP_BOOL:
-            ra->set_boolean(cast(bool)i.b());
-            if (cast(bool)i.c()) {
+            ra->set_boolean(cast(bool)inst.b());
+            if (cast(bool)inst.c()) {
                 ip++;
             }
             break;
         case OP_GET_GLOBAL: {
-            Value k = constants[i.bx()];
+            Value k = constants[inst.bx()];
             Value v;
             if (!table_get(vm->globals.to_table(), k, &v)) {
                 const char *s = k.to_cstring();
@@ -672,38 +677,33 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_SET_GLOBAL: {
-            Value k = constants[i.bx()];
+            Value k = constants[inst.bx()];
             protect(vm, ip);
             table_set(vm, vm->globals.to_table(), k, *ra);
             break;
         }
         case OP_NEW_TABLE: {
-            isize n_hash  = cast_isize(i.b());
-            isize n_array = cast_isize(i.c());
+            isize n_hash  = cast_isize(inst.b());
+            isize n_array = cast_isize(inst.c());
             Table *t = table_new(vm, n_hash, n_array);
             ra->set_table(t);
             break;
         }
         case OP_GET_TABLE: {
-            u16 c = i.c();
-            const Value *t = &window[i.b()];
+            u16 c = inst.c();
+            const Value *t = &window[inst.b()];
             const Value *k = GET_RK(c);
             protect(vm, ip);
             vm_table_get(vm, t, *k, ra);
             break;
         }
         case OP_SET_TABLE: {
-            u16 b = i.b();
-            u16 c = i.c();
+            u16 b = inst.b();
+            u16 c = inst.c();
             const Value *k = GET_RK(b);
             const Value *v = GET_RK(c);
             protect(vm, ip);
             vm_table_set(vm, ra, k, *v);
-            break;
-        }
-        case OP_MOVE: {
-            Value rb = window[i.b()];
-            *ra = rb;
             break;
         }
         case OP_ADD: ARITH_OP(lulu_Number_add, MT_ADD); break;
@@ -713,9 +713,9 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_MOD: ARITH_OP(lulu_Number_mod, MT_MOD); break;
         case OP_POW: ARITH_OP(lulu_Number_pow, MT_POW); break;
         case OP_EQ: {
-            bool  cond = cast(bool)i.a();
-            u16   b    = i.b();
-            u16   c    = i.c();
+            bool  cond = cast(bool)inst.a();
+            u16   b    = inst.b();
+            u16   c    = inst.c();
             Value rkb  = *GET_RK(b);
             Value rkc  = *GET_RK(c);
 
@@ -730,7 +730,7 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_LT:  COMPARE_OP(lulu_Number_lt,  MT_LT); break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq, MT_LEQ); break;
         case OP_UNM: {
-            Value *rb = &window[i.b()];
+            Value *rb = &window[inst.b()];
             if (rb->is_number()) {
                 Number n = rb->to_number();
                 ra->set_number(lulu_Number_unm(n));
@@ -741,7 +741,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_NOT: {
-            Value rb = window[i.b()];
+            Value rb = window[inst.b()];
             ra->set_boolean(rb.is_falsy());
             break;
         }
@@ -754,14 +754,14 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_CONCAT: {
-            Value *rb = &window[i.b()];
-            Value *rc = &window[i.c()];
+            Value *rb = &window[inst.b()];
+            Value *rc = &window[inst.c()];
             protect(vm, ip);
             vm_concat(vm, ra, slice_pointer(rb, rc + 1));
             break;
         }
         case OP_TEST: {
-            bool cond = cast(bool)i.c();
+            bool cond = cast(bool)inst.c();
             bool test = (!ra->is_falsy() == cond);
 
             // Ensure the next instruction is a jump before actually performing
@@ -777,8 +777,8 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_TEST_SET: {
-            bool  cond = cast(bool)i.c();
-            Value rb   = window[i.b()];
+            bool  cond = cast(bool)inst.c();
+            Value rb   = window[inst.b()];
             bool  test = (!rb.is_falsy() == cond);
             lulu_assert(ip->op() == OP_JUMP);
             if (test) {
@@ -789,12 +789,54 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_JUMP: {
-            DO_JUMP(i.sbx());
+            DO_JUMP(inst.sbx());
+            break;
+        }
+        case OP_FOR_PREP: {
+            Value *index = ra;
+            Value *limit = index + 1;
+            Value *incr  = index + 2;
+
+            protect(vm, ip);
+            if (!vm_to_number(index, index)) {
+                vm_runtime_error(vm, "'for' initial value must be a number");
+            }
+            if (!vm_to_number(limit, limit)) {
+                vm_runtime_error(vm, "'for' limit must be a number");
+            }
+            if (!vm_to_number(incr, incr)) {
+                vm_runtime_error(vm, "'for' increment must be a number");
+            }
+
+            // @todo(2025-07-28) Should we detect increment of 0?
+            lulu_Number next = lulu_Number_sub(index->to_number(), incr->to_number());
+            index->set_number(next);
+            DO_JUMP(inst.sbx());
+            break;
+        }
+        case OP_FOR_LOOP: {
+            lulu_Number index = ra->to_number();
+            lulu_Number limit = (ra + 1)->to_number();
+            lulu_Number incr  = (ra + 2)->to_number();
+            lulu_Number next  = lulu_Number_add(index, incr);
+
+            // How we check `limit` depends if it's negative or not.
+            if (lulu_Number_lt(0, incr) // 0 < incr => incr > 0
+                ? lulu_Number_leq(next, limit) // incr > 0 => next <= limit
+                : lulu_Number_lt(limit, next) //  incr <= 0 => next > limit
+            ) {
+                DO_JUMP(inst.sbx());
+                // Update internal index.
+                ra->set_number(next);
+
+                // Then update external index.
+                (ra + 3)->set_number(next);
+            }
             break;
         }
         case OP_CALL: {
-            int argc              = cast_int(i.b());
-            int expected_returned = cast_int(i.c());
+            int argc              = cast_int(inst.b());
+            int expected_returned = cast_int(inst.c());
             protect(vm, ip);
 
             Call_Type t = vm_call_init(vm, ra, argc, expected_returned);
@@ -804,7 +846,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_RETURN: {
-            int actual_returned = cast_int(i.b());
+            int actual_returned = cast_int(inst.b());
             protect(vm, ip);
             vm_call_fini(vm, ra, actual_returned);
             n_calls--;
