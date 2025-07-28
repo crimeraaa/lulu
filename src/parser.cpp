@@ -31,6 +31,9 @@ static void
 declaration(Parser *p, Compiler *c);
 
 static void
+chunk(Parser *p, Compiler *c);
+
+static void
 block_push(Parser *p, Compiler *c, Block *b, bool breakable)
 {
     lulu_assert(cast_isize(c->free_reg) == small_array_len(c->active));
@@ -92,9 +95,9 @@ block(Parser *p, Compiler *c)
 {
     Block b;
     block_push(p, c, &b, /* breakable */ false);
-    while (block_continue(p)) {
-        declaration(p, c);
-    }
+    chunk(p, c);
+    // Only blocks with `breakable == true` should have jumps.
+    lulu_assert(b.break_list == NO_JUMP);
     block_pop(p, c);
 }
 
@@ -768,16 +771,20 @@ local_push(Parser *p, Compiler *c, const Token *t)
 }
 
 static void
+local_push_literal(Parser *p, Compiler *c, LString lit, int line)
+{
+    Token tmp = Token::make(TOKEN_IDENTIFIER, line, lit);
+    local_push(p, c, &tmp);
+}
+
+static void
 local_start(Compiler *c, u16 n)
 {
     // `lparser.c:adjust_locals()`
-    isize pc    = c->pc;
-    isize start = small_array_len(c->active);
-
-    small_array_resize(&c->active, start + cast_isize(n));
+    isize pc = c->pc;
     Slice<u16>   active = small_array_slice(c->active);
     Slice<Local> locals = slice(c->chunk->locals);
-    for (u16 index : slice_from(active, start)) {
+    for (u16 index : slice_from(active, small_array_len(c->active) - n)) {
         locals[index].start_pc = pc;
     }
 }
@@ -801,6 +808,10 @@ local_stmt(Parser *p, Compiler *c)
     }
 
     assign_adjust(c, n, &args);
+
+    // Allow lookup of the now-initialized local variables.
+    isize start = small_array_len(c->active);
+    small_array_resize(&c->active, start + cast_isize(n));
     local_start(c, n);
 }
 
@@ -879,6 +890,80 @@ while_stmt(Parser *p, Compiler *c, int line)
     compiler_jump_patch(c, exit_pc);
 }
 
+static Expr
+expr_immediate(Parser *p, Compiler *c)
+{
+    Expr e = expression(p, c);
+    compiler_expr_next_reg(c, &e);
+    return e;
+}
+
+static Expr
+for_incr(Parser *p, Compiler *c, int line)
+{
+    if (match(p, TOKEN_COMMA)) {
+        return expr_immediate(p, c);
+    }
+    Expr incr = Expr::make_number(1, line);
+    compiler_expr_next_reg(c, &incr);
+    return incr;
+}
+
+/**
+ * @brief
+ *      `'for' <for_init> <for_cond> <for_incr>? 'do' <block> 'end'`
+ *
+ * @note(2025-07-28)
+ *      Numeric `for` can be implemented in terms of existing instructions,
+ *      although it could be argued that it is not particularly 'clean'.
+ */
+static void
+for_stmt(Parser *p, Compiler *c, int line)
+{
+    // Save number of registers to restore when done.
+    u16 reg = c->free_reg;
+
+    Block b;
+    block_push(p, c, &b, /* breakable */ true);
+
+    Token t = p->consumed;
+    consume(p, TOKEN_IDENTIFIER);
+    consume(p, TOKEN_ASSIGN);
+
+    Expr init = expr_immediate(p, c);
+    consume(p, TOKEN_COMMA);
+
+    Expr cond = expr_immediate(p, c);
+    Expr incr = for_incr(p, c, cond.line);
+    consume(p, TOKEN_DO);
+
+    local_push(p, c, &t);
+    local_push_literal(p, c, lstring_literal("(for condition)"), cond.line);
+    local_push_literal(p, c, lstring_literal("(for increment)"), incr.line);
+    local_start(c, 3);
+
+    // Hack because we want to save `init` for the `OP_ADD`.
+    Expr _exit = init;
+    isize enter_pc = compiler_label_get(c);
+    compiler_code_compare(c, OP_LT, /* cond */ false, &_exit, &cond);
+
+    block(p, c);
+    consume_to_close(p, TOKEN_END, TOKEN_FOR, line);
+
+    // @todo(2025-07-28) Add `OP_FOR_PREP`
+    u16 index_reg = init.reg;
+    compiler_code_arith(c, OP_ADD, &init, &incr);
+    c->chunk->code[init.pc].set_a(index_reg);
+
+    compiler_jump_patch(c, compiler_jump_new(c, line), enter_pc);
+
+    block_pop(p, c);
+    compiler_jump_patch(c, _exit.pc);
+
+    // Pop all registers used for above.
+    c->free_reg = reg;
+}
+
 static void
 break_stmt(Parser *p, Compiler *c, int line)
 {
@@ -908,6 +993,10 @@ declaration(Parser *p, Compiler *c)
         advance(p); // skip `do`
         block(p, c);
         consume_to_close(p, TOKEN_END, TOKEN_DO, t.line);
+        break;
+    case TOKEN_FOR:
+        advance(p); // skip 'for'
+        for_stmt(p, c, t.line);
         break;
     case TOKEN_IF:
         advance(p); // skip 'if'
@@ -943,6 +1032,35 @@ declaration(Parser *p, Compiler *c)
     match(p, TOKEN_SEMI);
 }
 
+static void
+chunk(Parser *p, Compiler *c)
+{
+    while (block_continue(p)) {
+        declaration(p, c);
+
+        /**
+         * @note(2025-07-28)
+         *      This is VERY important, as it ensures we 'pop' all the
+         *      registers that are no longer needed from this point.
+         *
+         * @details
+         *      Concept check:
+         * ```lua
+         *  local i=0;
+         *  while i < 4 do
+         *      if (i % 2) == 0 then
+         *          local n = i ^ 2
+         *          print(n) -- calls `declaration()`, adds a register!
+         *          -- because this `if` is calling `block()` which calls
+         *          -- `chunk()`, we need to reset the register count.
+         *      end
+         *  end
+         * ```
+         */
+        c->free_reg = cast(u16)small_array_len(c->active);
+    }
+}
+
 Chunk *
 parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b)
 {
@@ -958,15 +1076,7 @@ parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b)
     Compiler c = compiler_make(vm, &p, ch, t);
     // Set up first token
     advance(&p);
-
-    Block bl;
-    block_push(&p, &c, &bl, /* breakable */ false);
-    while (block_continue(&p)) {
-        declaration(&p, &c);
-        c.free_reg = cast(u16)small_array_len(c.active);
-    }
-    block_pop(&p, &c);
-
+    block(&p, &c);
     consume(&p, TOKEN_EOF);
     compiler_code_return(&c, /* reg */ 0, /* count */ 0, /* is_vararg */ false,
         p.lexer.line);
