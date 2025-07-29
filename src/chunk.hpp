@@ -12,7 +12,7 @@ struct LULU_PRIVATE Line_Info {
 };
 
 struct LULU_PRIVATE Local {
-    OString *identifier;
+    OString *ident;
     isize    start_pc;
     isize    end_pc;
 };
@@ -55,7 +55,7 @@ LULU_FUNC u32
 chunk_add_constant(lulu_VM *vm, Chunk *p, const Value &v);
 
 LULU_FUNC isize
-chunk_add_local(lulu_VM *vm, Chunk *p, OString *id);
+chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident);
 
 
 /**

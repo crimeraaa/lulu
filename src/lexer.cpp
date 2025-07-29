@@ -82,26 +82,63 @@ match2(Lexer *x, char first, char second)
 }
 
 static LString
-get_lexeme(const Lexer *x)
+get_lexeme(Lexer *x)
 {
     return slice_pointer(x->start, x->cursor);
 }
 
+static LString
+save_lexeme(Lexer *x)
+{
+    LString ls = get_lexeme(x);
+    builder_write_lstring(x->vm, x->builder, ls);
+    return ls;
+}
+
+
+void
+lexer_error(Lexer *x, Token_Type type, const char *what)
+{
+    lulu_VM    *vm    = x->vm;
+    const char *where;
+    switch (type) {
+    // Only variable length tokens explicitly save to the buffer.
+    case TOKEN_INVALID:
+    case TOKEN_IDENT:
+    case TOKEN_NUMBER:
+    case TOKEN_STRING:
+        where = builder_to_cstring(*x->builder);
+        break;
+    default:
+        where = raw_data(token_strings[type]);
+        break;
+    }
+
+    const char *source = x->source->to_cstring();
+    vm_push_fstring(vm, "%s:%i: %s near '%s'", source, x->line, what, where);
+    vm_throw(vm, LULU_ERROR_SYNTAX);
+}
+
+
+// Errors using the current lexeme as the error location.
 [[noreturn]]
 static void
-error(const Lexer *x, const char *what)
+error(Lexer *x, const char *what)
 {
-    LString where = get_lexeme(x);
-    builder_write_lstring(x->vm, x->builder, where);
-    const char *s = builder_to_cstring(*x->builder);
-    vm_syntax_error(x->vm, x->source, x->line, "%s at '%s'", what, s);
+    save_lexeme(x);
+    lexer_error(x, TOKEN_INVALID, what);
 }
 
 static void
-expect(Lexer *x, char ch, const char *msg)
+expect(Lexer *x, char ch, const char *msg = nullptr)
 {
     if (!match(x, ch)) {
-        error(x, msg);
+        char buf[64];
+        int n = sprintf(buf, "Expected '%c'", ch);
+        if (msg != nullptr) {
+            sprintf(buf + n, " %s", msg);
+        }
+        error(x, buf);
     }
 }
 
@@ -227,14 +264,14 @@ get_escaped(Lexer *x, char ch)
 }
 
 static Token
-make_token(const Lexer *x, Token_Type type)
+make_token(Lexer *x, Token_Type type)
 {
-    Token t = Token::make(type, x->line, get_lexeme(x), 0);
+    Token t = Token::make(type, x->line, 0);
     return t;
 }
 
 static Token
-make_token_number(const Lexer *x, Number n)
+make_token_number(Lexer *x, Number n)
 {
     Token t = make_token(x, TOKEN_NUMBER);
     t.number = n;
@@ -242,16 +279,9 @@ make_token_number(const Lexer *x, Number n)
 }
 
 static Token
-make_token_lexeme(const Lexer *x, Token_Type type, const LString &lexeme)
+make_token_ostring(Lexer *x, Token_Type type, OString *ostring)
 {
-    Token t = Token::make(type, x->line, lexeme, 0);
-    return t;
-}
-
-static Token
-make_token_ostring(const Lexer *x, OString *ostring)
-{
-    Token t = make_token(x, TOKEN_STRING);
+    Token t = make_token(x, type);
     t.ostring = ostring;
     return t;
 }
@@ -319,7 +349,7 @@ make_number(Lexer *x, char first)
         if (base != 0) {
             consume_sequence(x, is_ident);
             LString s = get_lexeme(x);
-            Number d = 0;
+            Number  d = 0;
             if (!lstring_to_number(s, &d, base)) {
                 char buf[32];
                 sprintf(buf, "Invalid base-%i integer", base);
@@ -368,31 +398,32 @@ make_string(Lexer *x, char q)
             builder_write_char(vm, b, ch);
 
             // Point to after the escape character.
-            s = {x->cursor, 0};
+            s = slice_pointer_len(x->cursor, 0);
         } else {
             s.len += 1;
         }
     }
-    expect(x, q, "Unterminated string");
+    expect(x, q, "to terminate string");
     builder_write_lstring(vm, b, s);
     s = builder_to_string(*b);
     OString *o = ostring_new(vm, s);
-    return make_token_ostring(x, o);
+    return make_token_ostring(x, TOKEN_STRING, o);
 }
 
 static Token
-check_keyword(const Lexer *x, const LString &s, Token_Type type)
+check_keyword(Lexer *x, const LString &s, Token_Type type)
 {
     if (slice_eq(s, token_strings[type])) {
-        return make_token_lexeme(x, type, s);
+        return make_token(x, type);
     }
-    return make_token_lexeme(x, TOKEN_IDENTIFIER, s);
+    OString *os = ostring_new(x->vm, s);
+    return make_token_ostring(x, TOKEN_IDENT, os);
 }
 
 static Token
-make_keyword_or_identifier(const Lexer *x)
+make_keyword_or_identifier(Lexer *x)
 {
-    LString word = get_lexeme(x);
+    LString word = save_lexeme(x);
 
     // If we reached this point then `word` MUST be at least of length 1.
     switch (word[0]) {
@@ -458,12 +489,16 @@ make_keyword_or_identifier(const Lexer *x)
         break;
     }
 
-    return make_token(x, TOKEN_IDENTIFIER);
+    OString *os = ostring_new(x->vm, word);
+    return make_token_ostring(x, TOKEN_IDENT, os);
 }
 
 Token
 lexer_lex(Lexer *x)
 {
+    // Reset to ensure our buffer is clean for a fresh token.
+    builder_reset(x->builder);
+
     skip_whitespace(x);
     x->start = x->cursor;
     if (is_eof(x)) {
@@ -488,10 +523,11 @@ lexer_lex(Lexer *x)
         // Don't consume '[' nor '=' yet; need to get rid of all '=' first.
         if (check2(x, '[', '=')) {
             int nest_open = get_nesting(x);
-            expect(x, '[', "Expected 2nd '[' to start off multiline string");
+            expect(x, '[', "to begin multiline string");
             const char *start = x->cursor;
             const char *stop  = skip_multiline(x, nest_open);
-            return make_token_lexeme(x, TOKEN_STRING, slice_pointer(start, stop));
+            OString *os = ostring_new(x->vm, slice_pointer(start, stop));
+            return make_token_ostring(x, TOKEN_STRING, os);
         }
         type = TOKEN_OPEN_BRACE;
         break;
@@ -505,7 +541,7 @@ lexer_lex(Lexer *x)
     case '^': type = TOKEN_CARET; break;
 
     case '~':
-        expect(x, '=', "Expected '='");
+        expect(x, '=');
         type = TOKEN_NOT_EQ;
         break;
     case '=': type = match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN; break;
@@ -529,6 +565,7 @@ lexer_lex(Lexer *x)
     case '\'':
     case '\"': return make_string(x, ch);
     }
+
     if (type == TOKEN_INVALID) {
         error(x, "Unexpected character");
     }
@@ -559,5 +596,5 @@ const LString token_strings[TOKEN_COUNT] = {
 
     // Misc.
     "#"_s, "."_s, ".."_s, "..."_s, ","_s, ":"_s, ";"_s, "="_s,
-    "<identifier>"_s, "<number>"_s, "<string>"_s, "<eof>"_s,
+    "<ident>"_s, "<number>"_s, "<string>"_s, "<eof>"_s,
 };

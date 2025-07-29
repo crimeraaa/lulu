@@ -127,24 +127,6 @@ parser_make(lulu_VM *vm, OString *source, const LString &script, Builder *b)
     return p;
 }
 
-void
-parser_error(Parser *p, const char *msg)
-{
-    parser_error_at(p, &p->consumed, msg);
-}
-
-void
-parser_error_at(Parser *p, const Token *t, const char *msg)
-{
-    LString where = (t->type == TOKEN_EOF) ? token_strings[t->type] : t->lexeme;
-
-    // It is highly important we use a separate string builder from VM, because
-    // we don't want it to conflict when writing the formatted string.
-    builder_write_lstring(p->vm, p->builder, where);
-    const char *s = builder_to_cstring(*p->builder);
-    vm_syntax_error(p->vm, p->lexer.source, t->line, "%s at '%s'", msg, s);
-}
-
 /**
  * @brief
  *  -   Move to the next token unconditionally.
@@ -187,6 +169,21 @@ match(Parser *p, Token_Type expected)
     return b;
 }
 
+[[noreturn]]
+static void
+error_at(Parser *p, Token_Type type, const char *msg)
+{
+    lexer_error(&p->lexer, type, msg);
+}
+
+// Throw an error using the current consumed token type.
+[[noreturn]]
+static void
+error(Parser *p, const char *msg)
+{
+    error_at(p, p->consumed.type, msg);
+}
+
 /**
  * @brief
  *  -   Asserts that the current token is of type `expected` and advances.
@@ -197,7 +194,7 @@ consume(Parser *p, Token_Type expected)
     if (!match(p, expected)) {
         const char *msg = vm_push_fstring(p->vm, "Expected '%s'",
             raw_data(token_strings[expected]));
-        parser_error(p, msg);
+        error(p, msg);
     }
 }
 
@@ -210,7 +207,7 @@ consume_to_close(Parser *p, Token_Type expected, Token_Type to_close, int line)
             "Expected '%s' (to close '%s' at line %i)",
             raw_data(token_strings[expected]), raw_data(token_strings[to_close]),
             line);
-        parser_error(p, msg);
+        error(p, msg);
     }
 }
 
@@ -235,10 +232,10 @@ expr_list(Parser *p, Compiler *c)
 }
 
 static u32
-constant_string(Parser *p, Compiler *c, const Token *t)
+constant_string(Compiler *c, const Token *t)
 {
-    OString *s = ostring_new(p->vm, t->lexeme);
-    u32      i = compiler_add_ostring(c, s);
+    lulu_assert(t->type == TOKEN_IDENT);
+    u32 i = compiler_add_ostring(c, t->ostring);
     return i;
 }
 
@@ -303,7 +300,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 {
     // Check the result of `expression()`.
     if (last->variable.type < EXPR_GLOBAL || last->variable.type > EXPR_INDEXED) {
-        parser_error_at(p, t, "Expected an assignable expression");
+        error_at(p, t->type, "Expected an assignable expression");
     }
 
     if (match(p, TOKEN_COMMA)) {
@@ -340,31 +337,29 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 }
 
 static void
-local_push(Parser *p, Compiler *c, const Token *t)
+local_push(Parser *p, Compiler *c, OString *ident)
 {
     u16 reg;
-    OString *id = ostring_new(p->vm, t->lexeme);
-    if (compiler_get_local(c, p->block->n_locals, id, &reg)) {
-        parser_error_at(p, t, "Shadowing of local variable");
+    if (compiler_get_local(c, p->block->n_locals, ident, &reg)) {
+        error_at(p, TOKEN_IDENT, "Shadowing of local variable");
     }
-    isize index = chunk_add_local(p->vm, c->chunk, id);
+    isize index = chunk_add_local(p->vm, c->chunk, ident);
 
     // Resulting index wouldn't fit as an element in the active array?
-    compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables",
-        t);
+    compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
 
     // Pushing to active array would go out of bounds?
     compiler_check_limit(c, small_array_len(c->active) + 1, MAX_ACTIVE_LOCALS,
-        "active local variables", t);
+        "active local variables");
 
     small_array_push(&c->active, cast(u16)index);
 }
 
 static void
-local_push_literal(Parser *p, Compiler *c, LString lit, int line)
+local_push_literal(Parser *p, Compiler *c, LString lit)
 {
-    Token tmp = Token::make(TOKEN_IDENTIFIER, line, lit);
-    local_push(p, c, &tmp);
+    OString *os = ostring_new(p->vm, lit);
+    local_push(p, c, os);
 }
 
 static void
@@ -385,8 +380,8 @@ local_stmt(Parser *p, Compiler *c)
     u16 n = 0;
     do {
         Token t = p->consumed;
-        consume(p, TOKEN_IDENTIFIER);
-        local_push(p, c, &t);
+        consume(p, TOKEN_IDENT);
+        local_push(p, c, t.ostring);
         n++;
     } while (match(p, TOKEN_COMMA));
     // Prevent lookup of uninitialized local variables, e.g. `local x = x`;
@@ -530,7 +525,7 @@ for_stmt(Parser *p, Compiler *c, int line)
     block_push(p, c, &b, /* breakable */ true);
 
     Token t = p->consumed;
-    consume(p, TOKEN_IDENTIFIER);
+    consume(p, TOKEN_IDENT);
     consume(p, TOKEN_ASSIGN);
 
     Expr index = expr_immediate(p, c);
@@ -542,13 +537,13 @@ for_stmt(Parser *p, Compiler *c, int line)
 
     // The next 3 locals are internal state used by the interpreter; the user
     // has no way of modifying them (save for the potential debug library).
-    local_push_literal(p, c, lstring_literal("(for index)"), index.line);
-    local_push_literal(p, c, lstring_literal("(for limit)"), limit.line);
-    local_push_literal(p, c, lstring_literal("(for increment)"), incr.line);
+    local_push_literal(p, c, lstring_literal("(for index)"));
+    local_push_literal(p, c, lstring_literal("(for limit)"));
+    local_push_literal(p, c, lstring_literal("(for increment)"));
 
     // This is the user-facing (the 'external') index. It mirrors the
     // internal for-index and is implicitly pushed/update as needed.
-    local_push(p, c, &t);
+    local_push(p, c, t.ostring);
     c->free_reg += 1;
     local_start(c, 4);
 
@@ -575,7 +570,7 @@ break_stmt(Parser *p, Compiler *c, int line)
     }
 
     if (b == nullptr) {
-        parser_error(p, "No block to 'break'");
+        error(p, "No block to 'break'");
     }
     compiler_jump_add(c, &b->break_list, compiler_jump_new(c, line));
 }
@@ -618,7 +613,7 @@ declaration(Parser *p, Compiler *c)
         advance(p); // skip 'return'
         return_stmt(p, c, t.line);
         break;
-    case TOKEN_IDENTIFIER: {
+    case TOKEN_IDENT: {
         Assign a{nullptr, expression(p, c)};
         // Differentiate `f().field = ...` and `f()`.
         if (a.variable.type == EXPR_CALL) {
@@ -629,7 +624,7 @@ declaration(Parser *p, Compiler *c)
         break;
     }
     default:
-        parser_error_at(p, &t, "Expected an expression");
+        error_at(p, t.type, "Expected an expression");
         break;
     }
     match(p, TOKEN_SEMI);
@@ -698,16 +693,15 @@ parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b)
 //=== EXPRESSION PARSING =================================================== {{{
 
 static Expr
-resolve_variable(Parser *p, Compiler *c, const Token *t)
+resolve_variable(Compiler *c, OString *ident, int line)
 {
     Expr e;
     u16 reg;
-    OString *id = ostring_new(p->vm, t->lexeme);
-    if (compiler_get_local(c, /* limit */ 0, id, &reg)) {
-        e = Expr::make_reg(EXPR_LOCAL, reg, t->line);
+    if (compiler_get_local(c, /* limit */ 0, ident, &reg)) {
+        e = Expr::make_reg(EXPR_LOCAL, reg, line);
     } else {
-        u32 i = compiler_add_ostring(c, id);
-        e = Expr::make_index(EXPR_GLOBAL, i, t->line);
+        u32 i = compiler_add_ostring(c, ident);
+        e = Expr::make_index(EXPR_GLOBAL, i, line);
     }
     return e;
 }
@@ -725,8 +719,8 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
     u16   reg = c->free_reg;
     Token t   = p->consumed;
     Expr k;
-    if (match(p, TOKEN_IDENTIFIER)) {
-        u32 i = constant_string(p, c, &t);
+    if (match(p, TOKEN_IDENT)) {
+        u32 i = constant_string(c, &t);
         k = Expr::make_index(EXPR_CONSTANT, i, t.line);
     } else {
         consume(p, TOKEN_OPEN_BRACE);
@@ -763,12 +757,13 @@ constructor(Parser *p, Compiler *c, int line)
     compiler_expr_next_reg(c, &ctor.table);
     while (!check(p, TOKEN_CLOSE_CURLY)) {
         // Don't consume yet, `ctor_field()` needs <identifier> or '['.
-        switch (p->consumed.type) {
-        case TOKEN_IDENTIFIER: {
+        Token_Type t = p->consumed.type;
+        switch (t) {
+        case TOKEN_IDENT: {
             if (lookahead(p) == TOKEN_ASSIGN) {
                 ctor_field(p, c, &ctor);
             } else {
-                parser_error(p, "Array constructors not yet supported");
+                error_at(p, t, "Array constructors not yet supported");
             }
             break;
         }
@@ -776,7 +771,7 @@ constructor(Parser *p, Compiler *c, int line)
             ctor_field(p, c, &ctor);
             break;
         default:
-            parser_error(p, "Array constructors not yet supported");
+            error_at(p, t, "Array constructors not yet supported");
             break;
         }
 
@@ -848,20 +843,16 @@ prefix_expr(Parser *p, Compiler *c)
         u32 i = compiler_add_ostring(c, t.ostring);
         return Expr::make_index(EXPR_CONSTANT, i, t.line);
     }
-    case TOKEN_IDENTIFIER: {
-        return resolve_variable(p, c, &t);
-    }
+    case TOKEN_IDENT: return resolve_variable(c, t.ostring, t.line);
     case TOKEN_OPEN_PAREN: {
         Expr e = expression(p, c);
         consume(p, TOKEN_CLOSE_PAREN);
         return e;
     }
-    case TOKEN_OPEN_CURLY: {
-        return constructor(p, c, t.line);
-    }
-    case TOKEN_DASH:    unary_op = OP_UNM; goto code_unary;
-    case TOKEN_NOT:     unary_op = OP_NOT; goto code_unary;
-    case TOKEN_POUND:   unary_op = OP_LEN;
+    case TOKEN_OPEN_CURLY: return constructor(p, c, t.line);
+    case TOKEN_DASH:       unary_op = OP_UNM; goto code_unary;
+    case TOKEN_NOT:        unary_op = OP_NOT; goto code_unary;
+    case TOKEN_POUND:      unary_op = OP_LEN;
 // Diabolical
 code_unary: {
         Expr e = expression(p, c, PREC_UNARY);
@@ -869,9 +860,10 @@ code_unary: {
         return e;
     }
     default:
-        parser_error_at(p, &t, "Expected an expression");
+        error_at(p, t.type, "Expected an expression");
     }
 }
+
 static Expr
 primary_expr(Parser *p, Compiler *c)
 {
@@ -890,9 +882,9 @@ primary_expr(Parser *p, Compiler *c)
             compiler_expr_any_reg(c, &e);
             advance(p); // Skip '.'.
             Token t = p->consumed;
-            consume(p, TOKEN_IDENTIFIER);
+            consume(p, TOKEN_IDENT);
 
-            u32  i = constant_string(p, c, &t);
+            u32  i = constant_string(c, &t);
             Expr k = Expr::make_index(EXPR_CONSTANT, i, t.line);
             compiler_get_table(c, &e, &k);
             break;

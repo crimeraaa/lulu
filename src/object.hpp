@@ -80,6 +80,6 @@ object_new(lulu_VM *vm, Object **list, Value_Type type, isize extra = 0)
 
     // Chain the new object.
     o->next = *list;
-    *list   = cast(Object *)o;
+    *list   = reinterpret_cast<Object *>(o);
     return o;
 }

@@ -22,9 +22,9 @@ print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
         u32 i = Instruction::reg_get_k(reg);
         value_print(p->constants[i]);
     } else {
-        const char *id = chunk_get_local(p, cast_int(reg + 1), pc);
-        if (id != nullptr) {
-            printf("local %s", id);
+        const char *ident = chunk_get_local(p, cast_int(reg + 1), pc);
+        if (ident != nullptr) {
+            printf("local %s", ident);
         } else {
             printf("R(%u)", reg);
         }
@@ -288,9 +288,10 @@ debug_disassemble(const Chunk *p)
         int pad = count_digits(len(p->locals));
         printf(".local:\n");
         for (isize i = 0, n = len(p->locals); i < n; i++) {
-            const char *id = p->locals[i].identifier->to_cstring();
+            Local local = p->locals[i];
+            const char *ident = local.ident->to_cstring();
             printf("[%.*" ISIZE_FMT "] '%s': start=%" ISIZE_FMT ", end=%" ISIZE_FMT "\n",
-                pad, i, id, p->locals[i].start_pc, p->locals[i].end_pc);
+                pad, i, ident, local.start_pc, local.end_pc);
         }
         printf("\n");
     }
@@ -322,7 +323,7 @@ debug_disassemble(const Chunk *p)
  *      side-effects would be to determine the glocal/local variable
  *      or table field that caused an error.
  *
- * @param c
+ * @param p
  *      Where the bytecode is found.
  *
  * @param target_pc
@@ -414,10 +415,10 @@ get_rk_name(const Chunk *p, u16 regk)
 }
 
 static const char *
-get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
+get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **ident)
 {
     if (cf->is_lua()) {
-        const Chunk *p = cf->to_lua();
+        const Chunk *p = cf->to_lua()->chunk;
 
         // `ip` always points to the instruction after the decoded one, so
         // subtract 1 to get the culprit.
@@ -425,8 +426,8 @@ get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
 
         // Add 1 to `reg` because we want to use 1-based counting. E.g.
         // the very first local is 1 rather than 0.
-        *id = chunk_get_local(p, reg + 1, pc);
-        if (*id != nullptr) {
+        *ident = chunk_get_local(p, reg + 1, pc);
+        if (*ident != nullptr) {
             return "local";
         }
         Instruction i = get_variable_ip(p, pc, reg);
@@ -434,12 +435,12 @@ get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
         case OP_GET_GLOBAL: {
             Value k = p->constants[i.bx()];
             lulu_assert(k.is_string());
-            *id = k.to_cstring();
+            *ident = k.to_cstring();
             return "global";
         }
         case OP_GET_TABLE: {
             u16 rkc = i.c(); // RK(C) is the desired field.
-            *id = get_rk_name(p, rkc);
+            *ident = get_rk_name(p, rkc);
             return "field";
         }
         default:
@@ -454,19 +455,19 @@ get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **id)
 void
 debug_type_error(lulu_VM *vm, const char *act, const Value *v)
 {
-    const char *id    = nullptr;
+    const char *ident = nullptr;
     const char *scope = nullptr;
     const char *tname = v->type_name();
 
     isize i;
     // `v` is currently inside the stack?
     if (ptr_index_safe(vm->window, v, &i)) {
-        scope = get_obj_name(vm, vm->caller, cast_int(i), &id);
+        scope = get_obj_name(vm, vm->caller, cast_int(i), &ident);
     }
 
     if (scope != nullptr) {
         vm_runtime_error(vm, "Attempt to %s %s '%s' (a %s value)",
-            act, scope, id, tname);
+            act, scope, ident, tname);
     } else {
         vm_runtime_error(vm, "Attempt to %s a %s value", act, tname);
     }
@@ -499,7 +500,7 @@ debug_compare_error(lulu_VM *vm, const Value *a, const Value *b)
 static void
 get_func_info(lulu_Debug *ar, Closure *f)
 {
-    if (closure_is_c(f)) {
+    if (f->is_c()) {
         ar->source          = "=[C]";
         ar->namewhat        = "C";
         ar->linedefined     = -1;
@@ -530,7 +531,7 @@ get_current_pc(lulu_VM *vm, Call_Frame *cf)
         cf->saved_ip = vm->saved_ip;
     }
     // Subtract 1 because ip always points to after the desired instruction.
-    return cf->saved_ip - raw_data(cf->to_lua()->code) - 1;
+    return cf->saved_ip - raw_data(cf->to_lua()->chunk->code) - 1;
 }
 
 static const char *
@@ -543,7 +544,7 @@ get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
     // Point to parent caller (the call*ing* function).
     cf--;
     isize pc = get_current_pc(vm, cf);
-    Instruction i = cf->to_lua()->code[pc];
+    Instruction i = cf->to_lua()->chunk->code[pc];
     if (i.op() == OP_CALL) {
         return get_obj_name(vm, cf, i.a(), name);
     }
@@ -559,7 +560,7 @@ get_line(lulu_VM *vm, Call_Frame *cf)
     if (pc < 0) {
         return -1;
     }
-    return chunk_get_line(cf->to_lua(), pc);
+    return chunk_get_line(cf->to_lua()->chunk, pc);
 }
 
 static bool

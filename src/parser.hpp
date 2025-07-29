@@ -154,13 +154,5 @@ struct LULU_PRIVATE Expr {
     }
 };
 
-[[noreturn]]
-LULU_FUNC void
-parser_error(Parser *p, const char *msg);
-
-[[noreturn]]
-LULU_FUNC void
-parser_error_at(Parser *p, const Token *t, const char *msg);
-
 LULU_FUNC Chunk *
 parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b);

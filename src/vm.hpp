@@ -22,27 +22,25 @@ struct LULU_PRIVATE Call_Frame {
     bool
     is_c() const noexcept
     {
-        return closure_is_c(this->function);
+        return this->function->is_c();
     }
 
     bool
     is_lua() const noexcept
     {
-        return closure_is_lua(this->function);
+        return this->function->is_lua();
     }
 
-    lulu_CFunction
+    const Closure_C *
     to_c() const
     {
-        lulu_assert(this->is_c());
-        return this->function->c.callback;
+        return this->function->to_c();
     }
 
-    const Chunk *
+    const Closure_Lua *
     to_lua() const
     {
-        lulu_assert(this->is_lua());
-        return this->function->lua.chunk;
+        return this->function->to_lua();
     }
 };
 
@@ -103,6 +101,7 @@ vm_base_absindex(lulu_VM *vm);
 LULU_FUNC isize
 vm_top_absindex(lulu_VM *vm);
 
+
 /**
  * @brief
  *  -   Wraps a call to `fn(vm, user_ptr)` with a try-catch block.
@@ -157,15 +156,12 @@ vm_to_string(lulu_VM *vm, Value *in_out);
 LULU_FUNC const char *
 vm_push_string(lulu_VM *vm, const LString &s);
 
+[[gnu::format(printf, 2, 3)]]
 LULU_FUNC const char *
 vm_push_fstring(lulu_VM *vm, const char *fmt, ...);
 
 LULU_FUNC const char *
 vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
-
-[[noreturn, gnu::format(printf, 4, 5)]]
-LULU_FUNC void
-vm_syntax_error(lulu_VM *vm, OString *source, int line, const char *fmt, ...);
 
 [[noreturn, gnu::format(printf, 2, 3)]]
 LULU_FUNC void

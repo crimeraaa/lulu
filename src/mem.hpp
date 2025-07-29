@@ -45,7 +45,7 @@ LULU_FUNC inline T *
 mem_new(lulu_VM *vm, isize extra = 0)
 {
     usize size = sizeof(T) + cast_usize(extra);
-    return cast(T *)mem_rawrealloc(vm, nullptr, 0, size);
+    return reinterpret_cast<T *>(mem_rawrealloc(vm, nullptr, 0, size));
 }
 
 template<class T>
@@ -62,7 +62,7 @@ mem_resize(lulu_VM *vm, T *ptr, isize prev, isize next)
 {
     usize prev_size = sizeof(T) * cast_usize(prev);
     usize next_size = sizeof(T) * cast_usize(next);
-    return cast(T *)mem_rawrealloc(vm, ptr, prev_size, next_size);
+    return reinterpret_cast<T *>(mem_rawrealloc(vm, ptr, prev_size, next_size));
 }
 
 template<class T>

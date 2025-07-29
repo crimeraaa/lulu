@@ -38,19 +38,14 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Table *indexes,
 
 [[noreturn]]
 LULU_FUNC void
-compiler_error_limit(Compiler *c, isize limit, const char *what,
-    const Token *where);
+compiler_error_limit(Compiler *c, isize limit, const char *what);
 
 template<class T>
 LULU_FUNC inline void
-compiler_check_limit(Compiler *c, T count, T limit, const char *what,
-    const Token *where = nullptr)
+compiler_check_limit(Compiler *c, T count, T limit, const char *what)
 {
     if (count > limit) {
-        if (where == nullptr) {
-            where = &c->parser->consumed;
-        }
-        compiler_error_limit(c, cast(isize)limit, what, where);
+        compiler_error_limit(c, cast(isize)limit, what);
     }
 }
 
@@ -228,7 +223,7 @@ compiler_set_one_return(Compiler *c, Expr *e);
  *      to read in that case unless you initialized it beforehand.
  */
 LULU_FUNC bool
-compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg);
+compiler_get_local(Compiler *c, u16 limit, OString *ident, u16 *reg);
 
 LULU_FUNC void
 compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k);

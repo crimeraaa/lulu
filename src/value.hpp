@@ -62,7 +62,7 @@ public:
     {
         Value v;
         v.m_type = VALUE_STRING;
-        v.m_object = cast(Object *)s;
+        v.m_object = reinterpret_cast<Object *>(s);
         return v;
     }
 
@@ -72,7 +72,7 @@ public:
     {
         Value v;
         v.m_type   = VALUE_TABLE;
-        v.m_object = cast(Object *)t;
+        v.m_object = reinterpret_cast<Object *>(t);
         return v;
     }
 
@@ -82,7 +82,7 @@ public:
     {
         Value v;
         v.m_type   = VALUE_FUNCTION;
-        v.m_object = cast(Object *)f;
+        v.m_object = reinterpret_cast<Object *>(f);
         return v;
     }
 
@@ -102,7 +102,7 @@ public:
     {
         Value v;
         v.m_type   = VALUE_CHUNK;
-        v.m_object = cast(Object *)p;
+        v.m_object = reinterpret_cast<Object *>(p);
         return v;
     }
 

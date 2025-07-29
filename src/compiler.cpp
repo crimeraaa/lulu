@@ -42,13 +42,12 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Table *indexes,
 }
 
 void
-compiler_error_limit(Compiler *c, isize limit, const char *what,
-    const Token *where)
+compiler_error_limit(Compiler *c, isize limit, const char *what)
 {
     const char *who = (c->prev == nullptr) ? "script" : "function";
     char buf[128];
     sprintf(buf, "%s uses more than %" ISIZE_FMT " %s", who, limit, what);
-    parser_error_at(c->parser, where, buf);
+    lexer_error(&c->parser->lexer, c->parser->consumed.type, buf);
 }
 
 //=== BYTECODE MANIPULATION ============================================ {{{
@@ -72,6 +71,7 @@ code_pop(Compiler *c)
 isize
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line)
 {
+    lulu_assert(opinfo[op].fmt() == OPFORMAT_ABC);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER || b == 0);
     lulu_assert(opinfo[op].c() == OPARG_REGK || opinfo[op].c() == OPARG_OTHER || c2 == 0);
     return code_push(c, Instruction::make_abc(op, a, b, c2), line);
@@ -90,6 +90,7 @@ isize
 compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx, int line)
 {
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ASBX);
+    lulu_assert(opinfo[op].c() == OPARG_UNUSED);
     return code_push(c, Instruction::make_asbx(op, a, sbx), line);
 }
 
@@ -726,11 +727,12 @@ compiler_set_one_return(Compiler *c, Expr *e)
 }
 
 bool
-compiler_get_local(Compiler *c, u16 limit, OString *id, u16 *reg)
+compiler_get_local(Compiler *c, u16 limit, OString *ident, u16 *reg)
 {
     for (isize r = small_array_len(c->active) - 1; r >= cast_isize(limit); r--) {
-        Local *local = &c->chunk->locals[small_array_get(c->active, r)];
-        if (local->identifier == id) {
+        u16    i     = small_array_get(c->active, r);
+        Local *local = &c->chunk->locals[i];
+        if (local->ident == ident) {
             *reg = cast(u16)r;
             return true;
         }
@@ -800,7 +802,9 @@ jump_set(Compiler *c, isize jump_pc, isize target_pc)
     lulu_assert(OP_JUMP <= ip->op() && ip->op() <= OP_FOR_LOOP);
 
     isize offset = target_pc - (jump_pc + 1);
-    lulu_assert(offset != NO_JUMP);
+
+    // Allow: `while true do end`
+    // lulu_assert(offset != NO_JUMP);
 
     compiler_check_limit(c, isize_abs(offset), cast_isize(Instruction::MAX_SBX),
         "jump offset");

@@ -19,22 +19,36 @@ struct LULU_PRIVATE Closure_C {
 union LULU_PRIVATE Closure {
     Closure_Lua lua;
     Closure_C   c;
+
+    bool
+    is_c() const noexcept
+    {
+        return this->lua.is_c;
+    }
+
+    bool
+    is_lua() const noexcept
+    {
+        return !this->lua.is_c;
+    }
+
+    const Closure_Lua *
+    to_lua() const
+    {
+        lulu_assert(this->is_lua());
+        return &this->lua;
+    }
+
+    const Closure_C *
+    to_c() const
+    {
+        lulu_assert(this->is_c());
+        return &this->c;
+    }
 };
 
 LULU_FUNC Closure *
-closure_new(lulu_VM *vm, lulu_CFunction cf);
+closure_c_new(lulu_VM *vm, lulu_CFunction cf);
 
 LULU_FUNC Closure *
-closure_new(lulu_VM *vm, Chunk *p);
-
-LULU_FUNC inline bool
-closure_is_c(Closure *f)
-{
-    return f->lua.is_c;
-}
-
-LULU_FUNC inline bool
-closure_is_lua(Closure *f)
-{
-    return !closure_is_c(f);
-}
+closure_lua_new(lulu_VM *vm, Chunk *p);

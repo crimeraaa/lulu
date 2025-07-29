@@ -14,10 +14,10 @@ chunk_new(lulu_VM *vm, OString *source)
     dynamic_init(&p->code);
     dynamic_init(&p->lines);
     dynamic_init(&p->locals);
-    p->source     = source;
-    p->line_defined = 0;
+    p->source             = source;
+    p->line_defined       = 0;
     p->last_line_defined  = 0;
-    p->stack_used = 2; // R(0) and R(1) must always be valid.
+    p->stack_used         = 2; // R(0) and R(1) must always be valid.
     return p;
 }
 
@@ -92,12 +92,12 @@ chunk_add_constant(lulu_VM *vm, Chunk *p, const Value &v)
 }
 
 isize
-chunk_add_local(lulu_VM *vm, Chunk *p, OString *id)
+chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident)
 {
     Local local;
-    local.identifier = id;
-    local.start_pc   = 0;
-    local.end_pc     = 0;
+    local.ident    = ident;
+    local.start_pc = 0;
+    local.end_pc   = 0;
 
     isize i = len(p->locals);
     dynamic_push(vm, &p->locals, local);
@@ -120,7 +120,7 @@ chunk_get_local(const Chunk *p, int local_number, isize pc)
             counter--;
             // We iterated the correct number of times for this scope?
             if (counter == 0) {
-                return local.identifier->to_cstring();
+                return local.ident->to_cstring();
             }
         }
     }

@@ -32,28 +32,26 @@ enum Token_Type {
     TOKEN_COMMA, TOKEN_COLON, TOKEN_SEMI,  // , : ;
 
     TOKEN_ASSIGN, // =
-    TOKEN_IDENTIFIER,
+    TOKEN_IDENT,
     TOKEN_NUMBER,
     TOKEN_STRING,
     TOKEN_EOF,
 };
 
 struct LULU_PRIVATE Token {
-    Token_Type  type;
-    int         line;
-    LString     lexeme;
+    Token_Type  type = TOKEN_INVALID;
+    int         line = -1;
     union {
         double   number;
-        OString *ostring;
+        OString *ostring = nullptr;
     };
 
     static constexpr Token
-    make(Token_Type type, int line, const LString &lexeme = {}, Number number = 0)
+    make(Token_Type type, int line, Number number = 0)
     {
         Token t{
             /* type */              type,
             /* line */              line,
-            /* lexeme */            lexeme,
             /* <unnamed>::number */ {number},
         };
         return t;
@@ -80,3 +78,7 @@ lexer_make(lulu_VM *vm, OString *source, const LString &script, Builder *b);
 
 LULU_FUNC Token
 lexer_lex(Lexer *x);
+
+[[noreturn]]
+LULU_FUNC void
+lexer_error(Lexer *x, Token_Type type, const char *msg);

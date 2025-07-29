@@ -1,7 +1,7 @@
 #include "vm.hpp"
 
 // Do not make `constexpr`; must have an address in order to be a reference.
-static Value
+static const Value
 none = nil;
 
 static Value *
@@ -14,7 +14,7 @@ value_at(lulu_VM *vm, int i)
         if (0 <= ii && ii < len(vm->window)) {
             return &vm->window[ii];
         }
-        return &none;
+        return const_cast<Value *>(&none);
     } else if (ii > LULU_PSEUDO_INDEX) {
         // Not valid in any way
         lulu_assert(ii != 0);
@@ -29,7 +29,7 @@ value_at(lulu_VM *vm, int i)
     default:
         break;
     }
-    return &none;
+    return const_cast<Value *>(&none);
 }
 
 static Value *
@@ -82,7 +82,7 @@ struct LULU_PRIVATE PCall {
 static void
 pcall(lulu_VM *vm, void *user_ptr)
 {
-    PCall *d = cast(PCall *)user_ptr;
+    PCall *d = reinterpret_cast<PCall *>(user_ptr);
     Value *fn = value_at(vm, -(d->n_args + 1));
     vm_call(vm, fn, d->n_args, (d->n_rets == LULU_MULTRET) ? VARARG : d->n_rets);
 }
@@ -103,7 +103,7 @@ struct LULU_PRIVATE C_PCall {
 static void
 c_pcall(lulu_VM *vm, void *user_ptr)
 {
-    C_PCall *d = cast(C_PCall *)user_ptr;
+    C_PCall *d = reinterpret_cast<C_PCall *>(user_ptr);
     lulu_push_cfunction(vm, d->function);
     lulu_push_userdata(vm, d->function_data);
     lulu_call(vm, 1, 0);
@@ -341,7 +341,7 @@ lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 LULU_API void
 lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf)
 {
-    Closure *f = closure_new(vm, cf);
+    Closure *f = closure_c_new(vm, cf);
     vm_push(vm, Value::make_function(f));
 }
 
@@ -437,7 +437,7 @@ lulu_concat(lulu_VM *vm, int n)
     lulu_assert(2 <= n && cast_isize(n) <= len(vm->window));
 
     Value *first = value_at_stack(vm, -n);
-    Value *last  = value_at(vm, -1);
+    Value *last  = value_at_stack(vm, -1);
 
     vm_concat(vm, first, slice_pointer(first, last + 1));
 

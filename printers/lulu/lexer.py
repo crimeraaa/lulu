@@ -1,19 +1,31 @@
 import gdb # type: ignore
 from typing import Final
 
+Token_Type: Final = gdb.lookup_type("Token_Type")
+
+_token_strings, _ = gdb.lookup_symbol("token_strings")
+token_strings = _token_strings.value() # type: ignore
+
+mode = {
+    Token_Type["TOKEN_IDENT"].enumval:  "ostring",
+    Token_Type["TOKEN_STRING"].enumval: "ostring",
+    Token_Type["TOKEN_NUMBER"].enumval: "number",
+}
+
 class TokenPrinter:
-    __type:   Final[gdb.Value]
-    __lexeme: Final[gdb.Value]
+    __type: Final[gdb.Value]
+    __data: Final[gdb.Value]
 
     def __init__(self, token: gdb.Value):
-        self.__type   = token["type"]
-        self.__lexeme = token["lexeme"]
+        self.__type  = token["type"]
+        if int(self.__type) in mode:
+            self.__data = token[mode[int(self.__type)]]
+        else:
+            self.__data = token_strings[int(self.__type)]
 
     def to_string(self) -> str:
-        ttype = str(self.__type)
-        word  = str(self.__lexeme).strip("\'\"")
-        quote = '\'' if len(word) == 1 else '\"'
-        return f"{ttype}: {quote}{word}{quote}"
+        ttype = str(self.__type).removeprefix("TOKEN_").lower()
+        return f"{ttype}: {self.__data}"
 
 
 class LineInfoPrinter:

@@ -238,26 +238,11 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 }
 
 void
-vm_syntax_error(lulu_VM *vm, OString *source, int line, const char *fmt, ...)
-{
-    va_list args;
-    vm_push_fstring(vm, "%s:%i: ", source->to_cstring(), line);
-
-    va_start(args, fmt);
-    vm_push_vfstring(vm, fmt, args);
-    va_end(args);
-
-    lulu_concat(vm, 2);
-
-    vm_throw(vm, LULU_ERROR_SYNTAX);
-}
-
-void
 vm_runtime_error(lulu_VM *vm, const char *fmt, ...)
 {
     Call_Frame *cf = vm->caller;
     if (cf->is_lua()) {
-        const Chunk *p = cf->to_lua();
+        const Chunk *p = cf->to_lua()->chunk;
         isize  pc   = ptr_index(p->code, vm->saved_ip) - 1;
         int    line = chunk_get_line(p, pc);
         vm_push_fstring(vm, "%s:%i: ", p->source->to_cstring(), line);
@@ -283,11 +268,11 @@ struct LULU_PRIVATE Load_Data {
 static void
 load(lulu_VM *vm, void *user_ptr)
 {
-    Load_Data *d      = cast(Load_Data *)(user_ptr);
+    Load_Data *d      = reinterpret_cast<Load_Data *>(user_ptr);
     OString   *source = ostring_new(vm, d->source);
 
     Chunk   *p = parser_program(vm, source, d->script, &d->builder);
-    Closure *f = closure_new(vm, p);
+    Closure *f = closure_lua_new(vm, p);
     vm_push(vm, Value::make_function(f));
 }
 
@@ -338,7 +323,7 @@ frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
 {
     // Before transferring control to the new caller, inform the previous
     // caller of where we last left off.
-    if (vm->caller != nullptr && closure_is_lua(vm->caller->function)) {
+    if (vm->caller != nullptr && vm->caller->is_lua()) {
         vm->caller->saved_ip = vm->saved_ip;
     }
 
@@ -352,7 +337,7 @@ frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
     vm->caller = small_array_get_ptr(&vm->frames, small_array_len(vm->frames) - 1);
     vm->window = window;
 
-    if (closure_is_lua(fn)) {
+    if (fn->is_lua()) {
         // Initialize the stack frame (sans parameters) to all nil.
         auto dst = slice_from(window, cast_isize(fn->lua.n_params));
         fill(dst, nil);
@@ -418,7 +403,7 @@ vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
     bool  vararg_call = (argc == VARARG);
 
     // Can call directly?
-    if (closure_is_c(fn)) {
+    if (fn->is_c()) {
         vm_check_stack(vm, LULU_STACK_MIN);
 
         isize top;
@@ -577,7 +562,7 @@ compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rk
 void
 vm_execute(lulu_VM *vm, int n_calls)
 {
-    const Chunk       *chunk     = vm->caller->to_lua();
+    const Chunk       *chunk     = vm->caller->to_lua()->chunk;
     const Instruction *ip        = raw_data(chunk->code);
     Slice<const Value> constants = slice_const(chunk->constants);
     Slice<Value>       window    = vm->window;
@@ -633,9 +618,9 @@ vm_execute(lulu_VM *vm, int n_calls)
             printf("\t[%" ISIZE_FMT "]\t", reg);
             value_print(window[reg]);
 
-            const char *id = chunk_get_local(chunk, cast_int(reg + 1), pc);
-            if (id != nullptr) {
-                printf(" ; local %s", id);
+            const char *ident = chunk_get_local(chunk, cast_int(reg + 1), pc);
+            if (ident != nullptr) {
+                printf(" ; local %s", ident);
             }
             printf("\n");
         }
@@ -822,8 +807,8 @@ vm_execute(lulu_VM *vm, int n_calls)
 
             // How we check `limit` depends if it's negative or not.
             if (lulu_Number_lt(0, incr) // 0 < incr => incr > 0
-                ? lulu_Number_leq(next, limit) // incr > 0 => next <= limit
-                : lulu_Number_lt(limit, next) //  incr <= 0 => next > limit
+                ? lulu_Number_leq(next, limit) // incr >  0 => next <= limit
+                : lulu_Number_leq(limit, next) // incr <= 0 => next >= limit
             ) {
                 DO_JUMP(inst.sbx());
                 // Update internal index.

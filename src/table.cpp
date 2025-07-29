@@ -35,7 +35,7 @@ static u32
 hash_any(T v)
 {
     // Aliasing a `T` with a `char *` is defined behavior.
-    LString s{cast(char *)&v, sizeof(T)};
+    LString s{reinterpret_cast<const char *>(&v), sizeof(T)};
     return hash_string(s);
 }
 
