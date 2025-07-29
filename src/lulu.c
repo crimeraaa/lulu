@@ -5,10 +5,23 @@
 #include "lulu.h"
 #include "lulu_auxlib.h"
 
+
+/**
+ * @note(2025-07-29)
+ *  Assumptions:
+ *  
+ *      1.) The current stack top is index 1.
+ *      2.) The current stack top contains the script, as a `string`.
+ */
 static void
-run(lulu_VM *vm, const char *source, const char *script, size_t n)
+run(lulu_VM *vm, const char *source)
 {
+    size_t n = 0;
+    const char *script = lulu_to_lstring(vm, 1, &n);
     lulu_Error e = lulu_load(vm, source, script, n);
+    
+    /* Remove `script` from stack; no longer needed. */
+    lulu_remove(vm, 1);
     if (e == LULU_OK) {
         /* main function was pushed */
         e = lulu_pcall(vm, 0, LULU_MULTRET);
@@ -17,8 +30,6 @@ run(lulu_VM *vm, const char *source, const char *script, size_t n)
     if (e != LULU_OK) {
         const char *msg = lulu_to_string(vm, -1);
         fprintf(stderr, "%s\n", msg);
-        /* lulu_{load,pcall} leave an error message on the top of the stack */
-        lulu_pop(vm, 1);
     } else {
         /* successful call, so main function was overwritten with returns */
         int n = lulu_get_top(vm);
@@ -28,7 +39,7 @@ run(lulu_VM *vm, const char *source, const char *script, size_t n)
             lulu_call(vm, n, 0);
         }
     }
-    /* LULU_RUNTIME_ERROR leaves the main function on top of the stack */
+    /* Remove main function and/or error message/s from stack */
     lulu_set_top(vm, 0);
 }
 
@@ -37,13 +48,19 @@ run_interactive(lulu_VM *vm)
 {
     char line[512];
     for (;;) {
+        size_t n = 0;
         printf(">>> ");
         if (fgets(line, (int)sizeof(line), stdin) == NULL) {
             printf("\n");
             break;
         }
-
-        run(vm, "stdin", line, strcspn(line, "\r\n"));
+        n = strcspn(line, "\r\n");
+        if (n > 0 && line[0] == '=') {
+            lulu_push_fstring(vm, "return %s", line + 1);
+        } else {
+            lulu_push_lstring(vm, line, n);
+        }
+        run(vm, "stdin");
     }
 }
 
@@ -100,7 +117,8 @@ run_file(lulu_VM *vm, const char *file_name)
     if (script == NULL) {
         return EXIT_FAILURE;
     }
-    run(vm, file_name, script, script_size);
+    lulu_push_lstring(vm, script, script_size);
+    run(vm, file_name);
     free(script);
     return EXIT_SUCCESS;
 }
@@ -116,6 +134,7 @@ protected_main(lulu_VM *vm)
 {
     Main_Data *d = (Main_Data *)lulu_to_pointer(vm, 1);
     lulu_open_libs(vm);
+    /* Don't include userdata when printing REPL results. */
     lulu_set_top(vm, 0);
     switch (d->argc) {
     case 1:

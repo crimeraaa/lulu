@@ -585,11 +585,10 @@ declaration(Parser *p, Compiler *c)
 {
     Token t = p->consumed;
     switch (t.type) {
-    case TOKEN_BREAK: {
+    case TOKEN_BREAK:
         advance(p); // skip 'break'
         break_stmt(p, c, t.line);
         break;
-    }
     case TOKEN_DO:
         advance(p); // skip `do`
         block(p, c);

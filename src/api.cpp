@@ -259,7 +259,7 @@ lulu_remove(lulu_VM *vm, int i)
 {
     Value *start = value_at_stack(vm, i);
     Value *stop  = value_at(vm, -1);
-    auto dst = slice_pointer(start, stop - 1);
+    auto dst = slice_pointer_len(start, stop - start);
     auto src = slice_pointer_len(start + 1, len(dst));
     copy(dst, src);
     lulu_pop(vm, 1);
