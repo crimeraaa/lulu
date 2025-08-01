@@ -140,9 +140,8 @@ vm_to_number(const Value *v, Value *out)
     }
     // Try to parse the string.
     else if (v->is_string()) {
-        LString ls = v->to_lstring();
-        Number  d = 0;
-        if (lstring_to_number(ls, &d)) {
+        Number d = 0;
+        if (lstring_to_number(v->to_lstring(), &d)) {
             out->set_number(d);
             return true;
         }
@@ -261,7 +260,8 @@ vm_runtime_error(lulu_VM *vm, const char *fmt, ...)
 }
 
 struct LULU_PRIVATE Load_Data {
-    LString source, script;
+    LString source;
+    Stream *stream;
     Builder builder;
 };
 
@@ -271,15 +271,15 @@ load(lulu_VM *vm, void *user_ptr)
     Load_Data *d      = reinterpret_cast<Load_Data *>(user_ptr);
     OString   *source = ostring_new(vm, d->source);
 
-    Chunk   *p = parser_program(vm, source, d->script, &d->builder);
+    Chunk   *p = parser_program(vm, source, d->stream, &d->builder);
     Closure *f = closure_lua_new(vm, p);
     vm_push(vm, Value::make_function(f));
 }
 
 Error
-vm_load(lulu_VM *vm, const LString &source, const LString &script)
+vm_load(lulu_VM *vm, const LString &source, Stream *z)
 {
-    Load_Data d{source, script, {}};
+    Load_Data d{source, z, {}};
     builder_init(&d.builder);
     Error e = vm_run_protected(vm, load, &d);
     builder_destroy(vm, &d.builder);

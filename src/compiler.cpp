@@ -250,7 +250,7 @@ discharge_to_reg(Compiler *c, Expr *e, u16 reg, int line)
         compiler_load_nil(c, reg, 1, line);
         break;
     case EXPR_FALSE:
-    case EXPR_TRUE: // fall-through
+    case EXPR_TRUE:
         compiler_load_boolean(c, reg, e->type == EXPR_TRUE, line);
         break;
     case EXPR_NUMBER: {
@@ -571,8 +571,8 @@ compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
         }
 
         switch (left->type) {
-        case EXPR_NIL:      // fall-through
-        case EXPR_FALSE:    // fall-through
+        case EXPR_NIL:
+        case EXPR_FALSE:
         case EXPR_TRUE:
             result = true;
             break;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "string.hpp"
+#include "stream.hpp"
 
 /**
  * @note 2025-06-14:
@@ -62,10 +63,9 @@ struct LULU_PRIVATE Lexer {
     lulu_VM    *vm;
     Builder    *builder;
     OString    *source;
-    LString     script;
-    const char *start;
-    const char *cursor;
+    Stream     *stream; // Potentially buffered stream for script.
     int         line;
+    int         character; // Last read character from `stream`.
 };
 
 static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
@@ -74,7 +74,7 @@ LULU_DATA const LString
 token_strings[TOKEN_COUNT];
 
 LULU_FUNC Lexer
-lexer_make(lulu_VM *vm, OString *source, const LString &script, Builder *b);
+lexer_make(lulu_VM *vm, OString *source, Stream *z, Builder *b);
 
 LULU_FUNC Token
 lexer_lex(Lexer *x);

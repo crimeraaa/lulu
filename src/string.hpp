@@ -12,6 +12,11 @@ using LString = Slice<const char>;
 using Number_Buffer = Array<char, LULU_NUMBER_BUFSIZE>;
 
 /**
+ * @param s
+ *      A length-bounded string of our input. Note that for purposes of
+ *      avoiding undefined behavior in `strtoul()` and `strtod()`, the
+ *      underlying data MUST be nul-terminated.
+ *
  * @param base
  *      If zero, tries to detect any potential base prefixes in the form of the
  *      regular expression `^0[bBoOdDxX]`.
@@ -80,11 +85,17 @@ operator ""_s(const char *s, size_t n)
 LULU_FUNC void
 builder_init(Builder *b);
 
-LULU_FUNC isize
-builder_len(const Builder &b);
+LULU_FUNC inline isize
+builder_len(const Builder &b)
+{
+    return len(b.buffer);
+}
 
-LULU_FUNC isize
-builder_cap(const Builder &b);
+LULU_FUNC inline isize
+builder_cap(const Builder &b)
+{
+    return cap(b.buffer);
+}
 
 LULU_FUNC void
 builder_reset(Builder *b);
@@ -92,6 +103,11 @@ builder_reset(Builder *b);
 LULU_FUNC void
 builder_destroy(lulu_VM *vm, Builder *b);
 
+
+/**
+ * @note(2025-08-01)
+ *      For performance, a nul character is NOT implicitly appended.
+ */
 LULU_FUNC void
 builder_write_char(lulu_VM *vm, Builder *b, char ch);
 
@@ -107,11 +123,14 @@ builder_write_number(lulu_VM *vm, Builder *b, Number n);
 LULU_FUNC void
 builder_write_pointer(lulu_VM *vm, Builder *b, void *p);
 
+LULU_FUNC void
+builder_pop(Builder *b);
+
 LULU_FUNC LString
 builder_to_string(const Builder &b);
 
 LULU_FUNC const char *
-builder_to_cstring(const Builder &b);
+builder_to_cstring(lulu_VM *vm, Builder *b);
 
 LULU_FUNC void
 intern_init(Intern *t);

@@ -83,6 +83,14 @@ slice_from(Slice<T> &s, isize start)
     return slice(s, start, len(s));
 }
 
+// R-value shenanigans.
+template<class T>
+LULU_FUNC inline Slice<T>
+slice_from(Slice<T> &&s, isize start)
+{
+    return slice(s, start, len(s));
+}
+
 // Similar to `slice[:stop]` in Odin and `list[:stop]` in Python.
 template<class T>
 LULU_FUNC inline Slice<T>

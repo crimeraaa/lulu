@@ -69,7 +69,7 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
 
 
 typedef void *
-(*lulu_Allocator)(void *context, void *ptr, size_t old_size, size_t new_size);
+(*lulu_Allocator)(void *user_ptr, void *ptr, size_t old_size, size_t new_size);
 
 
 /**
@@ -79,6 +79,28 @@ typedef void *
  */
 typedef int
 (*lulu_CFunction)(lulu_VM *vm);
+
+
+
+/**
+ * @brief
+ *      A generic interface to allow optimized reading of scripts/files.
+ *      This is mainly to allow implementation of buffered reading
+ *      for files received from the `fopen()` family.
+ *
+ * @param user_ptr
+ *      A pointer to an arbitrary type that you, the user, allocated
+ *      somewhere else (e.g. on the stack).
+ *
+ * @param n
+ *      An out-parameter which will hold the length of the data read.
+ *      This is guaranteed to be non-`NULL`.
+ *
+ * @return
+ *      A read-only pointer to the data in question. This may be `NULL`.
+ */
+typedef const char *
+(*lulu_Reader)(void *user_ptr, size_t *n);
 
 
 /**
@@ -117,11 +139,12 @@ lulu_close(lulu_VM *vm);
 
 /**
  * @brief
- *      Compiles the string `script` into a Lua function, which is pushed
- *      to the top of the stack.
+ *      Compiles the script read in by `reader` into a Lua function,
+ *      which is pushed to the top of the stack.
  */
 LULU_API lulu_Error
-lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size);
+lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
+    void *reader_data);
 
 
 /**

@@ -5,31 +5,34 @@
 #include "lulu.h"
 #include "lulu_auxlib.h"
 
+#define cast(T)     (T)
+
+static void
+report_error(lulu_VM *vm, lulu_Error e)
+{
+    if (e != LULU_OK && !lulu_is_nil(vm, -1)) {
+        const char *msg = lulu_to_string(vm, -1);
+        if (msg == NULL) {
+            msg = "(error object is not a string)";
+        }
+        fprintf(stderr, "%s\n", msg);
+        lulu_pop(vm, 1); /* Remove error message from stack. */
+    }
+}
 
 /**
  * @note(2025-07-29)
  *  Assumptions:
  *  
- *      1.) The current stack top is index 1.
- *      2.) The current stack top contains the script, as a `string`.
+ *      1.) The current stack top is index `1`.
+ *      2.) It contains the 'main' `function`.
  */
 static void
-run(lulu_VM *vm, const char *source)
+run(lulu_VM *vm)
 {
-    size_t n = 0;
-    const char *script = lulu_to_lstring(vm, 1, &n);
-    lulu_Error e = lulu_load(vm, source, script, n);
-    
-    /* Remove `script` from stack; no longer needed. */
-    lulu_remove(vm, 1);
-    if (e == LULU_OK) {
-        /* main function was pushed */
-        e = lulu_pcall(vm, 0, LULU_MULTRET);
-    }
-
+    lulu_Error e = lulu_pcall(vm, 0, LULU_MULTRET);
     if (e != LULU_OK) {
-        const char *msg = lulu_to_string(vm, -1);
-        fprintf(stderr, "%s\n", msg);
+        report_error(vm, e);
     } else {
         /* successful call, so main function was overwritten with returns */
         int n = lulu_get_top(vm);
@@ -39,87 +42,97 @@ run(lulu_VM *vm, const char *source)
             lulu_call(vm, n, 0);
         }
     }
-    /* Remove main function and/or error message/s from stack */
+    /* If `e == LULU_ERROR_RUNTIME`, main function is still on top. */
     lulu_set_top(vm, 0);
+}
+
+typedef struct {
+    const char *data;
+    size_t      len;
+} Reader_Line;
+
+static const char *
+reader_line(void *user_ptr, size_t *n)
+{
+    Reader_Line *r = cast(Reader_Line *)user_ptr;
+    const char *s = r->data;
+    *n = r->len;
+
+    /* First time reading this line? */
+    if (s != NULL) {
+        /* Mark as read; subsequent calls will return sentinel data. */
+        r->data = NULL;
+        r->len  = 0;
+    }
+    return s;
 }
 
 static void
 run_interactive(lulu_VM *vm)
 {
-    char line[512];
+    char        buf[512];
+    Reader_Line r;
+    lulu_Error  e;
+    size_t      n = 0;
+
     for (;;) {
-        size_t n = 0;
         printf(">>> ");
-        if (fgets(line, (int)sizeof(line), stdin) == NULL) {
+        if (fgets(buf, (int)sizeof(buf), stdin) == NULL) {
             printf("\n");
             break;
         }
-        n = strcspn(line, "\r\n");
-        if (n > 0 && line[0] == '=') {
-            lulu_push_fstring(vm, "return %s", line + 1);
+        n = strcspn(buf, "\r\n");
+        if (n > 0 && buf[0] == '=') {
+            lulu_push_fstring(vm, "return %s", buf + 1);
         } else {
-            lulu_push_lstring(vm, line, n);
+            lulu_push_lstring(vm, buf, n);
         }
-        run(vm, "stdin");
+        r.data = lulu_to_lstring(vm, 1, &r.len);
+        e = lulu_load(vm, "stdin", &reader_line, &r);
+        report_error(vm, e);
+        lulu_remove(vm, 1); /* Remove line. */
+        if (e == LULU_OK) {
+            run(vm);
+        }
     }
 }
 
-static char *
-read_file(const char *file_name, size_t *n)
-{
-    FILE    *file_ptr  = fopen(file_name, "rb+");
-    char    *data      = NULL;
-    size_t   n_read    = 0;
-    long     file_size = 0;
+typedef struct {
+    FILE  *file;
+    char   buffer[16];
+} Reader_File;
 
-    if (file_ptr == NULL) {
-        fprintf(stderr, "Failed to open file '%s'.\n", file_name);
-        /* Don't call `fclose(NULL)`. */
+static const char *
+reader_file(void *user_ptr, size_t *n)
+{
+    Reader_File *r = cast(Reader_File *)user_ptr;
+
+    /* No more to read? */
+    if (feof(r->file)) {
+        *n = 0;
         return NULL;
     }
-
-    fseek(file_ptr, 0L, SEEK_END);
-    file_size = ftell(file_ptr);
-    if (file_size == -1L) {
-        fprintf(stderr, "Failed to determine size of file '%s'.\n", file_name);
-        goto cleanup_file;
-    }
-    *n   = (size_t)(file_size);
-    data = (char *)malloc(*n + 1);
-    rewind(file_ptr);
-    if (data == NULL) {
-        fprintf(stderr, "Failed to allocate memory for file '%s'.\n", file_name);
-        goto cleanup_buffer;
-    }
-
-    /* `data[file_size]` is reserved for nul char so don't include it. */
-    n_read = fread(data, sizeof(data[0]), *n, file_ptr);
-    if (n_read < *n) {
-        fprintf(stderr, "Failed to read file '%s'.\n", file_name);
-cleanup_buffer:
-        free(data);
-        data = NULL;
-        *n   = 0;
-        goto cleanup_file;
-    }
-
-    data[n_read] = '\0'; /* `n_read` can never be >= `buffer.len + 1` */
-cleanup_file:
-    fclose(file_ptr);
-    return data;
+    /* Fill buffer. Note for small files this may be the only time! */
+    *n = fread(r->buffer, 1, sizeof(r->buffer), r->file);
+    /* Read successfully? */
+    return (*n > 0) ? r->buffer : NULL;
 }
 
 static int
 run_file(lulu_VM *vm, const char *file_name)
 {
-    size_t script_size;
-    char  *script = read_file(file_name, &script_size);
-    if (script == NULL) {
+    Reader_File r;
+    lulu_Error  e;
+    r.file = fopen(file_name, "r");
+    if (r.file == NULL) {
         return EXIT_FAILURE;
     }
-    lulu_push_lstring(vm, script, script_size);
-    run(vm, file_name);
-    free(script);
+    e = lulu_load(vm, file_name, &reader_file, &r);
+    fclose(r.file);
+    report_error(vm, e);
+    if (e == LULU_OK) {
+        run(vm);
+    }
     return EXIT_SUCCESS;
 }
 
@@ -132,7 +145,7 @@ typedef struct {
 static int
 protected_main(lulu_VM *vm)
 {
-    Main_Data *d = (Main_Data *)lulu_to_pointer(vm, 1);
+    Main_Data *d = cast(Main_Data *)lulu_to_pointer(vm, 1);
     lulu_open_libs(vm);
     /* Don't include userdata when printing REPL results. */
     lulu_set_top(vm, 0);
@@ -154,8 +167,8 @@ protected_main(lulu_VM *vm)
 static void *
 c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
 {
-    (void)user_data;
-    (void)old_size;
+    cast(void)user_data;
+    cast(void)old_size;
     if (new_size == 0) {
         free(ptr);
         return NULL;

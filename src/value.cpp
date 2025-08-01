@@ -30,7 +30,7 @@ Value::operator==(const Value &b) const
     case VALUE_BOOLEAN:  return this->to_boolean() == b.to_boolean();
     case VALUE_NUMBER:   return lulu_Number_eq(this->to_number(), b.to_number());
     case VALUE_LIGHTUSERDATA: return this->to_userdata() == b.to_userdata();
-    case VALUE_STRING:   // fall-through
+    case VALUE_STRING:
     case VALUE_TABLE:
     case VALUE_FUNCTION: return this->to_object() == b.to_object();
     case VALUE_INTEGER:

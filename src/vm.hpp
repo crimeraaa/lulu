@@ -3,6 +3,7 @@
 #include "small_array.hpp"
 #include "private.hpp"
 #include "object.hpp"
+#include "stream.hpp"
 
 using Error = lulu_Error;
 
@@ -195,7 +196,7 @@ LULU_FUNC Call_Type
 vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned);
 
 LULU_FUNC Error
-vm_load(lulu_VM *vm, const LString &source, const LString &script);
+vm_load(lulu_VM *vm, const LString &source, Stream *z);
 
 LULU_FUNC bool
 vm_table_get(lulu_VM *vm, const Value *t, const Value &k, Value *out);

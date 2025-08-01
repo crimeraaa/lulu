@@ -78,18 +78,6 @@ builder_init(Builder *b)
     dynamic_init(&b->buffer);
 }
 
-isize
-builder_len(const Builder &b)
-{
-    return len(b.buffer);
-}
-
-isize
-builder_cap(const Builder &b)
-{
-    return cap(b.buffer);
-}
-
 void
 builder_reset(Builder *b)
 {
@@ -170,6 +158,12 @@ builder_write_pointer(lulu_VM *vm, Builder *b, void *p)
     builder_write<sizeof(p) * CHAR_BIT, fmt>(vm, b, p);
 }
 
+void
+builder_pop(Builder *b)
+{
+    dynamic_pop(&b->buffer);
+}
+
 LString
 builder_to_string(const Builder &b)
 {
@@ -177,12 +171,12 @@ builder_to_string(const Builder &b)
 }
 
 const char *
-builder_to_cstring(const Builder &b)
+builder_to_cstring(lulu_VM *vm, Builder *b)
 {
-    LString s = builder_to_string(b);
-    // Ensure the `builder_write_*` family worked properly.
-    lulu_assert(len(s) == 0 || raw_data(s)[len(s)] == '\0');
-    return raw_data(s);
+    // Make no assumptions if buffer is already nul-terminated.
+    dynamic_push(vm, &b->buffer, '\0');
+    dynamic_pop(&b->buffer);
+    return raw_data(b->buffer);
 }
 
 u32

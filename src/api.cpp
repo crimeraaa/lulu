@@ -1,4 +1,5 @@
 #include "vm.hpp"
+#include "stream.hpp"
 
 // Do not make `constexpr`; must have an address in order to be a reference.
 static const Value
@@ -61,10 +62,16 @@ lulu_close(lulu_VM *vm)
 }
 
 LULU_API lulu_Error
-lulu_load(lulu_VM *vm, const char *source, const char *script, size_t script_size)
+lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
+    void *reader_data)
 {
-    LString lscript{script, cast_isize(script_size)};
-    lulu_Error e = vm_load(vm, lstring_from_cstring(source), lscript);
+    Stream stream;
+    stream.function  = reader;
+    stream.data      = reader_data;
+    stream.cursor    = nullptr;
+    stream.remaining = 0;
+
+    lulu_Error e = vm_load(vm, lstring_from_cstring(source), &stream);
     return e;
 }
 

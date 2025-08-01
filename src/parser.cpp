@@ -114,11 +114,11 @@ recurse_pop(Parser *p)
 }
 
 static Parser
-parser_make(lulu_VM *vm, OString *source, const LString &script, Builder *b)
+parser_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
     Parser p;
     p.vm        = vm;
-    p.lexer     = lexer_make(vm, source, script, b);
+    p.lexer     = lexer_make(vm, source, z, b);
     p.consumed  = DEFAULT_TOKEN;
     p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
@@ -147,10 +147,9 @@ static Token_Type
 lookahead(Parser *p)
 {
     // Do not call `lookahead` multiple times in a row.
-    lulu_assert(p->lookahead.type == TOKEN_INVALID);
-    Token t = lexer_lex(&p->lexer);
-    p->lookahead = t;
-    return t.type;
+    lulu_assert(p->lookahead.type != TOKEN_INVALID);
+    p->lookahead = lexer_lex(&p->lexer);
+    return p->lookahead.type;
 }
 
 static bool
@@ -537,9 +536,9 @@ for_stmt(Parser *p, Compiler *c, int line)
 
     // The next 3 locals are internal state used by the interpreter; the user
     // has no way of modifying them (save for the potential debug library).
-    local_push_literal(p, c, lstring_literal("(for index)"));
-    local_push_literal(p, c, lstring_literal("(for limit)"));
-    local_push_literal(p, c, lstring_literal("(for increment)"));
+    local_push_literal(p, c, "(for index)"_s);
+    local_push_literal(p, c, "(for limit)"_s);
+    local_push_literal(p, c, "(for increment)"_s);
 
     // This is the user-facing (the 'external') index. It mirrors the
     // internal for-index and is implicitly pushed/update as needed.
@@ -662,7 +661,7 @@ chunk(Parser *p, Compiler *c)
 }
 
 Chunk *
-parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b)
+parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
     Table *t  = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
     Chunk *ch = chunk_new(vm, source);
@@ -672,7 +671,7 @@ parser_program(lulu_VM *vm, OString *source, const LString &script, Builder *b)
     vm_push(vm, Value::make_chunk(ch));
     vm_push(vm, Value::make_table(t));
 
-    Parser   p = parser_make(vm, source, script, b);
+    Parser   p = parser_make(vm, source, z, b);
     Compiler c = compiler_make(vm, &p, ch, t);
     // Set up first token
     advance(&p);
