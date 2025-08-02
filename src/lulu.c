@@ -99,7 +99,7 @@ run_interactive(lulu_VM *vm)
 
 typedef struct {
     FILE  *file;
-    char   buffer[16];
+    char   buffer[LULU_BUFFER_BUFSIZE];
 } Reader_File;
 
 static const char *
