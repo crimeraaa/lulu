@@ -301,6 +301,7 @@ lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n)
 }
 
 LULU_API int
+LULU_ATTR_PRINTF(2, 3)
 lulu_errorf(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;

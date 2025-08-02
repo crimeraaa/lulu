@@ -181,6 +181,78 @@ string_find(lulu_VM *vm)
 
 /* length of a format string for a single item, plus some legroom. */
 #define FMT_BUFSIZE     (sizeof(FMT_FLAGS) + 10)
+#define BIT_FLAG(bit)   (1 << (bit))
+
+enum {
+    FMT_PREFIX_HEX  = BIT_FLAG(0),
+    FMT_PAD_ZERO    = BIT_FLAG(1),
+    FMT_ALIGN_LEFT  = BIT_FLAG(2),
+    FMT_PAD_SPACE   = BIT_FLAG(3),
+    FMT_ALIGN_RIGHT = BIT_FLAG(4),
+    FMT_PRECISION   = BIT_FLAG(5),
+};
+
+typedef struct {
+    char         data[FMT_BUFSIZE];
+    size_t       len;
+    unsigned int flags;
+} Fmt_Buf;
+
+static int
+check_flag(lulu_VM *vm, unsigned int flag, char ch, unsigned int *flags)
+{
+    /* This flag was set previously? */
+    if ((*flags & flag) == 1) {
+        return lulu_errorf(vm, "invalid format (repeated flag '%c')", ch);
+    }
+    *flags |= flag;
+    return 1;
+}
+
+static int
+get_flags(lulu_VM *vm, char ch, unsigned int *flags)
+{
+    switch (ch) {
+    case '#': return check_flag(vm, FMT_PREFIX_HEX,  ch, flags);
+    case '0': return check_flag(vm, FMT_PAD_ZERO,    ch, flags);
+    case ' ': return check_flag(vm, FMT_PAD_SPACE,   ch, flags);
+    case '+': return check_flag(vm, FMT_ALIGN_RIGHT, ch, flags);
+    case '-': return check_flag(vm, FMT_ALIGN_LEFT,  ch, flags);
+        return 1;
+    default:
+        break;
+    }
+    return 0;
+}
+
+
+/**
+ * @param fmt
+ *      Pointer to the start of the width/precision in the main format
+ *      string, e.g. `16s` in `"%-16s"`.
+ * 
+ * @return
+ *      The length of the width/precision specifier.
+ */
+static size_t
+skip_width_or_precision(lulu_VM *vm, const char *fmt, const char *what)
+{
+    size_t i = 0;
+    /* width and precision can only be 2 digits at most. */
+    if (isdigit(cast(uchar)fmt[i])) {
+        i++;
+    }
+    if (isdigit(cast(uchar)fmt[i])) {
+        i++;
+    }
+
+    /* 3rd digit found? */
+    if (isdigit(cast(uchar)fmt[i])) {
+        lulu_errorf(vm, "invalid format (%s in '%s' greater than 99)",
+            what, fmt);
+    }
+    return i;
+}
 
 
 /**
@@ -191,53 +263,39 @@ string_find(lulu_VM *vm)
  * @note(2025-07-27)
  * Assumptions:
  *
- *      1.) `fmt_str[0]` is the character AFTER the `%` character.
+ *      1.) `fmt[0]` is the character AFTER `%`.
  *
  * @return
  *      The pointer to the format specifier proper.
  */
 static const char *
-get_format(lulu_VM *vm, const char *fmt_str, char (&fmt_buf)[FMT_BUFSIZE])
+get_format(lulu_VM *vm, const char *fmt, Fmt_Buf *buf)
 {
     size_t i = 0;
-    fmt_buf[0] = '%';
-    while (fmt_str[i] != '\0' && strchr(FMT_FLAGS, fmt_str[i]) != NULL) {
-        i++;
-    }
 
-    /* Repeated 1 or more flags? */
-    if (i >= sizeof(FMT_FLAGS)) {
-        lulu_errorf(vm, "invalid format (repeated flags)");
+    buf->data[0] = '%';
+    buf->len     = 1;
+    buf->flags   = 0;
+    while (fmt[i] != '\0' && get_flags(vm, fmt[i], &buf->flags)) {
+        i++;
     }
 
     /* Width: 2 digits at most */
-    if (isdigit(cast(uchar)fmt_str[i])) {
-        i++;
-    }
-    if (isdigit(cast(uchar)fmt_str[i])) {
-        i++;
-    }
+    i += skip_width_or_precision(vm, &fmt[i], /* what */ "width");
 
     /* Precision: 2 digits at most */
-    if (fmt_str[i] == '.') {
+    if (fmt[i] == '.') {
         i++;
-        if (isdigit(cast(uchar)fmt_str[i])) {
-            i++;
-        }
-        if (isdigit(cast(uchar)fmt_str[i])) {
-            i++;
-        }
+        buf->flags |= FMT_PRECISION;
+        i += skip_width_or_precision(vm, &fmt[i], /* what */ "precision");
     }
 
-    /* Still have width/precision remaining? */
-    if (isdigit(cast(uchar)fmt_str[i])) {
-        lulu_errorf(vm, "width/precision too long");
-    }
-
-    /* `i` points to '`x`' in `"04x"` so add 1 to copy it as well. */
-    memcpy(&fmt_buf[1], fmt_str, i + 1);
-    fmt_buf[i + 2] = '\0';
-    return &fmt_str[i];
+    /* `i` points to '`x`' in `"04x"`, add 1 to include the specifier. */
+    i++;
+    memcpy(&buf->data[1], fmt, i);
+    buf->len         += i;
+    buf->data[i + 1] = '\0';
+    return &fmt[i - 1];
 }
 
 #define FMT_LEN_STR     "l"
@@ -250,14 +308,17 @@ get_format(lulu_VM *vm, const char *fmt_str, char (&fmt_buf)[FMT_BUFSIZE])
  *      Converts integer formats like `%i` into `%li`.
  */
 static void
-add_int_len(char (&fmt_buf)[FMT_BUFSIZE])
+add_int_len(Fmt_Buf *buf)
 {
-    size_t n = strlen(fmt_buf);
-    char spec = fmt_buf[n - 1];
-    /* `n - 1` points to `x` in `"%04x"`. */
-    memcpy(&fmt_buf[n - 1], FMT_LEN_STR, FMT_LEN_SIZE);
-    fmt_buf[(n - 1) + FMT_LEN_SIZE] = spec;
-    fmt_buf[n + FMT_LEN_SIZE]       = '\0';
+    size_t n    = buf->len;
+    char   spec = buf->data[n - 1];
+    /* Overwrite specifier with the length modifier. */
+    memcpy(&buf->data[n - 1], FMT_LEN_STR, FMT_LEN_SIZE);
+
+    /* Re-add specifer at the end and ensure nul termination. */
+    buf->data[(n - 1) + FMT_LEN_SIZE] = spec;
+    buf->data[n + FMT_LEN_SIZE]       = '\0';
+    buf->len += FMT_LEN_SIZE;
 }
 
 static void
@@ -306,17 +367,17 @@ string_format(lulu_VM *vm)
 
     for (it = start, end = start + n; it < end; it++) {
         /* temporary storage for formatted items. */
-        char fmt_item[512];
-        char fmt_buf[FMT_BUFSIZE];
-        int  written = 0;
+        char    item[512];
+        Fmt_Buf buf;
+        int     written = 0;
 
-        /* 'Flush' the string before the specifier. */
-        if (*it == '%') {
-            lulu_write_lstring(&b, start, cast(size_t)(it - start));
-            it++;
-        } else {
+        if (*it != '%') {
             continue;
         }
+
+        /* 'Flush' the string before the specifier. */
+        lulu_write_lstring(&b, start, cast(size_t)(it - start));
+        it++;
 
         /* first iteration: argn=1 -> argn=2 */
         argn++;
@@ -326,7 +387,7 @@ string_format(lulu_VM *vm)
             return lulu_arg_error(vm, argn, "no value");
         }
 
-        it    = get_format(vm, it, fmt_buf);
+        it    = get_format(vm, it, &buf);
         start = it + 1;
         switch (*it) {
         case '%':
@@ -336,26 +397,26 @@ string_format(lulu_VM *vm)
         case 'c': {
             int ch = cast(int)lulu_check_integer(vm, argn);
             if (CHAR_MIN <= ch && ch <= CHAR_MAX) {
-                written = sprintf(fmt_item, fmt_buf, ch);
+                written = sprintf(item, buf.data, ch);
             } else {
-                sprintf(fmt_item, "unknown character code '%i'", ch);
-                return lulu_arg_error(vm, argn, fmt_item);
+                sprintf(item, "unknown character code '%i'", ch);
+                return lulu_arg_error(vm, argn, item);
             }
             break;
         }
         case 'd':
         case 'i': {
             lulu_Integer i = lulu_check_integer(vm, argn);
-            add_int_len(fmt_buf);
-            written = sprintf(fmt_item, fmt_buf, cast(FMT_LEN_TYPE)i);
+            add_int_len(&buf);
+            written = sprintf(item, buf.data, cast(FMT_LEN_TYPE)i);
             break;
         }
         case 'o':
         case 'u':
         case 'x': case 'X': {
             lulu_Integer i = lulu_check_integer(vm, argn);
-            add_int_len(fmt_buf);
-            written = sprintf(fmt_item, fmt_buf, cast(unsigned FMT_LEN_TYPE)i);
+            add_int_len(&buf);
+            written = sprintf(item, buf.data, cast(unsigned FMT_LEN_TYPE)i);
             break;
         }
         case 'e': case 'E':
@@ -363,7 +424,7 @@ string_format(lulu_VM *vm)
         case 'g': case 'G': {
             lulu_Number n = lulu_check_number(vm, argn);
             /* Cast in case `lulu_Number` was configured to be non-`double` */
-            written = sprintf(fmt_item, fmt_buf, cast(double)n);
+            written = sprintf(item, buf.data, cast(double)n);
             break;
         }
         case 'q':
@@ -373,8 +434,8 @@ string_format(lulu_VM *vm)
         case 's': {
             size_t      l = 0;
             const char *s = lulu_check_lstring(vm, argn, &l);
-            /* No precision given and string is too long to format? */
-            if (strchr(fmt_buf, '.') == NULL && l >= 100) {
+            /* No precision given and string is too long to be formatted? */
+            if ((buf.flags & FMT_PRECISION) == 0 && l >= 100) {
                 lulu_write_lstring(&b, s, l);
                 /* skip flushing the buffer */
                 continue;
@@ -383,21 +444,22 @@ string_format(lulu_VM *vm)
              * @note(2025-07-27)
              *  Assumptions:
              *
-             *      1.) We verified that the width is at most 2 digits,
-             *          thus it is < 100.
+             *      1.) We verified that the width and precision are, at most,
+             *          2 digits each. That is neither value is >= 100.
+             *
              *      2.) Our worst-case (for the `fmt_item` buffer) is:
              *          `"%+99.99s"` or `"%-99.99s"`
              */
-            written = sprintf(fmt_item, fmt_buf, s);
+            written = sprintf(item, buf.data, s);
             break;
         }
 
         default:
-            sprintf(fmt_item, "unknown format specifier '%%%c'", *it);
-            return lulu_arg_error(vm, argn, fmt_item);
+            sprintf(item, "unknown format specifier '%%%c'", *it);
+            return lulu_arg_error(vm, argn, item);
         }
 
-        lulu_write_lstring(&b, fmt_item, cast(size_t)written);
+        lulu_write_lstring(&b, item, cast(size_t)written);
     }
 
     lulu_write_lstring(&b, start, cast(size_t)(it - start));

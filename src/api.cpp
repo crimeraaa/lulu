@@ -330,6 +330,7 @@ lulu_push_string(lulu_VM *vm, const char *s)
 }
 
 LULU_API const char *
+LULU_ATTR_PRINTF(2, 3)
 lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
