@@ -35,37 +35,6 @@ vm_top_absindex(lulu_VM *vm)
     return ptr_index(vm->stack, vm_top_ptr(vm));
 }
 
-static void
-required_allocations(lulu_VM *vm, void *)
-{
-    // Ensure when we start interning strings we can already index.
-    intern_resize(vm, &vm->intern, 32);
-
-    // TODO(2025-06-30): Mark the memory error string as "immortal"?
-    OString *o = ostring_new(vm, lstring_literal(LULU_MEMORY_ERROR_STRING));
-    unused(o);
-    Table *t = table_new(vm, /* n_hash */ 8, /* n_array */ 0);
-    vm->globals.set_table(t);
-}
-
-bool
-vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data)
-{
-    small_array_clear(&vm->frames);
-
-    vm->allocator      = allocator;
-    vm->allocator_data = allocator_data;
-    vm->saved_ip       = nullptr;
-    vm->objects        = nullptr;
-    vm->window         = slice(vm->stack, 0, 0);
-    vm->globals        = nil;
-
-    builder_init(&vm->builder);
-    intern_init(&vm->intern);
-    Error e = vm_run_protected(vm, required_allocations, nullptr);
-    return e == LULU_OK;
-}
-
 Builder *
 vm_get_builder(lulu_VM *vm)
 {
@@ -74,19 +43,15 @@ vm_get_builder(lulu_VM *vm)
     return b;
 }
 
-void
-vm_destroy(lulu_VM *vm)
+static void
+set_error(lulu_VM *vm, isize old_cf, isize old_base, isize old_top)
 {
-    builder_destroy(vm, &vm->builder);
-    intern_destroy(vm, &vm->intern);
-
-    Object *o = vm->objects;
-    while (o != nullptr) {
-        // Save because `o` is about to be invalidated.
-        Object *next = o->base.next;
-        object_free(vm, o);
-        o = next;
-    }
+    // TODO(2025-06-30): Check if `LULU_ERROR_MEMORY` works properly here
+    Value v = vm_pop(vm);
+    vm->caller = small_array_get_ptr(&vm->frames, old_cf);
+    vm->window = slice(vm->stack, old_base, old_top);
+    small_array_resize(&vm->frames, old_cf + 1);
+    vm_push(vm, v);
 }
 
 Error
@@ -96,22 +61,16 @@ vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr)
     // Chain new handler
     vm->error_handler = &next;
 
-    isize old_base     = vm_base_absindex(vm);
-    isize old_top      = vm_top_absindex(vm);
+    isize old_base = vm_base_absindex(vm);
+    isize old_top  = vm_top_absindex(vm);
     // Don't use pointers because in the future, `frames` may be dynamic.
-    isize old_cf_index = ptr_index(small_array_slice(vm->frames), vm->caller);
+    isize old_cf   = ptr_index(small_array_slice(vm->frames), vm->caller);
 
     try {
         fn(vm, user_ptr);
     } catch (Error e) {
         next.error = e;
-
-        // TODO(2025-06-30): Check if `LULU_ERROR_MEMORY` works properly here
-        Value msg  = vm_pop(vm);
-        vm->window = slice(vm->stack, old_base, old_top);
-        vm->caller = small_array_get_ptr(&vm->frames, old_cf_index);
-        small_array_resize(&vm->frames, old_cf_index + 1);
-        vm_push(vm, msg);
+        set_error(vm, old_cf, old_base, old_top);
     }
 
     // Restore old handler
@@ -124,10 +83,12 @@ vm_throw(lulu_VM *vm, Error e)
 {
     if (vm->error_handler != nullptr) {
         throw e;
+    } else if (vm->panic_fn != nullptr) {
+        set_error(vm, /* old_cf */ 0, /* old_base */ 0, /* old_top */ 0);
+        vm->error_handler = nullptr;
+        vm->panic_fn(vm);
     }
-    // Don't throw an unhandle-able exception, we may be in a C application!
-    fprintf(stderr, "[FATAL]: Unprotected call to lulu API\n");
-    abort();
+    exit(EXIT_FAILURE);
 }
 
 bool
@@ -360,7 +321,7 @@ frame_pop(lulu_VM *vm)
 }
 
 void
-vm_call(lulu_VM *vm, Value *ra, int n_args, int n_rets)
+vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
 {
     // Account for any changes in the stack made by unprotected main function
     // or C functions.
@@ -389,7 +350,7 @@ vm_call(lulu_VM *vm, Value *ra, int n_args, int n_rets)
 }
 
 Call_Type
-vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned)
+vm_call_init(lulu_VM *vm, const Value *ra, int argc, int expected_returned)
 {
     if (!ra->is_function()) {
         debug_type_error(vm, "call", ra);

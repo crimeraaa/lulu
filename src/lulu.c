@@ -8,9 +8,9 @@
 #define cast(T)     (T)
 
 static void
-report_error(lulu_VM *vm, lulu_Error e)
+report_error(lulu_VM *vm)
 {
-    if (e != LULU_OK && !lulu_is_nil(vm, -1)) {
+    if (!lulu_is_nil(vm, -1)) {
         const char *msg = lulu_to_string(vm, -1);
         if (msg == NULL) {
             msg = "(error object is not a string)";
@@ -31,9 +31,7 @@ static void
 run(lulu_VM *vm)
 {
     lulu_Error e = lulu_pcall(vm, 0, LULU_MULTRET);
-    if (e != LULU_OK) {
-        report_error(vm, e);
-    } else {
+    if (e == LULU_OK) {
         /* successful call, so main function was overwritten with returns */
         int n = lulu_get_top(vm);
         if (n > 0) {
@@ -41,6 +39,8 @@ run(lulu_VM *vm)
             lulu_insert(vm, 1);
             lulu_call(vm, n, 0);
         }
+    } else {
+        report_error(vm);
     }
     /* If `e == LULU_ERROR_RUNTIME`, main function is still on top. */
     lulu_set_top(vm, 0);
@@ -70,29 +70,32 @@ reader_line(void *user_ptr, size_t *n)
 static void
 run_interactive(lulu_VM *vm)
 {
-    char        buf[512];
-    Reader_Line r;
-    lulu_Error  e;
-    size_t      n = 0;
-
     for (;;) {
+        char        buf[512];
+        Reader_Line r;
+        lulu_Error  e;
+        size_t      n = 0;
+
         printf(">>> ");
         if (fgets(buf, (int)sizeof(buf), stdin) == NULL) {
             printf("\n");
             break;
         }
+
         n = strcspn(buf, "\r\n");
         if (n > 0 && buf[0] == '=') {
             lulu_push_fstring(vm, "return %s", buf + 1);
         } else {
             lulu_push_lstring(vm, buf, n);
         }
+
         r.data = lulu_to_lstring(vm, 1, &r.len);
-        e = lulu_load(vm, "stdin", &reader_line, &r);
-        report_error(vm, e);
+        e = lulu_load(vm, "stdin", reader_line, &r);
         lulu_remove(vm, 1); /* Remove line. */
         if (e == LULU_OK) {
             run(vm);
+        } else {
+            report_error(vm);
         }
     }
 }
@@ -127,11 +130,12 @@ run_file(lulu_VM *vm, const char *file_name)
     if (r.file == NULL) {
         return EXIT_FAILURE;
     }
-    e = lulu_load(vm, file_name, &reader_file, &r);
+    e = lulu_load(vm, file_name, reader_file, &r);
     fclose(r.file);
-    report_error(vm, e);
     if (e == LULU_OK) {
         run(vm);
+    } else {
+        report_error(vm);
     }
     return EXIT_SUCCESS;
 }
@@ -176,6 +180,14 @@ c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
     return realloc(ptr, new_size);
 }
 
+static int
+panic(lulu_VM *vm)
+{
+    const char *msg = lulu_to_string(vm, -1);
+    fprintf(stderr, "[FATAL]: Unprotected call to Lulu API (%s)\n", msg);
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     Main_Data  d;
@@ -191,6 +203,10 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to allocate memory for lulu\n");
         return 2;
     }
+    lulu_set_panic(vm, panic);
+    
+    /* Testing to see if panic works. */
+    /* lulu_check_string(vm, 1); */
 
     e = lulu_c_pcall(vm, protected_main, &d);
     lulu_close(vm);

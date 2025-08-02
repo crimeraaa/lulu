@@ -183,23 +183,25 @@ string_find(lulu_VM *vm)
 #define FMT_BUFSIZE     (sizeof(FMT_FLAGS) + 10)
 #define BIT_FLAG(bit)   (1 << (bit))
 
-enum {
+typedef enum {
     FMT_PREFIX_HEX  = BIT_FLAG(0),
     FMT_PAD_ZERO    = BIT_FLAG(1),
     FMT_ALIGN_LEFT  = BIT_FLAG(2),
     FMT_PAD_SPACE   = BIT_FLAG(3),
     FMT_ALIGN_RIGHT = BIT_FLAG(4),
     FMT_PRECISION   = BIT_FLAG(5),
-};
+} Fmt_Flag;
+
+typedef unsigned int Fmt_Flag_Set;
 
 typedef struct {
     char         data[FMT_BUFSIZE];
     size_t       len;
-    unsigned int flags;
+    Fmt_Flag_Set flags;
 } Fmt_Buf;
 
 static int
-check_flag(lulu_VM *vm, unsigned int flag, char ch, unsigned int *flags)
+check_flag(lulu_VM *vm, Fmt_Flag flag, char ch, Fmt_Flag_Set *flags)
 {
     /* This flag was set previously? */
     if ((*flags & flag) == 1) {
@@ -210,7 +212,7 @@ check_flag(lulu_VM *vm, unsigned int flag, char ch, unsigned int *flags)
 }
 
 static int
-get_flags(lulu_VM *vm, char ch, unsigned int *flags)
+get_flags(lulu_VM *vm, char ch, Fmt_Flag_Set *flags)
 {
     switch (ch) {
     case '#': return check_flag(vm, FMT_PREFIX_HEX,  ch, flags);
@@ -230,7 +232,7 @@ get_flags(lulu_VM *vm, char ch, unsigned int *flags)
  * @param fmt
  *      Pointer to the start of the width/precision in the main format
  *      string, e.g. `16s` in `"%-16s"`.
- * 
+ *
  * @return
  *      The length of the width/precision specifier.
  */

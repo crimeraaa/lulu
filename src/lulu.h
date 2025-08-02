@@ -68,18 +68,46 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
 #define LULU_MULTRET    (-1)
 
 
+/**
+ * @brief
+ *      A protocol that defines how memory is allocated within Lulu.
+ *
+ * @note(2025-08-02)
+ *  The allocator must fulfill the following properties:
+ *
+ *  1.) The returned pointer is suitably aligned for the host implementation.
+ *      Alignment is not passed explicitly; similar to `malloc()` the
+ *      worst-case alignment should be assumed.
+ *
+ *  2.) If `ptr == NULL` and `new_size != 0`, then this function acts
+ *      similarly to the C standard `malloc(new_size)`. The resulting
+ *      pointer must be guaranteed to be unique from any other pointer.
+ *
+ *  3.) If `ptr != NULL` and `new_size == 0`, then this function acts
+ *      similarly to the C standard `realloc(ptr, new_size)`.
+ *      The resulting pointer may alias `ptr` if the allocation can be
+ *      extended, thus it is not guaranteed to be unique.
+ *
+ *  4.) If `ptr == NULL` and `new_size != 0`, then this function
+ *      acts similarly to the C standard `free(ptr)`. `NULL`
+ *      is returned as a sentinel value in this case.
+ */
 typedef void *
 (*lulu_Allocator)(void *user_ptr, void *ptr, size_t old_size, size_t new_size);
 
 
 /**
+ * @brief
+ *      The protocol that allows for C to interface with Lulu.
+ *      The number of arguments can be obtained via `lulu_get_top()`.
+ *      The only way to manipulate Lulu is via the API.
+ *
  * @return
- *  -   The number of values pushed to the stack that will be used by the
+ *      The number of values pushed to the stack that will be used by the
  *      caller.
  */
 typedef int
 (*lulu_CFunction)(lulu_VM *vm);
-
 
 
 /**
@@ -90,14 +118,17 @@ typedef int
  *
  * @param user_ptr
  *      A pointer to an arbitrary type that you, the user, allocated
- *      somewhere else (e.g. on the stack).
+ *      somewhere else (e.g. on the stack). The internal implementation
+ *      guarantees that this pointer is only ever passed to calls of the
+ *      function it was registered with, so casting should be safe.
  *
  * @param n
  *      An out-parameter which will hold the length of the data read.
- *      This is guaranteed to be non-`NULL`.
+ *      The internal implementation guarantees this to be non-`NULL`.
  *
  * @return
- *      A read-only pointer to the data in question. This may be `NULL`.
+ *      A read-only pointer to some character buffer in `data.` How the
+ *      buffer is managed is up to you. This may be `NULL`.
  */
 typedef const char *
 (*lulu_Reader)(void *user_ptr, size_t *n);
@@ -132,6 +163,15 @@ typedef enum {
 
 LULU_API lulu_VM *
 lulu_open(lulu_Allocator allocator, void *allocator_data);
+
+
+/**
+ * @brief
+ *      Sets the VM's global panic function, which is called when
+ *      errors are thrown outside of protected calls.
+ */
+LULU_API lulu_CFunction
+lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn);
 
 LULU_API void
 lulu_close(lulu_VM *vm);
@@ -185,9 +225,9 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
  *  -   Wraps the call `function(vm, function_data)` in a protected call
  *      so that we may catch any thrown exceptions.
  *
- *  -   At the start of the call, `function_data` is the 1 and only argument
- *      present on the stack. It can be retrieved by via a call to
- *      `lulu_to_userdata(vm, 1)`.
+ *  -   At the start of the call, `function_data` is the 1st (and only)
+ *      argument present on the stack. It can be retrieved by via a call
+ *      to `lulu_to_userdata(vm, 1)`.
  *
  * @return
  *  -   The error code, if any was thrown, or else `LULU_OK`.

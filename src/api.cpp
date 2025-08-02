@@ -5,7 +5,7 @@
 static const Value
 none = nil;
 
-static Value *
+const static Value *
 value_at(lulu_VM *vm, int i)
 {
     // Resolve 1-based relative index.
@@ -15,7 +15,7 @@ value_at(lulu_VM *vm, int i)
         if (0 <= ii && ii < len(vm->window)) {
             return &vm->window[ii];
         }
-        return const_cast<Value *>(&none);
+        return &none;
     } else if (ii > LULU_PSEUDO_INDEX) {
         // Not valid in any way
         lulu_assert(ii != 0);
@@ -30,35 +30,81 @@ value_at(lulu_VM *vm, int i)
     default:
         break;
     }
-    return const_cast<Value *>(&none);
+    return &none;
 }
 
 static Value *
 value_at_stack(lulu_VM *vm, int i)
 {
-    Value *start = value_at(vm, i);
+    const Value *start = value_at(vm, i);
     lulu_assert(start != &none);
     lulu_assertf(i > LULU_PSEUDO_INDEX, "Got pseudo-index %i", i);
-    return start;
+
+    // Only `api.cpp:none` is immutable; all indexes (even pseudo indexes!)
+    // are mutable.
+    return const_cast<Value *>(start);
 }
 
+static void
+required_allocations(lulu_VM *vm, void *)
+{
+    // Ensure when we start interning strings we can already index.
+    intern_resize(vm, &vm->intern, 32);
+
+    // TODO(2025-06-30): Mark the memory error string as "immortal"?
+    OString *o = ostring_new(vm, lstring_literal(LULU_MEMORY_ERROR_STRING));
+    unused(o);
+    Table *t = table_new(vm, /* n_hash */ 8, /* n_array */ 0);
+    vm->globals.set_table(t);
+}
 
 LULU_API lulu_VM *
 lulu_open(lulu_Allocator allocator, void *allocator_data)
 {
-    static lulu_VM vm;
-    bool ok = vm_init(&vm, allocator, allocator_data);
-    if (!ok) {
-        vm_destroy(&vm);
+    static lulu_VM _vm;
+
+    lulu_VM *vm = &_vm;
+    small_array_clear(&vm->frames);
+
+    vm->panic_fn       = nullptr;
+    vm->allocator      = allocator;
+    vm->allocator_data = allocator_data;
+    vm->saved_ip       = nullptr;
+    vm->objects        = nullptr;
+    vm->window         = slice(vm->stack, 0, 0);
+    vm->globals        = nil;
+
+    builder_init(&vm->builder);
+    intern_init(&vm->intern);
+    Error e = vm_run_protected(vm, required_allocations, nullptr);
+    if (e != LULU_OK) {
+        lulu_close(vm);
         return nullptr;
     }
-    return &vm;
+    return vm;
+}
+
+LULU_API lulu_CFunction
+lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn)
+{
+    lulu_CFunction prev = vm->panic_fn;
+    vm->panic_fn = panic_fn;
+    return prev;
 }
 
 LULU_API void
 lulu_close(lulu_VM *vm)
 {
-    vm_destroy(vm);
+    builder_destroy(vm, &vm->builder);
+    intern_destroy(vm, &vm->intern);
+
+    Object *o = vm->objects;
+    while (o != nullptr) {
+        // Save because `o` is about to be invalidated.
+        Object *next = o->base.next;
+        object_free(vm, o);
+        o = next;
+    }
 }
 
 LULU_API lulu_Error
@@ -78,7 +124,7 @@ lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
 LULU_API void
 lulu_call(lulu_VM *vm, int n_args, int n_rets)
 {
-    Value *fn = value_at(vm, -(n_args + 1));
+    const Value *fn = value_at(vm, -(n_args + 1));
     vm_call(vm, fn, n_args, (n_rets == LULU_MULTRET) ? VARARG : n_rets);
 }
 
@@ -90,7 +136,7 @@ static void
 pcall(lulu_VM *vm, void *user_ptr)
 {
     PCall *d = reinterpret_cast<PCall *>(user_ptr);
-    Value *fn = value_at(vm, -(d->n_args + 1));
+    const Value *fn = value_at(vm, -(d->n_args + 1));
     vm_call(vm, fn, d->n_args, (d->n_rets == LULU_MULTRET) ? VARARG : d->n_rets);
 }
 
@@ -183,10 +229,8 @@ LULU_API lulu_Number
 lulu_to_number(lulu_VM *vm, int i)
 {
     Value tmp;
-    Value *v = value_at(vm, i);
-    if (v->is_number()) {
-        return v->to_number();
-    } else if (vm_to_number(v, &tmp)) {
+    const Value *v = value_at(vm, i);
+    if (vm_to_number(v, &tmp)) {
         return tmp.to_number();
     }
     return 0;
@@ -201,8 +245,14 @@ lulu_to_integer(lulu_VM *vm, int i)
 LULU_API const char *
 lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 {
-    Value *v = value_at(vm, i);
-    if (!vm_to_string(vm, v))  {
+    const Value *v = value_at(vm, i);
+
+    /**
+     * @note(2025-08-02)
+     *      This call is safe, because if `v == &api.cpp:none`, it has the
+     *      `nil` tag and nothing is changed.
+     */
+    if (!vm_to_string(vm, const_cast<Value *>(v)))  {
         if (n != nullptr) {
             *n = 0;
         }
@@ -265,7 +315,7 @@ LULU_API void
 lulu_remove(lulu_VM *vm, int i)
 {
     Value *start = value_at_stack(vm, i);
-    Value *stop  = value_at(vm, -1);
+    Value *stop  = value_at_stack(vm, -1);
     auto dst = slice_pointer_len(start, stop - start);
     auto src = slice_pointer_len(start + 1, len(dst));
     copy(dst, src);
@@ -356,7 +406,7 @@ lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf)
 LULU_API void
 lulu_push_value(lulu_VM *vm, int i)
 {
-    Value *v = value_at(vm, i);
+    const Value *v = value_at(vm, i);
     vm_push(vm, *v);
 }
 
@@ -372,8 +422,8 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash)
 LULU_API int
 lulu_get_table(lulu_VM *vm, int table_index)
 {
-    Value *t = value_at(vm, table_index);
-    Value *k = value_at(vm, -1);
+    const Value *t = value_at(vm, table_index);
+    Value       *k = value_at_stack(vm, -1);
     if (t->is_table()) {
         // No need to push, `k` can be overwritten.
         bool ok = vm_table_get(vm, t, *k, k);
@@ -385,8 +435,8 @@ lulu_get_table(lulu_VM *vm, int table_index)
 LULU_API int
 lulu_get_field(lulu_VM *vm, int table_index, const char *key)
 {
-    Value *t = value_at(vm, table_index);
-    Value  k = t->make_string(ostring_from_cstring(vm, key));
+    const Value *t = value_at(vm, table_index);
+    const Value  k = t->make_string(ostring_from_cstring(vm, key));
 
     // Unlike `lulu_get_table()`, we need to explicitly push `t[k]` because
     // `k` does not exist in the stack and thus cannot be replaced.
@@ -402,10 +452,10 @@ lulu_get_field(lulu_VM *vm, int table_index, const char *key)
 LULU_API void
 lulu_set_table(lulu_VM *vm, int table_index)
 {
-    Value *t = value_at(vm, table_index);
+    const Value *t = value_at(vm, table_index);
     if (t->is_table()) {
-        Value *k = value_at(vm, -2);
-        Value *v = value_at(vm, -1);
+        const Value *k = value_at(vm, -2);
+        const Value *v = value_at(vm, -1);
         vm_table_set(vm, t, k, *v);
         lulu_pop(vm, 2);
     }
@@ -414,8 +464,8 @@ lulu_set_table(lulu_VM *vm, int table_index)
 LULU_API void
 lulu_set_field(lulu_VM *vm, int table_index, const char *key)
 {
-    Value *t = value_at(vm, table_index);
-    Value  k = Value::make_string(ostring_from_cstring(vm, key));
+    const Value *t = value_at(vm, table_index);
+    const Value  k = Value::make_string(ostring_from_cstring(vm, key));
     if (t->is_table()) {
         // The value is popped implicitly. We have no way to tell if key is in
         // the stack.

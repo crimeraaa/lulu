@@ -61,6 +61,7 @@ struct LULU_PUBLIC lulu_VM {
     Value              globals;
     Builder            builder;
     Intern             intern;
+    lulu_CFunction     panic_fn;
     lulu_Allocator     allocator;
     void              *allocator_data;
     Error_Handler     *error_handler;
@@ -73,14 +74,8 @@ struct LULU_PUBLIC lulu_VM {
 
 using Protected_Fn = void (*)(lulu_VM *vm, void *user_ptr);
 
-LULU_FUNC bool
-vm_init(lulu_VM *vm, lulu_Allocator allocator, void *allocator_data);
-
 LULU_FUNC Builder *
 vm_get_builder(lulu_VM *vm);
-
-LULU_FUNC void
-vm_destroy(lulu_VM *vm);
 
 LULU_FUNC Value *
 vm_base_ptr(lulu_VM *vm);
@@ -172,7 +167,7 @@ LULU_FUNC void
 vm_concat(lulu_VM *vm, Value *ra, Slice<Value> args);
 
 LULU_FUNC void
-vm_call(lulu_VM *vm, Value *ra, int n_args, int n_rets);
+vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets);
 
 
 /**
@@ -182,7 +177,7 @@ vm_call(lulu_VM *vm, Value *ra, int n_args, int n_rets);
  *  -   Otherwise, if it is a Lua function, it can be called by `vm_execute()`.
  */
 LULU_FUNC Call_Type
-vm_call_init(lulu_VM *vm, Value *ra, int argc, int expected_returned);
+vm_call_init(lulu_VM *vm, const Value *ra, int argc, int expected_returned);
 
 
 /**
