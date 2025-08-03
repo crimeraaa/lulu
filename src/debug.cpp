@@ -187,7 +187,8 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         break;
     }
     case OP_NEW_TABLE: {
-        print_reg(p, args.a, pc, " := {}; #hash = %u, #array = %u", args.b, args.c);
+        print_reg(p, args.a, pc, " := {}; #hash = %" ISIZE_FMT ", #array = %" ISIZE_FMT,
+            Floating_Byte::decode(args.b), Floating_Byte::decode(args.c));
         break;
     }
     case OP_GET_TABLE: {

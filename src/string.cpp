@@ -38,7 +38,7 @@ lstring_to_number(const LString &s, Number *out, int base)
     if (base == 0) {
         base = get_base(s);
         // Skip the `0[bBoOdDxX]` prefix because `strto*` doesn't support `0b`.
-        if (base) {
+        if (base != 0) {
             // s2 = s2[2:]
             s2 = slice_from(s2, 2);
         }
@@ -48,6 +48,10 @@ lstring_to_number(const LString &s, Number *out, int base)
     char  *last;
     // Parsing a prefixed integer?
     if (base != 0) {
+        // Got a base prefix with no content? e.g. `0b` or `0x`
+        if (len(s2) == 0) {
+            return false;
+        }
         unsigned long ul = strtoul(raw_data(s2), &last, base);
         d = cast(Number)ul;
     }

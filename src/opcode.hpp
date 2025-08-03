@@ -328,3 +328,99 @@ opnames[OPCODE_COUNT];
  */
 LULU_DATA const OpInfo
 opinfo[OPCODE_COUNT];
+
+/**
+ * @brief
+ *      A simple floating-point representation using only 8 bits.
+ *      Although not particularly accurate, it allows us to store
+ *      rather large sizes.
+ *
+ *      Format:
+ *
+ *      0b_eeee_exxx
+ *
+ *      Where 'e' is a digit for the exponent and 'x' is a digit for the
+ *      mantissa.
+ *
+ *      Decoding:
+ *
+ *      if 0b000e_eeee == 0:
+ *          0b0000_0xxx
+ *      else:
+ *          (0b0000_1xxx) * 2^(0b000e_eeee - 1)
+ */
+struct LULU_PRIVATE Floating_Byte {
+    static constexpr unsigned int
+    MANT_SIZE    = 3,                   // 0b0000_0111 + implied bit
+    MANT_IMPLIED = 1 << MANT_SIZE,      // 0b0000_1000
+    MANT_MASK    = MANT_IMPLIED - 1,    // 0b0000_0111
+    EXP_SIZE     = 5,
+    EXP_MASK     = (1 << EXP_SIZE) - 1; // 0b0001_1111
+
+    static u16
+    make(isize x)
+    {
+        __builtin_assume(x >= 0);
+
+        u16 exp = 0;
+
+        /**
+         * @brief
+         *      x >= 0b0001_0000 indicates it wouldn't fit even with our
+         *      implied bit, so we need to use the exponent. This rounds
+         *      up a bit which loses some accuracy.
+         *
+         * @note(2025-08-03)
+         *      Once we start the loop, it terminates once 0b0000_1xxx
+         *      is reached. This is the value which also includes the
+         *      implied bit.
+         */
+        while (x >= (MANT_IMPLIED << 1)) {
+            /**
+             * @brief
+             * Procedure (given x = 16, a.k.a 0b0001_0000):
+             *      => (x + 1) >> 1
+             *      => 0b0001_0001 >> 1
+             *      => 0b0000_1000
+             *
+             * Result:
+             *      x   = 0b0000_1000
+             *      exp = 0b0000_0001
+             */
+            x = (x + 1) >> 1;
+            exp++;
+        }
+
+        // Resulting value needs no exponent? (0b0000_0000 <= x <= 0b0000_0111)
+        // The only other case is (0b0000_1000 <= x <= 0b0000_1111),
+        // which will end up using an exponent.
+        if (x < MANT_IMPLIED) {
+            return cast(u16)x;
+        }
+
+        // We have an exponent, shift it into position.
+        // Add 1 to differentiate from an empty exponent.
+        exp = (exp + 1) << MANT_SIZE;
+        u16 mant = cast(u16)(x - MANT_IMPLIED);
+        return exp | mant;
+    }
+
+    static isize
+    decode(u16 fbyte)
+    {
+        // Shift out mantissa, mask exponent to extract it.
+        isize exp = cast_isize((fbyte >> MANT_SIZE) & EXP_MASK);
+
+        // No exponent stored?
+        if (exp == 0) {
+            return cast(isize)fbyte;
+        }
+
+        isize mant = cast_isize((fbyte & MANT_MASK) + MANT_IMPLIED);
+        __builtin_assume(mant > 0);
+
+        // Subtract 1 from the exponent because we previously added 1 to
+        // differentiate from an empty one.
+        return mant << (exp - 1);
+    }
+};

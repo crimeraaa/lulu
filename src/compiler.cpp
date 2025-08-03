@@ -130,7 +130,7 @@ compiler_load_nil(Compiler *c, u16 reg, int n, int line)
     }
 
     // Can't fold; need new instruction.
-no_fold:
+    no_fold:
     compiler_code_abc(c, OP_NIL, reg, last_reg, 0, line);
 }
 
@@ -481,6 +481,7 @@ compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
         pop_expr(c, right);
     }
 
+    // Don't use `Expr::make_pc` as we might still have patch lists to discharge.
     left->type = EXPR_RELOCABLE;
     left->pc   = compiler_code_abc(c, op, NO_REG, rkb, rkc, left->line);
 }
@@ -540,6 +541,8 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
     u16 rb = compiler_expr_next_reg(c, e);
     pop_expr(c, e);
 
+    // Don't call `Expr::make_pc()` because we might still have patch lists
+    // to discharge.
     e->type = EXPR_RELOCABLE;
     e->pc   = compiler_code_abc(c, op, NO_REG, rb, 0, e->line);
 }

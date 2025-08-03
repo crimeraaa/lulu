@@ -73,6 +73,8 @@ static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
 LULU_DATA const LString
 token_strings[TOKEN_COUNT];
 
+#define token_cstring(type) raw_data(token_strings[type])
+
 LULU_FUNC Lexer
 lexer_make(lulu_VM *vm, OString *source, Stream *z, Builder *b);
 

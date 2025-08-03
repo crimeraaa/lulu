@@ -93,6 +93,14 @@ struct LULU_PRIVATE Expr {
     }
 
     static constexpr Expr
+    make_pc(Expr_Type type, isize pc, int line)
+    {
+        Expr e = make(type, line);
+        e.pc = pc;
+        return e;
+    }
+
+    static constexpr Expr
     make_number(Number n, int line)
     {
         Expr e = make(EXPR_NUMBER, line);

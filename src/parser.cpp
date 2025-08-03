@@ -147,7 +147,7 @@ static Token_Type
 lookahead(Parser *p)
 {
     // Do not call `lookahead` multiple times in a row.
-    lulu_assert(p->lookahead.type != TOKEN_INVALID);
+    lulu_assert(p->lookahead.type == TOKEN_INVALID);
     p->lookahead = lexer_lex(&p->lexer);
     return p->lookahead.type;
 }
@@ -191,9 +191,10 @@ static void
 consume(Parser *p, Token_Type expected)
 {
     if (!match(p, expected)) {
-        const char *msg = vm_push_fstring(p->vm, "Expected '%s'",
-            raw_data(token_strings[expected]));
-        error(p, msg);
+        // Worst-case: `"Expected 'function'"`
+        char buf[128];
+        sprintf(buf, "Expected '%s'", token_cstring(expected));
+        error(p, buf);
     }
 }
 
@@ -202,11 +203,12 @@ static void
 consume_to_close(Parser *p, Token_Type expected, Token_Type to_close, int line)
 {
     if (!match(p, expected)) {
-        const char *msg = vm_push_fstring(p->vm,
-            "Expected '%s' (to close '%s' at line %i)",
-            raw_data(token_strings[expected]), raw_data(token_strings[to_close]),
-            line);
-        error(p, msg);
+        // Worst-case, even if `sizeof(int) == 8`:
+        // `"Expected 'function' (to close 'function' at line 9223372036854775807)"`
+        char buf[128];
+        sprintf(buf, "Expected '%s' (to close '%s' at line %i)",
+            token_cstring(expected), token_cstring(to_close), line);
+        error(p, buf);
     }
 }
 
@@ -314,6 +316,13 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 
     Expr_List e    = expr_list(p, c);
     Assign   *iter = last;
+    int       line = e.last.line;
+
+    // Not terribly useful, but helps to make all assignment targets' line
+    // information consistent if newlines were encountered in the assigning
+    // expression; e.g. `t = {\n\ta=1,\n}`.
+    iter->variable.line = line;
+
     if (n_vars != e.count) {
         assign_adjust(c, n_vars, &e);
         // Reuse the registers occupied by the extra values.
@@ -329,7 +338,8 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
     // Assign from rightmost target going leftmost. Use assigning expressions
     // from right to left as well.
     while (iter != nullptr) {
-        Expr tmp = Expr::make_reg(EXPR_DISCHARGED, c->free_reg - 1, iter->variable.line);
+        Expr tmp = Expr::make_reg(EXPR_DISCHARGED, c->free_reg - 1, line);
+        iter->variable.line = line;
         compiler_set_variable(c, &iter->variable, &tmp);
         iter = iter->prev;
     }
@@ -676,6 +686,7 @@ parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     // Set up first token
     advance(&p);
     block(&p, &c);
+
     consume(&p, TOKEN_EOF);
     compiler_code_return(&c, /* reg */ 0, /* count */ 0, /* is_vararg */ false,
         p.lexer.line);
@@ -706,10 +717,10 @@ resolve_variable(Compiler *c, OString *ident, int line)
 }
 
 struct LULU_PRIVATE Constructor {
-    Expr table; // Information on the OP_NEW_TABLE itself.
-    Expr value;
-    int  n_hash;
-    int  n_array;
+    Expr  table; // Information on the OP_NEW_TABLE itself.
+    Expr  value;
+    isize n_hash;
+    isize n_array;
 };
 
 static void
@@ -746,12 +757,10 @@ constructor(Parser *p, Compiler *c, int line)
     Constructor ctor;
     isize pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0, line);
 
-    ctor.table.type = EXPR_RELOCABLE;
-    ctor.table.line = line;
-    ctor.table.pc   = pc;
-    ctor.value      = DEFAULT_EXPR;
-    ctor.n_hash     = 0;
-    ctor.n_array    = 0;
+    ctor.table   = Expr::make_pc(EXPR_RELOCABLE, pc, line);
+    ctor.value   = DEFAULT_EXPR;
+    ctor.n_hash  = 0;
+    ctor.n_array = 0;
 
     compiler_expr_next_reg(c, &ctor.table);
     while (!check(p, TOKEN_CLOSE_CURLY)) {
@@ -781,11 +790,13 @@ constructor(Parser *p, Compiler *c, int line)
         }
     }
 
+    // Correct line information for caller.
+    ctor.table.line = p->consumed.line;
     consume(p, TOKEN_CLOSE_CURLY);
 
     Instruction *ip = get_code(c, pc);
-    ip->set_b(cast(u16)ctor.n_hash);
-    ip->set_c(cast(u16)ctor.n_array);
+    ip->set_b(Floating_Byte::make(ctor.n_hash));
+    ip->set_c(Floating_Byte::make(ctor.n_array));
     return ctor.table;
 }
 
@@ -852,8 +863,8 @@ prefix_expr(Parser *p, Compiler *c)
     case TOKEN_DASH:       unary_op = OP_UNM; goto code_unary;
     case TOKEN_NOT:        unary_op = OP_NOT; goto code_unary;
     case TOKEN_POUND:      unary_op = OP_LEN;
-// Diabolical
-code_unary: {
+    // Diabolical
+    code_unary: {
         Expr e = expression(p, c, PREC_UNARY);
         compiler_code_unary(c, unary_op, &e);
         return e;

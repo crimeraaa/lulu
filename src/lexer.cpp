@@ -13,15 +13,15 @@ peek(const Lexer *x)
 static bool
 is_eof(const Lexer *x)
 {
-    return peek(x) == STREAM_END;
+    return x->character == STREAM_END;
 }
 
 
-// Returns the current character, discharging it and consuming the next one.
+// Returns the current character, discharging it and reading the next one.
 static int
 advance(Lexer *x)
 {
-    int ch = peek(x);
+    int ch = x->character;
     x->character = x->stream->get_char();
     return ch;
 }
@@ -129,7 +129,7 @@ lexer_error(Lexer *x, Token_Type type, const char *what)
         where = builder_to_cstring(vm, x->builder);
         break;
     default:
-        where = raw_data(token_strings[type]);
+        where = token_cstring(type);
         break;
     }
 
@@ -329,9 +329,8 @@ consume_sequence(Lexer *x, bool (*predicate)(int ch))
  *  1.) `advance()` was previously called so that `x->character != first`.
  */
 static Token
-make_number(Lexer *x, char first)
+make_number(Lexer *x, bool prefixed)
 {
-    bool prefixed = (first == '0') && is_alpha(peek(x));
     if (prefixed) {
         // Save the prefix to the buffer for error reporting.
         int ch = save_advance(x);
@@ -350,10 +349,9 @@ make_number(Lexer *x, char first)
         if (base != 0) {
             consume_sequence(x, is_ident);
             // Input must be nul-terminated to avoid UB in `strtoul()`.
-            LString s = get_lexeme_nul_terminated(x);
+            LString s = slice_from(get_lexeme_nul_terminated(x), 2);
             Number  d = 0;
-            s = slice_from(s, 2);
-            if (len(s) == 0 || !lstring_to_number(s, &d, base)) {
+            if (!lstring_to_number(s, &d, base)) {
                 char buf[32];
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
@@ -440,37 +438,28 @@ make_string(Lexer *x, char q)
 }
 
 static Token
-check_keyword(Lexer *x, const LString &s, Token_Type type)
+make_keyword_ident(Lexer *x)
 {
-    if (slice_eq(s, token_strings[type])) {
-        return make_token(x, type);
-    }
-    OString *os = ostring_new(x->vm, s);
-    return make_token_ostring(x, TOKEN_IDENT, os);
-}
-
-static Token
-make_keyword_or_identifier(Lexer *x)
-{
-    LString word = get_lexeme(x);
+    LString    word = get_lexeme(x);
+    Token_Type type = TOKEN_IDENT;
 
     // If we reached this point then `word` MUST be at least of length 1.
     switch (word[0]) {
-    case 'a': return check_keyword(x, word, TOKEN_AND);
-    case 'b': return check_keyword(x, word, TOKEN_BREAK);
-    case 'd': return check_keyword(x, word, TOKEN_DO);
+    case 'a': type = TOKEN_AND; break;
+    case 'b': type = TOKEN_BREAK; break;
+    case 'd': type = TOKEN_DO; break;
     case 'e':
         switch (len(word)) {
-        case 3: return check_keyword(x, word, TOKEN_END);
-        case 4: return check_keyword(x, word, TOKEN_ELSE);
-        case 6: return check_keyword(x, word, TOKEN_ELSEIF);
+        case 3: type = TOKEN_END; break;
+        case 4: type = TOKEN_ELSE; break;
+        case 6: type = TOKEN_ELSEIF; break;
         }
         break;
     case 'f':
         switch (len(word)) {
-        case 3: return check_keyword(x, word, TOKEN_FOR);
-        case 5: return check_keyword(x, word, TOKEN_FALSE);
-        case 8: return check_keyword(x, word, TOKEN_FUNCTION);
+        case 3: type = TOKEN_FOR; break;
+        case 5: type = TOKEN_FALSE; break;
+        case 8: type = TOKEN_FUNCTION; break;
         }
         break;
     case 'i':
@@ -478,29 +467,29 @@ make_keyword_or_identifier(Lexer *x)
             break;
         }
         switch (word[1]) {
-        case 'f': return check_keyword(x, word, TOKEN_IF);
-        case 'n': return check_keyword(x, word, TOKEN_IN);
+        case 'f': type = TOKEN_IF; break;
+        case 'n': type = TOKEN_IN; break;
         }
         break;
-    case 'l': return check_keyword(x, word, TOKEN_LOCAL);
+    case 'l': type = TOKEN_LOCAL; break;
     case 'n':
         if (len(word) != 3) {
             break;
         }
         switch (word[1]) {
-        case 'i': return check_keyword(x, word, TOKEN_NIL);
-        case 'o': return check_keyword(x, word, TOKEN_NOT);
+        case 'i': type = TOKEN_NIL; break;
+        case 'o': type = TOKEN_NOT; break;
         }
         break;
-    case 'o': return check_keyword(x, word, TOKEN_OR);
+    case 'o': type = TOKEN_OR; break;
     case 'r':
         if (len(word) != 6) {
             break;
         }
         // 'repeat' and 'return' have the same first 2 characters
         switch (word[2]) {
-        case 't': return check_keyword(x, word, TOKEN_RETURN);
-        case 'p': return check_keyword(x, word, TOKEN_REPEAT);
+        case 't': type = TOKEN_RETURN; break;
+        case 'p': type = TOKEN_REPEAT; break;
         }
         break;
     case 't':
@@ -508,14 +497,18 @@ make_keyword_or_identifier(Lexer *x)
             break;
         }
         switch (word[1]) {
-        case 'h': return check_keyword(x, word, TOKEN_THEN);
-        case 'r': return check_keyword(x, word, TOKEN_TRUE);
+        case 'h': type = TOKEN_THEN; break;
+        case 'r': type = TOKEN_TRUE; break;
         }
         break;
-    case 'u': return check_keyword(x, word, TOKEN_UNTIL);
-    case 'w': return check_keyword(x, word, TOKEN_WHILE);
+    case 'u': type = TOKEN_UNTIL; break;
+    case 'w': type = TOKEN_WHILE; break;
     default:
         break;
+    }
+
+    if (type != TOKEN_IDENT && slice_eq(word, token_strings[type])) {
+        return make_token(x, type);
     }
 
     OString *os = ostring_new(x->vm, word);
@@ -541,9 +534,11 @@ lexer_lex(Lexer *x)
     ch = save_advance(x);
     if (is_alpha(ch)) {
         consume_sequence(x, is_ident);
-        return make_keyword_or_identifier(x);
+        return make_keyword_ident(x);
     } else if (is_number(ch)) {
-        return make_number(x, ch);
+        // '0' followed by some alphabetical character may be an integer prefix.
+        bool prefixed = (ch == '0') && is_alpha(peek(x));
+        return make_number(x, prefixed);
     }
 
     type = TOKEN_INVALID;
@@ -610,7 +605,8 @@ lexer_lex(Lexer *x)
             type = match(x, '.') ? TOKEN_VARARG : TOKEN_CONCAT;
         } else {
             if (is_number(peek(x))) {
-                return make_number(x, ch);
+                // Leading radix points are never base-n integers.
+                return make_number(x, /* prefixed */ false);
             }
             type = TOKEN_DOT;
         }
