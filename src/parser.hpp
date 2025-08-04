@@ -159,6 +159,12 @@ struct LULU_PRIVATE Expr {
     {
         return this->patch_true != this->patch_false;
     }
+
+    bool
+    has_multret() const noexcept
+    {
+        return this->type == EXPR_CALL /* || this->type == EXPR_VARARG */;
+    }
 };
 
 LULU_FUNC Chunk *

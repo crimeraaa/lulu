@@ -750,6 +750,32 @@ compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k)
     t->table.field_rk = rkb;
 }
 
+void
+compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store)
+{
+    /**
+     * @brief
+     *      Subtract 1 so that `n_array == 50` still uses offset 0.
+     *      Assumes `n_array > 0`.
+     *
+     * @note(2025-08-04)
+     *      Lua 5.1.5 actually adds 1 at the end because offset 0 is
+     *      reserved to indicate the size is to big and the next
+     *      instruction is to be interpreted as the size itself.
+     */
+    isize offset = (n_array - 1) / FIELDS_PER_FLUSH;
+    isize b      = to_store;
+
+    lulu_assert(to_store != 0);
+
+    // Ensure array index offset would fit as a u16.
+    lulu_assert(offset <= cast_isize(Instruction::MAX_C));
+    compiler_code_abc(c, OP_SET_ARRAY, table_reg, cast(u16)b, cast(u16)offset);
+
+    // Pop all array elements.
+    c->free_reg = table_reg + 1;
+}
+
 isize
 compiler_jump_new(Compiler *c)
 {

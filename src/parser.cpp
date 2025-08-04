@@ -250,7 +250,7 @@ return_stmt(Parser *p, Compiler *c)
     Expr_List e{DEFAULT_EXPR, 0};
     if (block_continue(p) && !check(p, TOKEN_SEMI)) {
         e = expr_list(p, c);
-        // if (e.last.type == EXPR_CALL) {
+        // if (e.has_multret()) {
         //     compiler_set_returns(c, &e.last, VARARG);
         //     ra        = cast(u8)small_array_len(c->active);
         //     is_vararg = true;
@@ -272,7 +272,7 @@ assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
 {
     int extra = cast_int(n_vars) - cast_int(e->count);
     // The last assigning expression can have variadic returns.
-    if (e->last.type == EXPR_CALL) {
+    if (e->last.has_multret()) {
         // Include the call itself.
         extra++;
         if (extra < 0) {
@@ -708,9 +708,10 @@ resolve_variable(Compiler *c, OString *ident)
 
 struct LULU_PRIVATE Constructor {
     Expr  table; // Information on the OP_NEW_TABLE itself.
-    Expr  value;
+    Expr  array_value;
     isize n_hash;
     isize n_array;
+    isize to_store;
 };
 
 static void
@@ -731,13 +732,62 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
     consume(p, TOKEN_ASSIGN);
     u16 rkb = compiler_expr_rk(c, &k);
 
-    ctor->value = expression(p, c);
-    u16 rkc = compiler_expr_rk(c, &ctor->value);
+    // Don't use `ctor->array_value` because we discharge it later.
+    Expr e = expression(p, c);
+    u16 rkc = compiler_expr_rk(c, &e);
     compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc);
 
     // 'pop' whatever registers we used
     c->free_reg = reg;
     ctor->n_hash++;
+}
+
+static void
+ctor_array(Parser *p, Compiler *c, Constructor *ctor)
+{
+    ctor->array_value = expression(p, c);
+    ctor->n_array++;
+    ctor->to_store++;
+
+}
+
+// lparser.c:closelistfield(LexState *ls, ConsControl *cc)
+static void
+set_array(Compiler *c, Constructor *ctor)
+{
+    Expr *e = &ctor->array_value;
+    // Nothing to do?
+    if (e->type == EXPR_NONE) {
+        return;
+    }
+
+    compiler_expr_next_reg(c, e);
+    e->type = EXPR_NONE;
+    if (ctor->to_store == FIELDS_PER_FLUSH) {
+        compiler_set_array(c, ctor->table.reg, ctor->n_array, ctor->to_store);
+        // No more pending array items.
+        ctor->to_store = 0;
+    }
+}
+
+// lparser.c:lastlistfield(FuncState *fs, struct ConsControl *cc)
+static void
+set_array_last(Parser *p, Compiler *c, Constructor *ctor)
+{
+    // Nothing to do?
+    if (ctor->to_store == 0) {
+        return;
+    }
+
+    Expr *e = &ctor->array_value;
+    if (e->has_multret()) {
+        error(p, "Cannot use variadic as last array item");
+    } else {
+        if (e->type != EXPR_NONE) {
+            compiler_expr_next_reg(c, e);
+        }
+        compiler_set_array(c, ctor->table.reg, ctor->n_array, ctor->to_store);
+    }
 }
 
 static Expr
@@ -746,13 +796,17 @@ constructor(Parser *p, Compiler *c)
     Constructor ctor;
     isize pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0);
 
-    ctor.table   = Expr::make_pc(EXPR_RELOCABLE, pc);
-    ctor.value   = DEFAULT_EXPR;
-    ctor.n_hash  = 0;
-    ctor.n_array = 0;
+    ctor.table       = Expr::make_pc(EXPR_RELOCABLE, pc);
+    ctor.array_value = DEFAULT_EXPR;
+    ctor.n_hash      = 0;
+    ctor.n_array     = 0;
+    ctor.to_store    = 0;
 
     compiler_expr_next_reg(c, &ctor.table);
     while (!check(p, TOKEN_CLOSE_CURLY)) {
+        // Discharge any previous array items.
+        set_array(c, &ctor);
+
         // Don't consume yet, `ctor_field()` needs <identifier> or '['.
         Token_Type t = p->consumed.type;
         switch (t) {
@@ -760,7 +814,7 @@ constructor(Parser *p, Compiler *c)
             if (lookahead(p) == TOKEN_ASSIGN) {
                 ctor_field(p, c, &ctor);
             } else {
-                error_at(p, t, "Array constructors not yet supported");
+                ctor_array(p, c, &ctor);
             }
             break;
         }
@@ -768,7 +822,7 @@ constructor(Parser *p, Compiler *c)
             ctor_field(p, c, &ctor);
             break;
         default:
-            error_at(p, t, "Array constructors not yet supported");
+            ctor_array(p, c, &ctor);
             break;
         }
 
@@ -780,6 +834,7 @@ constructor(Parser *p, Compiler *c)
     }
 
     consume(p, TOKEN_CLOSE_CURLY);
+    set_array_last(p, c, &ctor);
 
     Instruction *ip = get_code(c, pc);
     ip->set_b(floating_byte_make(ctor.n_hash));

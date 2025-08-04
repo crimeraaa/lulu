@@ -194,18 +194,20 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
             n_hash, n_array);
         break;
     }
-    case OP_GET_TABLE: {
+    case OP_GET_TABLE:
         print_reg(p, args.a, pc, " := ");
         print_reg(p, args.b, pc, "[");
         print_reg(p, args.c, pc, "]");
         break;
-    }
-    case OP_SET_TABLE: {
+    case OP_SET_TABLE:
         print_reg(p, args.a, pc, "[");
         print_reg(p, args.b, pc, "] := ");
         print_reg(p, args.c, pc);
         break;
-    }
+    case OP_SET_ARRAY:
+        print_reg(p, args.a, pc, "[%u*FPF + i] := R(%u+i) for 1 <= i <= %u",
+            args.c, args.a, args.b);
+        break;
     case OP_ADD: arith(p, '+', args); break;
     case OP_SUB: arith(p, '-', args); break;
     case OP_MUL: arith(p, '*', args); break;

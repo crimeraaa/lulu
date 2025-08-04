@@ -227,6 +227,9 @@ compiler_get_local(Compiler *c, u16 limit, OString *ident);
 LULU_FUNC void
 compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k);
 
+LULU_FUNC void
+compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store);
+
 
 /**
  * @brief

@@ -652,6 +652,16 @@ vm_execute(lulu_VM *vm, int n_calls)
             vm_table_set(vm, ra, k, *v);
             break;
         }
+        case OP_SET_ARRAY: {
+            isize n      = cast_isize(inst.b());
+            isize offset = cast_isize(inst.c()) * FIELDS_PER_FLUSH;
+
+            for (isize i = 1; i <= n; i++) {
+                Value k = Value::make_number(offset + i);
+                table_set(vm, ra->to_table(), k, *(ra + i));
+            }
+            break;
+        }
         case OP_ADD: ARITH_OP(lulu_Number_add, MT_ADD); break;
         case OP_SUB: ARITH_OP(lulu_Number_sub, MT_SUB); break;
         case OP_MUL: ARITH_OP(lulu_Number_mul, MT_MUL); break;
@@ -692,11 +702,31 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_LEN: {
-            if (!ra->is_string()) {
+            switch (ra->type()) {
+            case VALUE_STRING:
+                ra->set_number(cast(Number)ra->to_ostring()->len);
+                break;
+            case VALUE_TABLE: {
+                Number last = 0;
+                Table *t    = ra->to_table();
+                for (Number n = 1;; n++) {
+                    Value out;
+                    if (!table_get(t, Value::make_number(n), &out)) {
+                        break;
+                    }
+                    if (out.is_nil()) {
+                        break;
+                    }
+                    last = n;
+                }
+                ra->set_number(last);
+                break;
+            }
+            default:
                 protect(vm, ip);
                 debug_type_error(vm, "get length of", ra);
+                break;
             }
-            ra->set_number(cast(Number)ra->to_ostring()->len);
             break;
         }
         case OP_CONCAT: {
