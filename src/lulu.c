@@ -23,7 +23,7 @@ report_error(lulu_VM *vm)
 /**
  * @note(2025-07-29)
  *  Assumptions:
- *  
+ *
  *      1.) The current stack top is index `1`.
  *      2.) It contains the 'main' `function`.
  */
@@ -83,6 +83,7 @@ run_interactive(lulu_VM *vm)
         }
 
         n = strcspn(buf, "\r\n");
+        buf[n] = '\0'; /* prevent `lulu_push_fstring()` from including '\n' */
         if (n > 0 && buf[0] == '=') {
             lulu_push_fstring(vm, "return %s", buf + 1);
         } else {
@@ -204,7 +205,7 @@ int main(int argc, char *argv[])
         return 2;
     }
     lulu_set_panic(vm, panic);
-    
+
     /* Testing to see if panic works. */
     /* lulu_check_string(vm, 1); */
 

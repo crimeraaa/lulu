@@ -18,10 +18,10 @@ struct LULU_PRIVATE Expr_List {
 };
 
 static constexpr Expr
-DEFAULT_EXPR = Expr::make(EXPR_NONE, /* line */ 0);
+DEFAULT_EXPR = Expr::make(EXPR_NONE);
 
 static constexpr Token
-DEFAULT_TOKEN = Token::make(TOKEN_INVALID, /* line */ 0);
+DEFAULT_TOKEN = Token::make(TOKEN_INVALID);
 
 // Forward declaration for recursive descent parsing.
 static Expr
@@ -123,6 +123,7 @@ parser_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
     p.block     = nullptr;
+    p.last_line = 1;
     p.n_calls   = 0;
     return p;
 }
@@ -135,6 +136,7 @@ static void
 advance(Parser *p)
 {
     // Have a lookahead token to discharge?
+    p->last_line = p->lexer.line;
     if (p->lookahead.type != TOKEN_INVALID) {
         p->consumed  = p->lookahead;
         p->lookahead = DEFAULT_TOKEN;
@@ -241,7 +243,7 @@ constant_string(Compiler *c, const Token *t)
 }
 
 static void
-return_stmt(Parser *p, Compiler *c, int line)
+return_stmt(Parser *p, Compiler *c)
 {
     u16       ra = c->free_reg;
     bool      is_vararg = false;
@@ -257,7 +259,7 @@ return_stmt(Parser *p, Compiler *c, int line)
         // }
     }
 
-    compiler_code_return(c, ra, e.count, is_vararg, line);
+    compiler_code_return(c, ra, e.count, is_vararg);
 }
 
 struct LULU_PRIVATE Assign {
@@ -292,7 +294,7 @@ assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
         // Register of first uninitialized right-hand side.
         u16 reg = c->free_reg;
         compiler_reserve_reg(c, cast(u16)extra);
-        compiler_load_nil(c, reg, extra, e->last.line);
+        compiler_load_nil(c, reg, extra);
     }
 }
 
@@ -316,12 +318,6 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 
     Expr_List e    = expr_list(p, c);
     Assign   *iter = last;
-    int       line = e.last.line;
-
-    // Not terribly useful, but helps to make all assignment targets' line
-    // information consistent if newlines were encountered in the assigning
-    // expression; e.g. `t = {\n\ta=1,\n}`.
-    iter->variable.line = line;
 
     if (n_vars != e.count) {
         assign_adjust(c, n_vars, &e);
@@ -338,8 +334,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
     // Assign from rightmost target going leftmost. Use assigning expressions
     // from right to left as well.
     while (iter != nullptr) {
-        Expr tmp = Expr::make_reg(EXPR_DISCHARGED, c->free_reg - 1, line);
-        iter->variable.line = line;
+        Expr tmp = Expr::make_reg(EXPR_DISCHARGED, c->free_reg - 1);
         compiler_set_variable(c, &iter->variable, &tmp);
         iter = iter->prev;
     }
@@ -348,8 +343,9 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 static void
 local_push(Parser *p, Compiler *c, OString *ident)
 {
-    u16 reg;
-    if (compiler_get_local(c, p->block->n_locals, ident, &reg)) {
+    u16 reg = compiler_get_local(c, p->block->n_locals, ident);
+    // Local found?
+    if (reg != NO_REG) {
         error_at(p, TOKEN_IDENT, "Shadowing of local variable");
     }
     isize index = chunk_add_local(p->vm, c->chunk, ident);
@@ -435,20 +431,18 @@ if_stmt(Parser *p, Compiler *c)
 {
     isize  then_jump = if_cond(p, c);
     isize  else_jump = NO_JUMP;
-    int    line      = p->consumed.line;
 
     while (match(p, TOKEN_ELSEIF)) {
         // All `if` and `elseif` will jump over the same `else` block.
-        compiler_jump_add(c, &else_jump, compiler_jump_new(c, line));
+        compiler_jump_add(c, &else_jump, compiler_jump_new(c));
 
         // A false test must jump to here to try the next `elseif` block.
         compiler_jump_patch(c, then_jump);
         then_jump = if_cond(p, c);
-        line = p->consumed.line;
     }
 
     if (match(p, TOKEN_ELSE)) {
-        compiler_jump_add(c, &else_jump, compiler_jump_new(c, line));
+        compiler_jump_add(c, &else_jump, compiler_jump_new(c));
         compiler_jump_patch(c, then_jump);
         block(p, c);
     } else {
@@ -470,11 +464,10 @@ while_stmt(Parser *p, Compiler *c, int line)
     block_push(p, c, &b, /* breakable */ true);
     block(p, c);
 
-    int end_line = c->parser->consumed.line;
     consume_to_close(p, TOKEN_END, TOKEN_WHILE, line);
 
     // Goto start whenever we reach here.
-    compiler_jump_patch(c, compiler_jump_new(c, end_line), init_pc);
+    compiler_jump_patch(c, compiler_jump_new(c), init_pc);
 
     // If condition is falsy, goto here (current pc).
     compiler_jump_patch(c, exit_pc);
@@ -500,23 +493,22 @@ repeat_stmt(Parser *p, Compiler *c, int line)
     block_pop(p, c);
 }
 
-static Expr
+static u16
 expr_immediate(Parser *p, Compiler *c)
 {
     Expr e = expression(p, c);
-    compiler_expr_next_reg(c, &e);
-    return e;
+    return compiler_expr_next_reg(c, &e);
 }
 
-static Expr
-for_incr(Parser *p, Compiler *c, int line)
+static void
+for_incr(Parser *p, Compiler *c)
 {
     if (match(p, TOKEN_COMMA)) {
-        return expr_immediate(p, c);
+        expr_immediate(p, c);
+    } else {
+        Expr incr = Expr::make_number(1);
+        compiler_expr_next_reg(c, &incr);
     }
-    Expr incr = Expr::make_number(1, line);
-    compiler_expr_next_reg(c, &incr);
-    return incr;
 }
 
 /**
@@ -537,11 +529,11 @@ for_stmt(Parser *p, Compiler *c, int line)
     consume(p, TOKEN_IDENT);
     consume(p, TOKEN_ASSIGN);
 
-    Expr index = expr_immediate(p, c);
+    u16 index_reg = expr_immediate(p, c);
     consume(p, TOKEN_COMMA);
 
-    Expr limit = expr_immediate(p, c);
-    Expr incr = for_incr(p, c, limit.line);
+    expr_immediate(p, c);
+    for_incr(p, c);
     consume(p, TOKEN_DO);
 
     // The next 3 locals are internal state used by the interpreter; the user
@@ -556,24 +548,24 @@ for_stmt(Parser *p, Compiler *c, int line)
     c->free_reg += 1;
     local_start(c, 4);
 
-    isize prep_pc = compiler_code_asbx(c, OP_FOR_PREP, index.reg, NO_JUMP, incr.line);
+    isize prep_pc = compiler_code_asbx(c, OP_FOR_PREP, index_reg, NO_JUMP);
     block(p, c);
 
-    // Line at the point of 'end' which is a good enough approximation for
-    // the increment and unconditional jump.
-    int end_line = p->consumed.line;
     consume_to_close(p, TOKEN_END, TOKEN_FOR, line);
 
-    isize loop_pc = compiler_code_asbx(c, OP_FOR_LOOP, index.reg, NO_JUMP, end_line);
+    isize loop_pc = compiler_code_asbx(c, OP_FOR_LOOP, index_reg, NO_JUMP);
     compiler_jump_patch(c, prep_pc, loop_pc);       // goto `OP_FOR_LOOP`
     compiler_jump_patch(c, loop_pc, prep_pc + 1);   // goto <loop-body>
     block_pop(p, c);
 }
 
 static void
-break_stmt(Parser *p, Compiler *c, int line)
+break_stmt(Parser *p, Compiler *c)
 {
     Block *b = p->block;
+
+    // `if`, `elseif`, `else`, `while`, `for` and `repeat` all make new blocks.
+    // But only `for`, `repeat` and `while` are breakable.
     while (b != nullptr && !b->breakable) {
         b = b->prev;
     }
@@ -581,26 +573,27 @@ break_stmt(Parser *p, Compiler *c, int line)
     if (b == nullptr) {
         error(p, "No block to 'break'");
     }
-    compiler_jump_add(c, &b->break_list, compiler_jump_new(c, line));
+    compiler_jump_add(c, &b->break_list, compiler_jump_new(c));
 }
 
 static void
 declaration(Parser *p, Compiler *c)
 {
     Token t = p->consumed;
+    int   line = p->last_line;
     switch (t.type) {
     case TOKEN_BREAK:
         advance(p); // skip 'break'
-        break_stmt(p, c, t.line);
+        break_stmt(p, c);
         break;
     case TOKEN_DO:
         advance(p); // skip `do`
         block(p, c);
-        consume_to_close(p, TOKEN_END, TOKEN_DO, t.line);
+        consume_to_close(p, TOKEN_END, TOKEN_DO, line);
         break;
     case TOKEN_FOR:
         advance(p); // skip 'for'
-        for_stmt(p, c, t.line);
+        for_stmt(p, c, line);
         break;
     case TOKEN_IF:
         advance(p); // skip 'if'
@@ -612,15 +605,15 @@ declaration(Parser *p, Compiler *c)
         break;
     case TOKEN_WHILE:
         advance(p); // skip 'while'
-        while_stmt(p, c, t.line);
+        while_stmt(p, c, line);
         break;
     case TOKEN_REPEAT:
         advance(p); // skip 'repeat'
-        repeat_stmt(p, c, t.line);
+        repeat_stmt(p, c, line);
         break;
     case TOKEN_RETURN:
         advance(p); // skip 'return'
-        return_stmt(p, c, t.line);
+        return_stmt(p, c);
         break;
     case TOKEN_IDENT: {
         Assign a{nullptr, expression(p, c)};
@@ -688,8 +681,7 @@ parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     block(&p, &c);
 
     consume(&p, TOKEN_EOF);
-    compiler_code_return(&c, /* reg */ 0, /* count */ 0, /* is_vararg */ false,
-        p.lexer.line);
+    compiler_code_return(&c, /* reg */ 0, /* count */ 0, /* is_vararg */ false);
 
 #ifdef LULU_DEBUG_PRINT_CODE
     debug_disassemble(c.chunk);
@@ -703,17 +695,15 @@ parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 //=== EXPRESSION PARSING =================================================== {{{
 
 static Expr
-resolve_variable(Compiler *c, OString *ident, int line)
+resolve_variable(Compiler *c, OString *ident)
 {
-    Expr e;
-    u16 reg;
-    if (compiler_get_local(c, /* limit */ 0, ident, &reg)) {
-        e = Expr::make_reg(EXPR_LOCAL, reg, line);
-    } else {
+    u16 reg = compiler_get_local(c, /* limit */ 0, ident);
+    if (reg == NO_REG) {
         u32 i = compiler_add_ostring(c, ident);
-        e = Expr::make_index(EXPR_GLOBAL, i, line);
+        return Expr::make_index(EXPR_GLOBAL, i);
+    } else {
+        return Expr::make_reg(EXPR_LOCAL, reg);
     }
-    return e;
 }
 
 struct LULU_PRIVATE Constructor {
@@ -731,7 +721,7 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
     Expr k;
     if (match(p, TOKEN_IDENT)) {
         u32 i = constant_string(c, &t);
-        k = Expr::make_index(EXPR_CONSTANT, i, t.line);
+        k = Expr::make_index(EXPR_CONSTANT, i);
     } else {
         consume(p, TOKEN_OPEN_BRACE);
         k = expression(p, c);
@@ -743,8 +733,7 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
 
     ctor->value = expression(p, c);
     u16 rkc = compiler_expr_rk(c, &ctor->value);
-    compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc,
-        ctor->value.line);
+    compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc);
 
     // 'pop' whatever registers we used
     c->free_reg = reg;
@@ -752,12 +741,12 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
 }
 
 static Expr
-constructor(Parser *p, Compiler *c, int line)
+constructor(Parser *p, Compiler *c)
 {
     Constructor ctor;
-    isize pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0, line);
+    isize pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0);
 
-    ctor.table   = Expr::make_pc(EXPR_RELOCABLE, pc, line);
+    ctor.table   = Expr::make_pc(EXPR_RELOCABLE, pc);
     ctor.value   = DEFAULT_EXPR;
     ctor.n_hash  = 0;
     ctor.n_array = 0;
@@ -790,13 +779,11 @@ constructor(Parser *p, Compiler *c, int line)
         }
     }
 
-    // Correct line information for caller.
-    ctor.table.line = p->consumed.line;
     consume(p, TOKEN_CLOSE_CURLY);
 
     Instruction *ip = get_code(c, pc);
-    ip->set_b(Floating_Byte::make(ctor.n_hash));
-    ip->set_c(Floating_Byte::make(ctor.n_array));
+    ip->set_b(floating_byte_make(ctor.n_hash));
+    ip->set_c(floating_byte_make(ctor.n_array));
     return ctor.table;
 }
 
@@ -830,7 +817,7 @@ function_call(Parser *p, Compiler *c, Expr *e)
         args.count = cast(u16)(c->free_reg - (base + 1));
     }
     e->type = EXPR_CALL;
-    e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 0, e->line);
+    e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 0);
 
     // By default, remove the arguments but not the function's register.
     // This allows use to 'reserve' the register.
@@ -845,21 +832,21 @@ prefix_expr(Parser *p, Compiler *c)
 
     OpCode unary_op;
     switch (t.type) {
-    case TOKEN_NIL:    return Expr::make(EXPR_NIL, t.line);
-    case TOKEN_TRUE:   return Expr::make(EXPR_TRUE, t.line);
-    case TOKEN_FALSE:  return Expr::make(EXPR_FALSE, t.line);
-    case TOKEN_NUMBER: return Expr::make_number(t.number, t.line);
+    case TOKEN_NIL:    return Expr::make(EXPR_NIL);
+    case TOKEN_TRUE:   return Expr::make(EXPR_TRUE);
+    case TOKEN_FALSE:  return Expr::make(EXPR_FALSE);
+    case TOKEN_NUMBER: return Expr::make_number(t.number);
     case TOKEN_STRING: {
         u32 i = compiler_add_ostring(c, t.ostring);
-        return Expr::make_index(EXPR_CONSTANT, i, t.line);
+        return Expr::make_index(EXPR_CONSTANT, i);
     }
-    case TOKEN_IDENT: return resolve_variable(c, t.ostring, t.line);
+    case TOKEN_IDENT: return resolve_variable(c, t.ostring);
     case TOKEN_OPEN_PAREN: {
         Expr e = expression(p, c);
         consume(p, TOKEN_CLOSE_PAREN);
         return e;
     }
-    case TOKEN_OPEN_CURLY: return constructor(p, c, t.line);
+    case TOKEN_OPEN_CURLY: return constructor(p, c);
     case TOKEN_DASH:       unary_op = OP_UNM; goto code_unary;
     case TOKEN_NOT:        unary_op = OP_NOT; goto code_unary;
     case TOKEN_POUND:      unary_op = OP_LEN;
@@ -895,7 +882,7 @@ primary_expr(Parser *p, Compiler *c)
             consume(p, TOKEN_IDENT);
 
             u32  i = constant_string(c, &t);
-            Expr k = Expr::make_index(EXPR_CONSTANT, i, t.line);
+            Expr k = Expr::make_index(EXPR_CONSTANT, i);
             compiler_get_table(c, &e, &k);
             break;
         }

@@ -629,8 +629,8 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_NEW_TABLE: {
-            isize n_hash  = Floating_Byte::decode(inst.b());
-            isize n_array = Floating_Byte::decode(inst.c());
+            isize n_hash  = floating_byte_decode(inst.b());
+            isize n_array = floating_byte_decode(inst.c());
             Table *t = table_new(vm, n_hash, n_array);
             ra->set_table(t);
             break;

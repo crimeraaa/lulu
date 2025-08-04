@@ -29,6 +29,7 @@ struct LULU_PRIVATE Parser {
     Token    lookahead; // Used only in `parser.cpp:constructor()`.
     Builder *builder;
     Block   *block;
+    int      last_line; // Line of the token before `consumed`.
     int      n_calls;   // How many recursive C calls are we currently in?
 };
 
@@ -68,7 +69,6 @@ struct Expr_Table {
 
 struct LULU_PRIVATE Expr {
     Expr_Type type;
-    int       line;
     isize     patch_true;
     isize     patch_false;
     union {
@@ -80,11 +80,10 @@ struct LULU_PRIVATE Expr {
     };
 
     static constexpr Expr
-    make(Expr_Type type, int line)
+    make(Expr_Type type)
     {
         Expr e{
             /* type */              type,
-            /* line */              line,
             /* patch_true */        NO_JUMP,
             /* patch_false */       NO_JUMP,
             /* <unnamed>::number */ {0},
@@ -93,33 +92,33 @@ struct LULU_PRIVATE Expr {
     }
 
     static constexpr Expr
-    make_pc(Expr_Type type, isize pc, int line)
+    make_pc(Expr_Type type, isize pc)
     {
-        Expr e = make(type, line);
+        Expr e = make(type);
         e.pc = pc;
         return e;
     }
 
     static constexpr Expr
-    make_number(Number n, int line)
+    make_number(Number n)
     {
-        Expr e = make(EXPR_NUMBER, line);
+        Expr e = make(EXPR_NUMBER);
         e.number = n;
         return e;
     }
 
     static constexpr Expr
-    make_reg(Expr_Type type, u16 reg, int line)
+    make_reg(Expr_Type type, u16 reg)
     {
-        Expr e = make(type, line);
+        Expr e = make(type);
         e.reg = reg;
         return e;
     }
 
     static constexpr inline Expr
-    make_index(Expr_Type type, u32 index, int line)
+    make_index(Expr_Type type, u32 index)
     {
-        Expr e = make(type, line);
+        Expr e = make(type);
         e.index = index;
         return e;
     }

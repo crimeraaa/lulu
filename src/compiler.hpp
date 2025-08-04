@@ -6,7 +6,7 @@
 
 static constexpr u16
 NO_REG  = Instruction::MAX_A, // MUST fit in 8 bits for bit manipulation.
-MAX_REG = Instruction::MAX_A - 5;
+MAX_REG = NO_REG - 5;         // Must be less than `NO_REG`.
 
 static constexpr isize
 MAX_ACTIVE_LOCALS = 200,
@@ -50,13 +50,13 @@ compiler_check_limit(Compiler *c, T count, T limit, const char *what)
 }
 
 LULU_FUNC isize
-compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2, int line);
+compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2);
 
 LULU_FUNC isize
-compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx, int line);
+compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx);
 
 LULU_FUNC isize
-compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx, int line);
+compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx);
 
 
 /**
@@ -68,7 +68,7 @@ compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx, int line);
  *      for you.
  */
 LULU_FUNC void
-compiler_load_nil(Compiler *c, u16 reg, int n, int line);
+compiler_load_nil(Compiler *c, u16 reg, int n);
 
 
 /**
@@ -79,7 +79,7 @@ compiler_load_nil(Compiler *c, u16 reg, int n, int line);
  *      it beforehand. This function will not reserve for you.
  */
 LULU_FUNC void
-compiler_load_boolean(Compiler *c, u16 reg, bool b, int line);
+compiler_load_boolean(Compiler *c, u16 reg, bool b);
 
 LULU_FUNC u32
 compiler_add_number(Compiler *c, Number n);
@@ -178,7 +178,7 @@ LULU_FUNC void
 compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right);
 
 LULU_FUNC void
-compiler_code_return(Compiler *c, u16 reg, u16 count, bool is_vararg, int line);
+compiler_code_return(Compiler *c, u16 reg, u16 count, bool is_vararg);
 
 
 /**
@@ -218,12 +218,11 @@ compiler_set_one_return(Compiler *c, Expr *e);
  *      This is useful to enforce scoping rules, so that this is still
  *      valid: `local x; do local x; end;`
  *
- * @note(2025-07-10)
- *      If the local was not found, then `*reg` was not set. It is not safe
- *      to read in that case unless you initialized it beforehand.
+ * @return
+ *      The register (which fits in 8 bits) if found, else `NO_REG`.
  */
-LULU_FUNC bool
-compiler_get_local(Compiler *c, u16 limit, OString *ident, u16 *reg);
+LULU_FUNC u16
+compiler_get_local(Compiler *c, u16 limit, OString *ident);
 
 LULU_FUNC void
 compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k);
@@ -238,7 +237,7 @@ compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k);
  *      The `pc` of the new jump list. Use this to fill an `Expr`.
  */
 LULU_FUNC isize
-compiler_jump_new(Compiler *c, int line);
+compiler_jump_new(Compiler *c);
 
 
 /**

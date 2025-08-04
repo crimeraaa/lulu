@@ -111,3 +111,54 @@ const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_CALL */       FUNC_LIKE,
     /* OP_RETURN */     FUNC_LIKE,
 };
+
+static constexpr unsigned int
+FB_MANT_SIZE        = 3,                                // 1-bits in 0b0000_0111
+FB_MANT_IMPLIED     = 1 << FB_MANT_SIZE,                // 0b0000_1000
+FB_MANT_MASK        = FB_MANT_IMPLIED - 1,              // 0b0000_0111
+FB_MANT_IMPLIED_MAX = FB_MANT_IMPLIED | FB_MANT_MASK,   // 0B0000_1111
+FB_EXP_SIZE         = 5,
+FB_EXP_MASK         = (1 << FB_EXP_SIZE) - 1;           // 0b0001_1111
+
+u16
+floating_byte_make(isize x)
+{
+    u16 exp = 0;
+
+    // Even with implied bit, value is too large. Need a nonzero exponent.
+    while (x > FB_MANT_IMPLIED_MAX) {
+        // + 1 may toggle the rightmost bit, and >> 1 propagates it.
+        // This approximates a value larger than the original which is fine.
+        x = (x + 1) >> 1;
+        exp++;
+    }
+
+    // Don't need to use implied bit? If we did in this case we would end up
+    // with negative values for the mantissa which complicates things.
+    if (x < FB_MANT_IMPLIED) {
+        return cast(u16)x;
+    }
+
+    // We have an exponent (which may be 0), shift it into position.
+    // Add 1 to differentiate from 0 which indicates to decode mantissa as-is.
+    exp = (exp + 1) << FB_MANT_SIZE;
+    u16 mant = cast(u16)(x - FB_MANT_IMPLIED);
+    return exp | mant;
+}
+
+isize
+floating_byte_decode(u16 fbyte)
+{
+    u16 exp = (fbyte >> FB_MANT_SIZE) & FB_EXP_MASK;
+
+    // Just decode mantissa as-is?
+    if (exp == 0) {
+        return cast_isize(fbyte);
+    }
+
+    u16 mant = (fbyte & FB_MANT_MASK) + FB_MANT_IMPLIED;
+
+    // Subtract 1 from the exponent because we previously added 1 to
+    // differentiate from the above case.
+    return cast_isize(mant) << cast_isize(exp - 1);
+}

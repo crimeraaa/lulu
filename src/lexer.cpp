@@ -261,29 +261,6 @@ skip_whitespace(Lexer *x)
     }
 }
 
-static Token
-make_token(Lexer *x, Token_Type type)
-{
-    Token t = Token::make(type, x->line, 0);
-    return t;
-}
-
-static Token
-make_token_number(Lexer *x, Number n)
-{
-    Token t = make_token(x, TOKEN_NUMBER);
-    t.number = n;
-    return t;
-}
-
-static Token
-make_token_ostring(Lexer *x, Token_Type type, OString *ostring)
-{
-    Token t = make_token(x, type);
-    t.ostring = ostring;
-    return t;
-}
-
 static bool
 is_upper(int ch)
 {
@@ -356,7 +333,7 @@ make_number(Lexer *x, bool prefixed)
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
             }
-            return make_token_number(x, d);
+            return Token::make(TOKEN_NUMBER, /* number */ d);
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
@@ -379,7 +356,7 @@ make_number(Lexer *x, bool prefixed)
     if (!lstring_to_number(s, &d)) {
         error(x, "Malformed number");
     }
-    return make_token_number(x, d);
+    return Token::make(TOKEN_NUMBER, /* number */ d);
 }
 
 static int
@@ -434,7 +411,7 @@ make_string(Lexer *x, char q)
     // Skip the quote, which we initially saved to the buffer.
     LString  ls = slice_from(get_lexeme(x), 1);
     OString *os = ostring_new(vm, ls);
-    return make_token_ostring(x, TOKEN_STRING, os);
+    return Token::make_ostring(TOKEN_STRING, os);
 }
 
 static Token
@@ -508,11 +485,11 @@ make_keyword_ident(Lexer *x)
     }
 
     if (type != TOKEN_IDENT && slice_eq(word, token_strings[type])) {
-        return make_token(x, type);
+        return Token::make(type);
     }
 
     OString *os = ostring_new(x->vm, word);
-    return make_token_ostring(x, TOKEN_IDENT, os);
+    return Token::make_ostring(TOKEN_IDENT, os);
 }
 
 Token
@@ -528,7 +505,7 @@ lexer_lex(Lexer *x)
     builder_reset(x->builder);
     skip_whitespace(x);
     if (is_eof(x)) {
-        return make_token(x, TOKEN_EOF);
+        return Token::make(TOKEN_EOF);
     }
 
     ch = save_advance(x);
@@ -558,7 +535,7 @@ lexer_lex(Lexer *x)
             // Because we saved the opening, skip it here.
             LString  ls = slice_from(get_lexeme(x), nest_open + 2);
             OString *os = ostring_new(x->vm, ls);
-            return make_token_ostring(x, TOKEN_STRING, os);
+            return Token::make_ostring(TOKEN_STRING, os);
         }
         type = TOKEN_OPEN_BRACE;
         break;
@@ -622,7 +599,7 @@ lexer_lex(Lexer *x)
     if (type == TOKEN_INVALID) {
         error(x, "Unexpected character");
     }
-    return make_token(x, type);
+    return Token::make(type);
 }
 
 /**

@@ -40,21 +40,27 @@ enum Token_Type {
 };
 
 struct LULU_PRIVATE Token {
-    Token_Type  type = TOKEN_INVALID;
-    int         line = -1;
+    Token_Type  type;
     union {
         double   number;
-        OString *ostring = nullptr;
+        OString *ostring;
     };
 
     static constexpr Token
-    make(Token_Type type, int line, Number number = 0)
+    make(Token_Type type, Number number = 0)
     {
         Token t{
             /* type */              type,
-            /* line */              line,
             /* <unnamed>::number */ {number},
         };
+        return t;
+    }
+
+    static constexpr Token
+    make_ostring(Token_Type type, OString *ostring)
+    {
+        Token t = make(type);
+        t.ostring = ostring;
         return t;
     }
 };
