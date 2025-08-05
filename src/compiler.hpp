@@ -184,7 +184,7 @@ LULU_FUNC void
 compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right);
 
 LULU_FUNC void
-compiler_code_return(Compiler *c, u16 reg, u16 count, bool is_vararg);
+compiler_code_return(Compiler *c, u16 reg, u16 count);
 
 
 /**

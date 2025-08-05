@@ -21,6 +21,5 @@ closure_lua_new(lulu_VM *vm, Chunk *p)
     f->n_upvalues = 0;
     f->is_c       = false;
     f->chunk      = p;
-    f->n_params   = 0;
     return reinterpret_cast<Closure *>(f);
 }

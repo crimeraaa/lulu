@@ -18,7 +18,7 @@ struct LULU_PRIVATE Call_Frame {
     Slice<Value>       window;
     Closure           *function;
     const Instruction *saved_ip;
-    int                expected_returned;
+    int                to_return;
 
     bool
     is_c() const noexcept
@@ -172,12 +172,12 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets);
 
 /**
  * @brief
- *  -   Prepares a function call for the Lua or C function at `ra`.
- *  -   If it is a C function, it is called directly.
- *  -   Otherwise, if it is a Lua function, it can be called by `vm_execute()`.
+ *      Prepares a function call for the Lua or C function at `ra`.
+ *      If it is a C function, it is called directly. Otherwise,
+ *      if it is a Lua function, it can be called by `vm_execute()`.
  */
 LULU_FUNC Call_Type
-vm_call_init(lulu_VM *vm, const Value *ra, int argc, int expected_returned);
+vm_call_init(lulu_VM *vm, const Value *ra, int argc, int to_return);
 
 
 /**

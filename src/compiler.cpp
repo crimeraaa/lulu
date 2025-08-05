@@ -717,9 +717,9 @@ compiler_set_variable(Compiler *c, Expr *restrict var, Expr *restrict expr)
 }
 
 void
-compiler_code_return(Compiler *c, u16 reg, u16 count, bool is_vararg)
+compiler_code_return(Compiler *c, u16 reg, u16 count)
 {
-    compiler_code_abc(c, OP_RETURN, reg, count, cast(u16)is_vararg);
+    compiler_code_abc(c, OP_RETURN, reg, count, 0);
 }
 
 void

@@ -120,7 +120,7 @@ const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_FOR_LOOP */   FOR_LIKE,
     /* OP_FOR_IN_LOOP */ FOR_IN_LIKE,
     /* OP_CALL */       FUNC_LIKE,
-    /* OP_RETURN */     FUNC_LIKE,
+    /* OP_RETURN */     ABC(/* test */ false, /* a */ false, OPARG_OTHER, OPARG_UNUSED),
 };
 
 static constexpr unsigned int

@@ -36,7 +36,7 @@ OP_FOR_IN_LOOP, // A   C | R(A+3:A+3+C) := R(A)(R(A+1), R(A+2));
                 //       | if R(A+3) != nil then R(A+2) := R(A+3)
                 //       | else ip++
 OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
-OP_RETURN,      // A B C | return R(A:A+B)
+OP_RETURN,      // A B   | return R(A:A+B)
 };
 
 // To avoid too much stack usage, we separate calls to `OP_SET_ARRAY` by

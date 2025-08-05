@@ -27,7 +27,7 @@ report_error(lulu_VM *vm)
  *      1.) The current stack top is index `1`.
  *      2.) It contains the 'main' `function`.
  */
-static void
+static lulu_Error
 run(lulu_VM *vm)
 {
     lulu_Error e = lulu_pcall(vm, 0, LULU_MULTRET);
@@ -44,6 +44,7 @@ run(lulu_VM *vm)
     }
     /* If `e == LULU_ERROR_RUNTIME`, main function is still on top. */
     lulu_set_top(vm, 0);
+    return e;
 }
 
 typedef struct {
@@ -129,16 +130,16 @@ run_file(lulu_VM *vm, const char *file_name)
     lulu_Error  e;
     r.file = fopen(file_name, "r");
     if (r.file == NULL) {
+        fprintf(stderr, "Failed to open file '%s'.\n", file_name);
         return EXIT_FAILURE;
     }
     e = lulu_load(vm, file_name, reader_file, &r);
     fclose(r.file);
     if (e == LULU_OK) {
-        run(vm);
-    } else {
-        report_error(vm);
+        return run(vm);
     }
-    return EXIT_SUCCESS;
+    report_error(vm);
+    return EXIT_FAILURE;
 }
 
 typedef struct {

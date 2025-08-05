@@ -28,7 +28,8 @@ struct LULU_PRIVATE Chunk {
     OString *source;
     int line_defined;
     int last_line_defined;
-    int stack_used;
+    u16 n_params;
+    u16 stack_used;
 };
 
 static constexpr u16 VARARG = Instruction::MAX_B;

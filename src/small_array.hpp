@@ -25,7 +25,7 @@ small_array_resize(Small_Array<T, N> *sa, isize n)
 
 template<class T, auto N>
 LULU_FUNC inline void
-small_array_push(Small_Array<T, N> *sa, T v)
+small_array_push(Small_Array<T, N> *sa, const T &v)
 {
     sa->data[sa->len++] = v;
 }

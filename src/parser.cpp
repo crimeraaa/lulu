@@ -229,7 +229,7 @@ consume_to_close(Parser *p, Token_Type expected, Token_Type to_close, int line)
  *  -   We don't push the last one to allow optimizations.
  */
 static Expr_List
-expr_list(Parser *p, Compiler *c)
+expression_list(Parser *p, Compiler *c)
 {
     Expr e = expression(p, c);
     u16  n = 1;
@@ -242,23 +242,21 @@ expr_list(Parser *p, Compiler *c)
 }
 
 static void
-return_stmt(Parser *p, Compiler *c)
+return_statement(Parser *p, Compiler *c)
 {
     u16       ra = c->free_reg;
-    bool      is_vararg = false;
     Expr_List e{DEFAULT_EXPR, 0};
     if (block_continue(p) && !check(p, TOKEN_SEMI)) {
-        e = expr_list(p, c);
-        // if (e.has_multret()) {
-        //     compiler_set_returns(c, &e.last, VARARG);
-        //     ra        = cast(u8)small_array_len(c->active);
-        //     is_vararg = true;
-        // } else {
-        compiler_expr_next_reg(c, &e.last);
-        // }
+        e = expression_list(p, c);
+        if (e.last.has_multret()) {
+            compiler_set_returns(c, &e.last, VARARG);
+            ra      = cast(u8)small_array_len(c->active);
+            e.count = VARARG;
+        } else {
+            compiler_expr_next_reg(c, &e.last);
+        }
     }
-
-    compiler_code_return(c, ra, e.count, is_vararg);
+    compiler_code_return(c, ra, e.count);
 }
 
 struct LULU_PRIVATE Assign {
@@ -317,7 +315,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 
     consume(p, TOKEN_ASSIGN);
 
-    Expr_List e    = expr_list(p, c);
+    Expr_List e    = expression_list(p, c);
     Assign   *iter = last;
 
     if (n_vars != e.count) {
@@ -381,7 +379,7 @@ local_start(Compiler *c, u16 n)
 }
 
 static void
-local_stmt(Parser *p, Compiler *c)
+local_statement(Parser *p, Compiler *c)
 {
     u16 n = 0;
     do {
@@ -394,7 +392,7 @@ local_stmt(Parser *p, Compiler *c)
 
     Expr_List args{DEFAULT_EXPR, 0};
     if (match(p, TOKEN_ASSIGN)) {
-        args = expr_list(p, c);
+        args = expression_list(p, c);
     }
 
     assign_adjust(c, n, &args);
@@ -406,7 +404,7 @@ local_stmt(Parser *p, Compiler *c)
 }
 
 static isize
-cond(Parser *p, Compiler *c)
+condition(Parser *p, Compiler *c)
 {
     Expr cond = expression(p, c);
     // All 'falses' are equal here.
@@ -418,18 +416,18 @@ cond(Parser *p, Compiler *c)
 }
 
 static isize
-if_cond(Parser *p, Compiler *c)
+if_condition(Parser *p, Compiler *c)
 {
-    isize pc = cond(p, c);
+    isize pc = condition(p, c);
     consume(p, TOKEN_THEN);
     block(p, c);
     return pc;
 }
 
 static void
-if_stmt(Parser *p, Compiler *c)
+if_statement(Parser *p, Compiler *c)
 {
-    isize  then_jump = if_cond(p, c);
+    isize  then_jump = if_condition(p, c);
     isize  else_jump = NO_JUMP;
 
     while (match(p, TOKEN_ELSEIF)) {
@@ -438,7 +436,7 @@ if_stmt(Parser *p, Compiler *c)
 
         // A false test must jump to here to try the next `elseif` block.
         compiler_jump_patch(c, then_jump);
-        then_jump = if_cond(p, c);
+        then_jump = if_condition(p, c);
     }
 
     if (match(p, TOKEN_ELSE)) {
@@ -453,10 +451,10 @@ if_stmt(Parser *p, Compiler *c)
 }
 
 static void
-while_stmt(Parser *p, Compiler *c, int line)
+while_statement(Parser *p, Compiler *c, int line)
 {
     isize init_pc = compiler_label_get(c);
-    isize exit_pc = cond(p, c);
+    isize exit_pc = condition(p, c);
     consume(p, TOKEN_DO);
 
     // All `break` should go here, not in `block()`.
@@ -478,7 +476,7 @@ while_stmt(Parser *p, Compiler *c, int line)
 }
 
 static void
-repeat_stmt(Parser *p, Compiler *c, int line)
+repeat_statement(Parser *p, Compiler *c, int line)
 {
     Block b;
     block_push(c, &b, /* breakable */ true);
@@ -487,7 +485,7 @@ repeat_stmt(Parser *p, Compiler *c, int line)
     block(p, c);
     consume_to_close(p, TOKEN_UNTIL, TOKEN_REPEAT, line);
 
-    isize jump_pc = cond(p, c);
+    isize jump_pc = condition(p, c);
     compiler_jump_patch(c, jump_pc, body_pc);
 
     block_pop(c);
@@ -613,7 +611,7 @@ for_generic(Parser *p, Compiler *c, OString *ident)
      *      3.) The control variable (local 2)
      *          -   The second argument to the generator function.
      */
-    Expr_List e = expr_list(p, c);
+    Expr_List e = expression_list(p, c);
     assign_adjust(c, 3, &e);
     compiler_check_stack(c, 3);
     for_body(p, c, gen_reg, n_vars, /* is_numeric */ false);
@@ -629,7 +627,7 @@ for_generic(Parser *p, Compiler *c, OString *ident)
  *      although it could be argued that it is not particularly 'clean'.
  */
 static void
-for_stmt(Parser *p, Compiler *c, int line)
+for_statement(Parser *p, Compiler *c, int line)
 {
     // Scope for loop control variables.
     Block b;
@@ -655,7 +653,7 @@ for_stmt(Parser *p, Compiler *c, int line)
 }
 
 static void
-break_stmt(Parser *p, Compiler *c)
+break_statement(Parser *p, Compiler *c)
 {
     Block *b = c->block;
 
@@ -690,7 +688,7 @@ static void
 function_close(Compiler *c)
 {
     lulu_VM *vm = c->vm;
-    compiler_code_return(c, /* reg */ 0, /* count */ 0, /* is_vararg */ false);
+    compiler_code_return(c, /* reg */ 0, /* count */ 0);
 
 #ifdef LULU_DEBUG_PRINT_CODE
     debug_disassemble(c->chunk);
@@ -755,28 +753,32 @@ function_push(Parser *p, Compiler *c)
 }
 
 static Expr
-function_defn(Parser *p, Compiler *enclosing, int fline)
+function_definition(Parser *p, Compiler *enclosing, int fline)
 {
     Compiler c = function_open(p->vm, p, enclosing);
+    Chunk   *f = c.chunk;
     int pline = p->last_line;
-    c.chunk->line_defined = pline;
+    f->line_defined = fline;
     consume(p, TOKEN_OPEN_PAREN);
 
     // Prevent segfaults when calling `local_push`.
     Block b;
-    u16 n_params = 0;
     block_push(&c, &b, /* breakable */ false);
     if (!check(p, TOKEN_CLOSE_PAREN)) {
+        u16 n = 0;
         do {
             OString *ident = consume_ident(p);
             local_push(p, &c, ident);
-            n_params++;
+            n++;
         } while (match(p, TOKEN_COMMA));
+        local_start(&c, n);
+        compiler_reserve_reg(&c, n);
+        f->n_params = n;
     }
     consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, pline);
     chunk(p, &c);
     block_pop(&c);
-    c.chunk->last_line_defined = p->lexer.line;
+    f->last_line_defined = p->lexer.line;
     consume_to_close(p, TOKEN_END, TOKEN_FUNCTION, fline);
     function_close(&c);
     return function_push(p, &c);
@@ -786,7 +788,21 @@ static void
 function_decl(Parser *p, Compiler *c, int fline)
 {
     Expr var  = function_var(p, c);
-    Expr body = function_defn(p, c, fline);
+    Expr body = function_definition(p, c, fline);
+    compiler_set_variable(c, &var, &body);
+}
+
+static void
+local_function(Parser *p, Compiler *c, int line)
+{
+    OString *ident = consume_ident(p);
+    local_push(p, c, ident);
+    local_start(c, 1);
+
+    Expr var = Expr::make_reg(EXPR_LOCAL, c->free_reg);
+    compiler_reserve_reg(c, 1);
+
+    Expr body = function_definition(p, c, line);
     compiler_set_variable(c, &var, &body);
 }
 
@@ -798,7 +814,7 @@ declaration(Parser *p, Compiler *c)
     switch (t.type) {
     case TOKEN_BREAK:
         advance(p); // skip 'break'
-        break_stmt(p, c);
+        break_statement(p, c);
         break;
     case TOKEN_DO:
         advance(p); // skip `do`
@@ -807,7 +823,7 @@ declaration(Parser *p, Compiler *c)
         break;
     case TOKEN_FOR:
         advance(p); // skip 'for'
-        for_stmt(p, c, line);
+        for_statement(p, c, line);
         break;
     case TOKEN_FUNCTION:
         advance(p); // skip 'function'
@@ -815,27 +831,27 @@ declaration(Parser *p, Compiler *c)
         break;
     case TOKEN_IF:
         advance(p); // skip 'if'
-        if_stmt(p, c);
+        if_statement(p, c);
         break;
     case TOKEN_LOCAL:
         advance(p); // skip `local`
         if (match(p, TOKEN_FUNCTION)) {
-            error(p, "local function not yet implemented");
+            local_function(p, c, line);
         } else {
-            local_stmt(p, c);
+            local_statement(p, c);
         }
         break;
     case TOKEN_WHILE:
         advance(p); // skip 'while'
-        while_stmt(p, c, line);
+        while_statement(p, c, line);
         break;
     case TOKEN_REPEAT:
         advance(p); // skip 'repeat'
-        repeat_stmt(p, c, line);
+        repeat_statement(p, c, line);
         break;
     case TOKEN_RETURN:
         advance(p); // skip 'return'
-        return_stmt(p, c);
+        return_statement(p, c);
         break;
     case TOKEN_IDENT: {
         Assign a{nullptr, expression(p, c)};
@@ -1047,7 +1063,7 @@ function_call(Parser *p, Compiler *c, Expr *e)
 {
     Expr_List args{DEFAULT_EXPR, 0};
     if (!check(p, TOKEN_CLOSE_PAREN)) {
-        args = expr_list(p, c);
+        args = expression_list(p, c);
         compiler_set_returns(c, &args.last, VARARG);
     }
     consume(p, TOKEN_CLOSE_PAREN);
@@ -1076,7 +1092,8 @@ function_call(Parser *p, Compiler *c, Expr *e)
 static Expr
 prefix_expr(Parser *p, Compiler *c)
 {
-    Token t = p->current;
+    Token t    = p->current;
+    int   line = p->last_line;
     advance(p); // Skip '<number>', '<ident>', '(' or '-'.
 
     OpCode unary_op;
@@ -1084,6 +1101,7 @@ prefix_expr(Parser *p, Compiler *c)
     case TOKEN_NIL:    return Expr::make(EXPR_NIL);
     case TOKEN_TRUE:   return Expr::make(EXPR_TRUE);
     case TOKEN_FALSE:  return Expr::make(EXPR_FALSE);
+    case TOKEN_FUNCTION: return function_definition(p, c, line);
     case TOKEN_NUMBER: return Expr::make_number(t.number);
     case TOKEN_STRING: {
         u32 i = compiler_add_ostring(c, t.ostring);

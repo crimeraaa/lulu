@@ -14,6 +14,7 @@ chunk_new(lulu_VM *vm, OString *source)
     dynamic_init(&p->code);
     dynamic_init(&p->lines);
     dynamic_init(&p->locals);
+    p->n_params           = 0;
     p->source             = source;
     p->line_defined       = 0;
     p->last_line_defined  = 0;

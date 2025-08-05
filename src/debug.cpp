@@ -287,7 +287,13 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         break;
     }
     case OP_RETURN:
-        printf("return R(%u:%u)", args.a, args.a + args.b);
+        printf("return ");
+        // Is vararg?
+        if (args.b == VARARG) {
+            printf("R(%u:)", args.a);
+        } else {
+            printf("R(%u:%u)", args.a, args.a + args.b);
+        }
         break;
     }
 
@@ -447,6 +453,15 @@ get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **ident)
         }
         Instruction i = get_variable_ip(p, pc, reg);
         switch (i.op()) {
+        // Concept check: `local f; f()`
+        case OP_MOVE: {
+            u16 a = i.a();
+            u16 b = i.b();
+            if (b < a) {
+                return get_obj_name(vm, cf, b, ident);
+            }
+            break;
+        }
         case OP_GET_GLOBAL: {
             Value k = p->constants[i.bx()];
             lulu_assert(k.is_string());
@@ -560,7 +575,7 @@ get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
     cf--;
     isize pc = get_current_pc(vm, cf);
     Instruction i = cf->to_lua()->chunk->code[pc];
-    if (i.op() == OP_CALL) {
+    if (i.op() == OP_CALL || i.op() == OP_FOR_IN_LOOP) {
         return get_obj_name(vm, cf, i.a(), name);
     }
     // No useful name can be found.

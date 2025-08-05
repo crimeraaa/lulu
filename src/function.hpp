@@ -8,7 +8,6 @@
 struct LULU_PRIVATE Closure_Lua {
     CLOSURE_HEADER;
     Chunk *chunk;
-    int    n_params;
 };
 
 struct LULU_PRIVATE Closure_C {

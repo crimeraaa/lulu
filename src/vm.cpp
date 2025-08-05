@@ -263,13 +263,21 @@ vm_pop(lulu_VM *vm)
     return v;
 }
 
+[[noreturn]]
+static void
+overflow_error(lulu_VM *vm, isize n, isize limit, const char *what)
+{
+    char buf[128];
+    sprintf(buf, "%" ISIZE_FMT " / %" ISIZE_FMT, n, limit);
+    vm_runtime_error(vm, "C stack overflow (%s %s used)", buf, what);
+}
+
 void
 vm_check_stack(lulu_VM *vm, int n)
 {
     isize stop = vm_top_absindex(vm) + cast_isize(n);
     if (stop >= count_of(vm->stack)) {
-        vm_runtime_error(vm, "Stack overflow: %" ISIZE_FMT " / %" ISIZE_FMT " stack slots used",
-            stop, count_of(vm->stack));
+        overflow_error(vm, stop, count_of(vm->stack), "stack slots");
     }
 }
 
@@ -280,31 +288,31 @@ protect(lulu_VM *vm, const Instruction *ip)
 }
 
 static void
-frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
+frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int to_return)
 {
     // Before transferring control to the new caller, inform the previous
     // caller of where we last left off.
-    if (vm->caller != nullptr && vm->caller->is_lua()) {
-        vm->caller->saved_ip = vm->saved_ip;
+    Call_Frame *cf = vm->caller;
+    if (cf != nullptr && cf->is_lua()) {
+        cf->saved_ip = vm->saved_ip;
     }
 
-    Call_Frame cf;
-    cf.function           = fn;
-    cf.window             = window;
-    cf.saved_ip           = nullptr;
-    cf.expected_returned  = expected_returned;
-    small_array_push(&vm->frames, cf);
+    isize n = small_array_len(vm->frames);
+    if (n >= small_array_cap(vm->frames)) {
+        overflow_error(vm, n, small_array_cap(vm->frames), "call frames");
+    }
+    small_array_resize(&vm->frames, n + 1);
 
-    vm->caller = small_array_get_ptr(&vm->frames, small_array_len(vm->frames) - 1);
+    // Caller state
+    cf = small_array_get_ptr(&vm->frames, n);
+    cf->function  = fn;
+    cf->window    = window;
+    cf->saved_ip  = nullptr;
+    cf->to_return = to_return;
+
+    // VM state
+    vm->caller = cf;
     vm->window = window;
-
-    if (fn->is_lua()) {
-        Closure_Lua *f = fn->to_lua();
-        // Initialize the stack frame (sans parameters) to all nil.
-        auto dst = slice_from(window, cast_isize(f->n_params));
-        fill(dst, nil);
-        vm->saved_ip = raw_data(f->chunk->code);
-    }
 }
 
 static Call_Frame *
@@ -327,12 +335,12 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
 {
     // Account for any changes in the stack made by unprotected main function
     // or C functions.
-    Call_Frame *caller = vm->caller;
-    if (caller != nullptr && caller->is_c()) {
+    Call_Frame *cf = vm->caller;
+    if (cf != nullptr && cf->is_c()) {
         // Ensure both slices have the same underlying data.
         // If this fails, this means we did not manage the call frames properly.
-        lulu_assert(raw_data(vm->window) == raw_data(caller->window));
-        caller->window = vm->window;
+        lulu_assert(raw_data(vm->window) == raw_data(cf->window));
+        cf->window = vm->window;
     }
 
     // `vm_call_fini()` may adjust `vm->window` in a different way than wanted.
@@ -352,79 +360,92 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
 }
 
 Call_Type
-vm_call_init(lulu_VM *vm, const Value *ra, int argc, int expected_returned)
+vm_call_init(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
 {
     if (!ra->is_function()) {
         debug_type_error(vm, "call", ra);
     }
 
-    Closure *fn       = ra->to_function();
+    Closure *cl       = ra->to_function();
     isize    fn_index = ptr_index(vm->stack, ra);
 
     // Calling function isn't included in the stack frame.
     isize base        = fn_index + 1;
-    bool  vararg_call = (argc == VARARG);
+    bool  vararg_call = (n_args == VARARG);
 
     // Can call directly?
-    if (fn->is_c()) {
+    if (cl->is_c()) {
         vm_check_stack(vm, LULU_STACK_MIN);
 
         isize top;
         if (vararg_call) {
-            top  = vm_top_absindex(vm);
-            argc = cast_int(top - base);
+            top    = vm_top_absindex(vm);
+            n_args = cast_int(top - base);
         } else {
-            top = base + cast_isize(argc);
+            top = base + cast_isize(n_args);
         }
-        frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
+        Slice<Value> window = slice(vm->stack, base, top);
+        frame_push(vm, cl, window, n_rets);
 
-        int actual_returned = fn->c.callback(vm);
-        Value *first_ret = (actual_returned > 0)
-            ? &vm->window[len(vm->window) - cast_isize(actual_returned)]
+        n_rets = cl->c.callback(vm);
+        Value *first_ret = (n_rets > 0)
+            ? &vm->window[len(vm->window) - cast_isize(n_rets)]
             : &vm->stack[fn_index];
 
-        Slice<Value> results = slice_pointer_len(first_ret, actual_returned);
+        Slice<Value> results = slice_pointer_len(first_ret, n_rets);
         vm_call_fini(vm, results);
         return CALL_C;
     }
 
-    isize top = base + cast_isize(fn->lua.chunk->stack_used);
-    int extra = fn->lua.n_params - ((vararg_call) ? cast_int(top - base) : argc);
-    // Some parameters weren't provided so they need to be initialized to nil?
-    if (extra > 0) {
-        top += cast_isize(extra);
+    Chunk *p  = cl->to_lua()->chunk;
+    isize top = base + cast_isize(p->stack_used);
+    if (vararg_call) {
+        n_args = cast_int(top - base);
     }
+
     // May invalidate `ra`.
     vm_check_stack(vm, cast_int(top - base));
-    frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
+    Slice<Value> window = slice(vm->stack, base, top);
+
+    // Some parameters weren't provided so they need to be initialized to nil?
+    int extra = p->n_params - n_args;
+    isize start_nil = base + p->n_params;
+    if (extra > 0) {
+        start_nil -= extra;
+    }
+    Slice<Value> to_init = slice(vm->stack, start_nil, top);
+    fill(to_init, nil);
+    frame_push(vm, cl, window, n_rets);
+    // This must occur AFTER `frame_push()` because it also uses the VM saved ip.
+    vm->saved_ip = raw_data(p->code);
     return CALL_LUA;
 }
 
 Call_Type
 vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
 {
-    Call_Frame *frame = vm->caller;
-    bool vararg_return = (frame->expected_returned == VARARG);
+    Call_Frame *cf = vm->caller;
+    bool vararg_return = (cf->to_return == VARARG);
 
     // Move results to the right place- overwrites calling function object.
     Slice<Value> dst{vm_base_ptr(vm) - 1, len(results)};
     copy(dst, results);
 
-    int extra = frame->expected_returned - len(results);
-    if (!vararg_return && extra > 0) {
+    int n_extra = cf->to_return - len(results);
+    if (!vararg_return && n_extra > 0) {
         // Need to extend `dst` so that it also sees the extra values.
-        dst.len += cast_isize(extra);
+        dst.len += cast_isize(n_extra);
 
         // Remaining return values are initialized to nil, e.g. in assignments.
         Slice<Value> remaining = slice_from(dst, len(results));
         fill(remaining, nil);
     }
 
-    frame = frame_pop(vm);
+    cf = frame_pop(vm);
 
     // In an unprotected call, so no previous stack frame to restore.
     // This allows the `lulu_call()` API to work properly in such cases.
-    if (frame == nullptr) {
+    if (cf == nullptr) {
         vm->window = dst;
         return CALL_C;
     }
@@ -437,7 +458,7 @@ vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
     }
 
     // We will re-enter `vm_execute()`.
-    vm->saved_ip = frame->saved_ip;
+    vm->saved_ip = cf->saved_ip;
     return CALL_LUA;
 }
 
@@ -488,19 +509,21 @@ arith(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
     if (vm_to_number(rkb, &tmp_b) && vm_to_number(rkc, &tmp_c)) {
         Number x = tmp_b.to_number();
         Number y = tmp_c.to_number();
+        Number n;
         switch (mt) {
-        case MT_ADD: ra->set_number(lulu_Number_add(x, y)); break;
-        case MT_SUB: ra->set_number(lulu_Number_sub(x, y)); break;
-        case MT_MUL: ra->set_number(lulu_Number_mul(x, y)); break;
-        case MT_DIV: ra->set_number(lulu_Number_div(x, y)); break;
-        case MT_MOD: ra->set_number(lulu_Number_mod(x, y)); break;
-        case MT_POW: ra->set_number(lulu_Number_pow(x, y)); break;
-        case MT_UNM: ra->set_number(lulu_Number_unm(x));    break;
+        case MT_ADD: n = lulu_Number_add(x, y); break;
+        case MT_SUB: n = lulu_Number_sub(x, y); break;
+        case MT_MUL: n = lulu_Number_mul(x, y); break;
+        case MT_DIV: n = lulu_Number_div(x, y); break;
+        case MT_MOD: n = lulu_Number_mod(x, y); break;
+        case MT_POW: n = lulu_Number_pow(x, y); break;
+        case MT_UNM: n = lulu_Number_unm(x);    break;
         default:
             lulu_panicf("Invalid Metamethod(%i)", mt);
             lulu_unreachable();
             break;
         }
+        ra->set_number(n);
         return;
     }
     debug_arith_error(vm, rkb, rkc);
@@ -855,28 +878,33 @@ re_entry:
             break;
         }
         case OP_CALL: {
-            int argc              = cast_int(inst.b());
-            int expected_returned = cast_int(inst.c());
+            int n_args = cast_int(inst.b());
+            int n_rets = cast_int(inst.c());
             protect(vm, ip);
 
-            Call_Type t = vm_call_init(vm, ra, argc, expected_returned);
+            Call_Type t = vm_call_init(vm, ra, n_args, n_rets);
             if (t == CALL_LUA) {
                 n_calls++;
+                printf("=== BEGIN CALL ===\n");
                 goto re_entry;
             }
             break;
         }
         case OP_RETURN: {
-            int actual_returned = cast_int(inst.b());
+            int n_rets = cast_int(inst.b());
+            if (n_rets == VARARG) {
+                n_rets = cast_int(len(vm->window));
+            }
+
             protect(vm, ip);
-            Slice<Value> returned = slice_pointer_len(ra, actual_returned);
+            Slice<Value> returned = slice_pointer_len(ra, n_rets);
             vm_call_fini(vm, returned);
             n_calls--;
             if (n_calls == 0) {
                 return;
             }
+            printf("\n=== END CALL ===\n\n");
             goto re_entry;
-            break;
         }
         default:
             lulu_panicf("Invalid OpCode(%i)", op);
