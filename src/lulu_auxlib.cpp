@@ -335,7 +335,7 @@ lulu_set_library(lulu_VM *vm, const char *libname,
 
     for (int i = 0; i < n; i++) {
         // TODO(2025-07-01): Ensure key and value are not collected!
-        lulu_push_cfunction(vm, library[i].function);
+        lulu_push_c_function(vm, library[i].function);
         lulu_set_field(vm, -2, library[i].name);
     }
 }
@@ -350,7 +350,7 @@ LULU_API void
 lulu_open_libs(lulu_VM *vm)
 {
     for (int i = 0; i < lulu_count_library(libs); i++) {
-        lulu_push_cfunction(vm, libs[i].function);
+        lulu_push_c_function(vm, libs[i].function);
         lulu_push_string(vm, libs[i].name);
         lulu_call(vm, 1, 0);
     }

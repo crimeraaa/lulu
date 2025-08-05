@@ -87,6 +87,8 @@ compiler_add_number(Compiler *c, Number n);
 LULU_FUNC u32
 compiler_add_ostring(Compiler *c, OString *s);
 
+LULU_FUNC void
+compiler_check_stack(Compiler *c, u16 n);
 
 /**
  * @brief

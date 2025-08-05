@@ -164,3 +164,54 @@ table_resize(lulu_VM *vm, Table *t, isize new_cap)
     t->entries = new_entries;
     t->count   = n;
 }
+
+
+/**
+ * @param k
+ *      Either `nil` to signal the start of the iteration, or some value
+ *      in `t->entries`. Note that calls to this function MUST return
+ *      occupied indices in order; 1, 2, 3, 5, 7, etc.
+ */
+static isize
+find_next(lulu_VM *vm, Table *t, const Value &k)
+{
+    // First iteration, always start at index 0.
+    if (k.is_nil()) {
+        return 0;
+    }
+
+    usize hash = cast_usize(hash_value(k));
+    usize wrap = cast_usize(len(t->entries)) - 1;
+
+    // The main index of `k` may be colliding; find its actual position
+    for (usize i = hash & wrap; /* empty */; i = (i + 1) & wrap) {
+        Entry e = t->entries[i];
+        if (e.key == k) {
+            // Return index of *next* element.
+            return cast_isize(i) + 1;
+        } else if (e.key.is_nil()) {
+            break;
+        }
+    }
+    vm_runtime_error(vm, "Invalid key to 'next'");
+    return 0;
+}
+
+bool
+table_next(lulu_VM *vm, Table *t, Value *restrict k, Value *restrict v)
+{
+    // Find the index of the element after `k`, or `0` if starting out.
+    isize i = find_next(vm, t, *k);
+
+    // Given this starting index, find the first non-nil element.
+    for (; i < len(t->entries); i++) {
+        Entry e = t->entries[i];
+        if (!e.key.is_nil()) {
+            *k = e.key;
+            *v = e.value;
+            return true;
+        }
+    }
+    // No more elements.
+    return false;
+}

@@ -204,10 +204,15 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         print_reg(p, args.b, pc, "] := ");
         print_reg(p, args.c, pc);
         break;
-    case OP_SET_ARRAY:
-        print_reg(p, args.a, pc, "[%u*FPF + i] := R(%u+i) for 1 <= i <= %u",
-            args.c, args.a, args.b);
+    case OP_SET_ARRAY: {
+        isize offset = cast_isize(args.c) * FIELDS_PER_FLUSH;
+        isize start  = cast_isize(args.a) + 1;
+        isize stop   = start + cast_isize(args.b);
+        print_reg(p, args.a, pc,
+            "[%" ISIZE_FMT ":%" ISIZE_FMT "] := R(%"  ISIZE_FMT ":%" ISIZE_FMT ")",
+            offset + start, offset + stop, start, stop);
         break;
+    }
     case OP_ADD: arith(p, '+', args); break;
     case OP_SUB: arith(p, '-', args); break;
     case OP_MUL: arith(p, '*', args); break;
@@ -246,6 +251,10 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
     case OP_FOR_LOOP: {
         i32 offset = ip.sbx();
         printf("goto .code[%" ISIZE_FMT "] if loop", jump_resolve(pc, offset));
+        break;
+    }
+    case OP_FOR_IN_LOOP: {
+        printf("goto .code[%" ISIZE_FMT "] if not loop", jump_resolve(pc, 1));
         break;
     }
     case OP_JUMP: {

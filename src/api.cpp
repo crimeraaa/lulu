@@ -30,6 +30,15 @@ value_at(lulu_VM *vm, int i)
     default:
         break;
     }
+
+    // Must be an upvalue; try to resolve it.
+    Closure_C *f = vm->caller->to_c();
+
+    // Undo the pseudo index offset to get the actual upvalue index.
+    int up_i = (LULU_GLOBALS_INDEX - ii) - 1;
+    if (0 <= up_i && up_i < f->n_upvalues) {
+        return &f->upvalues[up_i];
+    }
     return &none;
 }
 
@@ -84,10 +93,10 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
     return vm;
 }
 
-LULU_API lulu_CFunction
-lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn)
+LULU_API lulu_C_Function
+lulu_set_panic(lulu_VM *vm, lulu_C_Function panic_fn)
 {
-    lulu_CFunction prev = vm->panic_fn;
+    lulu_C_Function prev = vm->panic_fn;
     vm->panic_fn = panic_fn;
     return prev;
 }
@@ -149,7 +158,7 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
 }
 
 struct LULU_PRIVATE C_PCall {
-    lulu_CFunction function;
+    lulu_C_Function function;
     void          *function_data;
 };
 
@@ -157,13 +166,13 @@ static void
 c_pcall(lulu_VM *vm, void *user_ptr)
 {
     C_PCall *d = reinterpret_cast<C_PCall *>(user_ptr);
-    lulu_push_cfunction(vm, d->function);
+    lulu_push_c_function(vm, d->function);
     lulu_push_userdata(vm, d->function_data);
     lulu_call(vm, 1, 0);
 }
 
 LULU_API lulu_Error
-lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
+lulu_c_pcall(lulu_VM *vm, lulu_C_Function function, void *function_data)
 {
     C_PCall d{function, function_data};
     lulu_Error e = vm_run_protected(vm, c_pcall, &d);
@@ -397,9 +406,16 @@ lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 }
 
 LULU_API void
-lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf)
+lulu_push_c_closure(lulu_VM *vm, lulu_C_Function cf, int n_upvalues)
 {
-    Closure *f = closure_c_new(vm, cf);
+    lulu_assert(n_upvalues >= 0);
+
+    Closure *f = closure_c_new(vm, cf, n_upvalues);
+    for (int i = 0; i < n_upvalues; i++) {
+        Value v = *value_at_stack(vm, -n_upvalues + i);
+        f->c.upvalues[i] = v;
+    }
+    lulu_pop(vm, n_upvalues);
     vm_push(vm, Value::make_function(f));
 }
 
@@ -472,6 +488,24 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key)
         Value v = vm_pop(vm);
         vm_table_set(vm, t, &k, v);
     }
+}
+
+LULU_API int
+lulu_next(lulu_VM *vm, int table_index)
+{
+    const Value *_t = value_at(vm, table_index);
+    lulu_assert(_t->is_table());
+    Table *t = _t->to_table();
+    Value *k = value_at_stack(vm, -1);
+    Value  v;
+    bool more = table_next(vm, t, k, &v);
+    if (more) {
+        vm_push(vm, v);
+    } else {
+        // No more elements, remove the key.
+        vm_pop(vm);
+    }
+    return cast_int(more);
 }
 
 LULU_API size_t

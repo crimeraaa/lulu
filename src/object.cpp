@@ -29,7 +29,8 @@ object_free(lulu_VM *vm, Object *o)
         // We never allocate a `Function *` as-is!
         Closure *f = &o->function;
         if (f->is_c()) {
-            mem_free(vm, &f->c);
+            Closure_C *cf = f->to_c();
+            mem_free(vm, &f->c, cf->size_upvalues(cf->n_upvalues));
         } else {
             mem_free(vm, &f->lua);
         }

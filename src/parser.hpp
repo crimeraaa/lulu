@@ -25,11 +25,11 @@ PARSER_MAX_RECURSE = 250;
 struct LULU_PRIVATE Parser {
     lulu_VM *vm;
     Lexer    lexer;
-    Token    consumed;
+    Token    current;
     Token    lookahead; // Used only in `parser.cpp:constructor()`.
     Builder *builder;
     Block   *block;
-    int      last_line; // Line of the token before `consumed`.
+    int      last_line; // Line of the token consumed, NOT `current`.
     int      n_calls;   // How many recursive C calls are we currently in?
 };
 

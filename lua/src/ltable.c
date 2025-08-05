@@ -170,9 +170,12 @@ bool luaH_next (lua_State *L, Table *t, StkId key) {
     }
   }
   for (i -= t->sizearray; i < sizenode(t); i++) {  /* then hash part */
-    if (!ttisnil(gval(gnode(t, i)))) {  /* a non-nil value? */
-      setobj2s(L, key, key2tval(gnode(t, i)));
-      setobj2s(L, key+1, gval(gnode(t, i)));
+    Node *n = gnode(t, i);
+    TValue *v = gval(n);
+    if (!ttisnil(v)) {  /* a non-nil value? */
+      TValue *k = key2tval(n);
+      setobj2s(L, key, k);
+      setobj2s(L, key+1, v);
       return true;
     }
   }

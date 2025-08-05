@@ -75,7 +75,7 @@ block_pop(Parser *p, Compiler *c)
 static bool
 block_continue(Parser *p)
 {
-    switch (p->consumed.type) {
+    switch (p->current.type) {
     case TOKEN_ELSE:
     case TOKEN_ELSEIF:
     case TOKEN_END:
@@ -119,7 +119,7 @@ parser_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     Parser p;
     p.vm        = vm;
     p.lexer     = lexer_make(vm, source, z, b);
-    p.consumed  = DEFAULT_TOKEN;
+    p.current  = DEFAULT_TOKEN;
     p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
     p.block     = nullptr;
@@ -138,10 +138,10 @@ advance(Parser *p)
     // Have a lookahead token to discharge?
     p->last_line = p->lexer.line;
     if (p->lookahead.type != TOKEN_INVALID) {
-        p->consumed  = p->lookahead;
+        p->current  = p->lookahead;
         p->lookahead = DEFAULT_TOKEN;
     } else {
-        p->consumed = lexer_lex(&p->lexer);
+        p->current = lexer_lex(&p->lexer);
     }
 }
 
@@ -157,7 +157,7 @@ lookahead(Parser *p)
 static bool
 check(Parser *p, Token_Type expected)
 {
-    return p->consumed.type == expected;
+    return p->current.type == expected;
 }
 
 static bool
@@ -177,12 +177,12 @@ error_at(Parser *p, Token_Type type, const char *msg)
     lexer_error(&p->lexer, type, msg);
 }
 
-// Throw an error using the current consumed token type.
+// Throw an error using the type of the current token.
 [[noreturn]]
 static void
 error(Parser *p, const char *msg)
 {
-    error_at(p, p->consumed.type, msg);
+    error_at(p, p->current.type, msg);
 }
 
 /**
@@ -198,6 +198,14 @@ consume(Parser *p, Token_Type expected)
         sprintf(buf, "Expected '%s'", token_cstring(expected));
         error(p, buf);
     }
+}
+
+static OString *
+consume_ident(Parser *p)
+{
+    Token t = p->current;
+    consume(p, TOKEN_IDENT);
+    return t.ostring;
 }
 
 
@@ -234,14 +242,6 @@ expr_list(Parser *p, Compiler *c)
     return {e, n};
 }
 
-static u32
-constant_string(Compiler *c, const Token *t)
-{
-    lulu_assert(t->type == TOKEN_IDENT);
-    u32 i = compiler_add_ostring(c, t->ostring);
-    return i;
-}
-
 static void
 return_stmt(Parser *p, Compiler *c)
 {
@@ -270,15 +270,17 @@ struct LULU_PRIVATE Assign {
 static void
 assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
 {
-    int extra = cast_int(n_vars) - cast_int(e->count);
-    // The last assigning expression can have variadic returns.
-    if (e->last.has_multret()) {
+    Expr *last  = &e->last;
+    int   extra = cast_int(n_vars) - cast_int(e->count);
+
+    // The last assigning expression has variadic returns?
+    if (last->has_multret()) {
         // Include the call itself.
         extra++;
         if (extra < 0) {
             extra = 0;
         }
-        compiler_set_returns(c, &e->last, cast(u16)extra);
+        compiler_set_returns(c, last, cast(u16)extra);
         if (extra > 1) {
             compiler_reserve_reg(c, cast(u16)(extra - 1));
         }
@@ -286,8 +288,8 @@ assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
     }
 
     // Need to close last expression?
-    if (e->last.type != EXPR_NONE) {
-        compiler_expr_next_reg(c, &e->last);
+    if (last->type != EXPR_NONE) {
+        compiler_expr_next_reg(c, last);
     }
 
     if (extra > 0) {
@@ -308,7 +310,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 
     if (match(p, TOKEN_COMMA)) {
         // Previous one is not needed anymore.
-        *t = p->consumed;
+        *t = p->current;
         Assign next{last, expression(p, c)};
         assignment(p, c, &next, n_vars + 1, t);
         return;
@@ -327,7 +329,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
         }
     } else {
         compiler_set_one_return(c, &e.last);
-        compiler_set_variable(c, &last->variable, &e.last);
+        compiler_set_variable(c, &iter->variable, &e.last);
         iter = iter->prev;
     }
 
@@ -367,10 +369,10 @@ local_push_literal(Parser *p, Compiler *c, LString lit)
     local_push(p, c, os);
 }
 
+// `lparser.c:adjustlocalvars()`
 static void
 local_start(Compiler *c, u16 n)
 {
-    // `lparser.c:adjust_locals()`
     isize pc = c->pc;
     Slice<u16>   active = small_array_slice(c->active);
     Slice<Local> locals = slice(c->chunk->locals);
@@ -384,9 +386,8 @@ local_stmt(Parser *p, Compiler *c)
 {
     u16 n = 0;
     do {
-        Token t = p->consumed;
-        consume(p, TOKEN_IDENT);
-        local_push(p, c, t.ostring);
+        OString *ident = consume_ident(p);
+        local_push(p, c, ident);
         n++;
     } while (match(p, TOKEN_COMMA));
     // Prevent lookup of uninitialized local variables, e.g. `local x = x`;
@@ -493,23 +494,132 @@ repeat_stmt(Parser *p, Compiler *c, int line)
     block_pop(p, c);
 }
 
-static u16
+static void
 expr_immediate(Parser *p, Compiler *c)
 {
     Expr e = expression(p, c);
-    return compiler_expr_next_reg(c, &e);
+    compiler_expr_next_reg(c, &e);
 }
 
 static void
-for_incr(Parser *p, Compiler *c)
+for_body(Parser *p, Compiler *c, u16 base_reg, u16 n_vars, bool is_numeric)
 {
+    consume(p, TOKEN_DO);
+
+    // 3 control variables and `n_vars` user-facing external variables
+    local_start(c, n_vars + 3);
+
+    // Control variables already reserved registers via their expressions or
+    // `assign_adjust()`, but user variables do not yet have registers.
+    compiler_reserve_reg(c, n_vars);
+
+    // goto <loop-pc>
+    isize prep_pc;
+    if (is_numeric) {
+        // goto `OP_FOR_LOOP`
+        prep_pc = compiler_code_asbx(c, OP_FOR_PREP, base_reg, NO_JUMP);
+    } else {
+        // goto `OP_FOR_IN_LOOP`
+        prep_pc = compiler_jump_new(c);
+    }
+
+    block(p, c);
+    compiler_jump_patch(c, prep_pc);
+
+    isize loop_pc;
+    isize target;
+    if (is_numeric) {
+        // can encode jump directly.
+        loop_pc = compiler_code_asbx(c, OP_FOR_LOOP, base_reg, NO_JUMP);
+        target  = loop_pc;
+    } else {
+        // can't encode jump directly; use a separate instruction.
+        loop_pc = compiler_code_abc(c, OP_FOR_IN_LOOP, base_reg, 0, n_vars);
+        target  = compiler_jump_new(c);
+    }
+    compiler_jump_patch(c, target, prep_pc + 1);
+}
+
+
+/**
+ * @param ident
+ *      The variable name of the external (user-facing) iterator variable.
+ */
+static void
+for_numeric(Parser *p, Compiler *c, OString *ident)
+{
+    u16 index_reg = c->free_reg;
+    consume(p, TOKEN_ASSIGN);
+    expr_immediate(p, c);
+
+    consume(p, TOKEN_COMMA);
+    expr_immediate(p, c);
+
     if (match(p, TOKEN_COMMA)) {
         expr_immediate(p, c);
     } else {
         Expr incr = Expr::make_number(1);
         compiler_expr_next_reg(c, &incr);
     }
+    // The next 3 locals are internal state used by the interpreter; the user
+    // has no way of modifying them (save for the potential debug library).
+    local_push_literal(p, c, "(for index)"_s);
+    local_push_literal(p, c, "(for limit)"_s);
+    local_push_literal(p, c, "(for increment)"_s);
+
+    // This is the user-facing (the 'external') index. It mirrors the
+    // internal for-index and is implicitly pushed/update as needed.
+    local_push(p, c, ident);
+
+    for_body(p, c, index_reg, /* n_vars */ 1, /* is_numeric */ true);
 }
+
+
+/**
+ * @brief
+ *      `'for' <ident> [ ',' <ident> ]* 'in' <expression> ',' <expression> ',' <expression> 'do'
+ *          <block>
+ *      'end'`
+ *
+ * @param ident
+ *      The variable name of the first (and potentially only) loop variable.
+ */
+static void
+for_generic(Parser *p, Compiler *c, OString *ident)
+{
+    local_push_literal(p, c, "(for generator)"_s);
+    local_push_literal(p, c, "(for state)"_s);
+    local_push_literal(p, c, "(for control)"_s);
+
+    u16 n_vars = 1;
+    local_push(p, c, ident);
+    while (match(p, TOKEN_COMMA)) {
+        ident = consume_ident(p);
+        local_push(p, c, ident);
+        n_vars++;
+    }
+    consume(p, TOKEN_IN);
+
+    u16 gen_reg = c->free_reg;
+
+    /**
+     * @brief
+     *      3 expressions are needed to keep state:
+     *
+     *      1.) The generator function (local 0)
+     *
+     *      2.) The state variable (local 1)
+     *          -   The first argument to the generator function.
+     *
+     *      3.) The control variable (local 2)
+     *          -   The second argument to the generator function.
+     */
+    Expr_List e = expr_list(p, c);
+    assign_adjust(c, 3, &e);
+    compiler_check_stack(c, 3);
+    for_body(p, c, gen_reg, n_vars, /* is_numeric */ false);
+}
+
 
 /**
  * @brief
@@ -522,40 +632,26 @@ for_incr(Parser *p, Compiler *c)
 static void
 for_stmt(Parser *p, Compiler *c, int line)
 {
+    // Scope for loop control variables.
     Block b;
     block_push(p, c, &b, /* breakable */ true);
 
-    Token t = p->consumed;
-    consume(p, TOKEN_IDENT);
-    consume(p, TOKEN_ASSIGN);
-
-    u16 index_reg = expr_immediate(p, c);
-    consume(p, TOKEN_COMMA);
-
-    expr_immediate(p, c);
-    for_incr(p, c);
-    consume(p, TOKEN_DO);
-
-    // The next 3 locals are internal state used by the interpreter; the user
-    // has no way of modifying them (save for the potential debug library).
-    local_push_literal(p, c, "(for index)"_s);
-    local_push_literal(p, c, "(for limit)"_s);
-    local_push_literal(p, c, "(for increment)"_s);
-
-    // This is the user-facing (the 'external') index. It mirrors the
-    // internal for-index and is implicitly pushed/update as needed.
-    local_push(p, c, t.ostring);
-    c->free_reg += 1;
-    local_start(c, 4);
-
-    isize prep_pc = compiler_code_asbx(c, OP_FOR_PREP, index_reg, NO_JUMP);
-    block(p, c);
-
+    OString *ident = consume_ident(p);
+    switch (p->current.type) {
+    // 'for' <ident> '=' <expression> ...
+    case TOKEN_ASSIGN:
+        for_numeric(p, c, ident);
+        break;
+    // 'for' <ident> [',' <ident>]* 'in' ...
+    case TOKEN_COMMA:
+    case TOKEN_IN:
+        for_generic(p, c, ident);
+        break;
+    default:
+        error(p, "'=' or 'in' expected");
+        break;
+    }
     consume_to_close(p, TOKEN_END, TOKEN_FOR, line);
-
-    isize loop_pc = compiler_code_asbx(c, OP_FOR_LOOP, index_reg, NO_JUMP);
-    compiler_jump_patch(c, prep_pc, loop_pc);       // goto `OP_FOR_LOOP`
-    compiler_jump_patch(c, loop_pc, prep_pc + 1);   // goto <loop-body>
     block_pop(p, c);
 }
 
@@ -579,7 +675,7 @@ break_stmt(Parser *p, Compiler *c)
 static void
 declaration(Parser *p, Compiler *c)
 {
-    Token t = p->consumed;
+    Token t = p->current;
     int   line = p->last_line;
     switch (t.type) {
     case TOKEN_BREAK:
@@ -618,7 +714,7 @@ declaration(Parser *p, Compiler *c)
     case TOKEN_IDENT: {
         Assign a{nullptr, expression(p, c)};
         // Differentiate `f().field = ...` and `f()`.
-        if (a.variable.type == EXPR_CALL) {
+        if (a.variable.has_multret()) {
             compiler_set_returns(c, &a.variable, 0);
         } else {
             assignment(p, c, &a, /* n_vars */ 1, &t);
@@ -718,10 +814,10 @@ static void
 ctor_field(Parser *p, Compiler *c, Constructor *ctor)
 {
     u16   reg = c->free_reg;
-    Token t   = p->consumed;
+    Token t   = p->current;
     Expr k;
     if (match(p, TOKEN_IDENT)) {
-        u32 i = constant_string(c, &t);
+        u32 i = compiler_add_ostring(c, t.ostring);
         k = Expr::make_index(EXPR_CONSTANT, i);
     } else {
         consume(p, TOKEN_OPEN_BRACE);
@@ -807,8 +903,8 @@ constructor(Parser *p, Compiler *c)
         // Discharge any previous array items.
         set_array(c, &ctor);
 
-        // Don't consume yet, `ctor_field()` needs <identifier> or '['.
-        Token_Type t = p->consumed.type;
+        // Don't consume yet, `ctor_field()` needs <ident> or '['.
+        Token_Type t = p->current.type;
         switch (t) {
         case TOKEN_IDENT: {
             if (lookahead(p) == TOKEN_ASSIGN) {
@@ -860,7 +956,7 @@ function_call(Parser *p, Compiler *c, Expr *e)
 
     lulu_assert(e->type == EXPR_DISCHARGED);
     u16 base = e->reg;
-    if (args.last.type == EXPR_CALL) {
+    if (args.last.has_multret()) {
         args.count = VARARG;
     } else {
         // Close last argument.
@@ -882,8 +978,8 @@ function_call(Parser *p, Compiler *c, Expr *e)
 static Expr
 prefix_expr(Parser *p, Compiler *c)
 {
-    Token t = p->consumed;
-    advance(p); // Skip '<number>', '<identifier>', '(' or '-'.
+    Token t = p->current;
+    advance(p); // Skip '<number>', '<ident>', '(' or '-'.
 
     OpCode unary_op;
     switch (t.type) {
@@ -921,7 +1017,7 @@ primary_expr(Parser *p, Compiler *c)
 {
     Expr e = prefix_expr(p, c);
     for (;;) {
-        switch (p->consumed.type) {
+        switch (p->current.type) {
         case TOKEN_OPEN_PAREN: {
             // Function to be called must be on top of the stack.
             compiler_expr_next_reg(c, &e);
@@ -930,19 +1026,17 @@ primary_expr(Parser *p, Compiler *c)
             break;
         }
         case TOKEN_DOT: {
-            // Table must in some register.
+            // Table must be in some register, it can be a local.
             compiler_expr_any_reg(c, &e);
             advance(p); // Skip '.'.
-            Token t = p->consumed;
-            consume(p, TOKEN_IDENT);
-
-            u32  i = constant_string(c, &t);
+            OString *field = consume_ident(p);
+            u32  i = compiler_add_ostring(c, field);
             Expr k = Expr::make_index(EXPR_CONSTANT, i);
             compiler_get_table(c, &e, &k);
             break;
         }
         case TOKEN_OPEN_BRACE: {
-            // Table must be in some register.
+            // Table must be in some register, it can be a local.
             compiler_expr_any_reg(c, &e);
             advance(p); // Skip '['.
             Expr k = expression(p, c);
@@ -1091,7 +1185,7 @@ expression(Parser *p, Compiler *c, Precedence limit)
     recurse_push(p, c);
     Expr left = primary_expr(p, c);
     for (;;) {
-        Binary_Type b = get_binary(p->consumed.type);
+        Binary_Type b = get_binary(p->current.type);
         if (b == BINARY_NONE || limit > binary_precs[b].left) {
             break;
         }

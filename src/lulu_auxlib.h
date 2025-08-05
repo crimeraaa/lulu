@@ -15,7 +15,7 @@
 
 typedef struct {
     const char    *name;
-    lulu_CFunction function;
+    lulu_C_Function function;
 } lulu_Register;
 
 typedef struct {

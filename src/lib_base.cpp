@@ -2,6 +2,8 @@
 
 #include "lulu_auxlib.h"
 
+#define cast(T)     (T)
+
 static int
 base_assert(lulu_VM *vm)
 {
@@ -91,6 +93,68 @@ base_print(lulu_VM *vm)
     return 0;
 }
 
+static int
+base_next(lulu_VM *vm)
+{
+    lulu_check_type(vm, 1, LULU_TYPE_TABLE);
+    lulu_set_top(vm, 2); /* Create second argument (nil) if non provided. */
+    int more = lulu_next(vm, 1);
+    if (more) {
+        return 2;
+    }
+    lulu_push_nil(vm, 1);
+    return 1;
+}
+
+
+/**
+ * @todo(2025-08-05)
+ *      Implement upvalues so we don't need to constantly look up
+ *      global `next`
+ */
+static int
+base_pairs(lulu_VM *vm)
+{
+    lulu_check_type(vm, 1, LULU_TYPE_TABLE);
+    lulu_push_value(vm, lulu_upvalue_index(1)); /* push generator */
+    lulu_push_value(vm, 1); /* push state */
+    lulu_push_nil(vm, 1);   /* push control initial value */
+    return 3;
+}
+
+static int
+ipairs_next(lulu_VM *vm)
+{
+    lulu_Integer i;
+    lulu_check_type(vm, 1, LULU_TYPE_TABLE);
+    i = lulu_check_integer(vm, 2);
+    i++; /* Next value. */
+    lulu_push_integer(vm, i);   /* t, i, i+1 */
+    lulu_push_value(vm, -1);    /* t, i, i+1, i+1 */
+    lulu_get_table(vm, 1);      /* t, i, i+1, t[i+1] */
+    if (lulu_is_nil(vm, -1)) {
+        return 0;
+    }
+    return 2;
+}
+
+static int
+base_ipairs(lulu_VM *vm)
+{
+    lulu_check_type(vm, 1, LULU_TYPE_TABLE);
+    lulu_push_value(vm, lulu_upvalue_index(1)); /* push generator */
+    lulu_push_value(vm, 1); /* push state */
+    lulu_push_integer(vm, 0);   /* push control initial value */
+    return 3;
+}
+
+static void
+push_iterator(lulu_VM *vm, const char *name, lulu_C_Function f)
+{
+    lulu_push_c_closure(vm, f, 1);  /* _G, f ; setupvalue(f, 1, up) */
+    lulu_set_field(vm, -2, name);   /* _G ; _G[name] = f */
+}
+
 static const lulu_Register
 baselib[] = {
     {"assert",      base_assert},
@@ -98,28 +162,21 @@ baselib[] = {
     {"tonumber",    base_tonumber},
     {"print",       base_print},
     {"type",        base_type},
+    {"next",        base_next},
 };
 
 LULU_API int
 lulu_open_base(lulu_VM *vm)
 {
-    int i;
-    const char *libname = lulu_to_string(vm, 1);
+    lulu_push_value(vm, LULU_GLOBALS_INDEX); /* _G */
+    lulu_set_global(vm, "_G"); /* ; _G["_G"] = _G */
+    lulu_set_library(vm, "_G", baselib, lulu_count_library(baselib)); /* _G */
 
-    /* expose _G to user */
-    lulu_push_value(vm, LULU_GLOBALS_INDEX);
-    lulu_set_global(vm, "_G");
+    /* Save memory by reusing global 'next' */
+    lulu_get_field(vm, -1, "next");
+    push_iterator(vm, "pairs", base_pairs);
 
-    /* Stack: base */
-    lulu_set_library(vm, libname, baselib, lulu_count_library(baselib));
-
-    /* copy `base` into `_G`. */
-    for (i = 0; i < lulu_count_library(baselib); i++) {
-        const char *s = baselib[i].name;
-        size_t      n = strlen(s);
-        lulu_push_lstring(vm, s, n); /* base, key */
-        lulu_get_table(vm, -2);      /* base, base[key] */
-        lulu_set_global(vm, s);      /* base ; _G[key] = base[key] */
-    }
+    lulu_push_c_function(vm, ipairs_next);
+    push_iterator(vm, "ipairs", base_ipairs);
     return 1;
 }

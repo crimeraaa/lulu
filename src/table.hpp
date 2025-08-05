@@ -30,3 +30,6 @@ table_unset(Table *t, const Value &k);
 
 LULU_FUNC void
 table_resize(lulu_VM *vm, Table *t, isize new_cap);
+
+LULU_FUNC bool
+table_next(lulu_VM *vm, Table *t, Value *restrict k, Value *restrict v);

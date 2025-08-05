@@ -21,8 +21,10 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
  *      as the globals table. In Lua they also allow us to poke at the
  *      registry, the environment, and upvalues.
  */
-#define LULU_PSEUDO_INDEX   (-15000)
-#define LULU_GLOBALS_INDEX  (LULU_PSEUDO_INDEX)
+#define LULU_PSEUDO_INDEX       (-15000)
+#define LULU_GLOBALS_INDEX      (LULU_PSEUDO_INDEX)
+#define lulu_upvalue_index(i)   (LULU_GLOBALS_INDEX - (i))
+
 
 /**
  * @brief LULU_API
@@ -107,7 +109,7 @@ typedef void *
  *      caller.
  */
 typedef int
-(*lulu_CFunction)(lulu_VM *vm);
+(*lulu_C_Function)(lulu_VM *vm);
 
 
 /**
@@ -170,8 +172,8 @@ lulu_open(lulu_Allocator allocator, void *allocator_data);
  *      Sets the VM's global panic function, which is called when
  *      errors are thrown outside of protected calls.
  */
-LULU_API lulu_CFunction
-lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn);
+LULU_API lulu_C_Function
+lulu_set_panic(lulu_VM *vm, lulu_C_Function panic_fn);
 
 LULU_API void
 lulu_close(lulu_VM *vm);
@@ -233,7 +235,7 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
  *  -   The error code, if any was thrown, or else `LULU_OK`.
  */
 LULU_API lulu_Error
-lulu_c_pcall(lulu_VM *vm, lulu_CFunction function, void *function_data);
+lulu_c_pcall(lulu_VM *vm, lulu_C_Function function, void *function_data);
 
 
 /**
@@ -552,10 +554,19 @@ lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 
 /**
  * @brief
- *  -   Pushes `cf` to the top of the stack as a `function` value.
+ *      Pushes `cf` to the top of the stack as a `function` value,
+ *      associating `n_upvalues` upvalues with it. The upvalues should
+ *      be at stack indexes `-n_upvalues` up to `-1` if nonzero.
  */
 LULU_API void
-lulu_push_cfunction(lulu_VM *vm, lulu_CFunction cf);
+lulu_push_c_closure(lulu_VM *vm, lulu_C_Function cf, int n_upvalues);
+
+/**
+ * @brief
+ *      Pushes `cf` to the top of the stack as a `function` value,
+ *      associating no upvalues with it.
+ */
+#define lulu_push_c_function(vm, cf)  lulu_push_c_closure(vm, cf, 0)
 
 
 /**
@@ -647,9 +658,23 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key);
 
 
 /**
+ * @param table_index
+ *      The relative/pseudo index of the table you wish to iterate over.
+ *
+ * @note(2025-08-05) Assumptions
+ *
+ *  1.) On the first iteration, the VM at index `-1` has `nil`. It is your
+ *      responsibility to ensure this value is pushed beforehand as this
+ *      this function simply mutates indexes `-1` pushes the value.
+ */
+LULU_API int
+lulu_next(lulu_VM *vm, int table_index);
+
+
+/**
  * @brief
- *  -   Gets the key `s` from the VM globals table and pushes it to the current
- *      top of the stack.
+ *  -   Gets the key `s` from the VM globals table and pushes it to the
+ *      current top of the stack.
  *
  *  -   If the key did not exist, then `nil` is pushed.
  *
@@ -835,8 +860,8 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      `type()`, `tostring()` are all merely global identifiers that happen to
  *      reference C functions.
  */
-#define lulu_register(vm, name, cfunction) \
-    (lulu_push_cfunction(vm, cfunction), lulu_set_global(vm, name))
+#define lulu_register(vm, name, c_function) \
+    (lulu_push_c_function(vm, c_function), lulu_set_global(vm, name))
 
 /*== }}} ================================================================ */
 

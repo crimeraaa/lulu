@@ -44,10 +44,11 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Table *indexes,
 void
 compiler_error_limit(Compiler *c, isize limit, const char *what)
 {
+    Parser     *p   = c->parser;
     const char *who = (c->prev == nullptr) ? "script" : "function";
     char buf[128];
     sprintf(buf, "%s uses more than %" ISIZE_FMT " %s", who, limit, what);
-    lexer_error(&c->parser->lexer, c->parser->consumed.type, buf);
+    lexer_error(&p->lexer, p->current.type, buf);
 }
 
 //=== BYTECODE MANIPULATION ============================================ {{{
@@ -172,13 +173,20 @@ compiler_add_ostring(Compiler *c, OString *s)
 //=== REGISTER MANIPULATION ============================================ {{{
 
 void
+compiler_check_stack(Compiler *c, u16 n)
+{
+    u16 new_stack = c->free_reg + n;
+    if (new_stack > c->chunk->stack_used) {
+        compiler_check_limit(c, new_stack, MAX_REG, "registers");
+        c->chunk->stack_used = new_stack;
+    }
+}
+
+void
 compiler_reserve_reg(Compiler *c, u16 n)
 {
+    compiler_check_stack(c, n);
     c->free_reg += n;
-    compiler_check_limit(c, c->free_reg, MAX_REG, "registers");
-    if (c->chunk->stack_used < c->free_reg) {
-        c->chunk->stack_used = c->free_reg;
-    }
 }
 
 static void

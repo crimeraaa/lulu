@@ -326,7 +326,7 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
     // Account for any changes in the stack made by unprotected main function
     // or C functions.
     Call_Frame *caller = vm->caller;
-    if (caller != nullptr) {
+    if (caller != nullptr && caller->is_c()) {
         // Ensure both slices have the same underlying data.
         // If this fails, this means we did not manage the call frames properly.
         lulu_assert(raw_data(vm->window) == raw_data(caller->window));
@@ -375,12 +375,14 @@ vm_call_init(lulu_VM *vm, const Value *ra, int argc, int expected_returned)
             top = base + cast_isize(argc);
         }
         frame_push(vm, fn, slice(vm->stack, base, top), expected_returned);
-        int actual_returned = fn->c.callback(vm);
 
+        int actual_returned = fn->c.callback(vm);
         Value *first_ret = (actual_returned > 0)
             ? &vm->window[len(vm->window) - cast_isize(actual_returned)]
             : &vm->stack[fn_index];
-        vm_call_fini(vm, first_ret, actual_returned);
+
+        Slice<Value> results = slice_pointer_len(first_ret, actual_returned);
+        vm_call_fini(vm, results);
         return CALL_C;
     }
 
@@ -397,23 +399,22 @@ vm_call_init(lulu_VM *vm, const Value *ra, int argc, int expected_returned)
 }
 
 Call_Type
-vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned)
+vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
 {
     Call_Frame *frame = vm->caller;
     bool vararg_return = (frame->expected_returned == VARARG);
 
     // Move results to the right place- overwrites calling function object.
-    Slice<Value> results{vm_base_ptr(vm) - 1, cast_isize(actual_returned)};
-    Slice<Value> tmp{ra, cast_isize(actual_returned)};
-    copy(results, tmp);
+    Slice<Value> dst{vm_base_ptr(vm) - 1, len(results)};
+    copy(dst, results);
 
-    int extra = frame->expected_returned - actual_returned;
+    int extra = frame->expected_returned - len(results);
     if (!vararg_return && extra > 0) {
-        // Need to extend `results` so that it also sees the extra values.
-        results.len += cast_isize(extra);
+        // Need to extend `dst` so that it also sees the extra values.
+        dst.len += cast_isize(extra);
 
         // Remaining return values are initialized to nil, e.g. in assignments.
-        Slice<Value> remaining = slice_pointer(&results[actual_returned], end(results));
+        Slice<Value> remaining = slice_from(dst, len(results));
         fill(remaining, nil);
     }
 
@@ -422,7 +423,7 @@ vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned)
     // In an unprotected call, so no previous stack frame to restore.
     // This allows the `lulu_call()` API to work properly in such cases.
     if (frame == nullptr) {
-        vm->window = results;
+        vm->window = dst;
         return CALL_C;
     }
 
@@ -430,7 +431,7 @@ vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned)
         // Adjust VM's stack window so that it includes the last vararg.
         // We need to revert this change as soon as we can so that further
         // function calls see the full stack.
-        vm->window = slice_pointer(raw_data(vm->window), end(results));
+        vm->window = slice_pointer(raw_data(vm->window), end(dst));
     }
     return CALL_LUA;
 }
@@ -810,6 +811,38 @@ vm_execute(lulu_VM *vm, int n_calls)
             }
             break;
         }
+        case OP_FOR_IN_LOOP: {
+            Value *call_base = ra + 3;
+
+            // Stack: (ra+0)=generator-fn, (ra+1)=invariant, (ra+2)=control
+            //        (ra+3)=user-control
+            // Prepare call so that its registers can be overridden.
+            *(call_base + 2) = *(ra + 2);
+            *(call_base + 1) = *(ra + 1);
+            *(call_base + 0) = *(ra + 0);
+
+            // Registers for generator function, invariant state and index.
+            isize top  = ptr_index(vm->window, call_base + 3);
+            vm->window = slice_until(vm->window, top);
+
+            // Number of user-facing variables to set.
+            u16 n_vars = inst.c();
+            protect(vm, ip);
+            vm_call(vm, call_base, 2, cast_int(n_vars));
+
+            // Previous call may reallocate stack.
+            window    = vm->caller->window;
+            call_base = &window[inst.a() + 3];
+
+            // Continue loop?
+            if (!call_base->is_nil()) {
+                // Save internal control variable.
+                *(call_base - 1) = *call_base;
+                DO_JUMP(ip->sbx());
+            }
+            ip++;
+            break;
+        }
         case OP_CALL: {
             int argc              = cast_int(inst.b());
             int expected_returned = cast_int(inst.c());
@@ -824,7 +857,8 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_RETURN: {
             int actual_returned = cast_int(inst.b());
             protect(vm, ip);
-            vm_call_fini(vm, ra, actual_returned);
+            Slice<Value> returned = slice_pointer_len(ra, actual_returned);
+            vm_call_fini(vm, returned);
             n_calls--;
             if (n_calls == 0) {
                 return;

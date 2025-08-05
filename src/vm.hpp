@@ -32,14 +32,14 @@ struct LULU_PRIVATE Call_Frame {
         return this->function->is_lua();
     }
 
-    const Closure_C *
-    to_c() const
+    Closure_C *
+    to_c()
     {
         return this->function->to_c();
     }
 
-    const Closure_Lua *
-    to_lua() const
+    Closure_Lua *
+    to_lua()
     {
         return this->function->to_lua();
     }
@@ -61,7 +61,7 @@ struct LULU_PUBLIC lulu_VM {
     Value              globals;
     Builder            builder;
     Intern             intern;
-    lulu_CFunction     panic_fn;
+    lulu_C_Function     panic_fn;
     lulu_Allocator     allocator;
     void              *allocator_data;
     Error_Handler     *error_handler;
@@ -188,7 +188,7 @@ vm_call_init(lulu_VM *vm, const Value *ra, int argc, int expected_returned);
  *      explicitly check.
  */
 LULU_FUNC Call_Type
-vm_call_fini(lulu_VM *vm, Value *ra, int actual_returned);
+vm_call_fini(lulu_VM *vm, const Slice<Value> &results);
 
 LULU_FUNC Error
 vm_load(lulu_VM *vm, const LString &source, Stream *z);

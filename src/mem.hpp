@@ -40,11 +40,13 @@ mem_next_fib(isize n)
     return next;
 }
 
+// `extra` may be negative to allow us to work with 0-length flexible arrays.
 template<class T>
 LULU_FUNC inline T *
 mem_new(lulu_VM *vm, isize extra = 0)
 {
-    usize size = sizeof(T) + cast_usize(extra);
+    // Cast must occur after arithmetic in case `extra < 0`.
+    usize size = cast_usize(size_of(T) + extra);
     return reinterpret_cast<T *>(mem_rawrealloc(vm, nullptr, 0, size));
 }
 
@@ -52,7 +54,7 @@ template<class T>
 LULU_FUNC inline void
 mem_free(lulu_VM *vm, T *ptr, isize extra = 0)
 {
-    usize size = sizeof(T) + cast_usize(extra);
+    usize size = cast_usize(size_of(T) + extra);
     mem_rawrealloc(vm, ptr, size, 0);
 }
 
