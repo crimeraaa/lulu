@@ -31,23 +31,23 @@ static void
 chunk(Parser *p, Compiler *c);
 
 static void
-block_push(Parser *p, Compiler *c, Block *b, bool breakable)
+block_push(Compiler *c, Block *b, bool breakable)
 {
     lulu_assert(cast_isize(c->free_reg) == small_array_len(c->active));
 
-    b->prev       = p->block;
+    b->prev       = c->block;
     b->break_list = NO_JUMP;
     b->n_locals   = cast(u16)small_array_len(c->active);
     b->breakable  = breakable;
 
     // Chain
-    p->block = b;
+    c->block = b;
 }
 
 static void
-block_pop(Parser *p, Compiler *c)
+block_pop(Compiler *c)
 {
-    Block     *b      = p->block;
+    Block     *b      = c->block;
     Slice<u16> active = small_array_slice(c->active);
 
     // Finalize all the locals' information before popping them.
@@ -58,7 +58,7 @@ block_pop(Parser *p, Compiler *c)
     small_array_resize(&c->active, b->n_locals);
     compiler_jump_patch(c, b->break_list);
     c->free_reg = b->n_locals;
-    p->block    = b->prev;
+    c->block    = b->prev;
 }
 
 
@@ -92,11 +92,11 @@ static void
 block(Parser *p, Compiler *c)
 {
     Block b;
-    block_push(p, c, &b, /* breakable */ false);
+    block_push(c, &b, /* breakable */ false);
     chunk(p, c);
     // Only blocks with `breakable == true` should have jumps.
     lulu_assert(b.break_list == NO_JUMP);
-    block_pop(p, c);
+    block_pop(c);
 }
 
 static void
@@ -122,7 +122,6 @@ parser_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     p.current  = DEFAULT_TOKEN;
     p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
-    p.block     = nullptr;
     p.last_line = 1;
     p.n_calls   = 0;
     return p;
@@ -345,7 +344,7 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 static void
 local_push(Parser *p, Compiler *c, OString *ident)
 {
-    u16 reg = compiler_get_local(c, p->block->n_locals, ident);
+    u16 reg = compiler_get_local(c, c->block->n_locals, ident);
     // Local found?
     if (reg != NO_REG) {
         error_at(p, TOKEN_IDENT, "Shadowing of local variable");
@@ -462,7 +461,7 @@ while_stmt(Parser *p, Compiler *c, int line)
 
     // All `break` should go here, not in `block()`.
     Block b;
-    block_push(p, c, &b, /* breakable */ true);
+    block_push(c, &b, /* breakable */ true);
     block(p, c);
 
     consume_to_close(p, TOKEN_END, TOKEN_WHILE, line);
@@ -474,7 +473,7 @@ while_stmt(Parser *p, Compiler *c, int line)
     compiler_jump_patch(c, exit_pc);
 
     // Resolve breaks only after the unconditional jump was emitted.
-    block_pop(p, c);
+    block_pop(c);
 
 }
 
@@ -482,7 +481,7 @@ static void
 repeat_stmt(Parser *p, Compiler *c, int line)
 {
     Block b;
-    block_push(p, c, &b, /* breakable */ true);
+    block_push(c, &b, /* breakable */ true);
 
     isize body_pc = compiler_label_get(c);
     block(p, c);
@@ -491,7 +490,7 @@ repeat_stmt(Parser *p, Compiler *c, int line)
     isize jump_pc = cond(p, c);
     compiler_jump_patch(c, jump_pc, body_pc);
 
-    block_pop(p, c);
+    block_pop(c);
 }
 
 static void
@@ -634,7 +633,7 @@ for_stmt(Parser *p, Compiler *c, int line)
 {
     // Scope for loop control variables.
     Block b;
-    block_push(p, c, &b, /* breakable */ true);
+    block_push(c, &b, /* breakable */ true);
 
     OString *ident = consume_ident(p);
     switch (p->current.type) {
@@ -652,13 +651,13 @@ for_stmt(Parser *p, Compiler *c, int line)
         break;
     }
     consume_to_close(p, TOKEN_END, TOKEN_FOR, line);
-    block_pop(p, c);
+    block_pop(c);
 }
 
 static void
 break_stmt(Parser *p, Compiler *c)
 {
-    Block *b = p->block;
+    Block *b = c->block;
 
     // `if`, `elseif`, `else`, `while`, `for` and `repeat` all make new blocks.
     // But only `for`, `repeat` and `while` are breakable.
@@ -670,6 +669,125 @@ break_stmt(Parser *p, Compiler *c)
         error(p, "No block to 'break'");
     }
     compiler_jump_add(c, &b->break_list, compiler_jump_new(c));
+}
+
+static Compiler
+function_open(lulu_VM *vm, Parser *p, Compiler *enclosing)
+{
+    Chunk *chunk = chunk_new(vm, p->lexer.source);
+    Table *t     = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
+
+    // Push chunk and table to stack so that they are not collected while we
+    // are executing.
+    vm_push(vm, Value::make_chunk(chunk));
+    vm_push(vm, Value::make_table(t));
+
+    Compiler c = compiler_make(vm, p, chunk, t, enclosing);
+    return c;
+}
+
+static void
+function_close(Compiler *c)
+{
+    lulu_VM *vm = c->vm;
+    compiler_code_return(c, /* reg */ 0, /* count */ 0, /* is_vararg */ false);
+
+#ifdef LULU_DEBUG_PRINT_CODE
+    debug_disassemble(c->chunk);
+#endif // LULU_DEBUG_PRINT_CODE
+
+    vm_pop(vm);
+    vm_pop(vm);
+}
+
+static Expr
+resolve_variable(Compiler *c, OString *ident)
+{
+    bool is_enclosing = false;
+    for (Compiler *it = c; it != nullptr; it = it->prev) {
+        u16 reg = compiler_get_local(it, /* limit */ 0, ident);
+        if (reg == NO_REG) {
+            is_enclosing = true;
+            continue;
+        } else if (is_enclosing) {
+            error(c->parser, "Upvalues not yet implemented");
+        }
+        return Expr::make_reg(EXPR_LOCAL, reg);
+    }
+    u32 i = compiler_add_ostring(c, ident);
+    return Expr::make_index(EXPR_GLOBAL, i);
+}
+
+static void
+field(Parser *p, Compiler *c, Expr *e)
+{
+    // Table must be in some register, it can be a local.
+    compiler_expr_any_reg(c, e);
+    advance(p); // Skip '.'.
+    OString *field = consume_ident(p);
+    u32  i = compiler_add_ostring(c, field);
+    Expr k = Expr::make_index(EXPR_CONSTANT, i);
+    compiler_get_table(c, e, &k);
+}
+
+static Expr
+function_var(Parser *p, Compiler *c)
+{
+    OString *ident = consume_ident(p);
+    Expr var = resolve_variable(c, ident);
+    while (match(p, TOKEN_DOT)) {
+        field(p, c, &var);
+    }
+    return var;
+}
+
+static Expr
+function_push(Parser *p, Compiler *c)
+{
+    lulu_VM *vm = p->vm;
+    Closure *f = closure_lua_new(vm, c->chunk);
+
+    Value v = Value::make_function(f);
+    vm_push(vm, v);
+    u32 i = compiler_add_constant(c->prev, v);
+    vm_pop(vm);
+    return Expr::make_index(EXPR_CONSTANT, i);
+}
+
+static Expr
+function_defn(Parser *p, Compiler *enclosing, int fline)
+{
+    Compiler c = function_open(p->vm, p, enclosing);
+    int pline = p->last_line;
+    c.chunk->line_defined = pline;
+    consume(p, TOKEN_OPEN_PAREN);
+
+    // Prevent segfaults when calling `local_push`.
+    Block b;
+    u16 n_params = 0;
+    block_push(&c, &b, /* breakable */ false);
+    if (!check(p, TOKEN_CLOSE_PAREN)) {
+        do {
+            OString *ident = consume_ident(p);
+            local_push(p, &c, ident);
+            n_params++;
+        } while (match(p, TOKEN_COMMA));
+    }
+    consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, pline);
+    chunk(p, &c);
+    block_pop(&c);
+    c.chunk->last_line_defined = p->lexer.line;
+    consume_to_close(p, TOKEN_END, TOKEN_FUNCTION, fline);
+    function_close(&c);
+    return function_push(p, &c);
+}
+
+static void
+function_decl(Parser *p, Compiler *c, int fline)
+{
+    Expr var  = function_var(p, c);
+    Expr body = function_defn(p, c, fline);
+    compiler_set_variable(c, &var, &body);
 }
 
 static void
@@ -691,13 +809,21 @@ declaration(Parser *p, Compiler *c)
         advance(p); // skip 'for'
         for_stmt(p, c, line);
         break;
+    case TOKEN_FUNCTION:
+        advance(p); // skip 'function'
+        function_decl(p, c, line);
+        break;
     case TOKEN_IF:
         advance(p); // skip 'if'
         if_stmt(p, c);
         break;
     case TOKEN_LOCAL:
         advance(p); // skip `local`
-        local_stmt(p, c);
+        if (match(p, TOKEN_FUNCTION)) {
+            error(p, "local function not yet implemented");
+        } else {
+            local_stmt(p, c);
+        }
         break;
     case TOKEN_WHILE:
         advance(p); // skip 'while'
@@ -762,45 +888,17 @@ chunk(Parser *p, Compiler *c)
 Chunk *
 parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
-    Table *t  = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
-    Chunk *ch = chunk_new(vm, source);
-
-    // Push chunk and table to stack so that they are not collected while we
-    // are executing.
-    vm_push(vm, Value::make_chunk(ch));
-    vm_push(vm, Value::make_table(t));
-
     Parser   p = parser_make(vm, source, z, b);
-    Compiler c = compiler_make(vm, &p, ch, t);
+    Compiler c = function_open(vm, &p, nullptr);
     // Set up first token
     advance(&p);
     block(&p, &c);
-
     consume(&p, TOKEN_EOF);
-    compiler_code_return(&c, /* reg */ 0, /* count */ 0, /* is_vararg */ false);
-
-#ifdef LULU_DEBUG_PRINT_CODE
-    debug_disassemble(c.chunk);
-#endif // LULU_DEBUG_PRINT_CODE
-
-    vm_pop(vm);
-    vm_pop(vm);
-    return ch;
+    function_close(&c);
+    return c.chunk;
 }
 
 //=== EXPRESSION PARSING =================================================== {{{
-
-static Expr
-resolve_variable(Compiler *c, OString *ident)
-{
-    u16 reg = compiler_get_local(c, /* limit */ 0, ident);
-    if (reg == NO_REG) {
-        u32 i = compiler_add_ostring(c, ident);
-        return Expr::make_index(EXPR_GLOBAL, i);
-    } else {
-        return Expr::make_reg(EXPR_LOCAL, reg);
-    }
-}
 
 struct LULU_PRIVATE Constructor {
     Expr  table; // Information on the OP_NEW_TABLE itself.
@@ -1025,16 +1123,9 @@ primary_expr(Parser *p, Compiler *c)
             function_call(p, c, &e);
             break;
         }
-        case TOKEN_DOT: {
-            // Table must be in some register, it can be a local.
-            compiler_expr_any_reg(c, &e);
-            advance(p); // Skip '.'.
-            OString *field = consume_ident(p);
-            u32  i = compiler_add_ostring(c, field);
-            Expr k = Expr::make_index(EXPR_CONSTANT, i);
-            compiler_get_table(c, &e, &k);
+        case TOKEN_DOT:
+            field(p, c, &e);
             break;
-        }
         case TOKEN_OPEN_BRACE: {
             // Table must be in some register, it can be a local.
             compiler_expr_any_reg(c, &e);

@@ -28,7 +28,6 @@ struct LULU_PRIVATE Parser {
     Token    current;
     Token    lookahead; // Used only in `parser.cpp:constructor()`.
     Builder *builder;
-    Block   *block;
     int      last_line; // Line of the token consumed, NOT `current`.
     int      n_calls;   // How many recursive C calls are we currently in?
 };

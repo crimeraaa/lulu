@@ -299,9 +299,11 @@ frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int expected_returned)
     vm->window = window;
 
     if (fn->is_lua()) {
+        Closure_Lua *f = fn->to_lua();
         // Initialize the stack frame (sans parameters) to all nil.
-        auto dst = slice_from(window, cast_isize(fn->lua.n_params));
+        auto dst = slice_from(window, cast_isize(f->n_params));
         fill(dst, nil);
+        vm->saved_ip = raw_data(f->chunk->code);
     }
 }
 
@@ -433,6 +435,9 @@ vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
         // function calls see the full stack.
         vm->window = slice_pointer(raw_data(vm->window), end(dst));
     }
+
+    // We will re-enter `vm_execute()`.
+    vm->saved_ip = frame->saved_ip;
     return CALL_LUA;
 }
 
@@ -524,10 +529,16 @@ compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rk
 void
 vm_execute(lulu_VM *vm, int n_calls)
 {
-    const Chunk       *chunk     = vm->caller->to_lua()->chunk;
-    const Instruction *ip        = raw_data(chunk->code);
-    Slice<const Value> constants = slice_const(chunk->constants);
-    Slice<Value>       window    = vm->window;
+    const Chunk       *chunk;
+    const Instruction *ip;
+    Slice<const Value> constants;
+    Slice<Value>       window;
+
+re_entry:
+    chunk     = vm->caller->to_lua()->chunk;
+    ip        = vm->saved_ip;
+    constants = slice_const(chunk->constants);
+    window    = vm->window;
 
 #define GET_RK(rk) (                                                           \
     Instruction::reg_is_k(rk)                                                  \
@@ -851,6 +862,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             Call_Type t = vm_call_init(vm, ra, argc, expected_returned);
             if (t == CALL_LUA) {
                 n_calls++;
+                goto re_entry;
             }
             break;
         }
@@ -863,6 +875,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             if (n_calls == 0) {
                 return;
             }
+            goto re_entry;
             break;
         }
         default:

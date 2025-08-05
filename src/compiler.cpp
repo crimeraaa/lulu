@@ -168,6 +168,12 @@ compiler_add_ostring(Compiler *c, OString *s)
     return add_constant(c, v, v);
 }
 
+u32
+compiler_add_constant(Compiler *c, const Value &v)
+{
+    return add_constant(c, v, v);
+}
+
 //=== }}} ==================================================================
 
 //=== REGISTER MANIPULATION ============================================ {{{
