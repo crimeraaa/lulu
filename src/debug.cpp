@@ -207,10 +207,16 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
     case OP_SET_ARRAY: {
         isize offset = cast_isize(args.c) * FIELDS_PER_FLUSH;
         isize start  = cast_isize(args.a) + 1;
-        isize stop   = start + cast_isize(args.b);
-        print_reg(p, args.a, pc,
-            "[%" ISIZE_FMT ":%" ISIZE_FMT "] := R(%"  ISIZE_FMT ":%" ISIZE_FMT ")",
-            offset + start, offset + stop, start, stop);
+        if (args.b == VARARG) {
+            print_reg(p, args.a, pc,
+                "[%" ISIZE_FMT ":] := R(%" ISIZE_FMT ":)",
+                offset + start, start);
+        } else {
+            isize stop   = start + cast_isize(args.b);
+            print_reg(p, args.a, pc,
+                "[%" ISIZE_FMT ":%" ISIZE_FMT "] := R(%"  ISIZE_FMT ":%" ISIZE_FMT ")",
+                offset + start, offset + stop, start, stop);
+        }
         break;
     }
     case OP_ADD: arith(p, '+', args); break;
@@ -557,7 +563,9 @@ get_current_pc(lulu_VM *vm, Call_Frame *cf)
     if (!cf->is_lua()) {
         return -1;
     }
-    if (cf == raw_data(vm->frames.data)) {
+    // For the very first call, `saved_ip` is `nullptr`.
+    // Concept check (in main function): `for k in next, nil do end`
+    if (cf == vm->caller) {
         cf->saved_ip = vm->saved_ip;
     }
     // Subtract 1 because ip always points to after the desired instruction.

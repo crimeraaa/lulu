@@ -15,7 +15,7 @@
 
 typedef struct {
     const char    *name;
-    lulu_C_Function function;
+    lulu_CFunction function;
 } lulu_Register;
 
 typedef struct {
@@ -62,12 +62,11 @@ lulu_check_any(lulu_VM *vm, int argn);
 
 /**
  * @brief
- *  -   Asserts that the stack slot `argn` is of type `boolean`. If it is
+ *      Asserts that the stack slot `argn` is of type `boolean`. If it is
  *      not, then an error is thrown and an error message is pushed.
  *
  * @note(2025-07-21)
- *
- *  -   This will work with negative indexes, although the error message may
+ *      This will work with negative indexes, although the error message may
  *      be misleading as 'negative' arguments are confusing conceptually.
  */
 LULU_API int
@@ -76,12 +75,12 @@ lulu_check_boolean(lulu_VM *vm, int argn);
 
 /**
  * @brief
- *  -   Asserts that the stack slot `argn` is of type `number` or a `string`
+ *      Asserts that the stack slot `argn` is of type `number` or a `string`
  *      that can be parsed into a number. If it is not, then an error is
  *      thrown and an error message is pushed.
  *
  * @return
- *  -   The `number` representation of the value at stack slot `argn` when
+ *      The `number` representation of the value at stack slot `argn` when
  *      successful.
  */
 LULU_API lulu_Number
@@ -108,12 +107,12 @@ lulu_check_integer(lulu_VM *vm, int argn);
 
 /**
  * @brief
- *  -   Asserts that the stack slot `argn` is of type `string` or a `number`
+ *      Asserts that the stack slot `argn` is of type `string` or a `number`
  *      which is then converted to a string. If it is not, then an error is
  *      thrown and an error message is pushed.
  *
  * @return
- *  -   The `string` representation of the value at stack slot `argn` when
+ *      The `string` representation of the value at stack slot `argn` when
  *      successful.
  */
 LULU_API const char *
@@ -156,8 +155,9 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...);
 
 /**
  * @brief
- *  -   Registers all functions in `library[0:n]` to global table `libname`,
- *      or the table on top of stack.
+ *      Registers all functions in `library[0:n]` to global table `libname`,
+ *      or the table on top of stack. No upvalues are associated with any
+ *      of the functions.
  *
  * @param libname
  *      The name of the table to be used as the library module.
@@ -170,9 +170,8 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...);
  *      This function leaves the module table on top of the stack.
  */
 LULU_API void
-lulu_set_library(lulu_VM *vm, const char *libname,
+lulu_set_nlibrary(lulu_VM *vm, const char *libname,
     const lulu_Register *library, int n);
-
 
 
 /*=== }}} =============================================================== */
@@ -185,13 +184,22 @@ lulu_set_library(lulu_VM *vm, const char *libname,
 #define lulu_opt_string(vm, argn, def)  lulu_opt_lstring(vm, argn, def, NULL)
 
 
+#define lulu_count_library(fns)         (int)(sizeof(fns) / sizeof((fns)[0]))
+
 /**
  * @brief
- *      Because the count is explicitly passed to `lulu_set_library()`, use
- *      this macro to aid in automatically getting the number of items given
- *      a particular `lulu_Register library[N]`.
+ *      Helper macro for `lulu_set_nlibrary()`, assuming a fixed-size
+ *      array of `lulu_Register`.
+ *
+ * @param name
+ *      Desired libary name. See notes in `lulu_set_library()` for more
+ *      information.
+ *
+ * @param fns
+ *      `lulu_Register[N]`, a fixed-size array.
  */
-#define lulu_count_library(libs)    (int)(sizeof(libs) / sizeof(libs[0]))
+#define lulu_set_library(vm, name, fns) \
+    lulu_set_nlibrary(vm, name, fns, lulu_count_library(fns))
 
 /*=== }}} =============================================================== */
 

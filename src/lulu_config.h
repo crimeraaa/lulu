@@ -13,27 +13,28 @@
 /**
  * @brief Consider the format string `"%.14g"`.
  *
- *  -   According to `man 3 printf`, since our given precision is 14, we have
- *      that many decimal digits. We must also add 1 for the decimal (radix)
- *      point `.`. This brings us to at least size 15.
+ *      According to `man 3 printf`, since our given precision is 14, we
+ *      have that many decimal digits. We must also add 1 for the decimal
+ *      (radix) point `.`. This brings us to at least size 15.
  *
- * -    If the exponent of the given value is +/-4 of the given precision,
- *      then the `e` style is used, e.g. in `6.023e24`. Thus, we need to also
- *      consider the `e` specifier, a possible sign `[+-]`, the exponent.
- *      This brings us to at least size 17.
+ *      If the exponent of the given value is +/-4 of the given precision,
+ *      then the `e` style is used, e.g. in `6.023e24`. Thus, we need to
+ *      also consider the `e` specifier, a possible sign `[+-]`, the
+ *      exponent. This brings us to at least size 17.
  */
 #define LULU_NUMBER_BUFSIZE     32
 
 
 /**
  * @brief
- *  -   The size of the fixed array in `lulu_auxlib.h:lulu_Buffer`. This allows
- *      us to 'hold' onto as much data as we can before we absolute have to
- *      'flush' it (i.e. pushing the resulting string to the top of the stack).
+ *      The size of the fixed array in `lulu_auxlib.h:lulu_Buffer`. This
+ *      allows us to 'hold' onto as much data as we can before we absolutely
+ *      have to 'flush' it (i.e. pushing the resulting string to the top of
+ *      the stack).
  *
  * @note(2025-07-20)
  *
- * -    This requires `stdio.h` to be included beforehand; we do not include
+ *      This requires `stdio.h` to be included beforehand; we do not include
  *      it for you in this header to avoid unnecessary namespace pollution.
  */
 #define LULU_BUFFER_BUFSIZE     BUFSIZ
@@ -41,7 +42,7 @@
 
 /**
  * @brief
- *  -   The message pushed to the top of the stack when a memory allocation
+ *      The message pushed to the top of the stack when a memory allocation
  *      request cannot be fulfilled. It is interned on VM startup, so if
  *      `lulu_open()` returned a non-`NULL` pointer then it can be safely
  *      assumed that this string will always be retrievable.
@@ -51,9 +52,9 @@
 
 /**
  * @brief 2025-06-24
- *  -   Number of stack slots available to all C functions.
- *  -   Indexes 1 up to and including this value are guaranteed to be valid,
- *      thus you do not need to worry about stack overflow.
+ *      Number of stack slots available to all C functions. Indexes 1 up
+ *      to and including this value are guaranteed to be valid, thus you do
+ *      not need to worry about stack overflow.
  */
 #define LULU_STACK_MIN      8
 
@@ -64,22 +65,22 @@
 
 /**
  * @brief
- *  -   These macros control the visibility of symbols when building as a
+ *      These macros control the visibility of symbols when building as a
  *      shared library.
  *
  * @brief LULU_PUBLIC
- *  -   Symbols with this attribute are exported.
- *  -   E.g. `LULU_PUBLIC lulu_VM *lulu_open();` can be called even from
- *      outside the shared library.
- *  -   This is useful if compiling with hidden visibility by default, e.g.
- *      the `-fvisibility=hidden` flag in GCC and Clang.
+ *      Symbols with this attribute are exported.
+ *      E.g. `LULU_PUBLIC lulu_VM *lulu_open();` can be called even from
+ *      outside the shared library. This is useful if compiling with hidden
+ *      visibility by default, e.g. the `-fvisibility=hidden` flag in GCC
+ *      and Clang.
  *
  * @brief LULU_PRIVATE
- *  -   Symbols with this attribute are never exported no matter what.
- *  -   E.g. `LULU_PRIVATE size_t mem_next_size(size_t n);` is callable
- *      only within the shared library.
- *  -   If the user defines an externally visibible symbol with the same name,
- *      there will be no name conflilct and thus no linkage error.
+ *      Symbols with this attribute are never exported no matter what.
+ *      E.g. `LULU_PRIVATE size_t mem_next_size(size_t n);` is callable
+ *      only within the shared library. If the user defines an externally
+ *      visibible symbol with the same name, there will be no name
+ *      conflilct and thus no linkage error.
  */
 #if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) \
     && defined(__ELF__)
@@ -107,7 +108,7 @@
 
 /**
  * @brief
- *  -   On Windows, when building DLLs, functions not marked with
+ *      On Windows, when building DLLs, functions not marked with
  *      `__declspec(dllexport)` are hidden automatically.
  */
 #define LULU_PRIVATE
@@ -149,13 +150,13 @@
 
 #endif /* LULU_BUILD_ALL */
 
-/**=== LOCAL REDEFINITIONS ================================================= {{{
+/**=== LOCAL REDEFINITIONS ============================================= {{{
  * You can `#undef` any of the above macros and redefine them to your liking.
- *=========================================================================== */
+ *======================================================================= */
 
 /* #undef LULU_BUFFER_BUFSIZE
 #define LULU_BUFFER_BUFSIZE 16 */
 
-/*=== }}} =================================================================== */
+/*=== }}} =============================================================== */
 
 #endif /* LULU_CONFIG_H */

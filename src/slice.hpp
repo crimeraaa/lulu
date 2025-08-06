@@ -188,6 +188,16 @@ fill(Slice<T> &s, const T &init)
     }
 }
 
+// R-value shenanigans.
+template<class T>
+LULU_FUNC constexpr void
+fill(Slice<T> &&s, const T &init)
+{
+    for (T &slot : s) {
+        slot = init;
+    }
+}
+
 // Mutable forward iterator initial value.
 template<class T>
 LULU_FUNC constexpr T *

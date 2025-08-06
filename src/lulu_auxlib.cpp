@@ -32,9 +32,9 @@ lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b)
  *      The number of characters currently stored in the buffer.
  */
 static size_t
-buffer_len(const lulu_Buffer &b)
+buffer_len(const lulu_Buffer *b)
 {
-    return b.cursor;
+    return b->cursor;
 }
 
 
@@ -43,9 +43,9 @@ buffer_len(const lulu_Buffer &b)
  *      The total number of characters that could be stored in the buffer.
  */
 static constexpr size_t
-buffer_cap(const lulu_Buffer &b)
+buffer_cap(const lulu_Buffer *b)
 {
-    return sizeof(b.data);
+    return sizeof(b->data);
 }
 
 
@@ -54,7 +54,7 @@ buffer_cap(const lulu_Buffer &b)
  *      The number of free slots in the buffer.
  */
 static size_t
-buffer_rem(const lulu_Buffer &b)
+buffer_rem(const lulu_Buffer *b)
 {
     return buffer_cap(b) - buffer_len(b);
 }
@@ -62,7 +62,7 @@ buffer_rem(const lulu_Buffer &b)
 static bool
 buffer_flushed(lulu_Buffer *b)
 {
-    size_t n = buffer_len(*b);
+    size_t n = buffer_len(b);
     // Nothing to put on the stack?
     if (n == 0) {
         return false;
@@ -79,7 +79,7 @@ static constexpr int LIMIT = LULU_STACK_MIN / 2;
 
 /**
  * @brief
- *  -   Concatenate some of our temporary strings if it can be helped so that
+ *      Concatenate some of our temporary strings if it can be helped so that
  *      we do not overflow the VM stack.
  */
 static void
@@ -128,12 +128,12 @@ static size_t
 buffer_append(lulu_Buffer *b, const char *s, size_t n)
 {
     // Resulting length would overflow the buffer?
-    if (buffer_len(*b) + n >= buffer_cap(*b)) {
+    if (buffer_len(b) + n >= buffer_cap(b)) {
         buffer_prep(b);
     }
 
     // How many indexes left are available?
-    size_t rem = buffer_rem(*b);
+    size_t rem = buffer_rem(b);
 
     // Clamp size to copy. May be 0.
     size_t to_write = (n > rem) ? rem : n;
@@ -148,7 +148,7 @@ buffer_append(lulu_Buffer *b, const char *s, size_t n)
 LULU_API void
 lulu_write_char(lulu_Buffer *b, char ch)
 {
-    if (b->cursor >= buffer_cap(*b)) {
+    if (b->cursor >= buffer_cap(b)) {
         buffer_prep(b);
     }
     b->data[b->cursor++] = ch;
@@ -313,10 +313,8 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...)
     return lulu_error(vm);
 }
 
-#undef lulu_set_library
-
 LULU_API void
-lulu_set_library(lulu_VM *vm, const char *libname,
+lulu_set_nlibrary(lulu_VM *vm, const char *libname,
     const lulu_Register *library, int n)
 {
     if (libname != nullptr) {
@@ -335,7 +333,7 @@ lulu_set_library(lulu_VM *vm, const char *libname,
 
     for (int i = 0; i < n; i++) {
         // TODO(2025-07-01): Ensure key and value are not collected!
-        lulu_push_c_function(vm, library[i].function);
+        lulu_push_cfunction(vm, library[i].function);
         lulu_set_field(vm, -2, library[i].name);
     }
 }
@@ -350,7 +348,7 @@ LULU_API void
 lulu_open_libs(lulu_VM *vm)
 {
     for (int i = 0; i < lulu_count_library(libs); i++) {
-        lulu_push_c_function(vm, libs[i].function);
+        lulu_push_cfunction(vm, libs[i].function);
         lulu_push_string(vm, libs[i].name);
         lulu_call(vm, 1, 0);
     }

@@ -210,7 +210,7 @@ int main(int argc, char *argv[])
     /* Testing to see if panic works. */
     /* lulu_check_string(vm, 1); */
 
-    e = lulu_c_pcall(vm, protected_main, &d);
+    e = lulu_cpcall(vm, protected_main, &d);
     lulu_close(vm);
     if (e == LULU_OK && d.status == EXIT_SUCCESS) {
         return EXIT_SUCCESS;

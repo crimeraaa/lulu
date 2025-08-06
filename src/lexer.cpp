@@ -116,7 +116,7 @@ get_lexeme_nul_terminated(Lexer *x)
 }
 
 void
-lexer_error(Lexer *x, Token_Type type, const char *what)
+lexer_error(Lexer *x, Token_Type type, const char *what, int line)
 {
     lulu_VM    *vm = x->vm;
     const char *where;
@@ -134,7 +134,7 @@ lexer_error(Lexer *x, Token_Type type, const char *what)
     }
 
     const char *source = x->source->to_cstring();
-    vm_push_fstring(vm, "%s:%i: %s near '%s'", source, x->line, what, where);
+    vm_push_fstring(vm, "%s:%i: %s near '%s'", source, line, what, where);
     vm_throw(vm, LULU_ERROR_SYNTAX);
 }
 
@@ -144,7 +144,7 @@ lexer_error(Lexer *x, Token_Type type, const char *what)
 static void
 error(Lexer *x, const char *what)
 {
-    lexer_error(x, TOKEN_INVALID, what);
+    lexer_error(x, TOKEN_INVALID, what, x->line);
 }
 
 static void
@@ -604,11 +604,9 @@ lexer_lex(Lexer *x)
 
 /**
  * @note 2025-06-14:
- *  -   ORDER: Keep in sync with `Token_Type`!
+ *      ORDER: Keep in sync with `Token_Type`!
  */
 const LString token_strings[TOKEN_COUNT] = {
-    "<invalid>"_s,
-
     // Keywords
     "and"_s, "break"_s, "do"_s, "else"_s, "elseif"_s, "end"_s,
     "false"_s, "for"_s, "function"_s, "if"_s, "in"_s,

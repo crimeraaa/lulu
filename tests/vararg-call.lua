@@ -3,7 +3,7 @@ function f(x, y, z)
 end
 
 function g()
-    return 9, 10, 21
+    return 9, 10, 21, 42
 end
 
 return f(g())

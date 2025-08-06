@@ -780,11 +780,15 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         int c = GETARG_C(i);
         int last;
         Table *h;
+        /* Final array expression was variadic? */
         if (n == 0) {
           n = cast_int(L->top - ra) - 1;
           L->top = L->ci->top;
         }
-        if (c == 0) c = cast_int(*pc++);
+        /* Array size too large for argument C? */
+        if (c == 0) {
+          c = cast_int(*pc++);
+        }
         runtime_check(L, ttistable(ra));
         h = hvalue(ra);
         last = ((c-1)*LFIELDS_PER_FLUSH) + n;

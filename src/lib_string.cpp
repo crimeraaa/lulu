@@ -486,6 +486,6 @@ LULU_API int
 lulu_open_string(lulu_VM *vm)
 {
     const char *libname = lulu_to_string(vm, 1);
-    lulu_set_library(vm, libname, stringlib, lulu_count_library(stringlib));
+    lulu_set_library(vm, libname, stringlib);
     return 1;
 }

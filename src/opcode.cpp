@@ -2,10 +2,10 @@
 
 /**
  * @note 2025-07-19:
- *  -   Keep in sync with `OpCode`!
+ *      Keep in sync with `OpCode`!
  *
  * @details
- *  -   Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
+ *      Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
  */
 const char *const opnames[OPCODE_COUNT] = {
     /* OP_MOVE */           "move",
@@ -83,11 +83,11 @@ FOR_LIKE    = ASBX(/* test */ true,  /* a */ true,  OPARG_JUMP,   OPARG_UNUSED),
 FOR_IN_LIKE = ABC( /* test */ true,  /* a */ false, OPARG_UNUSED, OPARG_REGK);
 
 /**
- * @note 2025--07-19
- *  -   ORDER: Keep in sync with `OpCode`!
+ * @note 2025-07-19
+ *      ORDER: Keep in sync with `OpCode`!
  *
  * @details 2025-07-19
- *  -   Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
+ *      Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
  */
 const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_MOVE */       MOVE_LIKE,

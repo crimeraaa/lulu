@@ -26,6 +26,9 @@ LULU_FUNC void
 table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v);
 
 LULU_FUNC void
+table_set_integer(lulu_VM *vm, Table *t, lulu_Integer i, const Value &v);
+
+LULU_FUNC void
 table_unset(Table *t, const Value &k);
 
 LULU_FUNC void

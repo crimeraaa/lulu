@@ -109,7 +109,7 @@ typedef void *
  *      caller.
  */
 typedef int
-(*lulu_C_Function)(lulu_VM *vm);
+(*lulu_CFunction)(lulu_VM *vm);
 
 
 /**
@@ -138,7 +138,7 @@ typedef const char *
 
 /**
  * @brief 2025-06-11
- *  -   Chapter 15.1.1 of Crafting Interpreters: "Executing instructions".
+ *      Chapter 15.1.1 of Crafting Interpreters: "Executing instructions".
  */
 typedef enum {
     LULU_OK,
@@ -150,7 +150,7 @@ typedef enum {
 
 /**
  * @brief 2025-06-16
- *  -   Chapter 18.1 of Crafting Interpreters: "Tagged Unions".
+ *      Chapter 18.1 of Crafting Interpreters: "Tagged Unions".
  */
 typedef enum {
     LULU_TYPE_NONE = -1 ,       /* out of bounds stack index, C API only. */
@@ -172,8 +172,8 @@ lulu_open(lulu_Allocator allocator, void *allocator_data);
  *      Sets the VM's global panic function, which is called when
  *      errors are thrown outside of protected calls.
  */
-LULU_API lulu_C_Function
-lulu_set_panic(lulu_VM *vm, lulu_C_Function panic_fn);
+LULU_API lulu_CFunction
+lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn);
 
 LULU_API void
 lulu_close(lulu_VM *vm);
@@ -211,12 +211,12 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets);
 
 /**
  * @brief
- *  -   Wraps `lulu_call()` in a protected call so that we may catch any thrown
- *      exceptions. See the notes there regarding how the stack is managed
- *      before and after the call.
+ *      Wraps `lulu_call()` in a protected call so that we may catch any
+ *      thrown exceptions. See the notes there regarding how the stack is
+ *      managed before and after the call.
  *
  * @return
- *  -   The error code, if any was thrown, or else `LULU_OK`.
+ *      The error code, if any was thrown, or else `LULU_OK`.
  */
 LULU_API lulu_Error
 lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
@@ -224,30 +224,29 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
 
 /**
  * @brief
- *  -   Wraps the call `function(vm, function_data)` in a protected call
+ *      Wraps the call `function(vm, function_data)` in a protected call
  *      so that we may catch any thrown exceptions.
  *
- *  -   At the start of the call, `function_data` is the 1st (and only)
+ *      At the start of the call, `function_data` is the 1st (and only)
  *      argument present on the stack. It can be retrieved by via a call
  *      to `lulu_to_userdata(vm, 1)`.
  *
  * @return
- *  -   The error code, if any was thrown, or else `LULU_OK`.
+ *      The error code, if any was thrown, or else `LULU_OK`.
  */
 LULU_API lulu_Error
-lulu_c_pcall(lulu_VM *vm, lulu_C_Function function, void *function_data);
+lulu_cpcall(lulu_VM *vm, lulu_CFunction function, void *function_data);
 
 
 /**
  * @brief
- *  -   Throws a runtime error no matter what.
+ *      Throws a runtime error no matter what.
  *
  * @note(2025-07-01)
- *
- *  -   This function never returns, but as in the Lua 5.1 API a common idiom
+ *      This function never returns, but as in the Lua 5.1 API a common idiom
  *      within C functions is to do `return lulu_error();`
  *
- *  -   This function on its own does not push an 'error object' such as a
+ *      This function on its own does not push an 'error object' such as a
  *      string. You may wish to call `lulu_push_fstring()` beforehand.
  */
 LULU_API int
@@ -259,11 +258,10 @@ lulu_error(lulu_VM *vm);
 
 /**
  * @return
- *  -   The type tag of the value at relative stack index `i`.
+ *      The type tag of the value at relative stack index `i`.
  *
  * @note(2025-07-20)
- *
- *  -   If `i` is out of bounds then `LULU_TYPE_NONE` is returned.
+ *      If `i` is out of bounds then `LULU_TYPE_NONE` is returned.
  */
 LULU_API lulu_Type
 lulu_type(lulu_VM *vm, int i);
@@ -271,17 +269,19 @@ lulu_type(lulu_VM *vm, int i);
 
 /**
  * @return
- *  -   The nul-terminated type-name of the type tag `t`.
+ *      The nul-terminated type-name of the type tag `t`.
  *
  * @note(2025-07-20)
- *
- *  -   C does not allow overloading of functions, and even if had, implicit
+ *      C does not allow overloading of functions, and even if had, implicit
  *      conversions may lead to ambiguity if the compiler treats `lulu_Type`
  *      as being the same as `int`.
  *
- *  -   Thus to get the type-name of the value at a particular index `i`,
+ *      Thus to get the type-name of the value at a particular index `i`,
  *      you would need to first call `lulu_type()` and pass it to here. E.g.
  *      `const char *s = lulu_type_name(vm, lulu_type(vm, -1));`;
+ *
+ *      In `lulu_auxlib.h`, the macro `lulu_type_name_at()` is provided to
+ *      streamline this process.
  */
 LULU_API const char *
 lulu_type_name(lulu_VM *vm, lulu_Type t);
@@ -289,7 +289,7 @@ lulu_type_name(lulu_VM *vm, lulu_Type t);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is a `number` or a
+ *      `1` if the value at relative stack index `i` is a `number` or a
  *      `string` which represents a valid number, or else `0`.
  */
 LULU_API int
@@ -298,16 +298,8 @@ lulu_is_number(lulu_VM *vm, int i);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is a `string` or a
+ *      `1` if the value at relative stack index `i` is a `string` or a
  *      `number` (which is always convertible to a string), else `0`.
- *
- * @todo(2025-07-20)
- *
- *  -   Lua also considers `number` to be `string` since they are very easy to
- *      immediately convert.
- *
- *  -   This is because `lua_tolstring()` converts the stack slot to the string
- *      representation of the number.
  */
 LULU_API int
 lulu_is_string(lulu_VM *vm, int i);
@@ -315,11 +307,11 @@ lulu_is_string(lulu_VM *vm, int i);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is truthy, else `0` if it
- *      is falsy.
+ *      `1` if the value at relative stack index `i` is truthy, else `0` if
+ *      it is falsy.
  *
  * @note(2025-07-20)
- *  -   No conversions in the stack occur.
+ *      No conversions in the stack occur.
  */
 LULU_API int
 lulu_to_boolean(lulu_VM *vm, int i);
@@ -327,16 +319,14 @@ lulu_to_boolean(lulu_VM *vm, int i);
 
 /**
  * @return
- *  -   The `number` representation at the relative stack index `i` or else `0`.
- *
- *  -   `number` is read directly while `string` is checked then parsed.
+ *      The `number` representation at the relative stack index `i` or else `0`.
+ *      `number` is read directly while `string` is checked then parsed.
  *      All other types return `0`.
  *
  * @note(2025-07-20)
- *  -   Returning `0` is not enough to indicate the value was not of type
+ *      Returning `0` is not enough to indicate the value was not of type
  *      `number`, because it is possible for the number `0` to be in the stack.
- *
- *  -   You must call `lulu_is_number()` beforehand in that case.
+ *      You must call `lulu_is_number()` beforehand in that case.
  */
 LULU_API lulu_Number
 lulu_to_number(lulu_VM *vm, int i);
@@ -348,8 +338,7 @@ lulu_to_number(lulu_VM *vm, int i);
  *      `i`, or else `0`. The same conversion rules in `lulu_to_number()` apply.
  *
  * @note(2025-07-21)
- *
- *  -   If the value at `i` is a number but cannot be accurately represented
+ *      If the value at `i` is a number but cannot be accurately represented
  *      as a `lulu_Integer` (e.g. because it is a floating-point type), then
  *      the result is truncated in some unspecified way.
  */
@@ -383,7 +372,6 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n);
  *      `NULL`.
  *
  * @note(2025-07-20)
- *
  *      `NULL` may be returned if the value cannot be suitably converted to a
  *      pointer. The only convertible types are either `userdata` or 'true'
  *      objects such as `table` or `function`.
@@ -402,7 +390,7 @@ lulu_to_pointer(lulu_VM *vm, int i);
 
 /**
  * @brief
- *  -   Retrieves the number of elements in the current stack frame.
+ *      Retrieves the number of elements in the current stack frame.
  */
 LULU_API int
 lulu_get_top(lulu_VM *vm);
@@ -410,7 +398,7 @@ lulu_get_top(lulu_VM *vm);
 
 /**
  * @brief
- *  -   Sets the end of the current stack frame to the relative stack index `i`.
+ *      Sets the end of the current stack frame to the relative stack index `i`.
  *
  * @param i
  *      When `0`, effectively pops all the elements as the stack frame will
@@ -425,8 +413,7 @@ lulu_get_top(lulu_VM *vm);
  *      down and including `i`. The value at `i` itself is also popped.
  *
  * @note(2025-07-20)
- *
- *  -   `i` cannot be a pseudo index.
+ *      `i` cannot be a pseudo index.
  */
 LULU_API void
 lulu_set_top(lulu_VM *vm, int i);
@@ -434,12 +421,11 @@ lulu_set_top(lulu_VM *vm, int i);
 
 /**
  * @brief
- *  -   Replaces the valule at the stack index `i` with the top of the stack
+ *      Replaces the valule at the stack index `i` with the top of the stack
  *      and shifts all elements that were above `i` up by one index.
  *
  * @note(2025-07-20)
- *
- *  -   `i` cannot be a pseudo index, because it would not refer to an actual
+ *      `i` cannot be a pseudo index, because it would not refer to an actual
  *      position in the stack.
  */
 LULU_API void
@@ -448,12 +434,11 @@ lulu_insert(lulu_VM *vm, int i);
 
 /**
  * @brief
- *  -   Removes the value at the stack index `i`, and shift all elements that
+ *      Removes the value at the stack index `i`, and shift all elements that
  *      were above `i` down by one index.
  *
  * @note(2025-07-20)
- *
- *  -   `i` cannot be a pseudo index, because it would not refer to an actual
+ *      `i` cannot be a pseudo index, because it would not refer to an actual
  *      position in the stack.
  */
 LULU_API void
@@ -462,7 +447,7 @@ lulu_remove(lulu_VM *vm, int i);
 
 /**
  * @brief
- *  -   Pops `n` values from the top of the stack.
+ *      Pops `n` values from the top of the stack.
  */
 LULU_API void
 lulu_pop(lulu_VM *vm, int n);
@@ -470,7 +455,7 @@ lulu_pop(lulu_VM *vm, int n);
 
 /**
  * @brief
- *  -   Pushes `n` `nil` values to the top of the stack.
+ *      Pushes `n` `nil` values to the top of the stack.
  */
 LULU_API void
 lulu_push_nil(lulu_VM *vm, int n);
@@ -478,7 +463,7 @@ lulu_push_nil(lulu_VM *vm, int n);
 
 /**
  * @brief
- *  -   Pushes `b` to the top of the stack as a `boolean` value.
+ *      Pushes `b` to the top of the stack as a `boolean` value.
  */
 LULU_API void
 lulu_push_boolean(lulu_VM *vm, int b);
@@ -486,7 +471,7 @@ lulu_push_boolean(lulu_VM *vm, int b);
 
 /**
  * @brief
- *  -   Pushes `n` to the top of the stack as a `number` value.
+ *      Pushes `n` to the top of the stack as a `number` value.
  */
 LULU_API void
 lulu_push_number(lulu_VM *vm, lulu_Number n);
@@ -494,11 +479,10 @@ lulu_push_number(lulu_VM *vm, lulu_Number n);
 
 /**
  * @brief
- *  -   Pushes `i` to the top of the stack as a `number` value.
+ *      Pushes `i` to the top of the stack as a `number` value.
  *
  * @note(2025-07-21)
- *
- *  -   If `i` cannot be represented accurately as a `lulu_Number`, it may
+ *      If `i` cannot be represented accurately as a `lulu_Number`, it may
  *      be truncated (e.g. when `lulu_Number` is floating-point type).
  */
 LULU_API void
@@ -507,7 +491,7 @@ lulu_push_integer(lulu_VM *vm, lulu_Integer i);
 
 /**
  * @brief
- *  -   Pushes `p` to the top of the stack as a `userdata` value.
+ *      Pushes `p` to the top of the stack as a `userdata` value.
  */
 LULU_API void
 lulu_push_userdata(lulu_VM *vm, void *p);
@@ -515,7 +499,7 @@ lulu_push_userdata(lulu_VM *vm, void *p);
 
 /**
  * @brief
- *  -   Pushes the string `s`, bounded by length `n`, to the top of the stack.
+ *      Pushes the string `s`, bounded by length `n`, to the top of the stack.
  */
 LULU_API void
 lulu_push_lstring(lulu_VM *vm, const char *s, size_t n);
@@ -523,7 +507,7 @@ lulu_push_lstring(lulu_VM *vm, const char *s, size_t n);
 
 /**
  * @brief
- *  -   Pushes the nul-terminated string `s` to the top of the stack.
+ *      Pushes the nul-terminated string `s` to the top of the stack.
  */
 LULU_API void
 lulu_push_string(lulu_VM *vm, const char *s);
@@ -531,7 +515,7 @@ lulu_push_string(lulu_VM *vm, const char *s);
 
 /**
  * @brief
- *  -   Pushes a formatted string to the top of the stack, following a
+ *      Pushes a formatted string to the top of the stack, following a
  *      simplified version of C `printf`.
  *
  * @param fmt
@@ -545,8 +529,8 @@ lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
 
 /**
  * @brief
- *  -   `va_list` wrapper similar to `lulu_push_fstring()`, following the exact
- *      same rules.
+ *      `va_list` wrapper similar to `lulu_push_fstring()`, following the
+ *      exact same rules.
  */
 LULU_API const char *
 lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
@@ -559,19 +543,19 @@ lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
  *      be at stack indexes `-n_upvalues` up to `-1` if nonzero.
  */
 LULU_API void
-lulu_push_c_closure(lulu_VM *vm, lulu_C_Function cf, int n_upvalues);
+lulu_push_cclosure(lulu_VM *vm, lulu_CFunction cf, int n_upvalues);
 
 /**
  * @brief
  *      Pushes `cf` to the top of the stack as a `function` value,
  *      associating no upvalues with it.
  */
-#define lulu_push_c_function(vm, cf)  lulu_push_c_closure(vm, cf, 0)
+#define lulu_push_cfunction(vm, cf) lulu_push_cclosure(vm, cf, 0)
 
 
 /**
  * @brief
- *  -   Pushes a copy of the value at the relative/pseudo stack index `i`
+ *      Pushes a copy of the value at the relative/pseudo stack index `i`
  *      to the top of the stack.
  */
 LULU_API void
@@ -586,16 +570,16 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash);
 
 /**
  * @brief
- *  -   Pops `key` from the stack and pushes `table[key]` in its place.
+ *      Pops `key` from the stack and pushes `table[key]` in its place.
  *
  * @param table_index
- *  -   The relative/pseudo stack index of the table we wish to index.
+ *      The relative/pseudo stack index of the table we wish to index.
  *
  * @return
  *      `1` if the key existed in the table, meaning its value was pushed.
  *      `0` otherwise, meaning `nil` was pushed.
  *
- * @note(2025-07-20) Assumptions
+ * @note(2025-07-20) Assumptions:
  *
  *  1.) The key to be used is at relative stack index `-1`.
  *
@@ -608,7 +592,7 @@ lulu_get_table(lulu_VM *vm, int table_index);
 
 /**
  * @brief
- *  -   Pushes `table[key]` to the stack.
+ *      Pushes `table[key]` to the stack.
  *
  * @param table_index
  *      The relative/psuedo stack index of the table we wish to index.
@@ -621,7 +605,7 @@ lulu_get_table(lulu_VM *vm, int table_index);
  *      `0` otherwise, meaning `nil` was pushed.
  *
  * @note(2025-07-20)
- *  -   It is possible for `table[key]` to have been mapped previously and
+ *      It is possible for `table[key]` to have been mapped previously and
  *      to map to `nil`.
  */
 LULU_API int
@@ -635,6 +619,7 @@ lulu_get_field(lulu_VM *vm, int table_index, const char *key);
  * @note(2025-07-20) Assumptions
  *
  *  1.) The key is at stack index `-2` and the value is at stack index `-1.`
+ *
  *  2.) When this operation is done, both the key and value are popped.
  */
 LULU_API void
@@ -648,7 +633,7 @@ lulu_set_table(lulu_VM *vm, int table_index);
  * @param key
  *      A nul-terminated C string representing the field we wish to set.
  *
- * @note(2025-07-20) Assumptions
+ * @note(2025-07-20) Assumptions:
  *
  *  1.) The value to be used is at the relative stack index `-1`. When this
  *      operation is done, the value is popped.
@@ -661,7 +646,7 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key);
  * @param table_index
  *      The relative/pseudo index of the table you wish to iterate over.
  *
- * @note(2025-08-05) Assumptions
+ * @note(2025-08-05) Assumptions:
  *
  *  1.) On the first iteration, the VM at index `-1` has `nil`. It is your
  *      responsibility to ensure this value is pushed beforehand as this
@@ -673,13 +658,12 @@ lulu_next(lulu_VM *vm, int table_index);
 
 /**
  * @brief
- *  -   Gets the key `s` from the VM globals table and pushes it to the
- *      current top of the stack.
- *
- *  -   If the key did not exist, then `nil` is pushed.
+ *      Gets the key `s` from the VM globals table and pushes it to the
+ *      current top of the stack. If the key did not exist, then `nil` is
+ *      pushed.
  *
  * @return
- *  -   `0` if `s` does not exist in the globals table, else `1`.
+ *      `0` if `s` does not exist in the globals table, else `1`.
  */
 #define lulu_get_global(vm, key)    lulu_get_field(vm, LULU_GLOBALS_INDEX, key)
 
@@ -694,14 +678,12 @@ lulu_next(lulu_VM *vm, int table_index);
 
 /**
  * @brief
- *  -   Perform string concatenation from the `-(n)` up to and including `-1`
- *      stack indexes.
+ *      Perform string concatenation from the `-(n)` up to and including `-1`
+ *      stack indexes. The `-(n)`th slot is overwritten with the result.
  *
- *  -   The `-(n)`th slot is overwritten with the result.
+ * @note(2025-06-30) Assumptions:
  *
- * @note(2025-06-30) Assumptions
- *
- *  1.  The stack has at least `n` elements such that doing pointer arithmetic
+ *  1.) The stack has at least `n` elements such that doing pointer arithmetic
  *      is vaild.
  */
 LULU_API void
@@ -750,33 +732,30 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is `nil`, else `0`.
+ *      `1` if the value at relative stack index `i` is `nil`, else `0`.
  *
  * @note(2025-07-19)
+ *      For C functions called from Lua, since function arity (parameter
+ *      count) is not known beforehand, arguments are not default-initalized
+ *      to `nil` if not provided as the implementation has no way of knowing
+ *      how many arguments you wanted.
  *
- *  -   For C functions called from Lua, since function arity (parameter count)
- *      is not known beforehand, arguments are not default-initalized to `nil`
- *      if not provided as the implementation has no way of knowing how many
- *      arguments you wanted.
- *
- *  -   Thus, to check for arguments that were not provided at all from a Lua
- *      function, use `lulu_is_none()`.
- *
- *  -   C functions called from C (as in `lulu_pcall()`) do know how many
- *      arguments to expect because they were explicitly passed.
+ *      Thus, to check for arguments that were not provided at all from a
+ *      Lua function, use `lulu_is_none()`. C functions called from C (as in
+ *      `lulu_pcall()`) do know how many arguments to expect because they
+ *      were explicitly passed.
  */
 #define lulu_is_nil(vm, i)          (lulu_type(vm, i) == LULU_TYPE_NIL)
 
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is `none` else `0`.
+ *      `1` if the value at relative stack index `i` is `none` else `0`.
  *
  * @note(2025-07-19)
- *
- *  -   Only indexes outside the current stack frame are type `none`. Only
- *      C functions can see them because of their unsafe capability to request
- *      any stack index.
+ *      Only indexes outside the current stack frame are type `none`. Only
+ *      C functions can see them because of their unsafe capability to
+ *      request any stack index.
  */
 #define lulu_is_none(vm, i)         (lulu_type(vm, i) == LULU_TYPE_NONE)
 
@@ -791,22 +770,22 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is a `boolean`, else `0`.
+ *      `1` if the value at relative stack index `i` is a `boolean`, else `0`.
  */
 #define lulu_is_boolean(vm, i)      (lulu_type(vm, i) == LULU_TYPE_BOOLEAN)
 
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is a `userdata`, else `0`.
+ *      `1` if the value at relative stack index `i` is a `userdata`, else
+ *      `0`.
  *
  * @note(2025-07-20)
- *
- *  -   `userdata` are generally safe to cast to pointers of some type `T`.
- *      A good example is the callback function of `lulu_c_pcall()`, whose
+ *      `userdata` are generally safe to cast to pointers of some type `T`.
+ *      A good example is the callback function of `lulu_cpcall()`, whose
  *      1 and only argument is the userdata to be used.
  *
- *  -   Of course, the safety of casting to and from `void *` cannot be
+ *      Of course, the safety of casting to and from `void *` cannot be
  *      guaranteed by your compiler, much less `lulu`.
  */
 #define lulu_is_userdata(vm, i)     (lulu_type(vm, i) == LULU_TYPE_LIGHTUSERDATA)
@@ -814,54 +793,54 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is a `table`, else `0`.
+ *      `1` if the value at relative stack index `i` is a `table`, else `0`.
  */
 #define lulu_is_table(vm, i)        (lulu_type(vm, i) == LULU_TYPE_TABLE)
 
 
 /**
  * @return
- *  -   `1` if the value at relative stack index `i` is a `function`, else `0`.
+ *      `1` if the value at relative stack index `i` is a `function`, else `0`.
  */
 #define lulu_is_function(vm, i)     (lulu_type(vm, i) == LULU_TYPE_FUNCTION)
 
 
 /**
  * @brief
- *  -   In C, it is very common to use nul-terminated `const char *` to act as
- *      the primary 'string' type. The `str*` functions in the C standard
+ *      In C, it is very common to use nul-terminated `const char *` to act
+ *      as the primary 'string' type. The `str*` functions in the C standard
  *      library, for example, always assume their inputs are nul-terminated.
  *
- *  -   So this macro simply calls `lulu_to_lstring()` with `n == NULL` to
+ *      So this macro simply calls `lulu_to_lstring()` with `n == NULL` to
  *      avoid explicitly storing the length anywhere.
  *
  * @note(2025-07-19)
- *  -   The internal implementation of `lulu` ensures that all strings are nul
- *      terminated.
+ *      The internal implementation of `lulu` ensures that all strings are
+ *      nul terminated.
  */
 #define lulu_to_string(vm, i)       lulu_to_lstring(vm, i, NULL)
 
+
 /**
  * @brief
- *  -   In C, it is very common to use string literals denoted by `"<text>"`.
- *
- *  -   Instead of calling `lulu_push_string(vm, s)` thus incurring the
- *      function call to `strlen()` that can be skipped if the string size is
- *      known at compile time.
+ *      In C, it is very common to use string literals denoted by
+ *      `"<text>"`. Instead of calling `lulu_push_string(vm, s)` thus
+ *      incurring the function call to `strlen()` that can be skipped if
+ *      the string size is known at compile time.
  */
 #define lulu_push_literal(vm, s)    lulu_push_lstring(vm, s, sizeof(s) - 1)
 
 
 /**
  * @brief
- *  -   A fairly common operation is to bind a function to a global name.
+ *      A fairly common operation is to bind a function to a global name.
  *
- *  -   A good example of this is the base library; the functions `print()`,
- *      `type()`, `tostring()` are all merely global identifiers that happen to
- *      reference C functions.
+ *      A good example of this is the base library; the functions `print()`,
+ *      `type()`, `tostring()` are all merely global identifiers that happen
+ *      to reference C functions.
  */
 #define lulu_register(vm, name, c_function) \
-    (lulu_push_c_function(vm, c_function), lulu_set_global(vm, name))
+    (lulu_push_cfunction(vm, c_function), lulu_set_global(vm, name))
 
 /*== }}} ================================================================ */
 

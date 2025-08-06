@@ -12,7 +12,7 @@ struct LULU_PRIVATE Closure_Lua {
 
 struct LULU_PRIVATE Closure_C {
     CLOSURE_HEADER;
-    lulu_C_Function callback;
+    lulu_CFunction callback;
     Value upvalues[1];
 
     // If `n_upvalues == 0`, then `upvalues[0]` should not be valid.
@@ -56,7 +56,7 @@ union LULU_PRIVATE Closure {
 };
 
 LULU_FUNC Closure *
-closure_c_new(lulu_VM *vm, lulu_C_Function cf, int n_upvalues);
+closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues);
 
 LULU_FUNC Closure *
 closure_lua_new(lulu_VM *vm, Chunk *p);

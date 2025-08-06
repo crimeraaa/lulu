@@ -19,8 +19,8 @@ dynamic_init(Dynamic<T> *d)
 
 /**
  * @brief
- *  - Allocates memory to hold `new_cap` elements and sets `d.cap`.
- *  - `d->len` is left untouched thus you still cannot index it.
+ *      Allocates memory to hold `new_cap` elements and sets `d.cap`.
+ *      `d->len` is left untouched thus you still cannot index it.
  */
 template<class T>
 LULU_FUNC inline void
@@ -33,12 +33,12 @@ dynamic_reserve(lulu_VM *vm, Dynamic<T> *d, isize new_cap)
 
 /**
  * @brief 2025-06-12
- *  -   Allocates memory to hold at least `new_len` elements.
- *  -   If shrinking, no new memory is allocated but the valid indexable range
- *      is reduced.
- *  -   We clamp the size to reduce the number of consecutive reallocations.
- *  -   Unlike `reserve()` this also sets `d.len` so you can safely
- *      index this range.
+ *      Allocates memory to hold at least `new_len` elements. If shrinking,
+ *      no new memory is allocated but the valid indexable range is reduced.
+ *
+ *      We clamp the size to reduce the number of consecutive reallocations.
+ *      Unlike `reserve()` this also sets `d.len` so you can safely index
+ *      this range.
  */
 template<class T>
 LULU_FUNC inline void

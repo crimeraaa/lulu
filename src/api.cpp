@@ -93,10 +93,10 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
     return vm;
 }
 
-LULU_API lulu_C_Function
-lulu_set_panic(lulu_VM *vm, lulu_C_Function panic_fn)
+LULU_API lulu_CFunction
+lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn)
 {
-    lulu_C_Function prev = vm->panic_fn;
+    lulu_CFunction prev = vm->panic_fn;
     vm->panic_fn = panic_fn;
     return prev;
 }
@@ -145,8 +145,7 @@ static void
 pcall(lulu_VM *vm, void *user_ptr)
 {
     PCall *d = reinterpret_cast<PCall *>(user_ptr);
-    const Value *fn = value_at(vm, -(d->n_args + 1));
-    vm_call(vm, fn, d->n_args, (d->n_rets == LULU_MULTRET) ? VARARG : d->n_rets);
+    lulu_call(vm, d->n_args, d->n_rets);
 }
 
 LULU_API lulu_Error
@@ -158,7 +157,7 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
 }
 
 struct LULU_PRIVATE C_PCall {
-    lulu_C_Function function;
+    lulu_CFunction function;
     void          *function_data;
 };
 
@@ -166,13 +165,13 @@ static void
 c_pcall(lulu_VM *vm, void *user_ptr)
 {
     C_PCall *d = reinterpret_cast<C_PCall *>(user_ptr);
-    lulu_push_c_function(vm, d->function);
+    lulu_push_cfunction(vm, d->function);
     lulu_push_userdata(vm, d->function_data);
     lulu_call(vm, 1, 0);
 }
 
 LULU_API lulu_Error
-lulu_c_pcall(lulu_VM *vm, lulu_C_Function function, void *function_data)
+lulu_cpcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
 {
     C_PCall d{function, function_data};
     lulu_Error e = vm_run_protected(vm, c_pcall, &d);
@@ -406,7 +405,7 @@ lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 }
 
 LULU_API void
-lulu_push_c_closure(lulu_VM *vm, lulu_C_Function cf, int n_upvalues)
+lulu_push_cclosure(lulu_VM *vm, lulu_CFunction cf, int n_upvalues)
 {
     lulu_assert(n_upvalues >= 0);
 

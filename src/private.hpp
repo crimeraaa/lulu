@@ -14,25 +14,27 @@
 using u8  = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
+using i8  = int8_t;
 using i32 = int32_t;
 
 
 /**
  * @brief
- *  -   Theoretically, this is not enough to represent the full address space.
- *  -   However in practice most of the address space is invalid anyway.
- *  -   E.g. on a 64 bit machine, a platform may only use 48 bits per address,
- *      so signed 64 bit sizes are overkill as it will be impossible to commit
- *      even 1 quadrillion bytes (~50 bits) of memory.
- *  -   So we assume that this type is more than adequate for our purposes.
+ *      Theoretically, this is not enough to represent the full address
+ *      space. However in practice most of the address space is invalid
+ *      anyway.
+ *
+ *      E.g. on a 64 bit machine, a platform may only use 48 bits per
+ *      address, so signed 64 bit sizes are overkill as it will be
+ *      impossible to commit even 1 quadrillion bytes (~50 bits) of memory.
+ *      So we assume that this type is more than adequate for our purposes.
  */
 using isize = ptrdiff_t;
 
 /**
  * @brief
- *  -   Only used for consistency with C standard library functions and
- *      allocation functions.
- *  -   Prefer `isize` otherwise.
+ *      Only used for consistency with C standard library functions and
+ *      allocation functions. Prefer `isize` otherwise.
  */
 using usize = size_t;
 

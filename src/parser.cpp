@@ -5,13 +5,6 @@
 #include "debug.hpp"
 #include "vm.hpp"
 
-struct LULU_PRIVATE Block {
-    Block *prev;        // Stack-allocated linked list.
-    isize  break_list;  // Jump list of `break` statements.
-    u16    n_locals;    // Number of initialized locals at the time of pushing.
-    bool   breakable;   // Is `break` valid for this block?
-};
-
 struct LULU_PRIVATE Expr_List {
     Expr last;
     u16  count;
@@ -64,13 +57,12 @@ block_pop(Compiler *c)
 
 /**
  * @brief
- *  -   Checks if we hit a token that 'terminates' a block.
+ *      Checks if we hit a token that 'terminates' a block.
  *
  * @note 2025-07-10
- *  -   We do not check for correctness, this is just a convenience function
- *      acting as a lookup table.
- *  -   It is the caller's responsibility to consume/expect a particular token
- *      and throw an error if not met.
+ *      We do not check for correctness, this is just a convenience function
+ *      acting as a lookup table. It is the caller's responsibility to
+ *      consume/expect a particular token and throw an error if not met.
  */
 static bool
 block_continue(Parser *p)
@@ -129,7 +121,7 @@ parser_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 
 /**
  * @brief
- *  -   Move to the next token unconditionally.
+ *      Move to the next token unconditionally.
  */
 static void
 advance(Parser *p)
@@ -173,7 +165,7 @@ match(Parser *p, Token_Type expected)
 static void
 error_at(Parser *p, Token_Type type, const char *msg)
 {
-    lexer_error(&p->lexer, type, msg);
+    lexer_error(&p->lexer, type, msg, p->last_line);
 }
 
 // Throw an error using the type of the current token.
@@ -186,7 +178,7 @@ error(Parser *p, const char *msg)
 
 /**
  * @brief
- *  -   Asserts that the current token is of type `expected` and advances.
+ *      Asserts that the current token is of type `expected` and advances.
  */
 static void
 consume(Parser *p, Token_Type expected)
@@ -224,9 +216,8 @@ consume_to_close(Parser *p, Token_Type expected, Token_Type to_close, int line)
 
 /**
  * @brief
- *  -   Pushes a comma-separated list of expressions to the stack, except for
- *      the last one.
- *  -   We don't push the last one to allow optimizations.
+ *      Pushes a comma-separated list of expressions to the stack, except
+ *      for the last one. We don't push the last one to allow optimizations.
  */
 static Expr_List
 expression_list(Parser *p, Compiler *c)
@@ -383,8 +374,7 @@ local_statement(Parser *p, Compiler *c)
 {
     u16 n = 0;
     do {
-        OString *ident = consume_ident(p);
-        local_push(p, c, ident);
+        local_push(p, c, consume_ident(p));
         n++;
     } while (match(p, TOKEN_COMMA));
     // Prevent lookup of uninitialized local variables, e.g. `local x = x`;
@@ -591,8 +581,7 @@ for_generic(Parser *p, Compiler *c, OString *ident)
     u16 n_vars = 1;
     local_push(p, c, ident);
     while (match(p, TOKEN_COMMA)) {
-        ident = consume_ident(p);
-        local_push(p, c, ident);
+        local_push(p, c, consume_ident(p));
         n_vars++;
     }
     consume(p, TOKEN_IN);
@@ -605,11 +594,11 @@ for_generic(Parser *p, Compiler *c, OString *ident)
      *
      *      1.) The generator function (local 0)
      *
-     *      2.) The state variable (local 1)
-     *          -   The first argument to the generator function.
+     *      2.) The state variable (local 1):
+     *          The first argument to the generator function.
      *
-     *      3.) The control variable (local 2)
-     *          -   The second argument to the generator function.
+     *      3.) The control variable (local 2):
+     *          The second argument to the generator function.
      */
     Expr_List e = expression_list(p, c);
     assign_adjust(c, 3, &e);
@@ -722,8 +711,7 @@ field(Parser *p, Compiler *c, Expr *e)
     // Table must be in some register, it can be a local.
     compiler_expr_any_reg(c, e);
     advance(p); // Skip '.'.
-    OString *field = consume_ident(p);
-    u32  i = compiler_add_ostring(c, field);
+    u32  i = compiler_add_ostring(c, consume_ident(p));
     Expr k = Expr::make_index(EXPR_CONSTANT, i);
     compiler_get_table(c, e, &k);
 }
@@ -731,8 +719,7 @@ field(Parser *p, Compiler *c, Expr *e)
 static Expr
 function_var(Parser *p, Compiler *c)
 {
-    OString *ident = consume_ident(p);
-    Expr var = resolve_variable(c, ident);
+    Expr var = resolve_variable(c, consume_ident(p));
     while (match(p, TOKEN_DOT)) {
         field(p, c, &var);
     }
@@ -767,8 +754,7 @@ function_definition(Parser *p, Compiler *enclosing, int fline)
     if (!check(p, TOKEN_CLOSE_PAREN)) {
         u16 n = 0;
         do {
-            OString *ident = consume_ident(p);
-            local_push(p, &c, ident);
+            local_push(p, &c, consume_ident(p));
             n++;
         } while (match(p, TOKEN_COMMA));
         local_start(&c, n);
@@ -795,8 +781,7 @@ function_decl(Parser *p, Compiler *c, int fline)
 static void
 local_function(Parser *p, Compiler *c, int line)
 {
-    OString *ident = consume_ident(p);
-    local_push(p, c, ident);
+    local_push(p, c, consume_ident(p));
     local_start(c, 1);
 
     Expr var = Expr::make_reg(EXPR_LOCAL, c->free_reg);
@@ -905,7 +890,7 @@ Chunk *
 parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
     Parser   p = parser_make(vm, source, z, b);
-    Compiler c = function_open(vm, &p, nullptr);
+    Compiler c = function_open(vm, &p, /* enclosing */ nullptr);
     // Set up first token
     advance(&p);
     block(&p, &c);
@@ -925,7 +910,7 @@ struct LULU_PRIVATE Constructor {
 };
 
 static void
-ctor_field(Parser *p, Compiler *c, Constructor *ctor)
+constructor_field(Parser *p, Compiler *c, Constructor *ctor)
 {
     u16   reg = c->free_reg;
     Token t   = p->current;
@@ -953,7 +938,7 @@ ctor_field(Parser *p, Compiler *c, Constructor *ctor)
 }
 
 static void
-ctor_array(Parser *p, Compiler *c, Constructor *ctor)
+constructor_array(Parser *p, Compiler *c, Constructor *ctor)
 {
     ctor->array_value = expression(p, c);
     ctor->n_array++;
@@ -982,7 +967,7 @@ set_array(Compiler *c, Constructor *ctor)
 
 // lparser.c:lastlistfield(FuncState *fs, struct ConsControl *cc)
 static void
-set_array_last(Parser *p, Compiler *c, Constructor *ctor)
+constructor_array_last(Compiler *c, Constructor *ctor)
 {
     // Nothing to do?
     if (ctor->to_store == 0) {
@@ -991,7 +976,11 @@ set_array_last(Parser *p, Compiler *c, Constructor *ctor)
 
     Expr *e = &ctor->array_value;
     if (e->has_multret()) {
-        error(p, "Cannot use variadic as last array item");
+        compiler_set_returns(c, e, VARARG);
+        compiler_set_array(c, ctor->table.reg, ctor->n_array, VARARG);
+        // Don't count the function call as it is a variadic return.
+        // We will resolve the count at runtime.
+        ctor->n_array--;
     } else {
         if (e->type != EXPR_NONE) {
             compiler_expr_next_reg(c, e);
@@ -1017,22 +1006,22 @@ constructor(Parser *p, Compiler *c)
         // Discharge any previous array items.
         set_array(c, &ctor);
 
-        // Don't consume yet, `ctor_field()` needs <ident> or '['.
+        // Don't consume yet, `constructor_field()` needs <ident> or '['.
         Token_Type t = p->current.type;
         switch (t) {
         case TOKEN_IDENT: {
             if (lookahead(p) == TOKEN_ASSIGN) {
-                ctor_field(p, c, &ctor);
+                constructor_field(p, c, &ctor);
             } else {
-                ctor_array(p, c, &ctor);
+                constructor_array(p, c, &ctor);
             }
             break;
         }
         case TOKEN_OPEN_BRACE:
-            ctor_field(p, c, &ctor);
+            constructor_field(p, c, &ctor);
             break;
         default:
-            ctor_array(p, c, &ctor);
+            constructor_array(p, c, &ctor);
             break;
         }
 
@@ -1044,7 +1033,7 @@ constructor(Parser *p, Compiler *c)
     }
 
     consume(p, TOKEN_CLOSE_CURLY);
-    set_array_last(p, c, &ctor);
+    constructor_array_last(c, &ctor);
 
     Instruction *ip = get_code(c, pc);
     ip->set_b(floating_byte_make(ctor.n_hash));
@@ -1098,11 +1087,11 @@ prefix_expr(Parser *p, Compiler *c)
 
     OpCode unary_op;
     switch (t.type) {
-    case TOKEN_NIL:    return Expr::make(EXPR_NIL);
-    case TOKEN_TRUE:   return Expr::make(EXPR_TRUE);
-    case TOKEN_FALSE:  return Expr::make(EXPR_FALSE);
+    case TOKEN_NIL:      return Expr::make(EXPR_NIL);
+    case TOKEN_TRUE:     return Expr::make(EXPR_TRUE);
+    case TOKEN_FALSE:    return Expr::make(EXPR_FALSE);
     case TOKEN_FUNCTION: return function_definition(p, c, line);
-    case TOKEN_NUMBER: return Expr::make_number(t.number);
+    case TOKEN_NUMBER:   return Expr::make_number(t.number);
     case TOKEN_STRING: {
         u32 i = compiler_add_ostring(c, t.ostring);
         return Expr::make_index(EXPR_CONSTANT, i);
@@ -1161,7 +1150,7 @@ primary_expr(Parser *p, Compiler *c)
 }
 
 enum Binary_Type {
-    BINARY_NONE,                        // PREC_NONE
+    BINARY_NONE = -1,                   // Not a valid lookup table key.
     BINARY_AND, BINARY_OR,              // PREC_AND, PREC_OR
     BINARY_ADD, BINARY_SUB,             // PREC_TERMINAL
     BINARY_MUL, BINARY_DIV, BINARY_MOD, // PREC_FACTOR
@@ -1170,6 +1159,9 @@ enum Binary_Type {
     BINARY_NEQ, BINARY_GT, BINARY_GEQ,  // PREC_COMPARISON, cond=false
     BINARY_CONCAT,                      // PREC_CONCAT
 };
+
+static constexpr int
+BINARY_TYPE_COUNT = BINARY_CONCAT + 1;
 
 struct Binary_Prec {
     Precedence left, right;
@@ -1188,8 +1180,7 @@ right_assoc(Precedence prec)
 }
 
 static const Binary_Prec
-binary_precs[] = {
-    /* BINARY_NONE */   {PREC_NONE, PREC_NONE},
+binary_precs[BINARY_TYPE_COUNT] = {
     /* BINARY_AND */    left_assoc(PREC_AND),
     /* BINARY_OR */     left_assoc(PREC_OR),
     /* BINARY_ADD */    left_assoc(PREC_TERMINAL),
@@ -1208,8 +1199,7 @@ binary_precs[] = {
 };
 
 static const OpCode
-binary_opcodes[] = {
-    /* BINARY_NONE */   OP_RETURN,
+binary_opcodes[BINARY_TYPE_COUNT] = {
     /* BINARY_AND */    OP_TEST,
     /* BINARY_OR */     OP_TEST,
     /* BINARY_ADD */    OP_ADD,
@@ -1286,7 +1276,7 @@ logical(Parser *p, Compiler *c, Expr *left, Binary_Type b, bool cond)
 
 /**
  * @note 2025-06-14:
- *  -   Assumes we just consumed the first (prefix) token.
+ *      Assumes we just consumed the first (prefix) token.
  */
 static Expr
 expression(Parser *p, Compiler *c, Precedence limit)

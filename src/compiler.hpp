@@ -14,17 +14,48 @@ MAX_TOTAL_LOCALS  = UINT16_MAX;
 
 using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
 
+struct LULU_PRIVATE Block {
+    // Stack-allocated linked-list.
+    Block *prev;
+
+    // Jump list for all connected `break` statements, if `breakable`.
+    isize  break_list;
+
+    // Number of *initialized* locals at the *time of pushing*.
+    u16 n_locals;
+
+    // Is `break` valid for this block?
+    bool breakable;
+};
+
 struct LULU_PRIVATE Compiler {
-    lulu_VM     *vm;
-    Compiler    *prev;   // Have an enclosing function?
-    Parser      *parser; // All compilers share the same parser.
-    Chunk       *chunk;  // Compilers do not own their chunks.
-    Table       *indexes; // Maps values to indexes in `chunk.constants`.
-    isize        pc;     // Index of first free instruction: `len(chunk->code)`.
-    isize        last_target;
-    u16          free_reg;
-    Block       *block;  // Linked list of blocks for local resolution.
-    Active_Array active; // Indexes are local registers.
+    lulu_VM *vm;
+
+    // The enclosing (parent) function, non-`nullptr` if we are nested.
+    // Helps in detecting and resolving upvalues.
+    Compiler *prev;
+
+    // All compilers in the same thread share the same parser.
+    Parser *parser;
+
+    // Compilers do not own their chunks; each closure is unique but holds
+    // the same chunk.
+    Chunk *chunk;
+
+    // Map of constant values to indexes into `chunk->constants`.
+    Table *indexes;
+
+    // Stack-allocated linked list of blocks for local and upvalue
+    // resulution.
+    Block *block;
+
+    // Indexes thereof are equivalent to local registers currently in use.
+    Active_Array active;
+
+    // Index of the first free instruction, equivalent to `len(chunk->code)`.
+    isize pc;
+    isize last_target;
+    u16 free_reg;
 };
 
 LULU_FUNC inline Instruction *
@@ -34,8 +65,7 @@ get_code(Compiler *c, isize pc)
 }
 
 LULU_FUNC Compiler
-compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Table *indexes,
-    Compiler *enclosing = nullptr);
+compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev);
 
 [[noreturn]]
 LULU_FUNC void
@@ -148,26 +178,30 @@ compiler_expr_any_reg(Compiler *c, Expr *e);
 
 /**
  * @details 2025-06-16:
- *  -   Consider the expression `1 + 2*3`.
+ *      Consider the expression `1 + 2*3`.
  *
  *  1.) We first parse `2*3`.
- *      -   Both are constants so they are directly encoded rather than
+ *          Both are constants so they are directly encoded rather than
  *          pushed to registers first.
- *      -   The `Expr` holding `2`, the current `left`, is set to
+ *
+ *          The `Expr` holding `2`, the current `left`, is set to
  *          `RELOCABLE` holding the pc of `OP_MUL`.
- *      -   We pop both expressions, but since neither are in registers,
+ *
+ *          We pop both expressions, but since neither are in registers,
  *          nothing happens.
  *
  *  2.) We then parse `1 + <right>`.
- *      -   `left` is the `Expr` holding `1`.
- *      -   `right` is the `Expr` holding `OP_MUL` of constants `2` and `3`.
- *      -   We call `compiler_expr_rk()` on `right`, which eventually leads
- *          to `compiler_expr_next_reg()`.
- *      -   This transforms `right` to `DISCHARGED` holding the first free
- *          register, `0`. `c.free_reg` is now `1`.
- *      -   `left` meanwhile simply holds the constant.
- *      -   We pop both expressions, but only `right` is actually popped.
- *          `c.free_reg` is now `0`.
+ *          `left` is the `Expr` holding `1`. `right` is the `Expr` holding
+ *          `OP_MUL` of constants `2` and `3`.
+ *
+ *          We call `compiler_expr_rk()` on `right`, which eventually leads
+ *          to `compiler_expr_next_reg()`. This transforms `right` to
+ *          `DISCHARGED` holding the first free register, `0`. `c.free_reg`
+ *          is now `1`.
+ *
+ *          `left` meanwhile simply holds the constant. We pop both
+ *          expressions, but only `right` is actually popped. `c.free_reg`
+ *          is now `0`.
  */
 LULU_FUNC void
 compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
@@ -265,18 +299,18 @@ compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
  *      This function is 'overloaded' to do the jobs of multiple separate
  *      functions from `lcode.c` in Lua 5.1.5.
  *
- *      1.) `luaK_patchtohere()` - leave `target` and `reg` to defaults.
- *          This is useful to patch a jump list to `c->pc` as in emulating
- *          `if` and `while` conditions.
+ *      1.) `luaK_patchtohere()`:
+ *          Leave `target` and `reg` to defaults. This is useful to patch a
+ *          jump list to `c->pc` for `if` and `while` conditions.
  *
- *      2.) `luaK_patchlist()` - provide `target` but not `reg`.
- *          This is useful in emulating the unconditional jump of a `while`
- *          or a `for` loop.
+ *      2.) `luaK_patchlist()`:
+ *          Provide `target` but not `reg`. This is useful in emulating the
+ *          unconditional jump of a `while` or a `for` loop.
  *
- *      3.) `lcode.c:patchlistaux()` - provide `target` and `reg`.
- *          This is only useful within `compiler.cpp`; it is how
- *          logical operators (along with their register allocations)
- *          are implemented.
+ *      3.) `lcode.c:patchlistaux()`
+ *          Provide `target` and `reg`. This is only useful within
+ *          `compiler.cpp`; it is how logical operators (along with their
+ *          register allocations) are implemented.
  */
 LULU_FUNC void
 compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP,

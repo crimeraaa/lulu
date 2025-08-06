@@ -107,11 +107,6 @@ base_next(lulu_VM *vm)
 }
 
 
-/**
- * @todo(2025-08-05)
- *      Implement upvalues so we don't need to constantly look up
- *      global `next`
- */
 static int
 base_pairs(lulu_VM *vm)
 {
@@ -149,9 +144,9 @@ base_ipairs(lulu_VM *vm)
 }
 
 static void
-push_iterator(lulu_VM *vm, const char *name, lulu_C_Function f)
+push_iterator(lulu_VM *vm, const char *name, lulu_CFunction f)
 {
-    lulu_push_c_closure(vm, f, 1);  /* _G, f ; setupvalue(f, 1, up) */
+    lulu_push_cclosure(vm, f, 1);  /* _G, f ; setupvalue(f, 1, up) */
     lulu_set_field(vm, -2, name);   /* _G ; _G[name] = f */
 }
 
@@ -170,13 +165,13 @@ lulu_open_base(lulu_VM *vm)
 {
     lulu_push_value(vm, LULU_GLOBALS_INDEX); /* _G */
     lulu_set_global(vm, "_G"); /* ; _G["_G"] = _G */
-    lulu_set_library(vm, "_G", baselib, lulu_count_library(baselib)); /* _G */
+    lulu_set_library(vm, "_G", baselib); /* _G */
 
     /* Save memory by reusing global 'next' */
     lulu_get_field(vm, -1, "next");
     push_iterator(vm, "pairs", base_pairs);
 
-    lulu_push_c_function(vm, ipairs_next);
+    lulu_push_cfunction(vm, ipairs_next);
     push_iterator(vm, "ipairs", base_ipairs);
     return 1;
 }

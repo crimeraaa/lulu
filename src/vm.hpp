@@ -61,7 +61,7 @@ struct LULU_PUBLIC lulu_VM {
     Value              globals;
     Builder            builder;
     Intern             intern;
-    lulu_C_Function     panic_fn;
+    lulu_CFunction     panic_fn;
     lulu_Allocator     allocator;
     void              *allocator_data;
     Error_Handler     *error_handler;
@@ -86,7 +86,7 @@ vm_top_ptr(lulu_VM *vm);
 
 /**
  * @brief
- *  -   Gets the absolute index of `v` in `vm->stack`.
+ *      Gets the absolute index of `v` in `vm->stack`.
  */
 LULU_FUNC isize
 vm_absindex(lulu_VM *vm, const Value *v);
@@ -100,9 +100,9 @@ vm_top_absindex(lulu_VM *vm);
 
 /**
  * @brief
- *  -   Wraps a call to `fn(vm, user_ptr)` with a try-catch block.
- *  -   In case of errors, the error message, as a string, is left on the
- *      top of the stack.
+ *      Wraps a call to `fn(vm, user_ptr)` with a try-catch block. In case
+ *      of errors, the error message, as a string, is left on the top of
+ *      the stack.
  */
 LULU_FUNC Error
 vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr);
@@ -181,13 +181,20 @@ vm_call_init(lulu_VM *vm, const Value *ra, int argc, int to_return);
 
 
 /**
- * @note(2025-06-16) Assumptions
+ * @note(2025-06-16) Assumptions:
  *
  *  1.) The stack was resized properly beforehand, so that doing
  *      pointer arithmetic is still within bounds even if we do not
  *      explicitly check.
+ *
+ * @note(2025-08-06) Assumptions:
+ *
+ *  2.) C calls are completed within `vm_call_init()`. This will
+ *      simply pop the temporary call frame we used then..
+ *
+ *  3.) Otherwise, Lua calls return to `vm_execute()`.
  */
-LULU_FUNC Call_Type
+LULU_FUNC void
 vm_call_fini(lulu_VM *vm, const Slice<Value> &results);
 
 LULU_FUNC Error

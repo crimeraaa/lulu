@@ -3,7 +3,7 @@
 #include "vm.hpp"
 
 Closure *
-closure_c_new(lulu_VM *vm, lulu_C_Function cf, int n_upvalues)
+closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues)
 {
     Closure_C *f = object_new<Closure_C>(vm, &vm->objects, VALUE_FUNCTION,
         /* extra */ Closure_C::size_upvalues(n_upvalues));

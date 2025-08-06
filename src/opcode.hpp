@@ -324,7 +324,7 @@ private:
 
 /**
  * @note 2025--07-19
- *  -   ORDER: Keep in sync with `OpCode`!
+ *      ORDER: Keep in sync with `OpCode`!
  */
 LULU_DATA const char *const
 opnames[OPCODE_COUNT];
@@ -332,7 +332,7 @@ opnames[OPCODE_COUNT];
 
 /**
  * @note 2025--07-19
- *  -   ORDER: Keep in sync with `OpCode`!
+ *      ORDER: Keep in sync with `OpCode`!
  */
 LULU_DATA const OpInfo
 opinfo[OPCODE_COUNT];

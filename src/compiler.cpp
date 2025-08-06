@@ -25,18 +25,18 @@ isize_abs(isize i)
 }
 
 Compiler
-compiler_make(lulu_VM *vm, Parser *p, Chunk *chunk, Table *indexes,
-    Compiler *enclosing)
+compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev)
 {
     Compiler c;
     c.vm          = vm;
-    c.prev        = enclosing;
+    c.prev        = prev;
     c.parser      = p;
+    c.chunk       = f;
+    c.indexes     = i;
     c.pc          = 0;
     c.last_target = NO_JUMP;
-    c.chunk       = chunk;
-    c.indexes     = indexes;
     c.free_reg    = 0;
+    c.block       = nullptr;
     small_array_clear(&c.active);
     return c;
 }
@@ -48,17 +48,17 @@ compiler_error_limit(Compiler *c, isize limit, const char *what)
     const char *who = (c->prev == nullptr) ? "script" : "function";
     char buf[128];
     sprintf(buf, "%s uses more than %" ISIZE_FMT " %s", who, limit, what);
-    lexer_error(&p->lexer, p->current.type, buf);
+    lexer_error(&p->lexer, p->current.type, buf, p->last_line);
 }
 
 //=== BYTECODE MANIPULATION ============================================ {{{
 
 static isize
-code_push(Compiler *c, Instruction i, int line)
+code_push(Compiler *c, Instruction i)
 {
     lulu_assert(c->pc == len(c->chunk->code));
     c->pc++;
-    return chunk_append(c->vm, c->chunk, i, line);
+    return chunk_append(c->vm, c->chunk, i, c->parser->last_line);
 }
 
 static void
@@ -75,7 +75,7 @@ compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2)
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ABC);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER || b == 0);
     lulu_assert(opinfo[op].c() == OPARG_REGK || opinfo[op].c() == OPARG_OTHER || c2 == 0);
-    return code_push(c, Instruction::make_abc(op, a, b, c2), c->parser->last_line);
+    return code_push(c, Instruction::make_abc(op, a, b, c2));
 }
 
 isize
@@ -84,7 +84,7 @@ compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx)
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ABX);
     lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER);
     lulu_assert(opinfo[op].c() == OPARG_UNUSED);
-    return code_push(c, Instruction::make_abx(op, a, bx), c->parser->last_line);
+    return code_push(c, Instruction::make_abx(op, a, bx));
 }
 
 isize
@@ -92,7 +92,7 @@ compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx)
 {
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ASBX);
     lulu_assert(opinfo[op].c() == OPARG_UNUSED);
-    return code_push(c, Instruction::make_asbx(op, a, sbx), c->parser->last_line);
+    return code_push(c, Instruction::make_asbx(op, a, sbx));
 }
 
 void
@@ -218,12 +218,12 @@ pop_expr(Compiler *c, const Expr *e)
 
 /**
  * @brief
- *  -   Emits bytecode needed for variable retrieval (global or local), or
+ *      Emits bytecode needed for variable retrieval (global or local), or
  *      table field retrieval.
  *
  * @note 2025-07-16
- *  -   In such case `e` is transformed to `EXPR_RELOCABLE` but its destination
- *      register is not yet set.
+ *      In such case `e` is transformed to `EXPR_RELOCABLE` but its
+ *      destination register is not yet set.
  */
 static void
 discharge_vars(Compiler *c, Expr *e)
@@ -660,13 +660,16 @@ compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right)
 {
     /**
      * @details 2025-06-22
-     *  -   Checks if we are able to fold consecutive concats.
-     *  -   Folding is impossible with left-associavity due to argument pushing.
-     *      If `a..b..c` were parsed as `(a..b)..c`, then `(a..b)` would push
-     *      `a` and `b` emit `OP_CONCAT`. By the time we reach `c`, there is
-     *      nothing we can do to fold because the bytecode is already set.
-     *  -   `a..(b..c)` is better because we would have pushed `a`, `b` and `c`
-     *      by the time we emit `OP_CONCAT`.
+     *      Checks if we are able to fold consecutive concats. Folding is
+     *      impossible with left-associavity due to argument pushing.
+     *
+     *      If `a..b..c` were parsed as `(a..b)..c`, then `(a..b)` would
+     *      push `a` and `b` emit `OP_CONCAT`. By the time we reach `c`,
+     *      there is nothing we can do to fold because the bytecode is
+     *      already set.
+     *
+     *      `a..(b..c)` is better because we would have pushed `a`, `b` and
+     *      `c` by the time we emit `OP_CONCAT`.
      */
     if (right->type == EXPR_RELOCABLE) {
         Instruction *ip = get_code(c, right->pc);
@@ -774,7 +777,7 @@ compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store)
      *
      * @note(2025-08-04)
      *      Lua 5.1.5 actually adds 1 at the end because offset 0 is
-     *      reserved to indicate the size is to big and the next
+     *      reserved to indicate the size is too big and the next
      *      instruction is to be interpreted as the size itself.
      */
     isize offset = (n_array - 1) / FIELDS_PER_FLUSH;

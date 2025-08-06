@@ -9,7 +9,7 @@ mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
 
 /**
  * @brief
- *  -   Rounds `n` to the next power of 2 if it is not one already.
+ *      Rounds `n` to the next power of 2 if it is not one already.
  */
 LULU_FUNC inline isize
 mem_next_pow2(isize n)
@@ -25,7 +25,7 @@ mem_next_pow2(isize n)
 
 /**
  * @brief
- *  -   Rounds `n` to the next fibonacci term, if it is not one already.
+ *      Rounds `n` to the next fibonacci term, if it is not one already.
  */
 LULU_FUNC inline isize
 mem_next_fib(isize n)

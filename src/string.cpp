@@ -123,10 +123,9 @@ builder_write_lstring(lulu_VM *vm, Builder *b, const LString &s)
 
 /**
  * @note(2025-07-20)
- *
- *  -   `Fmt` must be an existing entity, e.g. `static const char fmt[] = "%i";`
- *      rather than a string literal because of course C++ templates don't let
- *      you do it.
+ *      `Fmt` must be an existing entity, e.g.
+ *      `static const char fmt[] = "%i";` rather than a string literal
+ *      because of course C++ templates don't let you do it.
  */
 template<auto Bufsize, const char *Fmt, class Arg>
 static void
@@ -273,8 +272,7 @@ ostring_new(lulu_VM *vm, const LString &text)
     for (Object *node = t->table[i]; node != nullptr; node = node->base.next) {
         OString *s = &node->ostring;
         if (s->hash == hash) {
-            LString ls{s->data, s->len};
-            if (slice_eq(text, ls)) {
+            if (slice_eq(text, s->to_lstring())) {
                 return s;
             }
         }

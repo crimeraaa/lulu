@@ -3,9 +3,6 @@
 #include "lexer.hpp"
 #include "chunk.hpp"
 
-// Defined in `parser.cpp`.
-struct Block;
-
 constexpr int
 PARSER_MAX_RECURSE = 250;
 
@@ -32,10 +29,10 @@ struct LULU_PRIVATE Parser {
     int      n_calls;   // How many recursive C calls are we currently in?
 };
 
-enum Precedence : u8 {
-    PREC_NONE,
-    PREC_OR,
-    PREC_AND,
+enum Precedence : i8 {
+    PREC_NONE = -1, // Not a valid lookup table key.
+    PREC_OR,        // or
+    PREC_AND,       // and
     PREC_EQUALITY,  // == ~=
     PREC_COMPARISON, // < <= > >=
     PREC_CONCAT,    // ..

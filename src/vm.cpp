@@ -290,13 +290,6 @@ protect(lulu_VM *vm, const Instruction *ip)
 static void
 frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int to_return)
 {
-    // Before transferring control to the new caller, inform the previous
-    // caller of where we last left off.
-    Call_Frame *cf = vm->caller;
-    if (cf != nullptr && cf->is_lua()) {
-        cf->saved_ip = vm->saved_ip;
-    }
-
     isize n = small_array_len(vm->frames);
     if (n >= small_array_cap(vm->frames)) {
         overflow_error(vm, n, small_array_cap(vm->frames), "call frames");
@@ -304,7 +297,7 @@ frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int to_return)
     small_array_resize(&vm->frames, n + 1);
 
     // Caller state
-    cf = small_array_get_ptr(&vm->frames, n);
+    Call_Frame *cf = small_array_get_ptr(&vm->frames, n);
     cf->function  = fn;
     cf->window    = window;
     cf->saved_ip  = nullptr;
@@ -359,6 +352,63 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
     }
 }
 
+static Call_Type
+call_init_c(lulu_VM *vm, Closure *f, isize f_index, int n_args, int n_rets)
+{
+    vm_check_stack(vm, LULU_STACK_MIN);
+
+    // Calling function isn't included in the stack frame.
+    isize base = f_index + 1;
+    isize top;
+    if (n_args == VARARG) {
+        top = vm_top_absindex(vm);
+    } else {
+        top = base + cast_isize(n_args);
+    }
+    Slice<Value> window = slice(vm->stack, base, top);
+    frame_push(vm, f, window, n_rets);
+
+    n_rets = f->to_c()->callback(vm);
+    Value *first_ret = (n_rets > 0)
+        ? &vm->window[len(vm->window) - cast_isize(n_rets)]
+        : &vm->stack[f_index];
+
+    vm_call_fini(vm, slice_pointer_len(first_ret, n_rets));
+    return CALL_C;
+
+}
+
+static Call_Type
+call_init_lua(lulu_VM *vm, Closure *fn, isize fn_index, int n_args, int n_rets)
+{
+    // Calling function isn't included in the stack frame.
+    isize  base = fn_index + 1;
+    Chunk *p    = fn->to_lua()->chunk;
+    isize  top  = base + cast_isize(p->stack_used);
+
+    vm_check_stack(vm, cast_int(top - base));
+    Slice<Value> window = slice(vm->stack, base, top);
+
+    // Some parameters weren't provided so they need to be initialized to nil?
+    int extra = p->n_params;
+    if (n_args == VARARG) {
+        extra -= len(window);
+    } else {
+        extra -= n_args;
+    }
+
+    isize start_nil = base + p->n_params;
+    if (extra > 0) {
+        start_nil -= extra;
+    }
+    fill(slice(vm->stack, start_nil, top), nil);
+
+    // We will goto `re_entry` in `vm_execute()`.
+    vm->saved_ip = raw_data(p->code);
+    frame_push(vm, fn, window, n_rets);
+    return CALL_LUA;
+}
+
 Call_Type
 vm_call_init(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
 {
@@ -366,62 +416,22 @@ vm_call_init(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
         debug_type_error(vm, "call", ra);
     }
 
-    Closure *cl       = ra->to_function();
+    // Inform previous caller of last execution point (even if caller is
+    // a C function. When errors are thrown, saved_ip is always valid.
+    if (vm->caller != nullptr) {
+        vm->caller->saved_ip = vm->saved_ip;
+    }
+
+    Closure *fn       = ra->to_function();
     isize    fn_index = ptr_index(vm->stack, ra);
-
-    // Calling function isn't included in the stack frame.
-    isize base        = fn_index + 1;
-    bool  vararg_call = (n_args == VARARG);
-
     // Can call directly?
-    if (cl->is_c()) {
-        vm_check_stack(vm, LULU_STACK_MIN);
-
-        isize top;
-        if (vararg_call) {
-            top    = vm_top_absindex(vm);
-            n_args = cast_int(top - base);
-        } else {
-            top = base + cast_isize(n_args);
-        }
-        Slice<Value> window = slice(vm->stack, base, top);
-        frame_push(vm, cl, window, n_rets);
-
-        n_rets = cl->c.callback(vm);
-        Value *first_ret = (n_rets > 0)
-            ? &vm->window[len(vm->window) - cast_isize(n_rets)]
-            : &vm->stack[fn_index];
-
-        Slice<Value> results = slice_pointer_len(first_ret, n_rets);
-        vm_call_fini(vm, results);
-        return CALL_C;
+    if (fn->is_c()) {
+        return call_init_c(vm, fn, fn_index, n_args, n_rets);
     }
-
-    Chunk *p  = cl->to_lua()->chunk;
-    isize top = base + cast_isize(p->stack_used);
-    if (vararg_call) {
-        n_args = cast_int(top - base);
-    }
-
-    // May invalidate `ra`.
-    vm_check_stack(vm, cast_int(top - base));
-    Slice<Value> window = slice(vm->stack, base, top);
-
-    // Some parameters weren't provided so they need to be initialized to nil?
-    int extra = p->n_params - n_args;
-    isize start_nil = base + p->n_params;
-    if (extra > 0) {
-        start_nil -= extra;
-    }
-    Slice<Value> to_init = slice(vm->stack, start_nil, top);
-    fill(to_init, nil);
-    frame_push(vm, cl, window, n_rets);
-    // This must occur AFTER `frame_push()` because it also uses the VM saved ip.
-    vm->saved_ip = raw_data(p->code);
-    return CALL_LUA;
+    return call_init_lua(vm, fn, fn_index, n_args, n_rets);
 }
 
-Call_Type
+void
 vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
 {
     Call_Frame *cf = vm->caller;
@@ -437,8 +447,7 @@ vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
         dst.len += cast_isize(n_extra);
 
         // Remaining return values are initialized to nil, e.g. in assignments.
-        Slice<Value> remaining = slice_from(dst, len(results));
-        fill(remaining, nil);
+        fill(slice_from(dst, len(results)), nil);
     }
 
     cf = frame_pop(vm);
@@ -447,7 +456,7 @@ vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
     // This allows the `lulu_call()` API to work properly in such cases.
     if (cf == nullptr) {
         vm->window = dst;
-        return CALL_C;
+        return;
     }
 
     if (vararg_return) {
@@ -459,7 +468,6 @@ vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
 
     // We will re-enter `vm_execute()`.
     vm->saved_ip = cf->saved_ip;
-    return CALL_LUA;
 }
 
 bool
@@ -536,14 +544,16 @@ compare(lulu_VM *vm, Metamethod mt, Value *ra, const Value *rkb, const Value *rk
     if (vm_to_number(rkb, &tmp_b) && vm_to_number(rkc, &tmp_c)) {
         Number x = tmp_b.to_number();
         Number y = tmp_c.to_number();
+        bool b;
         switch (mt) {
-        case MT_LT:  ra->set_number(lulu_Number_lt(x, y)); break;
-        case MT_LEQ: ra->set_number(lulu_Number_leq(x, y)); break;
+        case MT_LT:  b = lulu_Number_lt(x, y);  break;
+        case MT_LEQ: b = lulu_Number_leq(x, y); break;
         default:
             lulu_panicf("Invalid Metamethod(%i)", mt);
             lulu_unreachable();
             break;
         }
+        ra->set_boolean(b);
         return;
     }
     debug_compare_error(vm, rkb, rkc);
@@ -563,15 +573,20 @@ re_entry:
     constants = slice_const(chunk->constants);
     window    = vm->window;
 
-#define GET_RK(rk) (                                                           \
-    Instruction::reg_is_k(rk)                                                  \
-        ? &constants[Instruction::reg_get_k(rk)]                               \
-        : &window[rk]                                                          \
-)
+#define R(i)    &window[i]
+#define KBX(i)  &constants[(i).bx()]
+#define RK(i)   (Instruction::reg_is_k(i) ? &constants[Instruction::reg_get_k(i)] : R(i))
+
+#define RA(i)   R((i).a())
+#define RB(i)   R((i).b())
+#define RC(i)   R((i).c())
+#define RKB(i)  RK((i).b())
+#define RKC(i)  RK((i).c())
+
+
 
 #define BINARY_OP(number_fn, on_error_fn, metamethod, result_fn) {             \
-    u16 b = inst.b(), c = inst.c();                                            \
-    const Value *rb = GET_RK(b), *rc = GET_RK(c);                              \
+    const Value *rb = RKB(inst), *rc = RKC(inst);                              \
     if (rb->is_number() && rc->is_number()) {                                  \
         result_fn(number_fn(rb->to_number(), rc->to_number()));                \
     } else {                                                                   \
@@ -604,7 +619,7 @@ re_entry:
 
     for (;;) {
         Instruction inst = *ip++;
-        Value      *ra   = &window[inst.a()];
+        Value      *ra   = RA(inst);
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.
@@ -627,15 +642,15 @@ re_entry:
         OpCode op = inst.op();
         switch (op) {
         case OP_MOVE: {
-            Value rb = window[inst.b()];
+            Value rb = *RB(inst);
             *ra = rb;
             break;
         }
         case OP_CONSTANT:
-            *ra = constants[inst.bx()];
+            *ra = *KBX(inst);
             break;
         case OP_NIL: {
-            Value *rb  = &window[inst.b()];
+            Value *rb  = RB(inst);
             auto   dst = slice_pointer(ra, rb + 1);
             fill(dst, nil);
             break;
@@ -647,7 +662,7 @@ re_entry:
             }
             break;
         case OP_GET_GLOBAL: {
-            Value k = constants[inst.bx()];
+            Value k = *KBX(inst);
             Value v;
             if (!table_get(vm->globals.to_table(), k, &v)) {
                 const char *s = k.to_cstring();
@@ -658,7 +673,7 @@ re_entry:
             break;
         }
         case OP_SET_GLOBAL: {
-            Value k = constants[inst.bx()];
+            Value k = *KBX(inst);
             protect(vm, ip);
             table_set(vm, vm->globals.to_table(), k, *ra);
             break;
@@ -671,18 +686,15 @@ re_entry:
             break;
         }
         case OP_GET_TABLE: {
-            u16 c = inst.c();
-            const Value *t = &window[inst.b()];
-            const Value *k = GET_RK(c);
+            const Value *t = RB(inst);
+            const Value *k = RKC(inst);
             protect(vm, ip);
             vm_table_get(vm, t, *k, ra);
             break;
         }
         case OP_SET_TABLE: {
-            u16 b = inst.b();
-            u16 c = inst.c();
-            const Value *k = GET_RK(b);
-            const Value *v = GET_RK(c);
+            const Value *k = RKB(inst);
+            const Value *v = RKC(inst);
             protect(vm, ip);
             vm_table_set(vm, ra, k, *v);
             break;
@@ -691,9 +703,16 @@ re_entry:
             isize n      = cast_isize(inst.b());
             isize offset = cast_isize(inst.c()) * FIELDS_PER_FLUSH;
 
+            if (n == VARARG) {
+                // Number of arguments from R(A) up to top.
+                n = len(vm->window) - inst.a() - 1;
+            }
+
+            // Guaranteed to be valid because this only occurs in table
+            // contructors.
+            Table *t = ra->to_table();
             for (isize i = 1; i <= n; i++) {
-                Value k = Value::make_number(offset + i);
-                table_set(vm, ra->to_table(), k, *(ra + i));
+                table_set_integer(vm, t, offset + i, *(ra + i));
             }
             break;
         }
@@ -705,10 +724,8 @@ re_entry:
         case OP_POW: ARITH_OP(lulu_Number_pow, MT_POW); break;
         case OP_EQ: {
             bool  cond = cast(bool)inst.a();
-            u16   b    = inst.b();
-            u16   c    = inst.c();
-            Value rkb  = *GET_RK(b);
-            Value rkc  = *GET_RK(c);
+            Value rkb  = *RKB(inst);
+            Value rkc  = *RKC(inst);
 
             protect(vm, ip);
             if ((rkb == rkc) == cond) {
@@ -721,10 +738,9 @@ re_entry:
         case OP_LT:  COMPARE_OP(lulu_Number_lt,  MT_LT); break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq, MT_LEQ); break;
         case OP_UNM: {
-            Value *rb = &window[inst.b()];
+            Value *rb = RB(inst);
             if (rb->is_number()) {
-                Number n = rb->to_number();
-                ra->set_number(lulu_Number_unm(n));
+                ra->set_number(lulu_Number_unm(rb->to_number()));
             } else {
                 protect(vm, ip);
                 arith(vm, MT_UNM, ra, rb, rb);
@@ -732,7 +748,7 @@ re_entry:
             break;
         }
         case OP_NOT: {
-            Value rb = window[inst.b()];
+            Value rb = *RB(inst);
             ra->set_boolean(rb.is_falsy());
             break;
         }
@@ -765,10 +781,10 @@ re_entry:
             break;
         }
         case OP_CONCAT: {
-            Value *rb = &window[inst.b()];
-            Value *rc = &window[inst.c()];
+            Value *start = RB(inst);
+            Value *stop  = RC(inst) + 1;
             protect(vm, ip);
-            vm_concat(vm, ra, slice_pointer(rb, rc + 1));
+            vm_concat(vm, ra, slice_pointer(start, stop));
             break;
         }
         case OP_TEST: {
@@ -789,7 +805,7 @@ re_entry:
         }
         case OP_TEST_SET: {
             bool  cond = cast(bool)inst.c();
-            Value rb   = window[inst.b()];
+            Value rb   = *RB(inst);
             bool  test = (!rb.is_falsy() == cond);
             lulu_assert(ip->op() == OP_JUMP);
             if (test) {
@@ -848,12 +864,10 @@ re_entry:
         case OP_FOR_IN_LOOP: {
             Value *call_base = ra + 3;
 
-            // Stack: (ra+0)=generator-fn, (ra+1)=invariant, (ra+2)=control
-            //        (ra+3)=user-control
             // Prepare call so that its registers can be overridden.
-            *(call_base + 2) = *(ra + 2);
-            *(call_base + 1) = *(ra + 1);
-            *(call_base + 0) = *(ra + 0);
+            *(call_base + 2) = *(ra + 2); // internal control variable
+            *(call_base + 1) = *(ra + 1); // invariant state variable
+            *(call_base + 0) = *(ra + 0); // generator function
 
             // Registers for generator function, invariant state and index.
             isize top  = ptr_index(vm->window, call_base + 3);
@@ -866,7 +880,7 @@ re_entry:
 
             // Previous call may reallocate stack.
             window    = vm->caller->window;
-            call_base = &window[inst.a() + 3];
+            call_base = RA(inst) + 3;
 
             // Continue loop?
             if (!call_base->is_nil()) {
@@ -897,8 +911,7 @@ re_entry:
             }
 
             protect(vm, ip);
-            Slice<Value> returned = slice_pointer_len(ra, n_rets);
-            vm_call_fini(vm, returned);
+            vm_call_fini(vm, slice_pointer_len(ra, n_rets));
             n_calls--;
             if (n_calls == 0) {
                 return;

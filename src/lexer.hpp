@@ -5,10 +5,11 @@
 
 /**
  * @note 2025-06-14:
- *  -   ORDER: Keep in sync with `token_strings`!
+ *      ORDER: Keep in sync with `token_strings`!
  */
 enum Token_Type {
-    TOKEN_INVALID,
+    // Not a valid lookup table key.
+    TOKEN_INVALID = -1,
 
     // Keywords
     TOKEN_AND, TOKEN_BREAK, TOKEN_DO, TOKEN_ELSE, TOKEN_ELSEIF, TOKEN_END,
@@ -89,4 +90,4 @@ lexer_lex(Lexer *x);
 
 [[noreturn]]
 LULU_FUNC void
-lexer_error(Lexer *x, Token_Type type, const char *msg);
+lexer_error(Lexer *x, Token_Type type, const char *msg, int line);

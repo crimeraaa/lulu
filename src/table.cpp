@@ -62,12 +62,16 @@ hash_value(const Value &v)
 
 /**
  * @brief
- *  -   Finds the table entry with key matching `k`, or the first free entry.
+ *      Finds the table entry with key matching `k`, or the first free
+ *      entry.
  *
- * @note 2025-6-30
- *  Assumptions:
- *  1.) `len(entries)`, a.k.a. the table capacity, is non-zero at this point.
+ * @note(2025-6-30) Assumptions:
+ *
+ *  1.) `len(entries)`, a.k.a. the table capacity, is non-zero at this
+ *      point.
+ *
  *  1.1.) In `table_get()` we explicitly check if it's nonzero.
+ *
  *  1.2.) In `table_set()` we resize beforehand.
  */
 static Entry *
@@ -122,6 +126,17 @@ table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
     }
     e->key   = k;
     e->value = v;
+}
+
+void
+table_set_integer(lulu_VM *vm, Table *t, lulu_Integer i, const Value &v)
+{
+    /**
+     * @todo(2025-08-06)
+     *      Separate hash and array segments of table?
+     */
+    Value k = Value::make_number(cast(Number)i);
+    table_set(vm, t, k, v);
 }
 
 void
