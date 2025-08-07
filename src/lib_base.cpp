@@ -66,7 +66,7 @@ base_tonumber(lulu_VM *vm)
     /* Convert first, ask questions later */
     n = lulu_to_number(vm, 1);
     if (n == 0 && !lulu_is_number(vm, 1)) {
-        lulu_push_nil(vm, 1);
+        lulu_push_nil(vm);
     } else {
         lulu_push_number(vm, n);
     }
@@ -102,7 +102,7 @@ base_next(lulu_VM *vm)
     if (more) {
         return 2;
     }
-    lulu_push_nil(vm, 1);
+    lulu_push_nil(vm);
     return 1;
 }
 
@@ -113,7 +113,7 @@ base_pairs(lulu_VM *vm)
     lulu_check_type(vm, 1, LULU_TYPE_TABLE);
     lulu_push_value(vm, lulu_upvalue_index(1)); /* push generator */
     lulu_push_value(vm, 1); /* push state */
-    lulu_push_nil(vm, 1);   /* push control initial value */
+    lulu_push_nil(vm);   /* push control initial value */
     return 3;
 }
 

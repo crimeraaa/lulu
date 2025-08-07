@@ -338,11 +338,9 @@ lulu_pop(lulu_VM *vm, int n)
 }
 
 LULU_API void
-lulu_push_nil(lulu_VM *vm, int n)
+lulu_push_nil(lulu_VM *vm)
 {
-    for (int i = 0; i < n; i++) {
-        vm_push(vm, nil);
-    }
+    vm_push(vm, nil);
 }
 
 LULU_API void
@@ -381,7 +379,7 @@ LULU_API void
 lulu_push_string(lulu_VM *vm, const char *s)
 {
     if (s == nullptr) {
-        lulu_push_nil(vm, 1);
+        lulu_push_nil(vm);
     } else {
         lulu_push_lstring(vm, s, strlen(s));
     }

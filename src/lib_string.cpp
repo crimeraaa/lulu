@@ -171,7 +171,7 @@ string_find(lulu_VM *vm)
         }
     }
 
-    lulu_push_nil(vm, 1);
+    lulu_push_nil(vm);
     return 1;
 }
 

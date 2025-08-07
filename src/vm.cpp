@@ -5,6 +5,80 @@
 #include "debug.hpp"
 #include "parser.hpp"
 
+[[noreturn]]
+static void
+overflow_error(lulu_VM *vm, isize n, isize limit, const char *what)
+{
+    char buf[128];
+    sprintf(buf, "%" ISIZE_FMT " / %" ISIZE_FMT, n, limit);
+    vm_runtime_error(vm, "C stack overflow (%s %s used)", buf, what);
+}
+
+//=== CALL FRAME ARRAY MANIPULATION ==================================== {{{
+
+static Call_Frame *
+frame_get(lulu_VM *vm, isize i)
+{
+    return small_array_get_ptr(&vm->frames, i);
+}
+
+static void
+frame_resize(lulu_VM *vm, isize i)
+{
+    small_array_resize(&vm->frames, i);
+}
+
+static Slice<Call_Frame>
+frame_slice(lulu_VM *vm)
+{
+    return small_array_slice(vm->frames);
+}
+
+// Get the absolute index of `cf` in the `vm->frames` array.
+static isize
+frame_index(lulu_VM *vm, Call_Frame *cf)
+{
+    return ptr_index(frame_slice(vm), cf);
+}
+
+static void
+frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int to_return)
+{
+    isize n = small_array_len(vm->frames);
+    if (n >= small_array_cap(vm->frames)) {
+        overflow_error(vm, n, small_array_cap(vm->frames), "call frames");
+    }
+    small_array_resize(&vm->frames, n + 1);
+
+    // Caller state
+    Call_Frame *cf = frame_get(vm, n);
+    cf->function  = fn;
+    cf->window    = window;
+    cf->saved_ip  = nullptr;
+    cf->to_return = to_return;
+
+    // VM state
+    vm->caller = cf;
+    vm->window = window;
+}
+
+static Call_Frame *
+frame_pop(lulu_VM *vm)
+{
+    // Have a previous frame to return to?
+    small_array_pop(&vm->frames);
+    Call_Frame *frame = nullptr;
+    isize i = small_array_len(vm->frames);
+    if (i > 0) {
+        frame      = frame_get(vm, i - 1);
+        vm->window = frame->window;
+    }
+    vm->caller = frame;
+    return frame;
+}
+
+//=== }}} ==================================================================
+
 isize
 vm_absindex(lulu_VM *vm, const Value *v)
 {
@@ -48,9 +122,9 @@ set_error(lulu_VM *vm, isize old_cf, isize old_base, isize old_top)
 {
     // TODO(2025-06-30): Check if `LULU_ERROR_MEMORY` works properly here
     Value v = vm_pop(vm);
-    vm->caller = small_array_get_ptr(&vm->frames, old_cf);
+    vm->caller = frame_get(vm, old_cf);
     vm->window = slice(vm->stack, old_base, old_top);
-    small_array_resize(&vm->frames, old_cf + 1);
+    frame_resize(vm, old_cf + 1);
     vm_push(vm, v);
 }
 
@@ -64,7 +138,7 @@ vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr)
     isize old_base = vm_base_absindex(vm);
     isize old_top  = vm_top_absindex(vm);
     // Don't use pointers because in the future, `frames` may be dynamic.
-    isize old_cf   = ptr_index(small_array_slice(vm->frames), vm->caller);
+    isize old_cf   = frame_index(vm, vm->caller);
 
     try {
         fn(vm, user_ptr);
@@ -263,15 +337,6 @@ vm_pop(lulu_VM *vm)
     return v;
 }
 
-[[noreturn]]
-static void
-overflow_error(lulu_VM *vm, isize n, isize limit, const char *what)
-{
-    char buf[128];
-    sprintf(buf, "%" ISIZE_FMT " / %" ISIZE_FMT, n, limit);
-    vm_runtime_error(vm, "C stack overflow (%s %s used)", buf, what);
-}
-
 void
 vm_check_stack(lulu_VM *vm, int n)
 {
@@ -285,42 +350,6 @@ static void
 protect(lulu_VM *vm, const Instruction *ip)
 {
     vm->saved_ip = ip;
-}
-
-static void
-frame_push(lulu_VM *vm, Closure *fn, Slice<Value> window, int to_return)
-{
-    isize n = small_array_len(vm->frames);
-    if (n >= small_array_cap(vm->frames)) {
-        overflow_error(vm, n, small_array_cap(vm->frames), "call frames");
-    }
-    small_array_resize(&vm->frames, n + 1);
-
-    // Caller state
-    Call_Frame *cf = small_array_get_ptr(&vm->frames, n);
-    cf->function  = fn;
-    cf->window    = window;
-    cf->saved_ip  = nullptr;
-    cf->to_return = to_return;
-
-    // VM state
-    vm->caller = cf;
-    vm->window = window;
-}
-
-static Call_Frame *
-frame_pop(lulu_VM *vm)
-{
-    // Have a previous frame to return to?
-    small_array_pop(&vm->frames);
-    Call_Frame *frame = nullptr;
-    isize i = small_array_len(vm->frames);
-    if (i > 0) {
-        frame      = small_array_get_ptr(&vm->frames, i - 1);
-        vm->window = frame->window;
-    }
-    vm->caller = frame;
-    return frame;
 }
 
 void
@@ -567,26 +596,28 @@ vm_execute(lulu_VM *vm, int n_calls)
     Slice<const Value> constants;
     Slice<Value>       window;
 
-re_entry:
+    // Restore state for Lua function calls and returns.
+    re_entry:
+
     chunk     = vm->caller->to_lua()->chunk;
     ip        = vm->saved_ip;
     constants = slice_const(chunk->constants);
     window    = vm->window;
 
-#define R(i)    &window[i]
-#define KBX(i)  &constants[(i).bx()]
-#define RK(i)   (Instruction::reg_is_k(i) ? &constants[Instruction::reg_get_k(i)] : R(i))
+#define R(i)    window[i]
+#define K(i)    constants[i]
+#define KBX(i)  K(i.bx())
+#define RK(i)   (Instruction::reg_is_k(i) ? K(Instruction::reg_get_k(i)) : R(i))
 
-#define RA(i)   R((i).a())
-#define RB(i)   R((i).b())
-#define RC(i)   R((i).c())
-#define RKB(i)  RK((i).b())
-#define RKC(i)  RK((i).c())
-
+#define RA(i)   R(i.a())
+#define RB(i)   R(i.b())
+#define RC(i)   R(i.c())
+#define RKB(i)  RK(i.b())
+#define RKC(i)  RK(i.c())
 
 
 #define BINARY_OP(number_fn, on_error_fn, metamethod, result_fn) {             \
-    const Value *rb = RKB(inst), *rc = RKC(inst);                              \
+    const Value *rb = &RKB(inst), *rc = &RKC(inst);                            \
     if (rb->is_number() && rc->is_number()) {                                  \
         result_fn(number_fn(rb->to_number(), rc->to_number()));                \
     } else {                                                                   \
@@ -619,7 +650,7 @@ re_entry:
 
     for (;;) {
         Instruction inst = *ip++;
-        Value      *ra   = RA(inst);
+        Value      *ra   = &RA(inst);
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.
@@ -641,20 +672,15 @@ re_entry:
 
         OpCode op = inst.op();
         switch (op) {
-        case OP_MOVE: {
-            Value rb = *RB(inst);
-            *ra = rb;
+        case OP_MOVE:
+            *ra = RB(inst);
             break;
-        }
         case OP_CONSTANT:
-            *ra = *KBX(inst);
+            *ra = KBX(inst);
             break;
-        case OP_NIL: {
-            Value *rb  = RB(inst);
-            auto   dst = slice_pointer(ra, rb + 1);
-            fill(dst, nil);
+        case OP_NIL:
+            fill(slice_pointer(ra, &RB(inst) + 1), nil);
             break;
-        }
         case OP_BOOL:
             ra->set_boolean(cast(bool)inst.b());
             if (cast(bool)inst.c()) {
@@ -662,7 +688,7 @@ re_entry:
             }
             break;
         case OP_GET_GLOBAL: {
-            Value k = *KBX(inst);
+            Value k = KBX(inst);
             Value v;
             if (!table_get(vm->globals.to_table(), k, &v)) {
                 const char *s = k.to_cstring();
@@ -673,7 +699,7 @@ re_entry:
             break;
         }
         case OP_SET_GLOBAL: {
-            Value k = *KBX(inst);
+            Value k = KBX(inst);
             protect(vm, ip);
             table_set(vm, vm->globals.to_table(), k, *ra);
             break;
@@ -686,15 +712,15 @@ re_entry:
             break;
         }
         case OP_GET_TABLE: {
-            const Value *t = RB(inst);
-            const Value *k = RKC(inst);
+            const Value *t = &RB(inst);
+            const Value *k = &RKC(inst);
             protect(vm, ip);
             vm_table_get(vm, t, *k, ra);
             break;
         }
         case OP_SET_TABLE: {
-            const Value *k = RKB(inst);
-            const Value *v = RKC(inst);
+            const Value *k = &RKB(inst);
+            const Value *v = &RKC(inst);
             protect(vm, ip);
             vm_table_set(vm, ra, k, *v);
             break;
@@ -723,12 +749,11 @@ re_entry:
         case OP_MOD: ARITH_OP(lulu_Number_mod, MT_MOD); break;
         case OP_POW: ARITH_OP(lulu_Number_pow, MT_POW); break;
         case OP_EQ: {
-            bool  cond = cast(bool)inst.a();
-            Value rkb  = *RKB(inst);
-            Value rkc  = *RKC(inst);
+            Value left  = RKB(inst);
+            Value right = RKC(inst);
 
             protect(vm, ip);
-            if ((rkb == rkc) == cond) {
+            if ((left == right) == cast(bool)inst.a()) {
                 lulu_assert(ip->op() == OP_JUMP);
                 DO_JUMP(ip->sbx());
             }
@@ -738,7 +763,7 @@ re_entry:
         case OP_LT:  COMPARE_OP(lulu_Number_lt,  MT_LT); break;
         case OP_LEQ: COMPARE_OP(lulu_Number_leq, MT_LEQ); break;
         case OP_UNM: {
-            Value *rb = RB(inst);
+            Value *rb = &RB(inst);
             if (rb->is_number()) {
                 ra->set_number(lulu_Number_unm(rb->to_number()));
             } else {
@@ -747,12 +772,10 @@ re_entry:
             }
             break;
         }
-        case OP_NOT: {
-            Value rb = *RB(inst);
-            ra->set_boolean(rb.is_falsy());
+        case OP_NOT:
+            ra->set_boolean(RB(inst).is_falsy());
             break;
-        }
-        case OP_LEN: {
+        case OP_LEN:
             switch (ra->type()) {
             case VALUE_STRING:
                 ra->set_number(cast(Number)ra->to_ostring()->len);
@@ -779,14 +802,10 @@ re_entry:
                 break;
             }
             break;
-        }
-        case OP_CONCAT: {
-            Value *start = RB(inst);
-            Value *stop  = RC(inst) + 1;
+        case OP_CONCAT:
             protect(vm, ip);
-            vm_concat(vm, ra, slice_pointer(start, stop));
+            vm_concat(vm, ra, slice_pointer(&RB(inst), &RC(inst) + 1));
             break;
-        }
         case OP_TEST: {
             bool cond = cast(bool)inst.c();
             bool test = (!ra->is_falsy() == cond);
@@ -805,7 +824,7 @@ re_entry:
         }
         case OP_TEST_SET: {
             bool  cond = cast(bool)inst.c();
-            Value rb   = *RB(inst);
+            Value rb   = RB(inst);
             bool  test = (!rb.is_falsy() == cond);
             lulu_assert(ip->op() == OP_JUMP);
             if (test) {
@@ -815,10 +834,9 @@ re_entry:
             ip++;
             break;
         }
-        case OP_JUMP: {
+        case OP_JUMP:
             DO_JUMP(inst.sbx());
             break;
-        }
         case OP_FOR_PREP: {
             Value *index = ra;
             Value *limit = index + 1;
@@ -865,9 +883,9 @@ re_entry:
             Value *call_base = ra + 3;
 
             // Prepare call so that its registers can be overridden.
-            *(call_base + 2) = *(ra + 2); // internal control variable
-            *(call_base + 1) = *(ra + 1); // invariant state variable
-            *(call_base + 0) = *(ra + 0); // generator function
+            call_base[2] = ra[2]; // internal control variable
+            call_base[1] = ra[1]; // invariant state variable
+            call_base[0] = ra[0]; // generator function
 
             // Registers for generator function, invariant state and index.
             isize top  = ptr_index(vm->window, call_base + 3);
@@ -880,12 +898,12 @@ re_entry:
 
             // Previous call may reallocate stack.
             window    = vm->caller->window;
-            call_base = RA(inst) + 3;
+            call_base = &RA(inst) + 3;
 
             // Continue loop?
             if (!call_base->is_nil()) {
                 // Save internal control variable.
-                *(call_base - 1) = *call_base;
+                call_base[-1] = call_base[0];
                 DO_JUMP(ip->sbx());
             }
             ip++;
@@ -910,7 +928,6 @@ re_entry:
                 n_rets = cast_int(len(vm->window));
             }
 
-            protect(vm, ip);
             vm_call_fini(vm, slice_pointer_len(ra, n_rets));
             n_calls--;
             if (n_calls == 0) {

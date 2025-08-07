@@ -455,10 +455,10 @@ lulu_pop(lulu_VM *vm, int n);
 
 /**
  * @brief
- *      Pushes `n` `nil` values to the top of the stack.
+ *      Pushes a single `nil` value to the top of the stack.
  */
 LULU_API void
-lulu_push_nil(lulu_VM *vm, int n);
+lulu_push_nil(lulu_VM *vm);
 
 
 /**
