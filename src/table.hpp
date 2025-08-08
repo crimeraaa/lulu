@@ -5,12 +5,37 @@
 
 struct LULU_PRIVATE Entry {
     Value key, value;
+
+    bool
+    is_empty() const noexcept
+    {
+        return this->key.is_nil() && this->value.is_nil();
+    }
+
+    bool
+    is_empty_or_tombstone() const noexcept
+    {
+        return this->key.is_nil();
+    }
+
+    // Tombstones are always exactly `nil` keys mapping to `true`.
+    void
+    set_tombstone()
+    {
+        this->key   = nil;
+        this->value = Value::make_boolean(true);
+    }
 };
 
 struct LULU_PRIVATE Table {
     OBJECT_HEADER;
 
-    // Hash segment data.
+    // Array segment data. Not all slots may be occupied.
+    // `len(array)` is the functional capacity, not the active count.
+    Slice<Value> array;
+
+    // Hash segment data. Not all slots may be occupied.
+    // `len(entries)` is the functional capacity, not the active count.
     Slice<Entry> entries;
 
     // Hash segment length- number of currently active entries.
@@ -37,11 +62,11 @@ table_len(Table *t);
 
 // Implements `out = t[i]`.
 LULU_FUNC bool
-table_get_integer(Table *t, lulu_Integer i, Value *out);
+table_get_integer(Table *t, Integer i, Value *out);
 
 // Implements `t[i] = v`.
 LULU_FUNC void
-table_set_integer(lulu_VM *vm, Table *t, lulu_Integer i, const Value &v);
+table_set_integer(lulu_VM *vm, Table *t, Integer i, const Value &v);
 
 LULU_FUNC void
 table_unset(Table *t, const Value &k);

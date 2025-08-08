@@ -13,6 +13,7 @@ object_free(lulu_VM *vm, Object *o)
     case VALUE_TABLE: {
         Table *t = &o->table;
         slice_delete(vm, t->entries);
+        slice_delete(vm, t->array);
         mem_free(vm, t);
         break;
     }

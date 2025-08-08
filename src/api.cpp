@@ -1,10 +1,6 @@
 #include "vm.hpp"
 #include "stream.hpp"
 
-// Do not make `constexpr`; must have an address in order to be a reference.
-static const Value
-none = nil;
-
 const static Value *
 value_at(lulu_VM *vm, int i)
 {
@@ -15,7 +11,7 @@ value_at(lulu_VM *vm, int i)
         if (0 <= ii && ii < len(vm->window)) {
             return &vm->window[ii];
         }
-        return &none;
+        return &nil;
     } else if (ii > LULU_PSEUDO_INDEX) {
         // Not valid in any way
         lulu_assert(ii != 0);
@@ -39,14 +35,14 @@ value_at(lulu_VM *vm, int i)
     if (0 <= up_i && up_i < f->n_upvalues) {
         return &f->upvalues[up_i];
     }
-    return &none;
+    return &nil;
 }
 
 static Value *
 value_at_stack(lulu_VM *vm, int i)
 {
     const Value *start = value_at(vm, i);
-    lulu_assert(start != &none);
+    lulu_assert(start != &nil);
     lulu_assertf(i > LULU_PSEUDO_INDEX, "Got pseudo-index %i", i);
 
     // Only `api.cpp:none` is immutable; all indexes (even pseudo indexes!)
@@ -191,7 +187,7 @@ LULU_API lulu_Type
 lulu_type(lulu_VM *vm, int i)
 {
     const Value *v = value_at(vm, i);
-    if (v == &none) {
+    if (v == &nil) {
         return LULU_TYPE_NONE;
     }
 
@@ -247,7 +243,7 @@ lulu_to_number(lulu_VM *vm, int i)
 LULU_API lulu_Integer
 lulu_to_integer(lulu_VM *vm, int i)
 {
-    return cast(lulu_Integer)lulu_to_number(vm, i);
+    return cast_integer(lulu_to_number(vm, i));
 }
 
 LULU_API const char *
@@ -358,7 +354,7 @@ lulu_push_number(lulu_VM *vm, lulu_Number n)
 LULU_API void
 lulu_push_integer(lulu_VM *vm, lulu_Integer i)
 {
-    vm_push(vm, Value::make_number(cast(Number)i));
+    vm_push(vm, Value::make_number(cast_number(i)));
 }
 
 LULU_API void

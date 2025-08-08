@@ -146,7 +146,7 @@ add_constant(Compiler *c, const Value &k, const Value &v)
         return cast(u32)i.to_integer();
     }
     u32 n = chunk_add_constant(c->vm, c->chunk, v);
-    i = i.make_integer(cast(lulu_Integer)n);
+    i = Value::make_integer(cast_integer(n));
     table_set(c->vm, c->indexes, k, i);
     return n;
 }

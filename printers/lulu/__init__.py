@@ -2,7 +2,7 @@
 import gdb # type: ignore
 from typing import Final
 from printers import odin, base
-from . import opcode, chunk, lexer, expr, value
+from . import opcode, chunk, lexer, expr, value, table
 
 class __PrettyPrinter(gdb.printing.PrettyPrinter):
     """
@@ -62,6 +62,7 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             "LString":      odin.StringPrinter,
             "OString":      value.OStringPrinter,
             "Local":        chunk.LocalPrinter,
+            "Entry":        table.Entry_Printer,
 
             # Pointers thereof
             # "Instruction *": opcode.InstructionPrinter,

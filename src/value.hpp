@@ -15,11 +15,11 @@ private:
     // use macros to change what members are to be included in the struct.
     Value_Type m_type = VALUE_NIL;
     union {
-        lulu_Integer m_integer = 0;
-        Number       m_number;
-        bool         m_boolean;
-        Object      *m_object;
-        void        *m_pointer; // light userdata.
+        Integer m_integer = 0;
+        Number  m_number;
+        bool    m_boolean;
+        Object *m_object;
+        void   *m_pointer; // light userdata.
     };
 
 public:
@@ -48,7 +48,7 @@ public:
      *      without needing to convert to/from `lulu_Number`.
      */
     static constexpr Value
-    make_integer(lulu_Integer i)
+    make_integer(Integer i)
     {
         Value v{};
         v.m_type    = VALUE_INTEGER;
@@ -254,7 +254,7 @@ public:
      * @note(2025-07-19)
      *      Affected by Nan-boxing/pointer-tagging.
      */
-    lulu_Integer
+    Integer
     to_integer() const
     {
         lulu_assert(this->is_integer());

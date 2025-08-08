@@ -778,10 +778,10 @@ vm_execute(lulu_VM *vm, int n_calls)
         case OP_LEN:
             switch (ra->type()) {
             case VALUE_STRING:
-                ra->set_number(cast(Number)ra->to_ostring()->len);
+                ra->set_number(cast_number(ra->to_ostring()->len));
                 break;
             case VALUE_TABLE:
-                ra->set_number(cast(Number)table_len(ra->to_table()));
+                ra->set_number(cast_number(table_len(ra->to_table())));
                 break;
             default:
                 protect(vm, ip);

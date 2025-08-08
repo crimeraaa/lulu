@@ -4,28 +4,8 @@
 static constexpr Entry
 EMPTY_ENTRY{nil, nil};
 
-static void
-hash_resize(lulu_VM *vm, Table *t, isize n);
-
-Table *
-table_new(lulu_VM *vm, isize n_hash, isize n_array)
-{
-    Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
-    table_init(t);
-    hash_resize(vm, t, n_hash * n_array);
-    return t;
-}
-
-void
-table_init(Table *t)
-{
-    // t->array   = {nullptr, 0};
-    t->entries = {nullptr, 0};
-    t->count   = 0;
-}
-
 static isize
-table_cap(const Table *t)
+hash_cap(const Table *t)
 {
     return len(t->entries);
 }
@@ -75,110 +55,29 @@ hash_value(const Value &v)
  *  1.2.) In `table_set()` we resize beforehand.
  */
 static Entry *
-find_entry(Slice<Entry> entries, const Value &k)
+find_entry(Slice<Entry> &entries, const Value &k)
 {
     usize  hash = cast_usize(hash_value(k));
     usize  wrap = cast_usize(len(entries)) - 1;
     Entry *tomb = nullptr;
 
     for (usize i = hash & wrap; /* empty */; i = (i + 1) & wrap) {
-        Entry *entry = &entries[i];
-        if (entry->key.is_nil()) {
-            if (entry->value.is_nil()) {
-                return (tomb == nullptr) ? entry : tomb;
+        Entry *e = &entries[i];
+        if (e->is_empty_or_tombstone()) {
+            // Empty?
+            if (e->value.is_nil()) {
+                return (tomb == nullptr) ? e : tomb;
             }
             // Track only the first tombstone we see so we can reuse it.
             if (tomb == nullptr) {
-                tomb = entry;
+                tomb = e;
             }
         }
-        else if (k == entry->key) {
-            return entry;
+        else if (k == e->key) {
+            return e;
         }
     }
     lulu_unreachable();
-}
-
-bool
-table_get(Table *t, const Value &restrict k, Value *restrict out)
-{
-    if (t->count > 0) {
-        Entry *e = find_entry(t->entries, k);
-        *out = e->value;
-        // If `e->key` is nil, then that means `k` does not exist in the table.
-        return !e->key.is_nil();
-    }
-    *out = nil;
-    return false;
-}
-
-
-void
-table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
-{
-    if (t->count + 1 > table_cap(t)*3 / 4) {
-        isize n = mem_next_pow2(t->count + 1);
-        hash_resize(vm, t, n);
-    }
-    Entry *e = find_entry(t->entries, k);
-    // Overwriting a completely empty entry?
-    if (e->key.is_nil() && e->value.is_nil()) {
-        t->count++;
-    }
-    e->key   = k;
-    e->value = v;
-}
-
-//=== ARRAY MANIPULATION =============================================== {{{
-
-isize
-table_len(Table *t)
-{
-    isize n = 1;
-    for (; /* empty */; n++) {
-        Value out;
-        // Index doesn't exist?
-        if (!table_get_integer(t, cast(lulu_Integer)n, &out)) {
-            break;
-        }
-        // Index maps to nil?
-        if (!out.is_nil()) {
-            break;
-        }
-    }
-    return n - 1;
-}
-
-bool
-table_get_integer(Table *t, lulu_Integer i, Value *out)
-{
-    Value k = Value::make_number(cast(Number)i);
-    return table_get(t, k, out);
-}
-
-void
-table_set_integer(lulu_VM *vm, Table *t, lulu_Integer i, const Value &v)
-{
-    Value k = Value::make_number(cast(Number)i);
-    table_set(vm, t, k, v);
-}
-
-//=== }}} ==================================================================
-
-void
-table_unset(Table *t, const Value &k)
-{
-    if (t->count == 0) {
-        return;
-    }
-    Entry *e = find_entry(t->entries, k);
-    // Already empty/tombstone; nothing to do.
-    if (e->key.is_nil()) {
-        return;
-    }
-    // Tombstones are nil keys mapping to the boolean `true`.
-    e->key = nil;
-    e->value.set_boolean(true);
 }
 
 static void
@@ -189,18 +88,17 @@ hash_resize(lulu_VM *vm, Table *t, isize n)
         t->entries = {nullptr, 0};
         t->count   = 0;
         return;
-
     }
 
-    Slice<Entry> new_entries = slice_make<Entry>(vm, n);
+    Slice<Entry> new_entries = slice_make<Entry>(vm, mem_next_pow2(n));
     // Initialize all key-value pairs to nil-nil.
     fill(new_entries, EMPTY_ENTRY);
 
     n = 0;
     // Rehash all the old elements into the new entries table.
     for (Entry e : t->entries) {
-        // Skip empty entries and tombstones.
-        if (e.key.is_nil()) {
+        // Don't (re)map nil keys.
+        if (e.is_empty_or_tombstone()) {
             continue;
         }
 
@@ -212,8 +110,265 @@ hash_resize(lulu_VM *vm, Table *t, isize n)
     slice_delete(vm, t->entries);
     t->entries = new_entries;
     t->count   = n;
-
 }
+
+static bool
+hash_get(Table *t, const Value &restrict k, Value *restrict out)
+{
+    if (t->count > 0) {
+        Entry *e = find_entry(t->entries, k);
+        *out = e->value;
+        // If `e->key` is nil, then that means `k` does not exist in the table.
+        return !e->is_empty_or_tombstone();
+    }
+    *out = nil;
+    return false;
+}
+
+static void
+hash_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
+{
+    isize n = hash_cap(t);
+    if (t->count + 1 > (n * 3) / 4) {
+        hash_resize(vm, t, n + 1);
+    }
+
+    Entry *e = find_entry(t->entries, k);
+    // Overwriting a completely empty entry?
+    if (e->is_empty()) {
+        t->count++;
+    }
+    e->key   = k;
+    e->value = v;
+}
+
+static isize
+array_cap(Table *t)
+{
+    return len(t->array);
+}
+
+static isize
+array_next_size(isize n)
+{
+    return mem_next_pow2(n);
+}
+
+static void
+array_resize(lulu_VM *vm, Table *t, isize n)
+{
+    isize last = array_cap(t);
+    n = array_next_size(n);
+    slice_resize(vm, &t->array, n);
+
+    // Growing the array?
+    if (n > last) {
+        // Initialize the newly allocated region to all nils.
+        fill(slice_from(t->array, last), nil);
+    }
+}
+
+Table *
+table_new(lulu_VM *vm, isize n_hash, isize n_array)
+{
+    Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
+    table_init(t);
+    hash_resize(vm, t, n_hash);
+    if (n_array > 0) {
+        array_resize(vm, t, n_array);
+    }
+    return t;
+}
+
+void
+table_init(Table *t)
+{
+    t->array   = {nullptr, 0};
+    t->entries = {nullptr, 0};
+    t->count   = 0;
+}
+
+bool
+table_get(Table *t, const Value &restrict k, Value *restrict out)
+{
+    if (k.is_number()) {
+        Integer i;
+        // `k` represents an integer without loss of precision?
+        if (number_to_integer(k.to_number(), &i)) {
+            return table_get_integer(t, i, out);
+        }
+    }
+    return hash_get(t, k, out);
+}
+
+void
+table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
+{
+    if (k.is_number()) {
+        Integer i;
+        // `k` represents an integer without loss of precision?
+        if (number_to_integer(k.to_number(), &i)) {
+            table_set_integer(vm, t, i, v);
+            return;
+        }
+    }
+    hash_set(vm, t, k, v);
+}
+
+//=== ARRAY MANIPULATION =============================================== {{{
+
+isize
+table_len(Table *t)
+{
+    isize i = 0;
+    for (const Value &v : t->array) {
+        if (v.is_nil()) {
+            break;
+        }
+        i++;
+    }
+    return i;
+}
+
+bool
+table_get_integer(Table *t, Integer i, Value *out)
+{
+    // 1-based index from Lua is in range of array, when also treated as Lua?
+    if (1 <= i && i <= array_cap(t)) {
+        // Correct 1-based index from Lua to 0-based index for C.
+        Value v = t->array[i - 1];
+        *out = v;
+        return !v.is_nil();
+    }
+    // Not in range of array segment; try hash segment.
+    Value k = Value::make_number(cast_number(i));
+    return hash_get(t, k, out);
+}
+
+
+/**
+ * @note(2025-08-08) Assumptions:
+ *
+ * 1.) `t->count > 0`, because otherwise we have no active entires
+ *      and potentially no entry array to begin with.
+ */
+static bool
+moved_array(Table *t, Integer i)
+{
+    Value  k = Value::make_number(cast_number(i));
+    Entry *e = find_entry(t->entries, k);
+    if (e->key == k) {
+        t->array[i - 1] = e->value;
+        // Mark as tombstone so that it can be skipped over when resolving
+        // collisions.
+        e->set_tombstone();
+        return true;
+    }
+    lulu_assertln(e->key == nil, "empty/tombstone keys can only be nil");
+    return false;
+}
+
+// Count all consecutive, non-nil integer keys in the hash segment,
+// starting from `start`.
+static isize
+hash_count_array(Table *t, Integer start)
+{
+    // No active hash elements, potentially no entry array to begin with!
+    if (t->count == 0) {
+        return 0;
+    }
+
+    isize n = 0;
+    for (Integer i = start; /* empty */; i++) {
+        Value  k = Value::make_number(cast_number(i));
+        Entry *e = find_entry(t->entries, k);
+        if (e->key == k) {
+            n++;
+            continue;
+        }
+        break;
+    }
+    return n;
+}
+
+/**
+ * @brief
+ *      Move all consecutive non-nil integer keys right before and right
+ *      after `i` from the hash segment to the array segment.
+ */
+static void
+hash_to_array(Table *t, Integer i, isize n)
+{
+    // Nothing to move?
+    if (t->count == 0) {
+        return;
+    }
+
+    // Move all consecutive non-nil integer hash keys in range `[1, i)`.
+    for (Integer j = i - 1; j >= 1; j--) {
+        // Could not remove from hash segment because it did not exist?
+        if (!moved_array(t, j)) {
+            break;
+        }
+    }
+
+    // Move all consecutive non-nil integer hash keys in range `(i, n]`.
+    for (Integer j = i + 1; j <= n; j++) {
+        if (!moved_array(t, j)) {
+            break;
+        }
+    }
+}
+
+void
+table_set_integer(lulu_VM *vm, Table *t, Integer i, const Value &v)
+{
+    // Valid 1-based index from Lua?
+    if (1 <= i) {
+        isize n = array_cap(t);
+        // Is in range of the array?
+        if (i <= n) {
+            t->array[i - 1] = v;
+            return;
+        }
+
+        // Check all integer keys to our right.
+        isize extra = hash_count_array(t, i + 1);
+
+        // Grow the array, accounting for the integer keys to the right.
+        n = array_next_size(n + 1) + extra;
+
+        // Is in range of the potentially grown array?
+        if (i <= n) {
+            array_resize(vm, t, n);
+            t->array[i - 1] = v;
+
+            // Move integer indices from the hash segment to the array
+            // segment.
+            hash_to_array(t, i, cast_integer(n));
+            return;
+        }
+        // Not in range of array no matter what; use the hash segment.
+    }
+    Value k = Value::make_number(cast_number(i));
+    hash_set(vm, t, k, v);
+}
+
+//=== }}} ==================================================================
+
+void
+table_unset(Table *t, const Value &k)
+{
+    if (t->count == 0) {
+        return;
+    }
+    Entry *e = find_entry(t->entries, k);
+    if (e->is_empty_or_tombstone()) {
+        return;
+    }
+    e->set_tombstone();
+}
+
 
 /**
  * @param k
@@ -235,11 +390,11 @@ find_next(lulu_VM *vm, Table *t, const Value &k)
     // The main index of `k` may be colliding; find its actual position
     for (usize i = hash & wrap; /* empty */; i = (i + 1) & wrap) {
         Entry e = t->entries[i];
-        if (e.key == k) {
+        if (e.is_empty_or_tombstone()) {
+            break;
+        } else if (e.key == k) {
             // Return index of *next* element.
             return cast_isize(i) + 1;
-        } else if (e.key.is_nil()) {
-            break;
         }
     }
     vm_runtime_error(vm, "Invalid key to 'next'");
@@ -255,7 +410,7 @@ table_next(lulu_VM *vm, Table *t, Value *restrict k, Value *restrict v)
     // Given this starting index, find the first non-nil element.
     for (; i < len(t->entries); i++) {
         Entry e = t->entries[i];
-        if (!e.key.is_nil()) {
+        if (!e.is_empty_or_tombstone()) {
             *k = e.key;
             *v = e.value;
             return true;

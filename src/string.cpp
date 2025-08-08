@@ -53,7 +53,7 @@ lstring_to_number(const LString &s, Number *out, int base)
             return false;
         }
         unsigned long ul = strtoul(raw_data(s2), &last, base);
-        d = cast(Number)ul;
+        d = cast_number(ul);
     }
     // Parsing a non-prefixed number.
     else {
@@ -286,8 +286,9 @@ ostring_new(lulu_VM *vm, const LString &text)
     s->data[s->len] = 0;
     memcpy(s->data, raw_data(text), cast_usize(len(text)));
 
-    if (t->count + 1 > intern_cap(t)*3 / 4) {
-        isize new_cap = mem_next_pow2(t->count + 1);
+    isize n = intern_cap(t);
+    if (t->count + 1 > (n * 3) / 4) {
+        isize new_cap = mem_next_pow2(n + 1);
         intern_resize(vm, t, new_cap);
     }
     t->count++;

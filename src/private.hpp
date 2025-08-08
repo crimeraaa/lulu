@@ -44,6 +44,8 @@ using usize = size_t;
 #define cast_int(expr)      int(expr)
 #define cast_isize(expr)    isize(expr)
 #define cast_usize(expr)    usize(expr)
+#define cast_number(expr)   Number(expr)
+#define cast_integer(expr)  Integer(expr)
 #define unused(expr)        (void)(expr)
 
 #define size_of(expr)       isize(sizeof(expr))
@@ -64,8 +66,20 @@ using usize = size_t;
 
 #define OBJECT_HEADER Object *next; Value_Type type
 
-using Type   = lulu_Type;
-using Number = lulu_Number;
+using Type    = lulu_Type;
+using Number  = lulu_Number;
+using Integer = lulu_Integer;
+
+/**
+ * @return
+ *      true if conversion occured without loss of precision, else false.
+ */
+LULU_FUNC inline bool
+number_to_integer(Number n, Integer *out)
+{
+    *out = cast_integer(n);
+    return lulu_Number_eq(cast(Number)*out, n);
+}
 
 enum Value_Type {
     VALUE_NIL           = LULU_TYPE_NIL,
@@ -93,6 +107,16 @@ swap(T *restrict a, T *restrict b)
     T tmp = *a;
     *a = *b;
     *b = tmp;
+}
+
+template<class T>
+LULU_FUNC inline T
+max(T a, T b)
+{
+    if (a > b) {
+        return a;
+    }
+    return b;
 }
 
 #ifdef LULU_DEBUG
