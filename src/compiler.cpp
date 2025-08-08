@@ -33,10 +33,10 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev)
     c.parser      = p;
     c.chunk       = f;
     c.indexes     = i;
+    c.block       = nullptr;
     c.pc          = 0;
     c.last_target = NO_JUMP;
     c.free_reg    = 0;
-    c.block       = nullptr;
     small_array_clear(&c.active);
     return c;
 }
@@ -120,11 +120,8 @@ compiler_load_nil(Compiler *c, u16 reg, int n)
     ip = get_code(c, pc - 1);
     // Previous instruction may be able to be folded?
     if (ip->op() == OP_NIL) {
-        u16 ra = ip->a();
-        u16 rb = ip->b();
-
         // New argument B could be used to update the previous?
-        if (ra <= last_reg && last_reg > rb) {
+        if (ip->a() <= last_reg && last_reg > ip->b()) {
             ip->set_b(last_reg);
             return;
         }

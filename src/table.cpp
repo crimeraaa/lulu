@@ -2,26 +2,26 @@
 #include "vm.hpp"
 
 static constexpr Entry
-EMPTY_ENTRY = {nil, nil};
+EMPTY_ENTRY{nil, nil};
+
+static void
+hash_resize(lulu_VM *vm, Table *t, isize n);
 
 Table *
 table_new(lulu_VM *vm, isize n_hash, isize n_array)
 {
     Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
     table_init(t);
-    isize total = n_hash + n_array;
-    if (total > 0) {
-        table_resize(vm, t, mem_next_pow2(total));
-    }
+    hash_resize(vm, t, n_hash * n_array);
     return t;
 }
 
 void
 table_init(Table *t)
 {
-    t->entries.data = nullptr;
-    t->entries.len  = 0;
-    t->count        = 0;
+    // t->array   = {nullptr, 0};
+    t->entries = {nullptr, 0};
+    t->count   = 0;
 }
 
 static isize
@@ -112,12 +112,13 @@ table_get(Table *t, const Value &restrict k, Value *restrict out)
     return false;
 }
 
+
 void
 table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
 {
     if (t->count + 1 > table_cap(t)*3 / 4) {
         isize n = mem_next_pow2(t->count + 1);
-        table_resize(vm, t, n);
+        hash_resize(vm, t, n);
     }
     Entry *e = find_entry(t->entries, k);
     // Overwriting a completely empty entry?
@@ -128,16 +129,41 @@ table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
     e->value = v;
 }
 
+//=== ARRAY MANIPULATION =============================================== {{{
+
+isize
+table_len(Table *t)
+{
+    isize n = 1;
+    for (; /* empty */; n++) {
+        Value out;
+        // Index doesn't exist?
+        if (!table_get_integer(t, cast(lulu_Integer)n, &out)) {
+            break;
+        }
+        // Index maps to nil?
+        if (!out.is_nil()) {
+            break;
+        }
+    }
+    return n - 1;
+}
+
+bool
+table_get_integer(Table *t, lulu_Integer i, Value *out)
+{
+    Value k = Value::make_number(cast(Number)i);
+    return table_get(t, k, out);
+}
+
 void
 table_set_integer(lulu_VM *vm, Table *t, lulu_Integer i, const Value &v)
 {
-    /**
-     * @todo(2025-08-06)
-     *      Separate hash and array segments of table?
-     */
     Value k = Value::make_number(cast(Number)i);
     table_set(vm, t, k, v);
 }
+
+//=== }}} ==================================================================
 
 void
 table_unset(Table *t, const Value &k)
@@ -155,14 +181,22 @@ table_unset(Table *t, const Value &k)
     e->value.set_boolean(true);
 }
 
-void
-table_resize(lulu_VM *vm, Table *t, isize new_cap)
+static void
+hash_resize(lulu_VM *vm, Table *t, isize n)
 {
-    Slice<Entry> new_entries = slice_make<Entry>(vm, new_cap);
+    if (n == 0) {
+        slice_delete(vm, t->entries);
+        t->entries = {nullptr, 0};
+        t->count   = 0;
+        return;
+
+    }
+
+    Slice<Entry> new_entries = slice_make<Entry>(vm, n);
     // Initialize all key-value pairs to nil-nil.
     fill(new_entries, EMPTY_ENTRY);
 
-    isize n = 0;
+    n = 0;
     // Rehash all the old elements into the new entries table.
     for (Entry e : t->entries) {
         // Skip empty entries and tombstones.
@@ -178,8 +212,8 @@ table_resize(lulu_VM *vm, Table *t, isize new_cap)
     slice_delete(vm, t->entries);
     t->entries = new_entries;
     t->count   = n;
-}
 
+}
 
 /**
  * @param k

@@ -122,8 +122,10 @@ static int arrayindex (const TValue *key) {
     lua_Number n = nvalue(key);
     int k;
     lua_number2int(k, n);
-    if (luai_numeq(cast_num(k), n))
+    /* `n` can be represented as an `int` without loss? */
+    if (luai_numeq(cast_num(k), n)) {
       return k;
+    }
   }
   return -1;  /* `key' did not match some condition */
 }
@@ -196,9 +198,13 @@ static int computesizes (int nums[], int *narray) {
   int a = 0;  /* number of elements smaller than 2^i */
   int na = 0;  /* number of elements to go to array part */
   int n = 0;  /* optimal size for array part */
-  for (i = 0, twotoi = 1; twotoi/2 < *narray; i++, twotoi *= 2) {
-    if (nums[i] > 0) {
-      a += nums[i];
+  for (i = 0, twotoi = 1;
+    twotoi / 2 < *narray;
+    i++, twotoi *= 2) {
+
+    int used = nums[i];
+    if (used > 0) {
+      a += used;
       if (a > twotoi/2) {  /* more than half elements present? */
         n = twotoi;  /* optimal size (till now) */
         na = a;  /* all elements smaller than n will go to array part */
@@ -212,37 +218,51 @@ static int computesizes (int nums[], int *narray) {
 }
 
 
-static bool countint (const TValue *key, int *nums) {
+static int countint (const TValue *key, int nums[MAXBITS]) {
   int k = arrayindex(key);
   if (0 < k && k <= MAXASIZE) {  /* is `key' an appropriate array index? */
-    nums[ceillog2(k)]++;  /* count as such */
-    return true;
+    /* Get the exponent of the start of our bit range. */
+    int lg = ceillog2(k);
+    nums[lg]++;  /* count as such */
+    return 1;
   }
-  else
-    return false;
+  else {
+    return 0;
+  }
 }
 
 
-static int numusearray (const Table *t, int *nums) {
-  int lg;
-  int ttlg;  /* 2^lg */
+static int numusearray (const Table *t, int nums[MAXBITS]) {
+  int bit; /* exponent for power of 2 we are currently at. */
+  int ttlg;  /* power of 2 we want: 2^bit */
   int ause = 0;  /* summation of `nums' */
   int i = 1;  /* count to traverse all array keys */
-  for (lg=0, ttlg=1; lg<=MAXBITS; lg++, ttlg*=2) {  /* for each slice */
-    int lc = 0;  /* counter */
-    int lim = ttlg;
+  for (bit = 0, ttlg = 1;
+    bit <= MAXBITS;
+    bit++, ttlg *= 2) { /* for each slice */
+
+    int used = 0;  /* counter for active array items for this range. */
+    int lim = ttlg; /* range end for this `i` */
+    /* `lim` would read out of bounds? */
     if (lim > t->sizearray) {
-      lim = t->sizearray;  /* adjust upper limit */
-      if (i > lim)
-        break;  /* no more elements to count */
+      /* Clamp `lim`. */
+      lim = t->sizearray;
+
+      /* No more elements to count? E.g. `i == 1 && t->sizearray == 0`
+        when dealing with empty arrays. */
+      if (i > lim) {
+        break;
+      }
     }
-    /* count elements in range (2^(lg-1), 2^lg] */
+    /* count elements in range (2^(bit - 1), 2^(bit)] */
     for (; i <= lim; i++) {
-      if (!ttisnil(&t->array[i-1]))
-        lc++;
+      TValue *v = &t->array[i - 1];
+      if (!ttisnil(v)) {
+        used++;
+      }
     }
-    nums[lg] += lc;
-    ause += lc;
+    nums[bit] += used;
+    ause += used;
   }
   return ause;
 }
@@ -254,8 +274,10 @@ static int numusehash (const Table *t, int *nums, int *pnasize) {
   int i = sizenode(t);
   while (i--) {
     Node *n = &t->node[i];
-    if (!ttisnil(gval(n))) {
-      ause += countint(key2tval(n), nums);
+    TValue *v = gval(n);
+    if (!ttisnil(v)) {
+      TValue *k = key2tval(n);
+      ause += countint(k, nums);
       totaluse++;
     }
   }
@@ -274,23 +296,31 @@ static void setarrayvector (lua_State *L, Table *t, int size) {
 
 
 static void setnodevector (lua_State *L, Table *t, int size) {
+  /* Exponent of the nearest upper power of 2 to `size`. */
   int lsize;
-  if (size == 0) {  /* no elements to hash part? */
+
+  /* No elements to hash part, also `ceillog2(0)` is invalid. */
+  if (size == 0) {
     t->node = cast(Node *, dummynode);  /* use common `dummynode' */
     lsize = 0;
   }
   else {
     int i;
     lsize = ceillog2(size);
-    if (lsize > MAXBITS)
+    if (lsize > MAXBITS) {
       luaG_runerror(L, "table overflow");
+    }
     size = twoto(lsize);
     t->node = luaM_newvector(L, size, Node);
-    for (i=0; i<size; i++) {
+    /* Initialize new node array. */
+    for (i = 0; i < size; i++) {
       Node *n = gnode(t, i);
+      TValue *v = gval(n);
+
       gnext(n) = NULL;
+      /* Can't store in `TValue *` because `TKey::nk` is an anonymous type. */
       setnilvalue(gkey(n));
-      setnilvalue(gval(n));
+      setnilvalue(v);
     }
   }
   t->lsizenode = cast_byte(lsize);
@@ -310,21 +340,31 @@ static void resize (lua_State *L, Table *t, int nasize, int nhsize) {
   if (nasize < oldasize) {  /* array part must shrink? */
     t->sizearray = nasize;
     /* re-insert elements from vanishing slice */
-    for (i=nasize; i<oldasize; i++) {
-      if (!ttisnil(&t->array[i]))
-        setobjt2t(L, luaH_setnum(L, t, i+1), &t->array[i]);
+    for (i = nasize; i < oldasize; i++) {
+      TValue *src = &t->array[i];
+      if (!ttisnil(src)) {
+        /* Move non-nil array index from array to hash. */
+        TValue *dst = luaH_setnum(L, t, i + 1);
+        setobjt2t(L, dst, src);
+      }
     }
     /* shrink array */
     luaM_reallocvector(L, t->array, oldasize, nasize, TValue);
   }
-  /* re-insert elements from hash part */
+  /* Copy elements from current hash part to newly allocated hash. */
   for (i = twoto(oldhsize) - 1; i >= 0; i--) {
-    Node *old = nold+i;
-    if (!ttisnil(gval(old)))
-      setobjt2t(L, luaH_set(L, t, key2tval(old)), gval(old));
+    Node *old = &nold[i];
+    TValue *v = gval(old);
+    if (!ttisnil(v)) {
+      TValue *k = key2tval(old);
+      TValue *dst = luaH_set(L, t, k);
+      setobjt2t(L, dst, v);
+    }
   }
-  if (nold != dummynode)
+  /* This table owned its node array? Can free it in that case. */
+  if (nold != dummynode) {
     luaM_freearray(L, nold, twoto(oldhsize), Node);  /* free old array */
+  }
 }
 
 
@@ -336,10 +376,51 @@ void luaH_resizearray (lua_State *L, Table *t, int nasize) {
 
 static void rehash (lua_State *L, Table *t, const TValue *ek) {
   int nasize, na;
-  int nums[MAXBITS+1];  /* nums[i] = number of keys between 2^(i-1) and 2^i */
+
+  /**
+   * @brief
+   *    Number of keys found between each power of 2 range: 2^(i-1) and 2^i.
+   *
+   *    See Python output of the following:
+   *
+   *    `for i in range(1, 27):
+   *      print(f"nums[{i-1}] = [{2**{i-1}}, {2**i})")`
+   *
+   * @details(2025-08-08) Index ranges for each power of 2 exponent:
+   *
+   *    [0]  = [1, 2)
+   *    [1]  = [2, 4)
+   *    [2]  = [4, 8)
+   *    [3]  = [8, 16)
+   *    [4]  = [16, 32)
+   *    [5]  = [32, 64)
+   *    [6]  = [64, 128)
+   *    [7]  = [128, 256)
+   *    [8]  = [256, 512)
+   *    [9]  = [512, 1_024)
+   *    [10] = [1_024, 2_048)
+   *    [11] = [2_048, 4_096)
+   *    [12] = [4_096, 8_192)
+   *    [13] = [8_192, 16_384)
+   *    [14] = [16_384, 32_768)
+   *    [15] = [32_768, 65_536)
+   *    [16] = [65_536, 131_072)
+   *    [17] = [131_072, 262_144)
+   *    [18] = [262_144, 524_288)
+   *    [19] = [524_288, 1_048_576)
+   *    [20] = [1_048_576, 2_097_152)
+   *    [21] = [2_097_152, 4_194_304)
+   *    [22] = [4_194_304, 8_388_608)
+   *    [23] = [8_388_608, 16_777_216)
+   *    [24] = [16_777_216, 33_554_432)
+   *    [25] = [33_554_432, 67_108_864)
+   *    [26] = [67_108_864, 134_217_728]
+   */
+  int nums[MAXBITS+1];
   int i;
   int totaluse;
-  for (i=0; i<=MAXBITS; i++) nums[i] = 0;  /* reset counts */
+  for (i = 0; i <= MAXBITS; i++) nums[i] = 0;  /* reset counts */
+
   nasize = numusearray(t, nums);  /* count keys in array part */
   totaluse = nasize;  /* all those keys are integer keys */
   totaluse += numusehash(t, nums, &nasize);  /* count keys in hash part */

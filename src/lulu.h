@@ -38,9 +38,13 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
  *      properly link to our shared library.
  */
 #ifdef __cplusplus
-#define LULU_API    extern "C" LULU_PUBLIC
+
+#   define LULU_API    extern "C" LULU_PUBLIC
+
 #else   /* ^^^ __cplusplus, vvv otherwise */
-#define LULU_API    extern LULU_PUBLIC
+
+#   define LULU_API    extern LULU_PUBLIC
+
 #endif /* __cplusplus */
 
 

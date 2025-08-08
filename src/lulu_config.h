@@ -123,12 +123,12 @@
 
 #if defined(__GNUC__) || defined(__clang__)
 
-#define LULU_ATTR_PRINTF(fmt, arg) \
+#   define LULU_ATTR_PRINTF(fmt, arg) \
     __attribute__ ((__format__ (printf, fmt, arg)))
 
 #else /* ^^^ __GNUC__ || __clang__, vvv otherwise */
 
-#define LULU_ATTR_PRINTF(fmt, arg)
+#   define LULU_ATTR_PRINTF(fmt, arg)
 
 #endif /* LULU_ATTR_PRINTF */
 

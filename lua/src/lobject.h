@@ -380,11 +380,32 @@ typedef struct Table {
 
 LUAI_DATA const TValue luaO_nilobject_;
 
-#define ceillog2(x)	(luaO_log2((x)-1) + 1)
+/**
+ * @brief
+ *    Equivalent to `ceil(log(x, base=2))`. Gets the exponent of the
+ *    power of 2 greater-than/equal-to `x`.
+ *
+ * @param x
+ *    Some integer which satisfies the inequality `x >= 1`, because
+ *    you cannot take the log `x <= 0`.
+ *
+ * @return
+ *    `i` which satisfies the inequality `2^(i-1) <= x < 2^i` and `i >= 1`.
+ */
+#define ceillog2(x)	(luaO_log2((x) - 1) + 1)
 
+
+/**
+ * @brief
+ *    Helper function which makes the macro `ceillog2()` work.
+ *
+ * @return
+ *    `ceil(exp) - 1` for `exp` which satisfies the equation `2^exp = x + 1`.
+ */
 LUAI_FUNC int luaO_log2 (unsigned int x);
 LUAI_FUNC int luaO_int2fb (unsigned int x);
 LUAI_FUNC int luaO_fb2int (int x);
+
 
 /**
  * @note 2025-04-08:

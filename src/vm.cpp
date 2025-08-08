@@ -780,22 +780,9 @@ vm_execute(lulu_VM *vm, int n_calls)
             case VALUE_STRING:
                 ra->set_number(cast(Number)ra->to_ostring()->len);
                 break;
-            case VALUE_TABLE: {
-                Number last = 0;
-                Table *t    = ra->to_table();
-                for (Number n = 1;; n++) {
-                    Value out;
-                    if (!table_get(t, Value::make_number(n), &out)) {
-                        break;
-                    }
-                    if (out.is_nil()) {
-                        break;
-                    }
-                    last = n;
-                }
-                ra->set_number(last);
+            case VALUE_TABLE:
+                ra->set_number(cast(Number)table_len(ra->to_table()));
                 break;
-            }
             default:
                 protect(vm, ip);
                 debug_type_error(vm, "get length of", ra);

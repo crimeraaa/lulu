@@ -1,11 +1,16 @@
-function f(x, y, z)
+---@param x integer
+---@param y integer
+---@param z integer
+local function f(x, y, z)
     return x, y, z
 end
 
-function g()
+local function g()
     return 9, 10, 21, 42
 end
 
-return f(g())
+print(f(g()))
+
+-- return f(g())
 -- return "values:", f(g())
 -- return f(g()), "cutoff"

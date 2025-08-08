@@ -52,11 +52,11 @@ using usize = size_t;
 #ifndef restrict
 
 #if defined(__GNUC__) || defined(__clang__)
-#define restrict    __restrict__
+#   define restrict    __restrict__
 #elif defined(_MSC_VER) // ^^^ __GNUC__ || __clang___, vvv _MSC_VER
-#define restrict    __restrict
+#   define restrict    __restrict
 #else // ^^^ _MSC_VER, vvv else
-#define restrict
+#   define restrict
 #endif
 
 #endif // restrict
@@ -88,7 +88,7 @@ VALUE_TYPE_COUNT = VALUE_TYPE_LAST + 1;
 
 template<class T>
 LULU_FUNC inline void
-swap(T *a, T *b)
+swap(T *restrict a, T *restrict b)
 {
     T tmp = *a;
     *a = *b;
@@ -133,13 +133,9 @@ throw();
 
 // `lulu_unreachable()` must be defined regardless of `LULU_DEBUG`.
 #if defined(__GNUC__) || defined(__clang__)
-
-#define lulu_unreachable()  __builtin_unreachable()
-
+#   define lulu_unreachable()  __builtin_unreachable()
 #elif defined(_MSC_VER) // ^^^ __GNUC__ || __clang__, vvv _MSC_VER
-
-#define lulu_unreachable()  __assume(false)
-
+#   define lulu_unreachable()  __assume(false)
 #else // ^^^ _MSC_VER, vvv anything else
 
 // Do not implement as a function-like macro `lulu_assert(false)` because

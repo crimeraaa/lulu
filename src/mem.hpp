@@ -91,6 +91,15 @@ slice_make(lulu_VM *vm, isize n)
 
 template<class T>
 LULU_FUNC inline void
+slice_resize(lulu_VM *vm, Slice<T> *s, isize n)
+{
+    Slice<T> next = slice_make<T>(vm, n);
+    slice_delete(vm, *s);
+    *s = next;
+}
+
+template<class T>
+LULU_FUNC inline void
 slice_delete(lulu_VM *vm, Slice<T> s)
 {
     mem_delete(vm, raw_data(s), len(s));
