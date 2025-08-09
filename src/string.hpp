@@ -51,8 +51,14 @@ struct LULU_PRIVATE Builder {
 struct LULU_PRIVATE OString {
     OBJECT_HEADER;
     isize len;
-    u32   hash;
-    char  data[1];
+    u32 hash;
+
+    // Used only by Lexer when resolving keywords.
+    // Must hold a `Token_Type`.
+    i8 keyword_type;
+
+    // Flexible array member, actual length is determined by `len`.
+    char data[1];
 
     LString
     to_lstring() const noexcept

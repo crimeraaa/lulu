@@ -56,14 +56,14 @@ static void expression (LexState *lex, Expr *var);
 
 
 static void anchor_token (LexState *lex) {
-  if (lex->current.type == Token_Name || lex->current.type == Token_String) {
+  if (lex->current.type == TOKEN_NAME || lex->current.type == TOKEN_STRING) {
     TString *ts = lex->current.seminfo.ts;
     luaX_newstring(lex, getstr(ts), ts->tsv.len);
   }
 }
 
 
-static void error_expected (LexState *lex, TokenType type) {
+static void error_expected (LexState *lex, Token_Type type) {
   const char *token = luaX_token2str(lex, type);
   luaX_syntaxerror(lex, luaO_pushfstring(lex->L, LUA_QS " expected", token));
 }
@@ -74,7 +74,7 @@ static void error_limit (FuncState *fs, int limit, const char *what) {
     ? luaO_pushfstring(fs->L, "main function has more than %d %s", limit, what)
     : luaO_pushfstring(fs->L, "function at line %d has more than %d %s",
                        fs->proto->linedefined, limit, what);
-  luaX_lexerror(fs->lexstate, msg, Token_Error);
+  luaX_lexerror(fs->lexstate, msg, TOKEN_ERROR);
 }
 
 
@@ -83,7 +83,7 @@ static void error_limit (FuncState *fs, int limit, const char *what) {
  *  If the current token matches `expected`, advances and returns `true`.
  *  Otherwise does nothing and returns `false`.
  */
-static bool test_next (LexState *lex, TokenType expected) {
+static bool test_next (LexState *lex, Token_Type expected) {
   if (lex->current.type == expected) {
     luaX_next(lex);
     return true;
@@ -98,7 +98,7 @@ static bool test_next (LexState *lex, TokenType expected) {
  * @brief
  *  Asserts that the current token matches `expected`.
  */
-static void check (LexState *lex, TokenType expected) {
+static void check (LexState *lex, Token_Type expected) {
   if (lex->current.type != expected)
     error_expected(lex, expected);
 }
@@ -107,7 +107,7 @@ static void check (LexState *lex, TokenType expected) {
  * @brief
  *   Asserts that current token matches `expected` then advances.
  */
-static void check_next (LexState *lex, TokenType expected) {
+static void check_next (LexState *lex, Token_Type expected) {
   check(lex, expected);
   luaX_next(lex);
 }
@@ -117,7 +117,7 @@ static void check_next (LexState *lex, TokenType expected) {
 
 
 
-static void check_match (LexState *lex, TokenType what, TokenType who, int where) {
+static void check_match (LexState *lex, Token_Type what, Token_Type who, int where) {
   if (!test_next(lex, what)) {
     if (where == lex->linenumber)
       error_expected(lex, what);
@@ -132,14 +132,14 @@ static void check_match (LexState *lex, TokenType what, TokenType who, int where
 
 static TString *str_checkname (LexState *lex) {
   TString *ts;
-  check(lex, Token_Name);
+  check(lex, TOKEN_NAME);
   ts = lex->current.seminfo.ts;
   luaX_next(lex);
   return ts;
 }
 
 
-static void init_exp (Expr *expr, ExprKind kind, int info) {
+static void init_exp (Expr *expr, Expr_Type kind, int info) {
   expr->patch_false = NO_JUMP;
   expr->patch_true  = NO_JUMP;
   expr->kind        = kind;
@@ -327,7 +327,7 @@ static void adjust_assign (LexState *lex, int nvars, int nexps, Expr *expr) {
 
 static void enterlevel (LexState *lex) {
   if (++lex->L->nCcalls > LUAI_MAXCCALLS)
-    luaX_lexerror(lex, "chunk has too many syntax levels", Token_Error);
+    luaX_lexerror(lex, "chunk has too many syntax levels", TOKEN_ERROR);
 }
 
 
@@ -470,7 +470,7 @@ Proto *luaY_parser (lua_State *L, ZIO *z, Mbuffer *buff, const char *name) {
   funcstate.proto->is_vararg = VARARG_ISVARARG;  /* main func. is always vararg */
   luaX_next(&lexstate);  /* read first token */
   chunk(&lexstate);
-  check(&lexstate, Token_Eos);
+  check(&lexstate, TOKEN_EOS);
   close_func(&lexstate);
   lua_assert(funcstate.prev == NULL);
   lua_assert(funcstate.proto->nups == 0);
@@ -501,7 +501,7 @@ static void yindex (LexState *lex, Expr *var) {
   luaX_next(lex);  /* skip the '[' */
   expression(lex, var);
   luaK_exp2val(lex->funcstate, var);
-  check_next(lex, Token_Right_Bracket);
+  check_next(lex, TOKEN_RIGHT_BRACKET);
 }
 
 
@@ -527,14 +527,14 @@ static void recfield (LexState *lex, struct ConsControl *cc) {
   int reg = lex->funcstate->freereg;
   Expr key, val;
   int rkkey;
-  if (lex->current.type == Token_Name) {
+  if (lex->current.type == TOKEN_NAME) {
     luaY_checklimit(fs, cc->nhash, MAX_INT, "items in a constructor");
     checkname(lex, &key);
   }
   else  /* lex->t.token == '[' */
     yindex(lex, &key);
   cc->nhash++;
-  check_next(lex, Token_Assign);
+  check_next(lex, TOKEN_ASSIGN);
   rkkey = luaK_exp2RK(fs, &key);
   expression(lex, &val);
   luaK_codeABC(fs, OP_SETTABLE, cc->table->u.s.info, rkkey, luaK_exp2RK(fs, &val));
@@ -592,21 +592,21 @@ static void constructor (LexState *lex, Expr *t) {
   init_exp(t, EXPR_RELOCABLE, pc);
   init_exp(&cc.value, EXPR_VOID, 0);  /* no value (yet) */
   luaK_exp2nextreg(lex->funcstate, t);  /* fix it at stack top (for gc) */
-  check_next(lex, Token_Left_Curly);
+  check_next(lex, TOKEN_LEFT_CURLY);
   do {
     lua_assert(cc.value.kind == EXPR_VOID || cc.tostore > 0);
-    if (lex->current.type == Token_Right_Curly) break;
+    if (lex->current.type == TOKEN_RIGHT_CURLY) break;
     closelistfield(fs, &cc);
     switch(lex->current.type) {
-      case Token_Name: {  /* may be listfields or recfields */
+      case TOKEN_NAME: {  /* may be listfields or recfields */
         luaX_lookahead(lex);
-        if (lex->lookahead.type != Token_Assign)  /* expression? */
+        if (lex->lookahead.type != TOKEN_ASSIGN)  /* expression? */
           listfield(lex, &cc);
         else
           recfield(lex, &cc);
         break;
       }
-      case Token_Left_Bracket: {  /* constructor_item -> recfield */
+      case TOKEN_LEFT_BRACKET: {  /* constructor_item -> recfield */
         recfield(lex, &cc);
         break;
       }
@@ -615,8 +615,8 @@ static void constructor (LexState *lex, Expr *t) {
         break;
       }
     }
-  } while (test_next(lex, Token_Comma) || test_next(lex, Token_Semi));
-  check_match(lex, Token_Right_Curly, Token_Left_Curly, line);
+  } while (test_next(lex, TOKEN_COMMA) || test_next(lex, TOKEN_SEMI));
+  check_match(lex, TOKEN_RIGHT_CURLY, TOKEN_LEFT_CURLY, line);
   lastlistfield(fs, &cc);
   ip = &fs->proto->code[pc];
   SETARG_B(*ip, luaO_int2fb(cc.narray)); /* set initial array size */
@@ -633,14 +633,14 @@ static void parlist (LexState *lex) {
   Proto *proto = fs->proto;
   int nparams = 0;
   proto->is_vararg = 0;
-  if (lex->current.type != Token_Right_Paren) {  /* is `parlist' not empty? */
+  if (lex->current.type != TOKEN_RIGHT_PAREN) {  /* is `parlist' not empty? */
     do {
       switch (lex->current.type) {
-        case Token_Name: {  /* param -> NAME */
+        case TOKEN_NAME: {  /* param -> NAME */
           new_localvar(lex, str_checkname(lex), nparams++);
           break;
         }
-        case Token_Vararg: {  /* param -> `...' */
+        case TOKEN_VARARG: {  /* param -> `...' */
           luaX_next(lex);
 #if defined(LUA_COMPAT_VARARG)
           /* use `arg' as default name */
@@ -652,7 +652,7 @@ static void parlist (LexState *lex) {
         }
         default: luaX_syntaxerror(lex, "<name> or " LUA_QL("...") " expected");
       }
-    } while (!proto->is_vararg && test_next(lex, Token_Comma));
+    } while (!proto->is_vararg && test_next(lex, TOKEN_COMMA));
   }
   adjustlocalvars(lex, nparams);
   proto->numparams = cast_byte(fs->nactvar - (proto->is_vararg & VARARG_HASARG));
@@ -665,16 +665,16 @@ static void body (LexState *lex, Expr *expr, bool needself, int line) {
   FuncState new_fs;
   open_func(lex, &new_fs);
   new_fs.proto->linedefined = line;
-  check_next(lex, Token_Left_Paren);
+  check_next(lex, TOKEN_LEFT_PAREN);
   if (needself) {
     new_localvarliteral(lex, "self", 0);
     adjustlocalvars(lex, 1);
   }
   parlist(lex);
-  check_next(lex, Token_Right_Paren);
+  check_next(lex, TOKEN_RIGHT_PAREN);
   chunk(lex);
   new_fs.proto->lastlinedefined = lex->linenumber;
-  check_match(lex, Token_End, Token_Function, line);
+  check_match(lex, TOKEN_END, TOKEN_FUNCTION, line);
   close_func(lex);
   pushclosure(lex, &new_fs, expr);
 }
@@ -684,7 +684,7 @@ static int explist1 (LexState *lex, Expr *var) {
   /* explist1 -> expr { `,' expr } */
   int n = 1;  /* at least one expression */
   expression(lex, var);
-  while (test_next(lex, Token_Comma)) {
+  while (test_next(lex, TOKEN_COMMA)) {
     luaK_exp2nextreg(lex->funcstate, var);
     expression(lex, var);
     n++;
@@ -699,26 +699,26 @@ static void funcargs (LexState *lex, Expr *expr) {
   int base, nparams;
   int line = lex->linenumber;
   switch (lex->current.type) {
-    case Token_Left_Paren: {  /* funcargs -> `(' [ explist1 ] `)' */
+    case TOKEN_LEFT_PAREN: {  /* funcargs -> `(' [ explist1 ] `)' */
       if (line != lex->lastline) {
         luaX_syntaxerror(lex,
           "ambiguous syntax (function call x new statement)");
       }
       luaX_next(lex);
-      if (lex->current.type == Token_Right_Paren)  /* arg list is empty? */
+      if (lex->current.type == TOKEN_RIGHT_PAREN)  /* arg list is empty? */
         args.kind = EXPR_VOID;
       else {
         explist1(lex, &args);
         luaK_setmultret(fs, &args);
       }
-      check_match(lex, Token_Right_Paren, Token_Left_Paren, line);
+      check_match(lex, TOKEN_RIGHT_PAREN, TOKEN_LEFT_PAREN, line);
       break;
     }
-    case Token_Left_Curly: {  /* funcargs -> constructor */
+    case TOKEN_LEFT_CURLY: {  /* funcargs -> constructor */
       constructor(lex, &args);
       break;
     }
-    case Token_String: {  /* funcargs -> STRING */
+    case TOKEN_STRING: {  /* funcargs -> STRING */
       codestring(lex, &args, lex->current.seminfo.ts);
       luaX_next(lex);  /* must use `seminfo' before `next' */
       break;
@@ -756,15 +756,15 @@ static void funcargs (LexState *lex, Expr *expr) {
 static void prefixexp (LexState *lex, Expr *var) {
   /* prefixexp -> NAME | '(' expr ')' */
   switch (lex->current.type) {
-    case Token_Left_Paren: {
+    case TOKEN_LEFT_PAREN: {
       int line = lex->linenumber;
       luaX_next(lex);
       expression(lex, var);
-      check_match(lex, Token_Right_Paren, Token_Left_Paren, line);
+      check_match(lex, TOKEN_RIGHT_PAREN, TOKEN_LEFT_PAREN, line);
       luaK_dischargevars(lex->funcstate, var);
       return;
     }
-    case Token_Name: {
+    case TOKEN_NAME: {
       singlevar(lex, var);
       return;
     }
@@ -782,18 +782,18 @@ static void primaryexp (LexState *lex, Expr *var) {
   prefixexp(lex, var);
   for (;;) {
     switch (lex->current.type) {
-      case Token_Dot: {  /* field */
+      case TOKEN_DOT: {  /* field */
         field(lex, var);
         break;
       }
-      case Token_Left_Bracket: {  /* `[' exp1 `]' */
+      case TOKEN_LEFT_BRACKET: {  /* `[' exp1 `]' */
         Expr key;
         luaK_exp2anyreg(fs, var);
         yindex(lex, &key);
         luaK_indexed(fs, var, &key);
         break;
       }
-      case Token_Colon: {  /* `:' NAME funcargs */
+      case TOKEN_COLON: {  /* `:' NAME funcargs */
         Expr key;
         luaX_next(lex);
         checkname(lex, &key);
@@ -801,9 +801,9 @@ static void primaryexp (LexState *lex, Expr *var) {
         funcargs(lex, var);
         break;
       }
-      case Token_Left_Paren:
-      case Token_String:
-      case Token_Left_Curly: {  /* funcargs */
+      case TOKEN_LEFT_PAREN:
+      case TOKEN_STRING:
+      case TOKEN_LEFT_CURLY: {  /* funcargs */
         luaK_exp2nextreg(fs, var);
         funcargs(lex, var);
         break;
@@ -818,28 +818,28 @@ static void simpleexp (LexState *lex, Expr *var) {
   /* simpleexp -> NUMBER | STRING | NIL | true | false | ... |
                   constructor | FUNCTION body | primaryexp */
   switch (lex->current.type) {
-    case Token_Number: {
+    case TOKEN_NUMBER: {
       init_exp(var, EXPR_NUMBER, 0);
       var->u.nval = lex->current.seminfo.r;
       break;
     }
-    case Token_String: {
+    case TOKEN_STRING: {
       codestring(lex, var, lex->current.seminfo.ts);
       break;
     }
-    case Token_Nil: {
+    case TOKEN_NIL: {
       init_exp(var, EXPR_NIL, 0);
       break;
     }
-    case Token_True: {
+    case TOKEN_TRUE: {
       init_exp(var, EXPR_TRUE, 0);
       break;
     }
-    case Token_False: {
+    case TOKEN_FALSE: {
       init_exp(var, EXPR_FALSE, 0);
       break;
     }
-    case Token_Vararg: {
+    case TOKEN_VARARG: {
       FuncState *fs = lex->funcstate;
       check_condition(lex, fs->proto->is_vararg,
                       "cannot use " LUA_QL("...") " outside a vararg function");
@@ -847,11 +847,11 @@ static void simpleexp (LexState *lex, Expr *var) {
       init_exp(var, EXPR_VARARG, luaK_codeABC(fs, OP_VARARG, 0, 1, 0));
       break;
     }
-    case Token_Left_Curly: {  /* constructor */
+    case TOKEN_LEFT_CURLY: {  /* constructor */
       constructor(lex, var);
       return;
     }
-    case Token_Function: {
+    case TOKEN_FUNCTION: {
       luaX_next(lex);
       body(lex, var, 0, lex->linenumber);
       return;
@@ -865,33 +865,33 @@ static void simpleexp (LexState *lex, Expr *var) {
 }
 
 
-static UnOpr getunopr (TokenType op) {
+static UnOpr getunopr (Token_Type op) {
   switch (op) {
-    case Token_Not: return OPR_NOT;
-    case Token_Sub: return OPR_MINUS;
-    case Token_Len: return OPR_LEN;
+    case TOKEN_NOT: return OPR_NOT;
+    case TOKEN_SUB: return OPR_MINUS;
+    case TOKEN_LEN: return OPR_LEN;
     default: return OPR_NOUNOPR;
   }
 }
 
 
-static BinOpr getbinopr (TokenType op) {
+static BinOpr getbinopr (Token_Type op) {
   switch (op) {
-    case Token_Add: return OPR_ADD;
-    case Token_Sub: return OPR_SUB;
-    case Token_Mul: return OPR_MUL;
-    case Token_Div: return OPR_DIV;
-    case Token_Mod: return OPR_MOD;
-    case Token_Pow: return OPR_POW;
-    case Token_Concat: return OPR_CONCAT;
-    case Token_Neq: return OPR_NE;
-    case Token_Eq: return OPR_EQ;
-    case Token_Lt: return OPR_LT;
-    case Token_Leq: return OPR_LE;
-    case Token_Gt: return OPR_GT;
-    case Token_Geq: return OPR_GE;
-    case Token_And: return OPR_AND;
-    case Token_Or: return OPR_OR;
+    case TOKEN_ADD: return OPR_ADD;
+    case TOKEN_SUB: return OPR_SUB;
+    case TOKEN_MUL: return OPR_MUL;
+    case TOKEN_DIV: return OPR_DIV;
+    case TOKEN_MOD: return OPR_MOD;
+    case TOKEN_POW: return OPR_POW;
+    case TOKEN_CONCAT: return OPR_CONCAT;
+    case TOKEN_NEQ: return OPR_NE;
+    case TOKEN_EQ: return OPR_EQ;
+    case TOKEN_LT: return OPR_LT;
+    case TOKEN_LEQ: return OPR_LE;
+    case TOKEN_GT: return OPR_GT;
+    case TOKEN_GEQ: return OPR_GE;
+    case TOKEN_AND: return OPR_AND;
+    case TOKEN_OR: return OPR_OR;
     default: return OPR_NOBINOPR;
   }
 }
@@ -962,13 +962,13 @@ static void expression (LexState *lex, Expr *var) {
 */
 
 
-static bool block_follow (TokenType type) {
+static bool block_follow (Token_Type type) {
   switch (type) {
-    case Token_Else:
-    case Token_Elseif:
-    case Token_End:
-    case Token_Until:
-    case Token_Eos:
+    case TOKEN_ELSE:
+    case TOKEN_ELSEIF:
+    case TOKEN_END:
+    case TOKEN_UNTIL:
+    case TOKEN_EOS:
       return true;
     default:
       return false;
@@ -1033,7 +1033,7 @@ static void assignment (LexState *lex, struct LHS_assign *lh, int nvars) {
   check_condition(lex, EXPR_LOCAL <= lh->var.kind && lh->var.kind <= EXPR_INDEX,
       "syntax error");
 
-  if (test_next(lex, Token_Comma)) {  /* assignment -> `,' primaryexp assignment */
+  if (test_next(lex, TOKEN_COMMA)) {  /* assignment -> `,' primaryexp assignment */
     struct LHS_assign next;
     next.prev = lh;
     primaryexp(lex, &next.var);
@@ -1045,7 +1045,7 @@ static void assignment (LexState *lex, struct LHS_assign *lh, int nvars) {
   }
   else {  /* assignment -> `=' explist1 */
     int nexps;
-    check_next(lex, Token_Assign);
+    check_next(lex, TOKEN_ASSIGN);
     nexps = explist1(lex, &expr);
     if (nexps != nvars) {
       adjust_assign(lex, nvars, nexps, &expr); /* may push `expr` */
@@ -1110,10 +1110,10 @@ static void while_stmt (LexState *lex, int line) {
   whileinit = luaK_getlabel(fs);
   condexit = cond(lex);
   enterblock(fs, &bl, 1);
-  check_next(lex, Token_Do);
+  check_next(lex, TOKEN_DO);
   block(lex);
   luaK_patchlist(fs, luaK_jump(fs), whileinit);
-  check_match(lex, Token_End, Token_While, line);
+  check_match(lex, TOKEN_END, TOKEN_WHILE, line);
   leaveblock(fs);
   luaK_patchtohere(fs, condexit);  /* false conditions finish the loop */
 }
@@ -1129,7 +1129,7 @@ static void repeat_stmt (LexState *lex, int line) {
   enterblock(fs, &bl2, 0);  /* scope block */
   luaX_next(lex);  /* skip REPEAT */
   chunk(lex);
-  check_match(lex, Token_Until, Token_Repeat, line);
+  check_match(lex, TOKEN_UNTIL, TOKEN_REPEAT, line);
   condexit = cond(lex);  /* read condition (inside scope block) */
   if (!bl2.upval) {  /* no upvalues? */
     leaveblock(fs);  /* finish scope */
@@ -1161,7 +1161,7 @@ static void for_body (LexState *lex, int base, int line, int nvars, bool is_num)
   FuncState *fs = lex->funcstate;
   int prep, endfor;
   adjustlocalvars(lex, 3);  /* control variables */
-  check_next(lex, Token_Do);
+  check_next(lex, TOKEN_DO);
   prep = is_num ? luaK_codeAsBx(fs, OP_FORPREP, base, NO_JUMP) : luaK_jump(fs);
   enterblock(fs, &bl, 0);  /* scope for declared variables */
   adjustlocalvars(lex, nvars);
@@ -1186,11 +1186,11 @@ static void for_num (LexState *lex, TString *varname, int line) {
   new_localvarliteral(lex, "(for limit)", 1);
   new_localvarliteral(lex, "(for step)", 2);
   new_localvar(lex, varname, 3);
-  check_next(lex, Token_Assign);
+  check_next(lex, TOKEN_ASSIGN);
   exp1(lex);  /* initial value */
-  check_next(lex, Token_Comma);
+  check_next(lex, TOKEN_COMMA);
   exp1(lex);  /* limit */
-  if (test_next(lex, Token_Comma))
+  if (test_next(lex, TOKEN_COMMA))
     exp1(lex);  /* optional step */
   else {  /* default step = 1 */
     luaK_codeABx(fs, OP_LOADK, fs->freereg, luaK_numberK(fs, 1));
@@ -1213,9 +1213,9 @@ static void for_list (LexState *lex, TString *indexname) {
   new_localvarliteral(lex, "(for control)", nvars++);
   /* create declared variables */
   new_localvar(lex, indexname, nvars++);
-  while (test_next(lex, Token_Comma))
+  while (test_next(lex, TOKEN_COMMA))
     new_localvar(lex, str_checkname(lex), nvars++);
-  check_next(lex, Token_In);
+  check_next(lex, TOKEN_IN);
   line = lex->linenumber;
   adjust_assign(lex, 3, explist1(lex, &e), &e);
   luaK_checkstack(fs, 3);  /* extra space to call generator */
@@ -1232,12 +1232,12 @@ static void for_stmt (LexState *lex, int line) {
   luaX_next(lex);  /* skip `for' */
   varname = str_checkname(lex);  /* first variable name */
   switch (lex->current.type) {
-    case Token_Assign: for_num(lex, varname, line); break;
-    case Token_Comma:
-    case Token_In: for_list(lex, varname); break;
+    case TOKEN_ASSIGN: for_num(lex, varname, line); break;
+    case TOKEN_COMMA:
+    case TOKEN_IN: for_list(lex, varname); break;
     default: luaX_syntaxerror(lex, LUA_QL("=") " or " LUA_QL("in") " expected");
   }
-  check_match(lex, Token_End, Token_For, line);
+  check_match(lex, TOKEN_END, TOKEN_FOR, line);
   leaveblock(fs);  /* loop scope (`break' jumps to this point) */
 }
 
@@ -1247,7 +1247,7 @@ static int test_then_block (LexState *lex) {
   int condexit;
   luaX_next(lex);  /* skip IF or ELSEIF */
   condexit = cond(lex);
-  check_next(lex, Token_Then);
+  check_next(lex, TOKEN_THEN);
   block(lex);  /* `then' part */
   return condexit;
 }
@@ -1259,7 +1259,7 @@ static void if_stmt (LexState *lex, int line) {
   int flist;
   int escapelist = NO_JUMP;
   flist = test_then_block(lex);  /* IF cond THEN block */
-  while (lex->current.type == Token_Elseif) {
+  while (lex->current.type == TOKEN_ELSEIF) {
     /**
      * @note 2025-05-13:
      *  On the first `elseif`, `escapelist` is initailized with the new jump.
@@ -1276,7 +1276,7 @@ static void if_stmt (LexState *lex, int line) {
     luaK_patchtohere(fs, flist);
     flist = test_then_block(lex);  /* ELSEIF cond THEN block */
   }
-  if (lex->current.type == Token_Else) {
+  if (lex->current.type == TOKEN_ELSE) {
     luaK_concat(fs, &escapelist, luaK_jump(fs)); /* may assigns `escapelist` */
     luaK_patchtohere(fs, flist); /* definitely assigns `func.jpc` */
     luaX_next(lex);  /* skip ELSE (after patch, for correct line info) */
@@ -1286,7 +1286,7 @@ static void if_stmt (LexState *lex, int line) {
     luaK_concat(fs, &escapelist, flist); /* assigns `escapelist` */
   }
   luaK_patchtohere(fs, escapelist);
-  check_match(lex, Token_End, Token_If, line);
+  check_match(lex, TOKEN_END, TOKEN_IF, line);
 }
 
 
@@ -1311,8 +1311,8 @@ static void local_stmt (LexState *lex) {
   Expr exprs; /* assigning expression/s, if any */
   do {
     new_localvar(lex, str_checkname(lex), nvars++);
-  } while (test_next(lex, Token_Comma));
-  if (test_next(lex, Token_Assign)) {
+  } while (test_next(lex, TOKEN_COMMA));
+  if (test_next(lex, TOKEN_ASSIGN)) {
     nexps = explist1(lex, &exprs);
   }
   else {
@@ -1328,11 +1328,11 @@ static bool funcname (LexState *lex, Expr *var) {
   /* funcname -> NAME {field} [`:' NAME] */
   bool needself = false;
   singlevar(lex, var);
-  while (lex->current.type == Token_Dot) {
+  while (lex->current.type == TOKEN_DOT) {
     field(lex, var);
   }
 
-  if (lex->current.type == Token_Colon) {
+  if (lex->current.type == TOKEN_COLON) {
     needself = true;
     field(lex, var);
   }
@@ -1374,7 +1374,7 @@ static void return_stmt (LexState *lex) {
   Expr expr;
   int first, nret;  /* registers with returned values */
   luaX_next(lex);  /* skip RETURN */
-  if (block_follow(lex->current.type) || lex->current.type == Token_Semi)
+  if (block_follow(lex->current.type) || lex->current.type == TOKEN_SEMI)
     first = nret = 0;  /* return no values */
   else {
     nret = explist1(lex, &expr);  /* optional return values */
@@ -1406,45 +1406,45 @@ static void return_stmt (LexState *lex) {
 static bool statement (LexState *lex) {
   int line = lex->linenumber;  /* may be needed for error messages */
   switch (lex->current.type) {
-    case Token_If: {  /* stat -> if_stmt */
+    case TOKEN_IF: {  /* stat -> if_stmt */
       if_stmt(lex, line);
       return false;
     }
-    case Token_While: {  /* stat -> while_stmt */
+    case TOKEN_WHILE: {  /* stat -> while_stmt */
       while_stmt(lex, line);
       return false;
     }
-    case Token_Do: {  /* stat -> DO block END */
+    case TOKEN_DO: {  /* stat -> DO block END */
       luaX_next(lex);  /* skip DO */
       block(lex);
-      check_match(lex, Token_End, Token_Do, line);
+      check_match(lex, TOKEN_END, TOKEN_DO, line);
       return false;
     }
-    case Token_For: {  /* stat -> for_stmt */
+    case TOKEN_FOR: {  /* stat -> for_stmt */
       for_stmt(lex, line);
       return false;
     }
-    case Token_Repeat: {  /* stat -> repeat_stmt */
+    case TOKEN_REPEAT: {  /* stat -> repeat_stmt */
       repeat_stmt(lex, line);
       return false;
     }
-    case Token_Function: {
+    case TOKEN_FUNCTION: {
       func_stmt(lex, line);  /* stat -> func_stmt */
       return false;
     }
-    case Token_Local: {  /* stat -> local_stmt */
+    case TOKEN_LOCAL: {  /* stat -> local_stmt */
       luaX_next(lex);  /* skip LOCAL */
-      if (test_next(lex, Token_Function))  /* local function? */
+      if (test_next(lex, TOKEN_FUNCTION))  /* local function? */
         local_func(lex);
       else
         local_stmt(lex);
       return false;
     }
-    case Token_Return: {  /* stat -> return_stmt */
+    case TOKEN_RETURN: {  /* stat -> return_stmt */
       return_stmt(lex);
       return true;  /* must be last statement */
     }
-    case Token_Break: {  /* stat -> break_stmt */
+    case TOKEN_BREAK: {  /* stat -> break_stmt */
       luaX_next(lex);  /* skip BREAK */
       break_stmt(lex);
       return true;  /* must be last statement */
@@ -1470,7 +1470,7 @@ static void chunk (LexState *lex) {
   enterlevel(lex);
   while (!is_last && !block_follow(lex->current.type)) {
     is_last = statement(lex);
-    test_next(lex, Token_Semi);
+    test_next(lex, TOKEN_SEMI);
     lua_assert(fs->proto->maxstacksize >= fs->freereg
             && fs->freereg >= fs->nactvar);
     fs->freereg = fs->nactvar;  /* free registers */

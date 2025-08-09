@@ -218,6 +218,14 @@ static int computesizes (int nums[], int *narray) {
 }
 
 
+/**
+ * @brief
+ *    Checks if `key` is a valid array index and fills in the appropriate
+ *    range index in `nums` if so.
+ *
+ * @return
+ *    1 if key is a potentially valid array index else 0.
+ */
 static int countint (const TValue *key, int nums[MAXBITS]) {
   int k = arrayindex(key);
   if (0 < k && k <= MAXASIZE) {  /* is `key' an appropriate array index? */
@@ -268,7 +276,7 @@ static int numusearray (const Table *t, int nums[MAXBITS]) {
 }
 
 
-static int numusehash (const Table *t, int *nums, int *pnasize) {
+static int numusehash (const Table *t, int nums[MAXBITS], int *pnasize) {
   int totaluse = 0;  /* total number of elements */
   int ause = 0;  /* summation of `nums' */
   int i = sizenode(t);
@@ -289,7 +297,7 @@ static int numusehash (const Table *t, int *nums, int *pnasize) {
 static void setarrayvector (lua_State *L, Table *t, int size) {
   int i;
   luaM_reallocvector(L, t->array, t->sizearray, size, TValue);
-  for (i=t->sizearray; i<size; i++)
+  for (i = t->sizearray; i < size; i++)
      setnilvalue(&t->array[i]);
   t->sizearray = size;
 }

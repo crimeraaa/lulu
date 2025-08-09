@@ -414,84 +414,6 @@ make_string(Lexer *x, char q)
     return Token::make_ostring(TOKEN_STRING, os);
 }
 
-static Token
-make_keyword_ident(Lexer *x)
-{
-    LString    word = get_lexeme(x);
-    Token_Type type = TOKEN_IDENT;
-
-    // If we reached this point then `word` MUST be at least of length 1.
-    switch (word[0]) {
-    case 'a': type = TOKEN_AND; break;
-    case 'b': type = TOKEN_BREAK; break;
-    case 'd': type = TOKEN_DO; break;
-    case 'e':
-        switch (len(word)) {
-        case 3: type = TOKEN_END; break;
-        case 4: type = TOKEN_ELSE; break;
-        case 6: type = TOKEN_ELSEIF; break;
-        }
-        break;
-    case 'f':
-        switch (len(word)) {
-        case 3: type = TOKEN_FOR; break;
-        case 5: type = TOKEN_FALSE; break;
-        case 8: type = TOKEN_FUNCTION; break;
-        }
-        break;
-    case 'i':
-        if (len(word) != 2) {
-            break;
-        }
-        switch (word[1]) {
-        case 'f': type = TOKEN_IF; break;
-        case 'n': type = TOKEN_IN; break;
-        }
-        break;
-    case 'l': type = TOKEN_LOCAL; break;
-    case 'n':
-        if (len(word) != 3) {
-            break;
-        }
-        switch (word[1]) {
-        case 'i': type = TOKEN_NIL; break;
-        case 'o': type = TOKEN_NOT; break;
-        }
-        break;
-    case 'o': type = TOKEN_OR; break;
-    case 'r':
-        if (len(word) != 6) {
-            break;
-        }
-        // 'repeat' and 'return' have the same first 2 characters
-        switch (word[2]) {
-        case 't': type = TOKEN_RETURN; break;
-        case 'p': type = TOKEN_REPEAT; break;
-        }
-        break;
-    case 't':
-        if (len(word) != 4) {
-            break;
-        }
-        switch (word[1]) {
-        case 'h': type = TOKEN_THEN; break;
-        case 'r': type = TOKEN_TRUE; break;
-        }
-        break;
-    case 'u': type = TOKEN_UNTIL; break;
-    case 'w': type = TOKEN_WHILE; break;
-    default:
-        break;
-    }
-
-    if (type != TOKEN_IDENT && slice_eq(word, token_strings[type])) {
-        return Token::make(type);
-    }
-
-    OString *os = ostring_new(x->vm, word);
-    return Token::make_ostring(TOKEN_IDENT, os);
-}
-
 Token
 lexer_lex(Lexer *x)
 {
@@ -511,7 +433,12 @@ lexer_lex(Lexer *x)
     ch = save_advance(x);
     if (is_alpha(ch)) {
         consume_sequence(x, is_ident);
-        return make_keyword_ident(x);
+        OString *os = ostring_new(x->vm, get_lexeme(x));
+        type = cast(Token_Type)os->keyword_type;
+        if (type == TOKEN_INVALID) {
+            type = TOKEN_IDENT;
+        }
+        return Token::make_ostring(type, os);
     } else if (is_number(ch)) {
         // '0' followed by some alphabetical character may be an integer prefix.
         bool prefixed = (ch == '0') && is_alpha(peek(x));
@@ -626,3 +553,18 @@ const LString token_strings[TOKEN_COUNT] = {
     "#"_s, "."_s, ".."_s, "..."_s, ","_s, ":"_s, ";"_s, "="_s,
     "<ident>"_s, "<number>"_s, "<string>"_s, "<eof>"_s,
 };
+
+static void
+operator++(Token_Type &t, int)
+{
+    t = cast(Token_Type)(cast_int(t) + 1);
+}
+
+void
+lexer_global_init(lulu_VM *vm)
+{
+    for (Token_Type t = TOKEN_AND; t <= TOKEN_WHILE; t++) {
+        OString *os = ostring_new(vm, token_strings[t]);
+        os->keyword_type = t;
+    }
+}

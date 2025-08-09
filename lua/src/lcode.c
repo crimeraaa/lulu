@@ -47,7 +47,7 @@ static void swap (int *a, int *b) {
  * @note 2025-05-11:
  *  Unlike the other functions, this DOES modify `expr->patch_{true,false}`.
  */
-static void expr_init_info (Expr *expr, ExprKind kind, int info) {
+static void expr_init_info (Expr *expr, Expr_Type kind, int info) {
   expr->kind        = kind;
   expr->u.s.info    = info;
   expr->patch_true  = NO_JUMP;
@@ -55,7 +55,7 @@ static void expr_init_info (Expr *expr, ExprKind kind, int info) {
 }
 
 
-static void expr_set_kind (Expr *expr, ExprKind kind) {
+static void expr_set_kind (Expr *expr, Expr_Type kind) {
   expr->kind = kind;
 }
 
@@ -65,7 +65,7 @@ static void expr_set_kind (Expr *expr, ExprKind kind) {
  *  - Does NOT set `expr->patch_{true,false}` because they may have values
  *    already.
  */
-static void expr_set_info (Expr *expr, ExprKind kind, int info) {
+static void expr_set_info (Expr *expr, Expr_Type kind, int info) {
   expr->kind     = kind;
   expr->u.s.info = info;
 }
@@ -76,7 +76,7 @@ static void expr_set_info (Expr *expr, ExprKind kind, int info) {
  *  - Does NOT set `expr->u.s.info`; in the case of `EXPR_INDEX` it already
  *    contains the register of the table we're after.
  */
-static void expr_set_aux (Expr *expr, ExprKind kind, int aux) {
+static void expr_set_aux (Expr *expr, Expr_Type kind, int aux) {
   expr->kind    = kind;
   expr->u.s.aux = aux;
 }

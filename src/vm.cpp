@@ -14,6 +14,61 @@ overflow_error(lulu_VM *vm, isize n, isize limit, const char *what)
     vm_runtime_error(vm, "C stack overflow (%s %s used)", buf, what);
 }
 
+static void
+required_allocations(lulu_VM *vm, void *)
+{
+    // Ensure when we start interning strings we can already index.
+    intern_resize(vm, &vm->intern, 32);
+
+    // TODO(2025-06-30): Mark the memory error string as "immortal"?
+    OString *o = ostring_new(vm, lstring_literal(LULU_MEMORY_ERROR_STRING));
+    unused(o);
+    lexer_global_init(vm);
+    Table *t = table_new(vm, /* n_hash */ 8, /* n_array */ 0);
+    vm->globals.set_table(t);
+}
+
+LULU_API lulu_VM *
+lulu_open(lulu_Allocator allocator, void *allocator_data)
+{
+    static lulu_VM _vm;
+
+    lulu_VM *vm = &_vm;
+    small_array_clear(&vm->frames);
+
+    vm->panic_fn       = nullptr;
+    vm->allocator      = allocator;
+    vm->allocator_data = allocator_data;
+    vm->saved_ip       = nullptr;
+    vm->objects        = nullptr;
+    vm->window         = slice(vm->stack, 0, 0);
+    vm->globals        = nil;
+
+    builder_init(&vm->builder);
+    intern_init(&vm->intern);
+    Error e = vm_run_protected(vm, required_allocations, nullptr);
+    if (e != LULU_OK) {
+        lulu_close(vm);
+        return nullptr;
+    }
+    return vm;
+}
+
+LULU_API void
+lulu_close(lulu_VM *vm)
+{
+    builder_destroy(vm, &vm->builder);
+    intern_destroy(vm, &vm->intern);
+
+    Object *o = vm->objects;
+    while (o != nullptr) {
+        // Save because `o` is about to be invalidated.
+        Object *next = o->base.next;
+        object_free(vm, o);
+        o = next;
+    }
+}
+
 //=== CALL FRAME ARRAY MANIPULATION ==================================== {{{
 
 static Call_Frame *

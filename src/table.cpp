@@ -5,7 +5,7 @@ static constexpr Entry
 EMPTY_ENTRY{nil, nil};
 
 static isize
-hash_cap(const Table *t)
+table_hash_cap(const Table *t)
 {
     return len(t->entries);
 }
@@ -81,7 +81,7 @@ find_entry(Slice<Entry> &entries, const Value &k)
 }
 
 static void
-hash_resize(lulu_VM *vm, Table *t, isize n)
+table_hash_resize(lulu_VM *vm, Table *t, isize n)
 {
     if (n == 0) {
         slice_delete(vm, t->entries);
@@ -113,7 +113,7 @@ hash_resize(lulu_VM *vm, Table *t, isize n)
 }
 
 static bool
-hash_get(Table *t, const Value &restrict k, Value *restrict out)
+table_hash_get(Table *t, const Value &restrict k, Value *restrict out)
 {
     if (t->count > 0) {
         Entry *e = find_entry(t->entries, k);
@@ -126,11 +126,11 @@ hash_get(Table *t, const Value &restrict k, Value *restrict out)
 }
 
 static void
-hash_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
+table_hash_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
 {
-    isize n = hash_cap(t);
+    isize n = table_hash_cap(t);
     if (t->count + 1 > (n * 3) / 4) {
-        hash_resize(vm, t, n + 1);
+        table_hash_resize(vm, t, n + 1);
     }
 
     Entry *e = find_entry(t->entries, k);
@@ -143,22 +143,22 @@ hash_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
 }
 
 static isize
-array_cap(Table *t)
+table_array_cap(Table *t)
 {
     return len(t->array);
 }
 
 static isize
-array_next_size(isize n)
+table_array_next_size(isize n)
 {
     return mem_next_pow2(n);
 }
 
 static void
-array_resize(lulu_VM *vm, Table *t, isize n)
+table_array_resize(lulu_VM *vm, Table *t, isize n)
 {
-    isize last = array_cap(t);
-    n = array_next_size(n);
+    isize last = table_array_cap(t);
+    n = table_array_next_size(n);
     slice_resize(vm, &t->array, n);
 
     // Growing the array?
@@ -173,9 +173,9 @@ table_new(lulu_VM *vm, isize n_hash, isize n_array)
 {
     Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
     table_init(t);
-    hash_resize(vm, t, n_hash);
+    table_hash_resize(vm, t, n_hash);
     if (n_array > 0) {
-        array_resize(vm, t, n_array);
+        table_array_resize(vm, t, n_array);
     }
     return t;
 }
@@ -198,7 +198,7 @@ table_get(Table *t, const Value &restrict k, Value *restrict out)
             return table_get_integer(t, i, out);
         }
     }
-    return hash_get(t, k, out);
+    return table_hash_get(t, k, out);
 }
 
 void
@@ -212,7 +212,7 @@ table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
             return;
         }
     }
-    hash_set(vm, t, k, v);
+    table_hash_set(vm, t, k, v);
 }
 
 //=== ARRAY MANIPULATION =============================================== {{{
@@ -234,7 +234,7 @@ bool
 table_get_integer(Table *t, Integer i, Value *out)
 {
     // 1-based index from Lua is in range of array, when also treated as Lua?
-    if (1 <= i && i <= array_cap(t)) {
+    if (1 <= i && i <= table_array_cap(t)) {
         // Correct 1-based index from Lua to 0-based index for C.
         Value v = t->array[i - 1];
         *out = v;
@@ -242,7 +242,7 @@ table_get_integer(Table *t, Integer i, Value *out)
     }
     // Not in range of array segment; try hash segment.
     Value k = Value::make_number(cast_number(i));
-    return hash_get(t, k, out);
+    return table_hash_get(t, k, out);
 }
 
 
@@ -297,7 +297,7 @@ hash_count_array(Table *t, Integer start)
  *      after `i` from the hash segment to the array segment.
  */
 static void
-hash_to_array(Table *t, Integer i, isize n)
+hash_to_array(Table *t, Integer start, Integer stop)
 {
     // Nothing to move?
     if (t->count == 0) {
@@ -305,7 +305,7 @@ hash_to_array(Table *t, Integer i, isize n)
     }
 
     // Move all consecutive non-nil integer hash keys in range `[1, i)`.
-    for (Integer j = i - 1; j >= 1; j--) {
+    for (Integer j = start - 1; j >= 1; j--) {
         // Could not remove from hash segment because it did not exist?
         if (!moved_array(t, j)) {
             break;
@@ -313,7 +313,7 @@ hash_to_array(Table *t, Integer i, isize n)
     }
 
     // Move all consecutive non-nil integer hash keys in range `(i, n]`.
-    for (Integer j = i + 1; j <= n; j++) {
+    for (Integer j = start + 1; j <= stop; j++) {
         if (!moved_array(t, j)) {
             break;
         }
@@ -325,7 +325,7 @@ table_set_integer(lulu_VM *vm, Table *t, Integer i, const Value &v)
 {
     // Valid 1-based index from Lua?
     if (1 <= i) {
-        isize n = array_cap(t);
+        isize n = table_array_cap(t);
         // Is in range of the array?
         if (i <= n) {
             t->array[i - 1] = v;
@@ -336,22 +336,24 @@ table_set_integer(lulu_VM *vm, Table *t, Integer i, const Value &v)
         isize extra = hash_count_array(t, i + 1);
 
         // Grow the array, accounting for the integer keys to the right.
-        n = array_next_size(n + 1) + extra;
+        // @todo(2025-08-09) Count all active array indexes and shrink
+        // if needed?
+        n = table_array_next_size(n + 1) + extra;
 
         // Is in range of the potentially grown array?
         if (i <= n) {
-            array_resize(vm, t, n);
+            table_array_resize(vm, t, n);
             t->array[i - 1] = v;
 
             // Move integer indices from the hash segment to the array
             // segment.
-            hash_to_array(t, i, cast_integer(n));
+            hash_to_array(t, i, i + cast_integer(extra));
             return;
         }
         // Not in range of array no matter what; use the hash segment.
     }
     Value k = Value::make_number(cast_number(i));
-    hash_set(vm, t, k, v);
+    table_hash_set(vm, t, k, v);
 }
 
 //=== }}} ==================================================================

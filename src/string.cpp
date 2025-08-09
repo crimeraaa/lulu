@@ -4,9 +4,10 @@
 
 #include "string.hpp"
 #include "vm.hpp"
+#include "lexer.hpp"
 
 static int
-get_base(const LString &s)
+get_base(LString s)
 {
     // Have a leading `'0'`?
     if (len(s) > 2 && s[0] == '0') {
@@ -281,8 +282,9 @@ ostring_new(lulu_VM *vm, const LString &text)
     // We assume that `len(t->table)` is never 0 by this point.
     // No need to add 1 to len; `data[1]` is already embedded in the struct.
     OString *s = object_new<OString>(vm, &t->table[i], VALUE_STRING, len(text));
-    s->hash = hash;
     s->len  = len(text);
+    s->hash = hash;
+    s->keyword_type = TOKEN_INVALID;
     s->data[s->len] = 0;
     memcpy(s->data, raw_data(text), cast_usize(len(text)));
 

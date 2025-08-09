@@ -36,14 +36,14 @@ typedef enum {
   EXPR_NONRELOCABLE,	/* info = result register */
   EXPR_CALL,	/* info = instruction pc */
   EXPR_VARARG	 /* info = instruction pc */
-} ExprKind;
+} Expr_Type;
 
 /**
  * @note 2025-04-07:
  *  Originally called `expdesc`.
  */
 typedef struct Expr {
-  ExprKind kind;
+  Expr_Type kind;
   union {
     struct { int info, aux; } s;
     lua_Number nval;

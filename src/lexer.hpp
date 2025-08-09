@@ -7,7 +7,7 @@
  * @note 2025-06-14:
  *      ORDER: Keep in sync with `token_strings`!
  */
-enum Token_Type {
+enum Token_Type : i8 {
     // Not a valid lookup table key.
     TOKEN_INVALID = -1,
 
@@ -67,12 +67,18 @@ struct LULU_PRIVATE Token {
 };
 
 struct LULU_PRIVATE Lexer {
-    lulu_VM    *vm;
-    Builder    *builder;
-    OString    *source;
-    Stream     *stream; // Potentially buffered stream for script.
-    int         line;
-    int         character; // Last read character from `stream`.
+    lulu_VM *vm;
+    Builder *builder;
+    OString *source;
+
+    // Potentially buffered stream for script.
+    Stream *stream;
+
+    // Line number of current token being read.
+    int line;
+
+    // Last character read from `stream`.
+    int character;
 };
 
 static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
@@ -81,6 +87,10 @@ LULU_DATA const LString
 token_strings[TOKEN_COUNT];
 
 #define token_cstring(type) raw_data(token_strings[type])
+
+// Interns all keywords for quick lookup later.
+LULU_FUNC void
+lexer_global_init(lulu_VM *vm);
 
 LULU_FUNC Lexer
 lexer_make(lulu_VM *vm, OString *source, Stream *z, Builder *b);
