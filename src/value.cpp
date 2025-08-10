@@ -19,7 +19,7 @@ Value::type_names[] = {
 };
 
 bool
-Value::operator==(const Value &b) const
+Value::operator==(Value b) const
 {
     if (this->type() != b.type()) {
         return false;
@@ -42,7 +42,7 @@ Value::operator==(const Value &b) const
 }
 
 void
-value_print(const Value &v)
+value_print(Value v)
 {
     Value_Type t = v.type();
     switch (t) {

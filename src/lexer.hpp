@@ -83,10 +83,10 @@ struct LULU_PRIVATE Lexer {
 
 static constexpr int TOKEN_COUNT = TOKEN_EOF + 1;
 
-LULU_DATA const LString
+LULU_DATA const char *const
 token_strings[TOKEN_COUNT];
 
-#define token_cstring(type) raw_data(token_strings[type])
+#define token_cstring(t)    token_strings[t]
 
 // Interns all keywords for quick lookup later.
 LULU_FUNC void

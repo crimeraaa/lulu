@@ -119,7 +119,7 @@ LULU_FUNC u32
 compiler_add_ostring(Compiler *c, OString *s);
 
 LULU_FUNC u32
-compiler_add_constant(Compiler *c, const Value &v);
+compiler_add_constant(Compiler *c, Value v);
 
 LULU_FUNC void
 compiler_check_stack(Compiler *c, u16 n);

@@ -50,11 +50,11 @@ table_init(Table *t);
 
 // Implements `out = t[k]`.
 LULU_FUNC bool
-table_get(Table *t, const Value &restrict k, Value *restrict out);
+table_get(Table *t, Value k, Value *out);
 
 // Implements `t[k] = v`.
 LULU_FUNC void
-table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v);
+table_set(lulu_VM *vm, Table *t, Value k, Value v);
 
 // Implements `#t`.
 LULU_FUNC isize
@@ -66,10 +66,10 @@ table_get_integer(Table *t, Integer i, Value *out);
 
 // Implements `t[i] = v`.
 LULU_FUNC void
-table_set_integer(lulu_VM *vm, Table *t, Integer i, const Value &v);
+table_set_integer(lulu_VM *vm, Table *t, Integer i, Value v);
 
 LULU_FUNC void
-table_unset(Table *t, const Value &k);
+table_unset(Table *t, Value k);
 
 
 /**

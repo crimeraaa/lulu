@@ -533,25 +533,26 @@ lexer_lex(Lexer *x)
  * @note 2025-06-14:
  *      ORDER: Keep in sync with `Token_Type`!
  */
-const LString token_strings[TOKEN_COUNT] = {
+const char *const
+token_strings[TOKEN_COUNT] = {
     // Keywords
-    "and"_s, "break"_s, "do"_s, "else"_s, "elseif"_s, "end"_s,
-    "false"_s, "for"_s, "function"_s, "if"_s, "in"_s,
-    "local"_s, "nil"_s, "not"_s, "or"_s, "repeat"_s,
-    "return"_s, "then"_s, "true"_s, "until"_s, "while"_s,
+    "and", "break", "do", "else", "elseif", "end",
+    "false", "for", "function", "if", "in",
+    "local", "nil", "not", "or", "repeat",
+    "return", "then", "true", "until", "while",
 
     // Balanced pairs
-    "("_s, ")"_s, "{"_s, "}"_s, "["_s, "]"_s,
+    "(", ")", "{", "}", "[", "]",
 
     // Arithmetic Operators
-    "+"_s, "-"_s, "*"_s, "/"_s, "/"_s, "^"_s,
+    "+", "-", "*", "/", "/", "^",
 
     // Relational Operators
-    "=="_s, "~="_s, "<"_s, "<="_s, ">"_s, ">="_s,
+    "==", "~=", "<", "<=", ">", ">=",
 
     // Misc.
-    "#"_s, "."_s, ".."_s, "..."_s, ","_s, ":"_s, ";"_s, "="_s,
-    "<ident>"_s, "<number>"_s, "<string>"_s, "<eof>"_s,
+    "#", ".", "..", "...", ",", ":", ";", "=",
+    "<ident>", "<number>", "<string>", "<eof>",
 };
 
 static void
@@ -564,7 +565,8 @@ void
 lexer_global_init(lulu_VM *vm)
 {
     for (Token_Type t = TOKEN_AND; t <= TOKEN_WHILE; t++) {
-        OString *os = ostring_new(vm, token_strings[t]);
+        LString  ls = lstring_from_cstring(token_cstring(t));
+        OString *os = ostring_new(vm, ls);
         os->keyword_type = t;
     }
 }

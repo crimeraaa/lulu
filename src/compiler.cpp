@@ -139,7 +139,7 @@ compiler_load_boolean(Compiler *c, u16 reg, bool b)
 }
 
 static u32
-add_constant(Compiler *c, const Value &k, const Value &v)
+add_constant(Compiler *c, Value k, Value v)
 {
     Value i;
     if (table_get(c->indexes, k, &i)) {
@@ -166,7 +166,7 @@ compiler_add_ostring(Compiler *c, OString *s)
 }
 
 u32
-compiler_add_constant(Compiler *c, const Value &v)
+compiler_add_constant(Compiler *c, Value v)
 {
     return add_constant(c, v, v);
 }
@@ -389,6 +389,11 @@ compiler_expr_any_reg(Compiler *c, Expr *e)
     return compiler_expr_next_reg(c, e);
 }
 
+
+/**
+ * @param v
+ *      Must be a reference so we can compare its address to `nil`.
+ */
 static u16
 value_to_rk(Compiler *c, Expr *e, const Value &v)
 {

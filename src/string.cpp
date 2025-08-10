@@ -32,7 +32,7 @@ get_base(LString s)
 }
 
 bool
-lstring_to_number(const LString &s, Number *out, int base)
+lstring_to_number(LString s, Number *out, int base)
 {
     LString s2 = s;
     // Need to detect the base prefix?
@@ -102,7 +102,7 @@ builder_write_char(lulu_VM *vm, Builder *b, char ch)
 }
 
 void
-builder_write_lstring(lulu_VM *vm, Builder *b, const LString &s)
+builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
 {
     // Nothing to do?
     if (len(s) == 0) {
@@ -184,7 +184,7 @@ builder_to_cstring(lulu_VM *vm, Builder *b)
 }
 
 u32
-hash_string(const LString &text)
+hash_string(LString text)
 {
     static constexpr u32
     FNV1A_OFFSET = 0x811c9dc5,
@@ -265,7 +265,7 @@ intern_destroy(lulu_VM *vm, Intern *t)
 }
 
 OString *
-ostring_new(lulu_VM *vm, const LString &text)
+ostring_new(lulu_VM *vm, LString text)
 {
     Intern  *t    = &vm->intern;
     u32      hash = hash_string(text);

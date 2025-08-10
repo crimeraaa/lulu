@@ -53,7 +53,7 @@ chunk_get_line(const Chunk *p, isize pc);
  *      The index of `v` in the constants array.
  */
 LULU_FUNC u32
-chunk_add_constant(lulu_VM *vm, Chunk *p, const Value &v);
+chunk_add_constant(lulu_VM *vm, Chunk *p, Value v);
 
 LULU_FUNC isize
 chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident);

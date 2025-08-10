@@ -115,7 +115,7 @@ vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr);
  *      main stack.
  */
 LULU_FUNC void
-vm_push(lulu_VM *vm, const Value &v);
+vm_push(lulu_VM *vm, Value v);
 
 LULU_FUNC Value
 vm_pop(lulu_VM *vm);
@@ -150,7 +150,7 @@ LULU_FUNC bool
 vm_to_string(lulu_VM *vm, Value *in_out);
 
 LULU_FUNC const char *
-vm_push_string(lulu_VM *vm, const LString &s);
+vm_push_string(lulu_VM *vm, LString s);
 
 [[gnu::format(printf, 2, 3)]]
 LULU_FUNC const char *
@@ -198,13 +198,13 @@ LULU_FUNC void
 vm_call_fini(lulu_VM *vm, const Slice<Value> &results);
 
 LULU_FUNC Error
-vm_load(lulu_VM *vm, const LString &source, Stream *z);
+vm_load(lulu_VM *vm, LString source, Stream *z);
 
 LULU_FUNC bool
-vm_table_get(lulu_VM *vm, const Value *t, const Value &k, Value *out);
+vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out);
 
 LULU_FUNC void
-vm_table_set(lulu_VM *vm, const Value *t, const Value *k, const Value &v);
+vm_table_set(lulu_VM *vm, const Value *t, const Value *k, Value v);
 
 LULU_FUNC void
 vm_execute(lulu_VM *vm, int n_calls);

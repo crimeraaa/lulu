@@ -85,7 +85,7 @@ chunk_get_line(const Chunk *p, isize pc)
 }
 
 u32
-chunk_add_constant(lulu_VM *vm, Chunk *p, const Value &v)
+chunk_add_constant(lulu_VM *vm, Chunk *p, Value v)
 {
     Integer i = len(p->constants);
     dynamic_push(vm, &p->constants, v);

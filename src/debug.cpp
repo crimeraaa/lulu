@@ -39,7 +39,7 @@ print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
 }
 
 static void
-unary(const Chunk *p, const char *op, const Args &args)
+unary(const Chunk *p, const char *op, Args args)
 {
     isize pc = args.pc;
     print_reg(p, args.a, pc, " := %s", op);
@@ -47,7 +47,7 @@ unary(const Chunk *p, const char *op, const Args &args)
 }
 
 static void
-arith(const Chunk *p, char op, const Args &args)
+arith(const Chunk *p, char op, Args args)
 {
     isize pc = args.pc;
     print_reg(p, args.a, pc, " := ");
@@ -72,7 +72,7 @@ jump_get(const Chunk *p, isize jump_pc)
 }
 
 static void
-compare(const Chunk *p, const char *op, const Args &args)
+compare(const Chunk *p, const char *op, Args args)
 {
     isize pc = args.pc;
     print_reg(p, args.b, pc, " %s ", op);

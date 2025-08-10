@@ -20,7 +20,7 @@ hash_any(T v)
 }
 
 static u32
-hash_value(const Value &v)
+hash_value(Value v)
 {
     switch (v.type()) {
     case VALUE_NIL:
@@ -55,7 +55,7 @@ hash_value(const Value &v)
  *  1.2.) In `table_set()` we resize beforehand.
  */
 static Entry *
-find_entry(Slice<Entry> &entries, const Value &k)
+find_entry(Slice<Entry> &entries, Value k)
 {
     usize  hash = cast_usize(hash_value(k));
     usize  wrap = cast_usize(len(entries)) - 1;
@@ -113,7 +113,7 @@ table_hash_resize(lulu_VM *vm, Table *t, isize n)
 }
 
 static bool
-table_hash_get(Table *t, const Value &restrict k, Value *restrict out)
+table_hash_get(Table *t, Value k, Value *out)
 {
     if (t->count > 0) {
         Entry *e = find_entry(t->entries, k);
@@ -126,7 +126,7 @@ table_hash_get(Table *t, const Value &restrict k, Value *restrict out)
 }
 
 static void
-table_hash_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
+table_hash_set(lulu_VM *vm, Table *t, Value k, Value v)
 {
     isize n = table_hash_cap(t);
     if (t->count + 1 > (n * 3) / 4) {
@@ -173,7 +173,9 @@ table_new(lulu_VM *vm, isize n_hash, isize n_array)
 {
     Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
     table_init(t);
-    table_hash_resize(vm, t, n_hash);
+    if (n_hash > 0) {
+        table_hash_resize(vm, t, n_hash);
+    }
     if (n_array > 0) {
         table_array_resize(vm, t, n_array);
     }
@@ -189,7 +191,7 @@ table_init(Table *t)
 }
 
 bool
-table_get(Table *t, const Value &restrict k, Value *restrict out)
+table_get(Table *t, Value k, Value *out)
 {
     if (k.is_number()) {
         Integer i;
@@ -202,7 +204,7 @@ table_get(Table *t, const Value &restrict k, Value *restrict out)
 }
 
 void
-table_set(lulu_VM *vm, Table *t, const Value &k, const Value &v)
+table_set(lulu_VM *vm, Table *t, Value k, Value v)
 {
     if (k.is_number()) {
         Integer i;
@@ -321,7 +323,7 @@ hash_to_array(Table *t, Integer start, Integer stop)
 }
 
 void
-table_set_integer(lulu_VM *vm, Table *t, Integer i, const Value &v)
+table_set_integer(lulu_VM *vm, Table *t, Integer i, Value v)
 {
     // Valid 1-based index from Lua?
     if (1 <= i) {
@@ -359,7 +361,7 @@ table_set_integer(lulu_VM *vm, Table *t, Integer i, const Value &v)
 //=== }}} ==================================================================
 
 void
-table_unset(Table *t, const Value &k)
+table_unset(Table *t, Value k)
 {
     if (t->count == 0) {
         return;
@@ -379,7 +381,7 @@ table_unset(Table *t, const Value &k)
  *      occupied indices in order; 1, 2, 3, 5, 7, etc.
  */
 static isize
-find_next(lulu_VM *vm, Table *t, const Value &k)
+find_next(lulu_VM *vm, Table *t, Value k)
 {
     // First iteration, always start at index 0.
     if (k.is_nil()) {

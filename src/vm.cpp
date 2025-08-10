@@ -256,7 +256,7 @@ vm_to_string(lulu_VM *vm, Value *in_out)
 }
 
 const char *
-vm_push_string(lulu_VM *vm, const LString &s)
+vm_push_string(lulu_VM *vm, LString s)
 {
     OString *o = ostring_new(vm, s);
     vm_push(vm, Value::make_string(o));
@@ -367,7 +367,7 @@ load(lulu_VM *vm, void *user_ptr)
 }
 
 Error
-vm_load(lulu_VM *vm, const LString &source, Stream *z)
+vm_load(lulu_VM *vm, LString source, Stream *z)
 {
     Load_Data d{source, z, {}};
     builder_init(&d.builder);
@@ -377,7 +377,7 @@ vm_load(lulu_VM *vm, const LString &source, Stream *z)
 }
 
 void
-vm_push(lulu_VM *vm, const Value &v)
+vm_push(lulu_VM *vm, Value v)
 {
     isize i = vm->window.len++;
     vm->window[i] = v;
@@ -555,7 +555,7 @@ vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
 }
 
 bool
-vm_table_get(lulu_VM *vm, const Value *t, const Value &k, Value *out)
+vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out)
 {
     if (t->is_table()) {
         // `table_get()` works under the assumption `k` is non-`nil`.
@@ -576,7 +576,7 @@ vm_table_get(lulu_VM *vm, const Value *t, const Value &k, Value *out)
 }
 
 void
-vm_table_set(lulu_VM *vm, const Value *t, const Value *k, const Value &v)
+vm_table_set(lulu_VM *vm, const Value *t, const Value *k, Value v)
 {
     if (t->is_table()) {
         // `table_set` assumes that we never use `nil` as a key.

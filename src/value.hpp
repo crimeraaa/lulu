@@ -143,7 +143,7 @@ public:
     }
 
     bool
-    operator==(const Value &other) const;
+    operator==(Value other) const;
 
 
     //=== VALUE TYPE INFORMATION =========================================== {{{
@@ -303,8 +303,10 @@ public:
     to_pointer() const;
 };
 
+// In C++17, `constexpr inline` guarantees that this variable has the
+// same address in all translation units.
 constexpr inline Value
 nil{};
 
 LULU_FUNC void
-value_print(const Value &v);
+value_print(Value v);

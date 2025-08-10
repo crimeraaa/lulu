@@ -26,7 +26,7 @@
  *      symbol name and the offset.
  */
 static void
-parse_strings(const LString &stack_frame, Slice<char> &out_symbol,
+parse_strings(LString stack_frame, Slice<char> &out_symbol,
     Slice<char> &out_offset)
 {
     LString symbol;
@@ -63,7 +63,7 @@ print_dlerror()
 }
 
 static void *
-calculate_offset(const LString &stack_frame)
+calculate_offset(LString stack_frame)
 {
     char _buf1[75] = {0};
     char _buf2[25] = {0};
@@ -150,7 +150,7 @@ addr2line_print(const void *address)
 static void
 print_backtrace()
 {
-    const char errmsg[] = "Offset cannot be resolved; No offset present?\n\0?";
+    static const char errmsg[] = "Offset cannot be resolved; No offset present?\n\0?";
 
     // backtrace the last calls
     int    n     = backtrace(stack_frames_buffer, count_of(stack_frames_buffer));
