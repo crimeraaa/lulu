@@ -485,7 +485,6 @@ stringlib[] = {
 LULU_API int
 lulu_open_string(lulu_VM *vm)
 {
-    const char *libname = lulu_to_string(vm, 1);
-    lulu_set_library(vm, libname, stringlib);
+    lulu_set_library(vm, LULU_STRING_LIB_NAME, stringlib);
     return 1;
 }

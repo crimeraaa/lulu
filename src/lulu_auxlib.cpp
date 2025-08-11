@@ -340,8 +340,10 @@ lulu_set_nlibrary(lulu_VM *vm, const char *libname,
 
 static const lulu_Register
 libs[] = {
-    {LULU_BASE_LIB_NAME,   lulu_open_base},
+    {LULU_BASE_LIB_NAME, lulu_open_base},
+    {LULU_MATH_LIB_NAME, lulu_open_math},
     {LULU_STRING_LIB_NAME, lulu_open_string},
+    {LULU_OS_LIB_NAME, lulu_open_os},
 };
 
 LULU_API void

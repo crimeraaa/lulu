@@ -60,6 +60,7 @@ lulu_check_type(lulu_VM *vm, int argn, lulu_Type type);
 LULU_API void
 lulu_check_any(lulu_VM *vm, int argn);
 
+
 /**
  * @brief
  *      Asserts that the stack slot `argn` is of type `boolean`. If it is
@@ -126,6 +127,7 @@ lulu_check_lstring(lulu_VM *vm, int argn, size_t *n);
  */
 LULU_API lulu_Number
 lulu_opt_number(lulu_VM *vm, int argn, lulu_Number def);
+
 
 /**
  * @param def
@@ -210,6 +212,12 @@ LULU_API int
 lulu_open_base(lulu_VM *vm);
 
 LULU_API int
+lulu_open_math(lulu_VM *vm);
+
+LULU_API int
 lulu_open_string(lulu_VM *vm);
+
+LULU_API int
+lulu_open_os(lulu_VM *vm);
 
 #endif /* LULU_AUXILLIARY_H */

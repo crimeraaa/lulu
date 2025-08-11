@@ -59,8 +59,10 @@
 #define LULU_STACK_MIN      8
 
 
-#define LULU_BASE_LIB_NAME          "base"
-#define LULU_STRING_LIB_NAME        "string"
+#define LULU_BASE_LIB_NAME      "base"
+#define LULU_STRING_LIB_NAME    "string"
+#define LULU_MATH_LIB_NAME      "math"
+#define LULU_OS_LIB_NAME        "os"
 
 
 /**
