@@ -20,9 +20,9 @@ struct LULU_PRIVATE Stream {
         }
 
         // - 1 because we read the first character then move past it.
-        this->remaining = cast_isize(n) - 1;
+        this->remaining = n - 1;
         this->cursor    = s;
-        return cast_int(*this->cursor++);
+        return *this->cursor++;
     }
 
     int
@@ -30,7 +30,7 @@ struct LULU_PRIVATE Stream {
     {
         // Note that we are comparing the value BEFORE the decrement.
         if (this->remaining-- > 0) {
-            return cast_int(*this->cursor++);
+            return *this->cursor++;
         }
         return this->fill();
     }

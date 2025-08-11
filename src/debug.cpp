@@ -22,7 +22,7 @@ print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
         u32 i = Instruction::reg_get_k(reg);
         value_print(p->constants[i]);
     } else {
-        const char *ident = chunk_get_local(p, cast_int(reg + 1), pc);
+        const char *ident = chunk_get_local(p, reg + 1, pc);
         if (ident != nullptr) {
             printf("local %s", ident);
         } else {
@@ -206,13 +206,13 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         break;
     case OP_SET_ARRAY: {
         isize offset = cast_isize(args.c) * FIELDS_PER_FLUSH;
-        isize start  = cast_isize(args.a) + 1;
+        isize start  = args.a + 1;
         if (args.b == VARARG) {
             print_reg(p, args.a, pc,
                 "[%" ISIZE_FMT ":] := R(%" ISIZE_FMT ":)",
                 offset + start, start);
         } else {
-            isize stop   = start + cast_isize(args.b);
+            isize stop = start + args.b;
             print_reg(p, args.a, pc,
                 "[%" ISIZE_FMT ":%" ISIZE_FMT "] := R(%"  ISIZE_FMT ":%" ISIZE_FMT ")",
                 offset + start, offset + stop, start, stop);
@@ -378,13 +378,13 @@ get_variable_ip(const Chunk *p, isize target_pc, int reg)
         Instruction i = p->code[pc];
         OpCode op = i.op();
 
-        int a = cast_int(i.a());
+        int a = i.a();
         int b = 0;
 
         OpInfo info = opinfo[op];
         switch (info.fmt()) {
         case OPFORMAT_ABC:
-            b = cast_int(i.b());
+            b = i.b();
             break;
         case OPFORMAT_ABX:
         case OPFORMAT_ASBX:
@@ -408,16 +408,16 @@ get_variable_ip(const Chunk *p, isize target_pc, int reg)
         switch (op) {
         case OP_NIL:
             //  `reg` is part of the range `a` up to `b`, which is set here?
-            if (a <= reg && reg <= cast_int(b)) {
+            if (a <= reg && reg <= b) {
                 last_pc = pc;
             }
             break;
         case OP_JUMP: {
-            isize target = cast_isize(pc) + 1 + cast_isize(b);
+            isize target = pc + 1 + b;
             // jump goes forward and does not skip `last_pc`?
             if (pc <= target && target <= last_pc) {
                 // Skip unnecessary code.
-                pc += cast_isize(b);
+                pc += b;
             }
             break;
         }
@@ -498,7 +498,7 @@ debug_type_error(lulu_VM *vm, const char *act, const Value *v)
     isize i;
     // `v` is currently inside the stack?
     if (ptr_index_safe(vm->window, v, &i)) {
-        scope = get_obj_name(vm, vm->caller, cast_int(i), &ident);
+        scope = get_obj_name(vm, vm->caller, i, &ident);
     }
 
     if (scope != nullptr) {

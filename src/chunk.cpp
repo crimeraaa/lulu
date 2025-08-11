@@ -14,12 +14,22 @@ chunk_new(lulu_VM *vm, OString *source)
     dynamic_init(&p->code);
     dynamic_init(&p->lines);
     dynamic_init(&p->locals);
-    p->n_params           = 0;
-    p->source             = source;
-    p->line_defined       = 0;
+    p->n_params = 0;
+    p->source = source;
+    p->line_defined = 0;
     p->last_line_defined  = 0;
-    p->stack_used         = 2; // R(0) and R(1) must always be valid.
+    p->stack_used = 2; // R(0) and R(1) must always be valid.
     return p;
+}
+
+void
+chunk_delete(lulu_VM *vm, Chunk *p)
+{
+    dynamic_delete(vm, &p->constants);
+    dynamic_delete(vm, &p->code);
+    dynamic_delete(vm, &p->lines);
+    dynamic_delete(vm, &p->locals);
+    mem_free(vm, p);
 }
 
 static void

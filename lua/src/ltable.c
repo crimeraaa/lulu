@@ -57,7 +57,7 @@
 ** for some types, it is better to avoid modulus by power of 2, as
 ** they tend to have many 2 factors.
 */
-#define hashmod(t,n)	(gnode(t, ((n) % ((sizenode(t)-1)|1))))
+#define hashmod(t,n)	(gnode(t, ((n) % ((sizenode(t) - 1) | 1))))
 
 
 #define hashpointer(t,p)	hashmod(t, IntPoint(p))
@@ -192,29 +192,39 @@ bool luaH_next (lua_State *L, Table *t, StkId key) {
 */
 
 
-static int computesizes (int nums[], int *narray) {
-  int i;
-  int twotoi;  /* 2^i */
-  int a = 0;  /* number of elements smaller than 2^i */
-  int na = 0;  /* number of elements to go to array part */
-  int n = 0;  /* optimal size for array part */
-  for (i = 0, twotoi = 1;
-    twotoi / 2 < *narray;
-    i++, twotoi *= 2) {
+static int computesizes (int nums[], int *n_array) {
+  int bit;
+  int pow2;  /* 2^bit */
 
-    int used = nums[i];
+  int a = 0;  /* total number of elements smaller than `pow2` */
+  int n_array_active = 0;  /* number of elements to go to array part */
+  int n_array_optimal = 0;
+
+  /* if `*n_array == 0` then the loop is never entered. */
+  for (bit = 0, pow2 = 1; (pow2 / 2) < *n_array; bit++, pow2 *= 2) {
+    /* Number of (potentially) active elements in this index range. */
+    int used = nums[bit];
     if (used > 0) {
       a += used;
-      if (a > twotoi/2) {  /* more than half elements present? */
-        n = twotoi;  /* optimal size (till now) */
-        na = a;  /* all elements smaller than n will go to array part */
+      /* More than half of all possible array elements present at this point? */
+      if (a > pow2 / 2) {
+        /* Optimal size (up until now) */
+        n_array_optimal = pow2;
+
+        /* All elements smaller than `n_array_optimal` go to the array part.
+          This is important when rehashing because we will move integer
+          keys to the array if at all possible. */
+        n_array_active = a;
       }
     }
-    if (a == *narray) break;  /* all elements already counted */
+    /* all elements already counted? */
+    if (a == *n_array) {
+      break;
+    }
   }
-  *narray = n;
-  lua_assert(*narray/2 <= na && na <= *narray);
-  return na;
+  *n_array = n_array_optimal;
+  lua_assert(*n_array / 2 <= n_array_active && n_array_active <= *n_array);
+  return n_array_active;
 }
 
 
@@ -226,7 +236,7 @@ static int computesizes (int nums[], int *narray) {
  * @return
  *    1 if key is a potentially valid array index else 0.
  */
-static int countint (const TValue *key, int nums[MAXBITS]) {
+static int countint (const TValue *key, int nums[]) {
   int k = arrayindex(key);
   if (0 < k && k <= MAXASIZE) {  /* is `key' an appropriate array index? */
     /* Get the exponent of the start of our bit range. */
@@ -240,17 +250,27 @@ static int countint (const TValue *key, int nums[MAXBITS]) {
 }
 
 
-static int numusearray (const Table *t, int nums[MAXBITS]) {
+/**
+ * @param nums
+ *    Helps track which ranges of indexes have how many active elements
+ *    in the array.
+ *
+ * @return
+ *    The number of active array elements. This does *not* represent
+ *    the optimal size, as it does not consider holes in the array nor
+ *    does it count integer keys in the hash part.
+ */
+static int numusearray (const Table *t, int nums[]) {
   int bit; /* exponent for power of 2 we are currently at. */
-  int ttlg;  /* power of 2 we want: 2^bit */
-  int ause = 0;  /* summation of `nums' */
+  int pow2; /* power of 2 we want: 2^bit */
+  int n_array_used = 0;  /* summation of `nums' */
   int i = 1;  /* count to traverse all array keys */
-  for (bit = 0, ttlg = 1;
+  for (bit = 0, pow2 = 1;
     bit <= MAXBITS;
-    bit++, ttlg *= 2) { /* for each slice */
+    bit++, pow2 *= 2) { /* for each slice */
 
     int used = 0;  /* counter for active array items for this range. */
-    int lim = ttlg; /* range end for this `i` */
+    int lim = pow2; /* range end for this `i` */
     /* `lim` would read out of bounds? */
     if (lim > t->sizearray) {
       /* Clamp `lim`. */
@@ -270,26 +290,38 @@ static int numusearray (const Table *t, int nums[MAXBITS]) {
       }
     }
     nums[bit] += used;
-    ause += used;
+    n_array_used += used;
   }
-  return ause;
+  return n_array_used;
 }
 
 
-static int numusehash (const Table *t, int nums[MAXBITS], int *pnasize) {
+/**
+ * @param pnasize
+ *    Points to a variable holding the current number of active elements
+ *    in `t->array`.
+ *
+ * @return
+ *    The number of active elements in the hash segment.
+ */
+static int numusehash (const Table *t, int nums[], int *n_array_used) {
   int totaluse = 0;  /* total number of elements */
-  int ause = 0;  /* summation of `nums' */
+  int n_array_extra = 0;  /* summation of `nums' */
   int i = sizenode(t);
   while (i--) {
     Node *n = &t->node[i];
     TValue *v = gval(n);
     if (!ttisnil(v)) {
       TValue *k = key2tval(n);
-      ause += countint(k, nums);
+
+      /* Add this node to the array count if its key is an array index. */
+      n_array_extra += countint(k, nums);
+
+      /* count all used hash keys regardless if it could be in the array */
       totaluse++;
     }
   }
-  *pnasize += ause;
+  *n_array_used += n_array_extra;
   return totaluse;
 }
 
@@ -359,7 +391,9 @@ static void resize (lua_State *L, Table *t, int nasize, int nhsize) {
     /* shrink array */
     luaM_reallocvector(L, t->array, oldasize, nasize, TValue);
   }
-  /* Copy elements from current hash part to newly allocated hash. */
+  /* Copy elements from current hash part to newly allocated hash.
+    This may also move elements from the hash part to the array part and
+    vice versa. */
   for (i = twoto(oldhsize) - 1; i >= 0; i--) {
     Node *old = &nold[i];
     TValue *v = gval(old);
@@ -388,6 +422,8 @@ static void rehash (lua_State *L, Table *t, const TValue *ek) {
   /**
    * @brief
    *    Number of keys found between each power of 2 range: 2^(i-1) and 2^i.
+   *    This is used to help find the optimal size given all possible
+   *    array indices.
    *
    *    See Python output of the following:
    *
@@ -396,35 +432,10 @@ static void rehash (lua_State *L, Table *t, const TValue *ek) {
    *
    * @details(2025-08-08) Index ranges for each power of 2 exponent:
    *
-   *    [0]  = [1, 2)
-   *    [1]  = [2, 4)
-   *    [2]  = [4, 8)
-   *    [3]  = [8, 16)
-   *    [4]  = [16, 32)
-   *    [5]  = [32, 64)
-   *    [6]  = [64, 128)
-   *    [7]  = [128, 256)
-   *    [8]  = [256, 512)
-   *    [9]  = [512, 1_024)
-   *    [10] = [1_024, 2_048)
-   *    [11] = [2_048, 4_096)
-   *    [12] = [4_096, 8_192)
-   *    [13] = [8_192, 16_384)
-   *    [14] = [16_384, 32_768)
-   *    [15] = [32_768, 65_536)
-   *    [16] = [65_536, 131_072)
-   *    [17] = [131_072, 262_144)
-   *    [18] = [262_144, 524_288)
-   *    [19] = [524_288, 1_048_576)
-   *    [20] = [1_048_576, 2_097_152)
-   *    [21] = [2_097_152, 4_194_304)
-   *    [22] = [4_194_304, 8_388_608)
-   *    [23] = [8_388_608, 16_777_216)
-   *    [24] = [16_777_216, 33_554_432)
-   *    [25] = [33_554_432, 67_108_864)
-   *    [26] = [67_108_864, 134_217_728]
+   *    [0] = [1, 2),   [1]  = [2, 4), [2]  = [4, 8)
+   *    [3]  = [8, 16), [4]  = [16, 32), ...
    */
-  int nums[MAXBITS+1];
+  int nums[MAXBITS + 1];
   int i;
   int totaluse;
   for (i = 0; i <= MAXBITS; i++) nums[i] = 0;  /* reset counts */
@@ -432,11 +443,15 @@ static void rehash (lua_State *L, Table *t, const TValue *ek) {
   nasize = numusearray(t, nums);  /* count keys in array part */
   totaluse = nasize;  /* all those keys are integer keys */
   totaluse += numusehash(t, nums, &nasize);  /* count keys in hash part */
-  /* count extra key */
+  /* check if key is also an array index */
   nasize += countint(ek, nums);
+
+  /* key is always added to total count regardless */
   totaluse++;
+
   /* compute new size for array part */
   na = computesizes(nums, &nasize);
+
   /* resize the table to new computed sizes */
   resize(L, t, nasize, totaluse - na);
 }
@@ -491,6 +506,7 @@ static Node *getfreepos (Table *t) {
 */
 static TValue *newkey (lua_State *L, Table *t, const TValue *key) {
   Node *mp = mainposition(t, key);
+  /* ideal position is occupied (collision) or we have no node array? */
   if (!ttisnil(gval(mp)) || mp == dummynode) {
     Node *othern;
     Node *n = getfreepos(t);  /* get a free place */
@@ -502,7 +518,9 @@ static TValue *newkey (lua_State *L, Table *t, const TValue *key) {
     othern = mainposition(t, key2tval(mp));
     if (othern != mp) {  /* is colliding node out of its main position? */
       /* yes; move colliding node into free position */
-      while (gnext(othern) != mp) othern = gnext(othern);  /* find previous */
+      while (gnext(othern) != mp) {
+        othern = gnext(othern);
+      }
       gnext(othern) = n;  /* redo the chain with `n' in place of `mp' */
       *n = *mp;  /* copy colliding node into free pos. (mp->next also goes) */
       gnext(mp) = NULL;  /* now `mp' is free */
@@ -515,7 +533,9 @@ static TValue *newkey (lua_State *L, Table *t, const TValue *key) {
       mp = n;
     }
   }
-  gkey(mp)->value = key->value; gkey(mp)->tt = key->tt;
+  /* Set key for this node. */
+  gkey(mp)->value = key->value;
+  gkey(mp)->tt = key->tt;
   luaC_barriert(L, t, key);
   lua_assert(ttisnil(gval(mp)));
   return gval(mp);
@@ -532,10 +552,14 @@ const TValue *luaH_getnum (Table *t, int key) {
   else {
     lua_Number nk = cast_num(key);
     Node *n = hashnum(t, nk);
-    do {  /* check whether `key' is somewhere in the chain */
-      if (ttisnumber(gkey(n)) && luai_numeq(nvalue(gkey(n)), nk))
+    do {
+      /* check whether `key' is somewhere in the chain */
+      if (ttisnumber(gkey(n)) && luai_numeq(nvalue(gkey(n)), nk)) {
         return gval(n);  /* that's it */
-      else n = gnext(n);
+      }
+      else {
+        n = gnext(n);
+      }
     } while (n);
     return luaO_nilobject;
   }

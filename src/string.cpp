@@ -34,14 +34,13 @@ get_base(LString s)
 bool
 lstring_to_number(LString s, Number *out, int base)
 {
-    LString s2 = s;
     // Need to detect the base prefix?
     if (base == 0) {
         base = get_base(s);
         // Skip the `0[bBoOdDxX]` prefix because `strto*` doesn't support `0b`.
         if (base != 0) {
-            // s2 = s2[2:]
-            s2 = slice_from(s2, 2);
+            // s = s[2:]
+            s = slice_from(s, 2);
         }
     }
 
@@ -50,18 +49,18 @@ lstring_to_number(LString s, Number *out, int base)
     // Parsing a prefixed integer?
     if (base != 0) {
         // Got a base prefix with no content? e.g. `0b` or `0x`
-        if (len(s2) == 0) {
+        if (len(s) == 0) {
             return false;
         }
-        unsigned long ul = strtoul(raw_data(s2), &last, base);
+        unsigned long ul = strtoul(raw_data(s), &last, base);
         d = cast_number(ul);
     }
     // Parsing a non-prefixed number.
     else {
-        d = strtod(raw_data(s2), &last);
+        d = strtod(raw_data(s), &last);
     }
 
-    if (last != end(s2)) {
+    if (last != end(s)) {
         return false;
     }
     *out = d;
@@ -69,10 +68,10 @@ lstring_to_number(LString s, Number *out, int base)
 }
 
 LString
-number_to_lstring(Number n, Number_Buffer &buf)
+number_to_lstring(Number n, Slice<char> buf)
 {
-    isize written = cast_isize(sprintf(raw_data(buf), LULU_NUMBER_FMT, n));
-    lulu_assert(1 <= written && written < size_of(buf));
+    isize written = sprintf(raw_data(buf), LULU_NUMBER_FMT, n);
+    lulu_assert(1 <= written && written < len(buf));
     LString ls{raw_data(buf), written};
     return ls;
 }
@@ -134,7 +133,7 @@ builder_write(lulu_VM *vm, Builder *b, Arg arg)
 {
     Array<char, Bufsize> buf;
 
-    isize written = cast_isize(sprintf(raw_data(buf), Fmt, arg));
+    isize written = sprintf(raw_data(buf), Fmt, arg);
     lulu_assert(1 <= written && written < len(buf));
 
     LString ls{raw_data(buf), written};
@@ -290,8 +289,8 @@ ostring_new(lulu_VM *vm, LString text)
 
     isize n = intern_cap(t);
     if (t->count + 1 > (n * 3) / 4) {
-        isize new_cap = mem_next_pow2(n + 1);
-        intern_resize(vm, t, new_cap);
+        // Ensure cap is a power of 2 for performance.
+        intern_resize(vm, t, mem_next_pow2(n + 1));
     }
     t->count++;
     return s;

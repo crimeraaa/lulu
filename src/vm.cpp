@@ -246,7 +246,7 @@ vm_to_string(lulu_VM *vm, Value *in_out)
         return true;
     } else if (in_out->is_number()) {
         Number_Buffer buf;
-        LString  ls = number_to_lstring(in_out->to_number(), buf);
+        LString  ls = number_to_lstring(in_out->to_number(), slice(buf));
         OString *os = ostring_new(vm, ls);
         // @todo(2025-07-21): Check GC!
         in_out->set_string(os);
@@ -296,7 +296,7 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 
         switch (*cursor) {
         case 'c':
-            builder_write_char(vm, b, cast(char)va_arg(args, int));
+            builder_write_char(vm, b, va_arg(args, int));
             break;
         case 'd':
         case 'i':
@@ -395,7 +395,7 @@ vm_pop(lulu_VM *vm)
 void
 vm_check_stack(lulu_VM *vm, int n)
 {
-    isize stop = vm_top_absindex(vm) + cast_isize(n);
+    isize stop = vm_top_absindex(vm) + n;
     if (stop >= count_of(vm->stack)) {
         overflow_error(vm, stop, count_of(vm->stack), "stack slots");
     }
@@ -421,8 +421,8 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
     }
 
     // `vm_call_fini()` may adjust `vm->window` in a different way than wanted.
-    isize base    = vm_base_absindex(vm);
-    isize new_top = vm_absindex(vm, ra) + cast_isize(n_rets);
+    isize base = vm_base_absindex(vm);
+    isize new_top = vm_absindex(vm, ra) + n_rets;
 
     Call_Type t = vm_call_init(vm, ra, n_args, n_rets);
     if (t == CALL_LUA) {
@@ -447,19 +447,18 @@ call_init_c(lulu_VM *vm, Closure *f, isize f_index, int n_args, int n_rets)
     if (n_args == VARARG) {
         top = vm_top_absindex(vm);
     } else {
-        top = base + cast_isize(n_args);
+        top = base + n_args;
     }
     Slice<Value> window = slice(vm->stack, base, top);
     frame_push(vm, f, window, n_rets);
 
     n_rets = f->to_c()->callback(vm);
     Value *first_ret = (n_rets > 0)
-        ? &vm->window[len(vm->window) - cast_isize(n_rets)]
+        ? &vm->window[len(vm->window) - n_rets]
         : &vm->stack[f_index];
 
     vm_call_fini(vm, slice_pointer_len(first_ret, n_rets));
     return CALL_C;
-
 }
 
 static Call_Type
@@ -468,9 +467,9 @@ call_init_lua(lulu_VM *vm, Closure *fn, isize fn_index, int n_args, int n_rets)
     // Calling function isn't included in the stack frame.
     isize  base = fn_index + 1;
     Chunk *p    = fn->to_lua()->chunk;
-    isize  top  = base + cast_isize(p->stack_used);
+    isize  top  = base + p->stack_used;
 
-    vm_check_stack(vm, cast_int(top - base));
+    vm_check_stack(vm, top - base);
     Slice<Value> window = slice(vm->stack, base, top);
 
     // Some parameters weren't provided so they need to be initialized to nil?
@@ -528,7 +527,7 @@ vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
     int n_extra = cf->to_return - len(results);
     if (!vararg_return && n_extra > 0) {
         // Need to extend `dst` so that it also sees the extra values.
-        dst.len += cast_isize(n_extra);
+        dst.len += n_extra;
 
         // Remaining return values are initialized to nil, e.g. in assignments.
         fill(slice_from(dst, len(results)), nil);
@@ -709,13 +708,13 @@ vm_execute(lulu_VM *vm, int n_calls)
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.
-        isize pc = cast_isize(ptr_index(chunk->code, ip)) - 1;
+        isize pc = ptr_index(chunk->code, ip) - 1;
 
         for (isize reg = 0, n = len(window); reg < n; reg++) {
             printf("\t[%" ISIZE_FMT "]\t", reg);
             value_print(window[reg]);
 
-            const char *ident = chunk_get_local(chunk, cast_int(reg + 1), pc);
+            const char *ident = chunk_get_local(chunk, reg + 1, pc);
             if (ident != nullptr) {
                 printf(" ; local %s", ident);
             }
@@ -781,7 +780,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_SET_ARRAY: {
-            isize n      = cast_isize(inst.b());
+            isize n      = inst.b();
             isize offset = cast_isize(inst.c()) * FIELDS_PER_FLUSH;
 
             if (n == VARARG) {
@@ -849,7 +848,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             vm_concat(vm, ra, slice_pointer(&RB(inst), &RC(inst) + 1));
             break;
         case OP_TEST: {
-            bool cond = cast(bool)inst.c();
+            bool cond = inst.c();
             bool test = (!ra->is_falsy() == cond);
 
             // Ensure the next instruction is a jump before actually performing
@@ -865,7 +864,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_TEST_SET: {
-            bool  cond = cast(bool)inst.c();
+            bool  cond = inst.c();
             Value rb   = RB(inst);
             bool  test = (!rb.is_falsy() == cond);
             lulu_assert(ip->op() == OP_JUMP);
@@ -930,13 +929,13 @@ vm_execute(lulu_VM *vm, int n_calls)
             call_base[0] = ra[0]; // generator function
 
             // Registers for generator function, invariant state and index.
-            isize top  = ptr_index(vm->window, call_base + 3);
-            vm->window = slice_until(vm->window, top);
+            isize top  = ptr_index(window, call_base + 3);
+            vm->window = slice_until(window, top);
 
             // Number of user-facing variables to set.
             u16 n_vars = inst.c();
             protect(vm, ip);
-            vm_call(vm, call_base, 2, cast_int(n_vars));
+            vm_call(vm, call_base, 2, n_vars);
 
             // Previous call may reallocate stack.
             window    = vm->caller->window;
@@ -952,8 +951,8 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_CALL: {
-            int n_args = cast_int(inst.b());
-            int n_rets = cast_int(inst.c());
+            int n_args = inst.b();
+            int n_rets = inst.c();
             protect(vm, ip);
 
             Call_Type t = vm_call_init(vm, ra, n_args, n_rets);
@@ -965,9 +964,9 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_RETURN: {
-            int n_rets = cast_int(inst.b());
+            int n_rets = inst.b();
             if (n_rets == VARARG) {
-                n_rets = cast_int(len(vm->window));
+                n_rets = len(vm->window);
             }
 
             vm_call_fini(vm, slice_pointer_len(ra, n_rets));

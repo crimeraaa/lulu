@@ -38,6 +38,7 @@ using isize = ptrdiff_t;
  */
 using usize = size_t;
 
+#define ISIZE_WIDTH         PTRDIFF_WIDTH
 #define ISIZE_FMT           "ti"
 
 #define cast(T)             (T)
@@ -70,6 +71,12 @@ using Type    = lulu_Type;
 using Number  = lulu_Number;
 using Integer = lulu_Integer;
 
+LULU_FUNC inline isize
+operator ""_i(unsigned long long i)
+{
+    return cast_isize(i);
+}
+
 /**
  * @return
  *      true if conversion occured without loss of precision, else false.
@@ -101,22 +108,19 @@ static constexpr int
 VALUE_TYPE_COUNT = VALUE_TYPE_LAST + 1;
 
 template<class T>
+LULU_FUNC inline T
+max(T a, T b)
+{
+    return (a > b) ? a : b;
+}
+
+template<class T>
 LULU_FUNC inline void
 swap(T *restrict a, T *restrict b)
 {
     T tmp = *a;
     *a = *b;
     *b = tmp;
-}
-
-template<class T>
-LULU_FUNC inline T
-max(T a, T b)
-{
-    if (a > b) {
-        return a;
-    }
-    return b;
 }
 
 #ifdef LULU_DEBUG

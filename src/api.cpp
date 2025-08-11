@@ -5,7 +5,7 @@ const static Value *
 value_at(lulu_VM *vm, int i)
 {
     // Resolve 1-based relative index.
-    isize ii = cast_isize(i);
+    isize ii = i;
     if (ii > 0) {
         ii--;
         if (0 <= ii && ii < len(vm->window)) {
@@ -226,7 +226,7 @@ lulu_to_pointer(lulu_VM *vm, int i)
 LULU_API int
 lulu_get_top(lulu_VM *vm)
 {
-    return cast_int(len(vm->window));
+    return len(vm->window);
 }
 
 LULU_API void
@@ -235,7 +235,7 @@ lulu_set_top(lulu_VM *vm, int i)
     if (i >= 0) {
         isize old_start = ptr_index(vm->stack, raw_data(vm->window));
         isize old_stop  = old_start + len(vm->window);
-        isize new_stop  = old_start + cast_isize(i);
+        isize new_stop  = old_start + i;
         if (new_stop > old_stop) {
             // If growing the window, initialize the new region to nil.
             auto extra = slice(vm->stack, old_stop, new_stop);
@@ -275,7 +275,7 @@ lulu_remove(lulu_VM *vm, int i)
 LULU_API void
 lulu_pop(lulu_VM *vm, int n)
 {
-    isize i = len(vm->window) - cast_isize(n);
+    isize i = len(vm->window) - n;
     vm->window = slice_until(vm->window, i);
 }
 
@@ -370,7 +370,7 @@ lulu_push_value(lulu_VM *vm, int i)
 LULU_API void
 lulu_new_table(lulu_VM *vm, int n_array, int n_hash)
 {
-    Table *t = table_new(vm, cast_isize(n_array), cast_isize(n_hash));
+    Table *t = table_new(vm, n_array, n_hash);
     vm_push(vm, Value::make_table(t));
 }
 
@@ -465,7 +465,7 @@ lulu_concat(lulu_VM *vm, int n)
     case 1: return; // Nothing we can sensibly do, other than conversion.
     }
 
-    lulu_assert(2 <= n && cast_isize(n) <= len(vm->window));
+    lulu_assert(2 <= n && n <= len(vm->window));
 
     Value *first = value_at_stack(vm, -n);
     Value *last  = value_at_stack(vm, -1);

@@ -23,3 +23,14 @@ closure_lua_new(lulu_VM *vm, Chunk *p)
     f->chunk      = p;
     return reinterpret_cast<Closure *>(f);
 }
+
+void
+closure_delete(lulu_VM *vm, Closure *f)
+{
+    if (f->is_c()) {
+        Closure_C *cf = f->to_c();
+        mem_free(vm, &f->c, cf->size_upvalues());
+    } else {
+        mem_free(vm, &f->lua);
+    }
+}

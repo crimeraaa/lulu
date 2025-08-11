@@ -26,7 +26,7 @@ chunk(Parser *p, Compiler *c);
 static void
 block_push(Compiler *c, Block *b, bool breakable)
 {
-    lulu_assert(cast_isize(c->free_reg) == small_array_len(c->active));
+    lulu_assert(c->free_reg == small_array_len(c->active));
 
     b->prev       = c->block;
     b->break_list = NO_JUMP;
@@ -45,7 +45,7 @@ block_pop(Compiler *c)
 
     // Finalize all the locals' information before popping them.
     isize pc = c->pc;
-    for (u16 index : slice_from(active, cast_isize(b->n_locals))) {
+    for (u16 index : slice_from(active, b->n_locals)) {
         c->chunk->locals[index].end_pc = pc;
     }
     small_array_resize(&c->active, b->n_locals);
@@ -378,7 +378,7 @@ local_statement(Parser *p, Compiler *c)
         n++;
     } while (match(p, TOKEN_COMMA));
     // Prevent lookup of uninitialized local variables, e.g. `local x = x`;
-    small_array_resize(&c->active, small_array_len(c->active) - cast_isize(n));
+    small_array_resize(&c->active, small_array_len(c->active) - n);
 
     Expr_List args{DEFAULT_EXPR, 0};
     if (match(p, TOKEN_ASSIGN)) {
@@ -389,7 +389,7 @@ local_statement(Parser *p, Compiler *c)
 
     // Allow lookup of the now-initialized local variables.
     isize start = small_array_len(c->active);
-    small_array_resize(&c->active, start + cast_isize(n));
+    small_array_resize(&c->active, start + n);
     local_start(c, n);
 }
 
@@ -899,7 +899,7 @@ parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     return c.chunk;
 }
 
-//=== EXPRESSION PARSING =================================================== {{{
+//=== EXPRESSION PARSING =============================================== {{{
 
 struct LULU_PRIVATE Constructor {
     Expr  table; // Information on the OP_NEW_TABLE itself.
@@ -943,7 +943,6 @@ constructor_array(Parser *p, Compiler *c, Constructor *ctor)
     ctor->array_value = expression(p, c);
     ctor->n_array++;
     ctor->to_store++;
-
 }
 
 // lparser.c:closelistfield(LexState *ls, ConsControl *cc)
@@ -1336,4 +1335,4 @@ expression(Parser *p, Compiler *c, Precedence limit)
     return left;
 }
 
-//=== }}} ======================================================================
+//=== }}} ==================================================================

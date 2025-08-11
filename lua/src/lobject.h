@@ -337,6 +337,8 @@ typedef union Closure {
 */
 
 typedef union TKey {
+  /* Needed to maximize space in case `sizeof(TValue) == 12` due to
+    padding. */
   struct {
     TValuefields;
     struct Node *next;  /* for chaining */

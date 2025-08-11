@@ -6,18 +6,6 @@
 struct LULU_PRIVATE Entry {
     Value key, value;
 
-    bool
-    is_empty() const noexcept
-    {
-        return this->key.is_nil() && this->value.is_nil();
-    }
-
-    bool
-    is_empty_or_tombstone() const noexcept
-    {
-        return this->key.is_nil();
-    }
-
     // Tombstones are always exactly `nil` keys mapping to `true`.
     void
     set_tombstone()
@@ -44,6 +32,9 @@ struct LULU_PRIVATE Table {
 
 LULU_FUNC Table *
 table_new(lulu_VM *vm, isize n_hash, isize n_array);
+
+LULU_FUNC void
+table_delete(lulu_VM *vm, Table *t);
 
 LULU_FUNC void
 table_init(Table *t);

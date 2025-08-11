@@ -38,6 +38,9 @@ static constexpr int NO_LINE = -1;
 LULU_FUNC Chunk *
 chunk_new(lulu_VM *vm, OString *source);
 
+LULU_FUNC void
+chunk_delete(lulu_VM *vm, Chunk *p);
+
 LULU_FUNC isize
 chunk_append(lulu_VM *vm, Chunk *p, Instruction i, int line);
 

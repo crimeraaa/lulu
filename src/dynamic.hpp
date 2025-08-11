@@ -46,7 +46,9 @@ dynamic_resize(lulu_VM *vm, Dynamic<T> *d, isize new_len)
 {
     // Can't accomodate the new data?
     if (new_len > d->cap) {
-        dynamic_reserve(vm, d, mem_next_fib(new_len));
+        // Use minimum cap of 8 for performance.
+        isize new_cap = max(new_len, 8_i);
+        dynamic_reserve(vm, d, mem_next_fib(new_cap));
     }
     d->len = new_len;
 }

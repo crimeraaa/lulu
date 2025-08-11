@@ -22,6 +22,12 @@ struct LULU_PRIVATE Closure_C {
     {
         return sizeof(upvalues[0]) * (n - 1);
     }
+
+    isize
+    size_upvalues() const noexcept
+    {
+        return Closure_C::size_upvalues(this->n_upvalues);
+    }
 };
 
 union LULU_PRIVATE Closure {
@@ -60,3 +66,6 @@ closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues);
 
 LULU_FUNC Closure *
 closure_lua_new(lulu_VM *vm, Chunk *p);
+
+LULU_FUNC void
+closure_delete(lulu_VM *vm, Closure *f);

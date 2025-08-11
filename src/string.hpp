@@ -29,7 +29,7 @@ LULU_FUNC bool
 lstring_to_number(LString s, Number *out, int base = 0);
 
 LULU_FUNC LString
-number_to_lstring(Number n, Number_Buffer &buf);
+number_to_lstring(Number n, Slice<char> buf);
 
 LULU_FUNC inline LString
 lstring_from_cstring(const char *s)

@@ -325,7 +325,7 @@ lulu_set_nlibrary(lulu_VM *vm, const char *libname,
             lulu_pop(vm, 1);
 
             // Do `_G[libname] = {}`.
-            lulu_new_table(vm, 0, n);
+            lulu_new_table(vm, n, 0);
             lulu_push_value(vm, -1);
             lulu_set_global(vm, libname);
         }
