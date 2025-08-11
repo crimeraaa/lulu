@@ -52,7 +52,7 @@ OPCODE_COUNT = OP_RETURN + 1;
 
 // Fills the `n` lower bits with 1's.
 // Useful when reading bit fields.
-LULU_FUNC constexpr u32
+constexpr u32
 BITMASK1(int n)
 {
     return (1 << cast(u32)n) - 1;
@@ -60,7 +60,7 @@ BITMASK1(int n)
 
 // Set `start` up to `start + n` bits with 0's. All the rest are 1's.
 // Useful when setting bit fields.
-LULU_FUNC constexpr u32
+constexpr u32
 BITMASK0(int start, int n)
 {
     return ~(BITMASK1(start) << (n));
@@ -74,7 +74,7 @@ BITMASK0(int start, int n)
  *  | Arg(B) | Arg(C) | Arg(A) | OpCode |
  *  +--------+--------+--------+--------+
  */
-struct LULU_PRIVATE Instruction {
+struct Instruction {
     u32 value;
 
     static constexpr u32
@@ -260,7 +260,7 @@ enum OpArg : u8 {
  *    | bool(A)  | OpArg(B) | OpArg(C) | OpFormat |
  *    +----------+----------+----------+----------+
  */
-struct LULU_PRIVATE OpInfo {
+struct OpInfo {
     u8 value;
 
     static constexpr u8
@@ -350,7 +350,7 @@ opinfo[OPCODE_COUNT];
  *      Where 'e' is a digit for the exponent and 'x' is a digit for the
  *      mantissa.
  */
-LULU_FUNC u16
+u16
 floating_byte_make(isize x);
 
 
@@ -370,5 +370,5 @@ floating_byte_make(isize x);
  *      else:
  *          return (0b0000_1xxx) * 2^(0b000e_eeee - 1)
  */
-LULU_FUNC isize
+isize
 floating_byte_decode(u16 fbyte);

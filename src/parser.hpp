@@ -19,7 +19,7 @@ PARSER_MAX_RECURSE = 250;
  */
 #define NO_JUMP     -1
 
-struct LULU_PRIVATE Parser {
+struct Parser {
     lulu_VM *vm;
     Lexer    lexer;
     Token    current;
@@ -63,7 +63,7 @@ struct Expr_Table {
     u16 field_rk;
 };
 
-struct LULU_PRIVATE Expr {
+struct Expr {
     Expr_Type type;
     isize     patch_true;
     isize     patch_false;
@@ -163,5 +163,5 @@ struct LULU_PRIVATE Expr {
     }
 };
 
-LULU_FUNC Chunk *
+Chunk *
 parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b);

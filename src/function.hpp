@@ -5,12 +5,12 @@
 
 #define CLOSURE_HEADER     OBJECT_HEADER; int n_upvalues; bool is_c
 
-struct LULU_PRIVATE Closure_Lua {
+struct Closure_Lua {
     CLOSURE_HEADER;
     Chunk *chunk;
 };
 
-struct LULU_PRIVATE Closure_C {
+struct Closure_C {
     CLOSURE_HEADER;
     lulu_CFunction callback;
     Value upvalues[1];
@@ -30,7 +30,7 @@ struct LULU_PRIVATE Closure_C {
     }
 };
 
-union LULU_PRIVATE Closure {
+union Closure {
     Closure_Lua lua;
     Closure_C   c;
 
@@ -61,11 +61,11 @@ union LULU_PRIVATE Closure {
     }
 };
 
-LULU_FUNC Closure *
+Closure *
 closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues);
 
-LULU_FUNC Closure *
+Closure *
 closure_lua_new(lulu_VM *vm, Chunk *p);
 
-LULU_FUNC void
+void
 closure_delete(lulu_VM *vm, Closure *f);

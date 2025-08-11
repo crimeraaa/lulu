@@ -9,7 +9,7 @@
 #include "chunk.hpp"
 #include "function.hpp"
 
-union LULU_PRIVATE Object {
+union Object {
     struct Header {
         OBJECT_HEADER;
     };
@@ -68,11 +68,11 @@ Value::to_pointer() const
     return nullptr;
 }
 
-LULU_FUNC void
+void
 object_free(lulu_VM *vm, Object *o);
 
 template<class T>
-LULU_FUNC inline T *
+inline T *
 object_new(lulu_VM *vm, Object **list, Value_Type type, isize extra = 0)
 {
     T *o = mem_new<T>(vm, extra);

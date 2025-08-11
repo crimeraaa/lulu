@@ -5,7 +5,7 @@
 #include "debug.hpp"
 #include "vm.hpp"
 
-struct LULU_PRIVATE Expr_List {
+struct Expr_List {
     Expr last;
     u16  count;
 };
@@ -250,7 +250,7 @@ return_statement(Parser *p, Compiler *c)
     compiler_code_return(c, ra, e.count);
 }
 
-struct LULU_PRIVATE Assign {
+struct Assign {
     Assign *prev;
     Expr    variable;
 };
@@ -901,7 +901,7 @@ parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 
 //=== EXPRESSION PARSING =============================================== {{{
 
-struct LULU_PRIVATE Constructor {
+struct Constructor {
     Expr  table; // Information on the OP_NEW_TABLE itself.
     Expr  array_value;
     isize n_hash;

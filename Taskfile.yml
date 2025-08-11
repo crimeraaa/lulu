@@ -108,7 +108,7 @@ tasks:
     cmds:
       # NOTE: -fvisibility=hidden does not export AN global identifier/function
       # in the resulting shared library.
-      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
+      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -fvisibility=hidden -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
       - '{{.LULU_EXE_CMD}}'
     sources:
       - '{{.LULU_GLOB}}'

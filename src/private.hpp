@@ -71,7 +71,7 @@ using Type    = lulu_Type;
 using Number  = lulu_Number;
 using Integer = lulu_Integer;
 
-LULU_FUNC inline isize
+inline isize
 operator ""_i(unsigned long long i)
 {
     return cast_isize(i);
@@ -81,7 +81,7 @@ operator ""_i(unsigned long long i)
  * @return
  *      true if conversion occured without loss of precision, else false.
  */
-LULU_FUNC inline bool
+inline bool
 number_to_integer(Number n, Integer *out)
 {
     *out = cast_integer(n);
@@ -108,14 +108,14 @@ static constexpr int
 VALUE_TYPE_COUNT = VALUE_TYPE_LAST + 1;
 
 template<class T>
-LULU_FUNC inline T
+inline T
 max(T a, T b)
 {
     return (a > b) ? a : b;
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 swap(T *restrict a, T *restrict b)
 {
     T tmp = *a;
@@ -126,7 +126,7 @@ swap(T *restrict a, T *restrict b)
 #ifdef LULU_DEBUG
 
 [[noreturn, gnu::format(printf, 3, 4)]]
-LULU_FUNC void
+void
 lulu_assert_fail(const char *where, const char *expr, const char *fmt, ...)
 throw();
 
@@ -169,7 +169,7 @@ throw();
 // Do not implement as a function-like macro `lulu_assert(false)` because
 // `lulu_assert()` itself may be empty.
 [[noreturn]]
-LULU_FUNC inline void
+inline void
 lulu_unreachable()
 {}
 

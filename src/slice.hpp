@@ -7,8 +7,7 @@
 //=== SLICE ================================================================ {{{
 
 template<class T>
-struct LULU_PRIVATE
-Slice {
+struct Slice {
     T    *data = nullptr;
     isize len  = 0;
 
@@ -38,14 +37,14 @@ Slice {
 };
 
 template<class T>
-LULU_FUNC constexpr Slice<T>
+constexpr Slice<T>
 slice(Slice<T> &s)
 {
     return {raw_data(s), len(s)};
 }
 
 template<class T>
-LULU_FUNC constexpr Slice<const T>
+constexpr Slice<const T>
 slice_const(const Slice<T> &s)
 {
     return {raw_data(s), len(s)};
@@ -53,7 +52,7 @@ slice_const(const Slice<T> &s)
 
 // Similar to `slice[:]` in Odin and `list[:]` in Python.
 template<class T>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice(Slice<T> &s, isize start, isize stop)
 {
     Slice<T> s2{&s.data[start], stop - start};
@@ -77,7 +76,7 @@ slice(Slice<T> &s, isize start, isize stop)
 
 // Similar to `slice[start:]` in Odin and `list[start:] in Python.
 template<class T>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice_from(Slice<T> &s, isize start)
 {
     return slice(s, start, len(s));
@@ -85,7 +84,7 @@ slice_from(Slice<T> &s, isize start)
 
 // R-value shenanigans.
 template<class T>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice_from(Slice<T> &&s, isize start)
 {
     return slice(s, start, len(s));
@@ -93,14 +92,14 @@ slice_from(Slice<T> &&s, isize start)
 
 // Similar to `slice[:stop]` in Odin and `list[:stop]` in Python.
 template<class T>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice_until(Slice<T> &s, isize stop)
 {
     return slice(s, 0, stop);
 }
 
 template<class T>
-LULU_FUNC inline bool
+inline bool
 slice_eq(const Slice<T> &a, const Slice<T> &b)
 {
     // Fast path #1: differeing lengths are never equal.
@@ -118,7 +117,7 @@ slice_eq(const Slice<T> &a, const Slice<T> &b)
 }
 
 template<class T>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice_pointer(T *start, T *stop)
 {
     Slice<T> s{start, cast_isize(stop - start)};
@@ -130,7 +129,7 @@ slice_pointer(T *start, T *stop)
 }
 
 template<class T>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice_pointer_len(T *data, isize n)
 {
     Slice<T> s{data, n};
@@ -138,7 +137,7 @@ slice_pointer_len(T *data, isize n)
 }
 
 template<class T>
-LULU_FUNC constexpr isize
+constexpr isize
 len(const Slice<T> &s)
 {
     return s.len;
@@ -146,7 +145,7 @@ len(const Slice<T> &s)
 
 // Mutable access to underlying slice data.
 template<class T>
-LULU_FUNC constexpr T *
+constexpr T *
 raw_data(Slice<T> &s)
 {
     return s.data;
@@ -154,14 +153,14 @@ raw_data(Slice<T> &s)
 
 // Read-only access to underlying slice data.
 template<class T>
-LULU_FUNC constexpr const T *
+constexpr const T *
 raw_data(const Slice<T> &s)
 {
     return s.data;
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 copy(Slice<T> &dst, const Slice<T> &src)
 {
     // Clamp size to read and copy
@@ -171,7 +170,7 @@ copy(Slice<T> &dst, const Slice<T> &src)
 
 // Because C++ templates aren't convoluted enough
 template<class T>
-LULU_FUNC inline void
+inline void
 copy(Slice<T> &dst, const Slice<const T> &src)
 {
     // Clamp size to read and copy
@@ -180,7 +179,7 @@ copy(Slice<T> &dst, const Slice<const T> &src)
 }
 
 template<class T>
-LULU_FUNC constexpr void
+constexpr void
 fill(Slice<T> &s, const T &init)
 {
     for (T &slot : s) {
@@ -190,7 +189,7 @@ fill(Slice<T> &s, const T &init)
 
 // R-value shenanigans.
 template<class T>
-LULU_FUNC constexpr void
+constexpr void
 fill(Slice<T> &&s, const T &init)
 {
     for (T &slot : s) {
@@ -200,7 +199,7 @@ fill(Slice<T> &&s, const T &init)
 
 // Mutable forward iterator initial value.
 template<class T>
-LULU_FUNC constexpr T *
+constexpr T *
 begin(Slice<T> &s)
 {
     return s.data;
@@ -208,7 +207,7 @@ begin(Slice<T> &s)
 
 // Mutable forward iterator final value.
 template<class T>
-LULU_FUNC constexpr T *
+constexpr T *
 end(Slice<T> &s)
 {
     return s.data + s.len;
@@ -216,7 +215,7 @@ end(Slice<T> &s)
 
 // Read-only forward iterator initial value.
 template<class T>
-LULU_FUNC constexpr const T *
+constexpr const T *
 begin(const Slice<T> &s)
 {
     return s.data;
@@ -224,7 +223,7 @@ begin(const Slice<T> &s)
 
 // Read-only forward iterator final value.
 template<class T>
-LULU_FUNC constexpr const T *
+constexpr const T *
 end(const Slice<T> &s)
 {
     return s.data + s.len;
@@ -235,8 +234,7 @@ end(const Slice<T> &s)
 //=== ARRAY ================================================================ {{{
 
 template<class T, isize N>
-struct LULU_PRIVATE
-Array {
+struct Array {
     T data[N];
 
     template<class I>
@@ -265,7 +263,7 @@ Array {
 
 // `array[:]` in Odin.
 template<class T, auto N>
-LULU_FUNC constexpr Slice<T>
+constexpr Slice<T>
 slice(Array<T, N> &a)
 {
     Slice<T> s{a.data, N};
@@ -274,7 +272,7 @@ slice(Array<T, N> &a)
 
 // `array[start:stop]` in Odin.
 template<class T, auto N>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice(Array<T, N> &a, isize start, isize stop)
 {
     // `s := a[:]`
@@ -286,7 +284,7 @@ slice(Array<T, N> &a, isize start, isize stop)
 
 // `array[start:]` in Odin.
 template<class T, auto N>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice_from(Array<T, N> &a, isize start)
 {
     return slice(a, start, len(a));
@@ -294,14 +292,14 @@ slice_from(Array<T, N> &a, isize start)
 
 // `array[:stop]` in Odin.
 template<class T, auto N>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice_until(Array<T, N> &a, isize stop)
 {
     return slice(a, 0, stop);
 }
 
 template<class T, auto N>
-LULU_FUNC constexpr isize
+constexpr isize
 len(const Array<T, N> &a)
 {
     unused(a);
@@ -310,7 +308,7 @@ len(const Array<T, N> &a)
 
 // Mutable access to underlying array data.
 template<class T, auto N>
-LULU_FUNC constexpr T *
+constexpr T *
 raw_data(Array<T, N> &a)
 {
     return a.data;
@@ -318,7 +316,7 @@ raw_data(Array<T, N> &a)
 
 // Read-only access to underlying array data.
 template<class T, auto N>
-LULU_FUNC constexpr const T *
+constexpr const T *
 raw_data(const Array<T, N> &a)
 {
     return a.data;

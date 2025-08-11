@@ -8,8 +8,7 @@ struct Table;
 union  Closure;
 struct Chunk;
 
-struct LULU_PRIVATE
-Value {
+struct Value {
 private:
     // Later on, if we decide to incorporate NaN-boxing/Pointer-tagging, we can
     // use macros to change what members are to be included in the struct.
@@ -308,5 +307,5 @@ public:
 constexpr inline Value
 nil{};
 
-LULU_FUNC void
+void
 value_print(Value v);

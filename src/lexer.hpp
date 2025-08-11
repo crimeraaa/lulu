@@ -40,7 +40,7 @@ enum Token_Type : i8 {
     TOKEN_EOF,
 };
 
-struct LULU_PRIVATE Token {
+struct Token {
     Token_Type  type;
     union {
         double   number;
@@ -66,7 +66,7 @@ struct LULU_PRIVATE Token {
     }
 };
 
-struct LULU_PRIVATE Lexer {
+struct Lexer {
     lulu_VM *vm;
     Builder *builder;
     OString *source;
@@ -89,15 +89,15 @@ token_strings[TOKEN_COUNT];
 #define token_cstring(t)    token_strings[t]
 
 // Interns all keywords for quick lookup later.
-LULU_FUNC void
+void
 lexer_global_init(lulu_VM *vm);
 
-LULU_FUNC Lexer
+Lexer
 lexer_make(lulu_VM *vm, OString *source, Stream *z, Builder *b);
 
-LULU_FUNC Token
+Token
 lexer_lex(Lexer *x);
 
 [[noreturn]]
-LULU_FUNC void
+void
 lexer_error(Lexer *x, Token_Type type, const char *msg, int line);

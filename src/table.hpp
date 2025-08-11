@@ -3,7 +3,7 @@
 #include "string.hpp"
 #include "value.hpp"
 
-struct LULU_PRIVATE Entry {
+struct Entry {
     Value key, value;
 
     // Tombstones are always exactly `nil` keys mapping to `true`.
@@ -15,7 +15,7 @@ struct LULU_PRIVATE Entry {
     }
 };
 
-struct LULU_PRIVATE Table {
+struct Table {
     OBJECT_HEADER;
 
     // Array segment data. Not all slots may be occupied.
@@ -30,36 +30,36 @@ struct LULU_PRIVATE Table {
     isize count;
 };
 
-LULU_FUNC Table *
+Table *
 table_new(lulu_VM *vm, isize n_hash, isize n_array);
 
-LULU_FUNC void
+void
 table_delete(lulu_VM *vm, Table *t);
 
-LULU_FUNC void
+void
 table_init(Table *t);
 
 // Implements `out = t[k]`.
-LULU_FUNC bool
+bool
 table_get(Table *t, Value k, Value *out);
 
 // Implements `t[k] = v`.
-LULU_FUNC void
+void
 table_set(lulu_VM *vm, Table *t, Value k, Value v);
 
 // Implements `#t`.
-LULU_FUNC isize
+isize
 table_len(Table *t);
 
 // Implements `out = t[i]`.
-LULU_FUNC bool
+bool
 table_get_integer(Table *t, Integer i, Value *out);
 
 // Implements `t[i] = v`.
-LULU_FUNC void
+void
 table_set_integer(lulu_VM *vm, Table *t, Integer i, Value v);
 
-LULU_FUNC void
+void
 table_unset(Table *t, Value k);
 
 
@@ -84,5 +84,5 @@ table_unset(Table *t, Value k);
  *      `true` if iteration can start/continue, else `false`. In the falsy
  *      case `k` and `v` are not set so they may not be safe to read.
  */
-LULU_FUNC bool
+bool
 table_next(lulu_VM *vm, Table *t, Value *restrict k, Value *restrict v);

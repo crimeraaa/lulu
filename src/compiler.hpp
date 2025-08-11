@@ -14,7 +14,7 @@ MAX_TOTAL_LOCALS  = UINT16_MAX;
 
 using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
 
-struct LULU_PRIVATE Block {
+struct Block {
     // Stack-allocated linked-list.
     Block *prev;
 
@@ -28,7 +28,7 @@ struct LULU_PRIVATE Block {
     bool breakable;
 };
 
-struct LULU_PRIVATE Compiler {
+struct Compiler {
     lulu_VM *vm;
 
     // The enclosing (parent) function, non-`nullptr` if we are nested.
@@ -58,21 +58,21 @@ struct LULU_PRIVATE Compiler {
     u16 free_reg;
 };
 
-LULU_FUNC inline Instruction *
+inline Instruction *
 get_code(Compiler *c, isize pc)
 {
     return &c->chunk->code[pc];
 }
 
-LULU_FUNC Compiler
+Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev);
 
 [[noreturn]]
-LULU_FUNC void
+void
 compiler_error_limit(Compiler *c, isize limit, const char *what);
 
 template<class T>
-LULU_FUNC inline void
+inline void
 compiler_check_limit(Compiler *c, T count, T limit, const char *what)
 {
     if (count > limit) {
@@ -80,13 +80,13 @@ compiler_check_limit(Compiler *c, T count, T limit, const char *what)
     }
 }
 
-LULU_FUNC isize
+isize
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2);
 
-LULU_FUNC isize
+isize
 compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx);
 
-LULU_FUNC isize
+isize
 compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx);
 
 
@@ -98,7 +98,7 @@ compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx);
  *      reserved `n` registers beforehand. This function will not reserve
  *      for you.
  */
-LULU_FUNC void
+void
 compiler_load_nil(Compiler *c, u16 reg, int n);
 
 
@@ -109,19 +109,19 @@ compiler_load_nil(Compiler *c, u16 reg, int n);
  *  1.) If you need to push the boolean to a register, you should have reserved
  *      it beforehand. This function will not reserve for you.
  */
-LULU_FUNC void
+void
 compiler_load_boolean(Compiler *c, u16 reg, bool b);
 
-LULU_FUNC u32
+u32
 compiler_add_number(Compiler *c, Number n);
 
-LULU_FUNC u32
+u32
 compiler_add_ostring(Compiler *c, OString *s);
 
-LULU_FUNC u32
+u32
 compiler_add_constant(Compiler *c, Value v);
 
-LULU_FUNC void
+void
 compiler_check_stack(Compiler *c, u16 n);
 
 /**
@@ -129,7 +129,7 @@ compiler_check_stack(Compiler *c, u16 n);
  *      Increments `c.free_reg` by `n`; asserting that it does not exceed
  *      `MAX_REG`.
  */
-LULU_FUNC void
+void
 compiler_reserve_reg(Compiler *c, u16 n);
 
 
@@ -141,7 +141,7 @@ compiler_reserve_reg(Compiler *c, u16 n);
  * @returns
  *      The register we pushed `e` to.
  */
-LULU_FUNC u16
+u16
 compiler_expr_next_reg(Compiler *c, Expr *e);
 
 
@@ -159,7 +159,7 @@ compiler_expr_next_reg(Compiler *c, Expr *e);
  * @returns
  *      The RK register of `e`, otherwise a normal register.
  */
-LULU_FUNC u16
+u16
 compiler_expr_rk(Compiler *c, Expr *e);
 
 
@@ -172,7 +172,7 @@ compiler_expr_rk(Compiler *c, Expr *e);
  * @returns
  *      The register `e` resides in.
  */
-LULU_FUNC u16
+u16
 compiler_expr_any_reg(Compiler *c, Expr *e);
 
 
@@ -203,21 +203,21 @@ compiler_expr_any_reg(Compiler *c, Expr *e);
  *          expressions, but only `right` is actually popped. `c.free_reg`
  *          is now `0`.
  */
-LULU_FUNC void
+void
 compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
     Expr *restrict right);
 
-LULU_FUNC void
+void
 compiler_code_unary(Compiler *c, OpCode op, Expr *e);
 
-LULU_FUNC void
+void
 compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
     Expr *restrict right);
 
-LULU_FUNC void
+void
 compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right);
 
-LULU_FUNC void
+void
 compiler_code_return(Compiler *c, u16 reg, u16 count);
 
 
@@ -226,12 +226,12 @@ compiler_code_return(Compiler *c, u16 reg, u16 count);
  *      Analogous to `lcode.c:luaK_storevar(FuncState *fs, expdesc *var,
  *      expdesc *expr)` in Lua 5.1.5.
  */
-LULU_FUNC void
+void
 compiler_set_variable(Compiler *c, Expr *restrict var, Expr *restrict expr);
 
 
 // Does not convert `call` to `EXPR_DISCHARGED`.
-LULU_FUNC void
+void
 compiler_set_returns(Compiler *c, Expr *call, u16 n);
 
 
@@ -244,7 +244,7 @@ compiler_set_returns(Compiler *c, Expr *call, u16 n);
  *      Analogous to `lcode.c:luaK_setoneret(FuncState *fs, expdesc *e)`
  *      in Lua 5.1.5.
  */
-LULU_FUNC void
+void
 compiler_set_one_return(Compiler *c, Expr *e);
 
 
@@ -261,13 +261,13 @@ compiler_set_one_return(Compiler *c, Expr *e);
  * @return
  *      The register (which fits in 8 bits) if found, else `NO_REG`.
  */
-LULU_FUNC u16
+u16
 compiler_get_local(Compiler *c, u16 limit, OString *ident);
 
-LULU_FUNC void
+void
 compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k);
 
-LULU_FUNC void
+void
 compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store);
 
 
@@ -279,7 +279,7 @@ compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store);
  * @return
  *      The `pc` of the new jump list. Use this to fill an `Expr`.
  */
-LULU_FUNC isize
+isize
 compiler_jump_new(Compiler *c);
 
 
@@ -290,7 +290,7 @@ compiler_jump_new(Compiler *c);
  *      `*list` must be the start of a jump list, or it will be initialized
  *      to a new one.
  */
-LULU_FUNC void
+void
 compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
 
 
@@ -312,7 +312,7 @@ compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
  *          `compiler.cpp`; it is how logical operators (along with their
  *          register allocations) are implemented.
  */
-LULU_FUNC void
+void
 compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP,
     u16 reg = NO_REG);
 
@@ -338,10 +338,10 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP,
  *      Analogous to `lcode.c:luaK_goif{true,false}(FuncState *fs,
  *      expdesc *e)` in Lua 5.1.5.
  */
-LULU_FUNC void
+void
 compiler_logical_new(Compiler *c, Expr *left, bool cond);
 
-LULU_FUNC void
+void
 compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
     bool cond);
 
@@ -351,5 +351,5 @@ compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
  *      Marks `c->pc` as a 'jump' target and returns it. This is useful to
  *      prevent bad optimizations when calling `compiler_code_nil()`.
  */
-LULU_FUNC isize
+isize
 compiler_label_get(Compiler *c);

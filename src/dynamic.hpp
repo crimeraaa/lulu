@@ -4,12 +4,12 @@
 #include "mem.hpp"
 
 template<class T>
-struct LULU_PRIVATE Dynamic : public Slice<T> {
+struct Dynamic : public Slice<T> {
     isize cap = 0;
 };
 
 template<class T>
-LULU_FUNC inline void
+inline void
 dynamic_init(Dynamic<T> *d)
 {
     d->data = nullptr;
@@ -23,7 +23,7 @@ dynamic_init(Dynamic<T> *d)
  *      `d->len` is left untouched thus you still cannot index it.
  */
 template<class T>
-LULU_FUNC inline void
+inline void
 dynamic_reserve(lulu_VM *vm, Dynamic<T> *d, isize new_cap)
 {
     d->data = mem_resize(vm, d->data, d->cap, new_cap);
@@ -41,7 +41,7 @@ dynamic_reserve(lulu_VM *vm, Dynamic<T> *d, isize new_cap)
  *      this range.
  */
 template<class T>
-LULU_FUNC inline void
+inline void
 dynamic_resize(lulu_VM *vm, Dynamic<T> *d, isize new_len)
 {
     // Can't accomodate the new data?
@@ -54,7 +54,7 @@ dynamic_resize(lulu_VM *vm, Dynamic<T> *d, isize new_len)
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 dynamic_push(lulu_VM *vm, Dynamic<T> *d, T value)
 {
     dynamic_resize(vm, d, d->len + 1);
@@ -62,28 +62,28 @@ dynamic_push(lulu_VM *vm, Dynamic<T> *d, T value)
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 dynamic_pop(Dynamic<T> *d)
 {
     d->len -= 1;
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 dynamic_delete(lulu_VM *vm, Dynamic<T> *d)
 {
     mem_delete(vm, d->data, d->cap);
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 dynamic_reset(Dynamic<T> *d)
 {
     d->len = 0;
 }
 
 template<class T>
-LULU_FUNC inline isize
+inline isize
 cap(const Dynamic<T> &d)
 {
     return d.cap;

@@ -3,7 +3,7 @@
 #include "private.hpp"
 #include "slice.hpp"
 
-LULU_FUNC void *
+void *
 mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
 
 
@@ -11,7 +11,7 @@ mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
  * @brief
  *      Rounds `n` to the next power of 2 if it is not one already.
  */
-LULU_FUNC inline isize
+inline isize
 mem_next_pow2(isize n)
 {
     isize next = 1;
@@ -27,7 +27,7 @@ mem_next_pow2(isize n)
  * @brief
  *      Rounds `n` to the next fibonacci term, if it is not one already.
  */
-LULU_FUNC inline isize
+inline isize
 mem_next_fib(isize n)
 {
     // Don't start with 1 because ((1*3) >> 1) == 1) meaning an infinite loop.
@@ -42,7 +42,7 @@ mem_next_fib(isize n)
 
 // `extra` may be negative to allow us to work with 0-length flexible arrays.
 template<class T>
-LULU_FUNC inline T *
+inline T *
 mem_new(lulu_VM *vm, isize extra = 0)
 {
     // Cast must occur after arithmetic in case `extra < 0`.
@@ -51,7 +51,7 @@ mem_new(lulu_VM *vm, isize extra = 0)
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 mem_free(lulu_VM *vm, T *ptr, isize extra = 0)
 {
     usize size = cast_usize(size_of(T) + extra);
@@ -59,7 +59,7 @@ mem_free(lulu_VM *vm, T *ptr, isize extra = 0)
 }
 
 template<class T>
-LULU_FUNC inline T *
+inline T *
 mem_resize(lulu_VM *vm, T *ptr, isize prev, isize next)
 {
     usize prev_size = sizeof(T) * cast_usize(prev);
@@ -68,21 +68,21 @@ mem_resize(lulu_VM *vm, T *ptr, isize prev, isize next)
 }
 
 template<class T>
-LULU_FUNC inline T *
+inline T *
 mem_make(lulu_VM *vm, isize count)
 {
     return mem_resize<T>(vm, nullptr, 0, count);
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 mem_delete(lulu_VM *vm, T *ptr, isize n)
 {
     mem_resize(vm, ptr, n, 0);
 }
 
 template<class T>
-LULU_FUNC inline Slice<T>
+inline Slice<T>
 slice_make(lulu_VM *vm, isize n)
 {
     Slice<T> s{mem_make<T>(vm, n), n};
@@ -90,7 +90,7 @@ slice_make(lulu_VM *vm, isize n)
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 slice_resize(lulu_VM *vm, Slice<T> *s, isize n)
 {
     Slice<T> next{mem_resize<T>(vm, raw_data(*s), len(*s), n), n};
@@ -98,7 +98,7 @@ slice_resize(lulu_VM *vm, Slice<T> *s, isize n)
 }
 
 template<class T>
-LULU_FUNC inline void
+inline void
 slice_delete(lulu_VM *vm, Slice<T> s)
 {
     mem_delete(vm, raw_data(s), len(s));
@@ -113,22 +113,22 @@ slice_delete(lulu_VM *vm, Slice<T> s)
  *      pointers.
  */
 template<class T>
-LULU_FUNC inline isize
-ptr_index(const Slice<T> &s, const T *p)
+inline isize
+ptr_index(Slice<T> s, const T *p)
 {
     return cast_isize(p - raw_data(s));
 }
 
 template<class T, isize N>
-LULU_FUNC inline isize
+inline isize
 ptr_index(const Array<T, N> &a, const T *p)
 {
     return cast_isize(p - raw_data(a));
 }
 
 template<class T>
-LULU_FUNC inline bool
-ptr_index_safe(const Slice<T> &s, const T *p, isize *out)
+inline bool
+ptr_index_safe(Slice<T> s, const T *p, isize *out)
 {
     auto addr_start = cast(uintptr_t)begin(s);
     auto addr_stop  = cast(uintptr_t)end(s);

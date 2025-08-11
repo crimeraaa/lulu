@@ -349,7 +349,7 @@ vm_runtime_error(lulu_VM *vm, const char *fmt, ...)
     vm_throw(vm, LULU_ERROR_RUNTIME);
 }
 
-struct LULU_PRIVATE Load_Data {
+struct Load_Data {
     LString source;
     Stream *stream;
     Builder builder;
@@ -515,7 +515,7 @@ vm_call_init(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
 }
 
 void
-vm_call_fini(lulu_VM *vm, const Slice<Value> &results)
+vm_call_fini(lulu_VM *vm, Slice<Value> results)
 {
     Call_Frame *cf = vm->caller;
     bool vararg_return = (cf->to_return == VARARG);

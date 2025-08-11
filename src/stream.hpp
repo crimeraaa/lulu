@@ -4,7 +4,7 @@
 
 #define STREAM_END      -1
 
-struct LULU_PRIVATE Stream {
+struct Stream {
     lulu_Reader function;
     void       *data;
     const char *cursor;     // Current position in buffer somewhere at `data.`

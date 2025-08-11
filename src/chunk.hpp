@@ -5,19 +5,19 @@
 #include "value.hpp"
 #include "string.hpp"
 
-struct LULU_PRIVATE Line_Info {
+struct Line_Info {
     int   line; // Line number is stored directly in case we skip empty lines.
     isize start_pc;
     isize end_pc;
 };
 
-struct LULU_PRIVATE Local {
+struct Local {
     OString *ident;
     isize    start_pc;
     isize    end_pc;
 };
 
-struct LULU_PRIVATE Chunk {
+struct Chunk {
     OBJECT_HEADER;
     Dynamic<Value>       constants;
     Dynamic<Instruction> code;
@@ -35,16 +35,16 @@ struct LULU_PRIVATE Chunk {
 static constexpr u16 VARARG = Instruction::MAX_B;
 static constexpr int NO_LINE = -1;
 
-LULU_FUNC Chunk *
+Chunk *
 chunk_new(lulu_VM *vm, OString *source);
 
-LULU_FUNC void
+void
 chunk_delete(lulu_VM *vm, Chunk *p);
 
-LULU_FUNC isize
+isize
 chunk_append(lulu_VM *vm, Chunk *p, Instruction i, int line);
 
-LULU_FUNC int
+int
 chunk_get_line(const Chunk *p, isize pc);
 
 
@@ -55,10 +55,10 @@ chunk_get_line(const Chunk *p, isize pc);
  * @return
  *      The index of `v` in the constants array.
  */
-LULU_FUNC u32
+u32
 chunk_add_constant(lulu_VM *vm, Chunk *p, Value v);
 
-LULU_FUNC isize
+isize
 chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident);
 
 
@@ -69,5 +69,5 @@ chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident);
  * @param pc
  *      The index of the instruction where `local_number` is valid.
  */
-LULU_FUNC const char *
+const char *
 chunk_get_local(const Chunk *p, int local_number, isize pc);

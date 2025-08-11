@@ -79,7 +79,7 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets)
     vm_call(vm, fn, n_args, (n_rets == LULU_MULTRET) ? VARARG : n_rets);
 }
 
-struct LULU_PRIVATE PCall {
+struct PCall {
     int n_args, n_rets;
 };
 
@@ -98,7 +98,7 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
     return e;
 }
 
-struct LULU_PRIVATE C_PCall {
+struct C_PCall {
     lulu_CFunction function;
     void          *function_data;
 };
