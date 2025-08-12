@@ -1,35 +1,66 @@
 import gdb # type: ignore
-from typing import Final
 from .. import base
+from typing import Callable
+
+Value_Type = gdb.lookup_type("Value_Type")
+
+# Can't compare `gdb.Value` to `gdb.Field`, get enum value instead
+VALUE_LIGHTUSERDATA = Value_Type["VALUE_LIGHTUSERDATA"].enumval
+
+class OStringPrinter:
+    __value: gdb.Value
+
+    def __init__(self, v: gdb.Value):
+        if v.type.code != gdb.TYPE_CODE_PTR:
+            v = v.address
+        self.__value = v
+
+    def to_string(self) -> str:
+        # Can't call `.string()` on `char[1]`
+        s = self.__value["data"].cast(base.CONST_CHAR_POINTER)
+        n = int(self.__value["len"])
+        return s.string(length = n)
+
+    def display_hint(self) -> str:
+        return "string"
+
 
 class ValuePrinter:
     """
     ```
-    struct lulu::[value.odin]::Value {
-        enum lulu::[value.odin]::Value_Type type;
-        union lulu::[value.odin]::Value_Data data;
+    struct Value {
+        Value_Type type;
+        union {...};
     }
     ```
     """
-    __type: Final[str]
-    __data: Final[gdb.Value]
+    __type: gdb.Value
+    __data: gdb.Value
+
+
+    __TOSTRING: dict[str, Callable[[gdb.Value], str]] = {
+        "nil":      lambda _: "nil",
+        "boolean":  lambda data: str(bool(data["m_boolean"])),
+        "number":   lambda data: str(float(data["m_number"])),
+        "string":   lambda data: str(data["m_object"]["ostring"].address),
+        "integer":  lambda data: str(int(data["m_integer"])),
+    }
 
     def __init__(self, val: gdb.Value):
         # In GDB, enums are already pretty-printed to their names
-        self.__type = str(val["type"])
-        self.__data = val["data"]
+        self.__type = val["m_type"]
+        # No *named* union to access
+        self.__data = val
 
     def to_string(self) -> str:
-        match self.__type:
-            case "Nil":     return "nil"
-            case "Boolean": return str(bool(self.__data["boolean"])).lower()
-            case "Number":  return str(float(self.__data["number"]))
-            # will (eventually) delegate to `odin.StringPrinter`
-            case "String":  return str(self.__data["object"]["ostring"].address)
+        t = str(self.__type).removeprefix("VALUE_").lower()
+        if t in self.__TOSTRING:
+            return self.__TOSTRING[t](self.__data)
 
-        # Assuming ALL data pointers have the same representation
-        # Meaning `(void *)value.ostring == (void *)value.table` for the same
-        # `lulu::Value` instance.
-        pointer = self.__data["object"].cast(base.VOID_POINTER)
-        return f"{self.__type.lower()}: {pointer}"
+        if self.__type == VALUE_LIGHTUSERDATA:
+            p = self.__data["m_pointer"]
+        else:
+            p = self.__data["m_object"].cast(base.VOID_POINTER)
+        return f"{t}: {p}"
+
 

@@ -13,20 +13,22 @@ if os.getcwd() not in sys.path:
     sys.path.insert(0, os.getcwd())
 end
 
-file ./bin/lua
+# file ./bin/lua
 
-# Protected call of `luaD_protectedparser()`
-break ldo.c:f_parser
-break luaY_parser
-break lua_pcall
-break luaD_precall if nresults == -1
-break luaV_execute
+# # Protected call of `luaD_protectedparser()`
+# break ldo.c:f_parser
+# break luaY_parser
+# break lua_pcall
+# break luaD_precall if nresults == -1
+# break luaV_execute
 
 # Test error call stack
 # break luaG_aritherror
 # break luaG_typeerror
 
-# file ./bin/lulu
+file ./bin/lulu
+
+break lulu.c:main
 
 # break lulu_main::main
 # break lulu::run

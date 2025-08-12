@@ -763,6 +763,10 @@ union luai_Cast { double l_d; long l_l; };
 #undef LUA_COMPAT_MOD
 #undef LUA_COMPAT_VARARG
 
+/* For testing to see how `ZIO` and `LexState` work with partial words */
+/* #undef LUAL_BUFFERSIZE
+#define LUAL_BUFFERSIZE		8 */
+
 #include <assert.h>
 #define lua_assert  assert
 

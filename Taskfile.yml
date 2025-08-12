@@ -2,104 +2,24 @@
 
 version: '3'
 
-vars:
-  MODE: '{{default "debug"}}'
-  ODIN: odin
+# https://taskfile.dev/docs/guide#including-other-taskfiles
 
-  DEBUG_FLAGS: >-
-    -debug
-    -sanitize:address
-  RELEASE_FLAGS: >-
-    -vet
-    -o:size
+includes:
+  cpp:
+    taskfile: ./cpp/Taskfile.yml
+    dir: ./cpp
 
-  LULU_MAIN_OUT: bin/lulu
-  LULU_TEST_OUT: bin/lulu.bin
-  LULU_SRC: lulu
-
-  # I am aware this is incredibly ugly
-  LULU_GLOB: '{{ "{.," }}{{.LULU_SRC}}{{ "}" }}/*.odin'
-
-  # Common flags
-  ODIN_FLAGS: >-
-    -define:LULU_USE_CONSTANT_FOLDING=true
-    -collection:lulu={{.LULU_SRC}}/
-    -collection:readline=readline/
-
-  LUA_OUT: bin/lua
-  LUA_SRC: lua/src
-  LUA_GLOB: '{{.LUA_SRC}}/*.[ch]'
+  lua:
+    taskfile: ./lua/Taskfile.yml
+    dir: ./lua
 
 tasks:
-  build:
-    desc: Build the Lulu executable
-    vars:
-      FLAGS: >-
-        {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{end}}{{if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
-        {{.ODIN_FLAGS}}
-    requires:
-      vars: [MODE, ODIN_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+  list:
     cmds:
-      - '{{.ODIN}} build . {{.FLAGS}} -define:LULU_USE_READLINE=true -out:{{.LULU_MAIN_OUT}}'
-    sources:
-      - 'lulu.odin'
-      - 'baselib.odin'
-      - 'input.odin'
-      - '{{.LULU_SRC}}/*.odin'
-
-  # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
-  run:
-    desc: Build the Lulu executable if needed, then run it.
-    cmds:
-      - task: build
-      - '{{.LULU_MAIN_OUT}} {{.CLI_ARGS}}'
-    interactive: true
-
-  test:
-    desc: Build the Lulu executable if needed and run tests on it.
-    cmds:
-      - >-
-        {{.ODIN}} test . {{.ODIN_FLAGS}}
-        -define:LULU_USE_READLINE=false
-        -define:LULU_DEBUG_PRINT_CODE=false
-        -define:LULU_DEBUG_TRACE_EXEC=false
-        -out:{{.LULU_TEST_OUT}}
-      # - '{{.LULU_TEST_OUT}} {{.CLI_ARGS}}'
-    sources:
-      - test.odin
-      - '{{.LULU_SRC}}/*.odin'
-
-  build-lua:
-    desc: Build the local Lua executable if needed.
-    cmds:
-      - |
-        cd ./lua
-        make --always-make --jobs=8
-        mv ./src/lua ../bin/
-        mv ./src/luac ../bin/
-        mv ./src/liblua.a ../bin/
-        cd ..
-    sources:
-      - '{{.LUA_GLOB}}'
-
-  run-lua:
-    desc: Build the local Lua executable if needed, then run it.
-    cmds:
-      - task: build-lua
-      - '{{.LUA_OUT}} {{.CLI_ARGS}}'
-    interactive: true
-
-  # lol
-  # https://taskfile.dev/styleguide/#prefer-using-external-scripts-instead-of-multi-line-commands
-  clean-lua:
-    cmds:
-      - |
-        cd ./lua
-        make clean
-        cd ..
+      - ls -1 {{.VIM_GLOB}}
 
   fix-whitespace:
-    desc: Remove trailing whitespace from all *.{odin,c,h} files.
+    desc: Remove trailing whitespace from all project files.
     deps:
       - task: find-and-replace
         vars:
@@ -108,27 +28,47 @@ tasks:
 
   # https://github.com/crimeraaa/lulu/blob/16cf4f5d187546704e7f66c9c401d85c4a71b68a/Taskfile.yml#L95C8-L95C11
   find-and-replace:
-    desc: Replace a pattern in all *.{odin,[ch]} files. Uses Vim syntax.
+    desc: Replace a pattern in all project files. Uses Vim syntax.
     vars:
       VIM: vim
+
       # Dissection:
-      #   -e              Ex mode, used mainly for non-interactive file editing.
-      #   -u NONE         Do not load '.vimrc' or 'init.vim' of any kind.
-      #   -c <command>    Execute <command> after entering.
-      #   -- <...>        Positional arguments: file names or globs thereof.
+      #   odin/lulu/*.odin
+      #     Match all .odin files in ./odin/lulu/.
+      #
+      #   {lua,cpp}src/*.[ch]*
+      #     Match .c, .h with optional trailing characters, (e.g. .cpp and .hpp)
+      #     in ./lua/src/ and ./cpp/src/.
+      #
+      #   tests/**/*.lua
+      #     Match all .lua files in ./tests/ and all sub-directories thereof.
+      #
+      #   printers/**/*.py
+      #     Match all .py files in ./printers/ and all sub-directories thereof.
+      VIM_GLOB: 'odin/lulu/*.odin {lua,cpp}/src/*.[ch]* tests/**/*.lua printers/**/*.py'
+
+      # Dissection:
+      #   -e
+      #     Ex mode, used mainly for non-interactive file editing.
+      #
+      #   -u NONE
+      #     Do not load .vimrc nor init.vim of any kind.
+      #
+      #   -c <command>
+      #     Execute <command> after entering. Multiple instances of this
+      #     can be chained.
+      #
+      #   -- <...>
+      #     Positional arguments: file names or globs thereof.
       VIM_FLAGS: >-
         -e
         -u NONE
         -c ':bufdo! %s/{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
         -c ':xa'
-    prompt: This command will potentially modify all files in '{{.LULU_GLOB}}'. Continue?
+    prompt: This command will potentially modify all project files. Continue?
     cmds:
-      - '{{.VIM}} {{.VIM_FLAGS}} {{.LULU_GLOB}} {{.LUA_GLOB}}'
+      - '{{.VIM}} {{.VIM_FLAGS}} {{.VIM_GLOB}}'
     requires:
       vars: [VIM_PATTERN, VIM_REPLACE]
     preconditions:
       - sh: command -v {{.VIM}}
-
-  list:
-    cmds:
-      - ls {{.LULU_GLOB}}

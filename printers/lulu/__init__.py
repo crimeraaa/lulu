@@ -2,14 +2,20 @@
 import gdb # type: ignore
 from typing import Final
 from printers import odin, base
-from . import opcode, lexer, expr, value
+from . import opcode, chunk, lexer, expr, value, table
 
 class __PrettyPrinter(gdb.printing.PrettyPrinter):
     """
     Usage:
-    -   Create `lulu/bin/lulu-gdb.py` right next to `lulu/bin/lulu`.
+    -   If lulu and its implementation was compiled into a standalone executable
+        then create `lulu/bin/lulu-gdb.py` right next to `lulu/bin/lulu`.
     -   When invoking `gdb lulu/bin/lulu`, it will load `lulu/bin/lulu-gdb.py`
         if auto loading of scripts was enabled.
+
+    -   Otherwise, if lulu was first compiled as a shared library, e.g.
+        `lulu/bin/liblulu.so`, then create `lulu/bin/liblulu.so-gdb.py` instead.
+    -   When `bin/liblulu.so` (NOT the main executable) is loaded into memory,
+        GDB will load the Python script.
 
     Notes:
     -   GDB Python does NOT include the relative current directory in `sys.path`.
@@ -18,7 +24,7 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
 
     Sample:
     ```
-    # lulu/bin/lulu-gdb.py
+    # lulu/bin/lulu-gdb.py or lulu/bin/liblulu.so-gdb.py
     import gdb
     from printers import odin, lulu
 
@@ -48,32 +54,61 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
         # Assuming demangled but fully-qualified names
         self.__printers = {
             # Structs
-            "lulu.Instruction":  opcode.InstructionPrinter,
-            "lulu.Token":        lexer.TokenPrinter,
-            "lulu.Expr":         expr.ExprPrinter,
-            "lulu.Value":        value.ValuePrinter,
-            "lulu.OString":      odin.StringPrinter,
+            "Instruction":  opcode.InstructionPrinter,
+            "Token":        lexer.TokenPrinter,
+            "Line_Info":    lexer.LineInfoPrinter,
+            "Expr":         expr.ExprPrinter,
+            "Value":        value.ValuePrinter,
+            "LString":      odin.StringPrinter,
+            "OString":      value.OStringPrinter,
+            "Local":        chunk.LocalPrinter,
+            "Entry":        table.Entry_Printer,
 
             # Pointers thereof
-            "^lulu.Instruction": opcode.InstructionPrinter,
-            "^lulu.Token":       lexer.TokenPrinter,
-            "^lulu.Expr":        expr.ExprPrinter,
-            "^lulu.Value":       value.ValuePrinter,
-            "^lulu.OString":     odin.StringPrinter,
+            # "Instruction *": opcode.InstructionPrinter,
+            "Token *":      lexer.TokenPrinter,
+            "Expr *":       expr.ExprPrinter,
+            "OString *":    value.OStringPrinter,
         }
         super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))
 
+    def __resolve_typename(self, v: gdb.Value) -> str:
+        # The `.type` field for pointers doesn't have a `.name` field.
+        # https://sourceware.org/gdb/current/onlinedocs/gdb.html/Types-In-Python.html#Types-In-Python
+        match v.type.code:
+            case gdb.TYPE_CODE_PTR:
+                tag = v.type.target().name
+                # e.g. `Object **`
+                if tag is None:
+                    return str(v.type)
+                return tag + " *"
 
-    def __call__(self, val: gdb.Value):
-        # Seems that from within the VSCode debugger an exception is silently
-        # raised and squashed while trying to print `lulu.VM`
-        #
-        # Curiously, running GDB on the command line doesn't show any errors.
-        try:
-            tag, _ = odin.pretty_printer.demangle(val)
-            return self.__printers[tag](val)
-        except:
-            pass
+            # NOTE: Messes with `using LString = Slice<const char>;`.
+            # case gdb.TYPE_CODE_TYPEDEF:
+            #     t = v.type.strip_typedefs()
+            #     return self.__resolve_typename(v.cast(t))
+            case gdb.TYPE_CODE_REF:
+                # e.g. `lulu_VM &` is a reference to `lulu_VM`,
+                # `Object *&` is a reference to `Object *`.
+                return self.__resolve_typename(v.referenced_value())
+            case gdb.TYPE_CODE_ARRAY:
+                return str(v.type)
+            case _:
+                # Only structs, unions and enums can have tags, so use `name`.
+                t = v.type.unqualified()
+                return t.name or str(t)
+
+    def __call__(self, v: gdb.Value):
+        tag = self.__resolve_typename(v)
+
+        # TODO(2025-06-27): Differentiate from dependent typenames, e.g.
+        # Slice<Value>::pointer
+        if tag.startswith("Slice<") and tag.endswith(">"):
+            return odin.SlicePrinter(v, tag)
+        elif tag.startswith("Dynamic<") and tag.endswith(">"):
+            return odin.DynamicPrinter(v, tag)
+        elif tag in self.__printers:
+            return self.__printers[tag](v)
         return None
 
 

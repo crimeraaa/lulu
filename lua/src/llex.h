@@ -14,7 +14,7 @@
 /* #define FIRST_RESERVED	257 */
 
 /* maximum length of a reserved word */
-#define TOKEN_LEN	(sizeof("function")/sizeof(char))
+#define TOKEN_MAX_LEN	  (sizeof("function") / sizeof(char))
 
 
 /*
@@ -23,42 +23,42 @@
 */
 typedef enum {
   /* RESERVED */
-  Token_And, Token_Break, Token_Do, Token_Else, Token_Elseif, Token_End,
-  Token_False, Token_For, Token_Function, Token_If, Token_In, Token_Local,
-  Token_Nil, Token_Not, Token_Or, Token_Repeat, Token_Return, Token_Then,
-  Token_True, Token_Until, Token_While,
+  TOKEN_AND, TOKEN_BREAK, TOKEN_DO, TOKEN_ELSE, TOKEN_ELSEIF, TOKEN_END,
+  TOKEN_FALSE, TOKEN_FOR, TOKEN_FUNCTION, TOKEN_IF, TOKEN_IN, TOKEN_LOCAL,
+  TOKEN_NIL, TOKEN_NOT, TOKEN_OR, TOKEN_REPEAT, TOKEN_RETURN, TOKEN_THEN,
+  TOKEN_TRUE, TOKEN_UNTIL, TOKEN_WHILE,
 
 
   /* BALANCED PAIRS */
-  Token_Left_Paren, Token_Right_Paren, /* `(` `)` */
-  Token_Left_Curly, Token_Right_Curly, /* `{` `}` */
-  Token_Left_Bracket, Token_Right_Bracket, /* `[` `]` */
+  TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN, /* `(` `)` */
+  TOKEN_LEFT_CURLY, TOKEN_RIGHT_CURLY, /* `{` `}` */
+  TOKEN_LEFT_BRACKET, TOKEN_RIGHT_BRACKET, /* `[` `]` */
 
 
   /* PUNCTUATION */
-  Token_Comma, Token_Colon, Token_Semi, /* `,` `:` `;` */
-  Token_Dot, Token_Concat, Token_Vararg, /* `.` `..` `...` */
-  Token_Assign, /* `=` */
+  TOKEN_COMMA, TOKEN_COLON, TOKEN_SEMI, /* `,` `:` `;` */
+  TOKEN_DOT, TOKEN_CONCAT, TOKEN_VARARG, /* `.` `..` `...` */
+  TOKEN_ASSIGN, /* `=` */
 
 
   /* ARITHMETIC */
-  Token_Add, Token_Sub, /* `+` `-` */
-  Token_Mul, Token_Div, Token_Mod, /* `*` `/` `%` */
-  Token_Len, Token_Pow, /* `#` `^` */
+  TOKEN_ADD, TOKEN_SUB, /* `+` `-` */
+  TOKEN_MUL, TOKEN_DIV, TOKEN_MOD, /* `*` `/` `%` */
+  TOKEN_LEN, TOKEN_POW, /* `#` `^` */
 
 
   /* COMPARISON */
-  Token_Eq, Token_Neq, /* `==` `~=` */
-  Token_Lt, Token_Leq, /* `<` `<=` */
-  Token_Gt, Token_Geq, /* `>` `>=` */
+  TOKEN_EQ, TOKEN_NEQ, /* `==` `~=` */
+  TOKEN_LT, TOKEN_LEQ, /* `<` `<=` */
+  TOKEN_GT, TOKEN_GEQ, /* `>` `>=` */
 
 
   /* MISC. TERMINALS */
-  Token_Number, Token_String, Token_Name, Token_Error, Token_Eos
-} TokenType;
+  TOKEN_NUMBER, TOKEN_STRING, TOKEN_NAME, TOKEN_ERROR, TOKEN_EOS
+} Token_Type;
 
 /* number of reserved words */
-#define NUM_RESERVED    (cast(int, Token_While) + 1)
+#define NUM_RESERVED    (cast(int, TOKEN_WHILE) + 1)
 
 
 /* array with token `names' */
@@ -72,7 +72,7 @@ typedef union {
 
 
 typedef struct Token {
-  TokenType type;
+  Token_Type type;
   SemInfo seminfo;
 } Token;
 
@@ -98,9 +98,9 @@ LUAI_FUNC void luaX_setinput (lua_State *L, LexState *lex, ZIO *z, TString *sour
 LUAI_FUNC TString *luaX_newstring (LexState *lex, const char *str, size_t l);
 LUAI_FUNC void luaX_next (LexState *lex);
 LUAI_FUNC void luaX_lookahead (LexState *lex);
-LUAI_FUNC void luaX_lexerror (LexState *lex, const char *msg, TokenType type);
+LUAI_FUNC void luaX_lexerror (LexState *lex, const char *msg, Token_Type type);
 LUAI_FUNC void luaX_syntaxerror (LexState *lex, const char *s);
-LUAI_FUNC const char *luaX_token2str (LexState *lex, TokenType type);
+LUAI_FUNC const char *luaX_token2str (LexState *lex, Token_Type type);
 
 
 #endif

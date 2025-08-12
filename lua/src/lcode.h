@@ -40,7 +40,7 @@ typedef enum UnOpr { OPR_MINUS, OPR_NOT, OPR_LEN, OPR_NOUNOPR } UnOpr;
  *  Get the `Instruction *` based on the `expr`'s `pc`.
  *
  * @note
- *  Assumes `expr` is of type `Expr_Relocable`.
+ *  Assumes `expr` is of type `EXPR_RELOCABLE`.
  */
 #define getcode(fs, expr)	(&(fs)->proto->code[(expr)->u.s.info])
 
@@ -60,24 +60,24 @@ LUAI_FUNC int luaK_numberK (FuncState *fs, lua_Number r);
 
 /**
  * @brief 2025-04-8:
- *  If possible, transforms `expr` to `Expr_Relocable` indicating it still
+ *  If possible, transforms `expr` to `EXPR_RELOCABLE` indicating it still
  *  requires a register.
  *
  *  The main exceptions are `Expr_(Local|Call)` which are converted to
- *  `Expr_Nonrelocable`, indicating they have a clearly defined register.
+ *  `EXPR_NONRELOCABLE`, indicating they have a clearly defined register.
  */
 LUAI_FUNC void luaK_dischargevars (FuncState *fs, Expr *expr);
 
 /**
  * @brief 2025-04-08:
- *  Similar to `luaK_exp2nextreg()` but if `expr` is already `Expr_Nonrelocable`
+ *  Similar to `luaK_exp2nextreg()` but if `expr` is already `EXPR_NONRELOCABLE`
  *  we will not re-emit it.
  */
 LUAI_FUNC int luaK_exp2anyreg (FuncState *fs, Expr *expr);
 
 /**
  * @brief 2025-04-08:
- *  Always transforms `expr` to `Expr_Nonrelocable` as it immmediately uses the
+ *  Always transforms `expr` to `EXPR_NONRELOCABLE` as it immmediately uses the
  *  next avaiable register (`fs->freereg`) no matter what.
  */
 LUAI_FUNC void luaK_exp2nextreg (FuncState *fs, Expr *expr);

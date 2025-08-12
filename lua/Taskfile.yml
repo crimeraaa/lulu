@@ -1,0 +1,37 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  BIN: ../bin
+  SRC: src
+
+  LUA_OUT: '{{.BIN}}/lua'
+  LUA_GLOB: '{{.SRC}}/*.[ch]'
+  LUA_SOURCES:
+    sh: ls -1 {{.LUA_GLOB}} | tr "\n" " "
+
+tasks:
+  build:
+    desc: Build the local Lua executable if needed.
+    cmds:
+      - |
+        make --always-make --jobs=8
+        mv {{.SRC}}/lua {{.BIN}}/
+        mv {{.SRC}}/luac {{.BIN}}/
+        mv {{.SRC}}/liblua.a {{.BIN}}/
+    sources:
+      - '{{.LUA_GLOB}}'
+
+  run:
+    desc: Build the local Lua executable if needed, then run it.
+    dir: '{{.TASKFILE_DIR}}/..'
+    cmds:
+      - task: build
+      - '{{.LUA_OUT | replace "../" ""}} {{.CLI_ARGS}}'
+    interactive: true
+
+  clean:
+    desc: Deletes object files and binaries that were created.
+    cmds:
+      - make clean

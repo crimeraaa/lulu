@@ -21,29 +21,29 @@
  *  Originally called `expkind`.
  */
 typedef enum {
-  Expr_Void,	/* no value */
-  Expr_Nil,
-  Expr_True,
-  Expr_False,
-  Expr_Constant,	/* info = index of constant in `k' */
-  Expr_Number,	/* nval = numerical value */
-  Expr_Local,	 /* info = local register */
-  Expr_Upvalue,  /* info = index of upvalue in `upvalues' */
-  Expr_Global,  /* info = index of table; aux = index of global name in `k' */
-  Expr_Index,	 /* info = table register; aux = index register (or `k') */
-  Expr_Jump,	/* info = instruction pc ; used for tests/comparisons */
-  Expr_Relocable,	 /* info = instruction pc */
-  Expr_Nonrelocable,	/* info = result register */
-  Expr_Call,	/* info = instruction pc */
-  Expr_Vararg	 /* info = instruction pc */
-} ExprKind;
+  EXPR_VOID,	/* no value */
+  EXPR_NIL,
+  EXPR_TRUE,
+  EXPR_FALSE,
+  EXPR_CONSTANT,	/* info = index of constant in `k' */
+  EXPR_NUMBER,	/* nval = numerical value */
+  EXPR_LOCAL,	 /* info = local register */
+  EXPR_UPVALUE,  /* info = index of upvalue in `upvalues' */
+  EXPR_GLOBAL,  /* info = index of table; aux = index of global name in `k' */
+  EXPR_INDEX,	 /* info = table register; aux = index register (or `k') */
+  EXPR_JUMP,	/* info = instruction pc ; used for tests/comparisons */
+  EXPR_RELOCABLE,	 /* info = instruction pc */
+  EXPR_NONRELOCABLE,	/* info = result register */
+  EXPR_CALL,	/* info = instruction pc */
+  EXPR_VARARG	 /* info = instruction pc */
+} Expr_Type;
 
 /**
  * @note 2025-04-07:
  *  Originally called `expdesc`.
  */
 typedef struct Expr {
-  ExprKind kind;
+  Expr_Type kind;
   union {
     struct { int info, aux; } s;
     lua_Number nval;
