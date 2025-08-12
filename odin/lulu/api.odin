@@ -147,6 +147,29 @@ poke_top :: proc(vm: ^VM, i: int) -> (v: ^Value, ok: bool) {
 ///=== PUSH FUNCTIONS ====================================================== {{{
 
 
+
+/*
+**Brief**
+-   Shifts all elements at stack index `i` up to the top by 1 slot to the right,
+    then sets the stack slot at `i` to the top of the stack before the shifting.
+-   e.g. given the stack `[ "hi", "mom", print ]`
+-   when we `lulu.insert(vm, 1)` we should get `[ print, "hi", "mom" ]`.
+ */
+insert :: proc(vm: ^VM, i: int) {
+    target, ok := poke(vm, i)
+    assert(ok)
+
+    // Stack slot will be overwritten
+    prev_top := peek(vm, -1)
+
+    // Shift all elements past `target` 1 slot to the right
+    base := ptr_index(target, vm.view)
+    #reverse for &v, i in vm.view[base + 1:] {
+        v = vm.view[base + i]
+    }
+    target^ = prev_top
+}
+
 push_nil :: proc(vm: ^VM, n := 1) {
     vm_check_stack(vm, n)
     for i in 0..<n {
@@ -410,10 +433,14 @@ call :: proc(vm: ^VM, n_arg, n_ret: int) {
 
     // Account for any changes in the stack pushed by native functions.
     if vm.current != nil {
+        // Ensure our pointers are correct; resizing is managed outside here.
         assert(raw_data(vm.view) == raw_data(vm.current.window))
+
         top := vm_absindex(vm, vm.view, from = .Top)
         vm_extend_view_absolute(vm, &vm.current.window, top)
     }
+    // if `vm.current` is nil then we won't properly reset `vm.view` otherwise.
+    base := vm_absindex(vm, vm.view, from = .Base)
     if vm_call(vm, callable, n_arg, n_ret) == .Lua {
         vm_execute(vm)
     }
@@ -423,7 +450,7 @@ call :: proc(vm: ^VM, n_arg, n_ret: int) {
     -   Points exactly up to the last return value.
     -   Concept check `function f() return "hi" end; print(f())`
      */
-    vm_extend_view_absolute(vm, &vm.view, fn_index + n_ret)
+    vm.view = vm.stack_all[base:fn_index + n_ret]
 }
 
 /*

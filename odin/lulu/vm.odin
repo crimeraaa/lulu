@@ -285,7 +285,7 @@ vm_frame_reset :: proc(vm: ^VM) {
 }
 
 vm_frame_pop :: proc(vm: ^VM) -> (frame: ^Frame) {
-    caller := small_array.pop_back(&vm.frames)
+    small_array.pop_back(&vm.frames)
     // Have a previous frame to return to?
     if small_array.len(vm.frames) > 0 {
         frame = small_array.get_ptr(&vm.frames, vm.frames.len - 1)
@@ -747,7 +747,8 @@ vm_return :: proc(vm: ^VM, ra: ^Value, n_ret: int) -> Call_Type {
     // Return from main function; no previous stack frame to restore.
     // See: https://www.lua.org/source/5.1/ldo.c.html#luaD_poscall
     if frame == nil {
-        vm.view = final
+        vm.current = nil
+        vm.view    = final
         return .Odin
     }
     // Otherwise, still within Lua
