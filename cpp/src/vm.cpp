@@ -792,7 +792,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             // contructors.
             Table *t = ra->to_table();
             for (isize i = 1; i <= n; i++) {
-                table_set_integer(vm, t, offset + i, *(ra + i));
+                table_set_integer(vm, t, offset + i, ra[i]);
             }
             break;
         }
@@ -879,9 +879,9 @@ vm_execute(lulu_VM *vm, int n_calls)
             DO_JUMP(inst.sbx());
             break;
         case OP_FOR_PREP: {
-            Value *index = ra;
-            Value *limit = index + 1;
-            Value *incr  = index + 2;
+            Value *index = &ra[0];
+            Value *limit = &ra[1];
+            Value *incr  = &ra[2];
 
             protect(vm, ip);
             if (!vm_to_number(index, index)) {
@@ -901,9 +901,9 @@ vm_execute(lulu_VM *vm, int n_calls)
             break;
         }
         case OP_FOR_LOOP: {
-            lulu_Number index = ra->to_number();
-            lulu_Number limit = (ra + 1)->to_number();
-            lulu_Number incr  = (ra + 2)->to_number();
+            lulu_Number index = ra[0].to_number();
+            lulu_Number limit = ra[1].to_number();
+            lulu_Number incr  = ra[2].to_number();
             lulu_Number next  = lulu_Number_add(index, incr);
 
             // How we check `limit` depends if it's negative or not.
@@ -913,10 +913,10 @@ vm_execute(lulu_VM *vm, int n_calls)
             ) {
                 DO_JUMP(inst.sbx());
                 // Update internal index.
-                ra->set_number(next);
+                ra[0].set_number(next);
 
                 // Then update external index.
-                (ra + 3)->set_number(next);
+                ra[3].set_number(next);
             }
             break;
         }
@@ -958,7 +958,9 @@ vm_execute(lulu_VM *vm, int n_calls)
             Call_Type t = vm_call_init(vm, ra, n_args, n_rets);
             if (t == CALL_LUA) {
                 n_calls++;
+#if LULU_DEBUG_TRACE_EXEC
                 printf("=== BEGIN CALL ===\n");
+#endif // LULU_DEBUG_TRACE_EXEC
                 goto re_entry;
             }
             break;
@@ -974,7 +976,9 @@ vm_execute(lulu_VM *vm, int n_calls)
             if (n_calls == 0) {
                 return;
             }
+#if LULU_DEBUG_TRACE_EXEC
             printf("\n=== END CALL ===\n\n");
+#endif // LULU_DEBUG_TRACE_EXEC
             goto re_entry;
         }
         default:

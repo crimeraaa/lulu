@@ -2,157 +2,24 @@
 
 version: '3'
 
-vars:
-  MODE: '{{default "debug"}}'
-  CC:  clang
-  CXX: clang++
+# https://taskfile.dev/docs/guide#including-other-taskfiles
 
-  # Notes(2025-06-11):
-  #   - We can `-rdynamic` so that all symbols are in the dynamic symbol table
-  #     and can thus be resolved when calling `backtrace()`.
-  #   - However, if you're using `addr2line` then you don't need it.
-  #   - You will need the dynlib library in that case though.
-  #
-  # See:
-  #   - https://stackoverflow.com/a/6934857
-  #
-  DEBUG_FLAGS: >-
-    -O0
-    -g
-    -fsanitize=address
-    -DLULU_DEBUG=1
-    -DLULU_DEBUG_PRINT_CODE
-    -DLULU_DEBUG_TRACE_EXEC
-    -ldl
+includes:
+  cpp:
+    taskfile: ./cpp/Taskfile.yml
+    dir: ./cpp
 
-  RELEASE_FLAGS: >-
-    -Werror
-    -O1
-    -g
-  # -s
-
-  CC_FLAGS: >-
-    -Wall
-    -Wextra
-    -Wpedantic
-  # -Wconversion
-
-  # Notes(2025-06-11):
-  #   - `-nostdinc++` just prevents us from including C++ standard ilbrary
-  #     headers, like `<string>`.
-  #   - The C standard library is still available to us though.
-  #   - `-nostdlib++` however cannot be used if we enabled ASAN because it
-  #     requires typeinfo which is only found in `libstdc++`.
-  #
-  CXX_FLAGS: >-
-    -std=c++17
-    {{.CC_FLAGS}}
-    -DLULU_BUILD_ALL
-    -nostdinc++
-    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{else if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
-
-  LULU_OUT: bin/lulu
-  LULU_SHARED: bin/liblulu.so
-  LULU_STATIC: bin/liblulu.a
-  LULU_DIR_SRC: src
-
-  LULU_DEBUG_EXE_CMD: >-
-    {{.CXX}}
-    -xc++
-    {{.CXX_FLAGS}}
-
-  LULU_RELEASE_EXE_CMD: >-
-    {{.CC}}
-    -std=c89
-    {{.CC_FLAGS}}
-    {{.RELEASE_FLAGS}}
-
-  # If compiling in debug mode, we linked ASAN to the C++ shared library.
-  # So we need to compile `lulu.c` as C++ with the same flags to ensure we link
-  # the correct ASAN runtime.
-  LULU_EXE_CMD: >-
-    {{if eq .MODE "debug"}}{{.LULU_DEBUG_EXE_CMD}}{{else if eq .MODE "release"}}{{.LULU_RELEASE_EXE_CMD}}{{end}}
-    -L{{.USER_WORKING_DIR}}/bin
-    -o {{.LULU_OUT}}
-    {{.LULU_DIR_SRC}}/lulu.c
-    -llulu
-
-  LULU_GLOB: '{{.LULU_DIR_SRC}}/*.{[ch]pp,h}'
-
-  # Note:
-  #   - Annoyingly, even with `-x` (print horizontally), `ls` STILL adds a
-  #     newline after a certain column number limit.
-  #   - We instead use `-1` so each entry is on its own line.
-  #   - We then use `tr` to manipulate the output.
-  #
-  # See:
-  #   - https://taskfile.dev/reference/schema/#variable
-  #   - https://serverfault.com/a/105841
-  #
-  LULU_ALL:
-    sh: ls -1 {{.LULU_GLOB}} | tr "\n" " "
-  LULU_CXX_SRC: '{{regexFindAll "[^\\s]+\\.cpp" .LULU_ALL -1 | join " "}}'
-
-  LUA_OUT: bin/lua
-  LUA_DIR_SRC: lua/src
-  LUA_GLOB: '{{.LUA_DIR_SRC}}/*.[ch]'
-  LUA_SOURCES:
-    sh: ls -1 {{.LUA_GLOB}} | tr "\n" " "
+  lua:
+    taskfile: ./lua/Taskfile.yml
+    dir: ./lua
 
 tasks:
-  build:
-    desc: Build the Lulu executable
-    vars:
-    requires:
-      vars: [MODE, LULU_ALL, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+  list:
     cmds:
-      # NOTE: -fvisibility=hidden does not export a global identifier/function
-      # in the resulting shared library.
-      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -fvisibility=hidden -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
-      - '{{.LULU_EXE_CMD}}'
-    sources:
-      - '{{.LULU_GLOB}}'
-      - '{{.LULU_DIR_SRC}}/lulu.c'
-
-  # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
-  run:
-    desc: Build the Lulu executable if needed, then run it.
-    cmds:
-      - task: build
-      - '{{.LULU_OUT}} {{.CLI_ARGS}}'
-    interactive: true
-
-  build-lua:
-    desc: Build the local Lua executable if needed.
-    cmds:
-      - |
-        cd ./lua
-        make --always-make --jobs=8
-        mv ./src/lua ../bin/
-        mv ./src/luac ../bin/
-        mv ./src/liblua.a ../bin/
-        cd ..
-    sources:
-      - '{{.LUA_GLOB}}'
-
-  run-lua:
-    desc: Build the local Lua executable if needed, then run it.
-    cmds:
-      - task: build-lua
-      - '{{.LUA_OUT}} {{.CLI_ARGS}}'
-    interactive: true
-
-  # lol
-  # https://taskfile.dev/styleguide/#prefer-using-external-scripts-instead-of-multi-line-commands
-  clean-lua:
-    cmds:
-      - |
-        cd ./lua
-        make clean
-        cd ..
+      - ls -1 {{.VIM_GLOB}}
 
   fix-whitespace:
-    desc: Remove trailing whitespace from all *.{odin,c,h} files.
+    desc: Remove trailing whitespace from all project files.
     deps:
       - task: find-and-replace
         vars:
@@ -161,35 +28,47 @@ tasks:
 
   # https://github.com/crimeraaa/lulu/blob/16cf4f5d187546704e7f66c9c401d85c4a71b68a/Taskfile.yml#L95C8-L95C11
   find-and-replace:
-    desc: Replace a pattern in all *.{odin,[ch]} files. Uses Vim syntax.
+    desc: Replace a pattern in all project files. Uses Vim syntax.
     vars:
       VIM: vim
+
       # Dissection:
-      #   -e              Ex mode, used mainly for non-interactive file editing.
-      #   -u NONE         Do not load '.vimrc' or 'init.vim' of any kind.
-      #   -c <command>    Execute <command> after entering.
-      #   -- <...>        Positional arguments: file names or globs thereof.
+      #   odin/lulu/*.odin
+      #     Match all .odin files in ./odin/lulu/.
+      #
+      #   {lua,cpp}src/*.[ch]*
+      #     Match .c, .h with optional trailing characters, (e.g. .cpp and .hpp)
+      #     in ./lua/src/ and ./cpp/src/.
+      #
+      #   tests/**/*.lua
+      #     Match all .lua files in ./tests/ and all sub-directories thereof.
+      #
+      #   printers/**/*.py
+      #     Match all .py files in ./printers/ and all sub-directories thereof.
+      VIM_GLOB: 'odin/lulu/*.odin {lua,cpp}/src/*.[ch]* tests/**/*.lua printers/**/*.py'
+
+      # Dissection:
+      #   -e
+      #     Ex mode, used mainly for non-interactive file editing.
+      #
+      #   -u NONE
+      #     Do not load .vimrc nor init.vim of any kind.
+      #
+      #   -c <command>
+      #     Execute <command> after entering. Multiple instances of this
+      #     can be chained.
+      #
+      #   -- <...>
+      #     Positional arguments: file names or globs thereof.
       VIM_FLAGS: >-
         -e
         -u NONE
         -c ':bufdo! %s/{{.VIM_PATTERN}}/{{.VIM_REPLACE}}/ge'
         -c ':xa'
-    prompt: This command will potentially modify all files in '{{.LULU_GLOB}}' and '{{.LUA_GLOB}}'. Continue?
+    prompt: This command will potentially modify all project files. Continue?
     cmds:
-      - '{{.VIM}} {{.VIM_FLAGS}} {{.LULU_ALL}} {{.LUA_SOURCES}}'
+      - '{{.VIM}} {{.VIM_FLAGS}} {{.VIM_GLOB}}'
     requires:
       vars: [VIM_PATTERN, VIM_REPLACE]
     preconditions:
       - sh: command -v {{.VIM}}
-
-  list:
-    cmds:
-      # - echo {{.LULU_ALL}}
-
-      # regex* functions: <pattern> <input> ...
-      # regexFindAll: <pattern> <input> <count>
-      - echo regexFindAll = {{regexFindAll "[^\\s.]+\\.cpp" .LULU_ALL -1 | join " "}}
-
-      # regexReplaceAll: <pattern> <input> <replacement>
-      - echo regexReplaceAll = {{regexReplaceAll "[^\\s]+\\.hpp" .LULU_ALL ""}}
-    silent: true

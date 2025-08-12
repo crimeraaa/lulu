@@ -78,7 +78,7 @@ run_interactive(lulu_VM *vm)
         size_t      n = 0;
 
         printf(">>> ");
-        if (fgets(buf, (int)sizeof(buf), stdin) == NULL) {
+        if (fgets(buf, cast(int)sizeof(buf), stdin) == NULL) {
             printf("\n");
             break;
         }
@@ -103,8 +103,8 @@ run_interactive(lulu_VM *vm)
 }
 
 typedef struct {
-    FILE  *file;
-    char   buffer[LULU_BUFFER_BUFSIZE];
+    FILE *file;
+    char buffer[LULU_BUFFER_BUFSIZE];
 } Reader_File;
 
 static const char *
@@ -117,8 +117,10 @@ reader_file(void *user_ptr, size_t *n)
         *n = 0;
         return NULL;
     }
+
     /* Fill buffer. Note for small files this may be the only time! */
     *n = fread(r->buffer, 1, sizeof(r->buffer), r->file);
+
     /* Read successfully? */
     return (*n > 0) ? r->buffer : NULL;
 }
@@ -144,8 +146,8 @@ run_file(lulu_VM *vm, const char *file_name)
 
 typedef struct {
     char **argv;
-    int    argc;
-    int    status;
+    int argc;
+    int status;
 } Main_Data;
 
 static int
@@ -192,12 +194,12 @@ panic(lulu_VM *vm)
 
 int main(int argc, char *argv[])
 {
-    Main_Data  d;
-    lulu_VM   *vm;
+    Main_Data d;
+    lulu_VM *vm;
     lulu_Error e;
     /* In C89, brace initialization requires all constant expressions. */
-    d.argv   = argv;
-    d.argc   = argc;
+    d.argv = argv;
+    d.argc = argc;
     d.status = EXIT_SUCCESS;
 
     vm = lulu_open(c_allocator, NULL);

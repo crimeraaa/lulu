@@ -1,0 +1,134 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  MODE: '{{default "debug"}}'
+  CC:  clang
+  CXX: clang++
+
+  # Notes(2025-06-11):
+  #   - We can `-rdynamic` so that all symbols are in the dynamic symbol table
+  #     and can thus be resolved when calling `backtrace()`.
+  #   - However, if you're using `addr2line` then you don't need it.
+  #   - You will need the dynlib library in that case though.
+  #
+  # See:
+  #   - https://stackoverflow.com/a/6934857
+  #
+  DEBUG_FLAGS: >-
+    -O0
+    -g
+    -fsanitize=address
+    -DLULU_DEBUG=1
+    -DLULU_DEBUG_PRINT_CODE
+    -DLULU_DEBUG_TRACE_EXEC
+    -ldl
+
+  RELEASE_FLAGS: >-
+    -Werror
+    -O1
+    -g
+  # -s
+
+  CC_FLAGS: >-
+    -Wall
+    -Wextra
+    -Wpedantic
+  # -Wconversion
+
+  # Notes(2025-06-11):
+  #   - `-nostdinc++` just prevents us from including C++ standard ilbrary
+  #     headers, like `<string>`.
+  #   - The C standard library is still available to us though.
+  #   - `-nostdlib++` however cannot be used if we enabled ASAN because it
+  #     requires typeinfo which is only found in `libstdc++`.
+  #
+  CXX_FLAGS: >-
+    -std=c++17
+    {{.CC_FLAGS}}
+    -DLULU_BUILD_ALL
+    -nostdinc++
+    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{else if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
+
+  BIN: ../bin
+  SRC: src
+
+  LULU_OUT: '{{.BIN}}/lulu'
+  LULU_SHARED: '{{.BIN}}/liblulu.so'
+  LULU_STATIC: '{{.BIN}}/liblulu.a'
+
+  LULU_DEBUG_EXE_CMD: >-
+    {{.CXX}}
+    -xc++
+    {{.CXX_FLAGS}}
+
+  LULU_RELEASE_EXE_CMD: >-
+    {{.CC}}
+    -std=c89
+    {{.CC_FLAGS}}
+    {{.RELEASE_FLAGS}}
+
+  # If compiling in debug mode, we linked ASAN to the C++ shared library.
+  # So we need to compile lulu.c as C++ with the same flags to ensure we link
+  # the correct ASAN runtime.
+  LULU_EXE_CMD: >-
+    {{if eq .MODE "debug"}}{{.LULU_DEBUG_EXE_CMD}}{{else if eq .MODE "release"}}{{.LULU_RELEASE_EXE_CMD}}{{end}}
+    -L{{.BIN}}
+    -o {{.LULU_OUT}}
+    {{.SRC}}/lulu.c
+    -llulu
+
+  LULU_GLOB: '{{.SRC}}/*.[ch]*'
+
+  # Note:
+  #   - Annoyingly, even with `-x` (print horizontally), `ls` STILL adds a
+  #     newline after a certain column number limit.
+  #   - We instead use `-1` so each entry is on its own line.
+  #   - We then use `tr` to manipulate the output.
+  #
+  # See:
+  #   - https://taskfile.dev/reference/schema/#variable
+  #   - https://serverfault.com/a/105841
+  #
+  LULU_ALL:
+    sh: ls -1 {{.LULU_GLOB}} | tr "\n" " "
+  LULU_CXX_SRC: '{{regexFindAll "[^\\s]+\\.cpp" .LULU_ALL -1 | join " "}}'
+
+tasks:
+  build:
+    desc: Build the Lulu executable
+    vars:
+    requires:
+      vars: [MODE, LULU_ALL, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+    cmds:
+      # - echo Building from '{{.TASK_DIR}}'
+
+      # NOTE: -fvisibility=hidden does not export a global identifier/function
+      # in the resulting shared library.
+      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -fvisibility=hidden -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
+      - '{{.LULU_EXE_CMD}}'
+    sources:
+      - '{{.LULU_GLOB}}'
+
+  # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
+  run:
+    desc: Build the Lulu executable if needed, then run it.
+    dir: '{{.TASKFILE_DIR}}/..'
+    cmds:
+      - task: build
+      - '{{.LULU_OUT | replace "../" ""}} {{.CLI_ARGS}}'
+    interactive: true
+
+  list:
+    cmds:
+      # - ls -1 {{.LULU_GLOB}}
+      # - echo CWD={{.TASK_DIR}}
+
+      # regex* functions: <pattern> <input> ...
+      # regexFindAll: <pattern> <input> <count>
+      - echo regexFindAll = {{regexFindAll "[^\\s.]+\\.cpp" .LULU_ALL -1 | join " "}}
+
+      # regexReplaceAll: <pattern> <input> <replacement>
+      - echo regexReplaceAll = {{regexReplaceAll "[^\\s]+\\.hpp" .LULU_ALL ""}}
+    silent: true
