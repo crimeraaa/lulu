@@ -106,7 +106,7 @@ tasks:
     requires:
       vars: [MODE, LULU_ALL, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
     cmds:
-      # NOTE: -fvisibility=hidden does not export AN global identifier/function
+      # NOTE: -fvisibility=hidden does not export a global identifier/function
       # in the resulting shared library.
       - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -fvisibility=hidden -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
       - '{{.LULU_EXE_CMD}}'

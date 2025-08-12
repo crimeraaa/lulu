@@ -90,7 +90,7 @@ math_frexp(lulu_VM *vm)
     lulu_Number frac = frexp(x, &exp);
     lulu_push_number(vm, frac);
     lulu_push_integer(vm, exp);
-    return 1;
+    return 2;
 }
 
 static int
