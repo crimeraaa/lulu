@@ -201,9 +201,9 @@ hash_string(LString text)
 void
 intern_init(Intern *t)
 {
-    t->table.data  = nullptr;
-    t->table.len   = 0;
-    t->count       = 0;
+    t->table.data = nullptr;
+    t->table.len = 0;
+    t->count = 0;
 }
 
 static isize
@@ -233,15 +233,15 @@ intern_resize(lulu_VM *vm, Intern *t, isize new_cap)
         // Rehash all children for this list.
         while (node != nullptr) {
             OString *s = &node->ostring;
-            usize    i = intern_clamp_index(s->hash, new_cap);
+            usize i = intern_clamp_index(s->hash, new_cap);
 
             // Save because it's about to be replaced.
             Object *next  = s->next;
 
             // Chain this node in the new table, using the new main index.
-            s->next      = new_table[i];
+            s->next = new_table[i];
             new_table[i] = node;
-            node         = next;
+            node = next;
         }
     }
     slice_delete(vm, t->table);

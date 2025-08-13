@@ -26,7 +26,7 @@ end
 # break luaG_aritherror
 # break luaG_typeerror
 
-file ./bin/lulu
+file ./bin/lulu-cpp
 
 break lulu.c:main
 

@@ -192,7 +192,7 @@ vm_grow_stack :: proc(vm: ^VM, extra: int) {
     // Save the indexes now because the old data will be invalidated
     // This is safe even on the very first call, because *both* `stack_all` and
     // `view` are `nil`. Pointer subtraction, after casting to `uintptr`,
-    // results in `0`.
+    // results in 0.
     base, top := vm_absindex(vm, vm.view)
     prev := vm.stack_all
     slice_resize(vm, &vm.stack_all, new_size)

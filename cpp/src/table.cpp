@@ -559,7 +559,7 @@ find_next(lulu_VM *vm, Table *t, Value k)
 bool
 table_next(lulu_VM *vm, Table *t, Value *restrict k, Value *restrict v)
 {
-    // Find the index of the element after `k`, or `0` if starting out.
+    // Find the index of the element after `k`, or 0 if starting out.
     isize i = find_next(vm, t, *k);
     for (/* empty */; i < len(t->array); i++) {
         Value src = t->array[i];

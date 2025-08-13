@@ -17,7 +17,7 @@ os_lib[] = {
     {"clock", &os_clock},
 };
 
-LULU_API int
+LULU_LIB_API int
 lulu_open_os(lulu_VM *vm)
 {
     lulu_set_library(vm, LULU_OS_LIB_NAME, os_lib);

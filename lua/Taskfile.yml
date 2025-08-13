@@ -3,13 +3,11 @@
 version: '3'
 
 vars:
-  BIN: ../bin
-  SRC: src
+  LUA_BIN: ../bin
+  LUA_SRC: src
 
-  LUA_OUT: '{{.BIN}}/lua'
-  LUA_GLOB: '{{.SRC}}/*.[ch]'
-  LUA_SOURCES:
-    sh: ls -1 {{.LUA_GLOB}} | tr "\n" " "
+  LUA_OUT: '{{.LUA_BIN}}/lua'
+  LUA_GLOB: '{{.LUA_SRC}}/*.[ch]'
 
 tasks:
   build:
@@ -17,9 +15,9 @@ tasks:
     cmds:
       - |
         make --always-make --jobs=8
-        mv {{.SRC}}/lua {{.BIN}}/
-        mv {{.SRC}}/luac {{.BIN}}/
-        mv {{.SRC}}/liblua.a {{.BIN}}/
+        mv {{.LUA_SRC}}/lua {{.LUA_BIN}}/
+        mv {{.LUA_SRC}}/luac {{.LUA_BIN}}/
+        mv {{.LUA_SRC}}/liblua.a {{.LUA_BIN}}/
     sources:
       - '{{.LUA_GLOB}}'
 

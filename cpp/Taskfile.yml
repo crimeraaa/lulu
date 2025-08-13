@@ -3,7 +3,7 @@
 version: '3'
 
 vars:
-  MODE: '{{default "debug"}}'
+  CPP_MODE: '{{.MODE | default "debug"}}'
   CC:  clang
   CXX: clang++
 
@@ -16,7 +16,7 @@ vars:
   # See:
   #   - https://stackoverflow.com/a/6934857
   #
-  DEBUG_FLAGS: >-
+  CC_DEBUG_FLAGS: >-
     -O0
     -g
     -fsanitize=address
@@ -25,9 +25,9 @@ vars:
     -DLULU_DEBUG_TRACE_EXEC
     -ldl
 
-  RELEASE_FLAGS: >-
+  CC_RELEASE_FLAGS: >-
     -Werror
-    -O1
+    -O2
     -g
   # -s
 
@@ -49,37 +49,37 @@ vars:
     {{.CC_FLAGS}}
     -DLULU_BUILD_ALL
     -nostdinc++
-    {{if eq .MODE "debug"}}{{.DEBUG_FLAGS}}{{else if eq .MODE "release"}}{{.RELEASE_FLAGS}}{{end}}
+    {{if eq .CPP_MODE "debug"}}{{.CC_DEBUG_FLAGS}}{{else if eq .CPP_MODE "release"}}{{.CC_RELEASE_FLAGS}}{{end}}
 
-  BIN: ../bin
-  SRC: src
+  CPP_BIN: ../bin
+  CPP_SRC: src
 
-  LULU_OUT: '{{.BIN}}/lulu'
-  LULU_SHARED: '{{.BIN}}/liblulu.so'
-  LULU_STATIC: '{{.BIN}}/liblulu.a'
+  CPP_OUT: '{{.CPP_BIN}}/{{.OUT}}'
+  CPP_SHARED: '{{.CPP_BIN}}/liblulu.so'
+  CPP_STATIC: '{{.CPP_BIN}}/liblulu.a'
 
-  LULU_DEBUG_EXE_CMD: >-
+  CPP_DEBUG_CMD: >-
     {{.CXX}}
     -xc++
     {{.CXX_FLAGS}}
 
-  LULU_RELEASE_EXE_CMD: >-
+  CPP_RELEASE_CMD: >-
     {{.CC}}
     -std=c89
     {{.CC_FLAGS}}
-    {{.RELEASE_FLAGS}}
+    {{.CC_RELEASE_FLAGS}}
 
   # If compiling in debug mode, we linked ASAN to the C++ shared library.
   # So we need to compile lulu.c as C++ with the same flags to ensure we link
   # the correct ASAN runtime.
-  LULU_EXE_CMD: >-
-    {{if eq .MODE "debug"}}{{.LULU_DEBUG_EXE_CMD}}{{else if eq .MODE "release"}}{{.LULU_RELEASE_EXE_CMD}}{{end}}
-    -L{{.BIN}}
-    -o {{.LULU_OUT}}
-    {{.SRC}}/lulu.c
+  CPP_OUT_COMPILE_COMMAND: >-
+    {{if eq .CPP_MODE "debug"}}{{.CPP_DEBUG_CMD}}{{else if eq .CPP_MODE "release"}}{{.CPP_RELEASE_CMD}}{{end}}
+    -L{{.CPP_BIN}}
+    -o {{.OUT}}
+    {{.CPP_SRC}}/lulu.c
     -llulu
 
-  LULU_GLOB: '{{.SRC}}/*.[ch]*'
+  CPP_GLOB: '{{.CPP_SRC}}/*.[ch]*'
 
   # Note:
   #   - Annoyingly, even with `-x` (print horizontally), `ls` STILL adds a
@@ -91,25 +91,25 @@ vars:
   #   - https://taskfile.dev/reference/schema/#variable
   #   - https://serverfault.com/a/105841
   #
-  LULU_ALL:
-    sh: ls -1 {{.LULU_GLOB}} | tr "\n" " "
-  LULU_CXX_SRC: '{{regexFindAll "[^\\s]+\\.cpp" .LULU_ALL -1 | join " "}}'
+  CPP_GLOB_1LINE:
+    sh: ls -1 {{.CPP_GLOB}} | tr "\n" " "
+  CPP_GLOB_CXX_SRC: '{{regexFindAll "[^\\s]+\\.cpp" .CPP_GLOB_1LINE -1 | join " "}}'
 
 tasks:
   build:
     desc: Build the Lulu executable
     vars:
     requires:
-      vars: [MODE, LULU_ALL, CXX_FLAGS, DEBUG_FLAGS, RELEASE_FLAGS]
+      vars: [CPP_MODE, CPP_SRC, CXX_FLAGS, CC_DEBUG_FLAGS, CC_RELEASE_FLAGS]
     cmds:
       # - echo Building from '{{.TASK_DIR}}'
 
       # NOTE: -fvisibility=hidden does not export a global identifier/function
       # in the resulting shared library.
-      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -fvisibility=hidden -o {{.LULU_SHARED}} {{.LULU_CXX_SRC}}'
-      - '{{.LULU_EXE_CMD}}'
+      - '{{.CXX}} {{.CXX_FLAGS}} -shared -fPIC -fvisibility=hidden -o {{.CPP_SHARED}} {{.CPP_GLOB_CXX_SRC}}'
+      - '{{.CPP_OUT_COMPILE_COMMAND}}'
     sources:
-      - '{{.LULU_GLOB}}'
+      - '{{.CPP_GLOB}}'
 
   # https://taskfile.dev/usage/#forwarding-cli-arguments-to-commands
   run:
@@ -117,18 +117,18 @@ tasks:
     dir: '{{.TASKFILE_DIR}}/..'
     cmds:
       - task: build
-      - '{{.LULU_OUT | replace "../" ""}} {{.CLI_ARGS}}'
+      - '{{.CPP_OUT | replace "../" ""}} {{.CLI_ARGS}}'
     interactive: true
 
   list:
     cmds:
-      # - ls -1 {{.LULU_GLOB}}
+      # - ls -1 {{.CPP_GLOB}}
       # - echo CWD={{.TASK_DIR}}
 
       # regex* functions: <pattern> <input> ...
       # regexFindAll: <pattern> <input> <count>
-      - echo regexFindAll = {{regexFindAll "[^\\s.]+\\.cpp" .LULU_ALL -1 | join " "}}
+      - echo regexFindAll = {{regexFindAll "[^\\s.]+\\.cpp" .CPP_GLOB_1LINE -1 | join " "}}
 
       # regexReplaceAll: <pattern> <input> <replacement>
-      - echo regexReplaceAll = {{regexReplaceAll "[^\\s]+\\.hpp" .LULU_ALL ""}}
+      - echo regexReplaceAll = {{regexReplaceAll "[^\\s]+\\.hpp" .CPP_GLOB_1LINE ""}}
     silent: true

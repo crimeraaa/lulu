@@ -24,6 +24,23 @@ class OStringPrinter:
     def display_hint(self) -> str:
         return "string"
 
+class Object_Printer:
+    __value: gdb.Value
+
+    def __init__(self, v: gdb.Value):
+        self.__value = v
+
+    def to_string(self) -> str:
+        if self.__value == 0:
+            return "(null)"
+
+        t = str(self.__value["base"]["type"]).removeprefix("VALUE_").lower()
+        if t == "string":
+            return str(self.__value["ostring"].address)
+
+        s = self.__value["base"].address
+        return f"{t}: {s}"
+
 
 class ValuePrinter:
     """
@@ -60,7 +77,7 @@ class ValuePrinter:
         if self.__type == VALUE_LIGHTUSERDATA:
             p = self.__data["m_pointer"]
         else:
-            p = self.__data["m_object"].cast(base.VOID_POINTER)
+            p = self.__data["m_object"]
         return f"{t}: {p}"
 
 

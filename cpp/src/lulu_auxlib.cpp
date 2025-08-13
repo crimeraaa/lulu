@@ -3,7 +3,7 @@
 #include "lulu_auxlib.h"
 
 
-LULU_API void
+LULU_LIB_API void
 lulu_where(lulu_VM *vm, int level)
 {
     lulu_Debug ar;
@@ -18,7 +18,7 @@ lulu_where(lulu_VM *vm, int level)
     lulu_push_literal(vm, "");
 }
 
-LULU_API void
+LULU_LIB_API void
 lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b)
 {
     b->vm     = vm;
@@ -145,7 +145,7 @@ buffer_append(lulu_Buffer *b, const char *s, size_t n)
 }
 
 
-LULU_API void
+LULU_LIB_API void
 lulu_write_char(lulu_Buffer *b, char ch)
 {
     if (b->cursor >= buffer_cap(b)) {
@@ -154,13 +154,13 @@ lulu_write_char(lulu_Buffer *b, char ch)
     b->data[b->cursor++] = ch;
 }
 
-LULU_API void
+LULU_LIB_API void
 lulu_write_string(lulu_Buffer *b, const char *s)
 {
     lulu_write_lstring(b, s, strlen(s));
 }
 
-LULU_API void
+LULU_LIB_API void
 lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n)
 {
     // Number of unwritten chars in `s`.
@@ -171,7 +171,7 @@ lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n)
     }
 }
 
-LULU_API void
+LULU_LIB_API void
 lulu_finish_string(lulu_Buffer *b)
 {
     buffer_flushed(b);
@@ -179,11 +179,11 @@ lulu_finish_string(lulu_Buffer *b)
     b->pushed = 1;
 }
 
-LULU_API int
+LULU_LIB_API int
 lulu_arg_error(lulu_VM *vm, int argn, const char *msg)
 {
     lulu_Debug ar;
-    // Use level `0` because this function is only ever called by C functions.
+    // Use level 0 because this function is only ever called by C functions.
     if (!lulu_get_stack(vm, 0, &ar)) {
         return lulu_errorf(vm, "Bad argument #%i (%s)", argn, msg);
     }
@@ -191,7 +191,7 @@ lulu_arg_error(lulu_VM *vm, int argn, const char *msg)
     return lulu_errorf(vm, "Bad argument #%i to '%s' (%s)", argn, ar.name, msg);
 }
 
-LULU_API int
+LULU_LIB_API int
 lulu_type_error(lulu_VM *vm, int argn, const char *type_name)
 {
     const char *msg = lulu_push_fstring(vm, "'%s' expected, got '%s'",
@@ -215,7 +215,7 @@ type_error(lulu_VM *vm, int argn, lulu_Type tag)
 #endif
 }
 
-LULU_API void
+LULU_LIB_API void
 lulu_check_any(lulu_VM *vm, int argn)
 {
     if (lulu_is_none(vm, argn)) {
@@ -223,7 +223,7 @@ lulu_check_any(lulu_VM *vm, int argn)
     }
 }
 
-LULU_API void
+LULU_LIB_API void
 lulu_check_type(lulu_VM *vm, int argn, lulu_Type type)
 {
     if (lulu_type(vm, argn) != type) {
@@ -231,7 +231,7 @@ lulu_check_type(lulu_VM *vm, int argn, lulu_Type type)
     }
 }
 
-LULU_API int
+LULU_LIB_API int
 lulu_check_boolean(lulu_VM *vm, int argn)
 {
     if (!lulu_is_boolean(vm, argn)) {
@@ -240,7 +240,7 @@ lulu_check_boolean(lulu_VM *vm, int argn)
     return lulu_to_boolean(vm, argn);
 }
 
-LULU_API lulu_Number
+LULU_LIB_API lulu_Number
 lulu_check_number(lulu_VM *vm, int argn)
 {
     lulu_Number d = lulu_to_number(vm, argn);
@@ -250,7 +250,7 @@ lulu_check_number(lulu_VM *vm, int argn)
     return d;
 }
 
-LULU_API lulu_Integer
+LULU_LIB_API lulu_Integer
 lulu_check_integer(lulu_VM *vm, int argn)
 {
     lulu_Integer i = lulu_to_integer(vm, argn);
@@ -260,7 +260,7 @@ lulu_check_integer(lulu_VM *vm, int argn)
     return i;
 }
 
-LULU_API const char *
+LULU_LIB_API const char *
 lulu_check_lstring(lulu_VM *vm, int argn, size_t *n)
 {
     const char *s = lulu_to_lstring(vm, argn, n);
@@ -270,7 +270,7 @@ lulu_check_lstring(lulu_VM *vm, int argn, size_t *n)
     return s;
 }
 
-LULU_API lulu_Number
+LULU_LIB_API lulu_Number
 lulu_opt_number(lulu_VM *vm, int argn, lulu_Number def)
 {
     if (lulu_is_none_or_nil(vm, argn)) {
@@ -279,7 +279,7 @@ lulu_opt_number(lulu_VM *vm, int argn, lulu_Number def)
     return lulu_check_number(vm, argn);
 }
 
-LULU_API lulu_Integer
+LULU_LIB_API lulu_Integer
 lulu_opt_integer(lulu_VM *vm, int argn, lulu_Integer def)
 {
     if (lulu_is_none_or_nil(vm, argn)) {
@@ -288,7 +288,7 @@ lulu_opt_integer(lulu_VM *vm, int argn, lulu_Integer def)
     return lulu_check_integer(vm, argn);
 }
 
-LULU_API const char *
+LULU_LIB_API const char *
 lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n)
 {
     if (lulu_is_none_or_nil(vm, argn)) {
@@ -300,7 +300,7 @@ lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n)
     return lulu_check_lstring(vm, argn, n);
 }
 
-LULU_API int
+LULU_LIB_API int
 LULU_ATTR_PRINTF(2, 3)
 lulu_errorf(lulu_VM *vm, const char *fmt, ...)
 {
@@ -313,7 +313,7 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...)
     return lulu_error(vm);
 }
 
-LULU_API void
+LULU_LIB_API void
 lulu_set_nlibrary(lulu_VM *vm, const char *libname,
     const lulu_Register *library, int n)
 {
@@ -346,7 +346,7 @@ libs[] = {
     {LULU_OS_LIB_NAME, lulu_open_os},
 };
 
-LULU_API void
+LULU_LIB_API void
 lulu_open_libs(lulu_VM *vm)
 {
     for (int i = 0; i < lulu_count_library(libs); i++) {

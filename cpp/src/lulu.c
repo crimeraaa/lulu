@@ -24,7 +24,7 @@ report_error(lulu_VM *vm)
  * @note(2025-07-29)
  *  Assumptions:
  *
- *      1.) The current stack top is index `1`.
+ *      1.) The current stack top is index 1.
  *      2.) It contains the 'main' `function`.
  */
 static lulu_Error

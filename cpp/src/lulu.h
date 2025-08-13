@@ -27,45 +27,6 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
 
 
 /**
- * @brief LULU_API
- *      Defines the name linkage for functions. C++ by default uses
- *      'name-mangling', which allows multiple declarations of the same
- *      function name to have different parameter lists.
- *
- *      Name mangling makes it impossible for C relilably link to C++.
- *      So using `extern "C"` specifies that, when compiling with a C++
- *      compiler, no name mangling should occur. Thus C programs can
- *      properly link to our shared library.
- */
-#ifdef __cplusplus
-
-#   define LULU_API    extern "C" LULU_PUBLIC
-
-#else   /* ^^^ __cplusplus, vvv otherwise */
-
-#   define LULU_API    extern LULU_PUBLIC
-
-#endif /* __cplusplus */
-
-
-/**
- * @brief LULU_FUNC
- *      This controls the visibility of externally visible functions that
- *      are not part of the API.
- *
- *      That is, you can define a function like so: `LULU_FUNC void f();`
- *      `f` will not be exported but it is still visible to all functions
- *      within the library that include `f`'s header.
- *
- * @brief LULU_DATA
- *      Similar to `LULU_FUNC`, but intended for data. e.g.
- *      `LULU_DATA const char *const tokens[TOKEN_COUNT];`
- */
-#define LULU_FUNC       extern LULU_PRIVATE
-#define LULU_DATA       extern LULU_PRIVATE
-
-
-/**
  * @brief
  *      Argument to `lulu_call()` and `lulu_pcall()` to indicate that
  *      an unknown number of values will be returned by this particular
@@ -293,8 +254,8 @@ lulu_type_name(lulu_VM *vm, lulu_Type t);
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is a `number` or a
- *      `string` which represents a valid number, or else `0`.
+ *      1 if the value at relative stack index `i` is a `number` or a
+ *      `string` which represents a valid number, or else 0.
  */
 LULU_API int
 lulu_is_number(lulu_VM *vm, int i);
@@ -302,8 +263,8 @@ lulu_is_number(lulu_VM *vm, int i);
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is a `string` or a
- *      `number` (which is always convertible to a string), else `0`.
+ *      1 if the value at relative stack index `i` is a `string` or a
+ *      `number` (which is always convertible to a string), else 0.
  */
 LULU_API int
 lulu_is_string(lulu_VM *vm, int i);
@@ -311,7 +272,7 @@ lulu_is_string(lulu_VM *vm, int i);
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is truthy, else `0` if
+ *      1 if the value at relative stack index `i` is truthy, else 0 if
  *      it is falsy.
  *
  * @note(2025-07-20)
@@ -323,13 +284,13 @@ lulu_to_boolean(lulu_VM *vm, int i);
 
 /**
  * @return
- *      The `number` representation at the relative stack index `i` or else `0`.
+ *      The `number` representation at the relative stack index `i` or else 0.
  *      `number` is read directly while `string` is checked then parsed.
- *      All other types return `0`.
+ *      All other types return 0.
  *
  * @note(2025-07-20)
- *      Returning `0` is not enough to indicate the value was not of type
- *      `number`, because it is possible for the number `0` to be in the stack.
+ *      Returning 0 is not enough to indicate the value was not of type
+ *      `number`, because it is possible for the number 0 to be in the stack.
  *      You must call `lulu_is_number()` beforehand in that case.
  */
 LULU_API lulu_Number
@@ -339,7 +300,7 @@ lulu_to_number(lulu_VM *vm, int i);
 /**
  * @return
  *      The `number` representation of the value at the relative stack index
- *      `i`, or else `0`. The same conversion rules in `lulu_to_number()` apply.
+ *      `i`, or else 0. The same conversion rules in `lulu_to_number()` apply.
  *
  * @note(2025-07-21)
  *      If the value at `i` is a number but cannot be accurately represented
@@ -405,11 +366,11 @@ lulu_get_top(lulu_VM *vm);
  *      Sets the end of the current stack frame to the relative stack index `i`.
  *
  * @param i
- *      When `0`, effectively pops all the elements as the stack frame will
+ *      When 0, effectively pops all the elements as the stack frame will
  *      have a length of 0.
  *
  *      When `> 0`, only `i` values remain in the stack. E.g. `i == 1` will
- *      pop all elements until absolute index `1`, leaving it to be the new
+ *      pop all elements until absolute index 1, leaving it to be the new
  *      top of the stack.
  *
  *      When `< 0`, only `lulu_get_top(vm) - (-i)` values remain in the stack.
@@ -580,8 +541,8 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash);
  *      The relative/pseudo stack index of the table we wish to index.
  *
  * @return
- *      `1` if the key existed in the table, meaning its value was pushed.
- *      `0` otherwise, meaning `nil` was pushed.
+ *      1 if the key existed in the table, meaning its value was pushed.
+ *      0 otherwise, meaning `nil` was pushed.
  *
  * @note(2025-07-20) Assumptions:
  *
@@ -605,8 +566,8 @@ lulu_get_table(lulu_VM *vm, int table_index);
  *      A nul-terminated C string representing the field name we wish to get.
  *
  * @return
- *      `1` if `key` existed in the table, meaning `table[key]` was pushed.
- *      `0` otherwise, meaning `nil` was pushed.
+ *      1 if `key` existed in the table, meaning `table[key]` was pushed.
+ *      0 otherwise, meaning `nil` was pushed.
  *
  * @note(2025-07-20)
  *      It is possible for `table[key]` to have been mapped previously and
@@ -667,7 +628,7 @@ lulu_next(lulu_VM *vm, int table_index);
  *      pushed.
  *
  * @return
- *      `0` if `s` does not exist in the globals table, else `1`.
+ *      0 if `s` does not exist in the globals table, else 1.
  */
 #define lulu_get_global(vm, key)    lulu_get_field(vm, LULU_GLOBALS_INDEX, key)
 
@@ -700,7 +661,7 @@ lulu_concat(lulu_VM *vm, int n);
  *      works for values of type `string` and `table`.
  *
  * @return
- *      The length of the object, else `0`.
+ *      The length of the object, else 0.
  */
 LULU_API size_t
 lulu_obj_len(lulu_VM *vm, int i);
@@ -709,11 +670,11 @@ lulu_obj_len(lulu_VM *vm, int i);
 /**
  * @param level
  *      How far up the call stack you wish to get the debug information of.
- *      `0` is the caller of this function (e.g. a C function),
- *      `1` is the caller of caller (e.g. Lua main function calling C) etc.
+ *      0 is the caller of this function (e.g. a C function),
+ *      1 is the caller of caller (e.g. Lua main function calling C) etc.
  *
  * @return
- *      `1` if successfully filled in `*ar` else `0`.
+ *      1 if successfully filled in `*ar` else 0.
  */
 LULU_API int
 lulu_get_stack(lulu_VM *vm, int level, lulu_Debug *ar);
@@ -736,7 +697,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is `nil`, else `0`.
+ *      1 if the value at relative stack index `i` is `nil`, else 0.
  *
  * @note(2025-07-19)
  *      For C functions called from Lua, since function arity (parameter
@@ -754,7 +715,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is `none` else `0`.
+ *      1 if the value at relative stack index `i` is `none` else 0.
  *
  * @note(2025-07-19)
  *      Only indexes outside the current stack frame are type `none`. Only
@@ -766,23 +727,23 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is `none` or `nil`,
- *      else `0`.
+ *      1 if the value at relative stack index `i` is `none` or `nil`,
+ *      else 0.
  */
 #define lulu_is_none_or_nil(vm, i)  (lulu_type(vm, i) <= LULU_TYPE_NIL)
 
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is a `boolean`, else `0`.
+ *      1 if the value at relative stack index `i` is a `boolean`, else 0.
  */
 #define lulu_is_boolean(vm, i)      (lulu_type(vm, i) == LULU_TYPE_BOOLEAN)
 
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is a `userdata`, else
- *      `0`.
+ *      1 if the value at relative stack index `i` is a `userdata`, else
+ *      0.
  *
  * @note(2025-07-20)
  *      `userdata` are generally safe to cast to pointers of some type `T`.
@@ -797,14 +758,14 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is a `table`, else `0`.
+ *      1 if the value at relative stack index `i` is a `table`, else 0.
  */
 #define lulu_is_table(vm, i)        (lulu_type(vm, i) == LULU_TYPE_TABLE)
 
 
 /**
  * @return
- *      `1` if the value at relative stack index `i` is a `function`, else `0`.
+ *      1 if the value at relative stack index `i` is a `function`, else 0.
  */
 #define lulu_is_function(vm, i)     (lulu_type(vm, i) == LULU_TYPE_FUNCTION)
 

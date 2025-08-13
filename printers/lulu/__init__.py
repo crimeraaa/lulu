@@ -61,6 +61,7 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             "Value":        value.ValuePrinter,
             "LString":      odin.StringPrinter,
             "OString":      value.OStringPrinter,
+            "Object":       value.Object_Printer,
             "Local":        chunk.LocalPrinter,
             "Entry":        table.Entry_Printer,
 
@@ -68,6 +69,7 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             # "Instruction *": opcode.InstructionPrinter,
             "Token *":      lexer.TokenPrinter,
             "Expr *":       expr.ExprPrinter,
+            "Object *":     value.Object_Printer,
             "OString *":    value.OStringPrinter,
         }
         super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))

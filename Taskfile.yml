@@ -8,15 +8,29 @@ includes:
   cpp:
     taskfile: ./cpp/Taskfile.yml
     dir: ./cpp
+    vars:
+      OUT: lulu-cpp
+
+  odin:
+    taskfile: ./odin/Taskfile.yml
+    dir: ./odin
+    vars:
+      OUT: lulu-odin
 
   lua:
     taskfile: ./lua/Taskfile.yml
     dir: ./lua
 
 tasks:
-  list:
-    cmds:
-      - ls -1 {{.VIM_GLOB}}
+  # list:
+  #   vars:
+  #     GLOB: >-
+  #       odin/lulu/*.odin
+  #       {lua,cpp}/src/*.[ch]*
+  #       tests/**/*.lua
+  #       printers/**/*.py
+  #   cmds:
+  #     - ls -1 {{.GLOB}}
 
   fix-whitespace:
     desc: Remove trailing whitespace from all project files.
@@ -45,7 +59,12 @@ tasks:
       #
       #   printers/**/*.py
       #     Match all .py files in ./printers/ and all sub-directories thereof.
-      VIM_GLOB: 'odin/lulu/*.odin {lua,cpp}/src/*.[ch]* tests/**/*.lua printers/**/*.py'
+      #
+      VIM_GLOB: >-
+        odin/lulu/*.odin
+        {lua,cpp}/src/*.[ch]*
+        tests/**/*.lua
+        printers/**/*.py
 
       # Dissection:
       #   -e

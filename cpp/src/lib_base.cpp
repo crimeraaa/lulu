@@ -160,7 +160,7 @@ baselib[] = {
     {"next",        base_next},
 };
 
-LULU_API int
+LULU_LIB_API int
 lulu_open_base(lulu_VM *vm)
 {
     lulu_push_value(vm, LULU_GLOBALS_INDEX); /* _G */

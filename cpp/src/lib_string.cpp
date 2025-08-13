@@ -74,7 +74,7 @@ string_len(lulu_VM *vm)
 static int
 string_sub(lulu_VM *vm)
 {
-    size_t       n = 0;
+    size_t n = 0;
     const char  *s = lulu_check_lstring(vm, 1, &n);
     size_t start = resolve_index(lulu_check_integer(vm, 2), n);
     size_t stop  = resolve_index(lulu_opt_integer(vm, 3, /* def */ n), n);
@@ -100,8 +100,8 @@ string_rep(lulu_VM *vm)
     lulu_Buffer b;
     lulu_Integer i, j;
 
-    size_t       n = 0;
-    const char  *s = lulu_check_lstring(vm, 1, &n);
+    size_t n = 0;
+    const char *s = lulu_check_lstring(vm, 1, &n);
     j = lulu_check_integer(vm, 2);
     lulu_buffer_init(vm, &b);
     for (i = 0; i < j; i++) {
@@ -295,7 +295,7 @@ get_format(lulu_VM *vm, const char *fmt, Fmt_Buf *buf)
     /* `i` points to '`x`' in `"04x"`, add 1 to include the specifier. */
     i++;
     memcpy(&buf->data[1], fmt, i);
-    buf->len         += i;
+    buf->len += i;
     buf->data[i + 1] = '\0';
     return &fmt[i - 1];
 }
@@ -436,7 +436,8 @@ string_format(lulu_VM *vm)
         case 's': {
             size_t      l = 0;
             const char *s = lulu_check_lstring(vm, argn, &l);
-            /* No precision given and string is too long to be formatted? */
+            /* No precision given and string is too long to be formatted?
+               We may reach here even if alignment/padding is given. */
             if ((buf.flags & FMT_PRECISION) == 0 && l >= 100) {
                 lulu_write_lstring(&b, s, l);
                 /* skip flushing the buffer */
@@ -471,18 +472,18 @@ string_format(lulu_VM *vm)
 
 static const lulu_Register
 stringlib[] = {
-    {"byte",    string_byte},
-    {"char",    string_char},
-    {"find",    string_find},
-    {"format",  string_format},
-    {"len",     string_len},
-    {"lower",   string_lower},
-    {"rep",     string_rep},
-    {"sub",     string_sub},
-    {"upper",   string_upper}
+    {"byte", string_byte},
+    {"char", string_char},
+    {"find", string_find},
+    {"format", string_format},
+    {"len", string_len},
+    {"lower", string_lower},
+    {"rep", string_rep},
+    {"sub", string_sub},
+    {"upper", string_upper}
 };
 
-LULU_API int
+LULU_LIB_API int
 lulu_open_string(lulu_VM *vm)
 {
     lulu_set_library(vm, LULU_STRING_LIB_NAME, stringlib);

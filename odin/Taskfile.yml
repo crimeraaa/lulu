@@ -1,0 +1,54 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  ODIN_MODE: '{{.MODE | default "debug"}}'
+  ODIN_BIN: ../bin
+  ODIN_SRC: ./lulu
+
+  ODIN_OUT: '{{.ODIN_BIN}}/{{.OUT}}'
+  ODIN_TEST_OUT: '{{.ODIN_OUT}}-test'
+
+  ODIN_FLAGS: >-
+    {{if eq .ODIN_MODE "debug"}}{{"-debug"}}{{else}}{{"-o:size"}}{{end}}
+    -define:LULU_USE_CONSTANT_FOLDING=true
+    -collection:lulu={{.ODIN_SRC}}
+
+  ODIN_BUILD_FLAGS: >-
+    {{.ODIN_FLAGS}}
+    -out:{{.ODIN_OUT}}
+
+  # `odin test` disables some runtime features for clarity of output.
+  ODIN_TEST_FLAGS: >-
+    {{.ODIN_FLAGS}}
+    -define:LULU_DEBUG_PRINT_CODE=false
+    -define:LULU_DEBUG_TRACE_EXEC=false
+    -define:LULU_USE_READLINE=false
+    -out:{{.ODIN_TEST_OUT}}
+
+tasks:
+  build:
+    desc: Build the {{.OUT}} executable if needed.
+    cmds:
+      - odin build . {{.ODIN_BUILD_FLAGS}}
+    sources:
+      - lulu.odin
+      - input.odin
+      - readline/*.odin
+      - '{{.ODIN_SRC}}/*.odin'
+
+  run:
+    desc: Runs the {{.OUT}} executable, rebuilding it if needed.
+    cmds:
+      - task: build
+      - '{{.ODIN_OUT}} {{.CLI_ARGS}}'
+    interactive: true
+
+  test:
+    desc: Runs `odin test`, creating the {{.ODIN_TEST_OUT}} executable.
+    cmds:
+      - odin test . {{.ODIN_TEST_FLAGS}}
+    sources:
+      - test.odin
+      - '{{.ODIN_SRC}}/*.odin'

@@ -134,7 +134,7 @@ static const lulu_Register math_lib[] = {
     {"tanh", &math_fn<tanh>},
 };
 
-LULU_API int
+LULU_LIB_API int
 lulu_open_math(lulu_VM *vm)
 {
     lulu_set_library(vm, LULU_MATH_LIB_NAME, math_lib);
