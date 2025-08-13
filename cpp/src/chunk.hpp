@@ -6,23 +6,25 @@
 #include "string.hpp"
 
 struct Line_Info {
-    int   line; // Line number is stored directly in case we skip empty lines.
-    isize start_pc;
-    isize end_pc;
+    int line; // Line number is stored directly in case we skip empty lines.
+    int start_pc;
+    int end_pc;
 };
 
 struct Local {
     OString *ident;
-    isize    start_pc;
-    isize    end_pc;
+    int start_pc;
+    int end_pc;
 };
 
 struct Chunk {
     OBJECT_HEADER;
-    Dynamic<Value>       constants;
+    Dynamic<Value> constants;
     Dynamic<Instruction> code;
-    Dynamic<Line_Info>   lines;
-    Dynamic<Local>       locals; // Information of ALL locals in the function.
+    Dynamic<Line_Info> lines;
+
+    // Information of all possible locals, in order, for the function.
+    Dynamic<Local> locals;
 
     // Debug/VM information
     OString *source;
@@ -41,11 +43,11 @@ chunk_new(lulu_VM *vm, OString *source);
 void
 chunk_delete(lulu_VM *vm, Chunk *p);
 
-isize
+int
 chunk_append(lulu_VM *vm, Chunk *p, Instruction i, int line);
 
 int
-chunk_get_line(const Chunk *p, isize pc);
+chunk_get_line(const Chunk *p, int pc);
 
 
 /**
@@ -58,7 +60,7 @@ chunk_get_line(const Chunk *p, isize pc);
 u32
 chunk_add_constant(lulu_VM *vm, Chunk *p, Value v);
 
-isize
+int
 chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident);
 
 
@@ -70,4 +72,4 @@ chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident);
  *      The index of the instruction where `local_number` is valid.
  */
 const char *
-chunk_get_local(const Chunk *p, int local_number, isize pc);
+chunk_get_local(const Chunk *p, int local_number, int pc);

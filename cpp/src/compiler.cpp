@@ -1,28 +1,23 @@
+#include <stdlib.h> // abs
 #include <stdio.h>  // sprintf
 
 #include "compiler.hpp"
 #include "vm.hpp"
 
-static isize
-jump_get(Compiler *c, isize jump_pc);
+static int
+jump_get(Compiler *c, int jump_pc);
 
 static void
-jump_set(Compiler *c, isize jump_pc, isize target_pc);
+jump_set(Compiler *c, int jump_pc, int target_pc);
 
 static void
 jump_invert(Compiler *c, Expr *e);
 
 static Instruction *
-jump_get_control(Compiler *c, isize jump_pc);
+jump_get_control(Compiler *c, int jump_pc);
 
-static isize
+static int
 jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2);
-
-static isize
-isize_abs(isize i)
-{
-    return (i >= 0) ? i : -i;
-}
 
 Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev)
@@ -42,18 +37,18 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev)
 }
 
 void
-compiler_error_limit(Compiler *c, isize limit, const char *what)
+compiler_error_limit(Compiler *c, int limit, const char *what)
 {
-    Parser     *p   = c->parser;
+    Parser *p = c->parser;
     const char *who = (c->prev == nullptr) ? "script" : "function";
     char buf[128];
-    sprintf(buf, "%s uses more than %" ISIZE_FMT " %s", who, limit, what);
+    sprintf(buf, "%s uses more than %i %s", who, limit, what);
     lexer_error(&p->lexer, p->current.type, buf, p->last_line);
 }
 
 //=== BYTECODE MANIPULATION ============================================ {{{
 
-static isize
+static int
 code_push(Compiler *c, Instruction i)
 {
     lulu_assert(c->pc == len(c->chunk->code));
@@ -69,7 +64,7 @@ code_pop(Compiler *c)
     lulu_assert(c->pc == len(c->chunk->code));
 }
 
-isize
+int
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2)
 {
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ABC);
@@ -78,7 +73,7 @@ compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2)
     return code_push(c, Instruction::make_abc(op, a, b, c2));
 }
 
-isize
+int
 compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx)
 {
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ABX);
@@ -87,7 +82,7 @@ compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx)
     return code_push(c, Instruction::make_abx(op, a, bx));
 }
 
-isize
+int
 compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx)
 {
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ASBX);
@@ -98,17 +93,17 @@ compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx)
 void
 compiler_load_nil(Compiler *c, u16 reg, int n)
 {
-    Instruction *ip       = nullptr;
-    const u16    last_reg = reg + cast(u16)(n - 1);
+    Instruction *ip = nullptr;
+    u16 last_reg = reg + cast(u16)(n - 1);
 
     // No potential jumps up to this point?
-    isize pc = c->pc;
+    int pc = c->pc;
     if (pc > c->last_target) {
         // Stack frame is initialized to all `nil` at the start of the function,
         // so nothing to do.
         if (pc == 0) {
             // Target register is a new local?
-            if (cast(isize)reg >= small_array_len(c->active)) {
+            if (cast_isize(reg) >= small_array_len(c->active)) {
                 return;
             }
             // Target register is an existing local.
@@ -307,10 +302,10 @@ discharge_any_reg(Compiler *c, Expr *e)
 
 // see `lcode.c:exp2reg(FuncState *fs, expdesc *e, int reg)` in Lua 5.1.5.
 static bool
-need_value(Compiler *c, isize jump_pc)
+need_value(Compiler *c, int jump_pc)
 {
     while (jump_pc != NO_JUMP) {
-        const isize  next_pc = jump_get(c, jump_pc);
+        const int next_pc = jump_get(c, jump_pc);
         Instruction *ctrl_ip = jump_get_control(c, jump_pc);
         // `OP_TEST_SET` already uses R(A) for its value; other opcodes do not
         // have a destination register yet.
@@ -322,7 +317,7 @@ need_value(Compiler *c, isize jump_pc)
     return false;
 }
 
-isize
+int
 compiler_label_get(Compiler *c)
 {
     c->last_target = c->pc;
@@ -330,7 +325,7 @@ compiler_label_get(Compiler *c)
 
 }
 
-static isize
+static int
 label_code(Compiler *c, u16 reg, bool b, bool do_jump)
 {
     compiler_label_get(c);
@@ -347,10 +342,10 @@ expr_to_reg(Compiler *c, Expr *e, u16 reg)
         compiler_jump_add(c, &e->patch_true, e->pc);
     }
     if (e->has_jumps()) {
-        isize load_true  = NO_JUMP;
-        isize load_false = NO_JUMP;
+        int load_true  = NO_JUMP;
+        int load_false = NO_JUMP;
         if (need_value(c, e->patch_true) || need_value(c, e->patch_false)) {
-            isize jump_pc = (is_jump) ? NO_JUMP : compiler_jump_new(c);
+            int jump_pc = (is_jump) ? NO_JUMP : compiler_jump_new(c);
             load_false = label_code(c, reg, /* b */ false, /* do_jump */ true);
             load_true  = label_code(c, reg, /* b */ true,  /* do_jump */ false);
             compiler_jump_patch(c, jump_pc);
@@ -751,7 +746,7 @@ u16
 compiler_get_local(Compiler *c, u16 limit, OString *ident)
 {
     for (isize reg = small_array_len(c->active) - 1; reg >= cast_isize(limit); reg--) {
-        u16    i     = small_array_get(c->active, reg);
+        u16 i = small_array_get(c->active, reg);
         Local *local = &c->chunk->locals[i];
         if (local->ident == ident) {
             return cast(u16)reg;
@@ -795,14 +790,14 @@ compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store)
     c->free_reg = table_reg + 1;
 }
 
-isize
+int
 compiler_jump_new(Compiler *c)
 {
     return compiler_code_asbx(c, OP_JUMP, 0, NO_JUMP);
 }
 
 void
-compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc)
+compiler_jump_add(Compiler *c, int *list_pc, int jump_pc)
 {
     // Nothing to do?
     if (jump_pc == NO_JUMP) {
@@ -816,9 +811,9 @@ compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc)
 
     // `*pc` points to the start of the jump list, so get the last jump we
     // added so we can chain `jump_pc` into it.
-    isize pc = *list_pc;
+    int pc = *list_pc;
     for (;;) {
-        isize next = jump_get(c, pc);
+        int next = jump_get(c, pc);
         if (next == NO_JUMP) {
             jump_set(c, pc, jump_pc);
             break;
@@ -828,8 +823,8 @@ compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc)
 }
 
 // Get the `pc` of the relative target in `jump_pc`, or `NO_JUMP`.
-static isize
-jump_get(Compiler *c, isize jump_pc)
+static int
+jump_get(Compiler *c, int jump_pc)
 {
     Instruction i = *get_code(c, jump_pc);
     lulu_assertf(OP_JUMP <= i.op() && i.op() <= OP_FOR_LOOP,
@@ -838,21 +833,21 @@ jump_get(Compiler *c, isize jump_pc)
     if (offset == NO_JUMP) {
         return NO_JUMP;
     }
-    return (jump_pc + 1) + cast_isize(offset);
+    return (jump_pc + 1) + offset;
 }
 
 static void
-jump_set(Compiler *c, isize jump_pc, isize target_pc)
+jump_set(Compiler *c, int jump_pc, int target_pc)
 {
     Instruction *ip = get_code(c, jump_pc);
     lulu_assert(OP_JUMP <= ip->op() && ip->op() <= OP_FOR_LOOP);
 
-    isize offset = target_pc - (jump_pc + 1);
+    int offset = target_pc - (jump_pc + 1);
 
     // Allow: `while true do end`
     // lulu_assert(offset != NO_JUMP);
 
-    compiler_check_limit(c, isize_abs(offset), cast_isize(Instruction::MAX_SBX),
+    compiler_check_limit(c, abs(offset), cast_int(Instruction::MAX_SBX),
         "jump offset");
 
     ip->set_sbx(cast(i32)offset);
@@ -871,7 +866,7 @@ jump_invert(Compiler *c, Expr *e)
 }
 
 static bool
-test_reg_patch(Compiler *c, isize jump_pc, u16 reg)
+test_reg_patch(Compiler *c, int jump_pc, u16 reg)
 {
     Instruction *ip = jump_get_control(c, jump_pc);
     if (ip->op() != OP_TEST_SET) {
@@ -889,7 +884,7 @@ test_reg_patch(Compiler *c, isize jump_pc, u16 reg)
 }
 
 static Instruction *
-jump_get_control(Compiler *c, isize jump_pc)
+jump_get_control(Compiler *c, int jump_pc)
 {
     Instruction *ip = get_code(c, jump_pc);
     lulu_assert(OP_JUMP <= ip->op() && ip->op() <= OP_FOR_LOOP);
@@ -903,7 +898,7 @@ jump_get_control(Compiler *c, isize jump_pc)
 }
 
 void
-compiler_jump_patch(Compiler *c, isize jump_pc, isize target, u16 reg)
+compiler_jump_patch(Compiler *c, int jump_pc, int target, u16 reg)
 {
     if (jump_pc == NO_JUMP) {
         return;
@@ -915,7 +910,7 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target, u16 reg)
     }
     for (;;) {
         // Save because `jump_set()` will overwrite the original value.
-        isize next = jump_get(c, jump_pc);
+        int next = jump_get(c, jump_pc);
         test_reg_patch(c, jump_pc, reg);
         jump_set(c, jump_pc, target);
         if (next == NO_JUMP) {
@@ -926,7 +921,7 @@ compiler_jump_patch(Compiler *c, isize jump_pc, isize target, u16 reg)
     }
 }
 
-static isize
+static int
 logical_target_get(Compiler *c, Expr *left, bool cond)
 {
     discharge_vars(c, left);
@@ -989,7 +984,7 @@ logical_target_get(Compiler *c, Expr *left, bool cond)
  *      Analogous to `lcode.c:condjump(FuncState *fs, OpCode op, int A,
  *      int B, int C)` in Lua 5.1.5.
  */
-static isize
+static int
 jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2)
 {
     compiler_code_abc(c, op, a, b, c2);
@@ -999,9 +994,10 @@ jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2)
 void
 compiler_logical_new(Compiler *c, Expr *left, bool cond)
 {
-    isize jump_pc = logical_target_get(c, left, cond);
+    int jump_pc = logical_target_get(c, left, cond);
 
     if (cond) {
+        // logical-and
         lulu_assert(left->patch_false == NO_JUMP);
         compiler_jump_add(c, &left->patch_false, jump_pc);
 
@@ -1009,6 +1005,7 @@ compiler_logical_new(Compiler *c, Expr *left, bool cond)
         compiler_jump_patch(c, left->patch_true);
         left->patch_true = NO_JUMP;
     } else {
+        // logical or
         lulu_assert(left->patch_true == NO_JUMP);
         compiler_jump_add(c, &left->patch_true, jump_pc);
 
@@ -1035,9 +1032,11 @@ compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
      *      may be folded and thus the patch list is set to `NO_JUMP`.
      */
     if (cond) {
+        // logical and
         lulu_assert(left->patch_true == NO_JUMP);
         compiler_jump_add(c, &right->patch_false, left->patch_false);
     } else {
+        // logical or
         lulu_assert(left->patch_false == NO_JUMP);
         compiler_jump_add(c, &right->patch_true, left->patch_true);
     }

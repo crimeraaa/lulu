@@ -233,9 +233,9 @@ LULU_API void
 lulu_set_top(lulu_VM *vm, int i)
 {
     if (i >= 0) {
-        isize old_start = ptr_index(vm->stack, raw_data(vm->window));
-        isize old_stop  = old_start + len(vm->window);
-        isize new_stop  = old_start + i;
+        int old_start = ptr_index(vm->stack, raw_data(vm->window));
+        int old_stop = old_start + cast_int(len(vm->window));
+        int new_stop = old_start + i;
         if (new_stop > old_stop) {
             // If growing the window, initialize the new region to nil.
             auto extra = slice(vm->stack, old_stop, new_stop);

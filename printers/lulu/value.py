@@ -34,12 +34,22 @@ class Object_Printer:
         if self.__value == 0:
             return "(null)"
 
-        t = str(self.__value["base"]["type"]).removeprefix("VALUE_").lower()
-        if t == "string":
-            return str(self.__value["ostring"].address)
+        nodes = []
+        v = self.__value
+        # Non-null linked list element?
+        while v != 0:
+            t = str(v["base"]["type"]).removeprefix("VALUE_").lower()
+            if t == "string":
+                nodes.append(str(v["ostring"].address))
+            else:
+                # Non-string object lists can get very large. Skip them.
+                s = v["base"].address
+                nodes.append(f"{t}: {s}")
+                break
+            # Next linked list element.
+            v = v["base"]["next"]
 
-        s = self.__value["base"].address
-        return f"{t}: {s}"
+        return ", ".join(nodes)
 
 
 class ValuePrinter:
@@ -57,10 +67,10 @@ class ValuePrinter:
 
     __TOSTRING: dict[str, Callable[[gdb.Value], str]] = {
         "nil":      lambda _: "nil",
-        "boolean":  lambda data: str(bool(data["m_boolean"])),
-        "number":   lambda data: str(float(data["m_number"])),
-        "string":   lambda data: str(data["m_object"]["ostring"].address),
-        "integer":  lambda data: str(int(data["m_integer"])),
+        "boolean":  lambda v: str(bool(v["m_boolean"])),
+        "number":   lambda v: str(float(v["m_number"])),
+        "string":   lambda v: str(v["m_object"]["ostring"].address),
+        "integer":  lambda v: str(int(v["m_integer"])),
     }
 
     def __init__(self, val: gdb.Value):

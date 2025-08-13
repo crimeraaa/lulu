@@ -88,13 +88,13 @@ vm_top_ptr(lulu_VM *vm);
  * @brief
  *      Gets the absolute index of `v` in `vm->stack`.
  */
-isize
+int
 vm_absindex(lulu_VM *vm, const Value *v);
 
-isize
+int
 vm_base_absindex(lulu_VM *vm);
 
-isize
+int
 vm_top_absindex(lulu_VM *vm);
 
 

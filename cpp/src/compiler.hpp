@@ -8,7 +8,7 @@ static constexpr u16
 NO_REG  = Instruction::MAX_A, // MUST fit in 8 bits for bit manipulation.
 MAX_REG = NO_REG - 5;         // Must be less than `NO_REG`.
 
-static constexpr isize
+static constexpr int
 MAX_ACTIVE_LOCALS = 200,
 MAX_TOTAL_LOCALS  = UINT16_MAX;
 
@@ -19,7 +19,7 @@ struct Block {
     Block *prev;
 
     // Jump list for all connected `break` statements, if `breakable`.
-    isize  break_list;
+    int break_list;
 
     // Number of *initialized* locals at the *time of pushing*.
     u16 n_locals;
@@ -53,13 +53,16 @@ struct Compiler {
     Active_Array active;
 
     // Index of the first free instruction, equivalent to `len(chunk->code)`.
-    isize pc;
-    isize last_target;
+    int pc;
+
+    // Pc of the last potential jump target. Helps prevent bad
+    // optimizations in compiler_load_nil().
+    int last_target;
     u16 free_reg;
 };
 
 inline Instruction *
-get_code(Compiler *c, isize pc)
+get_code(Compiler *c, int pc)
 {
     return &c->chunk->code[pc];
 }
@@ -69,24 +72,23 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev);
 
 [[noreturn]]
 void
-compiler_error_limit(Compiler *c, isize limit, const char *what);
+compiler_error_limit(Compiler *c, int limit, const char *what);
 
-template<class T>
 inline void
-compiler_check_limit(Compiler *c, T count, T limit, const char *what)
+compiler_check_limit(Compiler *c, int count, int limit, const char *what)
 {
     if (count > limit) {
-        compiler_error_limit(c, cast(isize)limit, what);
+        compiler_error_limit(c, limit, what);
     }
 }
 
-isize
+int
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2);
 
-isize
+int
 compiler_code_abx(Compiler *c, OpCode op, u16 a, u32 bx);
 
-isize
+int
 compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx);
 
 
@@ -279,7 +281,7 @@ compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store);
  * @return
  *      The `pc` of the new jump list. Use this to fill an `Expr`.
  */
-isize
+int
 compiler_jump_new(Compiler *c);
 
 
@@ -291,7 +293,7 @@ compiler_jump_new(Compiler *c);
  *      to a new one.
  */
 void
-compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
+compiler_jump_add(Compiler *c, int *list_pc, int jump_pc);
 
 
 /**
@@ -313,7 +315,7 @@ compiler_jump_add(Compiler *c, isize *list_pc, isize jump_pc);
  *          register allocations) are implemented.
  */
 void
-compiler_jump_patch(Compiler *c, isize jump_pc, isize target = NO_JUMP,
+compiler_jump_patch(Compiler *c, int jump_pc, int target = NO_JUMP,
     u16 reg = NO_REG);
 
 
@@ -351,5 +353,5 @@ compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
  *      Marks `c->pc` as a 'jump' target and returns it. This is useful to
  *      prevent bad optimizations when calling `compiler_code_nil()`.
  */
-isize
+int
 compiler_label_get(Compiler *c);

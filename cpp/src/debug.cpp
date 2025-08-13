@@ -5,7 +5,7 @@
 #include "vm.hpp"
 
 struct Args {
-    isize pc;
+    int pc;
     u16 a, b;
     union {
         u16 c;
@@ -16,7 +16,7 @@ struct Args {
 
 [[gnu::format(printf, 4, 5)]]
 static void
-print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
+print_reg(const Chunk *p, u16 reg, int pc, const char *fmt = nullptr, ...)
 {
     if (Instruction::reg_is_k(reg)) {
         u32 i = Instruction::reg_get_k(reg);
@@ -41,7 +41,7 @@ print_reg(const Chunk *p, u16 reg, isize pc, const char *fmt = nullptr, ...)
 static void
 unary(const Chunk *p, const char *op, Args args)
 {
-    isize pc = args.pc;
+    int pc = args.pc;
     print_reg(p, args.a, pc, " := %s", op);
     print_reg(p, args.b, pc);
 }
@@ -49,22 +49,22 @@ unary(const Chunk *p, const char *op, Args args)
 static void
 arith(const Chunk *p, char op, Args args)
 {
-    isize pc = args.pc;
+    int pc = args.pc;
     print_reg(p, args.a, pc, " := ");
     print_reg(p, args.b, pc, " %c ", op);
     print_reg(p, args.c, pc);
 }
 
-static isize
-jump_resolve(isize pc, i32 offset)
+static int
+jump_resolve(int pc, i32 offset)
 {
     // we add 1 because by the time an instruction is being decoded, the
     // `ip` would have been incremented already.
     return (pc + 1) + cast(isize)offset;
 }
 
-static isize
-jump_get(const Chunk *p, isize jump_pc)
+static int
+jump_get(const Chunk *p, int jump_pc)
 {
     Instruction i = p->code[jump_pc];
     lulu_assert(i.op() == OP_JUMP);
@@ -74,10 +74,9 @@ jump_get(const Chunk *p, isize jump_pc)
 static void
 compare(const Chunk *p, const char *op, Args args)
 {
-    isize pc = args.pc;
+    int pc = args.pc;
     print_reg(p, args.b, pc, " %s ", op);
-    print_reg(p, args.c, pc,
-        " ; goto .code[%" ISIZE_FMT " if %s else %" ISIZE_FMT "]",
+    print_reg(p, args.c, pc, " ; goto .code[%i if %s else %i]",
         jump_resolve(pc, 1), (args.a) ? "false" : "true", jump_get(p, pc + 1));
 }
 
@@ -106,13 +105,13 @@ debug_get_pad(const Chunk *p)
 #define PAD4 "     "
 
 void
-debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
+debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
 {
-    Args   args;
+    Args args;
     OpCode op = ip.op();
     args.pc = pc;
-    args.a  = ip.a();
-    printf("[%0*" ISIZE_FMT "] ", pad, pc);
+    args.a = ip.a();
+    printf("[%0*i] ", pad, pc);
 
     int line = chunk_get_line(p, pc);
     // Have a previous line and it's the same as ours?
@@ -171,7 +170,7 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
     case OP_BOOL:
         print_reg(p, args.a, pc, " := %s", (args.b) ? "true" : "false");
         if (args.c) {
-            printf("; goto .code[%" ISIZE_FMT "]", jump_resolve(pc, 1));
+            printf("; goto .code[%i]", jump_resolve(pc, 1));
         }
         break;
     case OP_GET_GLOBAL:
@@ -181,7 +180,7 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
 
     case OP_SET_GLOBAL: {
         OString *s = p->constants[args.bx].to_ostring();
-        char     q = (s->len == 1) ? '\'' : '\"';
+        char q = (s->len == 1) ? '\'' : '\"';
         printf("_G[%c%s%c] := ", q, s->to_cstring(), q);
         print_reg(p, args.a, pc);
         break;
@@ -235,38 +234,36 @@ debug_disassemble_at(const Chunk *p, Instruction ip, isize pc, int pad)
         print_reg(p, args.a, pc, " := concat(R(%u:%u))", args.b, args.c + 1);
         break;
     case OP_TEST: {
-        printf("goto .code[%" ISIZE_FMT " if %s", jump_resolve(pc, 1), (args.c) ? "not " : "");
-        print_reg(p, args.a, pc, " else %" ISIZE_FMT "]", jump_get(p, pc + 1));
+        printf("goto .code[%i if %s", jump_resolve(pc, 1), (args.c) ? "not " : "");
+        print_reg(p, args.a, pc, " else %i]", jump_get(p, pc + 1));
         break;
     }
     case OP_TEST_SET: {
         printf("if %s", (args.c) ? "" : "not ");
         print_reg(p, args.b, pc, " then ");
         print_reg(p, args.a, pc, " := ");
-        print_reg(p, args.b, pc,
-            "; goto .code[%" ISIZE_FMT "]; else goto .code[%" ISIZE_FMT "]",
+        print_reg(p, args.b, pc, "; goto .code[%i]; else goto .code[%i]",
             jump_get(p, pc + 1),
             jump_resolve(pc, 1));
         break;
     }
     case OP_FOR_PREP: {
         i32 offset = ip.sbx();
-        printf("goto .code[%" ISIZE_FMT "]", jump_resolve(pc, offset));
+        printf("goto .code[%i]", jump_resolve(pc, offset));
         break;
     }
     case OP_FOR_LOOP: {
         i32 offset = ip.sbx();
-        printf("goto .code[%" ISIZE_FMT "] if loop", jump_resolve(pc, offset));
+        printf("goto .code[%i] if loop", jump_resolve(pc, offset));
         break;
     }
     case OP_FOR_IN_LOOP: {
-        printf("goto .code[%" ISIZE_FMT "] if not loop", jump_resolve(pc, 1));
+        printf("goto .code[%i] if not loop", jump_resolve(pc, 1));
         break;
     }
     case OP_JUMP: {
         i32 offset = args.sbx;
-        printf("ip += %i ; goto .code[%" ISIZE_FMT "]",
-            offset, jump_resolve(pc, offset));
+        printf("ip += %i ; goto .code[%i]", offset, jump_resolve(pc, offset));
         break;
     }
     case OP_CALL: {
@@ -311,23 +308,26 @@ debug_disassemble(const Chunk *p)
 {
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
     printf(".stack_used:\n%i\n\n", p->stack_used);
-    if (len(p->locals) > 0) {
-        int pad = count_digits(len(p->locals));
+
+    int n = cast_int(len(p->locals));
+    if (n > 0) {
+        int pad = count_digits(n);
         printf(".local:\n");
-        for (isize i = 0, n = len(p->locals); i < n; i++) {
+        for (int i = 0; i < n; i++) {
             Local local = p->locals[i];
             const char *ident = local.ident->to_cstring();
-            printf("[%.*" ISIZE_FMT "] '%s': start=%" ISIZE_FMT ", end=%" ISIZE_FMT "\n",
+            printf("[%.*i] '%s': start=%i, end=%i\n",
                 pad, i, ident, local.start_pc, local.end_pc);
         }
         printf("\n");
     }
 
-    if (len(p->constants) > 0) {
-        int pad = count_digits(len(p->constants));
+    n = cast_int(len(p->constants));
+    if (n > 0) {
+        int pad = count_digits(n);
         printf(".const:\n");
-        for (isize i = 0, n = len(p->constants); i < n; i++) {
-            printf("[%.*" ISIZE_FMT "] ", pad, i);
+        for (int i = 0; i < n; i++) {
+            printf("[%.*i] ", pad, i);
             value_print(p->constants[i]);
             printf("\n");
         }
@@ -336,7 +336,8 @@ debug_disassemble(const Chunk *p)
 
     printf(".code:\n");
     int pad = debug_get_pad(p);
-    for (isize i = 0, n = len(p->code); i < n; i++) {
+    n = cast_int(len(p->code));
+    for (int i = 0; i < n; i++) {
         debug_disassemble_at(p, p->code[i], i, pad);
     }
     printf("\n=== DISASSEMBLY: END ===\n");
@@ -449,7 +450,7 @@ get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **ident)
 
         // `ip` always points to the instruction after the decoded one, so
         // subtract 1 to get the culprit.
-        isize pc = ptr_index(p->code, vm->saved_ip) - 1;
+        int pc = ptr_index(p->code, vm->saved_ip) - 1;
 
         // Add 1 to `reg` because we want to use 1-based counting. E.g.
         // the very first local is 1 rather than 0.
@@ -495,7 +496,7 @@ debug_type_error(lulu_VM *vm, const char *act, const Value *v)
     const char *scope = nullptr;
     const char *tname = v->type_name();
 
-    isize i;
+    int i;
     // `v` is currently inside the stack?
     if (ptr_index_safe(vm->window, v, &i)) {
         scope = get_obj_name(vm, vm->caller, i, &ident);
@@ -537,15 +538,15 @@ static void
 get_func_info(lulu_Debug *ar, Closure *f)
 {
     if (f->is_c()) {
-        ar->source          = "=[C]";
-        ar->namewhat        = "C";
-        ar->linedefined     = -1;
+        ar->source = "[C]";
+        ar->namewhat = "C";
+        ar->linedefined = -1;
         ar->lastlinedefined = -1;
     } else {
         Chunk *p = f->lua.chunk;
-        ar->source          = p->source->to_cstring();
-        ar->namewhat        = (p->line_defined == 0) ? "main" : "lua";
-        ar->linedefined     = p->line_defined;
+        ar->source = p->source->to_cstring();
+        ar->namewhat = (p->line_defined == 0) ? "main" : "lua";
+        ar->linedefined = p->line_defined;
         ar->lastlinedefined = p->last_line_defined;
     }
 }
@@ -557,7 +558,7 @@ get_func_info(lulu_Debug *ar, Closure *f)
  *      `vm->saved_ip - 1`. Recall that `ip` always points to the instruction
  *      after the one we just decoded.
  */
-static isize
+static int
 get_current_pc(lulu_VM *vm, Call_Frame *cf)
 {
     if (!cf->is_lua()) {
@@ -581,7 +582,7 @@ get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
     }
     // Point to parent caller (the call*ing* function).
     cf--;
-    isize pc = get_current_pc(vm, cf);
+    int pc = get_current_pc(vm, cf);
     Instruction i = cf->to_lua()->chunk->code[pc];
     if (i.op() == OP_CALL || i.op() == OP_FOR_IN_LOOP) {
         return get_obj_name(vm, cf, i.a(), name);
@@ -593,7 +594,7 @@ get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
 static int
 get_line(lulu_VM *vm, Call_Frame *cf)
 {
-    isize pc = get_current_pc(vm, cf);
+    int pc = get_current_pc(vm, cf);
     // Not a lua function, so no line information?
     if (pc < 0) {
         return -1;

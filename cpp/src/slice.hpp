@@ -8,8 +8,8 @@
 
 template<class T>
 struct Slice {
-    T    *data = nullptr;
-    isize len  = 0;
+    T *data;
+    isize len;
 
     // Bounds-checked, mutable element access.
     template<class N>
@@ -233,7 +233,7 @@ end(const Slice<T> &s)
 
 //=== ARRAY ================================================================ {{{
 
-template<class T, isize N>
+template<class T, auto N>
 struct Array {
     T data[N];
 
@@ -244,7 +244,7 @@ struct Array {
         isize ii = cast_isize(i);
         lulu_assertf(0 <= ii && ii < N,
             "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
-            ii, N);
+            ii, cast_isize(N));
         return this->data[ii];
     }
 
@@ -255,7 +255,7 @@ struct Array {
         isize ii = cast_isize(i);
         lulu_assertf(0 <= ii && ii < N,
             "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
-            ii, N);
+            ii, cast_isize(N));
         return this->data[ii];
     }
 

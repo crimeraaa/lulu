@@ -2,10 +2,10 @@
 
 #include "slice.hpp"
 
-template<class T, isize N>
+template<class T, auto N>
 struct Small_Array {
     Array<T, N> data;
-    isize       len;
+    isize len;
 };
 
 template<class T, auto N>
@@ -37,14 +37,14 @@ small_array_pop(Small_Array<T, N> *sa)
     sa->len--;
 }
 
-template<class T, isize N>
+template<class T, auto N>
 constexpr isize
 small_array_len(const Small_Array<T, N> &sa)
 {
     return sa.len;
 }
 
-template<class T, isize N>
+template<class T, auto N>
 constexpr isize
 small_array_cap(const Small_Array<T, N> &sa)
 {
@@ -52,7 +52,7 @@ small_array_cap(const Small_Array<T, N> &sa)
     return N;
 }
 
-template<class T, isize N>
+template<class T, auto N>
 inline T
 small_array_get(const Small_Array<T, N> &sa, isize i)
 {
@@ -66,7 +66,7 @@ small_array_get_ptr(Small_Array<T, N> *sa, isize i)
     return &sa->data[i];
 }
 
-template<class T, isize N>
+template<class T, auto N>
 inline Slice<T>
 small_array_slice(Small_Array<T, N> &sa)
 {

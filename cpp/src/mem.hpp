@@ -113,22 +113,22 @@ slice_delete(lulu_VM *vm, Slice<T> s)
  *      pointers.
  */
 template<class T>
-inline isize
+inline int
 ptr_index(Slice<T> s, const T *p)
 {
-    return cast_isize(p - raw_data(s));
+    return cast_int(p - raw_data(s));
 }
 
-template<class T, isize N>
-inline isize
+template<class T, auto N>
+inline int
 ptr_index(const Array<T, N> &a, const T *p)
 {
-    return cast_isize(p - raw_data(a));
+    return cast_int(p - raw_data(a));
 }
 
 template<class T>
 inline bool
-ptr_index_safe(Slice<T> s, const T *p, isize *out)
+ptr_index_safe(Slice<T> s, const T *p, int *out)
 {
     auto addr_start = cast(uintptr_t)begin(s);
     auto addr_stop  = cast(uintptr_t)end(s);

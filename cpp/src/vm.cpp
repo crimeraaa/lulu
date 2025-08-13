@@ -90,7 +90,7 @@ frame_slice(lulu_VM *vm)
 }
 
 // Get the absolute index of `cf` in the `vm->frames` array.
-static isize
+static int
 frame_index(lulu_VM *vm, Call_Frame *cf)
 {
     return ptr_index(frame_slice(vm), cf);
@@ -134,7 +134,7 @@ frame_pop(lulu_VM *vm)
 
 //=== }}} ==================================================================
 
-isize
+int
 vm_absindex(lulu_VM *vm, const Value *v)
 {
     return ptr_index(vm->stack, v);
@@ -152,13 +152,13 @@ vm_top_ptr(lulu_VM *vm)
     return raw_data(vm->window) + len(vm->window);
 }
 
-isize
+int
 vm_base_absindex(lulu_VM *vm)
 {
     return ptr_index(vm->stack, vm_base_ptr(vm));
 }
 
-isize
+int
 vm_top_absindex(lulu_VM *vm)
 {
     return ptr_index(vm->stack, vm_top_ptr(vm));
@@ -173,7 +173,7 @@ vm_get_builder(lulu_VM *vm)
 }
 
 static void
-set_error(lulu_VM *vm, isize old_cf, isize old_base, isize old_top)
+set_error(lulu_VM *vm, int old_cf, int old_base, int old_top)
 {
     // TODO(2025-06-30): Check if `LULU_ERROR_MEMORY` works properly here
     Value v = vm_pop(vm);
@@ -190,10 +190,10 @@ vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr)
     // Chain new handler
     vm->error_handler = &next;
 
-    isize old_base = vm_base_absindex(vm);
-    isize old_top  = vm_top_absindex(vm);
+    int old_base = vm_base_absindex(vm);
+    int old_top = vm_top_absindex(vm);
     // Don't use pointers because in the future, `frames` may be dynamic.
-    isize old_cf   = frame_index(vm, vm->caller);
+    int old_cf = frame_index(vm, vm->caller);
 
     try {
         fn(vm, user_ptr);
@@ -332,8 +332,8 @@ vm_runtime_error(lulu_VM *vm, const char *fmt, ...)
     Call_Frame *cf = vm->caller;
     if (cf->is_lua()) {
         const Chunk *p = cf->to_lua()->chunk;
-        isize  pc   = ptr_index(p->code, vm->saved_ip) - 1;
-        int    line = chunk_get_line(p, pc);
+        int pc   = ptr_index(p->code, vm->saved_ip) - 1;
+        int line = chunk_get_line(p, pc);
         vm_push_fstring(vm, "%s:%i: ", p->source->to_cstring(), line);
     } else {
         vm_push_string(vm, "[C]: "_s);
@@ -395,7 +395,7 @@ vm_pop(lulu_VM *vm)
 void
 vm_check_stack(lulu_VM *vm, int n)
 {
-    isize stop = vm_top_absindex(vm) + n;
+    int stop = vm_top_absindex(vm) + n;
     if (stop >= count_of(vm->stack)) {
         overflow_error(vm, stop, count_of(vm->stack), "stack slots");
     }
@@ -421,8 +421,8 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
     }
 
     // `vm_call_fini()` may adjust `vm->window` in a different way than wanted.
-    isize base = vm_base_absindex(vm);
-    isize new_top = vm_absindex(vm, ra) + n_rets;
+    int base = vm_base_absindex(vm);
+    int new_top = vm_absindex(vm, ra) + n_rets;
 
     Call_Type t = vm_call_init(vm, ra, n_args, n_rets);
     if (t == CALL_LUA) {
@@ -437,13 +437,13 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
 }
 
 static Call_Type
-call_init_c(lulu_VM *vm, Closure *f, isize f_index, int n_args, int n_rets)
+call_init_c(lulu_VM *vm, Closure *f, int f_index, int n_args, int n_rets)
 {
     vm_check_stack(vm, LULU_STACK_MIN);
 
     // Calling function isn't included in the stack frame.
-    isize base = f_index + 1;
-    isize top;
+    int base = f_index + 1;
+    int top;
     if (n_args == VARARG) {
         top = vm_top_absindex(vm);
     } else {
@@ -462,12 +462,12 @@ call_init_c(lulu_VM *vm, Closure *f, isize f_index, int n_args, int n_rets)
 }
 
 static Call_Type
-call_init_lua(lulu_VM *vm, Closure *fn, isize fn_index, int n_args, int n_rets)
+call_init_lua(lulu_VM *vm, Closure *fn, int fn_index, int n_args, int n_rets)
 {
     // Calling function isn't included in the stack frame.
-    isize  base = fn_index + 1;
+    int  base = fn_index + 1;
     Chunk *p    = fn->to_lua()->chunk;
-    isize  top  = base + p->stack_used;
+    int  top  = base + p->stack_used;
 
     vm_check_stack(vm, top - base);
     Slice<Value> window = slice(vm->stack, base, top);
@@ -480,7 +480,7 @@ call_init_lua(lulu_VM *vm, Closure *fn, isize fn_index, int n_args, int n_rets)
         extra -= n_args;
     }
 
-    isize start_nil = base + p->n_params;
+    int start_nil = base + p->n_params;
     if (extra > 0) {
         start_nil -= extra;
     }
@@ -506,7 +506,7 @@ vm_call_init(lulu_VM *vm, const Value *ra, int n_args, int n_rets)
     }
 
     Closure *fn       = ra->to_function();
-    isize    fn_index = ptr_index(vm->stack, ra);
+    int    fn_index = ptr_index(vm->stack, ra);
     // Can call directly?
     if (fn->is_c()) {
         return call_init_c(vm, fn, fn_index, n_args, n_rets);
@@ -708,10 +708,9 @@ vm_execute(lulu_VM *vm, int n_calls)
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.
-        isize pc = ptr_index(chunk->code, ip) - 1;
-
-        for (isize reg = 0, n = len(window); reg < n; reg++) {
-            printf("\t[%" ISIZE_FMT "]\t", reg);
+        int pc = ptr_index(chunk->code, ip) - 1;
+        for (int reg = 0, n = cast_int(len(window)); reg < n; reg++) {
+            printf("\t[%i]\t", reg);
             value_print(window[reg]);
 
             const char *ident = chunk_get_local(chunk, reg + 1, pc);
@@ -929,7 +928,7 @@ vm_execute(lulu_VM *vm, int n_calls)
             call_base[0] = ra[0]; // generator function
 
             // Registers for generator function, invariant state and index.
-            isize top  = ptr_index(window, call_base + 3);
+            int top = ptr_index(window, call_base + 3);
             vm->window = slice_until(window, top);
 
             // Number of user-facing variables to set.

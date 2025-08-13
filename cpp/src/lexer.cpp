@@ -118,7 +118,7 @@ get_lexeme_nul_terminated(Lexer *x)
 void
 lexer_error(Lexer *x, Token_Type type, const char *what, int line)
 {
-    lulu_VM    *vm = x->vm;
+    lulu_VM *vm = x->vm;
     const char *where;
     switch (type) {
     // Only variable length tokens explicitly save to the buffer.

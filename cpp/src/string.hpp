@@ -147,6 +147,10 @@ intern_resize(lulu_VM *vm, Intern *i, isize new_cap);
 void
 intern_destroy(lulu_VM *vm, Intern *t);
 
+constexpr u32
+FNV1A_OFFSET = 0x811c9dc5,
+FNV1A_PRIME  = 0x01000193;
+
 u32
 hash_string(LString text);
 

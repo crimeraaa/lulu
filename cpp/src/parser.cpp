@@ -44,7 +44,7 @@ block_pop(Compiler *c)
     Slice<u16> active = small_array_slice(c->active);
 
     // Finalize all the locals' information before popping them.
-    isize pc = c->pc;
+    int pc = c->pc;
     for (u16 index : slice_from(active, b->n_locals)) {
         c->chunk->locals[index].end_pc = pc;
     }
@@ -334,18 +334,25 @@ static void
 local_push(Parser *p, Compiler *c, OString *ident)
 {
     u16 reg = compiler_get_local(c, c->block->n_locals, ident);
-    // Local found?
-    if (reg != NO_REG) {
-        error_at(p, TOKEN_IDENT, "Shadowing of local variable");
+    // Local found and it's not '_'? '_' can be overridden as many times
+    // as possible because it helps to toss away function results.
+    if (reg != NO_REG && !(ident->len == 1 && ident->data[0] == '_')) {
+        char buf[128];
+        if (ident->len > 32) {
+            sprintf(buf, "Shadowing of local '%.32s...'", ident->to_cstring());
+        } else {
+            sprintf(buf, "Shadowing of local '%s'", ident->to_cstring());
+        }
+        error(p, buf);
     }
-    isize index = chunk_add_local(p->vm, c->chunk, ident);
+    int index = chunk_add_local(p->vm, c->chunk, ident);
 
     // Resulting index wouldn't fit as an element in the active array?
     compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
 
     // Pushing to active array would go out of bounds?
-    compiler_check_limit(c, small_array_len(c->active) + 1, MAX_ACTIVE_LOCALS,
-        "active local variables");
+    compiler_check_limit(c, cast_int(small_array_len(c->active) + 1),
+        MAX_ACTIVE_LOCALS, "active local variables");
 
     small_array_push(&c->active, cast(u16)index);
 }
@@ -361,7 +368,7 @@ local_push_literal(Parser *p, Compiler *c, LString lit)
 static void
 local_start(Compiler *c, u16 n)
 {
-    isize pc = c->pc;
+    int pc = c->pc;
     Slice<u16>   active = small_array_slice(c->active);
     Slice<Local> locals = slice(c->chunk->locals);
     for (u16 index : slice_from(active, small_array_len(c->active) - n)) {
@@ -388,12 +395,12 @@ local_statement(Parser *p, Compiler *c)
     assign_adjust(c, n, &args);
 
     // Allow lookup of the now-initialized local variables.
-    isize start = small_array_len(c->active);
+    int start = small_array_len(c->active);
     small_array_resize(&c->active, start + n);
     local_start(c, n);
 }
 
-static isize
+static int
 condition(Parser *p, Compiler *c)
 {
     Expr cond = expression(p, c);
@@ -405,10 +412,10 @@ condition(Parser *p, Compiler *c)
     return cond.patch_false;
 }
 
-static isize
+static int
 if_condition(Parser *p, Compiler *c)
 {
-    isize pc = condition(p, c);
+    int pc = condition(p, c);
     consume(p, TOKEN_THEN);
     block(p, c);
     return pc;
@@ -417,8 +424,8 @@ if_condition(Parser *p, Compiler *c)
 static void
 if_statement(Parser *p, Compiler *c)
 {
-    isize  then_jump = if_condition(p, c);
-    isize  else_jump = NO_JUMP;
+    int then_jump = if_condition(p, c);
+    int else_jump = NO_JUMP;
 
     while (match(p, TOKEN_ELSEIF)) {
         // All `if` and `elseif` will jump over the same `else` block.
@@ -443,8 +450,8 @@ if_statement(Parser *p, Compiler *c)
 static void
 while_statement(Parser *p, Compiler *c, int line)
 {
-    isize init_pc = compiler_label_get(c);
-    isize exit_pc = condition(p, c);
+    int init_pc = compiler_label_get(c);
+    int exit_pc = condition(p, c);
     consume(p, TOKEN_DO);
 
     // All `break` should go here, not in `block()`.
@@ -471,11 +478,11 @@ repeat_statement(Parser *p, Compiler *c, int line)
     Block b;
     block_push(c, &b, /* breakable */ true);
 
-    isize body_pc = compiler_label_get(c);
+    int body_pc = compiler_label_get(c);
     block(p, c);
     consume_to_close(p, TOKEN_UNTIL, TOKEN_REPEAT, line);
 
-    isize jump_pc = condition(p, c);
+    int jump_pc = condition(p, c);
     compiler_jump_patch(c, jump_pc, body_pc);
 
     block_pop(c);
@@ -501,7 +508,7 @@ for_body(Parser *p, Compiler *c, u16 base_reg, u16 n_vars, bool is_numeric)
     compiler_reserve_reg(c, n_vars);
 
     // goto <loop-pc>
-    isize prep_pc;
+    int prep_pc;
     if (is_numeric) {
         // goto `OP_FOR_LOOP`
         prep_pc = compiler_code_asbx(c, OP_FOR_PREP, base_reg, NO_JUMP);
@@ -513,8 +520,8 @@ for_body(Parser *p, Compiler *c, u16 base_reg, u16 n_vars, bool is_numeric)
     block(p, c);
     compiler_jump_patch(c, prep_pc);
 
-    isize loop_pc;
-    isize target;
+    int loop_pc;
+    int target;
     if (is_numeric) {
         // can encode jump directly.
         loop_pc = compiler_code_asbx(c, OP_FOR_LOOP, base_reg, NO_JUMP);
@@ -992,7 +999,7 @@ static Expr
 constructor(Parser *p, Compiler *c)
 {
     Constructor ctor;
-    isize pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0);
+    int pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0);
 
     ctor.table       = Expr::make_pc(EXPR_RELOCABLE, pc);
     ctor.array_value = DEFAULT_EXPR;

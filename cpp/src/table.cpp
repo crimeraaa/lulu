@@ -11,13 +11,29 @@ EMPTY_ENTRY_{nil, nil};
 static const Slice<Entry>
 EMPTY_ENTRY_SLICE{EMPTY_ENTRY, 1};
 
+static u32
+hash_boolean(bool b)
+{
+    u32 hash = FNV1A_OFFSET;
+    hash ^= cast(u32)b;
+    hash *= FNV1A_PRIME;
+    return hash;
+}
+
+// Hashes 8-byte values as a pair of 4-bytes for performance.
 template<class T>
 static u32
-hash_any(T v)
+hash_compound(T v)
 {
-    // Aliasing a `T` with a `char *` is defined behavior.
-    LString s{reinterpret_cast<const char *>(&v), sizeof(T)};
-    return hash_string(s);
+    u32 hash = FNV1A_OFFSET;
+    // Standards-compliant type punning. Optimizes to register moves.
+    u32 buf[sizeof(v) / sizeof(hash)];
+    memcpy(buf, &v, sizeof(buf));
+    for (int i = 0; i < count_of(buf); i++) {
+        hash ^= buf[i];
+        hash *= FNV1A_PRIME;
+    }
+    return hash;
 }
 
 static u32
@@ -26,18 +42,19 @@ hash_value(Value v)
     switch (v.type()) {
     case VALUE_NIL:
         break;
-    case VALUE_BOOLEAN:         return hash_any(v.to_boolean());
-    case VALUE_NUMBER:          return hash_any(v.to_number());
-    case VALUE_LIGHTUSERDATA:   return hash_any(v.to_userdata());
+    case VALUE_BOOLEAN:         return hash_boolean(v.to_boolean());
+    case VALUE_NUMBER:          return hash_compound(v.to_number());
+    case VALUE_LIGHTUSERDATA:   return hash_compound(v.to_userdata());
     case VALUE_STRING:          return v.to_ostring()->hash;
     case VALUE_TABLE:           [[fallthrough]];
-    case VALUE_FUNCTION:        return hash_any(v.to_object());
+    case VALUE_FUNCTION:        return hash_compound(v.to_object());
     case VALUE_INTEGER:
     case VALUE_CHUNK:
         break;
     }
     lulu_panicf("Non-hashable Value_Type(%i)", v.type());
     lulu_unreachable();
+    return 0;
 }
 
 static Entry *
@@ -180,14 +197,91 @@ array_index(Value k)
     return -1;
 }
 
+// Returns the *exponent* of the lower power of 2 to `n`, if it is not
+// one already.
+static u8 floor_log2(u32 n)
+{
+    // Map indices in the range [1,256] to the index range exponents with
+    // which they fit at the start. Note that because index 0 is invalid,
+    // we actually map `n - 1`.
+    static const u8 floor_log2_lut[0x100] = {
+        // Indices in the range [1, 2) are accumulated in index_ranges[0].
+        // because they fit in the range starting with 2^0, or 1. This
+        // general pattern follows for all the succeeding comments.
+        0,
+
+        // [2, 4) => index_ranges[1]
+        1, 1,
+
+        // [4, 8) => index_ranges[2]
+        2, 2, 2, 2,
+
+        // [8, 16) => index_ranges[3]
+        3, 3, 3, 3, 3, 3, 3, 3,
+
+        // [16, 32) => index_ranges[4]
+        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+
+        // [32, 64) => index_ranges[5]
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+
+        // [64, 128) => index_ranges[6]
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+
+        // [128, 256) => index_ranges[7]
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+
+        // 256 => index_ranges[8]
+        8,
+    };
+
+    // Accumulator for values of n that do not fit in the lookup table.
+    u8 acc = 0;
+
+    /**
+     * @details
+     *      n=257 (0b1_0000_0001)
+     *          1.) n=257 > 0x100 ? continue
+     *              - n >>= 8 => 0b0000_0001 => 1
+     *              - acc += 8
+     *              - n=1, acc=8
+     *          2.) n=1 > 0x100 ? break
+     *              - acc + lut[n - 1] => 8 + lut[1 - 1] => 8 + 0 => 8
+     *              - 257 fits in index_ranges[8].
+     *
+     *      n=31845 (0b01111100_01100101)
+     *          1.) n > 0x100 ? continue
+     *              - n >>= 8 => 0b01111100
+     *              - acc += 8
+     *              - n=124, acc=8
+     *          2.) n > 0x100 ? break
+     *              - acc + lut[n - 1] => 8 + lut[124 - 1] => 8 + 6 => 14
+     *              - 31_845 fits in index_ranges[14].
+     */
+    while (n > 0x100) {
+        n >>= 8;
+        acc += 8;
+    }
+    return acc + floor_log2_lut[n - 1];
+}
+
 static i32
 count_index(Value k, Slice<i32> index_ranges)
 {
     i32 i = array_index(k);
     if (1 <= i && i <= MAX_INDEX) {
-        double exp = log2(cast(double)i);
-        // @todo(2025-08-11) Create dedicated integer `ceil(log2())` function.
-        int bit = cast_int(ceil(exp));
+        u8 bit = floor_log2(cast(u32)i);
         index_ranges[bit] += 1;
         return 1;
     }

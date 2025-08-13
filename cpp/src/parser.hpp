@@ -65,14 +65,18 @@ struct Expr_Table {
 
 struct Expr {
     Expr_Type type;
-    isize     patch_true;
-    isize     patch_false;
+
+    // pc of truthy patch lists, mainly for logical or.
+    int patch_true;
+
+    // pc of falsy patch lists, mainly for if-statements and logical-and.
+    int patch_false;
     union {
-        Number     number; // Must be first member for brace initialization.
-        isize      pc;
+        Number number; // Must be first member for brace initialization.
         Expr_Table table;
-        u32        index;
-        u16        reg;
+        int pc;
+        u32 index;
+        u16 reg;
     };
 
     static constexpr Expr

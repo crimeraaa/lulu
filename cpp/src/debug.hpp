@@ -9,7 +9,7 @@ int
 debug_get_pad(const Chunk *p);
 
 void
-debug_disassemble_at(const Chunk *p, Instruction ip, isize index, int pad);
+debug_disassemble_at(const Chunk *p, Instruction ip, int index, int pad);
 
 [[noreturn]]
 void

@@ -45,7 +45,7 @@ lstring_to_number(LString s, Number *out, int base)
     }
 
     Number d;
-    char  *last;
+    char *last;
     // Parsing a prefixed integer?
     if (base != 0) {
         // Got a base prefix with no content? e.g. `0b` or `0x`
@@ -185,16 +185,11 @@ builder_to_cstring(lulu_VM *vm, Builder *b)
 u32
 hash_string(LString text)
 {
-    static constexpr u32
-    FNV1A_OFFSET = 0x811c9dc5,
-    FNV1A_PRIME  = 0x01000193;
-
     u32 hash = FNV1A_OFFSET;
     for (char c : text) {
         hash ^= cast(u32)c;
         hash *= FNV1A_PRIME;
     }
-
     return hash;
 }
 
@@ -204,12 +199,6 @@ intern_init(Intern *t)
     t->table.data = nullptr;
     t->table.len = 0;
     t->count = 0;
-}
-
-static isize
-intern_cap(const Intern *t)
-{
-    return len(t->table);
 }
 
 // Assumes `cap` is always a power of 2.
@@ -266,9 +255,9 @@ intern_destroy(lulu_VM *vm, Intern *t)
 OString *
 ostring_new(lulu_VM *vm, LString text)
 {
-    Intern  *t    = &vm->intern;
-    u32      hash = hash_string(text);
-    usize    i    = intern_clamp_index(hash, intern_cap(t));
+    Intern *t = &vm->intern;
+    u32 hash = hash_string(text);
+    usize i = intern_clamp_index(hash, len(t->table));
     for (Object *node = t->table[i]; node != nullptr; node = node->base.next) {
         OString *s = &node->ostring;
         if (s->hash == hash) {
@@ -287,10 +276,12 @@ ostring_new(lulu_VM *vm, LString text)
     s->data[s->len] = 0;
     memcpy(s->data, raw_data(text), cast_usize(len(text)));
 
-    isize n = intern_cap(t);
-    if (t->count + 1 > (n * 3) / 4) {
-        // Ensure cap is a power of 2 for performance.
-        intern_resize(vm, t, mem_next_pow2(n + 1));
+    isize n = len(t->table);
+    // Count refers to total number of linked list nodes, not occupied array
+    // slots. We probably want to rehash anyway to reduce clustering.
+    if (t->count + 1 > n) {
+        // We assume `n` is a power of 2.
+        intern_resize(vm, t, n << 1);
     }
     t->count++;
     return s;
