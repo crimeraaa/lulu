@@ -102,16 +102,10 @@ template<class T>
 inline bool
 slice_eq(const Slice<T> &a, const Slice<T> &b)
 {
-    // Fast path #1: differeing lengths are never equal.
+    // Fast path: slices of differing lengths are never equal.
     if (a.len != b.len) {
         return false;
     }
-    // Fast path #2: same length and same underlying data are always equal.
-    else if (a.data == b.data) {
-        return true;
-    }
-
-    // Slow path: same length but different underlying data.
     usize size = sizeof(T) * cast_usize(a.len);
     return memcmp(a.data, b.data, size) == 0;
 }

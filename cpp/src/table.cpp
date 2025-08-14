@@ -127,15 +127,18 @@ table_hash_resize(lulu_VM *vm, Table *t, isize n)
     // to grow in this case.
     if (n == 0) {
         t->entries = EMPTY_ENTRY_SLICE;
-        t->count   = 0;
+        t->count = 0;
         return;
     }
 
-    Slice<Entry> new_entries = slice_make<Entry>(vm, mem_next_pow2(n));
+    // Minimum array size to prevent frequent reallocations.
+    n = max(n, 8_i);
+    n = mem_next_pow2(n);
+    Slice<Entry> new_entries = slice_make<Entry>(vm, n);
     // Initialize all key-value pairs to nil-nil.
     fill(new_entries, EMPTY_ENTRY_);
     t->entries = new_entries;
-    t->count   = 0;
+    t->count = 0;
 }
 
 // Array indexes can only get so large.
@@ -152,7 +155,7 @@ MAX_INDEX = (1 << MAX_INDEX_BITS);
 static i32
 table_array_count(Table *t, Slice<i32> index_ranges)
 {
-    i32 n_array_used = 0;
+    i32 n_array = 0;
     // Iterator over all Lua indexes.
     i32 i = 1;
     // If array size is 0, the loop is never entered.
@@ -166,8 +169,7 @@ table_array_count(Table *t, Slice<i32> index_ranges)
                 break;
             }
         }
-        // Counter for active array elements in this index range.
-        // Count active array elements in the range (2^(bit - 1), 2^(bit)).
+        // Count active array elements in the range (2^(bit-1), 2^(bit)].
         i32 used = 0;
         for (/* empty */; i <= limit; i++) {
             Value v = t->array[i - 1];
@@ -176,9 +178,9 @@ table_array_count(Table *t, Slice<i32> index_ranges)
             }
         }
         index_ranges[bit] += used;
-        n_array_used += used;
+        n_array += used;
     }
-    return n_array_used;
+    return n_array;
 }
 
 /**
@@ -197,83 +199,76 @@ array_index(Value k)
     return -1;
 }
 
-// Returns the *exponent* of the lower power of 2 to `n`, if it is not
-// one already.
-static u8 floor_log2(u32 n)
+/**
+ * @brief
+ *      Returns the *exponent* of the next power of 2 to `n`, if it is not
+ *      one already.
+ */
+static u8
+ceil_log2(u32 n)
 {
-    // Map indices in the range [1,256] to the index range exponents with
-    // which they fit at the start. Note that because index 0 is invalid,
-    // we actually map `n - 1`.
-    static const u8 floor_log2_lut[0x100] = {
-        // Indices in the range [1, 2) are accumulated in index_ranges[0].
-        // because they fit in the range starting with 2^0, or 1. This
-        // general pattern follows for all the succeeding comments.
+    /**
+     * @brief
+     *      Map indices in the range [1, 256] to the index range exponents
+     *      with which they fit at the end. Useful to determine
+     *      the appropriate array size which `n` fits in.
+     *
+     * @note(2025-08-14)
+     *      Index 0 is never a valid input, so this table actually
+     *      maps `n - 1`.
+     */
+    static const u8 ceil_log2_lut[0x100] = {
+        // [1, 1] => index_ranges[0]
         0,
 
-        // [2, 4) => index_ranges[1]
-        1, 1,
+        // [2, 2] => index_ranges[1]
+        1,
 
-        // [4, 8) => index_ranges[2]
-        2, 2, 2, 2,
+        // [3, 4] => index_ranges[2]
+        // Index 3 should map to bit 2 as given by ceil(log2(3)), NOT bit 1
+        // as given by floor(log2(3)). Because when we calculate the optimal
+        // array size, we want size of 4, not size of 2.
+        2, 2,
 
-        // [8, 16) => index_ranges[3]
-        3, 3, 3, 3, 3, 3, 3, 3,
+        // [5, 8]
+        3, 3, 3, 3,
 
-        // [16, 32) => index_ranges[4]
-        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+        // [9, 16]
+        4, 4, 4, 4, 4, 4, 4, 4,
 
-        // [32, 64) => index_ranges[5]
+        // [17, 32]
         5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
 
-        // [64, 128) => index_ranges[6]
-        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        // [33, 64]
         6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
         6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
 
-        // [128, 256) => index_ranges[7]
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        // [65, 128]
         7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
         7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
         7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
         7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
 
-        // 256 => index_ranges[8]
-        8,
+        // [129, 256]
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
     };
 
     // Accumulator for values of n that do not fit in the lookup table.
+    // We know that if it does not fit, 2^8 is automatically added on top.
+    // Concept check: ceil(log2(257))
     u8 acc = 0;
-
-    /**
-     * @details
-     *      n=257 (0b1_0000_0001)
-     *          1.) n=257 > 0x100 ? continue
-     *              - n >>= 8 => 0b0000_0001 => 1
-     *              - acc += 8
-     *              - n=1, acc=8
-     *          2.) n=1 > 0x100 ? break
-     *              - acc + lut[n - 1] => 8 + lut[1 - 1] => 8 + 0 => 8
-     *              - 257 fits in index_ranges[8].
-     *
-     *      n=31845 (0b01111100_01100101)
-     *          1.) n > 0x100 ? continue
-     *              - n >>= 8 => 0b01111100
-     *              - acc += 8
-     *              - n=124, acc=8
-     *          2.) n > 0x100 ? break
-     *              - acc + lut[n - 1] => 8 + lut[124 - 1] => 8 + 6 => 14
-     *              - 31_845 fits in index_ranges[14].
-     */
     while (n > 0x100) {
         n >>= 8;
         acc += 8;
     }
-    return acc + floor_log2_lut[n - 1];
+    return acc + ceil_log2_lut[n - 1];
 }
 
 static i32
@@ -281,13 +276,18 @@ count_index(Value k, Slice<i32> index_ranges)
 {
     i32 i = array_index(k);
     if (1 <= i && i <= MAX_INDEX) {
-        u8 bit = floor_log2(cast(u32)i);
+        u8 bit = ceil_log2(cast(u32)i);
         index_ranges[bit] += 1;
         return 1;
     }
     return 0;
 }
 
+
+/**
+ * @return
+ *      Count of all valid array indices that are currently hashed.
+ */
 static i32
 table_hash_count_array(Table *t, Slice<i32> index_ranges)
 {
@@ -303,17 +303,35 @@ table_hash_count_array(Table *t, Slice<i32> index_ranges)
     return n_array_extra;
 }
 
+
+/**
+ * @param n_array
+ *      In-out-parameter. Initially holds the theoretical number of
+ *      elements that goes to the array part, not yet accounting for
+ *      extremely large gaps between indices.
+ *
+ *      When done, will instead hold the actual size of the array.
+ *
+ * @return
+ *      The number of elements that will actually go into the array
+ *      part.
+ */
 static i32
-table_array_compute_size(Slice<i32> index_ranges, i32 *n_array_used)
+table_array_compute_size(Slice<i32> index_ranges, i32 *n_array)
 {
-    // Accumulator to track how many active indices are smaller than `pow2`.
+    // Accumulator to track how many active indices are smaller than the
+    // potential optimal size.
     i32 acc = 0;
     i32 n_array_active = 0;
     i32 n_array_optimal = 0;
 
     for (i32 bit = 0, pow2 = 1; /* empty */; bit++, pow2 <<= 1) {
+        // Half of the potentially optimal size.
         i32 half = pow2 >> 1;
-        if (half >= *n_array_used) {
+
+        // Our theoretical number of elements already fits?
+        // Concept check: *n_array == 0.
+        if (*n_array <= half) {
             break;
         }
 
@@ -321,8 +339,7 @@ table_array_compute_size(Slice<i32> index_ranges, i32 *n_array_used)
         i32 used = index_ranges[bit];
         if (used > 0) {
             acc += used;
-            // More than half of all possible array elements up to this point
-            // can fit?
+            // More than half of all array slots would be occupied?
             if (acc > half) {
                 n_array_optimal = pow2;
                 n_array_active = acc;
@@ -330,12 +347,12 @@ table_array_compute_size(Slice<i32> index_ranges, i32 *n_array_used)
         }
 
         // All elements already counted?
-        if (acc == *n_array_used) {
+        if (acc == *n_array) {
             break;
         }
     }
-    *n_array_used = n_array_optimal;
-    lulu_assert(*n_array_used / 2 <= n_array_active && n_array_active <= *n_array_used);
+    *n_array = n_array_optimal;
+    lulu_assert(*n_array / 2 <= n_array_active && n_array_active <= *n_array);
     return n_array_active;
 }
 
@@ -343,6 +360,9 @@ static void
 table_array_resize(lulu_VM *vm, Table *t, isize n)
 {
     isize last = len(t->array);
+
+    // Minimum array size to prevent frequent reallocations.
+    n = max(n, 8_i);
     n = mem_next_pow2(n);
     slice_resize(vm, &t->array, n);
 
@@ -356,24 +376,25 @@ table_array_resize(lulu_VM *vm, Table *t, isize n)
 static void
 table_resize(lulu_VM *vm, Table *t, isize n_hash, isize n_array)
 {
+    // Copy here to avoid tripping up bounds check.
+    Slice<Value> old_array = t->array;
+    Slice<Entry> old_entries = t->entries;
+
     // Array must grow? Shrinking is a separate branch because we will
     // need to rehash the vanishing array slice *before* resizing.
-    if (n_array > len(t->array)) {
+    if (n_array > len(old_array)) {
         table_array_resize(vm, t, n_array);
     }
 
-    Slice<Entry> old_entries = t->entries;
     table_hash_resize(vm, t, n_hash);
-    // Array must shrink?
-    if (n_array < len(t->array)) {
-        // Copy here to avoid tripping up bounds check.
-        Slice<Value> old_array = t->array;
 
+    // Array must shrink?
+    if (n_array < len(old_array)) {
         // Update len so that `table_set()` does not see the longer region.
         t->array.len = n_array;
 
         // Move elements from the vanishing array slice to the hash segment.
-        for (isize i = n_array; i < len(old_array); i++) {
+        for (isize i = n_array, n = len(old_array); i < n; i++) {
             Value v = old_array[i];
             if (!v.is_nil()) {
                 table_set_integer(vm, t, i + 1, v);
@@ -383,8 +404,15 @@ table_resize(lulu_VM *vm, Table *t, isize n_hash, isize n_array)
         table_array_resize(vm, t, n_array);
     }
 
-    // Rehash all elements in the hash segment. This may also move integer
-    // keys to the array segment.
+    /**
+     * @brief
+     *      Rehash all elements in the hash segment. This may also move
+     *      integer keys to the array segment.
+     *
+     * @todo(2025-08-14)
+     *      If new hash length is the same, don't resize. Figure out how
+     *      to rehash the same old data.
+     */
     for (Entry e : old_entries) {
         if (!e.value.is_nil()) {
             table_set(vm, t, e.key, e.value);
@@ -476,7 +504,8 @@ table_get(Table *t, Value k, Value *out)
     Value *v = table_array_ptr(t, array_index(k));
     if (v != nullptr) {
         *out = *v;
-        return true;
+        // Array slot is occupied?
+        return !v->is_nil();
     }
     return table_hash_get(t, k, out);
 }
@@ -497,6 +526,8 @@ table_is_full(Table *t)
  * @brief
  *      Implements `t[k] = v` assuming `k` could not be an array index.
  *      May rehash the table, mutually recursive with `table_set()`.
+ *      However we guarantee that, by that point there is already
+ *      a free array index or free hash slot.
  *
  * @note(2025-08-11)
  *      Analogous to `ltable.c:newkey()` in Lua 5.1.5.
@@ -551,11 +582,17 @@ table_len(Table *t)
         i++;
     }
 
-    // Potentially have indices in the hash part? This is mainly a concern
-    // for indices larger than MAX_INDEX.
+    // May have remaining integer keys in the hash part?
+    // e.g. #array == 4 but we hashed k = 5 because #hash >= 8.
     if (i == len(t->array)) {
-        Value v;
-        while (table_get_integer(t, i + 1, &v)) {
+        // Don't call table_get*() because we already know this key
+        // is not in the hash segment.
+        for (;;) {
+            Value k = Value::make_number(cast_number(i + 1));
+            Value v;
+            if (!table_hash_get(t, k, &v)) {
+                break;
+            }
             i++;
         }
     }
@@ -568,7 +605,8 @@ table_get_integer(Table *t, Integer i, Value *out)
     Value *v = table_array_ptr(t, i);
     if (v != nullptr) {
         *out = *v;
-        return true;
+        // Array slot is occupied?
+        return !v->is_nil();
     }
     // Index not in range of the array; try the hash part.
     Value k = Value::make_number(cast_number(i));
