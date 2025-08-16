@@ -39,9 +39,12 @@ table_delete(lulu_VM *vm, Table *t);
 void
 table_init(Table *t);
 
-// Implements `out = t[k]`.
+/**
+ * @param [out] v
+ *      Will hold the result of `t[k]`.
+ */
 bool
-table_get(Table *t, Value k, Value *out);
+table_get(Table *t, Value k, Value *v);
 
 // Implements `t[k] = v`.
 void
@@ -51,9 +54,12 @@ table_set(lulu_VM *vm, Table *t, Value k, Value v);
 isize
 table_len(Table *t);
 
-// Implements `out = t[i]`.
+/**
+ * @param [out] v
+ *      Will hold the result of `t[i]`.
+ */
 bool
-table_get_integer(Table *t, Integer i, Value *out);
+table_get_integer(Table *t, Integer i, Value *v);
 
 // Implements `t[i] = v`.
 void
@@ -67,8 +73,9 @@ table_unset(Table *t, Value k);
  * @brief
  *      Generic table iterator.
  *
- * @param k
- *      Out-parameter for the iterator control variable.
+ * @param [in, out] k
+ *      Holds the current key of the iterator control variable, which
+ *      is then set to the next key (or `nil`) upon return.
  *
  *      On the first iteration, must be `nil` to signal the start of the
  *      iteration. It will point to the first non-nil element in the
@@ -77,8 +84,8 @@ table_unset(Table *t, Value k);
  *      Subsequent iterations will always make it point to the next non-nil
  *      entry in the entry array.
  *
- * @param v
- *      Out-parameter for `t[k]`.
+ * @param [out] v
+ *      Will hold the result of `t[k]`.
  *
  * @return
  *      `true` if iteration can start/continue, else `false`. In the falsy

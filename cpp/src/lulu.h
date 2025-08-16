@@ -89,9 +89,9 @@ typedef int
  *      guarantees that this pointer is only ever passed to calls of the
  *      function it was registered with, so casting should be safe.
  *
- * @param n
- *      An out-parameter which will hold the length of the data read.
- *      The internal implementation guarantees this to be non-`NULL`.
+ * @param [out] n
+ *      Will hold the length of the data read. The internal implementation
+ *      guarantees this to be non-`NULL`.
  *
  * @return
  *      A read-only pointer to some character buffer in `data.` How the
@@ -320,9 +320,9 @@ lulu_to_integer(lulu_VM *vm, int i);
  *      `number` are replaced with their string representation. All other
  *      types are unchanged.
  *
- * @param n
- *      Optional out-parameter which stores the resulting string's length,
- *      if the value was indeed a string. Pass `NULL` to ignore.
+ * @param [out] n
+ *      Optional. Will stores the resulting string's length, if the value
+ *      was indeed a string. Pass `NULL` to ignore.
  *
  * @return
  *      The nul-terminated string at relative stack index `i`, or else `NULL`.

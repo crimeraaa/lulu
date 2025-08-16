@@ -149,8 +149,8 @@ lulu_opt_integer(lulu_VM *vm, int argn, lulu_Integer def);
  *      The default value to use if the stack slot `argn` is invalid (i.e.
  *      out of bounds) or `nil`.
  *
- * @param n
- *      Optional out-parameter to contain the string length.
+ * @param [out] n
+ *      Optional. Will contain the string length.
  */
 LULU_LIB_API const char *
 lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n);

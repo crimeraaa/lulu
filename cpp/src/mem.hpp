@@ -8,18 +8,22 @@ mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
 
 
 /**
+ * @return
+ *      Exponent of the next power of 2 after `n`, if it is not one already.
+ */
+int
+mem_ceil_log2(usize n);
+
+
+/**
  * @brief
  *      Rounds `n` to the next power of 2 if it is not one already.
  */
 inline isize
 mem_next_pow2(isize n)
 {
-    isize next = 1;
-    while (next < n) {
-        // x << 1 <=> x * 2 if x is a power of 2
-        next <<= 1;
-    }
-    return next;
+    int e = mem_ceil_log2(cast_usize(n));
+    return 1_i << e;
 }
 
 

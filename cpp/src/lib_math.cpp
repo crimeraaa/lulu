@@ -74,10 +74,10 @@ static int
 math_modf(lulu_VM *vm)
 {
     lulu_Number x = lulu_check_number(vm, 1);
-    lulu_Number whole;
-    lulu_Number frac = modf(x, &whole);
-    lulu_push_number(vm, whole);
-    lulu_push_number(vm, frac);
+    lulu_Number integer;
+    lulu_Number fraction = modf(x, &integer);
+    lulu_push_number(vm, integer);
+    lulu_push_number(vm, fraction);
     return 2;
 }
 
@@ -85,21 +85,24 @@ static int
 math_frexp(lulu_VM *vm)
 {
     // Default value when `frac == NaN` or `frac == inf`.
-    int exp = 0;
+    int exponent = 0;
     lulu_Number x = lulu_check_number(vm, 1);
-    lulu_Number frac = frexp(x, &exp);
-    lulu_push_number(vm, frac);
-    lulu_push_integer(vm, exp);
+    lulu_Number fraction = frexp(x, &exponent);
+    lulu_push_number(vm, fraction);
+    lulu_push_integer(vm, exponent);
     return 2;
 }
+
 
 static int
 math_ldexp(lulu_VM *vm)
 {
-    lulu_Number mant = lulu_check_number(vm, 1);
-    lulu_Integer exp = lulu_check_integer(vm, 2);
-    lulu_Number res = ldexp(mant, exp);
-    lulu_push_number(vm, res);
+    lulu_Number mantissa = lulu_check_number(vm, 1);
+    lulu_Integer exponent = lulu_check_integer(vm, 2);
+
+    // Equivalent to mantissa * 2^exponent.
+    lulu_Number x = ldexp(mantissa, exponent);
+    lulu_push_number(vm, x);
     return 1;
 }
 

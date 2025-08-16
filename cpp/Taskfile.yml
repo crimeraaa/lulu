@@ -75,7 +75,7 @@ vars:
   CPP_OUT_COMPILE_COMMAND: >-
     {{if eq .CPP_MODE "debug"}}{{.CPP_DEBUG_CMD}}{{else if eq .CPP_MODE "release"}}{{.CPP_RELEASE_CMD}}{{end}}
     -L{{.CPP_BIN}}
-    -o {{.OUT}}
+    -o {{.CPP_OUT}}
     {{.CPP_SRC}}/lulu.c
     -llulu
 

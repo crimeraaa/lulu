@@ -479,7 +479,10 @@ repeat_statement(Parser *p, Compiler *c, int line)
     block_push(c, &b, /* breakable */ true);
 
     int body_pc = compiler_label_get(c);
-    block(p, c);
+    // A unique property of repeat statements is that their locals are
+    // available within the condition statement. So we call chunk()
+    // ourselves. This will become a problem when upvalues get involved.
+    chunk(p, c);
     consume_to_close(p, TOKEN_UNTIL, TOKEN_REPEAT, line);
 
     int jump_pc = condition(p, c);
@@ -669,7 +672,7 @@ static Compiler
 function_open(lulu_VM *vm, Parser *p, Compiler *enclosing)
 {
     Chunk *chunk = chunk_new(vm, p->lexer.source);
-    Table *t     = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
+    Table *t = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
 
     // Push chunk and table to stack so that they are not collected while we
     // are executing.
@@ -713,11 +716,10 @@ resolve_variable(Compiler *c, OString *ident)
 }
 
 static void
-field(Parser *p, Compiler *c, Expr *e)
+resolve_field(Parser *p, Compiler *c, Expr *e)
 {
     // Table must be in some register, it can be a local.
     compiler_expr_any_reg(c, e);
-    advance(p); // Skip '.'.
     u32  i = compiler_add_ostring(c, consume_ident(p));
     Expr k = Expr::make_index(EXPR_CONSTANT, i);
     compiler_get_table(c, e, &k);
@@ -728,7 +730,7 @@ function_var(Parser *p, Compiler *c)
 {
     Expr var = resolve_variable(c, consume_ident(p));
     while (match(p, TOKEN_DOT)) {
-        field(p, c, &var);
+        resolve_field(p, c, &var);
     }
     return var;
 }
@@ -747,12 +749,12 @@ function_push(Parser *p, Compiler *c)
 }
 
 static Expr
-function_definition(Parser *p, Compiler *enclosing, int fline)
+function_definition(Parser *p, Compiler *enclosing, int function_line)
 {
     Compiler c = function_open(p->vm, p, enclosing);
-    Chunk   *f = c.chunk;
-    int pline = p->last_line;
-    f->line_defined = fline;
+    Chunk *f = c.chunk;
+    int paren_line = p->last_line;
+    f->line_defined = function_line;
     consume(p, TOKEN_OPEN_PAREN);
 
     // Prevent segfaults when calling `local_push`.
@@ -768,20 +770,20 @@ function_definition(Parser *p, Compiler *enclosing, int fline)
         compiler_reserve_reg(&c, n);
         f->n_params = n;
     }
-    consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, pline);
+    consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, paren_line);
     chunk(p, &c);
     block_pop(&c);
     f->last_line_defined = p->lexer.line;
-    consume_to_close(p, TOKEN_END, TOKEN_FUNCTION, fline);
+    consume_to_close(p, TOKEN_END, TOKEN_FUNCTION, function_line);
     function_close(&c);
     return function_push(p, &c);
 }
 
 static void
-function_decl(Parser *p, Compiler *c, int fline)
+function_decl(Parser *p, Compiler *c, int function_line)
 {
-    Expr var  = function_var(p, c);
-    Expr body = function_definition(p, c, fline);
+    Expr var = function_var(p, c);
+    Expr body = function_definition(p, c, function_line);
     compiler_set_variable(c, &var, &body);
 }
 
@@ -802,7 +804,7 @@ static void
 declaration(Parser *p, Compiler *c)
 {
     Token t = p->current;
-    int   line = p->last_line;
+    int line = p->last_line;
     switch (t.type) {
     case TOKEN_BREAK:
         advance(p); // skip 'break'
@@ -919,16 +921,17 @@ struct Constructor {
 static void
 constructor_field(Parser *p, Compiler *c, Constructor *ctor)
 {
-    u16   reg = c->free_reg;
-    Token t   = p->current;
+    u16 reg = c->free_reg;
+    Token t = p->current;
     Expr k;
     if (match(p, TOKEN_IDENT)) {
         u32 i = compiler_add_ostring(c, t.ostring);
         k = Expr::make_index(EXPR_CONSTANT, i);
     } else {
+        int line = p->last_line;
         consume(p, TOKEN_OPEN_BRACE);
         k = expression(p, c);
-        consume(p, TOKEN_CLOSE_BRACE);
+        consume_to_close(p, TOKEN_CLOSE_BRACE, TOKEN_OPEN_BRACE, line);
     }
 
     consume(p, TOKEN_ASSIGN);
@@ -1054,14 +1057,14 @@ constructor(Parser *p, Compiler *c)
  *  2.) Our current token is the one right after `(`.
  */
 static void
-function_call(Parser *p, Compiler *c, Expr *e)
+function_call(Parser *p, Compiler *c, Expr *e, int paren_line)
 {
     Expr_List args{DEFAULT_EXPR, 0};
     if (!check(p, TOKEN_CLOSE_PAREN)) {
         args = expression_list(p, c);
         compiler_set_returns(c, &args.last, VARARG);
     }
-    consume(p, TOKEN_CLOSE_PAREN);
+    consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, paren_line);
 
     lulu_assert(e->type == EXPR_DISCHARGED);
     u16 base = e->reg;
@@ -1087,8 +1090,8 @@ function_call(Parser *p, Compiler *c, Expr *e)
 static Expr
 prefix_expr(Parser *p, Compiler *c)
 {
-    Token t    = p->current;
-    int   line = p->last_line;
+    Token t = p->current;
+    int line = p->last_line;
     advance(p); // Skip '<number>', '<ident>', '(' or '-'.
 
     OpCode unary_op;
@@ -1105,7 +1108,7 @@ prefix_expr(Parser *p, Compiler *c)
     case TOKEN_IDENT: return resolve_variable(c, t.ostring);
     case TOKEN_OPEN_PAREN: {
         Expr e = expression(p, c);
-        consume(p, TOKEN_CLOSE_PAREN);
+        consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, line);
         return e;
     }
     case TOKEN_OPEN_CURLY: return constructor(p, c);
@@ -1128,23 +1131,26 @@ primary_expr(Parser *p, Compiler *c)
 {
     Expr e = prefix_expr(p, c);
     for (;;) {
+        int line = p->last_line;
         switch (p->current.type) {
         case TOKEN_OPEN_PAREN: {
             // Function to be called must be on top of the stack.
             compiler_expr_next_reg(c, &e);
             advance(p);
-            function_call(p, c, &e);
+            function_call(p, c, &e, line);
             break;
         }
         case TOKEN_DOT:
-            field(p, c, &e);
+            // Skip '.'.
+            advance(p);
+            resolve_field(p, c, &e);
             break;
         case TOKEN_OPEN_BRACE: {
             // Table must be in some register, it can be a local.
             compiler_expr_any_reg(c, &e);
             advance(p); // Skip '['.
             Expr k = expression(p, c);
-            consume(p, TOKEN_CLOSE_BRACE);
+            consume_to_close(p, TOKEN_CLOSE_BRACE, TOKEN_OPEN_BRACE, line);
             compiler_get_table(c, &e, &k);
             break;
         }
