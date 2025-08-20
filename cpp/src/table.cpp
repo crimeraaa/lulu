@@ -27,7 +27,7 @@ hash_compound(T v)
 {
     u32 hash = FNV1A_OFFSET;
     // Standards-compliant type punning. Optimizes to register moves.
-    u32 buf[sizeof(v) / sizeof(hash)];
+    u32 buf[sizeof(T) / sizeof(hash)]; // NOLINT
     memcpy(buf, &v, sizeof(buf));
     for (int i = 0; i < count_of(buf); i++) {
         hash ^= buf[i];
@@ -204,7 +204,7 @@ count_index(Value k, Slice<i32> index_ranges)
 {
     i32 i = array_index(k);
     if (1 <= i && i <= MAX_INDEX) {
-        u32 bit = mem_ceil_log2(cast_usize(i));
+        int bit = mem_ceil_log2(cast_usize(i));
         index_ranges[bit] += 1;
         return 1;
     }
@@ -620,11 +620,14 @@ find_next(lulu_VM *vm, Table *t, Value k)
         return 0;
     }
 
-    isize i = array_index(k);
-    // `k` is represents an valid Lua array index?
-    if (1 <= i && i <= len(t->array)) {
-        // Next index. First iteration would have already poked at index 0.
-        return (i - 1) + 1;
+    // New scope so we don't shadow 'i'
+    {
+        isize i = array_index(k);
+        // `k` is represents an valid Lua array index?
+        if (1 <= i && i <= len(t->array)) {
+            // Next index. First iteration would have already poked at index 0.
+            return (i - 1) + 1;
+        }
     }
 
     usize hash = cast_usize(hash_value(k));

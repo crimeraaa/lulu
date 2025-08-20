@@ -31,8 +31,14 @@ get_base(LString s)
     return 0;
 }
 
+/**
+ * @param [out] n
+ *      Holds the result of parsing the string into a number.
+ *      If conversion is not successful, then the `strto[dl]` functions
+ *      set it to 0.
+ */
 bool
-lstring_to_number(LString s, Number *out, int base)
+lstring_to_number(LString s, Number *n, int base)
 {
     // Need to detect the base prefix?
     if (base == 0) {
@@ -44,7 +50,6 @@ lstring_to_number(LString s, Number *out, int base)
         }
     }
 
-    Number d;
     char *last;
     // Parsing a prefixed integer?
     if (base != 0) {
@@ -53,18 +58,15 @@ lstring_to_number(LString s, Number *out, int base)
             return false;
         }
         unsigned long ul = strtoul(raw_data(s), &last, base);
-        d = cast_number(ul);
+        *n = cast_number(ul);
     }
     // Parsing a non-prefixed number.
     else {
-        d = strtod(raw_data(s), &last);
+        *n = strtod(raw_data(s), &last);
     }
-
-    if (last != end(s)) {
-        return false;
-    }
-    *out = d;
-    return true;
+    // Success only when all characters in the string were succesfully
+    // parsed as part of the number.
+    return last == end(s);
 }
 
 LString

@@ -1,0 +1,9 @@
+# Append our project-specific defines. Requires clangd restart.
+CompileFlags:
+  Add: [
+    -DLULU_BUILD_ALL=1,
+    -DLULU_DEBUG=1,
+    -DLULU_DEBUG_PRINT_CODE=1,
+    -DLULU_DEBUG_TRACE_EXEC=1,
+    -DLUA_USE_LINUX,
+    ]

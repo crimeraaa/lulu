@@ -78,31 +78,34 @@ operator ""_i(unsigned long long i)
 }
 
 /**
+ * @param [out] i
+ *      Holds the result of conversion so that the functioon can return
+ *      a boolean value to indicate success or failure.
+ *
  * @return
  *      true if conversion occured without loss of precision, else false.
  */
 inline bool
-number_to_integer(Number n, Integer *out)
+number_to_integer(Number n, Integer *i)
 {
-    *out = cast_integer(n);
-    return lulu_Number_eq(cast(Number)*out, n);
+    *i = cast_integer(n);
+    return lulu_Number_eq(cast(Number)*i, n);
 }
 
 enum Value_Type {
-    VALUE_NIL           = LULU_TYPE_NIL,
-    VALUE_BOOLEAN       = LULU_TYPE_BOOLEAN,
+    VALUE_NIL = LULU_TYPE_NIL,
+    VALUE_BOOLEAN = LULU_TYPE_BOOLEAN,
     VALUE_LIGHTUSERDATA = LULU_TYPE_LIGHTUSERDATA,
-    VALUE_NUMBER        = LULU_TYPE_NUMBER,
-    VALUE_STRING        = LULU_TYPE_STRING,
-    VALUE_TABLE         = LULU_TYPE_TABLE,
-    VALUE_FUNCTION      = LULU_TYPE_FUNCTION,
+    VALUE_NUMBER = LULU_TYPE_NUMBER,
+    VALUE_STRING = LULU_TYPE_STRING,
+    VALUE_TABLE = LULU_TYPE_TABLE,
+    VALUE_FUNCTION = LULU_TYPE_FUNCTION,
 
     // Not accessible from user code.
     VALUE_INTEGER, VALUE_CHUNK,
 };
 
-static constexpr Value_Type
-VALUE_TYPE_LAST = VALUE_FUNCTION;
+#define VALUE_TYPE_LAST     VALUE_FUNCTION
 
 static constexpr int
 VALUE_TYPE_COUNT = VALUE_TYPE_LAST + 1;

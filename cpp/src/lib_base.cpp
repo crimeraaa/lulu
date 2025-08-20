@@ -1,4 +1,6 @@
+#include <ctype.h> /* isspace */
 #include <string.h>
+#include <stdlib.h> /* strtoul */
 
 #include "lulu_auxlib.h"
 
@@ -60,16 +62,55 @@ base_tostring(lulu_VM *vm)
 static int
 base_tonumber(lulu_VM *vm)
 {
-    lulu_Number n;
-    lulu_check_any(vm, 1);
+    int base = lulu_opt_integer(vm, 2, /* def */ 10);
 
-    /* Convert first, ask questions later */
-    n = lulu_to_number(vm, 1);
-    if (n == 0 && !lulu_is_number(vm, 1)) {
-        lulu_push_nil(vm);
-    } else {
-        lulu_push_number(vm, n);
+    /* Simple conversion to base-10? */
+    if (base == 10) {
+        /* Sanity check. Concept check: `tonumber();` (no arguments). */
+        lulu_check_any(vm, 1);
+
+        /* number already or string convertible to number? */
+        if (lulu_is_number(vm, 1)) {
+            lulu_Number n = lulu_to_number(vm, 1);
+            lulu_push_number(vm, n);
+            return 1;
+        }
     }
+    /* Conversion to non-base-10 integer is more involved. */
+    else {
+        /**
+         * Even if input is already a number, convert it to a string so
+         * we can re-parse it in the new base.
+         */
+        const char *s = lulu_check_string(vm, 1);
+        char *end;
+        unsigned long ul;
+        lulu_arg_check(vm, 2 <= base && base <= 36, 2, "base out of range");
+        ul = strtoul(s, &end, base);
+
+        /**
+         * According to the C standard, `*endptr == nptr` iff there were no
+         * digits at all. So the opposite indicates we *might* have a valid
+         * number string.
+         */
+        if (end != s) {
+            /* Spaces are the only allowable trailing characters. */
+            while (isspace(*end)) {
+                end++;
+            }
+
+            /**
+             * All valid trailing chars (if any) were skipped?
+             * Concept check: return tonumber("1234  ", 16);
+             */
+            if (*end == '\0') {
+                lulu_push_number(vm, cast(lulu_Number)ul);
+                return 1;
+            }
+        }
+    }
+    /* Argument could not be converted to a number in the given base. */
+    lulu_push_nil(vm);
     return 1;
 }
 
@@ -86,7 +127,7 @@ base_print(lulu_VM *vm)
         lulu_push_value(vm, -1); /* ..., tostring, tostring, */
         lulu_push_value(vm, i);  /* ..., tostring, tostring, arg[i] */
         lulu_call(vm, 1, 1);     /* ..., tostring, tostring(arg[i]) */
-        fprintf(stdout, "%s", lulu_to_string(vm, -1));
+        fputs(lulu_to_string(vm, -1), stdout);
         lulu_pop(vm, 1);         /* ..., tostring */
     }
     fputc('\n', stdout);
@@ -152,12 +193,12 @@ push_iterator(lulu_VM *vm, const char *name, lulu_CFunction f)
 
 static const lulu_Register
 baselib[] = {
-    {"assert",      base_assert},
-    {"tostring",    base_tostring},
-    {"tonumber",    base_tonumber},
-    {"print",       base_print},
-    {"type",        base_type},
-    {"next",        base_next},
+    {"assert", base_assert},
+    {"tostring", base_tostring},
+    {"tonumber", base_tonumber},
+    {"print", base_print},
+    {"type", base_type},
+    {"next", base_next},
 };
 
 LULU_LIB_API int

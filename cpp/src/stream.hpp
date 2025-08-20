@@ -6,9 +6,14 @@
 
 struct Stream {
     lulu_Reader function;
-    void       *data;
-    const char *cursor;     // Current position in buffer somewhere at `data.`
-    isize       remaining;  // How many bytes still unread?
+    void *data;
+
+    // Pointer to current position in buffer stored at `data`.
+    const char *cursor;
+
+    // How many bytes are still unread by the reader function?
+    // Useful when implementing file buffering.
+    isize remaining;
 
     int
     fill()

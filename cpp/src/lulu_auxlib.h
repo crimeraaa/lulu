@@ -14,7 +14,7 @@
 
 
 typedef struct {
-    const char    *name;
+    const char *name;
     lulu_CFunction function;
 } lulu_Register;
 
@@ -105,8 +105,8 @@ lulu_check_number(lulu_VM *vm, int argn);
  *      converted to an integer, when successful.
  *
  * @note(2025-07-24)
- *      If the `number` value cannot be fully represented as an integer then
- *      it is truncated in some unspecified way.
+ *      If the `number` value cannot be accurately represented as an
+ *      integer then it is truncated as per the C standard.
  */
 LULU_LIB_API lulu_Integer
 lulu_check_integer(lulu_VM *vm, int argn);
@@ -187,12 +187,20 @@ lulu_set_nlibrary(lulu_VM *vm, const char *libname,
 /*=== HELPER MACROS ================================================= {{{ */
 
 
-#define lulu_type_name_at(vm, i)        lulu_type_name(vm, lulu_type(vm, i))
-#define lulu_check_string(vm, argn)     lulu_check_lstring(vm, argn, NULL)
-#define lulu_opt_string(vm, argn, def)  lulu_opt_lstring(vm, argn, def, NULL)
+#define lulu_type_name_at(vm, i) lulu_type_name(vm, lulu_type(vm, i))
 
+/**
+ * @brief
+ *      Asserts that `expr` is true; if not then an error is thrown and
+ *      caught by the enclosing protected call. An error message is also
+ *      pushed to the top of the stack.
+ */
+#define lulu_arg_check(vm, expr, argn, msg) \
+    if (!(expr)) {lulu_arg_error(vm, argn, msg);}
 
-#define lulu_count_library(fns)         (int)(sizeof(fns) / sizeof((fns)[0]))
+#define lulu_check_string(vm, argn) lulu_check_lstring(vm, argn, NULL)
+#define lulu_opt_string(vm, argn, def) lulu_opt_lstring(vm, argn, def, NULL)
+#define lulu_count_library(fns) (int)(sizeof(fns) / sizeof((fns)[0]))
 
 /**
  * @brief

@@ -125,7 +125,7 @@ frame_pop(lulu_VM *vm)
     Call_Frame *frame = nullptr;
     isize i = small_array_len(vm->frames);
     if (i > 0) {
-        frame      = frame_get(vm, i - 1);
+        frame = frame_get(vm, i - 1);
         vm->window = frame->window;
     }
     vm->caller = frame;
@@ -276,14 +276,14 @@ vm_push_fstring(lulu_VM *vm, const char *fmt, ...)
 const char *
 vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
 {
-    const LString s     = lstring_from_cstring(fmt);
-    const char  *start  = raw_data(s);
-    const char  *cursor = start;
+    LString ls = lstring_from_cstring(fmt);
+    const char *start = raw_data(ls);
+    const char *cursor = start;
 
     Builder *b = vm_get_builder(vm);
 
     bool spec = false;
-    for (; cursor < end(s); cursor++) {
+    for (; cursor < end(ls); cursor++) {
         if (*cursor == '%' && !spec) {
             builder_write_lstring(vm, b, slice_pointer(start, cursor));
             spec = true;
@@ -307,7 +307,7 @@ vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args)
             break;
         case 's': {
             const char *s = va_arg(args, char *);
-            LString ls = (s == nullptr) ? "(null)"_s : lstring_from_cstring(s);
+            ls = (s == nullptr) ? "(null)"_s : lstring_from_cstring(s);
             builder_write_lstring(vm, b, ls);
             break;
         }

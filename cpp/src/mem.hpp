@@ -8,6 +8,10 @@ mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
 
 
 /**
+ * @param n
+ *      Some nonzero, positive integer. Recall that `log(0)` for any base
+ *      is undefined.
+ *
  * @return
  *      Exponent of the next power of 2 after `n`, if it is not one already.
  */
@@ -130,9 +134,15 @@ ptr_index(const Array<T, N> &a, const T *p)
     return cast_int(p - raw_data(a));
 }
 
+
+/**
+ * @param [out] i
+ *      Holds the index of `p` in `s.data` if it is indeed contained,
+ *      otherwise is not assigned and may have garbage data.
+ */
 template<class T>
 inline bool
-ptr_index_safe(Slice<T> s, const T *p, int *out)
+ptr_index_safe(Slice<T> s, const T *p, int *i)
 {
     auto addr_start = cast(uintptr_t)begin(s);
     auto addr_stop  = cast(uintptr_t)end(s);
@@ -140,7 +150,7 @@ ptr_index_safe(Slice<T> s, const T *p, int *out)
 
     // Integer representation of `p` is within the array?
     if (addr_start <= addr_test && addr_test < addr_stop) {
-        *out = ptr_index(s, p);
+        *i = ptr_index(s, p);
         return true;
     }
     return false;

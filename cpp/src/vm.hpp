@@ -141,13 +141,13 @@ vm_to_number(const Value *v, Value *out);
 
 
 /**
- * @note(2025-07-21) Assumptions
- *
- *  1.) This function only ever deals with conversion of non-`string`
- *      (i.e. `number`) to `string`.
+ * @param [in, out] v
+ *      As input, holds the value we wish to convert, which is only valid
+ *      for numbers and strings.
+ *      As output, holds the interned string representation.
  */
 bool
-vm_to_string(lulu_VM *vm, Value *in_out);
+vm_to_string(lulu_VM *vm, Value *v);
 
 const char *
 vm_push_string(lulu_VM *vm, LString s);

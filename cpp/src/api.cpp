@@ -45,7 +45,7 @@ value_at_stack(lulu_VM *vm, int i)
     lulu_assert(start != &nil);
     lulu_assertf(i > LULU_PSEUDO_INDEX, "Got pseudo-index %i", i);
 
-    // Only `api.cpp:none` is immutable; all indexes (even pseudo indexes!)
+    // Only `&nil` is immutable; all indexes (even pseudo indexes!)
     // are mutable.
     return const_cast<Value *>(start);
 }
@@ -62,12 +62,12 @@ LULU_API lulu_Error
 lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
     void *reader_data)
 {
-    Stream stream;
-    stream.function  = reader;
-    stream.data      = reader_data;
-    stream.cursor    = nullptr;
-    stream.remaining = 0;
-
+    Stream stream{
+        /* function */ reader,
+        /* data */ reader_data,
+        /* cursor */ nullptr,
+        /* remaining */ 0,
+    };
     lulu_Error e = vm_load(vm, lstring_from_cstring(source), &stream);
     return e;
 }
@@ -98,15 +98,15 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
     return e;
 }
 
-struct C_PCall {
+struct CPCall {
     lulu_CFunction function;
-    void          *function_data;
+    void *function_data;
 };
 
 static void
-c_pcall(lulu_VM *vm, void *user_ptr)
+cpcall(lulu_VM *vm, void *user_ptr)
 {
-    C_PCall *d = reinterpret_cast<C_PCall *>(user_ptr);
+    CPCall *d = reinterpret_cast<CPCall *>(user_ptr);
     lulu_push_cfunction(vm, d->function);
     lulu_push_userdata(vm, d->function_data);
     lulu_call(vm, 1, 0);
@@ -115,8 +115,8 @@ c_pcall(lulu_VM *vm, void *user_ptr)
 LULU_API lulu_Error
 lulu_cpcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
 {
-    C_PCall d{function, function_data};
-    lulu_Error e = vm_run_protected(vm, c_pcall, &d);
+    CPCall d{function, function_data};
+    lulu_Error e = vm_run_protected(vm, cpcall, &d);
     return e;
 }
 
@@ -199,7 +199,7 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
 
     /**
      * @note(2025-08-02)
-     *      This call is safe, because if `v == &api.cpp:none`, it has the
+     *      This call is safe, because if `v == &nil`, it has the
      *      `nil` tag and nothing is changed.
      */
     if (!vm_to_string(vm, const_cast<Value *>(v)))  {
