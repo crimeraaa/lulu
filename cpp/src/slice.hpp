@@ -8,7 +8,7 @@
 
 template<class T>
 struct Slice {
-    T *data;
+    T    *data;
     isize len;
 
     // Bounds-checked, mutable element access.
@@ -16,10 +16,13 @@ struct Slice {
     T &
     operator[](N i)
     {
-        isize ii = cast_isize(i);
-        lulu_assertf(0 <= ii && ii < this->len,
+        isize ii = static_cast<isize>(i);
+        lulu_assertf(
+            0 <= ii && ii < this->len,
             "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
-            ii, this->len);
+            ii,
+            this->len
+        );
         return this->data[ii];
     }
 
@@ -28,10 +31,13 @@ struct Slice {
     const T &
     operator[](N i) const
     {
-        isize ii = cast_isize(i);
-        lulu_assertf(0 <= ii && ii < this->len,
+        isize ii = static_cast<isize>(i);
+        lulu_assertf(
+            0 <= ii && ii < this->len,
             "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
-            ii, this->len);
+            ii,
+            this->len
+        );
         return this->data[ii];
     }
 };
@@ -56,21 +62,33 @@ inline Slice<T>
 slice(Slice<T> &s, isize start, isize stop)
 {
     Slice<T> s2{&s.data[start], stop - start};
-    lulu_assertf(0 <= len(s2) && len(s2) <= len(s),
+    lulu_assertf(
+        0 <= len(s2) && len(s2) <= len(s),
         "invalid result length: len(s2)=%" ISIZE_FMT " > len(s)=%" ISIZE_FMT,
-        len(s2), len(s));
+        len(s2),
+        len(s)
+    );
 
-    lulu_assertf(0 <= start && start <= len(s),
+    lulu_assertf(
+        0 <= start && start <= len(s),
         "invalid start index: start=%" ISIZE_FMT " > %" ISIZE_FMT,
-        start, len(s));
+        start,
+        len(s)
+    );
 
-    lulu_assertf(0 <= stop && stop <= len(s),
+    lulu_assertf(
+        0 <= stop && stop <= len(s),
         "invalid stop index: stop=%" ISIZE_FMT " > %" ISIZE_FMT,
-        stop, len(s));
+        stop,
+        len(s)
+    );
 
-    lulu_assertf(start <= stop,
+    lulu_assertf(
+        start <= stop,
         "invalid start-stop pair: start=%" ISIZE_FMT " > stop=%" ISIZE_FMT,
-        start, stop);
+        start,
+        stop
+    );
     return s2;
 }
 
@@ -106,7 +124,7 @@ slice_eq(const Slice<T> &a, const Slice<T> &b)
     if (a.len != b.len) {
         return false;
     }
-    usize size = sizeof(T) * cast_usize(a.len);
+    usize size = sizeof(T) * static_cast<usize>(a.len);
     return memcmp(a.data, b.data, size) == 0;
 }
 
@@ -114,11 +132,14 @@ template<class T>
 inline Slice<T>
 slice_pointer(T *start, T *stop)
 {
-    Slice<T> s{start, cast_isize(stop - start)};
+    Slice<T> s{start, static_cast<isize>(stop - start)};
     // Problem: comparison of 2 unrelated pointers is not standard!
-    lulu_assertf(start <= stop,
+    lulu_assertf(
+        start <= stop,
         "start=%p > stop=%p",
-        cast(void *)start, cast(void *)stop);
+        static_cast<const void *>(start),
+        static_cast<const void *>(stop)
+    );
     return s;
 }
 
@@ -159,7 +180,7 @@ copy(Slice<T> &dst, const Slice<T> &src)
 {
     // Clamp size to read and copy
     isize n = (dst.len > src.len) ? src.len : dst.len;
-    memmove(dst.data, src.data, sizeof(T) * cast_usize(n));
+    memmove(dst.data, src.data, sizeof(T) * static_cast<usize>(n));
 }
 
 // Because C++ templates aren't convoluted enough
@@ -169,7 +190,7 @@ copy(Slice<T> &dst, const Slice<const T> &src)
 {
     // Clamp size to read and copy
     isize n = (dst.len > src.len) ? src.len : dst.len;
-    memmove(dst.data, src.data, sizeof(T) * cast_usize(n));
+    memmove(dst.data, src.data, sizeof(T) * static_cast<usize>(n));
 }
 
 template<class T>
@@ -235,10 +256,13 @@ struct Array {
     T &
     operator[](I i)
     {
-        isize ii = cast_isize(i);
-        lulu_assertf(0 <= ii && ii < N,
+        isize ii = static_cast<isize>(i);
+        lulu_assertf(
+            0 <= ii && ii < N,
             "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
-            ii, cast_isize(N));
+            ii,
+            static_cast<isize>(N)
+        );
         return this->data[ii];
     }
 
@@ -246,13 +270,15 @@ struct Array {
     const T &
     operator[](I i) const
     {
-        isize ii = cast_isize(i);
-        lulu_assertf(0 <= ii && ii < N,
+        isize ii = static_cast<isize>(i);
+        lulu_assertf(
+            0 <= ii && ii < N,
             "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
-            ii, cast_isize(N));
+            ii,
+            static_cast<isize>(N)
+        );
         return this->data[ii];
     }
-
 };
 
 // `array[:]` in Odin.

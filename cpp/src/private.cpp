@@ -1,24 +1,24 @@
 #ifdef LULU_DEBUG
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif // _GNU_SOURCE
+#    ifndef _GNU_SOURCE
+#        define _GNU_SOURCE
+#    endif // _GNU_SOURCE
 
-#include <execinfo.h> // backtrace, backtrace_symbols_fd
-#include <unistd.h>   // STD*_FILENO, write
-#include <stdarg.h>   // va_list, va_start, va_end
-#include <stdio.h>    // fprintf, sscanf
-#include <stdlib.h>   // free
-#include <string.h>   // strlen
-#include <assert.h>   // assert
+#    include <assert.h>   // assert
+#    include <execinfo.h> // backtrace, backtrace_symbols_fd
+#    include <stdarg.h>   // va_list, va_start, va_end
+#    include <stdio.h>    // fprintf, sscanf
+#    include <stdlib.h>   // free
+#    include <string.h>   // strlen
+#    include <unistd.h>   // STD*_FILENO, write
 
-#include <dlfcn.h>          // dl{open,close,sym,error}
-#include <gnu/lib-names.h>
+#    include <dlfcn.h> // dl{open,close,sym,error}
+#    include <gnu/lib-names.h>
 
-#include "private.hpp"
-#include "string.hpp"
+#    include "private.hpp"
+#    include "string.hpp"
 
-#undef lulu_assert
+#    undef lulu_assert
 
 /**
  * @brief
@@ -26,8 +26,11 @@
  *      symbol name and the offset.
  */
 static void
-parse_strings(LString stack_frame, Slice<char> &out_symbol,
-    Slice<char> &out_offset)
+parse_strings(
+    LString      stack_frame,
+    Slice<char> &out_symbol,
+    Slice<char> &out_offset
+)
 {
     LString symbol;
     LString offset;
@@ -40,12 +43,12 @@ parse_strings(LString stack_frame, Slice<char> &out_symbol,
             break;
         // Beginning of offset?
         case '+':
-            symbol.len  = cast_isize(&ch - symbol.data);
+            symbol.len  = static_cast<isize>(&ch - symbol.data);
             offset.data = &ch + 1;
             break;
         // End of offset?
         case ')':
-            offset.len = cast_isize(&ch - offset.data);
+            offset.len = static_cast<isize>(&ch - offset.data);
         default:
             break;
         }
@@ -65,8 +68,8 @@ print_dlerror()
 static void *
 calculate_offset(LString stack_frame)
 {
-    char _buf1[75] = {0};
-    char _buf2[25] = {0};
+    char        _buf1[75] = {0};
+    char        _buf2[25] = {0};
     Slice<char> symbol_string{_buf1, count_of(_buf1)};
     Slice<char> offset_string{_buf2, count_of(_buf2)};
 
@@ -95,9 +98,9 @@ calculate_offset(LString stack_frame)
         Dl_info symbol_info;
         if (dladdr(address, &symbol_info) != 0) {
             // Caculate total offset of the symbol
-            char *saddr = cast(char *)symbol_info.dli_saddr;
-            char *fbase = cast(char *)symbol_info.dli_fbase;
-            char *ofptr = cast(char *)offset_pointer;
+            char *saddr = static_cast<char *>(symbol_info.dli_saddr);
+            char *fbase = static_cast<char *>(symbol_info.dli_fbase);
+            char *ofptr = static_cast<char *>(offset_pointer);
 
             offset_pointer = (saddr - fbase) + ofptr;
             dlclose(object_file);
@@ -111,7 +114,7 @@ calculate_offset(LString stack_frame)
 
 
 // J. Panek originally wrote 128 but come on, do we need THAT many?
-#define STACK_FRAMES_BUFFER_SIZE    16
+#    define STACK_FRAMES_BUFFER_SIZE 16
 
 static void *stack_frames_buffer[STACK_FRAMES_BUFFER_SIZE];
 static char  execution_filename[32] = "bin/liblulu.so";
@@ -135,8 +138,12 @@ addr2line_print(const void *address)
      *  -e  uses the following positional argument as the name of the
      *      executable to translate addresses from.
      */
-    sprintf(command, "addr2line -C -i -f -p -s -a -e ./%s %p ",
-        execution_filename, address);
+    sprintf(
+        command,
+        "addr2line -C -i -f -p -s -a -e ./%s %p ",
+        execution_filename,
+        address
+    );
 
     // Will print a nicely formatted string specifying the function and source
     // line of the address.
@@ -150,38 +157,43 @@ addr2line_print(const void *address)
 static void
 print_backtrace()
 {
-    static const char errmsg[] = "Offset cannot be resolved; No offset present?\n\0?";
+    static const char errmsg[] =
+        "Offset cannot be resolved; No offset present?\n\0?";
 
     // backtrace the last calls
-    int    n     = backtrace(stack_frames_buffer, count_of(stack_frames_buffer));
+    int    n = backtrace(stack_frames_buffer, count_of(stack_frames_buffer));
     char **array = backtrace_symbols(stack_frames_buffer, n);
 
-    char print_array[100] = {0};
-    Slice<char *> stack_frame_strings{array, cast_isize(n)};
+    char          print_array[100] = {0};
+    Slice<char *> stack_frame_strings{array, static_cast<isize>(n)};
 
     sprintf(print_array, "\nObtained %i stack frames.\n", n);
     write(STDERR_FILENO, print_array, strlen(print_array));
 
     for (const char *s : stack_frame_strings) {
-#if __x86_64__
+#    if __x86_64__
         // Calculate the offset on x86_64, print the file and line number with
         // addr2line.
         void *offset_pointer = calculate_offset(lstring_from_cstring(s));
         if (offset_pointer == nullptr) {
-            write(STDERR_FILENO, errmsg, cast_usize(count_of(errmsg)));
+            write(STDERR_FILENO, errmsg, static_cast<usize>(count_of(errmsg)));
         } else {
             addr2line_print(offset_pointer);
         }
-#elif __arm__
-#error nah
-#endif
+#    elif __arm__
+#        error nah
+#    endif
     }
     free(array);
 }
 
 void
-lulu_assert_fail(const char *where, const char *expr, const char *fmt, ...)
-throw()
+lulu_assert_fail(
+    const char *where,
+    const char *expr,
+    const char *fmt,
+    ...
+) throw()
 {
     static bool have_error = false;
     assert(!have_error && "Error in assertion handling");
@@ -200,7 +212,7 @@ throw()
     }
 
     // invoke ASAN
-    *cast(volatile int *)SIZE_MAX = 1;
+    *reinterpret_cast<volatile int *>(SIZE_MAX) = 1;
 
     print_backtrace();
     __builtin_trap();

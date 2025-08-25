@@ -1,10 +1,9 @@
 #pragma once
 
-#include "lexer.hpp"
 #include "chunk.hpp"
+#include "lexer.hpp"
 
-constexpr int
-PARSER_MAX_RECURSE = 250;
+constexpr int PARSER_MAX_RECURSE = 250;
 
 
 /**
@@ -17,7 +16,7 @@ PARSER_MAX_RECURSE = 250;
  *      are dispatched are already incremented. So adding `-1` essentially
  *      undoes the increment, bringing us back to `OP_JUMP`.
  */
-#define NO_JUMP     -1
+#define NO_JUMP -1
 
 struct Parser {
     lulu_VM *vm;
@@ -30,16 +29,16 @@ struct Parser {
 };
 
 enum Precedence : i8 {
-    PREC_NONE = -1, // Not a valid lookup table key.
-    PREC_OR,        // or
-    PREC_AND,       // and
-    PREC_EQUALITY,  // == ~=
+    PREC_NONE = -1,  // Not a valid lookup table key.
+    PREC_OR,         // or
+    PREC_AND,        // and
+    PREC_EQUALITY,   // == ~=
     PREC_COMPARISON, // < <= > >=
-    PREC_CONCAT,    // ..
-    PREC_TERMINAL,  // + -
-    PREC_FACTOR,    // * / %
-    PREC_EXPONENT,  // ^
-    PREC_UNARY,     // - not #
+    PREC_CONCAT,     // ..
+    PREC_TERMINAL,   // + -
+    PREC_FACTOR,     // * / %
+    PREC_EXPONENT,   // ^
+    PREC_UNARY,      // - not #
 };
 
 enum Expr_Type {
@@ -51,7 +50,8 @@ enum Expr_Type {
     EXPR_CONSTANT,   // Literal value stored in constants array. Use `index`.
     EXPR_GLOBAL,     // Global variable named stored in `index`.
     EXPR_LOCAL,      // Local variable register stored in `reg`.
-    EXPR_INDEXED,    // Table register in `table.reg` and key RK in `table.field_rk`.
+    EXPR_INDEXED,    // Table register in `table.reg` and key RK in
+                     // `table.field_rk`.
     EXPR_JUMP,       // An `OP_JUMP` chain. Use `pc`.
     EXPR_CALL,       // `OP_CALL`. Use `pc`.
     EXPR_RELOCABLE,  // Instruction without register A finalized- use `pc`.
@@ -72,20 +72,20 @@ struct Expr {
     // pc of falsy patch lists, mainly for if-statements and logical-and.
     int patch_false;
     union {
-        Number number; // Must be first member for brace initialization.
+        Number     number; // Must be first member for brace initialization.
         Expr_Table table;
-        int pc;
-        u32 index;
-        u16 reg;
+        int        pc;
+        u32        index;
+        u16        reg;
     };
 
     static constexpr Expr
     make(Expr_Type type)
     {
         Expr e{
-            /* type */              type,
-            /* patch_true */        NO_JUMP,
-            /* patch_false */       NO_JUMP,
+            /* type */ type,
+            /* patch_true */ NO_JUMP,
+            /* patch_false */ NO_JUMP,
             /* <unnamed>::number */ {0},
         };
         return e;
@@ -95,14 +95,14 @@ struct Expr {
     make_pc(Expr_Type type, isize pc)
     {
         Expr e = make(type);
-        e.pc = pc;
+        e.pc   = pc;
         return e;
     }
 
     static constexpr Expr
     make_number(Number n)
     {
-        Expr e = make(EXPR_NUMBER);
+        Expr e   = make(EXPR_NUMBER);
         e.number = n;
         return e;
     }
@@ -111,14 +111,14 @@ struct Expr {
     make_reg(Expr_Type type, u16 reg)
     {
         Expr e = make(type);
-        e.reg = reg;
+        e.reg  = reg;
         return e;
     }
 
     static constexpr inline Expr
     make_index(Expr_Type type, u32 index)
     {
-        Expr e = make(type);
+        Expr e  = make(type);
         e.index = index;
         return e;
     }

@@ -6,6 +6,7 @@
 .gdb_history
 .task/
 __pycache__/
+cpp/dump.yml
 
 # This is just for my personal documentation of the GDB Python API
 gdb/

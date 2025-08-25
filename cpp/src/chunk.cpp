@@ -9,16 +9,17 @@ Chunk *
 chunk_new(lulu_VM *vm, OString *source)
 {
     Chunk *p = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
-    // Because `c` is heap-allocated, we must explicitly 'construct' the members.
+    // Because `c` is heap-allocated, we must explicitly 'construct' the
+    // members.
     dynamic_init(&p->constants);
     dynamic_init(&p->code);
     dynamic_init(&p->lines);
     dynamic_init(&p->locals);
-    p->n_params = 0;
-    p->source = source;
-    p->line_defined = 0;
-    p->last_line_defined  = 0;
-    p->stack_used = 2; // R(0) and R(1) must always be valid.
+    p->n_params          = 0;
+    p->source            = source;
+    p->line_defined      = 0;
+    p->last_line_defined = 0;
+    p->stack_used        = 2; // R(0) and R(1) must always be valid.
     return p;
 }
 
@@ -41,14 +42,20 @@ add_line(lulu_VM *vm, Chunk *p, int pc, int line)
         Line_Info *last = &p->lines[n - 1];
         if (last->line == line) {
             // Make sure `pc` is in range and will update things correctly.
-            lulu_assertf(last->start_pc <= pc,
+            lulu_assertf(
+                last->start_pc <= pc,
                 "start_pc=%i > pc=%i",
-                last->start_pc, pc);
+                last->start_pc,
+                pc
+            );
 
             // Use `<=` in case we popped an instruction.
-            lulu_assertf(last->end_pc <= pc,
+            lulu_assertf(
+                last->end_pc <= pc,
                 "end_pc=%i > pc=%i",
-                last->end_pc, pc);
+                last->end_pc,
+                pc
+            );
 
             last->end_pc = pc;
             return;
@@ -62,7 +69,7 @@ add_line(lulu_VM *vm, Chunk *p, int pc, int line)
 int
 chunk_append(lulu_VM *vm, Chunk *p, Instruction i, int line)
 {
-    int pc = cast_int(len(p->code));
+    int pc = static_cast<int>(len(p->code));
     dynamic_push(vm, &p->code, i);
     add_line(vm, p, pc, line);
     return pc;
@@ -72,14 +79,14 @@ int
 chunk_get_line(const Chunk *p, int pc)
 {
     // Binary search
-    int left = 0;
-    int right = cast_int(len(p->lines));
+    int left  = 0;
+    int right = static_cast<int>(len(p->lines));
     // left <= right would otherwise pass, yet index 0 is invalid!
     if (right == 0) {
         return NO_LINE;
     }
     while (left <= right) {
-        int i = (left + right) / 2;
+        int       i    = (left + right) / 2;
         Line_Info info = p->lines[i];
         if (info.start_pc > pc) {
             // Current range is greater, ignore this right half.
@@ -99,7 +106,7 @@ chunk_add_constant(lulu_VM *vm, Chunk *p, Value v)
 {
     Integer i = len(p->constants);
     dynamic_push(vm, &p->constants, v);
-    return cast(u32)i;
+    return static_cast<u32>(i);
 }
 
 int
@@ -110,7 +117,7 @@ chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident)
     local.start_pc = 0;
     local.end_pc   = 0;
 
-    int i = cast_int(len(p->locals));
+    int i = static_cast<int>(len(p->locals));
     dynamic_push(vm, &p->locals, local);
     return i;
 }

@@ -5,7 +5,7 @@
 template<class T, auto N>
 struct Small_Array {
     Array<T, N> data;
-    isize len;
+    isize       len;
 };
 
 template<class T, auto N>

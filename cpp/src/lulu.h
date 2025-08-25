@@ -21,9 +21,9 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
  *      as the globals table. In Lua they also allow us to poke at the
  *      registry, the environment, and upvalues.
  */
-#define LULU_PSEUDO_INDEX       (-15000)
-#define LULU_GLOBALS_INDEX      (LULU_PSEUDO_INDEX)
-#define lulu_upvalue_index(i)   (LULU_GLOBALS_INDEX - (i))
+#define LULU_PSEUDO_INDEX     (-15000)
+#define LULU_GLOBALS_INDEX    (LULU_PSEUDO_INDEX)
+#define lulu_upvalue_index(i) (LULU_GLOBALS_INDEX - (i))
 
 
 /**
@@ -32,7 +32,7 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
  *      an unknown number of values will be returned by this particular
  *      function call.
  */
-#define LULU_MULTRET    (-1)
+#define LULU_MULTRET (-1)
 
 
 /**
@@ -59,8 +59,8 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
  *      acts similarly to the C standard `free(ptr)`. `NULL`
  *      is returned as a sentinel value in this case.
  */
-typedef void *
-(*lulu_Allocator)(void *user_ptr, void *ptr, size_t old_size, size_t new_size);
+typedef void *(*lulu_Allocator
+)(void *user_ptr, void *ptr, size_t old_size, size_t new_size);
 
 
 /**
@@ -73,8 +73,7 @@ typedef void *
  *      The number of values pushed to the stack that will be used by the
  *      caller.
  */
-typedef int
-(*lulu_CFunction)(lulu_VM *vm);
+typedef int (*lulu_CFunction)(lulu_VM *vm);
 
 
 /**
@@ -97,8 +96,7 @@ typedef int
  *      A read-only pointer to some character buffer in `data.` How the
  *      buffer is managed is up to you. This may be `NULL`.
  */
-typedef const char *
-(*lulu_Reader)(void *user_ptr, size_t *n);
+typedef const char *(*lulu_Reader)(void *user_ptr, size_t *n);
 
 
 /**
@@ -118,14 +116,14 @@ typedef enum {
  *      Chapter 18.1 of Crafting Interpreters: "Tagged Unions".
  */
 typedef enum {
-    LULU_TYPE_NONE = -1 ,       /* out of bounds stack index, C API only. */
+    LULU_TYPE_NONE = -1, /* out of bounds stack index, C API only. */
     LULU_TYPE_NIL,
     LULU_TYPE_BOOLEAN,
-    LULU_TYPE_LIGHTUSERDATA,    /* A non-collectible C pointer. */
+    LULU_TYPE_LIGHTUSERDATA, /* A non-collectible C pointer. */
     LULU_TYPE_NUMBER,
     LULU_TYPE_STRING,
     LULU_TYPE_TABLE,
-    LULU_TYPE_FUNCTION          /* A Lua or C function. */
+    LULU_TYPE_FUNCTION /* A Lua or C function. */
 } lulu_Type;
 
 LULU_API lulu_VM *
@@ -150,8 +148,12 @@ lulu_close(lulu_VM *vm);
  *      which is pushed to the top of the stack.
  */
 LULU_API lulu_Error
-lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
-    void *reader_data);
+lulu_load(
+    lulu_VM    *vm,
+    const char *source,
+    lulu_Reader reader,
+    void       *reader_data
+);
 
 
 /**
@@ -478,6 +480,7 @@ LULU_API void
 lulu_push_string(lulu_VM *vm, const char *s);
 
 
+/* clang-format off */
 /**
  * @brief
  *      Pushes a formatted string to the top of the stack, following a
@@ -487,9 +490,9 @@ lulu_push_string(lulu_VM *vm, const char *s);
  *      The format string. Only specifiers in the regex `%[cdifsp]` are allowed.
  *      No precision, widths, or any modifiers are implemented.
  */
-LULU_API const char *
-LULU_ATTR_PRINTF(2, 3)
+LULU_API const char *LULU_ATTR_PRINTF(2, 3)
 lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
+/* clang-format on */
 
 
 /**
@@ -630,7 +633,7 @@ lulu_next(lulu_VM *vm, int table_index);
  * @return
  *      0 if `s` does not exist in the globals table, else 1.
  */
-#define lulu_get_global(vm, key)    lulu_get_field(vm, LULU_GLOBALS_INDEX, key)
+#define lulu_get_global(vm, key) lulu_get_field(vm, LULU_GLOBALS_INDEX, key)
 
 
 /**
@@ -638,7 +641,7 @@ lulu_next(lulu_VM *vm, int table_index);
  *      Sets the global variable with key `s` to the current top of the stack.
  *      The value is then popped.
  */
-#define lulu_set_global(vm, key)    lulu_set_field(vm, LULU_GLOBALS_INDEX, key)
+#define lulu_set_global(vm, key) lulu_set_field(vm, LULU_GLOBALS_INDEX, key)
 
 
 /**
@@ -710,7 +713,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      `lulu_pcall()`) do know how many arguments to expect because they
  *      were explicitly passed.
  */
-#define lulu_is_nil(vm, i)          (lulu_type(vm, i) == LULU_TYPE_NIL)
+#define lulu_is_nil(vm, i) (lulu_type(vm, i) == LULU_TYPE_NIL)
 
 
 /**
@@ -722,7 +725,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      C functions can see them because of their unsafe capability to
  *      request any stack index.
  */
-#define lulu_is_none(vm, i)         (lulu_type(vm, i) == LULU_TYPE_NONE)
+#define lulu_is_none(vm, i) (lulu_type(vm, i) == LULU_TYPE_NONE)
 
 
 /**
@@ -730,14 +733,14 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      1 if the value at relative stack index `i` is `none` or `nil`,
  *      else 0.
  */
-#define lulu_is_none_or_nil(vm, i)  (lulu_type(vm, i) <= LULU_TYPE_NIL)
+#define lulu_is_none_or_nil(vm, i) (lulu_type(vm, i) <= LULU_TYPE_NIL)
 
 
 /**
  * @return
  *      1 if the value at relative stack index `i` is a `boolean`, else 0.
  */
-#define lulu_is_boolean(vm, i)      (lulu_type(vm, i) == LULU_TYPE_BOOLEAN)
+#define lulu_is_boolean(vm, i) (lulu_type(vm, i) == LULU_TYPE_BOOLEAN)
 
 
 /**
@@ -753,21 +756,21 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      Of course, the safety of casting to and from `void *` cannot be
  *      guaranteed by your compiler, much less `lulu`.
  */
-#define lulu_is_userdata(vm, i)     (lulu_type(vm, i) == LULU_TYPE_LIGHTUSERDATA)
+#define lulu_is_userdata(vm, i) (lulu_type(vm, i) == LULU_TYPE_LIGHTUSERDATA)
 
 
 /**
  * @return
  *      1 if the value at relative stack index `i` is a `table`, else 0.
  */
-#define lulu_is_table(vm, i)        (lulu_type(vm, i) == LULU_TYPE_TABLE)
+#define lulu_is_table(vm, i) (lulu_type(vm, i) == LULU_TYPE_TABLE)
 
 
 /**
  * @return
  *      1 if the value at relative stack index `i` is a `function`, else 0.
  */
-#define lulu_is_function(vm, i)     (lulu_type(vm, i) == LULU_TYPE_FUNCTION)
+#define lulu_is_function(vm, i) (lulu_type(vm, i) == LULU_TYPE_FUNCTION)
 
 
 /**
@@ -783,7 +786,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      The internal implementation of `lulu` ensures that all strings are
  *      nul terminated.
  */
-#define lulu_to_string(vm, i)       lulu_to_lstring(vm, i, NULL)
+#define lulu_to_string(vm, i) lulu_to_lstring(vm, i, NULL)
 
 
 /**
@@ -793,7 +796,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      incurring the function call to `strlen()` that can be skipped if
  *      the string size is known at compile time.
  */
-#define lulu_push_literal(vm, s)    lulu_push_lstring(vm, s, sizeof(s) - 1)
+#define lulu_push_literal(vm, s) lulu_push_lstring(vm, s, sizeof(s) - 1)
 
 
 /**
@@ -804,7 +807,7 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      `type()`, `tostring()` are all merely global identifiers that happen
  *      to reference C functions.
  */
-#define lulu_register(vm, name, c_function) \
+#define lulu_register(vm, name, c_function)                                    \
     (lulu_push_cfunction(vm, c_function), lulu_set_global(vm, name))
 
 /*== }}} ================================================================ */
@@ -822,13 +825,13 @@ lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
  *      the table returned by `debug.getinfo()`.
  */
 struct lulu_Debug {
-    const char *name;       /* (n) variable name for this function. */
-    const char *namewhat;   /* (n) `"global"`, `"local"`, `"field"` or `""` */
-    const char *what;       /* (S) `Lua`, `C`, `main` */
-    const char *source;     /* (S) file name where we originated from. */
-    int currentline;        /* (l) line number at point of calling.*/
-    int linedefined;        /* (S) first line in source code (opt.) */
-    int lastlinedefined;    /* (S) last line in source code (opt.) */
+    const char *name;        /* (n) variable name for this function. */
+    const char *namewhat;    /* (n) `"global"`, `"local"`, `"field"` or `""` */
+    const char *what;        /* (S) `Lua`, `C`, `main` */
+    const char *source;      /* (S) file name where we originated from. */
+    int         currentline; /* (l) line number at point of calling.*/
+    int         linedefined; /* (S) first line in source code (opt.) */
+    int         lastlinedefined; /* (S) last line in source code (opt.) */
 
     /* private to implementation. No poking around! */
     int _cf_index;

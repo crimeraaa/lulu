@@ -1,16 +1,14 @@
 #pragma once
 
-#include "small_array.hpp"
 #include "chunk.hpp"
 #include "parser.hpp"
+#include "small_array.hpp"
 
 static constexpr u16
-NO_REG  = Instruction::MAX_A, // MUST fit in 8 bits for bit manipulation.
-MAX_REG = NO_REG - 5;         // Must be less than `NO_REG`.
+    NO_REG  = Instruction::MAX_A, // MUST fit in 8 bits for bit manipulation.
+    MAX_REG = NO_REG - 5;         // Must be less than `NO_REG`.
 
-static constexpr int
-MAX_ACTIVE_LOCALS = 200,
-MAX_TOTAL_LOCALS  = UINT16_MAX;
+static constexpr int MAX_ACTIVE_LOCALS = 200, MAX_TOTAL_LOCALS = UINT16_MAX;
 
 using Active_Array = Small_Array<u16, MAX_ACTIVE_LOCALS>;
 
@@ -70,8 +68,7 @@ get_code(Compiler *c, int pc)
 Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev);
 
-[[noreturn]]
-void
+[[noreturn]] void
 compiler_error_limit(Compiler *c, int limit, const char *what);
 
 inline void
@@ -206,15 +203,24 @@ compiler_expr_any_reg(Compiler *c, Expr *e);
  *          is now 0.
  */
 void
-compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
-    Expr *restrict right);
+compiler_code_arith(
+    Compiler *c,
+    OpCode    op,
+    Expr *restrict left,
+    Expr *restrict right
+);
 
 void
 compiler_code_unary(Compiler *c, OpCode op, Expr *e);
 
 void
-compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
-    Expr *restrict right);
+compiler_code_compare(
+    Compiler *c,
+    OpCode    op,
+    bool      cond,
+    Expr *restrict left,
+    Expr *restrict right
+);
 
 void
 compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right);
@@ -315,8 +321,12 @@ compiler_jump_add(Compiler *c, int *list_pc, int jump_pc);
  *          register allocations) are implemented.
  */
 void
-compiler_jump_patch(Compiler *c, int jump_pc, int target = NO_JUMP,
-    u16 reg = NO_REG);
+compiler_jump_patch(
+    Compiler *c,
+    int       jump_pc,
+    int       target = NO_JUMP,
+    u16       reg    = NO_REG
+);
 
 
 /**
@@ -344,8 +354,12 @@ void
 compiler_logical_new(Compiler *c, Expr *left, bool cond);
 
 void
-compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
-    bool cond);
+compiler_logical_patch(
+    Compiler *c,
+    Expr *restrict left,
+    Expr *restrict right,
+    bool cond
+);
 
 
 /**

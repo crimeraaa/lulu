@@ -2,11 +2,11 @@
 
 #include "private.hpp"
 
-#define STREAM_END      -1
+#define STREAM_END -1
 
 struct Stream {
     lulu_Reader function;
-    void *data;
+    void       *data;
 
     // Pointer to current position in buffer stored at `data`.
     const char *cursor;
@@ -18,7 +18,7 @@ struct Stream {
     int
     fill()
     {
-        usize n;
+        usize       n;
         const char *s = this->function(this->data, &n);
         if (s == nullptr || n == 0) {
             return STREAM_END;

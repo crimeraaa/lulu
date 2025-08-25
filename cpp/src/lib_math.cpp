@@ -39,8 +39,8 @@ math_log(lulu_VM *vm)
 static int
 math_max(lulu_VM *vm)
 {
-    int n_args = lulu_get_top(vm);
-    lulu_Number m = lulu_check_number(vm, 1);
+    int         n_args = lulu_get_top(vm);
+    lulu_Number m      = lulu_check_number(vm, 1);
 
     // Check all succeeding arguments against the first one.
     for (int i = 2; i < n_args; i++) {
@@ -57,8 +57,8 @@ math_max(lulu_VM *vm)
 static int
 math_min(lulu_VM *vm)
 {
-    int n_args = lulu_get_top(vm);
-    lulu_Number m = lulu_check_number(vm, 1);
+    int         n_args = lulu_get_top(vm);
+    lulu_Number m      = lulu_check_number(vm, 1);
 
     for (int i = 2; i < n_args; i++) {
         lulu_Number n = lulu_check_number(vm, i);
@@ -85,8 +85,8 @@ static int
 math_frexp(lulu_VM *vm)
 {
     // Default value when `frac == NaN` or `frac == inf`.
-    int exponent = 0;
-    lulu_Number x = lulu_check_number(vm, 1);
+    int         exponent = 0;
+    lulu_Number x        = lulu_check_number(vm, 1);
     lulu_Number fraction = frexp(x, &exponent);
     lulu_push_number(vm, fraction);
     lulu_push_integer(vm, exponent);
@@ -97,7 +97,7 @@ math_frexp(lulu_VM *vm)
 static int
 math_ldexp(lulu_VM *vm)
 {
-    lulu_Number mantissa = lulu_check_number(vm, 1);
+    lulu_Number  mantissa = lulu_check_number(vm, 1);
     lulu_Integer exponent = lulu_check_integer(vm, 2);
 
     // Equivalent to mantissa * 2^exponent.
@@ -149,7 +149,7 @@ lulu_open_math(lulu_VM *vm)
     lulu_push_number(vm, M_PI);
     lulu_set_field(vm, -2, "pi");
 
-    lulu_push_number(vm, 2*M_PI);
+    lulu_push_number(vm, 2 * M_PI);
     lulu_set_field(vm, -2, "tau");
 
     lulu_push_number(vm, INFINITY);

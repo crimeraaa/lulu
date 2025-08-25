@@ -5,7 +5,7 @@
 #include "lulu.h"
 #include "lulu_auxlib.h"
 
-#define cast(T)     (T)
+#define cast(T) (T)
 
 static void
 report_error(lulu_VM *vm)
@@ -15,7 +15,7 @@ report_error(lulu_VM *vm)
         if (msg == NULL) {
             msg = "(error object is not a string)";
         }
-        fprintf(stderr, "%s\n", msg);
+        fprintf(stderr, "[ERROR]: %s\n", msg);
         lulu_pop(vm, 1); /* Remove error message from stack. */
     }
 }
@@ -55,8 +55,10 @@ typedef struct {
 static const char *
 reader_line(void *user_ptr, size_t *n)
 {
-    Reader_Line *r = cast(Reader_Line *)user_ptr;
-    const char *s = r->data;
+    Reader_Line *r = cast(Reader_Line *) user_ptr;
+    const char  *s = r->data;
+
+    /* Save here in case we are about to mark as read. */
     *n = r->len;
 
     /* First time reading this line? */
@@ -71,19 +73,19 @@ reader_line(void *user_ptr, size_t *n)
 static void
 run_interactive(lulu_VM *vm)
 {
-    for (;;) {
-        char        buf[512];
-        Reader_Line r;
-        lulu_Error  e;
-        size_t      n = 0;
+    char        buf[512];
+    Reader_Line r;
+    lulu_Error  e;
+    size_t      n = 0;
 
+    for (;;) {
         printf(">>> ");
-        if (fgets(buf, cast(int)sizeof(buf), stdin) == NULL) {
+        if (fgets(buf, cast(int) sizeof(buf), stdin) == NULL) {
             printf("\n");
             break;
         }
 
-        n = strcspn(buf, "\r\n");
+        n      = strcspn(buf, "\r\n");
         buf[n] = '\0'; /* prevent `lulu_push_fstring()` from including '\n' */
         if (n > 0 && buf[0] == '=') {
             lulu_push_fstring(vm, "return %s", buf + 1);
@@ -92,7 +94,7 @@ run_interactive(lulu_VM *vm)
         }
 
         r.data = lulu_to_lstring(vm, 1, &r.len);
-        e = lulu_load(vm, "stdin", reader_line, &r);
+        e      = lulu_load(vm, "stdin", reader_line, &r);
         lulu_remove(vm, 1); /* Remove line. */
         if (e == LULU_OK) {
             run(vm);
@@ -104,13 +106,13 @@ run_interactive(lulu_VM *vm)
 
 typedef struct {
     FILE *file;
-    char buffer[LULU_BUFFER_BUFSIZE];
+    char  buffer[LULU_BUFFER_BUFSIZE];
 } Reader_File;
 
 static const char *
 reader_file(void *user_ptr, size_t *n)
 {
-    Reader_File *r = cast(Reader_File *)user_ptr;
+    Reader_File *r = cast(Reader_File *) user_ptr;
 
     /* No more to read? */
     if (feof(r->file)) {
@@ -146,14 +148,14 @@ run_file(lulu_VM *vm, const char *file_name)
 
 typedef struct {
     char **argv;
-    int argc;
-    int status;
+    int    argc;
+    int    status;
 } Main_Data;
 
 static int
 protected_main(lulu_VM *vm)
 {
-    Main_Data *d = cast(Main_Data *)lulu_to_pointer(vm, 1);
+    Main_Data *d = cast(Main_Data *) lulu_to_pointer(vm, 1);
     lulu_open_libs(vm);
     /* Don't include userdata when printing REPL results. */
     lulu_set_top(vm, 0);
@@ -175,8 +177,8 @@ protected_main(lulu_VM *vm)
 static void *
 c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
 {
-    cast(void)user_data;
-    cast(void)old_size;
+    cast(void) user_data;
+    cast(void) old_size;
     if (new_size == 0) {
         free(ptr);
         return NULL;
@@ -192,14 +194,15 @@ panic(lulu_VM *vm)
     return 0;
 }
 
-int main(int argc, char *argv[])
+int
+main(int argc, char *argv[])
 {
-    Main_Data d;
-    lulu_VM *vm;
+    Main_Data  d;
+    lulu_VM   *vm;
     lulu_Error e;
     /* In C89, brace initialization requires all constant expressions. */
-    d.argv = argv;
-    d.argc = argc;
+    d.argv   = argv;
+    d.argc   = argc;
     d.status = EXIT_SUCCESS;
 
     vm = lulu_open(c_allocator, NULL);

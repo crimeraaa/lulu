@@ -1,5 +1,5 @@
 import gdb # type: ignore
-from typing import Final
+from typing import Final, Optional
 
 Token_Type: Final = gdb.lookup_type("Token_Type")
 
@@ -13,19 +13,25 @@ mode = {
 }
 
 class TokenPrinter:
-    __type: Final[gdb.Value]
-    __data: Final[gdb.Value]
+    __type: gdb.Value
+    __data: gdb.Value | str
 
     def __init__(self, token: gdb.Value):
-        self.__type  = token["type"]
-        if int(self.__type) in mode:
-            self.__data = token[mode[int(self.__type)]]
+        self.__type = token["type"]
+        i = int(self.__type)
+        if i in mode:
+            self.__data = token[mode[i]]
         else:
-            self.__data = token_strings[int(self.__type)]
+            self.__data = token_strings[i].string()
 
     def to_string(self) -> str:
-        ttype = str(self.__type).removeprefix("TOKEN_").lower()
-        return f"{ttype}: {self.__data}"
+        if isinstance(self.__data, str):
+            # C-style quoting.
+            q = '\'' if len(self.__data) == 1 else '\"'
+            return f"{q}{self.__data}{q}"
+
+        t = str(self.__type).removeprefix("TOKEN_").lower()
+        return f"{t}: {self.__data}"
 
 
 class LineInfoPrinter:

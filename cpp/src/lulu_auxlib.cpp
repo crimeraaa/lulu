@@ -87,8 +87,8 @@ buffer_adjust_stack(lulu_Buffer *b)
 {
     // More than 1 string previously pushed, so we need to manage them.
     if (b->pushed > 1) {
-        lulu_VM *vm = b->vm;
-        int to_concat = 1; // Number of levels to concatenate.
+        lulu_VM *vm        = b->vm;
+        int      to_concat = 1; // Number of levels to concatenate.
 
         // Accumulator length for all the temporaries we will concatenate.
         // Starts with the one currently on the top of the stack.
@@ -166,7 +166,7 @@ lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n)
     // Number of unwritten chars in `s`.
     for (size_t rem = n; rem != 0;) {
         size_t written = buffer_append(b, s, rem);
-        s   += written;
+        s += written;
         rem -= written;
     }
 }
@@ -194,13 +194,16 @@ lulu_arg_error(lulu_VM *vm, int argn, const char *msg)
 LULU_LIB_API int
 lulu_type_error(lulu_VM *vm, int argn, const char *type_name)
 {
-    const char *msg = lulu_push_fstring(vm, "'%s' expected, got '%s'",
-        type_name, lulu_type_name_at(vm, argn));
+    const char *msg = lulu_push_fstring(
+        vm,
+        "'%s' expected, got '%s'",
+        type_name,
+        lulu_type_name_at(vm, argn)
+    );
     return lulu_arg_error(vm, argn, msg);
 }
 
-[[noreturn]]
-static void
+[[noreturn]] static void
 type_error(lulu_VM *vm, int argn, lulu_Type tag)
 {
     const char *s = lulu_type_name(vm, tag);
@@ -211,7 +214,7 @@ type_error(lulu_VM *vm, int argn, lulu_Type tag)
 #elif defined(_MSC_VER)
     __assume(false);
 #else
-#error Please add your compiler's `__builtin_unreachable()` equivalent.
+#    error Please add your compiler's `__builtin_unreachable()` equivalent.
 #endif
 }
 
@@ -300,9 +303,8 @@ lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n)
     return lulu_check_lstring(vm, argn, n);
 }
 
-LULU_LIB_API int
-LULU_ATTR_PRINTF(2, 3)
-lulu_errorf(lulu_VM *vm, const char *fmt, ...)
+LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
+    lulu_errorf(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -314,8 +316,12 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...)
 }
 
 LULU_LIB_API void
-lulu_set_nlibrary(lulu_VM *vm, const char *libname,
-    const lulu_Register *library, int n)
+lulu_set_nlibrary(
+    lulu_VM             *vm,
+    const char          *libname,
+    const lulu_Register *library,
+    int                  n
+)
 {
     if (libname != nullptr) {
         lulu_get_global(vm, libname);
@@ -338,8 +344,7 @@ lulu_set_nlibrary(lulu_VM *vm, const char *libname,
     }
 }
 
-static const lulu_Register
-libs[] = {
+static const lulu_Register libs[] = {
     {LULU_BASE_LIB_NAME, lulu_open_base},
     {LULU_MATH_LIB_NAME, lulu_open_math},
     {LULU_STRING_LIB_NAME, lulu_open_string},

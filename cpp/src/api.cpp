@@ -1,5 +1,5 @@
-#include "vm.hpp"
 #include "stream.hpp"
+#include "vm.hpp"
 
 const static Value *
 value_at(lulu_VM *vm, int i)
@@ -54,13 +54,17 @@ LULU_API lulu_CFunction
 lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn)
 {
     lulu_CFunction prev = vm->panic_fn;
-    vm->panic_fn = panic_fn;
+    vm->panic_fn        = panic_fn;
     return prev;
 }
 
 LULU_API lulu_Error
-lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
-    void *reader_data)
+lulu_load(
+    lulu_VM    *vm,
+    const char *source,
+    lulu_Reader reader,
+    void       *reader_data
+)
 {
     Stream stream{
         /* function */ reader,
@@ -94,13 +98,12 @@ LULU_API lulu_Error
 lulu_pcall(lulu_VM *vm, int n_args, int n_rets)
 {
     PCall d{n_args, n_rets};
-    lulu_Error e = vm_run_protected(vm, pcall, &d);
-    return e;
+    return vm_run_protected(vm, pcall, &d);
 }
 
 struct CPCall {
     lulu_CFunction function;
-    void *function_data;
+    void          *function_data;
 };
 
 static void
@@ -115,7 +118,7 @@ cpcall(lulu_VM *vm, void *user_ptr)
 LULU_API lulu_Error
 lulu_cpcall(lulu_VM *vm, lulu_CFunction function, void *function_data)
 {
-    CPCall d{function, function_data};
+    CPCall     d{function, function_data};
     lulu_Error e = vm_run_protected(vm, cpcall, &d);
     return e;
 }
@@ -138,8 +141,12 @@ lulu_type(lulu_VM *vm, int i)
     }
 
     Value_Type t = v->type();
-    lulu_assertf(VALUE_NIL <= t && t <= VALUE_TYPE_LAST, "Got Value_Type(%i)", t);
-    return cast(lulu_Type)t;
+    lulu_assertf(
+        VALUE_NIL <= t && t <= VALUE_TYPE_LAST,
+        "Got Value_Type(%i)",
+        t
+    );
+    return static_cast<lulu_Type>(t);
 }
 
 LULU_API const char *
@@ -153,7 +160,7 @@ LULU_API int
 lulu_is_number(lulu_VM *vm, int i)
 {
     const Value *v = value_at(vm, i);
-    Value tmp;
+    Value        tmp;
     return vm_to_number(v, &tmp);
 }
 
@@ -178,7 +185,7 @@ lulu_to_boolean(lulu_VM *vm, int i)
 LULU_API lulu_Number
 lulu_to_number(lulu_VM *vm, int i)
 {
-    Value tmp;
+    Value        tmp;
     const Value *v = value_at(vm, i);
     if (vm_to_number(v, &tmp)) {
         return tmp.to_number();
@@ -189,7 +196,7 @@ lulu_to_number(lulu_VM *vm, int i)
 LULU_API lulu_Integer
 lulu_to_integer(lulu_VM *vm, int i)
 {
-    return cast_integer(lulu_to_number(vm, i));
+    return static_cast<Integer>(lulu_to_number(vm, i));
 }
 
 LULU_API const char *
@@ -202,7 +209,7 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
      *      This call is safe, because if `v == &nil`, it has the
      *      `nil` tag and nothing is changed.
      */
-    if (!vm_to_string(vm, const_cast<Value *>(v)))  {
+    if (!vm_to_string(vm, const_cast<Value *>(v))) {
         if (n != nullptr) {
             *n = 0;
         }
@@ -212,7 +219,7 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n)
     // Otherwise, conversion success.
     OString *s = v->to_ostring();
     if (n != nullptr) {
-        *n = cast_usize(s->len);
+        *n = static_cast<usize>(s->len);
     }
     return s->to_cstring();
 }
@@ -234,8 +241,8 @@ lulu_set_top(lulu_VM *vm, int i)
 {
     if (i >= 0) {
         int old_start = ptr_index(vm->stack, raw_data(vm->window));
-        int old_stop = old_start + cast_int(len(vm->window));
-        int new_stop = old_start + i;
+        int old_stop  = old_start + static_cast<int>(len(vm->window));
+        int new_stop  = old_start + i;
         if (new_stop > old_stop) {
             // If growing the window, initialize the new region to nil.
             auto extra = slice(vm->stack, old_stop, new_stop);
@@ -254,9 +261,9 @@ lulu_insert(lulu_VM *vm, int i)
     Value *start = value_at_stack(vm, i);
 
     // Copy by value as this stack slot is about to be replaced.
-    Value v = *value_at(vm, -1);
-    auto dst = slice_pointer(start + 1, end(vm->window));
-    auto src = slice_pointer_len(start, len(dst));
+    Value v   = *value_at(vm, -1);
+    auto  dst = slice_pointer(start + 1, end(vm->window));
+    auto  src = slice_pointer_len(start, len(dst));
     copy(dst, src);
     *start = v;
 }
@@ -266,8 +273,8 @@ lulu_remove(lulu_VM *vm, int i)
 {
     Value *start = value_at_stack(vm, i);
     Value *stop  = value_at_stack(vm, -1);
-    auto dst = slice_pointer_len(start, stop - start);
-    auto src = slice_pointer_len(start + 1, len(dst));
+    auto   dst   = slice_pointer_len(start, stop - start);
+    auto   src   = slice_pointer_len(start + 1, len(dst));
     copy(dst, src);
     lulu_pop(vm, 1);
 }
@@ -275,7 +282,7 @@ lulu_remove(lulu_VM *vm, int i)
 LULU_API void
 lulu_pop(lulu_VM *vm, int n)
 {
-    isize i = len(vm->window) - n;
+    isize i    = len(vm->window) - n;
     vm->window = slice_until(vm->window, i);
 }
 
@@ -288,7 +295,7 @@ lulu_push_nil(lulu_VM *vm)
 LULU_API void
 lulu_push_boolean(lulu_VM *vm, int b)
 {
-    vm_push(vm, Value::make_boolean(cast(bool)b));
+    vm_push(vm, Value::make_boolean(b));
 }
 
 LULU_API void
@@ -300,7 +307,7 @@ lulu_push_number(lulu_VM *vm, lulu_Number n)
 LULU_API void
 lulu_push_integer(lulu_VM *vm, lulu_Integer i)
 {
-    vm_push(vm, Value::make_number(cast_number(i)));
+    vm_push(vm, Value::make_number(static_cast<Number>(i)));
 }
 
 LULU_API void
@@ -312,7 +319,7 @@ lulu_push_userdata(lulu_VM *vm, void *p)
 LULU_API void
 lulu_push_lstring(lulu_VM *vm, const char *s, size_t n)
 {
-    LString ls{s, cast_isize(n)};
+    LString  ls{s, static_cast<isize>(n)};
     OString *os = ostring_new(vm, ls);
     vm_push(vm, Value::make_string(os));
 }
@@ -327,9 +334,8 @@ lulu_push_string(lulu_VM *vm, const char *s)
     }
 }
 
-LULU_API const char *
-LULU_ATTR_PRINTF(2, 3)
-lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
+LULU_API const char *LULU_ATTR_PRINTF(2, 3)
+    lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -351,7 +357,7 @@ lulu_push_cclosure(lulu_VM *vm, lulu_CFunction cf, int n_upvalues)
 
     Closure *f = closure_c_new(vm, cf, n_upvalues);
     for (int i = 0; i < n_upvalues; i++) {
-        Value v = *value_at_stack(vm, -n_upvalues + i);
+        Value v          = *value_at_stack(vm, -n_upvalues + i);
         f->c.upvalues[i] = v;
     }
     lulu_pop(vm, n_upvalues);
@@ -437,14 +443,14 @@ lulu_next(lulu_VM *vm, int table_index)
     Table *t = _t->to_table();
     Value *k = value_at_stack(vm, -1);
     Value  v;
-    bool more = table_next(vm, t, k, &v);
+    bool   more = table_next(vm, t, k, &v);
     if (more) {
         vm_push(vm, v);
     } else {
         // No more elements, remove the key.
         vm_pop(vm);
     }
-    return cast_int(more);
+    return static_cast<int>(more);
 }
 
 LULU_API size_t
@@ -461,8 +467,11 @@ LULU_API void
 lulu_concat(lulu_VM *vm, int n)
 {
     switch (n) {
-    case 0: lulu_push_literal(vm, ""); return;
-    case 1: return; // Nothing we can sensibly do, other than conversion.
+    case 0:
+        lulu_push_literal(vm, "");
+        return;
+    case 1:
+        return; // Nothing we can sensibly do, other than conversion.
     }
 
     lulu_assert(2 <= n && n <= len(vm->window));

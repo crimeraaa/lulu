@@ -26,7 +26,7 @@ mem_ceil_log2(usize n);
 inline isize
 mem_next_pow2(isize n)
 {
-    int e = mem_ceil_log2(cast_usize(n));
+    int e = mem_ceil_log2(static_cast<usize>(n));
     return 1_i << e;
 }
 
@@ -54,7 +54,7 @@ inline T *
 mem_new(lulu_VM *vm, isize extra = 0)
 {
     // Cast must occur after arithmetic in case `extra < 0`.
-    usize size = cast_usize(size_of(T) + extra);
+    usize size = static_cast<usize>(size_of(T) + extra);
     return reinterpret_cast<T *>(mem_rawrealloc(vm, nullptr, 0, size));
 }
 
@@ -62,7 +62,7 @@ template<class T>
 inline void
 mem_free(lulu_VM *vm, T *ptr, isize extra = 0)
 {
-    usize size = cast_usize(size_of(T) + extra);
+    usize size = static_cast<usize>(size_of(T) + extra);
     mem_rawrealloc(vm, ptr, size, 0);
 }
 
@@ -70,8 +70,8 @@ template<class T>
 inline T *
 mem_resize(lulu_VM *vm, T *ptr, isize prev, isize next)
 {
-    usize prev_size = sizeof(T) * cast_usize(prev);
-    usize next_size = sizeof(T) * cast_usize(next);
+    usize prev_size = sizeof(T) * static_cast<usize>(prev);
+    usize next_size = sizeof(T) * static_cast<usize>(next);
     return reinterpret_cast<T *>(mem_rawrealloc(vm, ptr, prev_size, next_size));
 }
 
@@ -124,14 +124,14 @@ template<class T>
 inline int
 ptr_index(Slice<T> s, const T *p)
 {
-    return cast_int(p - raw_data(s));
+    return static_cast<int>(p - raw_data(s));
 }
 
 template<class T, auto N>
 inline int
 ptr_index(const Array<T, N> &a, const T *p)
 {
-    return cast_int(p - raw_data(a));
+    return static_cast<int>(p - raw_data(a));
 }
 
 
@@ -144,9 +144,9 @@ template<class T>
 inline bool
 ptr_index_safe(Slice<T> s, const T *p, int *i)
 {
-    auto addr_start = cast(uintptr_t)begin(s);
-    auto addr_stop  = cast(uintptr_t)end(s);
-    auto addr_test  = cast(uintptr_t)p;
+    auto addr_start = reinterpret_cast<uintptr_t>(begin(s));
+    auto addr_stop  = reinterpret_cast<uintptr_t>(end(s));
+    auto addr_test  = reinterpret_cast<uintptr_t>(p);
 
     // Integer representation of `p` is within the array?
     if (addr_start <= addr_test && addr_test < addr_stop) {

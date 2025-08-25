@@ -1,8 +1,8 @@
 #pragma once
 
-#include "small_array.hpp"
-#include "private.hpp"
 #include "object.hpp"
+#include "private.hpp"
+#include "small_array.hpp"
 #include "stream.hpp"
 
 using Error = lulu_Error;
@@ -123,8 +123,7 @@ vm_pop(lulu_VM *vm);
 void
 vm_check_stack(lulu_VM *vm, int n);
 
-[[noreturn]]
-void
+[[noreturn]] void
 vm_throw(lulu_VM *vm, Error e);
 
 
@@ -152,15 +151,13 @@ vm_to_string(lulu_VM *vm, Value *v);
 const char *
 vm_push_string(lulu_VM *vm, LString s);
 
-[[gnu::format(printf, 2, 3)]]
-const char *
+[[gnu::format(printf, 2, 3)]] const char *
 vm_push_fstring(lulu_VM *vm, const char *fmt, ...);
 
 const char *
 vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
 
-[[noreturn, gnu::format(printf, 2, 3)]]
-void
+[[noreturn, gnu::format(printf, 2, 3)]] void
 vm_runtime_error(lulu_VM *vm, const char *fmt, ...);
 
 void

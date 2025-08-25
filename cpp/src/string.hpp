@@ -2,8 +2,8 @@
 
 #include <string.h> // strlen
 
-#include "private.hpp"
 #include "dynamic.hpp"
+#include "private.hpp"
 
 union Object;
 
@@ -17,6 +17,11 @@ using Number_Buffer = Array<char, LULU_NUMBER_BUFSIZE>;
  *      avoiding undefined behavior in `strtoul()` and `strtod()`, the
  *      underlying data MUST be nul-terminated.
  *
+ * @param [out] n
+ *      Holds the result of parsing the string into a number.
+ *      If conversion is not successful, then the `strto[dl]` functions
+ *      set it to 0.
+ *
  * @param base
  *      If zero, tries to detect any potential base prefixes in the form of the
  *      regular expression `^0[bBoOdDxX]`.
@@ -26,7 +31,7 @@ using Number_Buffer = Array<char, LULU_NUMBER_BUFSIZE>;
  *      assigned, otherwise `false`.
  */
 bool
-lstring_to_number(LString s, Number *out, int base = 0);
+lstring_to_number(LString s, Number *n, int base = 0);
 
 LString
 number_to_lstring(Number n, Slice<char> buf);
@@ -35,7 +40,7 @@ inline LString
 lstring_from_cstring(const char *s)
 {
     usize n = strlen(s);
-    return {s, cast_isize(n)};
+    return {s, static_cast<isize>(n)};
 }
 
 inline LString
@@ -51,7 +56,7 @@ struct Builder {
 struct OString {
     OBJECT_HEADER;
     isize len;
-    u32 hash;
+    u32   hash;
 
     // Used only by Lexer when resolving keywords.
     // Must hold a `Token_Type`.
@@ -81,12 +86,12 @@ struct Intern {
 };
 
 inline LString
-operator ""_s(const char *s, size_t n)
+operator""_s(const char *s, size_t n)
 {
-    return {s, cast_isize(n)};
+    return {s, static_cast<isize>(n)};
 }
 
-#define lstring_literal(lit)    TOKEN_PASTE(lit, _s)
+#define lstring_literal(lit) TOKEN_PASTE(lit, _s)
 
 void
 builder_init(Builder *b);
@@ -147,9 +152,7 @@ intern_resize(lulu_VM *vm, Intern *i, isize new_cap);
 void
 intern_destroy(lulu_VM *vm, Intern *t);
 
-constexpr u32
-FNV1A_OFFSET = 0x811c9dc5,
-FNV1A_PRIME  = 0x01000193;
+constexpr u32 FNV1A_OFFSET = 0x811c9dc5, FNV1A_PRIME = 0x01000193;
 
 u32
 hash_string(LString text);

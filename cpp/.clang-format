@@ -1,193 +1,101 @@
 ---
-Language:        Cpp
-# BasedOnStyle:  LLVM
-AccessModifierOffset: -4
-AlignAfterOpenBracket: BlockIndent
-AlignArrayOfStructures: Right
-AlignConsecutiveMacros: Consecutive
-AlignConsecutiveAssignments: AcrossEmptyLines
-AlignConsecutiveBitFields: None
-AlignConsecutiveDeclarations: None
-AlignEscapedNewlines: Right
-AlignOperands:   Align
-AlignTrailingComments: true
-AllowAllArgumentsOnNextLine: true
-# AllowAllParametersOfDeclarationOnNextLine: true # WARNING: deprecated
-AllowShortEnumsOnASingleLine: true
-AllowShortBlocksOnASingleLine: Never
-AllowShortCaseLabelsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: None
-AllowShortLambdasOnASingleLine: All
-AllowShortIfStatementsOnASingleLine: Never
-AllowShortLoopsOnASingleLine: false
-# AlwaysBreakAfterDefinitionReturnType: None # WARNING: deprecated
-AlwaysBreakAfterReturnType: AllDefinitions
-AlwaysBreakBeforeMultilineStrings: false
-AlwaysBreakTemplateDeclarations: MultiLine
-AttributeMacros:
-  - __capability
-BinPackArguments: true
-BinPackParameters: true
-BraceWrapping:
-  AfterCaseLabel:  false
-  AfterClass:      false
-  AfterControlStatement: MultiLine
-  AfterEnum:       false
-  AfterFunction:   true
-  AfterNamespace:  false
-  AfterStruct:     false
-  AfterUnion:      false
-  AfterExternBlock: false
-  BeforeCatch:     false
-  BeforeElse:      false
-  BeforeLambdaBody: false
-  BeforeWhile:     false
-  IndentBraces:    false
+Language:      Cpp
+BasedOnStyle:  LLVM
+Standard:      c++17
 
-  # For the following, e.g:
-  # int f()
-  # {}
-  # 
-  # In contrast to:
-  # int f()
-  # {
-  # }
-  SplitEmptyFunction: true
-  SplitEmptyRecord: true
-  SplitEmptyNamespace: true
-BreakBeforeBinaryOperators: All
-BreakBeforeConceptDeclarations: true
+AccessModifierOffset: -4
+
+
+# Used for Python-style separation of functions with documentation comments.
+MaxEmptyLinesToKeep: 2
+
+
+# === INDENT
+# LLVM doesn't use tabs, so we don't care about 'TabWidth' and co.
+IndentWidth: 4
+
+# For clarity, goto labels must be flushed completely to the left.
+IndentGotoLabels: false
+
+
+# === BREAKS
+
+# Don't break the '=' operator in a declaration.
+BreakBeforeBinaryOperators: NonAssignment
+
+# Always attach left-brace '{' to surrounding context except for functions.
 BreakBeforeBraces: Custom
-BreakBeforeInheritanceComma: false
-BreakInheritanceList: BeforeComma
-BreakBeforeTernaryOperators: true
-BreakConstructorInitializersBeforeComma: false
-BreakConstructorInitializers: BeforeComma
-# Make them easier to grep.
+BraceWrapping:
+  AfterClass: true
+  
+  # Braces attached to 'if', 'for' and 'while' are only on a new line if
+  # the controlling expression spans multiple lines.
+  AfterControlStatement: MultiLine
+  AfterFunction: true
+  
+  # Empty functions will not wrap the opening '{' brace,
+  # resulting in the form `void f()\n{}`.
+  SplitEmptyFunction: false
+
+
+# === STRINGS
+# Don't split long string literals, even if they exceed our column limit,
+# to make them easier to grep.
 BreakStringLiterals: false
-ColumnLimit:     76
-CommentPragmas:  '^ IWYU pragma:'
-QualifierAlignment: Leave
-CompactNamespaces: false
-ConstructorInitializerIndentWidth: 4
-ContinuationIndentWidth: 4
-Cpp11BracedListStyle: true
-DeriveLineEnding: true
-DerivePointerAlignment: false
-DisableFormat:   false
-EmptyLineAfterAccessModifier: Never
-EmptyLineBeforeAccessModifier: LogicalBlock
-# ExperimentalAutoDetectBinPacking: false
-PackConstructorInitializers: BinPack
-BasedOnStyle:    ''
-ConstructorInitializerAllOnOneLineOrOnePerLine: false
-AllowAllConstructorInitializersOnNextLine: true
-# Auto-adds `// namespace <ident>` at the end.
-FixNamespaceComments: true
-ForEachMacros:
-  - foreach
-  - Q_FOREACH
-  - BOOST_FOREACH
-IfMacros:
-  - KJ_IF_MAYBE
-IncludeBlocks:   Preserve
-IncludeCategories:
-  - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
-    Priority:        2
-    SortPriority:    0
-    CaseSensitive:   false
-  - Regex:           '^(<|"(gtest|gmock|isl|json)/)'
-    Priority:        3
-    SortPriority:    0
-    CaseSensitive:   false
-  - Regex:           '.*'
-    Priority:        1
-    SortPriority:    0
-    CaseSensitive:   false
-IncludeIsMainRegex: '(Test)?$'
-IncludeIsMainSourceRegex: ''
-IndentAccessModifiers: false
-IndentCaseLabels: false
-IndentCaseBlocks: false
-IndentGotoLabels: true
-IndentPPDirectives: AfterHash
-IndentExternBlock: AfterExternBlock
-IndentRequires:  false
-IndentWidth:     4
-IndentWrappedFunctionNames: false
-InsertTrailingCommas: None # Only works with JS, and would mess with C89 anyway.
-KeepEmptyLinesAtTheStartOfBlocks: true
-LambdaBodyIndentation: Signature
-MacroBlockBegin: ''
-MacroBlockEnd:   ''
-MaxEmptyLinesToKeep: 2 # Fold consecutive empty lines if more than this.
-NamespaceIndentation: All # TODO: Debatable
-PenaltyBreakAssignment: 2
-PenaltyBreakBeforeFirstCallParameter: 19
-PenaltyBreakComment: 300
-PenaltyBreakFirstLessLess: 120
-PenaltyBreakOpenParenthesis: 0
-PenaltyBreakString: 1000
-PenaltyBreakTemplateDeclaration: 10
-PenaltyExcessCharacter: 1000000
-PenaltyReturnTypeOnItsOwnLine: 60
-PenaltyIndentedWhitespace: 0
-PointerAlignment: Right
-PPIndentWidth:   -1
-ReferenceAlignment: Pointer
-ReflowComments:  true
-RemoveBracesLLVM: false
-SeparateDefinitionBlocks: Leave
-ShortNamespaceLines: 1
-SortIncludes:    CaseSensitive
-SortUsingDeclarations: true
-SpaceAfterCStyleCast: false
-SpaceAfterLogicalNot: false
+
+
+# === FUNCTIONS
+
+# Return type is on a separate line from the function identifier in both
+# function declarations and definitions.
+AlwaysBreakAfterReturnType: All
+
+# Only empty functions will have the form 'int f()\n{}'
+AllowShortFunctionsOnASingleLine: Empty
+
+# Parameters in function signatures and arguments in function calls will be on
+# a newline from the opening '('. The closing ')' will also be on a newline.
+AlignAfterOpenBracket: BlockIndent
+
+# Function signatures
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: false
+
+# Function calls
+BinPackArguments: false
+AllowAllArgumentsOnNextLine: false
+
+
+# === TEMPLATES 
+# 'template<...>' is always separate from 'struct|class'.
+AlwaysBreakTemplateDeclarations: Yes
+
+
+# Don't add a whitespace after 'template' no matter what.
 SpaceAfterTemplateKeyword: false
-SpaceBeforeAssignmentOperators: true
-SpaceBeforeCaseColon: false
-SpaceBeforeCpp11BracedList: false
-SpaceBeforeCtorInitializerColon: true
-SpaceBeforeInheritanceColon: true
-SpaceBeforeParens: ControlStatements
-SpaceBeforeParensOptions:
-  AfterControlStatements: true
-  AfterForeachMacros: true
-  AfterFunctionDefinitionName: false
-  AfterFunctionDeclarationName: false
-  AfterIfMacros:   true
-  AfterOverloadedOperator: false
-  BeforeNonEmptyParentheses: false
-SpaceAroundPointerQualifiers: Default
-SpaceBeforeRangeBasedForLoopColon: true
-SpaceInEmptyBlock: false
-SpaceInEmptyParentheses: false
-SpacesBeforeTrailingComments: 1
-SpacesInAngles:  Never # C++ Template argument lists.
-SpacesInConditionalStatement: false
-SpacesInContainerLiterals: false
-SpacesInCStyleCastParentheses: false
-SpacesInLineCommentPrefix:
-  Minimum:         1
-  Maximum:         -1
-SpacesInParentheses: false
-SpacesInSquareBrackets: false
-SpaceBeforeSquareBrackets: false
-BitFieldColonSpacing: Both
-Standard:        Latest
-StatementAttributeLikeMacros:
-  - Q_EMIT
-StatementMacros:
-  - Q_UNUSED
-  - QT_REQUIRE_VERSION
-TabWidth:        8
-UseCRLF:         false
-UseTab:          Never
+
+
+# === ALIGNMENT
+AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveAssignments:  Consecutive
+AlignConsecutiveMacros:       Consecutive
+AlignConsecutiveBitFields:    Consecutive
+
+# === PENALTY
+# When we need to break on an assignment statement, the broken line has 4
+# spaces added to it.
+PenaltyBreakAssignment: 4
+
+
+# === PREPROCESSOR
+# C preprocessing directives are indented *after* the '#' character.
+IndentPPDirectives: AfterHash
+
+# AttributeMacros: ['LULU_ATTR_PRINTF']
+# StatementAttributeLikeMacros: ['LULU_ATTR_PRINTF']
 WhitespaceSensitiveMacros:
-  - STRINGIZE
-  - PP_STRINGIZE
-  - BOOST_PP_STRINGIZE
-  - NS_SWIFT_NAME
-  - CF_SWIFT_NAME
+  - TOKEN_PASTE
+  - TOKEN_STRINGIFY
+  - X__TOKEN_STRINGIFY
 ...
 

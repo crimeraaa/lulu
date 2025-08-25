@@ -14,7 +14,7 @@
 
 
 typedef struct {
-    const char *name;
+    const char    *name;
     lulu_CFunction function;
 } lulu_Register;
 
@@ -43,7 +43,7 @@ lulu_write_string(lulu_Buffer *b, const char *s);
 LULU_LIB_API void
 lulu_write_lstring(lulu_Buffer *b, const char *s, size_t n);
 
-#define lulu_write_literal(b, s)  lulu_write_lstring(b, s, sizeof(s) - 1)
+#define lulu_write_literal(b, s) lulu_write_lstring(b, s, sizeof(s) - 1)
 
 LULU_LIB_API void
 lulu_finish_string(lulu_Buffer *b);
@@ -156,9 +156,8 @@ LULU_LIB_API const char *
 lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n);
 
 
-LULU_LIB_API int
-LULU_ATTR_PRINTF(2, 3)
-lulu_errorf(lulu_VM *vm, const char *fmt, ...);
+LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
+    lulu_errorf(lulu_VM *vm, const char *fmt, ...);
 
 
 /**
@@ -178,8 +177,12 @@ lulu_errorf(lulu_VM *vm, const char *fmt, ...);
  *      This function leaves the module table on top of the stack.
  */
 LULU_LIB_API void
-lulu_set_nlibrary(lulu_VM *vm, const char *libname,
-    const lulu_Register *library, int n);
+lulu_set_nlibrary(
+    lulu_VM             *vm,
+    const char          *libname,
+    const lulu_Register *library,
+    int                  n
+);
 
 
 /*=== }}} =============================================================== */
@@ -195,12 +198,14 @@ lulu_set_nlibrary(lulu_VM *vm, const char *libname,
  *      caught by the enclosing protected call. An error message is also
  *      pushed to the top of the stack.
  */
-#define lulu_arg_check(vm, expr, argn, msg) \
-    if (!(expr)) {lulu_arg_error(vm, argn, msg);}
+#define lulu_arg_check(vm, expr, argn, msg)                                    \
+    if (!(expr)) {                                                             \
+        lulu_arg_error(vm, argn, msg);                                         \
+    }
 
-#define lulu_check_string(vm, argn) lulu_check_lstring(vm, argn, NULL)
+#define lulu_check_string(vm, argn)    lulu_check_lstring(vm, argn, NULL)
 #define lulu_opt_string(vm, argn, def) lulu_opt_lstring(vm, argn, def, NULL)
-#define lulu_count_library(fns) (int)(sizeof(fns) / sizeof((fns)[0]))
+#define lulu_count_library(fns)        (int)(sizeof(fns) / sizeof((fns)[0]))
 
 /**
  * @brief
@@ -214,7 +219,7 @@ lulu_set_nlibrary(lulu_VM *vm, const char *libname,
  * @param fns
  *      `lulu_Register[N]`, a fixed-size array.
  */
-#define lulu_set_library(vm, name, fns) \
+#define lulu_set_library(vm, name, fns)                                        \
     lulu_set_nlibrary(vm, name, fns, lulu_count_library(fns))
 
 /*=== }}} =============================================================== */

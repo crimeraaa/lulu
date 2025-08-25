@@ -1,11 +1,11 @@
 #pragma once
 
 #include "private.hpp"
-#include "string.hpp"   // OString
+#include "string.hpp" // OString
 
-union  Object;
+union Object;
 struct Table;
-union  Closure;
+union Closure;
 struct Chunk;
 
 struct Value {
@@ -60,7 +60,7 @@ public:
     make_string(OString *s)
     {
         Value v;
-        v.m_type = VALUE_STRING;
+        v.m_type   = VALUE_STRING;
         v.m_object = reinterpret_cast<Object *>(s);
         return v;
     }
@@ -147,8 +147,7 @@ public:
 
     //=== VALUE TYPE INFORMATION =========================================== {{{
 
-    static const char *const
-    type_names[VALUE_TYPE_COUNT];
+    static const char *const type_names[VALUE_TYPE_COUNT];
 
     const char *
     type_name() const
@@ -304,8 +303,7 @@ public:
 
 // In C++17, `constexpr inline` guarantees that this variable has the
 // same address in all translation units.
-constexpr inline Value
-nil{};
+constexpr inline Value nil{};
 
 void
 value_print(Value v);

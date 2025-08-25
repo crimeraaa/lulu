@@ -1,9 +1,9 @@
 #pragma once
 
-#include "opcode.hpp"
 #include "dynamic.hpp"
-#include "value.hpp"
+#include "opcode.hpp"
 #include "string.hpp"
+#include "value.hpp"
 
 struct Line_Info {
     int line; // Line number is stored directly in case we skip empty lines.
@@ -13,28 +13,28 @@ struct Line_Info {
 
 struct Local {
     OString *ident;
-    int start_pc;
-    int end_pc;
+    int      start_pc;
+    int      end_pc;
 };
 
 struct Chunk {
     OBJECT_HEADER;
-    Dynamic<Value> constants;
+    Dynamic<Value>       constants;
     Dynamic<Instruction> code;
-    Dynamic<Line_Info> lines;
+    Dynamic<Line_Info>   lines;
 
     // Information of all possible locals, in order, for the function.
     Dynamic<Local> locals;
 
     // Debug/VM information
     OString *source;
-    int line_defined;
-    int last_line_defined;
-    u16 n_params;
-    u16 stack_used;
+    int      line_defined;
+    int      last_line_defined;
+    u16      n_params;
+    u16      stack_used;
 };
 
-static constexpr u16 VARARG = Instruction::MAX_B;
+static constexpr u16 VARARG  = Instruction::MAX_B;
 static constexpr int NO_LINE = -1;
 
 Chunk *

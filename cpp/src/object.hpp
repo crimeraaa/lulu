@@ -1,13 +1,13 @@
 #pragma once
 
-#include "private.hpp"
-#include "value.hpp"
+#include "chunk.hpp"
+#include "function.hpp"
 #include "mem.hpp"
+#include "private.hpp"
 #include "slice.hpp"
 #include "string.hpp"
 #include "table.hpp"
-#include "chunk.hpp"
-#include "function.hpp"
+#include "value.hpp"
 
 union Object {
     struct Header {
@@ -58,9 +58,12 @@ inline void *
 Value::to_pointer() const
 {
     switch (this->type()) {
-    case VALUE_LIGHTUSERDATA:   return this->to_userdata();
-    case VALUE_TABLE:           return this->to_table();
-    case VALUE_FUNCTION:        return this->to_function();
+    case VALUE_LIGHTUSERDATA:
+        return this->to_userdata();
+    case VALUE_TABLE:
+        return this->to_table();
+    case VALUE_FUNCTION:
+        return this->to_function();
 
     default:
         break;
@@ -75,7 +78,7 @@ template<class T>
 inline T *
 object_new(lulu_VM *vm, Object **list, Value_Type type, isize extra = 0)
 {
-    T *o = mem_new<T>(vm, extra);
+    T *o    = mem_new<T>(vm, extra);
     o->type = type;
 
     // Chain the new object.

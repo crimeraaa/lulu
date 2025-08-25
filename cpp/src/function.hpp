@@ -1,9 +1,12 @@
 #pragma once
 
-#include "private.hpp"
 #include "chunk.hpp"
+#include "private.hpp"
 
-#define CLOSURE_HEADER     OBJECT_HEADER; int n_upvalues; bool is_c
+#define CLOSURE_HEADER                                                         \
+    OBJECT_HEADER;                                                             \
+    int  n_upvalues;                                                           \
+    bool is_c
 
 struct Closure_Lua {
     CLOSURE_HEADER;
@@ -13,7 +16,7 @@ struct Closure_Lua {
 struct Closure_C {
     CLOSURE_HEADER;
     lulu_CFunction callback;
-    Value upvalues[1];
+    Value          upvalues[1];
 
     // If `n_upvalues == 0`, then `upvalues[0]` should not be valid.
     // So negative sizes are allowed.

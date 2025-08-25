@@ -1,17 +1,19 @@
 #include "mem.hpp"
 #include "vm.hpp"
 
-#define REPEAT_2(n)     n, n
-#define REPEAT_4(n)     REPEAT_2(n), REPEAT_2(n)
-#define REPEAT_8(n)     REPEAT_4(n), REPEAT_4(n)
-#define REPEAT_16(n)    REPEAT_8(n), REPEAT_8(n)
-#define REPEAT_32(n)    REPEAT_16(n), REPEAT_16(n)
-#define REPEAT_64(n)    REPEAT_32(n), REPEAT_32(n)
-#define REPEAT_128(n)   REPEAT_64(n), REPEAT_64(n)
+#define REPEAT_2(n)   n, n
+#define REPEAT_4(n)   REPEAT_2(n), REPEAT_2(n)
+#define REPEAT_8(n)   REPEAT_4(n), REPEAT_4(n)
+#define REPEAT_16(n)  REPEAT_8(n), REPEAT_8(n)
+#define REPEAT_32(n)  REPEAT_16(n), REPEAT_16(n)
+#define REPEAT_64(n)  REPEAT_32(n), REPEAT_32(n)
+#define REPEAT_128(n) REPEAT_64(n), REPEAT_64(n)
 
 int
 mem_ceil_log2(usize n)
 {
+    lulu_assume(n > 0);
+
     /**
      * @brief
      *      Map indices in the range [1, 256] to the index range exponents
@@ -34,11 +36,11 @@ mem_ceil_log2(usize n)
         // as given by floor(log2(3)). Because when we calculate the optimal
         // array size, we want size of 4, not size of 2.
         REPEAT_2(2),
-        REPEAT_4(3), // [5, 8]
-        REPEAT_8(4), // [9, 16]
-        REPEAT_16(5), // [17, 32]
-        REPEAT_32(6), // [33, 64]
-        REPEAT_64(7), // [65, 128]
+        REPEAT_4(3),   // [5, 8]
+        REPEAT_8(4),   // [9, 16]
+        REPEAT_16(5),  // [17, 32]
+        REPEAT_32(6),  // [33, 64]
+        REPEAT_64(7),  // [65, 128]
         REPEAT_128(8), // [129, 256]
     };
 

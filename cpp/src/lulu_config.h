@@ -4,9 +4,9 @@
 #include <limits.h>
 #include <stddef.h>
 
-#define LULU_NUMBER_TYPE    double
-#define LULU_NUMBER_FMT     "%.14g"
-#define LULU_INTEGER_TYPE   ptrdiff_t
+#define LULU_NUMBER_TYPE  double
+#define LULU_NUMBER_FMT   "%.14g"
+#define LULU_INTEGER_TYPE ptrdiff_t
 
 
 /**
@@ -29,7 +29,7 @@
  *      For simplicity and to allow some legroom, we use the next power of 2
  *      which is 32.
  */
-#define LULU_NUMBER_BUFSIZE     32
+#define LULU_NUMBER_BUFSIZE 32
 
 
 /**
@@ -44,7 +44,7 @@
  *      This requires `stdio.h` to be included beforehand; we do not include
  *      it for you in this header to avoid unnecessary namespace pollution.
  */
-#define LULU_BUFFER_BUFSIZE     BUFSIZ
+#define LULU_BUFFER_BUFSIZE BUFSIZ
 
 
 /**
@@ -54,7 +54,7 @@
  *      `lulu_open()` returned a non-`NULL` pointer then it can be safely
  *      assumed that this string will always be retrievable.
  */
-#define LULU_MEMORY_ERROR_STRING    "out of memory"
+#define LULU_MEMORY_ERROR_STRING "out of memory"
 
 
 /**
@@ -63,13 +63,13 @@
  *      to and including this value are guaranteed to be valid, thus you do
  *      not need to worry about stack overflow.
  */
-#define LULU_STACK_MIN      8
+#define LULU_STACK_MIN 8
 
 
-#define LULU_BASE_LIB_NAME      "base"
-#define LULU_STRING_LIB_NAME    "string"
-#define LULU_MATH_LIB_NAME      "math"
-#define LULU_OS_LIB_NAME        "os"
+#define LULU_BASE_LIB_NAME   "base"
+#define LULU_STRING_LIB_NAME "string"
+#define LULU_MATH_LIB_NAME   "math"
+#define LULU_OS_LIB_NAME     "os"
 
 
 /**
@@ -91,33 +91,33 @@
  *      visibible symbol with the same name, there will be no name
  *      conflilct and thus no linkage error.
  */
-#if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) \
+#if defined(__GNUC__) && ((__GNUC__ * 100 + __GNUC_MINOR__) >= 302)            \
     && defined(__ELF__)
 
 /* visibility only matters when building the shared library. */
-#   ifdef LULU_BUILD_ALL
-#       define LULU_PUBLIC     __attribute__ ((__visibility__ ("default")))
-#       define LULU_PRIVATE    __attribute__ ((__visibility__ ("hidden")))
-#   else   /* ^^^ LULU_BUILD_ALL, otherwise */
-#       define LULU_PUBLIC
-#       define LULU_PRIVATE
-#   endif  /* LULU_BUILD_ALL */
+#    ifdef LULU_BUILD_ALL
+#        define LULU_PUBLIC  __attribute__((__visibility__("default")))
+#        define LULU_PRIVATE __attribute__((__visibility__("hidden")))
+#    else /* ^^^ LULU_BUILD_ALL, otherwise */
+#        define LULU_PUBLIC
+#        define LULU_PRIVATE
+#    endif              /* LULU_BUILD_ALL */
 #elif defined(_MSC_VER) /* ^^^ __GNUC__, vvv _MSC_VER */
-#   if defined(LULU_BUILD_ALL)
-#       define LULU_PUBLIC     __declspec(dllexport)
-#   else   /* ^^^ LULU_BUILD_ALL, vvv otherwise */
-#       define LULU_PUBLIC     __declspec(dllimport)
-#   endif /* LULU_BUILD_ALL */
+#    if defined(LULU_BUILD_ALL)
+#        define LULU_PUBLIC __declspec(dllexport)
+#    else /* ^^^ LULU_BUILD_ALL, vvv otherwise */
+#        define LULU_PUBLIC __declspec(dllimport)
+#    endif /* LULU_BUILD_ALL */
 
 /**
  * @brief
  *      On Windows, when building DLLs, functions not marked with
  *      `__declspec(dllexport)` are hidden automatically.
  */
-#   define LULU_PRIVATE
+#    define LULU_PRIVATE
 #else /* ^^^ (__GNUC__ && __ELF__) || _MSC_VER, vvv otherwise */
-#   define LULU_PUBLIC
-#   define LULU_PRIVATE
+#    define LULU_PUBLIC
+#    define LULU_PRIVATE
 #endif /* LULU_PUBLIC, LULU_PRIVATE */
 
 
@@ -127,9 +127,9 @@
  *      When compiling the shared libary, we use a C++ compiler. So disable
  *      name mangling to allow C applications to link to us properly.
  */
-#   define LULU_API    extern "C" LULU_PUBLIC
-#else   /* ^^^ __cplusplus, vvv otherwise */
-#   define LULU_API    extern LULU_PUBLIC
+#    define LULU_API extern "C" LULU_PUBLIC
+#else /* ^^^ __cplusplus, vvv otherwise */
+#    define LULU_API extern LULU_PUBLIC
 #endif /* __cplusplus */
 
 
@@ -139,7 +139,7 @@
  *      Lua API. However, should you need something different (e.g. no
  *      visibility attribute, no extern C), you can change it.
  */
-#define LULU_LIB_API    LULU_API
+#define LULU_LIB_API LULU_API
 
 
 /**
@@ -151,7 +151,7 @@
  *      `f` will not be exported but it is still visible to all functions
  *      within the library that include `f`'s header.
  */
-#define LULU_FUNC       extern LULU_PRIVATE
+#define LULU_FUNC extern LULU_PRIVATE
 
 
 /**
@@ -159,7 +159,7 @@
  *      Similar to `LULU_FUNC`, but intended for data. e.g. `LULU_DATA const
  *      char *const tokens[TOKEN_COUNT];`
  */
-#define LULU_DATA       extern LULU_PRIVATE
+#define LULU_DATA extern LULU_PRIVATE
 
 #if defined(__GNUC__) || defined(__clang__)
 
@@ -176,27 +176,27 @@
  * @param arg
  *      The 1-based index of the variadic arguments in the parameter list.
  */
-#   define LULU_ATTR_PRINTF(fmt, arg) \
-    __attribute__ ((__format__ (printf, fmt, arg)))
+#    define LULU_ATTR_PRINTF(fmt, arg)                                         \
+        __attribute__((__format__(printf, fmt, arg)))
 #else /* ^^^ __GNUC__ || __clang__, vvv otherwise */
-#   define LULU_ATTR_PRINTF(fmt, arg)
+#    define LULU_ATTR_PRINTF(fmt, arg)
 #endif /* LULU_ATTR_PRINTF */
 
 #ifdef LULU_BUILD_ALL
 
-#include <math.h>
+#    include <math.h>
 
-#define lulu_Number_add(x, y)   ((x) + (y))
-#define lulu_Number_sub(x, y)   ((x) - (y))
-#define lulu_Number_mul(x, y)   ((x) * (y))
-#define lulu_Number_div(x, y)   ((x) / (y))
-#define lulu_Number_mod(x, y)   fmod(x, y)
-#define lulu_Number_pow(x, y)   pow(x, y)
-#define lulu_Number_unm(x)      (-(x))
+#    define lulu_Number_add(x, y) ((x) + (y))
+#    define lulu_Number_sub(x, y) ((x) - (y))
+#    define lulu_Number_mul(x, y) ((x) * (y))
+#    define lulu_Number_div(x, y) ((x) / (y))
+#    define lulu_Number_mod(x, y) fmod(x, y)
+#    define lulu_Number_pow(x, y) pow(x, y)
+#    define lulu_Number_unm(x)    (-(x))
 
-#define lulu_Number_eq(x, y)    ((x) == (y))
-#define lulu_Number_lt(x, y)    ((x) < (y))
-#define lulu_Number_leq(x, y)   ((x) <= (y))
+#    define lulu_Number_eq(x, y)  ((x) == (y))
+#    define lulu_Number_lt(x, y)  ((x) < (y))
+#    define lulu_Number_leq(x, y) ((x) <= (y))
 
 #endif /* LULU_BUILD_ALL */
 

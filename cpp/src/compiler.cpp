@@ -1,5 +1,5 @@
-#include <stdlib.h> // abs
 #include <stdio.h>  // sprintf
+#include <stdlib.h> // abs
 
 #include "compiler.hpp"
 #include "vm.hpp"
@@ -39,9 +39,9 @@ compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev)
 void
 compiler_error_limit(Compiler *c, int limit, const char *what)
 {
-    Parser *p = c->parser;
+    Parser     *p   = c->parser;
     const char *who = (c->prev == nullptr) ? "script" : "function";
-    char buf[128];
+    char        buf[128];
     sprintf(buf, "%s uses more than %i %s", who, limit, what);
     lexer_error(&p->lexer, p->current.type, buf, p->last_line);
 }
@@ -68,8 +68,12 @@ int
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2)
 {
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ABC);
-    lulu_assert(opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER || b == 0);
-    lulu_assert(opinfo[op].c() == OPARG_REGK || opinfo[op].c() == OPARG_OTHER || c2 == 0);
+    lulu_assert(
+        opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER || b == 0
+    );
+    lulu_assert(
+        opinfo[op].c() == OPARG_REGK || opinfo[op].c() == OPARG_OTHER || c2 == 0
+    );
     return code_push(c, Instruction::make_abc(op, a, b, c2));
 }
 
@@ -93,8 +97,8 @@ compiler_code_asbx(Compiler *c, OpCode op, u16 a, i32 sbx)
 void
 compiler_load_nil(Compiler *c, u16 reg, int n)
 {
-    Instruction *ip = nullptr;
-    u16 last_reg = reg + cast(u16)(n - 1);
+    Instruction *ip       = nullptr;
+    u16          last_reg = reg + static_cast<u16>(n - 1);
 
     // No potential jumps up to this point?
     int pc = c->pc;
@@ -103,7 +107,7 @@ compiler_load_nil(Compiler *c, u16 reg, int n)
         // so nothing to do.
         if (pc == 0) {
             // Target register is a new local?
-            if (cast_isize(reg) >= small_array_len(c->active)) {
+            if (static_cast<isize>(reg) >= small_array_len(c->active)) {
                 return;
             }
             // Target register is an existing local.
@@ -122,15 +126,15 @@ compiler_load_nil(Compiler *c, u16 reg, int n)
         }
     }
 
-    // Can't fold; need new instruction.
-    no_fold:
+// Can't fold; need new instruction.
+no_fold:
     compiler_code_abc(c, OP_NIL, reg, last_reg, 0);
 }
 
 void
 compiler_load_boolean(Compiler *c, u16 reg, bool b)
 {
-    compiler_code_abc(c, OP_BOOL, reg, cast(u16)b, 0);
+    compiler_code_abc(c, OP_BOOL, reg, static_cast<u16>(b), /*c=*/0);
 }
 
 static u32
@@ -138,10 +142,10 @@ add_constant(Compiler *c, Value k, Value v)
 {
     Value i;
     if (table_get(c->indexes, k, &i)) {
-        return cast(u32)i.to_integer();
+        return static_cast<u32>(i.to_integer());
     }
     u32 n = chunk_add_constant(c->vm, c->chunk, v);
-    i = Value::make_integer(cast_integer(n));
+    i     = Value::make_integer(static_cast<Integer>(n));
     table_set(c->vm, c->indexes, k, i);
     return n;
 }
@@ -191,7 +195,9 @@ static void
 pop_reg(Compiler *c, u16 reg)
 {
     // `reg` is not a constant index nor a local register?
-    if (!Instruction::reg_is_k(reg) && reg >= cast(u16)small_array_len(c->active)) {
+    if (!Instruction::reg_is_k(reg)
+        && reg >= static_cast<u16>(small_array_len(c->active)))
+    {
         c->free_reg -= 1;
         // e.g. if we discharged 1 number, free_reg would be 1 and the expr.reg
         // would be 0. So when we pop that number from its register, we expect
@@ -230,8 +236,8 @@ discharge_vars(Compiler *c, Expr *e)
         e->type = EXPR_DISCHARGED;
         break;
     case EXPR_INDEXED: {
-        u16 t = e->table.reg;
-        u16 k = e->table.field_rk;
+        u16 t   = e->table.reg;
+        u16 k   = e->table.field_rk;
         e->type = EXPR_RELOCABLE;
         e->pc   = compiler_code_abc(c, OP_GET_TABLE, NO_REG, t, k);
         // We can reuse these registers as they're no longer needed (for now).
@@ -280,8 +286,11 @@ discharge_to_reg(Compiler *c, Expr *e, u16 reg)
         break;
     }
     default:
-        lulu_assertf(e->type == EXPR_NONE || e->type == EXPR_JUMP,
-            "Expr_Type(%i) cannot be discharged", e->type);
+        lulu_assertf(
+            e->type == EXPR_NONE || e->type == EXPR_JUMP,
+            "Expr_Type(%i) cannot be discharged",
+            e->type
+        );
         return;
     }
     e->type = EXPR_DISCHARGED;
@@ -305,7 +314,7 @@ static bool
 need_value(Compiler *c, int jump_pc)
 {
     while (jump_pc != NO_JUMP) {
-        const int next_pc = jump_get(c, jump_pc);
+        const int    next_pc = jump_get(c, jump_pc);
         Instruction *ctrl_ip = jump_get_control(c, jump_pc);
         // `OP_TEST_SET` already uses R(A) for its value; other opcodes do not
         // have a destination register yet.
@@ -322,14 +331,19 @@ compiler_label_get(Compiler *c)
 {
     c->last_target = c->pc;
     return c->pc;
-
 }
 
 static int
 label_code(Compiler *c, u16 reg, bool b, bool do_jump)
 {
     compiler_label_get(c);
-    return compiler_code_abc(c, OP_BOOL, reg, cast(u16)b, cast(u16)do_jump);
+    return compiler_code_abc(
+        c,
+        OP_BOOL,
+        reg,
+        static_cast<u16>(b),
+        static_cast<u16>(do_jump)
+    );
 }
 
 static void
@@ -346,12 +360,12 @@ expr_to_reg(Compiler *c, Expr *e, u16 reg)
         int load_false = NO_JUMP;
         if (need_value(c, e->patch_true) || need_value(c, e->patch_false)) {
             int jump_pc = (is_jump) ? NO_JUMP : compiler_jump_new(c);
-            load_false = label_code(c, reg, /* b */ false, /* do_jump */ true);
-            load_true  = label_code(c, reg, /* b */ true,  /* do_jump */ false);
+            load_false  = label_code(c, reg, /* b */ false, /* do_jump */ true);
+            load_true   = label_code(c, reg, /* b */ true, /* do_jump */ false);
             compiler_jump_patch(c, jump_pc);
         }
         compiler_jump_patch(c, e->patch_false, load_false, reg);
-        compiler_jump_patch(c, e->patch_true,  load_true,  reg);
+        compiler_jump_patch(c, e->patch_true, load_true, reg);
     }
 
     // If any jumps were present, they were discharged above. We can safely
@@ -412,15 +426,19 @@ u16
 compiler_expr_rk(Compiler *c, Expr *e)
 {
     switch (e->type) {
-    case EXPR_NIL:    return value_to_rk(c, e, nil);
-    case EXPR_FALSE:  return value_to_rk(c, e, Value::make_boolean(true));
-    case EXPR_TRUE:   return value_to_rk(c, e, Value::make_boolean(false));
-    case EXPR_NUMBER: return value_to_rk(c, e, Value::make_number(e->number));
+    case EXPR_NIL:
+        return value_to_rk(c, e, nil);
+    case EXPR_FALSE:
+        return value_to_rk(c, e, Value::make_boolean(true));
+    case EXPR_TRUE:
+        return value_to_rk(c, e, Value::make_boolean(false));
+    case EXPR_NUMBER:
+        return value_to_rk(c, e, Value::make_number(e->number));
 
     // May reach here if we previously called this.
     case EXPR_CONSTANT: {
         if (e->index <= Instruction::MAX_RK) {
-            return Instruction::reg_to_rk(cast(u16)e->index);
+            return Instruction::reg_to_rk(static_cast<u16>(e->index));
         }
         break;
     }
@@ -445,9 +463,15 @@ arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
     a = left->number;
     b = right->number;
     switch (op) {
-    case OP_ADD: n = lulu_Number_add(a, b); break;
-    case OP_SUB: n = lulu_Number_sub(a, b); break;
-    case OP_MUL: n = lulu_Number_mul(a, b); break;
+    case OP_ADD:
+        n = lulu_Number_add(a, b);
+        break;
+    case OP_SUB:
+        n = lulu_Number_sub(a, b);
+        break;
+    case OP_MUL:
+        n = lulu_Number_mul(a, b);
+        break;
     case OP_DIV:
         // Do not divide by 0.
         if (b == 0) {
@@ -462,7 +486,9 @@ arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
         }
         n = lulu_Number_mod(a, b);
         break;
-    case OP_POW: n = lulu_Number_pow(a, b); break;
+    case OP_POW:
+        n = lulu_Number_pow(a, b);
+        break;
     default:
         lulu_unreachable();
         return false;
@@ -472,8 +498,12 @@ arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
 }
 
 void
-compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
-    Expr *restrict right)
+compiler_code_arith(
+    Compiler *c,
+    OpCode    op,
+    Expr *restrict left,
+    Expr *restrict right
+)
 {
     lulu_assert((OP_ADD <= op && op <= OP_POW) || op == OP_CONCAT);
     if (arith_folded(op, left, right)) {
@@ -491,7 +521,8 @@ compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
         pop_expr(c, right);
     }
 
-    // Don't use `Expr::make_pc` as we might still have patch lists to discharge.
+    // Don't use `Expr::make_pc` as we might still have patch lists to
+    // discharge.
     left->type = EXPR_RELOCABLE;
     left->pc   = compiler_code_abc(c, op, NO_REG, rkb, rkc);
 }
@@ -522,11 +553,11 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
             e->type = EXPR_FALSE;
             return;
         case EXPR_RELOCABLE: {
-            Instruction *ip = get_code(c, e->pc);
-            OpCode       op = ip->op();
-            if (OP_EQ <= op && op <= OP_LEQ) {
+            Instruction *ip  = get_code(c, e->pc);
+            OpCode       op2 = ip->op();
+            if (OP_EQ <= op2 && op2 <= OP_LEQ) {
                 bool cond = ip->a();
-                ip->set_a(cast(u16)!cond);
+                ip->set_a(static_cast<u16>(!cond));
                 return;
             }
             break;
@@ -622,8 +653,13 @@ compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
 }
 
 void
-compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
-    Expr *restrict right)
+compiler_code_compare(
+    Compiler *c,
+    OpCode    op,
+    bool      cond,
+    Expr *restrict left,
+    Expr *restrict right
+)
 {
     lulu_assert(OP_EQ <= op && op <= OP_LEQ);
     if (compare_folded(op, cond, left, right)) {
@@ -649,7 +685,7 @@ compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
     }
 
     left->type = EXPR_JUMP;
-    left->pc   = jump_if(c, op, cast(u16)cond, rkb, rkc);
+    left->pc   = jump_if(c, op, static_cast<u16>(cond), rkb, rkc);
 }
 
 void
@@ -745,11 +781,14 @@ compiler_set_one_return(Compiler *c, Expr *e)
 u16
 compiler_get_local(Compiler *c, u16 limit, OString *ident)
 {
-    for (isize reg = small_array_len(c->active) - 1; reg >= cast_isize(limit); reg--) {
-        u16 i = small_array_get(c->active, reg);
+    for (isize reg = small_array_len(c->active) - 1;
+         reg >= static_cast<isize>(limit);
+         reg--)
+    {
+        u16    i     = small_array_get(c->active, reg);
         Local *local = &c->chunk->locals[i];
         if (local->ident == ident) {
-            return cast(u16)reg;
+            return static_cast<u16>(reg);
         }
     }
     return NO_REG;
@@ -758,7 +797,7 @@ compiler_get_local(Compiler *c, u16 limit, OString *ident)
 void
 compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k)
 {
-    u16 rkb = compiler_expr_rk(c, k);
+    u16 rkb           = compiler_expr_rk(c, k);
     t->type           = EXPR_INDEXED;
     t->table.reg      = t->reg;
     t->table.field_rk = rkb;
@@ -783,8 +822,14 @@ compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store)
     lulu_assert(to_store != 0);
 
     // Ensure array index offset would fit as a u16.
-    lulu_assert(offset <= cast_isize(Instruction::MAX_C));
-    compiler_code_abc(c, OP_SET_ARRAY, table_reg, cast(u16)b, cast(u16)offset);
+    lulu_assert(offset <= static_cast<isize>(Instruction::MAX_C));
+    compiler_code_abc(
+        c,
+        OP_SET_ARRAY,
+        table_reg,
+        static_cast<u16>(b),
+        static_cast<u16>(offset)
+    );
 
     // Pop all array elements.
     c->free_reg = table_reg + 1;
@@ -804,7 +849,8 @@ compiler_jump_add(Compiler *c, int *list_pc, int jump_pc)
         return;
     }
     // No list yet?
-    else if (*list_pc == NO_JUMP) {
+    else if (*list_pc == NO_JUMP)
+    {
         *list_pc = jump_pc;
         return;
     }
@@ -827,8 +873,11 @@ static int
 jump_get(Compiler *c, int jump_pc)
 {
     Instruction i = *get_code(c, jump_pc);
-    lulu_assertf(OP_JUMP <= i.op() && i.op() <= OP_FOR_LOOP,
-        "Got opcode '%s'", opnames[i.op()]);
+    lulu_assertf(
+        OP_JUMP <= i.op() && i.op() <= OP_FOR_LOOP,
+        "Got opcode '%s'",
+        opnames[i.op()]
+    );
     i32 offset = i.sbx();
     if (offset == NO_JUMP) {
         return NO_JUMP;
@@ -847,10 +896,14 @@ jump_set(Compiler *c, int jump_pc, int target_pc)
     // Allow: `while true do end`
     // lulu_assert(offset != NO_JUMP);
 
-    compiler_check_limit(c, abs(offset), cast_int(Instruction::MAX_SBX),
-        "jump offset");
+    compiler_check_limit(
+        c,
+        abs(offset),
+        static_cast<int>(Instruction::MAX_SBX),
+        "jump offset"
+    );
 
-    ip->set_sbx(cast(i32)offset);
+    ip->set_sbx(static_cast<i32>(offset));
 }
 
 static void
@@ -861,8 +914,8 @@ jump_invert(Compiler *c, Expr *e)
     // Must be a comparison in order to flip argument A.
     lulu_assert(ip->op() != OP_TEST_SET && ip->op() != OP_TEST);
 
-    bool cond = cast(bool)ip->a();
-    ip->set_a(cast(u16)!cond);
+    bool cond = static_cast<bool>(ip->a());
+    ip->set_a(static_cast<u16>(!cond));
 }
 
 static bool
@@ -966,13 +1019,13 @@ logical_target_get(Compiler *c, Expr *left, bool cond)
         if (ip.op() == OP_NOT) {
             // Remove previous `OP_NOT`, replace it with a jump-test pair.
             code_pop(c);
-            return jump_if(c, OP_TEST, ip.b(), 0, cast(u16)cond);
+            return jump_if(c, OP_TEST, ip.b(), 0, static_cast<u16>(cond));
         }
     }
 
     u16 rb = discharge_any_reg(c, left);
     pop_expr(c, left);
-    return jump_if(c, OP_TEST_SET, NO_REG, rb, cast(u16)!cond);
+    return jump_if(c, OP_TEST_SET, NO_REG, rb, static_cast<u16>(!cond));
 }
 
 
@@ -1016,8 +1069,12 @@ compiler_logical_new(Compiler *c, Expr *left, bool cond)
 }
 
 void
-compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
-    bool cond)
+compiler_logical_patch(
+    Compiler *c,
+    Expr *restrict left,
+    Expr *restrict right,
+    bool cond
+)
 {
     discharge_vars(c, right);
 

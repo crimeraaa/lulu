@@ -1,7 +1,7 @@
 #pragma once
 
-#include "slice.hpp"
 #include "mem.hpp"
+#include "slice.hpp"
 
 template<class T>
 struct Dynamic : public Slice<T> {
@@ -88,4 +88,3 @@ cap(const Dynamic<T> &d)
 {
     return d.cap;
 }
-

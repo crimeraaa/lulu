@@ -1,21 +1,19 @@
 #include "table.hpp"
 #include "vm.hpp"
 
-static const Entry
-EMPTY_ENTRY_{nil, nil};
+static const Entry EMPTY_ENTRY_{nil, nil};
 
-#define EMPTY_ENTRY     const_cast<Entry *>(&EMPTY_ENTRY_)
+#define EMPTY_ENTRY const_cast<Entry *>(&EMPTY_ENTRY_)
 
 // Used primarily to ensure our hash part always has nonzero length
 // when calling `table_get_entry()`.
-static const Slice<Entry>
-EMPTY_ENTRY_SLICE{EMPTY_ENTRY, 1};
+static const Slice<Entry> EMPTY_ENTRY_SLICE{EMPTY_ENTRY, 1};
 
 static u32
 hash_boolean(bool b)
 {
     u32 hash = FNV1A_OFFSET;
-    hash ^= cast(u32)b;
+    hash ^= static_cast<u32>(b);
     hash *= FNV1A_PRIME;
     return hash;
 }
@@ -27,7 +25,7 @@ hash_compound(T v)
 {
     u32 hash = FNV1A_OFFSET;
     // Standards-compliant type punning. Optimizes to register moves.
-    u32 buf[sizeof(T) / sizeof(hash)]; // NOLINT
+    u32 buf[sizeof(v) / sizeof(hash)]; // NOLINT
     memcpy(buf, &v, sizeof(buf));
     for (int i = 0; i < count_of(buf); i++) {
         hash ^= buf[i];
@@ -42,12 +40,18 @@ hash_value(Value v)
     switch (v.type()) {
     case VALUE_NIL:
         break;
-    case VALUE_BOOLEAN:         return hash_boolean(v.to_boolean());
-    case VALUE_NUMBER:          return hash_compound(v.to_number());
-    case VALUE_LIGHTUSERDATA:   return hash_compound(v.to_userdata());
-    case VALUE_STRING:          return v.to_ostring()->hash;
-    case VALUE_TABLE:           [[fallthrough]];
-    case VALUE_FUNCTION:        return hash_compound(v.to_object());
+    case VALUE_BOOLEAN:
+        return hash_boolean(v.to_boolean());
+    case VALUE_NUMBER:
+        return hash_compound(v.to_number());
+    case VALUE_LIGHTUSERDATA:
+        return hash_compound(v.to_userdata());
+    case VALUE_STRING:
+        return v.to_ostring()->hash;
+    case VALUE_TABLE:
+        [[fallthrough]];
+    case VALUE_FUNCTION:
+        return hash_compound(v.to_object());
     case VALUE_INTEGER:
     case VALUE_CHUNK:
         break;
@@ -62,8 +66,8 @@ find_entry(Slice<Entry> entries, Value k, usize start, usize stop)
 {
     Entry *tomb = nullptr;
 
-    // Don' reset `tomb` by this point; we may have wrapped around.
-    loop_start:
+// Don't reset `tomb` by this point; we may have wrapped around.
+loop_start:
 
     for (usize i = start; i < stop; i++) {
         Entry *e = &entries[i];
@@ -81,9 +85,10 @@ find_entry(Slice<Entry> entries, Value k, usize start, usize stop)
             return e;
         }
     }
+
     // Failed to find up to this point so try the left side.
     if (start != 0) {
-        stop = start;
+        stop  = start;
         start = 0;
         goto loop_start;
     }
@@ -103,17 +108,16 @@ find_entry(Slice<Entry> entries, Value k, usize start, usize stop)
 static Entry *
 table_get_entry(Table *t, Value k)
 {
-    usize hash = cast_usize(hash_value(k));
-    usize n = cast_usize(len(t->entries));
+    usize hash = static_cast<usize>(hash_value(k));
+    usize n    = static_cast<usize>(len(t->entries));
     lulu_assert(n > 0);
     // Bit-or 1 is to ensure that even if `n == 1` we don't end up with 0.
     usize wrap = (n - 1) | 1;
 
     // Try to find matching entry going rightward.
-    Entry *e = find_entry(t->entries, k, /* start */ hash & wrap, /* stop */ n);
+    Entry *e = find_entry(t->entries, k, /*start=*/hash & wrap, /*stop=*/n);
     return e;
 }
-
 
 /**
  * @note(2025-08-11)
@@ -127,24 +131,24 @@ table_hash_resize(lulu_VM *vm, Table *t, isize n)
     // to grow in this case.
     if (n == 0) {
         t->entries = EMPTY_ENTRY_SLICE;
-        t->count = 0;
+        t->count   = 0;
         return;
     }
 
     // Minimum array size to prevent frequent reallocations.
     n = max(n, 8_i);
     n = mem_next_pow2((n));
+
     Slice<Entry> new_entries = slice_make<Entry>(vm, n);
     // Initialize all key-value pairs to nil-nil.
     fill(new_entries, EMPTY_ENTRY_);
     t->entries = new_entries;
-    t->count = 0;
+    t->count   = 0;
 }
 
 // Array indexes can only get so large.
-static constexpr i32
-MAX_INDEX_BITS = (INT32_WIDTH - 6),
-MAX_INDEX = (1 << MAX_INDEX_BITS);
+static constexpr i32 MAX_INDEX_BITS = (INT32_WIDTH - 6),
+                     MAX_INDEX      = (1 << MAX_INDEX_BITS);
 
 /**
  * @return
@@ -193,7 +197,7 @@ array_index(Value k)
     if (k.is_number()) {
         Integer i = 0;
         if (number_to_integer(k.to_number(), &i)) {
-            return cast(i32)i;
+            return static_cast<i32>(i);
         }
     }
     return -1;
@@ -204,13 +208,12 @@ count_index(Value k, Slice<i32> index_ranges)
 {
     i32 i = array_index(k);
     if (1 <= i && i <= MAX_INDEX) {
-        int bit = mem_ceil_log2(cast_usize(i));
+        int bit = mem_ceil_log2(static_cast<usize>(i));
         index_ranges[bit] += 1;
         return 1;
     }
     return 0;
 }
-
 
 /**
  * @return
@@ -231,7 +234,6 @@ table_hash_count_array(Table *t, Slice<i32> index_ranges)
     return n_array_extra;
 }
 
-
 /**
  * @param [in, out] n_array
  *      Holds the theoretical number of elements that goes to the array
@@ -248,8 +250,8 @@ table_array_compute_size(Slice<i32> index_ranges, i32 *n_array)
 {
     // Accumulator to track how many active indices are smaller than the
     // potential optimal size.
-    i32 acc = 0;
-    i32 n_array_active = 0;
+    i32 acc             = 0;
+    i32 n_array_active  = 0;
     i32 n_array_optimal = 0;
 
     for (i32 bit = 0, pow2 = 1; /* empty */; bit++, pow2 <<= 1) {
@@ -269,7 +271,7 @@ table_array_compute_size(Slice<i32> index_ranges, i32 *n_array)
             // More than half of all array slots would be occupied?
             if (acc > half) {
                 n_array_optimal = pow2;
-                n_array_active = acc;
+                n_array_active  = acc;
             }
         }
 
@@ -282,7 +284,6 @@ table_array_compute_size(Slice<i32> index_ranges, i32 *n_array)
     lulu_assert(*n_array / 2 <= n_array_active && n_array_active <= *n_array);
     return n_array_active;
 }
-
 
 /**
  * @param n
@@ -313,7 +314,7 @@ static void
 table_resize(lulu_VM *vm, Table *t, isize n_hash, isize n_array)
 {
     // Copy here to avoid tripping up bounds check.
-    Slice<Value> old_array = t->array;
+    Slice<Value> old_array   = t->array;
     Slice<Entry> old_entries = t->entries;
 
     // Array must grow? Shrinking is a separate branch because we will
@@ -361,10 +362,10 @@ static void
 table_rehash(lulu_VM *vm, Table *t, Value k)
 {
     Array<i32, MAX_INDEX_BITS + 1> buf;
-    Slice<i32> index_ranges = slice(buf);
+    Slice<i32>                     index_ranges = slice(buf);
     fill(index_ranges, 0);
 
-    i32 n_array = table_array_count(t, index_ranges);
+    i32   n_array = table_array_count(t, index_ranges);
     isize n_total = n_array;
     // If rehashing from empty slice, don't count the empty entry.
     n_total += (raw_data(t->entries) == EMPTY_ENTRY ? 0 : len(t->entries));
@@ -374,8 +375,8 @@ table_rehash(lulu_VM *vm, Table *t, Value k)
     n_array += count_index(k, index_ranges);
     n_total += 1;
 
-    i32 n_array_active = table_array_compute_size(index_ranges, &n_array);
-    isize n_hash = n_total - n_array_active;
+    i32   n_array_active = table_array_compute_size(index_ranges, &n_array);
+    isize n_hash         = n_total - n_array_active;
     table_resize(vm, t, n_hash, n_array);
 }
 
@@ -406,9 +407,9 @@ table_delete(lulu_VM *vm, Table *t)
 void
 table_init(Table *t)
 {
-    t->array = {nullptr, 0};
+    t->array   = {nullptr, 0};
     t->entries = EMPTY_ENTRY_SLICE;
-    t->count = 0;
+    t->count   = 0;
 }
 
 static Value *
@@ -420,7 +421,6 @@ table_array_ptr(Table *t, Integer i)
     return nullptr;
 }
 
-
 /**
  * @param [out] v
  *      Holds the result of `t[k]`.
@@ -429,9 +429,9 @@ static bool
 table_hash_get(Table *t, Value k, Value *v)
 {
     // Sentinel value is EMPTY_ENTRY which has a nil key and nil value.
-    Entry *e = table_get_entry(t, k);
-    bool found = !e->key.is_nil();
-    *v = (found) ? e->value : nil;
+    Entry *e     = table_get_entry(t, k);
+    bool   found = !e->key.is_nil();
+    *v           = (found) ? e->value : nil;
     return found;
 }
 
@@ -457,7 +457,6 @@ table_is_full(Table *t)
     }
     return t->count + 1 > n;
 }
-
 
 /**
  * @brief
@@ -490,7 +489,7 @@ table_hash_set(lulu_VM *vm, Table *t, Value k, Value v)
     if (e->key.is_nil() && e->value.is_nil()) {
         t->count++;
     }
-    e->key = k;
+    e->key   = k;
     e->value = v;
 }
 
@@ -514,7 +513,7 @@ table_len(Table *t)
     // Have an array part and it's not completely occupied?
     // Try to binary search for the length.
     if (n > 0 && t->array[n - 1].is_nil()) {
-        isize left = 0;
+        isize left  = 0;
         isize right = n;
         // Midpoint would be >= 0?
         while (right - left > 1) {
@@ -527,7 +526,8 @@ table_len(Table *t)
         }
         return left;
     } // Hash part is empty?
-    else if (raw_data(t->entries) == EMPTY_ENTRY) {
+    else if (raw_data(t->entries) == EMPTY_ENTRY)
+    {
         return 0;
     }
 
@@ -545,7 +545,7 @@ table_len(Table *t)
         // Don't call table_get*() because we already know this key
         // is not in the hash segment.
         for (;;) {
-            Value k = Value::make_number(cast_number(i + 1));
+            Value k = Value::make_number(static_cast<Number>(i + 1));
             Value v;
             if (!table_hash_get(t, k, &v)) {
                 break;
@@ -566,10 +566,9 @@ table_get_integer(Table *t, Integer i, Value *v)
         return !slot->is_nil();
     }
     // Index not in range of the array; try the hash part.
-    Value k = Value::make_number(cast_number(i));
+    Value k = Value::make_number(static_cast<Number>(i));
     return table_hash_get(t, k, v);
 }
-
 
 void
 table_set_integer(lulu_VM *vm, Table *t, Integer i, Value v)
@@ -580,7 +579,7 @@ table_set_integer(lulu_VM *vm, Table *t, Integer i, Value v)
         return;
     }
     // Index not in range of the array; try the hash part.
-    Value k = Value::make_number(cast_number(i));
+    Value k = Value::make_number(static_cast<Number>(i));
     table_hash_set(vm, t, k, v);
 }
 
@@ -600,7 +599,6 @@ table_unset(Table *t, Value k)
         e->set_tombstone();
     }
 }
-
 
 /**
  * @param k
@@ -625,13 +623,13 @@ find_next(lulu_VM *vm, Table *t, Value k)
         isize i = array_index(k);
         // `k` is represents an valid Lua array index?
         if (1 <= i && i <= len(t->array)) {
-            // Next index. First iteration would have already poked at index 0.
+            // Next index. 1st iteration already poked at index 0.
             return (i - 1) + 1;
         }
     }
 
-    usize hash = cast_usize(hash_value(k));
-    usize wrap = cast_usize(len(t->entries)) - 1;
+    usize hash = static_cast<usize>(hash_value(k));
+    usize wrap = static_cast<usize>(len(t->entries)) - 1;
 
     // The main index of `k` may be colliding; find its actual position
     for (usize i = hash & wrap; /* empty */; i = (i + 1) & wrap) {
@@ -641,7 +639,7 @@ find_next(lulu_VM *vm, Table *t, Value k)
             break;
         } else if (e.key == k) {
             // Hash index of *next* element, adding #t to mark it as such.
-            return cast_isize(i) + 1 + len(t->array);
+            return static_cast<isize>(i) + 1 + len(t->array);
         }
     }
     vm_runtime_error(vm, "Invalid key to 'next'");
@@ -656,7 +654,7 @@ table_next(lulu_VM *vm, Table *t, Value *restrict k, Value *restrict v)
     for (/* empty */; i < len(t->array); i++) {
         Value src = t->array[i];
         if (!src.is_nil()) {
-            *k = Value::make_number(cast_number(i + 1));
+            *k = Value::make_number(static_cast<Number>(i + 1));
             *v = src;
             return true;
         }

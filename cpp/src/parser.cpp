@@ -1,8 +1,8 @@
-#include <stdio.h>  // sprintf
+#include <stdio.h> // sprintf
 
-#include "parser.hpp"
 #include "compiler.hpp"
 #include "debug.hpp"
+#include "parser.hpp"
 #include "vm.hpp"
 
 struct Expr_List {
@@ -10,11 +10,9 @@ struct Expr_List {
     u16  count;
 };
 
-static constexpr Expr
-DEFAULT_EXPR = Expr::make(EXPR_NONE);
+static constexpr Expr DEFAULT_EXPR = Expr::make(EXPR_NONE);
 
-static constexpr Token
-DEFAULT_TOKEN = Token::make(TOKEN_INVALID);
+static constexpr Token DEFAULT_TOKEN = Token::make(TOKEN_INVALID);
 
 // Forward declaration for recursive descent parsing.
 static Expr
@@ -30,7 +28,7 @@ block_push(Compiler *c, Block *b, bool breakable)
 
     b->prev       = c->block;
     b->break_list = NO_JUMP;
-    b->n_locals   = cast(u16)small_array_len(c->active);
+    b->n_locals   = static_cast<u16>(small_array_len(c->active));
     b->breakable  = breakable;
 
     // Chain
@@ -94,7 +92,12 @@ block(Parser *p, Compiler *c)
 static void
 recurse_push(Parser *p, Compiler *c)
 {
-    compiler_check_limit(c, p->n_calls, PARSER_MAX_RECURSE, "recursive C calls");
+    compiler_check_limit(
+        c,
+        p->n_calls,
+        PARSER_MAX_RECURSE,
+        "recursive C calls"
+    );
     p->n_calls++;
 }
 
@@ -111,7 +114,7 @@ parser_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     Parser p;
     p.vm        = vm;
     p.lexer     = lexer_make(vm, source, z, b);
-    p.current  = DEFAULT_TOKEN;
+    p.current   = DEFAULT_TOKEN;
     p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
     p.last_line = 1;
@@ -129,7 +132,7 @@ advance(Parser *p)
     // Have a lookahead token to discharge?
     p->last_line = p->lexer.line;
     if (p->lookahead.type != TOKEN_INVALID) {
-        p->current  = p->lookahead;
+        p->current   = p->lookahead;
         p->lookahead = DEFAULT_TOKEN;
     } else {
         p->current = lexer_lex(&p->lexer);
@@ -161,16 +164,14 @@ match(Parser *p, Token_Type expected)
     return b;
 }
 
-[[noreturn]]
-static void
+[[noreturn]] static void
 error_at(Parser *p, Token_Type type, const char *msg)
 {
     lexer_error(&p->lexer, type, msg, p->last_line);
 }
 
 // Throw an error using the type of the current token.
-[[noreturn]]
-static void
+[[noreturn]] static void
 error(Parser *p, const char *msg)
 {
     error_at(p, p->current.type, msg);
@@ -205,10 +206,16 @@ consume_to_close(Parser *p, Token_Type expected, Token_Type to_close, int line)
 {
     if (!match(p, expected)) {
         // Worst-case, even if `sizeof(int) == 8`:
-        // `"Expected 'function' (to close 'function' at line 9223372036854775807)"`
+        // `"Expected 'function' (to close 'function' at line
+        // 9223372036854775807)"`
         char buf[128];
-        sprintf(buf, "Expected '%s' (to close '%s' at line %i)",
-            token_cstring(expected), token_cstring(to_close), line);
+        sprintf(
+            buf,
+            "Expected '%s' (to close '%s' at line %i)",
+            token_cstring(expected),
+            token_cstring(to_close),
+            line
+        );
         error(p, buf);
     }
 }
@@ -241,7 +248,7 @@ return_statement(Parser *p, Compiler *c)
         e = expression_list(p, c);
         if (e.last.has_multret()) {
             compiler_set_returns(c, &e.last, VARARG);
-            ra      = cast(u8)small_array_len(c->active);
+            ra      = static_cast<u8>(small_array_len(c->active));
             e.count = VARARG;
         } else {
             compiler_expr_next_reg(c, &e.last);
@@ -259,7 +266,7 @@ static void
 assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
 {
     Expr *last  = &e->last;
-    int   extra = cast_int(n_vars) - cast_int(e->count);
+    int   extra = static_cast<int>(n_vars) - static_cast<int>(e->count);
 
     // The last assigning expression has variadic returns?
     if (last->has_multret()) {
@@ -268,9 +275,9 @@ assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
         if (extra < 0) {
             extra = 0;
         }
-        compiler_set_returns(c, last, cast(u16)extra);
+        compiler_set_returns(c, last, static_cast<u16>(extra));
         if (extra > 1) {
-            compiler_reserve_reg(c, cast(u16)(extra - 1));
+            compiler_reserve_reg(c, extra - 1);
         }
         return;
     }
@@ -283,7 +290,7 @@ assign_adjust(Compiler *c, u16 n_vars, Expr_List *e)
     if (extra > 0) {
         // Register of first uninitialized right-hand side.
         u16 reg = c->free_reg;
-        compiler_reserve_reg(c, cast(u16)extra);
+        compiler_reserve_reg(c, extra);
         compiler_load_nil(c, reg, extra);
     }
 }
@@ -292,7 +299,8 @@ static void
 assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 {
     // Check the result of `expression()`.
-    if (last->variable.type < EXPR_GLOBAL || last->variable.type > EXPR_INDEXED) {
+    if (last->variable.type < EXPR_GLOBAL || last->variable.type > EXPR_INDEXED)
+    {
         error_at(p, t->type, "Expected an assignable expression");
     }
 
@@ -351,10 +359,14 @@ local_push(Parser *p, Compiler *c, OString *ident)
     compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
 
     // Pushing to active array would go out of bounds?
-    compiler_check_limit(c, cast_int(small_array_len(c->active) + 1),
-        MAX_ACTIVE_LOCALS, "active local variables");
+    compiler_check_limit(
+        c,
+        static_cast<int>(small_array_len(c->active) + 1),
+        MAX_ACTIVE_LOCALS,
+        "active local variables"
+    );
 
-    small_array_push(&c->active, cast(u16)index);
+    small_array_push(&c->active, static_cast<u16>(index));
 }
 
 static void
@@ -368,7 +380,7 @@ local_push_literal(Parser *p, Compiler *c, LString lit)
 static void
 local_start(Compiler *c, u16 n)
 {
-    int pc = c->pc;
+    int          pc     = c->pc;
     Slice<u16>   active = small_array_slice(c->active);
     Slice<Local> locals = slice(c->chunk->locals);
     for (u16 index : slice_from(active, small_array_len(c->active) - n)) {
@@ -469,7 +481,6 @@ while_statement(Parser *p, Compiler *c, int line)
 
     // Resolve breaks only after the unconditional jump was emitted.
     block_pop(c);
-
 }
 
 static void
@@ -574,9 +585,8 @@ for_numeric(Parser *p, Compiler *c, OString *ident)
 
 /**
  * @brief
- *      `'for' <ident> [ ',' <ident> ]* 'in' <expression> ',' <expression> ',' <expression> 'do'
- *          <block>
- *      'end'`
+ *      `'for' <ident> [ ',' <ident> ]* 'in' <expression> ',' <expression> ','
+ * <expression> 'do' <block> 'end'`
  *
  * @param ident
  *      The variable name of the first (and potentially only) loop variable.
@@ -672,7 +682,7 @@ static Compiler
 function_open(lulu_VM *vm, Parser *p, Compiler *enclosing)
 {
     Chunk *chunk = chunk_new(vm, p->lexer.source);
-    Table *t = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
+    Table *t     = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
 
     // Push chunk and table to stack so that they are not collected while we
     // are executing.
@@ -739,7 +749,7 @@ static Expr
 function_push(Parser *p, Compiler *c)
 {
     lulu_VM *vm = p->vm;
-    Closure *f = closure_lua_new(vm, c->chunk);
+    Closure *f  = closure_lua_new(vm, c->chunk);
 
     Value v = Value::make_function(f);
     vm_push(vm, v);
@@ -751,10 +761,10 @@ function_push(Parser *p, Compiler *c)
 static Expr
 function_definition(Parser *p, Compiler *enclosing, int function_line)
 {
-    Compiler c = function_open(p->vm, p, enclosing);
-    Chunk *f = c.chunk;
-    int paren_line = p->last_line;
-    f->line_defined = function_line;
+    Compiler c          = function_open(p->vm, p, enclosing);
+    Chunk   *f          = c.chunk;
+    int      paren_line = p->last_line;
+    f->line_defined     = function_line;
     consume(p, TOKEN_OPEN_PAREN);
 
     // Prevent segfaults when calling `local_push`.
@@ -782,7 +792,7 @@ function_definition(Parser *p, Compiler *enclosing, int function_line)
 static void
 function_decl(Parser *p, Compiler *c, int function_line)
 {
-    Expr var = function_var(p, c);
+    Expr var  = function_var(p, c);
     Expr body = function_definition(p, c, function_line);
     compiler_set_variable(c, &var, &body);
 }
@@ -803,8 +813,8 @@ local_function(Parser *p, Compiler *c, int line)
 static void
 declaration(Parser *p, Compiler *c)
 {
-    Token t = p->current;
-    int line = p->last_line;
+    Token t    = p->current;
+    int   line = p->last_line;
     switch (t.type) {
     case TOKEN_BREAK:
         advance(p); // skip 'break'
@@ -890,7 +900,7 @@ chunk(Parser *p, Compiler *c)
          *  end
          * ```
          */
-        c->free_reg = cast(u16)small_array_len(c->active);
+        c->free_reg = static_cast<u16>(small_array_len(c->active));
     }
     recurse_pop(p);
 }
@@ -921,12 +931,12 @@ struct Constructor {
 static void
 constructor_field(Parser *p, Compiler *c, Constructor *ctor)
 {
-    u16 reg = c->free_reg;
-    Token t = p->current;
-    Expr k;
+    u16   reg = c->free_reg;
+    Token t   = p->current;
+    Expr  k;
     if (match(p, TOKEN_IDENT)) {
         u32 i = compiler_add_ostring(c, t.ostring);
-        k = Expr::make_index(EXPR_CONSTANT, i);
+        k     = Expr::make_index(EXPR_CONSTANT, i);
     } else {
         int line = p->last_line;
         consume(p, TOKEN_OPEN_BRACE);
@@ -938,8 +948,8 @@ constructor_field(Parser *p, Compiler *c, Constructor *ctor)
     u16 rkb = compiler_expr_rk(c, &k);
 
     // Don't use `ctor->array_value` because we discharge it later.
-    Expr e = expression(p, c);
-    u16 rkc = compiler_expr_rk(c, &e);
+    Expr e   = expression(p, c);
+    u16  rkc = compiler_expr_rk(c, &e);
     compiler_code_abc(c, OP_SET_TABLE, ctor->table.reg, rkb, rkc);
 
     // 'pop' whatever registers we used
@@ -1002,7 +1012,7 @@ static Expr
 constructor(Parser *p, Compiler *c)
 {
     Constructor ctor;
-    int pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0);
+    int         pc = compiler_code_abc(c, OP_NEW_TABLE, NO_REG, 0, 0);
 
     ctor.table       = Expr::make_pc(EXPR_RELOCABLE, pc);
     ctor.array_value = DEFAULT_EXPR;
@@ -1077,7 +1087,7 @@ function_call(Parser *p, Compiler *c, Expr *e, int paren_line)
         }
         // g++ warns that `c->free_reg - (base + 1)` converts to `int` in the
         // subtraction.
-        args.count = cast(u16)(c->free_reg - (base + 1));
+        args.count = c->free_reg - (base + 1);
     }
     e->type = EXPR_CALL;
     e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 0);
@@ -1090,37 +1100,49 @@ function_call(Parser *p, Compiler *c, Expr *e, int paren_line)
 static Expr
 prefix_expr(Parser *p, Compiler *c)
 {
-    Token t = p->current;
-    int line = p->last_line;
+    Token t    = p->current;
+    int   line = p->last_line;
     advance(p); // Skip '<number>', '<ident>', '(' or '-'.
 
     OpCode unary_op;
     switch (t.type) {
-    case TOKEN_NIL:      return Expr::make(EXPR_NIL);
-    case TOKEN_TRUE:     return Expr::make(EXPR_TRUE);
-    case TOKEN_FALSE:    return Expr::make(EXPR_FALSE);
-    case TOKEN_FUNCTION: return function_definition(p, c, line);
-    case TOKEN_NUMBER:   return Expr::make_number(t.number);
+    case TOKEN_NIL:
+        return Expr::make(EXPR_NIL);
+    case TOKEN_TRUE:
+        return Expr::make(EXPR_TRUE);
+    case TOKEN_FALSE:
+        return Expr::make(EXPR_FALSE);
+    case TOKEN_FUNCTION:
+        return function_definition(p, c, line);
+    case TOKEN_NUMBER:
+        return Expr::make_number(t.number);
     case TOKEN_STRING: {
         u32 i = compiler_add_ostring(c, t.ostring);
         return Expr::make_index(EXPR_CONSTANT, i);
     }
-    case TOKEN_IDENT: return resolve_variable(c, t.ostring);
+    case TOKEN_IDENT:
+        return resolve_variable(c, t.ostring);
     case TOKEN_OPEN_PAREN: {
         Expr e = expression(p, c);
         consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, line);
         return e;
     }
-    case TOKEN_OPEN_CURLY: return constructor(p, c);
-    case TOKEN_DASH:       unary_op = OP_UNM; goto code_unary;
-    case TOKEN_NOT:        unary_op = OP_NOT; goto code_unary;
-    case TOKEN_POUND:      unary_op = OP_LEN;
-    // Diabolical
-    code_unary: {
-        Expr e = expression(p, c, PREC_UNARY);
-        compiler_code_unary(c, unary_op, &e);
-        return e;
-    }
+    case TOKEN_OPEN_CURLY:
+        return constructor(p, c);
+    case TOKEN_DASH:
+        unary_op = OP_UNM;
+        goto code_unary;
+    case TOKEN_NOT:
+        unary_op = OP_NOT;
+        goto code_unary;
+    case TOKEN_POUND:
+        unary_op = OP_LEN;
+// Diabolical
+code_unary : {
+    Expr e = expression(p, c, PREC_UNARY);
+    compiler_code_unary(c, unary_op, &e);
+    return e;
+}
     default:
         error_at(p, t.type, "Expected an expression");
     }
@@ -1162,70 +1184,77 @@ primary_expr(Parser *p, Compiler *c)
 }
 
 enum Binary_Type {
-    BINARY_NONE = -1,                   // Not a valid lookup table key.
-    BINARY_AND, BINARY_OR,              // PREC_AND, PREC_OR
-    BINARY_ADD, BINARY_SUB,             // PREC_TERMINAL
-    BINARY_MUL, BINARY_DIV, BINARY_MOD, // PREC_FACTOR
-    BINARY_POW,                         // PREC_EXPONENT
-    BINARY_EQ,  BINARY_LT, BINARY_LEQ,  // PREC_COMPARISON, cond=true
-    BINARY_NEQ, BINARY_GT, BINARY_GEQ,  // PREC_COMPARISON, cond=false
-    BINARY_CONCAT,                      // PREC_CONCAT
+    BINARY_NONE = -1, // Not a valid lookup table key.
+    BINARY_AND,
+    BINARY_OR, // PREC_AND, PREC_OR
+    BINARY_ADD,
+    BINARY_SUB, // PREC_TERMINAL
+    BINARY_MUL,
+    BINARY_DIV,
+    BINARY_MOD, // PREC_FACTOR
+    BINARY_POW, // PREC_EXPONENT
+    BINARY_EQ,
+    BINARY_LT,
+    BINARY_LEQ, // PREC_COMPARISON, cond=true
+    BINARY_NEQ,
+    BINARY_GT,
+    BINARY_GEQ,    // PREC_COMPARISON, cond=false
+    BINARY_CONCAT, // PREC_CONCAT
 };
 
-static constexpr int
-BINARY_TYPE_COUNT = BINARY_CONCAT + 1;
+static constexpr int BINARY_TYPE_COUNT = BINARY_CONCAT + 1;
 
 struct Binary_Prec {
     Precedence left, right;
 };
 
 static constexpr Binary_Prec
-left_assoc(Precedence prec)
+left_assoc(Precedence left_prec)
 {
-    return {prec, Precedence(cast_int(prec) + 1)};
+    int  p          = static_cast<int>(left_prec) + 1;
+    auto right_prec = static_cast<Precedence>(p);
+    return {left_prec, right_prec};
 }
 
 static constexpr Binary_Prec
-right_assoc(Precedence prec)
+right_assoc(Precedence left_prec)
 {
-    return {prec, prec};
+    return {left_prec, left_prec};
 }
 
-static const Binary_Prec
-binary_precs[BINARY_TYPE_COUNT] = {
-    /* BINARY_AND */    left_assoc(PREC_AND),
-    /* BINARY_OR */     left_assoc(PREC_OR),
-    /* BINARY_ADD */    left_assoc(PREC_TERMINAL),
-    /* BINARY_SUB */    left_assoc(PREC_TERMINAL),
-    /* BINARY_MUL */    left_assoc(PREC_FACTOR),
-    /* BINARY_DIV */    left_assoc(PREC_FACTOR),
-    /* BINARY_MOD */    left_assoc(PREC_FACTOR),
-    /* BINARY_POW */    right_assoc(PREC_EXPONENT),
-    /* BINARY_EQ */     left_assoc(PREC_COMPARISON),
-    /* BINARY_LT */     left_assoc(PREC_COMPARISON),
-    /* BINARY_LEQ */    left_assoc(PREC_COMPARISON),
-    /* BINARY_NEQ */    left_assoc(PREC_COMPARISON),
-    /* BINARY_GEQ */    left_assoc(PREC_COMPARISON),
-    /* BINARY_GT */     left_assoc(PREC_COMPARISON),
+static const Binary_Prec binary_precs[BINARY_TYPE_COUNT] = {
+    /* BINARY_AND */ left_assoc(PREC_AND),
+    /* BINARY_OR */ left_assoc(PREC_OR),
+    /* BINARY_ADD */ left_assoc(PREC_TERMINAL),
+    /* BINARY_SUB */ left_assoc(PREC_TERMINAL),
+    /* BINARY_MUL */ left_assoc(PREC_FACTOR),
+    /* BINARY_DIV */ left_assoc(PREC_FACTOR),
+    /* BINARY_MOD */ left_assoc(PREC_FACTOR),
+    /* BINARY_POW */ right_assoc(PREC_EXPONENT),
+    /* BINARY_EQ */ left_assoc(PREC_COMPARISON),
+    /* BINARY_LT */ left_assoc(PREC_COMPARISON),
+    /* BINARY_LEQ */ left_assoc(PREC_COMPARISON),
+    /* BINARY_NEQ */ left_assoc(PREC_COMPARISON),
+    /* BINARY_GEQ */ left_assoc(PREC_COMPARISON),
+    /* BINARY_GT */ left_assoc(PREC_COMPARISON),
     /* BINARY_CONCAT */ right_assoc(PREC_CONCAT),
 };
 
-static const OpCode
-binary_opcodes[BINARY_TYPE_COUNT] = {
-    /* BINARY_AND */    OP_TEST,
-    /* BINARY_OR */     OP_TEST,
-    /* BINARY_ADD */    OP_ADD,
-    /* BINARY_SUB */    OP_SUB,
-    /* BINARY_MUL */    OP_MUL,
-    /* BINARY_DIV */    OP_DIV,
-    /* BINARY_MOD */    OP_MOD,
-    /* BINARY_POW */    OP_POW,
-    /* BINARY_EQ */     OP_EQ,
-    /* BINARY_LT */     OP_LT,
-    /* BINARY_LEQ */    OP_LEQ,
-    /* BINARY_NEQ */    OP_EQ,
-    /* BINARY_GEQ */    OP_LEQ,
-    /* BINARY_GT */     OP_LT,
+static const OpCode binary_opcodes[BINARY_TYPE_COUNT] = {
+    /* BINARY_AND */ OP_TEST,
+    /* BINARY_OR */ OP_TEST,
+    /* BINARY_ADD */ OP_ADD,
+    /* BINARY_SUB */ OP_SUB,
+    /* BINARY_MUL */ OP_MUL,
+    /* BINARY_DIV */ OP_DIV,
+    /* BINARY_MOD */ OP_MOD,
+    /* BINARY_POW */ OP_POW,
+    /* BINARY_EQ */ OP_EQ,
+    /* BINARY_LT */ OP_LT,
+    /* BINARY_LEQ */ OP_LEQ,
+    /* BINARY_NEQ */ OP_EQ,
+    /* BINARY_GEQ */ OP_LEQ,
+    /* BINARY_GT */ OP_LT,
     /* BINARY_CONCAT */ OP_CONCAT,
 };
 
@@ -1233,21 +1262,36 @@ static Binary_Type
 get_binary(Token_Type type)
 {
     switch (type) {
-    case TOKEN_AND:        return BINARY_AND;
-    case TOKEN_OR:         return BINARY_OR;
-    case TOKEN_PLUS:       return BINARY_ADD;
-    case TOKEN_DASH:       return BINARY_SUB;
-    case TOKEN_ASTERISK:   return BINARY_MUL;
-    case TOKEN_SLASH:      return BINARY_DIV;
-    case TOKEN_PERCENT:    return BINARY_MOD;
-    case TOKEN_CARET:      return BINARY_POW;
-    case TOKEN_EQ:         return BINARY_EQ;
-    case TOKEN_NOT_EQ:     return BINARY_NEQ;
-    case TOKEN_LESS:       return BINARY_LT;
-    case TOKEN_LESS_EQ:    return BINARY_LEQ;
-    case TOKEN_GREATER:    return BINARY_GT;
-    case TOKEN_GREATER_EQ: return BINARY_GEQ;
-    case TOKEN_CONCAT:     return BINARY_CONCAT;
+    case TOKEN_AND:
+        return BINARY_AND;
+    case TOKEN_OR:
+        return BINARY_OR;
+    case TOKEN_PLUS:
+        return BINARY_ADD;
+    case TOKEN_DASH:
+        return BINARY_SUB;
+    case TOKEN_ASTERISK:
+        return BINARY_MUL;
+    case TOKEN_SLASH:
+        return BINARY_DIV;
+    case TOKEN_PERCENT:
+        return BINARY_MOD;
+    case TOKEN_CARET:
+        return BINARY_POW;
+    case TOKEN_EQ:
+        return BINARY_EQ;
+    case TOKEN_NOT_EQ:
+        return BINARY_NEQ;
+    case TOKEN_LESS:
+        return BINARY_LT;
+    case TOKEN_LESS_EQ:
+        return BINARY_LEQ;
+    case TOKEN_GREATER:
+        return BINARY_GT;
+    case TOKEN_GREATER_EQ:
+        return BINARY_GEQ;
+    case TOKEN_CONCAT:
+        return BINARY_CONCAT;
     default:
         break;
     }
@@ -1342,7 +1386,6 @@ expression(Parser *p, Compiler *c, Precedence limit)
             lulu_unreachable();
             break;
         }
-
     }
     recurse_pop(p);
     return left;

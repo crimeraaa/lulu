@@ -21,7 +21,7 @@ is_eof(const Lexer *x)
 static int
 advance(Lexer *x)
 {
-    int ch = x->character;
+    int ch       = x->character;
     x->character = x->stream->get_char();
     return ch;
 }
@@ -30,11 +30,11 @@ Lexer
 lexer_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
     Lexer x;
-    x.vm        = vm;
-    x.builder   = b;
-    x.source    = source;
-    x.stream    = z;
-    x.line      = 1;
+    x.vm      = vm;
+    x.builder = b;
+    x.source  = source;
+    x.stream  = z;
+    x.line    = 1;
     advance(&x);
     return x;
 }
@@ -67,7 +67,7 @@ save_advance(Lexer *x)
 static bool
 check(const Lexer *x, char ch)
 {
-    return peek(x) == cast_int(ch);
+    return peek(x) == static_cast<int>(ch);
 }
 
 static bool
@@ -118,7 +118,7 @@ get_lexeme_nul_terminated(Lexer *x)
 void
 lexer_error(Lexer *x, Token_Type type, const char *what, int line)
 {
-    lulu_VM *vm = x->vm;
+    lulu_VM    *vm = x->vm;
     const char *where;
     switch (type) {
     // Only variable length tokens explicitly save to the buffer.
@@ -140,8 +140,7 @@ lexer_error(Lexer *x, Token_Type type, const char *what, int line)
 
 
 // Errors using the current lexeme as the error location.
-[[noreturn]]
-static void
+[[noreturn]] static void
 error(Lexer *x, const char *what)
 {
     lexer_error(x, TOKEN_INVALID, what, x->line);
@@ -152,7 +151,7 @@ expect(Lexer *x, char ch, const char *msg = nullptr)
 {
     if (!match(x, ch)) {
         char buf[64];
-        int n = sprintf(buf, "Expected '%c'", ch);
+        int  n = sprintf(buf, "Expected '%c'", ch);
         if (msg != nullptr) {
             sprintf(buf + n, " %s", msg);
         }
@@ -168,7 +167,7 @@ expect(Lexer *x, char ch, const char *msg = nullptr)
 static int
 get_nesting(Lexer *x, bool do_save)
 {
-    int count = 0;
+    int        count      = 0;
     const auto advance_fn = (do_save) ? &save_advance : &advance;
     while (!is_eof(x) && check(x, '=')) {
         advance_fn(x);
@@ -310,13 +309,25 @@ make_number(Lexer *x, bool prefixed)
 {
     if (prefixed) {
         // Save the prefix to the buffer for error reporting.
-        int ch = save_advance(x);
+        int ch   = save_advance(x);
         int base = 0;
         switch (ch) {
-        case 'B': case 'b': base = 2;  break;
-        case 'O': case 'o': base = 8;  break;
-        case 'D': case 'd': base = 10; break;
-        case 'X': case 'x': base = 16; break;
+        case 'B':
+        case 'b':
+            base = 2;
+            break;
+        case 'O':
+        case 'o':
+            base = 8;
+            break;
+        case 'D':
+        case 'd':
+            base = 10;
+            break;
+        case 'X':
+        case 'x':
+            base = 16;
+            break;
         default:
             error(x, "Invalid integer prefix");
             break;
@@ -363,22 +374,32 @@ static int
 get_escaped(Lexer *x, char ch)
 {
     switch (ch) {
-    case '0':   return '\0';
-    case 'a':   return '\a';
-    case 'b':   return '\b';
-    case 'f':   return '\f';
-    case 'n':   return '\n';
-    case 't':   return '\t';
-    case 'r':   return '\r';
-    case 'v':   return '\v';
+    case '0':
+        return '\0';
+    case 'a':
+        return '\a';
+    case 'b':
+        return '\b';
+    case 'f':
+        return '\f';
+    case 'n':
+        return '\n';
+    case 't':
+        return '\t';
+    case 'r':
+        return '\r';
+    case 'v':
+        return '\v';
 
     // Concept check:
     // `print("Hi\
     // mom!");`
-    case '\n': x->line++;
+    case '\n':
+        x->line++;
     case '\'':
     case '\"':
-    case '\\':  return ch;
+    case '\\':
+        return ch;
     default:
         break;
     }
@@ -417,11 +438,11 @@ make_string(Lexer *x, char q)
 Token
 lexer_lex(Lexer *x)
 {
-    int ch;
+    int        ch;
     Token_Type type;
 
-    // This is only a hack for multiline comments.
-    lex_start:
+// This is only a hack for multiline comments.
+lex_start:
 
     // Reset to ensure our buffer is clean for a fresh token.
     builder_reset(x->builder);
@@ -434,7 +455,7 @@ lexer_lex(Lexer *x)
     if (is_alpha(ch)) {
         consume_sequence(x, is_ident);
         OString *os = ostring_new(x->vm, get_lexeme(x));
-        type = cast(Token_Type)os->keyword_type;
+        type        = static_cast<Token_Type>(os->keyword_type);
         if (type == TOKEN_INVALID) {
             type = TOKEN_IDENT;
         }
@@ -447,10 +468,18 @@ lexer_lex(Lexer *x)
 
     type = TOKEN_INVALID;
     switch (ch) {
-    case '(': type = TOKEN_OPEN_PAREN; break;
-    case ')': type = TOKEN_CLOSE_PAREN; break;
-    case '{': type = TOKEN_OPEN_CURLY; break;
-    case '}': type = TOKEN_CLOSE_CURLY; break;
+    case '(':
+        type = TOKEN_OPEN_PAREN;
+        break;
+    case ')':
+        type = TOKEN_CLOSE_PAREN;
+        break;
+    case '{':
+        type = TOKEN_OPEN_CURLY;
+        break;
+    case '}':
+        type = TOKEN_CLOSE_CURLY;
+        break;
     case '[':
         if (check2(x, '[', '=')) {
             int nest_open = get_nesting(x, /* do_save */ true);
@@ -466,8 +495,12 @@ lexer_lex(Lexer *x)
         }
         type = TOKEN_OPEN_BRACE;
         break;
-    case ']': type = TOKEN_CLOSE_BRACE; break;
-    case '+': type = TOKEN_PLUS; break;
+    case ']':
+        type = TOKEN_CLOSE_BRACE;
+        break;
+    case '+':
+        type = TOKEN_PLUS;
+        break;
     case '-':
         // We already advanced, so we have a second '-'?
         if (peek(x) == '-') {
@@ -490,20 +523,36 @@ lexer_lex(Lexer *x)
         }
         type = TOKEN_DASH;
         break;
-    case '*': type = TOKEN_ASTERISK; break;
-    case '/': type = TOKEN_SLASH; break;
-    case '%': type = TOKEN_PERCENT; break;
-    case '^': type = TOKEN_CARET; break;
+    case '*':
+        type = TOKEN_ASTERISK;
+        break;
+    case '/':
+        type = TOKEN_SLASH;
+        break;
+    case '%':
+        type = TOKEN_PERCENT;
+        break;
+    case '^':
+        type = TOKEN_CARET;
+        break;
 
     case '~':
         expect(x, '=');
         type = TOKEN_NOT_EQ;
         break;
-    case '=': type = match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN; break;
-    case '<': type = match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS; break;
-    case '>': type = match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ; break;
+    case '=':
+        type = match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN;
+        break;
+    case '<':
+        type = match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS;
+        break;
+    case '>':
+        type = match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ;
+        break;
 
-    case '#': type = TOKEN_POUND; break;
+    case '#':
+        type = TOKEN_POUND;
+        break;
     case '.':
         if (match(x, '.')) {
             type = match(x, '.') ? TOKEN_VARARG : TOKEN_CONCAT;
@@ -515,8 +564,12 @@ lexer_lex(Lexer *x)
             type = TOKEN_DOT;
         }
         break;
-    case ',': type = TOKEN_COMMA; break;
-    case ';': type = TOKEN_SEMI; break;
+    case ',':
+        type = TOKEN_COMMA;
+        break;
+    case ';':
+        type = TOKEN_SEMI;
+        break;
 
     case '\'':
     case '\"':
@@ -533,40 +586,81 @@ lexer_lex(Lexer *x)
  * @note 2025-06-14:
  *      ORDER: Keep in sync with `Token_Type`!
  */
-const char *const
-token_strings[TOKEN_COUNT] = {
+const char *const token_strings[TOKEN_COUNT] = {
     // Keywords
-    "and", "break", "do", "else", "elseif", "end",
-    "false", "for", "function", "if", "in",
-    "local", "nil", "not", "or", "repeat",
-    "return", "then", "true", "until", "while",
+    "and",
+    "break",
+    "do",
+    "else",
+    "elseif",
+    "end",
+    "false",
+    "for",
+    "function",
+    "if",
+    "in",
+    "local",
+    "nil",
+    "not",
+    "or",
+    "repeat",
+    "return",
+    "then",
+    "true",
+    "until",
+    "while",
 
     // Balanced pairs
-    "(", ")", "{", "}", "[", "]",
+    "(",
+    ")",
+    "{",
+    "}",
+    "[",
+    "]",
 
     // Arithmetic Operators
-    "+", "-", "*", "/", "/", "^",
+    "+",
+    "-",
+    "*",
+    "/",
+    "/",
+    "^",
 
     // Relational Operators
-    "==", "~=", "<", "<=", ">", ">=",
+    "==",
+    "~=",
+    "<",
+    "<=",
+    ">",
+    ">=",
 
     // Misc.
-    "#", ".", "..", "...", ",", ":", ";", "=",
-    "<ident>", "<number>", "<string>", "<eof>",
+    "#",
+    ".",
+    "..",
+    "...",
+    ",",
+    ":",
+    ";",
+    "=",
+    "<ident>",
+    "<number>",
+    "<string>",
+    "<eof>",
 };
 
 static void
 operator++(Token_Type &t, int)
 {
-    t = cast(Token_Type)(cast_int(t) + 1);
+    t = static_cast<Token_Type>(static_cast<int>(t) + 1);
 }
 
 void
 lexer_global_init(lulu_VM *vm)
 {
     for (Token_Type t = TOKEN_AND; t <= TOKEN_WHILE; t++) {
-        LString  ls = lstring_from_cstring(token_cstring(t));
-        OString *os = ostring_new(vm, ls);
+        LString  ls      = lstring_from_cstring(token_cstring(t));
+        OString *os      = ostring_new(vm, ls);
         os->keyword_type = t;
     }
 }

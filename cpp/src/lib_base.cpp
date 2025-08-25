@@ -1,10 +1,8 @@
-#include <ctype.h> /* isspace */
-#include <string.h>
+#include <ctype.h>  /* isspace */
 #include <stdlib.h> /* strtoul */
+#include <string.h>
 
 #include "lulu_auxlib.h"
-
-#define cast(T)     (T)
 
 static int
 base_assert(lulu_VM *vm)
@@ -43,7 +41,7 @@ base_tostring(lulu_VM *vm)
         lulu_push_string(vm, lulu_to_boolean(vm, 1) ? "true" : "false");
         break;
     case LULU_TYPE_NUMBER: {
-        size_t n = 0;
+        size_t      n = 0;
         const char *s = lulu_to_lstring(vm, 1, &n);
         lulu_push_lstring(vm, s, n);
         break;
@@ -52,8 +50,12 @@ base_tostring(lulu_VM *vm)
         /* Already a string, so nothing to do. */
         break;
     default:
-        lulu_push_fstring(vm, "%s: %p",
-            lulu_type_name_at(vm, 1), lulu_to_pointer(vm, 1));
+        lulu_push_fstring(
+            vm,
+            "%s: %p",
+            lulu_type_name_at(vm, 1),
+            lulu_to_pointer(vm, 1)
+        );
         break;
     }
     return 1;
@@ -77,13 +79,14 @@ base_tonumber(lulu_VM *vm)
         }
     }
     /* Conversion to non-base-10 integer is more involved. */
-    else {
+    else
+    {
         /**
          * Even if input is already a number, convert it to a string so
          * we can re-parse it in the new base.
          */
-        const char *s = lulu_check_string(vm, 1);
-        char *end;
+        const char   *s = lulu_check_string(vm, 1);
+        char         *end;
         unsigned long ul;
         lulu_arg_check(vm, 2 <= base && base <= 36, 2, "base out of range");
         ul = strtoul(s, &end, base);
@@ -104,7 +107,7 @@ base_tonumber(lulu_VM *vm)
              * Concept check: return tonumber("1234  ", 16);
              */
             if (*end == '\0') {
-                lulu_push_number(vm, cast(lulu_Number)ul);
+                lulu_push_number(vm, static_cast<lulu_Number>(ul));
                 return 1;
             }
         }
@@ -128,7 +131,7 @@ base_print(lulu_VM *vm)
         lulu_push_value(vm, i);  /* ..., tostring, tostring, arg[i] */
         lulu_call(vm, 1, 1);     /* ..., tostring, tostring(arg[i]) */
         fputs(lulu_to_string(vm, -1), stdout);
-        lulu_pop(vm, 1);         /* ..., tostring */
+        lulu_pop(vm, 1); /* ..., tostring */
     }
     fputc('\n', stdout);
     return 0;
@@ -153,8 +156,8 @@ base_pairs(lulu_VM *vm)
 {
     lulu_check_type(vm, 1, LULU_TYPE_TABLE);
     lulu_push_value(vm, lulu_upvalue_index(1)); /* push generator */
-    lulu_push_value(vm, 1); /* push state */
-    lulu_push_nil(vm);   /* push control initial value */
+    lulu_push_value(vm, 1);                     /* push state */
+    lulu_push_nil(vm);                          /* push control initial value */
     return 3;
 }
 
@@ -164,10 +167,10 @@ ipairs_next(lulu_VM *vm)
     lulu_Integer i;
     lulu_check_type(vm, 1, LULU_TYPE_TABLE);
     i = lulu_check_integer(vm, 2);
-    i++; /* Next value. */
-    lulu_push_integer(vm, i);   /* t, i, i+1 */
-    lulu_push_value(vm, -1);    /* t, i, i+1, i+1 */
-    lulu_get_table(vm, 1);      /* t, i, i+1, t[i+1] */
+    i++;                      /* Next value. */
+    lulu_push_integer(vm, i); /* t, i, i+1 */
+    lulu_push_value(vm, -1);  /* t, i, i+1, i+1 */
+    lulu_get_table(vm, 1);    /* t, i, i+1, t[i+1] */
     if (lulu_is_nil(vm, -1)) {
         return 0;
     }
@@ -179,20 +182,19 @@ base_ipairs(lulu_VM *vm)
 {
     lulu_check_type(vm, 1, LULU_TYPE_TABLE);
     lulu_push_value(vm, lulu_upvalue_index(1)); /* push generator */
-    lulu_push_value(vm, 1); /* push state */
-    lulu_push_integer(vm, 0);   /* push control initial value */
+    lulu_push_value(vm, 1);                     /* push state */
+    lulu_push_integer(vm, 0);                   /* push control initial value */
     return 3;
 }
 
 static void
 push_iterator(lulu_VM *vm, const char *name, lulu_CFunction f)
 {
-    lulu_push_cclosure(vm, f, 1);  /* _G, f ; setupvalue(f, 1, up) */
-    lulu_set_field(vm, -2, name);   /* _G ; _G[name] = f */
+    lulu_push_cclosure(vm, f, 1); /* _G, f ; setupvalue(f, 1, up) */
+    lulu_set_field(vm, -2, name); /* _G ; _G[name] = f */
 }
 
-static const lulu_Register
-baselib[] = {
+static const lulu_Register baselib[] = {
     {"assert", base_assert},
     {"tostring", base_tostring},
     {"tonumber", base_tonumber},
@@ -205,8 +207,8 @@ LULU_LIB_API int
 lulu_open_base(lulu_VM *vm)
 {
     lulu_push_value(vm, LULU_GLOBALS_INDEX); /* _G */
-    lulu_set_global(vm, "_G"); /* ; _G["_G"] = _G */
-    lulu_set_library(vm, "_G", baselib); /* _G */
+    lulu_set_global(vm, "_G");               /* ; _G["_G"] = _G */
+    lulu_set_library(vm, "_G", baselib);     /* _G */
 
     /* Save memory by reusing global 'next' */
     lulu_get_field(vm, -1, "next");
