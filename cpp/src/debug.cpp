@@ -308,7 +308,7 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
         printf("goto .code[%i] if loop", jump_resolve(pc, offset));
         break;
     }
-    case OP_FOR_IN_LOOP: {
+    case OP_FOR_IN: {
         printf("goto .code[%i] if not loop", jump_resolve(pc, 1));
         break;
     }
@@ -343,6 +343,9 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
     case OP_CLOSURE:
         print_reg(p, args.a, pc, " := Closure[%u] ; #upvalues = %i",
             args.bx, p->children[args.bx]->n_upvalues);
+        break;
+    case OP_CLOSE:
+        printf("close R(0:%i)", args.a + 1);
         break;
     case OP_RETURN:
         printf("return ");
@@ -655,7 +658,7 @@ get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
     cf--;
     int         pc = get_current_pc(vm, cf);
     Instruction i  = cf->to_lua()->chunk->code[pc];
-    if (i.op() == OP_CALL || i.op() == OP_FOR_IN_LOOP) {
+    if (i.op() == OP_CALL || i.op() == OP_FOR_IN) {
         return get_obj_name(vm, cf, i.a(), name);
     }
     // No useful name can be found.

@@ -31,25 +31,25 @@ enum OpCode : u8 {
     OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
     OP_TEST,        // A   C | if Bool(R(A)) == Bool(C) then ip++
     OP_TEST_SET,    // A B C | if Bool(R(B)) == Bool(C)
-                    //       | then R(A) := R(B)
-                    //       | else ip++
+                    //         then R(A) := R(B)
+                    //         else ip++
     OP_JUMP,        // sBx   | ip += sBx
     OP_FOR_PREP,    // A sBx | R(A) -= R(A+2) ; ip += sBx
-    OP_FOR_LOOP,    // A sBx | R(A) += R(A+2) ; if R(A) < R(A+1) then ip += sBx;
-                    // R(A+3) := R(A)
-    OP_FOR_IN_LOOP, // A   C | R(A+3:A+3+C) := R(A)(R(A+1), R(A+2));
+    OP_FOR_LOOP,    // A sBx | R(A) += R(A+2) ; if R(A) < R(A+1)
+                    //                          then ip += sBx
+                    //                        , R(A+3) := R(A)
+    OP_FOR_IN,      // A   C | R(A+3:A+3+C) := R(A)(R(A+1), R(A+2));
                     //       | if R(A+3) != nil then R(A+2) := R(A+3)
                     //       | else ip++
     OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
     OP_CLOSURE,     // A Bx  | R(A) := Chunks[Bx]
+    OP_CLOSE,       // A     | close R(0:A+1)
     OP_RETURN,      // A B   | return R(A:A+B)
 };
 
 // To avoid too much stack usage, we separate calls to `OP_SET_ARRAY` by
 // every nth element.
 #define FIELDS_PER_FLUSH 50
-
-constexpr OpCode OPCODE_FIRST = OP_CONSTANT, OPCODE_LAST = OP_RETURN;
 
 constexpr int OPCODE_COUNT = OP_RETURN + 1;
 

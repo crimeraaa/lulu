@@ -9,18 +9,10 @@
     bool is_c
 
 struct Upvalue {
-    struct List {
-        Upvalue *prev;
-        Upvalue *next;
-    };
-
     OBJECT_HEADER;
     // Points to value in stack while open, else points to `closed`.
     Value *value;
-    union {
-        Value closed = nil;
-        List  list;
-    };
+    Value closed = nil;
 };
 
 struct Closure_Lua {

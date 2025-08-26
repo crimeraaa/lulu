@@ -46,10 +46,10 @@ closure_delete(lulu_VM *vm, Closure *f)
 Upvalue *
 function_upvalue_find(lulu_VM *vm, Value *local)
 {
-    Object **olist = &vm->open_upvalues;
+    Object *olist = vm->open_upvalues;
     // Try to find and reuse an existing upvalue that references 'local'.
-    while (*olist != nullptr) {
-        Upvalue *up = &(*olist)->upvalue;
+    while (olist != nullptr) {
+        Upvalue *up = &olist->upvalue;
 
         // We assume the upvalue list is sorted (in terms of stack slots).
         // If we find one who is below the target, we must have gone past the
@@ -66,42 +66,26 @@ function_upvalue_find(lulu_VM *vm, Value *local)
             // Reuse it.
             return up;
         }
-        olist = &up->next;
+        olist = up->next;
     }
 
     // Couldn't find an upvalue; need to make a new one.
-    Upvalue *up = object_new<Upvalue>(vm, &G(vm)->objects, VALUE_UPVALUE);
+    // New upvalue is always open. Add it to the VM's open upvalue list.
+    Upvalue *up = object_new<Upvalue>(vm, &vm->open_upvalues, VALUE_UPVALUE);
 
     // Current value lives on the stack.
     up->value  = local;
     up->closed = nil;
-
-    // New upvalue is always open. Add it to the VM's open upvalue list.
-    up->next = *olist;
-    *olist   = reinterpret_cast<Object *>(up);
-
-    // Chain the old list to ourselves...
-    Upvalue *head = &G(vm)->upvalues_head;
-    up->list.prev = head;
-    up->list.next = head->list.next;
-
-    // ...and chain ourselves to our new neighbors.
-    up->list.next->list.prev   = up;
-    head->list.next = up;
-
-    // Ensure we linked ourselves to the list correctly.
-    lulu_assert(up->list.next->list.prev == up && up->list.prev->list.next == up);
     return up;
 }
 
 static void
-upvalue_unlink(Upvalue *up)
+upvalue_link(lulu_VM *vm, Upvalue *up)
 {
-    // Ensure chains are correct.
-    lulu_assert(up->list.next->list.prev == up && up->list.prev->list.next == up);
-    // Remove this upvalue from the overall open upvalues list.
-    up->list.next->list.prev = up->list.prev;
-    up->list.prev->list.next = up->list.next;
+    auto g = G(vm);
+    up->next   = g->objects;
+    g->objects = reinterpret_cast<Object *>(up);
+    // @todo(2025-08-26) Check if object is collectible, etc.
 }
 
 void
@@ -120,10 +104,14 @@ function_upvalue_close(lulu_VM *vm, Value *level)
 
         vm->open_upvalues = up->next;
         // TODO: check if object is dead
-        upvalue_unlink(up);
+        // upvalue_unlink(up);
 
         // This upvalue is now closed over, so it owns its own value.
         up->closed = *up->value;
         up->value  = &up->closed;
+
+        // Open upvalues were part of their object list; closed upvalues go
+        // to the collectible side.
+        upvalue_link(vm, up);
     }
 }

@@ -53,18 +53,14 @@ value_at_stack(lulu_VM *vm, int i)
 LULU_API lulu_CFunction
 lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn)
 {
-    lulu_CFunction prev = vm->global_state->panic_fn;
-    vm->global_state->panic_fn = panic_fn;
+    lulu_CFunction prev = G(vm)->panic_fn;
+    G(vm)->panic_fn = panic_fn;
     return prev;
 }
 
 LULU_API lulu_Error
-lulu_load(
-    lulu_VM    *vm,
-    const char *source,
-    lulu_Reader reader,
-    void       *reader_data
-)
+lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
+    void *reader_data)
 {
     Stream stream{
         /* function */ reader,
@@ -335,7 +331,7 @@ lulu_push_string(lulu_VM *vm, const char *s)
 }
 
 LULU_API const char *LULU_ATTR_PRINTF(2, 3)
-    lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
+lulu_push_fstring(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -438,9 +434,7 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key)
 LULU_API int
 lulu_next(lulu_VM *vm, int table_index)
 {
-    const Value *_t = value_at(vm, table_index);
-    lulu_assert(_t->is_table());
-    Table *t = _t->to_table();
+    Table *t = value_at(vm, table_index)->to_table();
     Value *k = value_at_stack(vm, -1);
     Value  v;
     bool   more = table_next(vm, t, k, &v);

@@ -44,9 +44,9 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
     g->allocator_data = allocator_data;
     g->objects        = nullptr;
 
-    // Upvalues chain is circular to prevent nul dereferences.
-    g->upvalues_head.list.prev = &g->upvalues_head;
-    g->upvalues_head.list.next = &g->upvalues_head;
+    // // Upvalues chain is circular to prevent nul dereferences.
+    // g->upvalues_head.list.prev = &g->upvalues_head;
+    // g->upvalues_head.list.next = &g->upvalues_head;
 
     // VM state
     vm->global_state  = g;
@@ -994,7 +994,7 @@ re_entry:
             }
             break;
         }
-        case OP_FOR_IN_LOOP: {
+        case OP_FOR_IN: {
             Value *call_base = ra + 3;
 
             // Prepare call so that its registers can be overridden.
@@ -1060,6 +1060,9 @@ re_entry:
             *ra = Value::make_function(f);
             break;
         }
+        case OP_CLOSE:
+            function_upvalue_close(vm, ra);
+            break;
         case OP_RETURN: {
             int n_rets = inst.b();
             if (n_rets == VARARG) {

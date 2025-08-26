@@ -68,9 +68,6 @@ struct lulu_Global {
 
     // Linked list of all collectable objects.
     Object *objects;
-
-    // List of all open upvalues across all active stack frames.
-    Upvalue upvalues_head;
 };
 
 struct LULU_PUBLIC lulu_VM {

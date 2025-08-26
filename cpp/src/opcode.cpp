@@ -38,14 +38,15 @@ const char *const opnames[OPCODE_COUNT] = {
     "jump",        // OP_JUMP
     "for_prep",    // OP_FOR_PREP
     "for_loop",    // OP_FOR_LOOP
-    "for_in_loop", // OP_FOR_IN_LOOP
+    "for_in",      // OP_FOR_IN
     "call",        // OP_CALL
     "closure",     // OP_CLOSURE
+    "close",       // OP_CLOSE
     "return",      // OP_RETURN
 };
 
 static constexpr OpInfo
-MAKE(OpFormat fmt, bool test, bool a, OpArg b, OpArg c)
+MAKE(OpFormat fmt, bool test, bool a, OpArg b, OpArg c = OPARG_UNUSED)
 {
     // Unsure why, but each `x << y` here results in type `int` regardless of
     // the cast. Yet this is not true in `Instruction::make_*()`.
@@ -58,32 +59,9 @@ MAKE(OpFormat fmt, bool test, bool a, OpArg b, OpArg c)
     return {static_cast<u8>(n)};
 }
 
-static constexpr OpInfo
-ABC(bool test, bool a, OpArg b, OpArg c)
-{
-    return MAKE(OPFORMAT_ABC, test, a, b, c);
-}
-
-static constexpr OpInfo
-ABX(bool a, OpArg bx)
-{
-    return MAKE(OPFORMAT_ABX, /* test */ false, a, bx, OPARG_UNUSED);
-}
-
-static constexpr OpInfo
-ASBX(bool test, bool a, OpArg b, OpArg c)
-{
-    return MAKE(OPFORMAT_ASBX, test, a, b, c);
-}
-
-static constexpr OpInfo
-    ARITH       = ABC(/*test=*/false, /*a=*/true, OPARG_REGK, OPARG_REGK),
-    COMPARE     = ABC(/*test=*/true, /*a=*/false, OPARG_REGK, OPARG_REGK),
-    UNARY       = ABC(/*test=*/false, /*a=*/true, OPARG_REGK, OPARG_UNUSED),
-    FUNC_LIKE   = ABC(/*test=*/false, /*a=*/true, OPARG_OTHER, OPARG_OTHER),
-    MOVE_LIKE   = UNARY,
-    FOR_LIKE    = ASBX(/*test=*/true, /*a=*/true, OPARG_JUMP, OPARG_UNUSED),
-    FOR_IN_LIKE = ABC(/*test=*/true, /*a=*/false, OPARG_UNUSED, OPARG_REGK);
+#define ABC  OPFORMAT_ABC
+#define ABX  OPFORMAT_ABX
+#define ASBX OPFORMAT_ASBX
 
 /**
  * @note 2025-07-19
@@ -93,60 +71,61 @@ static constexpr OpInfo
  *      Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = 0,/g
  */
 const OpInfo opinfo[OPCODE_COUNT] = {
-    /* OP_MOVE */ MOVE_LIKE,
-    /* OP_CONSTANT */ ABX(/*a=*/true, OPARG_REGK),
-    /* OP_NIL */ MOVE_LIKE,
-    /* OP_BOOL */ ABC(/*test=*/false, /*a=*/true, OPARG_REGK, OPARG_REGK),
-    /* OP_GET_GLOBAL */ ABX(/*a=*/true, OPARG_REGK),
-    /* OP_SET_GLOBAL */ ABX(/*a=*/false, OPARG_REGK),
-    /* OP_NEW_TABLE */ FUNC_LIKE,
-    /* OP_GET_TABLE */ ARITH,
-    /* OP_SET_TABLE */
-    ABC(/* test */ false, /* a */ false, OPARG_REGK, OPARG_REGK),
-    /* OP_SET_ARRAY */ FUNC_LIKE,
-    /* OP_GET_UPVALUE */ MOVE_LIKE,
-    /* OP_SET_UPVALUE */ MOVE_LIKE,
-    /* OP_ADD */ ARITH,
-    /* OP_SUB */ ARITH,
-    /* OP_MUL */ ARITH,
-    /* OP_DIV */ ARITH,
-    /* OP_MOD */ ARITH,
-    /* OP_POW */ ARITH,
-    /* OP_EQ */ COMPARE,
-    /* OP_LT */ COMPARE,
-    /* OP_LEQ */ COMPARE,
-    /* OP_UNM */ UNARY,
-    /* OP_NOT */ UNARY,
-    /* OP_LEN */ UNARY,
-    /* OP_CONCAT */ ARITH,
-    /* OP_TEST */ ABC(/*test=*/true, /*a=*/false, OPARG_UNUSED, OPARG_OTHER),
-    /* OP_TEST_SET */ ABC(/*test=*/true, /*a=*/true, OPARG_REGK, OPARG_OTHER),
-    /* OP_JUMP */ ASBX(/*test=*/false, /*a=*/false, OPARG_JUMP, OPARG_UNUSED),
-    /* OP_FOR_PREP */ FOR_LIKE,
-    /* OP_FOR_LOOP */ FOR_LIKE,
-    /* OP_FOR_IN_LOOP */ FOR_IN_LIKE,
-    /* OP_CALL */ FUNC_LIKE,
-    /* OP_CLOSURE */ ABX(true, OPARG_REGK),
-    /* OP_RETURN */ ABC(/*test=*/false, /*a=*/false, OPARG_OTHER, OPARG_UNUSED),
+    //   fmt   test   a      b            c               | OpCode
+    MAKE(ABC,  false, true,  OPARG_REGK),                // OP_MOVE
+    MAKE(ABX,  false, true,  OPARG_REGK),                // OP_CONSTANT
+    MAKE(ABC,  false, true,  OPARG_REGK),                // OP_NIL
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_BOOL
+    MAKE(ABX,  false, true,  OPARG_REGK),                // OP_GET_GLOBAL
+    MAKE(ABX,  false, false, OPARG_REGK),                // OP_SET_GLOBAL
+    MAKE(ABC,  false, true,  OPARG_OTHER, OPARG_OTHER),  // OP_NEW_TABLE
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_GET_TABLE
+    MAKE(ABC,  false, false, OPARG_REGK,  OPARG_REGK),   // OP_SET_TABLE
+    MAKE(ABC,  false, true,  OPARG_OTHER, OPARG_OTHER),  // OP_SET_ARRAY
+    MAKE(ABC,  false, true,  OPARG_REGK),                // OP_GET_UPVALUE
+    MAKE(ABC,  false, false, OPARG_REGK),                // OP_SET_UPVALUE
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_ADD
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_SUB
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_MUL
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_DIV
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_MOD
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_POW
+    MAKE(ABC,  true,  false, OPARG_REGK,  OPARG_REGK),   // OP_EQ
+    MAKE(ABC,  true,  false, OPARG_REGK,  OPARG_REGK),   // OP_LT
+    MAKE(ABC,  true,  false, OPARG_REGK,  OPARG_REGK),   // OP_LEQ
+    MAKE(ABC,  false, true,  OPARG_REGK),                // OP_UNM
+    MAKE(ABC,  false, true,  OPARG_REGK),                // OP_NOT
+    MAKE(ABC,  false, true,  OPARG_REGK),                // OP_LEN
+    MAKE(ABC,  false, true,  OPARG_REGK,  OPARG_REGK),   // OP_CONCAT
+    MAKE(ABC,  true,  false, OPARG_UNUSED, OPARG_OTHER), // OP_TEST
+    MAKE(ABC,  true,  true,  OPARG_REGK, OPARG_OTHER),   // OP_TEST_SET
+    MAKE(ASBX, false, false, OPARG_JUMP),                // OP_JUMP
+    MAKE(ASBX, true,  true,  OPARG_JUMP),                // OP_FOR_PREP
+    MAKE(ASBX, true,  true,  OPARG_JUMP),                // OP_FOR_LOOP
+    MAKE(ABC,  true,  false, OPARG_UNUSED, OPARG_REGK),  // OP_FOR_IN
+    MAKE(ABC,  false, true,  OPARG_OTHER, OPARG_OTHER),  // OP_CALL
+    MAKE(ABX,  false, true,  OPARG_REGK),                // OP_CLOSURE
+    MAKE(ABC,  false, false, OPARG_UNUSED),              // OP_CLOSE
+    MAKE(ABC,  false, false, OPARG_OTHER),               // OP_RETURN
 };
 
 static constexpr unsigned int
-    // 1-bits in 0b0000_0111
-    FB_MANT_SIZE = 3,
+// 1-bits in 0b0000_0111
+FB_MANT_SIZE = 3,
 
-    // 0b0000_1000
-    FB_MANT_IMPLIED = 1 << FB_MANT_SIZE,
+// 0b0000_1000
+FB_MANT_IMPLIED = 1 << FB_MANT_SIZE,
 
-    // 0b0000_0111
-    FB_MANT_MASK = FB_MANT_IMPLIED - 1,
+// 0b0000_0111
+FB_MANT_MASK = FB_MANT_IMPLIED - 1,
 
-    // 0B0000_1111
-    FB_MANT_IMPLIED_MAX = FB_MANT_IMPLIED | FB_MANT_MASK,
+// 0B0000_1111
+FB_MANT_IMPLIED_MAX = FB_MANT_IMPLIED | FB_MANT_MASK,
 
-    FB_EXP_SIZE = 5,
+FB_EXP_SIZE = 5,
 
-    // 0b0001_1111
-    FB_EXP_MASK = (1 << FB_EXP_SIZE) - 1;
+// 0b0001_1111
+FB_EXP_MASK = (1 << FB_EXP_SIZE) - 1;
 
 u16
 floating_byte_make(isize x)

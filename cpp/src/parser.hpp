@@ -41,7 +41,7 @@ enum Precedence : i8 {
     PREC_UNARY,      // - not #
 };
 
-enum Expr_Type {
+enum Expr_Type : u8 {
     EXPR_NONE,
     EXPR_NIL,        // Literal `nil`.
     EXPR_FALSE,      // Literal `false`.

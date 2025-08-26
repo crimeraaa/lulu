@@ -59,6 +59,9 @@ struct Compiler {
     // resulution.
     Block *block;
 
+    // Used to help prevent marking of upvalues in non-breakable scopes.
+    Block base_block;
+
     // Track information of all upvalues used by this function.
     Upvalue_Info_Array upvalues;
 

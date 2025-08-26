@@ -21,10 +21,13 @@ expression(Parser *p, Compiler *c, Precedence limit = PREC_NONE);
 static void
 chunk(Parser *p, Compiler *c);
 
+// Analogous to `lparser.c:enterblock()` in Lua 5.1.5.
 static void
 block_push(Compiler *c, Block *b, bool breakable)
 {
-    lulu_assert(c->free_reg == small_array_len(c->active));
+    lulu_assertf(c->free_reg == small_array_len(c->active),
+        "c->free_reg = %i but #c->active = %i",
+        c->free_reg, static_cast<int>(small_array_len(c->active)));
 
     b->prev        = c->block;
     b->break_list  = NO_JUMP;
@@ -36,6 +39,7 @@ block_push(Compiler *c, Block *b, bool breakable)
     c->block = b;
 }
 
+// Analogous to `lparser.c:leaveblock()` in Lua 5.1.5.
 static void
 block_pop(Compiler *c)
 {
@@ -47,8 +51,16 @@ block_pop(Compiler *c)
     for (u16 index : slice_from(active, b->n_locals)) {
         c->chunk->locals[index].end_pc = pc;
     }
+
+    // Concept check: tests/function/upvalue6.lua
+    if (b->has_upvalue) {
+        compiler_code_abc(c, OP_CLOSE, b->n_locals, 0, 0);
+    }
     small_array_resize(&c->active, b->n_locals);
     compiler_jump_patch(c, b->break_list);
+
+    // A block only either breaks or controls scope, but never both.
+    lulu_assert(!b->breakable || !b->has_upvalue);
     c->free_reg = b->n_locals;
     c->block    = b->prev;
 }
@@ -82,8 +94,9 @@ block_continue(Parser *p)
 static void
 block(Parser *p, Compiler *c)
 {
+    // Allows OP_CLOSE to be emitted upon exit.
     Block b;
-    block_push(c, &b, /* breakable */ false);
+    block_push(c, &b, /*breakable=*/false);
     chunk(p, c);
     // Only blocks with `breakable == true` should have jumps.
     lulu_assert(b.break_list == NO_JUMP);
@@ -359,12 +372,8 @@ local_push(Parser *p, Compiler *c, OString *ident)
     compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
 
     // Pushing to active array would go out of bounds?
-    compiler_check_limit(
-        c,
-        static_cast<int>(small_array_len(c->active) + 1),
-        MAX_ACTIVE_LOCALS,
-        "active local variables"
-    );
+    compiler_check_limit(c, static_cast<int>(small_array_len(c->active) + 1),
+        MAX_ACTIVE_LOCALS, "active local variables");
 
     small_array_push(&c->active, static_cast<u16>(index));
 }
@@ -376,7 +385,7 @@ local_push_literal(Parser *p, Compiler *c, LString lit)
     local_push(p, c, os);
 }
 
-// `lparser.c:adjustlocalvars()`
+// `lparser.c:adjustlocalvars()` without adjusting the active local counter.
 static void
 local_start(Compiler *c, u16 n)
 {
@@ -386,6 +395,14 @@ local_start(Compiler *c, u16 n)
     for (u16 index : slice_from(active, small_array_len(c->active) - n)) {
         locals[index].start_pc = pc;
     }
+}
+
+static void
+local_add(Compiler *c, u16 n)
+{
+    // Allow lookup of the now-initialized local variables.
+    int start = small_array_len(c->active);
+    small_array_resize(&c->active, start + n);
 }
 
 static void
@@ -405,10 +422,7 @@ local_statement(Parser *p, Compiler *c)
     }
 
     assign_adjust(c, n, &args);
-
-    // Allow lookup of the now-initialized local variables.
-    int start = small_array_len(c->active);
-    small_array_resize(&c->active, start + n);
+    local_add(c, n);
     local_start(c, n);
 }
 
@@ -468,7 +482,7 @@ while_statement(Parser *p, Compiler *c, int line)
 
     // All `break` should go here, not in `block()`.
     Block b;
-    block_push(c, &b, /* breakable */ true);
+    block_push(c, &b, /*breakable=*/true);
     block(p, c);
 
     consume_to_close(p, TOKEN_END, TOKEN_WHILE, line);
@@ -487,7 +501,7 @@ static void
 repeat_statement(Parser *p, Compiler *c, int line)
 {
     Block b;
-    block_push(c, &b, /* breakable */ true);
+    block_push(c, &b, /*breakable=*/true);
 
     int body_pc = compiler_label_get(c);
     // A unique property of repeat statements is that their locals are
@@ -513,13 +527,19 @@ static void
 for_body(Parser *p, Compiler *c, u16 base_reg, u16 n_vars, bool is_numeric)
 {
     consume(p, TOKEN_DO);
-
-    // 3 control variables and `n_vars` user-facing external variables
     local_start(c, n_vars + 3);
+
+    // Separate scope for user-facing external variables.
+    Block b;
 
     // Control variables already reserved registers via their expressions or
     // `assign_adjust()`, but user variables do not yet have registers.
     compiler_reserve_reg(c, n_vars);
+    block_push(c, &b, /*breakable=*/false);
+    // Allows external state variable/s to be used as upvalues.
+    // Otherwise, `block_pop()` would fail because the loop block would be
+    // both breakable and have upvalues.
+    b.n_locals -= n_vars;
 
     // goto <loop-pc>
     int prep_pc;
@@ -532,6 +552,7 @@ for_body(Parser *p, Compiler *c, u16 base_reg, u16 n_vars, bool is_numeric)
     }
 
     block(p, c);
+    block_pop(c);
     compiler_jump_patch(c, prep_pc);
 
     int loop_pc;
@@ -542,7 +563,7 @@ for_body(Parser *p, Compiler *c, u16 base_reg, u16 n_vars, bool is_numeric)
         target  = loop_pc;
     } else {
         // can't encode jump directly; use a separate instruction.
-        loop_pc = compiler_code_abc(c, OP_FOR_IN_LOOP, base_reg, 0, n_vars);
+        loop_pc = compiler_code_abc(c, OP_FOR_IN, base_reg, 0, n_vars);
         target  = compiler_jump_new(c);
     }
     compiler_jump_patch(c, target, prep_pc + 1);
@@ -640,7 +661,7 @@ for_statement(Parser *p, Compiler *c, int line)
 {
     // Scope for loop control variables.
     Block b;
-    block_push(c, &b, /* breakable */ true);
+    block_push(c, &b, /*breakable=*/true);
 
     OString *ident = consume_ident(p);
     switch (p->current.type) {
@@ -665,15 +686,21 @@ static void
 break_statement(Parser *p, Compiler *c)
 {
     Block *b = c->block;
+    bool has_upvalue = false;
 
     // `if`, `elseif`, `else`, `while`, `for` and `repeat` all make new blocks.
     // But only `for`, `repeat` and `while` are breakable.
     while (b != nullptr && !b->breakable) {
+        has_upvalue |= b->has_upvalue;
         b = b->prev;
     }
 
     if (b == nullptr) {
         error(p, "No block to 'break'");
+    }
+    // @todo(2025-08-26) Figure out how to get to this point
+    if (has_upvalue) {
+        compiler_code_abc(c, OP_CLOSE, b->n_locals, 0, 0);
     }
     compiler_jump_add(c, &b->break_list, compiler_jump_new(c));
 }
@@ -758,7 +785,7 @@ mark_upvalue(Compiler *c, u16 reg)
         b = b->prev;
     }
 
-    if (b != nullptr) {
+    if (b != nullptr && b != &c->base_block) {
         b->has_upvalue = true;
     }
 }
@@ -881,8 +908,7 @@ function_definition(Parser *p, Compiler *enclosing, int function_line)
     consume(p, TOKEN_OPEN_PAREN);
 
     // Prevent segfaults when calling `local_push`.
-    Block b;
-    block_push(&c, &b, /* breakable */ false);
+    block_push(&c, &c.base_block, /*breakable=*/false);
     if (!check(p, TOKEN_CLOSE_PAREN)) {
         u16 n = 0;
         do {
@@ -1026,7 +1052,11 @@ parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     Compiler c = function_open(vm, &p, /*enclosing=*/nullptr);
     // Set up first token
     advance(&p);
-    block(&p, &c);
+
+    // Helps prevent unnecessarily emitting OP_CLOSE when topmost locals
+    // are used as upvalues and are correctly implicitly closed.
+    block_push(&c, &c.base_block, /*breakable=*/false);
+    chunk(&p, &c);
     consume(&p, TOKEN_EOF);
     function_close(&c);
     return c.chunk;

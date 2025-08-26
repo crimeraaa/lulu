@@ -8,7 +8,7 @@
 Chunk *
 chunk_new(lulu_VM *vm, OString *source)
 {
-    Chunk *p = object_new<Chunk>(vm, &vm->global_state->objects, VALUE_CHUNK);
+    Chunk *p = object_new<Chunk>(vm, &G(vm)->objects, VALUE_CHUNK);
     // Because `c` is heap-allocated, we must explicitly 'construct' the
     // members.
     dynamic_init(&p->locals);
