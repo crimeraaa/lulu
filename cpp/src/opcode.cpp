@@ -2,43 +2,46 @@
 
 /**
  * @note 2025-07-19:
- *      Keep in sync with `OpCode`!
+ *      ORDER: Keep in sync with `OpCode`!
  *
  * @details
  *      Vim: '<,>'s/\v(OP_)(\w+),/[\1\2] = "\L\2",/g
  */
 const char *const opnames[OPCODE_COUNT] = {
-    /* OP_MOVE */ "move",
-    /* OP_CONSTANT */ "constant",
-    /* OP_NIL */ "nil",
-    /* OP_BOOL */ "bool",
-    /* OP_GET_GLOBAL */ "get_global",
-    /* OP_SET_GLOBAL */ "set_global",
-    /* OP_NEW_TABLE */ "new_table",
-    /* OP_GET_TABLE */ "get_table",
-    /* OP_SET_TABLE */ "set_table",
-    /* OP_SET_ARRAY */ "set_array",
-    /* OP_ADD */ "add",
-    /* OP_SUB */ "sub",
-    /* OP_MUL */ "mul",
-    /* OP_DIV */ "div",
-    /* OP_MOD */ "mod",
-    /* OP_POW */ "pow",
-    /* OP_EQ */ "eq",
-    /* OP_LT */ "lt",
-    /* OP_LEQ */ "leq",
-    /* OP_UNM */ "unm",
-    /* OP_NOT */ "not",
-    /* OP_LEN */ "len",
-    /* OP_CONCAT */ "concat",
-    /* OP_TEST */ "test",
-    /* OP_TEST_SET */ "test_set",
-    /* OP_JUMP */ "jump",
-    /* OP_FOR_PREP */ "for_prep",
-    /* OP_FOR_LOOP */ "for_loop",
-    /* OP_FOR_IN_LOOP */ "for_in_loop",
-    /* OP_CALL */ "call",
-    /* OP_RETURN */ "return",
+    "move",        // OP_MOVE
+    "constant",    // OP_CONSTANT
+    "nil",         // OP_NIL
+    "bool",        // OP_BOOL
+    "get_global",  // OP_GET_GLOBAL
+    "set_global",  // OP_SET_GLOBAL
+    "new_table",   // OP_NEW_TABLE
+    "get_table",   // OP_GET_TABLE
+    "set_table",   // OP_SET_TABLE
+    "set_array",   // OP_SET_ARRAY
+    "get_upvalue", // OP_GET_UPVALUE
+    "set_upvalue", // OP_SET_UPVALUE
+    "add",         // OP_ADD
+    "sub",         // OP_SUB
+    "mul",         // OP_MUL
+    "div",         // OP_DIV
+    "mod",         // OP_MOD
+    "pow",         // OP_POW
+    "eq",          // OP_EQ
+    "lt",          // OP_LT
+    "leq",         // OP_LEQ
+    "unm",         // OP_UNM
+    "not",         // OP_NOT
+    "len",         // OP_LEN
+    "concat",      // OP_CONCAT
+    "test",        // OP_TEST
+    "test_set",    // OP_TEST_SET
+    "jump",        // OP_JUMP
+    "for_prep",    // OP_FOR_PREP
+    "for_loop",    // OP_FOR_LOOP
+    "for_in_loop", // OP_FOR_IN_LOOP
+    "call",        // OP_CALL
+    "closure",     // OP_CLOSURE
+    "return",      // OP_RETURN
 };
 
 static constexpr OpInfo
@@ -101,6 +104,8 @@ const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_SET_TABLE */
     ABC(/* test */ false, /* a */ false, OPARG_REGK, OPARG_REGK),
     /* OP_SET_ARRAY */ FUNC_LIKE,
+    /* OP_GET_UPVALUE */ MOVE_LIKE,
+    /* OP_SET_UPVALUE */ MOVE_LIKE,
     /* OP_ADD */ ARITH,
     /* OP_SUB */ ARITH,
     /* OP_MUL */ ARITH,
@@ -121,6 +126,7 @@ const OpInfo opinfo[OPCODE_COUNT] = {
     /* OP_FOR_LOOP */ FOR_LIKE,
     /* OP_FOR_IN_LOOP */ FOR_IN_LIKE,
     /* OP_CALL */ FUNC_LIKE,
+    /* OP_CLOSURE */ ABX(true, OPARG_REGK),
     /* OP_RETURN */ ABC(/*test=*/false, /*a=*/false, OPARG_OTHER, OPARG_UNUSED),
 };
 

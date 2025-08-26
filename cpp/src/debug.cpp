@@ -218,28 +218,26 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
         isize offset = static_cast<isize>(args.c) * FIELDS_PER_FLUSH;
         isize start  = args.a + 1;
         if (args.b == VARARG) {
-            print_reg(
-                p,
-                args.a,
-                pc,
+            print_reg(p, args.a, pc,
                 "[%" ISIZE_FMT ":] := R(%" ISIZE_FMT ":)",
-                offset + start,
-                start
-            );
+                offset + start, start);
         } else {
             isize stop = start + args.b;
-            print_reg(
-                p,
-                args.a,
-                pc,
-                "[%" ISIZE_FMT ":%" ISIZE_FMT "] := R(%" ISIZE_FMT
-                ":%" ISIZE_FMT ")",
-                offset + start,
-                offset + stop,
-                start,
-                stop
-            );
+            print_reg(p, args.a, pc,
+                "[%" ISIZE_FMT ":%" ISIZE_FMT "] := R(%" ISIZE_FMT ":%" ISIZE_FMT ")",
+                offset + start, offset + stop, start, stop);
         }
+        break;
+    }
+    case OP_GET_UPVALUE: {
+        const char *s = p->upvalues[args.b]->to_cstring();
+        print_reg(p, args.a, pc, " := upvalue %s", s);
+        break;
+    }
+    case OP_SET_UPVALUE: {
+        const char *s = p->upvalues[args.b]->to_cstring();
+        printf("upvalue %s := ", s);
+        print_reg(p, args.a, pc);
         break;
     }
     case OP_ADD:
@@ -294,13 +292,9 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
         printf("if %s", (args.c) ? "" : "not ");
         print_reg(p, args.b, pc, " then ");
         print_reg(p, args.a, pc, " := ");
-        print_reg(
-            p,
-            args.b,
-            pc,
+        print_reg(p, args.b, pc,
             "; goto .code[%i]; else goto .code[%i]",
-            jump_get(p, pc + 1),
-            jump_resolve(pc, 1)
+            jump_get(p, pc + 1), jump_resolve(pc, 1)
         );
         break;
     }
@@ -346,6 +340,10 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
         }
         break;
     }
+    case OP_CLOSURE:
+        print_reg(p, args.a, pc, " := Closure[%u] ; #upvalues = %i",
+            args.bx, p->children[args.bx]->n_upvalues);
+        break;
     case OP_RETURN:
         printf("return ");
         // Is vararg?
@@ -364,37 +362,36 @@ void
 debug_disassemble(const Chunk *p)
 {
     printf("\n=== DISASSEMBLY: BEGIN ===\n");
-    printf(".stack_used:\n%i\n\n", p->stack_used);
+    printf(".stack_used %i\n", p->stack_used);
 
     int n = static_cast<int>(len(p->locals));
     if (n > 0) {
         int pad = count_digits(n);
-        printf(".local:\n");
         for (int i = 0; i < n; i++) {
             Local       local = p->locals[i];
             const char *ident = local.ident->to_cstring();
-            printf(
-                "[%.*i] '%s': start=%i, end=%i\n",
-                pad,
-                i,
-                ident,
-                local.start_pc,
-                local.end_pc
-            );
+            printf(".local[%.*i] '%s' ; start=%i, end=%i\n",
+                pad, i, ident, local.start_pc, local.end_pc);
         }
-        printf("\n");
+    }
+
+    n = static_cast<int>(len(p->upvalues));
+    if (n > 0) {
+        int pad = count_digits(n);
+        for (int i = 0; i < n; i++) {
+            const char *ident = p->upvalues[i]->to_cstring();
+            printf(".upvalue[%.*i] '%s'\n", pad, i, ident);
+        }
     }
 
     n = static_cast<int>(len(p->constants));
     if (n > 0) {
         int pad = count_digits(n);
-        printf(".const:\n");
         for (int i = 0; i < n; i++) {
-            printf("[%.*i] ", pad, i);
+            printf(".const[%.*i] ", pad, i);
             value_print(p->constants[i]);
             printf("\n");
         }
-        printf("\n");
     }
 
     printf(".code:\n");
@@ -430,7 +427,7 @@ debug_disassemble(const Chunk *p)
  *      the neutral `OP_RETURN`.
  */
 static Instruction
-get_variable_ip(const Chunk *p, isize target_pc, int reg)
+get_variable_ip(const Chunk *p, int target_pc, int reg)
 {
     // Store position of last instruction that changed `reg`, defaulting
     // to the final 'neutral' return.
@@ -438,7 +435,7 @@ get_variable_ip(const Chunk *p, isize target_pc, int reg)
 
     // If `target_pc` is `OP_ADD` then don't pseudo-execute it, as from this
     // point there is no more information we could possibly get.
-    for (isize pc = 0; pc < target_pc; pc++) {
+    for (int pc = 0; pc < target_pc; pc++) {
         Instruction i  = p->code[pc];
         OpCode      op = i.op();
 

@@ -5,12 +5,40 @@
 
 #define CLOSURE_HEADER                                                         \
     OBJECT_HEADER;                                                             \
-    int  n_upvalues;                                                           \
+    u8   n_upvalues;                                                           \
     bool is_c
+
+struct Upvalue {
+    struct List {
+        Upvalue *prev;
+        Upvalue *next;
+    };
+
+    OBJECT_HEADER;
+    // Points to value in stack while open, else points to `closed`.
+    Value *value;
+    union {
+        Value closed = nil;
+        List  list;
+    };
+};
 
 struct Closure_Lua {
     CLOSURE_HEADER;
-    Chunk *chunk;
+    Chunk   *chunk;
+    Upvalue *upvalues[1];
+
+    static isize
+    size_upvalues(int n)
+    {
+        return size_of(upvalues[0]) * static_cast<isize>(n - 1); // NOLINT
+    }
+
+    isize
+    size_upvalues() const noexcept
+    {
+        return Closure_Lua::size_upvalues(this->n_upvalues);
+    }
 };
 
 struct Closure_C {
@@ -21,9 +49,9 @@ struct Closure_C {
     // If `n_upvalues == 0`, then `upvalues[0]` should not be valid.
     // So negative sizes are allowed.
     static isize
-    size_upvalues(isize n)
+    size_upvalues(int n)
     {
-        return sizeof(upvalues[0]) * (n - 1);
+        return size_of(upvalues[0]) * static_cast<isize>(n - 1);
     }
 
     isize
@@ -72,3 +100,9 @@ closure_lua_new(lulu_VM *vm, Chunk *p);
 
 void
 closure_delete(lulu_VM *vm, Closure *f);
+
+void
+function_upvalue_close(lulu_VM *vm, Value *level);
+
+Upvalue *
+function_upvalue_find(lulu_VM *vm, Value *local);

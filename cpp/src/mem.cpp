@@ -59,7 +59,8 @@ mem_ceil_log2(usize n)
 void *
 mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size)
 {
-    void *next = vm->allocator(vm->allocator_data, ptr, old_size, new_size);
+    auto g = G(vm);
+    void *next = g->allocator(g->allocator_data, ptr, old_size, new_size);
     // Allocation request, that wasn't attempting to free, failed?
     if (next == nullptr && new_size != 0) {
         vm_push_string(vm, lstring_literal(LULU_MEMORY_ERROR_STRING));

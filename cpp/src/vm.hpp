@@ -53,24 +53,50 @@ enum Call_Type {
 using Stack_Array = Array<Value, MAX_STACK>;
 using Frame_Array = Small_Array<Call_Frame, 16>;
 
+struct lulu_Global {
+    lulu_CFunction panic_fn;
+    lulu_Allocator allocator;
+
+    // User-data pointer passed to `allocator`.
+    void *allocator_data;
+
+    // Buffer used for string concatentation.
+    Builder builder;
+
+    // Hash table of all interned strings.
+    Intern intern;
+
+    // Linked list of all collectable objects.
+    Object *objects;
+
+    // List of all open upvalues across all active stack frames.
+    Upvalue upvalues_head;
+};
+
 struct LULU_PUBLIC lulu_VM {
+    lulu_Global       *global_state;
     Stack_Array        stack;
     Frame_Array        frames;
     Call_Frame        *caller; // Not a reference because it can be reassigned.
     Slice<Value>       window;
     Value              globals;
-    Builder            builder;
-    Intern             intern;
-    lulu_CFunction     panic_fn;
-    lulu_Allocator     allocator;
-    void              *allocator_data;
     Error_Handler     *error_handler;
     const Instruction *saved_ip; // Used for error handling.
-    Object            *objects;  // Linked list of all collectable objects.
+
+    // Linked list of open upvalues in the current stack frame.
+    // Helps with variable reuse.
+    Object *open_upvalues;
 
     LULU_PRIVATE
     lulu_VM() = default;
 };
+
+
+inline lulu_Global *
+G(lulu_VM *vm)
+{
+    return vm->global_state;
+}
 
 using Protected_Fn = void (*)(lulu_VM *vm, void *user_ptr);
 

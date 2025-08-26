@@ -96,6 +96,7 @@ enum Value_Type {
     // Not accessible from user code.
     VALUE_INTEGER,
     VALUE_CHUNK,
+    VALUE_UPVALUE,
 };
 
 #define VALUE_TYPE_LAST VALUE_FUNCTION

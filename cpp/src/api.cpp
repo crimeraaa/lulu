@@ -53,8 +53,8 @@ value_at_stack(lulu_VM *vm, int i)
 LULU_API lulu_CFunction
 lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn)
 {
-    lulu_CFunction prev = vm->panic_fn;
-    vm->panic_fn        = panic_fn;
+    lulu_CFunction prev = vm->global_state->panic_fn;
+    vm->global_state->panic_fn = panic_fn;
     return prev;
 }
 

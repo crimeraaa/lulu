@@ -59,8 +59,8 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
  *      acts similarly to the C standard `free(ptr)`. `NULL`
  *      is returned as a sentinel value in this case.
  */
-typedef void *(*lulu_Allocator
-)(void *user_ptr, void *ptr, size_t old_size, size_t new_size);
+typedef void *(*lulu_Allocator)(void *user_ptr, void *ptr, size_t old_size,
+    size_t new_size);
 
 
 /**
@@ -148,12 +148,8 @@ lulu_close(lulu_VM *vm);
  *      which is pushed to the top of the stack.
  */
 LULU_API lulu_Error
-lulu_load(
-    lulu_VM    *vm,
-    const char *source,
-    lulu_Reader reader,
-    void       *reader_data
-);
+lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
+    void *reader_data);
 
 
 /**
@@ -480,7 +476,6 @@ LULU_API void
 lulu_push_string(lulu_VM *vm, const char *s);
 
 
-/* clang-format off */
 /**
  * @brief
  *      Pushes a formatted string to the top of the stack, following a
@@ -492,7 +487,6 @@ lulu_push_string(lulu_VM *vm, const char *s);
  */
 LULU_API const char *LULU_ATTR_PRINTF(2, 3)
 lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
-/* clang-format on */
 
 
 /**

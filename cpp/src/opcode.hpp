@@ -4,39 +4,44 @@
 
 enum OpCode : u8 {
     //           | Arguments | Effects
-    OP_MOVE,       // A B   | R(A) := R(B)
-    OP_CONSTANT,   // A Bx  | R(A) := K[Bx]
-    OP_NIL,        // A B   | R(i) := nil for A <= i <= B
-    OP_BOOL,       // A B C | R(A) := Bool(B); if Bool(C) then ip++
-    OP_GET_GLOBAL, // A Bx  | R(A) := _G[K(Bx)]
-    OP_SET_GLOBAL, // A Bx  | _G[K(Bx)] := R(A)
-    OP_NEW_TABLE,  // A B C | R(A) := {} ; #hash = B, #array = C
-    OP_GET_TABLE,  // A B C | R(A) := R(B)[RK(C)]
-    OP_SET_TABLE,  // A B C | R(A)[RK(B)] := RK(C)
-    OP_SET_ARRAY,  // A B C | R(A)[C*FPF + i] := R(A+i) for 1 <= i <= B
-    OP_ADD,        // A B C | R(A) := RK(B) + RK(C)
-    OP_SUB,        // A B C | R(A) := RK(B) - RK(C)
-    OP_MUL,        // A B C | R(A) := RK(B) * RK(C)
-    OP_DIV,        // A B C | R(A) := RK(B) / RK(C)
-    OP_MOD,        // A B C | R(A) := RK(B) % RK(C)
-    OP_POW,        // A B C | R(A) := RK(B) ^ RK(C)
-    OP_EQ,         // A B C | if ((RK(B) == RK(C)) != Bool(A)) then ip++
-    OP_LT,         // A B C | if ((RK(B) <  RK(C)) != Bool(A)) then ip++
-    OP_LEQ,        // A B C | if ((RK(B) <= RK(C)) != Bool(A)) then ip++
-    OP_UNM,        // A B   | R(A) := -R(B)
-    OP_NOT,        // A B   | R(A) := not R(B)
-    OP_LEN,        // A B   | R(A) := len(R(B))
-    OP_CONCAT,     // A B C | R(A) := concat(R(B:C))
-    OP_TEST,       // A   C | if Bool(R(A)) == Bool(C) then ip++
-    OP_TEST_SET, // A B C | if Bool(R(B)) == Bool(C) then R(A) := R(B) else ip++
-    OP_JUMP,     // sBx   | ip += sBx
-    OP_FOR_PREP, // A sBx | R(A) -= R(A+2) ; ip += sBx
-    OP_FOR_LOOP, // A sBx | R(A) += R(A+2) ; if R(A) < R(A+1) then ip += sBx;
-                 // R(A+3) := R(A)
+    OP_MOVE,        // A B   | R(A) := R(B)
+    OP_CONSTANT,    // A Bx  | R(A) := K[Bx]
+    OP_NIL,         // A B   | R(i) := nil for A <= i <= B
+    OP_BOOL,        // A B C | R(A) := Bool(B); if Bool(C) then ip++
+    OP_GET_GLOBAL,  // A Bx  | R(A) := _G[K(Bx)]
+    OP_SET_GLOBAL,  // A Bx  | _G[K(Bx)] := R(A)
+    OP_NEW_TABLE,   // A B C | R(A) := {} ; #hash = B, #array = C
+    OP_GET_TABLE,   // A B C | R(A) := R(B)[RK(C)]
+    OP_SET_TABLE,   // A B C | R(A)[RK(B)] := RK(C)
+    OP_SET_ARRAY,   // A B C | R(A)[C*FPF + i] := R(A+i) for 1 <= i <= B
+    OP_GET_UPVALUE, // A B   | R(A) := Upvalues[B]
+    OP_SET_UPVALUE, // A B   | Upvalues[B] := R(A)
+    OP_ADD,         // A B C | R(A) := RK(B) + RK(C)
+    OP_SUB,         // A B C | R(A) := RK(B) - RK(C)
+    OP_MUL,         // A B C | R(A) := RK(B) * RK(C)
+    OP_DIV,         // A B C | R(A) := RK(B) / RK(C)
+    OP_MOD,         // A B C | R(A) := RK(B) % RK(C)
+    OP_POW,         // A B C | R(A) := RK(B) ^ RK(C)
+    OP_EQ,          // A B C | if ((RK(B) == RK(C)) != Bool(A)) then ip++
+    OP_LT,          // A B C | if ((RK(B) <  RK(C)) != Bool(A)) then ip++
+    OP_LEQ,         // A B C | if ((RK(B) <= RK(C)) != Bool(A)) then ip++
+    OP_UNM,         // A B   | R(A) := -R(B)
+    OP_NOT,         // A B   | R(A) := not R(B)
+    OP_LEN,         // A B   | R(A) := len(R(B))
+    OP_CONCAT,      // A B C | R(A) := concat(R(B:C))
+    OP_TEST,        // A   C | if Bool(R(A)) == Bool(C) then ip++
+    OP_TEST_SET,    // A B C | if Bool(R(B)) == Bool(C)
+                    //       | then R(A) := R(B)
+                    //       | else ip++
+    OP_JUMP,        // sBx   | ip += sBx
+    OP_FOR_PREP,    // A sBx | R(A) -= R(A+2) ; ip += sBx
+    OP_FOR_LOOP,    // A sBx | R(A) += R(A+2) ; if R(A) < R(A+1) then ip += sBx;
+                    // R(A+3) := R(A)
     OP_FOR_IN_LOOP, // A   C | R(A+3:A+3+C) := R(A)(R(A+1), R(A+2));
                     //       | if R(A+3) != nil then R(A+2) := R(A+3)
                     //       | else ip++
     OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
+    OP_CLOSURE,     // A Bx  | R(A) := Chunks[Bx]
     OP_RETURN,      // A B   | return R(A:A+B)
 };
 
@@ -75,30 +80,43 @@ BITMASK0(int start, int n)
 struct Instruction {
     u32 value;
 
+    // clang-format off
     static constexpr u32
-        // Operand bit sizes
-        SIZE_B = 9,
-        SIZE_C = 9, SIZE_A = 8, SIZE_OP = 6, SIZE_BX = SIZE_B + SIZE_C,
+    // Operand bit sizes
+    SIZE_B    = 9,
+    SIZE_C    = 9,
+    SIZE_A    = 8,
+    SIZE_OP   = 6,
+    SIZE_BX   = SIZE_B + SIZE_C,
 
-        // RK bit manipulation
-        BIT_RK = 1 << (SIZE_B - 1), MAX_RK = BIT_RK - 1,
+    // RK bit manipulation
+    BIT_RK    = 1 << (SIZE_B - 1),
+    MAX_RK    = BIT_RK - 1,
 
-        // Starting bit indexes
-        OFFSET_OP = 0, OFFSET_A = OFFSET_OP + SIZE_OP,
-        OFFSET_C = OFFSET_A + SIZE_A, OFFSET_B = OFFSET_C + SIZE_C,
-        OFFSET_BX = OFFSET_C;
+    // Starting bit indexes
+    OFFSET_OP = 0,
+    OFFSET_A  = OFFSET_OP + SIZE_OP,
+    OFFSET_C  = OFFSET_A + SIZE_A,
+    OFFSET_B  = OFFSET_C + SIZE_C,
+    OFFSET_BX = OFFSET_C;
 
-    static constexpr u32 MAX_B = BITMASK1(SIZE_B), MAX_C = BITMASK1(SIZE_C),
-                         MAX_A = BITMASK1(SIZE_A), MAX_OP = BITMASK1(SIZE_OP),
+    static constexpr u32
+    // Operand limits
+    MAX_B    = BITMASK1(SIZE_B),
+    MAX_C    = BITMASK1(SIZE_C),
+    MAX_A    = BITMASK1(SIZE_A),
+    MAX_OP   = BITMASK1(SIZE_OP),
 
-                         MASK0_B  = BITMASK0(SIZE_B, OFFSET_B),
-                         MASK0_C  = BITMASK0(SIZE_C, OFFSET_C),
-                         MASK0_A  = BITMASK0(SIZE_A, OFFSET_A),
-                         MASK0_OP = BITMASK0(SIZE_OP, OFFSET_OP),
-                         MASK0_BX = BITMASK0(SIZE_BX, OFFSET_BX);
+    // Operand masks
+    MASK0_B  = BITMASK0(SIZE_B, OFFSET_B),
+    MASK0_C  = BITMASK0(SIZE_C, OFFSET_C),
+    MASK0_A  = BITMASK0(SIZE_A, OFFSET_A),
+    MASK0_OP = BITMASK0(SIZE_OP, OFFSET_OP),
+    MASK0_BX = BITMASK0(SIZE_BX, OFFSET_BX);
 
     static constexpr u32 MAX_BX  = BITMASK1(SIZE_BX);
     static constexpr i32 MAX_SBX = static_cast<i32>(MAX_BX >> 1);
+    // clang-format on
 
     static constexpr Instruction
     make_abc(OpCode op, u16 a, u16 b, u16 c)
@@ -254,18 +272,29 @@ enum OpArg : u8 {
 struct OpInfo {
     u8 value;
 
-    static constexpr u8 SIZE_TEST = 1, SIZE_A = 1, SIZE_B = 2, SIZE_C = 2,
-                        SIZE_FMT = 2,
+    // clang-format off
+    static constexpr u8
+    // Info sizes
+    SIZE_TEST = 1,
+    SIZE_A    = 1,
+    SIZE_B    = 2,
+    SIZE_C    = 2,
+    SIZE_FMT  = 2,
 
-                        OFFSET_FMT = 0, OFFSET_C = OFFSET_FMT + SIZE_FMT,
-                        OFFSET_B    = OFFSET_C + SIZE_C,
-                        OFFSET_A    = OFFSET_B + SIZE_B,
-                        OFFSET_TEST = OFFSET_A + SIZE_A,
+    // Info bit offsets
+    OFFSET_FMT  = 0,
+    OFFSET_C    = OFFSET_FMT + SIZE_FMT,
+    OFFSET_B    = OFFSET_C + SIZE_C,
+    OFFSET_A    = OFFSET_B + SIZE_B,
+    OFFSET_TEST = OFFSET_A + SIZE_A,
 
-                        MASK1_TEST = BITMASK1(SIZE_TEST),
-                        MASK1_A = BITMASK1(SIZE_A), MASK1_B = BITMASK1(SIZE_B),
-                        MASK1_C   = BITMASK1(SIZE_C),
-                        MASK1_FMT = BITMASK1(SIZE_FMT);
+    // Info bit masks
+    MASK1_TEST = BITMASK1(SIZE_TEST),
+    MASK1_A    = BITMASK1(SIZE_A),
+    MASK1_B    = BITMASK1(SIZE_B),
+    MASK1_C    = BITMASK1(SIZE_C),
+    MASK1_FMT  = BITMASK1(SIZE_FMT);
+    // clang-format on
 
     OpFormat
     fmt() const noexcept

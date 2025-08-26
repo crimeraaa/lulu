@@ -257,7 +257,7 @@ intern_destroy(lulu_VM *vm, Intern *t)
 OString *
 ostring_new(lulu_VM *vm, LString text)
 {
-    Intern *t    = &vm->intern;
+    Intern *t    = &G(vm)->intern;
     u32     hash = hash_string(text);
     usize   i    = intern_clamp_index(hash, len(t->table));
     for (Object *node = t->table[i]; node != nullptr; node = node->base.next) {

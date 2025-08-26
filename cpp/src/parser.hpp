@@ -52,6 +52,7 @@ enum Expr_Type {
     EXPR_LOCAL,      // Local variable register stored in `reg`.
     EXPR_INDEXED,    // Table register in `table.reg` and key RK in
                      // `table.field_rk`.
+    EXPR_UPVALUE,    // Upvalue index in `upvalue`.
     EXPR_JUMP,       // An `OP_JUMP` chain. Use `pc`.
     EXPR_CALL,       // `OP_CALL`. Use `pc`.
     EXPR_RELOCABLE,  // Instruction without register A finalized- use `pc`.
@@ -76,6 +77,7 @@ struct Expr {
         Expr_Table table;
         int        pc;
         u32        index;
+        u16        upvalue;
         u16        reg;
     };
 
@@ -115,7 +117,15 @@ struct Expr {
         return e;
     }
 
-    static constexpr inline Expr
+    static constexpr Expr
+    make_upvalue(u16 upvalue)
+    {
+        Expr e    = make(EXPR_UPVALUE);
+        e.upvalue = upvalue;
+        return e;
+    }
+
+    static constexpr Expr
     make_index(Expr_Type type, u32 index)
     {
         Expr e  = make(type);
@@ -152,6 +162,12 @@ struct Expr {
     is_falsy() const noexcept
     {
         return EXPR_NIL <= this->type && this->type <= EXPR_FALSE;
+    }
+
+    bool
+    is_assignable() const noexcept
+    {
+        return EXPR_GLOBAL <= this->type && this->type <= EXPR_UPVALUE;
     }
 
     bool

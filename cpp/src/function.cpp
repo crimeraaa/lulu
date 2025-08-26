@@ -5,12 +5,8 @@
 Closure *
 closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues)
 {
-    Closure_C *f = object_new<Closure_C>(
-        vm,
-        &vm->objects,
-        VALUE_FUNCTION,
-        /* extra */ Closure_C::size_upvalues(n_upvalues)
-    );
+    Closure_C *f = object_new<Closure_C>(vm, &G(vm)->objects, VALUE_FUNCTION,
+        /*extra=*/Closure_C::size_upvalues(n_upvalues));
 
     f->n_upvalues = n_upvalues;
     f->is_c       = true;
@@ -21,10 +17,17 @@ closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues)
 Closure *
 closure_lua_new(lulu_VM *vm, Chunk *p)
 {
-    Closure_Lua *f = object_new<Closure_Lua>(vm, &vm->objects, VALUE_FUNCTION);
-    f->n_upvalues  = 0;
+    int          n = p->n_upvalues;
+    Closure_Lua *f = object_new<Closure_Lua>(vm, &G(vm)->objects, VALUE_FUNCTION,
+        /*extra=*/Closure_Lua::size_upvalues(n));
+
+    f->n_upvalues  = n;
     f->is_c        = false;
     f->chunk       = p;
+
+    for (auto &s : slice_pointer_len(f->upvalues, n)) {
+        s = nullptr;
+    }
     return reinterpret_cast<Closure *>(f);
 }
 
@@ -32,9 +35,95 @@ void
 closure_delete(lulu_VM *vm, Closure *f)
 {
     if (f->is_c()) {
-        Closure_C *cf = f->to_c();
-        mem_free(vm, &f->c, cf->size_upvalues());
+        Closure_C *c = f->to_c();
+        mem_free(vm, c, c->size_upvalues());
     } else {
-        mem_free(vm, &f->lua);
+        Closure_Lua *lua = f->to_lua();
+        mem_free(vm, lua, lua->size_upvalues());
+    }
+}
+
+Upvalue *
+function_upvalue_find(lulu_VM *vm, Value *local)
+{
+    Object **olist = &vm->open_upvalues;
+    // Try to find and reuse an existing upvalue that references 'local'.
+    while (*olist != nullptr) {
+        Upvalue *up = &(*olist)->upvalue;
+
+        // We assume the upvalue list is sorted (in terms of stack slots).
+        // If we find one who is below the target, we must have gone past the
+        // slot we want to close over meaning there is no upvalue for it.
+        if (up->value < local) {
+            break;
+        }
+
+        // Ensure this value is actually open.
+        lulu_assert(up->value != &up->closed);
+
+        // Found the upvalue we are looking for?
+        if (up->value == local) {
+            // Reuse it.
+            return up;
+        }
+        olist = &up->next;
+    }
+
+    // Couldn't find an upvalue; need to make a new one.
+    Upvalue *up = object_new<Upvalue>(vm, &G(vm)->objects, VALUE_UPVALUE);
+
+    // Current value lives on the stack.
+    up->value  = local;
+    up->closed = nil;
+
+    // New upvalue is always open. Add it to the VM's open upvalue list.
+    up->next = *olist;
+    *olist   = reinterpret_cast<Object *>(up);
+
+    // Chain the old list to ourselves...
+    Upvalue *head = &G(vm)->upvalues_head;
+    up->list.prev = head;
+    up->list.next = head->list.next;
+
+    // ...and chain ourselves to our new neighbors.
+    up->list.next->list.prev   = up;
+    head->list.next = up;
+
+    // Ensure we linked ourselves to the list correctly.
+    lulu_assert(up->list.next->list.prev == up && up->list.prev->list.next == up);
+    return up;
+}
+
+static void
+upvalue_unlink(Upvalue *up)
+{
+    // Ensure chains are correct.
+    lulu_assert(up->list.next->list.prev == up && up->list.prev->list.next == up);
+    // Remove this upvalue from the overall open upvalues list.
+    up->list.next->list.prev = up->list.prev;
+    up->list.prev->list.next = up->list.next;
+}
+
+void
+function_upvalue_close(lulu_VM *vm, Value *level)
+{
+    while (vm->open_upvalues != nullptr) {
+        Upvalue *up = &vm->open_upvalues->upvalue;
+        // Ensure we don't close upvalues that are already closed.
+        lulu_assert(up->value != &up->closed);
+
+        // We assume the upvalue list is sorted, this means we just went past
+        // the slot we are closing over and thus there is no upvalue for it.
+        if (up->value < level) {
+            break;
+        }
+
+        vm->open_upvalues = up->next;
+        // TODO: check if object is dead
+        upvalue_unlink(up);
+
+        // This upvalue is now closed over, so it owns its own value.
+        up->closed = *up->value;
+        up->value  = &up->closed;
     }
 }

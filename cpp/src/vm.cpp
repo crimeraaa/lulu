@@ -18,7 +18,7 @@ static void
 required_allocations(lulu_VM *vm, void *)
 {
     // Ensure when we start interning strings we can already index.
-    intern_resize(vm, &vm->intern, 32);
+    intern_resize(vm, &G(vm)->intern, 32);
 
     // TODO(2025-06-30): Mark the memory error string as "immortal"?
     OString *o = ostring_new(vm, lstring_literal(LULU_MEMORY_ERROR_STRING));
@@ -31,21 +31,32 @@ required_allocations(lulu_VM *vm, void *)
 LULU_API lulu_VM *
 lulu_open(lulu_Allocator allocator, void *allocator_data)
 {
+    static lulu_Global _g;
     static lulu_VM _vm;
 
+    lulu_Global *g = &_g;
     lulu_VM *vm = &_vm;
     small_array_clear(&vm->frames);
 
-    vm->panic_fn       = nullptr;
-    vm->allocator      = allocator;
-    vm->allocator_data = allocator_data;
+    // Global state
+    g->panic_fn       = nullptr;
+    g->allocator      = allocator;
+    g->allocator_data = allocator_data;
+    g->objects        = nullptr;
+
+    // Upvalues chain is circular to prevent nul dereferences.
+    g->upvalues_head.list.prev = &g->upvalues_head;
+    g->upvalues_head.list.next = &g->upvalues_head;
+
+    // VM state
+    vm->global_state  = g;
     vm->saved_ip       = nullptr;
-    vm->objects        = nullptr;
+    vm->open_upvalues  = nullptr;
     vm->window         = slice(vm->stack, 0, 0);
     vm->globals        = nil;
 
-    builder_init(&vm->builder);
-    intern_init(&vm->intern);
+    builder_init(&g->builder);
+    intern_init(&g->intern);
     Error e = vm_run_protected(vm, required_allocations, nullptr);
     if (e != LULU_OK) {
         lulu_close(vm);
@@ -57,10 +68,10 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
 LULU_API void
 lulu_close(lulu_VM *vm)
 {
-    builder_destroy(vm, &vm->builder);
-    intern_destroy(vm, &vm->intern);
+    builder_destroy(vm, &G(vm)->builder);
+    intern_destroy(vm, &G(vm)->intern);
 
-    Object *o = vm->objects;
+    Object *o = G(vm)->objects;
     while (o != nullptr) {
         // Save because `o` is about to be invalidated.
         Object *next = o->base.next;
@@ -167,7 +178,7 @@ vm_top_absindex(lulu_VM *vm)
 Builder *
 vm_get_builder(lulu_VM *vm)
 {
-    Builder *b = &vm->builder;
+    Builder *b = &G(vm)->builder;
     builder_reset(b);
     return b;
 }
@@ -212,10 +223,10 @@ vm_throw(lulu_VM *vm, Error e)
 {
     if (vm->error_handler != nullptr) {
         throw e;
-    } else if (vm->panic_fn != nullptr) {
-        set_error(vm, /* old_cf */ 0, /* old_base */ 0, /* old_top */ 0);
+    } else if (G(vm)->panic_fn != nullptr) {
+        set_error(vm, /*old_cf=*/0, /*old_base=*/0, /*old_top=*/0);
         vm->error_handler = nullptr;
-        vm->panic_fn(vm);
+        G(vm)->panic_fn(vm);
     }
     exit(EXIT_FAILURE);
 }
@@ -674,6 +685,7 @@ compare(
 void
 vm_execute(lulu_VM *vm, int n_calls)
 {
+    const Closure_Lua *caller;
     const Chunk       *chunk;
     const Instruction *ip;
     Slice<const Value> constants;
@@ -682,7 +694,8 @@ vm_execute(lulu_VM *vm, int n_calls)
 // Restore state for Lua function calls and returns.
 re_entry:
 
-    chunk     = vm->caller->to_lua()->chunk;
+    caller    = vm->caller->to_lua();
+    chunk     = caller->chunk;
     ip        = vm->saved_ip;
     constants = slice_const(chunk->constants);
     window    = vm->window;
@@ -827,6 +840,16 @@ re_entry:
             for (isize i = 1; i <= n; i++) {
                 table_set_integer(vm, t, offset + i, ra[i]);
             }
+            break;
+        }
+        case OP_GET_UPVALUE: {
+            Upvalue *up = caller->upvalues[inst.b()];
+            *ra = *up->value;
+            break;
+        }
+        case OP_SET_UPVALUE: {
+            Upvalue *up = caller->upvalues[inst.b()];
+            *up->value = *ra;
             break;
         }
         case OP_ADD:
@@ -1016,10 +1039,35 @@ re_entry:
             }
             break;
         }
+        case OP_CLOSURE: {
+            Closure *f = closure_lua_new(vm, chunk->children[inst.bx()]);
+            Closure_Lua *lua = f->to_lua();
+            for (int i = 0, n = lua->n_upvalues; i < n; i++, ip++) {
+                // Just need to copy someone else's upvalues?
+                if (ip->op() == OP_GET_UPVALUE) {
+                    lua->upvalues[i] = caller->upvalues[ip->b()];
+                }
+                // We're the first ones to manage this upvalue.
+                else {
+                    lulu_assertf(ip->op() == OP_MOVE,
+                        "Invalid upvalue opcode '%s'", opnames[ip->op()]);
+                    // We haven't transferred control to the closure, so our
+                    // local indices are still valid.
+                    Value *v = &window[ip->b()];
+                    lua->upvalues[i] = function_upvalue_find(vm, v);
+                }
+            }
+            *ra = Value::make_function(f);
+            break;
+        }
         case OP_RETURN: {
             int n_rets = inst.b();
             if (n_rets == VARARG) {
                 n_rets = len(vm->window);
+            }
+
+            if (vm->open_upvalues != nullptr) {
+                function_upvalue_close(vm, &window[0]);
             }
 
             vm_call_fini(vm, slice_pointer_len(ra, n_rets));

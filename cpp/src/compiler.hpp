@@ -24,7 +24,19 @@ struct Block {
 
     // Is `break` valid for this block?
     bool breakable;
+
+    // At least one upvalue was used by this function?
+    bool has_upvalue;
 };
+
+struct Upvalue_Info {
+    u16       data; // Local register or upvalue index.
+    Expr_Type type; // local or upvalue?
+};
+
+constexpr int MAX_UPVALUES = UINT8_MAX;
+
+using Upvalue_Info_Array = Small_Array<Upvalue_Info, MAX_UPVALUES>;
 
 struct Compiler {
     lulu_VM *vm;
@@ -46,6 +58,9 @@ struct Compiler {
     // Stack-allocated linked list of blocks for local and upvalue
     // resulution.
     Block *block;
+
+    // Track information of all upvalues used by this function.
+    Upvalue_Info_Array upvalues;
 
     // Indexes thereof are equivalent to local registers currently in use.
     Active_Array active;

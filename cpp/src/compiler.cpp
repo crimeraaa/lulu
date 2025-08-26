@@ -216,8 +216,8 @@ pop_expr(Compiler *c, const Expr *e)
 
 /**
  * @brief
- *      Emits bytecode needed for variable retrieval (global or local), or
- *      table field retrieval.
+ *      Emits bytecode needed for variable retrieval (global, local, upvalue),
+ *      or table field retrieval.
  *
  * @note 2025-07-16
  *      In such case `e` is transformed to `EXPR_RELOCABLE` but its
@@ -243,6 +243,11 @@ discharge_vars(Compiler *c, Expr *e)
         // We can reuse these registers as they're no longer needed (for now).
         pop_reg(c, k);
         pop_reg(c, t);
+        break;
+    }
+    case EXPR_UPVALUE: {
+        e->type = EXPR_RELOCABLE;
+        e->pc   = compiler_code_abc(c, OP_GET_UPVALUE, NO_REG, e->upvalue, 0);
         break;
     }
     case EXPR_CALL:
@@ -286,11 +291,8 @@ discharge_to_reg(Compiler *c, Expr *e, u16 reg)
         break;
     }
     default:
-        lulu_assertf(
-            e->type == EXPR_NONE || e->type == EXPR_JUMP,
-            "Expr_Type(%i) cannot be discharged",
-            e->type
-        );
+        lulu_assertf(e->type == EXPR_NONE || e->type == EXPR_JUMP,
+            "Expr_Type(%i) cannot be discharged", e->type);
         return;
     }
     e->type = EXPR_DISCHARGED;
@@ -742,6 +744,11 @@ compiler_set_variable(Compiler *c, Expr *restrict var, Expr *restrict expr)
         u16 k = var->table.field_rk;
         u16 v = compiler_expr_rk(c, expr);
         compiler_code_abc(c, OP_SET_TABLE, t, k, v);
+        break;
+    }
+    case EXPR_UPVALUE: {
+        u16 reg = compiler_expr_any_reg(c, expr);
+        compiler_code_abc(c, OP_SET_UPVALUE, reg, var->upvalue, 0);
         break;
     }
     default:

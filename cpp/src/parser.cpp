@@ -26,10 +26,11 @@ block_push(Compiler *c, Block *b, bool breakable)
 {
     lulu_assert(c->free_reg == small_array_len(c->active));
 
-    b->prev       = c->block;
-    b->break_list = NO_JUMP;
-    b->n_locals   = static_cast<u16>(small_array_len(c->active));
-    b->breakable  = breakable;
+    b->prev        = c->block;
+    b->break_list  = NO_JUMP;
+    b->n_locals    = static_cast<u16>(small_array_len(c->active));
+    b->breakable   = breakable;
+    b->has_upvalue = false;
 
     // Chain
     c->block = b;
@@ -299,8 +300,7 @@ static void
 assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
 {
     // Check the result of `expression()`.
-    if (last->variable.type < EXPR_GLOBAL || last->variable.type > EXPR_INDEXED)
-    {
+    if (!last->variable.is_assignable()) {
         error_at(p, t->type, "Expected an assignable expression");
     }
 
@@ -682,7 +682,7 @@ static Compiler
 function_open(lulu_VM *vm, Parser *p, Compiler *enclosing)
 {
     Chunk *chunk = chunk_new(vm, p->lexer.source);
-    Table *t     = table_new(vm, /* n_hash */ 0, /* n_array */ 0);
+    Table *t     = table_new(vm, /*n_hash=*/0, /*n_array=*/0);
 
     // Push chunk and table to stack so that they are not collected while we
     // are executing.
@@ -697,7 +697,7 @@ static void
 function_close(Compiler *c)
 {
     lulu_VM *vm = c->vm;
-    compiler_code_return(c, /* reg */ 0, /* count */ 0);
+    compiler_code_return(c, /*reg=*/0, /*count=*/0);
 
 #ifdef LULU_DEBUG_PRINT_CODE
     debug_disassemble(c->chunk);
@@ -707,20 +707,114 @@ function_close(Compiler *c)
     vm_pop(vm);
 }
 
+
+/**
+ * @param type
+ *      Determines what bytecode we need to emit when actually retrieving
+ *      assigning said upvalue.
+ */
+static u16
+add_upvalue(Compiler *c, OString *ident, u16 index, Expr_Type type)
+{
+    lulu_VM *vm = c->vm;
+    Chunk   *f  = c->chunk;
+    u16      n  = static_cast<u16>(f->n_upvalues);
+
+    // If closure references the same upvalue multiple times, reuse it.
+    for (u16 i = 0; i < n; i++) {
+        Upvalue_Info up = small_array_get(c->upvalues, i);
+        if (up.data == index && up.type == type) {
+            return i;
+        }
+    }
+
+    // Check if new upvalue index would overflow the argument.
+    compiler_check_limit(c, n + 1, MAX_UPVALUES, "upvalues");
+
+    // Upvalue does not yet exist; create a new one.
+    Upvalue_Info *info = small_array_get_ptr(&c->upvalues, n);
+    info->type = type;
+    info->data = index;
+
+    // Add this upvalue name for debug purposes.
+    dynamic_push(vm, &f->upvalues, ident);
+    return f->n_upvalues++;
+}
+
+static u16
+resolve_local(Compiler *c, OString *ident)
+{
+    u16 reg = compiler_get_local(c, /*limit=*/0, ident);
+    return reg;
+}
+
+
+static void
+mark_upvalue(Compiler *c, u16 reg)
+{
+    Block *b = c->block;
+    // Try to find the block that contains 'reg'.
+    while (b != nullptr && b->n_locals > reg) {
+        b = b->prev;
+    }
+
+    if (b != nullptr) {
+        b->has_upvalue = true;
+    }
+}
+
+// Analogous to `lparser.c:singlevaraux()` in Lua 5.1.5.
+static u16
+resolve_upvalue(Compiler *c, OString *ident)
+{
+    // No enclosing state to get upvalue of?
+    if (c->prev == nullptr) {
+        return NO_REG;
+    }
+
+    // Base case: upvalue exists in immediately enclosing scope?
+    u16 reg = resolve_local(c->prev, ident);
+    if (reg != NO_REG) {
+        // This specific compiler needs to know some of its locals are being
+        // used as upvalues by at least one child.
+        mark_upvalue(c->prev, reg);
+        return add_upvalue(c, ident, reg, EXPR_LOCAL);
+    }
+
+    // Recurse case: upvalue may exist *beyond* immediately enclosing function?
+    // Most deeply nested call will return the register or NO_REG.
+    reg = resolve_upvalue(c->prev, ident);
+    if (reg != NO_REG) {
+        // Recursion above would have also marked all intermediate compilers
+        // as having upvalues. Concept check: tests/function/upvalue3.lua
+        return add_upvalue(c, ident, reg, EXPR_UPVALUE);
+    }
+
+    // Upvalue wasn't found?
+    return NO_REG;
+}
+
+/**
+ * @note(2025-08-26)
+ *      -   Analogous to `compiler.c:namedVariable()` in Crafting Interpreters,
+ *          Chapter 25.2.1: Compiling upvalues.
+ */
 static Expr
 resolve_variable(Compiler *c, OString *ident)
 {
-    bool is_enclosing = false;
-    for (Compiler *it = c; it != nullptr; it = it->prev) {
-        u16 reg = compiler_get_local(it, /* limit */ 0, ident);
-        if (reg == NO_REG) {
-            is_enclosing = true;
-            continue;
-        } else if (is_enclosing) {
-            error(c->parser, "Upvalues not yet implemented");
-        }
+    // Resolve from *all* currently active locals.
+    u16 reg = resolve_local(c, ident);
+    // local with given ident indeed exists?
+    if (reg != NO_REG) {
         return Expr::make_reg(EXPR_LOCAL, reg);
     }
+
+    // local with given ident not in current scope; try upvalue.
+    u16 up = resolve_upvalue(c, ident);
+    if (up != NO_REG) {
+        return Expr::make_upvalue(up);
+    }
+
     u32 i = compiler_add_ostring(c, ident);
     return Expr::make_index(EXPR_GLOBAL, i);
 }
@@ -745,19 +839,38 @@ function_var(Parser *p, Compiler *c)
     return var;
 }
 
+
+// compiler.c:function() in Crafting Interpreters 25.2.2: Flattening upvalues.
 static Expr
-function_push(Parser *p, Compiler *c)
+function_push(Parser *p, Compiler *parent, Compiler *child)
 {
     lulu_VM *vm = p->vm;
-    Closure *f  = closure_lua_new(vm, c->chunk);
 
-    Value v = Value::make_function(f);
-    vm_push(vm, v);
-    u32 i = compiler_add_constant(c->prev, v);
-    vm_pop(vm);
-    return Expr::make_index(EXPR_CONSTANT, i);
+    // Child chunk is to be held by the parent.
+    dynamic_push(vm, &parent->chunk->children, child->chunk);
+
+    int pc = compiler_code_abx(
+        parent,
+        OP_CLOSURE,
+        NO_REG,
+        len(parent->chunk->children) - 1
+    );
+
+    for (int i = 0, n = child->chunk->n_upvalues; i < n; i++) {
+        Upvalue_Info info = small_array_get(child->upvalues, i);
+        OpCode op = (info.type == EXPR_LOCAL) ? OP_MOVE : OP_GET_UPVALUE;
+        // Register A is never used here; OP_CLOSURE uses this instruction
+        // to set up its upvalues.
+        compiler_code_abc(parent, op, 0, info.data, 0);
+    }
+    return Expr::make_pc(EXPR_RELOCABLE, pc);
 }
 
+/**
+ * @brief Forms:
+ *      1.) 'function' <ident> '(' <ident>* ')' <block> 'end'
+ *      2.) 'function' '(' <ident>* ')' <block> 'end'
+ */
 static Expr
 function_definition(Parser *p, Compiler *enclosing, int function_line)
 {
@@ -778,7 +891,7 @@ function_definition(Parser *p, Compiler *enclosing, int function_line)
         } while (match(p, TOKEN_COMMA));
         local_start(&c, n);
         compiler_reserve_reg(&c, n);
-        f->n_params = n;
+        f->n_params = static_cast<u8>(n);
     }
     consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, paren_line);
     chunk(p, &c);
@@ -786,9 +899,10 @@ function_definition(Parser *p, Compiler *enclosing, int function_line)
     f->last_line_defined = p->lexer.line;
     consume_to_close(p, TOKEN_END, TOKEN_FUNCTION, function_line);
     function_close(&c);
-    return function_push(p, &c);
+    return function_push(p, enclosing, &c);
 }
 
+// Form: 'function' <ident>
 static void
 function_decl(Parser *p, Compiler *c, int function_line)
 {
@@ -909,7 +1023,7 @@ Chunk *
 parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
     Parser   p = parser_make(vm, source, z, b);
-    Compiler c = function_open(vm, &p, /* enclosing */ nullptr);
+    Compiler c = function_open(vm, &p, /*enclosing=*/nullptr);
     // Set up first token
     advance(&p);
     block(&p, &c);

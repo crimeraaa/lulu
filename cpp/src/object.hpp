@@ -19,6 +19,7 @@ union Object {
     Table   table;
     Chunk   chunk;
     Closure function;
+    Upvalue upvalue;
 };
 
 inline OString *

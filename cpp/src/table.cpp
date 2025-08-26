@@ -54,6 +54,7 @@ hash_value(Value v)
         return hash_compound(v.to_object());
     case VALUE_INTEGER:
     case VALUE_CHUNK:
+    case VALUE_UPVALUE:
         break;
     }
     lulu_panicf("Non-hashable Value_Type(%i)", v.type());
@@ -383,7 +384,7 @@ table_rehash(lulu_VM *vm, Table *t, Value k)
 Table *
 table_new(lulu_VM *vm, isize n_hash, isize n_array)
 {
-    Table *t = object_new<Table>(vm, &vm->objects, VALUE_TABLE);
+    Table *t = object_new<Table>(vm, &G(vm)->objects, VALUE_TABLE);
     table_init(t);
     if (n_hash > 0) {
         table_hash_resize(vm, t, n_hash);

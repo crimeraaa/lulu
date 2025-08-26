@@ -55,8 +55,14 @@ UpVal *luaF_findupval (lua_State *L, StkId level) {
   GCObject **pp = &L->openupval;
   UpVal *p;
   UpVal *uv;
-  while (*pp != NULL && (p = ngcotouv(*pp))->v >= level) {
-    lua_assert(p->v != &p->u.value);
+  while (*pp != NULL /* && (p = ngcotouv(*pp))->v >= level */) {
+    p = ngcotouv(*pp);
+    /* We are below the stack index of 'level'? */
+    if (p->v < level) {
+      break;
+    }
+
+    lua_assert(p->v != &p->u.value); /* ensure upvalue is not yet closed */
     if (p->v == level) {  /* found a corresponding upvalue? */
       if (isdead(g, obj2gco(p)))  /* is it dead? */
         changewhite(obj2gco(p));  /* ressurect it */
@@ -70,8 +76,11 @@ UpVal *luaF_findupval (lua_State *L, StkId level) {
   uv->v = level;  /* current value lives in the stack */
   uv->next = *pp;  /* chain it in the proper position */
   *pp = obj2gco(uv);
+
   uv->u.l.prev = &g->uvhead;  /* double link it in `uvhead' list */
   uv->u.l.next = g->uvhead.u.l.next;
+
+  /* link ourselves to our new neighbors */
   uv->u.l.next->u.l.prev = uv;
   g->uvhead.u.l.next = uv;
   lua_assert(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);

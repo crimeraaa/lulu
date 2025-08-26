@@ -19,19 +19,31 @@ struct Local {
 
 struct Chunk {
     OBJECT_HEADER;
-    Dynamic<Value>       constants;
-    Dynamic<Instruction> code;
-    Dynamic<Line_Info>   lines;
-
     // Information of all possible locals, in order, for the function.
     Dynamic<Local> locals;
+
+    // List of all upvalue names, in order.
+    Dynamic<OString *> upvalues;
+
+    // List of all constant values used by the function, in order.
+    Dynamic<Value> constants;
+
+    // Chunks needed for all closures defined within this function.
+    Dynamic<Chunk *> children;
+
+    // Raw bytecode.
+    Dynamic<Instruction> code;
+
+    // Maps bytecode indices to source code lines.
+    Dynamic<Line_Info> lines;
 
     // Debug/VM information
     OString *source;
     int      line_defined;
     int      last_line_defined;
-    u16      n_params;
-    u16      stack_used;
+    u8       n_upvalues;
+    u8       n_params;
+    u8       stack_used;
 };
 
 static constexpr u16 VARARG  = Instruction::MAX_B;

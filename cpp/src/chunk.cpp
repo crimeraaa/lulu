@@ -8,14 +8,17 @@
 Chunk *
 chunk_new(lulu_VM *vm, OString *source)
 {
-    Chunk *p = object_new<Chunk>(vm, &vm->objects, VALUE_CHUNK);
+    Chunk *p = object_new<Chunk>(vm, &vm->global_state->objects, VALUE_CHUNK);
     // Because `c` is heap-allocated, we must explicitly 'construct' the
     // members.
+    dynamic_init(&p->locals);
+    dynamic_init(&p->upvalues);
     dynamic_init(&p->constants);
+    dynamic_init(&p->children);
     dynamic_init(&p->code);
     dynamic_init(&p->lines);
-    dynamic_init(&p->locals);
     p->n_params          = 0;
+    p->n_upvalues        = 0;
     p->source            = source;
     p->line_defined      = 0;
     p->last_line_defined = 0;
@@ -26,10 +29,12 @@ chunk_new(lulu_VM *vm, OString *source)
 void
 chunk_delete(lulu_VM *vm, Chunk *p)
 {
+    dynamic_delete(vm, &p->locals);
+    dynamic_delete(vm, &p->upvalues);
     dynamic_delete(vm, &p->constants);
+    dynamic_delete(vm, &p->children);
     dynamic_delete(vm, &p->code);
     dynamic_delete(vm, &p->lines);
-    dynamic_delete(vm, &p->locals);
     mem_free(vm, p);
 }
 
