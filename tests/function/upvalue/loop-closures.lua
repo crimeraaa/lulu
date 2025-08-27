@@ -7,6 +7,6 @@ for i = 1, 4 do
 end
 
 -- 1 2 3 4
-for _, closure in ipairs(closures) do
-    closure()
+for _, f in ipairs(closures) do
+    f()
 end

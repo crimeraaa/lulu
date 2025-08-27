@@ -363,7 +363,7 @@ static void
 table_rehash(lulu_VM *vm, Table *t, Value k)
 {
     Array<i32, MAX_INDEX_BITS + 1> buf;
-    Slice<i32>                     index_ranges = slice(buf);
+    Slice<i32> index_ranges = slice(buf);
     fill(index_ranges, 0);
 
     i32   n_array = table_array_count(t, index_ranges);
@@ -526,9 +526,9 @@ table_len(Table *t)
             }
         }
         return left;
-    } // Hash part is empty?
-    else if (raw_data(t->entries) == EMPTY_ENTRY)
-    {
+    }
+    // Hash part is empty?
+    else if (raw_data(t->entries) == EMPTY_ENTRY) {
         return 0;
     }
 

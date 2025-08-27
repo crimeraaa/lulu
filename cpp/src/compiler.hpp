@@ -66,6 +66,7 @@ struct Compiler {
     Upvalue_Info_Array upvalues;
 
     // Indexes thereof are equivalent to local registers currently in use.
+    // Values are the indexes into `chunk->locals` to be used for information.
     Active_Array active;
 
     // Index of the first free instruction, equivalent to `len(chunk->code)`.

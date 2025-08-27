@@ -70,9 +70,9 @@ dynamic_pop(Dynamic<T> *d)
 
 template<class T>
 inline void
-dynamic_delete(lulu_VM *vm, Dynamic<T> *d)
+dynamic_delete(lulu_VM *vm, Dynamic<T> &d)
 {
-    mem_delete(vm, d->data, d->cap);
+    mem_delete(vm, d.data, d.cap);
 }
 
 template<class T>

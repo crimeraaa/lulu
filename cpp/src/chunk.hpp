@@ -32,7 +32,7 @@ struct Chunk {
     Dynamic<Chunk *> children;
 
     // Raw bytecode.
-    Dynamic<Instruction> code;
+    Slice<Instruction> code;
 
     // Maps bytecode indices to source code lines.
     Dynamic<Line_Info> lines;
@@ -55,8 +55,20 @@ chunk_new(lulu_VM *vm, OString *source);
 void
 chunk_delete(lulu_VM *vm, Chunk *p);
 
+template<class T>
+inline int
+chunk_slice_push(lulu_VM *vm, Slice<T> *s, T v, int *n)
+{
+    int i = (*n)++;
+    if (i + 1 > len(*s)) {
+        slice_resize(vm, s, mem_next_pow2(max(i + 1, 8)));
+    }
+    (*s)[i] = v;
+    return i;
+}
+
 int
-chunk_append(lulu_VM *vm, Chunk *p, Instruction i, int line);
+chunk_add_code(lulu_VM *vm, Chunk *p, Instruction i, int line, int *n);
 
 int
 chunk_get_line(const Chunk *p, int pc);

@@ -684,6 +684,7 @@ lulu_get_stack(lulu_VM *vm, int level, lulu_Debug *ar);
  *      `'n'` (to select `name` and `namewhat`).
  *      `'S'` (to select `source`, `what` and `linedefined`)
  *      `'l'` (to select `currentline`)
+ *      `'u'` (to select `nups`)
  */
 LULU_API int
 lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
@@ -824,6 +825,7 @@ struct lulu_Debug {
     const char *what;        /* (S) `Lua`, `C`, `main` */
     const char *source;      /* (S) file name where we originated from. */
     int         currentline; /* (l) line number at point of calling.*/
+    int         nups;        /* (u) number of upvalues */
     int         linedefined; /* (S) first line in source code (opt.) */
     int         lastlinedefined; /* (S) last line in source code (opt.) */
 

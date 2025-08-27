@@ -17,12 +17,9 @@ struct Slice {
     operator[](N i)
     {
         isize ii = static_cast<isize>(i);
-        lulu_assertf(
-            0 <= ii && ii < this->len,
+        lulu_assertf(0 <= ii && ii < this->len,
             "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
-            ii,
-            this->len
-        );
+            ii, this->len);
         return this->data[ii];
     }
 
@@ -32,12 +29,9 @@ struct Slice {
     operator[](N i) const
     {
         isize ii = static_cast<isize>(i);
-        lulu_assertf(
-            0 <= ii && ii < this->len,
+        lulu_assertf(0 <= ii && ii < this->len,
             "Out of bounds index %" ISIZE_FMT " / %" ISIZE_FMT,
-            ii,
-            this->len
-        );
+            ii, this->len);
         return this->data[ii];
     }
 };

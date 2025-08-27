@@ -901,20 +901,22 @@ re_entry:
         case OP_NOT:
             ra->set_boolean(RB(inst).is_falsy());
             break;
-        case OP_LEN:
-            switch (ra->type()) {
+        case OP_LEN: {
+            Value *rb = &window[inst.b()];
+            switch (rb->type()) {
             case VALUE_STRING:
-                ra->set_number(static_cast<Number>(ra->to_ostring()->len));
+                ra->set_number(static_cast<Number>(rb->to_ostring()->len));
                 break;
             case VALUE_TABLE:
-                ra->set_number(static_cast<Number>(table_len(ra->to_table())));
+                ra->set_number(static_cast<Number>(table_len(rb->to_table())));
                 break;
             default:
                 protect(vm, ip);
-                debug_type_error(vm, "get length of", ra);
+                debug_type_error(vm, "get length of", rb);
                 break;
             }
             break;
+        }
         case OP_CONCAT:
             protect(vm, ip);
             vm_concat(vm, ra, slice_pointer(&RB(inst), &RC(inst) + 1));

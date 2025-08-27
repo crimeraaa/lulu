@@ -1,4 +1,4 @@
-#include <string.h>
+#include <string.h> // strlen, memcpy
 
 #include "lulu_auxlib.h"
 
@@ -179,27 +179,48 @@ lulu_finish_string(lulu_Buffer *b)
     b->pushed = 1;
 }
 
+static int
+resolve_index(lulu_VM *vm, lulu_Debug *ar, int argn, const char **what)
+{
+    if (argn > 0) {
+        return argn;
+    }
+
+    /* Less than 0, but is a valid relative stack index? */
+    if (argn > LULU_PSEUDO_INDEX) {
+        return lulu_get_top(vm) + argn;
+    }
+
+    /* Is a valid upvalue index? */
+    if (lulu_upvalue_index(ar->nups) <= argn && argn <= lulu_upvalue_index(1)) {
+        argn -= lulu_upvalue_index(0);
+        *what = "upvalue";
+    } else {
+        argn -= LULU_PSEUDO_INDEX;
+        *what = "pseudo-index";
+    }
+    return -argn;
+}
+
 LULU_LIB_API int
 lulu_arg_error(lulu_VM *vm, int argn, const char *msg)
 {
     lulu_Debug ar;
+    const char *what = "argument";
     // Use level 0 because this function is only ever called by C functions.
     if (!lulu_get_stack(vm, 0, &ar)) {
-        return lulu_errorf(vm, "Bad argument #%i (%s)", argn, msg);
+        return lulu_errorf(vm, "Bad %s #%i (%s)", what, argn, msg);
     }
-    lulu_get_info(vm, "n", &ar);
-    return lulu_errorf(vm, "Bad argument #%i to '%s' (%s)", argn, ar.name, msg);
+    lulu_get_info(vm, "nu", &ar);
+    argn = resolve_index(vm, &ar, argn, &what);
+    return lulu_errorf(vm, "Bad %s #%i to '%s' (%s)", what, argn, ar.name, msg);
 }
 
 LULU_LIB_API int
 lulu_type_error(lulu_VM *vm, int argn, const char *type_name)
 {
-    const char *msg = lulu_push_fstring(
-        vm,
-        "'%s' expected, got '%s'",
-        type_name,
-        lulu_type_name_at(vm, argn)
-    );
+    const char *msg = lulu_push_fstring(vm, "'%s' expected, got '%s'",
+        type_name, lulu_type_name_at(vm, argn));
     return lulu_arg_error(vm, argn, msg);
 }
 
@@ -304,7 +325,7 @@ lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n)
 }
 
 LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
-    lulu_errorf(lulu_VM *vm, const char *fmt, ...)
+lulu_errorf(lulu_VM *vm, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -316,12 +337,8 @@ LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
 }
 
 LULU_LIB_API void
-lulu_set_nlibrary(
-    lulu_VM             *vm,
-    const char          *libname,
-    const lulu_Register *library,
-    int                  n
-)
+lulu_set_nlibrary(lulu_VM *vm, const char *libname,
+    const lulu_Register *library, int n)
 {
     if (libname != nullptr) {
         lulu_get_global(vm, libname);

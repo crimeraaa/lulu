@@ -95,7 +95,7 @@ builder_reset(Builder *b)
 void
 builder_destroy(lulu_VM *vm, Builder *b)
 {
-    dynamic_delete(vm, &b->buffer);
+    dynamic_delete(vm, b->buffer);
 }
 
 void

@@ -50,12 +50,8 @@ base_tostring(lulu_VM *vm)
         /* Already a string, so nothing to do. */
         break;
     default:
-        lulu_push_fstring(
-            vm,
-            "%s: %p",
-            lulu_type_name_at(vm, 1),
-            lulu_to_pointer(vm, 1)
-        );
+        lulu_push_fstring(vm, "%s: %p", lulu_type_name_at(vm, 1),
+            lulu_to_pointer(vm, 1));
         break;
     }
     return 1;
@@ -64,7 +60,7 @@ base_tostring(lulu_VM *vm)
 static int
 base_tonumber(lulu_VM *vm)
 {
-    int base = lulu_opt_integer(vm, 2, /* def */ 10);
+    int base = lulu_opt_integer(vm, 2, /*def=*/10);
 
     /* Simple conversion to base-10? */
     if (base == 10) {
@@ -194,6 +190,49 @@ push_iterator(lulu_VM *vm, const char *name, lulu_CFunction f)
     lulu_set_field(vm, -2, name); /* _G ; _G[name] = f */
 }
 
+static int
+range_iterator(lulu_VM *vm)
+{
+    lulu_Number state   = lulu_check_number(vm, 1);
+    lulu_Number control = lulu_check_number(vm, 2);
+    lulu_Number step    = lulu_check_number(vm, lulu_upvalue_index(1));
+
+    control += step;
+    if ((step > 0) ? (control >= state) : (control <= state)) {
+        return 0;
+    }
+    lulu_push_number(vm, control);
+    return 1;
+}
+
+static int
+base_range(lulu_VM *vm)
+{
+    lulu_Number start = lulu_check_number(vm, 1);
+    lulu_Number stop;
+    /* for i in range(n) */
+    if (lulu_is_none_or_nil(vm, 2)) {
+        stop  = start;
+        start = 0;
+    }
+    /* for i in range(n, m) */
+    else {
+        stop = lulu_check_number(vm, 2);
+    }
+
+    lulu_Number step = lulu_opt_number(vm, 3, /*def=*/1);
+    lulu_arg_check(vm, step != 0, 3, "range step must be non-zero");
+
+    /* 'step' is the sole upvalue of the iterator. It is popped when the
+        closure is created. */
+    lulu_push_number(vm, step);
+
+    lulu_push_cclosure(vm, range_iterator, 1); /* push generator */
+    lulu_push_number(vm, stop);                /* push state */
+    lulu_push_number(vm, start - step);        /* push control initial value */
+    return 3;
+}
+
 static const lulu_Register baselib[] = {
     {"assert", base_assert},
     {"tostring", base_tostring},
@@ -201,6 +240,7 @@ static const lulu_Register baselib[] = {
     {"print", base_print},
     {"type", base_type},
     {"next", base_next},
+    {"range", base_range},
 };
 
 LULU_LIB_API int

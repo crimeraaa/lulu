@@ -345,7 +345,7 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
             args.bx, p->children[args.bx]->n_upvalues);
         break;
     case OP_CLOSE:
-        printf("close R(0:%i)", args.a + 1);
+        printf("close R(%i:)", args.a + 1);
         break;
     case OP_RETURN:
         printf("return ");
@@ -677,13 +677,8 @@ get_line(lulu_VM *vm, Call_Frame *cf)
 }
 
 static bool
-get_info(
-    lulu_VM    *vm,
-    const char *options,
-    lulu_Debug *ar,
-    Closure    *f,
-    Call_Frame *cf
-)
+get_info(lulu_VM *vm, const char *options, lulu_Debug *ar, Closure *f,
+    Call_Frame *cf)
 {
     bool status = true;
     for (const char *it = options; *it != '\0'; it++) {
@@ -700,6 +695,10 @@ get_info(
                 ar->namewhat = ""; // Not found.
                 ar->name     = nullptr;
             }
+            break;
+        case 'u':
+            // Upvalue count is common to both types of closures.
+            ar->nups = f->lua.n_upvalues;
             break;
         default:
             lulu_panicf("Invalid debug option '%c'.", *it);

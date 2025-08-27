@@ -51,17 +51,16 @@ compiler_error_limit(Compiler *c, int limit, const char *what)
 static int
 code_push(Compiler *c, Instruction i)
 {
-    lulu_assert(c->pc == len(c->chunk->code));
-    c->pc++;
-    return chunk_append(c->vm, c->chunk, i, c->parser->last_line);
+    lulu_VM *vm = c->vm;
+    Chunk *p = c->chunk;
+    int pc = chunk_add_code(vm, p, i, c->parser->last_line, &c->pc);
+    return pc;
 }
 
 static void
 code_pop(Compiler *c)
 {
     c->pc--;
-    dynamic_pop(&c->chunk->code);
-    lulu_assert(c->pc == len(c->chunk->code));
 }
 
 int
@@ -581,7 +580,8 @@ compiler_code_unary(Compiler *c, OpCode op, Expr *e)
     }
 
     // Unary minus and unary `not` cannot operate on RK registers.
-    u16 rb = compiler_expr_next_reg(c, e);
+    // We can, however, reuse existing registers.
+    u16 rb = compiler_expr_any_reg(c, e);
     pop_expr(c, e);
 
     // Don't call `Expr::make_pc()` because we might still have patch lists
@@ -655,13 +655,8 @@ compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
 }
 
 void
-compiler_code_compare(
-    Compiler *c,
-    OpCode    op,
-    bool      cond,
-    Expr *restrict left,
-    Expr *restrict right
-)
+compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
+    Expr *restrict right)
 {
     lulu_assert(OP_EQ <= op && op <= OP_LEQ);
     if (compare_folded(op, cond, left, right)) {
@@ -1055,10 +1050,10 @@ void
 compiler_logical_new(Compiler *c, Expr *left, bool cond)
 {
     int jump_pc = logical_target_get(c, left, cond);
-
     if (cond) {
         // logical-and
-        lulu_assert(left->patch_false == NO_JUMP);
+        // Falsy patch list may be non-empty.
+        // Concept check: local x,y; if x and y then end
         compiler_jump_add(c, &left->patch_false, jump_pc);
 
         // Discharge previous jump, if any.
@@ -1066,7 +1061,6 @@ compiler_logical_new(Compiler *c, Expr *left, bool cond)
         left->patch_true = NO_JUMP;
     } else {
         // logical or
-        lulu_assert(left->patch_true == NO_JUMP);
         compiler_jump_add(c, &left->patch_true, jump_pc);
 
         // Discharge previous jump, if any.
@@ -1076,12 +1070,8 @@ compiler_logical_new(Compiler *c, Expr *left, bool cond)
 }
 
 void
-compiler_logical_patch(
-    Compiler *c,
-    Expr *restrict left,
-    Expr *restrict right,
-    bool cond
-)
+compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
+    bool cond)
 {
     discharge_vars(c, right);
 

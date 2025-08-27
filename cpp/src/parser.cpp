@@ -351,8 +351,9 @@ assignment(Parser *p, Compiler *c, Assign *last, u16 n_vars, Token *t)
     }
 }
 
+
 static void
-local_push(Parser *p, Compiler *c, OString *ident)
+local_check_shadowing(Parser *p, Compiler *c, OString *ident)
 {
     u16 reg = compiler_get_local(c, c->block->n_locals, ident);
     // Local found and it's not '_'? '_' can be overridden as many times
@@ -366,43 +367,62 @@ local_push(Parser *p, Compiler *c, OString *ident)
         }
         error(p, buf);
     }
+}
+
+/**
+ * @param n
+ *      0-based. Which local are we setting the information of? E.g. 0th, 1st,
+ *      2nd. This function does NOT update `c->active` in order to prevent
+ *      lookup of uninitialized locals.
+ */
+static void
+local_push(Parser *p, Compiler *c, OString *ident, u16 n)
+{
+    local_check_shadowing(p, c, ident);
     int index = chunk_add_local(p->vm, c->chunk, ident);
 
     // Resulting index wouldn't fit as an element in the active array?
     compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
 
     // Pushing to active array would go out of bounds?
-    compiler_check_limit(c, static_cast<int>(small_array_len(c->active) + 1),
+    u16 reg = static_cast<u16>(small_array_len(c->active)) + n;
+    compiler_check_limit(c, static_cast<int>(reg + 1),
         MAX_ACTIVE_LOCALS, "active local variables");
 
-    small_array_push(&c->active, static_cast<u16>(index));
+    u16 *local_index = small_array_get_ptr(&c->active, reg);
+    *local_index = static_cast<u16>(index);
+    // small_array_push(&c->active, static_cast<u16>(index));
 }
 
 static void
-local_push_literal(Parser *p, Compiler *c, LString lit)
+local_push_literal(Parser *p, Compiler *c, LString lit, int n)
 {
     OString *os = ostring_new(p->vm, lit);
-    local_push(p, c, os);
+    local_push(p, c, os, n);
 }
 
-// `lparser.c:adjustlocalvars()` without adjusting the active local counter.
+
+/**
+ * @brief
+ *      Initializes the top `n` locals and increases the active local
+ *      count by that much.
+ *
+ * @note(2025-08-27)
+ *      Analogous to `lparser.c:adjustlocalvars()` in Lua 5.1.5.
+ */
 static void
 local_start(Compiler *c, u16 n)
 {
     int          pc     = c->pc;
-    Slice<u16>   active = small_array_slice(c->active);
+    int          start  = static_cast<int>(small_array_len(c->active));
     Slice<Local> locals = slice(c->chunk->locals);
-    for (u16 index : slice_from(active, small_array_len(c->active) - n)) {
+
+    // Allow lookup of the (about to be) initialized locals.
+    small_array_resize(&c->active, start + n);
+    Slice<u16> active = small_array_slice(c->active);
+    for (u16 index : slice_from(active, start)) {
         locals[index].start_pc = pc;
     }
-}
-
-static void
-local_add(Compiler *c, u16 n)
-{
-    // Allow lookup of the now-initialized local variables.
-    int start = small_array_len(c->active);
-    small_array_resize(&c->active, start + n);
 }
 
 static void
@@ -410,19 +430,15 @@ local_statement(Parser *p, Compiler *c)
 {
     u16 n = 0;
     do {
-        local_push(p, c, consume_ident(p));
+        local_push(p, c, consume_ident(p), n);
         n++;
     } while (match(p, TOKEN_COMMA));
-    // Prevent lookup of uninitialized local variables, e.g. `local x = x`;
-    small_array_resize(&c->active, small_array_len(c->active) - n);
-
     Expr_List args{DEFAULT_EXPR, 0};
     if (match(p, TOKEN_ASSIGN)) {
         args = expression_list(p, c);
     }
 
     assign_adjust(c, n, &args);
-    local_add(c, n);
     local_start(c, n);
 }
 
@@ -527,19 +543,16 @@ static void
 for_body(Parser *p, Compiler *c, u16 base_reg, u16 n_vars, bool is_numeric)
 {
     consume(p, TOKEN_DO);
-    local_start(c, n_vars + 3);
+    local_start(c, 3);
 
     // Separate scope for user-facing external variables.
     Block b;
+    block_push(c, &b, /*breakable=*/false);
 
     // Control variables already reserved registers via their expressions or
-    // `assign_adjust()`, but user variables do not yet have registers.
+    // but user variables do not yet have registers.
     compiler_reserve_reg(c, n_vars);
-    block_push(c, &b, /*breakable=*/false);
-    // Allows external state variable/s to be used as upvalues.
-    // Otherwise, `block_pop()` would fail because the loop block would be
-    // both breakable and have upvalues.
-    b.n_locals -= n_vars;
+    local_start(c, n_vars);
 
     // goto <loop-pc>
     int prep_pc;
@@ -592,13 +605,13 @@ for_numeric(Parser *p, Compiler *c, OString *ident)
     }
     // The next 3 locals are internal state used by the interpreter; the user
     // has no way of modifying them (save for the potential debug library).
-    local_push_literal(p, c, "(for index)"_s);
-    local_push_literal(p, c, "(for limit)"_s);
-    local_push_literal(p, c, "(for increment)"_s);
+    local_push_literal(p, c, "(for index)"_s, 0);
+    local_push_literal(p, c, "(for limit)"_s, 1);
+    local_push_literal(p, c, "(for increment)"_s, 2);
 
     // This is the user-facing (the 'external') index. It mirrors the
     // internal for-index and is implicitly pushed/update as needed.
-    local_push(p, c, ident);
+    local_push(p, c, ident, 3);
 
     for_body(p, c, index_reg, /* n_vars */ 1, /* is_numeric */ true);
 }
@@ -615,14 +628,14 @@ for_numeric(Parser *p, Compiler *c, OString *ident)
 static void
 for_generic(Parser *p, Compiler *c, OString *ident)
 {
-    local_push_literal(p, c, "(for generator)"_s);
-    local_push_literal(p, c, "(for state)"_s);
-    local_push_literal(p, c, "(for control)"_s);
+    local_push_literal(p, c, "(for generator)"_s, 0);
+    local_push_literal(p, c, "(for state)"_s, 1);
+    local_push_literal(p, c, "(for control)"_s, 2);
 
     u16 n_vars = 1;
-    local_push(p, c, ident);
+    local_push(p, c, ident, 3);
     while (match(p, TOKEN_COMMA)) {
-        local_push(p, c, consume_ident(p));
+        local_push(p, c, consume_ident(p), n_vars + 3);
         n_vars++;
     }
     consume(p, TOKEN_IN);
@@ -725,9 +738,12 @@ function_close(Compiler *c)
 {
     lulu_VM *vm = c->vm;
     compiler_code_return(c, /*reg=*/0, /*count=*/0);
+    // Shrink chunk data to fit.
+    Chunk *p = c->chunk;
+    slice_resize(vm, &p->code, c->pc);
 
 #ifdef LULU_DEBUG_PRINT_CODE
-    debug_disassemble(c->chunk);
+    debug_disassemble(p);
 #endif // LULU_DEBUG_PRINT_CODE
 
     vm_pop(vm);
@@ -741,7 +757,7 @@ function_close(Compiler *c)
  *      assigning said upvalue.
  */
 static u16
-add_upvalue(Compiler *c, OString *ident, u16 index, Expr_Type type)
+add_upvalue(Compiler *c, u16 index, OString *ident, Expr_Type type)
 {
     lulu_VM *vm = c->vm;
     Chunk   *f  = c->chunk;
@@ -805,7 +821,7 @@ resolve_upvalue(Compiler *c, OString *ident)
         // This specific compiler needs to know some of its locals are being
         // used as upvalues by at least one child.
         mark_upvalue(c->prev, reg);
-        return add_upvalue(c, ident, reg, EXPR_LOCAL);
+        return add_upvalue(c, reg, ident, EXPR_LOCAL);
     }
 
     // Recurse case: upvalue may exist *beyond* immediately enclosing function?
@@ -814,7 +830,7 @@ resolve_upvalue(Compiler *c, OString *ident)
     if (reg != NO_REG) {
         // Recursion above would have also marked all intermediate compilers
         // as having upvalues. Concept check: tests/function/upvalue3.lua
-        return add_upvalue(c, ident, reg, EXPR_UPVALUE);
+        return add_upvalue(c, reg, ident, EXPR_UPVALUE);
     }
 
     // Upvalue wasn't found?
@@ -876,12 +892,8 @@ function_push(Parser *p, Compiler *parent, Compiler *child)
     // Child chunk is to be held by the parent.
     dynamic_push(vm, &parent->chunk->children, child->chunk);
 
-    int pc = compiler_code_abx(
-        parent,
-        OP_CLOSURE,
-        NO_REG,
-        len(parent->chunk->children) - 1
-    );
+    int pc = compiler_code_abx(parent, OP_CLOSURE, NO_REG,
+        len(parent->chunk->children) - 1);
 
     for (int i = 0, n = child->chunk->n_upvalues; i < n; i++) {
         Upvalue_Info info = small_array_get(child->upvalues, i);
@@ -912,7 +924,7 @@ function_definition(Parser *p, Compiler *enclosing, int function_line)
     if (!check(p, TOKEN_CLOSE_PAREN)) {
         u16 n = 0;
         do {
-            local_push(p, &c, consume_ident(p));
+            local_push(p, &c, consume_ident(p), n);
             n++;
         } while (match(p, TOKEN_COMMA));
         local_start(&c, n);
@@ -940,7 +952,7 @@ function_decl(Parser *p, Compiler *c, int function_line)
 static void
 local_function(Parser *p, Compiler *c, int line)
 {
-    local_push(p, c, consume_ident(p));
+    local_push(p, c, consume_ident(p), 0);
     local_start(c, 1);
 
     Expr var = Expr::make_reg(EXPR_LOCAL, c->free_reg);
@@ -1057,6 +1069,7 @@ parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     // are used as upvalues and are correctly implicitly closed.
     block_push(&c, &c.base_block, /*breakable=*/false);
     chunk(&p, &c);
+    block_pop(&c);
     consume(&p, TOKEN_EOF);
     function_close(&c);
     return c.chunk;

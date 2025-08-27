@@ -15,7 +15,7 @@ chunk_new(lulu_VM *vm, OString *source)
     dynamic_init(&p->upvalues);
     dynamic_init(&p->constants);
     dynamic_init(&p->children);
-    dynamic_init(&p->code);
+    p->code = {nullptr, 0};
     dynamic_init(&p->lines);
     p->n_params          = 0;
     p->n_upvalues        = 0;
@@ -29,38 +29,30 @@ chunk_new(lulu_VM *vm, OString *source)
 void
 chunk_delete(lulu_VM *vm, Chunk *p)
 {
-    dynamic_delete(vm, &p->locals);
-    dynamic_delete(vm, &p->upvalues);
-    dynamic_delete(vm, &p->constants);
-    dynamic_delete(vm, &p->children);
-    dynamic_delete(vm, &p->code);
-    dynamic_delete(vm, &p->lines);
+    dynamic_delete(vm, p->locals);
+    dynamic_delete(vm, p->upvalues);
+    dynamic_delete(vm, p->constants);
+    dynamic_delete(vm, p->children);
+    slice_delete(vm, p->code);
+    dynamic_delete(vm, p->lines);
     mem_free(vm, p);
 }
 
-static void
-add_line(lulu_VM *vm, Chunk *p, int pc, int line)
+void
+chunk_add_line(lulu_VM *vm, Chunk *p, int pc, int line)
 {
     // Have previous lines to go to?
-    isize n = len(p->lines);
-    if (n > 0) {
-        Line_Info *last = &p->lines[n - 1];
+    int i = static_cast<int>(len(p->lines));
+    if (i > 0) {
+        Line_Info *last = &p->lines[i - 1];
         if (last->line == line) {
             // Make sure `pc` is in range and will update things correctly.
-            lulu_assertf(
-                last->start_pc <= pc,
-                "start_pc=%i > pc=%i",
-                last->start_pc,
-                pc
-            );
+            lulu_assertf(last->start_pc <= pc, "start_pc=%i > pc=%i",
+                last->start_pc, pc);
 
             // Use `<=` in case we popped an instruction.
-            lulu_assertf(
-                last->end_pc <= pc,
-                "end_pc=%i > pc=%i",
-                last->end_pc,
-                pc
-            );
+            lulu_assertf(last->end_pc <= pc, "end_pc=%i > pc=%i",
+                last->end_pc, pc);
 
             last->end_pc = pc;
             return;
@@ -72,11 +64,10 @@ add_line(lulu_VM *vm, Chunk *p, int pc, int line)
 }
 
 int
-chunk_append(lulu_VM *vm, Chunk *p, Instruction i, int line)
+chunk_add_code(lulu_VM *vm, Chunk *p, Instruction i, int line, int *n)
 {
-    int pc = static_cast<int>(len(p->code));
-    dynamic_push(vm, &p->code, i);
-    add_line(vm, p, pc, line);
+    int pc = chunk_slice_push(vm, &p->code, i, n);
+    chunk_add_line(vm, p, pc, line);
     return pc;
 }
 
@@ -117,11 +108,7 @@ chunk_add_constant(lulu_VM *vm, Chunk *p, Value v)
 int
 chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident)
 {
-    Local local;
-    local.ident    = ident;
-    local.start_pc = 0;
-    local.end_pc   = 0;
-
+    Local local{ident, 0, 0};
     int i = static_cast<int>(len(p->locals));
     dynamic_push(vm, &p->locals, local);
     return i;
