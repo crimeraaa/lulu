@@ -3,10 +3,10 @@
 #include "lulu_auxlib.h"
 
 static int
-os_clock(lulu_VM *vm)
+os_clock(lulu_VM *L)
 {
     auto now = static_cast<lulu_Number>(clock());
-    lulu_push_number(vm, now / static_cast<lulu_Number>(CLOCKS_PER_SEC));
+    lulu_push_number(L, now / static_cast<lulu_Number>(CLOCKS_PER_SEC));
     return 1;
 }
 
@@ -15,8 +15,8 @@ static const lulu_Register os_lib[] = {
 };
 
 LULU_LIB_API int
-lulu_open_os(lulu_VM *vm)
+lulu_open_os(lulu_VM *L)
 {
-    lulu_set_library(vm, LULU_OS_LIB_NAME, os_lib);
+    lulu_set_library(L, LULU_OS_LIB_NAME, os_lib);
     return 1;
 }

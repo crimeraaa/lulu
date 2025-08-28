@@ -19,7 +19,7 @@ constexpr int PARSER_MAX_RECURSE = 250;
 #define NO_JUMP -1
 
 struct Parser {
-    lulu_VM *vm;
+    lulu_VM *L;
     Lexer    lexer;
     Token    current;
     Token    lookahead; // Used only in `parser.cpp:constructor()`.
@@ -184,4 +184,4 @@ struct Expr {
 };
 
 Chunk *
-parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b);
+parser_program(lulu_VM *L, OString *source, Stream *z, Builder *b);

@@ -8,15 +8,15 @@
 #define cast(T) (T)
 
 static void
-report_error(lulu_VM *vm)
+report_error(lulu_VM *L)
 {
-    if (!lulu_is_nil(vm, -1)) {
-        const char *msg = lulu_to_string(vm, -1);
+    if (!lulu_is_nil(L, -1)) {
+        const char *msg = lulu_to_string(L, -1);
         if (msg == NULL) {
             msg = "(error object is not a string)";
         }
         fprintf(stderr, "[ERROR]: %s\n", msg);
-        lulu_pop(vm, 1); /* Remove error message from stack. */
+        lulu_pop(L, 1); /* Remove error message from stack. */
     }
 }
 
@@ -28,22 +28,22 @@ report_error(lulu_VM *vm)
  *      2.) It contains the 'main' `function`.
  */
 static lulu_Error
-run(lulu_VM *vm)
+run(lulu_VM *L)
 {
-    lulu_Error e = lulu_pcall(vm, 0, LULU_MULTRET);
+    lulu_Error e = lulu_pcall(L, 0, LULU_MULTRET);
     if (e == LULU_OK) {
         /* successful call, so main function was overwritten with returns */
-        int n = lulu_get_top(vm);
+        int n = lulu_get_top(L);
         if (n > 0) {
-            lulu_get_global(vm, "print");
-            lulu_insert(vm, 1);
-            lulu_call(vm, n, 0);
+            lulu_get_global(L, "print");
+            lulu_insert(L, 1);
+            lulu_call(L, n, 0);
         }
     } else {
-        report_error(vm);
+        report_error(L);
     }
     /* If `e == LULU_ERROR_RUNTIME`, main function is still on top. */
-    lulu_set_top(vm, 0);
+    lulu_set_top(L, 0);
     return e;
 }
 
@@ -71,7 +71,7 @@ reader_line(void *user_ptr, size_t *n)
 }
 
 static void
-run_interactive(lulu_VM *vm)
+run_interactive(lulu_VM *L)
 {
     char        buf[512];
     Reader_Line r;
@@ -88,18 +88,18 @@ run_interactive(lulu_VM *vm)
         n      = strcspn(buf, "\r\n");
         buf[n] = '\0'; /* prevent `lulu_push_fstring()` from including '\n' */
         if (n > 0 && buf[0] == '=') {
-            lulu_push_fstring(vm, "return %s", buf + 1);
+            lulu_push_fstring(L, "return %s", buf + 1);
         } else {
-            lulu_push_lstring(vm, buf, n);
+            lulu_push_lstring(L, buf, n);
         }
 
-        r.data = lulu_to_lstring(vm, 1, &r.len);
-        e      = lulu_load(vm, "stdin", reader_line, &r);
-        lulu_remove(vm, 1); /* Remove line. */
+        r.data = lulu_to_lstring(L, 1, &r.len);
+        e      = lulu_load(L, "stdin", reader_line, &r);
+        lulu_remove(L, 1); /* Remove line. */
         if (e == LULU_OK) {
-            run(vm);
+            run(L);
         } else {
-            report_error(vm);
+            report_error(L);
         }
     }
 }
@@ -128,7 +128,7 @@ reader_file(void *user_ptr, size_t *n)
 }
 
 static int
-run_file(lulu_VM *vm, const char *file_name)
+run_file(lulu_VM *L, const char *file_name)
 {
     Reader_File r;
     lulu_Error  e;
@@ -137,12 +137,12 @@ run_file(lulu_VM *vm, const char *file_name)
         fprintf(stderr, "Failed to open file '%s'.\n", file_name);
         return EXIT_FAILURE;
     }
-    e = lulu_load(vm, file_name, reader_file, &r);
+    e = lulu_load(L, file_name, reader_file, &r);
     fclose(r.file);
     if (e == LULU_OK) {
-        return run(vm);
+        return run(L);
     }
-    report_error(vm);
+    report_error(L);
     return EXIT_FAILURE;
 }
 
@@ -153,18 +153,18 @@ typedef struct {
 } Main_Data;
 
 static int
-protected_main(lulu_VM *vm)
+protected_main(lulu_VM *L)
 {
-    Main_Data *d = cast(Main_Data *) lulu_to_pointer(vm, 1);
-    lulu_open_libs(vm);
+    Main_Data *d = cast(Main_Data *) lulu_to_pointer(L, 1);
+    lulu_open_libs(L);
     /* Don't include userdata when printing REPL results. */
-    lulu_set_top(vm, 0);
+    lulu_set_top(L, 0);
     switch (d->argc) {
     case 1:
-        run_interactive(vm);
+        run_interactive(L);
         break;
     case 2:
-        d->status = run_file(vm, d->argv[1]);
+        d->status = run_file(L, d->argv[1]);
         break;
     default:
         fprintf(stderr, "Usage: %s [script]\n", d->argv[0]);
@@ -187,9 +187,9 @@ c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
 }
 
 static int
-panic(lulu_VM *vm)
+panic(lulu_VM *L)
 {
-    const char *msg = lulu_to_string(vm, -1);
+    const char *msg = lulu_to_string(L, -1);
     fprintf(stderr, "[FATAL]: Unprotected call to Lulu API (%s)\n", msg);
     return 0;
 }
@@ -198,25 +198,25 @@ int
 main(int argc, char *argv[])
 {
     Main_Data  d;
-    lulu_VM   *vm;
+    lulu_VM   *L;
     lulu_Error e;
     /* In C89, brace initialization requires all constant expressions. */
     d.argv   = argv;
     d.argc   = argc;
     d.status = EXIT_SUCCESS;
 
-    vm = lulu_open(c_allocator, NULL);
-    if (vm == NULL) {
+    L = lulu_open(c_allocator, NULL);
+    if (L == NULL) {
         fprintf(stderr, "Failed to allocate memory for lulu\n");
         return 2;
     }
-    lulu_set_panic(vm, panic);
+    lulu_set_panic(L, panic);
 
     /* Testing to see if panic works. */
-    /* lulu_check_string(vm, 1); */
+    /* lulu_check_string(L, 1); */
 
-    e = lulu_cpcall(vm, protected_main, &d);
-    lulu_close(vm);
+    e = lulu_cpcall(L, protected_main, &d);
+    lulu_close(L);
     if (e == LULU_OK && d.status == EXIT_SUCCESS) {
         return EXIT_SUCCESS;
     } else if (e == LULU_ERROR_MEMORY) {

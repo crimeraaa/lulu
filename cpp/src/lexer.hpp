@@ -12,68 +12,35 @@ enum Token_Type : i8 {
     TOKEN_INVALID = -1,
 
     // Keywords
-    TOKEN_AND,
-    TOKEN_BREAK,
-    TOKEN_DO,
-    TOKEN_ELSE,
-    TOKEN_ELSEIF,
-    TOKEN_END,
-    TOKEN_FALSE,
-    TOKEN_FOR,
-    TOKEN_FUNCTION,
-    TOKEN_IF,
-    TOKEN_IN,
-    TOKEN_LOCAL,
-    TOKEN_NIL,
-    TOKEN_NOT,
-    TOKEN_OR,
-    TOKEN_REPEAT,
-    TOKEN_RETURN,
-    TOKEN_THEN,
-    TOKEN_TRUE,
-    TOKEN_UNTIL,
-    TOKEN_WHILE,
+    TOKEN_AND, TOKEN_BREAK, TOKEN_DO, TOKEN_ELSE, TOKEN_ELSEIF, TOKEN_END,
+    TOKEN_FALSE, TOKEN_FOR, TOKEN_FUNCTION, TOKEN_IF, TOKEN_IN, TOKEN_LOCAL,
+    TOKEN_NIL, TOKEN_NOT, TOKEN_OR, TOKEN_REPEAT, TOKEN_RETURN, TOKEN_THEN,
+    TOKEN_TRUE, TOKEN_UNTIL, TOKEN_WHILE,
 
-    TOKEN_OPEN_PAREN,
-    TOKEN_CLOSE_PAREN, // ( )
-    TOKEN_OPEN_CURLY,
-    TOKEN_CLOSE_CURLY, // { }
-    TOKEN_OPEN_BRACE,
-    TOKEN_CLOSE_BRACE, // [ ]
+    TOKEN_OPEN_PAREN, TOKEN_CLOSE_PAREN, // ( )
+    TOKEN_OPEN_CURLY, TOKEN_CLOSE_CURLY, // { }
+    TOKEN_OPEN_BRACE, TOKEN_CLOSE_BRACE, // [ ]
 
-    TOKEN_PLUS,
-    TOKEN_DASH, // + -
-    TOKEN_ASTERISK,
-    TOKEN_SLASH, // * /
-    TOKEN_PERCENT,
-    TOKEN_CARET, // % ^
+    TOKEN_PLUS, TOKEN_DASH, // + -
+    TOKEN_ASTERISK, TOKEN_SLASH, // * /
+    TOKEN_PERCENT, TOKEN_CARET, // % ^
 
-    TOKEN_EQ,
-    TOKEN_NOT_EQ, // == ~=
-    TOKEN_LESS,
-    TOKEN_LESS_EQ, // < <=
-    TOKEN_GREATER,
-    TOKEN_GREATER_EQ, // > >=
+    TOKEN_EQ, TOKEN_NOT_EQ, // == ~=
+    TOKEN_LESS, TOKEN_LESS_EQ, // < <=
+    TOKEN_GREATER, TOKEN_GREATER_EQ, // > >=
 
     TOKEN_POUND, // #
-    TOKEN_DOT,
-    TOKEN_CONCAT,
-    TOKEN_VARARG, // . .. ...
-    TOKEN_COMMA,
-    TOKEN_COLON,
-    TOKEN_SEMI, // , : ;
+    TOKEN_DOT, TOKEN_CONCAT, TOKEN_VARARG, // . .. ...
+    TOKEN_COMMA, TOKEN_COLON, TOKEN_SEMI, // , : ;
 
     TOKEN_ASSIGN, // =
-    TOKEN_IDENT,
-    TOKEN_NUMBER,
-    TOKEN_STRING,
-    TOKEN_EOF,
+    TOKEN_IDENT, TOKEN_NUMBER, TOKEN_STRING, TOKEN_EOF,
 };
 
 struct Token {
     Token_Type type;
     union {
-        double   number;
+        Number   number;
         OString *ostring;
     };
 
@@ -97,7 +64,7 @@ struct Token {
 struct Parser;
 
 struct Lexer {
-    lulu_VM *vm;
+    lulu_VM *L;
 
     // Current compiler's value-to-constant-index table.
     Table   *indexes;
@@ -122,10 +89,10 @@ LULU_DATA const char *const token_strings[TOKEN_COUNT];
 
 // Interns all keywords for quick lookup later.
 void
-lexer_global_init(lulu_VM *vm);
+lexer_global_init(lulu_VM *L);
 
 Lexer
-lexer_make(lulu_VM *vm, OString *source, Stream *z, Builder *b);
+lexer_make(lulu_VM *L, OString *source, Stream *z, Builder *b);
 
 Token
 lexer_lex(Lexer *x);
@@ -135,4 +102,4 @@ lexer_error(Lexer *x, Token_Type type, const char *msg, int line);
 
 // Helps ensure all interned strings for this compilation are valid.
 OString *
-lexer_new_ostring(lulu_VM *vm, Lexer *x, LString ls);
+lexer_new_ostring(lulu_VM *L, Lexer *x, LString ls);

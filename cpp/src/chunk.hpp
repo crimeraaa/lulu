@@ -4,7 +4,6 @@
 #include "opcode.hpp"
 #include "string.hpp"
 #include "value.hpp"
-#include "string.hpp"
 
 struct Line_Info {
     int line; // Line number is stored directly in case we skip empty lines.
@@ -52,13 +51,13 @@ static constexpr u16 VARARG  = Instruction::MAX_B;
 static constexpr int NO_LINE = -1;
 
 Chunk *
-chunk_new(lulu_VM *vm, OString *source);
+chunk_new(lulu_VM *L, OString *source);
 
 void
-chunk_delete(lulu_VM *vm, Chunk *p);
+chunk_delete(lulu_VM *L, Chunk *p);
 
 int
-chunk_add_code(lulu_VM *vm, Chunk *p, Instruction i, int line, int *n);
+chunk_add_code(lulu_VM *L, Chunk *p, Instruction i, int line, int *n);
 
 int
 chunk_get_line(const Chunk *p, int pc);
@@ -72,10 +71,10 @@ chunk_get_line(const Chunk *p, int pc);
  *      The index of `v` in the constants array.
  */
 u32
-chunk_add_constant(lulu_VM *vm, Chunk *p, Value v);
+chunk_add_constant(lulu_VM *L, Chunk *p, Value v);
 
 int
-chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident);
+chunk_add_local(lulu_VM *L, Chunk *p, OString *ident);
 
 
 /**

@@ -122,11 +122,11 @@ recurse_pop(Parser *p)
 }
 
 static Parser
-parser_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
+parser_make(lulu_VM *L, OString *source, Stream *z, Builder *b)
 {
     Parser p{};
-    p.vm        = vm;
-    p.lexer     = lexer_make(vm, source, z, b);
+    p.L         = L;
+    p.lexer     = lexer_make(L, source, z, b);
     p.current   = DEFAULT_TOKEN;
     p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
@@ -378,7 +378,7 @@ static void
 local_push(Parser *p, Compiler *c, OString *ident, u16 n)
 {
     local_check_shadowing(p, c, ident);
-    int index = chunk_add_local(p->vm, c->chunk, ident);
+    int index = chunk_add_local(p->L, c->chunk, ident);
 
     // Resulting index wouldn't fit as an element in the active array?
     compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
@@ -396,7 +396,7 @@ local_push(Parser *p, Compiler *c, OString *ident, u16 n)
 static void
 local_push_literal(Parser *p, Compiler *c, LString lit, int n)
 {
-    OString *os = lexer_new_ostring(p->vm, &p->lexer, lit);
+    OString *os = lexer_new_ostring(p->L, &p->lexer, lit);
     local_push(p, c, os, n);
 }
 
@@ -718,44 +718,44 @@ break_statement(Parser *p, Compiler *c)
 }
 
 static void
-function_open(lulu_VM *vm, Parser *p, Compiler *c, Compiler *enclosing)
+function_open(lulu_VM *L, Parser *p, Compiler *c, Compiler *enclosing)
 {
     // chunk, table and temporary for garbage collection prevention
-    vm_check_stack(vm, 3);
+    vm_check_stack(L, 3);
 
-    Chunk *chunk = chunk_new(vm, p->lexer.source);
+    Chunk *chunk = chunk_new(L, p->lexer.source);
     // Push chunk to stack so it is not collected while allocating the table.
     // and so that it is alive throughout the entire compilation.
-    vm_push_value(vm, Value::make_chunk(chunk));
+    vm_push_value(L, Value::make_chunk(chunk));
 
-    Table *t = table_new(vm, /*n_hash=*/0, /*n_array=*/0);
+    Table *t = table_new(L, /*n_hash=*/0, /*n_array=*/0);
     // Ditto.
-    vm_push_value(vm, Value::make_table(t));
+    vm_push_value(L, Value::make_table(t));
 
     // Push this compiler to the parser.
-    *c = compiler_make(vm, p, chunk, t, enclosing);
+    *c = compiler_make(L, p, chunk, t, enclosing);
     p->lexer.indexes = c->indexes;
 }
 
 static void
 function_close(Parser *p, Compiler *c)
 {
-    lulu_VM *vm = c->vm;
+    lulu_VM *L = c->L;
     compiler_code_return(c, /*reg=*/0, /*count=*/0);
     // Shrink chunk data to fit.
     Chunk *f = c->chunk;
-    slice_resize(vm, &f->code, c->pc);
+    slice_resize(L, &f->code, c->pc);
 
 #ifdef LULU_DEBUG_PRINT_CODE
     debug_disassemble(f);
 #endif // LULU_DEBUG_PRINT_CODE
 
-    vm_pop_value(vm);
-    vm_pop_value(vm);
+    vm_pop_value(L);
+    vm_pop_value(L);
 
     // Although chunk and indexes table are not in the stack anymore, they
     // should still not be collected yet. We may need them for a closure.
-    mem_mark_compiler_roots(vm, c);
+    mem_mark_compiler_roots(L, c);
 
     // Pop this compiler from the parser.
     p->lexer.indexes = (c->prev != nullptr) ? c->prev->indexes : nullptr;
@@ -770,7 +770,7 @@ function_close(Parser *p, Compiler *c)
 static u16
 add_upvalue(Compiler *c, u16 index, OString *ident, Expr_Type type)
 {
-    lulu_VM *vm = c->vm;
+    lulu_VM *L = c->L;
     Chunk   *f  = c->chunk;
     u16      n  = static_cast<u16>(f->n_upvalues);
 
@@ -791,7 +791,7 @@ add_upvalue(Compiler *c, u16 index, OString *ident, Expr_Type type)
     info->data = index;
 
     // Add this upvalue name for debug purposes.
-    dynamic_push(vm, &f->upvalues, ident);
+    dynamic_push(L, &f->upvalues, ident);
     return f->n_upvalues++;
 }
 
@@ -898,10 +898,10 @@ function_var(Parser *p, Compiler *c)
 static Expr
 function_push(Parser *p, Compiler *parent, Compiler *child)
 {
-    lulu_VM *vm = p->vm;
+    lulu_VM *L = p->L;
 
     // Child chunk is to be held by the parent.
-    dynamic_push(vm, &parent->chunk->children, child->chunk);
+    dynamic_push(L, &parent->chunk->children, child->chunk);
 
     int pc = compiler_code_abx(parent, OP_CLOSURE, NO_REG,
         len(parent->chunk->children) - 1);
@@ -925,7 +925,7 @@ static Expr
 function_definition(Parser *p, Compiler *enclosing, int function_line)
 {
     Compiler c;
-    function_open(p->vm, p, &c, enclosing);
+    function_open(p->L, p, &c, enclosing);
 
     Chunk *f = c.chunk;
     int paren_line = p->last_line;
@@ -1071,11 +1071,11 @@ chunk(Parser *p, Compiler *c)
 }
 
 Chunk *
-parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
+parser_program(lulu_VM *L, OString *source, Stream *z, Builder *b)
 {
-    Parser   p = parser_make(vm, source, z, b);
+    Parser   p = parser_make(L, source, z, b);
     Compiler c;
-    function_open(vm, &p, &c, /*enclosing=*/nullptr);
+    function_open(L, &p, &c, /*enclosing=*/nullptr);
     // Set up first token
     advance(&p);
 
@@ -1261,7 +1261,7 @@ function_call(Parser *p, Compiler *c, Expr *e, int paren_line)
         args.count = c->free_reg - (base + 1);
     }
     e->type = EXPR_CALL;
-    e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 0);
+    e->pc   = compiler_code_abc(c, OP_CALL, base, args.count, 1);
 
     // By default, remove the arguments but not the function's register.
     // This allows use to 'reserve' the register.

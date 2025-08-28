@@ -42,6 +42,6 @@ for i in lua_range(4) do
     -- print(i)
 end
 
-for _, f in captures do
+for _, f in ipairs(captures) do
     f()
 end

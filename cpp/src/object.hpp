@@ -81,7 +81,7 @@ Value::to_pointer() const
 }
 
 void
-object_free(lulu_VM *vm, Object *o);
+object_free(lulu_VM *L, Object *o);
 
 #ifdef LULU_DEBUG_LOG_GC
 
@@ -101,16 +101,16 @@ object_gc_print(Object *o, const char *fmt, ...);
  */
 template<class T>
 inline T *
-object_new(lulu_VM *vm, Object **list, Value_Type type, isize extra = 0)
+object_new(lulu_VM *L, Object **list, Value_Type type, isize extra = 0)
 {
-    T *o = mem_new<T>(vm, extra);
+    T *o = mem_new<T>(L, extra);
     // Not safe nor intuitive to zero-init flexible-arrays with `*o = {}`
     memset(o, 0, size_of(*o) + extra);
 
     o->type = type;
 
     // lgc.c:luaC_link() marks all new objects as black, should we?
-    o->mark |= OBJECT_WHITE;
+    o->set_white();
 
     // Chain the new object.
     o->next = *list;

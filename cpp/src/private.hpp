@@ -101,7 +101,7 @@ number_to_integer(Number n, Integer *i)
     return lulu_Number_eq(static_cast<Number>(*i), n);
 }
 
-enum Value_Type {
+enum Value_Type : u8 {
     VALUE_NIL           = LULU_TYPE_NIL,
     VALUE_BOOLEAN       = LULU_TYPE_BOOLEAN,
     VALUE_LIGHTUSERDATA = LULU_TYPE_LIGHTUSERDATA,

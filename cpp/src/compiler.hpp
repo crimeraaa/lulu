@@ -2,7 +2,6 @@
 
 #include "chunk.hpp"
 #include "parser.hpp"
-#include "small_array.hpp"
 
 static constexpr u16
     NO_REG  = Instruction::MAX_A, // MUST fit in 8 bits for bit manipulation.
@@ -39,7 +38,7 @@ constexpr int MAX_UPVALUES = UINT8_MAX;
 using Upvalue_Info_Array = Small_Array<Upvalue_Info, MAX_UPVALUES>;
 
 struct Compiler {
-    lulu_VM *vm;
+    lulu_VM *L;
 
     // The enclosing (parent) function, non-`nullptr` if we are nested.
     // Helps in detecting and resolving upvalues.
@@ -85,7 +84,7 @@ get_code(Compiler *c, int pc)
 }
 
 Compiler
-compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev);
+compiler_make(lulu_VM *L, Parser *p, Chunk *f, Table *i, Compiler *prev);
 
 [[noreturn]] void
 compiler_error_limit(Compiler *c, int limit, const char *what);
@@ -340,12 +339,8 @@ compiler_jump_add(Compiler *c, int *list_pc, int jump_pc);
  *          register allocations) are implemented.
  */
 void
-compiler_jump_patch(
-    Compiler *c,
-    int       jump_pc,
-    int       target = NO_JUMP,
-    u16       reg    = NO_REG
-);
+compiler_jump_patch(Compiler *c, int jump_pc, int target = NO_JUMP,
+    u16 reg = NO_REG);
 
 
 /**
@@ -373,12 +368,8 @@ void
 compiler_logical_new(Compiler *c, Expr *left, bool cond);
 
 void
-compiler_logical_patch(
-    Compiler *c,
-    Expr *restrict left,
-    Expr *restrict right,
-    bool cond
-);
+compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
+    bool cond);
 
 
 /**

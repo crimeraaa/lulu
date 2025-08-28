@@ -19,7 +19,7 @@ typedef struct {
 } lulu_Register;
 
 typedef struct {
-    lulu_VM *vm;
+    lulu_VM *L;
 
     /* Index of current writeable position in `data`. */
     size_t cursor;
@@ -32,7 +32,7 @@ typedef struct {
 } lulu_Buffer;
 
 LULU_LIB_API void
-lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b);
+lulu_buffer_init(lulu_VM *L, lulu_Buffer *b);
 
 LULU_LIB_API void
 lulu_write_char(lulu_Buffer *b, char ch);
@@ -49,13 +49,13 @@ LULU_LIB_API void
 lulu_finish_string(lulu_Buffer *b);
 
 LULU_LIB_API int
-lulu_arg_error(lulu_VM *vm, int argn, const char *msg);
+lulu_arg_error(lulu_VM *L, int argn, const char *msg);
 
 LULU_LIB_API int
-lulu_type_error(lulu_VM *vm, int argn, const char *type_name);
+lulu_type_error(lulu_VM *L, int argn, const char *type_name);
 
 LULU_LIB_API void
-lulu_check_type(lulu_VM *vm, int argn, lulu_Type type);
+lulu_check_type(lulu_VM *L, int argn, lulu_Type type);
 
 
 /**
@@ -64,7 +64,7 @@ lulu_check_type(lulu_VM *vm, int argn, lulu_Type type);
  *      `nil`. Will throw if `argn` is out of bounds of the stack.
  */
 LULU_LIB_API void
-lulu_check_any(lulu_VM *vm, int argn);
+lulu_check_any(lulu_VM *L, int argn);
 
 
 /**
@@ -77,7 +77,7 @@ lulu_check_any(lulu_VM *vm, int argn);
  *      be misleading as 'negative' arguments are confusing conceptually.
  */
 LULU_LIB_API int
-lulu_check_boolean(lulu_VM *vm, int argn);
+lulu_check_boolean(lulu_VM *L, int argn);
 
 
 /**
@@ -91,7 +91,7 @@ lulu_check_boolean(lulu_VM *vm, int argn);
  *      successful.
  */
 LULU_LIB_API lulu_Number
-lulu_check_number(lulu_VM *vm, int argn);
+lulu_check_number(lulu_VM *L, int argn);
 
 
 /**
@@ -109,7 +109,7 @@ lulu_check_number(lulu_VM *vm, int argn);
  *      integer then it is truncated as per the C standard.
  */
 LULU_LIB_API lulu_Integer
-lulu_check_integer(lulu_VM *vm, int argn);
+lulu_check_integer(lulu_VM *L, int argn);
 
 
 /**
@@ -123,7 +123,7 @@ lulu_check_integer(lulu_VM *vm, int argn);
  *      successful.
  */
 LULU_LIB_API const char *
-lulu_check_lstring(lulu_VM *vm, int argn, size_t *n);
+lulu_check_lstring(lulu_VM *L, int argn, size_t *n);
 
 
 /**
@@ -132,7 +132,7 @@ lulu_check_lstring(lulu_VM *vm, int argn, size_t *n);
  *      out of bounds or `nil`).
  */
 LULU_LIB_API lulu_Number
-lulu_opt_number(lulu_VM *vm, int argn, lulu_Number def);
+lulu_opt_number(lulu_VM *L, int argn, lulu_Number def);
 
 
 /**
@@ -141,7 +141,7 @@ lulu_opt_number(lulu_VM *vm, int argn, lulu_Number def);
  *      out of bounds) or `nil`.
  */
 LULU_LIB_API lulu_Integer
-lulu_opt_integer(lulu_VM *vm, int argn, lulu_Integer def);
+lulu_opt_integer(lulu_VM *L, int argn, lulu_Integer def);
 
 
 /**
@@ -153,11 +153,11 @@ lulu_opt_integer(lulu_VM *vm, int argn, lulu_Integer def);
  *      Optional. Will contain the string length.
  */
 LULU_LIB_API const char *
-lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n);
+lulu_opt_lstring(lulu_VM *L, int argn, const char *def, size_t *n);
 
 
 LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
-    lulu_errorf(lulu_VM *vm, const char *fmt, ...);
+    lulu_errorf(lulu_VM *L, const char *fmt, ...);
 
 
 /**
@@ -178,7 +178,7 @@ LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
  */
 LULU_LIB_API void
 lulu_set_nlibrary(
-    lulu_VM             *vm,
+    lulu_VM             *L,
     const char          *libname,
     const lulu_Register *library,
     int                  n
@@ -225,18 +225,18 @@ lulu_set_nlibrary(
 /*=== }}} =============================================================== */
 
 LULU_LIB_API void
-lulu_open_libs(lulu_VM *vm);
+lulu_open_libs(lulu_VM *L);
 
 LULU_LIB_API int
-lulu_open_base(lulu_VM *vm);
+lulu_open_base(lulu_VM *L);
 
 LULU_LIB_API int
-lulu_open_math(lulu_VM *vm);
+lulu_open_math(lulu_VM *L);
 
 LULU_LIB_API int
-lulu_open_string(lulu_VM *vm);
+lulu_open_string(lulu_VM *L);
 
 LULU_LIB_API int
-lulu_open_os(lulu_VM *vm);
+lulu_open_os(lulu_VM *L);
 
 #endif /* LULU_AUXILLIARY_H */

@@ -4,7 +4,5 @@ local t = {
 }
 
 for k, v in pairs(t) do
-    k = tostring(k)
-    v = tostring(v)
-    print(string.format("t[%s] = %s", k, v))
+    print("t["..k.."] = "..v)
 end

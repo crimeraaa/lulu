@@ -2,7 +2,7 @@
 #include "vm.hpp"
 
 void
-object_free(lulu_VM *vm, Object *o)
+object_free(lulu_VM *L, Object *o)
 {
     Value_Type t = o->type();
 #ifdef LULU_DEBUG_LOG_GC
@@ -11,13 +11,13 @@ object_free(lulu_VM *vm, Object *o)
     switch (t) {
     case VALUE_STRING: {
         OString *s = &o->ostring;
-        mem_free(vm, s, s->len);
+        mem_free(L, s, s->len);
         break;
     }
-    case VALUE_TABLE: table_delete(vm, &o->table); break;
-    case VALUE_CHUNK: chunk_delete(vm, &o->chunk); break;
-    case VALUE_FUNCTION: closure_delete(vm, &o->function); break;
-    case VALUE_UPVALUE: mem_free(vm, &o->upvalue); break;
+    case VALUE_TABLE: table_delete(L, &o->table); break;
+    case VALUE_CHUNK: chunk_delete(L, &o->chunk); break;
+    case VALUE_FUNCTION: closure_delete(L, &o->function); break;
+    case VALUE_UPVALUE: mem_free(L, &o->upvalue); break;
     default:
         lulu_panicf("Invalid object (Value_Type(%i))", t);
         lulu_unreachable();

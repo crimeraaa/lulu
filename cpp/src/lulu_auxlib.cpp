@@ -4,24 +4,24 @@
 
 
 LULU_LIB_API void
-lulu_where(lulu_VM *vm, int level)
+lulu_where(lulu_VM *L, int level)
 {
     lulu_Debug ar;
-    if (lulu_get_stack(vm, level, &ar)) {
-        lulu_get_info(vm, "Sl", &ar);
+    if (lulu_get_stack(L, level, &ar)) {
+        lulu_get_info(L, "Sl", &ar);
         if (ar.currentline > 0) {
-            lulu_push_fstring(vm, "%s:%i: ", ar.source, ar.currentline);
+            lulu_push_fstring(L, "%s:%i: ", ar.source, ar.currentline);
             return;
         }
     }
     // Otherwise, no information available.
-    lulu_push_literal(vm, "");
+    lulu_push_literal(L, "");
 }
 
 LULU_LIB_API void
-lulu_buffer_init(lulu_VM *vm, lulu_Buffer *b)
+lulu_buffer_init(lulu_VM *L, lulu_Buffer *b)
 {
-    b->vm     = vm;
+    b->L      = L;
     b->cursor = 0;
     b->pushed = 0;
 }
@@ -67,7 +67,7 @@ buffer_flushed(lulu_Buffer *b)
     if (n == 0) {
         return false;
     }
-    lulu_push_lstring(b->vm, b->data, n);
+    lulu_push_lstring(b->L, b->data, n);
     b->cursor = 0;
     b->pushed++;
     return true;
@@ -87,16 +87,16 @@ buffer_adjust_stack(lulu_Buffer *b)
 {
     // More than 1 string previously pushed, so we need to manage them.
     if (b->pushed > 1) {
-        lulu_VM *vm        = b->vm;
+        lulu_VM *L        = b->L;
         int      to_concat = 1; // Number of levels to concatenate.
 
         // Accumulator length for all the temporaries we will concatenate.
         // Starts with the one currently on the top of the stack.
-        size_t acc_len = lulu_obj_len(vm, -1);
+        size_t acc_len = lulu_obj_len(L, -1);
 
         // Assumes that since `b->pushed > 1`, we have at least 2 strings.
         do {
-            size_t here_len = lulu_obj_len(vm, -(to_concat + 1));
+            size_t here_len = lulu_obj_len(L, -(to_concat + 1));
 
             // We have too many strings OR our total length exceeds this one?
             if (b->pushed - to_concat + 1 >= LIMIT || acc_len > here_len) {
@@ -106,7 +106,7 @@ buffer_adjust_stack(lulu_Buffer *b)
                 break;
             }
         } while (to_concat < b->pushed);
-        lulu_concat(vm, to_concat);
+        lulu_concat(L, to_concat);
         b->pushed = b->pushed - to_concat + 1;
     }
 }
@@ -175,12 +175,12 @@ LULU_LIB_API void
 lulu_finish_string(lulu_Buffer *b)
 {
     buffer_flushed(b);
-    lulu_concat(b->vm, b->pushed);
+    lulu_concat(b->L, b->pushed);
     b->pushed = 1;
 }
 
 static int
-resolve_index(lulu_VM *vm, lulu_Debug *ar, int argn, const char **what)
+resolve_index(lulu_VM *L, lulu_Debug *ar, int argn, const char **what)
 {
     if (argn > 0) {
         return argn;
@@ -188,7 +188,7 @@ resolve_index(lulu_VM *vm, lulu_Debug *ar, int argn, const char **what)
 
     /* Less than 0, but is a valid relative stack index? */
     if (argn > LULU_PSEUDO_INDEX) {
-        return lulu_get_top(vm) + argn;
+        return lulu_get_top(L) + argn;
     }
 
     /* Is a valid upvalue index? */
@@ -203,32 +203,32 @@ resolve_index(lulu_VM *vm, lulu_Debug *ar, int argn, const char **what)
 }
 
 LULU_LIB_API int
-lulu_arg_error(lulu_VM *vm, int argn, const char *msg)
+lulu_arg_error(lulu_VM *L, int argn, const char *msg)
 {
     lulu_Debug ar;
     const char *what = "argument";
     // Use level 0 because this function is only ever called by C functions.
-    if (!lulu_get_stack(vm, 0, &ar)) {
-        return lulu_errorf(vm, "Bad %s #%i (%s)", what, argn, msg);
+    if (!lulu_get_stack(L, 0, &ar)) {
+        return lulu_errorf(L, "Bad %s #%i (%s)", what, argn, msg);
     }
-    lulu_get_info(vm, "nu", &ar);
-    argn = resolve_index(vm, &ar, argn, &what);
-    return lulu_errorf(vm, "Bad %s #%i to '%s' (%s)", what, argn, ar.name, msg);
+    lulu_get_info(L, "nu", &ar);
+    argn = resolve_index(L, &ar, argn, &what);
+    return lulu_errorf(L, "Bad %s #%i to '%s' (%s)", what, argn, ar.name, msg);
 }
 
 LULU_LIB_API int
-lulu_type_error(lulu_VM *vm, int argn, const char *type_name)
+lulu_type_error(lulu_VM *L, int argn, const char *type_name)
 {
-    const char *msg = lulu_push_fstring(vm, "'%s' expected, got '%s'",
-        type_name, lulu_type_name_at(vm, argn));
-    return lulu_arg_error(vm, argn, msg);
+    const char *msg = lulu_push_fstring(L, "'%s' expected, got '%s'",
+        type_name, lulu_type_name_at(L, argn));
+    return lulu_arg_error(L, argn, msg);
 }
 
 [[noreturn]] static void
-type_error(lulu_VM *vm, int argn, lulu_Type tag)
+type_error(lulu_VM *L, int argn, lulu_Type tag)
 {
-    const char *s = lulu_type_name(vm, tag);
-    lulu_type_error(vm, argn, s);
+    const char *s = lulu_type_name(L, tag);
+    lulu_type_error(L, argn, s);
 
 #if defined(__GNUC__) || defined(__clang__)
     __builtin_unreachable();
@@ -240,124 +240,124 @@ type_error(lulu_VM *vm, int argn, lulu_Type tag)
 }
 
 LULU_LIB_API void
-lulu_check_any(lulu_VM *vm, int argn)
+lulu_check_any(lulu_VM *L, int argn)
 {
-    if (lulu_is_none(vm, argn)) {
-        lulu_arg_error(vm, argn, "value expected");
+    if (lulu_is_none(L, argn)) {
+        lulu_arg_error(L, argn, "value expected");
     }
 }
 
 LULU_LIB_API void
-lulu_check_type(lulu_VM *vm, int argn, lulu_Type type)
+lulu_check_type(lulu_VM *L, int argn, lulu_Type type)
 {
-    if (lulu_type(vm, argn) != type) {
-        type_error(vm, argn, type);
+    if (lulu_type(L, argn) != type) {
+        type_error(L, argn, type);
     }
 }
 
 LULU_LIB_API int
-lulu_check_boolean(lulu_VM *vm, int argn)
+lulu_check_boolean(lulu_VM *L, int argn)
 {
-    if (!lulu_is_boolean(vm, argn)) {
-        type_error(vm, argn, LULU_TYPE_BOOLEAN);
+    if (!lulu_is_boolean(L, argn)) {
+        type_error(L, argn, LULU_TYPE_BOOLEAN);
     }
-    return lulu_to_boolean(vm, argn);
+    return lulu_to_boolean(L, argn);
 }
 
 LULU_LIB_API lulu_Number
-lulu_check_number(lulu_VM *vm, int argn)
+lulu_check_number(lulu_VM *L, int argn)
 {
-    lulu_Number d = lulu_to_number(vm, argn);
-    if (d == 0 && !lulu_is_number(vm, argn)) {
-        type_error(vm, argn, LULU_TYPE_NUMBER);
+    lulu_Number d = lulu_to_number(L, argn);
+    if (d == 0 && !lulu_is_number(L, argn)) {
+        type_error(L, argn, LULU_TYPE_NUMBER);
     }
     return d;
 }
 
 LULU_LIB_API lulu_Integer
-lulu_check_integer(lulu_VM *vm, int argn)
+lulu_check_integer(lulu_VM *L, int argn)
 {
-    lulu_Integer i = lulu_to_integer(vm, argn);
-    if (i == 0 && !lulu_is_number(vm, argn)) {
-        type_error(vm, argn, LULU_TYPE_NUMBER);
+    lulu_Integer i = lulu_to_integer(L, argn);
+    if (i == 0 && !lulu_is_number(L, argn)) {
+        type_error(L, argn, LULU_TYPE_NUMBER);
     }
     return i;
 }
 
 LULU_LIB_API const char *
-lulu_check_lstring(lulu_VM *vm, int argn, size_t *n)
+lulu_check_lstring(lulu_VM *L, int argn, size_t *n)
 {
-    const char *s = lulu_to_lstring(vm, argn, n);
+    const char *s = lulu_to_lstring(L, argn, n);
     if (s == nullptr) {
-        type_error(vm, argn, LULU_TYPE_STRING);
+        type_error(L, argn, LULU_TYPE_STRING);
     }
     return s;
 }
 
 LULU_LIB_API lulu_Number
-lulu_opt_number(lulu_VM *vm, int argn, lulu_Number def)
+lulu_opt_number(lulu_VM *L, int argn, lulu_Number def)
 {
-    if (lulu_is_none_or_nil(vm, argn)) {
+    if (lulu_is_none_or_nil(L, argn)) {
         return def;
     }
-    return lulu_check_number(vm, argn);
+    return lulu_check_number(L, argn);
 }
 
 LULU_LIB_API lulu_Integer
-lulu_opt_integer(lulu_VM *vm, int argn, lulu_Integer def)
+lulu_opt_integer(lulu_VM *L, int argn, lulu_Integer def)
 {
-    if (lulu_is_none_or_nil(vm, argn)) {
+    if (lulu_is_none_or_nil(L, argn)) {
         return def;
     }
-    return lulu_check_integer(vm, argn);
+    return lulu_check_integer(L, argn);
 }
 
 LULU_LIB_API const char *
-lulu_opt_lstring(lulu_VM *vm, int argn, const char *def, size_t *n)
+lulu_opt_lstring(lulu_VM *L, int argn, const char *def, size_t *n)
 {
-    if (lulu_is_none_or_nil(vm, argn)) {
+    if (lulu_is_none_or_nil(L, argn)) {
         if (n != nullptr) {
             *n = (def != nullptr) ? strlen(def) : 0;
         }
         return def;
     }
-    return lulu_check_lstring(vm, argn, n);
+    return lulu_check_lstring(L, argn, n);
 }
 
 LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
-lulu_errorf(lulu_VM *vm, const char *fmt, ...)
+lulu_errorf(lulu_VM *L, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    lulu_where(vm, 1);
-    lulu_push_vfstring(vm, fmt, args);
+    lulu_where(L, 1);
+    lulu_push_vfstring(L, fmt, args);
     va_end(args);
-    lulu_concat(vm, 2);
-    return lulu_error(vm);
+    lulu_concat(L, 2);
+    return lulu_error(L);
 }
 
 LULU_LIB_API void
-lulu_set_nlibrary(lulu_VM *vm, const char *libname,
+lulu_set_nlibrary(lulu_VM *L, const char *libname,
     const lulu_Register *library, int n)
 {
     if (libname != nullptr) {
-        lulu_get_global(vm, libname);
+        lulu_get_global(L, libname);
         // _G[libname] doesn't exist yet?
-        if (lulu_is_nil(vm, -1)) {
+        if (lulu_is_nil(L, -1)) {
             // Remove the `nil` result from `lulu_get_global()`.
-            lulu_pop(vm, 1);
+            lulu_pop(L, 1);
 
             // Do `_G[libname] = {}`.
-            lulu_new_table(vm, n, 0);
-            lulu_push_value(vm, -1);
-            lulu_set_global(vm, libname);
+            lulu_new_table(L, n, 0);
+            lulu_push_value(L, -1);
+            lulu_set_global(L, libname);
         }
     }
 
     for (int i = 0; i < n; i++) {
         // TODO(2025-07-01): Ensure key and value are not collected!
-        lulu_push_cfunction(vm, library[i].function);
-        lulu_set_field(vm, -2, library[i].name);
+        lulu_push_cfunction(L, library[i].function);
+        lulu_set_field(L, -2, library[i].name);
     }
 }
 
@@ -370,12 +370,12 @@ static const lulu_Register libs[] = {
 };
 
 LULU_LIB_API void
-lulu_open_libs(lulu_VM *vm)
+lulu_open_libs(lulu_VM *L)
 {
-    libs[0].function(vm);
+    libs[0].function(L);
     // for (int i = 0; i < lulu_count_library(libs); i++) {
-    //     lulu_push_cfunction(vm, libs[i].function);
-    //     lulu_push_string(vm, libs[i].name);
-    //     lulu_call(vm, 1, 0);
+    //     lulu_push_cfunction(L, libs[i].function);
+    //     lulu_push_string(L, libs[i].name);
+    //     lulu_call(L, 1, 0);
     // }
 }

@@ -4,7 +4,6 @@
 
 #include "object.hpp"
 #include "private.hpp"
-#include "small_array.hpp"
 #include "stream.hpp"
 
 using Error = lulu_Error;
@@ -145,45 +144,45 @@ struct LULU_PUBLIC lulu_VM {
 
 
 inline lulu_Global *
-G(lulu_VM *vm)
+G(lulu_VM *L)
 {
-    return vm->global_state;
+    return L->global_state;
 }
 
-using Protected_Fn = void (*)(lulu_VM *vm, void *user_ptr);
+using Protected_Fn = void (*)(lulu_VM *L, void *user_ptr);
 
 Builder *
-vm_get_builder(lulu_VM *vm);
+vm_get_builder(lulu_VM *L);
 
 Value *
-vm_base_ptr(lulu_VM *vm);
+vm_base_ptr(lulu_VM *L);
 
 Value *
-vm_top_ptr(lulu_VM *vm);
+vm_top_ptr(lulu_VM *L);
 
 
 /**
  * @brief
- *      Gets the absolute index of `v` in `vm->stack`.
+ *      Gets the absolute index of `v` in `L->stack`.
  */
 int
-vm_absindex(lulu_VM *vm, const Value *v);
+vm_absindex(lulu_VM *L, const Value *v);
 
 int
-vm_base_absindex(lulu_VM *vm);
+vm_base_absindex(lulu_VM *L);
 
 int
-vm_top_absindex(lulu_VM *vm);
+vm_top_absindex(lulu_VM *L);
 
 
 /**
  * @brief
- *      Wraps a call to `fn(vm, user_ptr)` with a try-catch block. In case
+ *      Wraps a call to `fn(L, user_ptr)` with a try-catch block. In case
  *      of errors, the error message, as a string, is left on the top of
  *      the stack.
  */
 Error
-vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr);
+vm_run_protected(lulu_VM *L, Protected_Fn fn, void *user_ptr);
 
 
 /**
@@ -193,25 +192,25 @@ vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr);
  *      main stack.
  */
 inline void
-vm_push_value(lulu_VM *vm, Value v)
+vm_push_value(lulu_VM *L, Value v)
 {
-    isize i = vm->window.len++;
-    vm->window[i] = v;
+    isize i = L->window.len++;
+    L->window[i] = v;
 }
 
 inline void
-vm_pop_value(lulu_VM *vm)
+vm_pop_value(lulu_VM *L)
 {
     // Do not decrement too much.
-    lulu_assert(vm->window.len > 0);
-    vm->window.len -= 1;
+    lulu_assert(L->window.len > 0);
+    L->window.len -= 1;
 }
 
 void
-vm_check_stack(lulu_VM *vm, int n);
+vm_check_stack(lulu_VM *L, int n);
 
 [[noreturn]] void
-vm_throw(lulu_VM *vm, Error e);
+vm_throw(lulu_VM *L, Error e);
 
 
 /**
@@ -233,25 +232,25 @@ vm_to_number(const Value *v, Value *out);
  *      As output, holds the interned string representation.
  */
 bool
-vm_to_string(lulu_VM *vm, Value *v);
+vm_to_string(lulu_VM *L, Value *v);
 
 const char *
-vm_push_string(lulu_VM *vm, LString s);
+vm_push_string(lulu_VM *L, LString s);
 
 [[gnu::format(printf, 2, 3)]] const char *
-vm_push_fstring(lulu_VM *vm, const char *fmt, ...);
+vm_push_fstring(lulu_VM *L, const char *fmt, ...);
 
 const char *
-vm_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
+vm_push_vfstring(lulu_VM *L, const char *fmt, va_list args);
 
 [[noreturn, gnu::format(printf, 2, 3)]] void
-vm_runtime_error(lulu_VM *vm, const char *fmt, ...);
+vm_runtime_error(lulu_VM *L, const char *fmt, ...);
 
 void
-vm_concat(lulu_VM *vm, Value *ra, Slice<Value> args);
+vm_concat(lulu_VM *L, Value *ra, Slice<Value> args);
 
 void
-vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets);
+vm_call(lulu_VM *L, const Value *ra, int n_args, int n_rets);
 
 
 /**
@@ -261,7 +260,7 @@ vm_call(lulu_VM *vm, const Value *ra, int n_args, int n_rets);
  *      if it is a Lua function, it can be called by `vm_execute()`.
  */
 Call_Type
-vm_call_init(lulu_VM *vm, const Value *ra, int argc, int to_return);
+vm_call_init(lulu_VM *L, const Value *ra, int argc, int to_return);
 
 
 /**
@@ -279,16 +278,16 @@ vm_call_init(lulu_VM *vm, const Value *ra, int argc, int to_return);
  *  3.) Otherwise, Lua calls return to `vm_execute()`.
  */
 void
-vm_call_fini(lulu_VM *vm, Slice<Value> results);
+vm_call_fini(lulu_VM *L, Slice<Value> results);
 
 Error
-vm_load(lulu_VM *vm, LString source, Stream *z);
+vm_load(lulu_VM *L, LString source, Stream *z);
 
 bool
-vm_table_get(lulu_VM *vm, const Value *t, Value k, Value *out);
+vm_table_get(lulu_VM *L, const Value *t, Value k, Value *out);
 
 void
-vm_table_set(lulu_VM *vm, const Value *t, const Value *k, Value v);
+vm_table_set(lulu_VM *L, const Value *t, const Value *k, Value v);
 
 void
-vm_execute(lulu_VM *vm, int n_calls);
+vm_execute(lulu_VM *L, int n_calls);

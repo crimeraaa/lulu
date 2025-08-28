@@ -506,14 +506,14 @@ get_rk_name(const Chunk *p, u16 regk)
 }
 
 static const char *
-get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **ident)
+get_obj_name(lulu_VM *L, Call_Frame *cf, int reg, const char **ident)
 {
     if (cf->is_lua()) {
         const Chunk *p = cf->to_lua()->chunk;
 
         // `ip` always points to the instruction after the decoded one, so
         // subtract 1 to get the culprit.
-        int pc = ptr_index(p->code, vm->saved_ip) - 1;
+        int pc = ptr_index(p->code, L->saved_ip) - 1;
 
         // Add 1 to `reg` because we want to use 1-based counting. E.g.
         // the very first local is 1 rather than 0.
@@ -528,7 +528,7 @@ get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **ident)
             u16 a = i.a();
             u16 b = i.b();
             if (b < a) {
-                return get_obj_name(vm, cf, b, ident);
+                return get_obj_name(L, cf, b, ident);
             }
             break;
         }
@@ -553,7 +553,7 @@ get_obj_name(lulu_VM *vm, Call_Frame *cf, int reg, const char **ident)
 }
 
 void
-debug_type_error(lulu_VM *vm, const char *act, const Value *v)
+debug_type_error(lulu_VM *L, const char *act, const Value *v)
 {
     const char *ident = nullptr;
     const char *scope = nullptr;
@@ -561,13 +561,13 @@ debug_type_error(lulu_VM *vm, const char *act, const Value *v)
 
     int i;
     // `v` is currently inside the stack?
-    if (ptr_index_safe(vm->window, v, &i)) {
-        scope = get_obj_name(vm, vm->caller, i, &ident);
+    if (ptr_index_safe(L->window, v, &i)) {
+        scope = get_obj_name(L, L->caller, i, &ident);
     }
 
     if (scope != nullptr) {
         vm_runtime_error(
-            vm,
+            L,
             "Attempt to %s %s '%s' (a %s value)",
             act,
             scope,
@@ -575,19 +575,19 @@ debug_type_error(lulu_VM *vm, const char *act, const Value *v)
             tname
         );
     } else {
-        vm_runtime_error(vm, "Attempt to %s a %s value", act, tname);
+        vm_runtime_error(L, "Attempt to %s a %s value", act, tname);
     }
 }
 
 void
-debug_arith_error(lulu_VM *vm, const Value *a, const Value *b)
+debug_arith_error(lulu_VM *L, const Value *a, const Value *b)
 {
     const Value *v = a->is_number() ? b : a;
-    debug_type_error(vm, "perform arithmetic on", v);
+    debug_type_error(L, "perform arithmetic on", v);
 }
 
 void
-debug_compare_error(lulu_VM *vm, const Value *a, const Value *b)
+debug_compare_error(lulu_VM *L, const Value *a, const Value *b)
 {
     const char *tname = a->type_name();
     if (a->type() == b->type()) {
@@ -597,10 +597,10 @@ debug_compare_error(lulu_VM *vm, const Value *a, const Value *b)
          *      out a messages that can have 0 up to 2 variables is surprisingly
          *      tricky!
          */
-        vm_runtime_error(vm, "Attempt to compare 2 %s values", tname);
+        vm_runtime_error(L, "Attempt to compare 2 %s values", tname);
     } else {
         vm_runtime_error(
-            vm,
+            L,
             "Attempt to compare %s with %s",
             tname,
             b->type_name()
@@ -629,26 +629,26 @@ get_func_info(lulu_Debug *ar, Closure *f)
 /**
  * @brief
  *      Gets the index of the current instruction, which is equivalent to
- *      `vm->saved_ip - 1`. Recall that `ip` always points to the instruction
+ *      `L->saved_ip - 1`. Recall that `ip` always points to the instruction
  *      after the one we just decoded.
  */
 static int
-get_current_pc(lulu_VM *vm, Call_Frame *cf)
+get_current_pc(lulu_VM *L, Call_Frame *cf)
 {
     if (!cf->is_lua()) {
         return -1;
     }
     // For the very first call, `saved_ip` is `nullptr`.
     // Concept check (in main function): `for k in next, nil do end`
-    if (cf == vm->caller) {
-        cf->saved_ip = vm->saved_ip;
+    if (cf == L->caller) {
+        cf->saved_ip = L->saved_ip;
     }
     // Subtract 1 because ip always points to after the desired instruction.
     return cf->saved_ip - raw_data(cf->to_lua()->chunk->code) - 1;
 }
 
 static const char *
-get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
+get_func_name(lulu_VM *L, Call_Frame *cf, const char **name)
 {
     // The parent caller of this function MUST be lua.
     if (!(cf - 1)->is_lua()) {
@@ -656,19 +656,19 @@ get_func_name(lulu_VM *vm, Call_Frame *cf, const char **name)
     }
     // Point to parent caller (the call*ing* function).
     cf--;
-    int         pc = get_current_pc(vm, cf);
+    int         pc = get_current_pc(L, cf);
     Instruction i  = cf->to_lua()->chunk->code[pc];
     if (i.op() == OP_CALL || i.op() == OP_FOR_IN) {
-        return get_obj_name(vm, cf, i.a(), name);
+        return get_obj_name(L, cf, i.a(), name);
     }
     // No useful name can be found.
     return nullptr;
 }
 
 static int
-get_line(lulu_VM *vm, Call_Frame *cf)
+get_line(lulu_VM *L, Call_Frame *cf)
 {
-    int pc = get_current_pc(vm, cf);
+    int pc = get_current_pc(L, cf);
     // Not a lua function, so no line information?
     if (pc < 0) {
         return -1;
@@ -677,7 +677,7 @@ get_line(lulu_VM *vm, Call_Frame *cf)
 }
 
 static bool
-get_info(lulu_VM *vm, const char *options, lulu_Debug *ar, Closure *f,
+get_info(lulu_VM *L, const char *options, lulu_Debug *ar, Closure *f,
     Call_Frame *cf)
 {
     bool status = true;
@@ -687,10 +687,10 @@ get_info(lulu_VM *vm, const char *options, lulu_Debug *ar, Closure *f,
             get_func_info(ar, f);
             break;
         case 'l':
-            ar->currentline = (cf) ? get_line(vm, cf) : -1;
+            ar->currentline = (cf) ? get_line(L, cf) : -1;
             break;
         case 'n':
-            ar->namewhat = (cf) ? get_func_name(vm, cf, &ar->name) : nullptr;
+            ar->namewhat = (cf) ? get_func_name(L, cf, &ar->name) : nullptr;
             if (ar->namewhat == nullptr) {
                 ar->namewhat = ""; // Not found.
                 ar->name     = nullptr;
@@ -712,19 +712,19 @@ get_info(lulu_VM *vm, const char *options, lulu_Debug *ar, Closure *f,
 }
 
 LULU_API int
-lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar)
+lulu_get_info(lulu_VM *L, const char *options, lulu_Debug *ar)
 {
     lulu_assert(ar->_cf_index != 0);
-    Call_Frame *cf = small_array_get_ptr(&vm->frames, ar->_cf_index);
-    get_info(vm, options, ar, cf->function, cf);
+    Call_Frame *cf = small_array_get_ptr(&L->frames, ar->_cf_index);
+    get_info(L, options, ar, cf->function, cf);
     return 1;
 }
 
 LULU_API int
-lulu_get_stack(lulu_VM *vm, int level, lulu_Debug *ar)
+lulu_get_stack(lulu_VM *L, int level, lulu_Debug *ar)
 {
-    const Call_Frame *cf      = vm->caller;
-    const Call_Frame *base    = raw_data(vm->frames.data);
+    const Call_Frame *cf      = L->caller;
+    const Call_Frame *base    = raw_data(L->frames.data);
     int               counter = level;
     for (; counter > 0 && cf > base; cf--) {
         counter--;

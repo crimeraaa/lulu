@@ -6,28 +6,28 @@
 #include "vm.hpp"
 
 Chunk *
-chunk_new(lulu_VM *vm, OString *source)
+chunk_new(lulu_VM *L, OString *source)
 {
-    Chunk *p = object_new<Chunk>(vm, &G(vm)->objects, VALUE_CHUNK);
+    Chunk *p = object_new<Chunk>(L, &G(L)->objects, VALUE_CHUNK);
     p->source     = source;
     p->stack_used = 2; // R(0) and R(1) must always be valid.
     return p;
 }
 
 void
-chunk_delete(lulu_VM *vm, Chunk *p)
+chunk_delete(lulu_VM *L, Chunk *p)
 {
-    dynamic_delete(vm, p->locals);
-    dynamic_delete(vm, p->upvalues);
-    dynamic_delete(vm, p->constants);
-    dynamic_delete(vm, p->children);
-    slice_delete(vm, p->code);
-    dynamic_delete(vm, p->lines);
-    mem_free(vm, p);
+    dynamic_delete(L, p->locals);
+    dynamic_delete(L, p->upvalues);
+    dynamic_delete(L, p->constants);
+    dynamic_delete(L, p->children);
+    slice_delete(L, p->code);
+    dynamic_delete(L, p->lines);
+    mem_free(L, p);
 }
 
 static void
-chunk_add_line(lulu_VM *vm, Chunk *p, int pc, int line)
+chunk_add_line(lulu_VM *L, Chunk *p, int pc, int line)
 {
     // Have previous lines to go to?
     int i = static_cast<int>(len(p->lines));
@@ -49,18 +49,18 @@ chunk_add_line(lulu_VM *vm, Chunk *p, int pc, int line)
     }
 
     Line_Info start{line, pc, pc};
-    dynamic_push(vm, &p->lines, start);
+    dynamic_push(L, &p->lines, start);
 }
 
 int
-chunk_add_code(lulu_VM *vm, Chunk *p, Instruction i, int line, int *n)
+chunk_add_code(lulu_VM *L, Chunk *p, Instruction i, int line, int *n)
 {
     int pc = (*n)++;
     if (pc + 1 > len(p->code)) {
-        slice_resize(vm, &p->code, mem_next_pow2(max(pc + 1, 8)));
+        slice_resize(L, &p->code, mem_next_pow2(max(pc + 1, 8)));
     }
     p->code[pc] = i;
-    chunk_add_line(vm, p, pc, line);
+    chunk_add_line(L, p, pc, line);
     return pc;
 }
 
@@ -91,19 +91,19 @@ chunk_get_line(const Chunk *p, int pc)
 }
 
 u32
-chunk_add_constant(lulu_VM *vm, Chunk *p, Value v)
+chunk_add_constant(lulu_VM *L, Chunk *p, Value v)
 {
     Integer i = len(p->constants);
-    dynamic_push(vm, &p->constants, v);
+    dynamic_push(L, &p->constants, v);
     return static_cast<u32>(i);
 }
 
 int
-chunk_add_local(lulu_VM *vm, Chunk *p, OString *ident)
+chunk_add_local(lulu_VM *L, Chunk *p, OString *ident)
 {
     Local local{ident, 0, 0};
     int i = static_cast<int>(len(p->locals));
-    dynamic_push(vm, &p->locals, local);
+    dynamic_push(L, &p->locals, local);
     return i;
 }
 

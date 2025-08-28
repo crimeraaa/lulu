@@ -87,19 +87,19 @@ builder_reset(Builder *b)
 }
 
 void
-builder_destroy(lulu_VM *vm, Builder *b)
+builder_destroy(lulu_VM *L, Builder *b)
 {
-    dynamic_delete(vm, b->buffer);
+    dynamic_delete(L, b->buffer);
 }
 
 void
-builder_write_char(lulu_VM *vm, Builder *b, char ch)
+builder_write_char(lulu_VM *L, Builder *b, char ch)
 {
-    dynamic_push(vm, &b->buffer, ch);
+    dynamic_push(L, &b->buffer, ch);
 }
 
 void
-builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
+builder_write_lstring(lulu_VM *L, Builder *b, LString s)
 {
     // Nothing to do?
     if (len(s) == 0) {
@@ -109,7 +109,7 @@ builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
     isize old_len = builder_len(*b);
     isize new_len = old_len + len(s); // Does not include nul char.
 
-    dynamic_resize(vm, &b->buffer, new_len);
+    dynamic_resize(L, &b->buffer, new_len);
 
     // Append the new data. For our purposes we assume that `b->buffer.data`
     // and `s.data` never alias. This is not a generic function.
@@ -125,7 +125,7 @@ builder_write_lstring(lulu_VM *vm, Builder *b, LString s)
  */
 template<auto Bufsize, const char *Fmt, class Arg>
 static void
-builder_write(lulu_VM *vm, Builder *b, Arg arg)
+builder_write(lulu_VM *L, Builder *b, Arg arg)
 {
     Array<char, Bufsize> buf;
 
@@ -133,28 +133,28 @@ builder_write(lulu_VM *vm, Builder *b, Arg arg)
     lulu_assert(1 <= written && written < len(buf));
 
     LString ls{raw_data(buf), written};
-    builder_write_lstring(vm, b, ls);
+    builder_write_lstring(L, b, ls);
 }
 
 void
-builder_write_int(lulu_VM *vm, Builder *b, int i)
+builder_write_int(lulu_VM *L, Builder *b, int i)
 {
     static constexpr const char fmt[] = "%i";
-    builder_write<INT_WIDTH * 2, fmt>(vm, b, i);
+    builder_write<INT_WIDTH * 2, fmt>(L, b, i);
 }
 
 void
-builder_write_number(lulu_VM *vm, Builder *b, Number n)
+builder_write_number(lulu_VM *L, Builder *b, Number n)
 {
     static constexpr const char fmt[] = LULU_NUMBER_FMT;
-    builder_write<LULU_NUMBER_BUFSIZE, fmt>(vm, b, n);
+    builder_write<LULU_NUMBER_BUFSIZE, fmt>(L, b, n);
 }
 
 void
-builder_write_pointer(lulu_VM *vm, Builder *b, void *p)
+builder_write_pointer(lulu_VM *L, Builder *b, void *p)
 {
     static constexpr const char fmt[] = "%p";
-    builder_write<sizeof(p) * CHAR_BIT, fmt>(vm, b, p);
+    builder_write<sizeof(p) * CHAR_BIT, fmt>(L, b, p);
 }
 
 void
@@ -170,10 +170,10 @@ builder_to_string(const Builder &b)
 }
 
 const char *
-builder_to_cstring(lulu_VM *vm, Builder *b)
+builder_to_cstring(lulu_VM *L, Builder *b)
 {
     // Make no assumptions if buffer is already nul-terminated.
-    dynamic_push(vm, &b->buffer, '\0');
+    dynamic_push(L, &b->buffer, '\0');
     dynamic_pop(&b->buffer);
     return raw_data(b->buffer);
 }
@@ -198,9 +198,9 @@ intern_clamp_index(u32 hash, isize cap)
 }
 
 void
-intern_resize(lulu_VM *vm, Intern *t, isize new_cap)
+intern_resize(lulu_VM *L, Intern *t, isize new_cap)
 {
-    Slice<Object *> new_table = slice_make<Object *>(vm, new_cap);
+    Slice<Object *> new_table = slice_make<Object *>(L, new_cap);
     // Zero out the new memory
     fill(new_table, static_cast<Object *>(nullptr));
 
@@ -221,28 +221,28 @@ intern_resize(lulu_VM *vm, Intern *t, isize new_cap)
             node         = next;
         }
     }
-    slice_delete(vm, t->table);
+    slice_delete(L, t->table);
     t->table = new_table;
 }
 
 void
-intern_destroy(lulu_VM *vm, Intern *t)
+intern_destroy(lulu_VM *L, Intern *t)
 {
     for (Object *list : t->table) {
         Object *node = list;
         while (node != nullptr) {
             Object *next = node->next();
-            object_free(vm, node);
+            object_free(L, node);
             node = next;
         }
     }
-    slice_delete(vm, t->table);
+    slice_delete(L, t->table);
 }
 
 OString *
-ostring_new(lulu_VM *vm, LString text)
+ostring_new(lulu_VM *L, LString text)
 {
-    Intern *t    = &G(vm)->intern;
+    Intern *t    = &G(L)->intern;
     u32     hash = hash_string(text);
     usize   i    = intern_clamp_index(hash, len(t->table));
     for (Object *node = t->table[i]; node != nullptr; node = node->next()) {
@@ -256,7 +256,7 @@ ostring_new(lulu_VM *vm, LString text)
 
     // We assume that `len(t->table)` is never 0 by this point.
     // No need to add 1 to len; `data[1]` is already embedded in the struct.
-    OString *s = object_new<OString>(vm, &t->table[i], VALUE_STRING, len(text));
+    OString *s = object_new<OString>(L, &t->table[i], VALUE_STRING, len(text));
     s->len     = len(text);
     s->hash    = hash;
     s->keyword_type = TOKEN_INVALID;
@@ -273,10 +273,10 @@ ostring_new(lulu_VM *vm, LString text)
     // Count refers to total number of linked list nodes, not occupied array
     // slots. We probably want to rehash anyway to reduce clustering.
     if (t->count + 1 > n) {
-        vm_push_value(vm, Value::make_string(s));
+        vm_push_value(L, Value::make_string(s));
         // We assume `n` is a power of 2.
-        intern_resize(vm, t, n << 1);
-        vm_pop_value(vm);
+        intern_resize(L, t, n << 1);
+        vm_pop_value(L);
     }
     t->count++;
     return s;

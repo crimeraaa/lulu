@@ -126,7 +126,7 @@ table_get_entry(Table *t, Value k)
  *      to use it when rehashing.
  */
 static void
-table_hash_resize(lulu_VM *vm, Table *t, isize n)
+table_hash_resize(lulu_VM *L, Table *t, isize n)
 {
     // Don't attempt to call `mem_next_pow2(0)` because we do not want
     // to grow in this case.
@@ -139,7 +139,7 @@ table_hash_resize(lulu_VM *vm, Table *t, isize n)
     // Minimum array size to prevent frequent reallocations.
     n = mem_next_pow2(max(n + 1, 8_i));
 
-    Slice<Entry> new_entries = slice_make<Entry>(vm, n);
+    Slice<Entry> new_entries = slice_make<Entry>(L, n);
     // Initialize all key-value pairs to nil-nil.
     fill(new_entries, EMPTY_ENTRY_);
     t->entries = new_entries;
@@ -290,13 +290,13 @@ table_array_compute_size(Slice<i32> index_ranges, i32 *n_array)
  *      The desired size of the array part. Assumed to be a power of 2.
  */
 static void
-table_array_resize(lulu_VM *vm, Table *t, isize n)
+table_array_resize(lulu_VM *L, Table *t, isize n)
 {
     isize last = len(t->array);
 
     // Minimum array size to prevent frequent reallocations.
     n = max(n, 8_i);
-    slice_resize(vm, &t->array, n);
+    slice_resize(L, &t->array, n);
 
     // Growing the array?
     if (n > last) {
@@ -311,7 +311,7 @@ table_array_resize(lulu_VM *vm, Table *t, isize n)
  *      extremely difficult (if not impossible) to rehash in-place.
  */
 static void
-table_resize(lulu_VM *vm, Table *t, isize n_hash, isize n_array)
+table_resize(lulu_VM *L, Table *t, isize n_hash, isize n_array)
 {
     // Copy here to avoid tripping up bounds check.
     Slice<Value> old_array   = t->array;
@@ -320,10 +320,10 @@ table_resize(lulu_VM *vm, Table *t, isize n_hash, isize n_array)
     // Array must grow? Shrinking is a separate branch because we will
     // need to rehash the vanishing array slice *before* resizing.
     if (n_array > len(old_array)) {
-        table_array_resize(vm, t, n_array);
+        table_array_resize(L, t, n_array);
     }
 
-    table_hash_resize(vm, t, n_hash);
+    table_hash_resize(L, t, n_hash);
 
     // Array must shrink?
     if (n_array < len(old_array)) {
@@ -334,11 +334,11 @@ table_resize(lulu_VM *vm, Table *t, isize n_hash, isize n_array)
         for (isize i = n_array, n = len(old_array); i < n; i++) {
             Value v = old_array[i];
             if (!v.is_nil()) {
-                table_set_integer(vm, t, i + 1, v);
+                table_set_integer(L, t, i + 1, v);
             }
         }
         // Shrink the array allocation.
-        table_array_resize(vm, t, n_array);
+        table_array_resize(L, t, n_array);
     }
 
     /**
@@ -348,18 +348,18 @@ table_resize(lulu_VM *vm, Table *t, isize n_hash, isize n_array)
      */
     for (Entry e : old_entries) {
         if (!e.value.is_nil()) {
-            table_set(vm, t, e.key, e.value);
+            table_set(L, t, e.key, e.value);
         }
     }
 
     // Do we actually own the data?
     if (raw_data(old_entries) != EMPTY_ENTRY) {
-        slice_delete(vm, old_entries);
+        slice_delete(L, old_entries);
     }
 }
 
 static void
-table_rehash(lulu_VM *vm, Table *t, Value k)
+table_rehash(lulu_VM *L, Table *t, Value k)
 {
     Array<i32, MAX_INDEX_BITS + 1> buf;
     Slice<i32> index_ranges = slice(buf);
@@ -377,31 +377,34 @@ table_rehash(lulu_VM *vm, Table *t, Value k)
 
     i32   n_array_active = table_array_compute_size(index_ranges, &n_array);
     isize n_hash         = n_total - n_array_active;
-    table_resize(vm, t, n_hash, n_array);
+    table_resize(L, t, n_hash, n_array);
 }
 
 Table *
-table_new(lulu_VM *vm, isize n_hash, isize n_array)
+table_new(lulu_VM *L, isize n_hash, isize n_array)
 {
-    Table *t = object_new<Table>(vm, &G(vm)->objects, VALUE_TABLE);
+    Table *t = object_new<Table>(L, &G(L)->objects, VALUE_TABLE);
     t->entries = EMPTY_ENTRY_SLICE;
+    // Don't collect table whilst resizing
+    vm_push_value(L, Value::make_table(t));
     if (n_hash > 0) {
-        table_hash_resize(vm, t, n_hash);
+        table_hash_resize(L, t, n_hash);
     }
     if (n_array > 0) {
-        table_array_resize(vm, t, n_array);
+        table_array_resize(L, t, n_array);
     }
+    vm_pop_value(L);
     return t;
 }
 
 void
-table_delete(lulu_VM *vm, Table *t)
+table_delete(lulu_VM *L, Table *t)
 {
     if (raw_data(t->entries) != EMPTY_ENTRY) {
-        slice_delete(vm, t->entries);
+        slice_delete(L, t->entries);
     }
-    slice_delete(vm, t->array);
-    mem_free(vm, t);
+    slice_delete(L, t->array);
+    mem_free(L, t);
 }
 
 static Value *
@@ -461,7 +464,7 @@ table_is_full(Table *t)
  *      Analogous to `ltable.c:newkey()` in Lua 5.1.5.
  */
 static void
-table_hash_set(lulu_VM *vm, Table *t, Value k, Value v)
+table_hash_set(lulu_VM *L, Table *t, Value k, Value v)
 {
     Entry *e = EMPTY_ENTRY;
     // Table still has free slots?
@@ -471,9 +474,9 @@ table_hash_set(lulu_VM *vm, Table *t, Value k, Value v)
 
     // Table is full; no more free slots remaining. Need to rehash.
     if (e == EMPTY_ENTRY) {
-        table_rehash(vm, t, k);
+        table_rehash(L, t, k);
         // k may be a valid array index now.
-        table_set(vm, t, k, v);
+        table_set(L, t, k, v);
         return;
     }
 
@@ -486,14 +489,14 @@ table_hash_set(lulu_VM *vm, Table *t, Value k, Value v)
 }
 
 void
-table_set(lulu_VM *vm, Table *t, Value k, Value v)
+table_set(lulu_VM *L, Table *t, Value k, Value v)
 {
     Value *dst = table_array_ptr(t, array_index(k));
     if (dst != nullptr) {
         *dst = v;
         return;
     }
-    table_hash_set(vm, t, k, v);
+    table_hash_set(L, t, k, v);
 }
 
 //=== ARRAY MANIPULATION =============================================== {{{
@@ -563,7 +566,7 @@ table_get_integer(Table *t, Integer i, Value *v)
 }
 
 void
-table_set_integer(lulu_VM *vm, Table *t, Integer i, Value v)
+table_set_integer(lulu_VM *L, Table *t, Integer i, Value v)
 {
     Value *dst = table_array_ptr(t, i);
     if (dst != nullptr) {
@@ -572,7 +575,7 @@ table_set_integer(lulu_VM *vm, Table *t, Integer i, Value v)
     }
     // Index not in range of the array; try the hash part.
     Value k = Value::make_number(static_cast<Number>(i));
-    table_hash_set(vm, t, k, v);
+    table_hash_set(L, t, k, v);
 }
 
 //=== }}} ==================================================================
@@ -603,7 +606,7 @@ table_unset(Table *t, Value k)
  *      i + #t + 1 if in hash.
  */
 static isize
-find_next(lulu_VM *vm, Table *t, Value k)
+find_next(lulu_VM *L, Table *t, Value k)
 {
     // First iteration, always start at index 0.
     if (k.is_nil()) {
@@ -634,15 +637,15 @@ find_next(lulu_VM *vm, Table *t, Value k)
             return static_cast<isize>(i) + 1 + len(t->array);
         }
     }
-    vm_runtime_error(vm, "Invalid key to 'next'");
+    vm_runtime_error(L, "Invalid key to 'next'");
     return 0;
 }
 
 bool
-table_next(lulu_VM *vm, Table *t, Value *restrict k, Value *restrict v)
+table_next(lulu_VM *L, Table *t, Value *restrict k, Value *restrict v)
 {
     // Find the index of the element after `k`, or 0 if starting out.
-    isize i = find_next(vm, t, *k);
+    isize i = find_next(L, t, *k);
     for (/* empty */; i < len(t->array); i++) {
         Value src = t->array[i];
         if (!src.is_nil()) {

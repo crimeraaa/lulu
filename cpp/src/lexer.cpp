@@ -29,10 +29,10 @@ advance(Lexer *x)
 }
 
 Lexer
-lexer_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
+lexer_make(lulu_VM *L, OString *source, Stream *z, Builder *b)
 {
     Lexer x{};
-    x.vm      = vm;
+    x.L       = L;
     x.builder = b;
     x.source  = source;
     x.stream  = z;
@@ -50,7 +50,7 @@ save(Lexer *x, int ch)
 {
     // Negative values of char are undefined.
     lulu_assert(0 <= ch && ch <= CHAR_MAX);
-    builder_write_char(x->vm, x->builder, ch);
+    builder_write_char(x->L, x->builder, ch);
 }
 
 /**
@@ -113,14 +113,14 @@ get_lexeme(Lexer *x)
 static LString
 get_lexeme_nul_terminated(Lexer *x)
 {
-    builder_to_cstring(x->vm, x->builder);
+    builder_to_cstring(x->L, x->builder);
     return get_lexeme(x);
 }
 
 void
 lexer_error(Lexer *x, Token_Type type, const char *what, int line)
 {
-    lulu_VM    *vm = x->vm;
+    lulu_VM    *L = x->L;
     const char *where;
     switch (type) {
     // Only variable length tokens explicitly save to the buffer.
@@ -128,7 +128,7 @@ lexer_error(Lexer *x, Token_Type type, const char *what, int line)
     case TOKEN_IDENT:
     case TOKEN_NUMBER:
     case TOKEN_STRING:
-        where = builder_to_cstring(vm, x->builder);
+        where = builder_to_cstring(L, x->builder);
         break;
     default:
         where = token_cstring(type);
@@ -136,8 +136,8 @@ lexer_error(Lexer *x, Token_Type type, const char *what, int line)
     }
 
     const char *source = x->source->to_cstring();
-    vm_push_fstring(vm, "%s:%i: %s near '%s'", source, line, what, where);
-    vm_throw(vm, LULU_ERROR_SYNTAX);
+    vm_push_fstring(L, "%s:%i: %s near '%s'", source, line, what, where);
+    vm_throw(L, LULU_ERROR_SYNTAX);
 }
 
 
@@ -315,21 +315,13 @@ make_number(Lexer *x, bool prefixed)
         int base = 0;
         switch (ch) {
         case 'B':
-        case 'b':
-            base = 2;
-            break;
+        case 'b': base = 2; break;
         case 'O':
-        case 'o':
-            base = 8;
-            break;
+        case 'o': base = 8; break;
         case 'D':
-        case 'd':
-            base = 10;
-            break;
+        case 'd': base = 10; break;
         case 'X':
-        case 'x':
-            base = 16;
-            break;
+        case 'x': base = 16; break;
         default:
             error(x, "Invalid integer prefix");
             break;
@@ -412,9 +404,9 @@ get_escaped(Lexer *x, char ch)
 }
 
 OString *
-lexer_new_ostring(lulu_VM *vm, Lexer *x, LString ls)
+lexer_new_ostring(lulu_VM *L, Lexer *x, LString ls)
 {
-    OString *os = ostring_new(vm, ls);
+    OString *os = ostring_new(L, ls);
     Table *t = x->indexes;
     Value k = Value::make_string(os);
     Value v;
@@ -423,9 +415,9 @@ lexer_new_ostring(lulu_VM *vm, Lexer *x, LString ls)
     // Otherwise explicitly mark it to prevent collection.
     if (!os->is_fixed() && !table_get(t, k, &v)) {
         v = Value::make_boolean(true);
-        vm_push_value(vm, k);
-        table_set(vm, t, k, v);
-        vm_pop_value(vm);
+        vm_push_value(L, k);
+        table_set(L, t, k, v);
+        vm_pop_value(L);
     }
     return os;
 }
@@ -433,7 +425,7 @@ lexer_new_ostring(lulu_VM *vm, Lexer *x, LString ls)
 static Token
 make_string(Lexer *x, char q)
 {
-    lulu_VM *vm = x->vm;
+    lulu_VM *L = x->L;
     // Buffer should only contain the quote to be used in error messages.
     lulu_assert(builder_len(*x->builder) == 1);
     while (!is_eof(x) && !check2(x, q, '\n')) {
@@ -452,7 +444,7 @@ make_string(Lexer *x, char q)
 
     // Skip the quote, which we initially saved to the buffer.
     LString  ls = slice_from(get_lexeme(x), 1);
-    OString *os = lexer_new_ostring(vm, x, ls);
+    OString *os = lexer_new_ostring(L, x, ls);
     return Token::make_ostring(TOKEN_STRING, os);
 }
 
@@ -461,7 +453,7 @@ lexer_lex(Lexer *x)
 {
     int        ch;
     Token_Type type;
-    lulu_VM *vm = x->vm;
+    lulu_VM *L = x->L;
 
 // This is only a hack for multiline comments.
 lex_start:
@@ -476,7 +468,7 @@ lex_start:
     ch = save_advance(x);
     if (is_alpha(ch)) {
         consume_sequence(x, is_ident);
-        OString *os = lexer_new_ostring(vm, x, get_lexeme(x));
+        OString *os = lexer_new_ostring(L, x, get_lexeme(x));
         type        = static_cast<Token_Type>(os->keyword_type);
         if (type == TOKEN_INVALID) {
             type = TOKEN_IDENT;
@@ -504,7 +496,7 @@ lex_start:
 
             // Because we saved the opening, skip it here.
             LString  ls = slice_from(get_lexeme(x), nest_open + 2);
-            OString *os = lexer_new_ostring(vm, x, ls);
+            OString *os = lexer_new_ostring(L, x, ls);
             return Token::make_ostring(TOKEN_STRING, os);
         }
         type = TOKEN_OPEN_BRACE;
@@ -596,10 +588,10 @@ operator++(Token_Type &t, int)
 }
 
 void
-lexer_global_init(lulu_VM *vm)
+lexer_global_init(lulu_VM *L)
 {
     for (Token_Type t = TOKEN_AND; t <= TOKEN_WHILE; t++) {
-        OString *s = ostring_new(vm, lstring_from_cstring(token_cstring(t)));
+        OString *s = ostring_new(L, lstring_from_cstring(token_cstring(t)));
         // All keywords are 'immortal'; they are never collected.
         s->set_fixed();
         s->keyword_type = t;

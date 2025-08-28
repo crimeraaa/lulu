@@ -82,14 +82,6 @@ struct Intern {
     isize           count; // Total number of strings in active use.
 };
 
-inline LString
-operator""_s(const char *s, size_t n)
-{
-    return {s, static_cast<isize>(n)};
-}
-
-#define lstring_literal(lit) TOKEN_PASTE(lit, _s)
-
 inline isize
 builder_len(const Builder &b)
 {
@@ -106,7 +98,7 @@ void
 builder_reset(Builder *b);
 
 void
-builder_destroy(lulu_VM *vm, Builder *b);
+builder_destroy(lulu_VM *L, Builder *b);
 
 
 /**
@@ -114,19 +106,19 @@ builder_destroy(lulu_VM *vm, Builder *b);
  *      For performance, a nul character is NOT implicitly appended.
  */
 void
-builder_write_char(lulu_VM *vm, Builder *b, char ch);
+builder_write_char(lulu_VM *L, Builder *b, char ch);
 
 void
-builder_write_lstring(lulu_VM *vm, Builder *b, LString s);
+builder_write_lstring(lulu_VM *L, Builder *b, LString s);
 
 void
-builder_write_int(lulu_VM *vm, Builder *b, int i);
+builder_write_int(lulu_VM *L, Builder *b, int i);
 
 void
-builder_write_number(lulu_VM *vm, Builder *b, Number n);
+builder_write_number(lulu_VM *L, Builder *b, Number n);
 
 void
-builder_write_pointer(lulu_VM *vm, Builder *b, void *p);
+builder_write_pointer(lulu_VM *L, Builder *b, void *p);
 
 void
 builder_pop(Builder *b);
@@ -135,13 +127,13 @@ LString
 builder_to_string(const Builder &b);
 
 const char *
-builder_to_cstring(lulu_VM *vm, Builder *b);
+builder_to_cstring(lulu_VM *L, Builder *b);
 
 void
-intern_resize(lulu_VM *vm, Intern *i, isize new_cap);
+intern_resize(lulu_VM *L, Intern *i, isize new_cap);
 
 void
-intern_destroy(lulu_VM *vm, Intern *t);
+intern_destroy(lulu_VM *L, Intern *t);
 
 constexpr u32 FNV1A_OFFSET = 0x811c9dc5, FNV1A_PRIME = 0x01000193;
 
@@ -149,11 +141,11 @@ u32
 hash_string(LString text);
 
 OString *
-ostring_new(lulu_VM *vm, LString text);
+ostring_new(lulu_VM *L, LString text);
 
 inline OString *
-ostring_from_cstring(lulu_VM *vm, const char *s)
+ostring_from_cstring(lulu_VM *L, const char *s)
 {
     LString ls = lstring_from_cstring(s);
-    return ostring_new(vm, ls);
+    return ostring_new(L, ls);
 }

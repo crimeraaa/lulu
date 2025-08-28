@@ -3,9 +3,9 @@
 #include "vm.hpp"
 
 Closure *
-closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues)
+closure_c_new(lulu_VM *L, lulu_CFunction cf, int n_upvalues)
 {
-    Closure_C *f = object_new<Closure_C>(vm, &G(vm)->objects, VALUE_FUNCTION,
+    Closure_C *f = object_new<Closure_C>(L, &G(L)->objects, VALUE_FUNCTION,
         /*extra=*/Closure_C::size_upvalues(n_upvalues));
 
     f->n_upvalues = n_upvalues;
@@ -15,10 +15,10 @@ closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues)
 }
 
 Closure *
-closure_lua_new(lulu_VM *vm, Chunk *p)
+closure_lua_new(lulu_VM *L, Chunk *p)
 {
     int          n = p->n_upvalues;
-    Closure_Lua *f = object_new<Closure_Lua>(vm, &G(vm)->objects, VALUE_FUNCTION,
+    Closure_Lua *f = object_new<Closure_Lua>(L, &G(L)->objects, VALUE_FUNCTION,
         /*extra=*/Closure_Lua::size_upvalues(n));
 
     f->n_upvalues  = n;
@@ -32,21 +32,21 @@ closure_lua_new(lulu_VM *vm, Chunk *p)
 }
 
 void
-closure_delete(lulu_VM *vm, Closure *f)
+closure_delete(lulu_VM *L, Closure *f)
 {
     if (f->is_c()) {
         Closure_C *c = f->to_c();
-        mem_free(vm, c, c->size_upvalues());
+        mem_free(L, c, c->size_upvalues());
     } else {
         Closure_Lua *lua = f->to_lua();
-        mem_free(vm, lua, lua->size_upvalues());
+        mem_free(L, lua, lua->size_upvalues());
     }
 }
 
 Upvalue *
-function_upvalue_find(lulu_VM *vm, Value *local)
+function_upvalue_find(lulu_VM *L, Value *local)
 {
-    Object *olist = vm->open_upvalues;
+    Object *olist = L->open_upvalues;
     // Try to find and reuse an existing upvalue that references 'local'.
     while (olist != nullptr) {
         Upvalue *up = &olist->upvalue;
@@ -71,7 +71,7 @@ function_upvalue_find(lulu_VM *vm, Value *local)
 
     // Couldn't find an upvalue; need to make a new one.
     // New upvalue is always open. Add it to the VM's open upvalue list.
-    Upvalue *up = object_new<Upvalue>(vm, &vm->open_upvalues, VALUE_UPVALUE);
+    Upvalue *up = object_new<Upvalue>(L, &L->open_upvalues, VALUE_UPVALUE);
 
     // Current value lives on the stack. Closed is not yet used.
     up->value  = local;
@@ -79,19 +79,19 @@ function_upvalue_find(lulu_VM *vm, Value *local)
 }
 
 static void
-upvalue_link(lulu_VM *vm, Upvalue *up)
+upvalue_link(lulu_VM *L, Upvalue *up)
 {
-    auto g = G(vm);
+    auto g = G(L);
     up->next   = g->objects;
     g->objects = up->to_object();
     // @todo(2025-08-26) Check if object is collectible, etc.
 }
 
 void
-function_upvalue_close(lulu_VM *vm, Value *level)
+function_upvalue_close(lulu_VM *L, Value *level)
 {
-    while (vm->open_upvalues != nullptr) {
-        Upvalue *up = &vm->open_upvalues->upvalue;
+    while (L->open_upvalues != nullptr) {
+        Upvalue *up = &L->open_upvalues->upvalue;
         // Ensure we don't close upvalues that are already closed.
         lulu_assert(up->value != &up->closed);
 
@@ -101,7 +101,7 @@ function_upvalue_close(lulu_VM *vm, Value *level)
             break;
         }
 
-        vm->open_upvalues = up->next;
+        L->open_upvalues = up->next;
         // TODO: check if object is dead
         // upvalue_unlink(up);
 
@@ -111,6 +111,6 @@ function_upvalue_close(lulu_VM *vm, Value *level)
 
         // Open upvalues were part of their object list; closed upvalues go
         // to the collectible side.
-        upvalue_link(vm, up);
+        upvalue_link(L, up);
     }
 }

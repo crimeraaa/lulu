@@ -29,10 +29,10 @@ struct Table : Object_Header {
 };
 
 Table *
-table_new(lulu_VM *vm, isize n_hash, isize n_array);
+table_new(lulu_VM *L, isize n_hash, isize n_array);
 
 void
-table_delete(lulu_VM *vm, Table *t);
+table_delete(lulu_VM *L, Table *t);
 
 
 /**
@@ -44,7 +44,7 @@ table_get(Table *t, Value k, Value *v);
 
 // Implements `t[k] = v`.
 void
-table_set(lulu_VM *vm, Table *t, Value k, Value v);
+table_set(lulu_VM *L, Table *t, Value k, Value v);
 
 // Implements `#t`.
 isize
@@ -59,7 +59,7 @@ table_get_integer(Table *t, Integer i, Value *v);
 
 // Implements `t[i] = v`.
 void
-table_set_integer(lulu_VM *vm, Table *t, Integer i, Value v);
+table_set_integer(lulu_VM *L, Table *t, Integer i, Value v);
 
 void
 table_unset(Table *t, Value k);
@@ -88,4 +88,4 @@ table_unset(Table *t, Value k);
  *      case `k` and `v` are not set so they may not be safe to read.
  */
 bool
-table_next(lulu_VM *vm, Table *t, Value *restrict k, Value *restrict v);
+table_next(lulu_VM *L, Table *t, Value *restrict k, Value *restrict v);

@@ -94,16 +94,16 @@ union Closure {
 };
 
 Closure *
-closure_c_new(lulu_VM *vm, lulu_CFunction cf, int n_upvalues);
+closure_c_new(lulu_VM *L, lulu_CFunction cf, int n_upvalues);
 
 Closure *
-closure_lua_new(lulu_VM *vm, Chunk *p);
+closure_lua_new(lulu_VM *L, Chunk *p);
 
 void
-closure_delete(lulu_VM *vm, Closure *f);
+closure_delete(lulu_VM *L, Closure *f);
 
 void
-function_upvalue_close(lulu_VM *vm, Value *level);
+function_upvalue_close(lulu_VM *L, Value *level);
 
 Upvalue *
-function_upvalue_find(lulu_VM *vm, Value *local);
+function_upvalue_find(lulu_VM *L, Value *local);

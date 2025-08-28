@@ -73,7 +73,7 @@ typedef void *(*lulu_Allocator)(void *user_ptr, void *ptr, size_t old_size,
  *      The number of values pushed to the stack that will be used by the
  *      caller.
  */
-typedef int (*lulu_CFunction)(lulu_VM *vm);
+typedef int (*lulu_CFunction)(lulu_VM *L);
 
 
 /**
@@ -136,10 +136,10 @@ lulu_open(lulu_Allocator allocator, void *allocator_data);
  *      errors are thrown outside of protected calls.
  */
 LULU_API lulu_CFunction
-lulu_set_panic(lulu_VM *vm, lulu_CFunction panic_fn);
+lulu_set_panic(lulu_VM *L, lulu_CFunction panic_fn);
 
 LULU_API void
-lulu_close(lulu_VM *vm);
+lulu_close(lulu_VM *L);
 
 
 /**
@@ -148,7 +148,7 @@ lulu_close(lulu_VM *vm);
  *      which is pushed to the top of the stack.
  */
 LULU_API lulu_Error
-lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
+lulu_load(lulu_VM *L, const char *source, lulu_Reader reader,
     void *reader_data);
 
 
@@ -169,7 +169,7 @@ lulu_load(lulu_VM *vm, const char *source, lulu_Reader reader,
  *      slots are set to `nil`.
  */
 LULU_API void
-lulu_call(lulu_VM *vm, int n_args, int n_rets);
+lulu_call(lulu_VM *L, int n_args, int n_rets);
 
 
 /**
@@ -182,7 +182,7 @@ lulu_call(lulu_VM *vm, int n_args, int n_rets);
  *      The error code, if any was thrown, or else `LULU_OK`.
  */
 LULU_API lulu_Error
-lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
+lulu_pcall(lulu_VM *L, int n_args, int n_rets);
 
 
 /**
@@ -198,7 +198,7 @@ lulu_pcall(lulu_VM *vm, int n_args, int n_rets);
  *      The error code, if any was thrown, or else `LULU_OK`.
  */
 LULU_API lulu_Error
-lulu_cpcall(lulu_VM *vm, lulu_CFunction function, void *function_data);
+lulu_cpcall(lulu_VM *L, lulu_CFunction function, void *function_data);
 
 
 /**
@@ -213,7 +213,7 @@ lulu_cpcall(lulu_VM *vm, lulu_CFunction function, void *function_data);
  *      string. You may wish to call `lulu_push_fstring()` beforehand.
  */
 LULU_API int
-lulu_error(lulu_VM *vm);
+lulu_error(lulu_VM *L);
 
 
 /*=== TYPE QUERY FUNCTIONS ========================================== {{{ */
@@ -227,7 +227,7 @@ lulu_error(lulu_VM *vm);
  *      If `i` is out of bounds then `LULU_TYPE_NONE` is returned.
  */
 LULU_API lulu_Type
-lulu_type(lulu_VM *vm, int i);
+lulu_type(lulu_VM *L, int i);
 
 
 /**
@@ -247,7 +247,7 @@ lulu_type(lulu_VM *vm, int i);
  *      streamline this process.
  */
 LULU_API const char *
-lulu_type_name(lulu_VM *vm, lulu_Type t);
+lulu_type_name(lulu_VM *L, lulu_Type t);
 
 
 /**
@@ -256,7 +256,7 @@ lulu_type_name(lulu_VM *vm, lulu_Type t);
  *      `string` which represents a valid number, or else 0.
  */
 LULU_API int
-lulu_is_number(lulu_VM *vm, int i);
+lulu_is_number(lulu_VM *L, int i);
 
 
 /**
@@ -265,7 +265,7 @@ lulu_is_number(lulu_VM *vm, int i);
  *      `number` (which is always convertible to a string), else 0.
  */
 LULU_API int
-lulu_is_string(lulu_VM *vm, int i);
+lulu_is_string(lulu_VM *L, int i);
 
 
 /**
@@ -277,7 +277,7 @@ lulu_is_string(lulu_VM *vm, int i);
  *      No conversions in the stack occur.
  */
 LULU_API int
-lulu_to_boolean(lulu_VM *vm, int i);
+lulu_to_boolean(lulu_VM *L, int i);
 
 
 /**
@@ -292,7 +292,7 @@ lulu_to_boolean(lulu_VM *vm, int i);
  *      You must call `lulu_is_number()` beforehand in that case.
  */
 LULU_API lulu_Number
-lulu_to_number(lulu_VM *vm, int i);
+lulu_to_number(lulu_VM *L, int i);
 
 
 /**
@@ -306,7 +306,7 @@ lulu_to_number(lulu_VM *vm, int i);
  *      the result is truncated in some unspecified way.
  */
 LULU_API lulu_Integer
-lulu_to_integer(lulu_VM *vm, int i);
+lulu_to_integer(lulu_VM *L, int i);
 
 
 /**
@@ -326,7 +326,7 @@ lulu_to_integer(lulu_VM *vm, int i);
  *      The nul-terminated string at relative stack index `i`, or else `NULL`.
  */
 LULU_API const char *
-lulu_to_lstring(lulu_VM *vm, int i, size_t *n);
+lulu_to_lstring(lulu_VM *L, int i, size_t *n);
 
 
 /**
@@ -343,7 +343,7 @@ lulu_to_lstring(lulu_VM *vm, int i, size_t *n);
  *      passed by value conceptually.
  */
 LULU_API void *
-lulu_to_pointer(lulu_VM *vm, int i);
+lulu_to_pointer(lulu_VM *L, int i);
 
 
 /*=== }}} =============================================================== */
@@ -356,7 +356,7 @@ lulu_to_pointer(lulu_VM *vm, int i);
  *      Retrieves the number of elements in the current stack frame.
  */
 LULU_API int
-lulu_get_top(lulu_VM *vm);
+lulu_get_top(lulu_VM *L);
 
 
 /**
@@ -379,7 +379,7 @@ lulu_get_top(lulu_VM *vm);
  *      `i` cannot be a pseudo index.
  */
 LULU_API void
-lulu_set_top(lulu_VM *vm, int i);
+lulu_set_top(lulu_VM *L, int i);
 
 
 /**
@@ -392,7 +392,7 @@ lulu_set_top(lulu_VM *vm, int i);
  *      position in the stack.
  */
 LULU_API void
-lulu_insert(lulu_VM *vm, int i);
+lulu_insert(lulu_VM *L, int i);
 
 
 /**
@@ -405,7 +405,7 @@ lulu_insert(lulu_VM *vm, int i);
  *      position in the stack.
  */
 LULU_API void
-lulu_remove(lulu_VM *vm, int i);
+lulu_remove(lulu_VM *L, int i);
 
 
 /**
@@ -413,7 +413,7 @@ lulu_remove(lulu_VM *vm, int i);
  *      Pops `n` values from the top of the stack.
  */
 LULU_API void
-lulu_pop(lulu_VM *vm, int n);
+lulu_pop(lulu_VM *L, int n);
 
 
 /**
@@ -421,7 +421,7 @@ lulu_pop(lulu_VM *vm, int n);
  *      Pushes a single `nil` value to the top of the stack.
  */
 LULU_API void
-lulu_push_nil(lulu_VM *vm);
+lulu_push_nil(lulu_VM *L);
 
 
 /**
@@ -429,7 +429,7 @@ lulu_push_nil(lulu_VM *vm);
  *      Pushes `b` to the top of the stack as a `boolean` value.
  */
 LULU_API void
-lulu_push_boolean(lulu_VM *vm, int b);
+lulu_push_boolean(lulu_VM *L, int b);
 
 
 /**
@@ -437,7 +437,7 @@ lulu_push_boolean(lulu_VM *vm, int b);
  *      Pushes `n` to the top of the stack as a `number` value.
  */
 LULU_API void
-lulu_push_number(lulu_VM *vm, lulu_Number n);
+lulu_push_number(lulu_VM *L, lulu_Number n);
 
 
 /**
@@ -449,7 +449,7 @@ lulu_push_number(lulu_VM *vm, lulu_Number n);
  *      be truncated (e.g. when `lulu_Number` is floating-point type).
  */
 LULU_API void
-lulu_push_integer(lulu_VM *vm, lulu_Integer i);
+lulu_push_integer(lulu_VM *L, lulu_Integer i);
 
 
 /**
@@ -457,7 +457,7 @@ lulu_push_integer(lulu_VM *vm, lulu_Integer i);
  *      Pushes `p` to the top of the stack as a `userdata` value.
  */
 LULU_API void
-lulu_push_userdata(lulu_VM *vm, void *p);
+lulu_push_userdata(lulu_VM *L, void *p);
 
 
 /**
@@ -465,7 +465,7 @@ lulu_push_userdata(lulu_VM *vm, void *p);
  *      Pushes the string `s`, bounded by length `n`, to the top of the stack.
  */
 LULU_API void
-lulu_push_lstring(lulu_VM *vm, const char *s, size_t n);
+lulu_push_lstring(lulu_VM *L, const char *s, size_t n);
 
 
 /**
@@ -473,7 +473,7 @@ lulu_push_lstring(lulu_VM *vm, const char *s, size_t n);
  *      Pushes the nul-terminated string `s` to the top of the stack.
  */
 LULU_API void
-lulu_push_string(lulu_VM *vm, const char *s);
+lulu_push_string(lulu_VM *L, const char *s);
 
 
 /**
@@ -486,7 +486,7 @@ lulu_push_string(lulu_VM *vm, const char *s);
  *      No precision, widths, or any modifiers are implemented.
  */
 LULU_API const char *LULU_ATTR_PRINTF(2, 3)
-lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
+lulu_push_fstring(lulu_VM *L, const char *fmt, ...);
 
 
 /**
@@ -495,7 +495,7 @@ lulu_push_fstring(lulu_VM *vm, const char *fmt, ...);
  *      exact same rules.
  */
 LULU_API const char *
-lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
+lulu_push_vfstring(lulu_VM *L, const char *fmt, va_list args);
 
 
 /**
@@ -505,7 +505,7 @@ lulu_push_vfstring(lulu_VM *vm, const char *fmt, va_list args);
  *      be at stack indexes `-n_upvalues` up to `-1` if nonzero.
  */
 LULU_API void
-lulu_push_cclosure(lulu_VM *vm, lulu_CFunction cf, int n_upvalues);
+lulu_push_cclosure(lulu_VM *L, lulu_CFunction cf, int n_upvalues);
 
 /**
  * @brief
@@ -521,13 +521,13 @@ lulu_push_cclosure(lulu_VM *vm, lulu_CFunction cf, int n_upvalues);
  *      to the top of the stack.
  */
 LULU_API void
-lulu_push_value(lulu_VM *vm, int i);
+lulu_push_value(lulu_VM *L, int i);
 
 /*=== }}} =============================================================== */
 
 
 LULU_API void
-lulu_new_table(lulu_VM *vm, int n_array, int n_hash);
+lulu_new_table(lulu_VM *L, int n_array, int n_hash);
 
 
 /**
@@ -549,7 +549,7 @@ lulu_new_table(lulu_VM *vm, int n_array, int n_hash);
  *      for it to map to `nil. E.g. `t[k] = 1; ...; t[k] = nil;`
  */
 LULU_API int
-lulu_get_table(lulu_VM *vm, int table_index);
+lulu_get_table(lulu_VM *L, int table_index);
 
 
 /**
@@ -571,7 +571,7 @@ lulu_get_table(lulu_VM *vm, int table_index);
  *      to map to `nil`.
  */
 LULU_API int
-lulu_get_field(lulu_VM *vm, int table_index, const char *key);
+lulu_get_field(lulu_VM *L, int table_index, const char *key);
 
 
 /**
@@ -585,7 +585,7 @@ lulu_get_field(lulu_VM *vm, int table_index, const char *key);
  *  2.) When this operation is done, both the key and value are popped.
  */
 LULU_API void
-lulu_set_table(lulu_VM *vm, int table_index);
+lulu_set_table(lulu_VM *L, int table_index);
 
 
 /**
@@ -601,7 +601,7 @@ lulu_set_table(lulu_VM *vm, int table_index);
  *      operation is done, the value is popped.
  */
 LULU_API void
-lulu_set_field(lulu_VM *vm, int table_index, const char *key);
+lulu_set_field(lulu_VM *L, int table_index, const char *key);
 
 
 /**
@@ -615,7 +615,7 @@ lulu_set_field(lulu_VM *vm, int table_index, const char *key);
  *      this function simply mutates indexes `-1` pushes the value.
  */
 LULU_API int
-lulu_next(lulu_VM *vm, int table_index);
+lulu_next(lulu_VM *L, int table_index);
 
 
 /**
@@ -649,7 +649,7 @@ lulu_next(lulu_VM *vm, int table_index);
  *      is vaild.
  */
 LULU_API void
-lulu_concat(lulu_VM *vm, int n);
+lulu_concat(lulu_VM *L, int n);
 
 
 /**
@@ -661,7 +661,7 @@ lulu_concat(lulu_VM *vm, int n);
  *      The length of the object, else 0.
  */
 LULU_API size_t
-lulu_obj_len(lulu_VM *vm, int i);
+lulu_obj_len(lulu_VM *L, int i);
 
 
 /**
@@ -674,7 +674,7 @@ lulu_obj_len(lulu_VM *vm, int i);
  *      1 if successfully filled in `*ar` else 0.
  */
 LULU_API int
-lulu_get_stack(lulu_VM *vm, int level, lulu_Debug *ar);
+lulu_get_stack(lulu_VM *L, int level, lulu_Debug *ar);
 
 
 /**
@@ -687,7 +687,7 @@ lulu_get_stack(lulu_VM *vm, int level, lulu_Debug *ar);
  *      `'u'` (to select `nups`)
  */
 LULU_API int
-lulu_get_info(lulu_VM *vm, const char *options, lulu_Debug *ar);
+lulu_get_info(lulu_VM *L, const char *options, lulu_Debug *ar);
 
 
 /** HELPER MACROS =================================================== {{{ */

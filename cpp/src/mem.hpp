@@ -14,7 +14,7 @@ struct Compiler;
 struct Intern;
 
 void *
-mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
+mem_rawrealloc(lulu_VM *L, void *ptr, usize old_size, usize new_size);
 
 /**
  * @note(2025-08-27)
@@ -22,7 +22,7 @@ mem_rawrealloc(lulu_VM *vm, void *ptr, usize old_size, usize new_size);
  *      Marking the Roots.
  */
 void
-mem_collect_garbage(lulu_VM *vm);
+mem_collect_garbage(lulu_VM *L);
 
 
 /**
@@ -31,7 +31,7 @@ mem_collect_garbage(lulu_VM *vm);
  *      Marking the Roots.
  */
 void
-mem_mark_value(lulu_VM *vm, Value v);
+mem_mark_value(lulu_VM *L, Value v);
 
 
 /**
@@ -40,7 +40,7 @@ mem_mark_value(lulu_VM *vm, Value v);
  *      Marking the Roots.
  */
 void
-mem_mark_object(lulu_VM *vm, Object *o);
+mem_mark_object(lulu_VM *L, Object *o);
 
 
 /**
@@ -49,7 +49,7 @@ mem_mark_object(lulu_VM *vm, Object *o);
  *      Marking the Roots.
  */
 void
-mem_mark_table(lulu_VM *vm, Table *t);
+mem_mark_table(lulu_VM *L, Table *t);
 
 
 /**
@@ -58,7 +58,7 @@ mem_mark_table(lulu_VM *vm, Table *t);
  *      Crafting Interpreters 26.5.1: Weak references and the string pool.
  */
 void
-mem_remove_intern(lulu_VM *vm, Intern *t);
+mem_remove_intern(lulu_VM *L, Intern *t);
 
 
 /**
@@ -67,7 +67,7 @@ mem_remove_intern(lulu_VM *vm, Intern *t);
  *      26.3.1: Less obvious roots.
  */
 void
-mem_mark_compiler_roots(lulu_VM *vm, Compiler *c);
+mem_mark_compiler_roots(lulu_VM *L, Compiler *c);
 
 
 /**
@@ -114,65 +114,65 @@ mem_next_fib(isize n)
 // `extra` may be negative to allow us to work with 0-length flexible arrays.
 template<class T>
 inline T *
-mem_new(lulu_VM *vm, isize extra = 0)
+mem_new(lulu_VM *L, isize extra = 0)
 {
     // Cast must occur after arithmetic in case `extra < 0`.
     usize size = static_cast<usize>(size_of(T) + extra);
-    return reinterpret_cast<T *>(mem_rawrealloc(vm, nullptr, 0, size));
+    return reinterpret_cast<T *>(mem_rawrealloc(L, nullptr, 0, size));
 }
 
 template<class T>
 inline void
-mem_free(lulu_VM *vm, T *ptr, isize extra = 0)
+mem_free(lulu_VM *L, T *ptr, isize extra = 0)
 {
     usize size = static_cast<usize>(size_of(T) + extra);
-    mem_rawrealloc(vm, ptr, size, 0);
+    mem_rawrealloc(L, ptr, size, 0);
 }
 
 template<class T>
 inline T *
-mem_resize(lulu_VM *vm, T *ptr, isize prev, isize next)
+mem_resize(lulu_VM *L, T *ptr, isize prev, isize next)
 {
     usize prev_size = sizeof(T) * static_cast<usize>(prev);
     usize next_size = sizeof(T) * static_cast<usize>(next);
-    return reinterpret_cast<T *>(mem_rawrealloc(vm, ptr, prev_size, next_size));
+    return reinterpret_cast<T *>(mem_rawrealloc(L, ptr, prev_size, next_size));
 }
 
 template<class T>
 inline T *
-mem_make(lulu_VM *vm, isize count)
+mem_make(lulu_VM *L, isize count)
 {
-    return mem_resize<T>(vm, nullptr, 0, count);
+    return mem_resize<T>(L, nullptr, 0, count);
 }
 
 template<class T>
 inline void
-mem_delete(lulu_VM *vm, T *ptr, isize n)
+mem_delete(lulu_VM *L, T *ptr, isize n)
 {
-    mem_resize(vm, ptr, n, 0);
+    mem_resize(L, ptr, n, 0);
 }
 
 template<class T>
 inline Slice<T>
-slice_make(lulu_VM *vm, isize n)
+slice_make(lulu_VM *L, isize n)
 {
-    Slice<T> s{mem_make<T>(vm, n), n};
+    Slice<T> s{mem_make<T>(L, n), n};
     return s;
 }
 
 template<class T>
 inline void
-slice_resize(lulu_VM *vm, Slice<T> *s, isize n)
+slice_resize(lulu_VM *L, Slice<T> *s, isize n)
 {
-    Slice<T> next{mem_resize<T>(vm, raw_data(*s), len(*s), n), n};
+    Slice<T> next{mem_resize<T>(L, raw_data(*s), len(*s), n), n};
     *s = next;
 }
 
 template<class T>
 inline void
-slice_delete(lulu_VM *vm, Slice<T> s)
+slice_delete(lulu_VM *L, Slice<T> s)
 {
-    mem_delete(vm, raw_data(s), len(s));
+    mem_delete(L, raw_data(s), len(s));
 }
 
 

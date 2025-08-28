@@ -16,9 +16,9 @@ struct Dynamic : public Slice<T> {
  */
 template<class T>
 inline void
-dynamic_reserve(lulu_VM *vm, Dynamic<T> *d, isize new_cap)
+dynamic_reserve(lulu_VM *L, Dynamic<T> *d, isize new_cap)
 {
-    d->data = mem_resize(vm, d->data, d->cap, new_cap);
+    d->data = mem_resize(L, d->data, d->cap, new_cap);
     d->cap  = new_cap;
 }
 
@@ -34,21 +34,21 @@ dynamic_reserve(lulu_VM *vm, Dynamic<T> *d, isize new_cap)
  */
 template<class T>
 inline void
-dynamic_resize(lulu_VM *vm, Dynamic<T> *d, isize new_len)
+dynamic_resize(lulu_VM *L, Dynamic<T> *d, isize new_len)
 {
     // Can't accomodate the new data?
     if (new_len > d->cap) {
         // Use minimum cap of 8 for performance.
-        dynamic_reserve(vm, d, mem_next_fib(max(new_len, 8_i)));
+        dynamic_reserve(L, d, mem_next_fib(max(new_len, 8_i)));
     }
     d->len = new_len;
 }
 
 template<class T>
 inline void
-dynamic_push(lulu_VM *vm, Dynamic<T> *d, T value)
+dynamic_push(lulu_VM *L, Dynamic<T> *d, T value)
 {
-    dynamic_resize(vm, d, d->len + 1);
+    dynamic_resize(L, d, d->len + 1);
     (*d)[d->len - 1] = value;
 }
 
@@ -61,9 +61,9 @@ dynamic_pop(Dynamic<T> *d)
 
 template<class T>
 inline void
-dynamic_delete(lulu_VM *vm, Dynamic<T> &d)
+dynamic_delete(lulu_VM *L, Dynamic<T> &d)
 {
-    mem_delete(vm, d.data, d.cap);
+    mem_delete(L, d.data, d.cap);
 }
 
 template<class T>

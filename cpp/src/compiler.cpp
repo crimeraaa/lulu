@@ -20,10 +20,10 @@ static int
 jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2);
 
 Compiler
-compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev)
+compiler_make(lulu_VM *L, Parser *p, Chunk *f, Table *i, Compiler *prev)
 {
     Compiler c{};
-    c.vm          = vm;
+    c.L           = L;
     c.prev        = prev;
     c.parser      = p;
     c.chunk       = f;
@@ -48,9 +48,9 @@ compiler_error_limit(Compiler *c, int limit, const char *what)
 static int
 code_push(Compiler *c, Instruction i)
 {
-    lulu_VM *vm = c->vm;
+    lulu_VM *L = c->L;
     Chunk   *p  = c->chunk;
-    return chunk_add_code(vm, p, i, c->parser->last_line, &c->pc);
+    return chunk_add_code(L, p, i, c->parser->last_line, &c->pc);
 }
 
 static void
@@ -141,14 +141,14 @@ add_constant(Compiler *c, Value k, Value v)
         return static_cast<u32>(i.to_integer());
     }
 
-    lulu_VM *vm = c->vm;
+    lulu_VM *L = c->L;
     // Push value to prevent collection in case garbage collector runs in any
     // of the below calls.
-    vm_push_value(vm, v);
-    u32 n = chunk_add_constant(vm, c->chunk, v);
+    vm_push_value(L, v);
+    u32 n = chunk_add_constant(L, c->chunk, v);
     i = Value::make_integer(static_cast<Integer>(n));
-    table_set(c->vm, c->indexes, k, i);
-    vm_pop_value(vm);
+    table_set(c->L, c->indexes, k, i);
+    vm_pop_value(L);
     return n;
 }
 
