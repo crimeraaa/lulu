@@ -121,7 +121,9 @@ enum Value_Type : u8 {
 
 union Object;
 using Object_Mark = u8;
-struct Object_Header {
+
+// Do not create stack-allocated instances of these; unaligned accesses may occur.
+struct [[gnu::packed]] Object_Header {
     Object     *next;
     Value_Type  type;
     Object_Mark mark;

@@ -3,7 +3,8 @@
 #include "chunk.hpp"
 #include "private.hpp"
 
-struct Closure_Header : Object_Header {
+// Do not create stack-allocated instances of these; unaligned accesses may occur.
+struct [[gnu::packed]] Closure_Header : Object_Header {
     u8 n_upvalues;
     bool is_c;
 };
