@@ -81,12 +81,6 @@ number_to_lstring(Number n, Slice<char> buf)
 }
 
 void
-builder_init(Builder *b)
-{
-    dynamic_init(&b->buffer);
-}
-
-void
 builder_reset(Builder *b)
 {
     dynamic_reset(&b->buffer);
@@ -195,14 +189,6 @@ hash_string(LString text)
     return hash;
 }
 
-void
-intern_init(Intern *t)
-{
-    t->table.data = nullptr;
-    t->table.len  = 0;
-    t->count      = 0;
-}
-
 // Assumes `cap` is always a power of 2.
 // The result must be unsigned in order to have sane bitwise operations.
 static usize
@@ -245,13 +231,12 @@ intern_destroy(lulu_VM *vm, Intern *t)
     for (Object *list : t->table) {
         Object *node = list;
         while (node != nullptr) {
-            Object *next = node->base.next;
+            Object *next = node->next();
             object_free(vm, node);
             node = next;
         }
     }
     slice_delete(vm, t->table);
-    intern_init(t);
 }
 
 OString *
@@ -260,7 +245,7 @@ ostring_new(lulu_VM *vm, LString text)
     Intern *t    = &G(vm)->intern;
     u32     hash = hash_string(text);
     usize   i    = intern_clamp_index(hash, len(t->table));
-    for (Object *node = t->table[i]; node != nullptr; node = node->base.next) {
+    for (Object *node = t->table[i]; node != nullptr; node = node->next()) {
         OString *s = &node->ostring;
         if (s->hash == hash) {
             if (slice_eq(text, s->to_lstring())) {
@@ -278,12 +263,20 @@ ostring_new(lulu_VM *vm, LString text)
     s->data[s->len] = 0;
     memcpy(s->data, raw_data(text), static_cast<usize>(len(text)));
 
+#ifdef LULU_DEBUG_LOG_GC
+    object_gc_print(s->to_object(), "[NEW] string");
+#endif // LULU_DEBUG_LOG_GC
+
     isize n = len(t->table);
+    lulu_assume(n > 0);
+
     // Count refers to total number of linked list nodes, not occupied array
     // slots. We probably want to rehash anyway to reduce clustering.
     if (t->count + 1 > n) {
+        vm_push_value(vm, Value::make_string(s));
         // We assume `n` is a power of 2.
         intern_resize(vm, t, n << 1);
+        vm_pop_value(vm);
     }
     t->count++;
     return s;

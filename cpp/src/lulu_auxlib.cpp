@@ -361,6 +361,7 @@ lulu_set_nlibrary(lulu_VM *vm, const char *libname,
     }
 }
 
+[[maybe_unused]]
 static const lulu_Register libs[] = {
     {LULU_BASE_LIB_NAME, lulu_open_base},
     {LULU_MATH_LIB_NAME, lulu_open_math},
@@ -371,9 +372,10 @@ static const lulu_Register libs[] = {
 LULU_LIB_API void
 lulu_open_libs(lulu_VM *vm)
 {
-    for (int i = 0; i < lulu_count_library(libs); i++) {
-        lulu_push_cfunction(vm, libs[i].function);
-        lulu_push_string(vm, libs[i].name);
-        lulu_call(vm, 1, 0);
-    }
+    libs[0].function(vm);
+    // for (int i = 0; i < lulu_count_library(libs); i++) {
+    //     lulu_push_cfunction(vm, libs[i].function);
+    //     lulu_push_string(vm, libs[i].name);
+    //     lulu_call(vm, 1, 0);
+    // }
 }

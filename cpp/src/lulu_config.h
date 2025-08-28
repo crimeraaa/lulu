@@ -63,9 +63,7 @@
  *      to and including this value are guaranteed to be valid, thus you do
  *      not need to worry about stack overflow.
  */
-#define LULU_STACK_MIN 8
-
-
+#define LULU_STACK_MIN       20
 #define LULU_BASE_LIB_NAME   "base"
 #define LULU_STRING_LIB_NAME "string"
 #define LULU_MATH_LIB_NAME   "math"
@@ -183,9 +181,7 @@
 #endif /* LULU_ATTR_PRINTF */
 
 #ifdef LULU_BUILD_ALL
-
 #    include <math.h>
-
 #    define lulu_Number_add(x, y) ((x) + (y))
 #    define lulu_Number_sub(x, y) ((x) - (y))
 #    define lulu_Number_mul(x, y) ((x) * (y))
@@ -193,12 +189,28 @@
 #    define lulu_Number_mod(x, y) fmod(x, y)
 #    define lulu_Number_pow(x, y) pow(x, y)
 #    define lulu_Number_unm(x)    (-(x))
-
 #    define lulu_Number_eq(x, y)  ((x) == (y))
 #    define lulu_Number_lt(x, y)  ((x) < (y))
 #    define lulu_Number_leq(x, y) ((x) <= (y))
-
 #endif /* LULU_BUILD_ALL */
+
+
+#ifdef LULU_DEBUG
+/**
+ * @brief Crafting Interpreters 26.2.1: Collecting Garbage
+ *      Enables stress testing of the garbage collector, i.e. run as often as
+ *      possible.
+ */
+#   define LULU_DEBUG_STRESS_GC
+
+/**
+ * @brief Crafting Interpreters 26.2.2: Debug Logging
+ *      Makes the garbage collector less 'opaque' by constantly writing out
+ *      what it is doing.
+ */
+#   define LULU_DEBUG_LOG_GC
+#endif
+
 
 /**=== LOCAL REDEFINITIONS ============================================= {{{
  * You can `#undef` any of the above macros, mainly the ones marked with
@@ -207,6 +219,8 @@
 
 /* #undef LULU_BUFFER_BUFSIZE
 #define LULU_BUFFER_BUFSIZE 16 */
+
+/* #undef LULU_DEBUG_LOG_GC */
 
 /*=== }}} =============================================================== */
 

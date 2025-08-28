@@ -73,9 +73,8 @@ function_upvalue_find(lulu_VM *vm, Value *local)
     // New upvalue is always open. Add it to the VM's open upvalue list.
     Upvalue *up = object_new<Upvalue>(vm, &vm->open_upvalues, VALUE_UPVALUE);
 
-    // Current value lives on the stack.
+    // Current value lives on the stack. Closed is not yet used.
     up->value  = local;
-    up->closed = nil;
     return up;
 }
 
@@ -84,7 +83,7 @@ upvalue_link(lulu_VM *vm, Upvalue *up)
 {
     auto g = G(vm);
     up->next   = g->objects;
-    g->objects = reinterpret_cast<Object *>(up);
+    g->objects = up->to_object();
     // @todo(2025-08-26) Check if object is collectible, etc.
 }
 

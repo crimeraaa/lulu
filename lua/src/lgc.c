@@ -662,9 +662,16 @@ void luaC_fullgc (lua_State *L) {
 
 void luaC_barrierf (lua_State *L, GCObject *o, GCObject *v) {
   global_State *g = G(L);
+
+  /* `o` must be traversed and `v` must be fresh */
   lua_assert(isblack(o) && iswhite(v) && !isdead(g, v) && !isdead(g, o));
+
+  /* GC must be propagating, sweeping or finalizing */
   lua_assert(g->gcstate != GCSfinalize && g->gcstate != GCSpause);
+
+  /* Don't use this function for tables; use `luaC_barrierback()` instead */
   lua_assert(ttype(&o->gch) != LUA_TTABLE);
+
   /* must keep invariant? */
   if (g->gcstate == GCSpropagate)
     reallymarkobject(g, v);  /* restore invariant */
@@ -676,8 +683,14 @@ void luaC_barrierf (lua_State *L, GCObject *o, GCObject *v) {
 void luaC_barrierback (lua_State *L, Table *t) {
   global_State *g = G(L);
   GCObject *o = obj2gco(t);
+
+  /* Obviously cannot convert a non-black or dead value to gray */
   lua_assert(isblack(o) && !isdead(g, o));
+
+  /* GC must be propagating, sweeping or finalizing */
   lua_assert(g->gcstate != GCSfinalize && g->gcstate != GCSpause);
+
+  /* Since we are about to insert a new key, graph no longer fully traversed */
   black2gray(o);  /* make table gray (again) */
   t->gclist = g->grayagain;
   g->grayagain = o;

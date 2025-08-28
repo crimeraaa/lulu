@@ -22,16 +22,13 @@ jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2);
 Compiler
 compiler_make(lulu_VM *vm, Parser *p, Chunk *f, Table *i, Compiler *prev)
 {
-    Compiler c;
+    Compiler c{};
     c.vm          = vm;
     c.prev        = prev;
     c.parser      = p;
     c.chunk       = f;
     c.indexes     = i;
-    c.block       = nullptr;
-    c.pc          = 0;
     c.last_target = NO_JUMP;
-    c.free_reg    = 0;
     small_array_clear(&c.active);
     return c;
 }
@@ -52,9 +49,8 @@ static int
 code_push(Compiler *c, Instruction i)
 {
     lulu_VM *vm = c->vm;
-    Chunk *p = c->chunk;
-    int pc = chunk_add_code(vm, p, i, c->parser->last_line, &c->pc);
-    return pc;
+    Chunk   *p  = c->chunk;
+    return chunk_add_code(vm, p, i, c->parser->last_line, &c->pc);
 }
 
 static void
@@ -67,12 +63,12 @@ int
 compiler_code_abc(Compiler *c, OpCode op, u16 a, u16 b, u16 c2)
 {
     lulu_assert(opinfo[op].fmt() == OPFORMAT_ABC);
-    lulu_assert(
-        opinfo[op].b() == OPARG_REGK || opinfo[op].b() == OPARG_OTHER || b == 0
-    );
-    lulu_assert(
-        opinfo[op].c() == OPARG_REGK || opinfo[op].c() == OPARG_OTHER || c2 == 0
-    );
+    lulu_assert(opinfo[op].b() == OPARG_REGK
+        || opinfo[op].b() == OPARG_OTHER
+        || b == 0);
+    lulu_assert(opinfo[op].c() == OPARG_REGK
+        || opinfo[op].c() == OPARG_OTHER
+        || c2 == 0);
     return code_push(c, Instruction::make_abc(op, a, b, c2));
 }
 
@@ -140,12 +136,19 @@ static u32
 add_constant(Compiler *c, Value k, Value v)
 {
     Value i;
-    if (table_get(c->indexes, k, &i)) {
+    // Constant not found or is string literal mapping to just true
+    if (table_get(c->indexes, k, &i) && i.is_integer()) {
         return static_cast<u32>(i.to_integer());
     }
-    u32 n = chunk_add_constant(c->vm, c->chunk, v);
-    i     = Value::make_integer(static_cast<Integer>(n));
+
+    lulu_VM *vm = c->vm;
+    // Push value to prevent collection in case garbage collector runs in any
+    // of the below calls.
+    vm_push_value(vm, v);
+    u32 n = chunk_add_constant(vm, c->chunk, v);
+    i = Value::make_integer(static_cast<Integer>(n));
     table_set(c->vm, c->indexes, k, i);
+    vm_pop_value(vm);
     return n;
 }
 
@@ -427,22 +430,17 @@ u16
 compiler_expr_rk(Compiler *c, Expr *e)
 {
     switch (e->type) {
-    case EXPR_NIL:
-        return value_to_rk(c, e, nil);
-    case EXPR_FALSE:
-        return value_to_rk(c, e, Value::make_boolean(true));
-    case EXPR_TRUE:
-        return value_to_rk(c, e, Value::make_boolean(false));
-    case EXPR_NUMBER:
-        return value_to_rk(c, e, Value::make_number(e->number));
+    case EXPR_NIL:    return value_to_rk(c, e, nil);
+    case EXPR_FALSE:  return value_to_rk(c, e, Value::make_boolean(true));
+    case EXPR_TRUE:   return value_to_rk(c, e, Value::make_boolean(false));
+    case EXPR_NUMBER: return value_to_rk(c, e, Value::make_number(e->number));
 
     // May reach here if we previously called this.
-    case EXPR_CONSTANT: {
+    case EXPR_CONSTANT:
         if (e->index <= Instruction::MAX_RK) {
             return Instruction::reg_to_rk(static_cast<u16>(e->index));
         }
         break;
-    }
     default:
         break;
     }
@@ -464,15 +462,9 @@ arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
     a = left->number;
     b = right->number;
     switch (op) {
-    case OP_ADD:
-        n = lulu_Number_add(a, b);
-        break;
-    case OP_SUB:
-        n = lulu_Number_sub(a, b);
-        break;
-    case OP_MUL:
-        n = lulu_Number_mul(a, b);
-        break;
+    case OP_ADD: n = lulu_Number_add(a, b); break;
+    case OP_SUB: n = lulu_Number_sub(a, b); break;
+    case OP_MUL: n = lulu_Number_mul(a, b); break;
     case OP_DIV:
         // Do not divide by 0.
         if (b == 0) {
@@ -499,12 +491,8 @@ arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
 }
 
 void
-compiler_code_arith(
-    Compiler *c,
-    OpCode    op,
-    Expr *restrict left,
-    Expr *restrict right
-)
+compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
+    Expr *restrict right)
 {
     lulu_assert((OP_ADD <= op && op <= OP_POW) || op == OP_CONCAT);
     if (arith_folded(op, left, right)) {

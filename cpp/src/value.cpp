@@ -5,16 +5,19 @@
 
 /**
  * @note(2025-07-21)
- *      Sync with `private.hpp:Value_Type`!
+ *      ORDER: Sync with `private.hpp:Value_Type`!
  */
 const char *const Value::type_names[] = {
-    /* VALUE_NIL */ "nil",
-    /* VALUE_BOOLEAN */ "boolean",
-    /* VALUE_LIGHTUSERDATA */ "userdata",
-    /* VALUE_NUMBER */ "number",
-    /* VALUE_STRING */ "string",
-    /* VALUE_TABLE */ "table",
-    /* VALUE_FUNCTION */ "function",
+    "nil",      // VALUE_NIL
+    "boolean",  // VALUE_BOOLEAN
+    "userdata", // VALUE_LIGHTUSERDATA
+    "number",   // VALUE_NUMBER
+    "string",   // VALUE_STRING
+    "table",    // VALUE_TABLE
+    "function", // VALUE_FUNCTION
+    "chunk",    // VALUE_CHUNK
+    "upvalue",  // VALUE_UPVALUE
+    "integer",  // VALUE_INTEGER
 };
 
 bool

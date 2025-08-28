@@ -1,9 +1,10 @@
 #pragma once
 
 #include "private.hpp"
-#include "string.hpp" // OString
+#include "slice.hpp" // LString
 
 union Object;
+struct OString;
 struct Table;
 union Closure;
 struct Chunk;
@@ -153,7 +154,7 @@ public:
     type_name() const
     {
         Value_Type t = this->type();
-        lulu_assert(VALUE_NIL <= t && t <= VALUE_FUNCTION);
+        lulu_assert(VALUE_NIL <= t && t <= VALUE_TYPE_LAST);
         return Value::type_names[t];
     }
 
@@ -203,7 +204,7 @@ public:
     constexpr bool
     is_object() const noexcept
     {
-        return this->type() >= VALUE_STRING;
+        return VALUE_STRING <= this->type() && this->type() <= VALUE_UPVALUE;
     }
 
     constexpr bool

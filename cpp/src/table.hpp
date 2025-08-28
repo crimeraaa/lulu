@@ -15,9 +15,7 @@ struct Entry {
     }
 };
 
-struct Table {
-    OBJECT_HEADER;
-
+struct Table : Object_Header {
     // Array segment data. Not all slots may be occupied.
     // `len(array)` is the functional capacity, not the active count.
     Slice<Value> array;
@@ -36,8 +34,6 @@ table_new(lulu_VM *vm, isize n_hash, isize n_array);
 void
 table_delete(lulu_VM *vm, Table *t);
 
-void
-table_init(Table *t);
 
 /**
  * @param [out] v

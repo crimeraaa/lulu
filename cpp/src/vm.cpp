@@ -17,15 +17,14 @@ overflow_error(lulu_VM *vm, isize n, isize limit, const char *what)
 static void
 required_allocations(lulu_VM *vm, void *)
 {
+    Table *t = table_new(vm, /* n_hash */ 8, /* n_array */ 0);
+    vm->globals.set_table(t);
     // Ensure when we start interning strings we can already index.
     intern_resize(vm, &G(vm)->intern, 32);
 
-    // TODO(2025-06-30): Mark the memory error string as "immortal"?
     OString *o = ostring_new(vm, lstring_literal(LULU_MEMORY_ERROR_STRING));
-    unused(o);
+    o->mark |= OBJECT_FIXED;
     lexer_global_init(vm);
-    Table *t = table_new(vm, /* n_hash */ 8, /* n_array */ 0);
-    vm->globals.set_table(t);
 }
 
 LULU_API lulu_VM *
@@ -36,28 +35,20 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
 
     lulu_Global *g = &_g;
     lulu_VM *vm = &_vm;
-    small_array_clear(&vm->frames);
 
     // Global state
-    g->panic_fn       = nullptr;
+    *g = {};
     g->allocator      = allocator;
     g->allocator_data = allocator_data;
-    g->objects        = nullptr;
-
-    // // Upvalues chain is circular to prevent nul dereferences.
-    // g->upvalues_head.list.prev = &g->upvalues_head;
-    // g->upvalues_head.list.next = &g->upvalues_head;
 
     // VM state
+    *vm = {};
     vm->global_state  = g;
-    vm->saved_ip       = nullptr;
-    vm->open_upvalues  = nullptr;
-    vm->window         = slice(vm->stack, 0, 0);
-    vm->globals        = nil;
+    vm->window        = slice(vm->stack, 0, 0);
 
-    builder_init(&g->builder);
-    intern_init(&g->intern);
+    g->gc_paused = true;
     Error e = vm_run_protected(vm, required_allocations, nullptr);
+    g->gc_paused = false;
     if (e != LULU_OK) {
         lulu_close(vm);
         return nullptr;
@@ -74,10 +65,11 @@ lulu_close(lulu_VM *vm)
     Object *o = G(vm)->objects;
     while (o != nullptr) {
         // Save because `o` is about to be invalidated.
-        Object *next = o->base.next;
+        Object *next = o->next();
         object_free(vm, o);
         o = next;
     }
+    cdynamic_delete(vm->gray_stack);
 }
 
 //=== CALL FRAME ARRAY MANIPULATION ==================================== {{{
@@ -104,6 +96,9 @@ frame_slice(lulu_VM *vm)
 static int
 frame_index(lulu_VM *vm, Call_Frame *cf)
 {
+    if (cf == nullptr) {
+        return 0;
+    }
     return ptr_index(frame_slice(vm), cf);
 }
 
@@ -187,11 +182,12 @@ static void
 set_error(lulu_VM *vm, int old_cf, int old_base, int old_top)
 {
     // TODO(2025-06-30): Check if `LULU_ERROR_MEMORY` works properly here
-    Value v    = vm_pop(vm);
+    Value v    = *vm_top_ptr(vm);
     vm->caller = frame_get(vm, old_cf);
     vm->window = slice(vm->stack, old_base, old_top);
     frame_resize(vm, old_cf + 1);
-    vm_push(vm, v);
+    vm_pop_value(vm);
+    vm_push_value(vm, v);
 }
 
 Error
@@ -271,7 +267,7 @@ const char *
 vm_push_string(lulu_VM *vm, LString s)
 {
     OString *o = ostring_new(vm, s);
-    vm_push(vm, Value::make_string(o));
+    vm_push_value(vm, Value::make_string(o));
     return o->data;
 }
 
@@ -370,36 +366,20 @@ load(lulu_VM *vm, void *user_ptr)
 {
     Load_Data *d      = reinterpret_cast<Load_Data *>(user_ptr);
     OString   *source = ostring_new(vm, d->source);
-
+    vm_push_value(vm, Value::make_string(source));
     Chunk   *p = parser_program(vm, source, d->stream, &d->builder);
     Closure *f = closure_lua_new(vm, p);
-    vm_push(vm, Value::make_function(f));
+    vm_pop_value(vm);
+    vm_push_value(vm, Value::make_function(f));
 }
 
 Error
 vm_load(lulu_VM *vm, LString source, Stream *z)
 {
     Load_Data d{source, z, {}};
-    builder_init(&d.builder);
     Error e = vm_run_protected(vm, load, &d);
     builder_destroy(vm, &d.builder);
     return e;
-}
-
-void
-vm_push(lulu_VM *vm, Value v)
-{
-    isize i       = vm->window.len++;
-    vm->window[i] = v;
-}
-
-Value
-vm_pop(lulu_VM *vm)
-{
-    // Length update must occur AFTER the indexing to not trip up bounds check.
-    Value v = vm->window[len(vm->window) - 1];
-    vm->window.len--;
-    return v;
 }
 
 void
@@ -852,24 +832,12 @@ re_entry:
             *up->value = *ra;
             break;
         }
-        case OP_ADD:
-            ARITH_OP(lulu_Number_add, MT_ADD);
-            break;
-        case OP_SUB:
-            ARITH_OP(lulu_Number_sub, MT_SUB);
-            break;
-        case OP_MUL:
-            ARITH_OP(lulu_Number_mul, MT_MUL);
-            break;
-        case OP_DIV:
-            ARITH_OP(lulu_Number_div, MT_DIV);
-            break;
-        case OP_MOD:
-            ARITH_OP(lulu_Number_mod, MT_MOD);
-            break;
-        case OP_POW:
-            ARITH_OP(lulu_Number_pow, MT_POW);
-            break;
+        case OP_ADD: ARITH_OP(lulu_Number_add, MT_ADD); break;
+        case OP_SUB: ARITH_OP(lulu_Number_sub, MT_SUB); break;
+        case OP_MUL: ARITH_OP(lulu_Number_mul, MT_MUL); break;
+        case OP_DIV: ARITH_OP(lulu_Number_div, MT_DIV); break;
+        case OP_MOD: ARITH_OP(lulu_Number_mod, MT_MOD); break;
+        case OP_POW: ARITH_OP(lulu_Number_pow, MT_POW); break;
         case OP_EQ: {
             Value left  = RKB(inst);
             Value right = RKC(inst);
@@ -1044,10 +1012,13 @@ re_entry:
         case OP_CLOSURE: {
             Closure *f = closure_lua_new(vm, chunk->children[inst.bx()]);
             Closure_Lua *lua = f->to_lua();
-            for (int i = 0, n = lua->n_upvalues; i < n; i++, ip++) {
+            // Ensure closure lives on the stack already to avoid collection.
+            // This also ensures the upvalues are not collected.
+            *ra = Value::make_function(f);
+            for (Upvalue *&up : lua->slice_upvalues()) {
                 // Just need to copy someone else's upvalues?
                 if (ip->op() == OP_GET_UPVALUE) {
-                    lua->upvalues[i] = caller->upvalues[ip->b()];
+                    up = caller->upvalues[ip->b()];
                 }
                 // We're the first ones to manage this upvalue.
                 else {
@@ -1056,10 +1027,10 @@ re_entry:
                     // We haven't transferred control to the closure, so our
                     // local indices are still valid.
                     Value *v = &window[ip->b()];
-                    lua->upvalues[i] = function_upvalue_find(vm, v);
+                    up = function_upvalue_find(vm, v);
                 }
+                ip++;
             }
-            *ra = Value::make_function(f);
             break;
         }
         case OP_CLOSE:

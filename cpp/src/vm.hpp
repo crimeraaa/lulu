@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdlib.h> // exit
+
 #include "object.hpp"
 #include "private.hpp"
 #include "small_array.hpp"
@@ -68,7 +70,58 @@ struct lulu_Global {
 
     // Linked list of all collectable objects.
     Object *objects;
+
+    // Hack until we get proper GC states.
+    bool gc_paused;
 };
+
+// Does NOT use VM global allocator to prevent recursive GC collection.
+template<class T>
+struct CDynamic {
+    T    *data;
+    isize len;
+    isize cap;
+
+    T &
+    operator[](isize i)
+    {
+        lulu_assert(0 <= i && i < this->len);
+        return this->data[i];
+    }
+};
+
+template<class T>
+inline void
+cdynamic_push(CDynamic<T> *d, T v)
+{
+    if (d->len + 1 > d->cap) {
+        d->cap  = mem_next_pow2(max(d->len + 1, 8_i));
+        d->data = static_cast<T *>(realloc(d->data, sizeof(T) * d->cap));
+        // @todo(2025-08-27) Do literally anything else
+        if (d->data == nullptr) {
+            exit(1);
+        }
+    }
+    d->data[d->len++] = v;
+}
+
+template<class T>
+inline T
+cdynamic_pop(CDynamic<T> *d)
+{
+    // Decrement must occur after access to avoid tripping up bounds check.
+    isize i = d->len - 1;
+    T top = (*d)[i];
+    d->len = i;
+    return top;
+}
+
+template<class T>
+inline void
+cdynamic_delete(CDynamic<T> &d)
+{
+    free(d.data);
+}
 
 struct LULU_PUBLIC lulu_VM {
     lulu_Global       *global_state;
@@ -83,6 +136,8 @@ struct LULU_PUBLIC lulu_VM {
     // Linked list of open upvalues in the current stack frame.
     // Helps with variable reuse.
     Object *open_upvalues;
+
+    CDynamic<Object *> gray_stack;
 
     LULU_PRIVATE
     lulu_VM() = default;
@@ -137,11 +192,20 @@ vm_run_protected(lulu_VM *vm, Protected_Fn fn, void *user_ptr);
  *  1.) Incrementing the VM's view length by 1 is still within bounds of the
  *      main stack.
  */
-void
-vm_push(lulu_VM *vm, Value v);
+inline void
+vm_push_value(lulu_VM *vm, Value v)
+{
+    isize i = vm->window.len++;
+    vm->window[i] = v;
+}
 
-Value
-vm_pop(lulu_VM *vm);
+inline void
+vm_pop_value(lulu_VM *vm)
+{
+    // Do not decrement too much.
+    lulu_assert(vm->window.len > 0);
+    vm->window.len -= 1;
+}
 
 void
 vm_check_stack(lulu_VM *vm, int n);

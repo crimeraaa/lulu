@@ -54,10 +54,27 @@ using usize = size_t;
 #    endif
 #endif // restrict
 
+#define BITFLAG(n)  (1 << (n))
 
-#define OBJECT_HEADER                                                          \
-    Object    *next;                                                           \
-    Value_Type type
+enum Object_Mark_Flag : u8 {
+    // 0b0000_0000
+    // Object has not yet been processed by the current garbage collector run.
+    OBJECT_WHITE = 0,
+
+    // 0b0000_0001
+    OBJECT_GRAY = 1,
+
+    // 0b0000_0010
+    // Object has been traversed; all its children have been checked.
+    OBJECT_BLACK = 2,
+
+    OBJECT_COLOR_MASK = OBJECT_GRAY | OBJECT_BLACK,
+
+    // 0b0000_0100
+    // Object is never collectible no matter what.
+    OBJECT_FIXED = BITFLAG(2),
+};
+
 
 using Type    = lulu_Type;
 using Number  = lulu_Number;
@@ -94,14 +111,83 @@ enum Value_Type {
     VALUE_FUNCTION      = LULU_TYPE_FUNCTION,
 
     // Not accessible from user code.
-    VALUE_INTEGER,
     VALUE_CHUNK,
     VALUE_UPVALUE,
+    VALUE_INTEGER,
 };
 
-#define VALUE_TYPE_LAST VALUE_FUNCTION
+#define VALUE_TYPE_LAST  VALUE_FUNCTION
+#define VALUE_TYPE_COUNT VALUE_INTEGER + 1
 
-static constexpr int VALUE_TYPE_COUNT = VALUE_TYPE_LAST + 1;
+union Object;
+using Object_Mark = u8;
+struct Object_Header {
+    Object     *next;
+    Value_Type  type;
+    Object_Mark mark;
+
+    Object *
+    to_object() noexcept
+    {
+        return reinterpret_cast<Object *>(this);
+    }
+
+    bool
+    is_white() const noexcept
+    {
+        return (this->mark & OBJECT_COLOR_MASK) == OBJECT_WHITE;
+    }
+
+    bool
+    is_gray() const noexcept
+    {
+        return this->mark & OBJECT_GRAY;
+    }
+
+    bool
+    is_black() const noexcept
+    {
+        return this->mark & OBJECT_BLACK;
+    }
+
+
+    bool
+    is_fixed() const noexcept
+    {
+        return this->mark & OBJECT_FIXED;
+    }
+
+    void
+    set_white()
+    {
+        // Clears gray and black bits
+        this->mark &= ~Object_Mark(OBJECT_COLOR_MASK);
+    }
+
+    void
+    set_gray()
+    {
+        this->mark |= OBJECT_GRAY;
+    }
+
+    void
+    set_black()
+    {
+        this->mark |= OBJECT_BLACK;
+    }
+
+    void
+    set_fixed()
+    {
+        this->mark |= OBJECT_FIXED;
+    }
+
+    void
+    clear_fixed()
+    {
+        this->mark &= ~Object_Mark(OBJECT_FIXED);
+    }
+};
 
 template<class T>
 inline T

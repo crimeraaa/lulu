@@ -9,20 +9,8 @@ Chunk *
 chunk_new(lulu_VM *vm, OString *source)
 {
     Chunk *p = object_new<Chunk>(vm, &G(vm)->objects, VALUE_CHUNK);
-    // Because `c` is heap-allocated, we must explicitly 'construct' the
-    // members.
-    dynamic_init(&p->locals);
-    dynamic_init(&p->upvalues);
-    dynamic_init(&p->constants);
-    dynamic_init(&p->children);
-    p->code = {nullptr, 0};
-    dynamic_init(&p->lines);
-    p->n_params          = 0;
-    p->n_upvalues        = 0;
-    p->source            = source;
-    p->line_defined      = 0;
-    p->last_line_defined = 0;
-    p->stack_used        = 2; // R(0) and R(1) must always be valid.
+    p->source     = source;
+    p->stack_used = 2; // R(0) and R(1) must always be valid.
     return p;
 }
 
@@ -38,13 +26,14 @@ chunk_delete(lulu_VM *vm, Chunk *p)
     mem_free(vm, p);
 }
 
-void
+static void
 chunk_add_line(lulu_VM *vm, Chunk *p, int pc, int line)
 {
     // Have previous lines to go to?
     int i = static_cast<int>(len(p->lines));
     if (i > 0) {
         Line_Info *last = &p->lines[i - 1];
+        // Last line is the same as ours, so we can fold this pc range?
         if (last->line == line) {
             // Make sure `pc` is in range and will update things correctly.
             lulu_assertf(last->start_pc <= pc, "start_pc=%i > pc=%i",
@@ -66,7 +55,11 @@ chunk_add_line(lulu_VM *vm, Chunk *p, int pc, int line)
 int
 chunk_add_code(lulu_VM *vm, Chunk *p, Instruction i, int line, int *n)
 {
-    int pc = chunk_slice_push(vm, &p->code, i, n);
+    int pc = (*n)++;
+    if (pc + 1 > len(p->code)) {
+        slice_resize(vm, &p->code, mem_next_pow2(max(pc + 1, 8)));
+    }
+    p->code[pc] = i;
     chunk_add_line(vm, p, pc, line);
     return pc;
 }

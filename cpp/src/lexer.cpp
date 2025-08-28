@@ -2,6 +2,8 @@
 #include <stdlib.h>
 
 #include "lexer.hpp"
+#include "parser.hpp"
+#include "compiler.hpp"
 #include "vm.hpp"
 
 static int
@@ -29,7 +31,7 @@ advance(Lexer *x)
 Lexer
 lexer_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
-    Lexer x;
+    Lexer x{};
     x.vm      = vm;
     x.builder = b;
     x.source  = source;
@@ -409,6 +411,25 @@ get_escaped(Lexer *x, char ch)
     error(x, "Invalid escape sequence");
 }
 
+OString *
+lexer_new_ostring(lulu_VM *vm, Lexer *x, LString ls)
+{
+    OString *os = ostring_new(vm, ls);
+    Table *t = x->indexes;
+    Value k = Value::make_string(os);
+    Value v;
+
+    // If key exists, don't do anything as it's not collectible anyway.
+    // Otherwise explicitly mark it to prevent collection.
+    if (!os->is_fixed() && !table_get(t, k, &v)) {
+        v = Value::make_boolean(true);
+        vm_push_value(vm, k);
+        table_set(vm, t, k, v);
+        vm_pop_value(vm);
+    }
+    return os;
+}
+
 static Token
 make_string(Lexer *x, char q)
 {
@@ -431,7 +452,7 @@ make_string(Lexer *x, char q)
 
     // Skip the quote, which we initially saved to the buffer.
     LString  ls = slice_from(get_lexeme(x), 1);
-    OString *os = ostring_new(vm, ls);
+    OString *os = lexer_new_ostring(vm, x, ls);
     return Token::make_ostring(TOKEN_STRING, os);
 }
 
@@ -440,6 +461,7 @@ lexer_lex(Lexer *x)
 {
     int        ch;
     Token_Type type;
+    lulu_VM *vm = x->vm;
 
 // This is only a hack for multiline comments.
 lex_start:
@@ -454,7 +476,7 @@ lex_start:
     ch = save_advance(x);
     if (is_alpha(ch)) {
         consume_sequence(x, is_ident);
-        OString *os = ostring_new(x->vm, get_lexeme(x));
+        OString *os = lexer_new_ostring(vm, x, get_lexeme(x));
         type        = static_cast<Token_Type>(os->keyword_type);
         if (type == TOKEN_INVALID) {
             type = TOKEN_IDENT;
@@ -468,18 +490,10 @@ lex_start:
 
     type = TOKEN_INVALID;
     switch (ch) {
-    case '(':
-        type = TOKEN_OPEN_PAREN;
-        break;
-    case ')':
-        type = TOKEN_CLOSE_PAREN;
-        break;
-    case '{':
-        type = TOKEN_OPEN_CURLY;
-        break;
-    case '}':
-        type = TOKEN_CLOSE_CURLY;
-        break;
+    case '(': type = TOKEN_OPEN_PAREN; break;
+    case ')': type = TOKEN_CLOSE_PAREN; break;
+    case '{': type = TOKEN_OPEN_CURLY; break;
+    case '}': type = TOKEN_CLOSE_CURLY; break;
     case '[':
         if (check2(x, '[', '=')) {
             int nest_open = get_nesting(x, /* do_save */ true);
@@ -490,17 +504,13 @@ lex_start:
 
             // Because we saved the opening, skip it here.
             LString  ls = slice_from(get_lexeme(x), nest_open + 2);
-            OString *os = ostring_new(x->vm, ls);
+            OString *os = lexer_new_ostring(vm, x, ls);
             return Token::make_ostring(TOKEN_STRING, os);
         }
         type = TOKEN_OPEN_BRACE;
         break;
-    case ']':
-        type = TOKEN_CLOSE_BRACE;
-        break;
-    case '+':
-        type = TOKEN_PLUS;
-        break;
+    case ']': type = TOKEN_CLOSE_BRACE; break;
+    case '+': type = TOKEN_PLUS; break;
     case '-':
         // We already advanced, so we have a second '-'?
         if (peek(x) == '-') {
@@ -523,36 +533,15 @@ lex_start:
         }
         type = TOKEN_DASH;
         break;
-    case '*':
-        type = TOKEN_ASTERISK;
-        break;
-    case '/':
-        type = TOKEN_SLASH;
-        break;
-    case '%':
-        type = TOKEN_PERCENT;
-        break;
-    case '^':
-        type = TOKEN_CARET;
-        break;
-
-    case '~':
-        expect(x, '=');
-        type = TOKEN_NOT_EQ;
-        break;
-    case '=':
-        type = match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN;
-        break;
-    case '<':
-        type = match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS;
-        break;
-    case '>':
-        type = match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ;
-        break;
-
-    case '#':
-        type = TOKEN_POUND;
-        break;
+    case '*': type = TOKEN_ASTERISK; break;
+    case '/': type = TOKEN_SLASH; break;
+    case '%': type = TOKEN_PERCENT; break;
+    case '^': type = TOKEN_CARET; break;
+    case '~': expect(x, '='); type = TOKEN_NOT_EQ; break;
+    case '=': type = match(x, '=') ? TOKEN_EQ : TOKEN_ASSIGN; break;
+    case '<': type = match(x, '=') ? TOKEN_LESS_EQ : TOKEN_LESS; break;
+    case '>': type = match(x, '=') ? TOKEN_GREATER : TOKEN_GREATER_EQ; break;
+    case '#': type = TOKEN_POUND; break;
     case '.':
         if (match(x, '.')) {
             type = match(x, '.') ? TOKEN_VARARG : TOKEN_CONCAT;
@@ -564,16 +553,10 @@ lex_start:
             type = TOKEN_DOT;
         }
         break;
-    case ',':
-        type = TOKEN_COMMA;
-        break;
-    case ';':
-        type = TOKEN_SEMI;
-        break;
-
+    case ',': type = TOKEN_COMMA; break;
+    case ';': type = TOKEN_SEMI; break;
     case '\'':
-    case '\"':
-        return make_string(x, ch);
+    case '\"': return make_string(x, ch);
     }
 
     if (type == TOKEN_INVALID) {
@@ -588,65 +571,22 @@ lex_start:
  */
 const char *const token_strings[TOKEN_COUNT] = {
     // Keywords
-    "and",
-    "break",
-    "do",
-    "else",
-    "elseif",
-    "end",
-    "false",
-    "for",
-    "function",
-    "if",
-    "in",
-    "local",
-    "nil",
-    "not",
-    "or",
-    "repeat",
-    "return",
-    "then",
-    "true",
-    "until",
-    "while",
+    "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+    "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
+    "true", "until", "while",
 
     // Balanced pairs
-    "(",
-    ")",
-    "{",
-    "}",
-    "[",
-    "]",
+    "(", ")", "{", "}", "[", "]",
 
     // Arithmetic Operators
-    "+",
-    "-",
-    "*",
-    "/",
-    "/",
-    "^",
+    "+", "-", "*", "/", "/", "^",
 
     // Relational Operators
-    "==",
-    "~=",
-    "<",
-    "<=",
-    ">",
-    ">=",
+    "==", "~=", "<", "<=", ">", ">=",
 
     // Misc.
-    "#",
-    ".",
-    "..",
-    "...",
-    ",",
-    ":",
-    ";",
-    "=",
-    "<ident>",
-    "<number>",
-    "<string>",
-    "<eof>",
+    "#", ".", "..", "...", ",", ":", ";", "=", "<ident>", "<number>",
+    "<string>", "<eof>",
 };
 
 static void
@@ -659,8 +599,9 @@ void
 lexer_global_init(lulu_VM *vm)
 {
     for (Token_Type t = TOKEN_AND; t <= TOKEN_WHILE; t++) {
-        LString  ls      = lstring_from_cstring(token_cstring(t));
-        OString *os      = ostring_new(vm, ls);
-        os->keyword_type = t;
+        OString *s = ostring_new(vm, lstring_from_cstring(token_cstring(t)));
+        // All keywords are 'immortal'; they are never collected.
+        s->set_fixed();
+        s->keyword_type = t;
     }
 }

@@ -137,8 +137,7 @@ table_hash_resize(lulu_VM *vm, Table *t, isize n)
     }
 
     // Minimum array size to prevent frequent reallocations.
-    n = max(n, 8_i);
-    n = mem_next_pow2((n));
+    n = mem_next_pow2(max(n + 1, 8_i));
 
     Slice<Entry> new_entries = slice_make<Entry>(vm, n);
     // Initialize all key-value pairs to nil-nil.
@@ -385,7 +384,7 @@ Table *
 table_new(lulu_VM *vm, isize n_hash, isize n_array)
 {
     Table *t = object_new<Table>(vm, &G(vm)->objects, VALUE_TABLE);
-    table_init(t);
+    t->entries = EMPTY_ENTRY_SLICE;
     if (n_hash > 0) {
         table_hash_resize(vm, t, n_hash);
     }
@@ -403,14 +402,6 @@ table_delete(lulu_VM *vm, Table *t)
     }
     slice_delete(vm, t->array);
     mem_free(vm, t);
-}
-
-void
-table_init(Table *t)
-{
-    t->array   = {nullptr, 0};
-    t->entries = EMPTY_ENTRY_SLICE;
-    t->count   = 0;
 }
 
 static Value *
@@ -432,7 +423,7 @@ table_hash_get(Table *t, Value k, Value *v)
     // Sentinel value is EMPTY_ENTRY which has a nil key and nil value.
     Entry *e     = table_get_entry(t, k);
     bool   found = !e->key.is_nil();
-    *v           = (found) ? e->value : nil;
+    *v = (found) ? e->value : nil;
     return found;
 }
 

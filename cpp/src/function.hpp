@@ -3,20 +3,18 @@
 #include "chunk.hpp"
 #include "private.hpp"
 
-#define CLOSURE_HEADER                                                         \
-    OBJECT_HEADER;                                                             \
-    u8   n_upvalues;                                                           \
-    bool is_c
+struct Closure_Header : Object_Header {
+    u8 n_upvalues;
+    bool is_c;
+};
 
-struct Upvalue {
-    OBJECT_HEADER;
+struct Upvalue : Object_Header {
     // Points to value in stack while open, else points to `closed`.
     Value *value;
     Value closed = nil;
 };
 
-struct Closure_Lua {
-    CLOSURE_HEADER;
+struct Closure_Lua : Closure_Header {
     Chunk   *chunk;
     Upvalue *upvalues[1];
 
@@ -31,10 +29,15 @@ struct Closure_Lua {
     {
         return Closure_Lua::size_upvalues(this->n_upvalues);
     }
+
+    Slice<Upvalue *>
+    slice_upvalues() noexcept
+    {
+        return {this->upvalues, this->n_upvalues};
+    }
 };
 
-struct Closure_C {
-    CLOSURE_HEADER;
+struct Closure_C : Closure_Header {
     lulu_CFunction callback;
     Value          upvalues[1];
 
@@ -50,6 +53,12 @@ struct Closure_C {
     size_upvalues() const noexcept
     {
         return Closure_C::size_upvalues(this->n_upvalues);
+    }
+
+    Slice<Value>
+    slice_upvalues() noexcept
+    {
+        return {this->upvalues, this->n_upvalues};
     }
 };
 

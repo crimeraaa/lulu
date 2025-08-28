@@ -6,7 +6,7 @@ function f()
     return n
 end
 
--- Ensure this refers to the exact same upvalue as `f()`!
+-- -- Ensure this refers to the exact same upvalue as `f()`!
 function g()
     n = n + 2
     print(n)

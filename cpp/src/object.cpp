@@ -4,28 +4,49 @@
 void
 object_free(lulu_VM *vm, Object *o)
 {
-    Value_Type t = o->base.type;
+    Value_Type t = o->type();
+#ifdef LULU_DEBUG_LOG_GC
+    object_gc_print(o, "[FREE]");
+#endif
     switch (t) {
     case VALUE_STRING: {
         OString *s = &o->ostring;
         mem_free(vm, s, s->len);
         break;
     }
-    case VALUE_TABLE:
-        table_delete(vm, &o->table);
-        break;
-    case VALUE_CHUNK:
-        chunk_delete(vm, &o->chunk);
-        break;
-    case VALUE_FUNCTION:
-        closure_delete(vm, &o->function);
-        break;
-    case VALUE_UPVALUE:
-        mem_free(vm, &o->upvalue);
-        break;
+    case VALUE_TABLE: table_delete(vm, &o->table); break;
+    case VALUE_CHUNK: chunk_delete(vm, &o->chunk); break;
+    case VALUE_FUNCTION: closure_delete(vm, &o->function); break;
+    case VALUE_UPVALUE: mem_free(vm, &o->upvalue); break;
     default:
         lulu_panicf("Invalid object (Value_Type(%i))", t);
         lulu_unreachable();
         break;
     }
 }
+
+#ifdef LULU_DEBUG_LOG_GC
+
+void
+object_gc_print(Object *o, const char *fmt, ...)
+{
+    void *p = static_cast<void *>(o);
+    char buf[128];
+    const char *s;
+    if (o->type() == VALUE_STRING) {
+        s = o->ostring.to_cstring();
+    } else {
+        const char *t = Value::type_names[o->type()];
+        sprintf(buf, "%s: %p", t, p);
+        s = buf;
+    }
+
+    printf("%p: ", p);
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    printf(" '%s'\n", s);
+}
+
+#endif // LULU_DEBUG_LOG_GC

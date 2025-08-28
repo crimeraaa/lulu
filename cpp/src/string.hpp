@@ -7,8 +7,6 @@
 
 union Object;
 
-using LString = Slice<const char>;
-
 using Number_Buffer = Array<char, LULU_NUMBER_BUFSIZE>;
 
 /**
@@ -53,8 +51,7 @@ struct Builder {
     Dynamic<char> buffer;
 };
 
-struct OString {
-    OBJECT_HEADER;
+struct OString : Object_Header {
     isize len;
     u32   hash;
 
@@ -92,9 +89,6 @@ operator""_s(const char *s, size_t n)
 }
 
 #define lstring_literal(lit) TOKEN_PASTE(lit, _s)
-
-void
-builder_init(Builder *b);
 
 inline isize
 builder_len(const Builder &b)
@@ -142,9 +136,6 @@ builder_to_string(const Builder &b);
 
 const char *
 builder_to_cstring(lulu_VM *vm, Builder *b);
-
-void
-intern_init(Intern *t);
 
 void
 intern_resize(lulu_VM *vm, Intern *i, isize new_cap);

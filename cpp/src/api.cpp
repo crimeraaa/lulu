@@ -285,31 +285,31 @@ lulu_pop(lulu_VM *vm, int n)
 LULU_API void
 lulu_push_nil(lulu_VM *vm)
 {
-    vm_push(vm, nil);
+    vm_push_value(vm, nil);
 }
 
 LULU_API void
 lulu_push_boolean(lulu_VM *vm, int b)
 {
-    vm_push(vm, Value::make_boolean(b));
+    vm_push_value(vm, Value::make_boolean(b));
 }
 
 LULU_API void
 lulu_push_number(lulu_VM *vm, lulu_Number n)
 {
-    vm_push(vm, Value::make_number(n));
+    vm_push_value(vm, Value::make_number(n));
 }
 
 LULU_API void
 lulu_push_integer(lulu_VM *vm, lulu_Integer i)
 {
-    vm_push(vm, Value::make_number(static_cast<Number>(i)));
+    vm_push_value(vm, Value::make_number(static_cast<Number>(i)));
 }
 
 LULU_API void
 lulu_push_userdata(lulu_VM *vm, void *p)
 {
-    vm_push(vm, Value::make_userdata(p));
+    vm_push_value(vm, Value::make_userdata(p));
 }
 
 LULU_API void
@@ -317,7 +317,7 @@ lulu_push_lstring(lulu_VM *vm, const char *s, size_t n)
 {
     LString  ls{s, static_cast<isize>(n)};
     OString *os = ostring_new(vm, ls);
-    vm_push(vm, Value::make_string(os));
+    vm_push_value(vm, Value::make_string(os));
 }
 
 LULU_API void
@@ -353,18 +353,18 @@ lulu_push_cclosure(lulu_VM *vm, lulu_CFunction cf, int n_upvalues)
 
     Closure *f = closure_c_new(vm, cf, n_upvalues);
     for (int i = 0; i < n_upvalues; i++) {
-        Value v          = *value_at_stack(vm, -n_upvalues + i);
+        Value v = *value_at_stack(vm, -n_upvalues + i);
         f->c.upvalues[i] = v;
     }
     lulu_pop(vm, n_upvalues);
-    vm_push(vm, Value::make_function(f));
+    vm_push_value(vm, Value::make_function(f));
 }
 
 LULU_API void
 lulu_push_value(lulu_VM *vm, int i)
 {
     const Value *v = value_at(vm, i);
-    vm_push(vm, *v);
+    vm_push_value(vm, *v);
 }
 
 /*=== }}} =============================================================== */
@@ -373,7 +373,7 @@ LULU_API void
 lulu_new_table(lulu_VM *vm, int n_array, int n_hash)
 {
     Table *t = table_new(vm, n_array, n_hash);
-    vm_push(vm, Value::make_table(t));
+    vm_push_value(vm, Value::make_table(t));
 }
 
 LULU_API int
@@ -393,14 +393,18 @@ LULU_API int
 lulu_get_field(lulu_VM *vm, int table_index, const char *key)
 {
     const Value *t = value_at(vm, table_index);
-    const Value  k = t->make_string(ostring_from_cstring(vm, key));
 
     // Unlike `lulu_get_table()`, we need to explicitly push `t[k]` because
     // `k` does not exist in the stack and thus cannot be replaced.
     if (t->is_table()) {
+        OString *s = ostring_from_cstring(vm, key);
+        // Must be pushed to stack to prevent an early collection.
+        const Value k = t->make_string(s);
+        vm_push_value(vm, k);
         Value v;
         bool  ok = table_get(t->to_table(), k, &v);
-        vm_push(vm, v);
+        vm_pop_value(vm);
+        vm_push_value(vm, v);
         return ok;
     }
     return false;
@@ -422,12 +426,15 @@ LULU_API void
 lulu_set_field(lulu_VM *vm, int table_index, const char *key)
 {
     const Value *t = value_at(vm, table_index);
-    const Value  k = Value::make_string(ostring_from_cstring(vm, key));
     if (t->is_table()) {
-        // The value is popped implicitly. We have no way to tell if key is in
-        // the stack.
-        Value v = vm_pop(vm);
+        OString *s = ostring_from_cstring(vm, key);
+        // Must be pushed to stack to prevent early garbage collection.
+        const Value k = Value::make_string(s);
+        Value v = *value_at(vm, -1);
+        vm_push_value(vm, k);
         vm_table_set(vm, t, &k, v);
+        vm_pop_value(vm);
+        vm_pop_value(vm);
     }
 }
 
@@ -439,10 +446,10 @@ lulu_next(lulu_VM *vm, int table_index)
     Value  v;
     bool   more = table_next(vm, t, k, &v);
     if (more) {
-        vm_push(vm, v);
+        vm_push_value(vm, v);
     } else {
         // No more elements, remove the key.
-        vm_pop(vm);
+        vm_pop_value(vm);
     }
     return static_cast<int>(more);
 }

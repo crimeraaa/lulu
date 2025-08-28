@@ -51,22 +51,34 @@
 */
 
 
-#define WHITE0BIT	0
-#define WHITE1BIT	1
-#define BLACKBIT	2
-#define FINALIZEDBIT	3
-#define KEYWEAKBIT	3
-#define VALUEWEAKBIT	4
-#define FIXEDBIT	5
-#define SFIXEDBIT	6
-#define WHITEBITS	bit2mask(WHITE0BIT, WHITE1BIT)
+#define WHITE0BIT	0 		/* 0b0000_0001 */
+#define WHITE1BIT	1 		/* 0b0000_0010 */
+#define BLACKBIT	2		/* 0b0000_0100 */
+#define FINALIZEDBIT	3	/* 0b0000_1000 */
+#define KEYWEAKBIT	3		/* 0b0000_1000 */
+#define VALUEWEAKBIT	4	/* 0b0001_0000 */
+#define FIXEDBIT	5		/* 0b0010_0000 */
+#define SFIXEDBIT	6		/* 0b0100_0000 */
+#define WHITEBITS	bit2mask(WHITE0BIT, WHITE1BIT) /* 0b0000_0011 */
 
 
+/* Either white bit is toggled? */
 #define iswhite(x)      test2bits((x)->gch.marked, WHITE0BIT, WHITE1BIT)
+
+/* Black bit is toggled? */
 #define isblack(x)      testbit((x)->gch.marked, BLACKBIT)
+
+/* Neither white bits nor black bits are toggled? */
 #define isgray(x)	(!isblack(x) && !iswhite(x))
 
+/**
+ * 0b00 ^ 0b11 = 0b11 (3) ; Global GC is no-white, return all-white.
+ * 0b01 ^ 0b11 = 0b10 (2) ; Global GC is white type 0, return white type 1.
+ * 0b10 ^ 0b11 = 0b01 (1) ; Global GC is white type 1, return white type 0.
+ * 0b11 ^ 0b11 = 0b00 (0) ; Global GC is all-white, return no-white.
+ */
 #define otherwhite(g)	(g->currentwhite ^ WHITEBITS)
+
 #define isdead(g,v)	((v)->gch.marked & otherwhite(g) & WHITEBITS)
 
 #define changewhite(x)	((x)->gch.marked ^= WHITEBITS)
@@ -77,24 +89,93 @@
 #define luaC_white(g)	cast(lu_byte, (g)->currentwhite & WHITEBITS)
 
 
-#define luaC_checkGC(L) { \
-  condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK - 1)); \
-  if (G(L)->totalbytes >= G(L)->GCthreshold) \
-	luaC_step(L); }
+#define luaC_checkGC(L) { 													                           \
+  condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK - 1));    \
+  if (G(L)->totalbytes >= G(L)->GCthreshold) { 								                 \
+    luaC_step(L); 															                               \
+  } 																		                                       \
+}
 
 
-#define luaC_barrier(L,p,v) { if (valiswhite(v) && isblack(obj2gco(p)))  \
-	luaC_barrierf(L,obj2gco(p),gcvalue(v)); }
+/**
+ * @brief
+ *  Runs the barrier iff `p` is fully traversed (black) and `v` is a value that
+ *  represents a collectible object not yet checked (white).
+ *
+ *  Iff GC is propagating, mark `v` as black/gray (depends on its type).
+ *  so `p` will be marked white.
+ *
+ *  Otherwise, GC is sweeping/finalizing so `p` will be marked white.
+ *
+ * @param p subtype of `GCObject *`
+ *  The parent object.
+ *
+ * @param v `Value *`
+ *  The child value.
+ */
+#define luaC_barrier(L, p, v) { 												                       \
+  if (valiswhite(v) && isblack(obj2gco(p))) { 							                   \
+    luaC_barrierf(L, obj2gco(p), gcvalue(v)); 							                   \
+  } 																		                                       \
+}
 
-#define luaC_barriert(L,t,v) { if (valiswhite(v) && isblack(obj2gco(t)))  \
-	luaC_barrierback(L,t); }
 
-#define luaC_objbarrier(L,p,o)  \
-	{ if (iswhite(obj2gco(o)) && isblack(obj2gco(p))) \
-		luaC_barrierf(L,obj2gco(p),obj2gco(o)); }
+/**
+ *  @brief
+ *    Runs the barrier iff `t` is fully traversed (black) and `v` is a value
+ *    representing a collectible object that is white.
+ *
+ *    `t` will be converted from black to gray because `v` will be a new
+ *    key/value that would invalidate the graph.
+ *
+ * 	@param t `GCObject *` or subtype thereof
+ * 		The parent table object.
+ *
+ * 	@param v `Value *`
+ *		The child value.
+ */
+#define luaC_barriert(L,t,v) { 												                         \
+  if (valiswhite(v) && isblack(obj2gco(t))) {								                   \
+    luaC_barrierback(L,t); 												                             \
+  } 																		                                       \
+}
 
-#define luaC_objbarriert(L,t,o)  \
-   { if (iswhite(obj2gco(o)) && isblack(obj2gco(t))) luaC_barrierback(L,t); }
+
+/**
+ * @brief
+ *    Runs the barrier iff `p` is fully traversed (black) and `o` is a
+ *    collectible object that is white.
+ *
+ *    Iff the GC is propagating, then `o` is marked as black.
+ *    Otherwise, the GC is sweeping/finalizing, so `p` is marked as white.
+ *    (because the child object invalidates the graph?)
+ *
+ * @param p `GCObject *` or inheritoor thereof
+ * 		The parent object? Based on existing calls, this must exist on the
+ * 		stack and thus is marked black.
+ *
+ * @param o `GCObject *` or inheritor thereof
+ * 		The child object in relation to `p`?
+ */
+#define luaC_objbarrier(L, p, o) { 											                       \
+  if (iswhite(obj2gco(o)) && isblack(obj2gco(p))) {						                 \
+    luaC_barrierf(L, obj2gco(p), obj2gco(o)); 							                   \
+  } 																		                                       \
+}
+
+
+/**
+ * @brief
+ * 		Same idea as `luaC_barriert()`.
+ *
+ * @param o `GCObject *` or subtype thereof
+ * 		Same idea as parameter `v` in above, just a change of type.
+ */
+#define luaC_objbarriert(L,t,o) { 											                       \
+  if (iswhite(obj2gco(o)) && isblack(obj2gco(t))) {						                 \
+    luaC_barrierback(L,t); 												                             \
+  } 																		                                       \
+}
 
 LUAI_FUNC size_t luaC_separateudata (lua_State *L, int all);
 LUAI_FUNC void luaC_callGCTM (lua_State *L);
@@ -103,7 +184,11 @@ LUAI_FUNC void luaC_step (lua_State *L);
 LUAI_FUNC void luaC_fullgc (lua_State *L);
 LUAI_FUNC void luaC_link (lua_State *L, GCObject *o, lu_byte tt);
 LUAI_FUNC void luaC_linkupval (lua_State *L, UpVal *uv);
+
+/* Helper function for `luaC_barrier()` and `luaC_objbarrier()`. */
 LUAI_FUNC void luaC_barrierf (lua_State *L, GCObject *o, GCObject *v);
+
+/* Helper function for `luaC_barriert()` and `luaC_objbarriert()`. */
 LUAI_FUNC void luaC_barrierback (lua_State *L, Table *t);
 
 

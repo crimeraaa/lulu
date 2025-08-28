@@ -4,6 +4,7 @@
 #include "opcode.hpp"
 #include "string.hpp"
 #include "value.hpp"
+#include "string.hpp"
 
 struct Line_Info {
     int line; // Line number is stored directly in case we skip empty lines.
@@ -17,8 +18,7 @@ struct Local {
     int      end_pc;
 };
 
-struct Chunk {
-    OBJECT_HEADER;
+struct Chunk : Object_Header {
     // Information of all possible locals, in order, for the function.
     Dynamic<Local> locals;
 
@@ -31,7 +31,9 @@ struct Chunk {
     // Chunks needed for all closures defined within this function.
     Dynamic<Chunk *> children;
 
-    // Raw bytecode.
+    // Raw bytecode. While compiling, `len()` refers to the allocated capacity.
+    // The actual length is held by the parent Compiler. When done compiling,
+    // it is shrunk to fit.
     Slice<Instruction> code;
 
     // Maps bytecode indices to source code lines.
@@ -54,18 +56,6 @@ chunk_new(lulu_VM *vm, OString *source);
 
 void
 chunk_delete(lulu_VM *vm, Chunk *p);
-
-template<class T>
-inline int
-chunk_slice_push(lulu_VM *vm, Slice<T> *s, T v, int *n)
-{
-    int i = (*n)++;
-    if (i + 1 > len(*s)) {
-        slice_resize(vm, s, mem_next_pow2(max(i + 1, 8)));
-    }
-    (*s)[i] = v;
-    return i;
-}
 
 int
 chunk_add_code(lulu_VM *vm, Chunk *p, Instruction i, int line, int *n);

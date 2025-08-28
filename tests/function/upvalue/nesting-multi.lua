@@ -8,7 +8,8 @@ local function outer()
         print("middle()")
         -- explicitly captures n, i, j, k
         local function inner()
-            print(string.format("inner(): %i variables: i=%i, j=%i, k=%i", n, i, j, k))
+            print("inner(): "..n.." variables: i="..i..", j="..j..", k="..k)
+            -- print(string.format("inner(): %i variables: i=%i, j=%i, k=%i", n, i, j, k))
         end
         return inner
     end

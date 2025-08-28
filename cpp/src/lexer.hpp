@@ -93,8 +93,14 @@ struct Token {
     }
 };
 
+// Defined in parser.hpp.
+struct Parser;
+
 struct Lexer {
     lulu_VM *vm;
+
+    // Current compiler's value-to-constant-index table.
+    Table   *indexes;
     Builder *builder;
     OString *source;
 
@@ -126,3 +132,7 @@ lexer_lex(Lexer *x);
 
 [[noreturn]] void
 lexer_error(Lexer *x, Token_Type type, const char *msg, int line);
+
+// Helps ensure all interned strings for this compilation are valid.
+OString *
+lexer_new_ostring(lulu_VM *vm, Lexer *x, LString ls);

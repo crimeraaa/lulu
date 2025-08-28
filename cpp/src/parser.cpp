@@ -43,12 +43,11 @@ block_push(Compiler *c, Block *b, bool breakable)
 static void
 block_pop(Compiler *c)
 {
-    Block     *b      = c->block;
-    Slice<u16> active = small_array_slice(c->active);
+    Block *b = c->block;
 
     // Finalize all the locals' information before popping them.
     int pc = c->pc;
-    for (u16 index : slice_from(active, b->n_locals)) {
+    for (u16 index : slice_from(small_array_slice(c->active), b->n_locals)) {
         c->chunk->locals[index].end_pc = pc;
     }
 
@@ -125,14 +124,13 @@ recurse_pop(Parser *p)
 static Parser
 parser_make(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
-    Parser p;
+    Parser p{};
     p.vm        = vm;
     p.lexer     = lexer_make(vm, source, z, b);
     p.current   = DEFAULT_TOKEN;
     p.lookahead = DEFAULT_TOKEN;
     p.builder   = b;
     p.last_line = 1;
-    p.n_calls   = 0;
     return p;
 }
 
@@ -206,6 +204,7 @@ consume(Parser *p, Token_Type expected)
     }
 }
 
+// We assume the Lexer properly marked the interned string somewhere.
 static OString *
 consume_ident(Parser *p)
 {
@@ -397,7 +396,7 @@ local_push(Parser *p, Compiler *c, OString *ident, u16 n)
 static void
 local_push_literal(Parser *p, Compiler *c, LString lit, int n)
 {
-    OString *os = ostring_new(p->vm, lit);
+    OString *os = lexer_new_ostring(p->vm, &p->lexer, lit);
     local_push(p, c, os, n);
 }
 
@@ -718,36 +717,48 @@ break_statement(Parser *p, Compiler *c)
     compiler_jump_add(c, &b->break_list, compiler_jump_new(c));
 }
 
-static Compiler
-function_open(lulu_VM *vm, Parser *p, Compiler *enclosing)
+static void
+function_open(lulu_VM *vm, Parser *p, Compiler *c, Compiler *enclosing)
 {
+    // chunk, table and temporary for garbage collection prevention
+    vm_check_stack(vm, 3);
+
     Chunk *chunk = chunk_new(vm, p->lexer.source);
-    Table *t     = table_new(vm, /*n_hash=*/0, /*n_array=*/0);
+    // Push chunk to stack so it is not collected while allocating the table.
+    // and so that it is alive throughout the entire compilation.
+    vm_push_value(vm, Value::make_chunk(chunk));
 
-    // Push chunk and table to stack so that they are not collected while we
-    // are executing.
-    vm_push(vm, Value::make_chunk(chunk));
-    vm_push(vm, Value::make_table(t));
+    Table *t = table_new(vm, /*n_hash=*/0, /*n_array=*/0);
+    // Ditto.
+    vm_push_value(vm, Value::make_table(t));
 
-    Compiler c = compiler_make(vm, p, chunk, t, enclosing);
-    return c;
+    // Push this compiler to the parser.
+    *c = compiler_make(vm, p, chunk, t, enclosing);
+    p->lexer.indexes = c->indexes;
 }
 
 static void
-function_close(Compiler *c)
+function_close(Parser *p, Compiler *c)
 {
     lulu_VM *vm = c->vm;
     compiler_code_return(c, /*reg=*/0, /*count=*/0);
     // Shrink chunk data to fit.
-    Chunk *p = c->chunk;
-    slice_resize(vm, &p->code, c->pc);
+    Chunk *f = c->chunk;
+    slice_resize(vm, &f->code, c->pc);
 
 #ifdef LULU_DEBUG_PRINT_CODE
-    debug_disassemble(p);
+    debug_disassemble(f);
 #endif // LULU_DEBUG_PRINT_CODE
 
-    vm_pop(vm);
-    vm_pop(vm);
+    vm_pop_value(vm);
+    vm_pop_value(vm);
+
+    // Although chunk and indexes table are not in the stack anymore, they
+    // should still not be collected yet. We may need them for a closure.
+    mem_mark_compiler_roots(vm, c);
+
+    // Pop this compiler from the parser.
+    p->lexer.indexes = (c->prev != nullptr) ? c->prev->indexes : nullptr;
 }
 
 
@@ -913,10 +924,12 @@ function_push(Parser *p, Compiler *parent, Compiler *child)
 static Expr
 function_definition(Parser *p, Compiler *enclosing, int function_line)
 {
-    Compiler c          = function_open(p->vm, p, enclosing);
-    Chunk   *f          = c.chunk;
-    int      paren_line = p->last_line;
-    f->line_defined     = function_line;
+    Compiler c;
+    function_open(p->vm, p, &c, enclosing);
+
+    Chunk *f = c.chunk;
+    int paren_line = p->last_line;
+    f->line_defined = function_line;
     consume(p, TOKEN_OPEN_PAREN);
 
     // Prevent segfaults when calling `local_push`.
@@ -936,7 +949,7 @@ function_definition(Parser *p, Compiler *enclosing, int function_line)
     block_pop(&c);
     f->last_line_defined = p->lexer.line;
     consume_to_close(p, TOKEN_END, TOKEN_FUNCTION, function_line);
-    function_close(&c);
+    function_close(p, &c);
     return function_push(p, enclosing, &c);
 }
 
@@ -1061,7 +1074,8 @@ Chunk *
 parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
 {
     Parser   p = parser_make(vm, source, z, b);
-    Compiler c = function_open(vm, &p, /*enclosing=*/nullptr);
+    Compiler c;
+    function_open(vm, &p, &c, /*enclosing=*/nullptr);
     // Set up first token
     advance(&p);
 
@@ -1071,7 +1085,7 @@ parser_program(lulu_VM *vm, OString *source, Stream *z, Builder *b)
     chunk(&p, &c);
     block_pop(&c);
     consume(&p, TOKEN_EOF);
-    function_close(&c);
+    function_close(&p, &c);
     return c.chunk;
 }
 
