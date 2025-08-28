@@ -65,12 +65,17 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             "Local":        chunk.LocalPrinter,
             "Entry":        table.Entry_Printer,
 
-            # Pointers thereof
+
+            # Pointers thereof (assume we never use arrays of these)
             # "Instruction *": opcode.InstructionPrinter,
             "Token *":      lexer.TokenPrinter,
             "Expr *":       expr.ExprPrinter,
             "Object *":     value.Object_Printer,
             "OString *":    value.OStringPrinter,
+            "Table *":      value.Simple_Object_Printer,
+            "Chunk *":      value.Simple_Object_Printer,
+            "Closure *":    value.Closure_Printer,
+            "Upvalue *":    value.Simple_Object_Printer,
         }
         super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))
 

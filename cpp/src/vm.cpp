@@ -982,8 +982,11 @@ re_entry:
             vm_call(vm, call_base, 2, n_vars);
 
             // Previous call may reallocate stack.
-            window    = vm->caller->window;
-            call_base = &RA(inst) + 3;
+            // It is important to update BOTH local and global window, so that
+            // stack windows are consistent for garbage collection.
+            window     = vm->caller->window;
+            vm->window = window;
+            call_base  = &RA(inst) + 3;
 
             // Continue loop?
             if (!call_base->is_nil()) {

@@ -5,6 +5,7 @@ from typing import Callable
 Value_Type = gdb.lookup_type("Value_Type")
 
 # Can't compare `gdb.Value` to `gdb.Field`, get enum value instead
+VALUE_STRING = Value_Type["VALUE_STRING"].enumval
 VALUE_LIGHTUSERDATA = Value_Type["VALUE_LIGHTUSERDATA"].enumval
 
 class OStringPrinter:
@@ -24,32 +25,61 @@ class OStringPrinter:
     def display_hint(self) -> str:
         return "string"
 
+class Simple_Object_Printer:
+    __value: gdb.Value
+
+    def __init__(self, v: gdb.Value):
+        if v.type.code != gdb.TYPE_CODE_PTR:
+            v = v.address
+        self.__value = v
+
+    def to_string(self):
+        t = str(self.__value["type"]).removeprefix("VALUE_").lower()
+        p = self.__value.cast(base.VOID_POINTER)
+        return f"{t}: {p}"
+
+class Closure_Printer:
+    __value: gdb.Value
+
+    def __init__(self, v: gdb.Value):
+        if v.type.code != gdb.TYPE_CODE_PTR:
+            v = v.address
+        self.__value = v
+
+    def to_string(self):
+        p = self.__value.cast(base.VOID_POINTER)
+        return f"function: {p}"
+
+
 class Object_Printer:
     __value: gdb.Value
 
     def __init__(self, v: gdb.Value):
         self.__value = v
 
+    def children(self):
+        node = self.__value
+        i = 0
+        while node:
+            t = node["base"]["type"]
+            if t == VALUE_STRING:
+                payload = node["ostring"].address
+            else:
+                t = str(t).removeprefix("VALUE_").lower()
+                payload = node[t].address
+
+            yield str(i), payload
+
+            i += 1
+            node = node["base"]["next"]
+
+    def display_hint(self):
+        return "array"
+
     def to_string(self) -> str:
         if self.__value == 0:
             return "(null)"
-
-        nodes = []
-        v = self.__value
-        # Non-null linked list element?
-        while v != 0:
-            t = str(v["base"]["type"]).removeprefix("VALUE_").lower()
-            if t == "string":
-                nodes.append(str(v["ostring"].address))
-            else:
-                # Non-string object lists can get very large. Skip them.
-                s = v["base"].address
-                nodes.append(f"{t}: {s}")
-                break
-            # Next linked list element.
-            v = v["base"]["next"]
-
-        return ", ".join(nodes)
+        return f"({str(self.__value.type)})"
 
 
 class ValuePrinter:
@@ -84,10 +114,8 @@ class ValuePrinter:
         if t in self.__TOSTRING:
             return self.__TOSTRING[t](self.__data)
 
-        if self.__type == VALUE_LIGHTUSERDATA:
-            p = self.__data["m_pointer"]
-        else:
-            p = self.__data["m_object"]
+        # Assumes value.m_pointer == (void *)value.m_object
+        p = self.__data["m_pointer"]
         return f"{t}: {p}"
 
 
