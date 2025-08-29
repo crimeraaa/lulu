@@ -6,15 +6,17 @@ Value_Type = gdb.lookup_type("Value_Type")
 
 # Can't compare `gdb.Value` to `gdb.Field`, get enum value instead
 VALUE_STRING = Value_Type["VALUE_STRING"].enumval
-VALUE_LIGHTUSERDATA = Value_Type["VALUE_LIGHTUSERDATA"].enumval
+VALUE_FUNCTION = Value_Type["VALUE_FUNCTION"].enumval
 
-class OStringPrinter:
+def ensure_pointer(v: gdb.Value):
+    return v if v.type.code == gdb.TYPE_CODE_PTR else v.address
+
+
+class OString_Printer:
     __value: gdb.Value
 
     def __init__(self, v: gdb.Value):
-        if v.type.code != gdb.TYPE_CODE_PTR:
-            v = v.address
-        self.__value = v
+        self.__value = ensure_pointer(v)
 
     def to_string(self) -> str:
         # Can't call `.string()` on `char[1]`
@@ -25,64 +27,96 @@ class OStringPrinter:
     def display_hint(self) -> str:
         return "string"
 
-class Simple_Object_Printer:
-    __value: gdb.Value
-
-    def __init__(self, v: gdb.Value):
-        if v.type.code != gdb.TYPE_CODE_PTR:
-            v = v.address
-        self.__value = v
-
-    def to_string(self):
-        t = str(self.__value["type"]).removeprefix("VALUE_").lower()
-        p = self.__value.cast(base.VOID_POINTER)
-        return f"{t}: {p}"
-
-class Closure_Printer:
-    __value: gdb.Value
-
-    def __init__(self, v: gdb.Value):
-        if v.type.code != gdb.TYPE_CODE_PTR:
-            v = v.address
-        self.__value = v
-
-    def to_string(self):
-        p = self.__value.cast(base.VOID_POINTER)
-        return f"function: {p}"
-
 
 class Object_Printer:
     __value: gdb.Value
 
     def __init__(self, v: gdb.Value):
-        self.__value = v
+        self.__value = ensure_pointer(v)
+
+    def to_string(self):
+        v = self.__value
+        if not v:
+            return "(null)"
+        t = v["base"]["type"]
+        if t == VALUE_STRING:
+            return v["ostring"].address
+
+        t = str(t).removeprefix("VALUE_").lower()
+        p = v.cast(base.VOID_POINTER)
+        return f"{t}: {p}"
+
+
+# In:  Object *
+# Out: OString * | Table * | Chunk * | Closure * | Upvalue * | None
+def object_get_data(node: gdb.Value):
+    if not node:
+        return None
+
+    # Don't call the type() method; may crash
+    t = node["base"]["type"]
+    if t == VALUE_STRING:
+        return node["ostring"].address
+    else:
+        s = object_get_type_name(node)
+        # p.type, is p is a pointer, returns None, annoyingly enough
+        p = node[s].address
+        if t == VALUE_FUNCTION:
+            kind = 'c' if p["c"]["is_c"] else "lua"
+            p = p[kind].address
+        return p
+
+
+def object_get_type_name(node: gdb.Value):
+    if not node:
+        return "None"
+    t = str(node["base"]["type"])
+    return t.removeprefix("VALUE_").lower()
+
+
+def object_iterator(node: gdb.Value, field = "next"):
+    i = 0
+    data = object_get_data(node)
+    while node:
+        yield str(i), data
+
+        i += 1
+        # field is "gc_list", this is assumed to be safe because only
+        # objects with this member get linked into the gray list.
+        # Otherwise it's "next" which is always safe.
+        node = data[field]
+        data = object_get_data(node)
+
+
+class Object_List_Printer:
+    __value: gdb.Value
+
+    def __init__(self, v: gdb.Value):
+        self.__value = ensure_pointer(v)
 
     def children(self):
         node = self.__value
-        i = 0
-        while node:
-            t = node["base"]["type"]
-            if t == VALUE_STRING:
-                payload = node["ostring"].address
-            else:
-                t = str(t).removeprefix("VALUE_").lower()
-                payload = node[t].address
-
-            yield str(i), payload
-
-            i += 1
-            node = node["base"]["next"]
+        return object_iterator(node)
 
     def display_hint(self):
         return "array"
 
-    def to_string(self) -> str:
-        if self.__value == 0:
-            return "(null)"
-        return f"({str(self.__value.type)})"
+
+class GC_List_Printer:
+    __value: gdb.Value
+
+    def __init__(self, v: gdb.Value):
+        self.__value = ensure_pointer(v)
+
+    def children(self):
+        node = self.__value
+        return object_iterator(node, "gc_list")
+
+    def display_hint(self):
+        return "array"
 
 
-class ValuePrinter:
+class Value_Printer:
     """
     ```
     struct Value {

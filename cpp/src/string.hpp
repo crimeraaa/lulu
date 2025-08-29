@@ -51,6 +51,8 @@ struct Builder {
     Dynamic<char> buffer;
 };
 
+// Although generally an 'independent' object, the chaining of gray strings
+// is handled already by Interns so we do not need a gc_list member.
 struct OString : Object_Header {
     isize len;
     u32   hash;

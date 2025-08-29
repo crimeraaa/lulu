@@ -58,9 +58,9 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             "Token":        lexer.TokenPrinter,
             "Line_Info":    lexer.LineInfoPrinter,
             "Expr":         expr.ExprPrinter,
-            "Value":        value.ValuePrinter,
+            "Value":        value.Value_Printer,
             "LString":      odin.StringPrinter,
-            "OString":      value.OStringPrinter,
+            "OString":      value.OString_Printer,
             "Object":       value.Object_Printer,
             "Local":        chunk.LocalPrinter,
             "Entry":        table.Entry_Printer,
@@ -71,11 +71,9 @@ class __PrettyPrinter(gdb.printing.PrettyPrinter):
             "Token *":      lexer.TokenPrinter,
             "Expr *":       expr.ExprPrinter,
             "Object *":     value.Object_Printer,
-            "OString *":    value.OStringPrinter,
-            "Table *":      value.Simple_Object_Printer,
-            "Chunk *":      value.Simple_Object_Printer,
-            "Closure *":    value.Closure_Printer,
-            "Upvalue *":    value.Simple_Object_Printer,
+            "Object_List *": value.Object_List_Printer,
+            "GC_List *":    value.GC_List_Printer,
+            "OString *":    value.OString_Printer,
         }
         super().__init__(name, subprinters=base.subprinters(*list(self.__printers)))
 

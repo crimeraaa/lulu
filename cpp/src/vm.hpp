@@ -54,6 +54,14 @@ enum Call_Type {
 using Stack_Array = Array<Value, MAX_STACK>;
 using Frame_Array = Small_Array<Call_Frame, 16>;
 
+enum GC_State : u8 {
+    GC_PAUSED,
+    GC_MARK,
+    GC_TRACE_PRIMARY,
+    GC_TRACE_SECONDARY,
+    GC_SWEEP,
+};
+
 struct lulu_Global {
     lulu_CFunction panic_fn;
     lulu_Allocator allocator;
@@ -68,59 +76,19 @@ struct lulu_Global {
     Intern intern;
 
     // Linked list of all collectable objects.
-    Object *objects;
+    Object_List *objects;
 
-    // Hack until we get proper GC states.
-    bool gc_paused;
+    // Filled up during the mark phase of GC and traversed during trace phase.
+    // Never modified after mark phase.
+    GC_List *gray_list;
+
+    // Never used during mark phase. Filled up during trace phase.
+    // Can be modified in-place during trace phase.
+    GC_List *gray_saved;
+    GC_List *gray_prepend_tail;
+
+    GC_State gc_state;
 };
-
-// Does NOT use VM global allocator to prevent recursive GC collection.
-template<class T>
-struct CDynamic {
-    T    *data;
-    isize len;
-    isize cap;
-
-    T &
-    operator[](isize i)
-    {
-        lulu_assert(0 <= i && i < this->len);
-        return this->data[i];
-    }
-};
-
-template<class T>
-inline void
-cdynamic_push(CDynamic<T> *d, T v)
-{
-    if (d->len + 1 > d->cap) {
-        d->cap  = mem_next_pow2(max(d->len + 1, 8_i));
-        d->data = static_cast<T *>(realloc(d->data, sizeof(T) * d->cap));
-        // @todo(2025-08-27) Do literally anything else
-        if (d->data == nullptr) {
-            exit(1);
-        }
-    }
-    d->data[d->len++] = v;
-}
-
-template<class T>
-inline T
-cdynamic_pop(CDynamic<T> *d)
-{
-    // Decrement must occur after access to avoid tripping up bounds check.
-    isize i = d->len - 1;
-    T top = (*d)[i];
-    d->len = i;
-    return top;
-}
-
-template<class T>
-inline void
-cdynamic_delete(CDynamic<T> &d)
-{
-    free(d.data);
-}
 
 struct LULU_PUBLIC lulu_VM {
     lulu_Global       *global_state;
@@ -132,11 +100,9 @@ struct LULU_PUBLIC lulu_VM {
     Error_Handler     *error_handler;
     const Instruction *saved_ip; // Used for error handling.
 
-    // Linked list of open upvalues in the current stack frame.
+    // Linked list of open upvalues across all active stack frames.
     // Helps with variable reuse.
     Object *open_upvalues;
-
-    CDynamic<Object *> gray_stack;
 
     LULU_PRIVATE
     lulu_VM() = default;

@@ -49,9 +49,9 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
     L->global_state  = g;
     L->window        = slice(L->stack, 0, 0);
 
-    g->gc_paused = true;
+    g->gc_state = GC_PAUSED;
     Error e = vm_run_protected(L, required_allocations, nullptr);
-    g->gc_paused = false;
+    g->gc_state = GC_MARK;
     if (e != LULU_OK) {
         lulu_close(L);
         return nullptr;
@@ -65,6 +65,7 @@ lulu_close(lulu_VM *L)
     builder_destroy(L, &G(L)->builder);
     intern_destroy(L, &G(L)->intern);
 
+    // Free ALL objects.
     Object *o = G(L)->objects;
     while (o != nullptr) {
         // Save because `o` is about to be invalidated.
@@ -72,7 +73,6 @@ lulu_close(lulu_VM *L)
         object_free(L, o);
         o = next;
     }
-    cdynamic_delete(L->gray_stack);
 }
 
 //=== CALL FRAME ARRAY MANIPULATION ==================================== {{{
@@ -185,11 +185,10 @@ static void
 set_error(lulu_VM *L, int old_cf, int old_base, int old_top)
 {
     // TODO(2025-06-30): Check if `LULU_ERROR_MEMORY` works properly here
-    Value v    = *vm_top_ptr(L);
+    Value v    = L->window[len(L->window) - 1];
     L->caller = frame_get(L, old_cf);
     L->window = slice(L->stack, old_base, old_top);
     frame_resize(L, old_cf + 1);
-    vm_pop_value(L);
     vm_push_value(L, v);
 }
 
@@ -220,12 +219,13 @@ vm_run_protected(lulu_VM *L, Protected_Fn fn, void *user_ptr)
 void
 vm_throw(lulu_VM *L, Error e)
 {
+    lulu_Global *g = G(L);
     if (L->error_handler != nullptr) {
         throw e;
-    } else if (G(L)->panic_fn != nullptr) {
+    } else if (g->panic_fn != nullptr) {
         set_error(L, /*old_cf=*/0, /*old_base=*/0, /*old_top=*/0);
         L->error_handler = nullptr;
-        G(L)->panic_fn(L);
+        g->panic_fn(L);
     }
     exit(EXIT_FAILURE);
 }

@@ -118,11 +118,15 @@ enum Value_Type : u8 {
 union Object;
 using Object_Mark = u8;
 
+// This is mainly for GDB Python pretty printers...
+using Object_List = Object;
+using GC_List = Object;
+
 // Do not create stack-allocated instances of these; unaligned accesses may occur.
 struct [[gnu::packed]] Object_Header {
-    Object     *next;
-    Value_Type  type;
-    Object_Mark mark;
+    Object_List *next;
+    Value_Type   type;
+    Object_Mark  mark;
 
     Object *
     to_object() noexcept

@@ -27,42 +27,6 @@ mem_collect_garbage(lulu_VM *L);
 
 /**
  * @note(2025-08-27)
- *      Analogous to `memory.c:markValue()` in Crafting Interpreters 26.3:
- *      Marking the Roots.
- */
-void
-mem_mark_value(lulu_VM *L, Value v);
-
-
-/**
- * @note(2025-08-27)
- *      Analogous to `memory.c:markObject()` in Crafting Interpreters 26.3:
- *      Marking the Roots.
- */
-void
-mem_mark_object(lulu_VM *L, Object *o);
-
-
-/**
- * @note(2025-08-27)
- *      Analogous to `memory.c:markTable()` in Crafting Interpreters 26.3:
- *      Marking the Roots.
- */
-void
-mem_mark_table(lulu_VM *L, Table *t);
-
-
-/**
- * @note(2025-08-27)
- *      Analogous to `memory.c:tableRemoveWhite()` in
- *      Crafting Interpreters 26.5.1: Weak references and the string pool.
- */
-void
-mem_remove_intern(lulu_VM *L, Intern *t);
-
-
-/**
- * @note(2025-08-27)
  *      Analogous to `memory.c:markCompilerRoots()` in Crafting Interpreters
  *      26.3.1: Less obvious roots.
  */

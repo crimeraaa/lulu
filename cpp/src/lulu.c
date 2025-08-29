@@ -15,7 +15,7 @@ report_error(lulu_VM *L)
         if (msg == NULL) {
             msg = "(error object is not a string)";
         }
-        fprintf(stderr, "[ERROR]: %s\n", msg);
+        printf("[ERROR]: %s\n", msg);
         lulu_pop(L, 1); /* Remove error message from stack. */
     }
 }
@@ -37,7 +37,11 @@ run(lulu_VM *L)
         if (n > 0) {
             lulu_get_global(L, "print");
             lulu_insert(L, 1);
-            lulu_call(L, n, 0);
+            e = lulu_pcall(L, n, 0);
+            if (e != LULU_OK) {
+                const char *msg = lulu_to_string(L, -1);
+                printf("%s (error while calling 'print')\n", msg);
+            }
         }
     } else {
         report_error(L);

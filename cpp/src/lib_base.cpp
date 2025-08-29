@@ -234,10 +234,10 @@ base_range(lulu_VM *L)
 }
 
 static const lulu_Register baselib[] = {
+    {"print", base_print},
     {"assert", base_assert},
     {"tostring", base_tostring},
     {"tonumber", base_tonumber},
-    {"print", base_print},
     {"type", base_type},
     {"next", base_next},
     {"range", base_range},

@@ -30,6 +30,13 @@ file ./bin/lulu-cpp
 
 break lulu.c:main
 
+set breakpoint pending on
+
+break vm.cpp:required_allocations
+break object.hpp:object_new if type != VALUE_STRING
+
+set breakpoint pending off
+
 # break lulu_main::main
 # break lulu::run
 # break lulu::[compiler.odin]::compiler_compile

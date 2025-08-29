@@ -3,20 +3,28 @@
 #include "chunk.hpp"
 #include "private.hpp"
 
-// Do not create stack-allocated instances of these; unaligned accesses may occur.
-struct [[gnu::packed]] Closure_Header : Object_Header {
+struct Closure_Header : Object_Header {
     u8 n_upvalues;
     bool is_c;
+
+    // Only used during the mark and traverse phases of GC.
+    // This object is always independent, so it can be a root.
+    GC_List *gc_list;
 };
 
+// Upvalues are never independent objects (they can never live on the stack),
+// so they do not need a gc_list member.
 struct Upvalue : Object_Header {
     // Points to value in stack while open, else points to `closed`.
     Value *value;
-    Value closed = nil;
+    Value  closed;
 };
 
 struct Closure_Lua : Closure_Header {
-    Chunk   *chunk;
+    // Multiple closures can refer to the same chunk.
+    Chunk *chunk;
+
+    // Multiple Lua closures can share several of the same upvalues.
     Upvalue *upvalues[1];
 
     static isize

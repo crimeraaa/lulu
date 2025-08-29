@@ -18,7 +18,15 @@ struct Local {
 };
 
 struct Chunk : Object_Header {
+    // Only used during the mark and traverse phases of GC.
+    // This object is independent only during compilation, where it resides
+    // on the stack. Afterwards it only ever exists as the main chunk of
+    // a particular closure or as a child for local functions.
+    GC_List *gc_list;
+
     // Information of all possible locals, in order, for the function.
+    // Finding a local is thus possible if you have the program counter
+    // it is active at.
     Dynamic<Local> locals;
 
     // List of all upvalue names, in order.

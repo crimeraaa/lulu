@@ -16,6 +16,10 @@ struct Entry {
 };
 
 struct Table : Object_Header {
+    // This object is always independent, so it can be a root during
+    // garbage collection.
+    GC_List *gc_list;
+
     // Array segment data. Not all slots may be occupied.
     // `len(array)` is the functional capacity, not the active count.
     Slice<Value> array;
@@ -25,6 +29,7 @@ struct Table : Object_Header {
     Slice<Entry> entries;
 
     // Hash segment length- number of currently active entries.
+    // These active entries need not be consecutive.
     isize count;
 };
 

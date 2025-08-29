@@ -12,5 +12,6 @@ local t = {
 print(#t, "ASCII characters")
 
 for i,v in ipairs(t) do
-    print(string.format("t[%i] = %q", i, v))
+	print("t["..i.."] = \'"..v.."\'")
+    -- print(string.format("t[%i] = %q", i, v))
 end

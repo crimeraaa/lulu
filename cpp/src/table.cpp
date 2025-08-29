@@ -331,21 +331,27 @@ table_resize(lulu_VM *L, Table *t, isize n_hash, isize n_array)
         t->array.len = n_array;
 
         // Move elements from the vanishing array slice to the hash segment.
+        // Integer keys are prioritized for their ideal positions so we can
+        // reduce hash lookup time.
         for (isize i = n_array, n = len(old_array); i < n; i++) {
             Value v = old_array[i];
             if (!v.is_nil()) {
                 table_set_integer(L, t, i + 1, v);
             }
         }
-        // Shrink the array allocation.
+
+        // @note(2025-08-29) The following is a hack because if GC is run
+        // we may unintentionally free any objects from `old_entries` that
+        // were not yet rehashed into `t->entries.` Doing so would invalidate
+        // data like strings!
+        auto e = t->entries;
+        t->entries = old_entries;
         table_array_resize(L, t, n_array);
+        t->entries = e;
     }
 
-    /**
-     * @brief
-     *      Rehash all elements in the hash segment. This may also move
-     *      integer keys to the array segment.
-     */
+    // Rehash all elements in the hash segment. This may also move integer
+    // keys to the array segment. We assume no reallocation will occur.
     for (Entry e : old_entries) {
         if (!e.value.is_nil()) {
             table_set(L, t, e.key, e.value);

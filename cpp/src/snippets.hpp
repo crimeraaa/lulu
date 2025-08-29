@@ -50,9 +50,9 @@ lulu_assert_fail(const char *where, const char *expr, const char *fmt,
 #    define lulu_assert(expr)            ((void)0)
 #    define lulu_assertf(expr, fmt, ...) ((void)0)
 #    define lulu_assertln(expr, msg)     ((void)0)
-#    define lulu_panic()                 ((void)0)
-#    define lulu_panicf(fmt, ...)        ((void)0)
-#    define lulu_panicln(msg)            ((void)0)
+#    define lulu_panic()                 lulu_unreachable()
+#    define lulu_panicf(fmt, ...)        lulu_unreachable()
+#    define lulu_panicln(msg)            lulu_unreachable()
 #endif // LULU_DEBUG
 
 //=== FALLBACKS ======================================================== {{{

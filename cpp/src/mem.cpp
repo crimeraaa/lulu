@@ -10,6 +10,10 @@
 #define REPEAT_64(n)  REPEAT_32(n), REPEAT_32(n)
 #define REPEAT_128(n) REPEAT_64(n), REPEAT_64(n)
 
+#ifdef LULU_DEBUG_LOG_GC
+static int n_calls = 1;
+#endif // LULU_DEBUG_LOG_GC
+
 int
 mem_ceil_log2(usize n)
 {
@@ -77,78 +81,180 @@ mem_rawrealloc(lulu_VM *L, void *ptr, usize old_size, usize new_size)
     return next;
 }
 
+
+/**
+ * @note(2025-08-27)
+ *      Analogous to `memory.c:markObject()` in Crafting Interpreters 26.3:
+ *      Marking the Roots.
+ */
 static void
-mem_mark_array(lulu_VM *L, Slice<Value> a)
+mem_mark_object(lulu_Global *g, Object *o)
 {
-    for (Value v : a) {
-        mem_mark_value(L, v);
+    if (o == nullptr) {
+        return;
+    }
+    // Prevent cycles.
+    if (o->base.is_gray()) {
+        return;
+    }
+#ifdef LULU_DEBUG_LOG_GC
+    object_gc_print(o, "mark");
+#endif // LULU_DEBUG_LOG_GC
+
+    o->base.set_gray();
+
+    GC_List **next;
+    switch (o->type()) {
+    case VALUE_STRING:
+        // Strings can be marked gray, but we do not add them to the gray list
+        // because all strings are visible to Intern anyway.
+        return;
+    case VALUE_TABLE:
+        next = &o->table.gc_list;
+        break;
+    case VALUE_FUNCTION:
+        // Also works for C closures
+        next = &o->function.lua.gc_list;
+        break;
+    case VALUE_CHUNK:
+        next = &o->chunk.gc_list;
+        break;
+    default:
+        lulu_panicf("Invalid object type %i", o->type());
+        lulu_unreachable();
+        break;
+    }
+
+    GC_List **head;
+    switch (g->gc_state) {
+    // During mark phase, we can (and should!) fill the primary gray list.
+    case GC_MARK:
+        head = &g->gray_list;
+        break;
+    // During trace phase, don't disturb iteration of the main gray lst.
+    // We cannot reach here while sweeping!
+    case GC_TRACE_SECONDARY:
+        // @note(2025-08-29): `o` is some dependent of the object we are
+        // about to blacken, so the parent is going to be invalidated.
+        //
+        // Find the prepended node *before* that so we can link it to the
+        // remainder of the list. Remember that unlike in mem_sweep(), we are
+        // not necessarily iterating in order of the main objects list!
+        if (g->gray_prepend_tail == nullptr) {
+            g->gray_prepend_tail = o;
+        }
+        [[fallthrough]];
+    case GC_TRACE_PRIMARY:
+        head = &g->gray_saved;
+        break;
+    default:
+        lulu_panicf("Got GC_State %i", g->gc_state);
+        lulu_unreachable();
+        break;
+    }
+    // Prepend the current node to the head of parent list.
+    *next = *head;
+    *head = o;
+}
+
+
+/**
+ * @note(2025-08-27)
+ *      Analogous to `memory.c:markValue()` in Crafting Interpreters 26.3:
+ *      Marking the Roots.
+ */
+static void
+mem_mark_value(lulu_Global *g, Value v)
+{
+    if (v.is_object()) {
+        Object *o = v.to_object();
+        mem_mark_object(g, o);
     }
 }
 
+
 static void
-mem_mark_chunk(lulu_VM *L, Chunk *p)
+mem_mark_array(lulu_Global *g, Slice<Value> a)
 {
-    if (p->is_black()) {
-        return;
+    for (Value v : a) {
+        mem_mark_value(g, v);
     }
+}
+
+static GC_List **
+mem_blacken_chunk(lulu_Global *g, Chunk *p)
+{
+    lulu_assert(p->is_gray());
     p->set_black();
 
     // All local names are not collectible. An interned local identifier
     // may be shared across multiple closures.
     for (Local v : p->locals) {
-        mem_mark_object(L, v.ident->to_object());
+        mem_mark_object(g, v.ident->to_object());
     }
 
     // All associated upvalues are not collectible. An upvalue may be shared
     // across multiple closures.
     for (OString *up : p->upvalues) {
-        mem_mark_object(L, up->to_object());
+        mem_mark_object(g, up->to_object());
     }
 
-    mem_mark_array(L, p->constants);
+    mem_mark_array(g, p->constants);
 
     // All nested functions are not collectible.
     for (Chunk *f : p->children) {
-        mem_mark_object(L, f->to_object());
+        mem_mark_object(g, f->to_object());
     }
 
-    mem_mark_object(L, p->source->to_object());
+    mem_mark_object(g, p->source->to_object());
+    return &p->gc_list;
 }
 
 void
 mem_mark_compiler_roots(lulu_VM *L, Compiler *c)
 {
+    lulu_Global *g = G(L);
+    g->gc_state = GC_MARK;
     while (c != nullptr) {
-        mem_mark_chunk(L, c->chunk);
-        mem_mark_object(L, c->indexes->to_object());
+        mem_mark_object(g, c->chunk->to_object());
+        mem_mark_object(g, c->indexes->to_object());
         c = c->prev;
     }
 }
 
-void
-mem_mark_table(lulu_VM *L, Table *t)
-{
-    // Already traversed so running below code would be redundant.
-    if (t->is_black()) {
-        return;
-    }
 
+/**
+ * @note(2025-08-27)
+ *      Analogous to `memory.c:markTable()` in Crafting Interpreters 26.3:
+ *      Marking the Roots.
+ */
+static GC_List **
+mem_blacken_table(lulu_Global *g, Table *t)
+{
+    lulu_assert(t->is_gray());
     // Table itself should not be collected.
     t->set_black();
 
     for (Value v : t->array) {
-        mem_mark_value(L, v);
+        mem_mark_value(g, v);
     }
 
     // @todo(2025-08-27) Should this function go in table.cpp?
     for (isize i = 0, n = len(t->entries); i < n; i++) {
         Entry *e = &t->entries[i];
-        mem_mark_value(L, e->key);
-        mem_mark_value(L, e->value);
+        mem_mark_value(g, e->key);
+        mem_mark_value(g, e->value);
     }
+
+    return &t->gc_list;
 }
 
-void
+/**
+ * @note(2025-08-27)
+ *      Analogous to `memory.c:tableRemoveWhite()` in
+ *      Crafting Interpreters 26.5.1: Weak references and the string pool.
+ */
+static void
 mem_remove_intern(lulu_VM *L, Intern *t)
 {
     for (Object *&o : t->table) {
@@ -181,88 +287,86 @@ mem_remove_intern(lulu_VM *L, Intern *t)
     }
 }
 
-// Assumes that all black objects also have the gray bit toggled.
-void
-mem_mark_object(lulu_VM *L, Object *o)
-{
-    if (o == nullptr) {
-        return;
-    }
-    // Prevent cycles.
-    if (o->base.is_gray()) {
-        return;
-    }
-#ifdef LULU_DEBUG_LOG_GC
-    object_gc_print(o, "mark");
-#endif // LULU_DEBUG_LOG_GC
-    o->base.set_gray();
-    cdynamic_push(&L->gray_stack, o);
-}
-
-void
-mem_mark_value(lulu_VM *L, Value v)
-{
-    if (v.is_object()) {
-        mem_mark_object(L, v.to_object());
-    }
-}
-
+// Upvalues cannot (and should not) be marked gray at any point. They go
+// directly to black because they have no dependents other than their
+// pointed-to value.
 static void
-mem_mark_function(lulu_VM *L, Closure *f)
+mem_blacken_upvalue(lulu_Global *g, Upvalue *up)
 {
+    // @note(2025-08-29) Can occur if we collect garbage right after
+    // creating a closure with nonzero upvalues but before actually
+    // creating any of them.
+    if (up == nullptr) {
+        return;
+    }
+
+    // Since multiple closures can share the same upvalue, we may visit this
+    // multiple times.
+    if (up->is_black()) {
+        return;
+    }
+
+    // Closed is only our child when we are, well, closed.
+    // When open the value lives on the stack we the GC took care of it.
+    if (up->value == &up->closed) {
+        mem_mark_value(g, up->closed);
+    }
+    up->set_black();
+}
+
+static GC_List **
+mem_blacken_function(lulu_Global *g, Closure *f)
+{
+    lulu_assert(f->lua.is_gray());
     if (f->is_c()) {
         Closure_C *c = f->to_c();
-        mem_mark_array(L, c->slice_upvalues());
+        mem_mark_array(g, c->slice_upvalues());
         c->set_black();
-        return;
+        return &c->gc_list;
     }
 
     Closure_Lua *lua = f->to_lua();
-    mem_mark_object(L, lua->chunk->to_object());
-    for (Upvalue *uv : lua->slice_upvalues()) {
-        mem_mark_object(L, uv->to_object());
+    mem_mark_object(g, lua->chunk->to_object());
+    for (Upvalue *up : lua->slice_upvalues()) {
+        mem_blacken_upvalue(g, up);
     }
     lua->set_black();
+    return &lua->gc_list;
 }
 
-static void
-mem_blacken_object(lulu_VM *L, Object *o)
+static GC_List *
+mem_blacken_object(lulu_Global *g, Object *o)
 {
     Value_Type t = o->type();
+    // If an object was already black, then it should not have been added to
+    // the either working list.
+    lulu_assert(o->base.is_gray());
+
 #ifdef LULU_DEBUG_LOG_GC
     object_gc_print(o, "blacken");
 #endif // LULU_DEBUG_LOG_GC
 
+    GC_List **next;
     switch (t) {
-    case VALUE_STRING:
-        // Although active strings in the stack are already marked, strings
-        // from tables/chunks are not.
-        mem_mark_object(L, o);
-        break;
     case VALUE_TABLE:
-        mem_mark_table(L, &o->table);
+        next = mem_blacken_table(g, &o->table);
         break;
     case VALUE_FUNCTION:
-        mem_mark_function(L, &o->function);
+        next = mem_blacken_function(g, &o->function);
         break;
     case VALUE_CHUNK:
-        mem_mark_chunk(L, &o->chunk);
+        next = mem_blacken_chunk(g, &o->chunk);
         break;
-    case VALUE_UPVALUE: {
-        Upvalue *up = &o->upvalue;
-        // Closed is only our child when we are, well, closed.
-        // When open the value lives on the stack we the GC took care of it.
-        if (up->value == &up->closed) {
-            mem_mark_value(L, up->closed);
-        }
-        up->set_black();
-        break;
-    }
     default:
         lulu_panicf("Cannot blacken object type '%s'", Value::type_names[t]);
         lulu_unreachable();
         break;
     }
+    lulu_assert(o->base.is_black());
+    GC_List *saved = *next;
+    // Unlink this object from the gray list.
+    *next = nullptr;
+    return saved;
 }
 
 
@@ -272,12 +376,35 @@ mem_blacken_object(lulu_VM *L, Object *o)
  *      26.4.3: Processing gray objects.
  */
 static void
-mem_trace_references(lulu_VM *L)
+mem_trace_references(lulu_Global *g)
 {
-    while (L->gray_stack.len > 0) {
-        Object *o = cdynamic_pop(&L->gray_stack);
-        mem_blacken_object(L, o);
+    // Traversing through the main list is easy enough.
+    g->gc_state = GC_TRACE_PRIMARY;
+    while (g->gray_list != nullptr) {
+        GC_List *next = mem_blacken_object(g, g->gray_list);
+        g->gray_list = next;
     }
+
+    // Traversing the secondary list is harder, because we can prepend to it.
+    g->gc_state = GC_TRACE_SECONDARY;
+    while (g->gray_saved != nullptr) {
+        GC_List *node = g->gray_saved;
+        GC_List *next = mem_blacken_object(g, node);
+        // No prepending occured, so we can proceed with iteration normally.
+        if (g->gray_saved == node) {
+            g->gray_saved = next;
+            continue;
+        }
+        // Otherwise, prepending did occur, so don't assign the list because
+        // we will traverse that child. We assume the 'tail' of the prepended
+        // sequence is the oldest one and comes right before `node`.
+        GC_List *last = g->gray_prepend_tail;
+        lulu_assert(last != nullptr);
+        g->gray_prepend_tail = nullptr;
+        last->chunk.gc_list = next;
+    }
+    // Must be empty by this point, otherwise we will crash during sweep.
+    lulu_assert(g->gray_prepend_tail == nullptr);
 }
 
 
@@ -287,9 +414,9 @@ mem_trace_references(lulu_VM *L)
  *      26.5: Sweeping unused objects.
  */
 static void
-mem_sweep(lulu_VM *L)
+mem_sweep(lulu_VM *L, lulu_Global *g)
 {
-    lulu_Global *g = G(L);
+    g->gc_state = GC_SWEEP;
 
     // Track the parent list to unlink.
     Object *prev = nullptr;
@@ -307,8 +434,11 @@ mem_sweep(lulu_VM *L)
             o = next;
             continue;
         }
-        // `o` is not marked (white).
         Object *unreached = o;
+        // If the object is still gray, then that means we messed up somewhere
+        // as we failed to traverse it.
+        lulu_assert(!o->base.is_gray());
+
         // Unlink the unreached object from its parent linked list right
         // before we free it.
         if (prev != nullptr) {
@@ -322,47 +452,46 @@ mem_sweep(lulu_VM *L)
 }
 
 static void
-mem_mark_roots(lulu_VM *L)
+mem_mark_roots(lulu_VM *L, lulu_Global *g)
 {
+    g->gc_state = GC_MARK;
     // Full/active stack.
     Slice<Value> stack = slice_pointer(raw_data(L->stack), vm_top_ptr(L));
     for (Value &v : stack) {
-        mem_mark_value(L, v);
+        mem_mark_value(g, v);
     }
 
     // Pointers to active function objects are also reachable.
     for (Call_Frame &cf : small_array_slice(L->frames)) {
-        mem_mark_object(L, reinterpret_cast<Object *>(cf.function));
+        mem_mark_object(g, reinterpret_cast<Object *>(cf.function));
     }
 
     // All open upvalues are also reachable.
     for (Object *o = L->open_upvalues; o != nullptr; o = o->next()) {
-        mem_mark_object(L, o);
+        mem_blacken_upvalue(g, &o->upvalue);
     }
 
     // Globals table is always reachable, save it for later when tracing.
     // We should not reach this point at VM startup.
-    mem_mark_value(L, L->globals);
+    mem_mark_value(g, L->globals);
 }
 
 void
 mem_collect_garbage(lulu_VM *L)
 {
     lulu_Global *g = G(L);
-    if (g->gc_paused) {
+    if (g->gc_state == GC_PAUSED) {
         return;
     }
 
-
 #ifdef LULU_DEBUG_LOG_GC
-    static int n_calls = 1;
     printf("--- gc begin (%i)\n", n_calls);
 #endif
 
-    mem_mark_roots(L);
-    mem_trace_references(L);
+    mem_mark_roots(L, g);
+    mem_trace_references(g);
     mem_remove_intern(L, &g->intern);
-    mem_sweep(L);
+    mem_sweep(L, g);
 
 #ifdef LULU_DEBUG_LOG_GC
     printf("--- gc end (%i)\n", n_calls);

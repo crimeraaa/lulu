@@ -101,7 +101,7 @@ object_gc_print(Object *o, const char *fmt, ...);
  */
 template<class T>
 inline T *
-object_new(lulu_VM *L, Object **list, Value_Type type, isize extra = 0)
+object_new(lulu_VM *L, Object_List **list, Value_Type type, isize extra = 0)
 {
     T *o = mem_new<T>(L, extra);
     // Not safe nor intuitive to zero-init flexible-arrays with `*o = {}`

@@ -369,9 +369,42 @@ static const lulu_Register libs[] = {
     {LULU_OS_LIB_NAME, lulu_open_os},
 };
 
+static int
+lua_print(lulu_VM *L)
+{
+    int n_args = lulu_get_top(L);
+    int i;
+    for (i = 1; i <= n_args; i++) {
+        lulu_Type t = lulu_type(L, i);
+        if (i > 1) {
+            printf(", ");
+        }
+        switch (t) {
+        case LULU_TYPE_NIL:
+            printf("nil");
+            break;
+        case LULU_TYPE_BOOLEAN:
+            printf("%s", lulu_to_boolean(L, i) ? "true" : "false");
+            break;
+        case LULU_TYPE_NUMBER:
+            printf(LULU_NUMBER_FMT, lulu_to_number(L, i));
+            break;
+        case LULU_TYPE_STRING:
+            printf("%s", lulu_to_string(L, i));
+            break;
+        default:
+            printf("%s: %p", lulu_type_name(L, t), lulu_to_pointer(L, i));
+            break;
+        }
+    }
+    printf("\n");
+    return 0;
+}
+
 LULU_LIB_API void
 lulu_open_libs(lulu_VM *L)
 {
+    lulu_register(L, "print", lua_print);
     libs[0].function(L);
     // for (int i = 0; i < lulu_count_library(libs); i++) {
     //     lulu_push_cfunction(L, libs[i].function);
