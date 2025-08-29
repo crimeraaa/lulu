@@ -5,11 +5,7 @@
 #include <stdint.h>   // [u]int*_t
 
 #include "lulu.h"
-
-#define TOKEN_PASTE(x, y)     x##y
-#define X__TOKEN_STRINGIFY(x) #x
-#define TOKEN_STRINGIFY(x)    X__TOKEN_STRINGIFY(x)
-#define SOURCE_CODE_LOCATION  __FILE__ ":" TOKEN_STRINGIFY(__LINE__)
+#include "snippets.hpp"
 
 using u8  = uint8_t;
 using u16 = uint16_t;
@@ -206,66 +202,3 @@ swap(T *restrict a, T *restrict b)
     *a    = *b;
     *b    = tmp;
 }
-
-#if defined(__GNUC__) || defined(__clang__)
-#    define lulu_assume(expr) __builtin_assume(expr)
-#elif defined(_MSC_VER)
-#    define lulu_assume(expr) __assume(expr)
-#else
-#    define lulu_assume(expr) ((void)0)
-#endif
-
-#ifdef LULU_DEBUG
-
-[[noreturn, gnu::format(printf, 3, 4)]] void
-lulu_assert_fail(
-    const char *where,
-    const char *expr,
-    const char *fmt,
-    ...
-) throw();
-
-#    define lulu_assert(expr)                                                  \
-        (expr) ? ((void)0)                                                     \
-               : lulu_assert_fail(SOURCE_CODE_LOCATION, #expr, nullptr)
-
-#    define lulu_assertf(expr, fmt, ...)                                       \
-        (expr) ? ((void)0)                                                     \
-               : lulu_assert_fail(                                             \
-                   SOURCE_CODE_LOCATION,                                       \
-                   #expr,                                                      \
-                   fmt "\n",                                                   \
-                   __VA_ARGS__                                                 \
-               )
-
-#    define lulu_assertln(expr, msg) lulu_assertf(expr, "%s", msg)
-#    define lulu_panic()                                                       \
-        lulu_assert_fail(SOURCE_CODE_LOCATION, nullptr, nullptr);
-
-#    define lulu_panicf(fmt, ...)                                              \
-        lulu_assert_fail(SOURCE_CODE_LOCATION, nullptr, fmt "\n", __VA_ARGS__)
-
-#    define lulu_panicln(msg) lulu_panicf("%s", msg)
-#else
-#    define lulu_assert(expr)            ((void)0)
-#    define lulu_assertf(expr, fmt, ...) ((void)0)
-#    define lulu_assertln(expr, msg)     ((void)0)
-#    define lulu_panic()                 ((void)0)
-#    define lulu_panicf(fmt, ...)        ((void)0)
-#    define lulu_panicln(msg)            ((void)0)
-#endif // LULU_DEBUG
-
-// `lulu_unreachable()` must be defined regardless of `LULU_DEBUG`.
-#if defined(__GNUC__) || defined(__clang__)
-#    define lulu_unreachable() __builtin_unreachable()
-#elif defined(_MSC_VER) // ^^^ __GNUC__ || __clang__, vvv _MSC_VER
-#    define lulu_unreachable() __assume(false)
-#else // ^^^ _MSC_VER, vvv anything else
-
-// Do not implement as a function-like macro `lulu_assert(false)` because
-// `lulu_assert()` itself may be empty.
-[[noreturn]] inline void
-lulu_unreachable()
-{}
-
-#endif // __GNUC__ || __clang__ || _MSC_VER

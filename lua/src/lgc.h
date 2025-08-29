@@ -89,6 +89,8 @@
 #define luaC_white(g)	cast(lu_byte, (g)->currentwhite & WHITEBITS)
 
 
+/* Runs the GC if we reached our threshold. Threshold may super large to
+  indicate no GC. */
 #define luaC_checkGC(L) { 													                           \
   condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK - 1));    \
   if (G(L)->totalbytes >= G(L)->GCthreshold) { 								                 \
@@ -180,6 +182,8 @@
 LUAI_FUNC size_t luaC_separateudata (lua_State *L, int all);
 LUAI_FUNC void luaC_callGCTM (lua_State *L);
 LUAI_FUNC void luaC_freeall (lua_State *L);
+
+/* This is the workhorse of the incremental GC. */
 LUAI_FUNC void luaC_step (lua_State *L);
 LUAI_FUNC void luaC_fullgc (lua_State *L);
 LUAI_FUNC void luaC_link (lua_State *L, GCObject *o, lu_byte tt);

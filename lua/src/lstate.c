@@ -71,6 +71,8 @@ static void f_luaopen (lua_State *L, void *ud) {
   global_State *g = G(L);
   UNUSED(ud);
   stack_init(L, L);  /* init stack */
+
+  /* All of the below would call GC if it wasn't paused! */
   sethvalue(L, gt(L), luaH_new(L, 0, 2));  /* table of globals */
   sethvalue(L, registry(L), luaH_new(L, 0, 2));  /* registry */
   luaS_resize(L, MINSTRTABSIZE);  /* initial size of string table */
@@ -148,9 +150,11 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   if (l == NULL) return NULL;
   L = tostate(l);
   g = &((LG *)L)->g;
+  /* main thread is also an object! it has CommonHeader. */
   L->next = NULL;
   L->tt = LUA_TTHREAD;
   g->currentwhite = bit2mask(WHITE0BIT, FIXEDBIT);
+  /* Main thread not at all traversed, but absolutely not collectible either. */
   L->marked = luaC_white(g);
   set2bits(L->marked, FIXEDBIT, SFIXEDBIT);
   preinit_state(L, g);
@@ -167,14 +171,17 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   luaZ_initbuffer(L, &g->buff);
   g->panic = NULL;
   g->gcstate = GCSpause;
+  /* main thread is always the very first object */
   g->rootgc = obj2gco(L);
   g->sweepstrgc = 0;
   g->sweepgc = &g->rootgc;
+  /* no objects yet traversed */
   g->gray = NULL;
   g->grayagain = NULL;
   g->weak = NULL;
   g->tmudata = NULL;
   g->totalbytes = sizeof(LG);
+  /* Don't run gc at all in `f_luaopen()` */
   g->gcpause = LUAI_GCPAUSE;
   g->gcstepmul = LUAI_GCMUL;
   g->gcdept = 0;

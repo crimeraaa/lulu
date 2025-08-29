@@ -616,6 +616,7 @@ void luaC_step (lua_State *L) {
     lim = (MAX_LUMEM-1)/2;  /* no limit */
   g->gcdept += g->totalbytes - g->GCthreshold;
   do {
+    /* If GC is paused will mark roots and begin propagation cycle */
     lim -= singlestep(L);
     if (g->gcstate == GCSpause)
       break;

@@ -394,6 +394,8 @@ vm_check_stack(lulu_VM *L, int n)
     }
 }
 
+// Must be called before functions that could potentially throw errors.
+// This makes it so that they can properly disassemble the culprit instruction.
 static void
 protect(lulu_VM *L, const Instruction *ip)
 {
@@ -770,13 +772,9 @@ re_entry:
             Value k = KBX(inst);
             Value v;
             if (!table_get(L->globals.to_table(), k, &v)) {
-                const char *s = k.to_cstring();
                 protect(L, ip);
-                vm_runtime_error(
-                    L,
-                    "Attempt to read undefined variable '%s'",
-                    s
-                );
+                vm_runtime_error(L, "Attempt to read undefined variable '%s'",
+                    k.to_cstring());
             }
             *ra = v;
             break;
@@ -1010,15 +1008,24 @@ re_entry:
             int n_rets = inst.c();
             protect(L, ip);
 
+            // @note(2025-08-29) `vm->window` may have been changed by this!
             Call_Type t = vm_call_init(L, ra, n_args, n_rets);
             if (t == CALL_LUA) {
                 n_calls++;
 #if LULU_DEBUG_TRACE_EXEC
                 printf("=== BEGIN CALL ===\n");
 #endif // LULU_DEBUG_TRACE_EXEC
+                // Local `window` will be re-assigned properly anyway.
                 goto re_entry;
             }
-            // @note(2025-08-27) Concept check: tests/factorial.lua
+            /**
+             * @brief
+             *      Need to fix local `window` because it may be dangling
+             *      otherwise. This is mainly an issue for variadic calls.
+             *
+             * @note(2025-08-27)
+             *      Concept check: tests/factorial.lua
+             */
             window = L->window;
             break;
         }

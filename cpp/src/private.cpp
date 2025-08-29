@@ -114,7 +114,7 @@ calculate_offset(LString stack_frame)
 
 
 // J. Panek originally wrote 128 but come on, do we need THAT many?
-#    define STACK_FRAMES_BUFFER_SIZE 16
+#    define STACK_FRAMES_BUFFER_SIZE 32
 
 static void *stack_frames_buffer[STACK_FRAMES_BUFFER_SIZE];
 static char  execution_filename[32] = "bin/liblulu.so";
@@ -138,12 +138,8 @@ addr2line_print(const void *address)
      *  -e  uses the following positional argument as the name of the
      *      executable to translate addresses from.
      */
-    sprintf(
-        command,
-        "addr2line -C -i -f -p -s -a -e ./%s %p ",
-        execution_filename,
-        address
-    );
+    sprintf(command, "addr2line -C -i -f -p -s -a -e ./%s %p ",
+        execution_filename, address);
 
     // Will print a nicely formatted string specifying the function and source
     // line of the address.
@@ -187,13 +183,11 @@ print_backtrace()
     free(array);
 }
 
+#undef lulu_assert_fail
+
 void
-lulu_assert_fail(
-    const char *where,
-    const char *expr,
-    const char *fmt,
-    ...
-) throw()
+lulu_assert_fail(const char *where, const char *expr, const char *fmt,
+    ...) throw()
 {
     static bool have_error = false;
     assert(!have_error && "Error in assertion handling");
@@ -202,7 +196,7 @@ lulu_assert_fail(
     if (expr != nullptr) {
         fprintf(stderr, "%s: Assertion failed: %s\n", where, expr);
     } else {
-        fprintf(stderr, "%s: runtime panic\n", where);
+        fprintf(stderr, "%s: Runtime panic\n", where);
     }
     if (fmt != nullptr) {
         va_list argp;
@@ -211,11 +205,22 @@ lulu_assert_fail(
         va_end(argp);
     }
 
-    // invoke ASAN
-    *reinterpret_cast<volatile int *>(SIZE_MAX) = 1;
+
+    // ASAN check with Clang,
+    #if (defined(__has_feature) && __has_feature(address_sanitizer))
+    #   ifndef __SANITIZE_ADDRESS__
+    #       define __SANITIZE_ADDRESS__ 1
+    #   endif
+    #endif
+
+    // GCC and MSVC already define the macro so we *should* be good here.
+    #if (defined(__SANITIZE_ADDRESS__))
+        // intentionally cause segault to invoke ASAN for better backtrace
+        *reinterpret_cast<volatile int *>(SIZE_MAX) = 1;
+    #endif
 
     print_backtrace();
-    __builtin_trap();
+    lulu_unreachable();
 }
 
 #endif // LULU_DEBUG
