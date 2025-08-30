@@ -3,20 +3,21 @@ import gdb # type: ignore
 from enum import Enum
 from .. import base
 
-class Type(Enum):
-    NONE          = -1
-    NIL           =  0
-    BOOLEAN       =  1
-    LIGHTUSERDATA =  2
-    NUMBER        =  3
-    STRING        =  4
-    TABLE         =  5
-    FUNCTION      =  6
-    USERDATA      =  7
-    THREAD        =  8
+Value_Type = gdb.lookup_type("Value_Type")
+VALUE_NONE = Value_Type["VALUE_NONE"].enumval
+VALUE_NIL = Value_Type["VALUE_NIL"].enumval
+VALUE_BOOLEAN = Value_Type["VALUE_BOOLEAN"].enumval
+VALUE_LIGHTUSERDATA = Value_Type["VALUE_LIGHTUSERDATA"].enumval
+VALUE_NUMBER = Value_Type["VALUE_NUMBER"].enumval
+VALUE_STRING = Value_Type["VALUE_STRING"].enumval
+VALUE_TABLE = Value_Type["VALUE_TABLE"].enumval
+VALUE_FUNCTION = Value_Type["VALUE_FUNCTION"].enumval
+VALUE_USERDATA = Value_Type["VALUE_USERDATA"].enumval
+VALUE_THREAD = Value_Type["VALUE_THREAD"].enumval
 
 def ttisnil(v: gdb.Value) -> bool:
-    return int(v["tt"]) == Type.NIL.value
+    return int(v["tt"]) == VALUE_NIL
+
 
 def bvalue(v: gdb.Value) -> bool:
     return bool(v["value"]["b"])
@@ -77,21 +78,24 @@ class TValuePrinter:
         return tostring(self.__value)
 
 
+__tostring = {
+    VALUE_NIL:     lambda _: "nil",
+    VALUE_BOOLEAN: lambda v: str(bvalue(v)).lower(),
+    VALUE_NUMBER:  lambda v: str(nvalue(v)),
+    VALUE_STRING:  lambda v: svalue(v),
+}
+
 def tostring(v: gdb.Value) -> str:
     # We assume `value.tt` is in range of `Type`
-    tag = Type(int(v["tt"]))
-    match tag:
-        case Type.NONE:    return "none"
-        case Type.NIL:     return "nil"
-        case Type.BOOLEAN: return str(bvalue(v)).lower()
-        case Type.NUMBER:  return str(nvalue(v))
-        case Type.STRING:  return svalue(v)
-        case _:
-            pass
+    tag = v["tt"]
+    if int(tag) in __tostring:
+        return __tostring[int(tag)](v)
+
     # GDB already knows how to print addresses
     # assumes `(void *)TValue::value.p == (void *)TValue::value.gc`
     addr = gcvalue(v).cast(base.VOID_POINTER)
-    return f"{tag.name.lower()}: {addr}"
+    t = str(tag).removeprefix("VALUE_").lower()
+    return f"{t}: {addr}"
 
 
 first_table = True

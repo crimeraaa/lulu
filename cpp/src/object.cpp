@@ -36,7 +36,7 @@ object_gc_print(Object *o, const char *fmt, ...)
     if (o->type() == VALUE_STRING) {
         s = o->ostring.to_cstring();
     } else {
-        const char *t = Value::type_names[o->type()];
+        const char *t = o->type_name();
         sprintf(buf, "%s: %p", t, p);
         s = buf;
     }

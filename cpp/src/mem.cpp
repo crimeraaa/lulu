@@ -103,21 +103,25 @@ mem_mark_object(lulu_Global *g, Object *o)
 
     o->base.set_gray();
 
-    GC_List **next;
+    // During mark phase, this node will link to the current head as we
+    // are going to prepend it, thus making it the new head.
+    //
+    // During trace phase, this node will link to nothing as we are going
+    // to append it, thus making it the new tail.
+    GC_List *next = (g->gc_state == GC_MARK) ? g->gray_head : nullptr;
     switch (o->type()) {
     case VALUE_STRING:
         // Strings can be marked gray, but we do not add them to the gray list
         // because all strings are visible to Intern anyway.
         return;
     case VALUE_TABLE:
-        next = &o->table.gc_list;
+        o->table.gc_list = next;
         break;
     case VALUE_FUNCTION:
-        // Also works for C closures
-        next = &o->function.lua.gc_list;
+        o->function.base.gc_list = next;
         break;
     case VALUE_CHUNK:
-        next = &o->chunk.gc_list;
+        o->chunk.gc_list = next;
         break;
     default:
         lulu_panicf("Invalid object type %i", o->type());
@@ -125,36 +129,41 @@ mem_mark_object(lulu_Global *g, Object *o)
         break;
     }
 
-    GC_List **head;
     switch (g->gc_state) {
-    // During mark phase, we can (and should!) fill the primary gray list.
     case GC_MARK:
-        head = &g->gray_list;
-        break;
-    // During trace phase, don't disturb iteration of the main gray lst.
-    // We cannot reach here while sweeping!
-    case GC_TRACE_SECONDARY:
-        // @note(2025-08-29): `o` is some dependent of the object we are
-        // about to blacken, so the parent is going to be invalidated.
-        //
-        // Find the prepended node *before* that so we can link it to the
-        // remainder of the list. Remember that unlike in mem_sweep(), we are
-        // not necessarily iterating in order of the main objects list!
-        if (g->gray_prepend_tail == nullptr) {
-            g->gray_prepend_tail = o;
+        // First node ever? Will be used if/when we append later.
+        if (g->gray_tail == nullptr) {
+            g->gray_tail = g->gray_head;
         }
-        [[fallthrough]];
-    case GC_TRACE_PRIMARY:
-        head = &g->gray_saved;
+        // Node was linked to current head, so head will now be the node
+        // in order to prepend it.
+        g->gray_head = o;
+        break;
+    case GC_TRACE:
+        lulu_assert(g->gray_tail != nullptr);
+        // Update current tail to link to new node...
+        switch (g->gray_tail->type()) {
+        case VALUE_TABLE:
+            g->gray_tail->table.gc_list = o;
+            break;
+        case VALUE_FUNCTION:
+            g->gray_tail->function.base.gc_list = o;
+            break;
+        case VALUE_CHUNK:
+            g->gray_tail->chunk.gc_list = o;
+            break;
+        default:
+            lulu_panicf("Object '%s' has no member 'gc_list'",
+                g->gray_tail->type_name());
+            break;
+        }
+        // ...then set new node as the tail.
+        g->gray_tail = o;
         break;
     default:
         lulu_panicf("Got GC_State %i", g->gc_state);
-        lulu_unreachable();
         break;
     }
-    // Prepend the current node to the head of parent list.
-    *next = *head;
-    *head = o;
 }
 
 
@@ -358,7 +367,7 @@ mem_blacken_object(lulu_Global *g, Object *o)
         next = mem_blacken_chunk(g, &o->chunk);
         break;
     default:
-        lulu_panicf("Cannot blacken object type '%s'", Value::type_names[t]);
+        lulu_panicf("Cannot blacken object type '%s'", o->type_name());
         lulu_unreachable();
         break;
     }
@@ -378,33 +387,17 @@ mem_blacken_object(lulu_Global *g, Object *o)
 static void
 mem_trace_references(lulu_Global *g)
 {
-    // Traversing through the main list is easy enough.
-    g->gc_state = GC_TRACE_PRIMARY;
-    while (g->gray_list != nullptr) {
-        GC_List *next = mem_blacken_object(g, g->gray_list);
-        g->gray_list = next;
+    g->gc_state = GC_TRACE;
+
+    // While traversing, we may append new objects. This is fine because
+    // since they're appended, we have not invalidated the iteration.
+    while (g->gray_head != nullptr) {
+        GC_List *next = mem_blacken_object(g, g->gray_head);
+        g->gray_head = next;
     }
 
-    // Traversing the secondary list is harder, because we can prepend to it.
-    g->gc_state = GC_TRACE_SECONDARY;
-    while (g->gray_saved != nullptr) {
-        GC_List *node = g->gray_saved;
-        GC_List *next = mem_blacken_object(g, node);
-        // No prepending occured, so we can proceed with iteration normally.
-        if (g->gray_saved == node) {
-            g->gray_saved = next;
-            continue;
-        }
-        // Otherwise, prepending did occur, so don't assign the list because
-        // we will traverse that child. We assume the 'tail' of the prepended
-        // sequence is the oldest one and comes right before `node`.
-        GC_List *last = g->gray_prepend_tail;
-        lulu_assert(last != nullptr);
-        g->gray_prepend_tail = nullptr;
-        last->chunk.gc_list = next;
-    }
-    // Must be empty by this point, otherwise we will crash during sweep.
-    lulu_assert(g->gray_prepend_tail == nullptr);
+    // Prepare for next cycle
+    g->gray_tail = nullptr;
 }
 
 

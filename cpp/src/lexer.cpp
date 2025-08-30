@@ -189,7 +189,7 @@ skip_multiline(Lexer *x, int nest_open, bool do_save)
 
         if (match(x, ']')) {
             // Don't save to buffer just yet; need to check if ending.
-            int nest_close = get_nesting(x, /* do_save */ false);
+            int nest_close = get_nesting(x, /*do_save=*/false);
             if (match(x, ']') && nest_open == nest_close) {
                 return;
             }
@@ -223,9 +223,9 @@ skip_comment(Lexer *x)
 {
     // Multiline comment.
     if (match(x, '[')) {
-        int nest_open = get_nesting(x, /* do_save */ false);
+        int nest_open = get_nesting(x, /*do_save=*/false);
         if (match(x, '[')) {
-            skip_multiline(x, nest_open, /* do_save */ false);
+            skip_multiline(x, nest_open, /*do_save=*/false);
             return;
         }
         // If we didn't find the 2nd '[' then we fall back to single line.
@@ -338,7 +338,7 @@ make_number(Lexer *x, bool prefixed)
                 sprintf(buf, "Invalid base-%i integer", base);
                 error(x, buf);
             }
-            return Token::make(TOKEN_NUMBER, /* number */ d);
+            return Token::make(TOKEN_NUMBER, /*number=*/d);
         }
         // TODO(2025-06-12): Accept leading zeroes? Lua does, Python doesn't
     }
@@ -361,7 +361,7 @@ make_number(Lexer *x, bool prefixed)
     if (!lstring_to_number(s, &d)) {
         error(x, "Malformed number");
     }
-    return Token::make(TOKEN_NUMBER, /* number */ d);
+    return Token::make(TOKEN_NUMBER, /*number=*/d);
 }
 
 static int
@@ -406,20 +406,23 @@ get_escaped(Lexer *x, char ch)
 OString *
 lexer_new_ostring(lulu_VM *L, Lexer *x, LString ls)
 {
-    OString *os = ostring_new(L, ls);
+    OString *s = ostring_new(L, ls);
     Table *t = x->indexes;
-    Value k = Value::make_string(os);
+    Value k = Value::make_string(s);
     Value v;
 
     // If key exists, don't do anything as it's not collectible anyway.
     // Otherwise explicitly mark it to prevent collection.
-    if (!os->is_fixed() && !table_get(t, k, &v)) {
+    if (!s->is_fixed() && !table_get(t, k, &v)) {
+        // Make sure `s` will not be collected because it's in a reachable
+        // table that maps to non-nil.
         v = Value::make_boolean(true);
         vm_push_value(L, k);
         table_set(L, t, k, v);
         vm_pop_value(L);
+        // luaC_checkGC(L);
     }
-    return os;
+    return s;
 }
 
 static Token

@@ -23,6 +23,15 @@ union Object {
         return this->base.type;
     }
 
+    const char *
+    type_name() const noexcept
+    {
+        return Value::type_names[this->type()];
+    }
+
+    // We don't need to return a reference because once an object is created
+    // its 'next' link remains constant unless it is collected, in which case
+    // the GC handles the links for us anyway.
     Object *
     next() noexcept
     {

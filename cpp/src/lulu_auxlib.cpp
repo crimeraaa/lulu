@@ -355,7 +355,6 @@ lulu_set_nlibrary(lulu_VM *L, const char *libname,
     }
 
     for (int i = 0; i < n; i++) {
-        // TODO(2025-07-01): Ensure key and value are not collected!
         lulu_push_cfunction(L, library[i].function);
         lulu_set_field(L, -2, library[i].name);
     }

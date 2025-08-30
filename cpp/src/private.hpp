@@ -112,8 +112,14 @@ enum Value_Type : u8 {
     VALUE_INTEGER,
 };
 
+// 'slice' the Value_Type enum up to the last user-facing type.
 #define VALUE_TYPE_LAST  VALUE_FUNCTION
-#define VALUE_TYPE_COUNT VALUE_INTEGER + 1
+
+#ifdef LULU_DEBUG
+#   define VALUE_TYPE_COUNT (VALUE_INTEGER + 1)
+#else
+#   define VALUE_TYPE_COUNT (VALUE_FUNCTION + 1)
+#endif
 
 union Object;
 using Object_Mark = u8;

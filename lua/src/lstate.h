@@ -13,6 +13,7 @@
 #include "ltm.h"
 #include "lzio.h"
 
+#include "lgc.h" /* GCState */
 
 
 struct lua_longjmp;  /* defined in ldo.c */
@@ -70,7 +71,7 @@ typedef struct global_State {
   lua_Alloc frealloc;  /* function to reallocate memory */
   void *ud;         /* auxiliary data to `frealloc' */
   lu_byte currentwhite;
-  lu_byte gcstate;  /* state of garbage collector */
+  GCState gcstate;  /* state of garbage collector */
   int sweepstrgc;  /* position of sweep in `strt' */
   GCObject *rootgc;  /* list of all collectable objects */
   GCObject **sweepgc;  /* position of sweep in `rootgc' */

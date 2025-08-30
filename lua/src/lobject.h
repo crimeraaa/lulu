@@ -63,28 +63,29 @@ typedef union {
   int b;
 } Value;
 
+
 /**
  * @brief 2025-05-17
  *  My addition for easier debug printing.
  */
-typedef enum {
-  ValueType_None          = LUA_TNONE,
-  ValueType_Nil           = LUA_TNIL,
-  ValueType_Boolean       = LUA_TBOOLEAN,
-  ValueType_Lightuserdata = LUA_TLIGHTUSERDATA,
-  ValueType_Number        = LUA_TNUMBER,
-  ValueType_String        = LUA_TSTRING,
-  ValueType_Table         = LUA_TTABLE,
-  ValueType_Function      = LUA_TFUNCTION,
-  ValueType_Userdata      = LUA_TUSERDATA,
-  ValueType_Thread        = LUA_TTHREAD
-} ValueType;
+typedef enum __attribute__ ((__packed__)) {
+  VALUE_NONE          = LUA_TNONE,
+  VALUE_NIL           = LUA_TNIL,
+  VALUE_BOOLEAN       = LUA_TBOOLEAN,
+  VALUE_LIGHTUSERDATA = LUA_TLIGHTUSERDATA,
+  VALUE_NUMBER        = LUA_TNUMBER,
+  VALUE_STRING        = LUA_TSTRING,
+  VALUE_TABLE         = LUA_TTABLE,
+  VALUE_FUNCTION      = LUA_TFUNCTION,
+  VALUE_USERDATA      = LUA_TUSERDATA,
+  VALUE_THREAD        = LUA_TTHREAD
+} Value_Type;
 
 /*
 ** Tagged Values
 */
 
-#define TValuefields	Value value; ValueType tt
+#define TValuefields	Value value; Value_Type tt
 
 typedef struct lua_TValue {
   TValuefields;
@@ -337,8 +338,8 @@ typedef union Closure {
 */
 
 typedef union TKey {
-  /* Needed to maximize space in case `sizeof(TValue) == 12` due to
-    padding. */
+  /* Needed to maximize space in case `sizeof(TValue) == 12` and
+    `sizeof(struct Node *) == 4` due to padding. */
   struct {
     TValuefields;
     struct Node *next;  /* for chaining */

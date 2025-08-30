@@ -72,19 +72,20 @@ struct Closure_C : Closure_Header {
 };
 
 union Closure {
-    Closure_Lua lua;
-    Closure_C   c;
+    Closure_Header base;
+    Closure_Lua    lua;
+    Closure_C      c;
 
     bool
     is_c() const noexcept
     {
-        return this->lua.is_c;
+        return this->base.is_c;
     }
 
     bool
     is_lua() const noexcept
     {
-        return !this->lua.is_c;
+        return !this->base.is_c;
     }
 
     Closure_Lua *

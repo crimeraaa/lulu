@@ -14,27 +14,22 @@ if os.getcwd() not in sys.path:
 end
 
 # file ./bin/lua
-
+# break main
 # # Protected call of `luaD_protectedparser()`
 # break ldo.c:f_parser
 # break luaY_parser
 # break lua_pcall
 # break luaD_precall if nresults == -1
 # break luaV_execute
-
-# Test error call stack
+# # Test error call stack
 # break luaG_aritherror
 # break luaG_typeerror
 
 file ./bin/lulu-cpp
-
 break lulu.c:main
-
 set breakpoint pending on
-
 break vm.cpp:required_allocations
 break object.hpp:object_new if type != VALUE_STRING
-
 set breakpoint pending off
 
 # break lulu_main::main

@@ -57,8 +57,7 @@ using Frame_Array = Small_Array<Call_Frame, 16>;
 enum GC_State : u8 {
     GC_PAUSED,
     GC_MARK,
-    GC_TRACE_PRIMARY,
-    GC_TRACE_SECONDARY,
+    GC_TRACE,
     GC_SWEEP,
 };
 
@@ -80,18 +79,20 @@ struct lulu_Global {
 
     // Filled up during the mark phase of GC and traversed during trace phase.
     // Never modified after mark phase.
-    GC_List *gray_list;
+    GC_List *gray_head;
 
+    // The very last node in 'gray_list'. This is useful when appending
+    // child nodes from roots so that we do not mess up the iteration.
+    //
     // Never used during mark phase. Filled up during trace phase.
     // Can be modified in-place during trace phase.
-    GC_List *gray_saved;
-    GC_List *gray_prepend_tail;
+    GC_List *gray_tail;
 
     GC_State gc_state;
 };
 
 struct LULU_PUBLIC lulu_VM {
-    lulu_Global       *global_state;
+    lulu_Global       *G;
     Stack_Array        stack;
     Frame_Array        frames;
     Call_Frame        *caller; // Not a reference because it can be reassigned.
@@ -112,7 +113,7 @@ struct LULU_PUBLIC lulu_VM {
 inline lulu_Global *
 G(lulu_VM *L)
 {
-    return L->global_state;
+    return L->G;
 }
 
 using Protected_Fn = void (*)(lulu_VM *L, void *user_ptr);

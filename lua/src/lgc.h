@@ -14,11 +14,14 @@
 /*
 ** Possible states of the Garbage Collector
 */
-#define GCSpause	0
-#define GCSpropagate	1
-#define GCSsweepstring	2
-#define GCSsweep	3
-#define GCSfinalize	4
+
+typedef enum __attribute__ ((__packed__)) {
+  GCSpause,
+  GCSpropagate,
+  GCSsweepstring,
+  GCSsweep,
+  GCSfinalize
+} GCState;
 
 
 /*
@@ -192,7 +195,8 @@ LUAI_FUNC void luaC_linkupval (lua_State *L, UpVal *uv);
 /* Helper function for `luaC_barrier()` and `luaC_objbarrier()`. */
 LUAI_FUNC void luaC_barrierf (lua_State *L, GCObject *o, GCObject *v);
 
-/* Helper function for `luaC_barriert()` and `luaC_objbarriert()`. */
+/* Helper function for `luaC_barriert()` and `luaC_objbarriert()`.
+   Converts the table `t` back to gray. */
 LUAI_FUNC void luaC_barrierback (lua_State *L, Table *t);
 
 

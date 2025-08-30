@@ -17,7 +17,7 @@ overflow_error(lulu_VM *L, isize n, isize limit, const char *what)
 static void
 required_allocations(lulu_VM *L, void *)
 {
-    Table *t = table_new(L, /* n_hash */ 8, /* n_array */ 0);
+    Table *t = table_new(L, /*n_hash=*/8, /*n_array=*/0);
     L->globals.set_table(t);
     // Ensure when we start interning strings we can already index.
     intern_resize(L, &G(L)->intern, 32);
@@ -41,13 +41,13 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
 
     // Global state
     *g = {};
-    g->allocator      = allocator;
+    g->allocator = allocator;
     g->allocator_data = allocator_data;
 
     // VM state
     *L = {};
-    L->global_state  = g;
-    L->window        = slice(L->stack, 0, 0);
+    L->G = g;
+    L->window = slice(L->stack, 0, 0);
 
     g->gc_state = GC_PAUSED;
     Error e = vm_run_protected(L, required_allocations, nullptr);
@@ -62,11 +62,12 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
 LULU_API void
 lulu_close(lulu_VM *L)
 {
-    builder_destroy(L, &G(L)->builder);
-    intern_destroy(L, &G(L)->intern);
+    lulu_Global *g = G(L);
+    builder_destroy(L, &g->builder);
+    intern_destroy(L, &g->intern);
 
-    // Free ALL objects.
-    Object *o = G(L)->objects;
+    // Free ALL objects unconditionally since the VM is about to be freed.
+    Object *o = g->objects;
     while (o != nullptr) {
         // Save because `o` is about to be invalidated.
         Object *next = o->next();
@@ -364,12 +365,22 @@ struct Load_Data {
     Builder builder;
 };
 
+
+// Analogous to `ldo.c:f_parser()` in Lua 5.1.5.
 static void
 load(lulu_VM *L, void *user_ptr)
 {
     Load_Data *d      = reinterpret_cast<Load_Data *>(user_ptr);
     OString   *source = ostring_new(L, d->source);
+
+    // We need to do this as the string is otherwise not reachable. Lua gets
+    // around this by not checking GC inside of its malloc wrapper, but rather
+    // only checking GC in the macro `luaC_checkGC()` which is only called
+    // at certain points, which by then this string is already reachable via
+    // its parent `Chunk *`.
     vm_push_value(L, Value::make_string(source));
+
+    // luaC_checkGC(L);
     Chunk   *p = parser_program(L, source, d->stream, &d->builder);
     Closure *f = closure_lua_new(L, p);
     vm_pop_value(L);
@@ -429,6 +440,7 @@ vm_call(lulu_VM *L, const Value *ra, int n_args, int n_rets)
     if (n_rets != VARARG) {
         L->window = slice(L->stack, base, new_top);
     }
+    // luaC_checkGC(L);
 }
 
 static Call_Type
@@ -577,21 +589,15 @@ vm_table_set(lulu_VM *L, const Value *t, const Value *k, Value v)
             debug_type_error(L, "set index using", k);
         }
         table_set(L, t->to_table(), *k, v);
+        // luaC_barriert(L, t, v);
         return;
     }
     debug_type_error(L, "set index of", t);
 }
 
 enum Metamethod {
-    MT_ADD,
-    MT_SUB,
-    MT_MUL,
-    MT_DIV,
-    MT_MOD,
-    MT_POW,
-    MT_UNM, // Arithmetic
-    MT_LT,
-    MT_LEQ, // Comparison
+    MT_ADD, MT_SUB, MT_MUL, MT_DIV, MT_MOD, MT_POW, MT_UNM, // Arithmetic
+    MT_LT, MT_LEQ, // Comparison
 };
 
 static void
@@ -636,13 +642,8 @@ arith(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
 }
 
 static void
-compare(
-    lulu_VM     *L,
-    Metamethod   mt,
-    Value       *ra,
-    const Value *rkb,
-    const Value *rkc
-)
+compare(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb,
+    const Value *rkc)
 {
     Value tmp_b, tmp_c;
     if (vm_to_number(rkb, &tmp_b) && vm_to_number(rkc, &tmp_c)) {
@@ -790,6 +791,8 @@ re_entry:
             isize  n_array = floating_byte_decode(inst.c());
             Table *t       = table_new(L, n_hash, n_array);
             ra->set_table(t);
+            // Must occur AFTER setting `ra` so that the table is on the stack!
+            // Protect(luaC_checkGC(L));
             break;
         }
         case OP_GET_TABLE: {
@@ -889,6 +892,7 @@ re_entry:
         case OP_CONCAT:
             protect(L, ip);
             vm_concat(L, ra, slice_pointer(&RB(inst), &RC(inst) + 1));
+            // luaC_checkGC(L);
             break;
         case OP_TEST: {
             bool cond = inst.c();
@@ -1051,6 +1055,7 @@ re_entry:
                 }
                 ip++;
             }
+            // luaC_checkGC(L);
             break;
         }
         case OP_CLOSE:

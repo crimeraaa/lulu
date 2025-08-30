@@ -7,7 +7,7 @@
  * @note(2025-07-21)
  *      ORDER: Sync with `private.hpp:Value_Type`!
  */
-const char *const Value::type_names[] = {
+const char *const Value::type_names[VALUE_TYPE_COUNT] = {
     "nil",      // VALUE_NIL
     "boolean",  // VALUE_BOOLEAN
     "userdata", // VALUE_LIGHTUSERDATA
@@ -15,9 +15,12 @@ const char *const Value::type_names[] = {
     "string",   // VALUE_STRING
     "table",    // VALUE_TABLE
     "function", // VALUE_FUNCTION
+
+#ifdef LULU_DEBUG
     "chunk",    // VALUE_CHUNK
     "upvalue",  // VALUE_UPVALUE
     "integer",  // VALUE_INTEGER
+#endif
 };
 
 bool
@@ -62,7 +65,7 @@ value_print(Value v)
         break;
     case VALUE_LIGHTUSERDATA:
 print_pointer:
-        fprintf(stdout, "%s: %p", Value::type_names[t], v.to_pointer());
+        fprintf(stdout, "%s: %p", v.type_name(), v.to_pointer());
         break;
     case VALUE_NUMBER:
         fprintf(stdout, LULU_NUMBER_FMT, v.to_number());
