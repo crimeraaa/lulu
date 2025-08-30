@@ -177,12 +177,8 @@ LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
  *      This function leaves the module table on top of the stack.
  */
 LULU_LIB_API void
-lulu_set_nlibrary(
-    lulu_VM             *L,
-    const char          *libname,
-    const lulu_Register *library,
-    int                  n
-);
+lulu_set_nlibrary(lulu_VM *L, const char *libname,
+    const lulu_Register *library, int n);
 
 
 /*=== }}} =============================================================== */

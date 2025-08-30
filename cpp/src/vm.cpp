@@ -345,7 +345,7 @@ vm_runtime_error(lulu_VM *L, const char *fmt, ...)
     if (cf->is_lua()) {
         const Chunk *p    = cf->to_lua()->chunk;
         int          pc   = ptr_index(p->code, L->saved_ip) - 1;
-        int          line = chunk_get_line(p, pc);
+        int          line = chunk_line_get(p, pc);
         vm_push_fstring(L, "%s:%i: ", p->source->to_cstring(), line);
     } else {
         vm_push_string(L, "[C]: "_s);

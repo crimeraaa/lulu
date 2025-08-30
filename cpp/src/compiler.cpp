@@ -19,20 +19,6 @@ jump_get_control(Compiler *c, int jump_pc);
 static int
 jump_if(Compiler *c, OpCode op, u16 a, u16 b, u16 c2);
 
-Compiler
-compiler_make(lulu_VM *L, Parser *p, Chunk *f, Table *i, Compiler *prev)
-{
-    Compiler c{};
-    c.L           = L;
-    c.prev        = prev;
-    c.parser      = p;
-    c.chunk       = f;
-    c.indexes     = i;
-    c.last_target = NO_JUMP;
-    small_array_clear(&c.active);
-    return c;
-}
-
 void
 compiler_error_limit(Compiler *c, int limit, const char *what)
 {
@@ -50,7 +36,10 @@ code_push(Compiler *c, Instruction i)
 {
     lulu_VM *L = c->L;
     Chunk   *p  = c->chunk;
-    return chunk_add_code(L, p, i, c->parser->last_line, &c->pc);
+    int line = c->parser->last_line;
+    int pc = chunk_code_push(L, p, i, &c->pc);
+    chunk_line_push(L, p, pc, line, &c->n_lines);
+    return pc;
 }
 
 static void
@@ -145,9 +134,9 @@ add_constant(Compiler *c, Value k, Value v)
     // Push value to prevent collection in case garbage collector runs in any
     // of the below calls.
     vm_push_value(L, v);
-    u32 n = chunk_add_constant(L, c->chunk, v);
+    u32 n = chunk_constant_push(L, c->chunk, v, &c->n_constants);
     i = Value::make_integer(static_cast<Integer>(n));
-    table_set(c->L, c->indexes, k, i);
+    table_set(L, c->indexes, k, i);
     vm_pop_value(L);
     return n;
 }
@@ -341,13 +330,8 @@ static int
 label_code(Compiler *c, u16 reg, bool b, bool do_jump)
 {
     compiler_label_get(c);
-    return compiler_code_abc(
-        c,
-        OP_BOOL,
-        reg,
-        static_cast<u16>(b),
-        static_cast<u16>(do_jump)
-    );
+    return compiler_code_abc(c, OP_BOOL, reg, static_cast<u16>(b),
+        static_cast<u16>(do_jump));
 }
 
 static void
@@ -364,8 +348,8 @@ expr_to_reg(Compiler *c, Expr *e, u16 reg)
         int load_false = NO_JUMP;
         if (need_value(c, e->patch_true) || need_value(c, e->patch_false)) {
             int jump_pc = (is_jump) ? NO_JUMP : compiler_jump_new(c);
-            load_false  = label_code(c, reg, /* b */ false, /* do_jump */ true);
-            load_true   = label_code(c, reg, /* b */ true, /* do_jump */ false);
+            load_false  = label_code(c, reg, /*b=*/false, /*do_jump=*/true);
+            load_true   = label_code(c, reg, /*b=*/true,  /*do_jump=*/false);
             compiler_jump_patch(c, jump_pc);
         }
         compiler_jump_patch(c, e->patch_false, load_false, reg);
@@ -453,8 +437,8 @@ compiler_expr_rk(Compiler *c, Expr *e)
 static bool
 arith_folded(OpCode op, Expr *restrict left, const Expr *restrict right)
 {
-    // At least one argument is not a number literal?
-    if (left->type != EXPR_NUMBER || right->type != EXPR_NUMBER) {
+    // Cannot fold if at least one argument is not a number literal.
+    if (!left->is_number() || !right->is_number()) {
         return false;
     }
 

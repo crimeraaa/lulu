@@ -56,7 +56,7 @@ constexpr int OPCODE_COUNT = OP_RETURN + 1;
 // Fills the `n` lower bits with 1's.
 // Useful when reading bit fields.
 constexpr u32
-BITMASK1(int n)
+BIT_MASK1(int n)
 {
     return (1 << static_cast<u32>(n)) - 1;
 }
@@ -64,9 +64,9 @@ BITMASK1(int n)
 // Set `start` up to `start + n` bits with 0's. All the rest are 1's.
 // Useful when setting bit fields.
 constexpr u32
-BITMASK0(int start, int n)
+BIT_MASK0(int start, int n)
 {
-    return ~(BITMASK1(start) << (n));
+    return ~(BIT_MASK1(start) << (n));
 }
 
 /**
@@ -102,19 +102,19 @@ struct Instruction {
 
     static constexpr u32
     // Operand limits
-    MAX_B    = BITMASK1(SIZE_B),
-    MAX_C    = BITMASK1(SIZE_C),
-    MAX_A    = BITMASK1(SIZE_A),
-    MAX_OP   = BITMASK1(SIZE_OP),
+    MAX_B    = BIT_MASK1(SIZE_B),
+    MAX_C    = BIT_MASK1(SIZE_C),
+    MAX_A    = BIT_MASK1(SIZE_A),
+    MAX_OP   = BIT_MASK1(SIZE_OP),
 
     // Operand masks
-    MASK0_B  = BITMASK0(SIZE_B, OFFSET_B),
-    MASK0_C  = BITMASK0(SIZE_C, OFFSET_C),
-    MASK0_A  = BITMASK0(SIZE_A, OFFSET_A),
-    MASK0_OP = BITMASK0(SIZE_OP, OFFSET_OP),
-    MASK0_BX = BITMASK0(SIZE_BX, OFFSET_BX);
+    MASK0_B  = BIT_MASK0(SIZE_B, OFFSET_B),
+    MASK0_C  = BIT_MASK0(SIZE_C, OFFSET_C),
+    MASK0_A  = BIT_MASK0(SIZE_A, OFFSET_A),
+    MASK0_OP = BIT_MASK0(SIZE_OP, OFFSET_OP),
+    MASK0_BX = BIT_MASK0(SIZE_BX, OFFSET_BX);
 
-    static constexpr u32 MAX_BX  = BITMASK1(SIZE_BX);
+    static constexpr u32 MAX_BX  = BIT_MASK1(SIZE_BX);
     static constexpr i32 MAX_SBX = static_cast<i32>(MAX_BX >> 1);
     // clang-format on
 
@@ -289,11 +289,11 @@ struct OpInfo {
     OFFSET_TEST = OFFSET_A + SIZE_A,
 
     // Info bit masks
-    MASK1_TEST = BITMASK1(SIZE_TEST),
-    MASK1_A    = BITMASK1(SIZE_A),
-    MASK1_B    = BITMASK1(SIZE_B),
-    MASK1_C    = BITMASK1(SIZE_C),
-    MASK1_FMT  = BITMASK1(SIZE_FMT);
+    MASK1_TEST = BIT_MASK1(SIZE_TEST),
+    MASK1_A    = BIT_MASK1(SIZE_A),
+    MASK1_B    = BIT_MASK1(SIZE_B),
+    MASK1_C    = BIT_MASK1(SIZE_C),
+    MASK1_FMT  = BIT_MASK1(SIZE_FMT);
     // clang-format on
 
     OpFormat

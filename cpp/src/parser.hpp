@@ -84,12 +84,10 @@ struct Expr {
     static constexpr Expr
     make(Expr_Type type)
     {
-        Expr e{
-            /* type */ type,
-            /* patch_true */ NO_JUMP,
-            /* patch_false */ NO_JUMP,
-            /* <unnamed>::number */ {0},
-        };
+        Expr e{};
+        e.type = type;
+        e.patch_true = NO_JUMP;
+        e.patch_false = NO_JUMP;
         return e;
     }
 

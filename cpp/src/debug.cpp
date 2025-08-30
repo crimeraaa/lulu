@@ -75,15 +75,8 @@ compare(const Chunk *p, const char *op, Args args)
 {
     int pc = args.pc;
     print_reg(p, args.b, pc, " %s ", op);
-    print_reg(
-        p,
-        args.c,
-        pc,
-        " ; goto .code[%i if %s else %i]",
-        jump_resolve(pc, 1),
-        (args.a) ? "false" : "true",
-        jump_get(p, pc + 1)
-    );
+    print_reg(p, args.c, pc, " ; goto .code[%i if %s else %i]",
+        jump_resolve(pc, 1), (args.a) ? "false" : "true", jump_get(p, pc + 1));
 }
 
 static int
@@ -119,9 +112,9 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
     args.a    = ip.a();
     printf("[%0*i] ", pad, pc);
 
-    int line = chunk_get_line(p, pc);
+    int line = chunk_line_get(p, pc);
     // Have a previous line and it's the same as ours?
-    if (pc > 0 && chunk_get_line(p, pc - 1) == line) {
+    if (pc > 0 && chunk_line_get(p, pc - 1) == line) {
         printf("   | ");
     } else {
         printf("%4i ", line);
@@ -397,6 +390,15 @@ debug_disassemble(const Chunk *p)
         }
     }
 
+    n = static_cast<int>(len(p->children));
+    if (n > 0) {
+        int pad = count_digits(n);
+        for (int i = 0; i < n; i++) {
+            void *p2 = static_cast<void *>(p->children[i]);
+            printf(".child[%.*i] function: %p\n", pad, i, p2);
+        }
+    }
+
     printf(".code:\n");
     int pad = debug_get_pad(p);
     n       = static_cast<int>(len(p->code));
@@ -666,7 +668,7 @@ get_line(lulu_VM *L, Call_Frame *cf)
     if (pc < 0) {
         return -1;
     }
-    return chunk_get_line(cf->to_lua()->chunk, pc);
+    return chunk_line_get(cf->to_lua()->chunk, pc);
 }
 
 static bool

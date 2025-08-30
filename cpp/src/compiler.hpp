@@ -68,8 +68,13 @@ struct Compiler {
     // Values are the indexes into `chunk->locals` to be used for information.
     Active_Array active;
 
+    // The following members help us manage the slice members of the chunk.
     // Index of the first free instruction, equivalent to `len(chunk->code)`.
     int pc;
+    u32 n_constants;
+    int n_locals;
+    int n_children;
+    int n_lines;
 
     // Pc of the last potential jump target. Helps prevent bad
     // optimizations in compiler_load_nil().
@@ -82,9 +87,6 @@ get_code(Compiler *c, int pc)
 {
     return &c->chunk->code[pc];
 }
-
-Compiler
-compiler_make(lulu_VM *L, Parser *p, Chunk *f, Table *i, Compiler *prev);
 
 [[noreturn]] void
 compiler_error_limit(Compiler *c, int limit, const char *what);
@@ -221,24 +223,15 @@ compiler_expr_any_reg(Compiler *c, Expr *e);
  *          is now 0.
  */
 void
-compiler_code_arith(
-    Compiler *c,
-    OpCode    op,
-    Expr *restrict left,
-    Expr *restrict right
-);
+compiler_code_arith(Compiler *c, OpCode op, Expr *restrict left,
+    Expr *restrict right);
 
 void
 compiler_code_unary(Compiler *c, OpCode op, Expr *e);
 
 void
-compiler_code_compare(
-    Compiler *c,
-    OpCode    op,
-    bool      cond,
-    Expr *restrict left,
-    Expr *restrict right
-);
+compiler_code_compare(Compiler *c, OpCode op, bool cond, Expr *restrict left,
+    Expr *restrict right);
 
 void
 compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right);

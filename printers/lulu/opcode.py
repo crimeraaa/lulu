@@ -15,6 +15,7 @@ opmodes: Final = {
     "OP_JUMP":       OpCode_Format.ASBX,
     "OP_FOR_PREP":   OpCode_Format.ASBX,
     "OP_FOR_LOOP":   OpCode_Format.ASBX,
+    "OP_CLOSURE":    OpCode_Format.ABX,
 }
 
 OpCode: Final = gdb.lookup_type("OpCode")

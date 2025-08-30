@@ -94,6 +94,20 @@ object_free(lulu_VM *L, Object *o);
 
 #ifdef LULU_DEBUG_LOG_GC
 
+// https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+#define ANSI_ESC            "\x1b"
+#define ANSI_CSI            ANSI_ESC "["
+#define ANSI_FG_RED         31
+#define ANSI_FG_GREEN       32
+#define ANSI_FG_DEFAULT     39
+#define ANSI_COLOR(color)   ANSI_CSI TOKEN_STRINGIFY(color) "m"
+
+// Text is always on the foreground, so colorize that.
+#define ANSI_COLOR_TEXT(color, text) \
+    ANSI_COLOR(color) text ANSI_COLOR(ANSI_FG_DEFAULT)
+#define ANSI_TEXT_RED(text)     ANSI_COLOR_TEXT(ANSI_FG_RED, text)
+#define ANSI_TEXT_GREEN(text)   ANSI_COLOR_TEXT(ANSI_FG_GREEN, text)
+
 void
 object_gc_print(Object *o, const char *fmt, ...);
 

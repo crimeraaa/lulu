@@ -24,7 +24,7 @@ gc_mark_object(lulu_Global *g, Object *o)
     }
 
 #ifdef LULU_DEBUG_LOG_GC
-    object_gc_print(o, "mark");
+    object_gc_print(o, "[MARK]");
 #endif // LULU_DEBUG_LOG_GC
 
     o->base.set_gray_from_white();
@@ -279,7 +279,7 @@ gc_blacken_object(lulu_Global *g, Object *o)
     lulu_assert(o->base.is_gray());
 
 #ifdef LULU_DEBUG_LOG_GC
-    object_gc_print(o, "blacken");
+    object_gc_print(o, "[BLACKEN]");
 #endif // LULU_DEBUG_LOG_GC
 
     GC_List **next;

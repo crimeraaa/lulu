@@ -105,12 +105,8 @@ block(Parser *p, Compiler *c)
 static void
 recurse_push(Parser *p, Compiler *c)
 {
-    compiler_check_limit(
-        c,
-        p->n_calls,
-        PARSER_MAX_RECURSE,
-        "recursive C calls"
-    );
+    compiler_check_limit(c, p->n_calls, PARSER_MAX_RECURSE,
+        "recursive C calls");
     p->n_calls++;
 }
 
@@ -378,7 +374,7 @@ static void
 local_push(Parser *p, Compiler *c, OString *ident, u16 n)
 {
     local_check_shadowing(p, c, ident);
-    int index = chunk_add_local(p->L, c->chunk, ident);
+    int index = chunk_local_push(p->L, c->chunk, ident, &c->n_locals);
 
     // Resulting index wouldn't fit as an element in the active array?
     compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
@@ -717,6 +713,19 @@ break_statement(Parser *p, Compiler *c)
     compiler_jump_add(c, &b->break_list, compiler_jump_new(c));
 }
 
+static Compiler
+compiler_make(lulu_VM *L, Parser *p, Chunk *f, Table *i, Compiler *prev)
+{
+    Compiler c{};
+    c.L           = L;
+    c.prev        = prev;
+    c.parser      = p;
+    c.chunk       = f;
+    c.indexes     = i;
+    c.last_target = NO_JUMP;
+    return c;
+}
+
 static void
 function_open(lulu_VM *L, Parser *p, Compiler *c, Compiler *enclosing)
 {
@@ -738,13 +747,24 @@ function_open(lulu_VM *L, Parser *p, Compiler *c, Compiler *enclosing)
 }
 
 static void
+chunk_flatten(lulu_VM *L, Compiler *c, Chunk *p)
+{
+    slice_resize(L, &p->locals, c->n_locals);
+    slice_resize(L, &p->upvalues, p->n_upvalues);
+    slice_resize(L, &p->constants, c->n_constants);
+    slice_resize(L, &p->children, c->n_children);
+    slice_resize(L, &p->code, c->pc);
+    slice_resize(L, &p->lines, c->n_lines);
+}
+
+static void
 function_close(Parser *p, Compiler *c)
 {
     lulu_VM *L = c->L;
     compiler_code_return(c, /*reg=*/0, /*count=*/0);
     // Shrink chunk data to fit.
     Chunk *f = c->chunk;
-    slice_resize(L, &f->code, c->pc);
+    chunk_flatten(L, c, f);
 
 #ifdef LULU_DEBUG_PRINT_CODE
     debug_disassemble(f);
@@ -772,10 +792,10 @@ add_upvalue(Compiler *c, u16 index, OString *ident, Expr_Type type)
 {
     lulu_VM *L = c->L;
     Chunk   *f  = c->chunk;
-    u16      n  = static_cast<u16>(f->n_upvalues);
+    int      n  = static_cast<int>(f->n_upvalues);
 
     // If closure references the same upvalue multiple times, reuse it.
-    for (u16 i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {
         Upvalue_Info up = small_array_get(c->upvalues, i);
         if (up.data == index && up.type == type) {
             return i;
@@ -791,8 +811,7 @@ add_upvalue(Compiler *c, u16 index, OString *ident, Expr_Type type)
     info->data = index;
 
     // Add this upvalue name for debug purposes.
-    dynamic_push(L, &f->upvalues, ident);
-    return f->n_upvalues++;
+    return chunk_upvalue_push(L, f, ident, &f->n_upvalues);
 }
 
 static u16
@@ -901,10 +920,10 @@ function_push(Parser *p, Compiler *parent, Compiler *child)
     lulu_VM *L = p->L;
 
     // Child chunk is to be held by the parent.
-    dynamic_push(L, &parent->chunk->children, child->chunk);
+    chunk_child_push(L, parent->chunk, child->chunk, &parent->n_children);
 
     int pc = compiler_code_abx(parent, OP_CLOSURE, NO_REG,
-        len(parent->chunk->children) - 1);
+        parent->n_children - 1);
 
     for (int i = 0, n = child->chunk->n_upvalues; i < n; i++) {
         Upvalue_Info info = small_array_get(child->upvalues, i);

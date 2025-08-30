@@ -252,12 +252,8 @@ skip_width_or_precision(lulu_VM *L, const char *fmt, const char *what)
 
     /* 3rd digit found? */
     if (isdigit(static_cast<uchar>(fmt[i]))) {
-        lulu_errorf(
-            L,
-            "invalid format (%s in '%s' greater than 99)",
-            what,
-            fmt
-        );
+        lulu_errorf(L, "invalid format (%s in '%s' greater than 99)",
+            what, fmt);
     }
     return i;
 }

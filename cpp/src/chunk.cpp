@@ -17,20 +17,20 @@ chunk_new(lulu_VM *L, OString *source)
 void
 chunk_delete(lulu_VM *L, Chunk *p)
 {
-    dynamic_delete(L, p->locals);
-    dynamic_delete(L, p->upvalues);
-    dynamic_delete(L, p->constants);
-    dynamic_delete(L, p->children);
+    slice_delete(L, p->locals);
+    slice_delete(L, p->upvalues);
+    slice_delete(L, p->constants);
+    slice_delete(L, p->children);
     slice_delete(L, p->code);
-    dynamic_delete(L, p->lines);
+    slice_delete(L, p->lines);
     mem_free(L, p);
 }
 
-static void
-chunk_add_line(lulu_VM *L, Chunk *p, int pc, int line)
+void
+chunk_line_push(lulu_VM *L, Chunk *p, int pc, int line, int *n)
 {
     // Have previous lines to go to?
-    int i = static_cast<int>(len(p->lines));
+    int i = *n;
     if (i > 0) {
         Line_Info *last = &p->lines[i - 1];
         // Last line is the same as ours, so we can fold this pc range?
@@ -49,23 +49,11 @@ chunk_add_line(lulu_VM *L, Chunk *p, int pc, int line)
     }
 
     Line_Info start{line, pc, pc};
-    dynamic_push(L, &p->lines, start);
+    chunk_push(L, &p->lines, start, n);
 }
 
 int
-chunk_add_code(lulu_VM *L, Chunk *p, Instruction i, int line, int *n)
-{
-    int pc = (*n)++;
-    if (pc + 1 > len(p->code)) {
-        slice_resize(L, &p->code, mem_next_pow2(max(pc + 1, 8)));
-    }
-    p->code[pc] = i;
-    chunk_add_line(L, p, pc, line);
-    return pc;
-}
-
-int
-chunk_get_line(const Chunk *p, int pc)
+chunk_line_get(const Chunk *p, int pc)
 {
     // Binary search
     int left  = 0;
@@ -88,23 +76,6 @@ chunk_get_line(const Chunk *p, int pc)
         }
     }
     return NO_LINE;
-}
-
-u32
-chunk_add_constant(lulu_VM *L, Chunk *p, Value v)
-{
-    Integer i = len(p->constants);
-    dynamic_push(L, &p->constants, v);
-    return static_cast<u32>(i);
-}
-
-int
-chunk_add_local(lulu_VM *L, Chunk *p, OString *ident)
-{
-    Local local{ident, 0, 0};
-    int i = static_cast<int>(len(p->locals));
-    dynamic_push(L, &p->locals, local);
-    return i;
 }
 
 const char *
