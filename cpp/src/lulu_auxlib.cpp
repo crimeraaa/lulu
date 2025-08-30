@@ -404,10 +404,12 @@ LULU_LIB_API void
 lulu_open_libs(lulu_VM *L)
 {
     lulu_register(L, "print", lua_print);
-    libs[0].function(L);
-    // for (int i = 0; i < lulu_count_library(libs); i++) {
-    //     lulu_push_cfunction(L, libs[i].function);
-    //     lulu_push_string(L, libs[i].name);
-    //     lulu_call(L, 1, 0);
-    // }
+#ifndef LULU_DEBUG_STRESS_GC
+    // libs[0].function(L);
+    for (int i = 0; i < lulu_count_library(libs); i++) {
+        lulu_push_cfunction(L, libs[i].function);
+        lulu_push_string(L, libs[i].name);
+        lulu_call(L, 1, 0);
+    }
+#endif
 }

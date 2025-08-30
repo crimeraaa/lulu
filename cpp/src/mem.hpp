@@ -7,32 +7,8 @@
 #   include <stdio.h>
 #endif
 
-// Defined in compiler.hpp.
-struct Compiler;
-
-// Defined in string.hpp.
-struct Intern;
-
 void *
 mem_rawrealloc(lulu_VM *L, void *ptr, usize old_size, usize new_size);
-
-/**
- * @note(2025-08-27)
- *      Analogous to `memory.c:markRoots()` in Crafting Interpreters 26.3:
- *      Marking the Roots.
- */
-void
-mem_collect_garbage(lulu_VM *L);
-
-
-/**
- * @note(2025-08-27)
- *      Analogous to `memory.c:markCompilerRoots()` in Crafting Interpreters
- *      26.3.1: Less obvious roots.
- */
-void
-mem_mark_compiler_roots(lulu_VM *L, Compiler *c);
-
 
 /**
  * @param n

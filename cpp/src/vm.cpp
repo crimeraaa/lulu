@@ -23,7 +23,7 @@ required_allocations(lulu_VM *L, void *)
     intern_resize(L, &G(L)->intern, 32);
 
     OString *o = ostring_new(L, lstring_literal(LULU_MEMORY_ERROR_STRING));
-    o->mark |= OBJECT_FIXED;
+    o->set_fixed();
     lexer_global_init(L);
 }
 
@@ -43,15 +43,18 @@ lulu_open(lulu_Allocator allocator, void *allocator_data)
     *g = {};
     g->allocator = allocator;
     g->allocator_data = allocator_data;
-
     // VM state
     *L = {};
     L->G = g;
+    // @note(2025-08-30) Point to stack already so length updates are valid.
     L->window = slice(L->stack, 0, 0);
 
-    g->gc_state = GC_PAUSED;
+    // 'pause' GC
+    g->gc_threshold = USIZE_MAX;
     Error e = vm_run_protected(L, required_allocations, nullptr);
-    g->gc_state = GC_MARK;
+    // Prepare GC for actual work
+    g->gc_threshold = GC_THRESHOLD_INIT;
+    g->gc_prev_threshold = g->gc_threshold;
     if (e != LULU_OK) {
         lulu_close(L);
         return nullptr;
@@ -327,7 +330,6 @@ vm_push_vfstring(lulu_VM *L, const char *fmt, va_list args)
             break;
         default:
             lulu_panicf("Unsupported format specifier '%c'", spec);
-            lulu_unreachable();
             break;
         }
         // Point to format string after this format specifier sequence.
@@ -632,7 +634,6 @@ arith(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
             break;
         default:
             lulu_panicf("Invalid Metamethod(%i)", mt);
-            lulu_unreachable();
             break;
         }
         ra->set_number(n);
@@ -659,7 +660,6 @@ compare(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb,
             break;
         default:
             lulu_panicf("Invalid Metamethod(%i)", mt);
-            lulu_unreachable();
             break;
         }
         ra->set_boolean(b);
@@ -1035,11 +1035,10 @@ re_entry:
         }
         case OP_CLOSURE: {
             Closure *f = closure_lua_new(L, chunk->children[inst.bx()]);
-            Closure_Lua *lua = f->to_lua();
             // Ensure closure lives on the stack already to avoid collection.
             // This also ensures the upvalues are not collected.
             *ra = Value::make_function(f);
-            for (Upvalue *&up : lua->slice_upvalues()) {
+            for (Upvalue *&up : f->to_lua()->slice_upvalues()) {
                 // Just need to copy someone else's upvalues?
                 if (ip->op() == OP_GET_UPVALUE) {
                     up = caller->upvalues[ip->b()];
@@ -1083,7 +1082,6 @@ re_entry:
         }
         default:
             lulu_panicf("Invalid OpCode(%i)", op);
-            lulu_unreachable();
         }
     }
 }

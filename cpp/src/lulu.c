@@ -160,7 +160,11 @@ static int
 protected_main(lulu_VM *L)
 {
     Main_Data *d = cast(Main_Data *) lulu_to_pointer(L, 1);
+
+    lulu_gc(L, LULU_GC_STOP);
     lulu_open_libs(L);
+    lulu_gc(L, LULU_GC_RESTART);
+
     /* Don't include userdata when printing REPL results. */
     lulu_set_top(L, 0);
     switch (d->argc) {
@@ -220,7 +224,14 @@ main(int argc, char *argv[])
     /* lulu_check_string(L, 1); */
 
     e = lulu_cpcall(L, protected_main, &d);
-    lulu_close(L);
+
+    {
+        int n;
+        printf("closing...\n");
+        n = lulu_gc(L, LULU_GC_COUNT);
+        lulu_close(L);
+        printf("...closed! freed %i kilobytes.\n", n);
+    }
     if (e == LULU_OK && d.status == EXIT_SUCCESS) {
         return EXIT_SUCCESS;
     } else if (e == LULU_ERROR_MEMORY) {

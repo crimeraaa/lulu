@@ -36,6 +36,7 @@ using usize = size_t;
 
 #define ISIZE_WIDTH     PTRDIFF_WIDTH
 #define ISIZE_FMT       "ti"
+#define USIZE_MAX       (~usize(0) - 2)
 #define unused(expr)    (void)(expr)
 #define size_of(expr)   isize(sizeof(expr))
 #define count_of(array) isize(sizeof(array) / sizeof((array)[0]))
@@ -50,25 +51,20 @@ using usize = size_t;
 #    endif
 #endif // restrict
 
-#define BITFLAG(n)  (1 << (n))
+#define BIT_FLAG(n)  (1 << (n))
 
 enum Object_Mark_Flag : u8 {
-    // 0b0000_0000
-    // Object has not yet been processed by the current garbage collector run.
-    OBJECT_WHITE = 0,
-
     // 0b0000_0001
-    OBJECT_GRAY = 1,
+    // Object has not yet been processed by the current garbage collector run.
+    OBJECT_WHITE = BIT_FLAG(0),
 
     // 0b0000_0010
     // Object has been traversed; all its children have been checked.
-    OBJECT_BLACK = 2,
-
-    OBJECT_COLOR_MASK = OBJECT_GRAY | OBJECT_BLACK,
+    OBJECT_BLACK = BIT_FLAG(1),
 
     // 0b0000_0100
     // Object is never collectible no matter what.
-    OBJECT_FIXED = BITFLAG(2),
+    OBJECT_FIXED = BIT_FLAG(2),
 };
 
 
@@ -143,57 +139,80 @@ struct [[gnu::packed]] Object_Header {
     bool
     is_white() const noexcept
     {
-        return (this->mark & OBJECT_COLOR_MASK) == OBJECT_WHITE;
-    }
-
-    bool
-    is_gray() const noexcept
-    {
-        return this->mark & OBJECT_GRAY;
+        return this->get<OBJECT_WHITE>();
     }
 
     bool
     is_black() const noexcept
     {
-        return this->mark & OBJECT_BLACK;
+        return this->get<OBJECT_BLACK>();
+    }
+
+    bool
+    is_gray() const noexcept
+    {
+        // Neither white bit nor black bit toggled?
+        return !this->is_white() && !this->is_black();
     }
 
 
     bool
     is_fixed() const noexcept
     {
-        return this->mark & OBJECT_FIXED;
+        return this->get<OBJECT_FIXED>();
     }
 
     void
     set_white()
     {
-        // Clears gray and black bits
-        this->mark &= ~Object_Mark(OBJECT_COLOR_MASK);
+        this->set<OBJECT_WHITE>();
+        this->clear<OBJECT_BLACK>();
     }
 
     void
-    set_gray()
+    set_gray_from_white()
     {
-        this->mark |= OBJECT_GRAY;
+        this->clear<OBJECT_WHITE>();
+    }
+
+    void
+    set_gray_from_black()
+    {
+        this->clear<OBJECT_BLACK>();
     }
 
     void
     set_black()
     {
-        this->mark |= OBJECT_BLACK;
+        this->set<OBJECT_BLACK>();
     }
 
     void
     set_fixed()
     {
-        this->mark |= OBJECT_FIXED;
+        this->set<OBJECT_FIXED>();
     }
 
-    void
-    clear_fixed()
+private:
+    template<Object_Mark Bit>
+    bool
+    get() const noexcept
     {
-        this->mark &= ~Object_Mark(OBJECT_FIXED);
+        return this->mark & Bit;
+    }
+
+    template<Object_Mark Bit>
+    void
+    set()
+    {
+        this->mark |= Bit;
+    }
+
+    template<Object_Mark Bit>
+    void
+    clear()
+    {
+        this->mark &= ~Bit;
     }
 };
 

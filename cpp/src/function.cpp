@@ -24,10 +24,7 @@ closure_lua_new(lulu_VM *L, Chunk *p)
     f->n_upvalues  = n;
     f->is_c        = false;
     f->chunk       = p;
-
-    for (auto &s : slice_pointer_len(f->upvalues, n)) {
-        s = nullptr;
-    }
+    fill(f->slice_upvalues(), static_cast<Upvalue *>(nullptr));
     return reinterpret_cast<Closure *>(f);
 }
 
@@ -74,14 +71,14 @@ function_upvalue_find(lulu_VM *L, Value *local)
     Upvalue *up = object_new<Upvalue>(L, &L->open_upvalues, VALUE_UPVALUE);
 
     // Current value lives on the stack. Closed is not yet used.
-    up->value  = local;
+    up->value = local;
     return up;
 }
 
 static void
 upvalue_link(lulu_VM *L, Upvalue *up)
 {
-    auto g = G(L);
+    lulu_Global *g = G(L);
     up->next   = g->objects;
     g->objects = up->to_object();
     // @todo(2025-08-26) Check if object is collectible, etc.

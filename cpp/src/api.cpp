@@ -480,3 +480,34 @@ lulu_concat(lulu_VM *L, int n)
     // Pop all arguments except the first one- the one we replaced.
     lulu_pop(L, n - 1);
 }
+
+LULU_API int
+lulu_gc(lulu_VM *L, lulu_GC_Mode mode)
+{
+    lulu_Global *g = G(L);
+    int n = 0;
+    switch (mode) {
+    case LULU_GC_STOP:
+        g->gc_prev_threshold = g->gc_threshold;
+        // We assume that we can never validly request nor acquire this much
+        // memory, so it is never reached and thus the GC is never run.
+        g->gc_threshold = USIZE_MAX;
+        break;
+    case LULU_GC_RESTART:
+        g->gc_threshold = g->gc_prev_threshold;
+        break;
+    case LULU_GC_COUNT:
+        // Recall: x / (2^y) == x >> y
+        // Given:  1 kilobyte = (1024 bytes) = (2^10 bytes)
+        // Thus:   #kilobytes = (#bytes / 1024) = (#bytes >> 10)
+        n = static_cast<int>(g->n_bytes_allocated >> 10);
+        break;
+    case LULU_GC_COLLECT:
+        gc_collect_garbage(L, g);
+        break;
+    default:
+        n = -1;
+        break;
+    }
+    return n;
+}

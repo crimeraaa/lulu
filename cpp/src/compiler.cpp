@@ -588,45 +588,18 @@ static bool
 compare_folded(OpCode op, bool cond, Expr *restrict left, Expr *restrict right)
 {
     bool result;
+    // For our sanity, only fold comparisons of number literals.
+    // Folding 'true == false' and such are not worth optimizing for.
+    if (!left->is_number() || !right->is_number()) {
+        return false;
+    }
+
     if (op == OP_EQ) {
-        // Can only fold literal expressions: `nil`, `true`, `false`, `<number>`
-        if (!left->is_literal() || !right->is_literal()) {
-            return false;
-        }
-
-        if (left->type != right->type) {
-            // Trivially comparable?
-            if (left->is_boolean() && right->is_boolean()) {
-                expr_bool(left, false);
-                return true;
-            }
-            // Don't fold; must be a runtime comparison (e.g. for strings).
-            return false;
-        }
-
-        switch (left->type) {
-        case EXPR_NIL:
-        case EXPR_FALSE:
-        case EXPR_TRUE:
-            result = true;
-            break;
-        case EXPR_NUMBER:
-            result = lulu_Number_eq(left->number, right->number);
-            break;
-        case EXPR_CONSTANT:
-            return false; // To be safe, must only be runtime.
-        default:
-            lulu_unreachable();
-            break;
-        }
-
+        result = lulu_Number_eq(left->number, right->number);
         if (!cond) {
             result = !result;
         }
     } else {
-        if (!left->is_number() || !right->is_number()) {
-            return false;
-        }
         Number a, b;
         if (cond) {
             a = left->number;
@@ -736,7 +709,6 @@ compiler_set_variable(Compiler *c, Expr *restrict var, Expr *restrict expr)
     }
     default:
         lulu_panicf("Non-assignable Expr_Type(%i)", var->type);
-        lulu_unreachable();
         break;
     }
     pop_expr(c, expr);
@@ -813,13 +785,8 @@ compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store)
 
     // Ensure array index offset would fit as a u16.
     lulu_assert(offset <= static_cast<isize>(Instruction::MAX_C));
-    compiler_code_abc(
-        c,
-        OP_SET_ARRAY,
-        table_reg,
-        static_cast<u16>(b),
-        static_cast<u16>(offset)
-    );
+    compiler_code_abc(c, OP_SET_ARRAY, table_reg, static_cast<u16>(b),
+        static_cast<u16>(offset));
 
     // Pop all array elements.
     c->free_reg = table_reg + 1;
@@ -886,12 +853,8 @@ jump_set(Compiler *c, int jump_pc, int target_pc)
     // Allow: `while true do end`
     // lulu_assert(offset != NO_JUMP);
 
-    compiler_check_limit(
-        c,
-        abs(offset),
-        static_cast<int>(Instruction::MAX_SBX),
-        "jump offset"
-    );
+    compiler_check_limit(c, abs(offset),
+        static_cast<int>(Instruction::MAX_SBX), "jump offset");
 
     ip->set_sbx(static_cast<i32>(offset));
 }

@@ -457,7 +457,6 @@ get_variable_ip(const Chunk *p, int target_pc, int reg)
             break;
         default:
             lulu_panicf("Invalid OpFormat(%i)", info.fmt());
-            lulu_unreachable();
             break;
         }
 
@@ -566,14 +565,8 @@ debug_type_error(lulu_VM *L, const char *act, const Value *v)
     }
 
     if (scope != nullptr) {
-        vm_runtime_error(
-            L,
-            "Attempt to %s %s '%s' (a %s value)",
-            act,
-            scope,
-            ident,
-            tname
-        );
+        vm_runtime_error(L, "Attempt to %s %s '%s' (a %s value)",
+            act, scope, ident, tname);
     } else {
         vm_runtime_error(L, "Attempt to %s a %s value", act, tname);
     }

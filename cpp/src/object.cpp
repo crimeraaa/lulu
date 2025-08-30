@@ -20,7 +20,6 @@ object_free(lulu_VM *L, Object *o)
     case VALUE_UPVALUE: mem_free(L, &o->upvalue); break;
     default:
         lulu_panicf("Invalid object (Value_Type(%i))", t);
-        lulu_unreachable();
         break;
     }
 }

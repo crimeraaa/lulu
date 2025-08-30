@@ -49,7 +49,6 @@ Value::operator==(Value b) const
         break;
     }
     lulu_panicf("Value_Type(%i) should not reach here", this->type());
-    lulu_unreachable();
 }
 
 void
@@ -83,7 +82,6 @@ print_pointer:
     case VALUE_CHUNK:
     case VALUE_UPVALUE:
         lulu_panicf("Value_Type(%i) should not reach here", t);
-        lulu_unreachable();
         break;
     }
 }

@@ -755,7 +755,7 @@ function_close(Parser *p, Compiler *c)
 
     // Although chunk and indexes table are not in the stack anymore, they
     // should still not be collected yet. We may need them for a closure.
-    mem_mark_compiler_roots(L, c);
+    gc_mark_compiler_roots(L, c);
 
     // Pop this compiler from the parser.
     p->lexer.indexes = (c->prev != nullptr) ? c->prev->indexes : nullptr;
@@ -1554,7 +1554,6 @@ expression(Parser *p, Compiler *c, Precedence limit)
         }
         default:
             lulu_panicf("Invalid Binary_Type(%i)", b);
-            lulu_unreachable();
             break;
         }
     }

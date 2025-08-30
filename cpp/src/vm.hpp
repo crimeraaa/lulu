@@ -5,6 +5,7 @@
 #include "object.hpp"
 #include "private.hpp"
 #include "stream.hpp"
+#include "gc.hpp"
 
 using Error = lulu_Error;
 
@@ -54,13 +55,6 @@ enum Call_Type {
 using Stack_Array = Array<Value, MAX_STACK>;
 using Frame_Array = Small_Array<Call_Frame, 16>;
 
-enum GC_State : u8 {
-    GC_PAUSED,
-    GC_MARK,
-    GC_TRACE,
-    GC_SWEEP,
-};
-
 struct lulu_Global {
     lulu_CFunction panic_fn;
     lulu_Allocator allocator;
@@ -73,6 +67,15 @@ struct lulu_Global {
 
     // Hash table of all interned strings.
     Intern intern;
+
+    // How much memory are we currently *managing*?
+    usize n_bytes_allocated;
+
+    // When `n_bytes_allocated` exceeds this, run the GC.
+    usize gc_threshold;
+
+    // Used only when calling `lulu_gc(L, LULU_GC_RESTART)`.
+    usize gc_prev_threshold;
 
     // Linked list of all collectable objects.
     Object_List *objects;
@@ -103,7 +106,7 @@ struct LULU_PUBLIC lulu_VM {
 
     // Linked list of open upvalues across all active stack frames.
     // Helps with variable reuse.
-    Object *open_upvalues;
+    Object_List *open_upvalues;
 
     LULU_PRIVATE
     lulu_VM() = default;

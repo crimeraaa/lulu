@@ -690,6 +690,26 @@ LULU_API int
 lulu_get_info(lulu_VM *L, const char *options, lulu_Debug *ar);
 
 
+typedef enum {
+    LULU_GC_STOP,
+    LULU_GC_RESTART,
+    LULU_GC_COLLECT,
+    LULU_GC_COUNT,
+} lulu_GC_Mode;
+
+
+/**
+ * @brief
+ *      Manage the state of the garbage collector.
+ *
+ * @return
+ *      LULU_GC_COLLECT: #kilobytes currently managed by the VM.
+ *      Otherwise: 0 for any remaining mode or -1 for invalid modes.
+ */
+LULU_API int
+lulu_gc(lulu_VM *L, lulu_GC_Mode mode);
+
+
 /** HELPER MACROS =================================================== {{{ */
 
 

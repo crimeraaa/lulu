@@ -58,7 +58,6 @@ hash_value(Value v)
         break;
     }
     lulu_panicf("Non-hashable Value_Type(%i)", v.type());
-    lulu_unreachable();
     return 0;
 }
 
