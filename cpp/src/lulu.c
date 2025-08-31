@@ -146,6 +146,8 @@ run_file(lulu_VM *L, const char *file_name)
     if (e == LULU_OK) {
         return run(L);
     }
+
+    /* @note(2025-08-31) Good place to check cpcall stack restoration! */
     report_error(L);
     return EXIT_FAILURE;
 }
@@ -164,6 +166,8 @@ protected_main(lulu_VM *L)
     lulu_gc(L, LULU_GC_STOP);
     lulu_open_libs(L);
     lulu_gc(L, LULU_GC_RESTART);
+
+    /* lulu_errorf(L, "Testing lulu_cpcall() stack restoration..."); */
 
     /* Don't include userdata when printing REPL results. */
     lulu_set_top(L, 0);
@@ -185,12 +189,14 @@ protected_main(lulu_VM *L)
 static void *
 c_allocator(void *user_data, void *ptr, size_t old_size, size_t new_size)
 {
-    cast(void) user_data;
-    cast(void) old_size;
+    cast(void)user_data;
+    cast(void)old_size;
     if (new_size == 0) {
         free(ptr);
         return NULL;
     }
+
+    /* if (*total >= 1024*2) { return NULL; } */
     return realloc(ptr, new_size);
 }
 
@@ -208,6 +214,7 @@ main(int argc, char *argv[])
     Main_Data  d;
     lulu_VM   *L;
     lulu_Error e;
+
     /* In C89, brace initialization requires all constant expressions. */
     d.argv   = argv;
     d.argc   = argc;
@@ -215,7 +222,7 @@ main(int argc, char *argv[])
 
     L = lulu_open(c_allocator, NULL);
     if (L == NULL) {
-        fprintf(stderr, "Failed to allocate memory for lulu\n");
+        fprintf(stderr, "[ERROR] Failed to allocate memory for VM state\n");
         return 2;
     }
     lulu_set_panic(L, panic);
@@ -224,13 +231,18 @@ main(int argc, char *argv[])
     /* lulu_check_string(L, 1); */
 
     e = lulu_cpcall(L, protected_main, &d);
+    if (e != LULU_OK) {
+        report_error(L);
+    }
 
     {
-        int n;
+        int n_bytes;
+        int n_kilobytes;
         printf("closing...\n");
-        n = lulu_gc(L, LULU_GC_COUNT);
+        n_kilobytes = lulu_gc(L, LULU_GC_COUNT);
+        n_bytes     = lulu_gc(L, LULU_GC_COUNT_REM);
         lulu_close(L);
-        printf("...closed! freed %i kilobytes.\n", n);
+        printf("...closed! freed %i bytes\n", (n_kilobytes * 1024) + n_bytes);
     }
     if (e == LULU_OK && d.status == EXIT_SUCCESS) {
         return EXIT_SUCCESS;

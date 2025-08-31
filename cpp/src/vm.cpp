@@ -185,15 +185,52 @@ vm_get_builder(lulu_VM *L)
     return b;
 }
 
-static void
-set_error(lulu_VM *L, int old_cf, int old_base, int old_top)
+static OString *
+get_error_object(lulu_VM *L, Error e)
 {
-    // TODO(2025-06-30): Check if `LULU_ERROR_MEMORY` works properly here
-    Value v    = L->window[len(L->window) - 1];
+    switch (e) {
+    case LULU_OK:
+        break;
+    case LULU_ERROR_MEMORY:
+        return ostring_new(L, lstring_literal(LULU_MEMORY_ERROR_STRING));
+    case LULU_ERROR_RUNTIME:
+    case LULU_ERROR_SYNTAX:
+        return L->window[len(L->window) - 1].to_ostring();
+    default:
+        break;
+    }
+    lulu_unreachable();
+    return nullptr;
+}
+
+static void
+set_error_object(lulu_VM *L, Error e, int old_cf, int old_base, int old_top)
+{
+    // Close pending closures
+    // We assume that stack is at least LULU_STACK_MIN, so old_top is valid.
+    upvalue_close(L, &L->stack[old_top]);
+    OString *s = get_error_object(L, e);
     L->caller = frame_get(L, old_cf);
-    L->window = slice(L->stack, old_base, old_top);
     frame_resize(L, old_cf + 1);
-    vm_push_value(L, v);
+
+    // Put AFTER in case above calls GC
+    L->window = slice(L->stack, old_base, old_top);
+    vm_push_value(L, Value::make_string(s));
+}
+
+Error
+vm_pcall(lulu_VM *L, Protected_Fn fn, void *user_ptr)
+{
+    int old_base = vm_base_absindex(L);
+    int old_top  = vm_top_absindex(L);
+    // Don't use pointers because in the future, `frames` may be dynamic.
+    int old_cf = frame_index(L, L->caller);
+
+    Error e = vm_run_protected(L, fn, user_ptr);
+    if (e != LULU_OK) {
+        set_error_object(L, e, old_cf, old_base, old_top);
+    }
+    return e;
 }
 
 Error
@@ -202,17 +239,10 @@ vm_run_protected(lulu_VM *L, Protected_Fn fn, void *user_ptr)
     Error_Handler next{L->error_handler, LULU_OK};
     // Chain new handler
     L->error_handler = &next;
-
-    int old_base = vm_base_absindex(L);
-    int old_top  = vm_top_absindex(L);
-    // Don't use pointers because in the future, `frames` may be dynamic.
-    int old_cf = frame_index(L, L->caller);
-
     try {
         fn(L, user_ptr);
     } catch (Error e) {
         next.error = e;
-        set_error(L, old_cf, old_base, old_top);
     }
 
     // Restore old handler
@@ -227,7 +257,7 @@ vm_throw(lulu_VM *L, Error e)
     if (L->error_handler != nullptr) {
         throw e;
     } else if (g->panic_fn != nullptr) {
-        set_error(L, /*old_cf=*/0, /*old_base=*/0, /*old_top=*/0);
+        set_error_object(L, e, /*old_cf=*/0, /*old_base=*/0, /*old_top=*/0);
         L->error_handler = nullptr;
         g->panic_fn(L);
     }
@@ -393,7 +423,7 @@ Error
 vm_load(lulu_VM *L, LString source, Stream *z)
 {
     Load_Data d{source, z, {}};
-    Error e = vm_run_protected(L, load, &d);
+    Error e = vm_pcall(L, load, &d);
     builder_destroy(L, &d.builder);
     return e;
 }
@@ -1037,7 +1067,7 @@ re_entry:
             Closure *f = closure_lua_new(L, chunk->children[inst.bx()]);
             // Ensure closure lives on the stack already to avoid collection.
             // This also ensures the upvalues are not collected.
-            *ra = Value::make_function(f);
+            ra->set_function(f);
             for (Upvalue *&up : f->to_lua()->slice_upvalues()) {
                 // Just need to copy someone else's upvalues?
                 if (ip->op() == OP_GET_UPVALUE) {
@@ -1050,7 +1080,7 @@ re_entry:
                     // We haven't transferred control to the closure, so our
                     // local indices are still valid.
                     Value *v = &window[ip->b()];
-                    up = function_upvalue_find(L, v);
+                    up = upvalue_find(L, v);
                 }
                 ip++;
             }
@@ -1058,7 +1088,7 @@ re_entry:
             break;
         }
         case OP_CLOSE:
-            function_upvalue_close(L, ra);
+            upvalue_close(L, ra);
             break;
         case OP_RETURN: {
             int n_rets = inst.b();
@@ -1067,7 +1097,7 @@ re_entry:
             }
 
             if (L->open_upvalues != nullptr) {
-                function_upvalue_close(L, &window[0]);
+                upvalue_close(L, &window[0]);
             }
 
             vm_call_fini(L, slice_pointer_len(ra, n_rets));

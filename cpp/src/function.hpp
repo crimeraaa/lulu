@@ -113,7 +113,7 @@ void
 closure_delete(lulu_VM *L, Closure *f);
 
 void
-function_upvalue_close(lulu_VM *L, Value *level);
+upvalue_close(lulu_VM *L, Value *level);
 
 Upvalue *
-function_upvalue_find(lulu_VM *L, Value *local);
+upvalue_find(lulu_VM *L, Value *local);

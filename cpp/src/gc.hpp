@@ -4,11 +4,18 @@
 
 #define GC_HEAP_GROW_FACTOR     2
 
-// 1 kilobyte == 1024 bytes.
-#define GC_THRESHOLD_INIT       1024
+enum GC_Factor {
+    GC_BYTE_EXP     = 0, // 2^0 = 1
+    GC_KILOBYTE_EXP = 10, // 2^10 = 1024 bytes
 
-// 1 megabyte == 1024 kilobytes == 1_048_576 bytes.
-// #define GC_THRESHOLD_INIT   (1024 * 1024)
+    GC_BYTE     = 1 << GC_BYTE_EXP,
+    GC_KILOBYTE = 1 << GC_KILOBYTE_EXP,
+    GC_MEGABYTE = GC_KILOBYTE * GC_KILOBYTE,
+};
+
+#define GC_THRESHOLD_INIT       GC_KILOBYTE
+
+// #define GC_THRESHOLD_INIT   GC_MEGABYTE
 
 enum GC_State : u8 {
     GC_PAUSED,

@@ -509,28 +509,6 @@ table_set(lulu_VM *L, Table *t, Value k, Value v)
 isize
 table_len(Table *t)
 {
-    isize n = len(t->array);
-    // Have an array part and it's not completely occupied?
-    // Try to binary search for the length.
-    if (n > 0 && t->array[n - 1].is_nil()) {
-        isize left  = 0;
-        isize right = n;
-        // Midpoint would be >= 0?
-        while (right - left > 1) {
-            isize middle = (left + right) / 2;
-            if (t->array[middle - 1].is_nil()) {
-                right = middle;
-            } else {
-                left = middle;
-            }
-        }
-        return left;
-    }
-    // Hash part is empty?
-    else if (raw_data(t->entries) == EMPTY_ENTRY) {
-        return 0;
-    }
-
     isize i = 0;
     for (Value v : t->array) {
         if (v.is_nil()) {
@@ -541,7 +519,7 @@ table_len(Table *t)
 
     // May have remaining integer keys in the hash part?
     // e.g. #array == 4 but we hashed k = 5 because #hash >= 8.
-    if (i == len(t->array)) {
+    if (i == len(t->array) && raw_data(t->entries) != EMPTY_ENTRY) {
         // Don't call table_get*() because we already know this key
         // is not in the hash segment.
         for (;;) {

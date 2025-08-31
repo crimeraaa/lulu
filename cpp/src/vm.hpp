@@ -148,8 +148,15 @@ vm_top_absindex(lulu_VM *L);
 /**
  * @brief
  *      Wraps a call to `fn(L, user_ptr)` with a try-catch block. In case
- *      of errors, the error message, as a string, is left on the top of
- *      the stack.
+ *      of errors, the stack frame before the call is restored and the
+ *      error message, a string, pushed to the stack.
+ */
+Error
+vm_pcall(lulu_VM *L, Protected_Fn fn, void *user_ptr);
+
+/**
+ * @brief
+ *      Wraps a call to `fn(L, user_ptr)` with a try-catch block.
  */
 Error
 vm_run_protected(lulu_VM *L, Protected_Fn fn, void *user_ptr);

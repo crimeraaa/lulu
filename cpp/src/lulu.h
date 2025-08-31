@@ -196,6 +196,8 @@ lulu_pcall(lulu_VM *L, int n_args, int n_rets);
  *
  * @return
  *      The error code, if any was thrown, or else `LULU_OK`.
+ *      Upon return, the stack is the same as it was before the call.
+ *      If an error was thrown then the error message was pushed.
  */
 LULU_API lulu_Error
 lulu_cpcall(lulu_VM *L, lulu_CFunction function, void *function_data);
@@ -690,11 +692,22 @@ LULU_API int
 lulu_get_info(lulu_VM *L, const char *options, lulu_Debug *ar);
 
 
+/* For our purposes, kilobyte = 1024 bytes. */
 typedef enum {
+    /* Pause global GC unconditionally. */
     LULU_GC_STOP,
+
+    /* Resume global GC unconditionally (may run on next allocation). */
     LULU_GC_RESTART,
+
+    /* Execute a full GC cycle. */
     LULU_GC_COLLECT,
+
+    /* Query #kilobytes (truncated) currently managed by the VM. */
     LULU_GC_COUNT,
+
+    /* Query #bytes truncated from LULU_GC_COUNT. */
+    LULU_GC_COUNT_REM,
 } lulu_GC_Mode;
 
 
@@ -703,7 +716,8 @@ typedef enum {
  *      Manage the state of the garbage collector.
  *
  * @return
- *      LULU_GC_COLLECT: #kilobytes currently managed by the VM.
+ *      LULU_GC_COUNT: #kilobytes currently managed by the VM.
+ *      LULU_GC_COUNT_REM: #bytes unaccounted for by above.
  *      Otherwise: 0 for any remaining mode or -1 for invalid modes.
  */
 LULU_API int

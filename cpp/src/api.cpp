@@ -91,7 +91,7 @@ LULU_API lulu_Error
 lulu_pcall(lulu_VM *L, int n_args, int n_rets)
 {
     PCall d{n_args, n_rets};
-    return vm_run_protected(L, pcall, &d);
+    return vm_pcall(L, pcall, &d);
 }
 
 struct CPCall {
@@ -111,8 +111,8 @@ cpcall(lulu_VM *L, void *user_ptr)
 LULU_API lulu_Error
 lulu_cpcall(lulu_VM *L, lulu_CFunction function, void *function_data)
 {
-    CPCall     d{function, function_data};
-    lulu_Error e = vm_run_protected(L, cpcall, &d);
+    CPCall d{function, function_data};
+    lulu_Error e = vm_pcall(L, cpcall, &d);
     return e;
 }
 
@@ -497,10 +497,12 @@ lulu_gc(lulu_VM *L, lulu_GC_Mode mode)
         g->gc_threshold = g->gc_prev_threshold;
         break;
     case LULU_GC_COUNT:
-        // Recall: x / (2^y) == x >> y
-        // Given:  1 kilobyte = (1024 bytes) = (2^10 bytes)
-        // Thus:   #kilobytes = (#bytes / 1024) = (#bytes >> 10)
-        n = static_cast<int>(g->n_bytes_allocated >> 10);
+        // Divide by GC_KILOBYTE, optimizing for power-of-2 math.
+        n = static_cast<int>(g->n_bytes_allocated >> GC_KILOBYTE_EXP);
+        break;
+    case LULU_GC_COUNT_REM:
+        // Remainder by GC_KILOBYTE, optimizing for power-of-2 math.
+        n = static_cast<int>(g->n_bytes_allocated & (GC_KILOBYTE - 1));
         break;
     case LULU_GC_COLLECT:
         gc_collect_garbage(L, g);

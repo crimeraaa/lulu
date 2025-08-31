@@ -41,7 +41,7 @@ closure_delete(lulu_VM *L, Closure *f)
 }
 
 Upvalue *
-function_upvalue_find(lulu_VM *L, Value *local)
+upvalue_find(lulu_VM *L, Value *local)
 {
     Object *olist = L->open_upvalues;
     // Try to find and reuse an existing upvalue that references 'local'.
@@ -85,7 +85,7 @@ upvalue_link(lulu_VM *L, Upvalue *up)
 }
 
 void
-function_upvalue_close(lulu_VM *L, Value *level)
+upvalue_close(lulu_VM *L, Value *level)
 {
     while (L->open_upvalues != nullptr) {
         Upvalue *up = &L->open_upvalues->upvalue;
