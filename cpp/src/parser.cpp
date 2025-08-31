@@ -14,7 +14,18 @@ static constexpr Expr DEFAULT_EXPR = Expr::make(EXPR_NONE);
 
 static constexpr Token DEFAULT_TOKEN = Token::make(TOKEN_INVALID);
 
-// Forward declaration for recursive descent parsing.
+/** @brief Parse expressions via a depth-first-search (DFS).
+ *
+ * @details
+ *  We evaluate the root node and recursively construct a parse tree as long as
+ *  there are other nodes of higher precedences. Once there are no more nodes of
+ *  higher precedences, the tree is evaluated from the innermost node (i.e. most
+ *  recursive) going back to the root node. If there is a remaining node of
+ *  lower precedence, we repeat the whole process.
+ *
+ * @note(2025-08-31)
+ *  Forward declaration is entirely for recursive descent parsing.
+ */
 static Expr
 expression(Parser *p, Compiler *c, Precedence limit = PREC_NONE);
 
@@ -65,14 +76,12 @@ block_pop(Compiler *c)
 }
 
 
-/**
- * @brief
- *      Checks if we hit a token that 'terminates' a block.
+/** @brief Checks if we hit a token that 'terminates' a block.
  *
  * @note 2025-07-10
- *      We do not check for correctness, this is just a convenience function
- *      acting as a lookup table. It is the caller's responsibility to
- *      consume/expect a particular token and throw an error if not met.
+ *  We do not check for correctness, this is just a convenience function acting
+ *  as a lookup table. It is the caller's responsibility to consume/expect a
+ *  particular token and throw an error if not met.
  */
 static bool
 block_continue(Parser *p)
@@ -130,10 +139,7 @@ parser_make(lulu_VM *L, OString *source, Stream *z, Builder *b)
     return p;
 }
 
-/**
- * @brief
- *      Move to the next token unconditionally.
- */
+/** @brief Move to the next token unconditionally. */
 static void
 advance(Parser *p)
 {
@@ -185,10 +191,7 @@ error(Parser *p, const char *msg)
     error_at(p, p->current.type, msg);
 }
 
-/**
- * @brief
- *      Asserts that the current token is of type `expected` and advances.
- */
+/** @brief Asserts that the current token is type `expected` and advances. */
 static void
 consume(Parser *p, Token_Type expected)
 {
@@ -230,11 +233,7 @@ consume_to_close(Parser *p, Token_Type expected, Token_Type to_close, int line)
 }
 
 
-/**
- * @brief
- *      Pushes a comma-separated list of expressions to the stack, except
- *      for the last one. We don't push the last one to allow optimizations.
- */
+/** @brief Push comma-separated list of expressions to stack, except last. */
 static Expr_List
 expression_list(Parser *p, Compiler *c)
 {
@@ -397,10 +396,7 @@ local_push_literal(Parser *p, Compiler *c, LString lit, int n)
 }
 
 
-/**
- * @brief
- *      Initializes the top `n` locals and increases the active local
- *      count by that much.
+/** @brief Create `n` new locals visible to the parser.
  *
  * @note(2025-08-27)
  *      Analogous to `lparser.c:adjustlocalvars()` in Lua 5.1.5.
@@ -637,17 +633,12 @@ for_generic(Parser *p, Compiler *c, OString *ident)
 
     u16 gen_reg = c->free_reg;
 
-    /**
-     * @brief
-     *      3 expressions are needed to keep state:
+    /** @brief 3 expressions are needed to keep state.
      *
-     *      1.) The generator function (local 0)
-     *
-     *      2.) The state variable (local 1):
-     *          The first argument to the generator function.
-     *
-     *      3.) The control variable (local 2):
-     *          The second argument to the generator function.
+     * @details
+     *  1.) The generator function (local 0)
+     *  2.) The state variable (local 1): 1st argument to generator.
+     *  3.) The control variable (local 2): 2nd argument to generator.
      */
     Expr_List e = expression_list(p, c);
     assign_adjust(c, 3, &e);
@@ -656,9 +647,7 @@ for_generic(Parser *p, Compiler *c, OString *ident)
 }
 
 
-/**
- * @brief
- *      `'for' <for_init> <for_cond> <for_incr>? 'do' <block> 'end'`
+/** @brief `'for' <for_init> <for_cond> <for_incr>? 'do' <block> 'end'`
  *
  * @note(2025-07-28)
  *      Numeric `for` can be implemented in terms of existing instructions,

@@ -205,10 +205,8 @@ pop_expr(Compiler *c, const Expr *e)
     }
 }
 
-/**
- * @brief
- *      Emits bytecode needed for variable retrieval (global, local, upvalue),
- *      or table field retrieval.
+/** @brief Emits bytecode needed for variable retrieval (global, local,
+ *  upvalue), or for table field retrieval.
  *
  * @note 2025-07-16
  *      In such case `e` is transformed to `EXPR_RELOCABLE` but its
@@ -317,13 +315,6 @@ need_value(Compiler *c, int jump_pc)
         jump_pc = next_pc;
     }
     return false;
-}
-
-int
-compiler_label_get(Compiler *c)
-{
-    c->last_target = c->pc;
-    return c->pc;
 }
 
 static int
@@ -752,10 +743,9 @@ compiler_get_table(Compiler *c, Expr *restrict t, Expr *restrict k)
 void
 compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store)
 {
-    /**
-     * @brief
-     *      Subtract 1 so that `n_array == 50` still uses offset 0.
-     *      Assumes `n_array > 0`.
+    lulu_assume(n_array > 0);
+
+    /** @brief Subtract 1 so that `n_array == 50` still uses offset 0.
      *
      * @note(2025-08-04)
      *      Lua 5.1.5 actually adds 1 at the end because offset 0 is
@@ -966,9 +956,7 @@ logical_target_get(Compiler *c, Expr *left, bool cond)
 }
 
 
-/**
- * @brief
- *      Emits an `OP_TEST{SET}`-`OP_JUMP` pair.
+/** @brief Emits an `OP_TEST{SET}`-`OP_JUMP` pair.
  *
  * @note(2025-07-18)
  *      Analogous to `lcode.c:condjump(FuncState *fs, OpCode op, int A,

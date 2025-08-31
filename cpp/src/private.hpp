@@ -14,23 +14,23 @@ using i8  = int8_t;
 using i32 = int32_t;
 
 
-/**
- * @brief
- *      Theoretically, this is not enough to represent the full address
- *      space. However in practice most of the address space is invalid
- *      anyway.
+/** @brief Primary size type.
  *
- *      E.g. on a 64 bit machine, a platform may only use 48 bits per
- *      address, so signed 64 bit sizes are overkill as it will be
- *      impossible to commit even 1 quadrillion bytes (~50 bits) of memory.
- *      So we assume that this type is more than adequate for our purposes.
+ * @details
+ *  Theoretically, this is not enough to represent the full address space.
+ *  However in practice most of the address space is invalid anyway.
+ *
+ *  E.g. on a 64 bit machine, a platform may only use 48 bits per address, so
+ *  signed 64 bit sizes are overkill as it will be impossible to commit even 1
+ *  quadrillion bytes (~50 bits) of memory. So we assume that this type is more
+ *  than adequate for our purposes.
+ *
+ *  Of course, the 32-bit targets are a different story...
  */
 using isize = ptrdiff_t;
 
-/**
- * @brief
- *      Only used for consistency with C standard library functions and
- *      allocation functions. Prefer `isize` otherwise.
+/** @brief Only used for consistency with C standard library functions and
+ *  allocation functions. Prefer `isize` otherwise.
  */
 using usize = size_t;
 

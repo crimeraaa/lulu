@@ -131,10 +131,7 @@ Value *
 vm_top_ptr(lulu_VM *L);
 
 
-/**
- * @brief
- *      Gets the absolute index of `v` in `L->stack`.
- */
+/** @brief Gets the absolute index of `v` the VM stack. */
 int
 vm_absindex(lulu_VM *L, const Value *v);
 
@@ -145,19 +142,17 @@ int
 vm_top_absindex(lulu_VM *L);
 
 
-/**
- * @brief
- *      Wraps a call to `fn(L, user_ptr)` with a try-catch block. In case
- *      of errors, the stack frame before the call is restored and the
- *      error message, a string, pushed to the stack.
+/** @brief Wraps a call to `fn(L, user_ptr)` with a try-catch block.
+ *
+ * @details
+ *  In case of errors, the stack frame before the call is restored and the error
+ *  message, a string, pushed to the stack.
  */
 Error
 vm_pcall(lulu_VM *L, Protected_Fn fn, void *user_ptr);
 
-/**
- * @brief
- *      Wraps a call to `fn(L, user_ptr)` with a try-catch block.
- */
+
+/** @brief Wraps a call to `fn(L, user_ptr)` with a try-catch block. */
 Error
 vm_run_protected(lulu_VM *L, Protected_Fn fn, void *user_ptr);
 
@@ -230,12 +225,7 @@ void
 vm_call(lulu_VM *L, const Value *ra, int n_args, int n_rets);
 
 
-/**
- * @brief
- *      Prepares a function call for the Lua or C function at `ra`.
- *      If it is a C function, it is called directly. Otherwise,
- *      if it is a Lua function, it can be called by `vm_execute()`.
- */
+/** @brief Prepares a function call for the Lua or C function at `ra`. */
 Call_Type
 vm_call_init(lulu_VM *L, const Value *ra, int argc, int to_return);
 

@@ -41,10 +41,7 @@ lexer_make(lulu_VM *L, OString *source, Stream *z, Builder *b)
     return x;
 }
 
-/**
- * @param ch
- *      The character to be appended to the buffer.
- */
+/** @param ch The character to be appended to the buffer. */
 static void
 save(Lexer *x, int ch)
 {
@@ -53,11 +50,7 @@ save(Lexer *x, int ch)
     builder_write_char(x->L, x->builder, ch);
 }
 
-/**
- * @brief
- *      Write the current character to the buffer then discharge it,
- *      consuming the next character.
- */
+/** @brief Write current character, discharge it, and consume the next one. */
 static int
 save_advance(Lexer *x)
 {
@@ -237,11 +230,7 @@ skip_comment(Lexer *x)
 }
 
 
-/**
- * @brief
- *      Continuously advances until we hit a non-whitespace and non-comment
- *      character.
- */
+/** @brief Continuously advances until non-whitespace and non-comment.  */
 static void
 skip_whitespace(Lexer *x)
 {
@@ -416,7 +405,7 @@ lexer_new_ostring(lulu_VM *L, Lexer *x, LString ls)
     if (!s->is_fixed() && !table_get(t, k, &v)) {
         // Make sure `s` will not be collected because it's in a reachable
         // table that maps to non-nil.
-        v = Value::make_boolean(true);
+        v.set_boolean(true);
         vm_push_value(L, k);
         table_set(L, t, k, v);
         vm_pop_value(L);

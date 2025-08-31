@@ -95,10 +95,7 @@ loop_start:
     return EMPTY_ENTRY;
 }
 
-/**
- * @brief
- *      Finds the table entry with key matching `k`, or the first free
- *      entry.
+/** @brief Finds table entry with key `k`, or first free entry.
  *
  * @note(2025-6-30) Assumptions:
  *
@@ -458,15 +455,15 @@ table_is_full(Table *t)
     return t->count + 1 > n;
 }
 
-/**
- * @brief
- *      Implements `t[k] = v` assuming `k` could not be an array index.
- *      May rehash the table, mutually recursive with `table_set()`.
- *      However we guarantee that, by that point there is already
- *      a free array index or free hash slot.
+
+/** @brief Implements `t[k] = v`.
+ *
+ * @details
+ *  May rehash the table, mutually recursive with `table_set()`. However by
+ *  that point there is already a free array index or free hash slot.
  *
  * @note(2025-08-11)
- *      Analogous to `ltable.c:newkey()` in Lua 5.1.5.
+ *  Analogous to `ltable.c:newkey()` in Lua 5.1.5.
  */
 static void
 table_hash_set(lulu_VM *L, Table *t, Value k, Value v)
@@ -632,7 +629,7 @@ table_next(lulu_VM *L, Table *t, Value *restrict k, Value *restrict v)
     for (/* empty */; i < len(t->array); i++) {
         Value src = t->array[i];
         if (!src.is_nil()) {
-            *k = Value::make_number(static_cast<Number>(i + 1));
+            k->set_number(static_cast<Number>(i + 1));
             *v = src;
             return true;
         }

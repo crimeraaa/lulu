@@ -214,8 +214,8 @@ set_error_object(lulu_VM *L, Error e, int old_cf, int old_base, int old_top)
     frame_resize(L, old_cf + 1);
 
     // Put AFTER in case above calls GC
-    L->window = slice(L->stack, old_base, old_top);
-    vm_push_value(L, Value::make_string(s));
+    L->stack[old_top].set_string(s);
+    L->window = slice(L->stack, old_base, old_top + 1);
 }
 
 Error
@@ -1016,9 +1016,7 @@ re_entry:
             protect(L, ip);
             vm_call(L, call_base, 2, n_vars);
 
-            /**
-             * @brief
-             *      Account for `vm_call()` resizing/reallocating the stack.
+            /** @brief Account for `vm_call()` resizing/reallocating the stack.
              *
              * @note(2025-08-28)
              *      It is important to update BOTH local and global window, so
@@ -1052,13 +1050,10 @@ re_entry:
                 // Local `window` will be re-assigned properly anyway.
                 goto re_entry;
             }
-            /**
-             * @brief
-             *      Need to fix local `window` because it may be dangling
-             *      otherwise. This is mainly an issue for variadic calls.
+            /** @brief Need to fix local `window` because it may be dangling
+             *  otherwise. This is mainly an issue for variadic calls.
              *
-             * @note(2025-08-27)
-             *      Concept check: tests/factorial.lua
+             * @note(2025-08-27) Concept check: tests/factorial.lua
              */
             window = L->window;
             break;

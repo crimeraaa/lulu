@@ -11,7 +11,7 @@ struct Entry {
     set_tombstone()
     {
         this->key   = nil;
-        this->value = Value::make_boolean(true);
+        this->value.set_boolean(true);
     }
 };
 
@@ -70,9 +70,7 @@ void
 table_unset(Table *t, Value k);
 
 
-/**
- * @brief
- *      Generic table iterator.
+/** @brief Generic table iterator. Start the iteration with a `nil` key.
  *
  * @param [in, out] k
  *      Holds the current key of the iterator control variable, which

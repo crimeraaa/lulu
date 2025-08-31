@@ -69,8 +69,7 @@ BIT_MASK0(int start, int n)
     return ~(BIT_MASK1(start) << (n));
 }
 
-/**
- * @details 2025-06-10
+/** @details 2025-06-10
  *  +--------+--------+--------+--------+
  *  | 31..23 | 22..14 | 13..06 | 05:00  |
  *  +--------+--------+--------+--------+
@@ -261,8 +260,7 @@ enum OpArg : u8 {
     OPARG_OTHER,  // 0b11: Used as condition, count or boolean
 };
 
-/**
- * @details 2025-06-10
+/** @details 2025-06-10
  *    +----------+----------+----------+----------+
  *    | 06..06   |  05..04  |  03..02  |  01..00  |
  *    +----------+----------+----------+----------+
@@ -336,47 +334,31 @@ private:
     }
 };
 
-/**
- * @note 2025--07-19
- *      ORDER: Keep in sync with `OpCode`!
- */
+/** @note(2025-07-19) ORDER: Keep in sync with `OpCode`! */
 LULU_DATA const char *const opnames[OPCODE_COUNT];
 
 
-/**
- * @note 2025--07-19
- *      ORDER: Keep in sync with `OpCode`!
- */
+/** @note(2025-07-19) ORDER: Keep in sync with `OpCode`! */
 LULU_DATA const OpInfo opinfo[OPCODE_COUNT];
 
-/**
- * @brief
- *      A simple floating-point representation using only 8 bits.
- *      Although not particularly accurate, it allows us to store
- *      rather large sizes.
+
+/** @brief Pack an integer into an 8-bit 'floating-point byte'.
  *
- *      Format:
+ * @details
+ *  Although not particularly accurate, it allows us to store large sizes.
  *
- *      0b_eeee_exxx
- *
- *      Where 'e' is a digit for the exponent and 'x' is a digit for the
- *      mantissa.
+ *  Format: 0b_eeee_exxx
+ *      Where 'e' is the exponent and 'x' is the mantissa.
  */
 u16
 floating_byte_make(isize x);
 
 
-/**
- * @brief
- *      Recall the format of an 8-bit floating point byte:
+/** @brief Decode the integer stored in an 8-bit 'floating-point byte'.
  *
- *      `0b_eeee_exxx`
- *
- *      Where 'e' is a digit for the exponent and 'x' is a digit for the
- *      mantissa.
- *
- *      So to decode:
- *
+ * @details
+ *  Recall the format of an 8-bit floating point byte: `0b_eeee_exxx`
+ *  So to decode:
  *      if 0b000e_eeee == 0:
  *          return 0b0000_0xxx
  *      else:

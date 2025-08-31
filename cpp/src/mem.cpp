@@ -16,14 +16,12 @@ mem_ceil_log2(usize n)
     lulu_assume(n > 0);
 
     /**
-     * @brief
-     *      Map indices in the range [1, 256] to the index range exponents
-     *      with which they fit at the end. Useful to determine
-     *      the appropriate array size which `n` fits in.
+     * @brief Map indices in the range [1, 256] to their index range exponents
+     *
+     * @details Useful to determine the appropriate array size `n` fits in.
      *
      * @note(2025-08-14)
-     *      Index 0 is never a valid input, so this table actually
-     *      maps `n - 1`.
+     *      Index 0 is never a valid input. This table actually maps `n - 1`.
      */
     static const u8 ceil_log2_lookup_table[0x100] = {
         // [1, 1] => index_ranges[0]

@@ -42,10 +42,7 @@ public:
         return v;
     }
 
-    /**
-     * @brief
-     *      Internal use only. This is just to allow us to store integers
-     *      without needing to convert to/from `lulu_Number`.
+    /** @brief Internal use only. Helps store integers without `lulu_Number`.
      */
     static constexpr Value
     make_integer(Integer i)
@@ -183,12 +180,6 @@ public:
         return this->type() == VALUE_NUMBER;
     }
 
-
-    /**
-     * @brief
-     *      Internal use only. This is just to allow us to store integers
-     *      without needing to convert to/from `lulu_Number`.
-     */
     constexpr bool
     is_integer() const noexcept
     {
@@ -245,14 +236,7 @@ public:
         return this->m_number;
     }
 
-    /**
-     * @brief
-     *      Internal use only. This is just to allow us to store integers
-     *      without needing to convert to/from `lulu_Number`.
-     *
-     * @note(2025-07-19)
-     *      Affected by Nan-boxing/pointer-tagging.
-     */
+    /** @note(2025-07-19) Affected by Nan-boxing/pointer-tagging. */
     Integer
     to_integer() const
     {

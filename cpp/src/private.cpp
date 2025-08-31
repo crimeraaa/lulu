@@ -20,9 +20,7 @@
 
 #    undef lulu_assert
 
-/**
- * @brief
- *      Parses a string which was returned from `backtrace_symbols()` to get
+/** @brief Parses a string which was returned from `backtrace_symbols()` to get
  *      symbol name and the offset.
  */
 static void
@@ -124,9 +122,7 @@ addr2line_print(const void *address)
 {
     char command[512] = {0};
 
-    /**
-     * @brief
-     *      Ensure our command maps to the relevant lines in the code.
+    /** @brief Ensure our command maps to the relevant lines in the code.
      *
      * @note 2025-06-11
      *  -C  means demangle.

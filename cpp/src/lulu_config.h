@@ -10,9 +10,7 @@
 
 
 /**
- * @brief CONFIG:
- *      The size of a `char` array needed when writing `lulu_Number` to a
- *      string via `sprintf()`.
+ * @brief CONFIG: Size of `char` array for writing `lulu_Number` to a string.
  *
  * @details
  *      Consider the format string `"%.14g"`.
@@ -107,10 +105,8 @@
 #        define LULU_PUBLIC __declspec(dllimport)
 #    endif /* LULU_BUILD_ALL */
 
-/**
- * @brief
- *      On Windows, when building DLLs, functions not marked with
- *      `__declspec(dllexport)` are hidden automatically.
+/** @brief On Windows, when building DLLs, functions not marked with
+ *  `__declspec(dllexport)` are hidden automatically.
  */
 #    define LULU_PRIVATE
 #else /* ^^^ (__GNUC__ && __ELF__) || _MSC_VER, vvv otherwise */
@@ -162,17 +158,15 @@
 #if defined(__GNUC__) || defined(__clang__)
 
 /**
- * @brief CONFIG:
- *      The GNU C format attribute allows compile-time checking of functions
- *      which take printf-style arguments. The Lulu API nor the string
- *      library never fully implement printf completely; see the
- *      documentation for each specific function's limitations.
+ * @brief CONFIG: The GNU C format attribute.
  *
- * @param fmt
- *      The 1-based index of the format argument in the parameter list.
+ * @details
+ *  Allows compile-time checking of functions which take printf-style arguments.
+ *  The Lulu API nor the string library never fully implement printf completely;
+ *  see the documentation for each specific function's limitations.
  *
- * @param arg
- *      The 1-based index of the variadic arguments in the parameter list.
+ * @param fmt 1-based index of the format argument in the parameter list.
+ * @param arg 1-based index of the variadic arguments in the parameter list.
  */
 #    define LULU_ATTR_PRINTF(fmt, arg)                                         \
         __attribute__((__format__(printf, fmt, arg)))

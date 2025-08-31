@@ -9,11 +9,7 @@ struct Dynamic : public Slice<T> {
 };
 
 
-/**
- * @brief
- *      Allocates memory to hold `new_cap` elements and sets `d.cap`.
- *      `d->len` is left untouched thus you still cannot index it.
- */
+/** @brief Resize to hold `new_cap` elements. Length is not changed. */
 template<class T>
 inline void
 dynamic_reserve(lulu_VM *L, Dynamic<T> *d, isize new_cap)
@@ -23,14 +19,14 @@ dynamic_reserve(lulu_VM *L, Dynamic<T> *d, isize new_cap)
 }
 
 
-/**
- * @brief 2025-06-12
- *      Allocates memory to hold at least `new_len` elements. If shrinking,
- *      no new memory is allocated but the valid indexable range is reduced.
+/** @brief 2025-06-12 Allocates memory to hold at least `new_len` elements.
  *
- *      We clamp the size to reduce the number of consecutive reallocations.
- *      Unlike `reserve()` this also sets `d.len` so you can safely index
- *      this range.
+ * @details
+ *  If shrinking, no new memory is allocated but the valid indexable range is
+ *  reduced.
+ *
+ *  We clamp the size to reduce the number of consecutive reallocations. Unlike
+ *  `reserve()` this also sets `d.len` so you can safely index this range.
  */
 template<class T>
 inline void

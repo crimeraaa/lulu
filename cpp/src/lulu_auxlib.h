@@ -58,37 +58,21 @@ LULU_LIB_API void
 lulu_check_type(lulu_VM *L, int argn, lulu_Type type);
 
 
-/**
- * @brief
- *      Asserts that the value at stack slot `argn` has a value, including
- *      `nil`. Will throw if `argn` is out of bounds of the stack.
+/** @brief Asserts stack slot `argn` is anything but `none`.
+ *
+ * @details `nil` is allowed, so we throw only if `argn` is out of bounds.
  */
 LULU_LIB_API void
 lulu_check_any(lulu_VM *L, int argn);
 
 
-/**
- * @brief
- *      Asserts that the stack slot `argn` is of type `boolean`. If it is
- *      not, then an error is thrown and an error message is pushed.
- *
- * @note(2025-07-21)
- *      This will work with negative indexes, although the error message may
- *      be misleading as 'negative' arguments are confusing conceptually.
- */
+/** @brief Asserts stack slot `argn` is of type `boolean`. */
 LULU_LIB_API int
 lulu_check_boolean(lulu_VM *L, int argn);
 
 
-/**
- * @brief
- *      Asserts that the stack slot `argn` is of type `number` or a `string`
- *      that can be parsed into a number. If it is not, then an error is
- *      thrown and an error message is pushed.
- *
- * @return
- *      The `number` representation of the value at stack slot `argn` when
- *      successful.
+/** @brief Asserts stack slot `argn` is of type `number` or a `string` that can
+ *  be parsed into one.
  */
 LULU_LIB_API lulu_Number
 lulu_check_number(lulu_VM *L, int argn);
@@ -112,11 +96,8 @@ LULU_LIB_API lulu_Integer
 lulu_check_integer(lulu_VM *L, int argn);
 
 
-/**
- * @brief
- *      Asserts that the stack slot `argn` is of type `string` or a `number`
- *      which is then converted to a string. If it is not, then an error is
- *      thrown and an error message is pushed.
+/** @brief Asserts that the stack slot `argn` is `string` or a `number`
+ *  (which is then converted to a string).
  *
  * @return
  *      The `string` representation of the value at stack slot `argn` when
@@ -160,11 +141,8 @@ LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
     lulu_errorf(lulu_VM *L, const char *fmt, ...);
 
 
-/**
- * @brief
- *      Registers all functions in `library[0:n]` to global table `libname`,
- *      or the table on top of stack. No upvalues are associated with any
- *      of the functions.
+/** @brief Registers all functions in `library[0:n]` to global table `libname`,
+ *  or the table on top of stack. Assumes no upvalues.
  *
  * @param libname
  *      The name of the table to be used as the library module.
@@ -188,11 +166,11 @@ lulu_set_nlibrary(lulu_VM *L, const char *libname,
 
 #define lulu_type_name_at(vm, i) lulu_type_name(vm, lulu_type(vm, i))
 
-/**
- * @brief
- *      Asserts that `expr` is true; if not then an error is thrown and
- *      caught by the enclosing protected call. An error message is also
- *      pushed to the top of the stack.
+/** @brief Asserts that `expr` is true.
+ *
+ * @details
+ *  If not, then an error is thrown and caught by the enclosing protected call.
+ *  An error message is also pushed to the top of the stack.
  */
 #define lulu_arg_check(vm, expr, argn, msg)                                    \
     if (!(expr)) {                                                             \
@@ -203,10 +181,7 @@ lulu_set_nlibrary(lulu_VM *L, const char *libname,
 #define lulu_opt_string(vm, argn, def) lulu_opt_lstring(vm, argn, def, NULL)
 #define lulu_count_library(fns)        (int)(sizeof(fns) / sizeof((fns)[0]))
 
-/**
- * @brief
- *      Helper macro for `lulu_set_nlibrary()`, assuming a fixed-size
- *      array of `lulu_Register`.
+/** @brief Helper macro for for fixed-size array of `lulu_Register`.
  *
  * @param name
  *      Desired libary name. See notes in `lulu_set_library()` for more

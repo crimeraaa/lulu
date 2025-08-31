@@ -410,26 +410,27 @@ debug_disassemble(const Chunk *p)
 
 
 /**
- * @brief
- *      Symbolically executes all instructions in `c->code[:target_pc]`.
- *      That is, we go through each instruction and examine what its
- *      side-effects would be to determine the glocal/local variable
- *      or table field that caused an error.
+ * @brief Symbolically executes all instructions in `c->code[:target_pc]`.
+ *
+ * @details
+ *  That is, we go through each instruction and examine what its side-effects
+ *  would be to determine the glocal/local variable or table field that caused
+ *  the error.
  *
  * @param p
- *      Where the bytecode is found.
+ *  Where the bytecode is found.
  *
  * @param target_pc
- *      The index of the instruction that caused the error to be raised,
- *      e.g. `OP_ADD` when one of the operands is a non-number.
+ *  The index of the instruction that caused the error to be raised,
+ *  e.g. `OP_ADD` when one of the operands is a non-number.
  *
  * @param reg
- *      The index in the VM stack of the value that caused the error.
- *      e.g. this could be the RK(B) in an `OP_ADD`.
+ *  The index in the VM stack of the value that caused the error.
+ *  e.g. this could be the RK(B) in an `OP_ADD`.
  *
  * @return
- *      The `Instruction` that retrieved a culrpit variable, or else
- *      the neutral `OP_RETURN`.
+ *  The `Instruction` that retrieved a culrpit variable, or else
+ *  the neutral `OP_RETURN`.
  */
 static Instruction
 get_variable_ip(const Chunk *p, int target_pc, int reg)
@@ -594,12 +595,8 @@ debug_compare_error(lulu_VM *L, const Value *a, const Value *b)
          */
         vm_runtime_error(L, "Attempt to compare 2 %s values", tname);
     } else {
-        vm_runtime_error(
-            L,
-            "Attempt to compare %s with %s",
-            tname,
-            b->type_name()
-        );
+        vm_runtime_error(L, "Attempt to compare %s with %s", tname,
+            b->type_name());
     }
 }
 
@@ -621,12 +618,7 @@ get_func_info(lulu_Debug *ar, Closure *f)
 }
 
 
-/**
- * @brief
- *      Gets the index of the current instruction, which is equivalent to
- *      `L->saved_ip - 1`. Recall that `ip` always points to the instruction
- *      after the one we just decoded.
- */
+/** @brief Gets the index of the current ip.  */
 static int
 get_current_pc(lulu_VM *L, Call_Frame *cf)
 {
@@ -639,7 +631,7 @@ get_current_pc(lulu_VM *L, Call_Frame *cf)
         cf->saved_ip = L->saved_ip;
     }
     // Subtract 1 because ip always points to after the desired instruction.
-    return cf->saved_ip - raw_data(cf->to_lua()->chunk->code) - 1;
+    return ptr_index(cf->to_lua()->chunk->code, cf->saved_ip - 1);
 }
 
 static const char *

@@ -10,12 +10,13 @@ static size_t
 resolve_index(lulu_Integer i, size_t n)
 {
     /**
-     * @brief
-     *      Relative string position, so resolve to back of the string.
-     *      e.g. if n == 3 and i == -1
-     *      then i = i + (n+1)
-     *      then i = -1 + 4
-     *      then i = 3
+     * @brief Relative string position, going from back.
+     *
+     * @details
+     *  e.g. if n == 3 and i == -1
+     *  then i = i + (n+1)
+     *  then i = -1 + 4
+     *  then i = 3
      */
     if (i < 0) {
         i += n + 1;
@@ -259,10 +260,7 @@ skip_width_or_precision(lulu_VM *L, const char *fmt, const char *what)
 }
 
 
-/**
- * @brief
- *      Parses the format string starting at `fmt_str` and writes it into
- *      `fmt_buf`.
+/** @brief Parses the format string starting and write it into the buffer.
  *
  * @note(2025-07-27)
  * Assumptions:
@@ -302,21 +300,19 @@ get_format(lulu_VM *L, const char *fmt, Fmt_Buf *buf)
     return &fmt[i - 1];
 }
 
-#define FMT_LEN_STR  "l"
-#define FMT_LEN_SIZE (sizeof(FMT_LEN_STR) - 1)
 
 /* 'long' is 32 bits on MSVC, try to use longer width */
 #ifdef _MSC_VER
-#    define FMT_LEN_TYPE long long
+#   define FMT_LEN_STR "ll"
+#   define FMT_LEN_TYPE long long
 #else
-#    define FMT_LEN_TYPE long
+#   define FMT_LEN_STR  "l"
+#   define FMT_LEN_TYPE long
 #endif
+#define FMT_LEN_SIZE (sizeof(FMT_LEN_STR) - 1)
 
 
-/**
- * @brief
- *      Converts integer formats like `%i` into `%li`.
- */
+/** @brief Converts integer formats like `%i` into `%li`. */
 static void
 add_int_len(Fmt_Buf *buf)
 {

@@ -143,53 +143,41 @@ compiler_add_constant(Compiler *c, Value v);
 void
 compiler_check_stack(Compiler *c, u16 n);
 
-/**
- * @brief
- *      Increments `c.free_reg` by `n`; asserting that it does not exceed
- *      `MAX_REG`.
- */
+/** @brief Increase free reg count, asserting it does not exceed `MAX_REG`. */
 void
 compiler_reserve_reg(Compiler *c, u16 n);
 
 
-/**
- * @brief
- *      Unconditionally pushes `e` to the next free register. This is
- *      useful for stack-like semantics.
+/** @brief Unconditionally pushes `e` to next free register, like in a stack.
  *
- * @returns
- *      The register we pushed `e` to.
+ * @returns The register we pushed `e` to.
  */
 u16
 compiler_expr_next_reg(Compiler *c, Expr *e);
 
 
 /**
- * @brief
- *      If `e` represents a literal or constant value, check if its index
- *      can fit in an RK register. This is useful to optimize away
- *      `OP_CONSTANT` for instructions that support it.
+ * @brief Push `e` to an RK register.
  *
- *      This will always save constant values to the constants array. If
- *      `e` does not fit in an RK register *or* it is not a constant value
- *      then we try to push it to a register (if it does not have one
- *      already).
+ * @details
+ *  If `e` represents a literal or constant value, check if its index can fit
+ *  in an RK register. This is useful to optimize away `OP_CONSTANT` for
+ *  instructions that support it.
  *
- * @returns
- *      The RK register of `e`, otherwise a normal register.
+ *  This will always save constant values to the constants array. If `e` does
+ *  not fit in an RK register *or* it is not a constant value then we try to
+ *  push it to a register (if it does not have one already).
+ *
+ * @returns The RK register of `e`, otherwise a normal register.
  */
 u16
 compiler_expr_rk(Compiler *c, Expr *e);
 
 
 /**
- * @brief
- *      If `e` is already discharged into a register, reuse it. Otherwise
- *      it is pushed to the next one. This is useful to recycle registers
- *      if `e` already has one.
+ * @brief Push `e` to a new register, except if already in one (e.g. a local).
  *
- * @returns
- *      The register `e` resides in.
+ * @returns The register `e` resides in.
  */
 u16
 compiler_expr_any_reg(Compiler *c, Expr *e);
@@ -254,10 +242,7 @@ void
 compiler_set_returns(Compiler *c, Expr *call, u16 n);
 
 
-/**
- * @brief
- *      If `e` represents an `OP_CALL`, then its argument C is set to 1 and
- *      `e` itself is converted to `EXPR_DISCHARGED` to signify it is final.
+/** @brief Finalize a call/vararg instruction to return exactly 1 value.
  *
  * @note 2025-06-24
  *      Analogous to `lcode.c:luaK_setoneret(FuncState *fs, expdesc *e)`
@@ -267,18 +252,14 @@ void
 compiler_set_one_return(Compiler *c, Expr *e);
 
 
-/**
- * @brief
- *      Finds the index of the `small_array_len(c->active) - 1` up to and
- *      including the `limit`-numbered local.
+/** @brief Finds the index of local variable represented by `ident`, searching
+ *  only up to the `limit`-th active local.
  *
  * @param limit
- *      The last index where we will check the `c->active` array.
- *      This is useful to enforce scoping rules, so that this is still
- *      valid: `local x; do local x; end;`
+ *  The last index where we will check the `c->active` array. This is useful to
+ *  enforce scoping rules, e.g: `local x; do local x; end;`
  *
- * @return
- *      The register (which fits in 8 bits) if found, else `NO_REG`.
+ * @return The register (which fits in 8 bits) if found, else `NO_REG`.
  */
 u16
 compiler_get_local(Compiler *c, u16 limit, OString *ident);
@@ -290,13 +271,9 @@ void
 compiler_set_array(Compiler *c, u16 table_reg, isize n_array, isize to_store);
 
 
-/**
- * @brief
- *      Unconditionally creates a new jump. That is, `sBx` is `-1` meaning
- *      this is the start (bottom) of the list.
+/** @brief Unconditionally creates a new jump.
  *
- * @return
- *      The `pc` of the new jump list. Use this to fill an `Expr`.
+ * @return The `pc` of the new jump list. Use this to fill an `Expr`.
  */
 int
 compiler_jump_new(Compiler *c);
@@ -313,23 +290,22 @@ void
 compiler_jump_add(Compiler *c, int *list_pc, int jump_pc);
 
 
-/**
- * @brief
- *      This function is 'overloaded' to do the jobs of multiple separate
- *      functions from `lcode.c` in Lua 5.1.5.
+/** @brief 'overloaded' to do the jobs of multiple separate functions from
+ *  `lcode.c` in Lua 5.1.5.
  *
- *      1.) `luaK_patchtohere()`:
- *          Leave `target` and `reg` to defaults. This is useful to patch a
- *          jump list to `c->pc` for `if` and `while` conditions.
+ * @details
+ *  1.) `luaK_patchtohere()`:
+ *      Leave `target` and `reg` to defaults. This is useful to patch a jump
+ *      list to the current pc, e.g. `if` and `while` conditions.
  *
- *      2.) `luaK_patchlist()`:
- *          Provide `target` but not `reg`. This is useful in emulating the
- *          unconditional jump of a `while` or a `for` loop.
+ *  2.) `luaK_patchlist()`:
+ *      Provide `target` but not `reg`. This is useful in emulating the
+ *      unconditional jump of a `while` or a `for` loop.
  *
- *      3.) `lcode.c:patchlistaux()`
- *          Provide `target` and `reg`. This is only useful within
- *          `compiler.cpp`; it is how logical operators (along with their
- *          register allocations) are implemented.
+ *  3.) `lcode.c:patchlistaux()`
+ *      Provide `target` and `reg`. This is only useful within `compiler.cpp`;
+ *      it is how logical operators (along with their register allocations) are
+ *      implemented.
  */
 void
 compiler_jump_patch(Compiler *c, int jump_pc, int target = NO_JUMP,
@@ -365,10 +341,10 @@ compiler_logical_patch(Compiler *c, Expr *restrict left, Expr *restrict right,
     bool cond);
 
 
-/**
- * @brief
- *      Marks `c->pc` as a 'jump' target and returns it. This is useful to
- *      prevent bad optimizations when calling `compiler_code_nil()`.
- */
-int
-compiler_label_get(Compiler *c);
+/** @brief Mark pc as jump target. Prevents bad optimization for loading nil. */
+inline int
+compiler_label_get(Compiler *c)
+{
+    c->last_target = c->pc;
+    return c->pc;
+}

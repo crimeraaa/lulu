@@ -22,10 +22,7 @@ int
 mem_ceil_log2(usize n);
 
 
-/**
- * @brief
- *      Rounds `n` to the next power of 2 if it is not one already.
- */
+/** @brief Rounds `n` to the next power of 2 if it is not one already. */
 inline isize
 mem_next_pow2(isize n)
 {

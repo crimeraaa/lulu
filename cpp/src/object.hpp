@@ -113,10 +113,8 @@ object_gc_print(Object *o, const char *fmt, ...);
 
 #endif // LULU_DEBUG_LOG_GC
 
-/**
- * @brief
- *      Allocates an appropriately-sized object of type T and zero-initializes
- *      it.
+/** @brief Allocates an appropriately-sized object of type T and
+ *  zero-initializes it.
  *
  * @note(2025-08-27)
  *      Analogous to `object.c:allocateObject()` in Crafting Interpreters 19.3:

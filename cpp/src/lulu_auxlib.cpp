@@ -77,11 +77,7 @@ buffer_flushed(lulu_Buffer *b)
 static constexpr int LIMIT = LULU_STACK_MIN / 2;
 
 
-/**
- * @brief
- *      Concatenate some of our temporary strings if it can be helped so that
- *      we do not overflow the VM stack.
- */
+/** @brief Concatenate temporary strings to avoid VM stack overflow. */
 static void
 buffer_adjust_stack(lulu_Buffer *b)
 {
