@@ -66,6 +66,7 @@ chunk_new(lulu_VM *L, OString *source);
 void
 chunk_delete(lulu_VM *L, Chunk *p);
 
+// Implement a dynamic array by using Slice<T> to store cap and caller's `n`.
 template<class T, class N>
 inline N
 chunk_push(lulu_VM *L, Slice<T> *s, T v, N *n)

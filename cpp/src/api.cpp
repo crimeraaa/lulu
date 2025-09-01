@@ -237,7 +237,7 @@ lulu_set_top(lulu_VM *L, int i)
         int new_stop  = old_start + i;
         if (new_stop > old_stop) {
             // If growing the window, initialize the new region to nil.
-            auto extra = slice(L->stack, old_stop, new_stop);
+            Slice<Value> extra = slice(L->stack, old_stop, new_stop);
             fill(extra, nil);
         }
         L->window = slice(L->stack, old_start, new_stop);

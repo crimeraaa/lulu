@@ -73,7 +73,7 @@ typedef int (*lulu_CFunction)(lulu_VM *L);
  * @param user_ptr
  *  A pointer to an arbitrary type that you, the user, allocated somewhere else
  *  (e.g. on the C stack). The internal implementation guarantees that this
- *  pointer is only ever passed to calls of the function it was registered with,
+ *  pointer is only ever passed to calls of the function it is associated with,
  *  so casting should be safe.
  *
  * @param [out] n
@@ -610,7 +610,7 @@ typedef enum {
     LULU_GC_COUNT,
 
     /* Query #bytes truncated from LULU_GC_COUNT. */
-    LULU_GC_COUNT_REM,
+    LULU_GC_COUNT_REM
 } lulu_GC_Mode;
 
 

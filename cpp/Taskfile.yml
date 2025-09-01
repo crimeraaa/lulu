@@ -7,15 +7,6 @@ vars:
   CC:  clang
   CXX: clang++
 
-  # Notes(2025-06-11):
-  #   - We can `-rdynamic` so that all symbols are in the dynamic symbol table
-  #     and can thus be resolved when calling `backtrace()`.
-  #   - However, if you're using `addr2line` then you don't need it.
-  #   - You will need the dynlib library in that case though.
-  #
-  # See:
-  #   - https://stackoverflow.com/a/6934857
-  #
   CC_DEBUG_FLAGS: >-
     -O0
     -g
@@ -23,7 +14,6 @@ vars:
     -DLULU_DEBUG=1
     -DLULU_DEBUG_PRINT_CODE
     -DLULU_DEBUG_TRACE_EXEC
-    -ldl
 
   CC_RELEASE_FLAGS: >-
     -Werror

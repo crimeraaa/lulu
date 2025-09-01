@@ -40,34 +40,36 @@ void
 table_delete(lulu_VM *L, Table *t);
 
 
-/**
- * @param [out] v
- *      Will hold the result of `t[k]`.
+/** @brief Get t[k].
+ *
+ * @param [out] key_exists
+ *  If non-null, then holds true iff t[k] was non-nil beforehand else false.
  */
-bool
-table_get(Table *t, Value k, Value *v);
+Value
+table_get(Table *t, Value k, bool *key_exists = nullptr);
 
-// Implements `t[k] = v`.
-void
-table_set(lulu_VM *L, Table *t, Value k, Value v);
+
+/** @brief Get a read-write pointer to `t[k]`. May trigger rehash. */
+[[nodiscard]] Value *
+table_set(lulu_VM *L, Table *t, Value k);
+
 
 // Implements `#t`.
 isize
 table_len(Table *t);
 
-/**
- * @param [out] v
- *      Will hold the result of `t[i]`.
- */
-bool
-table_get_integer(Table *t, Integer i, Value *v);
 
-// Implements `t[i] = v`.
-void
-table_set_integer(lulu_VM *L, Table *t, Integer i, Value v);
+// Value
+// table_get_integer(Table *t, Integer i, bool *index_exists);
 
-void
-table_unset(Table *t, Value k);
+
+/** `table_set()`, but for array indices or integer keys. */
+[[nodiscard]] Value *
+table_set_integer(lulu_VM *L, Table *t, Integer i);
+
+
+// void
+// table_unset(Table *t, Value k);
 
 
 /** @brief Generic table iterator. Start the iteration with a `nil` key.

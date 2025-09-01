@@ -116,6 +116,21 @@ table_get_entry(Table *t, Value k)
     return e;
 }
 
+
+static constexpr isize
+// @todo(2025-09-01) Fix assumption
+CACHE_LINE_SIZE = 64,
+TABLE_ARRAY_MIN_SIZE = CACHE_LINE_SIZE / sizeof(Table::array[0]),
+TABLE_HASH_MIN_SIZE  = CACHE_LINE_SIZE / sizeof(Table::entries[0]);
+
+
+static isize
+table_next_size(isize n, isize min)
+{
+    return mem_next_pow2(max(n, min));
+}
+
+
 /**
  * @note(2025-08-11)
  *      The previous entries array is not freed here because you may want
@@ -132,8 +147,7 @@ table_hash_resize(lulu_VM *L, Table *t, isize n)
         return;
     }
 
-    // Minimum array size to prevent frequent reallocations.
-    n = mem_next_pow2(max(n + 1, 8_i));
+    n = table_next_size(n, /*min=*/TABLE_HASH_MIN_SIZE);
 
     Slice<Entry> new_entries = slice_make<Entry>(L, n);
     // Initialize all key-value pairs to nil-nil.
@@ -230,6 +244,7 @@ table_hash_count_array(Table *t, Slice<i32> index_ranges)
     return n_array_extra;
 }
 
+
 /**
  * @param [in, out] n_array
  *      Holds the theoretical number of elements that goes to the array
@@ -289,9 +304,7 @@ static void
 table_array_resize(lulu_VM *L, Table *t, isize n)
 {
     isize last = len(t->array);
-
-    // Minimum array size to prevent frequent reallocations.
-    n = max(n, 8_i);
+    n = table_next_size(n, /*min=*/TABLE_ARRAY_MIN_SIZE);
     slice_resize(L, &t->array, n);
 
     // Growing the array?
@@ -321,10 +334,10 @@ table_resize(lulu_VM *L, Table *t, isize n_hash, isize n_array)
 
     table_hash_resize(L, t, n_hash);
 
-    // Array must shrink?
-    if (n_array < len(old_array)) {
+    // Array must shrink AND we won't shrink it below the minimum size?
+    if (n_array < len(old_array) && n_array > TABLE_ARRAY_MIN_SIZE) {
         // Update len so that `table_set()` does not see the longer region.
-        t->array.len = n_array;
+        t->array = slice_until(t->array, n_array);
 
         // Move elements from the vanishing array slice to the hash segment.
         // Integer keys are prioritized for their ideal positions so we can
@@ -332,7 +345,8 @@ table_resize(lulu_VM *L, Table *t, isize n_hash, isize n_array)
         for (isize i = n_array, n = len(old_array); i < n; i++) {
             Value v = old_array[i];
             if (!v.is_nil()) {
-                table_set_integer(L, t, i + 1, v);
+                Value *v2 = table_set_integer(L, t, i + 1);
+                *v2 = v;
             }
         }
 
@@ -340,7 +354,7 @@ table_resize(lulu_VM *L, Table *t, isize n_hash, isize n_array)
         // we may unintentionally free any objects from `old_entries` that
         // were not yet rehashed into `t->entries.` Doing so would invalidate
         // data like strings!
-        auto e = t->entries;
+        Slice<Entry> e = t->entries;
         t->entries = old_entries;
         table_array_resize(L, t, n_array);
         t->entries = e;
@@ -350,7 +364,8 @@ table_resize(lulu_VM *L, Table *t, isize n_hash, isize n_array)
     // keys to the array segment. We assume no reallocation will occur.
     for (Entry e : old_entries) {
         if (!e.value.is_nil()) {
-            table_set(L, t, e.key, e.value);
+            Value *v = table_set(L, t, e.key);
+            *v = e.value;
         }
     }
 
@@ -389,12 +404,7 @@ table_new(lulu_VM *L, isize n_hash, isize n_array)
     t->entries = EMPTY_ENTRY_SLICE;
     // Don't collect table whilst resizing
     vm_push_value(L, Value::make_table(t));
-    if (n_hash > 0) {
-        table_hash_resize(L, t, n_hash);
-    }
-    if (n_array > 0) {
-        table_array_resize(L, t, n_array);
-    }
+    table_resize(L, t, n_hash, n_array);
     vm_pop_value(L);
     return t;
 }
@@ -418,30 +428,30 @@ table_array_ptr(Table *t, Integer i)
     return nullptr;
 }
 
-/**
- * @param [out] v
- *      Holds the result of `t[k]`.
- */
-static bool
-table_hash_get(Table *t, Value k, Value *v)
+static Value
+table_hash_get(Table *t, Value k, bool *key_exists = nullptr)
 {
     // Sentinel value is EMPTY_ENTRY which has a nil key and nil value.
-    Entry *e     = table_get_entry(t, k);
-    bool   found = !e->key.is_nil();
-    *v = (found) ? e->value : nil;
-    return found;
+    Entry *e = table_get_entry(t, k);
+
+    bool found = !e->key.is_nil();
+    if (key_exists) {
+        *key_exists = found;
+    }
+    return e->value;
 }
 
-bool
-table_get(Table *t, Value k, Value *v)
+Value
+table_get(Table *t, Value k, bool *key_exists)
 {
     Value *slot = table_array_ptr(t, array_index(k));
     if (slot != nullptr) {
-        *v = *slot;
-        // Array slot is occupied?
-        return !slot->is_nil();
+        if (key_exists) {
+            *key_exists = !slot->is_nil();
+        }
+        return *slot;
     }
-    return table_hash_get(t, k, v);
+    return table_hash_get(t, k, key_exists);
 }
 
 static isize
@@ -465,8 +475,8 @@ table_is_full(Table *t)
  * @note(2025-08-11)
  *  Analogous to `ltable.c:newkey()` in Lua 5.1.5.
  */
-static void
-table_hash_set(lulu_VM *L, Table *t, Value k, Value v)
+static Value *
+table_hash_set(lulu_VM *L, Table *t, Value k)
 {
     Entry *e = EMPTY_ENTRY;
     // Table still has free slots?
@@ -478,30 +488,36 @@ table_hash_set(lulu_VM *L, Table *t, Value k, Value v)
     if (e == EMPTY_ENTRY) {
         table_rehash(L, t, k);
         // k may be a valid array index now.
-        table_set(L, t, k, v);
-        return;
+        return table_set(L, t, k);
     }
 
     // Entry is completely empty?
     if (e->key.is_nil() && e->value.is_nil()) {
         t->count++;
     }
-    e->key   = k;
-    e->value = v;
+    e->key = k;
+    return &e->value;
 }
 
-void
-table_set(lulu_VM *L, Table *t, Value k, Value v)
+Value *
+table_set(lulu_VM *L, Table *t, Value k)
 {
     Value *dst = table_array_ptr(t, array_index(k));
     if (dst != nullptr) {
-        *dst = v;
-        return;
+        return dst;
     }
-    table_hash_set(L, t, k, v);
+    return table_hash_set(L, t, k);
 }
 
 //=== ARRAY MANIPULATION =============================================== {{{
+
+
+/** @note(2025-09-01) Don't hash lulu_Integer, we want uniform number keys. */
+static Value
+make_integer_key(Integer i)
+{
+    return Value::make_number(static_cast<Number>(i));
+}
 
 isize
 table_len(Table *t)
@@ -520,9 +536,10 @@ table_len(Table *t)
         // Don't call table_get*() because we already know this key
         // is not in the hash segment.
         for (;;) {
-            Value k = Value::make_number(static_cast<Number>(i + 1));
-            Value v;
-            if (!table_hash_get(t, k, &v)) {
+            Value k = make_integer_key(i + 1);
+            Value v = table_hash_get(t, k);
+            // Don't care if t[k] exists or not
+            if (v.is_nil()) {
                 break;
             }
             i++;
@@ -531,49 +548,49 @@ table_len(Table *t)
     return i;
 }
 
-bool
-table_get_integer(Table *t, Integer i, Value *v)
-{
-    Value *slot = table_array_ptr(t, i);
-    if (slot != nullptr) {
-        *v = *slot;
-        // Array slot is occupied?
-        return !slot->is_nil();
-    }
-    // Index not in range of the array; try the hash part.
-    Value k = Value::make_number(static_cast<Number>(i));
-    return table_hash_get(t, k, v);
-}
+// Value
+// table_get_integer(Table *t, Integer i, bool *index_exists)
+// {
+//     Value *slot = table_array_ptr(t, i);
+//     if (slot != nullptr) {
+//         if (index_exists != nullptr) {
+//             *index_exists = !slot->is_nil();
+//         }
+//         return *slot;
+//     }
+//     // Index not in range of the array; try the hash part.
+//     Value k = make_integer_key(i);
+//     return table_hash_get(t, k, index_exists);
+// }
 
-void
-table_set_integer(lulu_VM *L, Table *t, Integer i, Value v)
+Value *
+table_set_integer(lulu_VM *L, Table *t, Integer i)
 {
     Value *dst = table_array_ptr(t, i);
     if (dst != nullptr) {
-        *dst = v;
-        return;
+        return dst;
     }
     // Index not in range of the array; try the hash part.
-    Value k = Value::make_number(static_cast<Number>(i));
-    table_hash_set(L, t, k, v);
+    Value k = make_integer_key(i);
+    return table_hash_set(L, t, k);
 }
 
 //=== }}} ==================================================================
 
-void
-table_unset(Table *t, Value k)
-{
-    Value *v = table_array_ptr(t, array_index(k));
-    if (v != nullptr) {
-        *v = nil;
-        return;
-    }
+// void
+// table_unset(Table *t, Value k)
+// {
+//     Value *v = table_array_ptr(t, array_index(k));
+//     if (v != nullptr) {
+//         *v = nil;
+//         return;
+//     }
 
-    Entry *e = table_get_entry(t, k);
-    if (e != EMPTY_ENTRY) {
-        e->set_tombstone();
-    }
-}
+//     Entry *e = table_get_entry(t, k);
+//     if (e != EMPTY_ENTRY) {
+//         e->set_tombstone();
+//     }
+// }
 
 /**
  * @param k

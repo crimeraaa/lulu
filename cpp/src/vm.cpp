@@ -603,10 +603,10 @@ vm_table_get(lulu_VM *L, const Value *t, Value k, Value *out)
 
         // do a primitive get (`rawget`)
         // @todo(2025-07-20): Check `v` is `nil` and lookup `index` metamethod
-        Value v;
-        bool  ok = table_get(t->to_table(), k, &v);
-        *out     = v;
-        return ok;
+        bool key_exists;
+        Value v = table_get(t->to_table(), k, &key_exists);
+        *out = v;
+        return key_exists;
     }
     debug_type_error(L, "index", t);
     return false;
@@ -620,8 +620,9 @@ vm_table_set(lulu_VM *L, const Value *t, const Value *k, Value v)
         if (k->is_nil()) {
             debug_type_error(L, "set index using", k);
         }
-        table_set(L, t->to_table(), *k, v);
+        Value *tk = table_set(L, t->to_table(), *k);
         // luaC_barriert(L, t, v);
+        *tk = v;
         return;
     }
     debug_type_error(L, "set index of", t);
@@ -802,7 +803,7 @@ re_entry:
         case OP_GET_GLOBAL: {
             Value k = KBX(inst);
             Value v;
-            if (!table_get(L->globals.to_table(), k, &v)) {
+            if (!vm_table_get(L, &L->globals, k, &v)) {
                 protect(L, ip);
                 vm_runtime_error(L, "Attempt to read undefined variable '%s'",
                     k.to_cstring());
@@ -813,7 +814,7 @@ re_entry:
         case OP_SET_GLOBAL: {
             Value k = KBX(inst);
             protect(L, ip);
-            table_set(L, L->globals.to_table(), k, *ra);
+            vm_table_set(L, &L->globals, &k, *ra);
             break;
         }
         case OP_NEW_TABLE: {
@@ -852,7 +853,8 @@ re_entry:
             // contructors.
             Table *t = ra->to_table();
             for (isize i = 1; i <= n; i++) {
-                table_set_integer(L, t, offset + i, ra[i]);
+                Value *v = table_set_integer(L, t, offset + i);
+                *v = ra[i];
             }
             break;
         }
@@ -1003,9 +1005,9 @@ re_entry:
             Value *call_base = ra + 3;
 
             // Prepare call so that its registers can be overridden.
-            call_base[2] = ra[2]; // internal control variable
-            call_base[1] = ra[1]; // invariant state variable
             call_base[0] = ra[0]; // generator function
+            call_base[1] = ra[1]; // invariant state variable
+            call_base[2] = ra[2]; // internal control variable
 
             // Registers for generator function, invariant state and index.
             int top    = ptr_index(window, call_base + 3);
@@ -1014,17 +1016,19 @@ re_entry:
             // Number of user-facing variables to set.
             u16 n_vars = inst.c();
             protect(L, ip);
+
+            /** @note(2025-09-01) May call another vm_execute(). */
             vm_call(L, call_base, 2, n_vars);
 
             /** @brief Account for `vm_call()` resizing/reallocating the stack.
              *
              * @note(2025-08-28)
-             *      It is important to update BOTH local and global window, so
-             *      that stack windows are consistent for garbage collection.
+             *  It is important to update BOTH local and global window, so that
+             *  stack windows are consistent for garbage collection.
              */
-            window     = L->caller->window;
+            window    = L->caller->window;
             L->window = window;
-            call_base  = &RA(inst) + 3;
+            call_base = &RA(inst) + 3;
 
             // Continue loop?
             if (!call_base->is_nil()) {

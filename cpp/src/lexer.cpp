@@ -398,17 +398,15 @@ lexer_new_ostring(lulu_VM *L, Lexer *x, LString ls)
     OString *s = ostring_new(L, ls);
     Table *t = x->indexes;
     Value k = Value::make_string(s);
-    Value v;
+
+    Value *v = table_set(L, t, k);
 
     // If key exists, don't do anything as it's not collectible anyway.
     // Otherwise explicitly mark it to prevent collection.
-    if (!s->is_fixed() && !table_get(t, k, &v)) {
+    if (!s->is_fixed() && v->is_nil()) {
         // Make sure `s` will not be collected because it's in a reachable
         // table that maps to non-nil.
-        v.set_boolean(true);
-        vm_push_value(L, k);
-        table_set(L, t, k, v);
-        vm_pop_value(L);
+        v->set_string(s);
         // luaC_checkGC(L);
     }
     return s;
