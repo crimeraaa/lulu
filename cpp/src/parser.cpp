@@ -373,7 +373,7 @@ static void
 local_push(Parser *p, Compiler *c, OString *ident, u16 n)
 {
     local_check_shadowing(p, c, ident);
-    int index = chunk_local_push(p->L, c->chunk, ident, &c->n_locals);
+    int index = chunk_local_push(p->L, c->chunk, ident);
 
     // Resulting index wouldn't fit as an element in the active array?
     compiler_check_limit(c, index, MAX_TOTAL_LOCALS, "overall local variables");
@@ -738,10 +738,10 @@ function_open(lulu_VM *L, Parser *p, Compiler *c, Compiler *enclosing)
 static void
 chunk_flatten(lulu_VM *L, Compiler *c, Chunk *p)
 {
-    slice_resize(L, &p->locals, c->n_locals);
-    slice_resize(L, &p->upvalues, p->n_upvalues);
-    slice_resize(L, &p->constants, c->n_constants);
-    slice_resize(L, &p->children, c->n_children);
+    dynamic_shrink(L, &p->locals    /*, c->n_locals*/);
+    dynamic_shrink(L, &p->upvalues  /*, p->n_upvalues*/);
+    dynamic_shrink(L, &p->constants /*, c->n_constants*/);
+    dynamic_shrink(L, &p->children  /*, c->n_children*/);
     slice_resize(L, &p->code, c->pc);
     slice_resize(L, &p->lines, c->n_lines);
 }
@@ -780,8 +780,8 @@ static u16
 add_upvalue(Compiler *c, u16 index, OString *ident, Expr_Type type)
 {
     lulu_VM *L = c->L;
-    Chunk   *f  = c->chunk;
-    int      n  = static_cast<int>(f->n_upvalues);
+    Chunk   *f = c->chunk;
+    int      n = static_cast<int>(f->n_upvalues);
 
     // If closure references the same upvalue multiple times, reuse it.
     for (int i = 0; i < n; i++) {
@@ -800,7 +800,7 @@ add_upvalue(Compiler *c, u16 index, OString *ident, Expr_Type type)
     info->data = index;
 
     // Add this upvalue name for debug purposes.
-    return chunk_upvalue_push(L, f, ident, &f->n_upvalues);
+    return chunk_upvalue_push(L, f, ident);
 }
 
 static u16
@@ -909,10 +909,10 @@ function_push(Parser *p, Compiler *parent, Compiler *child)
     lulu_VM *L = p->L;
 
     // Child chunk is to be held by the parent.
-    chunk_child_push(L, parent->chunk, child->chunk, &parent->n_children);
+    chunk_child_push(L, parent->chunk, child->chunk /*, &parent->n_children*/);
 
     int pc = compiler_code_abx(parent, OP_CLOSURE, NO_REG,
-        parent->n_children - 1);
+        /*parent->n_children*/ len(parent->chunk->children) - 1);
 
     for (int i = 0, n = child->chunk->n_upvalues; i < n; i++) {
         Upvalue_Info info = small_array_get(child->upvalues, i);

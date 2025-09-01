@@ -45,3 +45,10 @@ void
 gc_mark_compiler_roots(lulu_VM *L, Compiler *c);
 
 
+/** @brief Start a collection if GC threshold is surpassed.
+ *
+ * @note(2025-09-01)
+ *  Analogous to `lgc.h:luaC_checkGC()` in Lua 5.1.5.
+ */
+void
+gc_check(lulu_VM *L, lulu_Global *g);

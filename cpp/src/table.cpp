@@ -105,8 +105,8 @@ loop_start:
 static Entry *
 table_get_entry(Table *t, Value k)
 {
-    usize hash = static_cast<usize>(hash_value(k));
-    usize n    = static_cast<usize>(len(t->entries));
+    auto hash = static_cast<usize>(hash_value(k));
+    auto n    = static_cast<usize>(len(t->entries));
     lulu_assert(n > 0);
     // Bit-or 1 is to ensure that even if `n == 1` we don't end up with 0.
     usize wrap = (n - 1) | 1;

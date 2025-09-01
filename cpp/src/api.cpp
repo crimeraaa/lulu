@@ -205,7 +205,7 @@ lulu_to_lstring(lulu_VM *L, int i, size_t *n)
         }
         return nullptr;
     }
-    // luaC_checkGC(L);
+    // gc_check(L); // luaC_checkGC(L);
 
     // Otherwise, conversion success.
     // @note(2025-08-30) Previous call may reallocate stack in the future!
@@ -311,8 +311,8 @@ lulu_push_userdata(lulu_VM *L, void *p)
 LULU_API void
 lulu_push_lstring(lulu_VM *L, const char *s, size_t n)
 {
-    LString  ls{s, static_cast<isize>(n)};
-    // luaC_checkGC(L);
+    // gc_check(L); // luaC_checkGC(L);
+    LString ls{s, static_cast<isize>(n)};
     OString *os = ostring_new(L, ls);
     vm_push_value(L, Value::make_string(os));
 }
@@ -331,7 +331,7 @@ LULU_API const char *LULU_ATTR_PRINTF(2, 3)
 lulu_push_fstring(lulu_VM *L, const char *fmt, ...)
 {
     va_list args;
-    // luaC_checkGC(L);
+    // gc_check(L); // luaC_checkGC(L);
     va_start(args, fmt);
     const char *s = vm_push_vfstring(L, fmt, args);
     va_end(args);
@@ -341,7 +341,7 @@ lulu_push_fstring(lulu_VM *L, const char *fmt, ...)
 LULU_API const char *
 lulu_push_vfstring(lulu_VM *L, const char *fmt, va_list args)
 {
-    // luaC_checkGC(L);
+    // gc_check(L); // luaC_checkGC(L);
     return vm_push_vfstring(L, fmt, args);
 }
 
@@ -350,7 +350,7 @@ lulu_push_cclosure(lulu_VM *L, lulu_CFunction cf, int n_upvalues)
 {
     lulu_assert(n_upvalues >= 0);
 
-    // luaC_checkGC(L);
+    // gc_check(L); // luaC_checkGC(L);
     // api_checknelems(L, n_upvalues);
     Closure *f = closure_c_new(L, cf, n_upvalues);
     for (int i = 0; i < n_upvalues; i++) {
@@ -373,7 +373,7 @@ lulu_push_value(lulu_VM *L, int i)
 LULU_API void
 lulu_new_table(lulu_VM *L, int n_array, int n_hash)
 {
-    // luaC_checkGC(L);
+    // gc_check(L); // luaC_checkGC(L);
     Table *t = table_new(L, n_array, n_hash);
     vm_push_value(L, Value::make_table(t));
 }
@@ -474,7 +474,7 @@ lulu_concat(lulu_VM *L, int n)
     Value *first = value_at_stack(L, -n);
     Value *last  = value_at_stack(L, -1);
 
-    // luaC_checkGC(L);
+    // gc_check(L); // luaC_checkGC(L);
     vm_concat(L, first, slice_pointer(first, last + 1));
 
     // Pop all arguments except the first one- the one we replaced.

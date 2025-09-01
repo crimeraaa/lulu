@@ -5,6 +5,13 @@
 #include <stdlib.h> // abort
 #include <stdio.h>  // [v]fprintf
 
+// ASAN check with Clang,
+#if (defined(__has_feature) && __has_feature(address_sanitizer))
+#   ifndef __SANITIZE_ADDRESS__
+#       define __SANITIZE_ADDRESS__ 1
+#   endif
+#endif
+
 void
 lulu_assert_fail(const char *where, const char *expr, const char *fmt,
     ...) throw()
@@ -21,19 +28,11 @@ lulu_assert_fail(const char *where, const char *expr, const char *fmt,
         va_end(argp);
     }
 
-
-    // ASAN check with Clang,
-    #if (defined(__has_feature) && __has_feature(address_sanitizer))
-    #   ifndef __SANITIZE_ADDRESS__
-    #       define __SANITIZE_ADDRESS__ 1
-    #   endif
-    #endif
-
-    // GCC and MSVC already define the macro so we *should* be good here.
-    #if (defined(__SANITIZE_ADDRESS__))
-        // intentionally cause segault to invoke ASAN for better backtrace
-        *reinterpret_cast<volatile int *>(0) = 1;
-    #endif
+// GCC and MSVC already define the macro so we *should* be good here.
+#ifdef __SANITIZE_ADDRESS__
+    // intentionally cause segault to invoke ASAN for better backtrace
+    *reinterpret_cast<volatile int *>(0) = 1;
+#endif
     abort();
 }
 

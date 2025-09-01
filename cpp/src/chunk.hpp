@@ -17,8 +17,8 @@ struct Local {
     int      end_pc;
 };
 
-// Somewhat optimized for size, *could* shave off some more by changing
-// slice lengths to `int` and packing appropriately, but do we really care?
+/** @note(2025-09-01) Not optimized for size, as GC can see its constituent
+ * arrays at any point, meaning we don't want to iterate over garbage. */
 struct Chunk : Object_Header {
     // Only used during the mark and traverse phases of GC.
     // This object is independent only during compilation, where it resides
@@ -29,16 +29,16 @@ struct Chunk : Object_Header {
     // Information of all possible locals, in order, for the function.
     // Finding a local is thus possible if you have the program counter
     // it is active at.
-    Slice<Local> locals;
+    Dynamic<Local> locals;
 
     // List of all upvalue names, in order.
-    Slice<OString *> upvalues;
+    Dynamic<OString *> upvalues;
 
     // List of all constant values used by the function, in order.
-    Slice<Value> constants;
+    Dynamic<Value> constants;
 
     // Chunks needed for all closures defined within this function.
-    Slice<Chunk *> children;
+    Dynamic<Chunk *> children;
 
     // Raw bytecode. While compiling, `len()` refers to the allocated capacity.
     // The actual length is held by the parent Compiler. When done compiling,
@@ -92,28 +92,36 @@ int
 chunk_line_get(const Chunk *p, int pc);
 
 inline u32
-chunk_constant_push(lulu_VM *L, Chunk *p, Value v, u32 *n)
+chunk_constant_push(lulu_VM *L, Chunk *p, Value v)
 {
-    return chunk_push(L, &p->constants, v, n);
+
+    isize n = len(p->constants);
+    dynamic_push(L, &p->constants, v);
+    return static_cast<u32>(n);
 }
 
 inline int
-chunk_local_push(lulu_VM *L, Chunk *p, OString *ident, int *n)
+chunk_local_push(lulu_VM *L, Chunk *p, OString *ident)
 {
     Local local{ident, 0, 0};
-    return chunk_push(L, &p->locals, local, n);
+    isize n = len(p->locals);
+    dynamic_push(L, &p->locals, local);
+    return static_cast<int>(n);
 }
 
 inline int
-chunk_child_push(lulu_VM *L, Chunk *p, Chunk *child, int *n)
+chunk_child_push(lulu_VM *L, Chunk *p, Chunk *child)
 {
-    return chunk_push(L, &p->children, child, n);
+    isize n = len(p->children);
+    dynamic_push(L, &p->children, child);
+    return static_cast<int>(n);
 }
 
 inline int
-chunk_upvalue_push(lulu_VM *L, Chunk *p, OString *ident, u8 *n)
+chunk_upvalue_push(lulu_VM *L, Chunk *p, OString *ident)
 {
-    return chunk_push(L, &p->upvalues, ident, n);
+    dynamic_push(L, &p->upvalues, ident);
+    return static_cast<int>(p->n_upvalues++);
 }
 
 

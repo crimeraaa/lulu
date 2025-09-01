@@ -293,7 +293,10 @@ vm_to_string(lulu_VM *L, Value *in_out)
         Number_Buffer buf;
         LString       ls = number_to_lstring(in_out->to_number(), slice(buf));
         OString      *os = ostring_new(L, ls);
-        // @todo(2025-07-21): Check GC!
+        // // @todo(2025-07-21): Check GC!
+        /** @note(2025-09-01) Don't check GC here as we can be called in a loop
+         *  as in the concat implementer, which would be quite inefficient.
+         */
         in_out->set_string(os);
         return true;
     }
@@ -402,17 +405,15 @@ struct Load_Data {
 static void
 load(lulu_VM *L, void *user_ptr)
 {
-    Load_Data *d      = reinterpret_cast<Load_Data *>(user_ptr);
-    OString   *source = ostring_new(L, d->source);
+    Load_Data *d = reinterpret_cast<Load_Data *>(user_ptr);
 
-    // We need to do this as the string is otherwise not reachable. Lua gets
-    // around this by not checking GC inside of its malloc wrapper, but rather
-    // only checking GC in the macro `luaC_checkGC()` which is only called
-    // at certain points, which by then this string is already reachable via
-    // its parent `Chunk *`.
+    // Should NOT occur after the string is interned, else it may be collected.
+    // gc_check(L); // luaC_checkGC(L);
+
+    OString *source = ostring_new(L, d->source);
+    // Prevent source name from being collected as it is not yet reachable
+    // via the chunk, which does not exist yet.
     vm_push_value(L, Value::make_string(source));
-
-    // luaC_checkGC(L);
     Chunk   *p = parser_program(L, source, d->stream, &d->builder);
     Closure *f = closure_lua_new(L, p);
     vm_pop_value(L);
@@ -440,9 +441,15 @@ vm_check_stack(lulu_VM *L, int n)
 // Must be called before functions that could potentially throw errors.
 // This makes it so that they can properly disassemble the culprit instruction.
 static void
-protect(lulu_VM *L, const Instruction *ip)
+save_ip(lulu_VM *L, const Instruction *ip)
 {
     L->saved_ip = ip;
+}
+
+static void
+restore_window(lulu_VM *L, Slice<Value> *window)
+{
+    *window = L->window;
 }
 
 void
@@ -472,7 +479,7 @@ vm_call(lulu_VM *L, const Value *ra, int n_args, int n_rets)
     if (n_rets != VARARG) {
         L->window = slice(L->stack, base, new_top);
     }
-    // luaC_checkGC(L);
+    // gc_check(L); // luaC_checkGC(L);
 }
 
 static Call_Type
@@ -728,33 +735,38 @@ re_entry:
 #define RKB(i) RK(i.b())
 #define RKC(i) RK(i.c())
 
+// Help protects arbitrary expressions, especially those that throw errors
+// or manipulate the stack frame.
+#define PROTECTED_DO(expr)                                                     \
+{                                                                              \
+    save_ip(L, ip);                                                            \
+    expr;                                                                      \
+    restore_window(L, &window);                                                \
+}
 
 #define BINARY_OP(number_fn, on_error_fn, metamethod, result_fn)               \
-    {                                                                          \
-        const Value *rb = &RKB(inst), *rc = &RKC(inst);                        \
-        if (rb->is_number() && rc->is_number()) {                              \
-            result_fn(number_fn(rb->to_number(), rc->to_number()));            \
-        } else {                                                               \
-            protect(L, ip);                                                   \
-            on_error_fn(L, metamethod, ra, rb, rc);                           \
-        }                                                                      \
-    }
+{                                                                              \
+    const Value *rb = &RKB(inst), *rc = &RKC(inst);                            \
+    if (rb->is_number() && rc->is_number()) {                                  \
+        result_fn(number_fn(rb->to_number(), rc->to_number()));                \
+    } else {                                                                   \
+        PROTECTED_DO(on_error_fn(L, metamethod, ra, rb, rc));                  \
+    }                                                                          \
+}
 
 #define DO_JUMP(offset)                                                        \
-    {                                                                          \
-        ip += (offset);                                                        \
-    }
+{                                                                              \
+    ip += (offset);                                                            \
+}
 
 #define ARITH_RESULT(n)  ra->set_number(n)
 #define ARITH_OP(fn, mt) BINARY_OP(fn, arith, mt, ARITH_RESULT)
 
 #define COMPARE_RESULT(b)                                                      \
-    {                                                                          \
-        if (b == static_cast<bool>(inst.a())) {                                \
-            DO_JUMP(ip->sbx())                                                 \
-        }                                                                      \
-        ip++;                                                                  \
-    }
+    if (b == static_cast<bool>(inst.a())) {                                    \
+        DO_JUMP(ip->sbx())                                                     \
+    }                                                                          \
+    ip++;                                                                      \
 
 #define COMPARE_OP(fn, mt) BINARY_OP(fn, compare, mt, COMPARE_RESULT)
 
@@ -803,18 +815,19 @@ re_entry:
         case OP_GET_GLOBAL: {
             Value k = KBX(inst);
             Value v;
-            if (!vm_table_get(L, &L->globals, k, &v)) {
-                protect(L, ip);
-                vm_runtime_error(L, "Attempt to read undefined variable '%s'",
-                    k.to_cstring());
-            }
+            PROTECTED_DO(
+                if (!vm_table_get(L, &L->globals, k, &v)) {
+                    const char *s = k.to_cstring();
+                    vm_runtime_error(L,
+                        "Attempt to read undefined variable '%s'", s);
+                }
+            );
             *ra = v;
             break;
         }
         case OP_SET_GLOBAL: {
             Value k = KBX(inst);
-            protect(L, ip);
-            vm_table_set(L, &L->globals, &k, *ra);
+            PROTECTED_DO(vm_table_set(L, &L->globals, &k, *ra));
             break;
         }
         case OP_NEW_TABLE: {
@@ -823,21 +836,20 @@ re_entry:
             Table *t       = table_new(L, n_hash, n_array);
             ra->set_table(t);
             // Must occur AFTER setting `ra` so that the table is on the stack!
-            // Protect(luaC_checkGC(L));
+            // May throw a memory error hence we protect the call.
+            // PROTECTED_DO(gc_check(L)); // Protect(luaC_checkGC(L));
             break;
         }
         case OP_GET_TABLE: {
             const Value *t = &RB(inst);
             const Value *k = &RKC(inst);
-            protect(L, ip);
-            vm_table_get(L, t, *k, ra);
+            PROTECTED_DO(vm_table_get(L, t, *k, ra));
             break;
         }
         case OP_SET_TABLE: {
             const Value *k = &RKB(inst);
             const Value *v = &RKC(inst);
-            protect(L, ip);
-            vm_table_set(L, ra, k, *v);
+            PROTECTED_DO(vm_table_set(L, ra, k, *v));
             break;
         }
         case OP_SET_ARRAY: {
@@ -878,11 +890,12 @@ re_entry:
             Value left  = RKB(inst);
             Value right = RKC(inst);
 
-            protect(L, ip);
-            if ((left == right) == static_cast<bool>(inst.a())) {
-                lulu_assert(ip->op() == OP_JUMP);
-                DO_JUMP(ip->sbx());
-            }
+            PROTECTED_DO(
+                if ((left == right) == static_cast<bool>(inst.a())) {
+                    lulu_assert(ip->op() == OP_JUMP);
+                    DO_JUMP(ip->sbx());
+                }
+            );
             ip++;
             break;
         }
@@ -897,8 +910,7 @@ re_entry:
             if (rb->is_number()) {
                 ra->set_number(lulu_Number_unm(rb->to_number()));
             } else {
-                protect(L, ip);
-                arith(L, MT_UNM, ra, rb, rb);
+                PROTECTED_DO(arith(L, MT_UNM, ra, rb, rb));
             }
             break;
         }
@@ -915,17 +927,18 @@ re_entry:
                 ra->set_number(static_cast<Number>(table_len(rb->to_table())));
                 break;
             default:
-                protect(L, ip);
-                debug_type_error(L, "get length of", rb);
+                /** @todo(2025-09-01) Call metamethod? */
+                PROTECTED_DO(debug_type_error(L, "get length of", rb));
                 break;
             }
             break;
         }
-        case OP_CONCAT:
-            protect(L, ip);
-            vm_concat(L, ra, slice_pointer(&RB(inst), &RC(inst) + 1));
-            // luaC_checkGC(L);
+        case OP_CONCAT: {
+            Slice<Value> args = slice_pointer(&RB(inst), &RC(inst) + 1);
+            PROTECTED_DO(vm_concat(L, ra, args));
+            // gc_check(L); // luaC_checkGC(L);
             break;
+        }
         case OP_TEST: {
             bool cond = inst.c();
             bool test = (!ra->is_falsy() == cond);
@@ -962,7 +975,7 @@ re_entry:
             Value *limit = &ra[1];
             Value *incr  = &ra[2];
 
-            protect(L, ip);
+            save_ip(L, ip); // Next steps may throw errors
             if (!vm_to_number(index, index)) {
                 vm_runtime_error(L, "'for' initial value must be a number");
             }
@@ -1015,10 +1028,9 @@ re_entry:
 
             // Number of user-facing variables to set.
             u16 n_vars = inst.c();
-            protect(L, ip);
 
             /** @note(2025-09-01) May call another vm_execute(). */
-            vm_call(L, call_base, 2, n_vars);
+            PROTECTED_DO(vm_call(L, call_base, 2, n_vars));
 
             /** @brief Account for `vm_call()` resizing/reallocating the stack.
              *
@@ -1042,7 +1054,9 @@ re_entry:
         case OP_CALL: {
             int n_args = inst.b();
             int n_rets = inst.c();
-            protect(L, ip);
+
+            // Next call may throw an error
+            save_ip(L, ip);
 
             // @note(2025-08-29) `vm->window` may have been changed by this!
             Call_Type t = vm_call_init(L, ra, n_args, n_rets);
@@ -1083,7 +1097,7 @@ re_entry:
                 }
                 ip++;
             }
-            // luaC_checkGC(L);
+            // PROTECTED_DO(gc_check(L)); // Protect(luaC_checkGC(L));
             break;
         }
         case OP_CLOSE:
@@ -1120,6 +1134,7 @@ vm_concat(lulu_VM *L, Value *ra, Slice<Value> args)
 {
     Builder *b = vm_get_builder(L);
     for (Value &s : args) {
+        /** @todo(2025-09-01) Call metamethod? */
         if (!vm_to_string(L, &s)) {
             debug_type_error(L, "concatentate", &s);
         }

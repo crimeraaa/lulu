@@ -358,12 +358,21 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
 #define dojump(L,pc,i)	{(pc) += (i); luai_threadyield(L);}
 
 
-/**
- * @note 2025-04-19:
+/** @brief 'protects' a particular expression.
+ *
+ * @details(2025-09-01)
+ *  The last instruction pointer is saved so that error reporting functions
+ *  know which instruction to disassemble.
+ *
+ *  Upon success, the local stack base pointer is restored in case the
+ *  expression did arbitrary function calls (e.g. via metamethods).
+ *
+ * @note(2025-04-19):
  *  This updates `L->savedpc` by assigning it to the local `pc`.
  *  This is used for debugging purposes.
  *
  *  This also updates the local `base`.
+
  */
 #define Protect(x)	{ L->savedpc = pc; {x;}; base = L->base; }
 
@@ -493,7 +502,6 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         TValue *rb = KBx(i);
         sethvalue(L, &g, cl->env);
         lua_assert(ttisstring(rb));
-        /* Note (2025-04-19): `Protect()` updates `L->savedpc`. */
         Protect(luaV_gettable(L, &g, rb, ra));
         continue;
       }

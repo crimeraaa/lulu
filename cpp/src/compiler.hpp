@@ -71,9 +71,6 @@ struct Compiler {
     // The following members help us manage the slice members of the chunk.
     // Index of the first free instruction, equivalent to `len(chunk->code)`.
     int pc;
-    u32 n_constants;
-    int n_locals;
-    int n_children;
     int n_lines;
 
     // Pc of the last potential jump target. Helps prevent bad

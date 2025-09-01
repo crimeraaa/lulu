@@ -62,15 +62,7 @@ mem_rawrealloc(lulu_VM *L, void *ptr, usize old_size, usize new_size)
     // Allocating a new block, or resizing an old one?
     if (new_size > old_size) {
         g->n_bytes_allocated += new_size - old_size;
-#ifdef LULU_DEBUG_STRESS_GC
-        gc_collect_garbage(L, g);
-#else
-        // GC is 'paused' if threshold == USIZE_MAX, because we assume we will
-        // never be able to validly acquire that much memory.
-        if (g->n_bytes_allocated > g->gc_threshold) {
-            gc_collect_garbage(L, g);
-        }
-#endif
+        gc_check(L, g);
     }
     // Shrinking or freeing an existing block?
     else {

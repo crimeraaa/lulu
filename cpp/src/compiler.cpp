@@ -135,11 +135,9 @@ add_constant(Compiler *c, Value k, Value v)
     // Push value to prevent collection in case garbage collector runs in any
     // of the below calls.
     vm_push_value(L, v);
-    u32 n = chunk_constant_push(L, c->chunk, v, &c->n_constants);
-    Value k_index = Value::make_integer(static_cast<Integer>(n));
-    Value *k_value = table_set(L, c->indexes, k);
-    *k_value = k_index;
-    // table_set(L, c->indexes, k, k_index);
+    u32 n = chunk_constant_push(L, c->chunk, v);
+    Value *t_k = table_set(L, c->indexes, k);
+    t_k->set_integer(static_cast<Integer>(n));
     vm_pop_value(L);
     return n;
 }

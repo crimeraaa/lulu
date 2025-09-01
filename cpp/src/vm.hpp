@@ -112,12 +112,26 @@ struct LULU_PUBLIC lulu_VM {
     lulu_VM() = default;
 };
 
-
 inline lulu_Global *
 G(lulu_VM *L)
 {
     return L->G;
 }
+
+inline void
+gc_check(lulu_VM *L, lulu_Global *g)
+{
+#ifdef LULU_DEBUG_STRESS_GC
+    gc_collect_garbage(L, g);
+#else
+    // GC is 'paused' if threshold == USIZE_MAX, because we assume we will
+    // never be able to validly acquire that much memory.
+    if (g->n_bytes_allocated > g->gc_threshold) {
+        gc_collect_garbage(L, g);
+    }
+#endif
+}
+
 
 using Protected_Fn = void (*)(lulu_VM *L, void *user_ptr);
 

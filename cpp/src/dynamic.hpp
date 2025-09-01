@@ -42,6 +42,16 @@ dynamic_resize(lulu_VM *L, Dynamic<T> *d, isize new_len)
 
 template<class T>
 inline void
+dynamic_shrink(lulu_VM *L, Dynamic<T> *d)
+{
+    if (cap(*d) > len(*d)) {
+        dynamic_resize(L, d, len(*d));
+    }
+}
+
+
+template<class T>
+inline void
 dynamic_push(lulu_VM *L, Dynamic<T> *d, T value)
 {
     dynamic_resize(L, d, d->len + 1);

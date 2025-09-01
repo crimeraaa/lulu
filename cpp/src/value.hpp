@@ -116,6 +116,12 @@ public:
     }
 
     void
+    set_integer(Integer i) noexcept
+    {
+        *this = this->make_integer(i);
+    }
+
+    void
     set_string(OString *os) noexcept
     {
         *this = this->make_string(os);
