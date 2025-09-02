@@ -92,9 +92,11 @@ struct lulu_Global {
     // Can be modified in-place during trace phase.
     GC_List *gray_tail;
 
-    GC_State gc_state;
-
+    // Metatables for basic types.
+    Table   *mt_basic[VALUE_TYPE_LAST];
     OString *mt_names[MT_COUNT];
+
+    GC_State gc_state;
 };
 
 struct LULU_PUBLIC lulu_VM {

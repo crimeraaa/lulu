@@ -215,7 +215,7 @@
 #define LULU_BUFFER_BUFSIZE 16 */
 
 /* #undef LULU_DEBUG_LOG_GC */
-/* #undef LULU_DEBUG_STRESS_GC */
+#undef LULU_DEBUG_STRESS_GC
 
 /*=== }}} =============================================================== */
 

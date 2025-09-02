@@ -233,18 +233,26 @@ base_range(lulu_VM *L)
     return 3;
 }
 
-/** @brief Check if our call API is working properly. */
 static int
-base_test(lulu_VM *L)
+base_getmetatable(lulu_VM *L)
 {
-    lulu_get_global(L, LULU_MATH_LIB_NAME);
-    lulu_get_field(L, -1, "modf");
-    lulu_insert(L, 1);
-    lulu_pop(L, 1); /* Remove math table */
-    lulu_call(L, 2, 2);
-    return 2;
+    lulu_check_any(L, 1);
+    return lulu_get_metatable(L, 1);
 }
 
+static int
+base_setmetatable(lulu_VM *L)
+{
+    lulu_Type t = lulu_type(L, 2);
+    /* Cannot manipulate full userdata! */
+    lulu_check_type(L, 1, LULU_TYPE_TABLE);
+    lulu_arg_check(L, t == LULU_TYPE_NIL || t == LULU_TYPE_TABLE, 2,
+        "nil or table expected");
+    /* next call assumes metatable is on top */
+    lulu_set_top(L, 2);
+    lulu_set_metatable(L, 1);
+    return 1;
+}
 static const lulu_Register baselib[] = {
     {"print", base_print},
     {"assert", base_assert},
@@ -253,7 +261,8 @@ static const lulu_Register baselib[] = {
     {"type", base_type},
     {"next", base_next},
     {"range", base_range},
-    {"test", base_test},
+    {"getmetatable", base_getmetatable},
+    {"setmetatable", base_setmetatable},
 };
 
 LULU_LIB_API int

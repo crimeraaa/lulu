@@ -14,10 +14,6 @@ static int n_calls = 1;
 static void
 gc_mark_object(lulu_Global *g, Object *o)
 {
-    if (o == nullptr) {
-        return;
-    }
-
     // Skip if gray (pending traversal) OR black (completed traversal)
     if (!o->base.is_white()) {
         return;
@@ -157,9 +153,10 @@ gc_blacken_table(lulu_Global *g, Table *t)
     // Table itself should not be collected.
     t->set_black();
 
-    for (Value v : t->array) {
-        gc_mark_value(g, v);
+    if (t->metatable != nullptr) {
+        gc_mark_object(g, t->metatable->to_object());
     }
+    gc_mark_array(g, t->array);
 
     // @todo(2025-08-27) Should this function go in table.cpp?
     for (isize i = 0, n = len(t->entries); i < n; i++) {
@@ -377,6 +374,12 @@ gc_mark_roots(lulu_VM *L, lulu_Global *g)
     // freed anyway?
     for (Object *o = L->open_upvalues; o != nullptr; o = o->next()) {
         gc_blacken_upvalue(g, &o->upvalue);
+    }
+
+    for (Table *t : slice_pointer_len(g->mt_basic, MT_COUNT)) {
+        if (t != nullptr) {
+            gc_mark_object(g, t->to_object());
+        }
     }
 
     // Globals table is always reachable, save it for later when tracing.

@@ -430,6 +430,7 @@ lulu_get_metatable(lulu_VM *L, int table_index)
         metatable = v->to_table()->metatable;
         break;
     default:
+        metatable = G(L)->mt_basic[v->type()];
         break;
     }
 
@@ -467,7 +468,10 @@ lulu_set_field(lulu_VM *L, int table_index, const char *key)
 LULU_API int
 lulu_set_metatable(lulu_VM *L, int table_index)
 {
+    // Can be a pseudo-index
     const Value *t = value_at(L, table_index);
+    lulu_assert(t != &nil);
+
     Value *v = value_at_stack(L, -1);
     Table *mt = nullptr;
     if (!v->is_nil()) {
@@ -479,6 +483,7 @@ lulu_set_metatable(lulu_VM *L, int table_index)
         t->to_table()->metatable = mt;
         break;
     default:
+        G(L)->mt_basic[t->type()] = mt;
         break;
     }
     vm_pop_value(L);

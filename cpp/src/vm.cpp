@@ -18,17 +18,20 @@ overflow_error(lulu_VM *L, isize n, isize limit, const char *what)
 static void
 required_allocations(lulu_VM *L, void *)
 {
+    lulu_Global *g = G(L);
     Table *t = table_new(L, /*n_hash=*/8, /*n_array=*/0);
     L->globals.set_table(t);
     // Ensure when we start interning strings we can already index.
-    intern_resize(L, &G(L)->intern, 32);
+    intern_resize(L, &g->intern, 32);
 
     OString *o = ostring_new(L, lstring_literal(LULU_MEMORY_ERROR_STRING));
     o->set_fixed();
     lexer_global_init(L);
-    for (const char *s : slice_pointer_len(mt_names, MT_COUNT)) {
+    for (int mt = 0; mt < MT_COUNT; mt++) {
+        const char *s = mt_names[mt];
         o = ostring_from_cstring(L, s);
         o->set_fixed();
+        g->mt_names[mt] = o;
     }
 }
 
@@ -596,24 +599,63 @@ vm_call_fini(lulu_VM *L, Slice<Value> results)
     L->saved_ip = cf->saved_ip;
 }
 
+static void
+vm_call_mt(lulu_VM *L, Value *res, Value f, Value a, Value b)
+{
+    isize result = ptr_index(L->stack, res);
+    vm_push_value(L, f); // push function
+    vm_push_value(L, a); // 1st argument
+    vm_push_value(L, b); // 2nd argument
+    // Binary metamethods can only ever be functions
+    vm_call(L, &L->stack[result + 1], 1, 1);
+    vm_pop_value(L); // pop result, don't need it in stack
+    L->stack[result] = *vm_top_ptr(L);
+}
+
 bool
 vm_table_get(lulu_VM *L, const Value *t, Value k, Value *out)
 {
-    if (t->is_table()) {
-        // `table_get()` works under the assumption `k` is non-`nil`.
-        if (k.is_nil()) {
-            *out = nil;
-            return false;
-        }
+    const Value *it = t;
+    Value mt_index = nil;
+    // Everything you are about to see is extremely ugly
+    for (int i = 0; i < MT_MAX_LOOP; i++) {
+        if (it->is_table()) {
+            // `table_get()` works under the assumption `k` is non-`nil`.
+            if (k.is_nil()) {
+                *out = nil;
+                return false;
+            }
 
-        // do a primitive get (`rawget`)
-        // @todo(2025-07-20): Check `v` is `nil` and lookup `index` metamethod
-        bool key_exists;
-        Value v = table_get(t->to_table(), k, &key_exists);
-        *out = v;
-        return key_exists;
+            // do a primitive get (`rawget`)
+            // @todo(2025-07-20): Check `v` is `nil` and lookup `index` metamethod
+            Value v = table_get(it->to_table(), k);
+            // Key found?
+            if (!v.is_nil()) {
+                *out = v;
+                return true;
+            }
+            mt_index = mt_get_method(L, *it, MT_INDEX);
+            // __index() metamethod not found?
+            if (mt_index.is_nil()) {
+                *out = v;
+                return false;
+            }
+        } else {
+            mt_index = mt_get_method(L, *t, MT_INDEX);
+            if (mt_index.is_nil()) {
+                debug_type_error(L, "index", t);
+                return false;
+            }
+            if (mt_index.is_function()) {
+                vm_call_mt(L, out, mt_index, *it, k);
+                /** @todo(2025-09-02) Verify result? */
+                return true;
+            }
+        }
+        // Try the metatable
+        it = &mt_index;
     }
-    debug_type_error(L, "index", t);
+    debug_type_error(L, "loop in vm_table_get()", t);
     return false;
 }
 
@@ -633,6 +675,28 @@ vm_table_set(lulu_VM *L, const Value *t, const Value *k, Value v)
     debug_type_error(L, "set index of", t);
 }
 
+static bool
+vm_call_mt_binary(lulu_VM *L, Value *res, Metamethod t, Value a, Value b)
+{
+    // For our purposes, even unary negation is a binary operator.
+    lulu_assert(MT_ADD <= t && t <= MT_LEQ);
+
+    // Try left operand metamethod
+    Value method = mt_get_method(L, a, t);
+
+    // Didn't find it; try right operand
+    if (method.is_nil()) {
+        method = mt_get_method(L, b, t);
+    }
+
+    // Neither side has an appropriate metamethod?
+    if (method.is_nil()) {
+        return false;
+    }
+    vm_call_mt(L, res, method, a, b);
+    return true;
+}
+
 static void
 arith(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
 {
@@ -642,27 +706,13 @@ arith(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
         Number y = tmp_c.to_number();
         Number n;
         switch (mt) {
-        case MT_ADD:
-            n = lulu_Number_add(x, y);
-            break;
-        case MT_SUB:
-            n = lulu_Number_sub(x, y);
-            break;
-        case MT_MUL:
-            n = lulu_Number_mul(x, y);
-            break;
-        case MT_DIV:
-            n = lulu_Number_div(x, y);
-            break;
-        case MT_MOD:
-            n = lulu_Number_mod(x, y);
-            break;
-        case MT_POW:
-            n = lulu_Number_pow(x, y);
-            break;
-        case MT_UNM:
-            n = lulu_Number_unm(x);
-            break;
+        case MT_ADD: n = lulu_Number_add(x, y); break;
+        case MT_SUB: n = lulu_Number_sub(x, y); break;
+        case MT_MUL: n = lulu_Number_mul(x, y); break;
+        case MT_DIV: n = lulu_Number_div(x, y); break;
+        case MT_MOD: n = lulu_Number_mod(x, y); break;
+        case MT_POW: n = lulu_Number_pow(x, y); break;
+        case MT_UNM: n = lulu_Number_unm(x); break;
         default:
             lulu_panicf("Invalid Metamethod(%i)", mt);
             break;
@@ -670,7 +720,12 @@ arith(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
         ra->set_number(n);
         return;
     }
-    debug_arith_error(L, rkb, rkc);
+
+    // If metamethod itself throws, we no longer have the stack information
+    // If no metamethod exists, report these culprits directly.
+    if (!vm_call_mt_binary(L, ra, mt, *rkb, *rkc))  {
+        debug_arith_error(L, rkb, rkc);
+    }
 }
 
 static void
@@ -696,7 +751,9 @@ compare(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb,
         ra->set_boolean(b);
         return;
     }
-    debug_compare_error(L, rkb, rkc);
+    if (!vm_call_mt_binary(L, ra, mt, *rkb, *rkc))  {
+        debug_compare_error(L, rkb, rkc);
+    }
 }
 
 void
@@ -769,7 +826,8 @@ re_entry:
 
     for (;;) {
         Instruction inst = *ip++;
-        Value      *ra   = &RA(inst);
+        /** @warning(2025-09-02) Breaks when C function returns 0 values! */
+        Value *ra   = &RA(inst);
 
 #ifdef LULU_DEBUG_TRACE_EXEC
         // We already incremented `ip`, so subtract 1 to get the original.

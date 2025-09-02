@@ -511,5 +511,16 @@ LULU_LIB_API int
 lulu_open_string(lulu_VM *L)
 {
     lulu_set_library(L, LULU_STRING_LIB_NAME, stringlib);
+    /* new metatable for strings */
+    lulu_new_table(L, /*n_array=*/0, /*n_hash=*/1);
+    lulu_push_literal(L, "");   /* string, {}, "" */
+    lulu_push_value(L, -2);     /* string, {}, "", string */
+    lulu_set_metatable(L, -2);  /* string, {}, "" */
+    lulu_pop(L, 1);             /* string, {} */
+    lulu_push_value(L, -2);     /* string, {}, string */
+
+    /* string __index metamethod is itself */
+    lulu_set_field(L, -2, "__index");
+    lulu_pop(L, 1); /* {}, string */
     return 1;
 }
