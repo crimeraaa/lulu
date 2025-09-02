@@ -235,16 +235,33 @@ vm_runtime_error(lulu_VM *L, const char *fmt, ...);
 void
 vm_concat(lulu_VM *L, Value *ra, Slice<Value> args);
 
+
+/** @brief Calls a Lua or C function, and pushes its results to the caller.
+ *
+ * @details
+ *  For the Lua VM, variadics are only a problem for expressions; in
+ *  statements we always return 0 values (e.g. `print("Hi mom!");`).
+ *
+ *  Thus, variadics are able to change the current stack frame as needed (which
+ *  also allows multiple variadic calls/returns) which is reset at the last
+ *  call.
+ *
+ * @note(2025-09-02)
+ *  The stack frame from before the call is restored. For C API functions,
+ *  you will need to manually 'pop' extra results/stack slots.
+ *
+ */
 void
 vm_call(lulu_VM *L, const Value *ra, int n_args, int n_rets);
 
 
-/** @brief Prepares a function call for the Lua or C function at `ra`. */
+/** @brief Prepares a function call, pushing a new call frame. */
 Call_Type
 vm_call_init(lulu_VM *L, const Value *ra, int argc, int to_return);
 
 
-/**
+/** @brief Finishes a function call, returning to its parent caller (if any).
+ *
  * @note(2025-06-16) Assumptions:
  *
  *  1.) The stack was resized properly beforehand, so that doing
@@ -254,7 +271,7 @@ vm_call_init(lulu_VM *L, const Value *ra, int argc, int to_return);
  * @note(2025-08-06) Assumptions:
  *
  *  2.) C calls are completed within `vm_call_init()`. This will
- *      simply pop the temporary call frame we used then..
+ *      simply pop the temporary call frame we used then.
  *
  *  3.) Otherwise, Lua calls return to `vm_execute()`.
  */

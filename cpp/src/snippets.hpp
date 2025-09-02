@@ -12,6 +12,7 @@
 #   else
 #       define lulu_unreachable()   __builtin_unreachable()
 #   endif
+#   define restrict __restrict__
 #elif defined(_MSC_VER)
 #   define lulu_assume(expr)        __assume(expr)
 #   ifdef LULU_DEBUG
@@ -20,6 +21,7 @@
 #   else
 #       define lulu_unreachable()   __assume(false)
 #   endif
+#   define restrict __restrict
 #endif
 
 #ifdef LULU_DEBUG
@@ -28,32 +30,20 @@
 lulu_assert_fail(const char *where, const char *expr, const char *fmt,
     ...) throw();
 
-#   define lulu_assert_fail(expr, ...)                                         \
-    lulu_assert_fail(SOURCE_CODE_LOCATION, expr, __VA_ARGS__)
+#   define lulu_assert_fail(expr, ...) lulu_assert_fail(SOURCE_CODE_LOCATION, expr, __VA_ARGS__)
+#else
+#   define lulu_assert_fail(expr, ...) ((void)0)
+#endif
 
-#   define lulu_assert(expr)                                                   \
-    (static_cast<bool>(expr)) ? ((void)0) : lulu_assert_fail(#expr, nullptr)
-
-#   define lulu_assertf(expr, fmt, ...)                                        \
-    (static_cast<bool>(expr)) ? ((void)0)                                      \
-        : lulu_assert_fail(#expr, fmt "\n", __VA_ARGS__)
-
-#   define lulu_assertln(expr, msg) lulu_assertf(expr, "%s", msg)
+#define lulu_assert(expr)            if (!bool(expr)) lulu_assert_fail(#expr, nullptr)
+#define lulu_assertf(expr, fmt, ...) if (!bool(expr)) lulu_assert_fail(#expr, fmt "\n", __VA_ARGS__)
+#define lulu_assertln(expr, msg)     lulu_assertf(expr, "%s", msg)
 
 // Unconditionally assert.
-#   define lulu_panic_fail(...)  lulu_assert_fail(nullptr, __VA_ARGS__)
-#   define lulu_panic()          lulu_panic_fail(nullptr)
-#   define lulu_panicf(fmt, ...) lulu_panic_fail(fmt "\n", __VA_ARGS__)
-#   define lulu_panicln(msg)     lulu_panicf("%s", msg)
-
-#else // ^^^ LULU_DEBUG, vvv otherwise
-#    define lulu_assert(expr)            ((void)0)
-#    define lulu_assertf(expr, fmt, ...) ((void)0)
-#    define lulu_assertln(expr, msg)     ((void)0)
-#    define lulu_panic()                 lulu_unreachable()
-#    define lulu_panicf(fmt, ...)        lulu_unreachable()
-#    define lulu_panicln(msg)            lulu_unreachable()
-#endif // LULU_DEBUG
+#define lulu_panic_fail(...)  lulu_assert_fail(nullptr, __VA_ARGS__)
+#define lulu_panic()          lulu_panic_fail(nullptr)
+#define lulu_panicf(fmt, ...) lulu_panic_fail(fmt "\n", __VA_ARGS__)
+#define lulu_panicln(msg)     lulu_panicf("%s", msg)
 
 //=== FALLBACKS ======================================================== {{{
 
@@ -67,6 +57,10 @@ lulu_assert_fail(const char *where, const char *expr, const char *fmt,
 [[noreturn]] inline void
 lulu_unreachable()
 {}
+#endif
+
+#ifndef restrict
+#define restrict
 #endif
 
 //=== }}} ==================================================================

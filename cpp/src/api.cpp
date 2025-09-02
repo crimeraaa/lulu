@@ -73,7 +73,19 @@ LULU_API void
 lulu_call(lulu_VM *L, int n_args, int n_rets)
 {
     const Value *fn = value_at(L, -(n_args + 1));
-    vm_call(L, fn, n_args, (n_rets == LULU_MULTRET) ? VARARG : n_rets);
+
+    bool var_ret = (n_rets == LULU_MULTRET);
+    // `vm_call_fini()` may adjust `L->window` in a different way than wanted.
+    int base    = vm_base_absindex(L);
+    int new_top = vm_absindex(L, fn) + n_rets;
+
+    vm_call(L, fn, n_args, (var_ret) ? VARARG : n_rets);
+
+    // If vararg, then we assume the call already set the correct window.
+    // NOTE(2025-07-05): `fn` may be dangling at this point!
+    if (!var_ret) {
+        L->window = slice(L->stack, base, new_top);
+    }
 }
 
 struct PCall {

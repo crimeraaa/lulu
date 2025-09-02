@@ -465,21 +465,10 @@ vm_call(lulu_VM *L, const Value *ra, int n_args, int n_rets)
         cf->window = L->window;
     }
 
-    // `vm_call_fini()` may adjust `L->window` in a different way than wanted.
-    int base    = vm_base_absindex(L);
-    int new_top = vm_absindex(L, ra) + n_rets;
-
     Call_Type t = vm_call_init(L, ra, n_args, n_rets);
     if (t == CALL_LUA) {
         vm_execute(L, 1);
     }
-
-    // If vararg, then we assume the call already set the correct window.
-    // NOTE(2025-07-05): `fn` may be dangling at this point!
-    if (n_rets != VARARG) {
-        L->window = slice(L->stack, base, new_top);
-    }
-    // gc_check(L); // luaC_checkGC(L);
 }
 
 static Call_Type
@@ -540,6 +529,7 @@ call_init_lua(lulu_VM *L, Closure *fn, int fn_index, int n_args, int n_rets)
 Call_Type
 vm_call_init(lulu_VM *L, const Value *ra, int n_args, int n_rets)
 {
+    /** @note(2025-09-02) Call metamethod? */
     if (!ra->is_function()) {
         debug_type_error(L, "call", ra);
     }
@@ -1023,7 +1013,7 @@ re_entry:
             call_base[2] = ra[2]; // internal control variable
 
             // Registers for generator function, invariant state and index.
-            int top    = ptr_index(window, call_base + 3);
+            int top   = ptr_index(window, call_base + 3);
             L->window = slice_until(window, top);
 
             // Number of user-facing variables to set.
@@ -1032,14 +1022,11 @@ re_entry:
             /** @note(2025-09-01) May call another vm_execute(). */
             PROTECTED_DO(vm_call(L, call_base, 2, n_vars));
 
-            /** @brief Account for `vm_call()` resizing/reallocating the stack.
-             *
-             * @note(2025-08-28)
-             *  It is important to update BOTH local and global window, so that
-             *  stack windows are consistent for garbage collection.
-             */
-            window    = L->caller->window;
-            L->window = window;
+            // Ensure our returned stack frame is correct.
+            // Otherwise, it may be too short, causing length checks to fail.
+            lulu_assert(len(window) == len(L->caller->window));
+            lulu_assert(len(L->window) == len(L->caller->window));
+
             call_base = &RA(inst) + 3;
 
             // Continue loop?

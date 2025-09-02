@@ -41,16 +41,6 @@ using usize = size_t;
 #define size_of(expr)   isize(sizeof(expr))
 #define count_of(array) isize(sizeof(array) / sizeof((array)[0]))
 
-#ifndef restrict
-#    if defined(__GNUC__) || defined(__clang__)
-#        define restrict __restrict__
-#    elif defined(_MSC_VER) // ^^^ __GNUC__ || __clang___, vvv _MSC_VER
-#        define restrict __restrict
-#    else // ^^^ _MSC_VER, vvv else
-#        define restrict
-#    endif
-#endif // restrict
-
 #define BIT_FLAG(n)  (1 << (n))
 
 enum Object_Mark_Flag : u8 {
