@@ -484,6 +484,11 @@ LULU_API int
 lulu_get_field(lulu_VM *L, int table_index, const char *key);
 
 
+/** @brief Push existing metatable of the table at `table_index`, or nothing. */
+LULU_API int
+lulu_get_metatable(lulu_VM *L, int table_index);
+
+
 /**
  * @details [POPPED: -2, PUSHED: +1, ERRORS: any | memory]
  *
@@ -517,6 +522,12 @@ lulu_set_table(lulu_VM *L, int table_index);
  */
 LULU_API void
 lulu_set_field(lulu_VM *L, int table_index, const char *key);
+
+
+/** @brief Assigns the metatable of the table at `table_index` to be the table
+ *  currently on top of the stack. */
+LULU_API int
+lulu_set_metatable(lulu_VM *L, int table_index);
 
 
 /**

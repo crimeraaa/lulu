@@ -326,7 +326,7 @@ lulu_push_lstring(lulu_VM *L, const char *s, size_t n)
     // gc_check(L); // luaC_checkGC(L);
     LString ls{s, static_cast<isize>(n)};
     OString *os = ostring_new(L, ls);
-    vm_push_value(L, Value::make_string(os));
+    vm_push_value(L, os->to_value());
 }
 
 LULU_API void
@@ -370,7 +370,7 @@ lulu_push_cclosure(lulu_VM *L, lulu_CFunction cf, int n_upvalues)
         f->c.upvalues[i] = v;
     }
     lulu_pop(L, n_upvalues);
-    vm_push_value(L, Value::make_function(f));
+    vm_push_value(L, f->c.to_value());
 }
 
 LULU_API void
@@ -387,7 +387,7 @@ lulu_new_table(lulu_VM *L, int n_array, int n_hash)
 {
     // gc_check(L); // luaC_checkGC(L);
     Table *t = table_new(L, n_array, n_hash);
-    vm_push_value(L, Value::make_table(t));
+    vm_push_value(L, t->to_value());
 }
 
 LULU_API int
@@ -409,7 +409,7 @@ lulu_get_field(lulu_VM *L, int table_index, const char *key)
     OString *s = ostring_from_cstring(L, key);
 
     // Must be pushed to stack to prevent an early collection.
-    const Value k = t->make_string(s);
+    const Value k = s->to_value();
     vm_push_value(L, k);
     Value v;
     bool ok = vm_table_get(L, t, k, &v);
@@ -418,6 +418,26 @@ lulu_get_field(lulu_VM *L, int table_index, const char *key)
     vm_pop_value(L);
     vm_push_value(L, v);
     return ok;
+}
+
+LULU_API int
+lulu_get_metatable(lulu_VM *L, int table_index)
+{
+    const Value *v = value_at(L, table_index);
+    Table *metatable = nullptr;
+    switch (v->type()){
+    case VALUE_TABLE:
+        metatable = v->to_table()->metatable;
+        break;
+    default:
+        break;
+    }
+
+    if (metatable == nullptr) {
+        return 0;
+    }
+    vm_push_value(L, metatable->to_value());
+    return 1;
 }
 
 LULU_API void
@@ -436,12 +456,33 @@ lulu_set_field(lulu_VM *L, int table_index, const char *key)
     const Value *t = value_at(L, table_index);
     OString *s = ostring_from_cstring(L, key);
     // Must be pushed to stack to prevent early garbage collection.
-    const Value k = Value::make_string(s);
+    const Value k = s->to_value();
     Value v = *value_at(L, -1);
     vm_push_value(L, k);
     vm_table_set(L, t, &k, v);
     vm_pop_value(L);
     vm_pop_value(L);
+}
+
+LULU_API int
+lulu_set_metatable(lulu_VM *L, int table_index)
+{
+    const Value *t = value_at(L, table_index);
+    Value *v = value_at_stack(L, -1);
+    Table *mt = nullptr;
+    if (!v->is_nil()) {
+        mt = v->to_table();
+    }
+
+    switch (t->type()) {
+    case VALUE_TABLE:
+        t->to_table()->metatable = mt;
+        break;
+    default:
+        break;
+    }
+    vm_pop_value(L);
+    return 1;
 }
 
 LULU_API int

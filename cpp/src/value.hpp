@@ -53,53 +53,39 @@ public:
         return v;
     }
 
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
+    static Value
+    make_object(Object *o, Value_Type t)
+    {
+        Value v;
+        v.m_type   = t;
+        v.m_object = o;
+        return v;
+    }
+
     static Value
     make_string(OString *s)
     {
-        Value v;
-        v.m_type   = VALUE_STRING;
-        v.m_object = reinterpret_cast<Object *>(s);
-        return v;
+        return make_object(reinterpret_cast<Object *>(s), VALUE_STRING);
     }
 
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
     make_table(Table *t)
     {
-        Value v;
-        v.m_type   = VALUE_TABLE;
-        v.m_object = reinterpret_cast<Object *>(t);
-        return v;
+        return make_object(reinterpret_cast<Object *>(t), VALUE_TABLE);
     }
 
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
     make_function(Closure *f)
     {
-        Value v;
-        v.m_type   = VALUE_FUNCTION;
-        v.m_object = reinterpret_cast<Object *>(f);
-        return v;
+        return make_object(reinterpret_cast<Object *>(f), VALUE_FUNCTION);
     }
 
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     static Value
     make_userdata(void *p)
     {
         Value v;
         v.m_type    = VALUE_LIGHTUSERDATA;
         v.m_pointer = p;
-        return v;
-    }
-
-    // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
-    static Value
-    make_chunk(Chunk *p)
-    {
-        Value v;
-        v.m_type   = VALUE_CHUNK;
-        v.m_object = reinterpret_cast<Object *>(p);
         return v;
     }
 
@@ -291,6 +277,13 @@ public:
     inline void *
     to_pointer() const;
 };
+
+Value
+Object_Header::to_value()
+{
+    Object *o = reinterpret_cast<Object *>(this);
+    return Value::make_object(o, this->type);
+}
 
 // In C++17, `constexpr inline` guarantees that this variable has the
 // same address in all translation units.

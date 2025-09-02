@@ -18,7 +18,7 @@ gc_mark_object(lulu_Global *g, Object *o)
         return;
     }
 
-    // Skip if gray OR black
+    // Skip if gray (pending traversal) OR black (completed traversal)
     if (!o->base.is_white()) {
         return;
     }
@@ -142,19 +142,6 @@ gc_blacken_chunk(lulu_Global *g, Chunk *p)
 
     gc_mark_object(g, p->source->to_object());
     return &p->gc_list;
-}
-
-void
-gc_mark_compiler_roots(lulu_VM *L, Compiler *c)
-{
-    lulu_Global *g = G(L);
-    g->gc_state = GC_MARK;
-    while (c != nullptr) {
-        gc_mark_object(g, c->chunk->to_object());
-        gc_mark_object(g, c->indexes->to_object());
-        c = c->prev;
-    }
-    g->gc_state = GC_PAUSED;
 }
 
 
@@ -342,10 +329,9 @@ gc_sweep(lulu_VM *L, lulu_Global *g)
     Object *o = g->objects;
     while (o != nullptr) {
         Object *next = o->next();
-        // If marked (black), continue past.
-        if (o->base.is_black()) {
-            // Prepare all black objects for the next cycle by setting them
-            // to white.
+        // If fully traversed (black) or immortal (fixed), continue past it.
+        if (o->base.is_black() || o->base.is_fixed()) {
+            // Prepare for the next cycle.
             o->base.set_white();
 
             // We may unlink an unreachable object from this one.

@@ -36,15 +36,6 @@ void
 gc_collect_garbage(lulu_VM *L, lulu_Global *g);
 
 
-/**
- * @note(2025-08-27)
- *      Analogous to `memory.c:markCompilerRoots()` in Crafting Interpreters
- *      26.3.1: Less obvious roots.
- */
-void
-gc_mark_compiler_roots(lulu_VM *L, Compiler *c);
-
-
 /** @brief Start a collection if GC threshold is surpassed.
  *
  * @note(2025-09-01)

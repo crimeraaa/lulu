@@ -396,12 +396,9 @@ OString *
 lexer_new_ostring(lulu_VM *L, Lexer *x, LString ls)
 {
     OString *s = ostring_new(L, ls);
-    Table *t = x->indexes;
-    Value k = Value::make_string(s);
-
     // Prevent string from being collected if table is rehashing
-    vm_push_value(L, Value::make_string(s));
-    Value *v = table_set(L, t, k);
+    vm_push_value(L, s->to_value());
+    Value *v = table_set_string(L, x->indexes, s);
     vm_pop_value(L);
 
     // If key exists, don't do anything as it's not collectible anyway.
@@ -584,7 +581,7 @@ void
 lexer_global_init(lulu_VM *L)
 {
     for (Token_Type t = TOKEN_AND; t <= TOKEN_WHILE; t++) {
-        OString *s = ostring_new(L, lstring_from_cstring(token_cstring(t)));
+        OString *s = ostring_from_cstring(L, token_strings[t]);
         // All keywords are 'immortal'; they are never collected.
         s->set_fixed();
         s->keyword_type = t;

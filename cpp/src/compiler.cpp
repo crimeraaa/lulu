@@ -152,13 +152,7 @@ compiler_add_number(Compiler *c, Number n)
 u32
 compiler_add_ostring(Compiler *c, OString *s)
 {
-    Value v = Value::make_string(s);
-    return add_constant(c, v, v);
-}
-
-u32
-compiler_add_constant(Compiler *c, Value v)
-{
+    Value v = s->to_value();
     return add_constant(c, v, v);
 }
 
@@ -388,7 +382,7 @@ value_to_rk(Compiler *c, Expr *e, const Value &v)
 {
     // Pointer comparisons are faster than dedicated functions calls, and
     // the compiler will sort out the location for `constexpr inline` anyway.
-    Value k  = (&v == &nil) ? Value::make_table(c->indexes) : v;
+    Value k  = (&v == &nil) ? c->indexes->to_value() : v;
     u32   i  = add_constant(c, k, v);
     e->type  = EXPR_CONSTANT;
     e->index = i;

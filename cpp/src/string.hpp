@@ -76,6 +76,11 @@ struct OString : Object_Header {
         lulu_assert(this->data[this->len] == '\0');
         return this->data;
     }
+
+    // Prevent dubious usage; string lifetime entirely managed by VM
+    // If you wish to 'extend' a string's lifetime temporarily, push it to VM
+    void
+    clear_fixed() = delete;
 };
 
 struct Intern {

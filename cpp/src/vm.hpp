@@ -6,6 +6,7 @@
 #include "private.hpp"
 #include "stream.hpp"
 #include "gc.hpp"
+#include "metamethod.hpp"
 
 using Error = lulu_Error;
 
@@ -92,6 +93,8 @@ struct lulu_Global {
     GC_List *gray_tail;
 
     GC_State gc_state;
+
+    OString *mt_names[MT_COUNT];
 };
 
 struct LULU_PUBLIC lulu_VM {

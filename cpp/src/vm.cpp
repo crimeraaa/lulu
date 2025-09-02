@@ -5,6 +5,7 @@
 #include "debug.hpp"
 #include "parser.hpp"
 #include "vm.hpp"
+#include "metamethod.hpp"
 
 [[noreturn]] static void
 overflow_error(lulu_VM *L, isize n, isize limit, const char *what)
@@ -25,6 +26,10 @@ required_allocations(lulu_VM *L, void *)
     OString *o = ostring_new(L, lstring_literal(LULU_MEMORY_ERROR_STRING));
     o->set_fixed();
     lexer_global_init(L);
+    for (const char *s : slice_pointer_len(mt_names, MT_COUNT)) {
+        o = ostring_from_cstring(L, s);
+        o->set_fixed();
+    }
 }
 
 struct LG {
@@ -307,7 +312,7 @@ const char *
 vm_push_string(lulu_VM *L, LString s)
 {
     OString *o = ostring_new(L, s);
-    vm_push_value(L, Value::make_string(o));
+    vm_push_value(L, o->to_value());
     return o->data;
 }
 
@@ -413,11 +418,14 @@ load(lulu_VM *L, void *user_ptr)
     OString *source = ostring_new(L, d->source);
     // Prevent source name from being collected as it is not yet reachable
     // via the chunk, which does not exist yet.
-    vm_push_value(L, Value::make_string(source));
+    vm_push_value(L, source->to_value());
     Chunk   *p = parser_program(L, source, d->stream, &d->builder);
     Closure *f = closure_lua_new(L, p);
-    vm_pop_value(L);
-    vm_push_value(L, Value::make_function(f));
+
+    vm_pop_value(L); // constants table
+    vm_pop_value(L); // chunk
+    vm_pop_value(L); // source
+    vm_push_value(L, f->lua.to_value());
 }
 
 Error
@@ -624,11 +632,6 @@ vm_table_set(lulu_VM *L, const Value *t, const Value *k, Value v)
     }
     debug_type_error(L, "set index of", t);
 }
-
-enum Metamethod {
-    MT_ADD, MT_SUB, MT_MUL, MT_DIV, MT_MOD, MT_POW, MT_UNM, // Arithmetic
-    MT_LT, MT_LEQ, // Comparison
-};
 
 static void
 arith(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)

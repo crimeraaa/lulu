@@ -403,7 +403,7 @@ table_new(lulu_VM *L, isize n_hash, isize n_array)
     Table *t = object_new<Table>(L, &G(L)->objects, VALUE_TABLE);
     t->entries = EMPTY_ENTRY_SLICE;
     // Don't collect table whilst resizing
-    vm_push_value(L, Value::make_table(t));
+    vm_push_value(L, t->to_value());
     table_resize(L, t, n_hash, n_array);
     vm_pop_value(L);
     return t;
@@ -573,6 +573,21 @@ table_set_integer(lulu_VM *L, Table *t, Integer i)
     // Index not in range of the array; try the hash part.
     Value k = make_integer_key(i);
     return table_hash_set(L, t, k);
+}
+
+
+Value
+table_get_string(Table *t, OString *k)
+{
+    Value k2 = k->to_value();
+    return table_hash_get(t, k2);
+}
+
+[[nodiscard]] Value *
+table_set_string(lulu_VM *L, Table *t, OString *k)
+{
+    Value k2 = k->to_value();
+    return table_hash_set(L, t, k2);
 }
 
 //=== }}} ==================================================================

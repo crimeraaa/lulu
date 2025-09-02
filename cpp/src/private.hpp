@@ -114,6 +114,8 @@ using Object_Mark = u8;
 using Object_List = Object;
 using GC_List = Object;
 
+struct Value;
+
 // Do not create stack-allocated instances of these; unaligned accesses may occur.
 struct [[gnu::packed]] Object_Header {
     Object_List *next;
@@ -182,6 +184,15 @@ struct [[gnu::packed]] Object_Header {
     {
         this->set<OBJECT_FIXED>();
     }
+
+    void
+    clear_fixed()
+    {
+        this->clear<OBJECT_FIXED>();
+    }
+
+    inline Value
+    to_value();
 
 private:
     template<Object_Mark Bit>

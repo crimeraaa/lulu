@@ -134,9 +134,6 @@ compiler_add_number(Compiler *c, Number n);
 u32
 compiler_add_ostring(Compiler *c, OString *s);
 
-u32
-compiler_add_constant(Compiler *c, Value v);
-
 void
 compiler_check_stack(Compiler *c, u16 n);
 

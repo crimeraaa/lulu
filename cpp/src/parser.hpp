@@ -181,5 +181,6 @@ struct Expr {
     }
 };
 
+// Pushes the main chunk and constants table to the stack.
 Chunk *
 parser_program(lulu_VM *L, OString *source, Stream *z, Builder *b);

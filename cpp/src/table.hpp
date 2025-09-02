@@ -20,6 +20,10 @@ struct Table : Object_Header {
     // garbage collection.
     GC_List *gc_list;
 
+    // Used to lookup the basic metamethods (see metamethod.hpp).
+    // Null by default; it must be explicitly constructed via setmetatable().
+    Table *metatable;
+
     // Array segment data. Not all slots may be occupied.
     // `len(array)` is the functional capacity, not the active count.
     Slice<Value> array;
@@ -66,6 +70,13 @@ table_len(Table *t);
 /** `table_set()`, but for array indices or integer keys. */
 [[nodiscard]] Value *
 table_set_integer(lulu_VM *L, Table *t, Integer i);
+
+
+Value
+table_get_string(Table *t, OString *k);
+
+[[nodiscard]] Value *
+table_set_string(lulu_VM *L, Table *t, OString *k);
 
 
 // void

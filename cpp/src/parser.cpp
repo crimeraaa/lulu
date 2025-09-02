@@ -722,16 +722,18 @@ function_open(lulu_VM *L, Parser *p, Compiler *c, Compiler *enclosing)
     vm_check_stack(L, 3);
 
     Chunk *chunk = chunk_new(L, p->lexer.source);
-    // Push chunk to stack so it is not collected while allocating the table.
-    // and so that it is alive throughout the entire compilation.
-    vm_push_value(L, Value::make_chunk(chunk));
+
+    // Prevent collection while allocating table/throughout compilation.
+    vm_push_value(L, chunk->to_value());
 
     Table *t = table_new(L, /*n_hash=*/0, /*n_array=*/0);
-    // Ditto.
-    vm_push_value(L, Value::make_table(t));
 
-    // Push this compiler to the parser.
+    // Ditto.
+    vm_push_value(L, t->to_value());
+
     *c = compiler_make(L, p, chunk, t, enclosing);
+
+    // Lexer only interns strings for the current compilation.
     p->lexer.indexes = c->indexes;
 }
 
@@ -758,13 +760,6 @@ function_close(Parser *p, Compiler *c)
 #ifdef LULU_DEBUG_PRINT_CODE
     debug_disassemble(f);
 #endif // LULU_DEBUG_PRINT_CODE
-
-    vm_pop_value(L);
-    vm_pop_value(L);
-
-    // Although chunk and indexes table are not in the stack anymore, they
-    // should still not be collected yet. We may need them for a closure.
-    gc_mark_compiler_roots(L, c);
 
     // Pop this compiler from the parser.
     p->lexer.indexes = (c->prev != nullptr) ? c->prev->indexes : nullptr;
@@ -921,6 +916,12 @@ function_push(Parser *p, Compiler *parent, Compiler *child)
         // to set up its upvalues.
         compiler_code_abc(parent, op, 0, info.data, 0);
     }
+
+    // constant-to-index table can be freed
+    vm_pop_value(L);
+
+    // child chunk is dependent on parent chunk's lifetime
+    vm_pop_value(L);
     return Expr::make_pc(EXPR_RELOCABLE, pc);
 }
 

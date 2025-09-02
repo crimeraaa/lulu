@@ -273,7 +273,9 @@ ostring_new(lulu_VM *L, LString text)
     // Count refers to total number of linked list nodes, not occupied array
     // slots. We probably want to rehash anyway to reduce clustering.
     if (t->count + 1 > n) {
-        vm_push_value(L, Value::make_string(s));
+        // Prevent new string from being collected immediately.
+        vm_push_value(L, s->to_value());
+
         // We assume `n` is a power of 2.
         intern_resize(L, t, n << 1);
         vm_pop_value(L);

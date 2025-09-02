@@ -30,9 +30,11 @@
 lulu_assert_fail(const char *where, const char *expr, const char *fmt,
     ...) throw();
 
-#   define lulu_assert_fail(expr, ...) lulu_assert_fail(SOURCE_CODE_LOCATION, expr, __VA_ARGS__)
+#   define lulu_assert_fail(expr, ...)  lulu_assert_fail(SOURCE_CODE_LOCATION, expr, __VA_ARGS__)
+#   define lulu_panic_fail(...)         lulu_assert_fail(nullptr, __VA_ARGS__)
 #else
-#   define lulu_assert_fail(expr, ...) ((void)0)
+#   define lulu_assert_fail(expr, ...)  ((void)0)
+#   define lulu_panic_fail(...)         lulu_unreachable()
 #endif
 
 #define lulu_assert(expr)            if (!bool(expr)) lulu_assert_fail(#expr, nullptr)
@@ -40,7 +42,6 @@ lulu_assert_fail(const char *where, const char *expr, const char *fmt,
 #define lulu_assertln(expr, msg)     lulu_assertf(expr, "%s", msg)
 
 // Unconditionally assert.
-#define lulu_panic_fail(...)  lulu_assert_fail(nullptr, __VA_ARGS__)
 #define lulu_panic()          lulu_panic_fail(nullptr)
 #define lulu_panicf(fmt, ...) lulu_panic_fail(fmt "\n", __VA_ARGS__)
 #define lulu_panicln(msg)     lulu_panicf("%s", msg)
