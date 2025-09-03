@@ -536,6 +536,7 @@ lex_start:
         }
         break;
     case ',': type = TOKEN_COMMA; break;
+    case ':': type = TOKEN_COLON; break;
     case ';': type = TOKEN_SEMI; break;
     case '\'':
     case '\"': return make_string(x, ch);

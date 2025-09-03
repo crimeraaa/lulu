@@ -42,6 +42,7 @@ enum OpCode : u8 {
                     //       | if R(A+3) != nil then R(A+2) := R(A+3)
                     //       | else ip++
     OP_CALL,        // A B C | R(A:A+C) := R(A)(R(A+1:A+B+1))
+    OP_SELF,        // A B C | R(A+1) := R(B); R(A) := R(B)[RK(C)]
     OP_CLOSURE,     // A Bx  | R(A) := Chunks[Bx]
     OP_CLOSE,       // A     | close R(0:A+1)
     OP_RETURN,      // A B   | return R(A:A+B)

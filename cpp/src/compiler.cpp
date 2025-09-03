@@ -691,6 +691,26 @@ compiler_code_return(Compiler *c, u16 reg, u16 count)
 }
 
 void
+compiler_code_self(Compiler *c, Expr *t, Expr *k)
+{
+    // Push table sans field (e.g. 't' in 't:f()')
+    compiler_expr_any_reg(c, t);
+    pop_expr(c, t);
+    u16 reg_func = c->free_reg;
+
+    // Reserve self ('t') and key ('k')
+    compiler_reserve_reg(c, 2);
+    u16 reg_self = t->reg;
+    u16 reg_key  = compiler_expr_rk(c, k);
+    compiler_code_abc(c, OP_SELF, reg_func, reg_self, reg_key);
+    pop_expr(c, k);
+
+    /** @note(2025-09-02) Don't call 'Expr::make_c' to reset patch lists! */
+    t->type = EXPR_DISCHARGED;
+    t->reg  = reg_func;
+}
+
+void
 compiler_set_returns(Compiler *c, Expr *call, u16 n)
 {
     if (call->type == EXPR_CALL) {

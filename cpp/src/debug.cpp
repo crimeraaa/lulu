@@ -187,14 +187,9 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
     case OP_NEW_TABLE: {
         isize n_hash  = floating_byte_decode(args.b);
         isize n_array = floating_byte_decode(args.c);
-        print_reg(
-            p,
-            args.a,
-            pc,
+        print_reg(p, args.a, pc,
             " := {}; #hash = %" ISIZE_FMT ", #array = %" ISIZE_FMT,
-            n_hash,
-            n_array
-        );
+            n_hash, n_array);
         break;
     }
     case OP_GET_TABLE:
@@ -233,51 +228,24 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
         print_reg(p, args.a, pc);
         break;
     }
-    case OP_ADD:
-        arith(p, '+', args);
-        break;
-    case OP_SUB:
-        arith(p, '-', args);
-        break;
-    case OP_MUL:
-        arith(p, '*', args);
-        break;
-    case OP_DIV:
-        arith(p, '/', args);
-        break;
-    case OP_MOD:
-        arith(p, '%', args);
-        break;
-    case OP_POW:
-        arith(p, '^', args);
-        break;
-    case OP_EQ:
-        compare(p, "==", args);
-        break;
-    case OP_LT:
-        compare(p, "<", args);
-        break;
-    case OP_LEQ:
-        compare(p, "<=", args);
-        break;
-    case OP_UNM:
-        unary(p, "-", args);
-        break;
-    case OP_NOT:
-        unary(p, "not ", args);
-        break;
-    case OP_LEN:
-        unary(p, "#", args);
-        break;
+    case OP_ADD: arith(p, '+', args); break;
+    case OP_SUB: arith(p, '-', args); break;
+    case OP_MUL: arith(p, '*', args); break;
+    case OP_DIV: arith(p, '/', args); break;
+    case OP_MOD: arith(p, '%', args); break;
+    case OP_POW: arith(p, '^', args); break;
+    case OP_EQ:  compare(p, "==", args); break;
+    case OP_LT:  compare(p, "<", args); break;
+    case OP_LEQ: compare(p, "<=", args); break;
+    case OP_UNM: unary(p, "-", args); break;
+    case OP_NOT: unary(p, "not ", args); break;
+    case OP_LEN: unary(p, "#", args); break;
     case OP_CONCAT:
         print_reg(p, args.a, pc, " := concat(R(%u:%u))", args.b, args.c + 1);
         break;
     case OP_TEST: {
-        printf(
-            "goto .code[%i if %s",
-            jump_resolve(pc, 1),
-            (args.c) ? "not " : ""
-        );
+        printf("goto .code[%i if %s", jump_resolve(pc, 1),
+            (args.c) ? "not " : "");
         print_reg(p, args.a, pc, " else %i]", jump_get(p, pc + 1));
         break;
     }
@@ -333,6 +301,13 @@ debug_disassemble_at(const Chunk *p, Instruction ip, int pc, int pad)
         }
         break;
     }
+    case OP_SELF:
+        print_reg(p, args.a + 1, pc, " := ");
+        print_reg(p, args.b, pc, "; ");
+        print_reg(p, args.a, pc, " := ");
+        print_reg(p, args.b, pc, "[");
+        print_reg(p, args.c, pc, "]");
+        break;
     case OP_CLOSURE:
         print_reg(p, args.a, pc, " := Closure[%u] ; #upvalues = %i",
             args.bx, p->children[args.bx]->n_upvalues);
@@ -536,7 +511,6 @@ get_obj_name(lulu_VM *L, Call_Frame *cf, int reg, const char **ident)
         }
         case OP_GET_GLOBAL: {
             Value k = p->constants[i.bx()];
-            lulu_assert(k.is_string());
             *ident = k.to_cstring();
             return "global";
         }

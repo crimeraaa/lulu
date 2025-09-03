@@ -876,22 +876,40 @@ resolve_variable(Compiler *c, OString *ident)
     return Expr::make_index(EXPR_GLOBAL, i);
 }
 
+static Expr
+constant_string(Compiler *c, OString *s)
+{
+    u32 i = compiler_add_ostring(c, s);
+    return Expr::make_index(EXPR_CONSTANT, i);
+}
+
+
+static Expr
+constant_field(Parser *p, Compiler *c)
+{
+    OString *s = consume_ident(p);
+    return constant_string(c, s);
+}
+
 static void
 resolve_field(Parser *p, Compiler *c, Expr *e)
 {
     // Table must be in some register, it can be a local.
     compiler_expr_any_reg(c, e);
-    u32  i = compiler_add_ostring(c, consume_ident(p));
-    Expr k = Expr::make_index(EXPR_CONSTANT, i);
+    Expr k = constant_field(p, c);
     compiler_get_table(c, e, &k);
 }
 
 static Expr
-function_var(Parser *p, Compiler *c)
+function_var(Parser *p, Compiler *c, bool *need_self)
 {
     Expr var = resolve_variable(c, consume_ident(p));
     while (match(p, TOKEN_DOT)) {
         resolve_field(p, c, &var);
+    }
+    if (match(p, TOKEN_COLON)) {
+        resolve_field(p, c, &var);
+        *need_self = true;
     }
     return var;
 }
@@ -931,7 +949,8 @@ function_push(Parser *p, Compiler *parent, Compiler *child)
  *      2.) 'function' '(' <ident>* ')' <block> 'end'
  */
 static Expr
-function_definition(Parser *p, Compiler *enclosing, int function_line)
+function_definition(Parser *p, Compiler *enclosing, int function_line,
+    bool need_self = false)
 {
     Compiler c;
     function_open(p->L, p, &c, enclosing);
@@ -943,16 +962,22 @@ function_definition(Parser *p, Compiler *enclosing, int function_line)
 
     // Prevent segfaults when calling `local_push`.
     block_push(&c, &c.base_block, /*breakable=*/false);
-    if (!check(p, TOKEN_CLOSE_PAREN)) {
-        u16 n = 0;
-        do {
-            local_push(p, &c, consume_ident(p), n);
-            n++;
-        } while (match(p, TOKEN_COMMA));
-        local_start(&c, n);
-        compiler_reserve_reg(&c, n);
-        f->n_params = static_cast<u8>(n);
+    u16 n_params = 0;
+    if (need_self) {
+        local_push_literal(p, &c, "self"_s, n_params);
+        n_params++;
     }
+
+    if (!check(p, TOKEN_CLOSE_PAREN)) {
+        do {
+            local_push(p, &c, consume_ident(p), n_params);
+            n_params++;
+        } while (match(p, TOKEN_COMMA));
+    }
+    local_start(&c, n_params);
+    compiler_reserve_reg(&c, n_params);
+    f->n_params = static_cast<u8>(n_params);
+
     consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, paren_line);
     chunk(p, &c);
     block_pop(&c);
@@ -966,8 +991,9 @@ function_definition(Parser *p, Compiler *enclosing, int function_line)
 static void
 function_decl(Parser *p, Compiler *c, int function_line)
 {
-    Expr var  = function_var(p, c);
-    Expr body = function_definition(p, c, function_line);
+    bool need_self = false;
+    Expr var  = function_var(p, c, &need_self);
+    Expr body = function_definition(p, c, function_line, need_self);
     compiler_set_variable(c, &var, &body);
 }
 
@@ -1115,8 +1141,7 @@ constructor_field(Parser *p, Compiler *c, Constructor *ctor)
     Token t   = p->current;
     Expr  k;
     if (match(p, TOKEN_IDENT)) {
-        u32 i = compiler_add_ostring(c, t.ostring);
-        k     = Expr::make_index(EXPR_CONSTANT, i);
+        k = constant_string(c, t.ostring);
     } else {
         int line = p->last_line;
         consume(p, TOKEN_OPEN_BRACE);
@@ -1249,12 +1274,38 @@ constructor(Parser *p, Compiler *c)
 static void
 function_call(Parser *p, Compiler *c, Expr *e, int paren_line)
 {
-    Expr_List args{DEFAULT_EXPR, 0};
-    if (!check(p, TOKEN_CLOSE_PAREN)) {
-        args = expression_list(p, c);
-        compiler_set_returns(c, &args.last, VARARG);
+    Expr_List args{};
+    switch (p->current.type) {
+    case TOKEN_OPEN_PAREN:
+        // Concept check: f\n(args)
+        // Is '(args)' is passed to function 'f'? Is it a separate statement?
+        if (paren_line != p->lexer.line) {
+            error(p, "ambiguous syntax (function call or new statement)");
+        }
+        // Skip '('
+        advance(p);
+        if (!check(p, TOKEN_CLOSE_PAREN)) {
+            args = expression_list(p, c);
+            compiler_set_returns(c, &args.last, VARARG);
+        }
+        consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, paren_line);
+        break;
+    case TOKEN_STRING:
+        args.last  = constant_string(c, p->current.ostring);
+        args.count = 1;
+        // Skip '<string>'
+        advance(p);
+        break;
+    case TOKEN_OPEN_CURLY:
+        // Skip '{'
+        advance(p);
+        args.last  = constructor(p, c);
+        args.count = 1;
+        break;
+    default:
+        error(p, "function arguments expected");
+        break;
     }
-    consume_to_close(p, TOKEN_CLOSE_PAREN, TOKEN_OPEN_PAREN, paren_line);
 
     lulu_assert(e->type == EXPR_DISCHARGED);
     u16 base = e->reg;
@@ -1297,8 +1348,7 @@ prefix_expr(Parser *p, Compiler *c)
     case TOKEN_NUMBER:
         return Expr::make_number(t.number);
     case TOKEN_STRING: {
-        u32 i = compiler_add_ostring(c, t.ostring);
-        return Expr::make_index(EXPR_CONSTANT, i);
+        return constant_string(c, t.ostring);
     }
     case TOKEN_IDENT:
         return resolve_variable(c, t.ostring);
@@ -1335,18 +1385,27 @@ primary_expr(Parser *p, Compiler *c)
     for (;;) {
         int line = p->last_line;
         switch (p->current.type) {
-        case TOKEN_OPEN_PAREN: {
+        case TOKEN_OPEN_PAREN:
+        case TOKEN_STRING:
+        case TOKEN_OPEN_CURLY:
             // Function to be called must be on top of the stack.
             compiler_expr_next_reg(c, &e);
-            advance(p);
             function_call(p, c, &e, line);
             break;
-        }
         case TOKEN_DOT:
             // Skip '.'.
             advance(p);
             resolve_field(p, c, &e);
             break;
+        case TOKEN_COLON: {
+            // Skip ':'
+            advance(p);
+            Expr k = constant_field(p, c);
+            compiler_code_self(c, &e, &k);
+            line = p->last_line;
+            function_call(p, c, &e, line);
+            break;
+        }
         case TOKEN_OPEN_BRACE: {
             // Table must be in some register, it can be a local.
             compiler_expr_any_reg(c, &e);

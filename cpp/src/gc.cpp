@@ -358,7 +358,7 @@ gc_mark_roots(lulu_VM *L, lulu_Global *g)
 {
     g->gc_state = GC_MARK;
     // Full/active stack.
-    Slice<Value> stack = slice_pointer(raw_data(L->stack), vm_top_ptr(L));
+    Slice<Value> stack = slice_pointer(raw_data(L->stack), vm_ptr_top(L));
     for (Value &v : stack) {
         gc_mark_value(g, v);
     }
@@ -376,6 +376,7 @@ gc_mark_roots(lulu_VM *L, lulu_Global *g)
         gc_blacken_upvalue(g, &o->upvalue);
     }
 
+    // All registered metatables for basic bytes are always reachable.
     for (Table *t : slice_pointer_len(g->mt_basic, MT_COUNT)) {
         if (t != nullptr) {
             gc_mark_object(g, t->to_object());

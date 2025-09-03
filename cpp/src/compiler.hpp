@@ -221,6 +221,9 @@ compiler_code_concat(Compiler *c, Expr *restrict left, Expr *restrict right);
 void
 compiler_code_return(Compiler *c, u16 reg, u16 count);
 
+void
+compiler_code_self(Compiler *c, Expr *t, Expr *k);
+
 
 /**
  * @note(2025-06-24)

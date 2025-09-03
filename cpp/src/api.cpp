@@ -76,8 +76,8 @@ lulu_call(lulu_VM *L, int n_args, int n_rets)
 
     bool var_ret = (n_rets == LULU_MULTRET);
     // `vm_call_fini()` may adjust `L->window` in a different way than wanted.
-    int base    = vm_base_absindex(L);
-    int new_top = vm_absindex(L, fn) + n_rets;
+    int base    = vm_save_base(L);
+    int new_top = vm_save_index(L, fn) + n_rets;
 
     vm_call(L, fn, n_args, (var_ret) ? VARARG : n_rets);
 
@@ -424,20 +424,20 @@ LULU_API int
 lulu_get_metatable(lulu_VM *L, int table_index)
 {
     const Value *v = value_at(L, table_index);
-    Table *metatable = nullptr;
+    Table *mt = nullptr;
     switch (v->type()){
     case VALUE_TABLE:
-        metatable = v->to_table()->metatable;
+        mt = v->to_table()->metatable;
         break;
     default:
-        metatable = G(L)->mt_basic[v->type()];
+        mt = G(L)->mt_basic[v->type()];
         break;
     }
 
-    if (metatable == nullptr) {
+    if (mt == nullptr) {
         return 0;
     }
-    vm_push_value(L, metatable->to_value());
+    vm_push_value(L, mt->to_value());
     return 1;
 }
 

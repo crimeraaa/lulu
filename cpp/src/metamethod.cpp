@@ -19,18 +19,18 @@ const char *const mt_names[MT_COUNT] = {
 Value
 mt_get_method(lulu_VM *L, Value v, Metamethod t)
 {
-    Table *metatable = nullptr;
+    Table *mt = nullptr;
     switch (v.type()) {
     case VALUE_TABLE:
-        metatable = v.to_table()->metatable;
+        mt = v.to_table()->metatable;
         break;
     default:
-        metatable = G(L)->mt_basic[v.type()];
+        mt = G(L)->mt_basic[v.type()];
         break;
     }
-    if (metatable == nullptr) {
+    if (mt == nullptr) {
         return nil;
     }
     OString *k = G(L)->mt_names[t];
-    return table_get_string(metatable, k);
+    return table_get_string(mt, k);
 }

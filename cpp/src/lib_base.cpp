@@ -31,6 +31,13 @@ base_tostring(lulu_VM *L)
 {
     lulu_Type t;
     lulu_check_any(L, 1);
+    if (lulu_get_metatable(L, 1)) {
+        if (lulu_get_field(L, -1, "__tostring")) {
+            lulu_push_value(L, 1);
+            lulu_call(L, 1, 1);
+            return 1;
+        }
+    }
 
     t = lulu_type(L, 1);
     switch (t) {
@@ -40,15 +47,13 @@ base_tostring(lulu_VM *L)
     case LULU_TYPE_BOOLEAN:
         lulu_push_string(L, lulu_to_boolean(L, 1) ? "true" : "false");
         break;
-    case LULU_TYPE_NUMBER: {
+    case LULU_TYPE_NUMBER:
+    case LULU_TYPE_STRING: {
         size_t      n = 0;
         const char *s = lulu_to_lstring(L, 1, &n);
         lulu_push_lstring(L, s, n);
         break;
     }
-    case LULU_TYPE_STRING:
-        /* Already a string, so nothing to do. */
-        break;
     default:
         lulu_push_fstring(L, "%s: %p", lulu_type_name_at(L, 1),
             lulu_to_pointer(L, 1));

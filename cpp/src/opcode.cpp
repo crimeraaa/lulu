@@ -40,6 +40,7 @@ const char *const opnames[OPCODE_COUNT] = {
     "for_loop",    // OP_FOR_LOOP
     "for_in",      // OP_FOR_IN
     "call",        // OP_CALL
+    "self",        // OP_SELF
     "closure",     // OP_CLOSURE
     "close",       // OP_CLOSE
     "return",      // OP_RETURN
@@ -104,6 +105,7 @@ const OpInfo opinfo[OPCODE_COUNT] = {
     MAKE(ASBX, true,  true,  OPARG_JUMP),                // OP_FOR_LOOP
     MAKE(ABC,  true,  false, OPARG_UNUSED, OPARG_REGK),  // OP_FOR_IN
     MAKE(ABC,  false, true,  OPARG_OTHER, OPARG_OTHER),  // OP_CALL
+    MAKE(ABC,  false, true,  OPARG_REGK, OPARG_REGK),    // OP_SELF
     MAKE(ABX,  false, true,  OPARG_REGK),                // OP_CLOSURE
     MAKE(ABC,  false, false, OPARG_UNUSED),              // OP_CLOSE
     MAKE(ABC,  false, false, OPARG_OTHER),               // OP_RETURN

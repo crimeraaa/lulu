@@ -155,36 +155,6 @@ frame_pop(lulu_VM *L)
 
 //=== }}} ==================================================================
 
-int
-vm_absindex(lulu_VM *L, const Value *v)
-{
-    return ptr_index(L->stack, v);
-}
-
-Value *
-vm_base_ptr(lulu_VM *L)
-{
-    return raw_data(L->window);
-}
-
-Value *
-vm_top_ptr(lulu_VM *L)
-{
-    return raw_data(L->window) + len(L->window);
-}
-
-int
-vm_base_absindex(lulu_VM *L)
-{
-    return ptr_index(L->stack, vm_base_ptr(L));
-}
-
-int
-vm_top_absindex(lulu_VM *L)
-{
-    return ptr_index(L->stack, vm_top_ptr(L));
-}
-
 Builder *
 vm_get_builder(lulu_VM *L)
 {
@@ -229,8 +199,8 @@ set_error_object(lulu_VM *L, Error e, int old_cf, int old_base, int old_top)
 Error
 vm_pcall(lulu_VM *L, Protected_Fn fn, void *user_ptr)
 {
-    int old_base = vm_base_absindex(L);
-    int old_top  = vm_top_absindex(L);
+    int old_base = vm_save_base(L);
+    int old_top  = vm_save_top(L);
     // Don't use pointers because in the future, `frames` may be dynamic.
     int old_cf = frame_index(L, L->caller);
 
@@ -443,7 +413,7 @@ vm_load(lulu_VM *L, LString source, Stream *z)
 void
 vm_check_stack(lulu_VM *L, int n)
 {
-    int stop = vm_top_absindex(L) + n;
+    int stop = vm_save_top(L) + n;
     if (stop >= count_of(L->stack)) {
         overflow_error(L, stop, count_of(L->stack), "stack slots");
     }
@@ -491,7 +461,7 @@ call_init_c(lulu_VM *L, Closure *f, int f_index, int n_args, int n_rets)
     int base = f_index + 1;
     int top;
     if (n_args == VARARG) {
-        top = vm_top_absindex(L);
+        top = vm_save_top(L);
     } else {
         top = base + n_args;
     }
@@ -499,9 +469,12 @@ call_init_c(lulu_VM *L, Closure *f, int f_index, int n_args, int n_rets)
     frame_push(L, f, window, n_rets);
 
     n_rets           = f->to_c()->callback(L);
-    Value *first_ret = (n_rets > 0) ? &L->window[len(L->window) - n_rets]
-                                    : &L->stack[f_index];
-
+    Value *first_ret;
+    if (n_rets > 0) {
+        first_ret = &L->window[len(L->window) - n_rets];
+    } else {
+        first_ret = &L->stack[f_index];
+    }
     vm_call_fini(L, slice_pointer_len(first_ret, n_rets));
     return CALL_C;
 }
@@ -552,7 +525,7 @@ vm_call_init(lulu_VM *L, const Value *ra, int n_args, int n_rets)
     }
 
     Closure *fn       = ra->to_function();
-    int      fn_index = ptr_index(L->stack, ra);
+    int      fn_index = vm_save_index(L, ra);
     // Can call directly?
     if (fn->is_c()) {
         return call_init_c(L, fn, fn_index, n_args, n_rets);
@@ -567,7 +540,7 @@ vm_call_fini(lulu_VM *L, Slice<Value> results)
     bool        vararg_return = (cf->to_return == VARARG);
 
     // Move results to the right place- overwrites calling function object.
-    Slice<Value> dst{vm_base_ptr(L) - 1, len(results)};
+    Slice<Value> dst{vm_ptr_base(L) - 1, len(results)};
     copy(dst, results);
 
     int n_extra = cf->to_return - len(results);
@@ -602,14 +575,20 @@ vm_call_fini(lulu_VM *L, Slice<Value> results)
 static void
 vm_call_mt(lulu_VM *L, Value *res, Value f, Value a, Value b)
 {
-    isize result = ptr_index(L->stack, res);
+    isize out_index = vm_save_index(L, res);
+    vm_check_stack(L, 3);
     vm_push_value(L, f); // push function
     vm_push_value(L, a); // 1st argument
     vm_push_value(L, b); // 2nd argument
+
     // Binary metamethods can only ever be functions
-    vm_call(L, &L->stack[result + 1], 1, 1);
-    vm_pop_value(L); // pop result, don't need it in stack
-    L->stack[result] = *vm_top_ptr(L);
+    Value *f2 = vm_ptr_top(L) - 3;
+    int ret_index = vm_save_index(L, f2);
+    vm_call(L, f2, /*n_args=*/2, /*n_rets=*/1);
+    L->stack[out_index] = L->stack[ret_index];
+
+    // Above call restores previous frame, so we should have net 0 stack use
+    lulu_assert(len(L->caller->window) == len(L->window));
 }
 
 bool
@@ -678,7 +657,7 @@ vm_table_set(lulu_VM *L, const Value *t, const Value *k, Value v)
 static bool
 vm_call_mt_binary(lulu_VM *L, Value *res, Metamethod t, Value a, Value b)
 {
-    // For our purposes, even unary negation is a binary operator.
+    // For simplicity, unary negation also delegates to here.
     lulu_assert(MT_ADD <= t && t <= MT_LEQ);
 
     // Try left operand metamethod
@@ -738,12 +717,8 @@ compare(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb,
         Number y = tmp_c.to_number();
         bool   b;
         switch (mt) {
-        case MT_LT:
-            b = lulu_Number_lt(x, y);
-            break;
-        case MT_LEQ:
-            b = lulu_Number_leq(x, y);
-            break;
+        case MT_LT:  b = lulu_Number_lt(x, y);  break;
+        case MT_LEQ: b = lulu_Number_leq(x, y); break;
         default:
             lulu_panicf("Invalid Metamethod(%i)", mt);
             break;
@@ -755,6 +730,31 @@ compare(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb,
         debug_compare_error(L, rkb, rkc);
     }
 }
+
+#ifdef LULU_DEBUG_TRACE_EXEC
+
+static void
+trace_exec(lulu_VM *L, const Instruction *ip, const Chunk *p,
+    Slice<Value> window, int pad)
+{
+    unused(L);
+    // We already incremented `ip`, so subtract 1 to get the original.
+    int pc = ptr_index(p->code, ip) - 1;
+    for (int reg = 0, n = static_cast<int>(len(window)); reg < n; reg++) {
+        printf("\t[%i]\t", reg);
+        value_print(window[reg]);
+
+        const char *ident = chunk_get_local(p, reg + 1, pc);
+        if (ident != nullptr) {
+            printf(" ; local %s", ident);
+        }
+        printf("\n");
+    }
+    printf("\n");
+    debug_disassemble_at(p, *(ip - 1), pc, pad);
+}
+
+#endif // LULU_DEBUG_TRACE_EXEC
 
 void
 vm_execute(lulu_VM *L, int n_calls)
@@ -830,20 +830,7 @@ re_entry:
         Value *ra   = &RA(inst);
 
 #ifdef LULU_DEBUG_TRACE_EXEC
-        // We already incremented `ip`, so subtract 1 to get the original.
-        int pc = ptr_index(chunk->code, ip) - 1;
-        for (int reg = 0, n = static_cast<int>(len(window)); reg < n; reg++) {
-            printf("\t[%i]\t", reg);
-            value_print(window[reg]);
-
-            const char *ident = chunk_get_local(chunk, reg + 1, pc);
-            if (ident != nullptr) {
-                printf(" ; local %s", ident);
-            }
-            printf("\n");
-        }
-        printf("\n");
-        debug_disassemble_at(chunk, inst, pc, pad);
+        trace_exec(L, ip, chunk, window, pad);
 #endif // LULU_DEBUG_TRACE_EXEC
 
         OpCode op = inst.op();
@@ -1122,6 +1109,13 @@ re_entry:
              * @note(2025-08-27) Concept check: tests/factorial.lua
              */
             window = L->window;
+            break;
+        }
+        case OP_SELF: {
+            Value *self  = &RB(inst);
+            Value  field = RKC(inst);
+            ra[1] = *self;
+            PROTECTED_DO(vm_table_get(L, self, field, ra));
             break;
         }
         case OP_CLOSURE: {

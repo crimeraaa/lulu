@@ -144,21 +144,42 @@ Builder *
 vm_get_builder(lulu_VM *L);
 
 Value *
-vm_base_ptr(lulu_VM *L);
+vm_ptr_base(lulu_VM *L);
 
 Value *
-vm_top_ptr(lulu_VM *L);
+vm_ptr_top(lulu_VM *L);
 
 
 /** @brief Gets the absolute index of `v` the VM stack. */
-int
-vm_absindex(lulu_VM *L, const Value *v);
+inline int
+vm_save_index(lulu_VM *L, const Value *v)
+{
+    return ptr_index(L->stack, v);
+}
 
-int
-vm_base_absindex(lulu_VM *L);
+inline Value *
+vm_ptr_base(lulu_VM *L)
+{
+    return raw_data(L->window);
+}
 
-int
-vm_top_absindex(lulu_VM *L);
+inline Value *
+vm_ptr_top(lulu_VM *L)
+{
+    return raw_data(L->window) + len(L->window);
+}
+
+inline int
+vm_save_base(lulu_VM *L)
+{
+    return ptr_index(L->stack, vm_ptr_base(L));
+}
+
+inline int
+vm_save_top(lulu_VM *L)
+{
+    return ptr_index(L->stack, vm_ptr_top(L));
+}
 
 
 /** @brief Wraps a call to `fn(L, user_ptr)` with a try-catch block.
