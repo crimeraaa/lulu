@@ -509,16 +509,15 @@ get_obj_name(lulu_VM *L, Call_Frame *cf, int reg, const char **ident)
             }
             break;
         }
-        case OP_GET_GLOBAL: {
-            Value k = p->constants[i.bx()];
-            *ident = k.to_cstring();
+        case OP_GET_GLOBAL:
+            *ident = p->constants[i.bx()].to_cstring();
             return "global";
-        }
-        case OP_GET_TABLE: {
-            u16 rkc = i.c(); // RK(C) is the desired field.
-            *ident  = get_rk_name(p, rkc);
+        case OP_GET_TABLE:
+            *ident = get_rk_name(p, i.c()); // RK(C) is the desired field.
             return "field";
-        }
+        case OP_SELF:
+            *ident = get_rk_name(p, i.c());
+            return "method";
         default:
             break;
         }

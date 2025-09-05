@@ -91,6 +91,7 @@ enum Value_Type : u8 {
     VALUE_STRING        = LULU_TYPE_STRING,
     VALUE_TABLE         = LULU_TYPE_TABLE,
     VALUE_FUNCTION      = LULU_TYPE_FUNCTION,
+    VALUE_USERDATA      = LULU_TYPE_USERDATA,
 
     // Not accessible from user code.
     VALUE_CHUNK,
@@ -99,13 +100,8 @@ enum Value_Type : u8 {
 };
 
 // 'slice' the Value_Type enum up to the last user-facing type.
-#define VALUE_TYPE_LAST  VALUE_FUNCTION
-
-#ifdef LULU_DEBUG
-#   define VALUE_TYPE_COUNT (VALUE_INTEGER + 1)
-#else
-#   define VALUE_TYPE_COUNT (VALUE_FUNCTION + 1)
-#endif
+#define VALUE_TYPE_LAST  VALUE_USERDATA
+#define VALUE_TYPE_COUNT (VALUE_INTEGER + 1)
 
 union Object;
 using Object_Mark = u8;

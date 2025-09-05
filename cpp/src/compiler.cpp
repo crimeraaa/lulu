@@ -124,10 +124,9 @@ compiler_load_boolean(Compiler *c, u16 reg, bool b)
 static u32
 add_constant(Compiler *c, Value k, Value v)
 {
-    bool key_exists;
-    const Value i = table_get(c->indexes, k, &key_exists);
+    const Value i = table_get(c->indexes, k);
     // Constant found and is not a string literal mapping to true?
-    if (key_exists && i.is_integer()) {
+    if (i.is_integer()) {
         return static_cast<u32>(i.to_integer());
     }
 

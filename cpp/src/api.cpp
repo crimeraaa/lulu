@@ -317,7 +317,7 @@ lulu_push_integer(lulu_VM *L, lulu_Integer i)
 LULU_API void
 lulu_push_userdata(lulu_VM *L, void *p)
 {
-    vm_push_value(L, Value::make_userdata(p));
+    vm_push_value(L, Value::make_lightuserdata(p));
 }
 
 LULU_API void
@@ -382,6 +382,15 @@ lulu_push_value(lulu_VM *L, int i)
 
 /*=== }}} =============================================================== */
 
+
+LULU_API void *
+lulu_new_userdata(lulu_VM *L, size_t n)
+{
+    Userdata *ud = userdata_new(L, n);
+    vm_push_value(L, ud->to_value());
+    return ud->data;
+}
+
 LULU_API void
 lulu_new_table(lulu_VM *L, int n_array, int n_hash)
 {
@@ -428,6 +437,9 @@ lulu_get_metatable(lulu_VM *L, int table_index)
     switch (v->type()){
     case VALUE_TABLE:
         mt = v->to_table()->metatable;
+        break;
+    case VALUE_USERDATA:
+        mt = v->to_userdata()->metatable;
         break;
     default:
         mt = G(L)->mt_basic[v->type()];
@@ -488,6 +500,29 @@ lulu_set_metatable(lulu_VM *L, int table_index)
     }
     vm_pop_value(L);
     return 1;
+}
+
+LULU_API void
+lulu_raw_get(lulu_VM *L, int table_index)
+{
+    const Value *t = value_at(L, table_index);
+    Value k = *value_at(L, -1);
+    Value v = table_get(t->to_table(), k);
+    vm_push_value(L, v);
+}
+
+
+LULU_API void
+lulu_raw_set(lulu_VM *L, int table_index)
+{
+    const Value *t = value_at(L, table_index);
+    Value k = *value_at(L, -2);
+    Value v = *value_at(L, -1);
+
+    Value *tmp = table_set(L, t->to_table(), k);
+    *tmp = v;
+    vm_pop_value(L);
+    vm_pop_value(L);
 }
 
 LULU_API int

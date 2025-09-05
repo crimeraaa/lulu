@@ -575,7 +575,7 @@ vm_call_fini(lulu_VM *L, Slice<Value> results)
 static void
 vm_call_mt(lulu_VM *L, Value *res, Value f, Value a, Value b)
 {
-    isize out_index = vm_save_index(L, res);
+    int out_index = vm_save_index(L, res);
     vm_check_stack(L, 3);
     vm_push_value(L, f); // push function
     vm_push_value(L, a); // 1st argument
@@ -594,11 +594,10 @@ vm_call_mt(lulu_VM *L, Value *res, Value f, Value a, Value b)
 bool
 vm_table_get(lulu_VM *L, const Value *t, Value k, Value *out)
 {
-    const Value *it = t;
     Value mt_index = nil;
     // Everything you are about to see is extremely ugly
     for (int i = 0; i < MT_MAX_LOOP; i++) {
-        if (it->is_table()) {
+        if (t->is_table()) {
             // `table_get()` works under the assumption `k` is non-`nil`.
             if (k.is_nil()) {
                 *out = nil;
@@ -606,33 +605,36 @@ vm_table_get(lulu_VM *L, const Value *t, Value k, Value *out)
             }
 
             // do a primitive get (`rawget`)
-            // @todo(2025-07-20): Check `v` is `nil` and lookup `index` metamethod
-            Value v = table_get(it->to_table(), k);
+            bool key_exists;
+            Value v = table_get(t->to_table(), k, &key_exists);
             // Key found?
-            if (!v.is_nil()) {
+            if (key_exists && !v.is_nil()) {
                 *out = v;
                 return true;
             }
-            mt_index = mt_get_method(L, *it, MT_INDEX);
+            mt_index = mt_get_method(L, *t, MT_INDEX);
             // __index() metamethod not found?
             if (mt_index.is_nil()) {
                 *out = v;
-                return false;
+                // We could fall back to here if v was nil, but key was
+                // hashed previously.
+                return key_exists;
             }
         } else {
             mt_index = mt_get_method(L, *t, MT_INDEX);
-            if (mt_index.is_nil()) {
-                debug_type_error(L, "index", t);
-                return false;
-            }
-            if (mt_index.is_function()) {
-                vm_call_mt(L, out, mt_index, *it, k);
-                /** @todo(2025-09-02) Verify result? */
-                return true;
-            }
+        }
+
+        if (mt_index.is_nil()) {
+            debug_type_error(L, "index", t);
+            return false;
+        }
+        if (mt_index.is_function()) {
+            vm_call_mt(L, out, mt_index, *t, k);
+            /** @todo(2025-09-02) Verify result? */
+            return true;
         }
         // Try the metatable
-        it = &mt_index;
+        t = &mt_index;
     }
     debug_type_error(L, "loop in vm_table_get()", t);
     return false;
@@ -666,12 +668,13 @@ vm_call_mt_binary(lulu_VM *L, Value *res, Metamethod t, Value a, Value b)
     // Didn't find it; try right operand
     if (method.is_nil()) {
         method = mt_get_method(L, b, t);
+        // Neither side has an appropriate metamethod?
+        if (method.is_nil()) {
+            return false;
+        }
     }
 
-    // Neither side has an appropriate metamethod?
-    if (method.is_nil()) {
-        return false;
-    }
+    // Do __f(a, b) e.g. __add(a, b) or __lt(a, b)
     vm_call_mt(L, res, method, a, b);
     return true;
 }
@@ -937,12 +940,8 @@ re_entry:
             ip++;
             break;
         }
-        case OP_LT:
-            COMPARE_OP(lulu_Number_lt, MT_LT);
-            break;
-        case OP_LEQ:
-            COMPARE_OP(lulu_Number_leq, MT_LEQ);
-            break;
+        case OP_LT:  COMPARE_OP(lulu_Number_lt, MT_LT); break;
+        case OP_LEQ: COMPARE_OP(lulu_Number_leq, MT_LEQ); break;
         case OP_UNM: {
             Value *rb = &RB(inst);
             if (rb->is_number()) {

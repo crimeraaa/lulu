@@ -239,6 +239,27 @@ base_range(lulu_VM *L)
 }
 
 static int
+base_rawget(lulu_VM *L)
+{
+    lulu_check_type(L, 1, LULU_TYPE_TABLE);
+    lulu_check_any(L, 2);
+    lulu_set_top(L, 2);
+    lulu_raw_get(L, 1);
+    return 1;
+}
+
+static int
+base_rawset(lulu_VM *L)
+{
+    lulu_check_type(L, 1, LULU_TYPE_TABLE);
+    lulu_check_any(L, 2);
+    lulu_check_any(L, 3);
+    lulu_set_top(L, 3);
+    lulu_raw_set(L, 1);
+    return 0;
+}
+
+static int
 base_getmetatable(lulu_VM *L)
 {
     lulu_check_any(L, 1);
@@ -258,14 +279,17 @@ base_setmetatable(lulu_VM *L)
     lulu_set_metatable(L, 1);
     return 1;
 }
+
 static const lulu_Register baselib[] = {
+    {"tostring", base_tostring},
     {"print", base_print},
     {"assert", base_assert},
-    {"tostring", base_tostring},
     {"tonumber", base_tonumber},
     {"type", base_type},
     {"next", base_next},
     {"range", base_range},
+    {"rawget", base_rawget},
+    {"rawset", base_rawset},
     {"getmetatable", base_getmetatable},
     {"setmetatable", base_setmetatable},
 };

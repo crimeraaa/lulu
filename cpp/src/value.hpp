@@ -7,6 +7,7 @@ union Object;
 struct OString;
 struct Table;
 union Closure;
+struct Userdata;
 struct Chunk;
 
 struct Value {
@@ -81,7 +82,7 @@ public:
     }
 
     static Value
-    make_userdata(void *p)
+    make_lightuserdata(void *p)
     {
         Value v;
         v.m_type    = VALUE_LIGHTUSERDATA;
@@ -126,9 +127,9 @@ public:
     }
 
     void
-    set_userdata(void *p) noexcept
+    set_lightuserdata(void *p) noexcept
     {
-        *this = this->make_userdata(p);
+        *this = this->make_lightuserdata(p);
     }
 
     bool
@@ -179,7 +180,7 @@ public:
     }
 
     constexpr bool
-    is_userdata() const noexcept
+    is_lightuserdata() const noexcept
     {
         return this->type() == VALUE_LIGHTUSERDATA;
     }
@@ -206,6 +207,12 @@ public:
     is_function() const noexcept
     {
         return this->type() == VALUE_FUNCTION;
+    }
+
+    constexpr bool
+    is_userdata() const noexcept
+    {
+        return this->type() == VALUE_USERDATA;
     }
 
     //=== }}} =================================================================
@@ -238,9 +245,9 @@ public:
 
     // @note 2025-07-19 Affected by Nan-boxing/Pointer-tagging
     void *
-    to_userdata() const
+    to_lightuserdata() const
     {
-        lulu_assert(this->is_userdata());
+        lulu_assert(this->is_lightuserdata());
         return this->m_pointer;
     }
 
@@ -273,6 +280,9 @@ public:
 
     inline Closure *
     to_function() const;
+
+    inline Userdata *
+    to_userdata() const;
 
     inline void *
     to_pointer() const;

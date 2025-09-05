@@ -109,7 +109,8 @@ typedef enum {
     LULU_TYPE_NUMBER,
     LULU_TYPE_STRING,
     LULU_TYPE_TABLE,
-    LULU_TYPE_FUNCTION /* A Lua or C function. */
+    LULU_TYPE_FUNCTION, /* A Lua or C function. */
+    LULU_TYPE_USERDATA /* Full userdata: collectible, may have metatable. */
 } lulu_Type;
 
 LULU_API lulu_VM *
@@ -432,6 +433,9 @@ lulu_push_value(lulu_VM *L, int i);
 /*=== }}} =============================================================== */
 
 
+LULU_API void *
+lulu_new_userdata(lulu_VM *L, size_t n);
+
 /** @brief Create a new Lua table with the given sizes.
  *
  * @details [POPPED: -0, PUSHED: +1, ERRORS: memory]
@@ -528,6 +532,17 @@ lulu_set_field(lulu_VM *L, int table_index, const char *key);
  *  currently on top of the stack. */
 LULU_API int
 lulu_set_metatable(lulu_VM *L, int table_index);
+
+
+/** @brief Pushes `t[k]` without calling the __index metamethod.
+ */
+LULU_API void
+lulu_raw_get(lulu_VM *L, int table_index);
+
+
+/** @brief Does `t[k] = top` without calling the __newindex metamethod. */
+LULU_API void
+lulu_raw_set(lulu_VM *L, int table_index);
 
 
 /**

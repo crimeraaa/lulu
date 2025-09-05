@@ -5,8 +5,6 @@
 #include "dynamic.hpp"
 #include "private.hpp"
 
-union Object;
-
 using Number_Buffer = Array<char, LULU_NUMBER_BUFSIZE>;
 
 /**
@@ -83,6 +81,27 @@ struct OString : Object_Header {
     clear_fixed() = delete;
 };
 
+/** @note(2025-09-05) Do we care about alignment of `long double`? */
+union Align {
+    void *p;
+    Object *o;
+    lulu_Number n;
+    lulu_Integer i;
+};
+
+struct Userdata : Object_Header {
+    Object *gc_list;
+    Table *metatable;
+    // How many bytes allocated for the userdata, sans header?
+    usize len;
+
+    union {
+        // Ensures `data` is properly aligned for most cases.
+        Align _dummy;
+        char data[1];
+    };
+};
+
 struct Intern {
     // Each entry in the string table is actually a linked list.
     Slice<Object *> table;
@@ -156,3 +175,9 @@ ostring_from_cstring(lulu_VM *L, const char *s)
     LString ls = lstring_from_cstring(s);
     return ostring_new(L, ls);
 }
+
+Userdata *
+userdata_new(lulu_VM *L, isize n);
+
+void
+userdata_free(lulu_VM *L, Userdata *ud);

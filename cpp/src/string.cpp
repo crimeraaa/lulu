@@ -283,3 +283,17 @@ ostring_new(lulu_VM *L, LString text)
     t->count++;
     return s;
 }
+
+Userdata *
+userdata_new(lulu_VM *L, isize n)
+{
+    Userdata *ud = object_new<Userdata>(L, &G(L)->objects, VALUE_USERDATA, n - 1);
+    ud->len = n;
+    return ud;
+}
+
+void
+userdata_free(lulu_VM *L, Userdata *ud)
+{
+    mem_free(L, ud, ud->len - 1);
+}

@@ -18,6 +18,7 @@ object_free(lulu_VM *L, Object *o)
     case VALUE_TABLE: table_delete(L, &o->table); break;
     case VALUE_CHUNK: chunk_delete(L, &o->chunk); break;
     case VALUE_FUNCTION: closure_delete(L, &o->function); break;
+    case VALUE_USERDATA: userdata_free(L, &o->userdata); break;
     case VALUE_UPVALUE: mem_free(L, &o->upvalue); break;
     default:
         lulu_panicf("Invalid object (Value_Type(%i))", t);

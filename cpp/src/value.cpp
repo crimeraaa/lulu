@@ -15,12 +15,11 @@ const char *const Value::type_names[VALUE_TYPE_COUNT] = {
     "string",   // VALUE_STRING
     "table",    // VALUE_TABLE
     "function", // VALUE_FUNCTION
+    "userdata", // VALUE_USERDATA
 
-#ifdef LULU_DEBUG
     "chunk",    // VALUE_CHUNK
     "upvalue",  // VALUE_UPVALUE
     "integer",  // VALUE_INTEGER
-#endif
 };
 
 bool
@@ -38,10 +37,11 @@ Value::operator==(Value b) const
     case VALUE_NUMBER:
         return lulu_Number_eq(this->to_number(), b.to_number());
     case VALUE_LIGHTUSERDATA:
-        return this->to_userdata() == b.to_userdata();
+        return this->to_lightuserdata() == b.to_lightuserdata();
     case VALUE_STRING:
     case VALUE_TABLE:
     case VALUE_FUNCTION:
+    case VALUE_USERDATA:
         return this->to_object() == b.to_object();
     case VALUE_INTEGER:
     case VALUE_CHUNK:
@@ -77,6 +77,7 @@ print_pointer:
     }
     case VALUE_TABLE:
     case VALUE_FUNCTION:
+    case VALUE_USERDATA:
         goto print_pointer;
     case VALUE_INTEGER:
     case VALUE_CHUNK:

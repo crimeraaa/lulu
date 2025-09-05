@@ -11,11 +11,12 @@
 
 union Object {
     Object_Header base;
-    OString ostring;
-    Table   table;
-    Chunk   chunk;
-    Closure function;
-    Upvalue upvalue;
+    OString  ostring;
+    Table    table;
+    Chunk    chunk;
+    Closure  function;
+    Userdata userdata;
+    Upvalue  upvalue;
 
     Value_Type
     type() const noexcept
@@ -72,12 +73,19 @@ Value::to_function() const
     return &this->to_object()->function;
 }
 
+inline Userdata *
+Value::to_userdata() const
+{
+    lulu_assert(this->is_userdata());
+    return &this->to_object()->userdata;
+}
+
 inline void *
 Value::to_pointer() const
 {
     switch (this->type()) {
     case VALUE_LIGHTUSERDATA:
-        return this->to_userdata();
+        return this->to_lightuserdata();
     case VALUE_TABLE:
         return this->to_table();
     case VALUE_FUNCTION:

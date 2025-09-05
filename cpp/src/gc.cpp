@@ -42,6 +42,9 @@ gc_mark_object(lulu_Global *g, Object *o)
     case VALUE_FUNCTION:
         o->function.base.gc_list = next;
         break;
+    case VALUE_USERDATA:
+        o->userdata.gc_list = next;
+        break;
     case VALUE_CHUNK:
         o->chunk.gc_list = next;
         break;
@@ -69,6 +72,9 @@ gc_mark_object(lulu_Global *g, Object *o)
             break;
         case VALUE_FUNCTION:
             g->gray_tail->function.base.gc_list = o;
+            break;
+        case VALUE_USERDATA:
+            g->gray_tail->userdata.gc_list = o;
             break;
         case VALUE_CHUNK:
             g->gray_tail->chunk.gc_list = o;

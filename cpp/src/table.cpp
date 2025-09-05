@@ -45,12 +45,12 @@ hash_value(Value v)
     case VALUE_NUMBER:
         return hash_compound(v.to_number());
     case VALUE_LIGHTUSERDATA:
-        return hash_compound(v.to_userdata());
+        return hash_compound(v.to_lightuserdata());
     case VALUE_STRING:
         return v.to_ostring()->hash;
     case VALUE_TABLE:
-        [[fallthrough]];
     case VALUE_FUNCTION:
+    case VALUE_USERDATA:
         return hash_compound(v.to_object());
     case VALUE_INTEGER:
     case VALUE_CHUNK:
