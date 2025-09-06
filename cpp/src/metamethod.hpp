@@ -4,6 +4,7 @@
 
 enum Metamethod {
     MT_INDEX, MT_NEWINDEX, // Table access
+    MT_GC,
     MT_ADD, MT_SUB, MT_MUL, MT_DIV, MT_MOD, MT_POW, MT_UNM, // Arithmetic
     MT_EQ, MT_LT, MT_LEQ, // Comparison
 };

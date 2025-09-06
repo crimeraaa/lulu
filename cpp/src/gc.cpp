@@ -260,6 +260,17 @@ gc_blacken_function(lulu_Global *g, Closure *f)
     return &lua->gc_list;
 }
 
+static GC_List **
+gc_blacken_userdata(lulu_Global *g, Userdata *ud)
+{
+    lulu_assert(ud->is_gray());
+    ud->set_black();
+    if (ud->metatable != nullptr) {
+        gc_mark_object(g, ud->metatable->to_object());
+    }
+    return &ud->gc_list;
+}
+
 static GC_List *
 gc_blacken_object(lulu_Global *g, Object *o)
 {
@@ -282,6 +293,9 @@ gc_blacken_object(lulu_Global *g, Object *o)
         break;
     case VALUE_CHUNK:
         next = gc_blacken_chunk(g, &o->chunk);
+        break;
+    case VALUE_USERDATA:
+        next = gc_blacken_userdata(g, &o->userdata);
         break;
     default:
         lulu_panicf("Cannot blacken object type '%s'", o->type_name());
@@ -388,6 +402,8 @@ gc_mark_roots(lulu_VM *L, lulu_Global *g)
             gc_mark_object(g, t->to_object());
         }
     }
+
+    gc_mark_value(g, g->registry);
 
     // Globals table is always reachable, save it for later when tracing.
     // We should not reach this point at VM startup.

@@ -144,7 +144,6 @@ public:
     type_name() const
     {
         Value_Type t = this->type();
-        lulu_assert(VALUE_NIL <= t && t <= VALUE_TYPE_LAST);
         return Value::type_names[t];
     }
 

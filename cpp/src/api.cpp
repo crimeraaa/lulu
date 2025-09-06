@@ -21,6 +21,8 @@ value_at(lulu_VM *L, int i)
 
     // Not in range of the window; try a pseudo index.
     switch (ii) {
+    case LULU_REGISTRY_INDEX:
+        return &G(L)->registry;
     case LULU_GLOBALS_INDEX:
         return &L->globals;
     default:
@@ -174,6 +176,15 @@ lulu_is_string(lulu_VM *L, int i)
     return t == VALUE_NUMBER || t == VALUE_STRING;
 }
 
+LULU_API int
+lulu_equal(lulu_VM *L, int a, int b)
+{
+    const Value *left  = value_at(L, a);
+    const Value *right = value_at(L, b);
+    /** @todo(2025-09-06) Add __eq metamethod? */
+    return *left == *right;
+}
+
 /*=== }}} =============================================================== */
 
 /*=== STACK MANIPULATION FUNCTIONS ================================== {{{ */
@@ -226,6 +237,19 @@ lulu_to_lstring(lulu_VM *L, int i, size_t *n)
         *n = static_cast<usize>(s->len);
     }
     return s->to_cstring();
+}
+
+LULU_API void *
+lulu_to_userdata(lulu_VM *L, int i)
+{
+    const Value *v = value_at(L, i);
+    switch (v->type()) {
+    case VALUE_LIGHTUSERDATA: return v->to_lightuserdata();
+    case VALUE_USERDATA:      return v->to_userdata()->data;
+    default:
+        break;
+    }
+    return nullptr;
 }
 
 LULU_API void *
@@ -493,6 +517,9 @@ lulu_set_metatable(lulu_VM *L, int table_index)
     switch (t->type()) {
     case VALUE_TABLE:
         t->to_table()->metatable = mt;
+        break;
+    case VALUE_USERDATA:
+        t->to_userdata()->metatable = mt;
         break;
     default:
         G(L)->mt_basic[t->type()] = mt;

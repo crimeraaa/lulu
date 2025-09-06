@@ -15,9 +15,10 @@ typedef LULU_INTEGER_TYPE lulu_Integer;
 /** @brief 'pseudo' indexes are invalid indexes used to
  *  manipulate the internals of the VM. We assume the stack never goes here.
  */
-#define LULU_PSEUDO_INDEX     (-15000)
-#define LULU_GLOBALS_INDEX    (LULU_PSEUDO_INDEX)
-#define lulu_upvalue_index(i) (LULU_GLOBALS_INDEX - (i))
+#define LULU_PSEUDO_INDEX       (-15000)
+#define LULU_REGISTRY_INDEX     (LULU_PSEUDO_INDEX)
+#define LULU_GLOBALS_INDEX      (LULU_PSEUDO_INDEX - 1)
+#define lulu_upvalue_index(i)   (LULU_GLOBALS_INDEX - (i))
 
 
 /** @brief Pass to `lulu_call()` and `lulu_pcall()` to indicate that an unknown
@@ -237,6 +238,13 @@ LULU_API int
 lulu_is_string(lulu_VM *L, int i);
 
 
+/** @brief Pushes the result of equality comparison between the 2 stack indices,
+ *  potentially calling the `__eq` metamethod.
+ */
+LULU_API int
+lulu_equal(lulu_VM *L, int a, int b);
+
+
 /**
  * @return 1 if the value at index `i` is truthy, else 0 if it is falsy.
  *
@@ -289,6 +297,9 @@ lulu_to_integer(lulu_VM *L, int i);
 LULU_API const char *
 lulu_to_lstring(lulu_VM *L, int i, size_t *n);
 
+
+LULU_API void *
+lulu_to_userdata(lulu_VM *L, int i);
 
 /**
  * @return The `void *` representation at index `i`, or else `NULL`.

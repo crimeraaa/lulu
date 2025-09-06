@@ -84,16 +84,14 @@ inline void *
 Value::to_pointer() const
 {
     switch (this->type()) {
-    case VALUE_LIGHTUSERDATA:
-        return this->to_lightuserdata();
-    case VALUE_TABLE:
-        return this->to_table();
-    case VALUE_FUNCTION:
-        return this->to_function();
-
+    case VALUE_LIGHTUSERDATA: return this->to_lightuserdata();
+    case VALUE_TABLE:         return this->to_table();
+    case VALUE_FUNCTION:      return this->to_function();
+    case VALUE_USERDATA:      return this->to_userdata();
     default:
         break;
     }
+    lulu_panicf("Cannot convert '%s' to pointer", this->type_name());
     return nullptr;
 }
 

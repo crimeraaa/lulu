@@ -4,6 +4,7 @@
 const char *const mt_names[MT_COUNT] = {
     "__index",      // MT_INDEX
     "__newindex",   // MT_NEWINDEX
+    "__gc",         // MT_GC
     "__add",        // MT_ADD
     "__sub",        // MT_SUB
     "__mul",        // MT_MUL
@@ -13,7 +14,7 @@ const char *const mt_names[MT_COUNT] = {
     "__unm",        // MT_UNM
     "__eq",         // MT_EQ
     "__lt",         // MT_LT
-    "__leq",        // MT_LEQ
+    "__le",         // MT_LEQ
 };
 
 Value
@@ -23,6 +24,9 @@ mt_get_method(lulu_VM *L, Value v, Metamethod t)
     switch (v.type()) {
     case VALUE_TABLE:
         mt = v.to_table()->metatable;
+        break;
+    case VALUE_USERDATA:
+        mt = v.to_userdata()->metatable;
         break;
     default:
         mt = G(L)->mt_basic[v.type()];

@@ -290,6 +290,28 @@ lulu_check_lstring(lulu_VM *L, int argn, size_t *n)
     return s;
 }
 
+LULU_LIB_API void *
+lulu_check_userdata(lulu_VM *L, int argn, const char *mt_name)
+{
+    void *p = lulu_to_userdata(L, argn);
+    /* Value is a userdata? */
+    if (p != nullptr) {
+        /* Userdata has a metatable? (full userdata only) */
+        if (lulu_get_metatable(L, argn)) {
+            /* Get library metatable */
+            lulu_get_field(L, LULU_REGISTRY_INDEX, mt_name);
+            /* Userdata's metatable is the same as the library metatable? */
+            if (lulu_equal(L, -2, -1)) {
+                /* Remove the library metatables from the stack. */
+                lulu_pop(L, 2);
+                return p;
+            }
+        }
+    }
+    lulu_type_error(L, argn, mt_name);
+    return nullptr;
+}
+
 LULU_LIB_API lulu_Number
 lulu_opt_number(lulu_VM *L, int argn, lulu_Number def)
 {
@@ -356,12 +378,31 @@ lulu_set_nlibrary(lulu_VM *L, const char *libname,
     }
 }
 
+LULU_LIB_API int
+lulu_new_metatable(lulu_VM *L, const char *mt_name)
+{
+    lulu_get_field(L, LULU_REGISTRY_INDEX, mt_name);
+    /* Table was pushed, meaning it's already in use? */
+    if (!lulu_is_nil(L, -1)) {
+        return 0;
+    }
+    /* Remove nil */
+    lulu_pop(L, 1);
+    lulu_new_table(L, 0, 0); /* mt */
+    lulu_push_value(L, -1);  /* mt, mt */
+
+    /* mt ; registry[mt_name] = mt */
+    lulu_set_field(L, LULU_REGISTRY_INDEX, mt_name);
+    return 1;
+}
+
 [[maybe_unused]]
 static const lulu_Register libs[] = {
     {LULU_BASE_LIB_NAME, lulu_open_base},
     {LULU_MATH_LIB_NAME, lulu_open_math},
     {LULU_STRING_LIB_NAME, lulu_open_string},
     {LULU_OS_LIB_NAME, lulu_open_os},
+    {LULU_IO_LIB_NAME, lulu_open_io},
 };
 
 LULU_LIB_API void

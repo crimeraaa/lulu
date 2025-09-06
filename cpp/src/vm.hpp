@@ -63,6 +63,9 @@ struct lulu_Global {
     // User-data pointer passed to `allocator`.
     void *allocator_data;
 
+    // Used by the C API to manage Lua data inaccessible from Lua directly.
+    Value registry;
+
     // Buffer used for string concatentation.
     Builder builder;
 

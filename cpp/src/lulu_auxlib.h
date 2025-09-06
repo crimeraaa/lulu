@@ -107,6 +107,13 @@ LULU_LIB_API const char *
 lulu_check_lstring(lulu_VM *L, int argn, size_t *n);
 
 
+/** @brief Asserts that the stack slot `argn` is a full userdata with metatable
+ *  `mt_name`, which should exist in the registry.
+ */
+LULU_LIB_API void *
+lulu_check_userdata(lulu_VM *L, int argn, const char *mt_name);
+
+
 /**
  * @param def
  *      The default value to use if the stack slot `argn` is invalid (i.e.
@@ -138,25 +145,29 @@ lulu_opt_lstring(lulu_VM *L, int argn, const char *def, size_t *n);
 
 
 LULU_LIB_API int LULU_ATTR_PRINTF(2, 3)
-    lulu_errorf(lulu_VM *L, const char *fmt, ...);
+lulu_errorf(lulu_VM *L, const char *fmt, ...);
 
 
 /** @brief Registers all functions in `library[0:n]` to global table `libname`,
  *  or the table on top of stack. Assumes no upvalues.
  *
  * @param libname
- *      The name of the table to be used as the library module.
+ *  The name of the table to be used as the library module.
  *
- *      If `NULL`, then we assume that there is a table currently on top
- *      of the stack. We will register all functions in `library` to this
- *      table instead.
+ *  If `NULL`, then we assume that there is a table currently on top of the
+ *  stack. We will register all functions in `library` to this table instead.
  *
  * @return
- *      This function leaves the module table on top of the stack.
+ *  This function leaves the module table on top of the stack.
  */
 LULU_LIB_API void
 lulu_set_nlibrary(lulu_VM *L, const char *libname,
     const lulu_Register *library, int n);
+
+
+/** @brief Create `registry[mt_name]` if it does not exist already. */
+LULU_LIB_API int
+lulu_new_metatable(lulu_VM *L, const char *mt_name);
 
 
 /*=== }}} =============================================================== */
@@ -193,6 +204,9 @@ lulu_set_nlibrary(lulu_VM *L, const char *libname,
 #define lulu_set_library(vm, name, fns)                                        \
     lulu_set_nlibrary(vm, name, fns, lulu_count_library(fns))
 
+#define lulu_get_library_metatable(L, mt_name)  \
+    lulu_get_field(L, LULU_REGISTRY_INDEX, mt_name)
+
 /*=== }}} =============================================================== */
 
 LULU_LIB_API void
@@ -209,5 +223,8 @@ lulu_open_string(lulu_VM *L);
 
 LULU_LIB_API int
 lulu_open_os(lulu_VM *L);
+
+LULU_LIB_API int
+lulu_open_io(lulu_VM *L);
 
 #endif /* LULU_AUXILLIARY_H */

@@ -19,7 +19,12 @@ static void
 required_allocations(lulu_VM *L, void *)
 {
     lulu_Global *g = G(L);
-    Table *t = table_new(L, /*n_hash=*/8, /*n_array=*/0);
+    Table *t;
+
+    t = table_new(L, /*n_hash=*/8, /*n_array=*/0);
+    g->registry.set_table(t);
+
+    t = table_new(L, /*n_hash=*/8, /*n_array=*/0);
     L->globals.set_table(t);
     // Ensure when we start interning strings we can already index.
     intern_resize(L, &g->intern, 32);

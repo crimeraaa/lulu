@@ -66,6 +66,7 @@
 #define LULU_STRING_LIB_NAME "string"
 #define LULU_MATH_LIB_NAME   "math"
 #define LULU_OS_LIB_NAME     "os"
+#define LULU_IO_LIB_NAME     "io"
 
 
 /**
