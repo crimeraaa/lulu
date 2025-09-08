@@ -1,10 +1,11 @@
 ---@class Set
 ---@field data table
 Set = {}
+Set.mt = {}
 
 function Set.new(a)
     ---@type Set
-    local s = setmetatable({}, Set_MT)
+    local s = setmetatable({}, Set.mt)
     local t = {}
     s.data = t
     -- Shallow copy
@@ -39,12 +40,10 @@ function Set:tostring()
     return s.."}"
 end
 
-Set_MT = {
-    __index = Set,
-    __add = Set.union,
-    __mul = Set.intersection,
-    __tostring = Set.tostring,
-}
+Set.mt.__index    = Set
+Set.mt.__add      = Set.union
+Set.mt.__mul      = Set.intersection
+Set.mt.__tostring = Set.tostring
 
 local a = Set.new{9, 10, 21}
 local b = Set.new{21, 42}

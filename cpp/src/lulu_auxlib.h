@@ -222,6 +222,9 @@ LULU_LIB_API int
 lulu_open_string(lulu_VM *L);
 
 LULU_LIB_API int
+lulu_open_table(lulu_VM *L);
+
+LULU_LIB_API int
 lulu_open_os(lulu_VM *L);
 
 LULU_LIB_API int

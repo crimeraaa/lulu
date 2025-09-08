@@ -16,6 +16,9 @@ struct Entry {
 };
 
 struct Table : Object_Header {
+    // Bit set. 1 indicates metamethod is absent and 0 indicates present.
+    u8 flags;
+
     // This object is always independent, so it can be a root during
     // garbage collection.
     GC_List *gc_list;

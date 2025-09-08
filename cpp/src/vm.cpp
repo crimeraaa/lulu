@@ -578,17 +578,18 @@ vm_call_fini(lulu_VM *L, Slice<Value> results)
 }
 
 static void
-vm_call_mt(lulu_VM *L, Value *res, Value f, Value a, Value b)
+vm_call_mt_res(lulu_VM *L, Value *res, Value f, Value a, Value b)
 {
     int out_index = vm_save_index(L, res);
     vm_check_stack(L, 3);
+    // Binary/unary metamethods can only ever be functions
+    Value *f2 = vm_ptr_top(L);
+    int ret_index = vm_save_index(L, f2);
+
     vm_push_value(L, f); // push function
     vm_push_value(L, a); // 1st argument
     vm_push_value(L, b); // 2nd argument
 
-    // Binary metamethods can only ever be functions
-    Value *f2 = vm_ptr_top(L) - 3;
-    int ret_index = vm_save_index(L, f2);
     vm_call(L, f2, /*n_args=*/2, /*n_rets=*/1);
     L->stack[out_index] = L->stack[ret_index];
 
@@ -596,13 +597,29 @@ vm_call_mt(lulu_VM *L, Value *res, Value f, Value a, Value b)
     lulu_assert(len(L->caller->window) == len(L->window));
 }
 
+static void
+vm_call_mt_newindex(lulu_VM *L, Value f, Value t, Value k, Value v)
+{
+    vm_check_stack(L, 4);
+
+    Value *f2 = vm_ptr_top(L);
+    vm_push_value(L, f);
+    vm_push_value(L, t);
+    vm_push_value(L, k);
+    vm_push_value(L, v);
+    vm_call(L, f2, /*n_args=*/3, /*n_rets=*/0);
+
+    lulu_assert(len(L->caller->window) == len(L->window));
+}
+
 bool
-vm_table_get(lulu_VM *L, const Value *t, Value k, Value *out)
+vm_table_get(lulu_VM *L, const Value *vt, Value k, Value *out)
 {
     Value mt_index = nil;
     // Everything you are about to see is extremely ugly
     for (int i = 0; i < MT_MAX_LOOP; i++) {
-        if (t->is_table()) {
+        if (vt->is_table()) {
+            Table *t = vt->to_table();
             // `table_get()` works under the assumption `k` is non-`nil`.
             if (k.is_nil()) {
                 *out = nil;
@@ -611,13 +628,13 @@ vm_table_get(lulu_VM *L, const Value *t, Value k, Value *out)
 
             // do a primitive get (`rawget`)
             bool key_exists;
-            Value v = table_get(t->to_table(), k, &key_exists);
+            Value v = table_get(t, k, &key_exists);
             // Key found?
             if (key_exists && !v.is_nil()) {
                 *out = v;
                 return true;
             }
-            mt_index = mt_get_method(L, *t, MT_INDEX);
+            mt_index = mt_get_fast(L, t->metatable, MT_INDEX);
             // __index() metamethod not found?
             if (mt_index.is_nil()) {
                 *out = v;
@@ -626,82 +643,142 @@ vm_table_get(lulu_VM *L, const Value *t, Value k, Value *out)
                 return key_exists;
             }
         } else {
-            mt_index = mt_get_method(L, *t, MT_INDEX);
+            mt_index = mt_get_method(L, *vt, MT_INDEX);
         }
 
         if (mt_index.is_nil()) {
-            debug_type_error(L, "index", t);
+            debug_type_error(L, "index", vt);
             return false;
         }
         if (mt_index.is_function()) {
-            vm_call_mt(L, out, mt_index, *t, k);
+            vm_call_mt_res(L, out, mt_index, *vt, k);
             /** @todo(2025-09-02) Verify result? */
             return true;
         }
+
         // Try the metatable
-        t = &mt_index;
+        vt = &mt_index;
     }
-    debug_type_error(L, "loop in vm_table_get()", t);
+    debug_type_error(L, "loop in vm_table_get()", vt);
     return false;
 }
 
 void
-vm_table_set(lulu_VM *L, const Value *t, const Value *k, Value v)
+vm_table_set(lulu_VM *L, const Value *tv, const Value *k, Value v)
 {
-    if (t->is_table()) {
-        // `table_set` assumes that we never use `nil` as a key.
-        if (k->is_nil()) {
-            debug_type_error(L, "set index using", k);
+    Value mt_newindex = nil;
+    for (int i = 0; i < MT_MAX_LOOP; i++) {
+        if (tv->is_table()) {
+            Table *t = tv->to_table();
+            // `table_set` assumes that we never use `nil` as a key.
+            if (k->is_nil()) {
+                debug_type_error(L, "set index using", k);
+            }
+            Value *tk = table_set(L, t, *k);
+            if (!tk->is_nil()) {
+                // luaC_barriert(L, t, v);
+                *tk = v;
+                return;
+            }
+
+            // Try to find __newindex
+            mt_newindex = mt_get_fast(L, t->metatable, MT_NEWINDEX);
+
+            // __newindex doesn't exist, so just assign value as-is
+            if (mt_newindex.is_nil()) {
+                // luaC_barriert(L, t, v)
+                *tk = v;
+                return;
+            }
+        } else {
+            mt_newindex = mt_get_method(L, *tv, MT_NEWINDEX);
         }
-        Value *tk = table_set(L, t->to_table(), *k);
-        // luaC_barriert(L, t, v);
-        *tk = v;
+
+        if (mt_newindex.is_nil()) {
+            debug_type_error(L, "index", tv);
+        }
+        if (mt_newindex.is_function()) {
+            vm_call_mt_newindex(L, mt_newindex, *tv, *k, v);
+            return;
+        }
+        tv = &mt_newindex;
+    }
+    debug_type_error(L, "set index of", tv);
+}
+
+static Value
+get_mt_unary(lulu_VM *L, Metamethod m, const Value *a)
+{
+    switch (a->type()) {
+    case VALUE_TABLE:    return mt_get_fast(L, a->to_table()->metatable, m);
+    case VALUE_USERDATA: return mt_get_fast(L, a->to_userdata()->metatable, m);
+    default:             return mt_get_method(L, *a, MT_LEN);
+    }
+}
+
+static void
+vm_len(lulu_VM *L, Value *res, const Value *a)
+{
+    Value mt_len = get_mt_unary(L, MT_LEN, a);
+    // Prioritize metamethod over raw type operation
+    if (!mt_len.is_nil()) {
+        vm_call_mt_res(L, res, mt_len, *a, *a);
         return;
     }
-    debug_type_error(L, "set index of", t);
+
+    switch (a->type()) {
+    case VALUE_STRING:
+        res->set_number(static_cast<Number>(a->to_ostring()->len));
+        break;
+    case VALUE_TABLE:
+        res->set_number(static_cast<Number>(table_len(a->to_table())));
+        break;
+    default:
+        debug_type_error(L, "get length of", a);
+        break;
+    }
 }
 
 static bool
-vm_call_mt_binary(lulu_VM *L, Value *res, Metamethod t, Value a, Value b)
+vm_call_mt_binary(lulu_VM *L, Value *res, Metamethod m, Value a, Value b)
 {
     // For simplicity, unary negation also delegates to here.
-    lulu_assert(MT_ADD <= t && t <= MT_LEQ);
+    lulu_assert(MT_ADD <= m && m <= MT_LEQ);
 
     // Try left operand metamethod
-    Value method = mt_get_method(L, a, t);
+    Value mt_bin = mt_get_method(L, a, m);
 
     // Didn't find it; try right operand
-    if (method.is_nil()) {
-        method = mt_get_method(L, b, t);
+    if (mt_bin.is_nil()) {
+        mt_bin = mt_get_method(L, b, m);
         // Neither side has an appropriate metamethod?
-        if (method.is_nil()) {
+        if (mt_bin.is_nil()) {
             return false;
         }
     }
 
     // Do __f(a, b) e.g. __add(a, b) or __lt(a, b)
-    vm_call_mt(L, res, method, a, b);
+    vm_call_mt_res(L, res, mt_bin, a, b);
     return true;
 }
 
 static void
-arith(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
+arith(lulu_VM *L, Metamethod m, Value *ra, const Value *rkb, const Value *rkc)
 {
     Value tmp_b, tmp_c;
     if (vm_to_number(rkb, &tmp_b) && vm_to_number(rkc, &tmp_c)) {
         Number x = tmp_b.to_number();
         Number y = tmp_c.to_number();
         Number n;
-        switch (mt) {
+        switch (m) {
         case MT_ADD: n = lulu_Number_add(x, y); break;
         case MT_SUB: n = lulu_Number_sub(x, y); break;
         case MT_MUL: n = lulu_Number_mul(x, y); break;
         case MT_DIV: n = lulu_Number_div(x, y); break;
         case MT_MOD: n = lulu_Number_mod(x, y); break;
         case MT_POW: n = lulu_Number_pow(x, y); break;
-        case MT_UNM: n = lulu_Number_unm(x); break;
         default:
-            lulu_panicf("Invalid Metamethod(%i)", mt);
+            lulu_panicf("Invalid Metamethod(%i)", m);
             break;
         }
         ra->set_number(n);
@@ -710,13 +787,13 @@ arith(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb, const Value *rkc)
 
     // If metamethod itself throws, we no longer have the stack information
     // If no metamethod exists, report these culprits directly.
-    if (!vm_call_mt_binary(L, ra, mt, *rkb, *rkc))  {
+    if (!vm_call_mt_binary(L, ra, m, *rkb, *rkc))  {
         debug_arith_error(L, rkb, rkc);
     }
 }
 
 static void
-compare(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb,
+compare(lulu_VM *L, Metamethod m, Value *ra, const Value *rkb,
     const Value *rkc)
 {
     Value tmp_b, tmp_c;
@@ -724,17 +801,17 @@ compare(lulu_VM *L, Metamethod mt, Value *ra, const Value *rkb,
         Number x = tmp_b.to_number();
         Number y = tmp_c.to_number();
         bool   b;
-        switch (mt) {
+        switch (m) {
         case MT_LT:  b = lulu_Number_lt(x, y);  break;
         case MT_LEQ: b = lulu_Number_leq(x, y); break;
         default:
-            lulu_panicf("Invalid Metamethod(%i)", mt);
+            lulu_panicf("Invalid Metamethod(%i)", m);
             break;
         }
         ra->set_boolean(b);
         return;
     }
-    if (!vm_call_mt_binary(L, ra, mt, *rkb, *rkc))  {
+    if (!vm_call_mt_binary(L, ra, m, *rkb, *rkc))  {
         debug_compare_error(L, rkb, rkc);
     }
 }
@@ -834,7 +911,8 @@ re_entry:
 
     for (;;) {
         Instruction inst = *ip++;
-        /** @warning(2025-09-02) Breaks when C function returns 0 values! */
+        /** @warning(2025-09-02) Bounds-check breaks when C function returns 0
+         *  values! */
         Value *ra   = &RA(inst);
 
 #ifdef LULU_DEBUG_TRACE_EXEC
@@ -949,11 +1027,18 @@ re_entry:
         case OP_LEQ: COMPARE_OP(lulu_Number_leq, MT_LEQ); break;
         case OP_UNM: {
             Value *rb = &RB(inst);
-            if (rb->is_number()) {
-                ra->set_number(lulu_Number_unm(rb->to_number()));
-            } else {
-                PROTECTED_DO(arith(L, MT_UNM, ra, rb, rb));
+            Value tmp;
+            if (vm_to_number(rb, &tmp)) {
+                ra->set_number(lulu_Number_unm(tmp.to_number()));
+                break;
             }
+            Value mt_unm = get_mt_unary(L, MT_UNM, rb);
+            PROTECTED_DO(
+                if (mt_unm.is_nil()) {
+                    debug_arith_error(L, rb, rb);
+                }
+                vm_call_mt_res(L, ra, mt_unm, *rb, *rb);
+            );
             break;
         }
         case OP_NOT:
@@ -961,18 +1046,7 @@ re_entry:
             break;
         case OP_LEN: {
             Value *rb = &window[inst.b()];
-            switch (rb->type()) {
-            case VALUE_STRING:
-                ra->set_number(static_cast<Number>(rb->to_ostring()->len));
-                break;
-            case VALUE_TABLE:
-                ra->set_number(static_cast<Number>(table_len(rb->to_table())));
-                break;
-            default:
-                /** @todo(2025-09-01) Call metamethod? */
-                PROTECTED_DO(debug_type_error(L, "get length of", rb));
-                break;
-            }
+            PROTECTED_DO(vm_len(L, ra, rb));
             break;
         }
         case OP_CONCAT: {

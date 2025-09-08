@@ -572,8 +572,12 @@ LULU_API size_t
 lulu_obj_len(lulu_VM *L, int i)
 {
     const Value *v = value_at(L, i);
-    if (v->is_string()) {
-        return v->to_ostring()->len;
+    switch (v->type()) {
+    case VALUE_STRING:   return v->to_ostring()->len;
+    case VALUE_TABLE:    return table_len(v->to_table());
+    case VALUE_USERDATA: return v->to_userdata()->len;
+    default:
+        break;
     }
     return 0;
 }
